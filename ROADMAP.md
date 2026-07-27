@@ -20634,13 +20634,32 @@ that needs them.
   Kind: fix.
   Source: in-session-2026-07-26 (ANTS-3636 cold-eyes loop 10).
 
-- 📋 [ANTS-3653] **Citation scan — the `path:line` grammar and scrape rule as a standalone contract, split out of ANTS-3636.**
+- ✅ [ANTS-3653] **Citation scan — the `path:line` grammar and scrape rule as a standalone contract, split out of ANTS-3636.**
   Split out of ANTS-3636 (2026-07-27) after twelve cold-eyes loops failed to
   converge. The parent spec grew 413 -> 2,095 lines across those loops while
   findings did not fall, because every finding was repaired by adding prose,
   and the added prose restated facts that then drifted from their originals:
   three of loop 12's five HIGHs were fix-induced contradictions between two
   copies of one fact.
+  Resolved (2026-07-27): `DocCitations::scan(lines, opts)` in
+  `src/doccitations.{h,cpp}` — pure function, Qt6::Core-only, zero filesystem
+  access, consuming ANTS-3649's `fenceMask` overload + `codeSpans`. Two-stage
+  grammar as specified: a permissive recognise pass (maximal-munch left edge,
+  greedy digit runs, en dash, trailing loci, `+`) then a validate pass that
+  tests each KEPT run's LENGTH before converting, so an over-long locus lands in
+  `unparsed[]`/`bad_locus` instead of vanishing. Continuations are marked, never
+  resolved — the sticky rule stays with ANTS-3636.
+  `tests/features/doc_citations_scan/` carries all twelve invariants (INV-1, 2,
+  3, 9, 10, 24, 29, 32, 33, 36, 39, 40, original numbers, non-contiguous),
+  compiled into the test_core bundle. Verified RED first (the build graph could
+  not configure), then sabotage-verified the three trap cases the spec names —
+  a mask-derived `unterminated_fence` fails ONLY the closes-on-the-final-line
+  row; a strict `[0-9]{1,cap}(?![0-9])` production fails only INV-40; a scan
+  accepting any bare `:N` is caught by INV-32 (the clock time and the ratio both
+  became continuations) and by INV-24 (`~:11985` stopped being invisible). Full
+  suite 2934/2934.
+  Not done here: the verb, resolution, statuses and caps are ANTS-3636; the
+  anchor rule is ANTS-3654.
 
   This is the clean seam. The scan layer is a pure function -- document text
   in, citation tokens out -- with no filesystem access, no path resolution and

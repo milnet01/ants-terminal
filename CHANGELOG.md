@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Citation scan — the `path:line` grammar and scrape rule as a standalone contract, split out of ANTS-3636.** (ANTS-3653)
+  The part that just finds `file.cpp:42` references in a document, specified on its own so it can be built and tested without touching the filesystem.
+
 - **`changelog_query` accepts `section` as an alias for `version`.** (ANTS-3618)
   Callers arriving from `roadmap_query` reach for its vocabulary and passed `section:"Unreleased"`, which was silently ignored — so every entry came back, reading as a filter that matched everything rather than one never applied. Passing both with different values now refuses `bad_args`.
 

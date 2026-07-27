@@ -294,6 +294,9 @@ add_library(ants_core_lib STATIC
     # ANTS-3601 — deterministic doc-integrity engine (dead anchors, broken
     # links, TOC coverage); Qt6::Core-only.
     src/docintegrity.cpp
+    # ANTS-3653 — doc_citations scan layer: the path:line grammar as a pure
+    # function (document text in, tokens out); Qt6::Core-only.
+    src/doccitations.cpp
     # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
     src/feedbackfile.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
@@ -2010,6 +2013,8 @@ if(ANTS_TESTS)
                 tests/features/markdownscan/test_markdownscan.cpp
                 # ANTS-3601 — deterministic doc-integrity engine (Core-only).
                 tests/features/doc_integrity/test_doc_integrity.cpp
+                # ANTS-3653 — citation scan: pure grammar, no filesystem.
+                tests/features/doc_citations_scan/test_doc_citations_scan.cpp
                 tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
                 tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
                 tests/features/debuglog_perms/test_debuglog_perms.cpp
