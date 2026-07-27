@@ -20691,6 +20691,20 @@ to apply within a document. Follow-on work from that change.
   Kind: refactor.
   Source: in-session-2026-07-26 (ANTS-3636 spec consolidation)..
 
+- 📋 [ANTS-3652] **Give `doc_integrity` an entry in `mcp-behavioural-notes.md`.**
+  `docs/standards/mcp-behavioural-notes.md` is the documented home for
+  per-verb behavioural notes, and `grep -n doc_integrity` over it returns
+  nothing — the verb has none, though it accepts a directory and walks it
+  (ANTS-3601 INV-16), answers a non-existent path with `ok:true` rather
+  than refusing (INV-15), and narrows `findings[]` + `counts{}` together
+  via `kinds`. Found while ANTS-3636 was deciding whether its own absence
+  from that file would be following precedent or copying an omission; it
+  is the latter, so ANTS-3636 § 7 mandates an entry for `doc_citations`
+  and this bullet backfills the sibling.
+  **Layman:** The per-verb notes file that tells a caller how a tool really behaves has no entry for doc_integrity, so its quirks are undocumented.
+  Kind: doc.
+  Source: cold-eyes-2026-07-27 ANTS-3636 loop 11.
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
