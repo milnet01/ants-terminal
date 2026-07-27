@@ -9071,6 +9071,90 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-07-27 (first real-doc run of doc_citations).
 
+- 📋 [ANTS-3660] **`doc_dedup` — deterministic near-duplicate passage detection across a doc set.**
+  The one /cold-eyes § 1e dimension with no mechanical check at all, and the
+  expensive one: the skill's own Phase 4 says a run that will not converge
+  usually has a duplication problem, and that reconciling two copies is the
+  wrong fix because they diverge again. So each loop rediscovers them one at
+  a time at cold-reader prices.
+
+  Shape: normalise each paragraph (fold whitespace, strip markdown emphasis,
+  lowercase), shingle it, and report pairs over a Jaccard threshold as
+  {a:{path,line}, b:{path,line}, similarity}. Fence-aware via MarkdownScan —
+  two identical code samples are not a duplicated fact. Report-only: which
+  copy is canonical is a judgement, so the verb never deletes.
+
+  RAM: shingle sets are per-paragraph and discarded after each pair test;
+  cap the corpus by doc count and total bytes, and state both. Tuning risk
+  is real — boilerplate headers and pointer lines will pair at high
+  similarity, so a minimum passage length and a pointer-line exclusion are
+  part of v1, not a follow-up.
+  **Layman:** Find the same fact written twice in two places, automatically, instead of paying a reviewer to notice it.
+  Kind: implement.
+  Source: user-request-2026-07-27.
+
+- 📋 [ANTS-3661] **`doc_symbols` — resolve every backticked identifier a doc asserts something about.**
+  /cold-eyes § 1e calls this "the highest-yield check in the pre-pass" and
+  names its two worst corpus findings: a function documented as returning one
+  thing when it returned another, under a heading reading "Verified API
+  basis"; and a test seam a later reviewer's notes call "fictional". Both
+  were written from recall; both would have died at a symbol lookup.
+
+  Harvest backticked identifiers (fence-aware), resolve each via the same
+  ladder `find_definition` uses, return {symbol, doc_line, resolved,
+  definitions[]}.
+
+  **Report-only, and this is the whole design constraint.** Whether an
+  unresolved symbol is a defect or a legitimate forward reference — a doc
+  naming a thing it is about to create — is a judgement the verb must not
+  make. It produces the short list; a reviewer decides. ANTS-3654 is a live
+  example: `anchor_symbol`, `maxAnchorGap` and its test directory are all
+  unresolved and all correct.
+  **Layman:** Check that every function or class name a document mentions actually exists in the code.
+  Kind: implement.
+  Source: user-request-2026-07-27.
+
+- 📋 [ANTS-3662] **`spec_lint` — the greppable half of the spec-format contract, in one call.**
+  Bundles the § 1e checks that are deterministic but currently hand-rolled
+  every run: required sections present (read from the project's own
+  `docs/standards/spec-format.md` / `specs.md` — never an imported default,
+  since a doc cannot violate a standard the project never adopted); every
+  `INV-N` carries a `*Test:*` clause; numbered-id gaps; loop-log tally
+  balance (every row has an outcome cell); and the doc's line count against
+  the skill's 1-3-loop design point.
+
+  One sub-check earns its own mention: a `*Test:*` clause that is a command
+  (`grep`/`git`/`ctest`) but states no expected output. /write-spec's own
+  notes record three of eight invariants shipping broken behind exactly that
+  shape — a fictional section, a count off by one, and a tautology over a
+  gitignored path. Emit as candidates, not verdicts: a manual recipe is a
+  legitimate test surface with nothing to state.
+  **Layman:** One command that checks a spec has all its required parts, instead of six hand-typed searches.
+  Kind: implement.
+  Source: user-request-2026-07-27.
+
+- 📋 [ANTS-3663] **`doc_lint` — run every deterministic doc check in one call, and fix only what is provably safe.**
+  Gated on ANTS-3660..3662 existing. Composes `doc_integrity` +
+  `doc_citations` + `doc_dedup` + `doc_symbols` + `spec_lint` into one
+  findings list, so a review pre-pass is one call rather than six — the
+  actual token saving, since each verb today re-walks the same files.
+
+  **The fix half stays deliberately narrow.** Auto-fixable: a stale
+  hand-maintained TOC (regenerable from the headings) and a version string
+  that disagrees with the build system's single source of truth. Everything
+  else is report-only *by design*, not by omission — deleting one of two
+  duplicated facts needs a judgement about which is canonical, and
+  renumbering an `INV-N` breaks every citation of it, which /cold-eyes
+  Phase 4 forbids outright.
+
+  Caveat to carry into the skill: ANTS-1581 settled that /cold-eyes is
+  global and these verbs are not, so § 1e names a verb only alongside a
+  stated hand-rolled fallback. Each new verb here needs that fallback
+  sentence, or every non-Ants project regresses.
+  **Layman:** One button that runs all the document checks together, and repairs the handful it can repair without guessing.
+  Kind: enhancement.
+  Source: user-request-2026-07-27.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
