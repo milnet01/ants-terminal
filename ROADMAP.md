@@ -9204,6 +9204,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   `*Test:* …` sentence into `body`. Verified against ANTS-3659's own
   `spec_query` output this session: six invariants returned, zero
   `test_surface` fields.
+  Scope addition (2026-07-27, from ANTS-3662's cold-eyes loop 1): this item also HOISTS `parseSpecBody` out of `src/remotecontrol.cpp`'s anonymous namespace into `src/specparse.{h,cpp}` in `ants_core_lib`. ANTS-3662 (`spec_lint`) is an engine in that library and cannot link an anonymous-namespace function, so without the hoist it would have to grow a second spec parser beside the first — exactly the divergence `MarkdownScan` was hoisted to prevent. One move, done alongside the `test_surface` repair rather than as a follow-up. The review caught this because ANTS-3662 declared the step "filed against that item" when it was not: an unrecorded dependency that would have surfaced at implementation time as a blocked build.
 
   Live doc-vs-code drift, and load-bearing for ANTS-3662: `spec_lint`'s
   central check is "every INV-N carries a test surface", which cannot be
