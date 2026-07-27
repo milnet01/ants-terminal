@@ -9158,6 +9158,67 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: user-request-2026-07-27.
 
+- 📋 [ANTS-3664] **Shared doc-finding envelope, before the four lint verbs land on five different shapes.**
+  Measured 2026-07-27, not assumed: there is NO shared finding type, no
+  shared finding-to-JSON serialiser, and no aggregator. Six independent
+  `struct Finding` declarations exist — `DocIntegrity::Finding`
+  (`src/docintegrity.h:30`, 4 fields), `DebtSweep::Finding`
+  (`src/debtsweepengine.h:26`, 7), `AuditEngine::Finding`
+  (`src/auditengine.h:82`, ~20, plus a SEPARATE `AuditSummaryFinding` at
+  `:348` that exists because the first could not carry what the MCP
+  summary needed), `FeedbackFile::Finding` (`src/feedbackfile.h:111`,
+  beside three more shapes in one header), and a GUI-side sixth. A grep
+  for `findingToJson` across `src/` returns zero.
+
+  Worse for this lane: `doc_citations` emits no findings at all.
+  `DocCitations::check` hand-builds `{citations[]{status, doc_line, raw},
+  unparsed[], counts{}}` — `doc_line` not `line`, `status` not `message`,
+  no `kind`, no severity.
+
+  So ANTS-3663 (`doc_lint`) as filed would normalise FIVE vocabularies,
+  forever, and each of ANTS-3660/3661/3662 would add a sixth, seventh and
+  eighth unless they are given the shape up front. The standing rule is to
+  extract the shared base first when two or more similar components are
+  coming; three are.
+
+  Scope: one `DocFinding` struct + one serialiser in `ants_core_lib`, with
+  the three new verbs emitting it natively and ANTS-3663 adapting only the
+  two that already ship. Explicitly NOT a refactor of `AuditEngine` or
+  `DebtSweep` — they are a different lane with a different consumer, and
+  the Rule of Three has not fired on them.
+
+  The precedent is `MarkdownScan` (ANTS-3603/3649/3659): the one genuinely
+  shared foundation these doc engines have, hoisted when the second
+  call-site appeared. Its header comment records exactly this pressure.
+  **Layman:** Agree one common way for the document checkers to report a problem, before we build three more that each invent their own.
+  Kind: refactor.
+  Source: in-session-2026-07-27 (grounding pass for ANTS-3660..3663)..
+
+- 📋 [ANTS-3665] **`spec_query` drops the `*Test:*` clause on bullet-form invariants, and the standard says it does not.**
+  `docs/standards/specs.md:236` states the `*Test:*` clause is surfaced as
+  `test_surface`. `parseSpecBody` (`src/remotecontrol.cpp:16836`) emits
+  `test_surface` ONLY from the GFM table branch
+  (`| INV-N | body | test surface |`). The bullet branch — which the same
+  standard at `:111` calls the default form, and which the overwhelming
+  majority of this corpus uses — emits `{id, body}` and swallows the whole
+  `*Test:* …` sentence into `body`. Verified against ANTS-3659's own
+  `spec_query` output this session: six invariants returned, zero
+  `test_surface` fields.
+
+  Live doc-vs-code drift, and load-bearing for ANTS-3662: `spec_lint`'s
+  central check is "every INV-N carries a test surface", which cannot be
+  asked of a parser that does not extract one. Fix the parser (extract the
+  clause in bullet form too) rather than the standard — the standard
+  describes the behaviour everyone already expects.
+
+  Watch the interaction with `possible_untabled_invariants` (ANTS-3569)
+  and with `DebtSweep::detectMissingInvariantTests`
+  (`src/debtsweepengine.h:105`), which matches INV-ids between a feature
+  `spec.md` and its sibling test file and likewise never reads the clause.
+  **Layman:** The spec reader is supposed to pull out each rule's "how we test this" line. For the format almost every spec actually uses, it silently doesn't.
+  Kind: fix.
+  Source: in-session-2026-07-27 (grounding pass for ANTS-3662 `spec_lint`)..
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
