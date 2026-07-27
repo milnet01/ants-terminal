@@ -15,7 +15,12 @@
 //
 // Consumers: feedbackfile.cpp (scanBoundaries), speclog.cpp (findSectionHeading),
 // featurecoverage.cpp (ANTS-3600 doc-literal scan), docsindex.cpp (ANTS-3604
-// fence-aware link scan), docintegrity.cpp (ANTS-3601).
+// fence-aware link scan), docintegrity.cpp (ANTS-3601), doccitations.cpp
+// (ANTS-3653).
+//
+// ANTS-3649 also hoisted the inline-code-span scanner here from
+// docintegrity.cpp, where it was an anonymous-namespace static: two verbs now
+// need the span boundaries and they must not diverge.
 
 #pragma once
 
@@ -58,5 +63,52 @@ QChar fenceOpenerChar(const QString &line, int maxIndent = 3);
 // keep the top-level rule: container tracking needs state they do not carry,
 // and the files they scan fence at top level.
 QVector<bool> fenceMask(const QStringList &lines);
+
+// ANTS-3649 — the same mask, plus the 1-based line of an unclosed fence
+// opener in `*unterminatedOpenerLine` (-1 when every fence closes; nullptr is
+// accepted and makes this identical to the overload above).
+//
+// The fact is NOT recoverable from the mask, which is why this is an overload
+// rather than post-processing: a document whose last line is a fence *closer*
+// and one whose last line sits inside an *unclosed* fence both end in a run of
+// `true`. Any rule inferred from the mask alone ("a trailing run of true means
+// unterminated") false-alarms on every doc that ends in a properly closed code
+// block — most specs in this repo. Only the scanner knows.
+QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine);
+
+// ANTS-3649 — one inline code span's CONTENT bounds. `startCol`/`endCol` are
+// half-open [start, end) column indices excluding the delimiters, and
+// `delimLen` is the backtick-run length, so the opening run starts at
+// `startCol - delimLen` and the closing run ends at `endCol + delimLen`. A
+// content-only struct cannot express those columns for a multi-backtick span,
+// and consumers that measure a window from the delimiter need them.
+struct CodeSpan {
+    int startLine;   // 0-based
+    int startCol;    // 0-based, first content column
+    int endLine;     // 0-based
+    int endCol;      // 0-based, one past the last content column
+    int delimLen;    // backtick-run length of both delimiters
+};
+
+// Every inline code span in the document, in document order — hoisted out of
+// `DocIntegrity::maskInlineCode`, which is still the only masking consumer but
+// is no longer the only one that needs the boundaries.
+//
+// Whole-document, not line by line: a CommonMark span may cross a newline
+// (§ 6.1), and a per-line pass leaves such a span's tail exposed — the defect
+// ANTS-3635(a) fixed, where docs/specs/ANTS-1150.md:197-198 wraps a C++ lambda
+// whose second line reads `[this](int idx)`.
+//
+// A span's closing run is searched FORWARD across lines but never past a blank
+// line or a fence line — an inline span crosses neither. That rule decides
+// where a span *ends*, so a genuinely boundary-free scan would change what the
+// consumers count. A run with no equal-length partner is literal text per
+// CommonMark and yields no span, so one stray backtick cannot swallow the rest
+// of the document. Lines masked by `fence` are skipped entirely.
+//
+// Content is returned VERBATIM: CommonMark's one-space strip is the CALLER's
+// job, so a caller matching an identifier is unaffected by it while a caller
+// testing "fills the span" applies it.
+QVector<CodeSpan> codeSpans(const QStringList &lines, const QVector<bool> &fence);
 
 }  // namespace MarkdownScan

@@ -20806,7 +20806,7 @@ to apply within a document. Follow-on work from that change.
   Kind: doc-fix.
   Source: in-session-2026-07-26 (found while writing documentation.md § 1.7)..
 
-- 📋 [ANTS-3649] **Hoist `DocIntegrity::maskInlineCode` into `MarkdownScan::codeSpans` as its own change, ahead of ANTS-3636.**
+- ✅ [ANTS-3649] **Hoist `DocIntegrity::maskInlineCode` into `MarkdownScan::codeSpans` as its own change, ahead of ANTS-3636.**
   Split out of ANTS-3636 so the prerequisite refactor lands and is
   verified before its first consumer is built (the shared-foundation-first
   rule). Distinct risk profile: it MODIFIES already-shipped behaviour that
@@ -20830,6 +20830,22 @@ to apply within a document. Follow-on work from that change.
   would change that verb's `count`. Now stated in ANTS-3636 § 2.7's
   `codeSpans` comment; the no-regression half of this refactor should
   assert it directly.
+  Resolved (2026-07-27): `MarkdownScan::codeSpans(lines, fence)` returns
+  `{startLine, startCol, endLine, endCol, delimLen}` per span — content bounds
+  half-open, delimiters excluded, so the opening run starts at
+  `startCol - delimLen`; content verbatim, one-space strip left to the caller.
+  All three pinned behaviours preserved and now asserted directly rather than by
+  inspection: (1) `delimLen` carries the run length; (2) content is verbatim;
+  (3) the forward closing-run search still stops at a blank line and a fence
+  line. `fenceMask(lines, int*)` reports the outermost unclosed opener's 1-based
+  line, -1 when every fence closes, nullptr accepted; the 1-argument overload is
+  untouched for its existing callers. `DocIntegrity::maskInlineCode` is now a
+  20-line policy wrapper (blank what codeSpans locates) over what was a 55-line
+  scanner — net reduction, one implementation. No-regression half: the whole
+  DocIntegrity INV-5b–5e suite (inline spans, real link with code text, the
+  multi-line ANTS-3635(a) lambda, unmatched backtick) stays green untouched,
+  plus tests/features/markdownscan INV-9/10/11. Verified RED first (the new API
+  did not compile). Full suite 2922/2922.
 
   Scope: add `MarkdownScan::codeSpans(lines, fence)` returning
   `{startLine, startCol, endLine, endCol, delimLen}` spans (whole-document, so a

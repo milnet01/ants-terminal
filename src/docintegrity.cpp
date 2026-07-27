@@ -107,64 +107,27 @@ QList<Heading> extractHeadings(const QStringList &lines,
 // docs/specs/ANTS-1150.md wraps a C++ lambda in a span that opens on :197
 // and closes on :198, so `[this](int idx)` was harvested as a link.
 //
-// The closing run is searched forward across lines, stopping at a blank
-// line or a fenced-block line — an inline span cannot cross either. If no
-// equal-length run turns up, the backticks are literal text per CommonMark
-// and NOTHING is masked, so one stray backtick cannot swallow the real
-// links on the lines below it.
+// ANTS-3649 — the span-finding half now lives in MarkdownScan::codeSpans
+// (whole-document scan, forward closing-run search bounded by blank and fenced
+// lines, unmatched run = literal text). What is left here is the *policy*: this
+// verb masks spans out, where doc_citations reads them.
 QStringList maskInlineCode(const QStringList &lines,
                            const QVector<bool> &fence) {
     QStringList out = lines;
-    const auto isBoundary = [&](int li) {
-        return fence.value(li) || out.at(li).trimmed().isEmpty();
-    };
-    for (int li = 0; li < out.size(); ++li) {
-        if (isBoundary(li)) continue;
-        int i = 0;
-        while (i < out.at(li).size()) {
-            if (out.at(li).at(i) != QLatin1Char('`')) { ++i; continue; }
-            const int openStart = i;
-            int openLen = 0;
-            while (i < out.at(li).size()
-                   && out.at(li).at(i) == QLatin1Char('`')) { ++i; ++openLen; }
-
-            int closeLine = li, cj = i, closeEnd = -1;
-            for (;;) {
-                const QString &s = out.at(closeLine);
-                while (cj < s.size()) {
-                    if (s.at(cj) != QLatin1Char('`')) { ++cj; continue; }
-                    int runLen = 0;
-                    while (cj < s.size() && s.at(cj) == QLatin1Char('`')) {
-                        ++cj;
-                        ++runLen;
-                    }
-                    if (runLen == openLen) { closeEnd = cj; break; }
-                }
-                if (closeEnd >= 0 || closeLine + 1 >= out.size()
-                    || isBoundary(closeLine + 1)) break;
-                ++closeLine;
-                cj = 0;
-            }
-            if (closeEnd < 0) continue;   // unmatched run — literal text
-
-            if (closeLine == li) {
-                for (int k = openStart; k < closeEnd; ++k)
-                    out[li][k] = QLatin1Char(' ');
-                i = closeEnd;
-                continue;
-            }
-            // Multi-line span: blank this line's tail, each whole line
-            // between, and the closing line's head. The outer loop then
-            // reaches the closing line with its prefix already spaces, so
-            // scanning resumes just past the closing run.
-            for (int k = openStart; k < out.at(li).size(); ++k)
-                out[li][k] = QLatin1Char(' ');
-            for (int m = li + 1; m < closeLine; ++m)
-                out[m].fill(QLatin1Char(' '));
-            for (int k = 0; k < closeEnd; ++k)
-                out[closeLine][k] = QLatin1Char(' ');
-            break;   // nothing left to scan on this line
+    for (const MarkdownScan::CodeSpan &s : MarkdownScan::codeSpans(lines, fence)) {
+        const int from = s.startCol - s.delimLen;  // first char of the open run
+        const int to   = s.endCol + s.delimLen;    // one past the close run
+        if (s.startLine == s.endLine) {
+            for (int k = from; k < to; ++k) out[s.startLine][k] = QLatin1Char(' ');
+            continue;
         }
+        // Multi-line span: this line's tail, each whole line between, and the
+        // closing line's head.
+        for (int k = from; k < out.at(s.startLine).size(); ++k)
+            out[s.startLine][k] = QLatin1Char(' ');
+        for (int m = s.startLine + 1; m < s.endLine; ++m)
+            out[m].fill(QLatin1Char(' '));
+        for (int k = 0; k < to; ++k) out[s.endLine][k] = QLatin1Char(' ');
     }
     return out;
 }

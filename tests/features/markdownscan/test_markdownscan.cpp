@@ -11,9 +11,20 @@
 
 #include <gtest/gtest.h>
 
+using MarkdownScan::CodeSpan;
+using MarkdownScan::codeSpans;
 using MarkdownScan::fenceMask;
 using MarkdownScan::fenceOpenerChar;
 using MarkdownScan::fenceRe;
+
+namespace {
+
+// codeSpans over an unfenced document — the common shape in these fixtures.
+QVector<CodeSpan> spansOf(const QStringList &lines) {
+    return codeSpans(lines, fenceMask(lines));
+}
+
+}  // namespace
 
 // INV-1 — fence opener recognition: 0–3 leading spaces, space-only indent.
 TEST(MarkdownScanFence, OpenerCharIndentRule) {
@@ -168,4 +179,140 @@ TEST(MarkdownScanFence, IndentAllowanceResetsAfterTheList) {
     };
     const QVector<bool> want{false, true, true, true, false, false, false};
     EXPECT_EQ(fenceMask(lines), want);
+}
+
+// INV-9 (ANTS-3649) — the fenceMask overload reports an unterminated opener's
+// 1-based line, and -1 when the document's fences all close. The fact is not
+// recoverable from the mask: a doc ending in a closed block and a doc ending
+// inside an unclosed one both end in a run of `true`.
+TEST(MarkdownScanFence, UnterminatedOpenerLineReported) {
+    int opener = 0;
+    const QStringList unclosed{
+        QStringLiteral("prose"),
+        QStringLiteral("```cpp"),   // line 2, never closed
+        QStringLiteral("body"),
+    };
+    EXPECT_EQ(fenceMask(unclosed, &opener), (QVector<bool>{false, true, true}));
+    EXPECT_EQ(opener, 2);
+
+    // Closed — including the case that makes a mask-derived rule wrong: the
+    // closer is the document's FINAL line, so the mask still ends in `true`.
+    const QStringList closed{
+        QStringLiteral("prose"),
+        QStringLiteral("```cpp"),
+        QStringLiteral("body"),
+        QStringLiteral("```"),
+    };
+    opener = 0;
+    EXPECT_EQ(fenceMask(closed, &opener),
+              (QVector<bool>{false, true, true, true}));
+    EXPECT_EQ(opener, -1);
+
+    // Only the OUTERMOST unclosed opener is reported: a ~~~ line inside an
+    // open ``` block is body text, not a second opener.
+    const QStringList nested{
+        QStringLiteral("```"),      // line 1, never closed
+        QStringLiteral("~~~"),      // body
+        QStringLiteral("body"),
+    };
+    opener = 0;
+    fenceMask(nested, &opener);
+    EXPECT_EQ(opener, 1);
+
+    // A null pointer is accepted (the 1-argument overload's behaviour).
+    EXPECT_EQ(fenceMask(unclosed, nullptr), fenceMask(unclosed));
+    EXPECT_TRUE(fenceMask(QStringList{}, &opener).isEmpty());
+    EXPECT_EQ(opener, -1);
+}
+
+// INV-10 (ANTS-3649) — codeSpans locates an inline span's CONTENT bounds plus
+// its delimiter run length, so the opening run starts at startCol - delimLen
+// and the closing run ends at endCol + delimLen. A content-only struct cannot
+// express that for a multi-backtick span, and the consumers' anchor windows
+// measure from the delimiter columns.
+TEST(MarkdownScanSpans, ContentBoundsAndDelimiterLength) {
+    const QStringList one{QStringLiteral("a `code` b")};
+    //                     0123456789 — ` at 2, content [3,7), ` at 7
+    const auto s1 = spansOf(one);
+    ASSERT_EQ(s1.size(), 1);
+    EXPECT_EQ(s1[0].startLine, 0);
+    EXPECT_EQ(s1[0].startCol, 3);
+    EXPECT_EQ(s1[0].endLine, 0);
+    EXPECT_EQ(s1[0].endCol, 7);
+    EXPECT_EQ(s1[0].delimLen, 1);
+
+    // Double-backtick span quoting a single backtick — delimLen 2, and the
+    // inner backtick does NOT close it (CommonMark's equal-run rule).
+    const QStringList two{QStringLiteral("x ``a`b`` y")};
+    //                     0123456789 — `` at 2-3, content [4,7), `` at 7-8
+    const auto s2 = spansOf(two);
+    ASSERT_EQ(s2.size(), 1);
+    EXPECT_EQ(s2[0].startCol, 4);
+    EXPECT_EQ(s2[0].endCol, 7);
+    EXPECT_EQ(s2[0].delimLen, 2);
+    EXPECT_EQ(two.at(0).mid(s2[0].startCol, s2[0].endCol - s2[0].startCol),
+              QStringLiteral("a`b"));
+
+    // Two spans on one line are two spans; scanning resumes past the closer.
+    const auto s3 = spansOf(QStringList{QStringLiteral("`a` and `b`")});
+    ASSERT_EQ(s3.size(), 2);
+    EXPECT_EQ(s3[0].startCol, 1);
+    EXPECT_EQ(s3[1].startCol, 9);
+}
+
+// INV-10 — content is returned VERBATIM. CommonMark's one-space strip is the
+// consumer's job: a caller matching an identifier is unaffected by it, while a
+// caller testing "fills the span" applies it.
+TEST(MarkdownScanSpans, ContentIsVerbatim) {
+    const QStringList lines{QStringLiteral("see ` :45 ` here")};
+    const auto s = spansOf(lines);
+    ASSERT_EQ(s.size(), 1);
+    EXPECT_EQ(lines.at(0).mid(s[0].startCol, s[0].endCol - s[0].startCol),
+              QStringLiteral(" :45 "));
+}
+
+// INV-11 (ANTS-3649) — the scan is whole-document: a span may cross a newline
+// (CommonMark § 6.1), and a per-line pass leaves its tail exposed. This is the
+// live docs/specs/ANTS-1150.md:197-198 shape that ANTS-3635(a) fixed.
+TEST(MarkdownScanSpans, SpanCrossesANewline) {
+    const QStringList lines{
+        QStringLiteral("a `x"),     // ` at col 2, content starts col 3
+        QStringLiteral("y` b"),     // ` at col 1, content ends col 1
+    };
+    const auto s = spansOf(lines);
+    ASSERT_EQ(s.size(), 1);
+    EXPECT_EQ(s[0].startLine, 0);
+    EXPECT_EQ(s[0].startCol, 3);
+    EXPECT_EQ(s[0].startCol - s[0].delimLen, 2);  // the opening delimiter
+    EXPECT_EQ(s[0].endLine, 1);
+    EXPECT_EQ(s[0].endCol, 1);
+    EXPECT_EQ(s[0].delimLen, 1);
+}
+
+// INV-11 — the forward search for a closer stops at a blank line and at a
+// fence line: an inline span crosses neither. The rule decides where a span
+// ENDS, which is what the consumers' "fills a whole span" branches on, so a
+// genuinely boundary-free whole-document scan would change their counts.
+TEST(MarkdownScanSpans, ForwardSearchStopsAtBlankAndFenceLines) {
+    EXPECT_TRUE(spansOf(QStringList{QStringLiteral("a `x"),
+                                    QStringLiteral(""),
+                                    QStringLiteral("y` b")}).isEmpty());
+    EXPECT_TRUE(spansOf(QStringList{QStringLiteral("a `x"),
+                                    QStringLiteral("```"),
+                                    QStringLiteral("```"),
+                                    QStringLiteral("y` b")}).isEmpty());
+}
+
+// INV-11 — an UNMATCHED run is literal text per CommonMark and yields no span,
+// so one stray backtick cannot swallow the rest of the document; and spans
+// inside a fenced block are not spans at all (the fence mask wins).
+TEST(MarkdownScanSpans, UnmatchedRunAndFencedSpans) {
+    EXPECT_TRUE(spansOf(QStringList{QStringLiteral("a stray ` backtick")})
+                    .isEmpty());
+    EXPECT_TRUE(spansOf(QStringList{QStringLiteral("```"),
+                                    QStringLiteral("`code`"),
+                                    QStringLiteral("```")}).isEmpty());
+    // A run of 3 with no equal-length partner: the ``` here is inline text,
+    // not a fence (it is mid-line), and nothing closes it.
+    EXPECT_TRUE(spansOf(QStringList{QStringLiteral("a ```x` b")}).isEmpty());
 }

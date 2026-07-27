@@ -2,11 +2,13 @@
 
 `src/markdownscan.{h,cpp}` hoists the fence-scanning helpers that had been
 copied verbatim into `feedbackfile.cpp` and `speclog.cpp` (Rule of Three: the
-second call-site was the trigger). Qt6::Core-only, in `ants_core_lib`.
+second call-site was the trigger), and — since ANTS-3649 — the inline-code-span
+scanner hoisted out of `DocIntegrity::maskInlineCode`. Qt6::Core-only, in
+`ants_core_lib`.
 
-This test locks the `fenceMask` contract directly — the callers'
-existing suites (`FeedbackV2Delta`, `McpSpecLog`) cover `fenceOpenerChar`
-through their own behaviour.
+This test locks the `fenceMask` and `codeSpans` contracts directly — the
+callers' existing suites (`FeedbackV2Delta`, `McpSpecLog`, `DocIntegrity`)
+cover `fenceOpenerChar` and the masking policy through their own behaviour.
 
 ## Contract
 
@@ -55,6 +57,40 @@ through their own behaviour.
   end-of-input, which silently truncated every consumer (`feedbackfile`,
   `speclog`, `featurecoverage`, `docsindex`, `docintegrity`) on any spec that
   documents fence syntax by example.
+
+- **INV-9** (ANTS-3649) — `fenceMask(lines, &opener)` reports the **1-based
+  line of an unclosed fence opener**, and `-1` when every fence closes; the
+  1-argument overload is `fenceMask(lines, nullptr)`. The fact is *not*
+  recoverable from the mask — a doc ending in a fence **closer** and a doc
+  ending inside an **unclosed** fence both end in a run of `true` — so any rule
+  inferred from the mask alone false-alarms on every doc that ends in a properly
+  closed code block. *Test:* an unclosed opener at line 2 → `2`; the same
+  fixture closed on the document's **final** line → `-1`; a `~~~` line inside an
+  open ``` block → the outer opener, not the inner line; `nullptr` and an empty
+  document are both accepted.
+- **INV-10** (ANTS-3649) — `codeSpans` returns each inline span's **content**
+  bounds (`[startCol, endCol)`, delimiters excluded) plus `delimLen`, so the
+  opening run starts at `startCol - delimLen` and the closing run ends at
+  `endCol + delimLen`. Content is returned **verbatim**: CommonMark's one-space
+  strip is the caller's job. *Test:* `` `code` `` → content `[3,7)`, `delimLen`
+  1; `` ``a`b`` `` → `delimLen` 2 with the inner backtick **not** closing it
+  (the equal-run rule); two spans on one line → two spans; `` ` :45 ` `` → the
+  content keeps both spaces.
+- **INV-11** (ANTS-3649) — the scan is **whole-document**: a span may cross a
+  newline (CommonMark § 6.1), and its closing run is searched forward but never
+  past a **blank** line or a **fence** line. A run with no equal-length partner
+  is literal text and yields no span; lines inside a fence yield none either.
+  *Test:* a span opening on one line and closing on the next → one span with
+  `startLine` 0 and `endLine` 1; the same fixture with a blank line, and with a
+  fenced block, between → zero; a stray backtick → zero; `` `code` `` inside a
+  fence → zero.
+
+  This is `DocIntegrity::maskInlineCode` hoisted (ANTS-3635a), so the boundary
+  rule is load-bearing rather than incidental: it decides where a span *ends*,
+  which is what `doc_citations`' "a continuation fills a whole span" branches
+  on. `maskInlineCode` is now a policy wrapper over `codeSpans` — it blanks
+  what this verb locates — and its own INV-5b–5e cases in
+  `tests/features/doc_integrity/` are the no-regression half of the hoist.
 
 ## Test
 

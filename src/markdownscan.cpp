@@ -64,8 +64,14 @@ QChar fenceOpenerChar(const QString &line, int maxIndent) {
 }
 
 QVector<bool> fenceMask(const QStringList &lines) {
+    return fenceMask(lines, nullptr);
+}
+
+QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine) {
+    if (unterminatedOpenerLine) *unterminatedOpenerLine = -1;
     QVector<bool> mask(lines.size(), false);
     QChar openFence;         // null when not inside a fence
+    int   openLine      = -1;// 1-based line of the open fence's opener
     int   openAllowance = 3; // indent the closer of the open fence may carry
     // Content columns of the open list items, outermost → innermost. Empty
     // at top level, where the allowance is CommonMark's plain 3 spaces.
@@ -78,7 +84,7 @@ QVector<bool> fenceMask(const QStringList &lines) {
             // is sample text, not a list.
             mask[i] = true;
             const QChar c = fenceOpenerChar(line, openAllowance);
-            if (!c.isNull() && c == openFence) openFence = QChar();
+            if (!c.isNull() && c == openFence) { openFence = QChar(); openLine = -1; }
             continue;
         }
         if (!line.trimmed().isEmpty()) {
@@ -96,11 +102,68 @@ QVector<bool> fenceMask(const QStringList &lines) {
         const QChar opener = fenceOpenerChar(line, allowance);
         if (!opener.isNull()) {
             openFence     = opener;
+            openLine      = i + 1;
             openAllowance = allowance;
             mask[i]       = true;
         }
     }
+    // Only the OUTERMOST unclosed opener: a fence char inside an open fence is
+    // body text, so `openLine` can only be the one that never closed.
+    if (unterminatedOpenerLine && !openFence.isNull())
+        *unterminatedOpenerLine = openLine;
     return mask;
+}
+
+QVector<CodeSpan> codeSpans(const QStringList &lines,
+                            const QVector<bool> &fence) {
+    QVector<CodeSpan> out;
+    const auto isBoundary = [&](int li) {
+        return fence.value(li) || lines.at(li).trimmed().isEmpty();
+    };
+    for (int li = 0; li < lines.size(); ++li) {
+        if (isBoundary(li)) continue;
+        int i = 0;
+        while (i < lines.at(li).size()) {
+            if (lines.at(li).at(i) != QLatin1Char('`')) { ++i; continue; }
+            const int openStart = i;
+            int openLen = 0;
+            while (i < lines.at(li).size()
+                   && lines.at(li).at(i) == QLatin1Char('`')) { ++i; ++openLen; }
+
+            // Forward search for a run of EQUAL length, never past a blank or
+            // fenced line: an inline span crosses neither.
+            int closeLine = li, cj = i, closeEnd = -1;
+            for (;;) {
+                const QString &s = lines.at(closeLine);
+                while (cj < s.size()) {
+                    if (s.at(cj) != QLatin1Char('`')) { ++cj; continue; }
+                    int runLen = 0;
+                    while (cj < s.size() && s.at(cj) == QLatin1Char('`')) {
+                        ++cj;
+                        ++runLen;
+                    }
+                    if (runLen == openLen) { closeEnd = cj; break; }
+                }
+                if (closeEnd >= 0 || closeLine + 1 >= lines.size()
+                    || isBoundary(closeLine + 1)) break;
+                ++closeLine;
+                cj = 0;
+            }
+            if (closeEnd < 0) continue;   // unmatched run — literal text
+
+            out.append({li, openStart + openLen,
+                        closeLine, closeEnd - openLen, openLen});
+            if (closeLine == li) {
+                i = closeEnd;             // resume just past the closing run
+                continue;
+            }
+            // Multi-line span: the rest of this line is inside it, so resume
+            // on the closing line, past its closing run.
+            li = closeLine;
+            i  = closeEnd;
+        }
+    }
+    return out;
 }
 
 }  // namespace MarkdownScan

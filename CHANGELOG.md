@@ -40,6 +40,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Hoisted the inline-code-span scanner into `MarkdownScan::codeSpans`, and taught `fenceMask` to report an unterminated fence's opener line** (ANTS-3649)
+  A shared text-scanning helper moved into the shared module so the tools
+  that need it all use one copy. Nothing changes for you today; it is the
+  groundwork for the citation checker.
+
 - **Dropped the source-scrape size ceiling from the roadmap-format test** (ANTS-3633)
   The ceiling had been raised eleven times and never once caught the runaway it was meant to catch — it only taxed each edit to the roadmap-query code with a second round trip. The check that actually guards against reading the wrong function is kept, and its failure message now names the real cause.
 
