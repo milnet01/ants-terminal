@@ -10,8 +10,14 @@
 namespace MarkdownScan {
 
 const QRegularExpression &fenceRe() {
+    // ANTS-3655 — the negative lookahead is CommonMark's rule that a BACKTICK
+    // fence's info string may not contain a backtick. Greedy `+` takes the
+    // whole run and cannot usefully backtrack (dropping a backtick from the run
+    // only puts one back into the remainder), so this accepts exactly what
+    // fenceOpenerChar's run-then-check hand-scan does. Input is one line, so
+    // `.` needing no DOTALL is the same assumption every caller already makes.
     static const QRegularExpression re(
-        QStringLiteral("^ {0,3}(```|~~~)"));
+        QStringLiteral("^ {0,3}(```+(?!.*`)|~~~+)"));
     return re;
 }
 
@@ -43,6 +49,17 @@ QChar fenceOpenerChar(const QString &line, int maxIndent) {
     const QChar c = line.at(ind);
     if (c != QLatin1Char('`') && c != QLatin1Char('~')) return QChar();
     if (line.at(ind + 1) != c || line.at(ind + 2) != c) return QChar();
+    // ANTS-3655 — a backtick fence's info string may not contain a backtick
+    // (CommonMark § 4.5). Without this a line that is really a multi-backtick
+    // inline code span — ```` ```` ``` ```` ````, how a doc quotes fence syntax
+    // — opened a fence that never closed and masked the document to its end.
+    // Tilde fences are exempt: their info string may hold any character but a
+    // tilde run, which the run scan below already consumed.
+    if (c == QLatin1Char('`')) {
+        int j = ind + 3;
+        while (j < line.size() && line.at(j) == c) ++j;   // rest of the run
+        if (line.indexOf(c, j) >= 0) return QChar();      // backtick in the info
+    }
     return c;
 }
 

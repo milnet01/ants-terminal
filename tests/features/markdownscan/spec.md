@@ -10,10 +10,10 @@ through their own behaviour.
 
 ## Contract
 
-- **INV-1** — `fenceRe()` matches `^ {0,3}(```|~~~)`: a fence opener is three
-  backticks or three tildes with **0–3 leading spaces**, space-only indent (a
-  tab must not open a fence — ANTS-3598). *Test:* `fenceOpenerChar` returns the
-  fence char for a 0/1/2/3-space-indented opener and null for a
+- **INV-1** — `fenceRe()` matches `^ {0,3}(```+(?!.*`)|~~~+)`: a fence opener is
+  three-or-more backticks or tildes with **0–3 leading spaces**, space-only
+  indent (a tab must not open a fence — ANTS-3598). *Test:* `fenceOpenerChar`
+  returns the fence char for a 0/1/2/3-space-indented opener and null for a
   4-space-indented line or a tab-indented line.
 - **INV-2** — `fenceMask` masks the opener, every body line, and the closer
   line **true**; prose outside any fence is **false**. *Test:* a fenced block
@@ -44,6 +44,17 @@ through their own behaviour.
   separate rule. Only `fenceMask` carries this — the stateless
   `fenceOpenerChar` callers (`feedbackfile`, `speclog`, `docsindex`) keep the
   top-level limit, because container tracking needs state they do not hold.
+
+- **INV-8** (ANTS-3655) — a **backtick** fence's info string may contain no
+  backtick (CommonMark § 4.5), so a line that is really a multi-backtick inline
+  code span opens no fence. Tilde fences are exempt — their info string may hold
+  a backtick. *Test:* ```` ```` ``` ```` ```` and `` ``` `x` ``` `` return null
+  while a bare ```` ```` ```` and ```` ```cpp ```` still return the fence char;
+  and a document whose second line is that span masks **entirely false**, so the
+  heading below it stays visible. Pre-fix the opener never closed and masked to
+  end-of-input, which silently truncated every consumer (`feedbackfile`,
+  `speclog`, `featurecoverage`, `docsindex`, `docintegrity`) on any spec that
+  documents fence syntax by example.
 
 ## Test
 

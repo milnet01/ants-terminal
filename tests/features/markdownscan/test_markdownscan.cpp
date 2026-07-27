@@ -90,13 +90,49 @@ TEST(MarkdownScanFence, HandScanAgreesWithFenceReAtDefaultIndent) {
         QStringLiteral("\t~~~"),      QStringLiteral("``"),
         QStringLiteral("~~"),         QStringLiteral(""),
         QStringLiteral("prose ```"),  QStringLiteral("  \\```cpp"),
+        // ANTS-3655 — the info-string rule is part of the written statement
+        // too, so fenceRe() must reject these alongside the hand-scan.
+        QStringLiteral("```` ``` ````"), QStringLiteral("````"),
+        QStringLiteral("~~~ `x` "),
     };
     for (const QString &l : lines) {
         const auto m = fenceRe().match(l);
         const QChar got = fenceOpenerChar(l);
         EXPECT_EQ(m.hasMatch(), !got.isNull()) << l.toStdString();
-        if (m.hasMatch()) EXPECT_EQ(got, m.captured(1).at(0)) << l.toStdString();
+        if (m.hasMatch()) {
+            EXPECT_EQ(got, m.captured(1).at(0)) << l.toStdString();
+        }
     }
+}
+
+// INV-8 (ANTS-3655) — a BACKTICK fence's info string may not contain a
+// backtick (CommonMark § 4.5), so a line that is really a multi-backtick
+// inline code span opens no fence. Pre-fix the rule stopped at
+// `^ {0,3}(```|~~~)`, so ```` ```` ``` ```` ```` read as an opener that never
+// closed and masked the rest of the document true.
+TEST(MarkdownScanFence, BacktickInfoStringMayNotContainABacktick) {
+    // A 4-backtick inline span quoting a 3-backtick run — a paragraph.
+    EXPECT_TRUE(fenceOpenerChar(QStringLiteral("```` ``` ````")).isNull());
+    EXPECT_TRUE(fenceOpenerChar(QStringLiteral("``` `x` ```")).isNull());
+    // A bare run of any length ≥ 3 is still an opener, info string or not.
+    EXPECT_EQ(fenceOpenerChar(QStringLiteral("````")), QLatin1Char('`'));
+    EXPECT_EQ(fenceOpenerChar(QStringLiteral("```cpp")), QLatin1Char('`'));
+    // Tilde fences are unaffected: their info string may contain backticks.
+    EXPECT_EQ(fenceOpenerChar(QStringLiteral("~~~ `x` ")), QLatin1Char('~'));
+}
+
+// INV-8 — the document-level consequence, which is what made this load-bearing:
+// a spec that documents fence syntax by example must stay readable past the
+// example. docs/specs/ANTS-3653.md writes exactly this line.
+TEST(MarkdownScanFence, FourBacktickSpanLeavesTheRestOfTheDocVisible) {
+    const QStringList lines{
+        QStringLiteral("prose"),
+        QStringLiteral("  ```` ``` ```` at line 4 with a citation at line 9"),
+        QStringLiteral("# heading"),
+        QStringLiteral("more prose"),
+    };
+    const QVector<bool> want{false, false, false, false};
+    EXPECT_EQ(fenceMask(lines), want);
 }
 
 // INV-7 (ANTS-3638) — a fence nested in a list item opens. CommonMark

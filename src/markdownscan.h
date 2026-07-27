@@ -5,11 +5,13 @@
 // (mirrors readlog.h / feedbackfile.h / speclog.h).
 //
 // The single fence rule every markdown parser in the project shares:
-// `^ {0,3}(```|~~~)` — a fence opener is a run of three backticks or three
-// tildes with up to 3 leading spaces. The indent is space-only per CommonMark
-// (a `\s` class would admit a tab/CR/FF and misread a body line as a fence,
-// swallowing findings — ANTS-3598). A fence is closed only by a line opening
-// with the SAME fence character.
+// `^ {0,3}(```+(?!.*`)|~~~+)` — a fence opener is a run of three or more
+// backticks or tildes with up to 3 leading spaces. The indent is space-only per
+// CommonMark (a `\s` class would admit a tab/CR/FF and misread a body line as a
+// fence, swallowing findings — ANTS-3598), and a BACKTICK fence's info string
+// may hold no backtick (CommonMark § 4.5), so a multi-backtick inline span is a
+// paragraph and not an opener (ANTS-3655). A fence is closed only by a line
+// opening with the SAME fence character.
 //
 // Consumers: feedbackfile.cpp (scanBoundaries), speclog.cpp (findSectionHeading),
 // featurecoverage.cpp (ANTS-3600 doc-literal scan), docsindex.cpp (ANTS-3604

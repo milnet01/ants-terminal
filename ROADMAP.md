@@ -20686,11 +20686,24 @@ that needs them.
   Kind: implement.
   Source: user-request-2026-07-27.
 
-- 📋 [ANTS-3655] **`MarkdownScan::fenceOpenerChar` misreads a 4-backtick inline span as a fence opener.**
+- ✅ [ANTS-3655] **`MarkdownScan::fenceOpenerChar` misreads a 4-backtick inline span as a fence opener.**
   Found while splitting ANTS-3636 (2026-07-27). `fenceOpenerChar` (and the
   `fenceRe()` it shares) match `^ {0,3}(```|~~~)` and stop there. CommonMark
   additionally requires that a BACKTICK fence's info string contain no
   backticks -- so a line like
+  Resolved (2026-07-27): `fenceOpenerChar` now consumes the whole fence run and,
+  for a BACKTICK fence, rejects the line when any backtick follows it
+  (CommonMark § 4.5); tilde fences are untouched. `fenceRe()` moved to
+  `^ {0,3}(```+(?!.*`)|~~~+)` in lockstep, so the INV-6 hand-scan/regex parity
+  test still pins the two together (greedy `+` cannot usefully backtrack — a
+  backtick dropped from the run is one put back into the info string — so the
+  regex accepts exactly what the hand-scan does). tests/features/markdownscan
+  gains INV-8: the two opener cases, and the document-level case (the ANTS-3653
+  line masks entirely false, so the heading below it stays visible). Verified RED
+  first: the mask read {false,true,true,true}, i.e. masked to end-of-input.
+  Not done here: the /cold-eyes §1e "odd count of fenced-block delimiters"
+  pre-pass is prose, not a shared regex, so it still false-alarms on this shape —
+  filed as ANTS-3657.
 
       \```` ``` ```` at line 4 with a citation at line 9
 
@@ -20719,6 +20732,37 @@ that needs them.
   **Layman:** A line that shows backticks as example text can be mistaken for the start of a code block, which makes the scanner skip the rest of the document.
   Kind: fix.
   Source: in-session-2026-07-27.
+
+- 📋 [ANTS-3657] **`/cold-eyes` §1e's fence check is a naive delimiter count and false-alarms on multi-backtick spans.**
+  Spun out of ANTS-3655 (2026-07-27). The skill's structural-integrity bullet
+  asks for "an odd count of fenced-block delimiters", which an agent implements
+  ad hoc with grep -- and that count reads a ```` ```` ``` ```` ```` inline span
+  as two openers. It false-alarmed on docs/specs/ANTS-3653.md in ANTS-3636
+  cold-eyes loop 12 and again in the session after it. The C++ primitive is now
+  fixed (MarkdownScan::fenceOpenerChar), but a global skill cannot call it, so
+  the fix is either (a) state the info-string rule in the prose so the ad-hoc
+  grep excludes a line with a backtick after the run, or (b) point the check at
+  `doc_integrity` / a wrapped verb that already uses the primitive. (b) is
+  cleaner and is the same argument §1e already makes for anchors ("do NOT
+  hand-roll this with workspace_search").
+  **Layman:** The doc-review checklist counts backticks by hand and mistakes example text for a real code block; point it at the fixed scanner instead.
+  Kind: doc.
+  Source: in-session-2026-07-27 (ANTS-3655 follow-up).
+
+- 📋 [ANTS-3658] **`mcp_audit_run.Ants3605InProcessLanesDispatchedHeadless` runs ~9.5 s against a 10 s ctest timeout.**
+  Observed 2026-07-27 during ANTS-3655: the test timed out under `ctest
+  --preset=default` (-j4) and passed in 9.50 s when re-run alone. So it is not
+  flaky logic -- it is sized within 0.5 s of the bundle's
+  gtest_discover_tests default TIMEOUT 10, and any contention tips it over.
+  Every parallel suite run has a standing ~1-in-N chance of a red that means
+  nothing, which is exactly the signal a pre-push gate must not have.
+  Fix: either raise this test's TIMEOUT explicitly (it dispatches real audit
+  lanes, so 9.5 s is honest work, not a hang) or cut the lane count in the
+  headless fixture. Prefer the explicit TIMEOUT -- the runtime is the
+  behaviour under test.
+  **Layman:** One test finishes half a second inside its time limit, so it randomly fails when the machine is busy.
+  Kind: test.
+  Source: in-session-2026-07-27 (observed during ANTS-3655 verification).
 
 ### 📚 Doc standard — symbol citations + concision (user request 2026-07-26)
 

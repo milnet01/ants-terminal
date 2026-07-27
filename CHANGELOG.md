@@ -73,6 +73,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`MarkdownScan::fenceOpenerChar` misreads a 4-backtick inline span as a fence opener.** (ANTS-3655)
+  A line that shows backticks as example text can be mistaken for the start of a code block, which makes the scanner skip the rest of the document.
+
 - **The doc link-checker now recognises code blocks indented inside a bullet list** (ANTS-3638)
   A code block nested under a bullet was invisible to the scanner, so
   its sample text was read as prose and any link-shaped line in it was
