@@ -20821,7 +20821,7 @@ that needs them.
   Kind: implement.
   Source: user-request-2026-07-27.
 
-- 📋 [ANTS-3654] **Anchor-symbol drift check + `only:"stale"` filter, split out of ANTS-3636.**
+- 🚧 [ANTS-3654] **Anchor-symbol drift check + `only:"stale"` filter, split out of ANTS-3636.**
   Split out of ANTS-3636 (2026-07-27) alongside ANTS-3653. This is the
   most speculative surface in the parent spec and the verb is useful without
   it: `doc_citations` resolves and returns cited text whether or not it also
@@ -20837,6 +20837,10 @@ that needs them.
   request value. Loop 1 caught a CRITICAL the spec had introduced: widening
   the read without pinning the response would have grown `text` on every
   anchored citation while `range_truncated` stayed correct and hid it.
+  Spec accepted (2026-07-27) after two converged cold-eyes loops; implementation
+  started. Build order is test-first per the project rule: the INV-13 fixture
+  table and INV-14 filter fixture go in RED against the current engine before
+  the anchor code exists.
 
   Owns section 2.5: anchor = the immediately preceding identifier code span
   within `maxAnchorGap` on the citation span's opening line, needle = its final
