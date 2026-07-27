@@ -14,19 +14,64 @@
 
 #pragma once
 
+#include <QHash>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 #include <QVector>
 
 namespace DocCitations {
 
-// Grammar caps. Fields rather than literals so a fixture can drive the boundary
-// from the outside — INV-40 needs a digit run exactly one too long, which is
-// not expressible against a hard-coded number. ANTS-3636 § 2.7 owns the full
-// struct (the read path's caps join it there); these are the scan's own.
+// `only` — the filter over citations[]. Stale keeps every non-ok citation; once
+// ANTS-3654 lands the anchor check it also keeps an ok one whose anchor no
+// longer matches, which is the drift the verb exists to surface.
+enum class Only { All, Stale };
+
+// Test-only counters. INV-6 asserts "zero filesystem calls" and INV-20 "one
+// open for five citations"; neither is observable from the returned JSON, so
+// without this they could only be asserted by inspection — which is how a spec
+// ends up with an invariant nothing actually checks. Nullptr in production; the
+// engine's only cost is a null test per operation.
+struct Probe {
+    int stats = 0;   // QFileInfo / isInsideProject probes of a candidate
+    int opens = 0;   // target files actually read (cache misses)
+};
+
+// Every bound this layer sets, in one place. Fields rather than literals so a
+// fixture can drive a boundary from the outside — INV-40 needs a digit run
+// exactly one too long, INV-11 a target one byte over the cap, and neither is
+// expressible against a hard-coded number. The five request-driven fields are
+// marked; the rest guard the engine and have no request argument.
 struct Options {
-    int maxLocusDigits = 7;    // stage 2: longer → bad_locus, before converting
+    // Basename → project-relative paths, built by the CALLER (ladder step 2).
+    // Passing it in keeps the engine Qt6::Core-pure and unit-testable without a
+    // CodebaseIndex on disk; empty → steps 0/1/3/4/5 only.
+    QHash<QString, QStringList> basenameIndex;
+    // True when the index walk hit its file cap. The engine cannot learn this
+    // from the map itself — a capped index still looks large — so it is passed
+    // in; it drives `basename_index_truncated`.
+    bool basenameIndexTruncated = false;
+
+    Only only          = Only::All;   // request arg
+    int  offset        = 0;           // request arg, handler-clamped to max(0, offset)
+    int  maxRangeLines = 3;           // request arg, handler-clamped [1, 20]
+    int  maxDocLines   = 20000;       // request arg, handler-clamped [1000, 50000]
+    int  maxBytes      = 128 * 1024;  // request arg, handler-clamped [64 KiB, 4 MiB]
+
+    int maxLocusDigits = 7;    // scan stage 2: longer → bad_locus, before converting
     int maxRawChars    = 120;  // bounds an `unparsed` entry's `raw`
+
+    int    maxCitations   = 400;
+    int    maxUnparsed    = 200;
+    int    maxCandidates  = 8;
+    int    maxTextBytes   = 2000;               // UTF-8 BYTES per emitted line
+    int    maxTargetReads = 1000;               // absolute read budget
+    int    maxCacheFiles  = 16;                 // cache slot count
+    qint64 maxDocBytes    = 8 * 1024 * 1024;    // handler-enforced, the DOC's own size
+    qint64 maxTargetBytes = 8 * 1024 * 1024;    // on-disk bytes of one target
+    qint64 maxCacheBytes  = 24 * 1024 * 1024;   // IN-MEMORY bytes, not on-disk
+
+    Probe *probe = nullptr;    // test-only, see above
 };
 
 // One recognised, validated citation.
@@ -69,5 +114,17 @@ struct ScanResult {
 };
 
 ScanResult scan(const QStringList &lines, const Options &opts = {});
+
+// ANTS-3636 — the read path. Reads `docAbsPath` ONCE, resolves every citation
+// `scan` found under `rootCanonical`, reads each target, and returns the
+// § 2.1 envelope including `ok` and `path` (so INV-16 can compare whole
+// returns) — or the lone {ok:false, code:"read_failed"} refusal the handler
+// cannot raise without decoding the doc itself. Writes nothing, holds no
+// cross-call state: paging re-resolves the whole doc on every page.
+//
+// `path` comes back project-relative to `rootCanonical`; the handler overwrites
+// it with the caller's own string, which is what the request echo promises.
+QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
+                  const Options &opts = {});
 
 }  // namespace DocCitations
