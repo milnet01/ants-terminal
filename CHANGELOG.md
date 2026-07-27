@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc-examples` regions: mark a passage's file references as illustrations so `doc_citations` stops reading them as rot** (ANTS-3659)
+  Documents that explain citation syntax have to write references that
+  point nowhere. The checker read all 58 of them in one spec as broken,
+  against a single real citation. An author can now wrap such a passage in
+  `<!-- doc-examples: begin -->` / `<!-- doc-examples: end -->` and the
+  scan skips it entirely. Two new response fields, `unterminated_examples`
+  and `examples_suppressed`, keep a runaway or over-broad region visible
+  rather than silently blanking real citations.
+
 - **`doc_citations` now checks whether a cited line still mentions the symbol named beside it** (ANTS-3654)
   When a document writes a symbol in backticks just before the place it
   points at, the verb now looks for that symbol in the lines it cites and
