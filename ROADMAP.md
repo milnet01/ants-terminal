@@ -9252,6 +9252,32 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Source: in-session-2026-07-27 (ANTS-3660 cold-eyes loop 2 — two passes measured the same pairs and disagreed)..
 
+- 📋 [ANTS-3667] **ANTS-1870.md's table of contents stops at section 2 — six real toc_gap findings on every doc_integrity run.**
+  A doc_integrity run over docs/specs/ returns 7 findings. One is the
+  adjudicated false positive ANTS-3634 already ruled on (ANTS-1894.md:851's
+  deliberate self-reference in its Cross-doc impact section). The other SIX
+  are genuine and untracked: docs/specs/ANTS-1870.md carries a `## Contents`
+  TOC that lists only sections 1-2, so sections 3. Invariants, 4. RAM /
+  build cost, 5. Out of scope, 6. Tests, 7. Cross-doc impact and 8.
+  Cold-eyes loop log are each reported missing.
+
+  NOT covered by ANTS-3634. That item collapsed toc_gap per-doc for specs
+  with NO TOC at all; ANTS-1870 HAS one, so the collapse does not apply and
+  these six are the checker working correctly.
+
+  Cost of leaving it: these six are the entire non-false-positive output of
+  doc_integrity across 210 specs, so every /cold-eyes §1e pre-pass from now
+  on opens with six findings a reviewer must re-dismiss. Fixing the TOC
+  takes it to zero, which makes the next real finding visible instead of
+  buried.
+
+  Fix: regenerate ANTS-1870.md's `## Contents` from its own headings. This
+  is exactly the one auto-fixable kind ANTS-3663 §2.3 specifies, so it also
+  serves as that verb's first real-world fixture.
+  **Layman:** One spec's contents list is missing most of its own sections, so the doc checker reports six complaints about it every single time.
+  Kind: doc-fix.
+  Source: in-session-2026-07-27 (doc_integrity sweep during the ANTS-3661..3664 cold-eyes fold).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
