@@ -9220,6 +9220,38 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-27 (grounding pass for ANTS-3662 `spec_lint`)..
 
+- 📋 [ANTS-3666] **Measure this corpus's real duplication before speccing `doc_dedup`'s thresholds.**
+  ANTS-3660 is BLOCKED on this. Its § 1.1 calibration table drove every
+  tuning decision in the spec, and cold-eyes loop 2 re-derived the same two
+  pairs from the same text and got wildly different numbers: the
+  verb-contract pair measured 0.53 in loop 1 and **0.038** in loop 2; the
+  translation-unit pair 0.44 and **0.652**. Opposite directions, same
+  inputs. At least one pass is wrong and possibly both, because neither
+  pinned the normalisation: loop 2 showed that stripping punctuation
+  alone moves one pair 0.038 → 0.222, a 6x swing, and ANTS-3660 § 2.1
+  never says whether punctuation is stripped.
+
+  Loop 2 also found the likely cause of the low figure — the spec's
+  paragraph rule drops a bullet's marker line but keeps its indented
+  continuations, so every `- **INV-N** — ...` in this corpus is compared
+  as a headless fragment. The measurement and the segmentation rule are
+  entangled, which is exactly why guessing at both in a spec did not work.
+
+  Scope: a throwaway script, not a verb. Segment `docs/` under two or
+  three candidate paragraph rules, shingle at 2/3/4 words, with and
+  without punctuation stripping, and emit the score distribution plus the
+  top ~50 pairs for each combination. Deliverable is a table of real
+  numbers and a human read of which combination surfaces duplication a
+  reviewer agrees is duplication.
+
+  THEN write ANTS-3660's thresholds from that data. The general lesson is
+  worth keeping: a spec whose central constants are guesses is a spec that
+  cannot be reviewed, because a reviewer can only check it against another
+  guess.
+  **Layman:** Before building the duplicate-passage finder, actually measure what duplication in these documents looks like — two attempts to guess it disagreed with each other.
+  Kind: investigate.
+  Source: in-session-2026-07-27 (ANTS-3660 cold-eyes loop 2 — two passes measured the same pairs and disagreed)..
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
