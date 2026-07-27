@@ -20821,7 +20821,7 @@ that needs them.
   Kind: implement.
   Source: user-request-2026-07-27.
 
-- 🚧 [ANTS-3654] **Anchor-symbol drift check + `only:"stale"` filter, split out of ANTS-3636.**
+- ✅ [ANTS-3654] **Anchor-symbol drift check + `only:"stale"` filter, split out of ANTS-3636.**
   Split out of ANTS-3636 (2026-07-27) alongside ANTS-3653. This is the
   most speculative surface in the parent spec and the verb is useful without
   it: `doc_citations` resolves and returns cited text whether or not it also
@@ -20841,6 +20841,15 @@ that needs them.
   started. Build order is test-first per the project rule: the INV-13 fixture
   table and INV-14 filter fixture go in RED against the current engine before
   the anchor code exists.
+  Resolved (2026-07-27): anchor → needle → whole-identifier match over the full
+  resolved range, layered on ok citations only. counts.anchor_missing and
+  counts.unchecked retire their ANTS-3636 placeholders; only:"stale" widens to
+  keep an ok citation whose anchor no longer matches. Read widened without
+  widening the response (TargetReader::read gains emitLines, so text_clipped
+  still describes what the caller receives). 4 fixtures in
+  tests/features/doc_citations_anchor/, verified RED first, and the 5
+  absence-asserting rows re-proven against 5 deliberate mutations. Suite
+  2972/2972.
 
   Owns section 2.5: anchor = the immediately preceding identifier code span
   within `maxAnchorGap` on the citation span's opening line, needle = its final

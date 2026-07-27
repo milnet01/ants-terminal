@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_citations` now checks whether a cited line still mentions the symbol named beside it** (ANTS-3654)
+  When a document writes a symbol in backticks just before the place it
+  points at, the verb now looks for that symbol in the lines it cites and
+  reports `anchor_found`. `only:"stale"` returns those drifted citations
+  alongside the ones that failed to resolve, so a docs sweep surfaces
+  "this line moved" as well as "this file is gone".
+
 - **New `doc_citations` tool — check that a document's "see file, line 12" pointers still point where they claim** (ANTS-3636)
   Design docs are full of references like `src/window.cpp:120`, and they
   go stale silently as the code moves. Reviewing one used to mean opening
