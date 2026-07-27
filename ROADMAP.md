@@ -20768,7 +20768,7 @@ that needs them.
   Kind: doc.
   Source: in-session-2026-07-27 (ANTS-3655 follow-up).
 
-- 📋 [ANTS-3658] **`mcp_audit_run.Ants3605InProcessLanesDispatchedHeadless` runs ~9.5 s against a 10 s ctest timeout.**
+- ✅ [ANTS-3658] **`mcp_audit_run.Ants3605InProcessLanesDispatchedHeadless` runs ~9.5 s against a 10 s ctest timeout.**
   Observed 2026-07-27 during ANTS-3655: the test timed out under `ctest
   --preset=default` (-j4) and passed in 9.50 s when re-run alone. So it is not
   flaky logic -- it is sized within 0.5 s of the bundle's
@@ -20782,6 +20782,29 @@ that needs them.
   **Layman:** One test finishes half a second inside its time limit, so it randomly fails when the machine is busy.
   Kind: test.
   Source: in-session-2026-07-27 (observed during ANTS-3655 verification).
+  Resolved (2026-07-27): explicit TIMEOUT 60, per the bullet's preferred fix --
+  the runtime is the behaviour under test, so it is not cut down. Re-measured
+  first: ~2 s warm, and the 9.5 s observed on 2026-07-27 was a cold page cache,
+  not compute. The lanes walk the source tree, so cache state swings the runtime
+  5x and the 10 s default is a hang guard the test was sitting inside.
+
+  Mechanism: tests/slow_test_timeouts.cmake, appended to the directory's
+  TEST_INCLUDE_FILES after every bundle. gtest_discover_tests uses
+  DISCOVERY_MODE PRE_TEST and CMake >= 3.30 registers those tests lazily via
+  discover_tests(), so no test name exists at configure time and
+  set_tests_properties() in CMakeLists.txt cannot see them; CTest does apply the
+  properties from an include file to the tests discovered afterwards. Verified
+  10.0 -> 60.0 via `ctest --show-only=json-v1`.
+
+  Drift guard: `if(TEST ...)` cannot see lazily discovered tests either, and
+  set_tests_properties() on an unknown name is silently ignored (both verified),
+  so a rename would drop the override with no diagnostic and silently re-arm the
+  flake. The guard therefore lives in the binary --
+  mcp_audit_run.Ants3658TimeoutOverrideNamesALiveTest asserts the .cmake file
+  names the slow test exactly once AND that the name is registered in this
+  bundle. Sabotage-verified: renaming the target in the .cmake file fails it.
+
+  Suite 2935/2935 green at -j4 (32 s).
 
 ### 📚 Doc standard — symbol citations + concision (user request 2026-07-26)
 

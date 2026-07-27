@@ -652,3 +652,40 @@ TEST(mcp_audit_run, Ants3605InProcessLanesDispatchedHeadless) {
     }
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-3658 — the test above dispatches real audit lanes, so its runtime is
+// page-cache-bound (~2 s warm, 9.5 s cold) and it went red under `ctest -j4`
+// against the bundle's 10 s default. tests/slow_test_timeouts.cmake raises it
+// to 60 s, keyed by the ctest name `suite.test`.
+//
+// That key cannot be checked in CMake: the bundle is discovered lazily, so
+// `if(TEST ...)` sees nothing at include time and a stale name is silently
+// ignored — the override would lapse back to 10 s and re-arm the flake with no
+// diagnostic anywhere. Assert the pairing here instead, where a renamed TEST()
+// fails loudly.
+TEST(mcp_audit_run, Ants3658TimeoutOverrideNamesALiveTest) {
+    expect_reset();
+    const std::string cmake = ants_test::slurpFile(SLOW_TEST_TIMEOUTS_CMAKE);
+    expect(!cmake.empty(), "ANTS-3658: tests/slow_test_timeouts.cmake is readable");
+
+    const std::string target =
+        "mcp_audit_run.Ants3605InProcessLanesDispatchedHeadless";
+    expect(ants_test::countOccurrences(cmake, target) == 1,
+           "ANTS-3658: the override names the slow test exactly once");
+
+    // …and that name is a test this binary actually registers.
+    bool registered = false;
+    const ::testing::UnitTest *ut = ::testing::UnitTest::GetInstance();
+    for (int i = 0; i < ut->total_test_suite_count() && !registered; ++i) {
+        const ::testing::TestSuite *suite = ut->GetTestSuite(i);
+        for (int j = 0; j < suite->total_test_count(); ++j) {
+            if (target == std::string(suite->name()) + "."
+                              + suite->GetTestInfo(j)->name()) {
+                registered = true;
+                break;
+            }
+        }
+    }
+    expect(registered, "ANTS-3658: the named test is registered in this bundle");
+    EXPECT_EQ(0, expect_failures());
+}

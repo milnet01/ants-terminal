@@ -81,6 +81,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Test suite no longer goes red at random on a busy machine** (ANTS-3658)
+  One audit test reads the whole source tree, so it takes about 2
+  seconds when the files are already in memory and nearly 10 when they
+  are not — against a 10-second limit. It now gets 60 seconds, so a
+  failure there means a real hang rather than a busy computer.
+
 - **`MarkdownScan::fenceOpenerChar` misreads a 4-backtick inline span as a fence opener.** (ANTS-3655)
   A line that shows backticks as example text can be mistaken for the start of a code block, which makes the scanner skip the rest of the document.
 

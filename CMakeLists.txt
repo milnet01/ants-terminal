@@ -1722,6 +1722,9 @@ if(ANTS_TESTS)
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
         ANTS_MCP_TOOLS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-tools.md"
         CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+        # ANTS-3658 — drift guard: the per-test TIMEOUT override is keyed by
+        # ctest test name, which CMake cannot validate (lazy discovery).
+        SLOW_TEST_TIMEOUTS_CMAKE="${CMAKE_SOURCE_DIR}/tests/slow_test_timeouts.cmake"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
 
     # ANTS-1217 Phase 5 — test_audit bundle. Audit tests consolidated
@@ -2172,4 +2175,11 @@ if(ANTS_TESTS)
         TEST_AUDIT_PATTERNS_JSON="${CMAKE_SOURCE_DIR}/docs/standards/test-audit-grep-patterns.json"
         # ANTS-1901 — master MCP toggle registration grep.
         MCP_ERROR_CODES_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md")
+
+    # ANTS-3658 — per-test TIMEOUT overrides. PRE_TEST discovery means the
+    # gtest test names do not exist at configure time, so the properties are
+    # set at ctest time instead. Appended last: CTest reads TEST_INCLUDE_FILES
+    # in order, and every bundle's discovery file is already on the list.
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/slow_test_timeouts.cmake")
 endif()
