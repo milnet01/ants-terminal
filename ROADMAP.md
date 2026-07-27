@@ -9043,6 +9043,34 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-07-14 (ANTS-2119 work).
   Resolved 2026-07-17: qualified-name fallback added to resolveSymbol (readregion.cpp) — the complement of ANTS-3399. A pasted Class::method / ns::fn now resolves the bare outline entry via the last ::/. component (unambiguous-only; ties fall through to symbol_not_found). Locked by McpReadRegion.QualifiedNameResolvesBareOutlineEntry + QualifiedNameAmbiguousTailRejected (12/12 green).
 
+- 📋 [ANTS-3659] **`doc_citations` reports a citation-grammar doc's own teaching examples as rot.**
+  First real-doc run, 2026-07-27. `docs/specs/ANTS-3636.md` returns 37
+  citations / 22 unparsed, of which 31 are `missing_file` or `ambiguous` —
+  and every one is an illustrative example the spec authors on purpose
+  (`src/foo.cpp:12` in the § 1 grammar table, `src/a.cpp:1` /
+  `src/gone.cpp:1` / `bad.cpp:1` in the INV-7 fixture prose). Nothing has
+  rotted. Control docs are clean: `CLAUDE.md` 1 citation, ok;
+  `docs/standards/mcp-tools.md` zero.
+
+  The verb is not wrong — those paths genuinely do not exist. The consumer
+  drowns: /cold-eyes § 1e now runs `doc_citations` per doc, and on the
+  citation specs the signal is 0 of 31. The affected set is small and
+  closed (the ANTS-3636 / 3653 / 3654 family — docs *about* the grammar),
+  so weigh the fix against doing nothing.
+
+  Two options, cheapest first: (a) no code — § 1e notes that a doc
+  documenting the grammar self-reports, and the reviewer reads the paths;
+  (b) a region marker (`&lt;!-- doc-citations: examples --&gt;`) the scanner
+  honours, which is an explicit opt-out rather than a placeholder-name
+  heuristic — never guess that `foo.cpp` means "example", the corpus has
+  real files with generic names.
+
+  Do NOT confuse this with `counts.unchecked`, which equals `ok` by design
+  until ANTS-3654 lands the anchor check (`src/doccitations.cpp:707-711`).
+  **Layman:** The new doc-link checker flags a spec's made-up "for example" file paths as broken links. Give those docs a way to say "these are examples, not real."
+  Kind: enhancement.
+  Source: in-session-2026-07-27 (first real-doc run of doc_citations).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
