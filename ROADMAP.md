@@ -20828,6 +20828,15 @@ that needs them.
   judges staleness. Separating it lets the core verb ship first and keeps a
   derived, advisory signal from sharing a document with the contract it is
   derived from.
+  Progress (2026-07-27): spec at `docs/specs/ANTS-3654.md` converged through
+  two cold-eyes loops (19 findings verified, 19 fixed, 2 dismissed) and is
+  awaiting sign-off before implementation. Scope narrowed on evidence: the
+  `only:"stale"` filter this bullet names ALREADY SHIPPED with ANTS-3636
+  (`src/doccitations.h:28`, filtered at `src/doccitations.cpp:747-749`), so
+  the work is the anchor check plus widening that one predicate — not a new
+  request value. Loop 1 caught a CRITICAL the spec had introduced: widening
+  the read without pinning the response would have grown `text` on every
+  anchored citation while `range_truncated` stayed correct and hid it.
 
   Owns section 2.5: anchor = the immediately preceding identifier code span
   within `maxAnchorGap` on the citation span's opening line, needle = its final
