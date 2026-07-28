@@ -9303,6 +9303,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   Honest caveat recorded in §2.3: the original "order tens, not hundreds"
   acceptance criterion cannot hold at any threshold that also catches the
   named pairs, and the criterion — not the defaults — was what was wrong.
+  Correction (2026-07-28, ANTS-3677 fold-in): the resolution note above
+  is left as the record of what this run concluded, but three of its
+  figures were read off the punctuation-KEPT rows of a table whose
+  punctuation-stripped rows are the ones ANTS-3660 pins. Re-measured
+  under the pinned configuration: punctuation moves the two pairs 47%
+  and 7% (not "35-50%"); the excluded generated artifacts are 7 files
+  and 109 passages (not 79); exact duplicates drop 58 -> 23 (not
+  40 -> 21). The pair citations ANTS-3662:262 / ANTS-3663:383 /
+  ANTS-3664:202 had drifted within two days and are now content-anchored
+  in ANTS-3660 § 1.1, which is the authoritative copy. Also measured
+  here, because ANTS-3660 § 7 deferred both to this run and this run was
+  never asked for either: doc-examples regions touch 67 of 276 pairs but
+  all in one document and one cluster (ANTS-3660 § 2.4 ignores the
+  mask), and the within/across-document split is 78/198 (§ 2.5 keeps
+  both).
 
   Loop 2 also found the likely cause of the low figure — the spec's
   paragraph rule drops a bullet's marker line but keeps its indented
@@ -9593,6 +9608,17 @@ fixes don't address. Roadmapped here as their own design tasks.
   `doc_integrity` over `docs/specs/` reports exactly one `broken_link`
   corpus-wide: `docs/specs/ANTS-1894.md:851`, target
   `docs/specs/ANTS-1894.md`.
+  Still reproducing (2026-07-28): a `doc_integrity path:"docs/specs"` run
+  over all 211 specs returns exactly one broken_link, and it is this class
+  — `docs/specs/ANTS-1894.md:851`, a root-relative link
+  `[docs/specs/ANTS-1894.md](docs/specs/ANTS-1894.md)` inside a quoted
+  `### Added` CHANGELOG draft. Note the target EXISTS; the resolution is
+  doc-relative, so from within `docs/specs/` it looks for
+  `docs/specs/docs/specs/ANTS-1894.md`. ANTS-3634 ✅ claimed this specific
+  link, so either the fix regressed or it addressed a different occurrence
+  — worth checking before this item's fix is designed. Alongside it the
+  same run returns 6 toc_gap findings, all ANTS-1870 (ANTS-3667). Those
+  seven are the whole corpus's doc_integrity debt.
 
   It is a false positive. The line sits inside a **drafted CHANGELOG
   entry** quoted in the spec, and the link is written repo-root-relative
