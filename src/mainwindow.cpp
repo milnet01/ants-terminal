@@ -1088,6 +1088,21 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // already owns the socket) is non-fatal: the log notes it and
     // the main window boots normally.
     m_remoteControl = new RemoteControl(this, this);
+    // ANTS-3661 § 2.4 / ANTS-3688 — inject the verb vocabulary doc_symbols
+    // excludes from its candidate harvest. Here rather than in the MCP
+    // provider-setup function, because that runs from setupStatusBarChrome
+    // far earlier in this constructor, when m_remoteControl is still null: the
+    // `if (m_remoteControl)` guard there failed silently and the provider was
+    // never installed, so excludedNames held only the refusal codes and every
+    // MCP verb name became an unresolved_symbol finding. The tool registrations
+    // in that function survive the same ordering because rcDelegate derefs
+    // m_remoteControl lazily at call time; this setter does not, which is why
+    // it alone had to move. Read lazily on each call, so a verb registered
+    // after this line is still covered.
+    m_remoteControl->setMcpVerbVocabularyProvider([this] {
+        return m_claudeIntegration ? m_claudeIntegration->registeredToolNames()
+                                   : QStringList();
+    });
     // ANTS-2049 — propagate the `--e2e` launch flag; this is the sole enabler
     // of the inject verbs (false on every normal launch and on secondary
     // File→New Window instances, which default e2eMode=false).
@@ -5156,16 +5171,6 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("doc_dedup",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdDocDedup));
-    // ANTS-3661 § 2.4 — inject the verb vocabulary the engine excludes from its
-    // candidate harvest. Here rather than in RemoteControl because only
-    // MainWindow sees both sides: ants_core_lib is Qt6::Core-only and the
-    // library dependency runs core → claude. Read lazily on each call, so a
-    // verb registered after this line is still covered.
-    if (m_remoteControl)
-        m_remoteControl->setMcpVerbVocabularyProvider([this] {
-            return m_claudeIntegration ? m_claudeIntegration->registeredToolNames()
-                                       : QStringList();
-        });
     // ANTS-2161 — project_settings: detect layout + create/update .ants/project.json.
     m_claudeIntegration->registerToolProvider("project_settings",
         ClaudeIntegration::CallerCwdContract::Required,

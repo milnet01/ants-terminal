@@ -115,3 +115,46 @@ TEST(DocSymbolsVerb, ResolutionReachesTheWireAsThreeStates) {
     EXPECT_EQ(counts.value(QStringLiteral("unresolved")).toInt(), 1);
     EXPECT_EQ(counts.value(QStringLiteral("not_checked")).toInt(), 1);
 }
+
+// ANTS-3688 — the verb-vocabulary provider is installed AFTER m_remoteControl
+// exists, and from the constructor rather than from setupClaudeMcpProviders().
+//
+// This is a regression row for a silent-ordering bug, not a style preference.
+// setupClaudeMcpProviders() is called from setupStatusBarChrome() early in the
+// constructor, long before `m_remoteControl = new RemoteControl(...)`. The
+// install used to sit there behind `if (m_remoteControl)`, so the guard was
+// false, the provider was never installed, and DocSymbols::Options::excludedNames
+// held only the refusal codes scraped from mcp-error-codes.md — every MCP verb
+// name became an unresolved_symbol finding, corpus-wide, for the verb whose
+// whole job is to keep that list short.
+//
+// Nothing caught it because every OTHER registration in that function survives
+// the same ordering: rcDelegate derefs m_remoteControl lazily at call time.
+// This setter takes the object eagerly, which is what made it the odd one out.
+//
+// The two offset assertions together pin the call to the constructor after the
+// allocation: a byte offset alone would be satisfied by the old site, since
+// setupClaudeMcpProviders' DEFINITION sits later in the file than its CALL.
+TEST(DocSymbolsVerb, Inv8VocabularyProviderInstalledAfterRemoteControlExists) {
+    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    ASSERT_FALSE(mw.isEmpty());
+
+    const int install = mw.indexOf(QStringLiteral("setMcpVerbVocabularyProvider("));
+    ASSERT_GE(install, 0) << "mainwindow.cpp never installs the doc_symbols verb "
+                             "vocabulary provider — excludedNames would carry only "
+                             "refusal codes (ANTS-3688)";
+    EXPECT_EQ(mw.indexOf(QStringLiteral("setMcpVerbVocabularyProvider("), install + 1), -1)
+        << "installed more than once; one of them is dead or contradictory";
+
+    const int alloc = mw.indexOf(QStringLiteral("m_remoteControl = new RemoteControl("));
+    ASSERT_GE(alloc, 0);
+    EXPECT_GT(install, alloc)
+        << "the provider is installed before m_remoteControl exists, so the install "
+           "is a no-op and every MCP verb name becomes an unresolved_symbol finding";
+
+    const int setupDef = mw.indexOf(QStringLiteral("void MainWindow::setupClaudeMcpProviders()"));
+    ASSERT_GE(setupDef, 0);
+    EXPECT_LT(install, setupDef)
+        << "the provider is installed from setupClaudeMcpProviders(), which runs "
+           "from setupStatusBarChrome() before m_remoteControl is allocated";
+}

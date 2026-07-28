@@ -31,6 +31,13 @@ pattern, as `tests/features/doc_integrity_verb/` does).
   the response as three distinct strings, with matching `counts`. The response
   is the last place a caller could still be told "does not exist" about a
   needle nobody looked up.
+- **INV-8 provider install ordering (ANTS-3688)** — `mainwindow.cpp` installs
+  the verb-vocabulary provider exactly once, after
+  `m_remoteControl = new RemoteControl(` and before the definition of
+  `setupClaudeMcpProviders()` — i.e. from the constructor, not from the
+  registration function. Both offset assertions are needed: that function's
+  *definition* sits later in the file than its *call*, so "after the
+  allocation" alone is satisfied by the broken position.
 
 ### Verified RED by mutation
 
@@ -43,6 +50,15 @@ got one:
 |---|---|---|
 | M6 emit `severity` vocabulary on every finding | INV-4 | RED |
 | M7 return a canned non-empty `symbols[]` regardless of input | INV-6 arm 3 | RED |
+| M9 move the provider install back into `setupClaudeMcpProviders()` | INV-8 | RED |
+
+**M9 was not a hypothetical — it was the shipped state.** INV-8 was written
+against `git show HEAD:src/mainwindow.cpp` before the fix landed, and the byte
+offsets were compared directly: pre-fix `install=253253`, `setupDef=189762`, so
+`install < setupDef` was **false** and the row is red; post-fix `install=54981`
+against `alloc=54101` and `setupDef=190771`, and it is green. The
+`install > alloc` assertion held in *both* states, which is precisely why it
+cannot be the only one.
 
 INV-1/2/3/5/7's mutations are recorded in `tests/features/doc_symbols/spec.md`.
 

@@ -10102,6 +10102,37 @@ fixes don't address. Roadmapped here as their own design tasks.
   `files_written` and so on — plus the six MCP verb names themselves
   (`doc_lint`, `doc_integrity`, `doc_citations`, `doc_dedup`,
   `doc_symbols`, `spec_lint`).
+  Root cause (2026-07-28), and it is not the exclusion heuristic this bullet
+  guessed at. `MainWindow::setupClaudeMcpProviders()` installed the provider
+  behind `if (m_remoteControl)`, but that function runs from
+  `setupStatusBarChrome()` at `mainwindow.cpp:621`, while
+  `m_remoteControl = new RemoteControl(this, this)` is at `:1090`. The guard was
+  false, the install was a silent no-op, and `excludedNames` carried only the
+  refusal codes scraped from `docs/standards/mcp-error-codes.md`.
+
+  Every other registration in that function survives the same ordering because
+  `rcDelegate` dereferences `m_remoteControl` lazily at call time; this setter
+  takes the object eagerly, which made it the only casualty and hid the fault.
+
+  Confirmed by probe rather than by reading: `get_session_info` — which
+  `registeredToolNames()` appends unconditionally — came back `unresolved`, while
+  `apply_edits` and `roadmap_query` were excluded only because they happen to
+  appear in backticks inside `mcp-error-codes.md` (`workspace_search`,
+  `doc_integrity`, `doc_symbols`, `spec_lint` appear there 0 times and all
+  leaked).
+
+  Fixed by installing the provider in the constructor immediately after the
+  allocation. Regression row: `DocSymbolsVerb.Inv8VocabularyProviderInstalledAfterRemoteControlExists`
+  asserts the ordering against two offsets — `install > alloc` held in the broken
+  state too, so it cannot be the only assertion.
+
+  Scope correction: the other two populations this bullet counted are already
+  tracked elsewhere. Schema argument names are **ANTS-3679** (no accessor returns
+  the `tools/list` payload yet); `autoFixable` / `emissionIndex` and friends are
+  **ANTS-3668** (SymbolQuery has no C++ data-member pattern). What remains
+  genuinely untracked after this fix is the **response-key** population —
+  `counts`, `truncated`, `findings`, `skipped`, `pairs`, `clusters`,
+  `files_written` — which is in none of the three injected halves by design.
 
   The schema documents both classes as excluded: "MCP verb/argument names
   are excluded; a short lowercase word is too, unless it carries `::` or

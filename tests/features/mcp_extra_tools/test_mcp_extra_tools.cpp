@@ -138,7 +138,13 @@ static int runMain() {
     // INV-6 — setupClaudeMcpProviders registers each tool and the
     // surrounding lambdas refer to m_remoteControl. Post-ANTS-1253
     // setters became `registerToolProvider("<name>", …)` calls.
-    size_t setupPos = mwCpp.find("setupClaudeMcpProviders()");
+    // ANTS-3688 — anchor on the DEFINITION, not the first mention. This used to
+    // be find("setupClaudeMcpProviders()"), which returns whichever occurrence
+    // comes first in the file: the CALL site (from setupStatusBarChrome) rather
+    // than the definition, and — as ANTS-3688 discovered the hard way — a mere
+    // code COMMENT naming the function, 3000 lines earlier, silently moved the
+    // 80 KiB window off the body entirely and reddened three unrelated rows.
+    size_t setupPos = mwCpp.find("void MainWindow::setupClaudeMcpProviders()");
     inv(6, setupPos != std::string::npos,
         "mainwindow.cpp: setupClaudeMcpProviders() definition not found");
     if (setupPos != std::string::npos) {

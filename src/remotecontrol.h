@@ -560,9 +560,17 @@ public:
     // ANTS-3661 § 2.4 — the registry-sourced half of DocSymbols'
     // `excludedNames`. Injected because ants_core_lib is Qt6::Core-only and the
     // library dependency runs core → claude: RemoteControl cannot see
-    // ClaudeIntegration, so MainWindow (which sees both) installs this at
-    // registration time. Absent provider → the set is the refusal codes alone,
-    // which is a noisier run and never a wrong one.
+    // ClaudeIntegration, so MainWindow (which sees both) installs this from its
+    // constructor, immediately after `m_remoteControl` is allocated.
+    //
+    // ANTS-3688 — that position is load-bearing and is asserted by
+    // `tests/features/doc_symbols_verb/`. This setter takes the object eagerly,
+    // unlike the rcDelegate registrations, so installing it from
+    // setupClaudeMcpProviders() (which runs far earlier, from
+    // setupStatusBarChrome()) silently did nothing. An absent provider is NOT a
+    // benign "noisier run": it drops every MCP verb name from the exclusion
+    // set, and the verb whose purpose is a short unresolved list then reports
+    // ~74 of them as findings on every document that names one.
     void setMcpVerbVocabularyProvider(std::function<QStringList()> p) {
         m_mcpVerbVocabularyProvider = std::move(p);
     }
