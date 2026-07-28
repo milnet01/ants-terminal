@@ -310,3 +310,41 @@ TEST(ReadRegionMdSection, WiringContract) {
     EXPECT_EQ(0, expect_failures())
         << expect_failures() << " ANTS-2221 wiring invariant(s) failed";
 }
+
+// MD-9 (ANTS-3674) — a heading after an inline span that DEMONSTRATES a fence
+// still resolves. CommonMark forbids a backtick in a backtick fence's info
+// string, so ```` ```cpp ```` on one line is an inline code span, not an
+// opener. The hand-rolled tracker this replaced read it as an opener and went
+// blind to every later heading, refusing `section_not_found` on any document
+// that teaches fenced code — docs/specs/ANTS-3661.md, live, before the fix.
+TEST(ReadRegionMdSection, InlineFenceExampleDoesNotBlindTheScan) {
+    QTemporaryDir dir;
+    const char *doc =
+        "# Spec\n"
+        "## 1. Problem\n"
+        "Harvest spans (fence-aware, so a\n"
+        "```` ```cpp ```` sample is skipped), then keep the span.\n"
+        "\n"
+        "```\n"
+        "a real fenced block\n"
+        "```\n"
+        "\n"
+        "## 5. Out of scope\n"
+        "Body for out of scope.\n";
+    const QJsonObject env =
+        extractFrom(writeDoc(dir, "m.md"), doc, "5. Out of scope");
+    ASSERT_TRUE(env.value("ok").toBool())
+        << "section_not_found after an inline fence example: "
+        << env.value("code").toString().toStdString();
+    EXPECT_EQ(env.value("start_line").toInt(), 10);
+}
+
+// No row here for the CommonMark closer-LENGTH rule (a 3-backtick line must
+// not close a 4-backtick fence). Writing one revealed that
+// `MarkdownScan::fenceMask` closes on the fence CHARACTER alone —
+// `c == openFence`, no length comparison — so the rule is unimplemented in the
+// shared primitive that every markdown consumer in the tree now calls, not in
+// this caller. Asserting it here would either fail against correct-for-this-
+// layer code or, if written to the current behaviour, freeze the gap. Filed as
+// ANTS-3678 against MarkdownScan, where the fix belongs and where one change
+// serves all six consumers.

@@ -47,8 +47,24 @@ it is unique.
 - **MD-12 full text back-compat** — the full parenthetical heading text still
   resolves exactly (the prefix logic must not regress the exact path).
 
+- **MD-9 inline fence example (ANTS-3674)** — a heading following an inline
+  code span that *demonstrates* a fence (```` ```cpp ```` on one line) still
+  resolves. CommonMark forbids a backtick inside a backtick fence's info
+  string, so such a span is not an opener. Section mode hand-rolled its fence
+  tracking until this fix and read it as one, going blind to every later
+  heading and refusing `section_not_found` on any document that teaches fenced
+  code — reproduced live against `docs/specs/ANTS-3661.md`, where four
+  headings `file_outline` listed were unreachable. Fence tracking is now
+  `MarkdownScan::fenceMask`, the shared primitive, and this was the last
+  hand-rolled tracker in the tree.
+
 ## Out of scope
 
+- **The CommonMark closer-LENGTH rule** — a 3-backtick line closing a
+  4-backtick fence. `MarkdownScan::fenceMask` matches the closer on fence
+  *character* only, so the rule is unimplemented one layer down and a row here
+  would test the wrong component. Tracked as **ANTS-3678**, where one fix
+  serves all six `MarkdownScan` consumers.
 - Setext (`===` / `---` underline) headings — ATX (`#`) only, matching
   `file_outline`'s markdown heading detection.
 - Slug disambiguation for duplicate headings — first match wins (line mode

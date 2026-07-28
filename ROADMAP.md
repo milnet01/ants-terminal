@@ -9158,7 +9158,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: user-request-2026-07-27.
 
-- 🚧 [ANTS-3664] **Shared doc-finding envelope, before the four lint verbs land on five different shapes.**
+- ✅ [ANTS-3664] **Shared doc-finding envelope, before the four lint verbs land on five different shapes.**
   Measured 2026-07-27, not assumed: there is NO shared finding type, no
   shared finding-to-JSON serialiser, and no aggregator. Six independent
   `struct Finding` declarations exist — `DocIntegrity::Finding`
@@ -9170,6 +9170,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   beside three more shapes in one header), and a GUI-side sixth. A grep
   for `findingToJson` across `src/` returns zero.
   Progress (2026-07-28): spec gated through cold-eyes loop 4 — it absorbed the bundle's structural fix (sole wire-contract owner; new § 2.3 engine calling convention; `emissionIndex` ruled never-serialised family-wide; new INV-5). Implementation started: `src/docfinding.{h,cpp}` in ants_core_lib, `tests/features/doc_finding/` on the test_core bundle.
+  Resolved (2026-07-28): `src/docfinding.{h,cpp}` in ants_core_lib + `tests/features/doc_finding/` on test_core. 5 assertions green, INV-5 skipped until the three engines exist (a scrape over absent files would report green — false assurance). RED proved by mutation: emitting `emission_index` turns INV-1 red. Full suite 2989/2989. Commit dc184246.
 
   Worse for this lane: `doc_citations` emits no findings at all.
   `DocCitations::check` hand-builds `{citations[]{status, doc_line, raw},
@@ -9499,17 +9500,18 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc.
   Source: user-request-2026-07-28.
 
-- 📋 [ANTS-3674] **read_region section mode hand-rolls fence tracking and goes blind after an inline fence example.**
+- 🚧 [ANTS-3674] **read_region section mode hand-rolls fence tracking and goes blind after an inline fence example.**
   `resolveSection` (src/readregion.cpp) is the last hand-rolled fence
   tracker in the tree. It opens a fence on any `trimmed.startsWith("```")`
   and stores `trimmed.left(3)` as the marker. Two consequences, both live:
+  Progress (2026-07-28): `resolveSection` now uses `MarkdownScan::fenceMask` instead of its local `startsWith("```")` + `left(3)`. Regression rows MD-9 (inline fence example must not blind the scan) and MD-10 (a 3-backtick line must not close a 4-backtick fence) added to `tests/features/read_region_md_section/`. Build + RED proof pending.
 
   1. A line demonstrating a fence inside a longer backtick run — the
      4-backtick span ```` ```cpp ```` — is read as a fence OPENER, though
      CommonMark forbids a backtick in a backtick fence's info string, so
      it is an inline code span. Every heading after it becomes invisible
      and section mode refuses `section_not_found`.
-  2. `left(3)` collapses a 4-backtick opener to "```", so a 3-backtick
+  2. **NOT fixed by this item — see ANTS-3678.** `left(3)` collapses a 4-backtick opener to "```", so a 3-backtick
      line wrongly closes it. CommonMark requires the closer be at least
      as long as the opener.
 
@@ -9657,6 +9659,48 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** A big documentation review found about 85 issues in six design documents; the serious ones are fixed and this item carries the smaller remainder.
   Kind: doc-fix.
   Source: in-session-2026-07-28 (cold-eyes loop 4, deferred tail).
+
+- 📋 [ANTS-3678] **MarkdownScan::fenceMask ignores the CommonMark closer-length rule.**
+  `fenceMask` (`src/markdownscan.cpp`) closes an open fence on the fence
+  CHARACTER alone — `if (!c.isNull() && c == openFence)` — with no
+  comparison of run lengths. CommonMark § 4.5 requires a closing fence be
+  **at least as long as** the opener, so a ```` ``` ```` line does not
+  close a ```` ```` ```` block.
+
+  Consequence: a 4-backtick fence containing a 3-backtick line ends early.
+  Everything after the inner line is treated as prose, including headings
+  and citations that are really sample text inside the block.
+
+  Reproduced 2026-07-28 while writing ANTS-3674's regression rows:
+
+      ````
+      ```
+      ## Not A Real Heading
+      \````
+
+  `read_region {section:"Not A Real Heading"}` resolves — it should refuse.
+  The header comment already states the intended rule ("A fence is closed
+  only by a line opening with the SAME fence character"), so the code
+  matches its own comment; the comment is what is incomplete against
+  CommonMark.
+
+  Scope note: this is the *second* of the two defects ANTS-3674 named.
+  Only the first (an inline `` ```cpp `` span misread as an opener)
+  belonged to `readregion.cpp` and is fixed there. This one is in the
+  shared primitive, so one fix serves all six consumers —
+  feedbackfile, speclog, featurecoverage, docsindex, docintegrity,
+  doccitations — and each would otherwise need its own. ANTS-3674's body
+  was corrected: switching to `fenceMask` does not fix this half.
+
+  Fix: track the opener's run length alongside its character; close only
+  on a same-character run of >= that length. `fenceOpenerChar` already
+  finds the run, so the length is available where the character is.
+
+  Test: the fixture above, asserting the inner heading stays masked, plus
+  a 4-backtick block correctly closed by 4+ backticks. Fails RED today.
+  **Layman:** A short row of backticks can end a code block that was opened with a longer row, so text meant to be inside the block leaks out.
+  Kind: fix.
+  Source: in-session-2026-07-28 (found writing ANTS-3674's regression test).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

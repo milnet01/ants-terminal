@@ -7,6 +7,7 @@
 #include "readregion.h"
 
 #include "fileoutline.h"
+#include "markdownscan.h"
 #include "pathvalidation.h"
 
 #include <QByteArray>
@@ -298,28 +299,31 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     if (!f.open(QIODevice::ReadOnly)) return r;
 
     // One pass: collect every (fence-aware) ATX heading as {line, level, slug}.
+    //
+    // ANTS-3674 — fence tracking is MarkdownScan::fenceMask, not a local
+    // `startsWith("```")` + `left(3)`. The hand-rolled version got two
+    // CommonMark rules wrong and both bit: a 4-backtick INLINE SPAN that
+    // demonstrates a fence (```` ```cpp ````) was read as an opener, so every
+    // heading after it went invisible and section mode refused
+    // `section_not_found` on any document that teaches fenced code; and
+    // `left(3)` let a 3-backtick line close a 4-backtick fence, where the
+    // closer must be at least as long. This was the last hand-rolled fence
+    // tracker in the tree.
     struct Head { int line{}; int level{}; QString slug; };
     QVector<Head> heads;
-    int lineNo = 0;
-    bool inFence = false;
-    QString fenceMarker;
+    QStringList lines;
     while (!f.atEnd()) {
         QString line = QString::fromUtf8(f.readLine());
-        ++lineNo;
         if (line.endsWith(QLatin1Char('\n'))) line.chop(1);
-        const QString trimmed = line.trimmed();
-        // Fence toggling: ``` or ~~~ opens, the same marker family closes.
-        if (trimmed.startsWith(QLatin1String("```")) ||
-            trimmed.startsWith(QLatin1String("~~~"))) {
-            const QString marker = trimmed.left(3);
-            if (!inFence) { inFence = true; fenceMarker = marker; }
-            else if (marker == fenceMarker) { inFence = false; }
-            continue;
-        }
-        if (inFence) continue;
+        lines.push_back(line);
+    }
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    for (int i = 0; i < lines.size(); ++i) {
+        if (fence.value(i)) continue;   // opener, closer and body are all masked
+        const QString trimmed = lines.at(i).trimmed();
         const int level = mdHeadingLevel(trimmed);
         if (level == 0) continue;
-        heads.push_back({lineNo, level, mdHeadingSlug(trimmed.mid(level).trimmed())});
+        heads.push_back({i + 1, level, mdHeadingSlug(trimmed.mid(level).trimmed())});
     }
 
     // Tier 1 — exact slug (back-compat: full heading text / full slug). First
