@@ -10093,6 +10093,89 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (cold-eyes ANTS-3663 loop 5 pre-pass).
 
+- 📋 [ANTS-3688] **`doc_symbols` reports response-key names as unresolved symbols — 291 of 309 on one spec.**
+  Measured on `docs/specs/ANTS-3663.md` (1100 lines): 448 occurrences,
+  33 resolved, **309 unresolved**, 106 not_checked. Of the 309, **291
+  occurrences across 52 distinct names are plain lowercase JSON response
+  keys** — `counts`, `truncated`, `findings`, `skipped`, `pairs`,
+  `clusters`, `reason`, `message`, `fixed`, `dry_run`, `check_stats`,
+  `files_written` and so on — plus the six MCP verb names themselves
+  (`doc_lint`, `doc_integrity`, `doc_citations`, `doc_dedup`,
+  `doc_symbols`, `spec_lint`).
+
+  The schema documents both classes as excluded: "MCP verb/argument names
+  are excluded; a short lowercase word is too, unless it carries `::` or
+  `()`". Neither exclusion is firing here. Only six of the 309 are
+  plausibly real needles (`autoFixable`, `emissionIndex`,
+  `maxSymbolsPerRun`, `maxDocLines`, `staleCitations`,
+  `DocFinding::Finding::emissionIndex`) — a ~98% false-positive rate,
+  which makes the verb unusable as the `/cold-eyes` § 1e unresolved-symbol
+  pre-pass it was built to be.
+
+  Second-order effect: the junk needles exhaust the run budget.
+  `truncated:true` with `not_checked:106` on a **single** document means
+  the cap binds before the corpus is even reached; fixing the exclusion
+  should drop the needle count by roughly 10x and stop the cap binding.
+  Worth checking whether the exclusion list is populated only for
+  registered verbs (which would explain `doc_lint` — it does not exist
+  yet) and whether the "short lowercase" test has a length bound that
+  `counts` and `pairs` fall outside of.
+  **Layman:** The symbol checker flags ordinary field names like "counts" and "truncated" as missing code, so almost everything it reports is noise.
+  Kind: fix.
+  Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 7 pre-pass)..
+
+- 📋 [ANTS-3689] **`doc_symbols` has no `only=` filter, so a single-document run returns 105 KB.**
+  `doc_citations` has `only:"stale"`, which narrows the rows to the ones a
+  caller acts on while leaving `counts` whole-document. `doc_symbols` has
+  no equivalent, so every occurrence ships — including every `resolved`
+  row, which is the one class nobody reads.
+
+  Measured: `doc_symbols {path:"docs/specs/ANTS-3663.md"}` returned
+  **105,367 characters** for one 1100-line document, over the response cap,
+  so it was offloaded to a tool-results file and had to be sliced with
+  python to be used at all. An `only:"unresolved"` filter (and arguably
+  `only:"not_checked"`) mirroring `doc_citations`' shape would cut that by
+  roughly an order of magnitude.
+
+  Stacks with the exclusion bug above: fix that one and the row count
+  falls anyway, but the filter is the durable fix and the two are
+  independent.
+  **Layman:** Asking the symbol checker about one file returns so much text it has to be written to a scratch file and parsed before it can be read.
+  Kind: enhancement.
+  Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 7 pre-pass)..
+
+- 📋 [ANTS-3690] **ANTS-3660 § 2.3's Options block omits `excludedPathGlobs`, which `src/docdedup.h` carries.**
+  `ANTS-3663` § 2.5 forwards `excludedPathGlobs` to `doc_dedup` and cites
+  ANTS-3660 § 2.4 for it. The member is real in `src/docdedup.h`, but
+  ANTS-3660's own § 2.3 Options block does not list it — so the consumer
+  spec documents a member the producer spec does not.
+
+  Spec-vs-code drift on the sibling side; raised rather than papered over
+  in ANTS-3663, whose § 7 now names it.
+  **Layman:** One of the duplicate-checker's settings exists in the code but is missing from the document that is supposed to describe it.
+  Kind: doc-fix.
+  Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 6, lane B)..
+
+- 📋 [ANTS-3691] **`doc_dedup` and `spec_lint` state no finding-emission order, which ANTS-3663 INV-7 depends on.**
+  ANTS-3663 INV-7 makes findings totally ordered, with the producer's own
+  `emissionIndex` as the tiebreak of last resort. That tiebreak is only as
+  well-defined as each producer's emission order:
+
+  - `doc_symbols` — fixed by ANTS-3661 INV-5.
+  - `doc_citations` — fixed by ANTS-3653 INV-33.
+  - `doc_integrity` — fixed by ANTS-3663 § 2.2's fourth adapter rule.
+  - **`doc_dedup`** — nothing stated.
+  - **`spec_lint`** — nothing stated.
+
+  Both spec's invariant lists were read in full and neither carries one.
+  Each needs a one-line invariant fixing its own deterministic emission
+  order. ANTS-3663 deliberately does not assert it on their behalf — a
+  consumer that invents its producers' ordering contract is how the two
+  drift apart.
+  **Layman:** Two of the five document checkers never promise what order they report problems in, so the combined verb cannot fully guarantee a stable list.
+  Kind: doc.
+  Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 6, lane C)..
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
