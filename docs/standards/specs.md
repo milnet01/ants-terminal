@@ -146,9 +146,21 @@ Add these when they carry weight; omit when they would be empty:
   adds a build target. State the memory budget and eviction policy at
   design time (the project's standing rule: no unbounded growth ships
   without a named cap). Note new external libraries (prefer none).
-- **§ Out of scope** — deferred work, each line pointing at the
-  follow-up ROADMAP id that will carry it. Keeps the spec's surface
-  honest about its edges.
+- **§ Out of scope** — the spec's edges, stated so they read as decisions
+  rather than omissions. Two kinds of line live here and they carry
+  different obligations:
+  - **Deferred work** — something that will be done, later. Names the
+    follow-up ROADMAP id that will carry it. A deferred line with no id
+    is a promise nobody is holding.
+  - **A permanent exclusion** — a boundary this spec will not cross at
+    all ("prose quality", "cross-repo comparison", "semantic
+    similarity"). These have no follow-up id *by definition*, and
+    inventing one to satisfy a format rule files work nobody intends to
+    do. Give the reason instead.
+
+  Most lines in this corpus are the second kind. Where a line's status is
+  genuinely unclear — deferred, or excluded? — say which, because that
+  ambiguity is the thing the section exists to remove.
 - **§ Migration / compatibility** — for changes to an existing
   on-disk format, schema, or public contract: how old data / callers
   are handled.

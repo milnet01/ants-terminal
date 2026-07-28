@@ -9498,6 +9498,165 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc.
   Source: user-request-2026-07-28.
 
+- 📋 [ANTS-3674] **read_region section mode hand-rolls fence tracking and goes blind after an inline fence example.**
+  `resolveSection` (src/readregion.cpp) is the last hand-rolled fence
+  tracker in the tree. It opens a fence on any `trimmed.startsWith("```")`
+  and stores `trimmed.left(3)` as the marker. Two consequences, both live:
+
+  1. A line demonstrating a fence inside a longer backtick run — the
+     4-backtick span ```` ```cpp ```` — is read as a fence OPENER, though
+     CommonMark forbids a backtick in a backtick fence's info string, so
+     it is an inline code span. Every heading after it becomes invisible
+     and section mode refuses `section_not_found`.
+  2. `left(3)` collapses a 4-backtick opener to "```", so a 3-backtick
+     line wrongly closes it. CommonMark requires the closer be at least
+     as long as the opener.
+
+  Reproduced against docs/specs/ANTS-3661.md (2026-07-28): the file has
+  that span at line 46. `read_region {section:"1. Problem"}` resolves
+  (line 19, before the span); `section:"2.2 Resolution and shape"`,
+  `"3. Invariants"`, `"4. RAM / build cost"` and `"5. Out of scope"` all
+  refuse `section_not_found` — while `file_outline` lists every one of
+  those headings, and `doc_integrity` / `doc_citations` read the file
+  correctly. Passing the slug (`5-out-of-scope`) refuses identically, so
+  it is not a slug-normalisation issue. The same heading text resolves
+  fine in ANTS-3662, which carries no such span — the failure is
+  per-file, not per-heading.
+
+  Failure mode is the bad one: a silent, plausible refusal. The caller
+  reads `section_not_found` as "that heading does not exist" and either
+  falls back to a full Read (token cost) or concludes the section is
+  missing (wrong).
+
+  Fix is reuse, not repair — `MarkdownScan::fenceMask` (ANTS-3603,
+  src/markdownscan.h) already implements exactly this rule
+  (`^ {0,3}(```+(?!.*`)|~~~+)`, closer must match the opener character)
+  and is what docsindex / docintegrity / doccitations already call. A
+  `workspace_search` for the hand-rolled form returns only
+  src/readregion.cpp:312-313, so this is the last consumer to convert and
+  the class is then closed tree-wide.
+
+  Test: a fixture doc carrying a ```` ```cpp ```` span above a heading →
+  section mode resolves that heading. It fails RED today.
+  **Layman:** Asking the file-reading tool for one section of a document silently fails on any document that shows an example of a code block, because it mistakes the example for a real one and treats the rest of the file as code.
+  Kind: fix.
+  Source: in-session-2026-07-28 (cold-eyes loop 4 §1e pre-pass).
+
+- 📋 [ANTS-3675] **doc_integrity should honour doc-examples regions — a quoted CHANGELOG draft false-flags as a broken link.**
+  `doc_integrity` over `docs/specs/` reports exactly one `broken_link`
+  corpus-wide: `docs/specs/ANTS-1894.md:851`, target
+  `docs/specs/ANTS-1894.md`.
+
+  It is a false positive. The line sits inside a **drafted CHANGELOG
+  entry** quoted in the spec, and the link is written repo-root-relative
+  because that is where the entry will live once it ships. `doc_integrity`
+  resolves relative to the containing file, so it looks for
+  `docs/specs/docs/specs/ANTS-1894.md`. The link is wrong where it sits
+  and right where it is going; neither the spec nor the checker is
+  mistaken about its own frame.
+
+  This is the exact class ANTS-3659's `doc-examples` region marker was
+  built for — a passage that is an illustration of another document
+  rather than an assertion about this one — and ANTS-3659 § 2.1
+  deliberately leaves *which verbs honour the region* to each verb.
+  This is the first measured instance of a verb that should.
+
+  Two consequences worth carrying into the doc-lint set:
+
+  - **`doc_integrity` should honour `exampleMask`** for `broken_link` (and
+    `dead_anchor`) on the same reasoning `doc_citations` already applies
+    to citation harvesting.
+  - It is live evidence for **ANTS-3660 § 7's open question** ("does
+    `doc_dedup` honour `doc-examples` regions?") and for ANTS-3663, which
+    composes both verbs over one walk and needs a single answer. The
+    answer here is not "always ignore marked regions" — it is that a
+    *claim about this document* inside a marked region is still a claim,
+    while a *quotation of another document* is not.
+
+  Until it lands, this one finding is the corpus's only `broken_link` and
+  should not be "fixed" by rewriting the drafted entry — that would make
+  the CHANGELOG wrong to make the linter quiet.
+  **Layman:** The link-checking tool flags a link inside a quoted draft of another file, where the link is written to be correct once the draft is moved to its real home.
+  Kind: fix.
+  Source: in-session-2026-07-28 (cold-eyes loop 4 §1e pre-pass, docs/specs sweep).
+
+- 📋 [ANTS-3676] **parseSpecBody splits an invariant body at a clause marker written inside a code span.**
+  `SpecParse::parseSpecBody` locates an invariant's test-surface clause by
+  the first occurrence of the marker in the bullet body, without masking
+  inline code spans. A spec that *discusses* the marker — quoting it in
+  backticks — is therefore mis-parsed: everything before the mention
+  becomes the body, everything after becomes `test_surface`.
+
+  Reproduced live against `docs/specs/ANTS-3662.md` INV-2 (2026-07-28),
+  which had to quote the marker because the invariant it defines is
+  `invariant_no_test`. `spec_query` returned
+  `body: "Every \`INV-N\` without a \`"` with the rest swallowed into
+  `test_surface`. The bullet has since been reworded to avoid the literal,
+  but the parser defect is unchanged and the next spec to name the marker
+  hits it again.
+
+  Sharpest consequence: ANTS-3662's `spec_lint` consumes this parser for
+  its `invariant_no_test` check. Until the mask lands, that check reads a
+  corrupt surface on exactly the specs most likely to discuss spec format
+  — so the verb would be least trustworthy where it matters most.
+
+  Fix: mask with `MarkdownScan::codeSpans` before locating the marker.
+  The primitive already exists (ANTS-3603) and `doc_citations` already
+  uses it for the same class of problem. Sibling of ANTS-3672 (wrapped
+  `**Status:**` truncation) — both are `parseSpecBody` reading markdown
+  without the shared scanner.
+
+  Test: a fixture invariant whose body quotes the marker in backticks and
+  then carries a real clause → body and `test_surface` split at the real
+  one. Fails RED today.
+  **Layman:** A spec that talks about the test-marker gets cut in half by the spec reader, because the reader can't tell a mention of the marker from the real one.
+  Kind: fix.
+  Source: in-session-2026-07-28 (cold-eyes loop 4, lane C CRITICAL — verified live).
+
+- 📋 [ANTS-3677] **Fold cold-eyes loop 4's deferred MEDIUM/LOW tail into the six doc-lint specs.**
+  Cold-eyes loop 4 over ANTS-3660/3661/3662/3663/3664/3669 raised ~101
+  raw findings (~85 after cross-lane dedup): **C 8 · H 31 · M 33 · L/I 29**.
+  The CRITICALs and the highest-leverage HIGHs were verified and fixed in
+  the loop-4 commit. This item carries the remainder, deferred under a
+  weekly token-budget stop rather than because they were judged unimportant.
+
+  Full per-lane finding text is preserved at
+  `scratchpad/fix-ledger-loop4.md` (session ffb2092c). The named ones worth
+  carrying forward:
+
+  - **ANTS-3661** — a needle elided by `maxSymbolsPerRun` or the resolve
+    deadline is reported as `unresolved`, i.e. as a symbol that does not
+    exist. Needs a third state on `symbols[]`; a design change, not a
+    correction. The spec's § 2.3 honesty guarantee inverts under a cap
+    until it lands. **Highest-value item here.**
+  - **ANTS-3660** — INV-1 and INV-7 conflict: a pair whose shared shingles
+    are all stop-shingles clears `minSimilarity` and is never compared, so
+    the threshold invariant is false as written. § 7's two open questions
+    both defer to a calibration run that has already happened (ANTS-3666)
+    and measured neither split. § 2.3's replacement acceptance criterion
+    has no number.
+  - **ANTS-3662** — `line` sourcing was fixed for three kinds; the
+    loop-log balance check is still specified in terms of counting
+    findings enumerated in prose, which is not deterministic.
+  - **ANTS-3663 / ANTS-3669** — `max_findings` × `fix` interaction is
+    undefined (does a cap that truncates `findings[]` also halve the
+    repairs?); `dry_run` is echoed by an ANTS-3669 invariant but absent
+    from ANTS-3663's response block; `dry_run:true` with `fix:false` is
+    undefined.
+  - **Cross-doc duplication** — the build-cost stanza appears in all six
+    § 4s and the verb-contract minimum four times. ANTS-3666 measured this
+    exact pair as the corpus's highest-scoring duplicate. Adopt
+    ANTS-3660 INV-8's pointer form.
+  - **Terminology** — `candidate` carries three meanings across the set
+    and `check` two.
+
+  **Do not re-review to rediscover these** — the ledger has them with
+  file:line and proposed fixes. A fresh loop costs a full multi-agent
+  dispatch to regenerate what is already written down.
+  **Layman:** A big documentation review found about 85 issues in six design documents; the serious ones are fixed and this item carries the smaller remainder.
+  Kind: doc-fix.
+  Source: in-session-2026-07-28 (cold-eyes loop 4, deferred tail).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
