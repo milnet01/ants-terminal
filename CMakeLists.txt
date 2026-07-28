@@ -297,6 +297,9 @@ add_library(ants_core_lib STATIC
     # ANTS-3601 — deterministic doc-integrity engine (dead anchors, broken
     # links, TOC coverage); Qt6::Core-only.
     src/docintegrity.cpp
+    # ANTS-3661 — doc_symbols engine: resolve the identifiers a doc asserts
+    # something about, via SymbolQuery; report-only, Qt6::Core-only.
+    src/docsymbols.cpp
     # ANTS-3653 — doc_citations scan layer: the path:line grammar as a pure
     # function (document text in, tokens out); Qt6::Core-only.
     src/doccitations.cpp
@@ -1288,6 +1291,10 @@ if(ANTS_TESTS)
                 tests/features/doc_integrity_verb/test_doc_integrity_verb.cpp
                 # ANTS-3636 doc_citations verb layer + its six registration hooks.
                 tests/features/doc_citations_verb/test_doc_citations_verb.cpp
+                # ANTS-3661 — doc_symbols engine (harvest, resolution, tri-state)
+                # and its verb layer (vocabulary scrape + refusal minimums).
+                tests/features/doc_symbols/test_doc_symbols.cpp
+                tests/features/doc_symbols_verb/test_doc_symbols_verb.cpp
                 # ANTS-2160 — per-project .ants/project.json settings file.
                 tests/features/project_settings/test_project_settings.cpp
                 # ANTS-2161 — layout auto-detect + project_settings verb.
@@ -1670,6 +1677,9 @@ if(ANTS_TESTS)
         # ANTS-3665 — parseSpecBody was hoisted out of remotecontrol.cpp into
         # ants_core_lib; the spec_query wiring scrape follows it here.
         SRC_SPECPARSE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/specparse.cpp"
+        # ANTS-3661 INV-4 — the doc_symbols engine must carry no defect
+        # vocabulary; a behavioural test cannot hold that claim.
+        SRC_DOCSYMBOLS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsymbols.cpp"
         # ANTS-3582 — stable extern-decl build-info header (churn regression guard).
         SRC_BUILD_INFO_H_PATH="${CMAKE_SOURCE_DIR}/src/build_info.h"
         # ANTS-3345 — debt_sweep_scan offload-eligibility source-grep lock.

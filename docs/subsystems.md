@@ -86,6 +86,14 @@ Listed only where behavior isn't obvious from the name.
   engine: dead anchors, broken relative links, TOC coverage over a doc set.
   GitHub-compatible `gfmSlug`, fence-aware. Powers the `doc_integrity` MCP verb
   and the cold-eyes Phase-1e feed (`doc_integrity[]` in the brief). ANTS-3601.
+- `docsymbols` (Qt6::Core, `ants_core_lib`) — resolves the identifiers a doc
+  asserts something about: harvests inline code spans matching
+  `ident(::ident)*()?`, applies six exclusions (paths, `doc-examples` regions,
+  a short-lowercase floor, language keywords, and the injected MCP
+  verb/argument vocabulary), then calls `SymbolQuery::findDefinition` per
+  distinct needle. REPORT-ONLY — no severity, nothing auto-fixable; a needle
+  the run never looked up is `not_checked`, never `unresolved`. Powers the
+  `doc_symbols` MCP verb. ANTS-3661.
 - `focusedtest` (Qt6::Core) — resolves the `focused_test` MCP tool:
   changed files → `ctest -R` patterns via `tests/coverage-map.json`, with
   a basename heuristic + conservative full-suite fallback. Spec ANTS-1302.

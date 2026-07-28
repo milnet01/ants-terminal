@@ -9328,6 +9328,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   and a `struct|class|union|enum` keyword form. None matches a data-member
   declaration, so every struct field, enumerator and response-field name in the
   codebase resolves to zero definitions.
+  Measured (2026-07-28), via ANTS-3661's corpus calibration
+  (`DocSymbols.DISABLED_CorpusCalibration` over 240 docs in
+  `docs/specs/` + `docs/standards/`): C++ data members are **26% of all
+  unresolved occurrences** (117 of 442) — the single largest classified
+  population, and the one that fires ANTS-3661 § 2.1's "≥ 25% means
+  something is missing" gate. Examples in the measured top-25:
+  `m_claudeReviewBtn`, `m_claudeDetectTimer`, `m_scrollOffset`,
+  `m_frozenScreenRows`, `m_updateAvailableLabel`.
+
+  This is no longer an argued gap but a measured one, and it is the
+  highest-value single fix to `doc_symbols`' signal-to-noise: a
+  data-member pattern in `SymbolQuery::buildAnchors`' C++ ladder would
+  retire roughly a quarter of the verb's false candidates in one change.
+  Re-run the calibration afterwards to confirm the share drops.
 
   Surfaced while specifying ANTS-3661 (`doc_symbols`), where it is the largest
   unresolvable candidate population left after six exclusions — `maxDocsPerRun`,
@@ -9702,6 +9716,101 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** A short row of backticks can end a code block that was opened with a longer row, so text meant to be inside the block leaks out.
   Kind: fix.
   Source: in-session-2026-07-28 (found writing ANTS-3674's regression test).
+
+- 📋 [ANTS-3679] **Extract the tools/list payload from onMcpConnection into an accessor.**
+  The whole `tools/list` schema — ~74 verbs, each with its name,
+  description, selection_hint and inputSchema — is constructed inline
+  inside `ClaudeIntegration::onMcpConnection`, an ~8,000-line handler.
+  Nothing can read it: there is no accessor returning the array.
+
+  Found while implementing ANTS-3661 (`doc_symbols`), whose spec calls
+  for excluding schema ARGUMENT names (`caller_cwd`, `etag_match`,
+  `max_bytes`) from its candidate harvest. Verb names came from
+  `registeredToolNames()` and refusal codes from
+  `docs/standards/mcp-error-codes.md`, but argument names have no source
+  short of this extraction, so `doc_symbols` ships reporting them as
+  unresolved candidates. ANTS-3661 § 2.4 records the gap.
+
+  Proposed: a `QJsonArray ClaudeIntegration::toolsListPayload() const`
+  built by the same code the handler runs, with `onMcpConnection`
+  calling it. Pure move, no behaviour change; the existing tools/list
+  conformance tests are the regression net.
+
+  Second consumer already visible: `tool_info {catalog:true}` reads the
+  same descriptions, and a third would make this a Rule-of-Three
+  extraction rather than a one-caller convenience.
+
+  Trigger for prioritising it: ANTS-3661 § 2.1's calibration run. If
+  schema-argument names account for >= 25% of unresolved occurrences
+  across `docs/specs/` + `docs/standards/`, the spec's own gate says an
+  exclusion is missing and this is what supplies it.
+  **Layman:** Make the list of MCP tool descriptions readable from code, instead of only being built inside one enormous function.
+  Kind: refactor.
+  Source: in-session-2026-07-28 (ANTS-3661 implementation).
+
+- 📋 [ANTS-3680] **Batched symbol resolution: answer N needles in one tree walk.**
+  `SymbolQuery::findDefinition` resolves ONE symbol per call and walks
+  the source tree each time. Cost is therefore linear in needles, and
+  each walk is the same walk.
+
+  Measured by ANTS-3661's corpus calibration
+  (`DocSymbols.DISABLED_CorpusCalibration`, 2026-07-28): resolving 1,016
+  distinct needles took ~77 s — about **150 ms per needle**. Against
+  `doc_symbols`' 10 s resolve deadline that is ~65 needles per call, so
+  the deadline governs long before the 500-needle cap does, and a
+  document with 221 distinct candidates (the corpus worst) truncates.
+  The whole `docs/specs/` + `docs/standards/` sweep has 5,354 distinct
+  needles: ~13 minutes at the current rate, which is why ANTS-3661 § 4
+  now names one document as the supported run and a corpus sweep as
+  out of reach.
+
+  Proposed: `SymbolQuery::findDefinitions(rootCanonical, QStringList
+  symbols, opts)` — build one alternation of the per-language anchors,
+  walk once, bucket matches by symbol. The per-symbol entry point stays
+  as a one-element call so no caller changes.
+
+  Beneficiaries beyond doc_symbols: `codebase_index` refresh,
+  `cold_eyes_brief` symbol grounding, and any future sweep verb. This is
+  the prerequisite for a corpus-wide `doc_symbols` run.
+
+  Care needed: `maxFiles` / `maxResults` semantics become per-symbol vs
+  per-walk, and the caps must stay per-symbol or one popular name eats
+  the budget.
+  **Layman:** Looking up 200 names currently means scanning the whole codebase 200 times. Scan it once instead.
+  Kind: perf.
+  Source: in-session-2026-07-28 (ANTS-3661 calibration run).
+
+- 📋 [ANTS-3681] **Replace fixed-byte source-scrape windows with structural bounds.**
+  Source-scrape tests bound their search region with a byte count —
+  `ciCpp.substr(pos, 7000)` — so a literal drifts out of the window
+  whenever an UNRELATED verb is added above it. The test then fails
+  against code that is entirely correct, which is the worst kind of red:
+  it trains the reader to widen the number and move on.
+
+  **Measured: 88 fixed-byte `substr` windows across `tests/features/`**,
+  spread over ~40 files.
+
+  Broken twice already in `mcp_build_status`: ANTS-2129 widened INV-7's
+  window 5 KiB -> 3500-after-anchor and INV-9's to 7 KiB; ANTS-3661
+  (doc_symbols, registered nowhere near build_status) pushed both past
+  those again. Fixed there by bounding STRUCTURALLY instead —
+  `tools.append(` ends one tool's schema block, and the lambda's own
+  `\n                };` ends `kindForName` — neither of which drifts as
+  neighbours grow.
+
+  Proposed: sweep the remaining call-sites to a structural end marker,
+  and add a shared helper in the test support header
+  (`regionBetween(text, startAnchor, endAnchor)`) so the pattern is
+  obvious to copy. Where no structural marker exists, the window should
+  at least assert it did not run off the end of the enclosing function.
+
+  Not urgent — each instance is a one-line fix when it fires — but the
+  count is high enough that the class will keep costing a debug cycle
+  per new verb, and CLAUDE.md rule 1 says fix the cause rather than
+  widen the number again.
+  **Layman:** Some tests check code by reading a fixed number of characters after a landmark. Adding anything nearby shifts the target out of range and the test fails for no real reason.
+  Kind: test.
+  Source: in-session-2026-07-28 (ANTS-3661 broke mcp_build_status again).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

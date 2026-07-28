@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_symbols` MCP verb — resolve the identifiers a doc claims exist** (ANTS-3661)
+  Checks that every function or class name a document mentions actually
+  exists in the code. Harvests inline code spans shaped like `Foo::bar()`
+  and looks each up with `find_definition`'s resolver, skipping fenced
+  samples, paths, language keywords, MCP verb names and `doc-examples`
+  regions. It only ever reports: deciding whether a missing name is rot
+  or something the document is about to create stays with the reader, so
+  there is no severity and nothing auto-fixable. A name the run never got
+  to is reported as `not_checked` — never as one that does not exist.
+
 - **`doc-examples` regions: mark a passage's file references as illustrations so `doc_citations` stops reading them as rot** (ANTS-3659)
   Documents that explain citation syntax have to write references that
   point nowhere. The checker read all 58 of them in one spec as broken,

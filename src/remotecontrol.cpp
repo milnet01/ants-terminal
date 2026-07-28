@@ -12383,6 +12383,142 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
     return o;
 }
 
+// ANTS-3661 — the refusal-code half of DocSymbols' `excludedNames`. Parsed from
+// the project's own `docs/standards/mcp-error-codes.md` (CLAUDE.md names it the
+// canonical taxonomy) rather than hardcoded, so a project that adds a code does
+// not acquire a permanent false candidate. A project without that standard
+// contributes nothing here — which is correct: it has no such vocabulary.
+//
+// Backticked snake_case runs only. That shape is what a refusal code is, and
+// widening it would start excluding real symbols from a file this verb has no
+// business trusting that far.
+static QSet<QString> docSymbolsRefusalCodes(const QString &rootCanonical) {
+    QSet<QString> out;
+    QFile f(QDir(rootCanonical).filePath(
+        QStringLiteral("docs/standards/mcp-error-codes.md")));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
+    static const QRegularExpression re(QStringLiteral("`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`"));
+    const QString text = QString::fromUtf8(f.readAll());
+    auto it = re.globalMatch(text);
+    while (it.hasNext()) out.insert(it.next().captured(1));
+    return out;
+}
+
+// ANTS-3661 — doc_symbols: resolve the identifiers a doc asserts something
+// about, and report — never judge. caller_cwd Required. `path` routes through
+// PathValidation and then the SAME enumeration doc_integrity uses. ETag-304 is
+// applied centrally (isEtagSupportedTool). Engine: DocSymbols::scan. See
+// docs/specs/ANTS-3661.md.
+QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] = QStringLiteral("doc_symbols: no focused project");
+        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (!rawPath.isEmpty()) {
+        const auto check = PathValidation::validatePath(
+            rawPath, rootCanonical, QStringLiteral("doc_symbols"),
+            QStringLiteral("path"));
+        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+    }
+    const QString docsDir =
+        ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
+    QStringList relDocs = docIntegrityEnumerate(rootCanonical, rawPath, docsDir);
+
+    const DocIntegrity::Options walk;  // shared caps: the two doc walks cost the same
+    if (relDocs.size() > walk.maxDocsPerRun)
+        relDocs = relDocs.mid(0, walk.maxDocsPerRun);
+
+    DocSymbols::Options opts;
+    opts.rootCanonical = rootCanonical;
+    opts.excludedNames = docSymbolsRefusalCodes(rootCanonical);
+    if (m_mcpVerbVocabularyProvider)
+        for (const QString &n : m_mcpVerbVocabularyProvider()) opts.excludedNames.insert(n);
+
+    QVector<DocSymbols::Symbol> symbols;
+    QList<DocFinding::Finding> findings;
+    QStringList checked;
+    bool truncated = false;
+    // maxSymbolsPerRun is a RUN budget, so it is decremented across documents:
+    // the engine is per-document, and a per-document cap would let a 100-doc
+    // sweep spend 100× the walks § 4 costs.
+    int budget = opts.maxSymbolsPerRun;
+    for (const QString &rel : std::as_const(relDocs)) {
+        QFile f(QDir(rootCanonical).filePath(rel));
+        if (f.size() > walk.maxDocBytes) continue;
+        if (!f.open(QIODevice::ReadOnly)) continue;  // unreadable → INV-15, silently out
+        const QString text = QString::fromUtf8(f.readAll());
+        f.close();
+        checked << rel;
+
+        opts.maxSymbolsPerRun = budget;
+        const DocSymbols::ScanResult r = DocSymbols::scan(text, rel, opts);
+        budget -= r.needlesResolved;
+        symbols += r.symbols;
+        for (DocFinding::Finding fnd : r.findings) {
+            fnd.emissionIndex = findings.size();  // run-wide, not per-document
+            findings.push_back(fnd);
+        }
+        truncated = truncated || r.truncated;
+    }
+    // etag injected centrally (isEtagSupportedTool).
+    return QJsonDocument(docSymbolsBuildResponse(symbols, findings, truncated, checked));
+}
+
+// ANTS-3661 — pure: engine output → the response object.
+QJsonObject RemoteControl::docSymbolsBuildResponse(
+    const QVector<DocSymbols::Symbol> &symbols,
+    const QList<DocFinding::Finding> &findings, bool truncated,
+    const QStringList &checkedDocs) {
+    QJsonArray symbolsArr;
+    int resolved = 0, unresolved = 0, notChecked = 0;
+    for (const DocSymbols::Symbol &s : symbols) {
+        QJsonObject so;
+        so[QStringLiteral("symbol")]     = s.symbol;
+        so[QStringLiteral("doc_line")]   = s.docLine;
+        so[QStringLiteral("doc_col")]    = s.docCol;
+        so[QStringLiteral("resolution")] = DocSymbols::resolutionStr(s.resolution);
+        if (s.resolution == DocSymbols::Resolution::Resolved) {
+            QJsonArray defs;
+            for (const SymbolQuery::DefMatch &d : s.definitions) {
+                QJsonObject dobj;
+                dobj[QStringLiteral("file")]      = d.file;
+                dobj[QStringLiteral("line")]      = d.line;
+                dobj[QStringLiteral("signature")] = d.signature;
+                dobj[QStringLiteral("lang")]      = d.lang;
+                dobj[QStringLiteral("kind")]      = d.kind;
+                defs.append(dobj);
+            }
+            so[QStringLiteral("definitions")] = defs;
+            ++resolved;
+        } else if (s.resolution == DocSymbols::Resolution::Unresolved) {
+            ++unresolved;
+        } else {
+            ++notChecked;
+        }
+        symbolsArr.append(so);
+    }
+
+    QJsonObject counts;
+    counts[QStringLiteral("total")]       = symbols.size();
+    counts[QStringLiteral("resolved")]    = resolved;
+    counts[QStringLiteral("unresolved")]  = unresolved;
+    counts[QStringLiteral("not_checked")] = notChecked;
+
+    QJsonObject o;
+    o[QStringLiteral("ok")]           = true;
+    o[QStringLiteral("symbols")]      = symbolsArr;
+    o[QStringLiteral("counts")]       = counts;
+    o[QStringLiteral("findings")]     = DocFinding::toJson(findings);
+    o[QStringLiteral("truncated")]    = truncated;
+    o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
+    return o;
+}
+
 // ANTS-3636 — doc_citations: resolve a doc's `path:line` citations against the
 // files and return the cited line TEXT. caller_cwd Required (the dispatcher
 // enforces caller_cwd_required before this runs). `path` names a single FILE —

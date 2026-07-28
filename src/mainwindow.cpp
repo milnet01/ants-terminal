@@ -5144,6 +5144,20 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("doc_citations",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdDocCitations));
+    // ANTS-3661 — doc_symbols: resolve the identifiers a doc asserts exist.
+    m_claudeIntegration->registerToolProvider("doc_symbols",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdDocSymbols));
+    // ANTS-3661 § 2.4 — inject the verb vocabulary the engine excludes from its
+    // candidate harvest. Here rather than in RemoteControl because only
+    // MainWindow sees both sides: ants_core_lib is Qt6::Core-only and the
+    // library dependency runs core → claude. Read lazily on each call, so a
+    // verb registered after this line is still covered.
+    if (m_remoteControl)
+        m_remoteControl->setMcpVerbVocabularyProvider([this] {
+            return m_claudeIntegration ? m_claudeIntegration->registeredToolNames()
+                                       : QStringList();
+        });
     // ANTS-2161 — project_settings: detect layout + create/update .ants/project.json.
     m_claudeIntegration->registerToolProvider("project_settings",
         ClaudeIntegration::CallerCwdContract::Required,

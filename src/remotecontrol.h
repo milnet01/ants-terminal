@@ -10,6 +10,8 @@
 #include "auditengine.h"  // ANTS-1254 — AuditSummary value member below
 #include "docintegrity.h"  // ANTS-3601 — DocIntegrity::Finding in helper sig
 #include "doccitations.h"  // ANTS-3636 — DocCitations::Options in helper sig
+#include "docsymbols.h"    // ANTS-3661 — DocSymbols::Symbol in helper sig
+                           // (pulls docfinding.h for DocFinding::Finding)
 #include "changelogquery.h"  // ANTS-3533 — changelog_query parse-cache member
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
@@ -519,6 +521,25 @@ public:
     static QJsonObject docIntegrityBuildResponse(
         const QList<DocIntegrity::Finding> &findings,
         const QSet<QString> &kinds, const QStringList &checkedDocs);
+    // ANTS-3661 — doc_symbols: resolve the identifiers a doc asserts something
+    // about (DocSymbols::scan). Reuses docIntegrityEnumerate for the walk
+    // rather than cloning it — one *.md enumeration, not two that can drift.
+    QJsonDocument cmdDocSymbols(const QJsonObject &req);
+    // Pure, for the same headless-test reason as the pair above. `truncated`
+    // is the run-wide OR; counts are occurrence counts across every document.
+    static QJsonObject docSymbolsBuildResponse(
+        const QVector<DocSymbols::Symbol> &symbols,
+        const QList<DocFinding::Finding> &findings, bool truncated,
+        const QStringList &checkedDocs);
+    // ANTS-3661 § 2.4 — the registry-sourced half of DocSymbols'
+    // `excludedNames`. Injected because ants_core_lib is Qt6::Core-only and the
+    // library dependency runs core → claude: RemoteControl cannot see
+    // ClaudeIntegration, so MainWindow (which sees both) installs this at
+    // registration time. Absent provider → the set is the refusal codes alone,
+    // which is a noisier run and never a wrong one.
+    void setMcpVerbVocabularyProvider(std::function<QStringList()> p) {
+        m_mcpVerbVocabularyProvider = std::move(p);
+    }
     // ANTS-3636 — doc_citations: resolve a doc's path:line citations against the
     // files and return the cited line text (DocCitations::check).
     QJsonDocument cmdDocCitations(const QJsonObject &req);
@@ -860,6 +881,9 @@ private slots:
     void onNewConnection();
 
 private:
+    // ANTS-3661 — see setMcpVerbVocabularyProvider.
+    std::function<QStringList()> m_mcpVerbVocabularyProvider;
+
     QJsonDocument dispatch(const QJsonObject &req);
     // ANTS-1428 — adapter-mode write path for GFM-format roadmaps.
     // Dispatched from cmdRoadmapLog when req["op"] == "flip". See

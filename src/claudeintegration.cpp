@@ -1298,6 +1298,17 @@ void ClaudeIntegration::stopMcpServer() {
 // maintainer updates the table but not the registration (or vice
 // versa) the registration is refused in every build config
 // (ANTS-1834), and a debug build additionally aborts via Q_ASSERT_X.
+// ANTS-3661 — see the header. The two inline verbs are appended explicitly
+// because they never reach m_toolProviders; a registry read alone would leave
+// `tool_info` as a permanent unresolved candidate in every doc that names it.
+QStringList ClaudeIntegration::registeredToolNames() const {
+    QStringList out;
+    out.reserve(static_cast<int>(m_toolProviders.size()) + 2);
+    for (const auto &entry : m_toolProviders) out << entry.first;
+    out << QStringLiteral("get_session_info") << QStringLiteral("tool_info");
+    return out;
+}
+
 void ClaudeIntegration::registerToolProvider(
     const QString &name,
     CallerCwdContract contract,
@@ -4143,6 +4154,51 @@ void ClaudeIntegration::onMcpConnection() {
                     docInt["inputSchema"] = schema;
                 }
                 tools.append(docInt);
+
+                // ANTS-3661 — doc_symbols: resolve the identifiers a doc
+                // asserts something about. Reports; never judges.
+                QJsonObject docSym;
+                docSym["name"] = "doc_symbols";
+                docSym["description"] = QStringLiteral(
+                    "Resolve the identifiers a doc claims exist. Harvests inline code spans "
+                    "that look like `Foo::bar()` and looks each up with find_definition's "
+                    "resolver, reporting resolved | unresolved | not_checked per occurrence. "
+                    "Fenced code, paths, language keywords, MCP verb/argument names and "
+                    "doc-examples regions are excluded; a short lowercase word is too, unless "
+                    "it carries :: or (). REPORT-ONLY: an unresolved name may be rot or a "
+                    "forward reference to something the doc is about to create, and deciding "
+                    "which is yours — the verb emits no severity and nothing auto-fixable. "
+                    "not_checked means a needle the run never looked up (cap or deadline), "
+                    "never 'does not exist'; truncated:true accompanies it. Read-only. "
+                    "caller_cwd required.");
+                docSym["selection_hint"] = QStringLiteral(
+                    "Use when reviewing a spec or design doc to get the short list of names "
+                    "it mentions that resolve nowhere — the expensive half of a cold read.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    QJsonObject props;
+                    QJsonObject dsPath; dsPath["type"] = "string";
+                        dsPath["description"] = QStringLiteral(
+                            "Project-relative file or directory to scan (a directory walks "
+                            "*.md recursively). Default: the project's docs dir, else docs/.");
+                    QJsonObject dsCwd; dsCwd["type"] = "string";
+                        dsCwd["description"] = QStringLiteral(
+                            "Your $PWD. Required — anchors the doc walk and the symbol "
+                            "resolution to your project.");
+                    QJsonObject dsEtag; dsEtag["type"] = "string";
+                        dsEtag["description"] = QStringLiteral(
+                            "Server-issued etag from a prior call; an unchanged corpus "
+                            "short-circuits to {ok:true, unchanged:true}.");
+                    props["path"] = dsPath;
+                    props["caller_cwd"] = dsCwd;
+                    props["etag_match"] = dsEtag;
+                    schema["properties"] = props;
+                    docSym["inputSchema"] = schema;
+                }
+                tools.append(docSym);
 
                 // ANTS-3636 — doc_citations: resolve every path:line citation
                 // in one doc and return the line it points at, so a reviewer
@@ -9997,6 +10053,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-3636 — doc_citations: one entry per citation
                         // plus its text; a dense spec is the upper end.
                         {QStringLiteral("doc_citations"),     {900,  8000}},
+                        // ANTS-3661 — doc_symbols: one entry per candidate
+                        // occurrence across the walked corpus.
+                        {QStringLiteral("doc_symbols"),       {900,  8000}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -10153,6 +10212,7 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-3636 — doc_citations: project-scoped
                         // citation-resolution reader, doc_integrity's sibling.
                         name == QLatin1String("doc_citations") ||
+                        name == QLatin1String("doc_symbols") ||
                         // ANTS-2161 — project_settings: project-scoped
                         // layout-config detect + create/update.
                         name == QLatin1String("project_settings") ||
@@ -11554,6 +11614,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-3636 — doc_citations resolves citations against the focused
     // project's tree; Required.
     if (toolName == QStringLiteral("doc_citations"))       return C::Required;
+    // ANTS-3661 — doc_symbols walks the focused project's docs AND resolves
+    // against its source tree; both need the caller's anchor.
+    if (toolName == QStringLiteral("doc_symbols"))         return C::Required;
     // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json
     // anchored on the resolved root; Required.
     if (toolName == QStringLiteral("project_settings"))    return C::Required;
@@ -11741,6 +11804,7 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // ANTS-3636 — doc_citations: unchanged doc + unchanged targets → an
         // identical answer → 304.
         || toolName == QStringLiteral("doc_citations")
+        || toolName == QStringLiteral("doc_symbols")  // ANTS-3661
         || toolName == QStringLiteral("last_audit_summary")
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")

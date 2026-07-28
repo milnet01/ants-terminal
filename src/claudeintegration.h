@@ -237,6 +237,14 @@ public:
         ProcessGlobal,
     };
 
+    // ANTS-3661 — every MCP verb name this build answers to: the registry's
+    // keys plus the two dispatched inline (`get_session_info`, `tool_info`),
+    // which are not in it. doc_symbols excludes these from its candidate
+    // harvest — they are registered by STRING and declared nowhere, so every
+    // one resolves nowhere and would be reported forever. Live rather than a
+    // static list, so a new verb never becomes a new false candidate.
+    QStringList registeredToolNames() const;
+
     // ANTS-1404 — return the classification for `toolName`. Static
     // table inside claudeintegration.cpp; unknown tools default to
     // Optional. See docs/specs/ANTS-1404.md.
