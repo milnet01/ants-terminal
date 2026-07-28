@@ -128,7 +128,15 @@ TEST(McpBuildStatus, WiringContract) {
     {
         const auto anchorPos = ciCpp.find("ANTS-1299 — build_status");
         ASSERT_NE(anchorPos, std::string::npos);
-        const std::string region = ciCpp.substr(anchorPos, 3500);
+        // Bounded STRUCTURALLY, not by a byte count. A fixed window has
+        // false-failed this test every time an unrelated verb was added near
+        // it (ANTS-2129 widened it to 3500; ANTS-3661 pushed past that again),
+        // which is a defect in the test rather than in the code under test.
+        // One tool's block ends where it is appended to the array, so that is
+        // the end marker: it cannot drift as neighbouring verbs grow.
+        const auto blockEnd = ciCpp.find("tools.append(", anchorPos);
+        ASSERT_NE(blockEnd, std::string::npos);
+        const std::string region = ciCpp.substr(anchorPos, blockEnd - anchorPos);
         expect(contains(region, "req.append(\"caller_cwd\")"),
                "INV-7b",
                "build_status schema must mark \"caller_cwd\" as "
@@ -168,10 +176,14 @@ TEST(McpBuildStatus, WiringContract) {
     {
         const auto pos = ciCpp.find("auto kindForName");
         ASSERT_NE(pos, std::string::npos);
-        // 7 KiB window — kindForName grows as verbs are bucketed above the
-        // build_status branch (ANTS-2129 added the audit_falsepos_log entry
-        // to the audit family, pushing build_status past the old 5 KiB).
-        const std::string fn = ciCpp.substr(pos, 7000);
+        // Bounded by the lambda's own terminator rather than a byte count, for
+        // the reason given at INV-7: kindForName grows every time a verb is
+        // bucketed, so any fixed window is a scheduled false failure. It has
+        // already been widened once (ANTS-2129, 5 KiB → 7 KiB) and ANTS-3661
+        // pushed build_status past 7 KiB too.
+        const auto fnEnd = ciCpp.find("\n                };", pos);
+        ASSERT_NE(fnEnd, std::string::npos);
+        const std::string fn = ciCpp.substr(pos, fnEnd - pos);
         const auto branch = fn.find("\"build_status\"");
         ASSERT_NE(branch, std::string::npos)
             << "build_status must have an explicit branch in "
