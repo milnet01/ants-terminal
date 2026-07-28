@@ -9188,9 +9188,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   findings list, so a review pre-pass is one call rather than six — the
   actual token saving, since each verb today re-walks the same files.
 
-  **The fix half stays deliberately narrow.** Auto-fixable: a stale
-  hand-maintained TOC (regenerable from the headings) and a version string
-  that disagrees with the build system's single source of truth. Everything
+  **The fix path stays deliberately narrow.** Auto-fixable: a stale
+  hand-maintained TOC (regenerable from the headings) — and only that. A version string
+  disagreeing with `CMakeLists.txt` was in the original idea but was dropped at spec loop 1: no checker in the composed set emits such a finding, so the fix would be untestable by construction. Everything
   else is report-only *by design*, not by omission — deleting one of two
   duplicated facts needs a judgement about which is canonical, and
   renumbering an `INV-N` breaks every citation of it, which /cold-eyes
@@ -9425,7 +9425,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: cold-eyes-2026-07-28 ANTS-3661 loop 3 lane B.
 
 - 📋 [ANTS-3669] **`doc_lint --fix`: the write half of the doc-lint composite, split out of ANTS-3663.**
-  Split from ANTS-3663 at the report/fix seam. ANTS-3663 keeps the walk, the
+  Implementation phase 2 of one verb. ANTS-3663 keeps the walk, the
   five-checker composition, the adapters, the envelope and the ordering; this item
   owns everything behind `fix:true`.
 
@@ -9442,9 +9442,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   the write half exists — which is the order the caller actually wants, since the
   pre-pass reads far more often than it repairs.
 
-  Carries ANTS-3663's former INV-5 and INV-6. Those ids are tombstoned in place in
-  ANTS-3663 rather than renumbered (`specs.md` § 5.5 — invariant ids are cited
-  from sibling specs and must never be reflowed).
+  Carries ANTS-3663's INV-5, INV-6 and INV-12..INV-16. The separate spec for this
+  item was merged back into ANTS-3663 § 2.3 on 2026-07-28 — one verb, one
+  registration entry, one contract; `docs/specs/ANTS-3669.md` is now a redirect.
   **Layman:** The part of the document checker that actually repairs a file, kept as its own piece of work — because anything that edits your documents deserves a stricter review than anything that only reads them.
   Kind: implement.
   Source: cold-eyes-2026-07-28 ANTS-3663 loop 3 split.
@@ -9703,7 +9703,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (cold-eyes loop 4, lane C CRITICAL — verified live).
 
-- 📋 [ANTS-3677] **Fold cold-eyes loop 4's deferred MEDIUM/LOW tail into the six doc-lint specs.**
+- ✅ [ANTS-3677] **Fold cold-eyes loop 4's deferred MEDIUM/LOW tail into the six doc-lint specs.**
   Cold-eyes loop 4 over ANTS-3660/3661/3662/3663/3664/3669 raised ~101
   raw findings (~85 after cross-lane dedup): **C 8 · H 31 · M 33 · L/I 29**.
   The CRITICALs and the highest-leverage HIGHs were verified and fixed in
@@ -9718,10 +9718,50 @@ fixes don't address. Roadmapped here as their own design tasks.
   Beyond the filed three, the re-measure found four figures quoted off
   the punctuation-KEPT rows of a table whose punctuation-stripped rows the
   spec pins, and § 4 asserting a cost model the corpus refutes.
-  Remaining: the ANTS-3661 tri-state item (still the highest-value one),
-  ANTS-3662's loop-log balance check, the ANTS-3663/3669 `max_findings` x
+  Since closed, in this order: the ANTS-3661 tri-state item (the highest-value one) and
+  ANTS-3662's loop-log balance check. Done 2026-07-28: the `max_findings` x
   `fix` and `dry_run` gaps, the cross-doc build-cost/verb-contract
   duplication, and the `candidate`/`check` terminology split.
+  Progress (2026-07-28): the **ANTS-3663/3669 share is done**, and the
+  structural blocker it was waiting on was resolved first. Loop 4's ledger
+  left three Phase-4 stop conditions awaiting a decision; two were adopted
+  and one was rejected as written. (a) ANTS-3664 now owns the finding
+  element plus a new § 2.4 of family wire conventions (W1-W5) — but NOT
+  each verb's envelope, which would have inverted the engine-vs-verb
+  layering its own § 7 draws. (b) was already closed by loop 4's own fold
+  (§ 2.3 exists and all four siblings cite it); the ledger was stale.
+  (c) the ANTS-3663/3669 split was **unwound**: it had been cut by risk
+  profile while the response envelope spans that line, so every write-side
+  field had two owners, and all four of the pair's CRITICALs sat on that
+  seam. ANTS-3669's spec is now a redirect; the ROADMAP item stays open as
+  implementation phase 2. Net effect on size: the merged spec is 48 lines
+  shorter than the two files it replaced, while adding five invariants.
+  Resolved (2026-07-28): all six shares of loop 4's deferred tail are folded.
+  ANTS-3660 (commit 409431ad), ANTS-3661 (`not_checked` third state + INV-7),
+  ANTS-3662 (loop-log balance check dropped with its measurement, prerequisite
+  ANTS-3682), and — in this pass — ANTS-3663/3669 and ANTS-3664: the
+  `max_findings` x `fix` and `dry_run` gaps closed as INV-12/15/16, the
+  build-cost stanza and verb-contract minimum reduced to pointers, and the
+  `candidate`/`check` terminology split settled in ANTS-3664 § 2.4.
+
+  Folded in the same pass: `max_findings` x `fix` (the cap pages
+  `findings[]` only and never changes bytes on disk — new INV-15);
+  `dry_run` now in the response block, echoed, and `bad_args` when passed
+  without `fix:true` (INV-12, INV-16); the build-cost stanza deleted from
+  five § 4s and pointed at ANTS-3664 § 4, and the verb-contract minimum
+  converted to ANTS-3660 INV-8's pointer form; and the `candidate` /
+  `check` terminology split settled in ANTS-3664 § 2.4 by reserving the
+  bare word for one sense and qualifying the others.
+
+  Two cross-doc knock-ons found by the sweep rather than by the ledger:
+  ANTS-3662 INV-2 justified its tombstone exemption with "ANTS-3663 carries
+  two today", which restoring INV-5/INV-6 falsified — repointed to
+  ANTS-3636's fifteen, measured. And the ANTS-3663 ROADMAP bullet still
+  promised a version-string auto-fix that spec loop 1 dropped for having no
+  producer; corrected here.
+
+  Nothing is left open. The two shares this note first recorded as remaining
+  had in fact already landed, and the bullet above was stale: ANTS-3661 ships the `not_checked` third state with INV-7, and ANTS-3662 **dropped** its loop-log balance check with a measurement (10 documents carry a counts table, 22 carry per-loop headings, and the two sets are disjoint), filing ANTS-3682 as the prerequisite. Verified against both specs, not inferred. All six shares are done.
 
   Full per-lane finding text is preserved at
   `scratchpad/fix-ledger-loop4.md` (session ffb2092c). The named ones worth
