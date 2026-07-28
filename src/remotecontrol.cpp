@@ -15,6 +15,7 @@
 #include "docintegrity.h"      // ANTS-3601 — doc_integrity verb
 #include "doccitations.h"      // ANTS-3636 — doc_citations verb
 #include "speclog.h"             // ANTS-1963
+#include "specparse.h"           // ANTS-3665 — hoisted spec-body parser
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
 #include "focusedtest.h"
@@ -16831,132 +16832,6 @@ QString resolveSpecRelForId(const QString &rootCanonical,
     return exactRel;  // nothing matched — keep canonical path for not_found
 }
 
-// Parse a spec file's body into {title, status, kind, invariants[]}.
-// `body` is the full file text. Empty fields are emitted as empty
-// strings; absent Invariants section yields an empty array.
-QJsonObject parseSpecBody(const QString &body) {
-    QJsonObject out;
-    QString title, status, kind;
-
-    // Title: first line starting with `# <PREFIX>-NNNN — title` or
-    // `# <PREFIX>-NNNN - title`. Tolerate either em-dash or hyphen.
-    // ANTS-3356 — generalised the `ANTS-` prefix to any `<PREFIX>-NNNN`
-    // (e.g. `# DOOM-0009 — Path tracer`) so non-Ants spec titles parse;
-    // the id arm is non-greedy-anchored by the `-[0-9]+` + separator.
-    static const QRegularExpression titleRe(
-        QStringLiteral(R"(^#\s+[A-Za-z][A-Za-z0-9_-]*-[0-9]+\s*[—\-]\s*(.+?)\s*$)"),
-        QRegularExpression::MultilineOption);
-    const auto titleM = titleRe.match(body);
-    if (titleM.hasMatch()) title = titleM.captured(1);
-
-    // Metadata: `**Status:** ...` and `**Kind:** ...` lines.
-    static const QRegularExpression statusRe(
-        QStringLiteral(R"(^\*\*Status:\*\*\s*(.+?)\s*$)"),
-        QRegularExpression::MultilineOption);
-    static const QRegularExpression kindRe(
-        QStringLiteral(R"(^\*\*Kind:\*\*\s*(.+?)\s*$)"),
-        QRegularExpression::MultilineOption);
-    const auto statusM = statusRe.match(body);
-    if (statusM.hasMatch()) status = statusM.captured(1);
-    const auto kindM = kindRe.match(body);
-    if (kindM.hasMatch()) kind = kindM.captured(1);
-
-    out["title"]  = title;
-    out["status"] = status;
-    out["kind"]   = kind;
-
-    // Locate the Invariants section. Accept `## N. Invariants`,
-    // `## Invariants`, `### Invariants`, case-insensitive.
-    QJsonArray invariants;
-    static const QRegularExpression hdrRe(
-        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[Ii]nvariants\b.*$)"),
-        QRegularExpression::MultilineOption);
-    const auto hdrM = hdrRe.match(body);
-    if (hdrM.hasMatch()) {
-        const int sectionStart = hdrM.capturedEnd();
-        // Section ends at the next `## ` heading of equal-or-lower
-        // depth (treat any subsequent `## ` as the boundary).
-        static const QRegularExpression nextHdrRe(
-            QStringLiteral(R"(^##\s+\S)"),
-            QRegularExpression::MultilineOption);
-        const auto nextM = nextHdrRe.match(body, sectionStart);
-        const int sectionEnd =
-            nextM.hasMatch() ? nextM.capturedStart() : body.size();
-        const QString section = body.mid(sectionStart,
-                                         sectionEnd - sectionStart);
-
-        // (a) Table-form rows: `| INV-N | body | test_surface |`.
-        static const QRegularExpression tableRe(
-            QStringLiteral(R"(^\|\s*(INV-[0-9]+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$)"),
-            QRegularExpression::MultilineOption);
-        auto it = tableRe.globalMatch(section);
-        while (it.hasNext()) {
-            const auto m = it.next();
-            QJsonObject inv;
-            inv["id"]           = m.captured(1);
-            inv["body"]         = m.captured(2);
-            inv["test_surface"] = m.captured(3);
-            invariants.append(inv);
-        }
-
-        // (b) Bullet-form: `- **INV-N** — body...` (multi-line until
-        // next `- **INV-` or blank-line-plus-non-indent). Skip if
-        // table form already matched (avoids dup).
-        if (invariants.isEmpty()) {
-            // Split on the bullet anchor — capture group keeps the
-            // INV-N marker, then accumulate body lines until the
-            // next anchor.
-            static const QRegularExpression bulletStartRe(
-                QStringLiteral(R"(^-\s+\*\*(INV-[0-9]+)[\.]?\*\*\s*[—\-:]?\s*)"),
-                QRegularExpression::MultilineOption);
-            auto bit = bulletStartRe.globalMatch(section);
-            QList<QPair<QString, int>> starts;  // id, position-after-marker
-            while (bit.hasNext()) {
-                const auto m = bit.next();
-                starts.append({m.captured(1), m.capturedEnd()});
-            }
-            for (int i = 0; i < starts.size(); ++i) {
-                const int from = starts[i].second;
-                const int to = (i + 1 < starts.size())
-                                   ? starts[i + 1].first.startsWith(
-                                         QStringLiteral("INV-"))
-                                         ? section.lastIndexOf(
-                                               QStringLiteral("\n- **INV-"),
-                                               starts[i + 1].second - 1)
-                                         : section.size()
-                                   : section.size();
-                const int end = to > from ? to : section.size();
-                QString invBody = section.mid(from, end - from).trimmed();
-                QJsonObject inv;
-                inv["id"]   = starts[i].first;
-                inv["body"] = invBody;
-                invariants.append(inv);
-            }
-        }
-    }
-
-    // ANTS-3569 — surface invariants declared inline in prose (outside the
-    // recognized table/bullet forms, e.g. `**Invariant (INV-N): ...**`) so a
-    // caller trusting invariants_count knows the structured list may be
-    // incomplete. Count distinct INV-N tokens present in the spec body but
-    // absent from the structured list. Inline prose is not the sanctioned
-    // form (specs.md § bullet form), so we hint rather than parse every shape.
-    QSet<QString> structuredInvIds;
-    for (const auto &v : invariants)
-        structuredInvIds.insert(v.toObject().value(QStringLiteral("id")).toString());
-    static const QRegularExpression invTokenRe(QStringLiteral("INV-[0-9]+"));
-    QSet<QString> untabledInvIds;
-    auto invTokIt = invTokenRe.globalMatch(body);
-    while (invTokIt.hasNext()) {
-        const QString id = invTokIt.next().captured(0);
-        if (!structuredInvIds.contains(id)) untabledInvIds.insert(id);
-    }
-
-    out["invariants"]                   = invariants;
-    out["invariants_count"]             = invariants.size();
-    out["possible_untabled_invariants"] = untabledInvIds.size();
-    return out;
-}
 
 // ANTS-3360 — spec_query list/index mode. With neither `id` nor `path`,
 // enumerate the specs dir (`.ants/project.json` specs_dir override
@@ -17004,7 +16879,7 @@ QJsonObject specListEnvelope(const QString &rootCanonical) {
                 // head instead of the whole body (specs run to ~85 KB) so the
                 // full-tree list stops paying a full parseSpecBody per spec.
                 const QJsonObject parsed =
-                    parseSpecBody(QString::fromUtf8(f.read(8192)));
+                    SpecParse::parseSpecBody(QString::fromUtf8(f.read(8192)));
                 f.close();
                 e["title"]  = parsed.value(QStringLiteral("title")).toString();
                 e["status"] = parsed.value(QStringLiteral("status")).toString();
@@ -17127,7 +17002,7 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     const QString body = QString::fromUtf8(f.readAll());
     f.close();
 
-    QJsonObject result = parseSpecBody(body);
+    QJsonObject result = SpecParse::parseSpecBody(body);
     result["ok"]         = true;
     // ANTS-1906 — derive id from basename when only `path` was passed
     // and no explicit `id` came in. Strips trailing ".md".
@@ -17209,7 +17084,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
                 }
             }
             if (hits.isEmpty()) continue;
-            const QJsonObject parsed = parseSpecBody(text);
+            const QJsonObject parsed = SpecParse::parseSpecBody(text);
             const QJsonArray invs =
                 parsed.value(QStringLiteral("invariants")).toArray();
             // ID = filename stem (ANTS-NNNN or phase_<NN>_<topic>).
@@ -17246,7 +17121,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
 //
 // task_priors: free-text task description → ranked context buckets
 // (matching specs / ROADMAP cards / recent commits / ADRs). Pure
-// composer over cmdRoadmapQuery + cmdGitState + parseSpecBody (above).
+// composer over cmdRoadmapQuery + cmdGitState + SpecParse::parseSpecBody.
 // project_conventions: task_type → curated {rule, source} table with a
 // source-existence check. Both MCP-only. Specs docs/specs/ANTS-1306.md
 // and docs/specs/ANTS-1307.md.
@@ -17441,7 +17316,7 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
                 int score = tpDistinctNeedles(body.toLower(), terms);
                 if (terms.ids.contains(stem.toUpper())) score += 5;
                 if (score <= 0) continue;
-                const QJsonObject parsed = parseSpecBody(body);
+                const QJsonObject parsed = SpecParse::parseSpecBody(body);
                 const QString title =
                     parsed.value(QStringLiteral("title")).toString();
                 QJsonObject e;

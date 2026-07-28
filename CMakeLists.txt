@@ -301,6 +301,9 @@ add_library(ants_core_lib STATIC
     src/feedbackfile.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
     src/speclog.cpp
+    # ANTS-3665 — spec-body parser, hoisted out of remotecontrol.cpp's anonymous
+    # namespace so ants_core_lib engines (ANTS-3662 spec_lint) can link it.
+    src/specparse.cpp
     # ANTS-2119 — shared JSONL line-file primitives (readLines / writeLinesAtomic)
     # used by both model ledgers; single copy of the 0700/0600 write sequence.
     src/jsonlfile.cpp
@@ -1661,6 +1664,9 @@ if(ANTS_TESTS)
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-3665 — parseSpecBody was hoisted out of remotecontrol.cpp into
+        # ants_core_lib; the spec_query wiring scrape follows it here.
+        SRC_SPECPARSE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/specparse.cpp"
         # ANTS-3582 — stable extern-decl build-info header (churn regression guard).
         SRC_BUILD_INFO_H_PATH="${CMAKE_SOURCE_DIR}/src/build_info.h"
         # ANTS-3345 — debt_sweep_scan offload-eligibility source-grep lock.
@@ -2026,6 +2032,9 @@ if(ANTS_TESTS)
                 tests/features/doc_citations_anchor/test_doc_citations_anchor.cpp
                 # ANTS-3659 — the doc-examples suppression region.
                 tests/features/doc_citations_examples/test_doc_citations_examples.cpp
+                # ANTS-3665 — test_surface from both invariant forms; the
+                # hoisted SpecParse parser (linking here is the hoist's proof).
+                tests/features/spec_parse_test_surface/test_spec_parse_test_surface.cpp
                 tests/features/config_parse_failure_guard/test_config_parse_failure.cpp
                 tests/features/config_reload_loop_safety/test_config_reload_loop_safety.cpp
                 tests/features/debuglog_perms/test_debuglog_perms.cpp

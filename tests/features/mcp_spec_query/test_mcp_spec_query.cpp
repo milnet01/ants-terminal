@@ -22,6 +22,9 @@
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
 #endif
+#ifndef SRC_SPECPARSE_CPP_PATH
+#error "SRC_SPECPARSE_CPP_PATH compile definition required"
+#endif
 
 ANTS_TEST_SCOPE();
 
@@ -90,9 +93,34 @@ TEST(McpSpecQuery, WiringContract) {
     // hint (count of INV-N tokens present in prose but absent from the
     // structured table/bullet list) so a caller knows invariants_count may
     // under-report inline-declared invariants (e.g. `**Invariant (INV-N):**`).
-    expect(contains(rcCpp, "possible_untabled_invariants"),
+    //
+    // ANTS-3665 hoisted parseSpecBody out of remotecontrol.cpp's anonymous
+    // namespace into src/specparse.cpp (ants_core_lib), so spec_lint can link
+    // it. The scrape follows the code rather than being relaxed — asserting
+    // against the file the function actually lives in is what keeps this a
+    // contract instead of a formality.
+    const std::string specParseCpp =
+        ants_test::slurpFile(SRC_SPECPARSE_CPP_PATH);
+    expect(contains(specParseCpp, "possible_untabled_invariants"),
            "INV-5b",
            "parseSpecBody must emit possible_untabled_invariants (ANTS-3569)");
+
+    // INV-5c — ANTS-3665: the hoist itself. parseSpecBody must NOT be back in
+    // remotecontrol.cpp's anonymous namespace, or ANTS-3662's spec_lint engine
+    // (in ants_core_lib) silently loses its parser again and the corpus grows a
+    // second one. The call site keeps the name, so this checks for the
+    // definition, not the mention.
+    expect(!contains(rcCpp, "QJsonObject parseSpecBody(const QString"),
+           "INV-5c",
+           "parseSpecBody must stay hoisted in src/specparse.cpp (ANTS-3665)");
+
+    // INV-5d — ANTS-3665: the bullet branch emits test_surface. specs.md § 6
+    // promises it from both invariant forms; for years only the GFM table
+    // branch delivered, so nearly every spec in this corpus parsed without one.
+    expect(contains(specParseCpp, "\\*Test:\\*"),
+           "INV-5d",
+           "parseSpecBody must extract the bullet-form *Test:* clause "
+           "(ANTS-3665)");
 
     // INV-6 — mainwindow registration.
     expect(contains(mwCpp, "registerToolProvider(\"spec_query\""),

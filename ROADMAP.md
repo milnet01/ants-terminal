@@ -9194,7 +9194,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: in-session-2026-07-27 (grounding pass for ANTS-3660..3663)..
 
-- 📋 [ANTS-3665] **`spec_query` drops the `*Test:*` clause on bullet-form invariants, and the standard says it does not.**
+- ✅ [ANTS-3665] **`spec_query` drops the `*Test:*` clause on bullet-form invariants, and the standard says it does not.**
   `docs/standards/specs.md:236` states the `*Test:*` clause is surfaced as
   `test_surface`. `parseSpecBody` (`src/remotecontrol.cpp:16836`) emits
   `test_surface` ONLY from the GFM table branch
@@ -9205,6 +9205,30 @@ fixes don't address. Roadmapped here as their own design tasks.
   `spec_query` output this session: six invariants returned, zero
   `test_surface` fields.
   Scope addition (2026-07-27, from ANTS-3662's cold-eyes loop 1): this item also HOISTS `parseSpecBody` out of `src/remotecontrol.cpp`'s anonymous namespace into `src/specparse.{h,cpp}` in `ants_core_lib`. ANTS-3662 (`spec_lint`) is an engine in that library and cannot link an anonymous-namespace function, so without the hoist it would have to grow a second spec parser beside the first — exactly the divergence `MarkdownScan` was hoisted to prevent. One move, done alongside the `test_surface` repair rather than as a follow-up. The review caught this because ANTS-3662 declared the step "filed against that item" when it was not: an unrecorded dependency that would have surfaced at implementation time as a blocked build.
+  Resolved (2026-07-28): `parseSpecBody` hoisted out of `remotecontrol.cpp`'s
+  anonymous namespace into `src/specparse.{h,cpp}` in `ants_core_lib` (126 lines
+  moved, 4 call sites qualified), and the bullet branch now lifts the `*Test:*`
+  clause into `test_surface`. The clause ends at its paragraph, not at the end of
+  the invariant — bullets here routinely carry commentary paragraphs after the
+  test sentence, and that prose is about the invariant, not about how to test it,
+  so it stays in `body`. Absent clause omits the key entirely rather than
+  emitting an empty string, because `spec_lint`'s `invariant_no_test` check asks
+  exactly "is this key missing".
+
+  Test-first: `tests/features/spec_parse_test_surface/` (5 invariants) verified
+  RED against the hoisted-but-unfixed parser — INV-1/4/5 failed on the
+  `test_surface` assertions while INV-2 and INV-3 passed, localising the defect to
+  the bullet branch and confirming the table branch was never involved.
+
+  Broke `McpSpecQuery.WiringContract` on the way: its INV-5b source-scrape grepped
+  `remotecontrol.cpp` for a literal that had moved. Fixed by pointing the scrape
+  at the new file (new `SRC_SPECPARSE_CPP_PATH` compile def) rather than relaxing
+  it, plus two new invariants — INV-5c pins the hoist so a move back fails loudly,
+  INV-5d pins the clause extraction. INV-5b turned out to have been asserted in
+  code with no row in `spec.md`; added.
+
+  Suite 2983/2983. Unblocks ANTS-3662; its seven now-stale present-tense claims
+  about this defect were corrected in the same commit.
 
   Live doc-vs-code drift, and load-bearing for ANTS-3662: `spec_lint`'s
   central check is "every INV-N carries a test surface", which cannot be

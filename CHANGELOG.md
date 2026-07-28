@@ -105,6 +105,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`spec_query` now returns `test_surface` for bullet-form invariants** (ANTS-3665)
+  The spec standard promises that an invariant's `*Test:*` clause comes back as
+  its own `test_surface` field, but only the table form delivered it — so nearly
+  every spec in the project returned the clause buried in the invariant body.
+  Asking a spec "which of your invariants have no test?" now has an answer.
+
 - **Test suite no longer goes red at random on a busy machine** (ANTS-3658)
   One audit test reads the whole source tree, so it takes about 2
   seconds when the files are already in memory and nearly 10 when they
