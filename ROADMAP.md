@@ -9278,6 +9278,33 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc-fix.
   Source: in-session-2026-07-27 (doc_integrity sweep during the ANTS-3661..3664 cold-eyes fold).
 
+- 📋 [ANTS-3668] **`find_definition` cannot resolve C++ data members, enumerators or response-field names.**
+  `SymbolQuery::buildAnchors` builds exactly three C++ definition patterns: a
+  return-type-led form requiring a trailing `(`, an out-of-line ctor/dtor form,
+  and a `struct|class|union|enum` keyword form. None matches a data-member
+  declaration, so every struct field, enumerator and response-field name in the
+  codebase resolves to zero definitions.
+
+  Surfaced while specifying ANTS-3661 (`doc_symbols`), where it is the largest
+  unresolvable candidate population left after six exclusions — `maxDocsPerRun`,
+  `excludedNames`, `autoFixable`, `sections_checked`, `doc_line` and their kind
+  all pass every exclusion and then resolve nowhere. ANTS-3661 records the class
+  as a known resolver limitation and points here, rather than adding an exclusion
+  it cannot implement: unlike verb names there is no registry to source member
+  names from.
+
+  Likely fix is one more pattern in the Cpp arm: a type-token-led declaration
+  terminating in `;` or `=` with no `(` before the terminator. The care needed is
+  not matching a local variable inside a function body — the ladder is line-based
+  with no scope tracking, so the shape is probably "indented declaration inside a
+  struct/class block", or accept locals and let `kind` distinguish them.
+
+  Blocks: ANTS-3661's calibration run being interpretable (a large unresolved
+  population that is really a resolver gap reads as a missing exclusion).
+  **Layman:** Ants can find functions and classes in C++ code, but not the named values stored inside them — so asking "where is maxDocsPerRun defined?" comes back empty even though the answer is sitting in a header.
+  Kind: enhancement.
+  Source: cold-eyes-2026-07-28 ANTS-3661 loop 3 lane B.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
