@@ -281,6 +281,21 @@ bool writeSarifForTest(const QString &path,
 // absolute and ordinary relative paths pass through unchanged.
 QString flagSafeScopedPath(const QString &p);
 
+// ANTS-3694 — recover a line-based tool's own severity from the leading
+// `error:` / `style:` / … word of its message. cppcheck and friends emit the
+// severity only as that prefix, so without this every line-based finding was
+// recorded as "UNKNOWN" and reached SARIF with no `level`. Returns the
+// lowercased severity word, or an empty string when the message has no
+// recognised prefix. Exposed so the recovery can be asserted directly — the
+// parser it lives in is not otherwise reachable from a test.
+QString severityFromMessagePrefix(const QString &message);
+
+// ANTS-3694 — map a tool-native severity onto a SARIF `level`. An
+// unrecognised or absent severity maps to "warning", which is what SARIF
+// itself defaults an absent level to, so the mapping never invents a
+// confidence the tool did not express.
+QString sarifLevelFor(const QString &severity);
+
 // ANTS-3394 — test hook exposing the per-tool argv builder so the default
 // exclusion-set wiring can be asserted without spawning a real tool.
 // `scopedPaths` empty == the whole-tree invocation (exclusions applied);

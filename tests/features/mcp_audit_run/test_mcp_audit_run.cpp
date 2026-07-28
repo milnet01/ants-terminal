@@ -14,6 +14,10 @@
 
 #include <QHash>
 #include <QJsonArray>
+#include <QJsonDocument>   // ANTS-3694 — read the written SARIF back
+#include <QJsonObject>
+#include <QList>
+#include <QPair>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -687,5 +691,123 @@ TEST(mcp_audit_run, Ants3658TimeoutOverrideNamesALiveTest) {
         }
     }
     expect(registered, "ANTS-3658: the named test is registered in this bundle");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3694 — the SARIF a run writes must carry `level` on every result.
+//
+// Without it SARIF defaults each result to "warning", so `last_audit_summary`
+// counted 2291 warnings and 0 errors over a document that contained a real
+// out-of-bounds read and two signed-overflow errors, and the documented
+// `severity_floor:"error"` query always returned nothing. The severity was
+// present the whole time, as a text prefix inside message.text that no
+// consumer parsed.
+TEST(mcp_audit_run, Ants3694SeverityRecoveredFromMessagePrefix) {
+    expect_reset();
+    using AuditRunner::internal::severityFromMessagePrefix;
+
+    expect(severityFromMessagePrefix(
+               QStringLiteral("error: Array 'a[41]' accessed at index 49"))
+               == QStringLiteral("error"),
+           "ANTS-3694: cppcheck's error prefix is recovered");
+    expect(severityFromMessagePrefix(QStringLiteral("style: unused variable"))
+               == QStringLiteral("style"),
+           "ANTS-3694: a style prefix is recovered");
+    expect(severityFromMessagePrefix(QStringLiteral("Warning : spaced"))
+               == QStringLiteral("warning"),
+           "ANTS-3694: case and spacing before the colon are tolerated");
+    expect(severityFromMessagePrefix(
+               QStringLiteral("no prefix here: just prose")).isEmpty(),
+           "ANTS-3694: an unrecognised prefix yields no severity");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3694 — the severity→level mapping. The default matters as much as the
+// hits: an unclassifiable finding maps to "warning", which is what SARIF
+// already defaults an absent level to, so the mapping cannot invent a
+// severity the tool never expressed.
+TEST(mcp_audit_run, Ants3694SarifLevelMapping) {
+    expect_reset();
+    using AuditRunner::internal::sarifLevelFor;
+
+    expect(sarifLevelFor(QStringLiteral("error")) == QStringLiteral("error"),
+           "ANTS-3694: error → error");
+    expect(sarifLevelFor(QStringLiteral("HIGH")) == QStringLiteral("error"),
+           "ANTS-3694: a JSON tool's HIGH → error (case-insensitive)");
+    expect(sarifLevelFor(QStringLiteral("warning")) == QStringLiteral("warning"),
+           "ANTS-3694: warning → warning");
+    expect(sarifLevelFor(QStringLiteral("style")) == QStringLiteral("note"),
+           "ANTS-3694: style → note");
+    expect(sarifLevelFor(QStringLiteral("portability")) == QStringLiteral("note"),
+           "ANTS-3694: portability → note");
+    expect(sarifLevelFor(QStringLiteral("UNKNOWN")) == QStringLiteral("warning"),
+           "ANTS-3694: an unknown severity falls back to SARIF's own default");
+    expect(sarifLevelFor(QString()) == QStringLiteral("warning"),
+           "ANTS-3694: an absent severity falls back to SARIF's own default");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3694 — end to end: a written SARIF carries `level` on 100% of results,
+// and a cppcheck-shaped error lands at level "error" so severity_floor can
+// actually find it.
+TEST(mcp_audit_run, Ants3694WrittenSarifCarriesLevelOnEveryResult) {
+    expect_reset();
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    QHash<QString, AuditRunner::ToolResult> byTool;
+    QHash<QString, QJsonArray>              findingsByTool;
+    AuditRunner::ToolResult tr;
+    tr.tool   = QStringLiteral("cppcheck");
+    tr.status = QStringLiteral("ok");
+    byTool.insert(tr.tool, tr);
+
+    QJsonArray fs;
+    const QList<QPair<QString, QString>> rows = {
+        {QStringLiteral("error"),   QStringLiteral("error")},
+        {QStringLiteral("style"),   QStringLiteral("note")},
+        {QStringLiteral("UNKNOWN"), QStringLiteral("warning")},
+    };
+    for (const auto &row : rows) {
+        QJsonObject f;
+        f[QStringLiteral("file")]     = QStringLiteral("src/a.cpp");
+        f[QStringLiteral("line")]     = 41;
+        f[QStringLiteral("rule")]     = QStringLiteral("cppcheck");
+        f[QStringLiteral("severity")] = row.first;
+        f[QStringLiteral("message")]  = row.first + QStringLiteral(": text");
+        fs.append(f);
+    }
+    findingsByTool.insert(tr.tool, fs);
+
+    bool docTruncated = false;
+    const QString out = dir.path() + QStringLiteral("/o.sarif");
+    ASSERT_TRUE(AuditRunner::internal::writeSarifForTest(
+        out, byTool, findingsByTool, &docTruncated));
+
+    QFile f(out);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QJsonObject doc = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+
+    int seen = 0, withLevel = 0, errors = 0;
+    const QJsonArray runs = doc.value(QStringLiteral("runs")).toArray();
+    for (const QJsonValue &rv : runs) {
+        const QJsonArray results =
+            rv.toObject().value(QStringLiteral("results")).toArray();
+        for (const QJsonValue &resv : results) {
+            const QJsonObject res = resv.toObject();
+            ++seen;
+            const QString lvl = res.value(QStringLiteral("level")).toString();
+            if (!lvl.isEmpty()) ++withLevel;
+            if (lvl == QLatin1String("error")) ++errors;
+        }
+    }
+    expect(seen == 3, "ANTS-3694: all three findings reached the SARIF",
+           QString::number(seen));
+    expect(withLevel == seen,
+           "ANTS-3694: every result carries a level", QString::number(withLevel));
+    expect(errors == 1,
+           "ANTS-3694: the cppcheck error is findable at severity_floor:error",
+           QString::number(errors));
     EXPECT_EQ(0, expect_failures());
 }

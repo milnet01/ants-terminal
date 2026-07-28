@@ -25,6 +25,7 @@ never forms the filename. A snapshot (correct as of 2026-07-24):
 | `perch` | `perch_Ants_MCP_Feedback.md` | Perch |
 | `Rolodex` | `Rolodex_Ants_MCP_Feedback.md` | Rolodex |
 | `DOOM_Ants` | `DOOM_Ants_MCP_Feedback.md` ⚠ leaf-mismatch | DOOM |
+| `.claude` (outside the shared root) | `claude_config_Ants_MCP_Feedback.md` ⚠ leaf-mismatch — dot-leading leaf, see ANTS-3714 | claude-config |
 
 `DOOM_Ants/` is the sole exception: its file uses the brand token `DOOM`,
 not the dir leaf `DOOM_Ants`, so a session there must pass an explicit
@@ -181,6 +182,19 @@ still never rewrites a contributor's *description*.
   is in fact DOOM's file — which is exactly why the explicit `path` is
   mandatory, not merely advised, for a leaf-mismatch project. New files use
   the dir-leaf basename and avoid the whole problem.
+- **A dot-leading leaf cannot use the dir-leaf rule (ANTS-3714).** Where the
+  project directory begins with a dot — `~/.claude`, leaf `.claude` — the
+  derived basename would be `.claude_Ants_MCP_Feedback.md`, which the
+  `*_Ants_MCP_Feedback.md` glob does **not** match: shell globs exclude
+  leading-dot files by default. The file would exist, conform to this
+  standard in every other respect, and be invisible to the mechanism this
+  document calls authoritative. So: **strip the leading dot or substitute a
+  descriptive token, and pass an explicit `path`** — the same carve-out
+  `DOOM_Ants` already carries. `claude_config_Ants_MCP_Feedback.md` is the
+  live instance. Note also that such a project is usually not under the
+  shared root at all, so the parent-of-`caller_cwd` derivation below points
+  somewhere else entirely (`/home/ants/`); the explicit `path` covers both
+  problems at once.
 - **Default-path derivation (ANTS-3376).** `feedback_query` and
   `feedback_log` accept `path` being **omitted**: they derive
   `<caller_cwd-leaf>_Ants_MCP_Feedback.md` at the shared root (which, for a

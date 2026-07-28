@@ -152,6 +152,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Feedback-file standard covers a project whose directory begins with a dot** (ANTS-3714)
+  The derived filename would start with a dot and never match the glob the
+  standard calls authoritative, so that project's input would be invisible.
+
+- **`audit_run` SARIF now carries `level` on every result** (ANTS-3694)
+  Asking `severity_floor:"error"` always returned nothing, because the
+  headless writer emitted no level and the line-based parser recorded every
+  cppcheck finding as UNKNOWN — the real severity survived only as the
+  message's text prefix. Both are fixed, so real errors are findable again.
+
 - **Debt sweep counts a test that names its invariant in the function name** (ANTS-3693)
   `test_INV8a_...` cannot carry the hyphen, so the commonest citation shape
   read as uncovered. The same fix closes a false negative in the other

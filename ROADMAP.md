@@ -20684,12 +20684,13 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: finbreak-feedback-2026-07-28.
 
-- 📋 [ANTS-3694] **`audit_run` SARIF omits `level` on every result, so `severity_floor:"error"` always returns nothing.**
+- ✅ [ANTS-3694] **`audit_run` SARIF omits `level` on every result, so `severity_floor:"error"` always returns nothing.**
   All 2291 results in a DOOM Ants SARIF omit the `level` property. SARIF defaults a
   missing level to "warning", so `last_audit_summary` reports
   `counts {error:0, warning:2291, note:0}` and `severity_floor:"error"` returns
   `top_findings:[]`. cppcheck's real severity survives only as a text prefix inside
   `message.text` ("error: …", "style: …"), which no consumer parses.
+  Resolved 2026-07-28: two defects, not one. `sarifResultFromFinding` never set `level` — but even with the mapping added there was nothing to map FROM, because the line-based parser hardcoded severity="UNKNOWN" for every cppcheck/clazy/clang-tidy finding. Fixing only the mapping would have written level:"warning" on all 2291 results: identical symptom, and it would have looked fixed. Both halves shipped — `severityFromMessagePrefix` recovers the tool's own severity from the message prefix, `sarifLevelFor` maps it (error/high/critical→error, warning/medium→warning, style/note/info/low/portability/performance/convention/refactor→note, anything else→warning, which is SARIF's own default for an absent level so the mapping never invents a severity the tool did not express). Note the GUI's AuditDialog::exportSarif has always emitted `level` correctly — the two SARIF writers are separate and only the headless audit_run path was wrong, which is why this survived. Three tests; the end-to-end one verified RED (level present on 0 of 3 results).
 
   The documented way to ask "are there any errors?" therefore always answers no,
   while the same SARIF contains `error: Array 'alphSwitchList[41]' accessed at index
@@ -21277,10 +21278,11 @@ requesting no action and are closed in place rather than filed.
   Kind: enhancement.
   Source: DOOM-Ants-feedback-2026-07-28.
 
-- 📋 [ANTS-3714] **Feedback-file format spec: a project whose directory leaf starts with a dot cannot match the authoritative glob.**
+- ✅ [ANTS-3714] **Feedback-file format spec: a project whose directory leaf starts with a dot cannot match the authoritative glob.**
   Recovered by hand from `claude_config_Ants_MCP_Feedback.md:47`, where ANTS-3695's
   column-0 `#` bug had made it invisible to the delta — so this bullet is also the
   proof that ANTS-3695 costs real findings.
+  Resolved 2026-07-28: added the dot-leading-leaf carve-out to the canonical-basename rule in mcp-feedback-files.md — strip the dot or substitute a descriptive token and pass an explicit `path`, the same carve-out DOOM_Ants carries — plus a `claude_config` row in the snapshot table with the leaf-mismatch marker. The note also records the second half the finding raised: such a project is usually not under the shared root at all, so the parent-of-caller_cwd derivation points elsewhere entirely; the explicit `path` covers both. Doc-only: no verb behaviour changed, since the recommended filename already works today.
 
   `mcp-feedback-files.md` says the corpus is whatever matches the
   `*_Ants_MCP_Feedback.md` glob at the shared root, and that the glob — not any list

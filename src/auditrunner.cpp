@@ -1025,7 +1025,15 @@ ParsedOutput parseToolOutput(const QString &tool,
         s["line"]    = m.captured(2).toInt();
         s["message"] = internal::capMessage(msg);
         s["rule"]    = tool;
-        s["severity"]= QStringLiteral("UNKNOWN");
+        // ANTS-3694 — the line-based tools put their severity in the message
+        // prefix ("error: …", "style: …"), which no consumer parsed; this
+        // recorded UNKNOWN for all of them and the real severity was lost
+        // before it could reach SARIF. It is recoverable without re-running
+        // the tool, so recover it.
+        {
+            const QString sev = internal::severityFromMessagePrefix(msg);
+            s["severity"] = sev.isEmpty() ? QStringLiteral("UNKNOWN") : sev;
+        }
         // ANTS-1870 — full set with fp; line-based tools key the fingerprint
         // on the tool name (matching the GUI's Finding::checkId), § 2.2.
         if (out.findings.size() < kSarifFindingsMax) {
@@ -1048,6 +1056,15 @@ ParsedOutput parseToolOutput(const QString &tool,
 QJsonObject sarifResultFromFinding(const QJsonObject &s, bool carried) {
     QJsonObject result;
     result["ruleId"] = s.value(QStringLiteral("rule")).toString();
+    // ANTS-3694 — every result carries a `level`. Without it SARIF defaults
+    // each one to "warning", so `last_audit_summary` counted every finding as
+    // a warning and `severity_floor:"error"` returned nothing — the documented
+    // way to ask "are there any errors?" always answered no, over a document
+    // that contained real out-of-bounds and signed-overflow errors. The
+    // documented `level`-descending sort was likewise a sort over a field that
+    // was never present.
+    result["level"] = internal::sarifLevelFor(
+        s.value(QStringLiteral("severity")).toString());
     QJsonObject msg;
     msg["text"] = s.value(QStringLiteral("message")).toString();
     result["message"] = msg;
@@ -1567,6 +1584,37 @@ QJsonArray incompleteToolsDetail(const QHash<QString, ToolResult> &byTool) {
         out.append(o);
     }
     return out;
+}
+
+// ANTS-3694 — see auditrunner.h for why these two exist.
+QString severityFromMessagePrefix(const QString &message) {
+    static const QRegularExpression rxSev(
+        QStringLiteral("^(error|warning|style|performance|portability|"
+                       "information|note|refactor|convention)\\s*:"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch m = rxSev.match(message);
+    return m.hasMatch() ? m.captured(1).toLower() : QString();
+}
+
+QString sarifLevelFor(const QString &severity) {
+    const QString s = severity.trimmed().toLower();
+    if (s == QLatin1String("error") || s == QLatin1String("high")
+        || s == QLatin1String("critical"))
+        return QStringLiteral("error");
+    if (s == QLatin1String("warning") || s == QLatin1String("medium")
+        || s == QLatin1String("moderate"))
+        return QStringLiteral("warning");
+    if (s == QLatin1String("note") || s == QLatin1String("info")
+        || s == QLatin1String("information") || s == QLatin1String("low")
+        || s == QLatin1String("style") || s == QLatin1String("convention")
+        || s == QLatin1String("performance")
+        || s == QLatin1String("portability")
+        || s == QLatin1String("refactor"))
+        return QStringLiteral("note");
+    // Includes "UNKNOWN" and anything a new tool invents. SARIF's own default
+    // for an absent level is "warning", so this is the one value that changes
+    // no consumer's reading of a finding we cannot classify.
+    return QStringLiteral("warning");
 }
 
 // ANTS-3585 — deduped, ascending union of every tool's parseFailureFiles.
