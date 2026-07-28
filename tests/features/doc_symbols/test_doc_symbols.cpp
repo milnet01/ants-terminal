@@ -35,12 +35,18 @@ bool writeFile(const QString &path, const QString &content) {
     return true;
 }
 
-// A tree where `bar` and `parseSpecBody` resolve and nothing else does.
-// SymbolQuery's C++ ladder wants a return-type-led form with a trailing `(`.
+// A tree where `bar`, `parseSpecBody` and `render_frame` resolve and nothing
+// else does. SymbolQuery's C++ ladder wants a return-type-led form with a
+// trailing `(`.
+//
+// `render_frame` is bare lowercase on purpose (ANTS-3692): shell, Python and
+// Lua name their functions that way, so the ambiguous-shape class must contain
+// a member that genuinely resolves or INV-9 could pass by dropping all of them.
 bool seedTree(const QString &root) {
     return writeFile(root + "/src/real.cpp",
                      "void bar(int x) {\n    (void)x;\n}\n"
-                     "QString parseSpecBody(const QString &s) {\n    return s;\n}\n");
+                     "QString parseSpecBody(const QString &s) {\n    return s;\n}\n"
+                     "void render_frame(int n) {\n    (void)n;\n}\n");
 }
 
 // The calibration harness's stand-in for the live registry: the verb names are
@@ -216,6 +222,78 @@ TEST(DocSymbols, Inv7ElidedNeedleIsNotChecked) {
     EXPECT_EQ(r2.notChecked, 0);
     EXPECT_FALSE(r2.truncated);
     EXPECT_EQ(r2.findings.size(), 2);
+}
+
+// INV-9 (ANTS-3692) — an ambiguous-shape span (bare lowercase: no `::`, no
+// `()`, no case boundary) is emitted ONLY when it resolves. Unresolved, it is
+// dropped from symbols[] entirely rather than reported.
+//
+// Measured on this corpus: of 100 sampled bare-lowercase spans, 7 resolved and
+// 60 did not, and every one of the 60 was a JSON response key, a config key or
+// a refusal code — `counts`, `truncated`, `dry_run`. A lookup cannot tell those
+// from rot, so the engine says nothing rather than guessing, which is the same
+// report-never-judge constraint as § 2.3 applied one level earlier.
+//
+// The shape is NOT the discriminator — resolution is. Requiring a `::`/`()`/
+// mixed-case shape was the first proposal and it was wrong: it would blind the
+// verb to every shell, Python and Lua symbol, whose naming convention IS bare
+// lowercase. `render_frame` below is the guard against that regression.
+TEST(DocSymbols, Inv9AmbiguousShapeReportedOnlyWhenResolved) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(seedTree(root));
+
+    DocSymbols::Options opts;
+    opts.rootCanonical = root;
+    const DocSymbols::ScanResult r = DocSymbols::scan(
+        QStringLiteral("`render_frame` resolves, `check_stats` does not, "
+                       "and `AlsoMissing` does not either.\n"),
+        QStringLiteral("docs/x.md"), opts);
+
+    QStringList got;
+    for (const DocSymbols::Symbol &s : r.symbols) got << s.symbol;
+    // `check_stats` is gone; `AlsoMissing` survives on shape, proving the drop
+    // is scoped to ambiguous spans and is not a blanket unresolved suppression.
+    EXPECT_EQ(got, (QStringList{QStringLiteral("render_frame"), QStringLiteral("AlsoMissing")}))
+        << "harvested: " << got.join(QStringLiteral(", ")).toStdString();
+    EXPECT_EQ(r.resolved, 1);
+    EXPECT_EQ(r.unresolved, 1);
+    EXPECT_EQ(r.total, 2);
+    ASSERT_EQ(r.findings.size(), 1);
+    EXPECT_TRUE(r.findings.at(0).message.contains(QStringLiteral("AlsoMissing")))
+        << r.findings.at(0).message.toStdString();
+}
+
+// INV-10 (ANTS-3692) — two properties that only a capped run can show.
+//
+// (a) The budget goes to unambiguous needles FIRST. Without this, a doc whose
+//     prose keys outnumber its real symbols 17:1 (measured on docs/*.md) spends
+//     the whole allowance on names that will be dropped unreported, and the
+//     symbols the check exists for come back not_checked.
+// (b) `truncated` still fires for a needle nobody looked up even though that
+//     needle never reaches symbols[]. Deriving it from notChecked > 0 — the
+//     pre-ANTS-3692 form — would silently report a complete run here.
+TEST(DocSymbols, Inv10AmbiguousNeedlesResolveLastAndTruncatedSurvivesTheDrop) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(seedTree(root));
+
+    DocSymbols::Options capped;
+    capped.rootCanonical    = root;
+    capped.maxSymbolsPerRun = 1;
+    // Ambiguous span FIRST in document order, so first-appearance ordering
+    // alone would hand it the single unit of budget.
+    const DocSymbols::ScanResult r = DocSymbols::scan(
+        QStringLiteral("`check_stats` and `AlsoMissing`\n"),
+        QStringLiteral("docs/x.md"), capped);
+
+    ASSERT_EQ(r.symbols.size(), 1);
+    EXPECT_EQ(r.symbols.at(0).symbol, QStringLiteral("AlsoMissing"));
+    EXPECT_EQ(r.symbols.at(0).resolution, DocSymbols::Resolution::Unresolved);
+    EXPECT_EQ(r.notChecked, 0);   // the elided needle is not in symbols[] …
+    EXPECT_TRUE(r.truncated);     // … but the run still admits it was elided.
 }
 
 // ANTS-3661 § 2.1 / § 4 — CALIBRATION HARNESS, not a conformance row. It sweeps

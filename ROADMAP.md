@@ -10232,7 +10232,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc.
   Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 6, lane C)..
 
-- 📋 [ANTS-3692] **`doc_symbols` harvests bare lowercase words — the 291-occurrence residue ANTS-3688 did not cover.**
+- ✅ [ANTS-3692] **`doc_symbols` harvests bare lowercase words — the 291-occurrence residue ANTS-3688 did not cover.**
   ANTS-3688 fixed the verb-name half and is confirmed live by probe
   (2026-07-28, post-relaunch): six registered verb names vanish from the
   harvest, a control needle still resolves `unresolved`. But the verb names
@@ -10242,6 +10242,36 @@ fixes don't address. Roadmapped here as their own design tasks.
   `message`, `fixed`, `dry_run`, `check_stats`, `files_written`. So the
   false-positive rate moved ~98% → ~94% and the verb is still not usable as
   the `/cold-eyes` § 1e unresolved-symbol pre-pass it was built to be.
+  Resolved (2026-07-28). NOT by the discriminator this bullet proposed —
+  measurement refused it. Sampling 100 bare-lowercase spans from `docs/*.md`
+  returned 7 that resolved, and `cmd_promote`, `require_clean_main` and
+  `redispatch` were real; two are shell functions. Bare lowercase IS the
+  naming convention in shell, Python and Lua, so requiring `unambiguousShape`
+  would have blinded the verb to those languages wholesale — roughly 160
+  resolving names corpus-wide.
+
+  Shipped instead: an ambiguous span (bare lowercase, no `::`, no `()`, no
+  case boundary) is harvested and looked up as before, but reaches `symbols[]`
+  only if it RESOLVES. Resolution is the discriminator, not shape. Ambiguous
+  needles are also resolved LAST, since spending the budget in document order
+  lets prose keys exhaust it before real symbols are reached; and `truncated`
+  is now counted over needles rather than over emitted occurrences, because an
+  elided ambiguous needle no longer appears in `symbols[]` at all.
+
+  Measured on the same corpus-calibration harness, before → after:
+  occurrences 23,153 → 12,723 (−45%); unresolved 442 → 360 (−19%); resolved
+  574 → **589**, i.e. up, which is the ordering rule working — the same budget
+  buys more real lookups.
+
+  Tests: `DocSymbols.Inv9AmbiguousShapeReportedOnlyWhenResolved` and
+  `DocSymbols.Inv10AmbiguousNeedlesResolveLastAndTruncatedSurvivesTheDrop`,
+  both verified RED against the shipped engine first (INV-9 on `r.total` 3
+  vs 2; INV-10 on `r.symbols.size()` 2 vs 1). Suite 3018/3018 green.
+
+  ANTS-3661 amended (§ 2.1 rule + figures, § 2.2 truncated + ordering, INV-3
+  narrowed, INV-8 test clause, INV-9/INV-10 added); ANTS-3663's `truncated`
+  table row corrected; the verb's own schema description rewritten. An
+  independent cold read of the spec amendment has not been run.
 
   Reproduced after the fix on a six-line probe file: every verb name was
   excluded, and the bare word `unresolved` was harvested three times.

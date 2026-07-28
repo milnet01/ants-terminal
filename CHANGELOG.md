@@ -90,6 +90,17 @@ for security-relevant changes.
 
 ### Changed
 
+- **`doc_symbols` no longer reports bare lowercase words it cannot resolve** (ANTS-3692)
+  A backticked word like `counts`, `dry_run` or `truncated` is almost always
+  a JSON field name rather than a symbol anyone declared, and the checker
+  cannot tell those from a genuine stale reference. It now stays quiet about
+  them unless the lookup actually finds the thing, so the list you get back
+  is the one worth reading. Names that do resolve are still reported, which
+  keeps shell and Python functions — they are lowercase by convention.
+  Measured over the project's own docs: 45% fewer entries, and slightly more
+  real symbols found, because the lookup budget is now spent on the promising
+  names first.
+
 - **Source-scrape tests can strip comments before scanning** (ANTS-3662)
   A test asserting that code does *not* do something fired on a comment that merely named the thing — the same false-positive class as the fixed-byte scrape windows ANTS-3681 replaced. `tests/_support/srcgrep.h` gains `stripComments`, which removes comments while leaving string and character literals intact.
 

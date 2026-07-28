@@ -19,7 +19,9 @@ survivor to a needle, and resolves distinct needles through
 - **INV-1 candidate harvest** — a span is a candidate only with all six
   exclusions applied: paths (excluded by the production itself), `doc-examples`
   regions, the short-lowercase floor (`minIdentChars`, waived for a `::`-,
-  `()`- or mixed-case span), language keywords, and the two injected halves
+  `()`- or mixed-case span; a longer bare lowercase word clears it here and is
+  filtered later at emission instead — INV-9), language keywords, and the two
+  injected halves
   (verb names, schema arguments/refusal codes) supplied via
   `Options::excludedNames`. Fixture: `parseSpecBody`, `Foo::bar()`,
   `src/a.cpp`, `ok`, `return`, `spec_query`, `caller_cwd`, a fenced `Widget`
@@ -27,9 +29,24 @@ survivor to a needle, and resolves distinct needles through
 - **INV-2 needle after last scope** — `Foo::bar` resolves on `bar`; `symbol`
   echoes the span verbatim. Reporting the needle would make the finding
   un-greppable against the doc.
-- **INV-3 every candidate reported** — resolved or not, each occurrence is a
-  `symbols[]` row; only unresolved ones produce a `DocFinding`, and never with
-  `autoFixable`.
+- **INV-3 every unambiguous candidate reported** — resolved or not, each
+  occurrence is a `symbols[]` row; only unresolved ones produce a `DocFinding`,
+  and never with `autoFixable`. Both fixture rows are mixed-case so this row and
+  INV-9 stay independently falsifiable.
+- **INV-9 ambiguous spans reported only when resolved (ANTS-3692)** — a bare
+  lowercase span (no `::`, no `()`, no case boundary) reaches `symbols[]` only
+  if it resolves; otherwise it is dropped from `symbols[]` and `findings[]`.
+  Fixture: `render_frame` (resolves, and is bare lowercase *on purpose* —
+  shell/Python/Lua name functions that way), `check_stats` (does not resolve),
+  `AlsoMissing` (does not resolve, mixed case) → `symbols[]` is the first and
+  third, one finding, naming `AlsoMissing`. The third row is what stops the
+  rule being satisfied by suppressing every unresolved candidate.
+- **INV-10 ambiguous needles resolve last; `truncated` survives the drop
+  (ANTS-3692)** — with `maxSymbolsPerRun` at 1 and the ambiguous span *first*
+  in document order, the budget must still go to the unambiguous needle, and
+  `truncated` must be true even though `counts.not_checked` is 0. Deriving
+  `truncated` from `notChecked > 0` (the pre-ANTS-3692 form) reports a complete
+  run here.
 - **INV-5 document order** — `symbols[]` ascends by `docLine` then `docCol`,
   stable across runs.
 - **INV-7 elided needle is `not_checked`** — a needle the run never looked up
@@ -64,6 +81,14 @@ run, including the one that did not.
 | M4 drop the keyword list | INV-1 | RED |
 | M5 empty `excludedNames` (verb names + schema args together) | INV-1 | RED — two rows at once |
 | M8 always report `not_checked` | INV-7 | RED |
+| M10 the shipped pre-ANTS-3692 engine (emits every candidate) | INV-9 | RED |
+| M11 the shipped pre-ANTS-3692 engine (document-order budget) | INV-10 | RED |
+
+**M10 and M11 were not hypothetical — they were the shipped state**, run before
+the engine changed. INV-9 failed on `r.total` 3 against 2 and
+`r.findings.size()` 2 against 1 (`check_stats` emitted with a finding); INV-10
+failed on `r.symbols.size()` 2 against 1 (the ambiguous span took the single
+unit of budget and `AlsoMissing` came back `not_checked`). Both green after.
 
 **M1 surviving is a property, not a hole.** The path exclusion is enforced
 twice and independently: the production rejects `src/a.cpp`, and even if it did

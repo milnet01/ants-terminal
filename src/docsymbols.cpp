@@ -78,6 +78,7 @@ struct Candidate {
     QString needle;  // what the resolver is asked for
     int     line;    // 1-based
     int     col;     // 0-based
+    bool    ambiguous;  // bare lowercase word — see the emission rule (ANTS-3692)
 };
 
 }  // namespace
@@ -137,21 +138,35 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
         if (scope >= 0) needle = needle.mid(scope + 2);
         if (!SymbolQuery::isValidSymbol(needle)) continue;  // >128 chars, etc.
 
-        cands.push_back({span, needle, s.startLine + 1, s.startCol});
+        cands.push_back({span, needle, s.startLine + 1, s.startCol, !unambiguousShape});
     }
 
     std::stable_sort(cands.begin(), cands.end(), [](const Candidate &a, const Candidate &b) {
         return a.line != b.line ? a.line < b.line : a.col < b.col;
     });
 
-    // Distinct needles in first-appearance order — the set that costs a walk.
+    // Distinct needles in first-appearance order — the set that costs a walk —
+    // but UNAMBIGUOUS ones first (ANTS-3692). Bare lowercase spans outnumber
+    // `()`/`::`/mixed-case ones about 17:1 across docs/*.md, and most are
+    // dropped unreported by the emission rule below, so in document order the
+    // budget is spent on names nobody will be told about while the symbols the
+    // check exists for come back not_checked. A needle reachable by both shapes
+    // is claimed by the first pass, which is the stronger of its two claims.
     QStringList order;
     QSet<QString> seen;
-    for (const Candidate &c : cands)
-        if (!seen.contains(c.needle)) { seen.insert(c.needle); order << c.needle; }
+    for (const bool ambiguousPass : {false, true})
+        for (const Candidate &c : cands)
+            if (c.ambiguous == ambiguousPass && !seen.contains(c.needle)) {
+                seen.insert(c.needle);
+                order << c.needle;
+            }
 
     QHash<QString, Resolution> state;
     QHash<QString, QVector<SymbolQuery::DefMatch>> defs;
+    // Tracked over NEEDLES, not over emitted occurrences: an elided ambiguous
+    // needle never reaches symbols[] (ANTS-3692), so deriving `truncated` from
+    // notChecked > 0 would report a complete run over an incomplete one.
+    bool anyNeedleElided = false;
     QElapsedTimer clock;
     clock.start();
     for (const QString &needle : std::as_const(order)) {
@@ -159,7 +174,11 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
             res.needlesResolved >= opts.maxSymbolsPerRun
             || opts.rootCanonical.isEmpty()
             || (opts.resolveDeadlineMs > 0 && clock.elapsed() >= opts.resolveDeadlineMs);
-        if (outOfBudget) { state[needle] = Resolution::NotChecked; continue; }
+        if (outOfBudget) {
+            state[needle] = Resolution::NotChecked;
+            anyNeedleElided = true;
+            continue;
+        }
 
         SymbolQuery::Options so;
         so.maxResults = 50;
@@ -175,11 +194,26 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
     }
 
     for (const Candidate &c : std::as_const(cands)) {
+        const Resolution r = state.value(c.needle, Resolution::NotChecked);
+
+        // ANTS-3692 — an ambiguous span earns its place in the response only by
+        // resolving. Sampled across docs/*.md, 60 of 100 bare lowercase spans
+        // failed to resolve and every one was a JSON response key, a config key
+        // or a refusal code (`counts`, `dry_run`, `truncated`); 7 resolved and
+        // were real (`cmd_promote`, `redispatch`). Nothing here can tell an
+        // unresolved key from genuine rot, so the engine stays silent instead of
+        // guessing — § 2.3's report-never-judge rule, one level earlier.
+        //
+        // Resolution is the discriminator, deliberately NOT shape: requiring a
+        // `::`/`()`/mixed-case span would drop shell, Python and Lua symbols
+        // wholesale, since bare lowercase is those languages' naming convention.
+        if (c.ambiguous && r != Resolution::Resolved) continue;
+
         Symbol sym;
         sym.symbol     = c.span;
         sym.docLine    = c.line;
         sym.docCol     = c.col;
-        sym.resolution = state.value(c.needle, Resolution::NotChecked);
+        sym.resolution = r;
         if (sym.resolution == Resolution::Resolved) sym.definitions = defs.value(c.needle);
         res.symbols.push_back(sym);
 
@@ -207,7 +241,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
     }
 
     res.total     = res.symbols.size();
-    res.truncated = res.notChecked > 0;
+    res.truncated = anyNeedleElided;
     return res;
 }
 
