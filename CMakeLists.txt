@@ -304,6 +304,10 @@ add_library(ants_core_lib STATIC
     # contract (missing sections, untested invariants, id gaps, loop-log rows,
     # command test clauses with no expectation); Qt6::Core-only.
     src/speclint.cpp
+    # ANTS-3660 — doc_dedup engine: near-duplicate passage detection across a
+    # doc set (paragraph segmentation, word shingles, Jaccard, clustering);
+    # report-only, Qt6::Core-only.
+    src/docdedup.cpp
     # ANTS-3653 — doc_citations scan layer: the path:line grammar as a pure
     # function (document text in, tokens out); Qt6::Core-only.
     src/doccitations.cpp
@@ -1303,6 +1307,11 @@ if(ANTS_TESTS)
                 # and its verb layer (candidate contract + refusal minimums).
                 tests/features/spec_lint/test_spec_lint.cpp
                 tests/features/spec_lint_verb/test_spec_lint_verb.cpp
+                # ANTS-3660 — doc_dedup engine (segmentation, threshold,
+                # exclusions, clustering) and its verb layer (report-only
+                # contract + refusal minimums).
+                tests/features/doc_dedup/test_doc_dedup.cpp
+                tests/features/doc_dedup_verb/test_doc_dedup_verb.cpp
                 # ANTS-2160 — per-project .ants/project.json settings file.
                 tests/features/project_settings/test_project_settings.cpp
                 # ANTS-2161 — layout auto-detect + project_settings verb.
@@ -1697,6 +1706,12 @@ if(ANTS_TESTS)
         # The calibration harness walks the spec corpus from the same root.
         DOCS_STANDARDS_SPECS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/specs.md"
         DOCS_SPECS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs/specs"
+        # ANTS-3660 INV-5 — "the engine writes nothing" is a claim about code
+        # that did NOT run, so only a source scrape can hold it.
+        SRC_DOCDEDUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docdedup.cpp"
+        # ANTS-3660 § 2.3 — the corpus-calibration harness walks the whole docs
+        # tree, not just specs: a duplicated fact is not confined to specs.
+        DOCS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs"
         # ANTS-3582 — stable extern-decl build-info header (churn regression guard).
         SRC_BUILD_INFO_H_PATH="${CMAKE_SOURCE_DIR}/src/build_info.h"
         # ANTS-3345 — debt_sweep_scan offload-eligibility source-grep lock.
@@ -2186,6 +2201,13 @@ if(ANTS_TESTS)
         SRC_SECUREIO_H_PATH="${CMAKE_SOURCE_DIR}/src/secureio.h"
         # ANTS-3664 INV-4 — Core-only include allow-list scrape.
         SRC_DOCFINDING_H_PATH="${CMAKE_SOURCE_DIR}/src/docfinding.h"
+        # ANTS-3664 INV-5 — the family's "text in, never opens the document"
+        # calling convention. Unblocked once all three engines existed
+        # (ANTS-3660 landed the last); before that the scrape ran over absent
+        # files and reported green, which is worse than not running.
+        SRC_DOCDEDUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docdedup.cpp"
+        SRC_DOCSYMBOLS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsymbols.cpp"
+        SRC_SPECLINT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclint.cpp"
         SRC_CONFIGBACKUP_H_PATH="${CMAKE_SOURCE_DIR}/src/configbackup.h"
         # ANTS-1821/1823/1824/1836 — local-persistence write-safety wiring greps.
         SRC_SESSIONMEMORYENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmemoryengine.cpp"

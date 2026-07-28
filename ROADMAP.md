@@ -9074,12 +9074,29 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-07-27 (first real-doc run of doc_citations).
 
-- 📋 [ANTS-3660] **`doc_dedup` — deterministic near-duplicate passage detection across a doc set.**
+- ✅ [ANTS-3660] **`doc_dedup` — deterministic near-duplicate passage detection across a doc set.**
   The one /cold-eyes § 1e dimension with no mechanical check at all, and the
   expensive one: the skill's own Phase 4 says a run that will not converge
   usually has a duplication problem, and that reconciling two copies is the
   wrong fix because they diverge again. So each loop rediscovers them one at
   a time at cold-reader prices.
+  Resolved (2026-07-28): `src/docdedup.{h,cpp}` in ants_core_lib +
+  `cmdDocDedup`/`docDedupBuildResponse` reusing `docIntegrityEnumerate`,
+  five ClaudeIntegration hooks, `tests/features/doc_dedup{,_verb}/`.
+  All 9 invariants covered; 10/10 mutations turned red, none survived, and
+  two fixtures were sharpened first (a header block under minWords, and
+  alphabetically-added docs) that would otherwise have let one through.
+  Calibration over `docs/`: 268 docs, 12,995 passages, 275 pairs in 128
+  clusters, both § 1.1 probe pairs found at 0.583/0.450. Measured en route
+  and folded back into the spec: the `maxPostings` prune NEVER fires on
+  this corpus (longest posting list 176 of a 400 cap), so § 4's claim that
+  it prevents an O(p^2) blow-up here was false and now reads as insurance;
+  and the shipped engine's figures differ from ANTS-3666's throwaway probe
+  because the probe's fence regex was not CommonMark and it had no
+  pointer-line rule (§ 1.2). Full suite 3015/3015. Also unblocked
+  ANTS-3664's INV-5, which had been skipping until all three engines
+  existed — it now runs and asserts the stronger form (none of the three
+  opens a file, not even docsymbols as the skip note predicted).
 
   Shape: normalise each paragraph (fold whitespace, strip markdown emphasis,
   lowercase), shingle it, and report pairs over a Jaccard threshold as
@@ -9692,6 +9709,19 @@ fixes don't address. Roadmapped here as their own design tasks.
   The CRITICALs and the highest-leverage HIGHs were verified and fixed in
   the loop-4 commit. This item carries the remainder, deferred under a
   weekly token-budget stop rather than because they were judged unimportant.
+  Progress (2026-07-28): the **ANTS-3660 share is done** and folded
+  (commit 409431ad + the implementation commit). All three named items
+  were worse than filed. INV-1/INV-7 needed a seam, not a wording fix.
+  § 7's two questions were both still unmeasured — the run they deferred
+  to had never been asked for either number — and are now answered with
+  figures. § 2.3's criterion got a number and a harness that checks it.
+  Beyond the filed three, the re-measure found four figures quoted off
+  the punctuation-KEPT rows of a table whose punctuation-stripped rows the
+  spec pins, and § 4 asserting a cost model the corpus refutes.
+  Remaining: the ANTS-3661 tri-state item (still the highest-value one),
+  ANTS-3662's loop-log balance check, the ANTS-3663/3669 `max_findings` x
+  `fix` and `dry_run` gaps, the cross-doc build-cost/verb-contract
+  duplication, and the `candidate`/`check` terminology split.
 
   Full per-lane finding text is preserved at
   `scratchpad/fix-ledger-loop4.md` (session ffb2092c). The named ones worth
@@ -9956,6 +9986,28 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** A spec that reuses another spec's invariant numbers looks like it lost some.
   Kind: enhancement.
   Source: in-session-2026-07-28 (ANTS-3662 calibration run).
+
+- 📋 [ANTS-3685] **`spec_log op:append_loop` writes a bullet into a TABLE-form cold-eyes loop log.**
+  The verb always appends `- **<label>** — <body>`. Most specs in this
+  project carry the loop log as a Markdown TABLE
+  (`| Loop | Date | Lanes | C | H | M | L | I | Outcome |`) — ANTS-3660,
+  ANTS-3661, ANTS-3662, ANTS-3663 and ANTS-3664 all do — so the appended
+  bullet lands after the last table row and silently breaks the table's
+  shape. Reproduced 2026-07-28 on ANTS-3660: the row had to be
+  hand-converted to `| impl | 2026-07-28 | ... |`.
+
+  Fix: detect the section's existing form the way `roadmap_log
+  op:bundle_row` already does for progress tables, and emit a matching
+  row — column count taken from the header — falling back to the bullet
+  only when no table is present. The severity-count columns map onto
+  fields the caller already has to supply in prose today.
+
+  Adjacent: `op:append_loop` has no way to state the C/H/M/L/I counts even
+  though every table in the corpus has those columns, so a conforming row
+  cannot be produced through the verb at all.
+  **Layman:** The tool that adds a review-round entry to a design doc writes it in the wrong shape when the doc uses a table, so it has to be fixed by hand every time.
+  Kind: fix.
+  Source: in-session-2026-07-28 (hit while recording ANTS-3660's implementation row).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

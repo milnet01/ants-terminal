@@ -12,6 +12,7 @@
 #include "doccitations.h"  // ANTS-3636 — DocCitations::Options in helper sig
 #include "docsymbols.h"    // ANTS-3661 — DocSymbols::Symbol in helper sig
                            // (pulls docfinding.h for DocFinding::Finding)
+#include "docdedup.h"      // ANTS-3660 — DocDedup::Result in helper sig
 #include "changelogquery.h"  // ANTS-3533 — changelog_query parse-cache member
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
@@ -544,6 +545,18 @@ public:
         const QList<DocFinding::Finding> &findings, bool sectionsChecked,
         const QJsonObject &lineCounts, bool truncated,
         const QStringList &checkedDocs);
+    // ANTS-3660 — doc_dedup: near-duplicate passages across a doc set
+    // (DocDedup::Accumulator). Reuses docIntegrityEnumerate for the walk like
+    // its two siblings. The ONE verb in this family whose engine is
+    // corpus-scoped: it accumulates every document then scores once, so there
+    // is no per-document result to build a response from.
+    QJsonDocument cmdDocDedup(const QJsonObject &req);
+    // Pure, for the same headless-test reason as the pairs above. `pairs[]` and
+    // `clusters[]` live only in this envelope — DocFinding::Finding has no
+    // second-location field, so a findings row cannot carry both ends of a
+    // pair, and ANTS-3663 hoists both arrays whole.
+    static QJsonObject docDedupBuildResponse(const DocDedup::Result &result,
+                                             const QStringList &checkedDocs);
     // ANTS-3661 § 2.4 — the registry-sourced half of DocSymbols'
     // `excludedNames`. Injected because ants_core_lib is Qt6::Core-only and the
     // library dependency runs core → claude: RemoteControl cannot see

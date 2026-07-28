@@ -4252,6 +4252,76 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(specLint);
 
+                // ANTS-3660 — doc_dedup: the same passage written twice, which
+                // /cold-eyes § 1e has no mechanical check for at all.
+                QJsonObject docDedup;
+                docDedup["name"] = "doc_dedup";
+                docDedup["description"] = QStringLiteral(
+                    "Find near-duplicate PASSAGES across a doc set — the same fact written "
+                    "twice, which /cold-eyes Phase 4 names as the usual cause of a review "
+                    "that will not converge. Segments each markdown file into paragraphs "
+                    "(a list item is one passage, marker line included), shingles them into "
+                    "word 3-grams and reports every pair at or above min_similarity as "
+                    "Jaccard. Fence-aware: two identical code samples are not a duplicated "
+                    "fact. pairs[] carries both ends ({a,b,similarity}); clusters[] groups "
+                    "them into connected components, which is the readable view — N docs "
+                    "sharing one stanza are N(N-1)/2 pairs but ONE thing to fix. "
+                    "REPORT-ONLY and never auto-fixable: which copy is canonical is a "
+                    "question about document architecture, and deleting the wrong one "
+                    "destroys the authoritative copy. Generated artifacts "
+                    "(AUTOMATED_AUDIT_REPORT*, superpowers/) and pointer-only paragraphs "
+                    "are excluded; short paragraphs below min_words are too. Finds shared "
+                    "WORDS, not shared meaning — a clean run is not proof of no "
+                    "duplication. caller_cwd required.");
+                docDedup["selection_hint"] = QStringLiteral(
+                    "Use before a documentation review: every duplicated fact is re-read by "
+                    "every lane on every loop and is a standing source of future findings, "
+                    "so finding them once up front is cheaper than rediscovering them one "
+                    "at a time.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    QJsonObject props;
+                    QJsonObject ddPath; ddPath["type"] = "string";
+                        ddPath["description"] = QStringLiteral(
+                            "Project-relative file or directory (a directory walks *.md "
+                            "recursively). Default: the project's docs dir, else docs/.");
+                    QJsonObject ddCwd; ddCwd["type"] = "string";
+                        ddCwd["description"] = QStringLiteral(
+                            "Your $PWD. Required — anchors the doc walk to your project.");
+                    QJsonObject ddSim; ddSim["type"] = "number";
+                        ddSim["description"] = QStringLiteral(
+                            "Jaccard threshold, at or above which a pair reports (default "
+                            "0.40, clamped to [0,1]). Measured on this corpus: 0.40 yields "
+                            "275 pairs in 128 clusters and catches both known real pairs; "
+                            "0.80 narrows to 112 pairs in 26 clusters. Raising it discards "
+                            "true positives to make the report look tidy.");
+                    QJsonObject ddWords; ddWords["type"] = "integer";
+                        ddWords["description"] = QStringLiteral(
+                            "Minimum words in a comparable paragraph (default 15, clamped "
+                            "to [1,1000]). Keep it low — the real finds are 19-31 words, "
+                            "so a value set to suppress noise deletes them.");
+                    QJsonObject ddShingle; ddShingle["type"] = "integer";
+                        ddShingle["description"] = QStringLiteral(
+                            "Words per shingle (default 3, clamped to [2,10]). Larger is "
+                            "stricter about word order, smaller pairs more freely.");
+                    QJsonObject ddEtag; ddEtag["type"] = "string";
+                        ddEtag["description"] = QStringLiteral(
+                            "Server-issued etag from a prior call; an unchanged corpus "
+                            "short-circuits to {ok:true, unchanged:true}.");
+                    props["path"] = ddPath;
+                    props["caller_cwd"] = ddCwd;
+                    props["min_similarity"] = ddSim;
+                    props["min_words"] = ddWords;
+                    props["shingle_size"] = ddShingle;
+                    props["etag_match"] = ddEtag;
+                    schema["properties"] = props;
+                    docDedup["inputSchema"] = schema;
+                }
+                tools.append(docDedup);
+
                 // ANTS-3636 — doc_citations: resolve every path:line citation
                 // in one doc and return the line it points at, so a reviewer
                 // stops opening 33 files by hand to verify them.
@@ -10111,6 +10181,10 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-3662 — spec_lint: findings are sparse on a
                         // conforming corpus; line_count adds one row per spec.
                         {QStringLiteral("spec_lint"),         {600,  5000}},
+                        // ANTS-3660 — doc_dedup: one entry per pair PLUS one
+                        // per cluster, and a corpus-wide walk is the upper end
+                        // (measured: 275 pairs / 128 clusters over docs/).
+                        {QStringLiteral("doc_dedup"),         {1200, 12000}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -10269,6 +10343,7 @@ void ClaudeIntegration::onMcpConnection() {
                         name == QLatin1String("doc_citations") ||
                         name == QLatin1String("doc_symbols") ||
                         name == QLatin1String("spec_lint") ||   // ANTS-3662
+                        name == QLatin1String("doc_dedup") ||   // ANTS-3660
                         // ANTS-2161 — project_settings: project-scoped
                         // layout-config detect + create/update.
                         name == QLatin1String("project_settings") ||
@@ -11676,6 +11751,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-3662 — spec_lint walks the focused project's specs_dir and reads its
     // format standard from the same root; Required.
     if (toolName == QStringLiteral("spec_lint"))           return C::Required;
+    // ANTS-3660 — doc_dedup walks the focused project's docs_dir; Required.
+    if (toolName == QStringLiteral("doc_dedup"))           return C::Required;
     // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json
     // anchored on the resolved root; Required.
     if (toolName == QStringLiteral("project_settings"))    return C::Required;
@@ -11865,6 +11942,7 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         || toolName == QStringLiteral("doc_citations")
         || toolName == QStringLiteral("doc_symbols")  // ANTS-3661
         || toolName == QStringLiteral("spec_lint")    // ANTS-3662
+        || toolName == QStringLiteral("doc_dedup")    // ANTS-3660
         || toolName == QStringLiteral("last_audit_summary")
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")

@@ -17,6 +17,7 @@
 #include "speclog.h"             // ANTS-1963
 #include "specparse.h"           // ANTS-3665 — hoisted spec-body parser
 #include "speclint.h"            // ANTS-3662 — spec_lint verb
+#include "docdedup.h"            // ANTS-3660 — doc_dedup verb
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
 #include "focusedtest.h"
@@ -12633,6 +12634,119 @@ QJsonObject RemoteControl::specLintBuildResponse(
     o[QStringLiteral("line_count")]       = lineCounts;
     o[QStringLiteral("checked_docs")]     = QJsonArray::fromStringList(checkedDocs);
     if (truncated) o[QStringLiteral("truncated")] = true;
+    return o;
+}
+
+// ANTS-3660 — doc_dedup: the same passage written twice, across a doc set.
+// caller_cwd Required. Walks `docs_dir` like doc_integrity (a duplicated fact
+// is not confined to specs), reusing docIntegrityEnumerate for the walk.
+//
+// Structurally unlike its two siblings: the engine is CORPUS-scoped, so this
+// accumulates every document and scores once at the end rather than building a
+// per-document result. See docdedup.h.
+QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] = QStringLiteral("doc_dedup: no focused project");
+        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (!rawPath.isEmpty()) {
+        const auto check = PathValidation::validatePath(
+            rawPath, rootCanonical, QStringLiteral("doc_dedup"),
+            QStringLiteral("path"));
+        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+    }
+    const QString docsDir =
+        ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
+    QStringList relDocs = docIntegrityEnumerate(rootCanonical, rawPath, docsDir);
+
+    const DocIntegrity::Options walk;  // shared caps: the doc walks cost the same
+    if (relDocs.size() > walk.maxDocsPerRun)
+        relDocs = relDocs.mid(0, walk.maxDocsPerRun);
+
+    DocDedup::Options opts;
+    opts.minSimilarity = qBound(0.0, req.value(QStringLiteral("min_similarity"))
+                                         .toDouble(0.40), 1.0);
+    opts.minWords      = qBound(1, req.value(QStringLiteral("min_words"))
+                                       .toInt(15), 1000);
+    opts.shingleSize   = qBound(2, req.value(QStringLiteral("shingle_size"))
+                                       .toInt(3), 10);
+    // Spec § 2.4: generated and templated artifacts. Measured, not chosen —
+    // they supply more than half of this corpus's exact-duplicate pairs, which
+    // is what those files ARE.
+    opts.excludedPathGlobs = QStringList{
+        QStringLiteral("*AUTOMATED_AUDIT_REPORT*"),
+        QStringLiteral("*superpowers/*"),
+    };
+
+    DocDedup::Accumulator acc;
+    QStringList checked;
+    for (const QString &rel : std::as_const(relDocs)) {
+        // Tested here rather than left to the engine so an excluded file is
+        // never READ, and `checked_docs` lists what was actually compared.
+        if (DocDedup::isExcludedPath(rel, opts)) continue;
+        QFile f(QDir(rootCanonical).filePath(rel));
+        if (f.size() > walk.maxDocBytes) continue;
+        if (!f.open(QIODevice::ReadOnly)) continue;  // unreadable → INV-15, silently out
+        const QString text = QString::fromUtf8(f.readAll());
+        f.close();
+        checked << rel;
+        acc.add(text, rel, opts);
+    }
+    // etag injected centrally (isEtagSupportedTool).
+    return QJsonDocument(docDedupBuildResponse(acc.finish(), checked));
+}
+
+QJsonObject RemoteControl::docDedupBuildResponse(const DocDedup::Result &result,
+                                                 const QStringList &checkedDocs) {
+    const auto passageObj = [](const DocDedup::Passage &p) {
+        QJsonObject o;
+        o[QStringLiteral("file")] = p.file;
+        o[QStringLiteral("line")] = p.line;
+        return o;
+    };
+    // 3 dp on the wire: the score is a triage signal, and full double precision
+    // makes an otherwise-identical response differ in its last bits.
+    const auto sim = [](double v) { return qRound(v * 1000.0) / 1000.0; };
+
+    QJsonObject o;
+    o[QStringLiteral("ok")]       = true;
+    o[QStringLiteral("findings")] = DocFinding::toJson(result.findings);
+    // Counts over the WHOLE list, before any cap or filter (ANTS-3664).
+    o[QStringLiteral("counts")] =
+        DocFinding::countsByVerbAndKind(result.findings)
+            .value(QStringLiteral("doc_dedup")).toObject();
+
+    QJsonArray pairs;
+    for (const DocDedup::Pair &p : result.pairs) {
+        QJsonObject e;
+        e[QStringLiteral("a")]          = passageObj(p.a);
+        e[QStringLiteral("b")]          = passageObj(p.b);
+        e[QStringLiteral("similarity")] = sim(p.similarity);
+        pairs.append(e);
+    }
+    o[QStringLiteral("pairs")] = pairs;
+
+    QJsonArray clusters;
+    for (const DocDedup::Cluster &c : result.clusters) {
+        QJsonArray ps;
+        for (const DocDedup::Passage &p : c.passages) ps.append(passageObj(p));
+        QJsonObject e;
+        e[QStringLiteral("passages")]       = ps;
+        e[QStringLiteral("size")]           = ps.size();
+        e[QStringLiteral("max_similarity")] = sim(c.maxSimilarity);
+        clusters.append(e);
+    }
+    o[QStringLiteral("clusters")] = clusters;
+
+    o[QStringLiteral("passages_total")]    = result.passagesTotal;
+    o[QStringLiteral("passages_compared")] = result.passagesCompared;
+    o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
+    if (result.truncated) o[QStringLiteral("truncated")] = true;
     return o;
 }
 

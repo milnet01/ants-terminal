@@ -107,6 +107,18 @@ Listed only where behavior isn't obvious from the name.
   standard carries a `<!-- required-sections -->` block; no standard here has
   one, so `sectionsChecked:false` is the shipping default. Powers the
   `spec_lint` MCP verb. ANTS-3662.
+- `docdedup` (Qt6::Core, `ants_core_lib`) — near-duplicate passage detection
+  across a doc set: paragraph segmentation (a list item is one passage, marker
+  line included), word 3-gram shingles, exact Jaccard, and connected-component
+  clustering so N docs sharing one stanza are one finding rather than
+  N(N−1)/2. Fence-aware via `MarkdownScan`. The family's one **corpus-scoped**
+  engine — `Accumulator::add` per document then `finish()` once, because a pair
+  needs two documents — and so ANTS-3664 § 2.3's stated exception to the
+  per-document signature. Candidate gathering is pruned by `maxPostings`;
+  scoring never is, which is the seam INV-1 and INV-7 each govern one half of.
+  REPORT-ONLY: which copy is canonical is a judgement, so nothing is ever
+  auto-fixable and ANTS-3669 refuses to fix one by name. Powers the `doc_dedup`
+  MCP verb. ANTS-3660.
 - `focusedtest` (Qt6::Core) — resolves the `focused_test` MCP tool:
   changed files → `ctest -R` patterns via `tests/coverage-map.json`, with
   a basename heuristic + conservative full-suite fallback. Spec ANTS-1302.

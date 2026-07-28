@@ -174,12 +174,31 @@ TEST(DocFinding, Inv4CoreOnlyHeader) {
 }
 
 // INV-5 — every checker engine in this family takes its document as text, never
-// as a path it opens itself (§ 2.3 rule 1). The three native engines do not
-// exist yet, so this skips rather than passing vacuously: a green row against
-// absent files would be exactly the false assurance the spec warns about.
+// as a path it opens itself (§ 2.3 rule 1).
+//
+// This skipped until all three native engines existed, rather than passing
+// vacuously: a green scrape over absent files is exactly the false assurance
+// the spec warns about. ANTS-3660 landed the last of them (2026-07-28), so it
+// now runs.
+//
+// The skip note predicted `docsymbols.cpp` would need an exemption for its
+// source-tree walk. It does not — the walk lives in `SymbolQuery`, so the
+// engine itself opens nothing either, and the invariant holds for all three
+// with no exception at all. Asserting the stronger form because it is the true
+// one; an exemption carried for a file that does not need it is a hole the next
+// engine slips through.
 TEST(DocFinding, Inv5EnginesTakeTextNotPaths) {
-    GTEST_SKIP() << "unblocked when ANTS-3660/3661/3662 land src/docdedup.cpp, "
-                    "src/docsymbols.cpp and src/speclint.cpp; the scrape then "
-                    "asserts QFile/QSaveFile/QTextStream appear only in "
-                    "docsymbols.cpp (its source-tree walk is § 2.3's exception)";
+    for (const char *path : {SRC_DOCDEDUP_CPP_PATH, SRC_DOCSYMBOLS_CPP_PATH,
+                             SRC_SPECLINT_CPP_PATH}) {
+        QFile f(QString::fromUtf8(path));
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly))
+            << "engine source must be readable: " << path;
+        const QString src = QString::fromUtf8(f.readAll());
+        f.close();
+        ASSERT_FALSE(src.isEmpty());
+        for (const char *banned : {"QFile", "QSaveFile", "QTextStream",
+                                   "QIODevice", "QDirIterator"})
+            EXPECT_FALSE(src.contains(QString::fromUtf8(banned)))
+                << path << " must take text, not a path it opens: " << banned;
+    }
 }

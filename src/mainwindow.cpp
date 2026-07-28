@@ -5152,6 +5152,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("spec_lint",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdSpecLint));
+    // ANTS-3660 — doc_dedup: the same passage written twice.
+    m_claudeIntegration->registerToolProvider("doc_dedup",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdDocDedup));
     // ANTS-3661 § 2.4 — inject the verb vocabulary the engine excludes from its
     // candidate harvest. Here rather than in RemoteControl because only
     // MainWindow sees both sides: ants_core_lib is Qt6::Core-only and the

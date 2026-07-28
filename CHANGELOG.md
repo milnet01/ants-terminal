@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_dedup` MCP verb — find the same passage written twice across a doc set** (ANTS-3660)
+  Splits each markdown file into paragraphs, compares them as word
+  3-grams, and reports every pair that overlaps enough to be the same
+  fact written twice. Groups the pairs into clusters, because five
+  documents sharing one stanza are one thing to fix rather than ten
+  findings. Skips fenced code (two identical samples are not duplicated
+  prose), pointer-only lines, and generated files whose whole purpose is
+  to repeat a template. Report-only — it never decides which copy to
+  keep, because that is a judgement about where a fact belongs.
+
 - **`spec_lint` MCP verb — the greppable half of the spec-format contract** (ANTS-3662)
   Checks the structural defects `/cold-eyes` § 1e otherwise greps for by hand on every review pass: an invariant with no test-surface clause, a gap in a spec's own id sequence, a cold-eyes loop-log row with no recorded outcome, and a test clause that is a command stating nothing it should return (a candidate — never auto-fixable, and no subprocess is ever run). Tombstoned invariants are exempt. `missing_section` runs only when the project's format standard carries a machine-readable block, so it ships skipped with `sections_checked:false` rather than firing against a guessed list. Size is reported in `line_count`, never as a finding.
 
