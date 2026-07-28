@@ -114,7 +114,11 @@ TEST(mcp_workspace_search_timeout_sec, Inv5SchemaDeclaresTimeoutSec) {
     // pushed props["timeout_sec"] to offset ~20875).
     // → 24000 in ANTS-3547 (the offset/wsOffsetProp block + description
     // extension pushed props["timeout_sec"] to offset ~22344).
-    const size_t end = std::min(ci.size(), wsAnchor + 24000);
+    // → 32000 in ANTS-3704 (the exclude_glob prop block + `glob`
+    // description extension pushed props["timeout_sec"] past 24000).
+    // Sixth widening of this window; the fixed-byte idiom itself is
+    // filed as ANTS-3720.
+    const size_t end = std::min(ci.size(), wsAnchor + 32000);
     const std::string window = ci.substr(wsAnchor, end - wsAnchor);
     expect(contains(window, "\"timeout_sec\""),
            "INV-5a: workspace_search inputSchema does not declare a "
@@ -146,7 +150,11 @@ TEST(mcp_workspace_search_timeout_sec, Inv6DescriptionMentionsTimeoutSec) {
     // pushed props["timeout_sec"] to offset ~20875).
     // → 24000 in ANTS-3547 (the offset/wsOffsetProp block + description
     // extension pushed props["timeout_sec"] to offset ~22344).
-    const size_t end = std::min(ci.size(), wsAnchor + 24000);
+    // → 32000 in ANTS-3704 (the exclude_glob prop block + `glob`
+    // description extension pushed props["timeout_sec"] past 24000).
+    // Sixth widening of this window; the fixed-byte idiom itself is
+    // filed as ANTS-3720.
+    const size_t end = std::min(ci.size(), wsAnchor + 32000);
     const std::string window = ci.substr(wsAnchor, end - wsAnchor);
     expect(contains(window, "timeout_sec"),
            "INV-6a: workspace_search description does not mention "

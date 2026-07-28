@@ -10659,7 +10659,55 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // gitignore-glob shape that can un-exclude an ignored directory.
         if (glob.startsWith(QChar('!'))) {
             return QJsonDocument(wsErr("bad_glob",
-                QStringLiteral("workspace-search: \"glob\" must not start with \"!\" (negation)")));
+                QStringLiteral("workspace-search: \"glob\" must not start with \"!\" "
+                               "(negation) — use \"exclude_glob\" instead")));
+        }
+    }
+
+    // ANTS-3704 — the positive-only `glob` above has no way to express
+    // "everywhere EXCEPT here", so a doc-heavy repo whose hit list is dominated
+    // by prose forced callers out to `Bash rg`, which is what this verb exists
+    // to replace. `exclude_glob` is that expression, kept as a separate arg so
+    // `glob` stays unambiguously positive and the ANTS-1274 guard above can
+    // stand unchanged.
+    //
+    // On ANTS-1274's stated worry — that a `!`-prefixed --glob outranks
+    // .gitignore and "resurrects trees the ignore files excluded" — measured on
+    // ripgrep 15.2.0 against a seeded repo with `node_modules/` gitignored:
+    // `--glob '!node_modules'`, `'!node_modules/**'` and `'!.git'` each left the
+    // ignored tree unsearched, and a POSITIVE `--glob '*.txt'` did not surface
+    // it either. The premise does not hold on the shipped rg, so exclusion here
+    // is subtractive only. The guard stays anyway: it costs nothing and now
+    // names the alternative rather than only what is forbidden.
+    QStringList excludeGlobs;
+    {
+        const QJsonValue ex = req.value("exclude_glob");
+        QStringList raw;
+        if (ex.isString()) raw << ex.toString();
+        else if (ex.isArray()) for (const QJsonValue &v : ex.toArray())
+            if (v.isString()) raw << v.toString();
+
+        for (QString g : raw) {
+            g = g.normalized(QString::NormalizationForm_C);
+            if (g.isEmpty()) continue;
+            // A leading '!' here would double-negate into an INCLUSION, so it is
+            // refused rather than stripped — silently rewriting a caller's
+            // pattern into its opposite is the worse failure.
+            if (g.startsWith(QChar('!'))) {
+                return QJsonDocument(wsErr("bad_glob",
+                    QStringLiteral("workspace-search: \"exclude_glob\" entries are already "
+                                   "negations — drop the leading \"!\"")));
+            }
+            if (g.toUtf8().size() > kWorkspaceSearchGlobBytesCap) {
+                return QJsonDocument(wsErr("bad_glob",
+                    QStringLiteral("workspace-search: \"exclude_glob\" entry exceeds 256 bytes")));
+            }
+            if (g.contains(QStringLiteral(".."))) {
+                return QJsonDocument(wsErr("bad_glob",
+                    QStringLiteral("workspace-search: \"exclude_glob\" entry contains "
+                                   "\"..\" segments")));
+            }
+            excludeGlobs << g;
         }
     }
 
@@ -10778,6 +10826,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     if (!isRegex) argv << QStringLiteral("--fixed-strings");
     if (context > 0) argv << QStringLiteral("--context") << QString::number(context);
     if (!glob.isEmpty()) argv << QStringLiteral("--glob") << glob;
+    // ANTS-3704 — rendered AFTER the positive glob: rg resolves competing globs
+    // by last-one-wins, so an exclusion must follow the inclusion it narrows.
+    for (const QString &ex : std::as_const(excludeGlobs))
+        argv << QStringLiteral("--glob") << (QLatin1Char('!') + ex);
     // ANTS-1452-INV-1: when respect_gitignore is false, disable both the
     // VCS-specific ignore source (.gitignore, .git/info/exclude) and the
     // umbrella ignore that covers .ignore + per-user global. Belt-and-

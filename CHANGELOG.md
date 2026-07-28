@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`workspace_search` gained `exclude_glob` — search everywhere except a given tree** (ANTS-3704)
+  Until now you could narrow a search to one folder or one file pattern, but there was no way to say "everywhere except the docs". On a project with a lot of written documentation that meant the results were mostly prose, and the only way round it was to drop back to the raw command-line search tool. Pass `exclude_glob` (one pattern or a list) and those paths are left out. Write the pattern plainly — `docs/**`, not `!docs/**`.
+
 - **`doc_dedup` MCP verb — find the same passage written twice across a doc set** (ANTS-3660)
   Splits each markdown file into paragraphs, compares them as word
   3-grams, and reports every pair that overlaps enough to be the same
@@ -89,6 +92,9 @@ for security-relevant changes.
   When you want several slices of ONE file, read_regions makes you repeat the same filename on every slice; let it take one filename at the top like its sibling read_region does.
 
 ### Changed
+
+- **`audit_falsepos_log` now accepts `debt-sweep` as a review kind** (ANTS-3701)
+  Dismissing a false alarm found during a debt sweep had to be filed under "audit" with a hand-written note, so the record of where it came from was wrong. It can now be filed under its own name.
 
 - **`doc_symbols` no longer reports bare lowercase words it cannot resolve** (ANTS-3692)
   A backticked word like `counts`, `dry_run` or `truncated` is almost always

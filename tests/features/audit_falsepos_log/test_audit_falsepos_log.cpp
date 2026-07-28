@@ -251,6 +251,12 @@ TEST(AuditFalseposLog, Refusals) {
     // INV-10 — non-canonical / empty / absent review_kind.
     { QJsonObject r = baseReq(dir); r["review_kind"] = "frobnicate";
       EXPECT_EQ(code(r), "bad_args"); }
+    // ANTS-3701 — "debt-sweep" is canonical, so it must NOT refuse. Its own
+    // temp dir on purpose: an accepted call writes the ledger, and this test's
+    // closing assertion is that none of the refusals above created one.
+    { QTemporaryDir accepted; ASSERT_TRUE(accepted.isValid());
+      QJsonObject r = baseReq(accepted); r["review_kind"] = "debt-sweep";
+      EXPECT_NE(code(r), "bad_args"); }
     { QJsonObject r = baseReq(dir); r["review_kind"] = "";
       EXPECT_EQ(code(r), "bad_args"); }
     { QJsonObject r = baseReq(dir); r.remove("review_kind");

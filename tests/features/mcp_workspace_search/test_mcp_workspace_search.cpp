@@ -159,8 +159,14 @@ TEST(McpWorkspaceSearch, WiringContract) {
         const size_t reqPos = ciCpp.find("\"workspace_search\"");
         bool ok = false;
         if (reqPos != std::string::npos) {
+            // Window 24000 -> 32000 after ANTS-3704 added the exclude_glob
+            // property (~900 bytes of schema description), which pushed
+            // "required" from ~+22774 to +25078 and reddened this row with a
+            // message about `pattern` that had nothing to do with the change.
+            // The measured distance is the number to keep an eye on; raise it
+            // as new properties slot in.
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 24000);
+                                              reqPos + 32000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"required\"") &&
@@ -405,4 +411,43 @@ TEST(McpWorkspaceSearch, WiringContract) {
     }
 
     EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-1248 / ANTS-1452 / ANTS-1304 invariant(s) failed";
+}
+
+// ANTS-3704 — exclude_glob wiring. Three rows, and the ORDER row is the one
+// that matters: ripgrep resolves competing globs last-one-wins, so an
+// exclusion rendered BEFORE the positive `glob` would be overridden by it and
+// the arg would silently do nothing. A test that only checked the flag exists
+// would pass against exactly that bug.
+TEST(McpWorkspaceSearch, Ants3704ExcludeGlobWiring) {
+    expect_reset();
+    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+
+    expect(contains(rcCpp, "exclude_glob"),
+           "INV-3704-1",
+           "remotecontrol.cpp does not read the \"exclude_glob\" argument");
+
+    // Rendered as a '!'-prefixed --glob, which is ripgrep's exclusion form.
+    std::regex renderRe(R"(excludeGlobs[\s\S]{0,200}"--glob"[\s\S]{0,80}'!')");
+    expect(std::regex_search(rcCpp, renderRe),
+           "INV-3704-2",
+           "exclude_glob entries are not rendered as ripgrep --glob '!<pattern>'");
+
+    // Order: the positive glob's argv append must precede the exclusion loop.
+    const size_t posGlob = rcCpp.find("if (!glob.isEmpty()) argv");
+    const size_t exGlob  = rcCpp.find("for (const QString &ex : std::as_const(excludeGlobs))");
+    expect(posGlob != std::string::npos && exGlob != std::string::npos
+               && posGlob < exGlob,
+           "INV-3704-3",
+           "the exclude_glob argv loop does not follow the positive --glob "
+           "append — last-one-wins means the exclusion would be overridden");
+
+    // Declared in the schema, or the dispatcher reports it in ignored_args and
+    // the caller is silently given an unfiltered result set (the ANTS-3698
+    // failure shape, one verb over).
+    expect(contains(ciCpp, "props[\"exclude_glob\"]"),
+           "INV-3704-4",
+           "workspace_search inputSchema does not declare exclude_glob");
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-3704 invariant(s) failed";
 }

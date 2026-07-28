@@ -32,6 +32,12 @@ const QSet<QString> &canonicalReviewKinds() {
         QStringLiteral("cold-eyes"),
         QStringLiteral("indie-review"),
         QStringLiteral("test-audit"),
+        // ANTS-3701 — the debt_sweep_* verb family and /debt-sweep produce
+        // dismissals like any other sweep. Without this they were logged as
+        // "audit" with a hand-written "[via /debt-sweep]" prefix in the claim,
+        // a per-session convention that corrupts provenance for anyone later
+        // filtering the ledger by sweep type.
+        QStringLiteral("debt-sweep"),
     };
     return s;
 }
@@ -331,7 +337,7 @@ AppendResult appendEntry(const QString &projectPath, const LedgerEntry &in,
         r.code = QStringLiteral("bad_args");
         r.message = QStringLiteral(
             "review_kind must be one of audit / cold-eyes / "
-            "indie-review / test-audit");
+            "indie-review / test-audit / debt-sweep");
         return r;
     }
     // claim/rationale non-empty + timestamp valid (one guard, both absent

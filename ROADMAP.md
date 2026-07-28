@@ -8987,6 +8987,17 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** A way to permanently silence a debt-sweep false alarm that can't be fixed in the detector itself — but only after the detector and fixture fixes remove the bulk first.
   Kind: feature.
   Source: user-request-2026-06-28.
+  Scope clarification (2026-07-28, ANTS-3701). This bullet's "(NOT a review_kind
+  in the prose ledger)" is now read as scoped to debt-sweep's MECHANICAL
+  line-grain residue, which is what this item exists to give a suppress file.
+  ANTS-3701 added `debt-sweep` as a review_kind for the DIFFERENT case: a
+  reasoned, class-level dismissal with a rationale, which is prose-ledger
+  material and was previously filed as `audit` with a hand-written "[via
+  /debt-sweep]" prefix — provably wrong provenance.
+
+  So this item is NOT superseded and still wants building; the two ledgers serve
+  different populations. If the original intent was broader — no debt-sweep entry
+  in the prose ledger at all — ANTS-3701 is the thing to revert, not this.
 
 - 📋 [ANTS-3353] **Make `.ants/project.json` self-advertising for any non-standard layout, not just non-src source.**
   Discoverability gap (user question 2026-06-28): a CC session learns about .ants/project.json almost only via session_orient's project_settings_suggestion, which (1) fires only when codebase_index is near-empty (source not under src/) and (2) suggests source_roots ONLY. ProjectSettings::detect analyses source layout only. Other sessions don't read Ants's CLAUDE.md, and project_settings isn't in the SessionStart prelude. Fix: extend ProjectSettings::detect to ALSO flag off-default docs_dir/roadmap/changelog/specs_dir (compare project_layout's resolved paths vs the conventional defaults), and have session_orient surface those keys in project_settings_suggestion + the ANTS-3352 next_step — so the file self-advertises on the first call for ANY non-standard layout, staying silent (ETag-stable) for standard ones. Decided AGAINST: adding project_settings to the always-on SessionStart prelude (standing token cost for a low-frequency setup verb) and per-verb scattered hints (redundant once session_orient covers it). ANTS-3352 (next_step nudge) already shipped as the first increment.
@@ -20732,6 +20743,20 @@ requesting no action and are closed in place rather than filed.
   blank-line-separated paragraphs it lands after the FIRST paragraph, leaving
   paragraphs 2..N and the `Layman:`/`Kind:`/`Lanes:`/`Source:` trailer below the
   resolution note.
+  Reproduced in THIS repo (2026-07-28), so a fixture is no longer needed from
+  DOOM Ants. Flipping ANTS-3704 with a multi-paragraph resolution note put the
+  note after the bullet's FIRST paragraph: the two remaining paragraphs of the
+  original problem statement ("The refusal is clean and well-worded…", "Fix,
+  cheapest: accept a leading `!`…") now sit BELOW the resolution, so the bullet
+  reads as resolved and then argues for a fix that already shipped — and it
+  recommends an approach the resolution explicitly rejected.
+
+  The envelope reported note_appended:true with a plausible note_line (20920
+  against a bullet at 20915), which is the silent half of the report.
+
+  ANTS-3701 and ANTS-3692's flips have the same shape. Left unrepaired on
+  purpose: hand-editing a 2.7 MB append-only file is what the verb exists to
+  avoid, and these are the fixture for the fix.
 
   Repro (DOOM Ants): DOOM-0276's body is five paragraphs plus the trailer, lines
   2768-2795. `op:flip` returned `{line:2768, note_line:2773}` — 2773 is the last
@@ -20854,10 +20879,28 @@ requesting no action and are closed in place rather than filed.
   Kind: enhancement.
   Source: claude-config-feedback-2026-07-28.
 
-- 📋 [ANTS-3701] **`audit_falsepos_log` `review_kind` enum has no "debt-sweep", though the debt_sweep_* family is first-class.**
+- ✅ [ANTS-3701] **`audit_falsepos_log` `review_kind` enum has no "debt-sweep", though the debt_sweep_* family is first-class.**
   `review_kind` accepts audit / cold-eyes / indie-review / test-audit. Ants ships
   four debt-sweep verbs and a `/debt-sweep` skill, and that sweep produces false
   positives like any other, but they cannot be logged with correct provenance.
+  Resolved (2026-07-28). Added to `canonicalReviewKinds()`, the tools/list
+  schema enum, the refusal message and the standard's field table.
+
+  SCOPE TENSION, recorded rather than decided silently: ANTS-3348 (still 📋)
+  says debt-sweep's residue wants a `.audit_suppress`-style line-grain ledger
+  and explicitly "NOT a review_kind in the prose ledger". I read that as scoped
+  to the MECHANICAL residue — hundreds of detector_id+file+line hits that should
+  never enter a prose ledger — and not to a reasoned, class-level dismissal with
+  a rationale, which is exactly what the prose ledger is for and what the DOOM
+  Ants contributor was filing when they had to fake the provenance. The two
+  therefore coexist: ANTS-3348 still wants building for the residue.
+
+  If that reading is wrong the revert is one enum entry plus the test row, and
+  the standard's new scope note says which is which. Flagged to the user.
+
+  Test: audit_falsepos_log INV-10 gained a row asserting "debt-sweep" does NOT
+  refuse, in its own temp dir — that block's closing assertion is that no refusal
+  created a ledger, and an accepted call writes one. Suite 3019/3019 green.
 
   `audit_falsepos_log {review_kind:"debt-sweep", …}` → `bad_args`. The contributor
   logged four debt-sweep dismissals as `review_kind:"audit"` with a hand-written
@@ -20912,11 +20955,39 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: DOOM-Ants-feedback-2026-07-28.
 
-- 📋 [ANTS-3704] **`workspace_search` refuses ripgrep's negation glob, so "everything except this tree" needs a second call or raw rg.**
+- ✅ [ANTS-3704] **`workspace_search` refuses ripgrep's negation glob, so "everything except this tree" needs a second call or raw rg.**
   `glob` is documented as a "Ripgrep --glob filter", but a leading `!` — ripgrep's
   own exclusion syntax, and the only single-pattern way to say "everywhere but
   here" — refuses `bad_glob`. There is no positive equivalent: `lane` narrows to ONE
   subdir and `glob` is a single pattern.
+  Resolved (2026-07-28). Shipped as a separate `exclude_glob` arg (string or
+  array) rather than by accepting a `!` in `glob`, so `glob` stays unambiguously
+  positive and ANTS-1274's guard stands unchanged — its refusal now names the
+  alternative instead of only what is forbidden.
+
+  ANTS-1274's stated rationale was tested rather than assumed, and it does not
+  hold on the shipped ripgrep. On rg 15.2.0 against a seeded repo with
+  `node_modules/` gitignored, `--glob '!node_modules'`, `'!node_modules/**'` and
+  `'!.git'` each left the ignored tree unsearched, and a POSITIVE `--glob '*.txt'`
+  did not surface it either. So exclusion here is subtractive only. The guard was
+  kept anyway: it costs nothing and the arg is clearer at the call site.
+
+  Rendered AFTER the positive glob, because rg resolves competing globs
+  last-one-wins — an exclusion emitted first would be silently overridden. That
+  ordering is INV-3704-3, and it is the row that matters: a test merely asserting
+  the flag exists would pass against exactly that bug. Verified against the real
+  argv the code builds — control run finds src/b.txt, the run with the exclusion
+  appended finds nothing.
+
+  A leading `!` inside an exclude_glob entry refuses rather than being stripped:
+  double-negating into an inclusion by silently rewriting the caller's pattern is
+  the worse failure.
+
+  Collateral: two source-scrape tests went red on fixed byte windows that my
+  ~900 bytes of schema description overflowed — McpWorkspaceSearch INV-5 (naming
+  `pattern`, which the change never touched) and mcp_workspace_search_timeout_sec
+  INV-5a/INV-6, whose own comment records five previous widenings. Both widened
+  to 32,000; the idiom itself is filed as ANTS-3720. Suite 3019/3019 green.
 
   The refusal is clean and well-worded; the gap is that the escape hatch it implies
   (use rg directly) is exactly what the verb exists to replace, and the schema text
@@ -21397,6 +21468,47 @@ requesting no action and are closed in place rather than filed.
   **Layman:** A skill can instruct you to use a tool it never granted itself permission to use, so the instruction cannot be followed.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
+
+- 📋 [ANTS-3720] **Replace the fixed-byte scrape window in the MCP schema tests with a self-sizing block bound.**
+  The schema-wiring tests anchor on a literal and then take a FIXED byte window
+  (`ci.substr(anchor, anchor + N)`). Every property added to a tool's schema
+  pushes later content past N, so an unrelated row goes red with a message
+  naming something the change never touched.
+
+  Measured this session while adding one property to `workspace_search`
+  (ANTS-3704, ~900 bytes of schema description):
+
+  - `McpWorkspaceSearch.WiringContract` INV-5 failed claiming the schema "does
+    not declare [\"pattern\"] as required". `required` had merely moved from
+    ~+22,774 to +25,078, past a 24,000 window.
+  - `mcp_workspace_search_timeout_sec` INV-5a/INV-6 failed the same way. That
+    window's own comment records five previous widenings — 8000 → 12000 →
+    16000 → 20000 → 22000 → 24000 — one per feature that touched the schema.
+    Mine is the sixth.
+
+  Both were widened to 32,000 to unblock, which buys time and fixes nothing:
+  the next property repeats it, and the failure always points at an innocent
+  row. ANTS-3688 hit the sibling shape in the same area — a code COMMENT
+  containing a bare function name moved a window's ORIGIN and reddened three
+  unrelated invariants.
+
+  Fix: bound the window by STRUCTURE rather than by byte count. Each tool's
+  registration is a brace-delimited block, so scanning from the anchor to the
+  next `t["name"] = "` (the following tool's registration) is self-sizing and
+  cannot be outgrown. Where that is awkward, scan to the `props[` insertion
+  block that closes the schema. Either way the window tracks the code.
+
+  Related and worth doing together: the anchor must be a definition-shaped
+  string, never a bare name that prose or a comment can also contain — the
+  ANTS-3688 half of the same class, already fixed in
+  `tests/features/mcp_extra_tools` but not as a general rule.
+
+  A grep-able convention would help future authors: these windows are the
+  project's most frequently re-tuned test constant, and each re-tune is a
+  build-break for whoever is holding an unrelated change.
+  **Layman:** Adding any option to a tool keeps breaking unrelated tests, because they read a fixed number of bytes from a starting point rather than reading to the end of the section.
+  Kind: test.
+  Source: in-session-2026-07-28 (hit twice while implementing ANTS-3701/3704).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

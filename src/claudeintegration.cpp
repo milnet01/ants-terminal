@@ -3130,7 +3130,24 @@ void ClaudeIntegration::onMcpConnection() {
                                         "Empty = whole repo.");
                     QJsonObject globProp;     globProp["type"]     = "string";
                                               globProp["description"] =
-                        QStringLiteral("Ripgrep --glob filter (e.g. \"*.cpp\").");
+                        QStringLiteral("Ripgrep --glob filter (e.g. \"*.cpp\"). "
+                                       "INCLUSION only — a leading \"!\" refuses "
+                                       "bad_glob; use exclude_glob instead.");
+                    // ANTS-3704 — the "everywhere EXCEPT here" half. Separate
+                    // arg rather than a "!" in `glob`, so `glob` stays
+                    // unambiguously positive at the call site.
+                    QJsonObject exGlobProp;
+                    { QJsonArray ty; ty.append(QStringLiteral("string"));
+                                     ty.append(QStringLiteral("array"));
+                      exGlobProp["type"] = ty; }
+                    exGlobProp["description"] = QStringLiteral(
+                        "Path glob(s) to EXCLUDE — a string or an array, each "
+                        "rendered as ripgrep --glob '!<pattern>' after `glob` so "
+                        "last-one-wins narrows rather than widens. Write the "
+                        "pattern positively (\"docs/**\", not \"!docs/**\"). Use for "
+                        "\"search everywhere but the prose\" on a doc-heavy repo, "
+                        "which `lane` (one subdir) and `glob` (one positive "
+                        "pattern) cannot express.");
                     QJsonObject maxProp;      maxProp["type"]      = "integer";
                                               maxProp["default"]   = 50;
                                               maxProp["maximum"]   = 500;
@@ -3368,6 +3385,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["regex"]       = regexProp;
                     props["lane"]        = laneProp;
                     props["glob"]        = globProp;
+                    props["exclude_glob"] = exGlobProp;  // ANTS-3704
                     props["max_results"] = maxProp;
                     props["max_bytes"]   = maxBytesProp;
                     props["max_match_bytes"] = mmbProp;       // ANTS-1876
@@ -4906,8 +4924,8 @@ void ClaudeIntegration::onMcpConnection() {
                     t["description"] = QStringLiteral(
                         "Append one confirmed false-positive record to "
                         "<project>/.ants_review_falsepos.jsonl — the prose "
-                        "ledger the /cold-eyes, /indie-review, /test-audit "
-                        "(and /audit step-10.5) sweeps read so a re-run "
+                        "ledger the /cold-eyes, /indie-review, /test-audit, "
+                        "/debt-sweep (and /audit step-10.5) sweeps read so a re-run "
                         "doesn't re-litigate a dismissed finding. Atomic "
                         "O_APPEND (safe under concurrent CC sessions — do "
                         "NOT hand-write with the Write tool). Trims claim/"
@@ -4932,6 +4950,7 @@ void ClaudeIntegration::onMcpConnection() {
                           e.append(QStringLiteral("cold-eyes"));
                           e.append(QStringLiteral("indie-review"));
                           e.append(QStringLiteral("test-audit"));
+                          e.append(QStringLiteral("debt-sweep"));  // ANTS-3701
                           rkProp["enum"] = e; }
                         rkProp["description"] = QStringLiteral(
                             "Required. Which sweep dismissed it.");
