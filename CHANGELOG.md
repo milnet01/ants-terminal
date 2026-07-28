@@ -115,6 +115,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **Review tools no longer tell you not to use them (ANTS-1581)**
+  Every cold-eyes and indie-review tool used to carry a line saying the
+  matching review command doesn't call it, so reach for it only when
+  building your own pipeline. That advice is now backwards — those
+  commands prefer these tools. The line is gone. One warning stays, on
+  the tool that runs the review on your own local AI model instead of
+  Claude: it now says plainly that this is a weaker reviewer, not a
+  cheaper way to get the same review, and the tool picker no longer
+  advertises it as the way to start a review.
+
 - **`apply_edits` documents the per-call batch ceiling separately from the 4 MiB file cap** (ANTS-3712)
   A several-KB batch can fail in the client's transport before the server
   sees it, with an error blaming escaping; the 4 MiB figure applies to the

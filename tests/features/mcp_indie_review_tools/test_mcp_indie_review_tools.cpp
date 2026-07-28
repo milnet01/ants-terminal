@@ -211,6 +211,47 @@ TEST(McpIndieReviewTools, Ants3713CorroborateAllowsOutsideProject) {
               std::string::npos);
 }
 
+// INV-14 (ANTS-1581 reversal) — the blanket "the skill does not call this
+// tool" note is gone from BOTH families, and the one surviving warning is
+// scoped to indie_review_dispatch, whose difference is the reviewer it runs
+// on rather than who calls it.
+TEST(McpIndieReviewTools, Inv14ParallelApiNoteReversedToDispatchOnly) {
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    // The old note steered readers away from every cold_eyes_ /
+    // indie_review_ verb — the opposite of the standing rule that the MCP
+    // verbs are the default path. No trace of it may remain, or some verbs
+    // still carry it and the reversal is half-applied.
+    EXPECT_EQ(ci.find("Parallel API:"), std::string::npos)
+        << "INV-14: the ANTS-1581(b) 'Parallel API' note must be gone, not "
+           "narrowed further";
+    // The surviving carve-out, and its guard.
+    const auto note = ci.find("Weaker reviewer:");
+    ASSERT_NE(note, std::string::npos)
+        << "INV-14: indie_review_dispatch keeps a note saying WHY it differs";
+    const auto guard =
+        ci.find("name == QLatin1String(\"indie_review_dispatch\")");
+    ASSERT_NE(guard, std::string::npos)
+        << "INV-14: the note is name-scoped, not prefix-matched over a family";
+    EXPECT_LT(guard, note)
+        << "INV-14: the guard must precede the note it gates";
+}
+
+// INV-15 (ANTS-1581 reversal) — the catalog hint is the other place a caller
+// picks a verb from, so it must not present the local-endpoint verb as the
+// entry point for a review.
+TEST(McpIndieReviewTools, Inv15DispatchSelectionHintNamesTheWeakerReviewer) {
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+    const std::string hint =
+        ants_test::mcpToolDescriptor(ci, "indie_review_dispatch");
+    ASSERT_FALSE(hint.empty());
+    EXPECT_NE(hint.find("LOCAL AI endpoint"), std::string::npos)
+        << "INV-15: the hint must say where the review actually runs";
+    EXPECT_EQ(hint.find("entry-point orchestrator"), std::string::npos)
+        << "INV-15: dispatch is not the entry point for a Claude review";
+}
+
 TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // Defensive: every new tool's inputSchema sets additionalProperties=false
     // so unknown keys are rejected. Region scoped to JUST the indie_review_*

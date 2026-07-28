@@ -6962,9 +6962,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "system_extras (≤ 4 KiB append to system "
                         "prompt). See docs/specs/ANTS-1352.md.");
                     t["selection_hint"] = QStringLiteral(
-                        "Use as the entry-point orchestrator for an "
-                        "end-to-end indie-review run. Wraps "
-                        "partition → brief → dispatch → corroborate.");
+                        "Use to run the review lanes on the configured "
+                        "LOCAL AI endpoint instead of Claude subagents — "
+                        "a weaker reviewer, chosen for cost, not parity. "
+                        "For a Claude-subagent plan use "
+                        "indie_review_orchestrate.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject callerProp;
@@ -10537,51 +10539,42 @@ void ClaudeIntegration::onMcpConnection() {
                                 "underlying file hasn't changed "
                                 "(ANTS-1499 \"304 Not Modified\" pattern).");
                         }
-                        // ANTS-1581 — most of the cold_eyes_ /
-                        // indie_review_ verbs are a *parallel* API: the
-                        // matching /cold-eyes and /indie-review
-                        // slash-command skills orchestrate
-                        // these steps themselves via subagent fan-out and
-                        // do NOT call these tools. The naming parity
-                        // otherwise reads as "the canonical path", so three
-                        // sister sessions reached for them mid-skill. Flag
-                        // them as the non-CC programmatic API. Idempotent
-                        // sentinel: skip if "Parallel API:" already present.
+                        // ANTS-1581(b) stamped every cold_eyes_ /
+                        // indie_review_ verb with "the skill orchestrates
+                        // this itself and does not call this tool", so a
+                        // session reading the deferred-tool list would not
+                        // mistake naming parity for "this is the canonical
+                        // path"; ANTS-3639 then had to exempt the verbs the
+                        // skills DO mandate.
                         //
-                        // ANTS-3639 — the prefix match over-applied. Some of
-                        // these verbs ARE called by their skill, so the note
-                        // was denying a call the skill mandates two lines
-                        // later: /test-audit's "Fast path" section drives the
-                        // whole test_audit_ family (and lists it in
-                        // allowed-tools), and /indie-review instructs
-                        // indie_review_partition (Phase 1 / 2.0) +
-                        // indie_review_corroborate (Phase 2b). Exempt those;
-                        // the rest of the families genuinely are the
-                        // build-your-own-pipeline API.
-                        static const QSet<QString> kSkillCalled = {
-                            QStringLiteral("indie_review_partition"),
-                            QStringLiteral("indie_review_corroborate"),
-                        };
-                        if (!desc.contains(QStringLiteral("Parallel API:"))
-                            && !kSkillCalled.contains(name)
-                            && !name.startsWith(
-                                   QLatin1String("test_audit_"))) {
-                            QString skill;
-                            if (name.startsWith(QLatin1String("cold_eyes_")))
-                                skill = QStringLiteral("/cold-eyes");
-                            else if (name.startsWith(
-                                         QLatin1String("indie_review_")))
-                                skill = QStringLiteral("/indie-review");
-                            if (!skill.isEmpty()) {
-                                desc += QStringLiteral(
-                                    " Parallel API: the %1 slash-command "
-                                    "skill orchestrates this step itself "
-                                    "(subagent fan-out) and does not call "
-                                    "this tool — reach for it only when "
-                                    "building your own review pipeline "
-                                    "outside that skill (ANTS-1581).")
-                                    .arg(skill);
-                            }
+                        // REVERSED 2026-07-28 (global CLAUDE.md §18): the
+                        // MCP verbs are now the default path and the raw
+                        // tools are the fallback, so "the skill does not
+                        // call this" is false of both families — and a note
+                        // steering the reader away from the verb "unless
+                        // building your own pipeline" argues against the
+                        // standing rule.
+                        //
+                        // One carve-out survives, and it is about what the
+                        // verb DOES rather than who calls it:
+                        // indie_review_dispatch POSTs each lane to the
+                        // project's configured AI endpoint (default
+                        // "llama3"). Its own text says where the request
+                        // goes; it does not say the trade-off is review
+                        // quality, which is the part a caller choosing a
+                        // verb needs. Idempotent sentinel.
+                        if (name == QLatin1String("indie_review_dispatch")
+                            && !desc.contains(
+                                   QStringLiteral("Weaker reviewer:"))) {
+                            desc += QStringLiteral(
+                                " Weaker reviewer: this reviews on the "
+                                "configured local endpoint, NOT on Claude "
+                                "subagents — a different and weaker "
+                                "reviewer, not a cheaper route to the same "
+                                "review. /indie-review keeps its own "
+                                "fan-out for that reason; reach for this "
+                                "only when the local model is what you "
+                                "want (global CLAUDE.md §18).");
                         }
                         t[QStringLiteral("description")] = desc;
                     }

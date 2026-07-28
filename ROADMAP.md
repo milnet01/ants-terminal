@@ -17132,6 +17132,7 @@ template / mutate this state atomically" → movable. If it's
   mcp_indie_review_tools / mcp_test_audit_trio / mcp_extra_tools /
   tool_info) all green — appended text doesn't break schema, catalog, or
   the lite-shape branch.
+  Reversed (2026-07-28), by the user, in global CLAUDE.md §18: the MCP verbs are the default path and raw tools the fallback, "on the grounds that non-Ants sessions are rare and brief". That overturns the (a)-rejection rationale above — portability to non-Ants projects — so the four review skills now DO prefer their verb families, and their SKILL.md files say so. The (b) discoverability note shipped here became the stale artifact: "the skill orchestrates this itself and does not call this tool" argued against the standing rule on every verb it touched, and /indie-review's own text had to declare it stale. Removed the blanket note; kept ONE carve-out, rescoped from who-calls-it to what-it-does — indie_review_dispatch reviews on the configured local endpoint (default llama3), so its note now says "Weaker reviewer: … not a cheaper route to the same review", name-gated rather than prefix-matched. Its selection_hint said "entry-point orchestrator for an end-to-end indie-review run", which sold the weak-model verb as THE review entry point in the catalog a session picks verbs from; it now names the local endpoint and points at indie_review_orchestrate. Locked by mcp_indie_review_tools INV-14/INV-15 (the note was never tested before). Suite 100% of 3038.
 
 - 💭 [ANTS-1582] **Investigate consolidating `cold_eyes_*` / `indie_review_*` / `test_audit_*` MCP surfaces into a single `review_*` quartet with `kind:` discriminator.**
   MAME Curator + Music_Production both flagged the three near-parallel review-tool surfaces — each with `_brief` / `_partition` / `_synthesis_prompt` / `_fold_in` / (some) `_cross_doc_diff` / `_corroborate` quartets. Today: 15 MCP tools across three families. Proposal: collapse into one `mcp__ants__review_{brief,partition,synthesis_prompt,fold_in,cross_doc_diff,corroborate}` sextet plus a `kind: "cold_eyes" | "indie" | "test_audit"` discriminator on every call. Compresses surface 3× and removes the "which family matches my task?" guess. Marked `considered` not `planned` because (a) needs a spec-first design pass — internal engines differ in subtle ways (cold_eyes partitions docs, indie_review partitions subsystems, test_audit partitions test files); (b) timing-wise, ANTS-1411..1414 are mid-flight inside the existing family namespace — convergence after those land, not during; (c) backwards-compat: the existing 15 names would need a one-release deprecation shim. Composes with ANTS-1414 (cross_doc_diff refactor — natural starting point) and ANTS-1581 (skill wiring — would update skills to call `review_*` from day one).
@@ -21408,7 +21409,7 @@ requesting no action and are closed in place rather than filed.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
 
-- 💭 [ANTS-3718] **`cold_eyes_brief`: return an `input_hash` and a section index — blocked on the skill not calling that verb.**
+- 📋 [ANTS-3718] **`cold_eyes_brief`: return an `input_hash` and a section index — blocked on the skill not calling that verb.**
   Two requests against `cold_eyes_brief`, merged and filed as CONSIDERED rather than
   planned. Both are sound; both are blocked by the same thing.
 
@@ -21445,8 +21446,9 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Two good ideas for the review-brief tool, filed but parked, because the review process deliberately does not use that tool.
   Kind: enhancement.
   Source: claude-config-feedback-2026-07-28.
+  Unblocked (2026-07-28): the stated blocker was "the /cold-eyes skill does not call cold_eyes_brief at all". Global CLAUDE.md §18 reversed that — the cold_eyes_* verbs are now the skill's preferred pipeline for every phase except the fan-out itself, and the skill text says so. Both requests are therefore live against a verb that IS called. §18's one cold_eyes_brief carve-out is narrower than the old blocker: never pass prior_loop_fixes[]; call the verb.
 
-- 💭 [ANTS-3719] **A check that a skill's frontmatter `allowed-tools` grants every MCP verb its own body mandates.**
+- 📋 [ANTS-3719] **A check that a skill's frontmatter `allowed-tools` grants every MCP verb its own body mandates.**
   A Claude Code skill carries YAML frontmatter with an `allowed-tools` list and a
   body whose procedure names the verbs it requires. When the two drift, the skill is
   unexecutable exactly as written. Single-file, self-consistency, fully
@@ -21480,6 +21482,7 @@ requesting no action and are closed in place rather than filed.
   **Layman:** A skill can instruct you to use a tool it never granted itself permission to use, so the instruction cannot be followed.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
+  Unblocked (2026-07-28): the stated precondition was "worth doing only if the path-validation posture is settled first — ANTS-3713 raises the same second-allowed-root question". ANTS-3713 shipped and settled it: an external root is reachable only via an explicit per-call opt-in (allow_outside_project) that PathValidation still anchors, with the project-relative entry point keeping its rejection verbatim. That is the pattern a ~/.claude-scoped check would follow.
 
 - ✅ [ANTS-3720] **Replace the fixed-byte scrape window in the MCP schema tests with a self-sizing block bound.**
   The schema-wiring tests anchor on a literal and then take a FIXED byte window
@@ -21582,6 +21585,26 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Quoting the roadmap's own field names inside an item's text makes the reader think they are that item's real fields.
   Kind: fix.
   Source: in-session-2026-07-28 (hit reading ANTS-3696's own body)..
+
+- 📋 [ANTS-3723] **`changelog_log`'s `bytes_written` is the whole file, the sibling verb's is the delta.**
+  Measured this session: one `op:"add"` of a ~700-byte entry returned
+  `bytes_written: 1150003`, which is CHANGELOG.md's exact size on disk.
+  Three `roadmap_log` writes in the same session returned 933 / 1277 /
+  617 — the deltas — each alongside a separate `file_bytes`.
+
+  So the identical field name carries opposite semantics across two
+  sibling verbs, and `changelog_log` omits the `file_bytes` that would
+  let a caller tell which one it got. ANTS-3702 fixed exactly this
+  inside `roadmap_log` (delta on append, whole file on flip_batch) and
+  stopped at that verb's boundary.
+
+  Fix: report the appended-bytes delta and add `file_bytes`, matching
+  the envelope `roadmap_log` already emits. Cheap, and it makes the pair
+  readable side by side — the reason a session trusts either number is
+  that they agree.
+  **Layman:** Two tools report "how much did you write" in the same field, but one means the sentence it added and the other means the whole file.
+  Kind: fix.
+  Source: in-session-2026-07-28, ANTS-3702 sibling.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
@@ -22595,6 +22618,7 @@ that needs them.
   Kind: fix.
   Lanes: claudeintegration, mcp-discoverability.
   Source: in-session-2026-07-26 (found while implementing ANTS-3637).
+  Superseded (2026-07-28) by the ANTS-1581 reversal. This item narrowed the "Parallel API" note by exempting the verbs the skills mandate (test_audit_*, indie_review_partition, indie_review_corroborate). Global CLAUDE.md §18 makes the verbs the default path everywhere, so the exemption list would have had to grow to cover both families entirely — the note is removed instead, and the kSkillCalled set with it. The finding this item recorded was correct and its fix simply reached its limit: a note asserting "the skill does not call this" cannot be maintained by exemption once the skills call nearly all of it.
 
 - ✅ [ANTS-3640] **roadmap_log op:append accepts a body whose line starts a code fence, silently breaking every bullet below it.**
   Hit live this session. ANTS-3635's body quotes a nested code fence, so

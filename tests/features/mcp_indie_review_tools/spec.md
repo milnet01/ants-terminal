@@ -42,6 +42,33 @@ cross-session feedback asked for.
   without a second `indie_review_partition` round-trip) plus
   `source_paths_rejected` (per-path reject reasons for entries that
   failed the traversal / existence check).
+## ANTS-1581 reversal — the "Parallel API" note inverts
+
+ANTS-1581(b) appended "the `/cold-eyes` / `/indie-review` skill
+orchestrates this step itself and does not call this tool" to every
+`cold_eyes_*` / `indie_review_*` description, so naming parity would not
+read as "this is the canonical path"; ANTS-3639 then exempted the verbs
+the skills *do* mandate. Global `CLAUDE.md` §18 (2026-07-28) reverses the
+premise: the MCP verbs are the default path and the raw tools are the
+fallback, so the note now argues against the standing rule.
+
+One carve-out survives, and it is about what the verb **does**, not who
+calls it — `indie_review_dispatch` runs each lane on the project's
+configured local endpoint (default `llama3`), a different and weaker
+reviewer rather than a cheaper route to the same review.
+
+- INV-14 (reversal is total, not narrowed again): the string
+  `Parallel API:` does not occur in `claudeintegration.cpp`. The one
+  surviving note is gated on `name == QLatin1String("indie_review_dispatch")`
+  — a name equality, not a family prefix match — and that guard precedes
+  the note text it appends.
+- INV-15 (catalog hint agrees): within `indie_review_dispatch`'s own
+  descriptor block, `selection_hint` names the `LOCAL AI endpoint` the
+  review runs on and no longer calls the verb the `entry-point
+  orchestrator` for a review. The hint is what `tool_info {catalog:true}`
+  shows a session choosing a verb, so it is the same defect surface as
+  the description.
+
 - INV-13 (schema + discoverability): the `indie_review_brief` tool
   descriptor in `claudeintegration.cpp` declares the optional
   `source_paths` array prop and its `description` cites ANTS-3375 /
