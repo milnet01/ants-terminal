@@ -21103,7 +21103,7 @@ requesting no action and are closed in place rather than filed.
   Kind: enhancement.
   Source: DOOM-Ants + finbreak feedback-2026-07-28 (merged).
 
-- 📋 [ANTS-3708] **`test_audit_partition` refuses a project that declares `test_roots`, because the framework gate runs before scope.**
+- ✅ [ANTS-3708] **`test_audit_partition` refuses a project that declares `test_roots`, because the framework gate runs before scope.**
   `test_audit_partition` returns `{ok:false, code:"no_tests_found", error:"no test
   framework detected"}` on DOOM Ants even though `.ants/project.json` declares
   `test_roots:["linuxdoom-1.10/tests"]`, that directory holds 7 `*_test.cpp` files,
@@ -21134,8 +21134,19 @@ requesting no action and are closed in place rather than filed.
   **Layman:** A project that tells the tool exactly where its tests live is still told it has no tests, and the whole test-audit toolchain becomes unusable there.
   Kind: fix.
   Source: DOOM-Ants-feedback-2026-07-28.
+  Resolved (2026-07-28): the framework sniff is now evidence, not a gate.
+  Three rescues in `TestAuditEngine::partition`, in order — an explicit
+  `scope:"files:<csv>"` needs no framework at all; a declared `test_roots`
+  (.ants/project.json) rescues a failed sniff and partitions as
+  `framework:"custom"`; and a sniff that succeeds but whose globs match
+  nothing retries the declared roots before refusing (framework label stays
+  as detected — the signal file really is there). A declaration never
+  overrides a successful sniff, only rescues a failed one. The
+  `no_tests_found` refusal now names every probed signal filename plus both
+  escape hatches. Tests: tests/features/test_audit_declared_test_roots/
+  (INV-1..5); red-checked — 4 of the 5 fail against pre-fix source.
 
-- 📋 [ANTS-3709] **`indie_review_partition` returns zero lanes without a `## Module map`, ignoring the file list the server already holds.**
+- ✅ [ANTS-3709] **`indie_review_partition` returns zero lanes without a `## Module map`, ignoring the file list the server already holds.**
   `indie_review_partition` returns `{lanes:[], sparse_partition:true}` on a project
   whose CLAUDE.md describes its layout in prose rather than as a `- name — summary`
   list. The refusal hint is genuinely good (it names the module-map requirement,
@@ -21162,6 +21173,18 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Without one specific heading in CLAUDE.md the review planner returns nothing, even though it already knows every source file.
   Kind: enhancement.
   Source: DOOM-Ants-feedback-2026-07-28.
+  Resolved (2026-07-28): added `IndieReviewEngine::deriveComputedPartition` —
+  walks the declared `source_roots` (else src/, else the project root),
+  groups indexable files by containing directory, splits any directory over
+  25 files into numbered sub-lanes, deterministic. `cmdIndieReviewPartition`
+  reaches for it only when the document-reading derivers yielded ≤1 lane and
+  labels the result `derived:true` + `derived_from`, so a computed guess is
+  never passed off as a declared partition; the existing sparse hint still
+  fires. NOT built: line-range sub-lanes for large files — `Lane` has no
+  line-range field and adding one reaches into brief assembly, which is a far
+  larger change than the reported problem needs; the file-count split covers
+  the "one useless 195-file lane" case. Tests:
+  tests/features/indie_review_computed_partition/ (INV-1..5).
 
 - 📋 [ANTS-3710] **`audit_run` has no `exclude_paths`, so a vendored dependency tree dominates the sweep.**
   `paths` narrows a sweep; there is no negative counterpart, and narrowing is not the

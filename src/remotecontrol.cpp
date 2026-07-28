@@ -18764,7 +18764,22 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_partition: no focused project")));
 
-    const auto lanes = IndieReviewEngine::derivePartition(root);
+    auto lanes = IndieReviewEngine::derivePartition(root);
+    // ANTS-3709 — no module map is not the same as nothing to review. The
+    // server already holds the file tree, so fall back to a computed
+    // partition rather than returning `[]` and making the caller hand-derive
+    // one. Labelled `derived` so nobody mistakes it for a declared partition;
+    // the sparse hint below still fires, since committing
+    // .indie-review/partition.json remains the fix.
+    bool derived = false;
+    const int mapLaneCount = lanes.size();   // what the map itself yielded
+    if (lanes.size() <= 1) {
+        const auto computed = IndieReviewEngine::deriveComputedPartition(root);
+        if (computed.size() > lanes.size()) {
+            lanes   = computed;
+            derived = true;
+        }
+    }
     QJsonArray arr;
     for (const auto &l : lanes) {
         QJsonObject o;
@@ -18812,7 +18827,16 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     // .indie-review/partition.json override, so a sweep on a non-canonical
     // layout sees the workaround inline instead of giving up on the empty
     // partition.
-    if (lanes.size() <= 1) {
+    // ANTS-3709 — a computed partition gets the same hint: it is a usable
+    // starting point, not a declaration, and the fix is still to commit one.
+    if (derived) {
+        env["derived"]      = true;
+        env["derived_from"] = QStringLiteral(
+            "computed — no module map parsed; source files grouped by "
+            "directory (ANTS-3709). Adjust and commit as "
+            ".indie-review/partition.json to pin it.");
+    }
+    if (lanes.size() <= 1 || derived) {
         env["sparse_partition"]      = true;
         env["sparse_partition_hint"] = QStringLiteral(
             "Module-map deriver returned %1 lane(s). Check that the project "
@@ -18823,7 +18847,7 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "(ANTS-3375 ad-hoc mode), or commit "
             "<projectPath>/.indie-review/partition.json to persist an "
             "override.")
-                .arg(static_cast<int>(lanes.size()));
+                .arg(mapLaneCount);
     }
     return QJsonDocument(env);
 }

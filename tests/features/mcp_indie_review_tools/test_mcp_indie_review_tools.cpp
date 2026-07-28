@@ -118,7 +118,11 @@ TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
     ASSERT_FALSE(rc.empty());
     const auto p = rc.find("RemoteControl::cmdIndieReviewPartition");
     ASSERT_NE(p, std::string::npos);
-    const std::string body = rc.substr(p, 2000);
+    // Window widened 2000 → 4000 by ANTS-3709: the computed-partition
+    // fallback grew the handler, pushing suggested_merges past the old
+    // scrape window. A fixed-byte window measures handler length, not the
+    // wiring it claims to lock.
+    const std::string body = rc.substr(p, 4000);
     EXPECT_NE(body.find("suggested_merges"), std::string::npos)
         << "cmdIndieReviewPartition no longer emits suggested_merges";
     EXPECT_NE(body.find("IndieReviewEngine::suggestedMerges"),

@@ -1846,6 +1846,10 @@ if(ANTS_TESTS)
                 tests/features/audit_falsepos_ledger/test_audit_falsepos_ledger.cpp
                 # ANTS-1455 — glob walk + reports_dir opt-in + synth mode/pagination.
                 tests/features/test_audit_glob_walk_synth_mode/test_audit_glob_walk_synth_mode.cpp
+                # ANTS-3708 — declared test_roots / files: scope outrank a failed sniff.
+                tests/features/test_audit_declared_test_roots/test_declared_test_roots.cpp
+                # ANTS-3709 — computed partition fallback when no module map parses.
+                tests/features/indie_review_computed_partition/test_indie_review_computed_partition.cpp
                 # ANTS-1579 — verify_changes timeout_sec end-to-end plumb.
                 tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp
                 # ANTS-1339 — applyFilter streaming line-split.

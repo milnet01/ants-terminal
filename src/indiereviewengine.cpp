@@ -1,13 +1,16 @@
 #include "indiereviewengine.h"
 
 #include "briefdispatch.h"
+#include "codebaseindex.h"     // ANTS-3709 — indexable-suffix filter
 #include "falseposledger.h"
 #include "pathvalidation.h"
+#include "projectsettings.h"   // ANTS-3709 — declared source_roots
 #include "roadmapfoldin.h"
 #include "subsystemmap.h"
 
 #include <QChar>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -223,6 +226,86 @@ QList<Lane> deriveFileListPartition(const QString &projectPath,
 }
 
 }  // namespace
+
+// ANTS-3709 — computed fallback partition. Every earlier deriver reads a
+// document (the override, the `## Module map`, its file-list variant), so a
+// project that describes its layout in prose gets zero lanes even though the
+// server already holds the file tree. Walk the declared source_roots
+// (.ants/project.json, ANTS-2160) — else src/, else the project root — and
+// group the indexable files by containing directory. A mediocre computed
+// partition beats an empty one: the caller can adjust it and commit the
+// result as .indie-review/partition.json. Deterministic (QMap ordering +
+// sorted paths), so re-derivations agree, which multi-loop review depends on.
+// Returns empty unless it derives >1 lane, so the sparse_partition path still
+// fires when there is genuinely nothing to split.
+QList<Lane> deriveComputedPartition(const QString &projectPath) {
+    // A flat directory of 200 files is one useless lane; split it into
+    // reviewable chunks. Deliberately not line-range sub-lanes — Lane has no
+    // line-range field, and adding one reaches into brief assembly.
+    constexpr int kMaxFilesPerLane = 25;
+    constexpr int kMaxFilesTotal   = 4000;   // pathological-tree backstop
+
+    QStringList roots;
+    for (const QString &r :
+             ProjectSettings::load(projectPath).sourceRoots.value_or(QStringList{}))
+        if (QDir(projectPath + QLatin1Char('/') + r).exists()) roots << r;
+    if (roots.isEmpty()) {
+        roots << (QDir(projectPath + QStringLiteral("/src")).exists()
+                      ? QStringLiteral("src") : QStringLiteral("."));
+    }
+
+    static const QStringList kGenPrefixes = {
+        QStringLiteral("moc_"), QStringLiteral("ui_"), QStringLiteral("qrc_"),
+    };
+    QMap<QString, QStringList> byDir;   // dir rel path → file rel paths
+    int seen = 0;
+    for (const QString &root : roots) {
+        const QString rootAbs = QDir::cleanPath(
+            projectPath + QLatin1Char('/') + root);
+        QDirIterator it(rootAbs, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext() && seen < kMaxFilesTotal) {
+            const QString abs = it.next();
+            if (!abs.startsWith(projectPath + QLatin1Char('/'))) continue;
+            const QString rel = abs.mid(projectPath.size() + 1);
+            const QFileInfo fi(abs);
+            if (!CodebaseIndex::isIndexableSuffix(fi.suffix().toLower()))
+                continue;
+            bool generated = false;
+            for (const QString &p : kGenPrefixes)
+                if (fi.fileName().startsWith(p)) generated = true;
+            if (generated) continue;
+            const QStringList segs = rel.split(QLatin1Char('/'));
+            bool noise = false;
+            for (int i = 0; i + 1 < segs.size(); ++i)
+                if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+            if (noise) continue;
+            const QString dir = segs.size() > 1
+                ? rel.section(QLatin1Char('/'), 0, -2) : QStringLiteral(".");
+            byDir[dir] << rel;
+            ++seen;
+        }
+    }
+
+    QList<Lane> out;
+    for (auto it = byDir.constBegin(); it != byDir.constEnd(); ++it) {
+        QStringList paths = it.value();
+        paths.sort();
+        const int parts =
+            (paths.size() + kMaxFilesPerLane - 1) / kMaxFilesPerLane;
+        for (int p = 0; p < parts; ++p) {
+            Lane l;
+            l.name = parts > 1
+                ? QStringLiteral("%1 (%2/%3)").arg(it.key()).arg(p + 1).arg(parts)
+                : it.key();
+            l.sourcePaths = paths.mid(p * kMaxFilesPerLane, kMaxFilesPerLane);
+            l.summary = QStringLiteral(
+                "%1 file(s) under %2/ (computed partition — no module map; "
+                "grouped by directory)").arg(l.sourcePaths.size()).arg(it.key());
+            out << l;
+        }
+    }
+    return out.size() > 1 ? out : QList<Lane>{};
+}
 
 QList<Lane> derivePartition(const QString &projectPath) {
     const QString override = readPartitionOverride(projectPath);

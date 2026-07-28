@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **`indie_review_partition` works out review lanes from the file tree when a project has no module map** (ANTS-3709)
+  Previously a project that describes its layout in prose got back an
+  empty list, even though the server already knew every source file, and
+  the caller had to build the review plan by hand. It now groups the files
+  by folder (splitting big folders into numbered chunks) and hands that
+  back marked as worked-out rather than declared, so you can adjust it and
+  save it as your project's own partition file.
+
 - **`audit_run` says WHY a file could not be parsed** (ANTS-3706)
   New `parse_failures_detail[]` gives `{file, tool, reason}` — the
   check-id and first diagnostic — next to the existing bare-path
@@ -189,6 +197,14 @@ for security-relevant changes.
   `quick:true` ran an identical full walk and pre-pass. `--quick` is caller-side (the grep pre-pass is the audit; only the subagent phase is skipped), so the field promised a fast path that did not exist. Callers passing it now get a schema refusal rather than a silent no-op.
 
 ### Fixed
+
+- **`test_audit_partition` no longer refuses a project that told it where the tests are** (ANTS-3708)
+  If a project declares its test folders in `.ants/project.json`, or you
+  name the test files outright, the tool now just gets on with it instead
+  of insisting it can't find a recognised test framework. Hand-rolled test
+  harnesses — the kind with no framework to detect — work again. When it
+  genuinely can't tell, the refusal now lists everything it looked for and
+  the two ways to answer it.
 
 - **A roadmap bullet quoting `Lanes:` in its prose no longer acquires a bogus lane** (ANTS-3722)
   Writing about the trailer keys made the reader treat them as that item's

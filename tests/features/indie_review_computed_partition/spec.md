@@ -1,0 +1,64 @@
+# indie_review_computed_partition — a computed partition beats an empty one
+
+ANTS-3709. Every `indie_review_partition` deriver read a *document* — the
+`.indie-review/partition.json` override, CLAUDE.md's `## Module map` of
+`- <name> — <summary>` subsystems, and (ANTS-3507) its `- <path> — <desc>`
+file-list variant. A project that describes its layout in prose therefore
+got `{lanes:[], sparse_partition:true}` even though the server already held
+the file tree: `codebase_index` listed all 195 source files in the same
+session, and `.ants/project.json` declared `source_roots`.
+
+The cost lands on the orchestrator, which hand-derives the partition
+instead — 16 lanes built from `find` + `wc -l` on the reported run. That is
+the single most expensive orchestrator step in a sweep and the one the verb
+exists to remove, and a hand-built partition is unreproducible run-to-run,
+which quietly breaks the "an issue not raised again proves the fix held"
+property multi-loop review depends on. Reported by DOOM Ants
+(`DOOM_Ants_Ants_MCP_Feedback.md`, 2026-07-28).
+
+Deliberately NOT built: line-range sub-lanes for very large files. `Lane`
+has no line-range field, and adding one reaches into brief assembly — a
+file-count split covers the "one useless 195-file lane" case at a fraction
+of the surface.
+
+## INVs
+
+- **INV-1** (prose layout still partitions) — with no override, no
+  `## Module map`, and source files under two directories,
+  `IndieReviewEngine::deriveComputedPartition` returns one lane per
+  containing directory, named after that directory.
+  *Test:* `Inv1ProseLayoutYieldsDirectoryLanes`.
+  *Breaks when:* the deriver reads a document instead of the tree.
+
+- **INV-2** (declared source_roots bound the walk) — when
+  `.ants/project.json` declares `source_roots`, only files under those
+  roots are partitioned. With nothing declared and no `src/`, the project
+  root is walked.
+  *Test:* `Inv2DeclaredSourceRootsBoundTheWalk`.
+  *Breaks when:* the walk hardcodes `src/`.
+
+- **INV-3** (a big flat directory splits) — a directory holding more than
+  25 indexable files becomes numbered sub-lanes (`dir (1/N)` …), so a flat
+  project does not collapse into one unreviewable lane. Paths are sorted,
+  so the split is deterministic across re-derivations.
+  *Test:* `Inv3LargeDirectorySplitsIntoSubLanes`.
+  *Breaks when:* the per-lane cap is dropped.
+
+- **INV-4** (the >1-lane guard survives) — a project whose files all sit in
+  one small directory yields an empty computed partition, so the caller
+  keeps its `sparse_partition` refusal path rather than being handed a
+  single lane dressed up as a partition.
+  *Test:* `Inv4SingleDirectoryYieldsEmpty`.
+  *Breaks when:* the guard is relaxed to `>= 1`.
+
+- **INV-5** (a declared partition is never shadowed) — a parseable module
+  map still wins: `derivePartition` is unchanged, and the MCP handler only
+  reaches for the computed partition when the map yielded ≤1 lane. When it
+  does, the envelope carries `derived: true` plus `derived_from`, so a
+  computed guess is never passed off as a declared partition, and the
+  existing `sparse_partition_hint` still fires (committing
+  `.indie-review/partition.json` remains the fix).
+  *Test:* `Inv5HandlerLabelsDerivedAndKeepsHint` (source-grep over
+  `cmdIndieReviewPartition`).
+  *Breaks when:* the fallback overwrites a good partition, or ships
+  unlabelled.

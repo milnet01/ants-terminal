@@ -5,6 +5,7 @@
 
 #include "falseposledger.h"
 #include "pathvalidation.h"
+#include "projectsettings.h"   // ANTS-3708 — declared test_roots override
 #include "roadmapfoldin.h"
 
 #include <QCryptographicHash>
@@ -246,6 +247,62 @@ QString scopeSubdir(const QString &scope) {
     QString s = scope.mid(5);
     while (s.endsWith(QLatin1Char('/'))) s.chop(1);
     return s;
+}
+
+// ANTS-3708 — every signal file the framework probe looks for, deduped
+// in probe-table order. Named in the `no_tests_found` refusal so the
+// caller learns what was actually looked for rather than only that it
+// failed (same shape as ANTS-3706's parse-failure reasons).
+QString probedSignalFiles() {
+    QStringList out;
+    for (const auto &fw : g_kFrameworks())
+        for (const QString &signal : fw.signalFiles)
+            if (!out.contains(signal)) out << signal;
+    return out.join(QStringLiteral(", "));
+}
+
+// ANTS-3708 — walk globs derived from `.ants/project.json` test_roots.
+// A declared root is the human answering the question the sniff is
+// guessing at, so it outranks a failed sniff: hand-rolled harnesses (a
+// plain main() returning non-zero) ship no signal file and are the
+// least sniffable thing there is. Globs are expressed relative to the
+// root walkTestFiles will use for this scope — the project root, or the
+// `path:` subdir — so a declared root outside a `path:` scope drops out.
+// Empty when nothing is declared or no declared dir exists.
+QStringList declaredTestGlobs(const QString &canon, const QString &scope) {
+    const ProjectSettings::Settings s = ProjectSettings::load(canon);
+    if (!s.testRoots) return {};
+    // Source extensions only — a declared root may also hold fixtures,
+    // golden files and READMEs, which are not test sources.
+    static const QStringList kExts = {
+        QStringLiteral("c"),   QStringLiteral("cc"),  QStringLiteral("cpp"),
+        QStringLiteral("cxx"), QStringLiteral("py"),  QStringLiteral("rs"),
+        QStringLiteral("go"),  QStringLiteral("js"),  QStringLiteral("jsx"),
+        QStringLiteral("ts"),  QStringLiteral("tsx"), QStringLiteral("lua"),
+        QStringLiteral("sh"),
+    };
+    const QString sub = scopeSubdir(scope);
+    QStringList out;
+    for (const QString &root : *s.testRoots) {
+        const QString rel = QDir::cleanPath(root);
+        if (!QFileInfo(canon + QLatin1Char('/') + rel).isDir()) continue;
+        QString relToScope = rel;
+        if (!sub.isEmpty()) {
+            const QString subClean = QDir::cleanPath(sub);
+            if (rel == subClean) {
+                relToScope.clear();
+            } else if (rel.startsWith(subClean + QLatin1Char('/'))) {
+                relToScope = rel.mid(subClean.size() + 1);
+            } else {
+                continue;   // declared root sits outside the scoped subtree
+            }
+        }
+        const QString prefix = relToScope.isEmpty()
+            ? QString() : relToScope + QLatin1Char('/');
+        for (const QString &ext : kExts)
+            out << prefix + QStringLiteral("**/*.") + ext;
+    }
+    return out;
 }
 
 // ANTS-1455 — manual glob→regex conversion. Qt's
@@ -944,11 +1001,28 @@ PartitionResult partition(const PartitionRequest &req) {
     if (r.framework.isEmpty()) {
         r.framework = detectFramework(canon, &globs);
     }
+    // ANTS-3708 — the sniff is evidence, not a gate. Two things outrank
+    // a failed sniff, and both are a human naming the tests outright: an
+    // explicit `files:` scope, and `test_roots` in .ants/project.json.
+    // Partitioned as framework "custom", which costs the caller nothing
+    // downstream — the dimension checklist is framework-agnostic.
+    if (r.framework.isEmpty()
+        && req.scope.startsWith(QLatin1String("files:"))) {
+        r.framework = QStringLiteral("custom");
+        globs.clear();          // walkTestFiles ignores globs for `files:`
+    }
+    if (r.framework.isEmpty()) {
+        globs = declaredTestGlobs(canon, req.scope);
+        if (!globs.isEmpty()) r.framework = QStringLiteral("custom");
+    }
     if (r.framework.isEmpty()) {
         r.ok = false; r.code = QStringLiteral("no_tests_found");
         r.error = QStringLiteral(
-            "test_audit_partition: no test framework detected at "
-            "\"%1\"").arg(canon);
+            "test_audit_partition: no test framework detected at \"%1\" "
+            "(probed for: %2), and no usable test_roots in "
+            ".ants/project.json. Declare test_roots there, or pass "
+            "scope:\"files:<csv>\" to name the test files outright.")
+            .arg(canon, probedSignalFiles());
         return r;
     }
     r.testGlobs = globs;
@@ -1001,7 +1075,20 @@ PartitionResult partition(const PartitionRequest &req) {
         r.additionalFrameworks = extras;
     }
     // Walk test files.
-    const QStringList files = walkTestFiles(canon, globs, req.scope);
+    QStringList files = walkTestFiles(canon, globs, req.scope);
+    // ANTS-3708 — same declaration-outranks-guesswork rule one step
+    // later: the sniff can succeed on a root signal file (a CMakeLists
+    // driving the main build) while its globs miss a test tree the
+    // project has explicitly declared. Retry with the declared roots
+    // before refusing; the framework label stays as detected, since the
+    // signal file really is there.
+    if (files.isEmpty()) {
+        const QStringList declared = declaredTestGlobs(canon, req.scope);
+        if (!declared.isEmpty()) {
+            files = walkTestFiles(canon, declared, req.scope);
+            if (!files.isEmpty()) { globs = declared; r.testGlobs = declared; }
+        }
+    }
     if (files.isEmpty()) {
         r.ok = false; r.code = QStringLiteral("no_tests_found");
         r.error = QStringLiteral(

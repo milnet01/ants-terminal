@@ -113,6 +113,16 @@ struct BriefManifest {
 
 QList<Lane> derivePartition(const QString &projectPath);
 
+// ANTS-3709 — computed fallback for a project whose layout is prose rather
+// than a `## Module map`. Walks the declared source_roots (.ants/project.json,
+// else src/, else the project root) and groups indexable files by containing
+// directory, splitting any directory over 25 files into numbered sub-lanes.
+// Deterministic. Returns empty unless it derives >1 lane, so a caller keeps
+// its sparse-partition path when there is genuinely nothing to split. Kept
+// separate from derivePartition so the MCP layer can label the result
+// `derived: true` rather than passing off a guess as a declared partition.
+QList<Lane> deriveComputedPartition(const QString &projectPath);
+
 // ANTS-1288 — scan a partition for lanes whose summaries are duplicate or
 // near-duplicate and return one MergeSuggestion per candidate pair (in
 // stable lane order). Pure, side-effect-free. Identical summaries (after
