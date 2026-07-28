@@ -9500,11 +9500,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc.
   Source: user-request-2026-07-28.
 
-- 🚧 [ANTS-3674] **read_region section mode hand-rolls fence tracking and goes blind after an inline fence example.**
+- ✅ [ANTS-3674] **read_region section mode hand-rolls fence tracking and goes blind after an inline fence example.**
   `resolveSection` (src/readregion.cpp) is the last hand-rolled fence
   tracker in the tree. It opens a fence on any `trimmed.startsWith("```")`
   and stores `trimmed.left(3)` as the marker. Two consequences, both live:
   Progress (2026-07-28): `resolveSection` now uses `MarkdownScan::fenceMask` instead of its local `startsWith("```")` + `left(3)`. Regression rows MD-9 (inline fence example must not blind the scan) and MD-10 (a 3-backtick line must not close a 4-backtick fence) added to `tests/features/read_region_md_section/`. Build + RED proof pending.
+  Resolved (2026-07-28, commit e75be20d): `resolveSection` now calls `MarkdownScan::fenceMask`. MD-9 regression row green; the live ANTS-3661 repro is the RED evidence. Only defect 1 (inline span misread as an opener) was in this file — defect 2, the closer-length rule, is a gap in `fenceMask` itself and is ANTS-3678.
 
   1. A line demonstrating a fence inside a longer backtick run — the
      4-backtick span ```` ```cpp ```` — is read as a fence OPENER, though
