@@ -4,10 +4,18 @@
 // Exit 0 = all 8 invariants hold.
 
 #include "../../_support/expect.h"
+#include "remotecontrol.h"
 
 #include <string>
 
 #include <gtest/gtest.h>
+#include <QDir>
+#include <QFile>
+#include <QIODevice>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QString>
+#include <QTemporaryDir>
 #include "../../_support/srcgrep.h"
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
@@ -105,9 +113,15 @@ TEST(McpInvariantCheck, WiringContract) {
            "tools/list block must register an \"invariant_check\" "
            "entry");
     {
-        const auto anchorPos = ciCpp.find("ANTS-1308");
-        ASSERT_NE(anchorPos, std::string::npos);
-        const std::string region = ciCpp.substr(anchorPos, 3000);
+        // ANTS-3720 — self-sizing descriptor block. This was a fixed 3000-byte
+        // window from the ANTS-1308 anchor, which ANTS-3699's `mode` property
+        // pushed `req.append("files")` straight past: a scrape that measures
+        // the descriptor's length, not the wiring it claims to lock.
+        const std::string region =
+            ants_test::mcpToolDescriptor(ciCpp, "invariant_check");
+        ASSERT_FALSE(region.empty())
+            << "invariant_check descriptor block not found in "
+               "src/claudeintegration.cpp";
         expect(contains(region, "req.append(\"files\")"),
                "INV-7b",
                "invariant_check schema must mark \"files\" as required");
@@ -140,4 +154,106 @@ TEST(McpInvariantCheck, WiringContract) {
                "INV-8",
                "invariant_check must be classified C::Required");
     }
+}
+
+namespace {
+
+// Seed <root>/docs/specs/<id>.md with one INV bullet whose body is long
+// enough that its presence or absence is unmistakable in the envelope.
+void seedSpec(const QString &root, const QString &id, const QString &mentions) {
+    QDir(root).mkpath(QStringLiteral("docs/specs"));
+    QFile f(root + QStringLiteral("/docs/specs/") + id + QStringLiteral(".md"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
+    f.write((QStringLiteral("# ") + id + QStringLiteral(" — seeded\n\n"
+            "**Status:** accepted.\n\n## 2. Surface\n\nTouches `") + mentions +
+            QStringLiteral("` in anger.\n\n## 3. Invariants\n\n"
+            "- **INV-1** — ") + QString(400, QLatin1Char('x')) +
+            QStringLiteral(". *Test:* T1.\n"
+            "- **INV-2** — ") + QString(400, QLatin1Char('y')) +
+            QStringLiteral(". *Test:* T2.\n")).toUtf8());
+}
+
+QJsonObject runCheck(const QString &root, const QString &file,
+                     const QString &mode) {
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    QJsonArray files;
+    files.append(file);
+    req[QStringLiteral("files")] = files;
+    if (!mode.isEmpty()) req[QStringLiteral("mode")] = mode;
+    return rc.cmdInvariantCheck(req).object();
+}
+
+}  // namespace
+
+// INV-9 (ANTS-3699) — summary is the DEFAULT shape: the match list survives,
+// the invariant BODIES do not, and the envelope says so. The whole point is
+// that a caller who knows nothing about `mode` gets the cheap answer, so the
+// default is what this pins.
+TEST(McpInvariantCheck, Ants3699SummaryOmitsBodiesByDefault) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("ANTS-9001"),
+             QStringLiteral("src/widget.cpp"));
+
+    const QJsonObject env =
+        runCheck(dir.path(), QStringLiteral("src/widget.cpp"), QString());
+    ASSERT_TRUE(env.value("ok").toBool());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1);
+    EXPECT_EQ(env.value("mode").toString(), "summary");
+    EXPECT_FALSE(env.value("invariants_included").toBool());
+
+    const QJsonObject spec =
+        env.value("matched_specs").toArray().at(0).toObject();
+    EXPECT_EQ(spec.value("id").toString(), "ANTS-9001");
+    EXPECT_EQ(spec.value("path").toString(), "docs/specs/ANTS-9001.md");
+    EXPECT_EQ(spec.value("matched_terms").toArray().size(), 1);
+    // The count is the real one even though the bodies are gone — that is what
+    // makes the summary a usable answer rather than a truncation.
+    EXPECT_EQ(spec.value("invariants_count").toInt(), 2);
+    EXPECT_FALSE(spec.contains("invariants"))
+        << "summary mode must OMIT invariant bodies, not shorten them";
+    EXPECT_TRUE(env.contains("hint"))
+        << "a summary with matches must say how to get the bodies";
+}
+
+// INV-10 (ANTS-3699) — mode:"full" restores the bodies verbatim, and the
+// envelope's shape flags flip with it.
+TEST(McpInvariantCheck, Ants3699FullRestoresBodies) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("ANTS-9002"),
+             QStringLiteral("src/widget.cpp"));
+
+    const QJsonObject env = runCheck(dir.path(),
+                                     QStringLiteral("src/widget.cpp"),
+                                     QStringLiteral("full"));
+    ASSERT_TRUE(env.value("ok").toBool());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1);
+    EXPECT_EQ(env.value("mode").toString(), "full");
+    EXPECT_TRUE(env.value("invariants_included").toBool());
+    EXPECT_FALSE(env.contains("hint"));
+
+    const QJsonObject spec =
+        env.value("matched_specs").toArray().at(0).toObject();
+    const QJsonArray invs = spec.value("invariants").toArray();
+    ASSERT_EQ(invs.size(), 2);
+    EXPECT_EQ(spec.value("invariants_count").toInt(), invs.size());
+    EXPECT_TRUE(invs.at(0).toObject().value("body").toString().contains(
+        QString(400, QLatin1Char('x'))))
+        << "full mode must carry the invariant body verbatim";
+}
+
+// INV-11 (ANTS-3699) — an unknown mode refuses rather than silently picking
+// one. A typo'd "brief" that quietly returned summary would look identical to
+// a spec with no invariants.
+TEST(McpInvariantCheck, Ants3699UnknownModeRefuses) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("ANTS-9003"),
+             QStringLiteral("src/widget.cpp"));
+
+    const QJsonObject env = runCheck(dir.path(),
+                                     QStringLiteral("src/widget.cpp"),
+                                     QStringLiteral("brief"));
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString(), "bad_mode");
 }

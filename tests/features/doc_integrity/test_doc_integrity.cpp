@@ -386,3 +386,91 @@ TEST(DocIntegrity, PerDocCaps) {
     const auto fs = DocIntegrity::check(root, {"docs/a.md"}, opts);
     EXPECT_EQ(countKind(fs, Kind::DeadAnchor), 0);  // the link was never read
 }
+
+// ---- ANTS-3700 — heading_sequence ------------------------------------------
+
+// INV-16 — the reported shape: a sibling lower than its predecessor is an
+// out-of-order finding, and the number that "went missing" ahead of it is NOT
+// separately reported as a gap, because it turns up later under the same
+// parent. This is the spec-format.md case that survived three cold-eyes loops.
+TEST(DocIntegrity, HeadingSequenceSwappedSiblings) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# Doc\n\n"
+                          "### 5.6 Sixth\n\n"
+                          "### 5.8 Eighth\n\n"
+                          "### 5.7 Seventh\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs, Kind::HeadingSequence), 1)
+        << "a swapped pair is ONE defect; reporting the hole at 5.8 as well "
+           "would double-count it";
+    EXPECT_TRUE(hasMention(fs, Kind::HeadingSequence,
+                           QStringLiteral("5.7 is out of order")));
+}
+
+// INV-17 — a genuine hole (no sibling ever fills it) IS a gap, named.
+TEST(DocIntegrity, HeadingSequenceRealGap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# Doc\n\n"
+                          "## 1. One\n\n"
+                          "## 2. Two\n\n"
+                          "## 5. Five\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs, Kind::HeadingSequence), 1);
+    EXPECT_TRUE(hasMention(fs, Kind::HeadingSequence, QStringLiteral("skips 3, 4")))
+        << "the gap must name the missing numbers, not just its own";
+}
+
+// INV-18 — a repeated number is a duplicate, distinct from a gap.
+TEST(DocIntegrity, HeadingSequenceDuplicate) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# Doc\n\n"
+                          "## 1. One\n\n"
+                          "## 2. Two\n\n"
+                          "## 2. Two again\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs, Kind::HeadingSequence), 1);
+    EXPECT_TRUE(hasMention(fs, Kind::HeadingSequence,
+                           QStringLiteral("duplicate section number 2")));
+}
+
+// INV-19 — the quiet cases. Nested numbering is grouped by numeric parent, so
+// interleaved depths are clean; prose headings, an H1 title, a group that
+// simply starts above 1, and fenced examples are all untouched.
+TEST(DocIntegrity, HeadingSequenceQuietCases) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# 9. Title numbered oddly\n\n"
+                          "## 1. One\n\n"
+                          "### 1.1 First child\n\n"
+                          "### 1.2 Second child\n\n"
+                          "## 2. Two\n\n"
+                          "### 2.1 Child\n\n"
+                          "## Prose heading\n\n"
+                          "## 3. Three\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/a.md"}),
+                        Kind::HeadingSequence), 0);
+
+    // A doc whose sections start at 2 is an excerpt, not a defect.
+    ASSERT_TRUE(writeFile(root + "/docs/b.md",
+                          "# Doc\n\n## 2. Two\n\n## 3. Three\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/b.md"}),
+                        Kind::HeadingSequence), 0);
+
+    // Fenced headings are inert (fence-awareness is shared with checks 1-3).
+    ASSERT_TRUE(writeFile(root + "/docs/c.md",
+                          "# Doc\n\n## 1. One\n\n```\n## 9. Fenced\n```\n\n"
+                          "## 2. Two\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/c.md"}),
+                        Kind::HeadingSequence), 0);
+}

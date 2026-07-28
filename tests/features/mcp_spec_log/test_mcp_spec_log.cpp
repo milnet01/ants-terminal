@@ -9,6 +9,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QIODevice>
 #include <QJsonObject>
 #include <QString>
@@ -166,6 +167,8 @@ TEST(McpSpecLog, HandlerSetStatus) {
     const QString p = seedSpec(dir, "ANTS-9999", QString::fromUtf8(kSpec));
     ASSERT_FALSE(p.isEmpty());
 
+    const qint64 sizeBefore = QFileInfo(p).size();
+
     RemoteControl rc(nullptr);
     QJsonObject req;
     req["caller_cwd"] = dir.path();
@@ -178,9 +181,20 @@ TEST(McpSpecLog, HandlerSetStatus) {
     EXPECT_EQ(env.value("id").toString(), "ANTS-9999");
     EXPECT_EQ(env.value("path").toString(), "docs/specs/ANTS-9999.md");
     EXPECT_GT(env.value("line").toInt(), 0);
-    EXPECT_GT(env.value("bytes_written").toInt(), 0);
     EXPECT_TRUE(QString::fromUtf8(readAll(p)).contains(
         "**Status:** accepted (2026-06-04)"));
+
+    // ANTS-3724 — bytes_written is the ADDED-bytes delta, file_bytes the whole
+    // file (parity with roadmap_log/changelog_log). The old `bytes_written > 0`
+    // assertion could not distinguish the two, and is wrong here besides: this
+    // set_status swaps a longer status for a shorter one, so the honest delta
+    // is NEGATIVE. Pin both against the file on disk.
+    const qint64 sizeAfter = QFileInfo(p).size();
+    EXPECT_EQ(env.value("file_bytes").toInteger(), sizeAfter);
+    EXPECT_EQ(env.value("bytes_written").toInteger(), sizeAfter - sizeBefore);
+    EXPECT_LT(env.value("bytes_written").toInteger(), 0)
+        << "shorter replacement status must report a negative delta, not the "
+           "whole-file size";
 }
 
 // T6 — refusals.
@@ -259,7 +273,9 @@ TEST(McpSpecLog, HandlerDryRunWritesNothing) {
       EXPECT_TRUE(env.value("dry_run").toBool());
       EXPECT_GT(env.value("line").toInt(), 0);
       EXPECT_GT(env.value("bytes").toInt(), 0);
-      EXPECT_FALSE(env.contains("bytes_written")); }
+      EXPECT_FALSE(env.contains("bytes_written"));
+      // ANTS-3724 — the write-side pair is absent on a preview, both halves.
+      EXPECT_FALSE(env.contains("file_bytes")); }
 
     // append_inv dry_run.
     { QJsonObject r = base(); r["op"] = "append_inv";

@@ -28,3 +28,9 @@ Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
   (set_status / append_inv / append_loop) WITHOUT writing the spec; the
   file is byte-identical to its pre-call content. Parity with
   `roadmap_log` / `changelog_log` dry_run.
+- T12 — (ANTS-3724) a successful write returns `bytes_written` as the
+  ADDED-bytes delta (post-write size minus pre-write size, which is
+  NEGATIVE when a `set_status` replacement is shorter than what it
+  replaced) and `file_bytes` as the whole file. Parity with `roadmap_log`
+  (ANTS-3702) / `changelog_log` (ANTS-3723). Neither field appears on a
+  dry_run preview, which reports `bytes` instead.

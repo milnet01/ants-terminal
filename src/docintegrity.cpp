@@ -7,6 +7,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QMap>
 #include <QRegularExpression>
 #include <QSet>
 #include <QVector>
@@ -57,6 +59,27 @@ struct Link {
     QString target;  // raw target inside the parens, incl. any #anchor
     int     line;    // 1-based
 };
+
+// ANTS-3700 — the leading section number of a heading, as its components:
+// "5.7 Emission model" → [5, 7]; "5. Problem" → [5]; "Overview" → {}. A single
+// trailing dot is consumed ("## 5. Problem" is the dominant form in this
+// corpus, and the shape a strict `\d+(\.\d+)*\s` would miss). Anything that
+// is not digits-and-dots up to the first space simply has no number, which is
+// how prose headings opt out.
+QList<int> headingNumber(const QString &text) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^(\d+(?:\.\d+)*)\.?(?:\s|$))"));
+    const auto m = re.match(text);
+    if (!m.hasMatch()) return {};
+    QList<int> out;
+    bool ok = true;
+    for (const QString &part : m.captured(1).split(QLatin1Char('.'))) {
+        const int v = part.toInt(&ok);
+        if (!ok) return {};   // overflow — treat as unnumbered, not as 0
+        out.append(v);
+    }
+    return out;
+}
 
 // Everything parsed from one doc, bounded by the Options caps.
 struct DocData {
@@ -225,6 +248,92 @@ QString gfmSlug(const QString &headingText) {
     return gfmSlug(headingText, seen);
 }
 
+// ANTS-3700 — check 4. Siblings are headings sharing a numeric parent prefix
+// ([5] and [6] are siblings under ""; [5,1] and [5,2] under "5"), which is the
+// grouping the numbering itself asserts — stricter and cleaner than matching
+// on `#` depth, since a doc may write `## 5.` and `### 5.1` at different
+// levels while meaning one hierarchy.
+//
+// Two deliberate limits, both to keep the check quiet enough to gate on:
+//
+//   * A group's FIRST heading is never flagged. A doc whose sections start at
+//     2 (or 0) may be an excerpt or use appendix numbering; "should have begun
+//     at 1" is a guess, and a guess repeated on every doc is what makes a
+//     checker something people filter out.
+//   * A skipped number that turns up LATER under the same parent is not a
+//     gap — it is the out-of-order heading, already reported where it sits.
+//     Without this, the commonest shape of the defect (two siblings swapped)
+//     reports twice: once as a hole at 5.8, once as a reversal at 5.7.
+void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
+                          QList<Finding> &out) {
+    struct Group {
+        QSet<int>  present;   // every number seen under this parent, any order
+        QList<int> order;     // document order of those numbers
+        QList<int> lines;
+    };
+    QMap<QString, Group> groups;   // parent prefix ("", "5", "5.1") → group
+    QHash<QString, QString> label; // parent prefix → its heading text, for msgs
+
+    for (const Heading &h : headings) {
+        if (h.level < 2) continue;   // H1 is the doc title, not a section
+        const QList<int> num = headingNumber(h.text);
+        if (num.isEmpty()) continue;
+        QStringList parentParts;
+        for (int i = 0; i < num.size() - 1; ++i)
+            parentParts << QString::number(num[i]);
+        const QString parent = parentParts.join(QLatin1Char('.'));
+        Group &g = groups[parent];
+        g.present.insert(num.last());
+        g.order.append(num.last());
+        g.lines.append(h.line);
+        label.insert(parent, h.text);
+    }
+
+    // Emit in document order across all groups, so findings interleave the way
+    // the sort at the end of check() expects.
+    QList<Finding> local;
+    for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
+        const QString &parent = it.key();
+        const Group   &g      = it.value();
+        const QString  prefix = parent.isEmpty()
+                                    ? QString()
+                                    : parent + QLatin1Char('.');
+        QSet<int> seen;
+        int prev = 0, high = 0;
+        for (int i = 0; i < g.order.size(); ++i) {
+            const int  n    = g.order[i];
+            const int  line = g.lines[i];
+            if (i == 0) { seen.insert(n); prev = high = n; continue; }
+
+            if (seen.contains(n)) {
+                local.append({Kind::HeadingSequence, rel, line,
+                              QStringLiteral("duplicate section number %1%2")
+                                  .arg(prefix).arg(n)});
+            } else if (n < prev) {
+                local.append({Kind::HeadingSequence, rel, line,
+                              QStringLiteral("section %1%2 is out of order — "
+                                             "it follows %1%3")
+                                  .arg(prefix).arg(n).arg(prev)});
+            } else if (n > high + 1) {
+                QStringList missing;
+                for (int k = high + 1; k < n; ++k)
+                    if (!g.present.contains(k))
+                        missing << prefix + QString::number(k);
+                if (!missing.isEmpty()) {
+                    local.append({Kind::HeadingSequence, rel, line,
+                                  QStringLiteral("section %1%2 skips %3")
+                                      .arg(prefix).arg(n)
+                                      .arg(missing.join(QStringLiteral(", ")))});
+                }
+            }
+            seen.insert(n);
+            prev = n;
+            high = std::max(high, n);
+        }
+    }
+    out.append(local);
+}
+
 QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
                      const Options &opts, QStringList *checkedDocs) {
     const QDir rootDir(rootCanonical);
@@ -328,6 +437,9 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
                                          .arg(h.text)});
             }
         }
+
+        // Check 4 — numbered-heading sequence (ANTS-3700).
+        checkHeadingSequence(rel, d.headings, findings);
     }
 
     std::stable_sort(findings.begin(), findings.end(),

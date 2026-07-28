@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_integrity` catches numbered sections that run out of order** (ANTS-3700)
+  Nothing used to notice a document whose sections go 5.6, 5.8, 5.7 — the eye reads them in the intended order and every link still works. The checker now flags out-of-order, skipped and repeated section numbers. Tuned to stay quiet: 2 findings across this project's 275 documents, and both are real.
+
 - **`indie_review_partition` works out review lanes from the file tree when a project has no module map** (ANTS-3709)
   Previously a project that describes its layout in prose got back an
   empty list, even though the server already knew every source file, and
@@ -123,6 +126,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`invariant_check` answers in a few hundred bytes by default** (ANTS-3699)
+  The "does any spec already cover these files?" check used to return every matched spec's full invariant text. One real call over three files came back at 267,070 characters — too big to read, so people learned to skip the step. It now returns just the list of matching specs and how many rules each has; ask for `mode:"full"` when you actually want the text.
+
 - **Review tools no longer tell you not to use them (ANTS-1581)**
   Every cold-eyes and indie-review tool used to carry a line saying the
   matching review command doesn't call it, so reach for it only when
@@ -197,6 +203,12 @@ for security-relevant changes.
   `quick:true` ran an identical full walk and pre-pass. `--quick` is caller-side (the grep pre-pass is the audit; only the subagent phase is skipped), so the field promised a fast path that did not exist. Callers passing it now get a schema refusal rather than a silent no-op.
 
 ### Fixed
+
+- **A "no window" safety check that handed control to code needing one** (ANTS-3725)
+  An internal guard for the no-window case passed the problem straight to a function that assumed a window existed, and threw away the caller's own answer on the way. Harmless in the running app, but it crashed any test driving these tools directly — which is why several were testing their own source text instead of their behaviour.
+
+- **`spec_log` reports how much it wrote, not how big the file is** (ANTS-3724)
+  Editing a spec reported the size of the whole file as "bytes written". It now reports what the edit actually added or removed, with the full size alongside — the same two numbers the roadmap and changelog tools already give.
 
 - **`changelog_log` now reports how much it added, not the size of the whole file** (ANTS-3723)
   Adding a two-line entry used to come back as "1,150,003 bytes written",

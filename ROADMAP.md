@@ -20845,7 +20845,7 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: finbreak-feedback-2026-07-28.
 
-- 📋 [ANTS-3699] **`invariant_check` has no summary mode, so the skill that prescribes it as a first lookup teaches people to skip it.**
+- ✅ [ANTS-3699] **`invariant_check` has no summary mode, so the skill that prescribes it as a first lookup teaches people to skip it.**
   `invariant_check` returns every matched spec's FULL invariant bodies with no
   summary, `fields`, `compact` or `max_bytes` to narrow it. A measured call over
   three files, one of them `remotecontrol.cpp`, returned 267,070 characters — over
@@ -20871,8 +20871,9 @@ requesting no action and are closed in place rather than filed.
   **Layman:** The "does any spec already cover these files?" check can dump a quarter of a megabyte, so people learn to skip the step that prevents rework.
   Kind: enhancement.
   Source: claude-config-feedback-2026-07-28.
+  Resolved (2026-07-28): added mode:"summary" (DEFAULT) / "full" to invariant_check. Summary keeps id/path/title/matched_terms/invariants_count and OMITS the invariant bodies — omitted, never truncated, so a short list can't be mistaken for a complete one; the envelope carries mode + invariants_included + a hint naming spec_query. Default rather than opt-in, per the standing rule that a token saving nobody knows to ask for is one almost no session gets. Unknown mode → bad_mode. Three behavioural INVs (9-11) drive cmdInvariantCheck directly, which required fixing ANTS-3725 first. INV-7's schema scrape moved off its fixed 3000-byte window onto mcpToolDescriptor (ANTS-3720) — the new `mode` property pushed the assertion straight past the old bound.
 
-- 📋 [ANTS-3700] **`doc_integrity`: add a `heading_sequence` kind for out-of-order, gapped or duplicated numbered headings.**
+- ✅ [ANTS-3700] **`doc_integrity`: add a `heading_sequence` kind for out-of-order, gapped or duplicated numbered headings.**
   `doc_integrity` emits dead_anchor, broken_link and toc_gap — all deterministic
   markdown-structure checks. It has no check that a document's own numbered headings
   run in ascending order without gaps or duplicates. That class ships silently: a
@@ -20896,6 +20897,7 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Nothing catches a document whose numbered sections run 5.6, 5.8, 5.7 — the eye reconstructs the order and every link still works.
   Kind: enhancement.
   Source: claude-config-feedback-2026-07-28.
+  Resolved (2026-07-28): new heading_sequence kind in DocIntegrity, additive to the enum, wire strings, kinds filter and counts map, same {file, kind, line, message} shape. Siblings group by NUMERIC PARENT PREFIX rather than `#` depth (a doc may write `## 5.` and `### 5.1` meaning one hierarchy). Two deliberate quieting rules: a group's first heading is never flagged (a doc starting at 2 may be an excerpt — a guess repeated per doc is what makes a checker something readers filter out), and a skipped number a later sibling fills is reported ONCE as that sibling being out of order, not also as a hole. The requested `\d+(\.\d+)*\s` regex was widened by one optional trailing dot: `## 5. Problem` is the dominant form in this corpus and the strict form misses it. Calibrated before shipping — 2 findings over 275 project docs, 0 over 69 claude-config skills, and 1 over spec-format.md @1d9d807, the pre-fix revision that motivated the request: `:342 section 5.7 is out of order — it follows 5.8`, caught at its exact line with nothing raised alongside. The counter also became a switch: its old `else ++tocGap` tail would have tallied every future kind as a TOC defect. NOT solved, as the request itself noted: a cross-reference naming the wrong but still-existing section.
 
 - ✅ [ANTS-3701] **`audit_falsepos_log` `review_kind` enum has no "debt-sweep", though the debt_sweep_* family is first-class.**
   `review_kind` accepts audit / cold-eyes / indie-review / test-audit. Ants ships
@@ -21650,7 +21652,7 @@ requesting no action and are closed in place rather than filed.
   description updated. Test:
   changelog_log_writer.Ants3723BytesWrittenIsDeltaNotWholeFile (red pre-fix).
 
-- 📋 [ANTS-3724] **`spec_log`'s `bytes_written` is still the whole file — the last verb on the old convention.**
+- ✅ [ANTS-3724] **`spec_log`'s `bytes_written` is still the whole file — the last verb on the old convention.**
   Noticed while fixing ANTS-3723: `spec_log`'s success envelope sets
   `bytes_written = utf8.size()` — the rewritten file — with no `file_bytes`.
   That is the exact convention ANTS-3702 fixed inside `roadmap_log` and
@@ -21666,6 +21668,38 @@ requesting no action and are closed in place rather than filed.
   **Layman:** One more tool still reports "how much did you write" as the size of the whole file rather than what it added.
   Kind: fix.
   Source: in-session-2026-07-28, ANTS-3723 sibling.
+  Resolved (2026-07-28): spec_log now routes through rcSetWriteBytes, so bytes_written is the ADDED-bytes delta and file_bytes the whole file — the last write verb on the old convention, matching roadmap_log (ANTS-3702) and changelog_log (ANTS-3723). The existing McpSpecLog.HandlerSetStatus assertion `bytes_written > 0` was not merely imprecise but wrong under the new meaning: that case swaps a longer status for a shorter one, so the honest delta is NEGATIVE. Replaced with an equality against the file's real before/after sizes plus an explicit assertion that the delta is below zero.
+
+- ✅ [ANTS-3725] **`resolveRootCanonical`'s null-MainWindow guard is defeated by its own fallback.**
+  `ants::resolveCallerCwdRoot` opens with an explicit `if (!main)` guard,
+  documented as "defensive: shouldn't happen", returning `EmptyFallback`.
+  `resolveRootCanonical(MainWindow*, QJsonObject)` maps `EmptyFallback` to
+  `resolveRootCanonical(MainWindow*)`, whose first statement is
+  `main->currentTerminal()`. So the guard routed the null pointer to the one
+  place that dereferences it unconditionally.
+
+  Production never passes null (MCP dispatch always has a MainWindow), so this
+  was never a live crash. The cost was to the test suite: every verb resolving
+  its root through this overload SEGFAULTS under `RemoteControl rc(nullptr)`,
+  which is why several of their feature tests source-scrape the handler instead
+  of driving it — `doc_integrity_verb/spec.md` records the workaround as "the
+  handler needs a live MainWindow", stated as a property of the handler when it
+  was really this one line.
+
+  Two frames, one guard. The same short-circuit also DISCARDED an explicit
+`caller_cwd` — the one input that tells the resolver the answer outright —
+because `!main` returned `EmptyFallback` before ever reading it. A null window
+costs the tab walk and nothing else, so the guard moved to the two statements
+that need `main`; an explicit `caller_cwd` now resolves via Case 3 (no open tab
+matches), which is what it would have done anyway. Behaviour with a live
+MainWindow is unchanged in all four cases.
+
+Fixed by falling through to the process cwd when `main` is null — the same
+  answer the function already gives when there is no focused terminal. ANTS-3699's
+  three behavioural invariants drive `cmdInvariantCheck` directly as a result.
+  **Layman:** A safety check for "no window" handed control to code that assumed there was one, so tests that drive these tools directly crashed instead of answering.
+  Kind: fix.
+  Source: in-session-2026-07-28 (hit writing ANTS-3699's handler test).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

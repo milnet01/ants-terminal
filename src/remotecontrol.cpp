@@ -1106,6 +1106,10 @@ static QString rcRightStrip(QString s) {
 // carrying opposite meanings across two sibling verbs is worse than either
 // convention alone, because the reason a session trusts one number is that the
 // pair agree. ANTS-3702 fixed this inside roadmap_log and stopped at that verb.
+//
+// ANTS-3724 — spec_log was the last write verb on the old convention; it now
+// routes through here too, so every ROADMAP/CHANGELOG/spec write reports the
+// same two fields with the same meanings.
 static void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after) {
     out[QStringLiteral("bytes_written")] = after - before;
     out[QStringLiteral("file_bytes")]    = after;
@@ -12481,6 +12485,8 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
         case DocIntegrity::Kind::DeadAnchor: return QStringLiteral("dead_anchor");
         case DocIntegrity::Kind::BrokenLink: return QStringLiteral("broken_link");
         case DocIntegrity::Kind::TocGap:     return QStringLiteral("toc_gap");
+        case DocIntegrity::Kind::HeadingSequence:   // ANTS-3700
+            return QStringLiteral("heading_sequence");
         }
         return QString();
     };
@@ -12489,7 +12495,7 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
     };
 
     QJsonArray findingsArr;
-    int deadAnchor = 0, brokenLink = 0, tocGap = 0;
+    int deadAnchor = 0, brokenLink = 0, tocGap = 0, headingSeq = 0;
     for (const DocIntegrity::Finding &f : findings) {
         const QString ks = kindStr(f.kind);
         if (!wanted(ks)) continue;
@@ -12499,15 +12505,22 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
         fo[QStringLiteral("line")]    = f.line;
         fo[QStringLiteral("message")] = f.message;
         findingsArr.append(fo);
-        if (f.kind == DocIntegrity::Kind::DeadAnchor)      ++deadAnchor;
-        else if (f.kind == DocIntegrity::Kind::BrokenLink) ++brokenLink;
-        else                                               ++tocGap;
+        // ANTS-3700 — switch, not an if/else chain ending in `else ++tocGap`:
+        // the old shape counted any future kind as a toc_gap, silently.
+        switch (f.kind) {
+        case DocIntegrity::Kind::DeadAnchor:      ++deadAnchor; break;
+        case DocIntegrity::Kind::BrokenLink:      ++brokenLink; break;
+        case DocIntegrity::Kind::TocGap:          ++tocGap;     break;
+        case DocIntegrity::Kind::HeadingSequence: ++headingSeq; break;
+        }
     }
 
     QJsonObject counts;
     if (wanted(QStringLiteral("dead_anchor"))) counts[QStringLiteral("dead_anchor")] = deadAnchor;
     if (wanted(QStringLiteral("broken_link"))) counts[QStringLiteral("broken_link")] = brokenLink;
     if (wanted(QStringLiteral("toc_gap")))     counts[QStringLiteral("toc_gap")]     = tocGap;
+    if (wanted(QStringLiteral("heading_sequence")))
+        counts[QStringLiteral("heading_sequence")] = headingSeq;
 
     QJsonObject o;
     o[QStringLiteral("ok")]           = true;
@@ -14648,6 +14661,12 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
+    // ANTS-3724 — capture the pre-write size so bytes_written can be the
+    // ADDED-bytes delta rather than the rewritten file, matching roadmap_log
+    // (ANTS-3702) and changelog_log (ANTS-3723). spec_log was the last write
+    // verb on the old convention.
+    const qint64 specBefore = QFileInfo(full).size();
+
     QSaveFile sf(full);
     if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return slErr(QStringLiteral("write_failed"),
@@ -14675,7 +14694,7 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     if (!id.isEmpty()) out["id"] = id;
     out["path"]          = rel;
     out["line"]          = res.line;
-    out["bytes_written"] = static_cast<qint64>(utf8.size());
+    rcSetWriteBytes(out, specBefore, static_cast<qint64>(utf8.size()));
     return QJsonDocument(out);
 }
 
@@ -14720,7 +14739,13 @@ bool isValidRange(const QString &range) {
 // not_git_repo depending on context).
 QString resolveRootCanonical(MainWindow *main) {
     QString rootCwd;
-    if (auto *t = main->currentTerminal()) {
+    // ANTS-3725 — `ants::resolveCallerCwdRoot` guards a null MainWindow and
+    // answers EmptyFallback, which routes straight back here and dereferenced
+    // it anyway: the guard defended nothing. Production never passes null, but
+    // it made every verb on this overload untestable at the handler layer
+    // (segfault, not a refusal), which is why several of their tests scrape
+    // source instead of driving the handler. Fall through to the process cwd.
+    if (auto *t = main ? main->currentTerminal() : nullptr) {
         rootCwd = t->shellCwd();
     }
     if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
@@ -14778,15 +14803,18 @@ namespace ants {
 ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
                                   const QString &callerCwd) {
     ResolvedRoot rr;
-    if (!main) {
-        // Defensive: shouldn't happen — MCP dispatch always has a
-        // MainWindow. Match the "no useful answer" shape.
-        rr.source = ResolvedRoot::Source::EmptyFallback;
-        return rr;
-    }
+    // ANTS-3725 — a null MainWindow (defensive; MCP dispatch always has one)
+    // used to short-circuit here, which threw away an EXPLICIT caller_cwd and
+    // answered EmptyFallback. That is the one case the caller told us the
+    // answer to. What a null window actually costs is the tab walk — nothing
+    // else — so the guard now sits at the two places that need `main`, and an
+    // explicit caller_cwd resolves the same way it always did (Case 3, the
+    // no-open-tab-matches branch). Behaviour with a live MainWindow is
+    // unchanged in all four cases.
     if (callerCwd.isEmpty()) {
         // Case 1 — empty caller_cwd → focused fallback.
         rr.source = ResolvedRoot::Source::EmptyFallback;
+        if (!main) return rr;
         if (auto *t = main->focusedTerminal()) {
             const QString cwd = t->shellCwd();
             if (!cwd.isEmpty()) {
@@ -14806,7 +14834,7 @@ ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
     }
     // INV-5 — deterministic lowest-index tie-break. for-loop walks
     // indices ascending; first match wins.
-    for (int i = 0; i < main->tabCount(); ++i) {
+    for (int i = 0; main && i < main->tabCount(); ++i) {
         TerminalWidget *t = main->terminalAtTab(i);
         if (!t) continue;
         const QString tabCwd = t->shellCwd();
@@ -17599,6 +17627,30 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
                            "entries after normalisation")));
     }
 
+    // ANTS-3699 — mode: "summary" (default) omits each spec's invariant
+    // BODIES, keeping id/path/title/matched_terms/invariants_count. That is
+    // the whole answer to this verb's actual question ("does a spec already
+    // claim something about these files?"); spec_query is the drill-in. The
+    // full bodies could not be narrowed at all, and one measured call over
+    // three files — one of them remotecontrol.cpp — returned 267,070
+    // characters, over the response cap and into a spill file. A first-step
+    // lookup that can do that is a step people learn to skip, which takes
+    // /write-code's other three Phase 0 lookups with it.
+    //
+    // Summary is the DEFAULT, not an opt-in: a saving nobody knows to ask
+    // for is a saving almost no session gets. `invariants` is omitted rather
+    // than truncated, so a short list can never be mistaken for a complete
+    // one; `invariants_included` states which shape this response is.
+    const QString mode = req.value(QStringLiteral("mode")).toString();
+    if (!mode.isEmpty() && mode != QLatin1String("summary")
+        && mode != QLatin1String("full")) {
+        return QJsonDocument(sqErr(
+            QStringLiteral("bad_mode"),
+            QStringLiteral("invariant_check: mode must be \"summary\" "
+                           "(default) or \"full\"")));
+    }
+    const bool wantBodies = (mode == QLatin1String("full"));
+
     // ANTS-1880 — walk both docs/specs/ (ANTS-NNNN canonical) and
     // docs/phases/ (phase_<NN>_<topic>) when present, merging hits
     // into one matched_specs[] array. specs_scanned retains its
@@ -17642,7 +17694,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
             QJsonArray hitArr;
             for (const QString &h : hits) hitArr.append(h);
             entry["matched_terms"] = hitArr;
-            entry["invariants"]    = invs;
+            if (wantBodies) entry["invariants"] = invs;   // ANTS-3699
             entry["invariants_count"] = invs.size();
             matched.append(entry);
         }
@@ -17659,6 +17711,18 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     result["phases_scanned"] = phasesScanned;
     result["total_scanned"]  = specsScanned + phasesScanned;
     result["matched_count"]  = matched.size();
+    // ANTS-3699 — say which shape this is, so an absent `invariants` reads as
+    // "omitted by mode" and never as "this spec has none".
+    result["mode"]                = wantBodies ? QStringLiteral("full")
+                                               : QStringLiteral("summary");
+    result["invariants_included"] = wantBodies;
+    if (!wantBodies && !matched.isEmpty()) {
+        result["hint"] = QStringLiteral(
+            "summary mode: invariant bodies omitted (invariants_count is the "
+            "real count). Drill into one spec with spec_query, or pass "
+            "mode:\"full\" for every body — which on a widely-referenced file "
+            "can exceed the response cap.");
+    }
     return QJsonDocument(result);
 }
 

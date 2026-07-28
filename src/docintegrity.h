@@ -8,6 +8,8 @@
 //   2. Broken links  — a `[t](relpath)` whose target file does not exist.
 //   3. TOC coverage  — a hand-maintained Table of Contents that omits a
 //                      section, or lists a duplicate/dead entry.
+//   4. Heading order — numbered headings that run out of order, skip a
+//                      number, or reuse one (ANTS-3700).
 //
 // Consumed by the `doc_integrity` MCP verb and the cold-eyes Phase-1e feed.
 // See docs/specs/ANTS-3601.md.
@@ -25,6 +27,13 @@ enum class Kind {
     DeadAnchor,   // [t](#slug) / [t](other.md#slug) → slug is no real heading
     BrokenLink,   // [t](relpath) → target file does not exist under root
     TocGap,       // a section missing from the TOC, or a duplicate TOC entry
+    // ANTS-3700 — a numbered heading (`## 5.7 Foo`) that is lower than the
+    // sibling before it, skips a number no sibling ever fills, or repeats one.
+    // Every anchor still resolves and the reader's eye reconstructs the
+    // intended order, so this class survives review: spec-format.md — the
+    // standard that DEFINES section ordering — shipped with 5.8 before 5.7 and
+    // cleared three cold-eyes loops, two at full model.
+    HeadingSequence,
 };
 
 struct Finding {

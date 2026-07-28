@@ -2,9 +2,15 @@
 
 Full design contract: `docs/specs/ANTS-3601.md` § 2.6. This test locks the
 verb-layer behaviour (path→relDocs enumeration, the `kinds` filter) and the
-registration wiring. The handler needs a live MainWindow, so behavioural INVs
-drive the extracted pure helpers and INV-10 source-scrapes the wiring (the
-`rc_get_text_byte_cap` pattern).
+registration wiring. Behavioural INVs drive the extracted pure helpers and
+INV-10 source-scrapes the wiring (the `rc_get_text_byte_cap` pattern).
+
+The original reason for that split — "the handler needs a live MainWindow" —
+was not a property of the handler. It was ANTS-3725: `resolveRootCanonical`
+dereferenced a null `MainWindow` that its own caller had already guarded, so
+`RemoteControl rc(nullptr)` segfaulted rather than answering. That is fixed;
+a handler-level test here is now possible, and this split is retained only
+because the pure helpers are the sharper place to pin these two invariants.
 
 ## Invariants
 
@@ -12,8 +18,11 @@ drive the extracted pure helpers and INV-10 source-scrapes the wiring (the
   dir only), a file `path` → one doc, an omitted `path` → the `docs_dir` walk
   (not root files), a non-existent in-root `path` → empty. *Test:*
   `EnumerateScoping` over `RemoteControl::docIntegrityEnumerate`.
-- **INV-18** — the `kinds` filter narrows both `findings[]` and `counts{}`.
-  *Test:* `KindsFilterNarrowsCounts` over
+- **INV-18** — the `kinds` filter narrows both `findings[]` and `counts{}`,
+  across all four kinds including `heading_sequence` (ANTS-3700). The counter
+  is a `switch` over `Kind`, not an `if/else` chain whose final `else` would
+  silently tally any future kind as a `toc_gap`. *Test:*
+  `KindsFilterNarrowsCounts` over
   `RemoteControl::docIntegrityBuildResponse`.
 - **INV-10** — the verb is registered with the `Required` caller_cwd contract,
   is ETag-supported, and its handler validates `path` (refusing `bad_path` on a

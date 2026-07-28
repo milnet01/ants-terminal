@@ -4155,10 +4155,15 @@ void ClaudeIntegration::onMcpConnection() {
                 docInt["name"] = "doc_integrity";
                 docInt["description"] = QStringLiteral(
                     "Deterministic markdown doc-integrity check (no LLM). Reports "
-                    "three kinds: dead_anchor (a [t](#slug) / [t](other.md#slug) "
+                    "four kinds: dead_anchor (a [t](#slug) / [t](other.md#slug) "
                     "naming no real heading), broken_link (a [t](relpath) whose "
                     "target file is missing), toc_gap (a hand-maintained Table of "
-                    "Contents that omits an H2 section or lists a duplicate). "
+                    "Contents that omits an H2 section or lists a duplicate), and "
+                    "heading_sequence (ANTS-3700 — a numbered heading like "
+                    "`## 5.7 Foo` that is lower than the sibling before it, skips "
+                    "a number no sibling ever fills, or repeats one; siblings are "
+                    "grouped by numeric parent prefix, a group's first heading is "
+                    "never flagged, and unnumbered/prose headings are untouched). "
                     "Fence-aware (fenced examples ignored); GitHub-compatible "
                     "heading slugs. path=<file|dir> scopes the run (a dir walks "
                     "its *.md recursively); omitted → the project docs_dir (else "
@@ -4187,12 +4192,13 @@ void ClaudeIntegration::onMcpConnection() {
                             items["enum"] = QJsonArray{
                                 QStringLiteral("dead_anchor"),
                                 QStringLiteral("broken_link"),
-                                QStringLiteral("toc_gap")};
+                                QStringLiteral("toc_gap"),
+                                QStringLiteral("heading_sequence")};
                             kindsProp["items"] = items;
                         }
                         kindsProp["description"] = QStringLiteral(
                             "Optional filter; narrows findings AND counts to "
-                            "these kinds. Omitted → all three.");
+                            "these kinds. Omitted → all four.");
                     props["path"]       = pathProp;
                     props["kinds"]      = kindsProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
@@ -5753,7 +5759,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "also resolves; phase_<NN>_<topic> → "
                         "docs/phases/) or a project-relative `path`. "
                         "Atomic write. Returns {ok, op, id?, path, line, "
-                        "bytes_written}; dry_run:true previews line/`bytes` "
+                        "bytes_written, file_bytes} (ANTS-3724: "
+                        "bytes_written is the ADDED-bytes delta, matching "
+                        "roadmap_log/changelog_log; file_bytes is the whole "
+                        "file); dry_run:true previews line/`bytes` "
                         "without writing. Refusals: `bad_mode`, `bad_id`, "
                         "`bad_path`, `bad_args`, `no_project`, "
                         "`not_found` (file absent), `unrecognised_format` "
@@ -5844,9 +5853,19 @@ void ClaudeIntegration::onMcpConnection() {
                         "of those paths in their body and return the "
                         "parsed invariant list per matching spec. "
                         "Returns {ok, matched_specs:[{id, path, title, "
-                        "matched_terms[], invariants:[{id, body}], "
-                        "invariants_count}], specs_scanned, "
-                        "matched_count}. Matching is substring-only "
+                        "matched_terms[], invariants_count}], "
+                        "specs_scanned, matched_count, mode, "
+                        "invariants_included}. ANTS-3699 — mode defaults "
+                        "to \"summary\", which OMITS each spec's "
+                        "`invariants:[{id, body}]` bodies (omitted, never "
+                        "truncated, so a short list can't read as a "
+                        "complete one); `invariants_count` is still the "
+                        "true count. That answers this verb's question "
+                        "on its own — drill into one spec with "
+                        "spec_query. mode:\"full\" restores the bodies, "
+                        "which on a widely-referenced file like "
+                        "remotecontrol.cpp can exceed the response cap "
+                        "alone. Matching is substring-only "
                         "(no symbol resolution) — pass relative paths "
                         "like `src/foo.cpp`, not bare basenames. Use "
                         "BEFORE editing files in `src/` to surface "
@@ -5872,6 +5891,23 @@ void ClaudeIntegration::onMcpConnection() {
                         "pass `src/foo.cpp` not `foo.cpp` to avoid "
                         "false hits on basename collisions.");
                     props["files"]      = filesProp;
+                    // ANTS-3699 — response-shape selector; summary by default.
+                    QJsonObject modeProp;
+                    modeProp["type"] = "string";
+                    QJsonArray modeEnum;
+                    modeEnum.append("summary");
+                    modeEnum.append("full");
+                    modeProp["enum"]    = modeEnum;
+                    modeProp["default"] = "summary";
+                    modeProp["description"] = QStringLiteral(
+                        "\"summary\" (default) returns each matched spec's "
+                        "id/path/title/matched_terms/invariants_count WITHOUT "
+                        "the invariant bodies — a few hundred bytes, and the "
+                        "whole answer to \"is any of this already under "
+                        "contract?\". \"full\" adds `invariants:[{id, body}]`, "
+                        "which over a widely-referenced file can exceed the "
+                        "response cap. An unknown value refuses `bad_mode`.");
+                    props["mode"]       = modeProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;

@@ -74,19 +74,25 @@ TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
     using DocIntegrity::Finding;
     using DocIntegrity::Kind;
     const QList<Finding> findings = {
-        {Kind::DeadAnchor, "docs/a.md", 1, "m1"},
-        {Kind::BrokenLink, "docs/a.md", 2, "m2"},
-        {Kind::TocGap,     "docs/a.md", 3, "m3"},
+        {Kind::DeadAnchor,      "docs/a.md", 1, "m1"},
+        {Kind::BrokenLink,      "docs/a.md", 2, "m2"},
+        {Kind::TocGap,          "docs/a.md", 3, "m3"},
+        {Kind::HeadingSequence, "docs/a.md", 4, "m4"},   // ANTS-3700
     };
 
-    // Unfiltered → all three kinds present.
+    // Unfiltered → all four kinds present.
     const QJsonObject all = RemoteControl::docIntegrityBuildResponse(
         findings, {}, {"docs/a.md"});
-    EXPECT_EQ(all.value("findings").toArray().size(), 3);
+    EXPECT_EQ(all.value("findings").toArray().size(), 4);
     const QJsonObject allCounts = all.value("counts").toObject();
     EXPECT_EQ(allCounts.value("dead_anchor").toInt(), 1);
     EXPECT_EQ(allCounts.value("broken_link").toInt(), 1);
     EXPECT_EQ(allCounts.value("toc_gap").toInt(), 1);
+    // ANTS-3700 — the new kind counts as ITSELF. Before the counter became a
+    // switch, an unrecognised kind fell through the `else` and inflated
+    // toc_gap, so a heading_sequence finding would have been counted twice
+    // over: once correctly, once as a TOC defect that did not exist.
+    EXPECT_EQ(allCounts.value("heading_sequence").toInt(), 1);
 
     // Filtered to dead_anchor → findings + counts narrow together.
     const QJsonObject only = RemoteControl::docIntegrityBuildResponse(
@@ -98,6 +104,16 @@ TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
     EXPECT_EQ(onlyCounts.value("dead_anchor").toInt(), 1);
     EXPECT_FALSE(onlyCounts.contains("broken_link"));
     EXPECT_FALSE(onlyCounts.contains("toc_gap"));
+    EXPECT_FALSE(onlyCounts.contains("heading_sequence"));
+
+    // The new kind filters like any other (ANTS-3700).
+    const QJsonObject seq = RemoteControl::docIntegrityBuildResponse(
+        findings, QSet<QString>{"heading_sequence"}, {"docs/a.md"});
+    const QJsonArray seqFs = seq.value("findings").toArray();
+    ASSERT_EQ(seqFs.size(), 1);
+    EXPECT_EQ(seqFs.at(0).toObject().value("kind").toString(),
+              QStringLiteral("heading_sequence"));
+    EXPECT_EQ(seq.value("counts").toObject().value("heading_sequence").toInt(), 1);
 }
 
 // INV-10 — verb contract wiring: caller_cwd Required, path validation →
