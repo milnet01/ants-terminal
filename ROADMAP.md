@@ -10070,6 +10070,29 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (hit while sweeping the doc-lint specs).
 
+- 📋 [ANTS-3687] **`codebase_index` omits the `doccitations` lane while its five siblings are present.**
+  `codebase_index {lane:"doccitations"}` returns `found:false`, and the
+  lane list carries `docdedup`, `docfinding`, `docintegrity`, `docsymbols`
+  and `speclint` but not `doccitations` — 58 lanes, `lane_digest_truncated:
+  false`, so it is not a cap. `src/doccitations.h` and `src/doccitations.cpp`
+  both exist and `workspace_search` finds them (ripgrep, which does not use
+  the index), so the files are on disk and absent from the map.
+
+  Noticed while resolving symbols for the ANTS-3663 cold-eyes pre-pass:
+  `find_definition {symbol:"DocCitations"}` also returned zero definitions
+  across 821 files scanned. That second miss is the known ANTS-3668 gap
+  (namespaces / data members are not resolvable), so the two are probably
+  independent — but the lane omission is not explained by it.
+
+  Worth checking whether the lane derivation keys on something
+  `doccitations` happens to miss (a CMake target membership, a header-impl
+  pairing rule) rather than on the file pair itself, since a silent hole in
+  the code map is the kind of thing every later session pays for without
+  noticing.
+  **Layman:** The project's own code map is missing one file pair, so a session asking "where does the citation checker live?" gets told it doesn't exist.
+  Kind: fix.
+  Source: in-session-2026-07-28 (cold-eyes ANTS-3663 loop 5 pre-pass).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
