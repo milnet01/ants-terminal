@@ -10093,7 +10093,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (cold-eyes ANTS-3663 loop 5 pre-pass).
 
-- 📋 [ANTS-3688] **`doc_symbols` reports response-key names as unresolved symbols — 291 of 309 on one spec.**
+- ✅ [ANTS-3688] **`doc_symbols` reports response-key names as unresolved symbols — 291 of 309 on one spec.**
   Measured on `docs/specs/ANTS-3663.md` (1100 lines): 448 occurrences,
   33 resolved, **309 unresolved**, 106 not_checked. Of the 309, **291
   occurrences across 52 distinct names are plain lowercase JSON response
@@ -10109,6 +10109,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   `m_remoteControl = new RemoteControl(this, this)` is at `:1090`. The guard was
   false, the install was a silent no-op, and `excludedNames` carried only the
   refusal codes scraped from `docs/standards/mcp-error-codes.md`.
+  Resolved (2026-07-28) in `592020a9`. Provider install moved to the
+  constructor immediately after `m_remoteControl` is allocated; regression row
+  `DocSymbolsVerb.Inv8VocabularyProviderInstalledAfterRemoteControlExists` locks
+  the ordering against two offsets. Suite 3016/3016 green.
+
+  **Runtime confirmation still pending a relaunch** — the live Ants process is the
+  pre-fix binary, so `doc_symbols` will keep reporting verb names until the next
+  launch. The probe to re-run afterwards: a markdown file naming
+  `get_session_info` and any registered verb; both should vanish from the harvest.
+
+  Collateral fixed in the same commit: `tests/features/mcp_extra_tools` anchored
+  its 80 KiB scrape window on the first *mention* of `setupClaudeMcpProviders()`
+  rather than its definition, so a code comment naming the function 3000 lines
+  earlier moved the window off the body and reddened three unrelated rows. Now
+  anchored on `void MainWindow::setupClaudeMcpProviders()`.
 
   Every other registration in that function survives the same ordering because
   `rcDelegate` dereferences `m_remoteControl` lazily at call time; this setter
