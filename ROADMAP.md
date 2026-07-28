@@ -9185,16 +9185,16 @@ fixes don't address. Roadmapped here as their own design tasks.
 - 📋 [ANTS-3663] **`doc_lint` — run every deterministic doc check in one call, and fix only what is provably safe.**
   Gated on ANTS-3660..3662 existing. Composes `doc_integrity` +
   `doc_citations` + `doc_dedup` + `doc_symbols` + `spec_lint` into one
-  findings list, so a review pre-pass is one call rather than six — the
+  findings list, so a review pre-pass is one call rather than five — the
   actual token saving, since each verb today re-walks the same files.
 
-  **The fix path stays deliberately narrow.** Auto-fixable: a stale
-  hand-maintained TOC (regenerable from the headings) — and only that. A version string
+  **The fix path stays deliberately narrow.** Auto-fixable: a stale hand-maintained TOC, **patched in place** — the missing H2 entries inserted, duplicates deleted, everything else in the region left byte-identical (ANTS-3663 § 2.3, locked by INV-18; a regeneration from the headings would delete hand-written H3 and free-text rows, since coverage is checked for H2 only).
+  And only that. A version string
   disagreeing with `CMakeLists.txt` was in the original idea but was dropped at spec loop 1: no checker in the composed set emits such a finding, so the fix would be untestable by construction. Everything
   else is report-only *by design*, not by omission — deleting one of two
   duplicated facts needs a judgement about which is canonical, and
-  renumbering an `INV-N` breaks every citation of it, which /cold-eyes
-  Phase 4 forbids outright.
+  renumbering an `INV-N` breaks every citation of it, which `specs.md` § 5.5 forbids outright and /cold-eyes Phase 4 permits only where every citation is re-pointed in the same pass — neither of which a verb can do.
+  
 
   Caveat to carry into the skill: ANTS-1581 settled that /cold-eyes is
   global and these verbs are not, so § 1e names a verb only alongside a
