@@ -10113,6 +10113,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   constructor immediately after `m_remoteControl` is allocated; regression row
   `DocSymbolsVerb.Inv8VocabularyProviderInstalledAfterRemoteControlExists` locks
   the ordering against two offsets. Suite 3016/3016 green.
+  Runtime confirmation done (2026-07-28, post-relaunch). Probe file naming
+  six registered verbs: all six excluded from the harvest, control needle
+  `ThisSymbolDoesNotExistAnywhere` still `unresolved`, so the harvest ran.
+  The pending-relaunch caveat above is discharged.
+
+  Scope note now that it is measurable: this fix covered ~6 of the 309
+  unresolved occurrences. The 291-occurrence response-key residue named
+  above is filed as **ANTS-3692** with a proposed discriminator (require
+  `unambiguousShape` rather than treat it as a length-floor waiver). The
+  predicted 10× needle-count drop belongs to that item, not this one.
 
   **Runtime confirmation still pending a relaunch** — the live Ants process is the
   pre-fix binary, so `doc_symbols` will keep reporting verb names until the next
@@ -10221,6 +10231,50 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Two of the five document checkers never promise what order they report problems in, so the combined verb cannot fully guarantee a stable list.
   Kind: doc.
   Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 6, lane C)..
+
+- 📋 [ANTS-3692] **`doc_symbols` harvests bare lowercase words — the 291-occurrence residue ANTS-3688 did not cover.**
+  ANTS-3688 fixed the verb-name half and is confirmed live by probe
+  (2026-07-28, post-relaunch): six registered verb names vanish from the
+  harvest, a control needle still resolves `unresolved`. But the verb names
+  were only ~6 of the 309 unresolved occurrences measured on
+  `docs/specs/ANTS-3663.md`; **291 were response keys** — `counts`,
+  `truncated`, `findings`, `skipped`, `pairs`, `clusters`, `reason`,
+  `message`, `fixed`, `dry_run`, `check_stats`, `files_written`. So the
+  false-positive rate moved ~98% → ~94% and the verb is still not usable as
+  the `/cold-eyes` § 1e unresolved-symbol pre-pass it was built to be.
+
+  Reproduced after the fix on a six-line probe file: every verb name was
+  excluded, and the bare word `unresolved` was harvested three times.
+
+  The discriminator is already in the measurement, and it is not a length
+  bound. All six plausibly-real needles carry `unambiguousShape` — mixed
+  case or `::`: `autoFixable`, `emissionIndex`, `maxSymbolsPerRun`,
+  `maxDocLines`, `staleCitations`, `DocFinding::Finding::emissionIndex`.
+  All 291 false positives are bare lowercase words with no `::`, no `()`
+  and no case boundary. `minIdentChars = 5` cannot separate them —
+  `counts` is 6, `pairs` is 5, `truncated` is 9, so the floor passes the
+  entire FP population while `maxDocLines` would survive any floor.
+
+  Proposed change: make `unambiguousShape` **required** for a candidate
+  rather than a waiver of the length floor — a bare lowercase word is
+  never a needle, at any length. Cost: a genuine single-word lowercase C
+  function named in prose without `()` stops being checked. Cheap to
+  accept, since the doc convention already writes those with parens.
+
+  Not an inline fix: `doc_symbols` has a spec (`docs/specs/ANTS-3661.md`
+  § 2.x candidate shape) and feature tests in
+  `tests/features/doc_symbols/`, so the shape rule is a contract. Spec the
+  change, then implement. Expect the run budget to stop binding as a
+  side effect — `not_checked:106` with `truncated:true` on a *single*
+  document is the needle count exhausting the cap, and ~10× fewer needles
+  should clear it (the second-order effect ANTS-3688 predicted but did not
+  deliver).
+
+  Related: ANTS-3679 (schema argument names), ANTS-3668 (C++ data members),
+  ANTS-3689 (no `only=` filter — one document returns 105 KB).
+  **Layman:** The symbol checker still flags ordinary field names like "counts" and "truncated" as missing code — the fix that landed only covered the tool names.
+  Kind: fix.
+  Source: in-session-2026-07-28 (ANTS-3688 post-relaunch probe).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
