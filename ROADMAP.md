@@ -9096,12 +9096,31 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: user-request-2026-07-27.
 
-- 📋 [ANTS-3661] **`doc_symbols` — resolve every backticked identifier a doc asserts something about.**
+- ✅ [ANTS-3661] **`doc_symbols` — resolve every backticked identifier a doc asserts something about.**
   /cold-eyes § 1e calls this "the highest-yield check in the pre-pass" and
   names its two worst corpus findings: a function documented as returning one
   thing when it returned another, under a heading reading "Verified API
   basis"; and a test seam a later reviewer's notes call "fictional". Both
   were written from recall; both would have died at a symbol lookup.
+  Resolved (2026-07-28): `src/docsymbols.{h,cpp}` in ants_core_lib +
+  the `doc_symbols` MCP verb (`cmdDocSymbols` /
+  `docSymbolsBuildResponse` in remotecontrol.cpp, one registration in
+  mainwindow.cpp, five claudeintegration.cpp hooks). Report-only: no
+  severity, nothing auto-fixable. Tests
+  `tests/features/doc_symbols{,_verb}/` — 8 rows, all verified RED by
+  mutation rather than by compile failure.
+
+  Three spec corrections made during implementation, all folded into
+  docs/specs/ANTS-3661.md: (1) `not_checked` third state closes cold-eyes
+  loop 4's deferred CRITICAL — an elided needle is no longer reported as
+  a symbol that does not exist; (2) the registry injection lands in
+  MainWindow, since RemoteControl is Qt6::Core-only too; (3) the `*.md`
+  walk reuses `docIntegrityEnumerate` instead of cloning it.
+
+  Calibration (240 docs) falsified two spec numbers, both corrected:
+  a full-corpus sweep is out of reach at ~150 ms/needle (ANTS-3680), and
+  § 2.1's 25% gate fires on C++ data members at 26% (ANTS-3668).
+  Follow-ups filed: ANTS-3679, ANTS-3680, ANTS-3681.
 
   Harvest backticked identifiers (fence-aware), resolve each via the same
   ladder `find_definition` uses, return {symbol, doc_line, resolved,
