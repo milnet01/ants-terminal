@@ -1060,6 +1060,21 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
         }
     }
     text = ls.join(QChar('\n'));
+    // ANTS-3703 — a bare XML-ish tag sitting at the very START or END of the
+    // text is leakage, not prose: a truncated tool-call wrapper is the
+    // commonest shape a leak takes, and a stray `</note>` reached ROADMAP.md
+    // verbatim before this. Only the edges are stripped; markup mid-sentence
+    // is legitimate prose and stays untouched. Looped so a doubled leak
+    // (`</note></invoke>`) clears in one call.
+    static const QRegularExpression reEdgeTag(
+        QStringLiteral("\\A\\s*</?[a-z][a-z0-9_-]*\\s*>|"
+                       "</?[a-z][a-z0-9_-]*\\s*>\\s*\\z"),
+        QRegularExpression::CaseInsensitiveOption);
+    for (;;) {
+        const QString before = text;
+        text.remove(reEdgeTag);
+        if (text == before) break;
+    }
     rcEscapeUnclosedFence(text);   // ANTS-3640
     while (text.endsWith(QChar('\n'))) text.chop(1);
 }
@@ -1073,6 +1088,20 @@ static QString rcRightStrip(QString s) {
     while (s.endsWith(QLatin1Char(' ')) || s.endsWith(QLatin1Char('\t')))
         s.chop(1);
     return s;
+}
+
+// ANTS-3702 — `bytes_written` must mean the same thing on every roadmap_log
+// op: the bytes this operation ADDED to ROADMAP.md. op:append reported the
+// appended bullet (a delta), but every whole-file-rewrite op — flip,
+// flip_batch, amend_body and the pass-heading variants — reported the size of
+// the rewritten file, so six short annotate-only notes came back as a 459 KB
+// write and the field could not serve the cheap "did this write roughly what
+// I asked?" check it invites. The whole-file figure is still reported, as
+// `file_bytes`. A pure status flip legitimately writes 0 added bytes (the
+// emoji swap is byte-for-byte the same width) — that is the honest number.
+static void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after) {
+    out[QStringLiteral("bytes_written")] = after - before;
+    out[QStringLiteral("file_bytes")]    = after;
 }
 
 // ANTS-1717/1793 — append `note` as indented continuation line(s) at
@@ -1097,16 +1126,31 @@ int appendBodyNote(QStringList &lines, int headlineLine,
     int insertAt = headlineLine + 1;
     QString indent = QStringLiteral("  ");
     bool sawBody = false;
+    // ANTS-3696 — the body is the bullet's WHOLE indented continuation run,
+    // blank lines included; it ends at the next column-0 line (next bullet /
+    // heading / `---`) or EOF. Breaking on the first blank line instead put
+    // the note after the body's FIRST paragraph, so a multi-paragraph bullet
+    // read as resolved and then went on arguing for itself, with the
+    // `Kind:`/`Source:` trailer stranded below the resolution. This is the
+    // span amendBodyExact() has walked since ANTS-3467 — the two now agree
+    // on where a bullet's body ends.
     while (insertAt < lines.size()) {
         const QString &ln = lines.at(insertAt);
-        if (ln.isEmpty() || !ln.at(0).isSpace()) break;
-        if (!sawBody) {
+        if (!ln.isEmpty() && !ln.at(0).isSpace()) break;
+        if (!sawBody && !ln.trimmed().isEmpty()) {
             int w = 0;
             while (w < ln.size() && ln.at(w) == QLatin1Char(' ')) ++w;
             if (w > 0) indent = ln.left(w);
             sawBody = true;
         }
         ++insertAt;
+    }
+    // Back up over the blank line(s) separating this bullet from the next, so
+    // the note lands against the last real body line rather than adrift in
+    // the gap (where the bullet walkers would read it as a sibling's).
+    while (insertAt > headlineLine + 1 &&
+           lines.at(insertAt - 1).trimmed().isEmpty()) {
+        --insertAt;
     }
     const QStringList noteLines = note.split(QChar('\n'));
     // Render each note line exactly as it will be written, so the dedup
@@ -3340,6 +3384,7 @@ static QJsonDocument cmdRoadmapLogPassFlip(
         return QJsonDocument(out);
     }
 
+    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
     if (!rcAtomicWriteRoadmap(roadmapPath, r.markdown))
         return err(QStringLiteral("roadmap_write_failed"),
             QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
@@ -3352,7 +3397,8 @@ static QJsonDocument cmdRoadmapLogPassFlip(
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["line"]          = r.headingLine + 1;
     out["format"]        = QStringLiteral("pass-headings");
-    out["bytes_written"] = static_cast<qint64>(r.markdown.toUtf8().size());
+    rcSetWriteBytes(out, sizeBefore,
+                    static_cast<qint64>(r.markdown.toUtf8().size()));
     if (annotateMode) {
         out["note_appended"] = true;
         out["note_line"]     = r.changedLine + 1;
@@ -3412,7 +3458,8 @@ static QJsonDocument cmdRoadmapLogPassFlipBatch(
         flipped.append(f);
     }
 
-    auto envelope = [&](qint64 bytesWritten) {
+    // ANTS-3702 — `before` < 0 means nothing was written (INV-14).
+    auto envelope = [&](qint64 before, qint64 after) {
         QJsonObject out;
         out["ok"]            = true;
         out["op"]            = QStringLiteral("flip_batch");
@@ -3422,12 +3469,13 @@ static QJsonDocument cmdRoadmapLogPassFlipBatch(
         out["flipped_count"] = flipped.size();
         out["skipped"]       = skipped;
         out["skipped_count"] = skipped.size();
-        if (bytesWritten >= 0) out["bytes_written"] = bytesWritten;
+        if (before >= 0) rcSetWriteBytes(out, before, after);
         return QJsonDocument(out);
     };
 
     // INV-14 — nothing applied → file untouched.
-    if (flipped.isEmpty()) return envelope(-1);
+    if (flipped.isEmpty()) return envelope(-1, 0);
+    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
     if (!rcAtomicWriteRoadmap(roadmapPath, md)) {
         QJsonObject e;
         e["ok"]     = false;
@@ -3437,7 +3485,7 @@ static QJsonDocument cmdRoadmapLogPassFlipBatch(
         e["format"] = QStringLiteral("pass-headings");
         return QJsonDocument(e);
     }
-    return envelope(static_cast<qint64>(md.toUtf8().size()));
+    return envelope(sizeBefore, static_cast<qint64>(md.toUtf8().size()));
 }
 // ========================== end ANTS-2126 ==========================
 
@@ -3886,7 +3934,19 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 
     // ANTS-1247-INV-4: case-insensitive status parse; canonicalise
     // to lowercase. Anchor: filter parse.
-    QString filter = req.value(QStringLiteral("status")).toString().toLower();
+    // ANTS-3698 — `filter` is accepted as an alias for `status`. The envelope
+    // has always echoed the applied lifecycle as `filter`, so a caller who
+    // reads a response and hand-writes the next call sends `filter:"active"` —
+    // which was an unrecognised arg, silently dropped, and answered with the
+    // FULL set under an echo (`filter:"all"`) that reads as confirmation a
+    // filter was applied. Degrading on a near-miss is bad enough anywhere;
+    // on this verb's own advertised lean-planning call it hands a planning
+    // session a list of already-shipped ids. `status` still wins when both
+    // are present.
+    QString statusArg = req.value(QStringLiteral("status")).toString();
+    if (statusArg.isEmpty())
+        statusArg = req.value(QStringLiteral("filter")).toString();
+    QString filter = statusArg.toLower();
     if (filter.isEmpty()) filter = QStringLiteral("all");
 
     // ANTS-1247-INV-5: unknown status → bad_status, cache untouched.
@@ -3906,7 +3966,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         QStringLiteral("shipped"),     QStringLiteral("planned"),
         QStringLiteral("in-progress"), QStringLiteral("considered") };
     if (!kAcceptedStatusFilters.contains(filter)) {
-        QString verbatim = req.value(QStringLiteral("status")).toString();
+        QString verbatim = statusArg;   // ANTS-3698 — status or its alias
         if (verbatim.size() > 64) verbatim.truncate(64);
         for (int i = 0; i < verbatim.size(); ++i) {
             if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
@@ -7819,6 +7879,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             }
             return QJsonDocument(out);
         }
+        const qint64 sizeBefore = QFileInfo(roadmapPath).size();  // ANTS-3702
         QSaveFile rw(roadmapPath);
         if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
             return rlErr(QStringLiteral("roadmap_write_failed"),
@@ -7842,7 +7903,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                                               : targetEmoji;
         out["file"]            = QStringLiteral("ROADMAP.md");
         out["line"]            = v1target.firstLine + 1;
-        out["bytes_written"]   = static_cast<qint64>(utf8.size());
+        rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(utf8.size()));
         out["anchor_injected"] = false;
         out["id"]              = v1target.id;
         if (!note.isEmpty()) {
@@ -8297,6 +8358,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     }
 
     // 12. Write ROADMAP.md atomically.
+    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
     QSaveFile rw(roadmapPath);
     if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return rlErr(QStringLiteral("roadmap_write_failed"),
@@ -8336,7 +8398,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     out["to_status"]       = annotateMode ? target.status : targetEmoji;
     out["file"]            = QStringLiteral("ROADMAP.md");
     out["line"]            = target.firstLine + 1;  // 1-based
-    out["bytes_written"]   = static_cast<qint64>(utf8.size());
+    rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(utf8.size()));
     out["anchor_injected"] = !anchorToInject.isEmpty();
     if (!anchorToInject.isEmpty()) out["anchor"] = anchorToInject;
     if (!target.boldId.isEmpty()) out["id"]      = target.boldId;
@@ -8680,6 +8742,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
     const QString updated = lines.join(QChar('\n'));
 
     // 7. dry_run preview / atomic write + envelope.
+    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
     auto buildEnvelope = [&](bool preview, qint64 byteCount) {
         QJsonObject out;
         out["ok"]        = true;
@@ -8690,7 +8753,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
         out["body_line"] = editedLine + 1;
         out["amended"]   = true;
         if (preview) { out["dry_run"] = true; out["bytes"] = byteCount; }
-        else         { out["bytes_written"] = byteCount; }
+        else         { rcSetWriteBytes(out, sizeBefore, byteCount); }
         if (!matchedId.isEmpty()) out["id"] = matchedId;
         if (!newTextScrubbedNames.isEmpty()) {
             QJsonArray dropped;
@@ -9188,6 +9251,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
+    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
     QSaveFile rw(roadmapPath);
     if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
         return rlErr(QStringLiteral("roadmap_write_failed"),
@@ -9245,7 +9309,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     out["flipped_count"] = flipped.size();
     out["skipped"]       = skipped;
     out["skipped_count"] = skipped.size();
-    out["bytes_written"] = static_cast<qint64>(utf8.size());
+    rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(utf8.size()));
     if (newCounter >= 0 && newCounter != counterStart)
         out["counter"] = newCounter;
     if (echoHeadline) out["post_bullets"] = postBullets;

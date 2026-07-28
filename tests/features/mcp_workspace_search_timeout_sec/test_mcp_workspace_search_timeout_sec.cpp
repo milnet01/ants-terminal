@@ -105,21 +105,12 @@ TEST(mcp_workspace_search_timeout_sec, Inv5SchemaDeclaresTimeoutSec) {
     const size_t wsAnchor = ci.find("\"workspace_search\"");
     ASSERT_NE(wsAnchor, std::string::npos)
         << "workspace_search registration not found in claudeintegration.cpp";
-    // Window widened from 8000 → 12000 in ANTS-1304 (context property
-    // block grew); → 16000 in ANTS-1876 (two new prop blocks +
-    // top-level description extension pushed timeoutSecProp past 12000);
-    // → 20000 in ANTS-2220 (the enclosing_symbol prop block + description
-    // extension pushed props["timeout_sec"] to offset ~17164).
-    // → 22000 in ANTS-3549 (the files_only prop block + description extension
-    // pushed props["timeout_sec"] to offset ~20875).
-    // → 24000 in ANTS-3547 (the offset/wsOffsetProp block + description
-    // extension pushed props["timeout_sec"] to offset ~22344).
-    // → 32000 in ANTS-3704 (the exclude_glob prop block + `glob`
-    // description extension pushed props["timeout_sec"] past 24000).
-    // Sixth widening of this window; the fixed-byte idiom itself is
-    // filed as ANTS-3720.
-    const size_t end = std::min(ci.size(), wsAnchor + 32000);
-    const std::string window = ci.substr(wsAnchor, end - wsAnchor);
+    // ANTS-3720 — was a fixed-byte window, widened six times (8000 → 12000 →
+    // 16000 → 20000 → 22000 → 24000 → 32000) as SIBLING properties grew ahead
+    // of timeout_sec. The descriptor block now bounds itself.
+    const std::string window =
+        ants_test::mcpToolDescriptor(ci, "workspace_search");
+    ASSERT_FALSE(window.empty());
     expect(contains(window, "\"timeout_sec\""),
            "INV-5a: workspace_search inputSchema does not declare a "
            "\"timeout_sec\" property");
@@ -141,21 +132,10 @@ TEST(mcp_workspace_search_timeout_sec, Inv6DescriptionMentionsTimeoutSec) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const size_t wsAnchor = ci.find("\"workspace_search\"");
     ASSERT_NE(wsAnchor, std::string::npos);
-    // Window widened from 8000 → 12000 in ANTS-1304 (context property
-    // block grew); → 16000 in ANTS-1876 (two new prop blocks +
-    // top-level description extension pushed timeoutSecProp past 12000);
-    // → 20000 in ANTS-2220 (the enclosing_symbol prop block + description
-    // extension pushed props["timeout_sec"] to offset ~17164).
-    // → 22000 in ANTS-3549 (the files_only prop block + description extension
-    // pushed props["timeout_sec"] to offset ~20875).
-    // → 24000 in ANTS-3547 (the offset/wsOffsetProp block + description
-    // extension pushed props["timeout_sec"] to offset ~22344).
-    // → 32000 in ANTS-3704 (the exclude_glob prop block + `glob`
-    // description extension pushed props["timeout_sec"] past 24000).
-    // Sixth widening of this window; the fixed-byte idiom itself is
-    // filed as ANTS-3720.
-    const size_t end = std::min(ci.size(), wsAnchor + 32000);
-    const std::string window = ci.substr(wsAnchor, end - wsAnchor);
+    // ANTS-3720 — self-sizing descriptor block; see INV-5a above.
+    const std::string window =
+        ants_test::mcpToolDescriptor(ci, "workspace_search");
+    ASSERT_FALSE(window.empty());
     expect(contains(window, "timeout_sec"),
            "INV-6a: workspace_search description does not mention "
            "timeout_sec");

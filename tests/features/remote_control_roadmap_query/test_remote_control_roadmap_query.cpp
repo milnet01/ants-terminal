@@ -36,6 +36,8 @@ static int runMain() {
 
     const std::string rcSrc = ants_test::slurpFile(SRC_RC_CPP);
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
+    const std::string ciSrc =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);   // ANTS-3698
     if (rcSrc.empty()) fail("INV-7", "remotecontrol.cpp not readable");
     if (rcHdr.empty()) fail("INV-7", "remotecontrol.h not readable");
 
@@ -198,7 +200,22 @@ static int runMain() {
         fail("INV-10",
                     "roadmap_query does not emit headline_full (ANTS-2075)");
 
-    std::puts("OK remote_control_roadmap_query: 10/10 invariants");
+    // INV-11 (ANTS-3698) — `filter` is honoured as an alias for `status`.
+    // The envelope has always echoed the applied lifecycle as `filter`, so
+    // that is the name a caller writing the next call from a response sends;
+    // it used to be an unrecognised arg, silently dropped, answered with the
+    // FULL set under an echo that read as confirmation. The verb is not
+    // behaviourally reachable from this bundle (no GUI link), so the wiring
+    // is asserted at the source — both halves, since honouring the arg
+    // without declaring it would leave it reported in ignored_args.
+    if (!contains(rcSrc, "req.value(QStringLiteral(\"filter\"))"))
+        fail("INV-11",
+             "cmdRoadmapQuery does not fall back to the `filter` alias");
+    if (!contains(ciSrc, "props[\"filter\"] = filterAliasProp"))
+        fail("INV-11",
+             "roadmap_query schema does not declare the `filter` alias");
+
+    std::puts("OK remote_control_roadmap_query: 11/11 invariants");
     return 0;
 }
 

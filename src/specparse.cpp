@@ -113,7 +113,24 @@ QJsonObject parseSpecBody(const QString &body) {
                                          : section.size()
                                    : section.size();
                 const int end = to > from ? to : section.size();
-                QString invBody = section.mid(from, end - from).trimmed();
+                // ANTS-3697 — a bullet-form body also ends at the next ATX
+                // heading. A heading can never be a continuation of a bullet,
+                // so this needs no lookahead and cannot truncate a legitimate
+                // multi-paragraph body. Without it the invariant immediately
+                // preceding a subheading swallowed the heading and the prose
+                // under it — and the pattern that triggers it, grouping
+                // withdrawn invariants under their own `###`, is what the
+                // permanent-id rule in specs.md pushes authors toward. The
+                // `*Test:*` splice below inherits the clamp, since it operates
+                // on whatever this body turned out to be.
+                static const QRegularExpression headingRe(
+                    QStringLiteral(R"(^#{1,6}\s)"),
+                    QRegularExpression::MultilineOption);
+                const auto hm = headingRe.match(section, from);
+                const int stop = (hm.hasMatch() && hm.capturedStart() < end)
+                                     ? hm.capturedStart()
+                                     : end;
+                QString invBody = section.mid(from, stop - from).trimmed();
 
                 // ANTS-3665 — lift the `*Test:*` clause into its own field.
                 // specs.md § 6 promises `test_surface` from BOTH forms, but

@@ -98,7 +98,11 @@ struct ScanResult {
     int unresolved = 0;
     int notChecked = 0;
 
-    bool truncated = false;  // true iff any occurrence is NotChecked
+    // ANTS-3692 — NEEDLE-scoped, not occurrence-scoped: true iff some needle
+    // went unwalked (budget or deadline). An ambiguous needle that resolves
+    // nowhere is dropped from `symbols` rather than reported, so deriving this
+    // from the emitted occurrences would call an incomplete run complete.
+    bool truncated = false;
     int  needlesResolved = 0;  // walks actually spent; the caller's budget debit
 };
 

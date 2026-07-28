@@ -190,3 +190,53 @@ TEST(SpecParseTestSurface, Inv5MultipleBulletsEachKeepTheirOwnClause) {
            "INV-5/second-body-clean", render(i1));
     ASSERT_EQ(0, expect_finish());
 }
+
+// ANTS-3697 — a bullet-form body terminates at the next ATX heading as well as
+// at the next `- **INV-` bullet. Without the clamp the LAST invariant before a
+// subheading swallowed the heading and the prose under it; the pattern that
+// triggers it — grouping withdrawn invariants under their own `###` — is what
+// the permanent-id rule in specs.md pushes authors toward, so it is common
+// rather than exotic. Only the one invariant immediately preceding the heading
+// is affected, which is why nothing else flagged it.
+TEST(SpecParseTestSurface, Ants3697BodyStopsAtNextHeading) {
+    expect_reset();
+    const auto p = parse(
+        withHeader(QStringLiteral(
+                       "- **INV-1** — The first one. *Test:* t1.\n"
+                       "- **INV-2** — The last live one. *Test:* t2.\n"
+                       "\n"
+                       "### Withdrawn invariants\n"
+                       "\n"
+                       "INV-3 was withdrawn in review; its id is retained so\n"
+                       "later references keep resolving.\n"))
+            .toUtf8().constData());
+
+    const QJsonObject last = inv(p, 1);
+    expect(field(last, "id") == QStringLiteral("INV-2"),
+           "ANTS-3697: INV-2 parses as its own entry");
+    expect(!field(last, "body").contains(QStringLiteral("Withdrawn invariants")),
+           "ANTS-3697: the body must not swallow the following heading");
+    expect(!field(last, "body").contains(QStringLiteral("retained so")),
+           "ANTS-3697: the body must not swallow the prose under the heading");
+    expect(field(last, "test_surface") == QStringLiteral("t2."),
+           "ANTS-3697: test_surface must not inherit the over-run");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3697 guard — the clamp must not truncate a legitimate multi-paragraph
+// body. A heading can never be a continuation of a bullet, but a blank line
+// followed by more prose can be, and those bodies are the norm in this corpus.
+TEST(SpecParseTestSurface, Ants3697MultiParagraphBodySurvives) {
+    expect_reset();
+    const auto p = parse(
+        withHeader(QStringLiteral(
+                       "- **INV-1** — The rule. *Test:* t1.\n"
+                       "\n"
+                       "  Second paragraph explaining why the rule is shaped\n"
+                       "  the way it is.\n"))
+            .toUtf8().constData());
+
+    expect(field(inv(p, 0), "body").contains(QStringLiteral("Second paragraph")),
+           "ANTS-3697: a multi-paragraph body must survive the heading clamp");
+    EXPECT_EQ(0, expect_failures());
+}

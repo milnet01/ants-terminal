@@ -2226,8 +2226,26 @@ void ClaudeIntegration::onMcpConnection() {
                         "\"in-progress\"=🚧, \"considered\"=💭 (bullets / "
                         "section= path; section_index collapses granular "
                         "names to their aggregate). An unknown value refuses "
-                        "with bad_status + an `accepted` list.");
+                        "with bad_status + an `accepted` list. ANTS-3698 — "
+                        "`filter` is accepted as an alias (the envelope "
+                        "echoes the applied lifecycle under that name, so it "
+                        "is what a caller writing the next call by hand "
+                        "sends); `status` wins when both are present.");
                     props["status"] = statusProp;
+                    // ANTS-3698 — `filter` alias. Declared so the arg is not
+                    // reported in ignored_args now that it is honoured, and so
+                    // the echo field's name resolves to a real parameter.
+                    QJsonObject filterAliasProp;
+                    filterAliasProp["type"] = "string";
+                    filterAliasProp["enum"] = statusEnum;
+                    filterAliasProp["description"] = QStringLiteral(
+                        "Alias for `status` (ANTS-3698) — same accepted "
+                        "values. Exists because the response echoes the "
+                        "applied lifecycle as `filter`; passing that name "
+                        "used to be silently ignored and answered with the "
+                        "full set. Prefer `status`, which wins if both are "
+                        "sent.");
+                    props["filter"] = filterAliasProp;
                     // ANTS-1287 — `section` slug (optional). Unknown
                     // slug → ok:false with code=bad_section.
                     QJsonObject sectionProp;

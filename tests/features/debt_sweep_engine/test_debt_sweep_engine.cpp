@@ -761,3 +761,47 @@ TEST(DebtSweepEngine, TriageGateGatesLargeAutoFixableBatch) {
     EXPECT_EQ(v.nonAutoFixable, 0);   // carried for the message; not the gate
     EXPECT_FALSE(v.reason.isEmpty());
 }
+
+// INV-4 — a test that names its invariant in the FUNCTION NAME counts as
+// coverage (ANTS-3693). `INV-8a` is not a legal identifier in C++, Python,
+// Go, Rust or JS, so a test carrying the id in its name has to drop the
+// hyphen; requiring the hyphen made the commonest citation shape invisible.
+// Fin Break measured 67 findings on their corpus, 65 of them false, dominated
+// by exactly this.
+TEST(DebtSweepEngine, Inv4HyphenlessCitationInFunctionNameCounts) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), "tests/features/baz/spec.md",
+              "# Baz feature\n"
+              "- INV-8a. Import stamps all rows.\n"
+              "- INV-9. Uncited on purpose.\n");
+    writeFile(tmp.path(), "tests/features/baz/test_baz.py",
+              "def test_INV8a_import_stamps_all_rows():\n"
+              "    pass\n");
+
+    DebtSweepEngine::ScanOptions opt;
+    const auto out = DebtSweepEngine::detectMissingInvariantTests(
+        tmp.path(), opt);
+    ASSERT_EQ(out.size(), 1)
+        << "only INV-9 is uncovered; INV-8a is cited as test_INV8a_...";
+    EXPECT_TRUE(out[0].message.contains("INV-9"));
+}
+
+// INV-4 — the relaxed citation match must not let a LONGER id stand in for a
+// shorter one. `INV-8` is not covered by a test that only names `INV-80`.
+TEST(DebtSweepEngine, Inv4CitationDoesNotMatchLongerId) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), "tests/features/qux/spec.md",
+              "# Qux feature\n"
+              "- INV-8. The short one.\n");
+    writeFile(tmp.path(), "tests/features/qux/test_qux.cpp",
+              "// covers INV-80 only\n"
+              "TEST(Qux, T1) {}\n");
+
+    DebtSweepEngine::ScanOptions opt;
+    const auto out = DebtSweepEngine::detectMissingInvariantTests(
+        tmp.path(), opt);
+    ASSERT_EQ(out.size(), 1) << "INV-80 must not satisfy INV-8";
+    EXPECT_TRUE(out[0].message.contains("INV-8"));
+}

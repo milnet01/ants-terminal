@@ -69,36 +69,18 @@ TEST(roadmap_query_filter_section_headers, Inv3bSectionPathFilters) {
 TEST(roadmap_query_filter_section_headers, Inv4SchemaPropertyAdded) {
     expect_reset();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    // The roadmap_query descriptor must list the new opt-in
-    // flag. Anchor on the roadmap_query name then grep nearby
-    // for include_section_headers.
-    const auto pos = ci.find("\"roadmap_query\"");
-    ASSERT_NE(pos, std::string::npos)
+    // The roadmap_query descriptor must list the new opt-in flag.
+    //
+    // ANTS-3720 — this was a fixed-byte window from the tool name, widened
+    // six times (6→7→8→10→12→13→14→16 KiB) as SIBLING properties grew;
+    // the ANTS-3698 `filter` alias would have made it seven. Every one of
+    // those edits asserted nothing new, and the failure they fixed looks
+    // exactly like the property having been deleted. The descriptor block
+    // now bounds itself.
+    const std::string region = ants_test::mcpToolDescriptor(ci, "roadmap_query");
+    ASSERT_FALSE(region.empty())
         << "INV-4 precondition: roadmap_query tool name missing "
            "from claudeintegration.cpp";
-    // 8 KiB window covers the description + properties block
-    // without bleeding into the following tool descriptor.
-    // ANTS-1622 bumped 6→7 KiB: section_index description grew
-    // by ~800 B to enumerate the new `*_id_only` parallel counts
-    // and the `legacy_format_sections[]` envelope field.
-    // ANTS-1848 bumped 7→8 KiB: the description + `mode` property
-    // grew to document `status` now shaping section_index emission.
-    // ANTS-1856 bumped 8→10 KiB: the `id` selector added a sentence
-    // to the description + an `idProp` block, pushing
-    // include_section_headers to offset ~8.5 KiB.
-    // ANTS-1726 bumped 10→12 KiB: the plural `ids` selector added a
-    // descriptor sentence + an `idsProp` block (~1.2 KiB), pushing
-    // include_section_headers past offset 10 KiB.
-    // ANTS-1696 bumped 12→13 KiB: the section_shape envelope hint
-    // added a sentence to the descriptor (~400 B).
-    // ANTS-2079 bumped 13→14 KiB: the description/detail split prepended
-    // a ~570 B short `description` + comment ahead of the (now `detail`)
-    // encyclopedic prose, pushing include_section_headers down by that much.
-    // ANTS-3400/3402 bumped 14→16 KiB: the `status` enum gained the granular
-    // lifecycle names + an expanded description, and a new `max_body_bytes`
-    // prop + expanded include_body description added ~1.5 KiB ahead of
-    // include_section_headers.
-    const std::string region = ci.substr(pos, 16000);
     expect(contains(region, "include_section_headers"),
            "INV-4: include_section_headers schema property must "
            "be declared on the roadmap_query tool descriptor");

@@ -167,6 +167,32 @@ inline std::string stripComments(const std::string &src) {
     return out;
 }
 
+// ANTS-3720 — the region of `src` describing ONE MCP tool: from that tool's
+// `["name"] = "<tool>"` registration up to the next tool's, or EOF.
+//
+// Replaces the fixed-byte `substr(pos, N)` windows the schema scrapes used to
+// take. Those had to be widened every time a SIBLING property gained a
+// sentence — seven times on roadmap_query alone, each a test edit with no
+// behavioural meaning, and each failure indistinguishable from the property
+// genuinely having been dropped. The block bound moves with the descriptor
+// instead, so only a real removal reddens the test.
+//
+// A missing anchor returns "" (the caller's ASSERT reports it). If the NEXT
+// tool's registration is written some other way the region runs to EOF — the
+// safe direction for a must-contain assertion, at the cost of the
+// doesn't-bleed-into-the-next-descriptor property.
+inline std::string mcpToolDescriptor(const std::string &src,
+                                     const std::string &toolName) {
+    const std::string kNameAssign = "[\"name\"] = \"";
+    const std::string anchor      = kNameAssign + toolName + "\"";
+    const std::size_t pos = src.find(anchor);
+    if (pos == std::string::npos) return {};
+    const std::size_t next = src.find(kNameAssign, pos + anchor.size());
+    return src.substr(pos, next == std::string::npos
+                               ? std::string::npos
+                               : next - pos);
+}
+
 // Count non-overlapping occurrences of `needle` in `hay`.
 inline std::size_t countOccurrences(const std::string &hay,
                                     const std::string &needle) {

@@ -20654,12 +20654,13 @@ the shared root. Ten files were clean; claude-config, DOOM Ants and Fin Break
 carried the input. Three of Fin Break's entries are positive datapoints
 requesting no action and are closed in place rather than filed.
 
-- 📋 [ANTS-3693] **`missing_inv_test` requires a hyphen no language allows in an identifier, so `test_INV8a_…` reads as uncovered.**
+- ✅ [ANTS-3693] **`missing_inv_test` requires a hyphen no language allows in an identifier, so `test_INV8a_…` reads as uncovered.**
   Fin Break measured 67 findings, ALL missing_inv_test, of which 65 were false —
   a 97% rate. The dominant defeating shape is the invariant id carried inside the
   test FUNCTION NAME with the hyphen dropped (`test_INV8a_import_stamps_all_rows`),
   because `test_INV-8a_…` is not a legal identifier in Python, C++, Go, Rust or JS.
   Those tests DO caption their invariant; the detector cannot read the caption.
+  Resolved 2026-07-28: fix (a) only — the CITATION match takes the hyphen as optional, so `test_INV8a_...` counts. Deliberately not (c): narrowing what counts as a DECLARATION is what ANTS-3343 settled as keep-as-designed, and reversing that silently inside a different item would be the wrong way to revisit it. (b) left too. Two notes: the first regex used `\b`, which cannot work here — `_` is a word character, so `test_INV8a_` has no boundary before `INV` and the fix missed the exact shape it targets; the red-check caught it, a green-only run would not have. And the guard test found a pre-existing FALSE NEGATIVE in the old code: plain substring matching meant a test citing `INV-80` was accepted as covering `INV-8`. The trailing lookahead closes it.
 
   This does NOT overturn ANTS-3343, which resolved 2026-07-13 as keep-as-designed.
   That investigation surveyed how invariants are DECLARED in spec.md and concluded
@@ -20737,7 +20738,7 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: claude-config-feedback-2026-07-28.
 
-- 📋 [ANTS-3696] **`roadmap_log op:flip` appends its note after the body's FIRST paragraph, not at the end of the bullet.**
+- ✅ [ANTS-3696] **`roadmap_log op:flip` appends its note after the body's FIRST paragraph, not at the end of the bullet.**
   The tool description says the note is "appended as indented continuation line(s)
   at the end of the located bullet's body". On a bullet whose body is several
   blank-line-separated paragraphs it lands after the FIRST paragraph, leaving
@@ -20750,6 +20751,7 @@ requesting no action and are closed in place rather than filed.
   cheapest: accept a leading `!`…") now sit BELOW the resolution, so the bullet
   reads as resolved and then argues for a fix that already shipped — and it
   recommends an approach the resolution explicitly rejected.
+  Resolved 2026-07-28: `appendBodyNote` now walks the bullet's whole indented continuation run (blank lines included) and backs up over the blank separator, so the note lands against the last real body line. This is the span `amendBodyExact` has used since ANTS-3467 — the two disagreed about where a body ends, which is why one verb could match text the other could not append past. INV-7 in the annotate spec already promised this; its fixture had a body with no blank lines, so the buggy walk satisfied the test. New fixture `Inv7NoteLandsAfterMultiParagraphBody`, verified RED first.
 
   The envelope reported note_appended:true with a plausible note_line (20920
   against a bullet at 20915), which is the silent half of the report.
@@ -20776,12 +20778,13 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: DOOM-Ants-feedback-2026-07-28.
 
-- 📋 [ANTS-3697] **`spec_query`'s bullet-form invariant parser runs a body through an intervening `###` heading.**
+- ✅ [ANTS-3697] **`spec_query`'s bullet-form invariant parser runs a body through an intervening `###` heading.**
   On a spec using the bullet form (`- **INV-N** — body. *Test:* …`), an invariant's
   body terminates only at the next `- **INV-` bullet, not at the next markdown
   heading. In `docs/specs/FIBR-0113.md` the live invariants are followed by a
   `### Withdrawn invariants` heading plus two explanatory sentences; INV-22's `body`
   carries all of it.
+  Resolved 2026-07-28: a bullet-form invariant body now terminates at the next ATX heading as well as the next `- **INV-` bullet, and `test_surface` inherits the clamp. Guard test asserts a multi-paragraph body still survives, since that is the only way the clamp could over-reach.
 
   The damage is confined to the one invariant immediately preceding the heading —
   the withdrawn stubs themselves parse correctly as their own entries. `spec_lint`
@@ -20804,12 +20807,13 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: finbreak-feedback-2026-07-28.
 
-- 📋 [ANTS-3698] **`roadmap_query` echoes its `status` input as `filter`, so a caller who passes `filter:` is silently given the full set.**
+- ✅ [ANTS-3698] **`roadmap_query` echoes its `status` input as `filter`, so a caller who passes `filter:` is silently given the full set.**
   The lifecycle parameter is `status`; the envelope echoes it as `filter`. Passing
   `filter:"active"` returns `{count:35, filter:"all", ignored_args:["filter"]}` — the
   refusal machinery worked, but the very next key reads as confirmation that a
   filter WAS applied and resolved to "all". The contributor read 35 as the active
   count and only noticed on a second pass that 20+ were shipped.
+  Resolved 2026-07-28: `filter` accepted as an alias for `status` and declared in the schema. Renaming the echo (the cheapest option offered) would have removed the confusion but left the actual defect — a caller passing `filter:` still silently getting the full set. `status` wins when both are sent. INV-11 in remote_control_roadmap_query asserts both halves; declaring the property is load-bearing, since honouring an undeclared arg would leave it reported in ignored_args.
 
   Note the asymmetry: an unknown status VALUE refuses loudly with `bad_status` + an
   `accepted` list, but an unknown ARG NAME whose value happens to be a legal status
@@ -20914,11 +20918,12 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: DOOM-Ants-feedback-2026-07-28.
 
-- 📋 [ANTS-3702] **`roadmap_log`'s `bytes_written` means the delta on append but the whole file on flip_batch.**
+- ✅ [ANTS-3702] **`roadmap_log`'s `bytes_written` means the delta on append but the whole file on flip_batch.**
   Same session, same file: `op:append` → `bytes_written:1483` for one bullet;
   `op:append_batch` → 3577 for eight (i.e. bytes ADDED); `op:flip_batch` with six
   annotate-only locators → 459592, the size of the whole 452 KB ROADMAP.md after the
   rewrite.
+  Resolved 2026-07-28: `bytes_written` is the byte DELTA on all five whole-file roadmap_log ops (flip, flip_batch, amend_body, pass_flip, pass_flip_batch) via the shared rcSetWriteBytes helper; the whole-file figure moved to a new `file_bytes`. Took the real fix rather than the offered fallback of documenting the per-op difference, since a field that means two things is what made it useless. A pure status flip honestly reports 0 added bytes — the emoji swap is the same width.
 
   Cosmetic but genuinely confusing mid-sweep: a 459 KB write in response to six
   short notes reads as though the verb duplicated something, and the only way to
@@ -20935,11 +20940,12 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: DOOM-Ants-feedback-2026-07-28.
 
-- 📋 [ANTS-3703] **`roadmap_log`'s note XML scrub misses a stray closing tag and writes `</note>` into ROADMAP.md.**
+- ✅ [ANTS-3703] **`roadmap_log`'s note XML scrub misses a stray closing tag and writes `</note>` into ROADMAP.md.**
   The `note` field is documented as "Scrubbed of leaked tool-call XML like
   op:append's body". A note whose text ended with a stray `</note>` was written
   through verbatim, so the literal string landed in ROADMAP.md at the end of the
   resolution note.
+  Resolved 2026-07-28: the note scrub strips a bare `</?tag>` at the very start or end of the text. Edges only — markup mid-sentence is prose, guarded by `Inv8MidSentenceMarkupSurvives` so a scrub that ate `<div>` mid-sentence cannot pass. Chose the strip over the offered `note_contains_markup` refusal: the caller cannot always re-issue, and the leak shape is unambiguous at the edges.
 
   The malformed call is the caller's fault, but this is precisely the failure the
   scrub exists for, and a truncated or stray close tag is the commonest shape a leak
@@ -21469,11 +21475,12 @@ requesting no action and are closed in place rather than filed.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
 
-- 📋 [ANTS-3720] **Replace the fixed-byte scrape window in the MCP schema tests with a self-sizing block bound.**
+- ✅ [ANTS-3720] **Replace the fixed-byte scrape window in the MCP schema tests with a self-sizing block bound.**
   The schema-wiring tests anchor on a literal and then take a FIXED byte window
   (`ci.substr(anchor, anchor + N)`). Every property added to a tool's schema
   pushes later content past N, so an unrelated row goes red with a message
   naming something the change never touched.
+  Resolved 2026-07-28: added `ants_test::mcpToolDescriptor()` (tests/_support/srcgrep.h) — bounds a descriptor scrape from a tool's `["name"] = "..."` registration to the next one — and migrated the three chronic scrapes (roadmap_query_filter_section_headers INV-4, mcp_workspace_search INV-5, mcp_workspace_search_timeout_sec INV-5a/INV-6). Forced by ANTS-3698: the `filter` property would have been that window's SEVENTH widening. Not a blanket sweep — the small stable windows and the function-body ones (already served by slurpFunctionBody) are untouched.
 
   Measured this session while adding one property to `workspace_search`
   (ANTS-3704, ~900 bytes of schema description):
@@ -21509,6 +21516,65 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Adding any option to a tool keeps breaking unrelated tests, because they read a fixed number of bytes from a starting point rather than reading to the end of the section.
   Kind: test.
   Source: in-session-2026-07-28 (hit twice while implementing ANTS-3701/3704).
+
+- 📋 [ANTS-3721] **ANTS-3661's measured figures count occurrences and spans where the text says needles.**
+  An independent cold read of the ANTS-3692 amendment found three HIGH
+  findings, all the same root cause: the calibration harness reports
+  OCCURRENCE counts and DISTINCT SPAN counts, and the spec quotes them as
+  NEEDLE counts. Verified against the code, not taken on the reviewer's word:
+
+  - `ScanResult::resolved`/`unresolved` are per-occurrence (docsymbols.h says
+    so in terms: "Occurrence counts, not distinct needles"). So "949 needles
+    actually resolved" is 949 emitted occurrences.
+  - The harness's run-wide budget is `maxSymbolsPerRun` debited by
+    `needlesResolved`, so the whole 240-document sweep can never have walked
+    more than 500 needles. 76 s over <=500 walks is >=152 ms per needle, not
+    the ~80 ms the spec states -- and the deadline arithmetic downstream of it
+    (125 needles inside 10 s, worst doc ~10.6 s) is understated by about 2x.
+    The worst document is likely OVER the deadline, not marginal.
+  - `distinctNeedles` holds `Symbol::symbol`, which is the span VERBATIM, so
+    median 20 / worst 132 / "zero of 240 exceed the cap" count spans;
+    `Foo::bar()`, `Foo::bar` and `bar` are three entries for one needle.
+
+  Also verified: the 17:1 unambiguous:ambiguous ratio contradicts the same
+  section's own measurement (every not_checked occurrence is unambiguous by
+  construction, so unambiguous occurrences are >= 11,774, not 1,076); the
+  prose repeats pre-amendment percentages the table above it corrects (11% vs
+  14%, 59% vs 53%); the coverage table stops at INV-7 though INV-9/INV-10
+  exist; the Options block omits `resolveDeadlineMs` and `rootCanonical`; the
+  run-wide-budget contract is in the header and the verb but not the spec.
+
+  Fix: instrument the harness to report needle-scoped figures (sum
+  `needlesResolved`; derive the needle from the span with the same two
+  reductions the engine uses), re-run, and replace every figure. Then the
+  no-measurement corrections. One stale CODE comment falls out of it too --
+  `docsymbols.h`'s `truncated` still says "true iff any occurrence is
+  NotChecked", which is the pre-ANTS-3692 rule the implementation no longer
+  follows.
+  **Layman:** The doc_symbols design doc quotes performance numbers that were measured the wrong way round, so the timings it gives are roughly half what they should be.
+  Kind: doc-fix.
+  Source: cold-eyes-2026-07-28 (ANTS-3692 amendment)..
+
+- 📋 [ANTS-3722] **`roadmap_query` reads a `Lanes:`/`Kind:`/`Source:` trailer key out of mid-body prose.**
+  Reading ANTS-3696 back with `include_body:true` returned
+  `lanes: ["`/`Source:` trailer below the"]`. That bullet has no Lanes line.
+  The string comes from a sentence in its body that QUOTES the trailer keys:
+  "paragraphs 2..N and the `Layman:`/`Kind:`/`Lanes:`/`Source:` trailer below
+  the". The parser matched `Lanes:` mid-line and took the rest of the line as
+  the value.
+
+  So any bullet whose prose mentions a trailer key acquires a bogus field, and
+  the corpus most likely to do that is the one documenting the roadmap format
+  itself. Silent: the envelope looks well-formed and a consumer filtering by
+  lane sees a lane that does not exist.
+
+  Fix: anchor the trailer-key match to the start of the continuation line
+  (after the hang indent), the same way the `Kind:`/`Source:` writers emit it.
+  Regression: a body containing "the `Lanes:` trailer" mid-sentence must parse
+  with no lanes.
+  **Layman:** Quoting the roadmap's own field names inside an item's text makes the reader think they are that item's real fields.
+  Kind: fix.
+  Source: in-session-2026-07-28 (hit reading ANTS-3696's own body)..
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

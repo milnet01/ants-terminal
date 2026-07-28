@@ -69,6 +69,21 @@ QByteArray seedGfm() {
         "\n");
 }
 
+// ANTS-3696 fixture — seedV1()'s bullet has ONE unbroken run of indented
+// body lines, which is why a walk that stopped at the first blank line
+// looked correct for years. This adds a bullet whose body has paragraphs,
+// which is what a well-documented roadmap item actually looks like.
+QByteArray seedV1MultiPara() {
+    QByteArray b = seedV1();
+    b += "- \xF0\x9F\x93\x8B [ANTS-0043] **Multi-paragraph bullet.**\n"
+         "  First paragraph of the body.\n"
+         "\n"
+         "  Second paragraph of the body.\n"
+         "  Source: multi.\n"
+         "\n";
+    return b;
+}
+
 bool writeFile(const QString &path, const QByteArray &body) {
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -396,4 +411,108 @@ TEST(roadmap_log_annotate, Inv1Inv8Inv9SourceSurface) {
     expect(contains(ci, "op:\\\"annotate\\\" (ANTS-1717)"),
            "INV-9: descriptor documents op:annotate");
     EXPECT_EQ(0, expect_failures());
+}
+
+// INV-7 over a MULTI-PARAGRAPH body (ANTS-3696). The contract already said
+// "after the last body line"; the fixture that verified it had a body with no
+// blank lines in it, so a walk that terminated at the first blank line
+// satisfied the test and violated the invariant. On a real, well-documented
+// bullet the note landed after paragraph ONE.
+TEST(roadmap_log_annotate, Inv7NoteLandsAfterMultiParagraphBody) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1MultiPara()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0043");
+    r[QStringLiteral("note")] =
+        QStringLiteral("Resolved 2026-07-28: landed at the end.");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "annotate on the multi-paragraph bullet should succeed";
+
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    const auto note   = md.find("Resolved 2026-07-28: landed at the end.");
+    const auto second = md.find("Second paragraph of the body.");
+    const auto source = md.find("Source: multi.");
+    ASSERT_NE(note, std::string::npos)   << "note missing from the file";
+    ASSERT_NE(second, std::string::npos) << "body paragraph 2 was destroyed";
+    ASSERT_NE(source, std::string::npos) << "Source: trailer was destroyed";
+    EXPECT_GT(note, second)
+        << "INV-7: the note must follow paragraph 2, not split the body";
+    EXPECT_GT(note, source)
+        << "INV-7: the note must follow the Source: trailer";
+}
+
+// INV-8 — a bare closing tag at the END of the note never reaches the file
+// (ANTS-3703). The malformed call is the caller's fault; the artefact is a
+// permanent line in an append-only file, so the scrub is what has to hold.
+TEST(roadmap_log_annotate, Inv8EdgeTagStrippedFromNote) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] =
+        QStringLiteral("Resolved 2026-07-28: shipped it.</note>");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "Resolved 2026-07-28: shipped it."))
+        << "the prose itself must survive the scrub";
+    EXPECT_FALSE(contains(md, "</note>"))
+        << "INV-8: a stray closing tag must not reach ROADMAP.md";
+}
+
+// INV-8 — markup in the MIDDLE of a note is prose and is left alone. The
+// edge-only rule is what keeps the ANTS-3703 strip from eating real text.
+TEST(roadmap_log_annotate, Inv8MidSentenceMarkupSurvives) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] =
+        QStringLiteral("Progress: the <div> wrapper is the culprit here.");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "the <div> wrapper is the culprit"))
+        << "INV-8: mid-sentence markup must survive the edge strip";
+}
+
+// INV-11 — `bytes_written` is the DELTA; `file_bytes` carries the whole file
+// (ANTS-3702). Before this, a one-line note against a 452 KB ROADMAP.md
+// reported ~459592 bytes written, which reads as a duplicated file.
+TEST(roadmap_log_annotate, Inv11BytesWrittenIsDeltaNotFileSize) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QByteArray seed = seedV1();
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seed));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] = QStringLiteral("Progress: one short line.");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    const qint64 written = resp.value(QStringLiteral("bytes_written")).toInteger();
+    const qint64 fileBytes = resp.value(QStringLiteral("file_bytes")).toInteger();
+    const qint64 onDisk = readFile(roadmapPath(tmp.path())).size();
+
+    EXPECT_GT(written, 0) << "a note append adds bytes";
+    EXPECT_LT(written, 200)
+        << "INV-11: one note line must not report the whole file as written";
+    EXPECT_EQ(fileBytes, onDisk)
+        << "INV-11: file_bytes must be the post-write file size";
+    EXPECT_EQ(written, onDisk - seed.size())
+        << "INV-11: bytes_written must equal the size delta";
 }

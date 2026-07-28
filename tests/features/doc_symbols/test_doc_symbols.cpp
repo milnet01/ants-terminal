@@ -328,10 +328,23 @@ TEST(DocSymbols, DISABLED_CorpusCalibration) {
     docs.sort();
     ASSERT_FALSE(docs.isEmpty()) << "no corpus under " << root.toStdString();
 
+    // The engine's two reductions (spec § 2.2), applied here so this harness
+    // can count NEEDLES — what the budget is actually spent on — and not just
+    // spans. `Symbol::symbol` is the span VERBATIM, so `Foo::bar()`,
+    // `Foo::bar` and `bar` are three spans for one needle, and quoting a span
+    // count as a needle count overstates the population it is compared
+    // against (ANTS-3721).
+    auto needleOf = [](QString s) {
+        if (s.endsWith(QLatin1String("()"))) s.chop(2);
+        const int i = s.lastIndexOf(QLatin1String("::"));
+        return i >= 0 ? s.mid(i + 2) : s;
+    };
+
     int total = 0, resolved = 0, unresolved = 0, notChecked = 0;
-    QSet<QString> distinctNeedles;
+    int walksSpent = 0;   // Σ needlesResolved — the only true walk count
+    QSet<QString> distinctSpans, distinctNeedles;
     QMap<QString, int> unresolvedByNeedle;
-    QList<int> perDocDistinct;
+    QList<int> perDocDistinct, perDocSpans;
     int budget = opts.maxSymbolsPerRun;
 
     for (const QString &abs : std::as_const(docs)) {
@@ -343,17 +356,22 @@ TEST(DocSymbols, DISABLED_CorpusCalibration) {
         const DocSymbols::ScanResult r =
             DocSymbols::scan(text, QDir(root).relativeFilePath(abs), opts);
         budget -= r.needlesResolved;
+        walksSpent += r.needlesResolved;
         total += r.total; resolved += r.resolved;
         unresolved += r.unresolved; notChecked += r.notChecked;
-        QSet<QString> thisDoc;
+        QSet<QString> thisDocSpans, thisDocNeedles;
         for (const DocSymbols::Symbol &s : r.symbols) {
-            distinctNeedles.insert(s.symbol);
-            thisDoc.insert(s.symbol);
+            distinctSpans.insert(s.symbol);
+            thisDocSpans.insert(s.symbol);
+            distinctNeedles.insert(needleOf(s.symbol));
+            thisDocNeedles.insert(needleOf(s.symbol));
             if (s.resolution == DocSymbols::Resolution::Unresolved)
                 unresolvedByNeedle[s.symbol] += 1;
         }
-        perDocDistinct.append(thisDoc.size());
+        perDocDistinct.append(thisDocNeedles.size());
+        perDocSpans.append(thisDocSpans.size());
     }
+    std::sort(perDocSpans.begin(), perDocSpans.end());
     std::sort(perDocDistinct.begin(), perDocDistinct.end());
     const int median = perDocDistinct.isEmpty() ? 0 : perDocDistinct.at(perDocDistinct.size() / 2);
     const int worst  = perDocDistinct.isEmpty() ? 0 : perDocDistinct.last();
@@ -388,10 +406,19 @@ TEST(DocSymbols, DISABLED_CorpusCalibration) {
               << "  resolved        : " << resolved << "\n"
               << "  unresolved      : " << unresolved << "\n"
               << "  not_checked     : " << notChecked << "\n"
-              << "distinct spans    : " << distinctNeedles.size()
+              << "needle walks spent: " << walksSpent
+              << "   (Σ needlesResolved — the run-wide budget's debit; every\n"
+              << "                       per-needle cost in § 4 divides by THIS,\n"
+              << "                       never by the occurrence count above)\n"
+              << "distinct spans    : " << distinctSpans.size() << "\n"
+              << "distinct needles  : " << distinctNeedles.size()
               << "   corpus-wide (§ 4 gate: cap is wrong above 250)\n"
-              << "per-doc distinct  : median " << median << ", worst " << worst
+              << "per-doc needles   : median " << median << ", worst " << worst
               << ", docs over the 500 cap: " << overCap << "\n"
+              << "per-doc spans     : median "
+              << (perDocSpans.isEmpty() ? 0 : perDocSpans.at(perDocSpans.size() / 2))
+              << ", worst " << (perDocSpans.isEmpty() ? 0 : perDocSpans.last())
+              << "\n"
               << "unresolved populations (§ 2.1 gate: >= 25% means an exclusion "
               << "is missing):\n";
     for (auto it = population.cbegin(); it != population.cend(); ++it)

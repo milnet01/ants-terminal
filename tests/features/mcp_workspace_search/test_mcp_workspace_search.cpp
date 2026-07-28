@@ -156,22 +156,16 @@ TEST(McpWorkspaceSearch, WiringContract) {
         // Anchor at the tools/list registration (literal "workspace_search"
         // with quotes), not the first incidental occurrence in a setter
         // comment.
-        const size_t reqPos = ciCpp.find("\"workspace_search\"");
-        bool ok = false;
-        if (reqPos != std::string::npos) {
-            // Window 24000 -> 32000 after ANTS-3704 added the exclude_glob
-            // property (~900 bytes of schema description), which pushed
-            // "required" from ~+22774 to +25078 and reddened this row with a
-            // message about `pattern` that had nothing to do with the change.
-            // The measured distance is the number to keep an eye on; raise it
-            // as new properties slot in.
-            const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 32000);
-            const std::string window = ciCpp.substr(reqPos,
-                                                    windowEnd - reqPos);
-            ok = contains(window, "\"required\"") &&
-                 contains(window, "\"pattern\"");
-        }
+        // ANTS-3720 — the descriptor block bounds itself. This was a
+        // fixed-byte window whose last widening (24000 → 32000, ANTS-3704)
+        // reddened the row with a message about `pattern` that had nothing to
+        // do with the change that broke it — the failure mode the idiom keeps
+        // producing.
+        const std::string window =
+            ants_test::mcpToolDescriptor(ciCpp, "workspace_search");
+        const bool ok = !window.empty() &&
+                        contains(window, "\"required\"") &&
+                        contains(window, "\"pattern\"");
         expect(ok, "INV-5 required",
                "workspace_search inputSchema does not declare "
                "[\"pattern\"] as required");

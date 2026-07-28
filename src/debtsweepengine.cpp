@@ -843,8 +843,28 @@ QList<Finding> detectMissingInvariantTests(
         const QString relSpec =
             QDir(projectPath).relativeFilePath(specPath);
         for (int i = 0; i < ids.size(); ++i) {
-            const QString needle = QStringLiteral("INV-") + ids.at(i);
-            if (testsBlob.contains(needle)) continue;
+            // ANTS-3693 — match the CITATION with the hyphen optional. A test
+            // that carries the invariant id in its FUNCTION NAME has to drop
+            // the hyphen (`test_INV8a_import_stamps_all_rows`), because
+            // `INV-8a` is not a legal identifier in C++, Python, Go, Rust or
+            // JS — so the commonest way a test names its invariant was the one
+            // shape this detector could not see. Fin Break measured 67
+            // findings on their corpus, 65 of them false, dominated by exactly
+            // this. Relaxing the citation match only ever matches MORE, so it
+            // carries none of the false-negative risk ANTS-3343 declined on
+            // the DECLARATION side — the two are different halves of the
+            // check and that decision is untouched.
+            // NB `\b` cannot be the left guard here: `_` is a word character,
+            // so `test_INV8a_` has NO boundary before `INV` and the very shape
+            // this fix exists for would still miss. An explicit
+            // not-alphanumeric lookbehind admits the `_` separator while still
+            // rejecting a longer id's tail, and the trailing lookahead stops
+            // `INV-80` from standing in for `INV-8`.
+            const QRegularExpression citeRe(
+                QStringLiteral(R"((?<![A-Za-z0-9])INV-?)")
+                + QRegularExpression::escape(ids.at(i))
+                + QStringLiteral(R"((?![0-9A-Za-z]))"));
+            if (testsBlob.contains(citeRe)) continue;
             Finding fnd;
             fnd.category    = QStringLiteral("test_coverage");
             fnd.detectorId  = QStringLiteral("missing_inv_test");

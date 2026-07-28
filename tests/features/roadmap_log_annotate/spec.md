@@ -65,12 +65,33 @@ For a bullet that already has body lines, the note is inserted after
 the last body line (so metadata lines like `Source:` keep their order
 relative to the headline and the note reads as the latest addition).
 
+The body is the bullet's WHOLE indented continuation run, blank lines
+included — it ends at the next column-0 line or EOF, not at the first
+blank line (ANTS-3696). A multi-paragraph bullet is exactly the shape
+this matters on: stopping at the first blank line put the note after
+paragraph one, stranding the rest of the body and the `Kind:`/`Source:`
+trailer below the resolution, so the item read as resolved and then
+went on arguing for itself. Same span `amendBodyExact` walks.
+
 ### INV-8 — leaked-tool-XML scrub + fenced refusal
 
 `note` is scrubbed of leaked `<parameter …>` / `</invoke>` wrappers via
 the shared `rcScrubLeakedToolXml` helper (same as op:"append"'s body); a
 bullet inside a fenced code block refuses with
 `code:"anchor_unsafe_context"`.
+
+A bare XML-ish tag at the very START or END of the note is stripped too
+(ANTS-3703) — a truncated wrapper is the commonest shape a leak takes,
+and a stray `</note>` reached ROADMAP.md verbatim before this. Edges
+only: markup mid-sentence is prose and is left alone.
+
+### INV-11 — `bytes_written` is the delta, `file_bytes` the whole file
+
+Every roadmap_log op reports `bytes_written` as the bytes it ADDED
+(ANTS-3702). The whole-file-rewrite ops — flip, flip_batch, amend_body
+and the pass-heading variants — used to report the size of the rewritten
+file, so six short notes came back as a 459 KB write. The full size is
+still available as `file_bytes`.
 
 ### INV-9 — MCP descriptor + schema advertise the surface
 

@@ -93,6 +93,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log` reports `bytes_written` as the byte delta on every op, plus `file_bytes`** (ANTS-3702)
+  Whole-file-rewrite ops reported the size of the file, so six short notes
+  came back as a 459 KB write. The full size is still available.
+
 - **`audit_falsepos_log` now accepts `debt-sweep` as a review kind** (ANTS-3701)
   Dismissing a false alarm found during a debt sweep had to be filed under "audit" with a hand-written note, so the record of where it came from was wrong. It can now be filed under its own name.
 
@@ -147,6 +151,30 @@ for security-relevant changes.
   `quick:true` ran an identical full walk and pre-pass. `--quick` is caller-side (the grep pre-pass is the audit; only the subagent phase is skipped), so the field promised a fast path that did not exist. Callers passing it now get a schema refusal rather than a silent no-op.
 
 ### Fixed
+
+- **Debt sweep counts a test that names its invariant in the function name** (ANTS-3693)
+  `test_INV8a_...` cannot carry the hyphen, so the commonest citation shape
+  read as uncovered. The same fix closes a false negative in the other
+  direction: a test citing INV-80 was accepted as covering INV-8.
+
+- **`spec_query` no longer runs a bullet-form invariant through a following heading** (ANTS-3697)
+  The last invariant before a subheading absorbed that heading and its prose,
+  and `test_surface` inherited the over-run.
+
+- **`roadmap_log` strips a stray XML tag at the start or end of a note** (ANTS-3703)
+  A malformed call could write a literal `</note>` into ROADMAP.md — a
+  permanent line in an append-only file. Markup mid-sentence is prose and is
+  left alone.
+
+- **`roadmap_query` honours `filter` as an alias for `status`** (ANTS-3698)
+  The response echoes the applied lifecycle as `filter`, so callers sent that
+  name back; it was silently ignored and answered with the full set, handing
+  planning sessions already-shipped items.
+
+- **`roadmap_log` resolution notes land at the end of a multi-paragraph bullet** (ANTS-3696)
+  A note used to be inserted after the body's first paragraph, leaving the
+  rest of the problem statement and the Kind/Source trailer below it — so a
+  well-documented item read as resolved and then went on arguing for itself.
 
 - **`spec_query` could swallow an invariant from a malformed table** (ANTS-3683)
   `parseSpecBody`'s table-row pattern separated cells with a whitespace class that matches newlines, so on an invariants table missing its test column one match ran across two rows — returning the first invariant with the second row's text as its test surface, and dropping the second invariant entirely. Well-formed three-column tables were unaffected. Found by `spec_lint`, in the parser it consumes.
