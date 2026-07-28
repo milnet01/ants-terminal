@@ -74,6 +74,14 @@ Listed only where behavior isn't obvious from the name.
   primitives (`fenceRe` / `fenceOpenerChar` / `fenceMask`), hoisted from the
   verbatim copies in `feedbackfile`/`speclog`. Consumed by `feedbackfile`,
   `speclog`, `featurecoverage` (contract_doc_drift), `docintegrity`. ANTS-3603.
+- `docfinding` (Qt6::Core, `ants_core_lib`) — the one finding shape the
+  doc-lint verbs share: `Finding{verb, kind, file, line, message,
+  autoFixable, emissionIndex}`, `toJson` and `countsByVerbAndKind`.
+  `emissionIndex` is an in-process sort tiebreak and is never serialised.
+  Also fixes the family's engine calling convention (text in, never opens
+  the document; anything `ants_core_lib` cannot see is injected via
+  `Options`). Blocker for `docdedup`/`docsymbols`/`speclint`, composed by
+  `doclint`. ANTS-3664.
 - `docintegrity` (Qt6::Core, `ants_core_lib`) — deterministic doc-integrity
   engine: dead anchors, broken relative links, TOC coverage over a doc set.
   GitHub-compatible `gfmSlug`, fence-aware. Powers the `doc_integrity` MCP verb

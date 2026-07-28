@@ -291,6 +291,9 @@ add_library(ants_core_lib STATIC
     # ANTS-3603 — shared CommonMark fence primitives (Qt6::Core-only), hoisted
     # from the verbatim copies in feedbackfile.cpp + speclog.cpp.
     src/markdownscan.cpp
+    # ANTS-3664 — one finding shape for the doc-lint verbs (Qt6::Core-only).
+    # Blocker for ANTS-3660/3661/3662, composed by ANTS-3663.
+    src/docfinding.cpp
     # ANTS-3601 — deterministic doc-integrity engine (dead anchors, broken
     # links, TOC coverage); Qt6::Core-only.
     src/docintegrity.cpp
@@ -2022,6 +2025,8 @@ if(ANTS_TESTS)
                 tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
                 # ANTS-3603 — shared MarkdownScan fence primitives (fenceMask contract).
                 tests/features/markdownscan/test_markdownscan.cpp
+                # ANTS-3664 — shared doc-lint finding shape (wire form, counts).
+                tests/features/doc_finding/test_doc_finding.cpp
                 # ANTS-3601 — deterministic doc-integrity engine (Core-only).
                 tests/features/doc_integrity/test_doc_integrity.cpp
                 # ANTS-3636 doc_citations engine — ladder, statuses, caps.
@@ -2152,6 +2157,8 @@ if(ANTS_TESTS)
         SRC_MCPSPILL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpspill.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SECUREIO_H_PATH="${CMAKE_SOURCE_DIR}/src/secureio.h"
+        # ANTS-3664 INV-4 — Core-only include allow-list scrape.
+        SRC_DOCFINDING_H_PATH="${CMAKE_SOURCE_DIR}/src/docfinding.h"
         SRC_CONFIGBACKUP_H_PATH="${CMAKE_SOURCE_DIR}/src/configbackup.h"
         # ANTS-1821/1823/1824/1836 — local-persistence write-safety wiring greps.
         SRC_SESSIONMEMORYENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmemoryengine.cpp"

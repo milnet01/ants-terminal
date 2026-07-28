@@ -9158,7 +9158,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: user-request-2026-07-27.
 
-- 📋 [ANTS-3664] **Shared doc-finding envelope, before the four lint verbs land on five different shapes.**
+- 🚧 [ANTS-3664] **Shared doc-finding envelope, before the four lint verbs land on five different shapes.**
   Measured 2026-07-27, not assumed: there is NO shared finding type, no
   shared finding-to-JSON serialiser, and no aggregator. Six independent
   `struct Finding` declarations exist — `DocIntegrity::Finding`
@@ -9169,6 +9169,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   summary needed), `FeedbackFile::Finding` (`src/feedbackfile.h:111`,
   beside three more shapes in one header), and a GUI-side sixth. A grep
   for `findingToJson` across `src/` returns zero.
+  Progress (2026-07-28): spec gated through cold-eyes loop 4 — it absorbed the bundle's structural fix (sole wire-contract owner; new § 2.3 engine calling convention; `emissionIndex` ruled never-serialised family-wide; new INV-5). Implementation started: `src/docfinding.{h,cpp}` in ants_core_lib, `tests/features/doc_finding/` on the test_core bundle.
 
   Worse for this lane: `doc_citations` emits no findings at all.
   `DocCitations::check` hand-builds `{citations[]{status, doc_line, raw},
