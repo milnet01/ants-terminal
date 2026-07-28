@@ -9831,6 +9831,96 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: test.
   Source: in-session-2026-07-28 (ANTS-3661 broke mcp_build_status again).
 
+- 📋 [ANTS-3682] **Define one loop-log format in specs.md § 5.7, so the balance check becomes checkable.**
+  /cold-eyes § 1e specifies two loop-log checks. ANTS-3662 ships the
+  first (`loop_row_no_outcome`) and drops the second — the count
+  enumerated in per-loop prose against the row's severity counts —
+  because it is not computable against anything in the corpus.
+
+  Measured 2026-07-28 over `docs/`: 10 documents carry a
+  `| Loop | … |` counts table; 22 carry `### Loop N` headings that
+  enumerate findings under severity sub-headings; **the two sets are
+  disjoint**. The balance needs a document with both, and none exists.
+  The two forms are alternatives, not layers.
+
+  The obvious heuristic — count parenthesised `(1) (2) (3)` markers in
+  the outcome cell — false-fires on ANTS-3662's own loop-1 row, which
+  enumerates three of nine findings that way and would be reported as
+  a six-finding shortfall.
+
+  Four incompatible table shapes are also in use, differing in column
+  count and header text (ANTS-3659 9-col, ANTS-1330 8-col, ANTS-3504
+  6-col, ANTS-1254 2-col); `loop_row_no_outcome` copes by reading the
+  LAST cell, which is the prose column in all four, but a balance check
+  needs to know which columns are counts.
+
+  Work: pick one loop-log format in `docs/standards/specs.md` § 5.7 —
+  counts columns named, and either an enumeration block or none — then
+  ANTS-3662's engine gains the second check behind the same
+  `sections_checked`-style skip gate it already uses for
+  `missing_section`.
+  **Layman:** Our review logs come in two incompatible shapes; pick one so a script can check them.
+  Kind: doc.
+  Source: in-session-2026-07-28 (ANTS-3662 implementation, ANTS-3677 fold-in).
+
+- ✅ [ANTS-3683] **parseSpecBody's table-row regex could span two rows and swallow an invariant.**
+  `SpecParse::parseSpecBody`'s table-form regex separated cells with
+  `\s*`, and `\s` matches a newline. On a MALFORMED two-column
+  invariants table (`| INV-1 | a rule |`) the third capture group ran
+  past the end of the line and consumed the NEXT row: the parse returned
+  one invariant whose `test_surface` was literally `| INV-2 | another`,
+  and INV-2 vanished from `invariants[]` altogether.
+
+  A well-formed three-column table masked it — the lazy groups close on
+  the same line first — so `spec_query` was correct on every conforming
+  spec in the corpus and silently wrong on the malformed ones, which are
+  precisely the ones a linter is pointed at.
+
+  Fix: `[ \t]*` instead of `\s*` between cells, so a row match cannot
+  leave its line. Found by ANTS-3662's own `invariant_no_test` check
+  during implementation — the defect class that verb exists to report,
+  caught in the parser it consumes. Regression-locked by
+  `SpecLint.Inv2EveryInvariantNeedsATestClause`'s two-column arm.
+
+  Resolved (2026-07-28): shipped with ANTS-3662.
+  **Layman:** A spec table missing its test column made one invariant disappear from spec_query's answer.
+  Kind: fix.
+  Source: in-session-2026-07-28 (found while implementing ANTS-3662).
+
+- 📋 [ANTS-3684] **spec_lint's invariant_id_gap fires on specs that inherit a parent's numbering.**
+  Measured on ANTS-3662's calibration run (218 specs, 1,856 invariant
+  anchors): `invariant_id_gap` fires 28 times, and the residual
+  population after the origin fix is one class — a spec that carries a
+  SUBSET of a parent spec's invariants, keeping the parent's ids.
+
+  `docs/specs/ANTS-3653.md` is the clean example: it carries INV-1, 2,
+  3, 9, 10 and 24, which are ANTS-3636's numbers for the same rules.
+  Renumbering them would break the citation, which is exactly what
+  /write-spec forbids ("Invariant ids are permanent"). So the gap is
+  real and the document is correct.
+
+  The origin case is already fixed (ANTS-3662 anchors the sweep at the
+  document's own minimum, not at 1 — `docs/specs/ANTS-1358.md` opens at
+  INV-14 and was reporting thirteen gaps). This item is the interior
+  case, which the same trick cannot reach.
+
+  28 findings over 218 specs is a reviewable rate, so the check ships as
+  it stands rather than being suppressed on a guess. Two candidate
+  resolutions, neither picked yet:
+
+  - Demote `invariant_id_gap` to a candidate (the standing
+    `command_test_no_expectation` already has), since "a gap" is
+    evidence rather than a verdict.
+  - Give `docs/standards/specs.md` § 5.5 a marker for inherited
+    numbering, and skip the sweep when a document declares one.
+
+  The second is only worth doing if the convention is written down
+  first — inventing a marker with no corpus instance is the failure mode
+  ANTS-3662 INV-3 already documents.
+  **Layman:** A spec that reuses another spec's invariant numbers looks like it lost some.
+  Kind: enhancement.
+  Source: in-session-2026-07-28 (ANTS-3662 calibration run).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

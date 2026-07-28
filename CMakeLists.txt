@@ -300,6 +300,10 @@ add_library(ants_core_lib STATIC
     # ANTS-3661 — doc_symbols engine: resolve the identifiers a doc asserts
     # something about, via SymbolQuery; report-only, Qt6::Core-only.
     src/docsymbols.cpp
+    # ANTS-3662 — spec_lint engine: the greppable half of the spec-format
+    # contract (missing sections, untested invariants, id gaps, loop-log rows,
+    # command test clauses with no expectation); Qt6::Core-only.
+    src/speclint.cpp
     # ANTS-3653 — doc_citations scan layer: the path:line grammar as a pure
     # function (document text in, tokens out); Qt6::Core-only.
     src/doccitations.cpp
@@ -1295,6 +1299,10 @@ if(ANTS_TESTS)
                 # and its verb layer (vocabulary scrape + refusal minimums).
                 tests/features/doc_symbols/test_doc_symbols.cpp
                 tests/features/doc_symbols_verb/test_doc_symbols_verb.cpp
+                # ANTS-3662 — spec_lint engine (five checks, two of them gated)
+                # and its verb layer (candidate contract + refusal minimums).
+                tests/features/spec_lint/test_spec_lint.cpp
+                tests/features/spec_lint_verb/test_spec_lint_verb.cpp
                 # ANTS-2160 — per-project .ants/project.json settings file.
                 tests/features/project_settings/test_project_settings.cpp
                 # ANTS-2161 — layout auto-detect + project_settings verb.
@@ -1680,6 +1688,15 @@ if(ANTS_TESTS)
         # ANTS-3661 INV-4 — the doc_symbols engine must carry no defect
         # vocabulary; a behavioural test cannot hold that claim.
         SRC_DOCSYMBOLS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsymbols.cpp"
+        # ANTS-3662 INV-4 — the spec_lint engine must never execute a test
+        # clause; "runs no subprocess" is a claim only a source scrape can hold.
+        SRC_SPECLINT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclint.cpp"
+        # ANTS-3662 INV-1 arm (c) — a LIVE assertion that the project's own
+        # standard carries no <!-- required-sections --> block, which is what
+        # catches an engine that guesses the list from § 3's prose instead.
+        # The calibration harness walks the spec corpus from the same root.
+        DOCS_STANDARDS_SPECS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/specs.md"
+        DOCS_SPECS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs/specs"
         # ANTS-3582 — stable extern-decl build-info header (churn regression guard).
         SRC_BUILD_INFO_H_PATH="${CMAKE_SOURCE_DIR}/src/build_info.h"
         # ANTS-3345 — debt_sweep_scan offload-eligibility source-grep lock.

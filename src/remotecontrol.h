@@ -531,6 +531,19 @@ public:
         const QVector<DocSymbols::Symbol> &symbols,
         const QList<DocFinding::Finding> &findings, bool truncated,
         const QStringList &checkedDocs);
+    // ANTS-3662 — spec_lint: the greppable half of the spec-format contract
+    // (SpecLint::check). Walks `specs_dir`, not `docs_dir` — a README has no
+    // invariants to check — but reuses docIntegrityEnumerate for the walk, for
+    // the same reason doc_symbols does.
+    QJsonDocument cmdSpecLint(const QJsonObject &req);
+    // Pure, for the same headless-test reason as the pairs above.
+    // `sectionsChecked` is ALWAYS emitted: it is the one field distinguishing
+    // "every required section is there" from "nobody checked", and those are
+    // the two states this verb ships between (spec § 2.1).
+    static QJsonObject specLintBuildResponse(
+        const QList<DocFinding::Finding> &findings, bool sectionsChecked,
+        const QJsonObject &lineCounts, bool truncated,
+        const QStringList &checkedDocs);
     // ANTS-3661 § 2.4 — the registry-sourced half of DocSymbols'
     // `excludedNames`. Injected because ants_core_lib is Qt6::Core-only and the
     // library dependency runs core → claude: RemoteControl cannot see

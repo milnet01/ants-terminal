@@ -63,8 +63,18 @@ QJsonObject parseSpecBody(const QString &body) {
                                          sectionEnd - sectionStart);
 
         // (a) Table-form rows: `| INV-N | body | test_surface |`.
+        //
+        // HORIZONTAL whitespace only between the cells (ANTS-3683). `\s` matches
+        // a newline, so the original `\s*` let one match span two rows: on a
+        // MALFORMED two-column table (`| INV-1 | a rule |`) the third group
+        // swallowed the following line, returning one invariant whose
+        // test_surface was literally `| INV-2 | another` — and consuming INV-2,
+        // so it vanished from the list entirely. A well-formed three-column
+        // table masked it, because the lazy groups close on the same line first.
+        // Found by ANTS-3662's `invariant_no_test` check, which is exactly the
+        // defect it exists to report.
         static const QRegularExpression tableRe(
-            QStringLiteral(R"(^\|\s*(INV-[0-9]+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*$)"),
+            QStringLiteral(R"(^\|[ \t]*(INV-[0-9]+)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*$)"),
             QRegularExpression::MultilineOption);
         auto it = tableRe.globalMatch(section);
         while (it.hasNext()) {

@@ -115,6 +115,58 @@ inline std::string slurpFunctionBody(const char *path,
     return slurpFunctionBody(slurpFile(path), signatureAnchor);
 }
 
+// Return `src` with every `//` and `/* */` comment removed, string and
+// character literals left intact. ANTS-3662 — a scrape asserting that code does
+// NOT do something ("this engine never spawns a subprocess") fires on a comment
+// that merely names the thing, and a comment is exactly where such a rule gets
+// explained: `speclint.cpp` cites `QProcess` as an example of a code span that
+// is not a command, and the ban-list scrape read its own documentation as a
+// violation. Forbidding the prose to name the rule is the wrong fix — same
+// class as the fixed-byte scrape windows ANTS-3681 replaced.
+//
+// Comment bodies are replaced by a single space rather than deleted, so tokens
+// on either side of a stripped comment cannot fuse into a third token that
+// matches something neither of them did.
+//
+// Conservative in the same way slurpFunctionBody is: no raw-string literals, no
+// trigraphs, no preprocessor games. Erring toward keeping text is the safe
+// direction here — a leftover comment can only make a ban-list scrape stricter.
+inline std::string stripComments(const std::string &src) {
+    std::string out;
+    out.reserve(src.size());
+    const std::size_t n = src.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        const char c = src[i];
+        if (c == '"' || c == '\'') {
+            const char quote = c;
+            out.push_back(c);
+            ++i;
+            while (i < n && src[i] != quote) {
+                if (src[i] == '\\' && i + 1 < n) { out.push_back(src[i]); ++i; }
+                out.push_back(src[i]);
+                ++i;
+            }
+            if (i < n) out.push_back(src[i]);
+            continue;
+        }
+        if (c == '/' && i + 1 < n && src[i + 1] == '/') {
+            i += 2;
+            while (i < n && src[i] != '\n') ++i;
+            out.push_back('\n');   // keep line structure for line-based greps
+            continue;
+        }
+        if (c == '/' && i + 1 < n && src[i + 1] == '*') {
+            i += 2;
+            while (i + 1 < n && !(src[i] == '*' && src[i + 1] == '/')) ++i;
+            ++i;                   // skip the '/' of the close
+            out.push_back(' ');
+            continue;
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
 // Count non-overlapping occurrences of `needle` in `hay`.
 inline std::size_t countOccurrences(const std::string &hay,
                                     const std::string &needle) {

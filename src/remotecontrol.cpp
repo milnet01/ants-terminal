@@ -16,6 +16,7 @@
 #include "doccitations.h"      // ANTS-3636 — doc_citations verb
 #include "speclog.h"             // ANTS-1963
 #include "specparse.h"           // ANTS-3665 — hoisted spec-body parser
+#include "speclint.h"            // ANTS-3662 — spec_lint verb
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
 #include "focusedtest.h"
@@ -12516,6 +12517,122 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
     o[QStringLiteral("findings")]     = DocFinding::toJson(findings);
     o[QStringLiteral("truncated")]    = truncated;
     o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
+    return o;
+}
+
+// ANTS-3662 — the required-section list, read from the project's OWN format
+// standard and never assumed. `spec-format.md` wins over `specs.md` where both
+// exist, matching /write-spec's resolution order.
+//
+// NO `_shared` FALLBACK. The canonical ~/.claude/skills/_shared/spec-format.md
+// lives outside the project root, which this verb's own bad_path contract
+// forbids it from reading — and because that file always exists, a _shared tier
+// would mean the skip arm never fires (spec § 2.1). In-project or skipped.
+static QStringList specLintRequiredSections(const QString &rootCanonical) {
+    const QDir root(rootCanonical);
+    for (const QString &rel : {QStringLiteral("docs/standards/spec-format.md"),
+                               QStringLiteral("docs/standards/specs.md")}) {
+        QFile f(root.filePath(rel));
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        const QStringList got =
+            SpecLint::parseRequiredSections(QString::fromUtf8(f.readAll()));
+        if (!got.isEmpty()) return got;
+    }
+    return {};
+}
+
+// ANTS-3662 — spec_lint: the deterministic half of /cold-eyes § 1e's spec
+// pre-pass. caller_cwd Required. `path` routes through PathValidation and then
+// the SAME enumeration doc_integrity uses, defaulted to `specs_dir` rather than
+// `docs_dir`. ETag-304 is applied centrally (isEtagSupportedTool). Engine:
+// SpecLint::check. See docs/specs/ANTS-3662.md.
+QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] = QStringLiteral("spec_lint: no focused project");
+        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (!rawPath.isEmpty()) {
+        const auto check = PathValidation::validatePath(
+            rawPath, rootCanonical, QStringLiteral("spec_lint"),
+            QStringLiteral("path"));
+        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+    }
+    const QString specsDir =
+        ProjectSettings::load(rootCanonical).specsDir.value_or(
+            QStringLiteral("docs/specs"));
+    QStringList relDocs = docIntegrityEnumerate(rootCanonical, rawPath, specsDir);
+
+    const DocIntegrity::Options walk;  // shared caps: the doc walks cost the same
+    if (relDocs.size() > walk.maxDocsPerRun)
+        relDocs = relDocs.mid(0, walk.maxDocsPerRun);
+
+    // Read ONCE per run, not once per spec: it is the same file for every
+    // document in the walk (spec § 4). Absent, or present with no marked block,
+    // means the check is skipped — which is this verb's shipping default, since
+    // no standard in this project carries the block yet.
+    SpecLint::Options opts;
+    opts.requiredSections = specLintRequiredSections(rootCanonical);
+    opts.maxFindings      = qBound(1, req.value(QStringLiteral("max_findings"))
+                                          .toInt(500), 5000);
+
+    QList<DocFinding::Finding> findings;
+    QJsonObject lineCounts;
+    QStringList checked;
+    bool truncated = false, sectionsChecked = false;
+    int budget = opts.maxFindings;
+    for (const QString &rel : std::as_const(relDocs)) {
+        QFile f(QDir(rootCanonical).filePath(rel));
+        if (f.size() > walk.maxDocBytes) continue;
+        if (!f.open(QIODevice::ReadOnly)) continue;  // unreadable → INV-15, silently out
+        const QString text = QString::fromUtf8(f.readAll());
+        f.close();
+        checked << rel;
+
+        // max_findings is a RUN cap, decremented across documents for the same
+        // reason doc_symbols decrements its needle budget: the engine is
+        // per-document, and a per-document cap bounds nothing run-wide.
+        opts.maxFindings = qMax(1, budget);
+        const SpecLint::Result r = SpecLint::check(text, rel, opts);
+        lineCounts[rel] = r.lineCount;
+        sectionsChecked = sectionsChecked || r.sectionsChecked;
+        if (budget <= 0) {
+            truncated = true;
+            continue;
+        }
+        budget -= r.findings.size();
+        for (DocFinding::Finding fnd : r.findings) {
+            fnd.emissionIndex = findings.size();  // run-wide, not per-document
+            findings.push_back(fnd);
+        }
+        truncated = truncated || r.truncated;
+    }
+    // etag injected centrally (isEtagSupportedTool).
+    return QJsonDocument(specLintBuildResponse(findings, sectionsChecked,
+                                               lineCounts, truncated, checked));
+}
+
+// ANTS-3662 — pure: engine output → the response object.
+QJsonObject RemoteControl::specLintBuildResponse(
+    const QList<DocFinding::Finding> &findings, bool sectionsChecked,
+    const QJsonObject &lineCounts, bool truncated,
+    const QStringList &checkedDocs) {
+    QJsonObject o;
+    o[QStringLiteral("ok")]       = true;
+    o[QStringLiteral("findings")] = DocFinding::toJson(findings);
+    // Counts over the WHOLE list, before any cap or filter (ANTS-3664).
+    o[QStringLiteral("counts")] =
+        DocFinding::countsByVerbAndKind(findings)
+            .value(QStringLiteral("spec_lint")).toObject();
+    // Never omitted when false — see the header.
+    o[QStringLiteral("sections_checked")] = sectionsChecked;
+    o[QStringLiteral("line_count")]       = lineCounts;
+    o[QStringLiteral("checked_docs")]     = QJsonArray::fromStringList(checkedDocs);
+    if (truncated) o[QStringLiteral("truncated")] = true;
     return o;
 }
 

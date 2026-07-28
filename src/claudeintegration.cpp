@@ -4200,6 +4200,58 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(docSym);
 
+                // ANTS-3662 — spec_lint: the greppable half of the spec-format
+                // contract, which /cold-eyes § 1e hand-rolls every review pass.
+                QJsonObject specLint;
+                specLint["name"] = "spec_lint";
+                specLint["description"] = QStringLiteral(
+                    "Check specs for the structural defects /cold-eyes § 1e greps for by "
+                    "hand: an INV-N with no test-surface clause (invariant_no_test), a gap "
+                    "in the doc's own id sequence (invariant_id_gap), a cold-eyes loop-log "
+                    "row with no outcome (loop_row_no_outcome), and a test clause that is a "
+                    "command stating nothing it should return (command_test_no_expectation, "
+                    "a CANDIDATE — never auto-fixable, and no subprocess is ever run). "
+                    "Tombstoned invariants (*moved to X*, *withdrawn — …*) are exempt from "
+                    "both invariant checks. missing_section runs ONLY when the project's "
+                    "format standard carries a <!-- required-sections --> block; without one "
+                    "it is skipped and sections_checked comes back false, which is the "
+                    "shipping default — a check against a guessed list would fire on every "
+                    "conforming spec. Size is reported in line_count, never as a finding. "
+                    "Read-only. caller_cwd required.");
+                specLint["selection_hint"] = QStringLiteral(
+                    "Use before a spec review to clear the mechanical findings, so reviewer "
+                    "attention goes to judgement rather than to grep-able trivia.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    QJsonObject props;
+                    QJsonObject slPath; slPath["type"] = "string";
+                        slPath["description"] = QStringLiteral(
+                            "Project-relative spec file or directory (a directory walks *.md "
+                            "recursively). Default: the project's specs dir, else docs/specs/.");
+                    QJsonObject slCwd; slCwd["type"] = "string";
+                        slCwd["description"] = QStringLiteral(
+                            "Your $PWD. Required — anchors the spec walk and the format-"
+                            "standard lookup to your project.");
+                    QJsonObject slMax; slMax["type"] = "integer";
+                        slMax["description"] = QStringLiteral(
+                            "Run-wide cap on findings[] (default 500, clamped to [1,5000]). "
+                            "truncated:true accompanies a capped run.");
+                    QJsonObject slEtag; slEtag["type"] = "string";
+                        slEtag["description"] = QStringLiteral(
+                            "Server-issued etag from a prior call; an unchanged corpus "
+                            "short-circuits to {ok:true, unchanged:true}.");
+                    props["path"] = slPath;
+                    props["caller_cwd"] = slCwd;
+                    props["max_findings"] = slMax;
+                    props["etag_match"] = slEtag;
+                    schema["properties"] = props;
+                    specLint["inputSchema"] = schema;
+                }
+                tools.append(specLint);
+
                 // ANTS-3636 — doc_citations: resolve every path:line citation
                 // in one doc and return the line it points at, so a reviewer
                 // stops opening 33 files by hand to verify them.
@@ -10056,6 +10108,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-3661 — doc_symbols: one entry per candidate
                         // occurrence across the walked corpus.
                         {QStringLiteral("doc_symbols"),       {900,  8000}},
+                        // ANTS-3662 — spec_lint: findings are sparse on a
+                        // conforming corpus; line_count adds one row per spec.
+                        {QStringLiteral("spec_lint"),         {600,  5000}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -10213,6 +10268,7 @@ void ClaudeIntegration::onMcpConnection() {
                         // citation-resolution reader, doc_integrity's sibling.
                         name == QLatin1String("doc_citations") ||
                         name == QLatin1String("doc_symbols") ||
+                        name == QLatin1String("spec_lint") ||   // ANTS-3662
                         // ANTS-2161 — project_settings: project-scoped
                         // layout-config detect + create/update.
                         name == QLatin1String("project_settings") ||
@@ -11617,6 +11673,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-3661 — doc_symbols walks the focused project's docs AND resolves
     // against its source tree; both need the caller's anchor.
     if (toolName == QStringLiteral("doc_symbols"))         return C::Required;
+    // ANTS-3662 — spec_lint walks the focused project's specs_dir and reads its
+    // format standard from the same root; Required.
+    if (toolName == QStringLiteral("spec_lint"))           return C::Required;
     // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json
     // anchored on the resolved root; Required.
     if (toolName == QStringLiteral("project_settings"))    return C::Required;
@@ -11805,6 +11864,7 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // identical answer → 304.
         || toolName == QStringLiteral("doc_citations")
         || toolName == QStringLiteral("doc_symbols")  // ANTS-3661
+        || toolName == QStringLiteral("spec_lint")    // ANTS-3662
         || toolName == QStringLiteral("last_audit_summary")
         || toolName == QStringLiteral("get_environment")
         || toolName == QStringLiteral("tab_list")

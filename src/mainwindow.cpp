@@ -5148,6 +5148,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("doc_symbols",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdDocSymbols));
+    // ANTS-3662 — spec_lint: the greppable half of the spec-format contract.
+    m_claudeIntegration->registerToolProvider("spec_lint",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdSpecLint));
     // ANTS-3661 § 2.4 — inject the verb vocabulary the engine excludes from its
     // candidate harvest. Here rather than in RemoteControl because only
     // MainWindow sees both sides: ants_core_lib is Qt6::Core-only and the

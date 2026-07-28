@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`spec_lint` MCP verb — the greppable half of the spec-format contract** (ANTS-3662)
+  Checks the structural defects `/cold-eyes` § 1e otherwise greps for by hand on every review pass: an invariant with no test-surface clause, a gap in a spec's own id sequence, a cold-eyes loop-log row with no recorded outcome, and a test clause that is a command stating nothing it should return (a candidate — never auto-fixable, and no subprocess is ever run). Tombstoned invariants are exempt. `missing_section` runs only when the project's format standard carries a machine-readable block, so it ships skipped with `sections_checked:false` rather than firing against a guessed list. Size is reported in `line_count`, never as a finding.
+
 - **`doc_symbols` MCP verb — resolve the identifiers a doc claims exist** (ANTS-3661)
   Checks that every function or class name a document mentions actually
   exists in the code. Harvests inline code spans shaped like `Foo::bar()`
@@ -77,6 +80,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Source-scrape tests can strip comments before scanning** (ANTS-3662)
+  A test asserting that code does *not* do something fired on a comment that merely named the thing — the same false-positive class as the fixed-byte scrape windows ANTS-3681 replaced. `tests/_support/srcgrep.h` gains `stripComments`, which removes comments while leaving string and character literals intact.
+
 - **Hoisted the inline-code-span scanner into `MarkdownScan::codeSpans`, and taught `fenceMask` to report an unterminated fence's opener line** (ANTS-3649)
   A shared text-scanning helper moved into the shared module so the tools
   that need it all use one copy. Nothing changes for you today; it is the
@@ -114,6 +120,9 @@ for security-relevant changes.
   `quick:true` ran an identical full walk and pre-pass. `--quick` is caller-side (the grep pre-pass is the audit; only the subagent phase is skipped), so the field promised a fast path that did not exist. Callers passing it now get a schema refusal rather than a silent no-op.
 
 ### Fixed
+
+- **`spec_query` could swallow an invariant from a malformed table** (ANTS-3683)
+  `parseSpecBody`'s table-row pattern separated cells with a whitespace class that matches newlines, so on an invariants table missing its test column one match ran across two rows — returning the first invariant with the second row's text as its test surface, and dropping the second invariant entirely. Well-formed three-column tables were unaffected. Found by `spec_lint`, in the parser it consumes.
 
 - **`spec_query` now returns `test_surface` for bullet-form invariants** (ANTS-3665)
   The spec standard promises that an invariant's `*Test:*` clause comes back as
