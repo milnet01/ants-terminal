@@ -9305,6 +9305,102 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: cold-eyes-2026-07-28 ANTS-3661 loop 3 lane B.
 
+- 📋 [ANTS-3669] **`doc_lint --fix`: the write half of the doc-lint composite, split out of ANTS-3663.**
+  Split from ANTS-3663 at the report/fix seam. ANTS-3663 keeps the walk, the
+  five-checker composition, the adapters, the envelope and the ordering; this item
+  owns everything behind `fix:true`.
+
+  The seam is a risk boundary, not a line-count one. This is the only verb in the
+  doc-lint family that writes to a file, and that single fact drives three
+  contracts the read half does not have: a `dry_run` preview (`mcp-tools.md`
+  requires it of every mutating verb), exclusion from `isEtagSupportedTool` (a
+  matching `etag_match` short-circuits to `{ok, unchanged}` and would silently
+  skip a requested repair), and the `autoFixable` semantics that decide what may
+  be touched at all. A defect here corrupts a document; a defect in the read half
+  returns a wrong string.
+
+  Splitting also lets the read half ship and be used by `/cold-eyes` § 1e before
+  the write half exists — which is the order the caller actually wants, since the
+  pre-pass reads far more often than it repairs.
+
+  Carries ANTS-3663's former INV-5 and INV-6. Those ids are tombstoned in place in
+  ANTS-3663 rather than renumbered (`specs.md` § 5.5 — invariant ids are cited
+  from sibling specs and must never be reflowed).
+  **Layman:** The part of the document checker that actually repairs a file, kept as its own piece of work — because anything that edits your documents deserves a stricter review than anything that only reads them.
+  Kind: implement.
+  Source: cold-eyes-2026-07-28 ANTS-3663 loop 3 split.
+
+- 📋 [ANTS-3670] **`fix_ledger` verb — append-only edit record with a before/after finding diff.**
+  Today's loop-3 fold was worked from a hand-written markdown ledger in the
+  scratchpad. It works, but every append re-Writes the whole file, and the
+  valuable part is not the prose — it is the baseline diff.
+
+  Ops: `init` (record the touched-file set + a pre-edit finding baseline),
+  `add_edit` (append one row: file, what changed, why, which finding it answers),
+  `add_crossref` (a site that must be repointed, with a done flag), and `verify`.
+
+  **`verify` is the reason to build this.** It re-runs the deterministic checks
+  over the touched files and diffs against the `init` baseline, so the answer is
+  "these 3 findings pre-existed, these 2 are NEW since you started" rather than a
+  flat list. That distinction is what catches a fix that introduced a defect —
+  which happened twice today: converting citations to symbol form left two bare
+  `:NNN` tokens in a loop-log row that parsed as citations and resolved nowhere,
+  and I only noticed because I happened to compare counts against a run from
+  earlier in the session. A verb would make that comparison automatic instead of
+  lucky.
+
+  Scope note: `verify` should CALL doc_integrity / doc_citations / spec_query, not
+  reimplement them. The novel surface is the baseline snapshot and the diff, not
+  the checks.
+
+  Storage: session-scoped under the existing mcp-state dir, keyed like
+  `session_memory`. Bounded — one ledger per session, rows capped, no cross-session
+  history (a ledger outliving its session is just a stale to-do list).
+  **Layman:** A running notebook of what I changed during a review fix-up, which can tell me whether my own edits introduced new problems — instead of me re-reading four documents to find out.
+  Kind: implement.
+  Source: user-request-2026-07-28.
+
+- 💭 [ANTS-3671] **Script the /cold-eyes § 1e checks that are still hand-rolled greps.**
+  Filed as `considered` rather than `planned` because half of the obvious version
+  of this idea is a trap, and the split matters.
+
+  **Do NOT reimplement in Python:** link/anchor integrity, citation resolution,
+  symbol lookup. Those already have deterministic verbs (`doc_integrity`,
+  `doc_citations`, `find_definition`) with fence-aware, GitHub-compatible slug
+  logic that a grep gets approximately right and quietly wrong. A second
+  implementation is two behaviours that will disagree, which is the exact failure
+  `/cold-eyes` § 1e warns about for TOC checks.
+
+  **DO script the checks § 1e currently leaves to ad-hoc grep**, because they are
+  the ones that get botched. Evidence from the 2026-07-28 loop-3 pre-pass, where
+  I ran them by hand and got two wrong:
+
+  - Loop-log row counting. My `sed` anchored on the *string* `## Cold-eyes loop
+    log`, which also matches prose mentioning the heading, so ANTS-3662 reported 9
+    rows against an actual 2. Correct form anchors on a line-start heading and
+    stops at the next `## `.
+  - `*Test:*` clause tallying. A flat `grep -c` counted clauses inside fixture
+    tables and prose, giving 14 against 7 invariants — an apparent contract gap
+    that was not one.
+  - `*Breaks when:*` presence. I checked for it before confirming the project's
+    standard requires it. It does not, so the count was meaningless.
+
+  Also worth scripting: INV id-sequence gaps, tombstone-form validation, and the
+  out-of-scope-line-names-a-ROADMAP-id rule (`specs.md` § 4), which no verb covers
+  and all four current drafts violate.
+
+  The language question is real: MCP verbs only exist where Ants is connected,
+  while `/cold-eyes` is a global skill (ANTS-1581). A `tools/cold-eyes/*.py`
+  helper set is portable and could serve as the hand-rolled fallback the skill
+  already requires for non-Ants projects. Counter-argument: ANTS-3662 (`spec_lint`)
+  is specced to cover invariant/loop-log/section checks as an MCP verb — so the
+  scripts and that verb would overlap heavily. **Settle that overlap before
+  building either.** Most likely answer: build `spec_lint`, and script only the
+  checks it explicitly scopes out.
+  **Layman:** Some of the review pre-checks are still typed out by hand each time, and I got two of them wrong today. Those are the ones worth turning into a script.
+  Kind: investigate.
+  Source: user-request-2026-07-28.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
