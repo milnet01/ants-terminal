@@ -9136,7 +9136,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: user-request-2026-07-27.
 
-- 📋 [ANTS-3662] **`spec_lint` — the greppable half of the spec-format contract, in one call.**
+- ✅ [ANTS-3662] **`spec_lint` — the greppable half of the spec-format contract, in one call.**
   Bundles the § 1e checks that are deterministic but currently hand-rolled
   every run: required sections present (read from the project's own
   `docs/standards/spec-format.md` / `specs.md` — never an imported default,
@@ -9144,6 +9144,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   `INV-N` carries a `*Test:*` clause; numbered-id gaps; loop-log tally
   balance (every row has an outcome cell); and the doc's line count against
   the skill's 1-3-loop design point.
+  Resolved (2026-07-28): shipped in 369752b5. Five checks, two gated —
+  `missing_section` skips until a standard carries a machine-readable
+  `<!-- required-sections -->` block, and § 1e's loop-log BALANCE check is
+  dropped outright because no document in the corpus carries both a counts
+  row and a per-loop enumeration (10 vs 22 documents, disjoint sets;
+  prerequisite is ANTS-3682). Calibration over 218 specs moved the
+  implementation twice: the id-gap sweep now anchors at the document's own
+  minimum rather than at 1 (109 findings → 28), and the residual class is
+  ANTS-3684. Found and fixed ANTS-3683 in the parser it consumes. Nine
+  mutations verified RED.
 
   One sub-check earns its own mention: a `*Test:*` clause that is a command
   (`grep`/`git`/`ctest`) but states no expected output. /write-spec's own
