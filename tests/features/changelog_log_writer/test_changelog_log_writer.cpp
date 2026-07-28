@@ -13,6 +13,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QIODevice>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -529,6 +530,39 @@ TEST(changelog_log_writer, Ants2127LongHeadlineNotTruncated) {
         << "untruncated headline must render in full; got:\n" << md;
     EXPECT_FALSE(contains(md, "\xE2\x80\xA6"))  // U+2026 horizontal ellipsis
         << "the 120-char display cap leaked a `…` into the CHANGELOG";
+}
+
+// ANTS-3723 — `bytes_written` is the ADDED-bytes delta, not the whole file,
+// and `file_bytes` carries the size. Same convention as roadmap_log
+// (ANTS-3702): identical field names must not mean opposite things across
+// two sibling verbs, because the reason a caller trusts either number is
+// that the pair agree.
+TEST(changelog_log_writer, Ants3723BytesWrittenIsDeltaNotWholeFile) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    const qint64 before = QFileInfo(clPath(tmp.path())).size();
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add");
+    req[QStringLiteral("category")]   = QStringLiteral("Fixed");
+    req[QStringLiteral("summary")]    = QStringLiteral("A short new entry.");
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const qint64 after = QFileInfo(clPath(tmp.path())).size();
+    const qint64 written =
+        static_cast<qint64>(resp.value(QStringLiteral("bytes_written")).toDouble());
+    const qint64 fileBytes =
+        static_cast<qint64>(resp.value(QStringLiteral("file_bytes")).toDouble());
+    EXPECT_EQ(written, after - before)
+        << "bytes_written must be what this op ADDED";
+    EXPECT_EQ(fileBytes, after);
+    EXPECT_LT(written, before)
+        << "a short entry reported as the whole file is the ANTS-3723 defect";
 }
 
 // INV-8 — contract + descriptor surface (source-scrape).

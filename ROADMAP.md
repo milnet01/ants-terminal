@@ -20707,7 +20707,7 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: DOOM-Ants-feedback-2026-07-28.
 
-- 📋 [ANTS-3695] **`feedback_log` writes contributor text unescaped, so a column-0 `#` in a repro truncates the finding block.**
+- ✅ [ANTS-3695] **`feedback_log` writes contributor text unescaped, so a column-0 `#` in a repro truncates the finding block.**
   `feedback_log` renders a finding's field values into the document as plain text
   with no indentation, fencing or escaping. A `Repro` value containing a shell
   comment beginning at column 0 is read by markdown as an H1 heading, which
@@ -20739,6 +20739,18 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Filing a finding whose example contains a shell comment silently breaks the file, and the finding then never gets reviewed.
   Kind: fix.
   Source: claude-config-feedback-2026-07-28.
+  Resolved (2026-07-28): fixed on both sides. Write — `renderFindingBlock`
+  indents every continuation line of a field value by two spaces
+  (`indentContinuation`), which neutralises the whole class (hash, pipe,
+  hyphen, fence, setext) and renders identically; a newline in the title is
+  folded to a space, since a heading is one line by definition. Read —
+  `enumerateFindingBlocks` now treats an H1 as a block boundary only when it
+  is a `# <ISO date>` session heading or the `# Ants MCP Feedback — <project>`
+  title, so the already-corrupt corpus re-parses. NOT "never bound at an H1"
+  as proposed: h1Heading mode renders real session headings at that depth and
+  ignoring those would run a block into the next session's findings.
+  docs/standards/mcp-feedback-files.md now states the indent rule is
+  load-bearing. Tests: McpFeedbackLog.Ants3695* (both red pre-fix).
 
 - ✅ [ANTS-3696] **`roadmap_log op:flip` appends its note after the body's FIRST paragraph, not at the end of the bullet.**
   The tool description says the note is "appended as indented continuation line(s)
@@ -21609,7 +21621,7 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: in-session-2026-07-28 (hit reading ANTS-3696's own body)..
 
-- 📋 [ANTS-3723] **`changelog_log`'s `bytes_written` is the whole file, the sibling verb's is the delta.**
+- ✅ [ANTS-3723] **`changelog_log`'s `bytes_written` is the whole file, the sibling verb's is the delta.**
   Measured this session: one `op:"add"` of a ~700-byte entry returned
   `bytes_written: 1150003`, which is CHANGELOG.md's exact size on disk.
   Three `roadmap_log` writes in the same session returned 933 / 1277 /
@@ -21628,6 +21640,32 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Two tools report "how much did you write" in the same field, but one means the sentence it added and the other means the whole file.
   Kind: fix.
   Source: in-session-2026-07-28, ANTS-3702 sibling.
+  Resolved (2026-07-28): all four changelog_log write paths (add,
+  add_from_roadmap, add_subsection, add_batch, normalize) now report the
+  ADDED-bytes delta as `bytes_written` plus the whole file as `file_bytes`,
+  via the same `rcSetWriteBytes` helper ANTS-3702 added for roadmap_log — so
+  the two verbs are byte-comparable rather than merely similar. A pure
+  `normalize` reorder honestly reports 0 added bytes; its test now asserts
+  that, which is a stronger claim than the old whole-file `> 0`. Tool
+  description updated. Test:
+  changelog_log_writer.Ants3723BytesWrittenIsDeltaNotWholeFile (red pre-fix).
+
+- 📋 [ANTS-3724] **`spec_log`'s `bytes_written` is still the whole file — the last verb on the old convention.**
+  Noticed while fixing ANTS-3723: `spec_log`'s success envelope sets
+  `bytes_written = utf8.size()` — the rewritten file — with no `file_bytes`.
+  That is the exact convention ANTS-3702 fixed inside `roadmap_log` and
+  ANTS-3723 fixed inside `changelog_log`, leaving `spec_log` as the one
+  write verb still on the old meaning.
+
+  Deliberately not folded into the ANTS-3723 commit: different verb, own
+  test suite (`tests/features/mcp_spec_log/`, which asserts
+  `bytes_written > 0` and would need the same before/after treatment the
+  changelog normalize test got), and bundling it would have made that
+  commit less reviewable. The fix is the same two lines — capture the
+  pre-write size and call `rcSetWriteBytes`.
+  **Layman:** One more tool still reports "how much did you write" as the size of the whole file rather than what it added.
+  Kind: fix.
+  Source: in-session-2026-07-28, ANTS-3723 sibling.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

@@ -312,6 +312,18 @@ remark), not a triageable finding.
 - **Proposed ID:** _(maintainer to assign)_   ← required; leave blank, maintainer fills it
 ```
 
+**Continuation lines are indented by two spaces, and that is load-bearing,
+not cosmetic** (ANTS-3695). A Repro value is a shell transcript by nature,
+and a `#` comment rendered at column 0 reads as an H1 — which ends the
+enclosing `### ` finding block, taking the `**Proposed ID:**` line with it,
+so `feedback_query` reports the finding as untagged and drops it from the
+delta. The same goes for a pipe, a leading hyphen, a fence or a setext
+underline. `feedback_log op:append_finding` now indents every continuation
+line itself; a hand-editor must do the same. On the read side, an H1 inside
+a finding block is treated as body text unless it is a `# <ISO date>`
+session heading or the `# Ants MCP Feedback — <project>` title, so files
+written before this rule still parse.
+
 To report that a previously-filed item is still broken (or newly fixed),
 append a **new finding** that names the prior one in prose — e.g.
 `### Issue #8 STILL PRESENT — workspace_search budget` with a

@@ -361,6 +361,22 @@ ParseResult parse(const QString &fileContent) {
 
 // ---------------------------------------------------------------------
 
+// ANTS-3695 — a field value is contributor prose, and a Repro value is a
+// shell transcript by nature: a `#` comment at column 0 is the most
+// ordinary thing in one. Rendered flush-left it reads as an H1, which ends
+// the enclosing `###` finding block — taking the `- **Proposed ID:**` line
+// the verb itself just wrote outside the finding, so feedback_query drops
+// the whole thing from the delta. Indenting every continuation line by two
+// spaces keeps it inside the list item and neutralises the entire class
+// (hash, pipe, hyphen, fence, setext underline) while rendering
+// identically. The first line needs nothing — it already sits after the
+// `- **Field:** ` label.
+QString indentContinuation(const QString &value) {
+    QString v = value;
+    v.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    return v.replace(QStringLiteral("\n"), QStringLiteral("\n  "));
+}
+
 QString renderFindingBlock(const QString &date, const QString &sessionLabel,
                            bool h1Heading, const QString &note,
                            const QVector<Finding> &findings) {
@@ -376,19 +392,24 @@ QString renderFindingBlock(const QString &date, const QString &sessionLabel,
         out += QStringLiteral("\n") + note + QStringLiteral("\n");
 
     for (const Finding &f : findings) {
-        out += QStringLiteral("\n### ") + f.title + QStringLiteral("\n\n");
+        // ANTS-3695 — a heading is one line by definition; a newline in the
+        // title would put the rest of it outside the block it names.
+        QString title = f.title;
+        title.replace(QStringLiteral("\r\n"), QStringLiteral(" "));
+        title.replace(QLatin1Char('\n'), QLatin1Char(' '));
+        out += QStringLiteral("\n### ") + title + QStringLiteral("\n\n");
         if (!f.what.isEmpty())
-            out += QStringLiteral("- **What:** ") + f.what +
+            out += QStringLiteral("- **What:** ") + indentContinuation(f.what) +
                    QStringLiteral("\n");
         if (!f.repro.isEmpty())
-            out += QStringLiteral("- **Repro:** ") + f.repro +
+            out += QStringLiteral("- **Repro:** ") + indentContinuation(f.repro) +
                    QStringLiteral("\n");
         if (!f.impact.isEmpty())
-            out += QStringLiteral("- **Impact:** ") + f.impact +
-                   QStringLiteral("\n");
+            out += QStringLiteral("- **Impact:** ") +
+                   indentContinuation(f.impact) + QStringLiteral("\n");
         if (!f.suggestedFix.isEmpty())
-            out += QStringLiteral("- **Suggested fix:** ") + f.suggestedFix +
-                   QStringLiteral("\n");
+            out += QStringLiteral("- **Suggested fix:** ") +
+                   indentContinuation(f.suggestedFix) + QStringLiteral("\n");
         // Always emitted blank — the contributor never assigns an ID
         // (ANTS-1962 INV-6).
         out += QStringLiteral("- **Proposed ID:** _(maintainer to assign)_\n");
@@ -801,6 +822,18 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
     // 1–3 hash boundary (`# `/`## `/`### `); a `### ` also terminates a block,
     // unlike the v1 scanBoundaries (which treats `### ` as inert).
     static const QRegularExpression boundaryRe(QStringLiteral("^#{1,3} "));
+    // ANTS-3695 — read-side hardening for files written before the
+    // continuation-indent fix: a column-0 `#` pasted from a shell transcript
+    // is not a heading, but `^#{1,3} ` cannot tell it from one, and treating
+    // it as a boundary orphans the rest of the finding (including its
+    // Proposed ID line). Every H1 this format actually emits comes from our
+    // own renderer — a `# <ISO date>` session heading or the skeleton's
+    // `# Ants MCP Feedback — <project>` title — so an H1 that is neither is
+    // body text. NOT "never bound at an H1" as first proposed: h1Heading mode
+    // renders real session headings at that depth, and ignoring those would
+    // run a block into the next session's findings. `##`/`###` are unchanged.
+    static const QRegularExpression h1BoundaryRe(QStringLiteral(
+        "^# (?:\\d{4}-\\d{2}-\\d{2}|Ants MCP Feedback\\b)"));
 
     // Pass 1 — every boundary heading outside a fence, in document order.
     struct B { int line0; bool isSub; };   // isSub ⟹ a `### ` heading
@@ -815,8 +848,10 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
         }
         const QChar opener = fenceOpenerChar(l);
         if (!opener.isNull()) { openFence = opener; continue; }
-        if (boundaryRe.match(l).hasMatch())
-            bounds.append({ i, l.startsWith(QStringLiteral("### ")) });
+        if (!boundaryRe.match(l).hasMatch()) continue;
+        const bool isH1 = l.startsWith(QStringLiteral("# "));
+        if (isH1 && !h1BoundaryRe.match(l).hasMatch()) continue;  // ANTS-3695
+        bounds.append({ i, l.startsWith(QStringLiteral("### ")) });
     }
 
     // Pass 2 — for each `### ` boundary emit a block; extent = next boundary

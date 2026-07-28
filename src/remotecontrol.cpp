@@ -1099,6 +1099,13 @@ static QString rcRightStrip(QString s) {
 // I asked?" check it invites. The whole-file figure is still reported, as
 // `file_bytes`. A pure status flip legitimately writes 0 added bytes (the
 // emoji swap is byte-for-byte the same width) — that is the honest number.
+//
+// ANTS-3723 — the same helper now serves changelog_log, which had the other
+// convention on every op: a ~700-byte entry came back as 1150003, CHANGELOG.md's
+// exact size, with no `file_bytes` to disambiguate. Identical field names
+// carrying opposite meanings across two sibling verbs is worse than either
+// convention alone, because the reason a session trusts one number is that the
+// pair agree. ANTS-3702 fixed this inside roadmap_log and stopped at that verb.
 static void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after) {
     out[QStringLiteral("bytes_written")] = after - before;
     out[QStringLiteral("file_bytes")]    = after;
@@ -6299,6 +6306,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             return QJsonDocument(out);
         }
 
+        const qint64 clBefore = QFileInfo(clPath).size();   // ANTS-3723
         QSaveFile cw(clPath);
         if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
             return clErr(QStringLiteral("changelog_write_failed"),
@@ -6319,7 +6327,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["changed"]       = true;
         out["order_before"]  = orderArr(res.order_before);
         out["order_after"]   = orderArr(res.order_after);
-        out["bytes_written"] = static_cast<qint64>(utf8.size());
+        // ANTS-3723 — a reorder adds no content, so the honest delta is 0;
+        // `file_bytes` carries the size the old field used to report.
+        rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
         if (res.malformed_section)
             out["advisory"] = proseAdvisory(res.malformed_line);
         return QJsonDocument(out);
@@ -6413,6 +6423,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             return QJsonDocument(out);
         }
 
+        const qint64 clBefore = QFileInfo(clPath).size();   // ANTS-3723
         QSaveFile cw(clPath);
         if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
             return clErr(QStringLiteral("changelog_write_failed"),
@@ -6434,7 +6445,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["date"]          = date;
         out["heading"]       = heading;
         out["line"]          = res.line;
-        out["bytes_written"] = static_cast<qint64>(utf8.size());
+        rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
         return QJsonDocument(out);
     }
 
@@ -6583,6 +6594,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
+    const qint64 clBefore = QFileInfo(clPath).size();   // ANTS-3723
     QSaveFile cw(clPath);
     if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return clErr(QStringLiteral("changelog_write_failed"),
@@ -6602,7 +6614,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     out["file"]             = clPath.section('/', -1);
     out["category"]         = category;
     out["line"]             = res.line;
-    out["bytes_written"]    = static_cast<qint64>(utf8.size());
+    rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
     out["created_category"] = res.created_category;
     if (!id.isEmpty()) out["id"] = id;
     // ANTS-2125 — non-blocking advisory: the entry was inserted in
@@ -6897,7 +6909,9 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     }
     // Only touch the file when at least one entry applied — an all-skip
     // batch leaves CHANGELOG.md untouched.
+    qint64 fileBytes = QFileInfo(clPath).size();        // ANTS-3723
     if (!applied.isEmpty()) {
+        const qint64 clBefore = fileBytes;
         QSaveFile cw(clPath);
         if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
             return clErr(QStringLiteral("changelog_write_failed"),
@@ -6910,7 +6924,8 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
                 QStringLiteral("changelog_log: atomic write of \"%1\" failed")
                     .arg(clPath));
         }
-        bytesWritten = utf8.size();
+        fileBytes    = utf8.size();
+        bytesWritten = fileBytes - clBefore;            // ANTS-3723 — delta
     }
 
     QJsonObject out;
@@ -6922,6 +6937,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     out["skipped"]       = skipped;
     out["skipped_count"] = skipped.size();
     out["bytes_written"] = bytesWritten;
+    out["file_bytes"]    = fileBytes;                   // ANTS-3723
     if (malformedSection) {
         out["advisory"] = changelogMalformedAdvisory(
             malformedLine, /*plural=*/true, /*applied=*/true);

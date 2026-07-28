@@ -221,7 +221,13 @@ TEST(changelog_log_normalize, Inv7HandlerWrites) {
     ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
         << resp.value(QStringLiteral("error")).toString().toStdString();
     EXPECT_TRUE(resp.value(QStringLiteral("changed")).toBool());
-    EXPECT_GT(resp.value(QStringLiteral("bytes_written")).toInt(), 0);
+    // ANTS-3723 — bytes_written is now the ADDED-bytes delta (matching
+    // roadmap_log), and a reorder adds nothing: the byte count is identical,
+    // only the order changed. That is a stronger claim than the old
+    // whole-file `> 0`, which any successful write satisfied. `file_bytes`
+    // carries the size the field used to report.
+    EXPECT_EQ(resp.value(QStringLiteral("bytes_written")).toInt(), 0);
+    EXPECT_GT(resp.value(QStringLiteral("file_bytes")).toInt(), 0);
     EXPECT_EQ(orderOf(resp, "order_after"),
               (QStringList{QStringLiteral("Added"), QStringLiteral("Fixed")}));
     const std::string md = readFileStd(clPath(tmp.path()));

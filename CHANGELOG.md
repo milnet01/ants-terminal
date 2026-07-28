@@ -198,6 +198,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`changelog_log` now reports how much it added, not the size of the whole file** (ANTS-3723)
+  Adding a two-line entry used to come back as "1,150,003 bytes written",
+  which is the entire CHANGELOG. It now reports the bytes it actually
+  added, alongside the full file size as a separate number — the same way
+  the roadmap tool already did, so the two can be read side by side.
+
+- **Filing feedback whose example contains a shell comment no longer swallows the finding** (ANTS-3695)
+  A `#` at the start of a line in a pasted command example was being read
+  as a document heading, which cut the finding short and hid it from the
+  maintainer's review list — silently. Examples are now indented so that
+  can't happen, and files already written the old way are read correctly
+  again.
+
 - **`test_audit_partition` no longer refuses a project that told it where the tests are** (ANTS-3708)
   If a project declares its test folders in `.ants/project.json`, or you
   name the test files outright, the tool now just gets on with it instead

@@ -475,3 +475,68 @@ TEST(McpFeedbackLog, DryRunPreviewCarriesPathDerivedNoWrite) {
     EXPECT_GT(env.value("bytes_appended").toInt(), 0);
     EXPECT_FALSE(QFile::exists(expect));                // nothing written
 }
+
+// ANTS-3695 INV-1 — a Repro value is a shell transcript by nature, and a
+// column-0 `#` in one used to render as an H1, ending the `###` finding
+// block and orphaning the `- **Proposed ID:**` line the verb itself wrote.
+// Continuation lines are now indented, so the block stays whole.
+TEST(McpFeedbackLog, Ants3695ColumnZeroHashKeepsBlockIntact) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = dir.path() + "/P_Ants_MCP_Feedback.md";
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = p; req["caller_cwd"] = dir.path();
+    req["op"] = "append_finding"; req["date"] = "2026-07-28";
+    QJsonArray fs;
+    fs.append(finding("Dot-leaf glob finding", "the glob misses dot-leaves",
+                      "# list the feedback files\nls *_Feedback.md\n"
+                      "# note the miss"));
+    req["findings"] = fs;
+    ASSERT_TRUE(rc.cmdFeedbackLog(req).object().value("ok").toBool());
+
+    const QString body = QString::fromUtf8(readAll(p));
+    const QStringList lines = body.split(QLatin1Char('\n'));
+    // No pasted comment may sit at column 0 — that is what markdown reads
+    // as a heading.
+    for (const QString &l : lines)
+        EXPECT_FALSE(l.startsWith(QStringLiteral("# list")) ||
+                     l.startsWith(QStringLiteral("# note")))
+            << "contributor text rendered flush-left: " << l.toStdString();
+
+    const auto blocks = FeedbackFile::enumerateFindingBlocks(lines);
+    ASSERT_EQ(blocks.size(), 1);
+    EXPECT_NE(blocks.at(0).idLine0, -1)
+        << "the Proposed ID line fell outside its own finding block";
+}
+
+// ANTS-3695 INV-2 — read-side hardening for files already corrupted before
+// the write fix: a stray H1 inside a block is body text, while a real
+// `# <date>` session heading still bounds it.
+TEST(McpFeedbackLog, Ants3695StrayH1IsBodyRealSessionHeadingBounds) {
+    const QStringList corrupt = QString(QStringLiteral(
+        "# Ants MCP Feedback — P\n"
+        "\n"
+        "## 2026-07-28\n"
+        "\n"
+        "### A finding\n"
+        "\n"
+        "- **Repro:** run this:\n"
+        "# rm -rf build\n"
+        "- **Proposed ID:** _(maintainer to assign)_\n"
+        "\n"
+        "# 2026-07-29 — next session\n"
+        "\n"
+        "### Another finding\n"
+        "\n"
+        "- **Proposed ID:** ANTS-9999\n")).split(QLatin1Char('\n'));
+
+    const auto blocks = FeedbackFile::enumerateFindingBlocks(corrupt);
+    ASSERT_EQ(blocks.size(), 2);
+    EXPECT_NE(blocks.at(0).idLine0, -1)
+        << "a shell comment must not end the finding that contains it";
+    EXPECT_EQ(blocks.at(0).idValue, QStringLiteral("_(maintainer to assign)_"));
+    // The real session heading still bounds block 0 before block 1 starts.
+    EXPECT_LT(blocks.at(0).extentEnd0, blocks.at(1).headingLine0 + 1);
+    EXPECT_EQ(blocks.at(1).idValue, QStringLiteral("ANTS-9999"));
+}
