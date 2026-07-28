@@ -103,6 +103,77 @@ TEST(AuditRunIncompleteDetail, Inv3ByToolUnionSorted) {
     EXPECT_EQ(u.at(1), QStringLiteral("src/b.cpp"));
 }
 
+// INV-7 (ANTS-3706) — the reason is captured alongside the file: check-id
+// plus the diagnostic text, and the FIRST diagnostic wins (later lines on the
+// same TU are cascade noise). A bare path cannot tell a fixable missing
+// include path from a frontend limitation; this can.
+TEST(AuditRunIncompleteDetail, Inv7ParseFailureReasonCaptured) {
+    const QString raw = QStringLiteral(
+        "src/r_vulkan.cpp:100:1: error: There is an unknown macro here "
+        "somewhere. Configuration is required. If VK_KHR is a macro then "
+        "please configure it. [unknownMacro]\n"
+        "src/r_vulkan.cpp:12:10: error: Include file: \"SDL.h\" not found. "
+        "[preprocessorErrorDirective]\n"
+        "src/r_vulkan.cpp:250:3: error: Analysis failed. [internalError]\n");
+    const AuditRunner::internal::ParsedCounts c =
+        AuditRunner::internal::parseWithSuppression(
+            QStringLiteral("cppcheck"), raw, 10, {});
+    ASSERT_EQ(c.parseFailureFiles.size(), 1);
+    const QString reason =
+        c.parseFailureReasons.value(QStringLiteral("src/r_vulkan.cpp"));
+    // [unknownMacro] is not a parse-failure id, so the FIRST recorded reason
+    // is the preprocessor one — and it names the missing header, which is the
+    // whole point of the field.
+    EXPECT_TRUE(reason.startsWith(QStringLiteral("preprocessorErrorDirective: ")))
+        << "reason was: " << reason.toStdString();
+    EXPECT_TRUE(reason.contains(QStringLiteral("SDL.h")))
+        << "reason was: " << reason.toStdString();
+}
+
+// INV-8 (ANTS-3706) — parseFailureDetails(byTool) emits one {file, tool,
+// reason} row per (file, tool), sorted by file then tool. A file two tools
+// both failed on yields TWO rows (the reasons differ), unlike the deduped
+// parseFailureFiles union.
+TEST(AuditRunIncompleteDetail, Inv8ParseFailureDetailsShape) {
+    QHash<QString, AuditRunner::ToolResult> byTool;
+    AuditRunner::ToolResult cc = tr("cppcheck", "ok");
+    cc.parseFailureFiles = {QStringLiteral("src/b.cpp"),
+                            QStringLiteral("src/a.cpp")};
+    cc.parseFailureReasons.insert(QStringLiteral("src/a.cpp"),
+                                  QStringLiteral("syntaxError: bad"));
+    AuditRunner::ToolResult cz = tr("clazy", "ok");
+    cz.parseFailureFiles = {QStringLiteral("src/a.cpp")};
+    byTool["cppcheck"] = cc;
+    byTool["clazy"]    = cz;
+
+    const QJsonArray d = AuditRunner::internal::parseFailureDetails(byTool);
+    ASSERT_EQ(d.size(), 3);
+    // (file, tool) ascending: a.cpp/clazy, a.cpp/cppcheck, b.cpp/cppcheck.
+    EXPECT_EQ(d.at(0).toObject().value("file").toString(),
+              QStringLiteral("src/a.cpp"));
+    EXPECT_EQ(d.at(0).toObject().value("tool").toString(),
+              QStringLiteral("clazy"));
+    EXPECT_EQ(d.at(1).toObject().value("tool").toString(),
+              QStringLiteral("cppcheck"));
+    EXPECT_EQ(d.at(1).toObject().value("reason").toString(),
+              QStringLiteral("syntaxError: bad"));
+    EXPECT_EQ(d.at(2).toObject().value("file").toString(),
+              QStringLiteral("src/b.cpp"));
+    // No reason recorded for that row — the key is omitted, not empty.
+    EXPECT_FALSE(d.at(2).toObject().contains(QStringLiteral("reason")));
+}
+
+// INV-9 (ANTS-3706) — both providers emit the detail sibling, and
+// parse_failures[] keeps its bare-path shape (no consumer break).
+TEST(AuditRunIncompleteDetail, Inv9BothProvidersEmitDetail) {
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    EXPECT_TRUE(contains(mw, "parse_failures_detail"))
+        << "INV-9: sync provider emits parse_failures_detail";
+    EXPECT_TRUE(contains(ci, "parse_failures_detail"))
+        << "INV-9: async-poll done-branch emits parse_failures_detail";
+}
+
 // INV-4 — extraction is cppcheck-gated: the same [syntaxError] line under a
 // non-cppcheck tool yields no parse failures (different id namespace).
 TEST(AuditRunIncompleteDetail, Inv4NonCppcheckToolGated) {

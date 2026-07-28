@@ -91,6 +91,12 @@ struct ToolResult {
     // / internalError / … on a TU its frontend can't handle, e.g. C++23). A
     // file here got ZERO coverage; empty for non-cppcheck / clean runs.
     QStringList parseFailureFiles;
+    // ANTS-3706 — file → "<checkId>: <first diagnostic>", the reason that file
+    // failed to parse. Same key set as parseFailureFiles. Distinguishes a
+    // fixable config problem (a missing include path) from a frontend
+    // limitation the caller has to route around — two cases the bare path
+    // cannot tell apart.
+    QHash<QString, QString> parseFailureReasons;
 };
 
 struct RunResult {
@@ -150,6 +156,11 @@ struct RunResult {
     // source files that got ZERO coverage because the tool couldn't parse them.
     QJsonArray                 incompleteToolsDetail;
     QStringList                parseFailures;
+    // ANTS-3706 — one {file, tool, reason} object per parse failure. The
+    // detail sibling of `parseFailures`, which keeps its bare-path shape so a
+    // consumer parsing the ANTS-3585 envelope is unaffected (same pairing as
+    // incompleteTools / incompleteToolsDetail above).
+    QJsonArray                 parseFailuresDetail;
     // ANTS-1870 — since-last-run findings delta. `delta` carries
     // {added[], removed[], added_count, removed_count,
     // carried_forward_count} and is present only for an actually-narrowed,
@@ -197,6 +208,12 @@ QJsonArray incompleteToolsDetail(const QHash<QString, ToolResult> &byTool);
 // ANTS-3585 — deduped, ascending union of every tool's parseFailureFiles.
 QStringList parseFailureFiles(const QHash<QString, ToolResult> &byTool);
 
+// ANTS-3706 — the same set with the diagnostic attached: one
+// {file, tool, reason?} object per (file, tool), sorted by file then tool.
+// `reason` is "<checkId>: <first diagnostic>" and is omitted when the tool
+// recorded a failure without a message. Pure over byTool, like the two above.
+QJsonArray parseFailureDetails(const QHash<QString, ToolResult> &byTool);
+
 // Apply the bottom-up sample trim cascade: 10 → 5 → 3. Returns the
 // trimmed samples and sets samplesTruncated when any trim fired.
 void trimSamplesCascade(QHash<QString, ToolResult> &byTool,
@@ -230,6 +247,8 @@ struct ParsedCounts {
     // cppcheckError). A TU here got zero real coverage. Empty for
     // non-cppcheck tools and for clean runs.
     QStringList parseFailureFiles;
+    // ANTS-3706 — file → "<checkId>: <first diagnostic>" for each of the above.
+    QHash<QString, QString> parseFailureReasons;
 };
 // ANTS-3615 — `allowlistPath` is optional; when non-empty the file is
 // loaded through AuditEngine::loadAllowlist and its entries suppress

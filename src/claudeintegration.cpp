@@ -4453,7 +4453,13 @@ void ClaudeIntegration::onMcpConnection() {
                     "suggestion:{source_roots?, reason, default_source_count, "
                     "total_source_count}} — suggests source_roots when the "
                     "default src/+tests/ walk would miss most of the repo's "
-                    "code. op:\"init\" → write the detected (or explicit) keys; "
+                    "code, and (ANTS-3705) echoes the CURRENT declaration as "
+                    "`declared` plus `declared_missing[]` naming any declared "
+                    "path that no longer resolves — so reading "
+                    ".ants/project.json by hand is never needed. A missing "
+                    "entry is DROPPED by the reader, which is otherwise "
+                    "indistinguishable from never having been declared. "
+                    "op:\"init\" → write the detected (or explicit) keys; "
                     "refuses settings_exists if the file is present (no "
                     "clobber); writes nothing (written:false) when there's "
                     "nothing to suggest. op:\"set\" → create-or-update any key "
@@ -6681,7 +6687,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "lanes at the same (file, line). Pure regex "
                         "pass; no LLM. Provide exactly one of "
                         "`reports` or `reports_dir`. Optional: "
-                        "min_lanes (default 2).");
+                        "min_lanes (default 2); "
+                        "allow_outside_project (ANTS-3713) to point "
+                        "reports_dir at an absolute path such as the "
+                        "session scratchpad.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to cross-check two+ reviewers' findings "
                         "against shared evidence. Reduces false "
@@ -6697,7 +6706,9 @@ void ClaudeIntegration::onMcpConnection() {
                     reportsDirProp["type"] = "string";
                     reportsDirProp["description"] = QStringLiteral(
                         "Project-relative path to a directory of "
-                        "*.md files. Lane name = filename stem. "
+                        "*.md files — or, with "
+                        "allow_outside_project:true, an absolute one "
+                        "(ANTS-3713). Lane name = filename stem. "
                         "Top level only; sub-directories not "
                         "recursed. Files >64 KiB truncated. "
                         "Mutually exclusive with reports.");
@@ -6708,10 +6719,21 @@ void ClaudeIntegration::onMcpConnection() {
                     minLanesProp["description"] = QStringLiteral(
                         "Minimum distinct lanes citing a (file, line) "
                         "for it to count as corroborated.");
+                    // ANTS-3713 — same opt-in name and posture as
+                    // test_audit_synthesis_prompt's (ANTS-1455).
+                    QJsonObject aopProp;
+                    aopProp["type"] = "boolean";
+                    aopProp["description"] = QStringLiteral(
+                        "ANTS-3713 — when true, reports_dir may resolve "
+                        "outside the project root (session scratchpad, "
+                        "/tmp), so lane reports need not be written into "
+                        "the working tree. Still NFC + control-char "
+                        "checked and canonicalised. Default false.");
                     QJsonObject props;
                     props["reports"]     = reportsProp;
                     props["reports_dir"] = reportsDirProp;
                     props["min_lanes"]   = minLanesProp;
+                    props["allow_outside_project"] = aopProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
@@ -7371,6 +7393,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "could not PARSE — a C++23 TU its frontend chokes on "
                         "gets ZERO coverage and would otherwise be silently "
                         "absent from the findings. "
+                        "ANTS-3706: `parse_failures_detail[]` carries the same "
+                        "set as {file, tool, reason} where reason is the "
+                        "check-id + first diagnostic — so a missing include "
+                        "path (fixable config) is distinguishable from a "
+                        "frontend limitation (route around) without re-running "
+                        "the tool by hand. `parse_failures[]` keeps its "
+                        "bare-path shape. "
                         "ANTS-2183 — **long sweeps & the transport cap:** a "
                         "full-tree (scope:\"full\") run can take minutes and "
                         "exceed the MCP client's request timer (Claude "
@@ -11736,6 +11765,9 @@ QJsonObject ClaudeIntegration::auditJobPollEnvelope(
             QJsonArray pf;
             for (const QString &f : j.parseFailures) pf.append(f);
             env["parse_failures"] = pf;
+            // ANTS-3706 — same detail sibling as the sync provider.
+            if (!j.parseFailuresDetail.isEmpty())
+                env["parse_failures_detail"] = j.parseFailuresDetail;
         }
         if (j.noChanges) env["no_changes"] = true;
         env["read_full_with"]   = QStringLiteral("last_audit_summary");

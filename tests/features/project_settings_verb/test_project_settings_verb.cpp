@@ -368,6 +368,24 @@ TEST(ProjectSettingsVerb, StandardLayoutProposesNoAuxKeys) {
 
 // INV-5 / INV-6 / INV-10 / INV-13 — verb-layer + registration wiring
 // (source-grep; the verb glue isn't unit-testable without RemoteControl).
+// INV-20 (ANTS-3705) — op:detect echoes the CURRENT declaration, so the six
+// keys can be inspected without a native Read of .ants/project.json. It reads
+// the stored file rather than ProjectSettings::load(), because load() drops an
+// entry whose path no longer resolves — the very state `declared_missing`
+// exists to name.
+TEST(ProjectSettingsVerb, Inv20DetectEchoesDeclaration) {
+    const std::string rc = ants_test::slurpFile(srcPath("src/remotecontrol.cpp"));
+    const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
+
+    EXPECT_TRUE(has(rc, "\"declared\""));
+    EXPECT_TRUE(has(rc, "\"declared_missing\""));
+    // Existence is judged with the same anchor check the loader uses, so the
+    // echo and the drop cannot disagree.
+    EXPECT_TRUE(has(rc, "PathValidation::isInsideProject(rootCanonical, abs)"));
+    // Documented on the verb, else a caller never learns the field is there.
+    EXPECT_TRUE(has(ci, "declared_missing"));
+}
+
 TEST(ProjectSettingsVerb, VerbAndRegistrationWiring) {
     const std::string rc = ants_test::slurpFile(srcPath("src/remotecontrol.cpp"));
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));

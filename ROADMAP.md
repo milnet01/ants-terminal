@@ -21014,7 +21014,7 @@ requesting no action and are closed in place rather than filed.
   Kind: enhancement.
   Source: finbreak-feedback-2026-07-28.
 
-- 📋 [ANTS-3705] **`project_settings` has no read op, so verifying the declared layout means reading `.ants/project.json` directly.**
+- ✅ [ANTS-3705] **`project_settings` has no read op, so verifying the declared layout means reading `.ants/project.json` directly.**
   `op` takes detect | init | set. There is no `get`. `op:"detect"` on a project that
   already HAS a settings file returns only a source_roots suggestion — it confirms
   `source_roots` and says nothing about `test_roots`, `docs_dir`, `roadmap`,
@@ -21036,8 +21036,9 @@ requesting no action and are closed in place rather than filed.
   **Layman:** There is no way to ask the tool what the project layout currently says, so people open the settings file by hand — the thing the tool exists to prevent.
   Kind: enhancement.
   Source: finbreak-feedback-2026-07-28.
+  Resolved (2026-07-28): op:detect now echoes `declared` (the six stored keys, verbatim) and `declared_missing[]`, both omitted when empty — so an unconfigured project sees the old envelope. Read from the stored file rather than ProjectSettings::load(), because load() DROPS an entry whose path no longer resolves, making a stale declaration indistinguishable from an absent one to every consumer — that silent drop is the sharper form of the reported problem and is what declared_missing names. No new op: detect now answers the question its name implies (the contributor's own cheapest option). Test: project_settings_verb INV-20.
 
-- 📋 [ANTS-3706] **`audit_run` `parse_failures[]` names the file but not why it failed to parse.**
+- ✅ [ANTS-3706] **`audit_run` `parse_failures[]` names the file but not why it failed to parse.**
   ANTS-3585 shipped `parse_failures[]` and it is genuinely valuable — it is the
   difference between "clean" and "never looked", and it caught that the largest file
   in DOOM Ants (the whole Vulkan renderer) has zero static-analysis coverage. But
@@ -21055,6 +21056,7 @@ requesting no action and are closed in place rather than filed.
   **Layman:** The audit says it could not read a file but not why, so you have to re-run the tool by hand to find out.
   Kind: enhancement.
   Source: DOOM-Ants-feedback-2026-07-28.
+  Resolved (2026-07-28): added `parse_failures_detail[]` of {file, tool, reason} where reason is "<checkId>: <first diagnostic>" (capped 200 chars, first parse-failure diagnostic per file wins — later ones are cascade noise). `parse_failures[]` keeps its bare-path shape, so the ANTS-3585 consumer is unaffected: this is the same X / X_detail pairing ANTS-3585 itself established with incomplete_tools. Carried on BOTH the sync (mainwindow) and async-poll (claudeintegration) envelopes via AuditJob. A file two tools both failed on yields one row per tool, since the reasons differ. Tests: audit_run_incomplete_detail INV-7/8/9.
 
 - 📋 [ANTS-3707] **`debt_sweep_scan`'s envelope cannot distinguish "this dimension is clean" from "one thin heuristic ran".**
   Filed from two projects independently, merged here.
@@ -21257,7 +21259,7 @@ requesting no action and are closed in place rather than filed.
   Kind: fix.
   Source: finbreak-feedback-2026-07-28.
 
-- 📋 [ANTS-3713] **`indie_review_corroborate`'s `reports_dir` must be project-relative, so lane reports cannot live in the session scratchpad.**
+- ✅ [ANTS-3713] **`indie_review_corroborate`'s `reports_dir` must be project-relative, so lane reports cannot live in the session scratchpad.**
   The v2 `reports_dir` form is the token-saving path — the server reads lane reports
   off disk instead of the parent pasting them inline — but the path resolves under
   the project root. Claude Code's per-session scratchpad lives at
@@ -21278,6 +21280,7 @@ requesting no action and are closed in place rather than filed.
   **Layman:** The cheap way to feed review reports to the tool requires writing scratch files into the project, which then have to be cleaned up.
   Kind: enhancement.
   Source: DOOM-Ants-feedback-2026-07-28.
+  Resolved (2026-07-28): indie_review_corroborate accepts allow_outside_project:true, reusing test_audit_synthesis_prompt's existing opt-in name and posture (ANTS-1455) rather than the proposed allow_external_dir — one name across the codebase. PathValidation still applies the NFC / control-char / canonicalisation checks and only skips the root anchor; the anchored dir then goes to the new IndieReviewEngine::corroboratedFindingsFromCanonicalDir, so ANTS-1282 INV-3 holds verbatim on the default path (asserted in the same test). Tests: indie_review_corroborate_dir INV-9, mcp_indie_review_tools Ants3713 (schema scoped via mcpToolDescriptor — the sibling verb declares the same property, so a whole-file grep would false-green).
 
 - ✅ [ANTS-3714] **Feedback-file format spec: a project whose directory leaf starts with a dot cannot match the authoritative glob.**
   Recovered by hand from `claude_config_Ants_MCP_Feedback.md:47`, where ANTS-3695's

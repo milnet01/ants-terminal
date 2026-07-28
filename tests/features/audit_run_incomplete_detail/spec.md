@@ -41,6 +41,24 @@ and the two envelope surfaces (mirrors the `audit_run_partial_envelope` /
   `parseWithSuppression(...).parseFailureFiles` collects the file of any finding
   whose trailing `[id]` is a parse-failure id; a normal finding's file
   (`[nullPointer]`) is NOT collected; the same file failing twice appears once.
+- **INV-7** (ANTS-3706) — `parseWithSuppression` records, per failing file,
+  a `parseFailureReasons` entry of `"<checkId>: <first diagnostic>"`. The
+  FIRST parse-failure diagnostic for a file wins (later ones are cascade
+  noise); a non-parse-failure id on the same file (`unknownMacro`) does not
+  claim the slot. Capped at 200 chars.
+
+- **INV-8** (ANTS-3706) — `parseFailureDetails(byTool)` returns one
+  `{file, tool, reason?}` object per (file, tool), sorted by file then tool.
+  Unlike the deduped `parseFailureFiles` union, a file two tools both failed
+  to parse yields two rows — the reasons differ. `reason` is omitted, not
+  empty, when the tool recorded no diagnostic.
+
+- **INV-9** (ANTS-3706) — both the sync (`mainwindow.cpp`) and async-poll
+  (`claudeintegration.cpp`) providers emit `parse_failures_detail`.
+  `parse_failures[]` keeps its ANTS-3585 bare-path shape, so a consumer
+  already parsing it is unaffected — the same `X` / `X_detail` pairing
+  ANTS-3585 established with `incomplete_tools`.
+
 - **INV-3** — `parseFailureFiles(byTool)` unions every tool's
   `parseFailureFiles`, deduped and sorted ascending.
 - **INV-4** — the extraction is cppcheck-gated: an identical `[syntaxError]`

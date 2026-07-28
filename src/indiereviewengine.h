@@ -167,6 +167,19 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
     int minLanes = 2,
     int *reportsRead = nullptr);
 
+// ANTS-3713 — the read half of the above, entered with an ALREADY-VALIDATED
+// canonical directory, which may sit outside projectPath. The MCP layer uses
+// it for indie_review_corroborate's `allow_outside_project:true` mode, where
+// PathValidation::validatePath has done the anchoring and deliberately
+// permitted an external root (the session scratchpad, /tmp). Callers holding
+// a project-relative path want corroboratedFindingsFromDir instead — it keeps
+// ANTS-1282 INV-3 and delegates here once the path is anchored.
+QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
+    const QString &projectPath,
+    const QString &canonicalDir,
+    int minLanes = 2,
+    int *reportsRead = nullptr);
+
 QString synthesisPrompt(
     const QHash<QString, QString> &reports,
     const QString &threatModelExtras);

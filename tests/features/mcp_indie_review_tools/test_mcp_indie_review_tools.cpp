@@ -187,6 +187,30 @@ TEST(McpIndieReviewTools, Ants3375SourcePathsSchemaDeclared) {
         << "INV-13: descriptor must cite ANTS-3375 for discoverability";
 }
 
+// ANTS-3713 — indie_review_corroborate accepts an absolute reports_dir under
+// allow_outside_project, reusing test_audit_synthesis_prompt's opt-in name
+// (ANTS-1455) rather than inventing a second one. Scoped to this verb's own
+// descriptor via mcpToolDescriptor, because the sibling verb declares the
+// same property and a whole-file grep would false-green.
+TEST(McpIndieReviewTools, Ants3713CorroborateAllowsOutsideProject) {
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string desc =
+        ants_test::mcpToolDescriptor(ci, "indie_review_corroborate");
+    ASSERT_FALSE(desc.empty())
+        << "indie_review_corroborate descriptor not found in the tools list";
+    EXPECT_NE(desc.find("props[\"allow_outside_project\"]"), std::string::npos)
+        << "allow_outside_project is not declared on this verb's schema, so "
+           "additionalProperties:false rejects it";
+
+    // Handler side: the flag relaxes the anchor AND routes to the
+    // already-anchored engine entry point, so ANTS-1282 INV-3 still guards
+    // the default path.
+    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    EXPECT_NE(rc.find("/*allowOutsideRoot=*/allowOutside"), std::string::npos);
+    EXPECT_NE(rc.find("corroboratedFindingsFromCanonicalDir"),
+              std::string::npos);
+}
+
 TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // Defensive: every new tool's inputSchema sets additionalProperties=false
     // so unknown keys are rejected. Region scoped to JUST the indie_review_*

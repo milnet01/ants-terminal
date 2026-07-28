@@ -14,6 +14,28 @@ for security-relevant changes.
 
 ### Added
 
+- **`audit_run` says WHY a file could not be parsed** (ANTS-3706)
+  New `parse_failures_detail[]` gives `{file, tool, reason}` — the
+  check-id and first diagnostic — next to the existing bare-path
+  `parse_failures[]`. A missing include path (a config problem you can
+  fix) now reads differently from a construct the analyser cannot handle
+  (something to route around), without re-running the tool by hand.
+
+- **`project_settings op:detect` shows what the project already declares** (ANTS-3705)
+  `detect` now returns `declared` (the six layout keys as stored) and
+  `declared_missing[]` naming any declared path that no longer exists, so
+  checking the layout no longer means opening `.ants/project.json` by
+  hand. A path that has been moved or deleted is silently ignored by the
+  reader — previously indistinguishable from never having been declared.
+
+- **`indie_review_corroborate` accepts lane reports outside the project** (ANTS-3713)
+  Pass `allow_outside_project:true` and `reports_dir` may be an absolute
+  path — the session scratchpad, `/tmp` — so a review sweep no longer has
+  to write scratch files into the working tree just to use the cheap
+  server-side read. Same opt-in name as `test_audit_synthesis_prompt`'s.
+  Path checks are unchanged apart from the root anchor; the default
+  project-relative path still refuses an absolute directory.
+
 - **`workspace_search` gained `exclude_glob` — search everywhere except a given tree** (ANTS-3704)
   Until now you could narrow a search to one folder or one file pattern, but there was no way to say "everywhere except the docs". On a project with a lot of written documentation that meant the results were mostly prose, and the only way round it was to drop back to the raw command-line search tool. Pass `exclude_glob` (one pattern or a list) and those paths are left out. Write the pattern plainly — `docs/**`, not `!docs/**`.
 

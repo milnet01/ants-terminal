@@ -13010,6 +13010,14 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     // already read-only, so the flag is a no-op there.
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
 
+    // The six recognised layout keys. Declared here (ahead of op:detect)
+    // because detect's ANTS-3705 `declared` echo walks the same set that
+    // op:set turns into a `changes` object below.
+    static const QStringList kKeys = {
+        QStringLiteral("source_roots"), QStringLiteral("test_roots"),
+        QStringLiteral("docs_dir"), QStringLiteral("specs_dir"),
+        QStringLiteral("roadmap"), QStringLiteral("changelog")};
+
     // ---- detect (read-only) ----
     if (op == QLatin1String("detect")) {
         const ProjectSettings::Suggestion sug =
@@ -13038,19 +13046,57 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         if (sug.specsDir)  s[QStringLiteral("specs_dir")] = *sug.specsDir;
         if (sug.roadmap)   s[QStringLiteral("roadmap")]   = *sug.roadmap;
         if (sug.changelog) s[QStringLiteral("changelog")] = *sug.changelog;
+        // ANTS-3705 — echo the CURRENT declaration alongside the suggestion, so
+        // "which of the six keys are declared, and are they still correct?" is
+        // one call instead of a native Read of .ants/project.json. Reads the
+        // stored file rather than ProjectSettings::load(), because load()
+        // silently DROPS an entry whose path no longer resolves — which is
+        // precisely the state worth surfacing: to every consumer a dropped key
+        // is indistinguishable from an absent one. Each such entry is named in
+        // `declared_missing`.
+        QJsonObject declared;
+        QJsonArray  declaredMissing;
+        QFile sf(settingsPath);
+        if (sf.open(QIODevice::ReadOnly)) {
+            const QJsonObject stored =
+                QJsonDocument::fromJson(sf.readAll()).object();
+            sf.close();
+            for (const QString &k : kKeys) {
+                if (!stored.contains(k)) continue;
+                const QJsonValue v = stored.value(k);
+                declared[k] = v;
+                QStringList vals;
+                if (v.isString()) {
+                    vals << v.toString();
+                } else if (v.isArray()) {
+                    const QJsonArray arr = v.toArray();
+                    for (const QJsonValue &e : arr)
+                        if (e.isString()) vals << e.toString();
+                }
+                for (int vi = 0; vi < vals.size(); ++vi) {
+                    const QString rel = vals.at(vi).trimmed();
+                    const QString abs =
+                        rootCanonical + QLatin1Char('/') + rel;
+                    if (rel.isEmpty()
+                        || !PathValidation::isInsideProject(rootCanonical, abs))
+                        declaredMissing.append(
+                            QStringLiteral("%1: %2").arg(k, vals.at(vi)));
+                }
+            }
+        }
         QJsonObject o;
         o[QStringLiteral("ok")]         = true;
         o[QStringLiteral("present")]    = sug.present;
         o[QStringLiteral("suggestion")] = s;
+        if (!declared.isEmpty())
+            o[QStringLiteral("declared")] = declared;
+        if (!declaredMissing.isEmpty())
+            o[QStringLiteral("declared_missing")] = declaredMissing;
         return QJsonDocument(o);
     }
 
     // Recognised flat keys → a `changes` object (a present JSON-null is
     // retained so set can clear a key — INV-8).
-    static const QStringList kKeys = {
-        QStringLiteral("source_roots"), QStringLiteral("test_roots"),
-        QStringLiteral("docs_dir"), QStringLiteral("specs_dir"),
-        QStringLiteral("roadmap"), QStringLiteral("changelog")};
     QJsonObject changes;
     for (const QString &k : kKeys)
         if (req.contains(k)) changes[k] = req.value(k);
@@ -19069,18 +19115,32 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
         if (reportsDir.isEmpty()) return QJsonDocument(irErr(
             QStringLiteral("bad_args"),
             QStringLiteral("indie_review_corroborate: reports_dir must be a "
-                           "non-empty project-relative path")));
+                           "non-empty path (project-relative, or absolute "
+                           "with allow_outside_project:true)")));
         // ANTS-1295: anchor reports_dir before the engine sees it. The
         // engine has its own anchor as defense-in-depth, but the MCP
         // layer's uniform `bad_path` envelope is more informative than
         // the engine's silent empty-list return.
+        // ANTS-3713 — allow_outside_project (same opt-in name and posture as
+        // test_audit_synthesis_prompt's, ANTS-1455) accepts an absolute
+        // reports_dir so lane reports can live in the session scratchpad
+        // rather than being written into the working tree. The NFC +
+        // control-char + canonicalisation checks still run; only the root
+        // anchor is relaxed, and the already-anchored engine entry point is
+        // used so ANTS-1282 INV-3 still holds for the default path.
+        const bool allowOutside =
+            req.value(QStringLiteral("allow_outside_project")).toBool();
         const auto check = PathValidation::validatePath(
             reportsDir, root,
             QStringLiteral("indie_review_corroborate"),
-            QStringLiteral("reports_dir"));
+            QStringLiteral("reports_dir"),
+            /*allowOutsideRoot=*/allowOutside);
         if (check.bad) return QJsonDocument(check.err);
-        found = IndieReviewEngine::corroboratedFindingsFromDir(
-            root, reportsDir, minLanes, &reportsRead);
+        found = allowOutside
+            ? IndieReviewEngine::corroboratedFindingsFromCanonicalDir(
+                  root, check.resolved, minLanes, &reportsRead)
+            : IndieReviewEngine::corroboratedFindingsFromDir(
+                  root, reportsDir, minLanes, &reportsRead);
         // No totalIn tally for the disk path — the orchestrator
         // didn't pay the parent-context cost, which is the whole
         // point of ANTS-1282.

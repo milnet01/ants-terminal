@@ -59,6 +59,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPair>          // ANTS-3706 parse-failure (file, tool) sort key
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -70,6 +71,7 @@
 #include <QUuid>
 #include <QTimer>
 
+#include <algorithm>      // ANTS-3706 std::sort over the detail keys
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -758,6 +760,8 @@ struct ParsedOutput {
     // (syntaxError / internalError / …): the whole TU failed to parse, so it
     // got zero real coverage. Deduped; empty for non-cppcheck / clean runs.
     QStringList parseFailureFiles;
+    // ANTS-3706 — file → "<checkId>: <first diagnostic>" for each of the above.
+    QHash<QString, QString> parseFailureReasons;
 };
 
 // ANTS-1820 — learned-FP suppression for the headless path. The GUI's
@@ -1002,6 +1006,16 @@ ParsedOutput parseToolOutput(const QString &tool,
                 && kParseFailureIds.contains(idm.captured(1))
                 && !out.parseFailureFiles.contains(fileStr)) {
                 out.parseFailureFiles.append(fileStr);
+                // ANTS-3706 — keep the FIRST diagnostic for this file: it is
+                // the one that stopped the parse; later lines are usually
+                // cascade noise. Capped like `samples` so a pathological
+                // template error can't bloat the envelope.
+                QString reason = idm.captured(1)
+                                 + QStringLiteral(": ")
+                                 + msg.left(idm.capturedStart()).trimmed();
+                if (reason.size() > 200) reason = reason.left(197)
+                                                  + QStringLiteral("…");
+                out.parseFailureReasons.insert(fileStr, reason);
             }
         }
         ++located;  // rawCount keeps the raw total, learned FPs included
@@ -1617,6 +1631,29 @@ QString sarifLevelFor(const QString &severity) {
     return QStringLiteral("warning");
 }
 
+// ANTS-3706 — one {file, tool, reason} object per parse failure, ascending by
+// file then tool so the array is stable run-to-run. Built from the same
+// per-tool state as parseFailureFiles below; a file two tools both failed to
+// parse yields one row per tool, because the reasons differ.
+QJsonArray parseFailureDetails(const QHash<QString, ToolResult> &byTool) {
+    QList<QPair<QString, QString>> keys;   // (file, tool)
+    for (auto it = byTool.constBegin(); it != byTool.constEnd(); ++it)
+        for (const QString &f : it->parseFailureFiles)
+            keys.append({f, it.key()});
+    std::sort(keys.begin(), keys.end());
+    QJsonArray out;
+    for (const auto &k : keys) {
+        QJsonObject o;
+        o[QStringLiteral("file")] = k.first;
+        o[QStringLiteral("tool")] = k.second;
+        const QString reason =
+            byTool.value(k.second).parseFailureReasons.value(k.first);
+        if (!reason.isEmpty()) o[QStringLiteral("reason")] = reason;
+        out.append(o);
+    }
+    return out;
+}
+
 // ANTS-3585 — deduped, ascending union of every tool's parseFailureFiles.
 QStringList parseFailureFiles(const QHash<QString, ToolResult> &byTool) {
     QSet<QString> uniq;
@@ -1714,6 +1751,7 @@ ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
     c.allFindingsHaveHexFp  = allHex;
     c.aborted               = p.aborted;  // ANTS-3395
     c.parseFailureFiles     = p.parseFailureFiles;  // ANTS-3585
+    c.parseFailureReasons   = p.parseFailureReasons;  // ANTS-3706
     return c;
 }
 
@@ -2181,6 +2219,7 @@ RunResult runAudit(const RunRequest &req) {
         if (tr.status == QLatin1String("ok") && parsed.aborted)
             tr.status = QStringLiteral("crashed");
         tr.parseFailureFiles = parsed.parseFailureFiles;      // ANTS-3585
+        tr.parseFailureReasons = parsed.parseFailureReasons;  // ANTS-3706
         fullFindingsByTool[tool] = parsed.findings;           // ANTS-1870
         if (parsed.findingsTruncated) anyFindingsTruncated = true;
         r.byTool[tool]      = tr;
@@ -2321,6 +2360,7 @@ RunResult runAudit(const RunRequest &req) {
     // ANTS-3585 — richer partiality + zero-coverage surfaces derived once here.
     r.incompleteToolsDetail = internal::incompleteToolsDetail(r.byTool);
     r.parseFailures         = internal::parseFailureFiles(r.byTool);
+    r.parseFailuresDetail   = internal::parseFailureDetails(r.byTool);
 
     // ── INV-13 / sample-trim cascade.
     internal::trimSamplesCascade(r.byTool, r.samplesTruncated);

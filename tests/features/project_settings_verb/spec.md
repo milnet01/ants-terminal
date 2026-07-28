@@ -49,6 +49,14 @@ the ANTS-2160 suite used for its consumer-wiring check.
   `sourceRoots` nullopt AND all five aux fields nullopt (no ride-along without
   a suggestion). Pre-fix: the `Suggestion` struct has no aux fields → the test
   does not compile, so the assertions cannot false-green.
+- **INV-20** (ANTS-3705) — `op:"detect"` echoes the stored declaration as
+  `declared` (the recognised keys, verbatim) plus `declared_missing[]` naming
+  every declared path that no longer resolves under the root. Read from the
+  file rather than via `ProjectSettings::load()`, which DROPS such an entry —
+  making a stale declaration indistinguishable from an absent one to every
+  consumer. Both fields are omitted when empty, so a project with no settings
+  file sees the pre-ANTS-3705 envelope unchanged.
+
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s
   `callerCwdContractFor()` + `registerToolProvider`; the handler writes

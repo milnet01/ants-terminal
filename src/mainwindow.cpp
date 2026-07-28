@@ -4636,6 +4636,8 @@ void MainWindow::setupClaudeMcpProviders() {
                             // async-poll done-branch emits them too.
                             term.incompleteToolsDetail = r.incompleteToolsDetail;
                             term.parseFailures         = r.parseFailures;
+                            // ANTS-3706 — and the parse-failure reasons.
+                            term.parseFailuresDetail   = r.parseFailuresDetail;
                         }
                         ci->auditJobComplete(jobId, term);
                         ci->verbInFlightRelease(
@@ -4730,6 +4732,11 @@ void MainWindow::setupClaudeMcpProviders() {
                 QJsonArray pf;
                 for (const QString &f : r.parseFailures) pf.append(f);
                 env["parse_failures"] = pf;
+                // ANTS-3706 — why each file failed, so a missing include path
+                // (fixable) is distinguishable from a frontend limitation
+                // (route around) without re-running the tool by hand.
+                if (!r.parseFailuresDetail.isEmpty())
+                    env["parse_failures_detail"] = r.parseFailuresDetail;
             }
             if (!r.sarifPath.isEmpty())
                 env["sarif_path"] = r.sarifPath;

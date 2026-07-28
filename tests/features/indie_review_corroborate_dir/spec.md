@@ -27,6 +27,14 @@ Full design: [docs/specs/ANTS-1282.md](../../../docs/specs/ANTS-1282.md).
 - **INV-6** — Missing-directory tolerance. If `reports_dir`
   resolves to a non-existent path, return empty list (no crash).
 
+- **INV-9** (ANTS-3713) — External reports dir. Lane reports may
+  live outside `projectPath` (the session scratchpad), read via
+  `corroboratedFindingsFromCanonicalDir`, which takes a directory
+  the caller has already anchored. The project-relative entry
+  point `corroboratedFindingsFromDir` is unchanged and still
+  refuses the same absolute path, so INV-3 holds for every
+  caller that has not opted in via `allow_outside_project`.
+
 - **INV-8** — File-size cap. Each `*.md` file is truncated at
   64 KiB at read time, matching v1 `extractFileLineCitations`'s
   scan window.

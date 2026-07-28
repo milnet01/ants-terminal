@@ -689,6 +689,8 @@ public:
         // (the AuditJob keeps compact fields, not the full byTool map).
         QJsonArray  incompleteToolsDetail;
         QStringList parseFailures;
+        // ANTS-3706 — the {file, tool, reason} sibling of parseFailures.
+        QJsonArray  parseFailuresDetail;
     };
     // Register a new running job for `root`; returns its "audit-N" id, or
     // an empty string when the bounded registry is saturated with running

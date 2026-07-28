@@ -10,6 +10,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -207,4 +208,49 @@ TEST(IndieReviewCorroborateDir, TruncationAt64KiB) {
     EXPECT_TRUE(earlySeen);
     EXPECT_FALSE(lateSeen)
         << "Citation past 64 KiB was returned; truncation regressed.";
+}
+
+// INV-9 (ANTS-3713) — reports may live OUTSIDE the project (the session
+// scratchpad), reached via the canonical-dir entry point. INV-3 is unchanged
+// on the project-relative entry point, which still refuses the same absolute
+// path — asserted in the same test so a future loosening of INV-3 cannot pass
+// unnoticed.
+TEST(IndieReviewCorroborateDir, Inv9ExternalReportsDirViaCanonicalEntry) {
+    QTemporaryDir proj;
+    ASSERT_TRUE(proj.isValid());
+    QTemporaryDir scratch;   // stands in for /tmp/claude-*/…/scratchpad
+    ASSERT_TRUE(scratch.isValid());
+
+    const QString root = proj.path();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("src")));
+    QFile srcFile(root + QStringLiteral("/src/vtparser.cpp"));
+    ASSERT_TRUE(srcFile.open(QIODevice::WriteOnly));
+    srcFile.write(QByteArray(64, 'X'));
+    srcFile.close();
+
+    ASSERT_TRUE(writeMd(scratch.path(), QStringLiteral("vtparser.md"),
+        QByteArray("INV-A violated at src/vtparser.cpp:42 - bug here.\n")));
+    ASSERT_TRUE(writeMd(scratch.path(), QStringLiteral("terminalgrid.md"),
+        QByteArray("Independent reviewer also flags src/vtparser.cpp:42.\n")));
+
+    // INV-3 still holds: the project-relative entry point rejects an
+    // absolute path outright, and reports zero files read.
+    int readRel = 7;
+    const auto viaRelative = IndieReviewEngine::corroboratedFindingsFromDir(
+        root, scratch.path(), 2, &readRel);
+    EXPECT_TRUE(viaRelative.isEmpty())
+        << "INV-3 regressed: corroboratedFindingsFromDir accepted an "
+           "absolute reports_dir.";
+    EXPECT_EQ(readRel, 0);
+
+    // The canonical entry point reads the same directory — this is the path
+    // allow_outside_project takes once PathValidation has anchored it.
+    int read = 0;
+    const auto found =
+        IndieReviewEngine::corroboratedFindingsFromCanonicalDir(
+            root, QFileInfo(scratch.path()).canonicalFilePath(), 2, &read);
+    EXPECT_EQ(read, 2);
+    ASSERT_EQ(found.size(), 1);
+    EXPECT_EQ(found.first().file, QStringLiteral("src/vtparser.cpp"));
+    EXPECT_EQ(found.first().line, 42);
 }

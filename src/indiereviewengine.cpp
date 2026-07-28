@@ -706,7 +706,21 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
         return {};
     }
 
-    QDir dir(canon);
+    return corroboratedFindingsFromCanonicalDir(projectPath, canon, minLanes,
+                                                reportsRead);
+}
+
+// ANTS-3713 — the read half, split out so the MCP layer's
+// allow_outside_project mode can reach it with a directory PathValidation has
+// already anchored (INV-3 stays intact on the project-relative entry point).
+QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
+    const QString &projectPath,
+    const QString &canonicalDir,
+    int minLanes,
+    int *reportsRead) {
+    if (reportsRead) *reportsRead = 0;
+
+    QDir dir(canonicalDir);
     if (!dir.exists()) return {};
 
     QHash<QString, QString> reports;
