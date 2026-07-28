@@ -74,8 +74,12 @@ from § 1:
   incident, a dependency surfaced while sizing another item).
 - **Optional relationship lines** when they apply: `**Blocker for:**`,
   `**Blocked by:**`, `**Pairs with:**`, `**Composes with:**`,
-  `**Supersedes:** / **Superseded by:**`. Use these so the dependency
-  graph lives in the docs, not only in someone's head.
+  `**Supersedes:** / **Superseded by:**`, and `**Covers:**`. Use these so
+  the dependency graph lives in the docs, not only in someone's head.
+  `**Covers:**` is the umbrella form of § 2 — one spec whose header lists
+  every ROADMAP id it is the contract for, used when two ids share one
+  surface and would otherwise own two documents that must agree forever.
+  The ids stay separate on the ROADMAP; only the document merges.
 
 ### 3.3 § 1. Problem
 
