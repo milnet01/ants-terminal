@@ -10049,6 +10049,27 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (hit while recording ANTS-3660's implementation row).
 
+- 📋 [ANTS-3686] **`spec_query` ignores `fields=`, returning the full payload including `invariants[]`.**
+  Observed 2026-07-28: `spec_query {id:"ANTS-3664", fields:["ok","id",
+  "title","status","kind","invariants_count"]}` returned the complete
+  envelope, `invariants[]` included — roughly 2.5 KB where ~120 bytes was
+  asked for. The envelope carried no `ignored_args` entry either, so the
+  caller gets no signal that the narrowing was dropped.
+
+  `fields=` is one of the load-bearing cross-verb contracts the
+  `mcp-tools.md` quick-reference lists, so this is a conformance gap rather
+  than a missing feature. Two things to check when fixing: whether the
+  filter is applied only on the `path`/list branches and skipped on the
+  `id` branch, and whether `etag` survives the narrowing (the contract says
+  the etag is computed on the unfiltered body so a narrowed call can still
+  304).
+
+  Cheap to hit repeatedly: the natural use is a confirm-after-write read,
+  which is exactly when the invariant bodies are least wanted.
+  **Layman:** Asking the spec reader for just a few summary fields still sends back the whole spec, which wastes a lot of the assistant's reading budget.
+  Kind: fix.
+  Source: in-session-2026-07-28 (hit while sweeping the doc-lint specs).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
