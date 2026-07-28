@@ -9244,7 +9244,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-27 (grounding pass for ANTS-3662 `spec_lint`)..
 
-- 📋 [ANTS-3666] **Measure this corpus's real duplication before speccing `doc_dedup`'s thresholds.**
+- ✅ [ANTS-3666] **Measure this corpus's real duplication before speccing `doc_dedup`'s thresholds.**
   ANTS-3660 is BLOCKED on this. Its § 1.1 calibration table drove every
   tuning decision in the spec, and cold-eyes loop 2 re-derived the same two
   pairs from the same text and got wildly different numbers: the
@@ -9254,6 +9254,24 @@ fixes don't address. Roadmapped here as their own design tasks.
   pinned the normalisation: loop 2 showed that stripping punctuation
   alone moves one pair 0.038 → 0.222, a 6x swing, and ANTS-3660 § 2.1
   never says whether punctuation is stripped.
+  Resolved (2026-07-28): measured `docs/` (275 files, 105k lines) across 3
+  segmentation rules x shingle 2/3/4 x punctuation kept/stripped, 18
+  combinations in 19.6 s. The dispute was segmentation, not arithmetic: the
+  verb-contract pair scores 0.024 under this spec's original paragraph rule
+  (marker line dropped) and 0.545 under a list-aware rule — loop 1's 0.53 and
+  loop 2's 0.038 were each right about a different rule. Rule A is a defect,
+  not a knob. Both pairs were also attributed to the wrong documents: the real
+  ones are ANTS-3662:262<->ANTS-3663:383 and ANTS-3659:366<->ANTS-3664:202;
+  loop 2's 0.652 is unreproducible under any of the 18 combinations.
+  Punctuation moves scores 35-50% and is now pinned (stripped). Generated
+  artifacts (AUTOMATED_AUDIT_REPORT_*, superpowers/) supply ~half of all exact
+  duplicates from 79 passages and are now excluded. The 0.40-0.75 band was
+  sampled and is real duplication, so 0.40 stands; the volume problem is a
+  reporting shape, and clusters (276 pairs -> 129) is the fix. ANTS-3660 §1.1
+  is now this run's output; §2.1/§2.4/§2.5 + INV-9 updated; hold lifted.
+  Honest caveat recorded in §2.3: the original "order tens, not hundreds"
+  acceptance criterion cannot hold at any threshold that also catches the
+  named pairs, and the criterion — not the defaults — was what was wrong.
 
   Loop 2 also found the likely cause of the low figure — the spec's
   paragraph rule drops a bullet's marker line but keeps its indented
@@ -9423,6 +9441,61 @@ fixes don't address. Roadmapped here as their own design tasks.
   checks it explicitly scopes out.
   **Layman:** Some of the review pre-checks are still typed out by hand each time, and I got two of them wrong today. Those are the ones worth turning into a script.
   Kind: investigate.
+  Source: user-request-2026-07-28.
+
+- 📋 [ANTS-3672] **`spec_query` truncates a wrapped `**Status:**` line mid-sentence.**
+  `SpecParse::parseSpecBody`'s `statusRe` / `kindRe` are anchored
+  `^\*\*Status:\*\*\s*(.+?)\s*$` with `MultilineOption`, so they capture
+  the first physical line and drop every continuation.
+
+  Verified live: `spec_query ANTS-3663` returns
+  `"status": "spec draft, cold-eyes loop 3 folded, then split (2026-07-28) — the"`
+  — truncated mid-sentence at "the". The remainder ("fix half moved to
+  ANTS-3669; that seam has not been through the gate.") is lost.
+
+  This is a corpus-wide pattern, not one spec's quirk: a
+  `^\*\*Status:\*\*.*` sweep over `docs/specs/` shows wrapped status
+  lines in ANTS-3448, ANTS-1293, ANTS-1901, ANTS-3572, ANTS-3660 and
+  others. Specs are hard-wrapped at ~80 columns like all prose here, so
+  any status longer than ~70 chars wraps by convention.
+
+  Fix the parser, not the 30 documents: join continuation lines until the
+  next `**Field:**` marker or a blank line. Same treatment for `Kind:` —
+  `ANTS-3663` currently reports `kind: "enhancement."` correctly only
+  because it happens to be short.
+
+  Not a regression from ANTS-3665 — that item touched the invariant
+  branch only; this has been live since the parser was written.
+  **Layman:** The spec-reading tool cuts a document's status note off at the first line, so a status written across two lines comes back ending mid-word.
+  Kind: fix.
+  Source: in-session-2026-07-28 (found verifying ANTS-3665 against the live corpus).
+
+- 📋 [ANTS-3673] **Write a full user manual for Ants Terminal.**
+  A complete end-user manual. Today the user-facing documentation is
+  `README.md` plus scattered feature notes; there is no single document
+  someone can read to learn the terminal.
+
+  Scope to settle when this is specced, not now: whether it ships as one
+  long document, a `docs/manual/` tree, or in-app help; and whether it
+  covers the Lua plugin surface (`PLUGINS.md` already exists) or stops at
+  the GUI.
+
+  Coverage the manual needs at minimum: install and first run; tabs,
+  splits and sessions; scrollback and search; themes and appearance
+  (including opacity); keyboard shortcuts; the Settings dialog; session
+  persistence; image paste; the Claude Code integration and what the MCP
+  surface gives a CC session; plugins; troubleshooting.
+
+  Written per the project's own standard — plain, non-technical language on
+  the FIRST pass, not a developer-voice draft cleaned up later
+  (`docs/standards/documentation.md`; global CLAUDE.md §0). Screenshots
+  where a sentence would be longer than a picture.
+
+  Needs its own spec via `/write-spec` before drafting: a manual is a
+  multi-file design with a structure worth reviewing before the prose is
+  written, and rewriting a finished manual's structure is expensive.
+  **Layman:** A proper handbook for people using Ants Terminal — what everything does and how to use it, written in plain language rather than developer shorthand.
+  Kind: doc.
   Source: user-request-2026-07-28.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
