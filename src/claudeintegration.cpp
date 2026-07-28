@@ -3970,7 +3970,18 @@ void ClaudeIntegration::onMcpConnection() {
                     "missing file / absent-or-ambiguous old / >4 MiB file / "
                     "failed commit is a per-edit skip. Returns applied[] (one "
                     "per file) + skipped[] (one per edit) + counts. "
-                    "caller_cwd required.");
+                    "caller_cwd required. "
+                    "BATCH SIZE (ANTS-3712): the 4 MiB above is a cap on the "
+                    "FILE being edited, NOT on this call's arguments — the "
+                    "request itself is far smaller-bounded by the client's "
+                    "tool-call transport. A batch whose combined old+new runs "
+                    "to several KB can fail BEFORE this server sees it, as a "
+                    "client-side `could not be parsed as JSON` whose hints "
+                    "blame escaping; the byte count it echoes is the real "
+                    "clue. If you hit that, split edits[] into smaller calls "
+                    "rather than auditing your escaping — identical content "
+                    "applies cleanly in halves. dry_run cannot diagnose it "
+                    "(the call never arrives).");
                 aeTool["selection_hint"] = QStringLiteral(
                     "Use for a multi-site sweep (same change across N files) "
                     "to collapse N native Edit calls into one atomic batch.");

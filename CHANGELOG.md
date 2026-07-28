@@ -93,6 +93,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **`apply_edits` documents the per-call batch ceiling separately from the 4 MiB file cap** (ANTS-3712)
+  A several-KB batch can fail in the client's transport before the server
+  sees it, with an error blaming escaping; the 4 MiB figure applies to the
+  file being edited, not the request. The description now says to split the
+  batch rather than audit quoting.
+
 - **`roadmap_log` reports `bytes_written` as the byte delta on every op, plus `file_bytes`** (ANTS-3702)
   Whole-file-rewrite ops reported the size of the file, so six short notes
   came back as a 459 KB write. The full size is still available.
@@ -151,6 +157,12 @@ for security-relevant changes.
   `quick:true` ran an identical full walk and pre-pass. `--quick` is caller-side (the grep pre-pass is the audit; only the subagent phase is skipped), so the field promised a fast path that did not exist. Callers passing it now get a schema refusal rather than a silent no-op.
 
 ### Fixed
+
+- **A roadmap bullet quoting `Lanes:` in its prose no longer acquires a bogus lane** (ANTS-3722)
+  Writing about the trailer keys made the reader treat them as that item's
+  real fields — so the docs describing the roadmap format were the bullets
+  most likely to be mis-parsed. Inline `Kind: x. Lanes: y.` trailers still
+  parse as before.
 
 - **Feedback-file standard covers a project whose directory begins with a dot** (ANTS-3714)
   The derived filename would start with a dot and never match the glob the

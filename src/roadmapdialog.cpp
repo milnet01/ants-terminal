@@ -993,8 +993,16 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     // case-insensitivity would match a lowercase "lanes:" occurring mid-prose
     // (e.g. "split the review lanes: audit, tests.") and mis-extract it as
     // metadata. Canonical `Lanes:` is the only form the writer emits.
+    // ANTS-3722 — but NOT when the label is inside backticks. Un-anchoring is
+    // still right (ANTS-2058's inline trailer is real), so the guard is the
+    // narrowest thing that separates the two: a bullet that QUOTES the trailer
+    // keys is talking ABOUT them, never declaring them. Reading ANTS-3696's own
+    // body back returned lanes:["`/`Source:` trailer below the"], captured out
+    // of the sentence "the `Layman:`/`Kind:`/`Lanes:`/`Source:` trailer" — and
+    // the corpus most likely to write that sentence is the one documenting the
+    // roadmap format, i.e. exactly the bullets a lane filter should trust.
     static const QRegularExpression rxLanes(
-        QStringLiteral("Lanes:\\s*(.+?)\\s*[\\.\\n]"),
+        QStringLiteral("(?<!`)Lanes:\\s*(.+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
     // ANTS-1154-INV-4: optional Layman: line — case-insensitive label,
     // takes the rest of the line up to a period or newline.

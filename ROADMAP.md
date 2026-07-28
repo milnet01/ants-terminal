@@ -21226,7 +21226,7 @@ requesting no action and are closed in place rather than filed.
   Kind: enhancement.
   Source: finbreak-feedback-2026-07-28.
 
-- 📋 [ANTS-3712] **A too-large `apply_edits` payload fails as unparseable JSON, and the hint list sends you hunting for escaping bugs.**
+- ✅ [ANTS-3712] **A too-large `apply_edits` payload fails as unparseable JSON, and the hint list sends you hunting for escaping bugs.**
   One `apply_edits` call with 2 edits whose combined `old`+`new` was ~5.2 KB failed
   with `InputValidationError: … could not be parsed as JSON`, echoing `You sent
   (first 200 of 5196 bytes)` and the standard hints: "unescaped backslashes…,
@@ -21235,6 +21235,7 @@ requesting no action and are closed in place rather than filed.
   with identical escaping. The real cause was payload size, which is the THIRD hint
   and the only one the caller cannot inspect. The contributor spent a round-trip
   re-auditing their own escaping before splitting on a hunch.
+  Resolved 2026-07-28 for the half that is ours, and only that half. The `InputValidationError: could not be parsed as JSON` with the escaping hints is emitted by Claude Code's tool-call transport BEFORE the request reaches this server, so the proposed cheapest fix (reword the hint, lead with "truncated") is in the harness, not this repo — and neither is raising the ceiling. What was ours is the misdirection the finding correctly identifies as the cause of the wasted round-trip: the schema's `4 MiB` reads as a limit on the CALL when it is a cap on the FILE being edited, which is what made payload size the last thing suspected. The apply_edits description now states that distinction, says a several-KB batch can fail before the server sees it, and says to split edits[] rather than audit escaping. The maintainer-side note about large roadmap_log op:append bodies arriving as {} is the same transport ceiling, so this is a known cross-verb limit rather than an apply_edits defect.
 
   The echoed byte count is the one piece of evidence pointing at the truth, but it
   reads as informational rather than causal. `dry_run:true` does not help — the call
@@ -21557,13 +21558,14 @@ requesting no action and are closed in place rather than filed.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-28 (ANTS-3692 amendment)..
 
-- 📋 [ANTS-3722] **`roadmap_query` reads a `Lanes:`/`Kind:`/`Source:` trailer key out of mid-body prose.**
+- ✅ [ANTS-3722] **`roadmap_query` reads a `Lanes:`/`Kind:`/`Source:` trailer key out of mid-body prose.**
   Reading ANTS-3696 back with `include_body:true` returned
   `lanes: ["`/`Source:` trailer below the"]`. That bullet has no Lanes line.
   The string comes from a sentence in its body that QUOTES the trailer keys:
   "paragraphs 2..N and the `Layman:`/`Kind:`/`Lanes:`/`Source:` trailer below
   the". The parser matched `Lanes:` mid-line and took the rest of the line as
   the value.
+  Resolved 2026-07-28: a backtick lookbehind on rxLanes, not a re-anchor. Un-anchoring `Lanes:` was ANTS-2058's deliberate call — bullets legitimately write `Kind: x. Lanes: y. Source: z.` inline on one line — so anchoring would have fixed this and silently reverted that. The backtick is the narrowest thing separating the two: a bullet that QUOTES a trailer key is talking about it, never declaring it. INV-12 asserts both halves; the inline-trailer half stayed green through the red-check, which is what proves the fix did not re-anchor.
 
   So any bullet whose prose mentions a trailer key acquires a bogus field, and
   the corpus most likely to do that is the one documenting the roadmap format

@@ -200,6 +200,32 @@ static int runMain() {
         fail("INV-10",
                     "roadmap_query does not emit headline_full (ANTS-2075)");
 
+    // INV-12 (ANTS-3722) — a bullet that QUOTES a trailer key in its prose
+    // must not acquire that key as a field. Un-anchored `Lanes:` matching is
+    // deliberate (ANTS-2058: bullets write `Kind: x. Lanes: y. Source: z.`
+    // inline), so the guard is backticks, not an anchor.
+    {
+        const QString doc = QStringLiteral(
+            "## Work\n\n"
+            "- \U0001F4CB [ANTS-0001] **Quoting the trailer keys.**\n"
+            "  The note landed above the `Layman:`/`Kind:`/`Lanes:`/`Source:` "
+            "trailer.\n"
+            "  Kind: fix.\n\n"
+            "- \U0001F4CB [ANTS-0002] **Real inline trailer.**\n"
+            "  Body. Kind: fix. Lanes: AuditDialog, MainWindow. Source: x.\n\n");
+        const auto bs = RoadmapDialog::parseBullets(doc);
+        if (bs.size() != 2)
+            fail("INV-12", "fixture did not parse as two bullets");
+        else {
+            if (!bs[0].lanes.isEmpty())
+                fail("INV-12",
+                     "a backticked `Lanes:` in prose must not become a lane");
+            if (bs[1].lanes.size() != 2)
+                fail("INV-12",
+                     "ANTS-2058's inline `Lanes:` trailer must still parse");
+        }
+    }
+
     // INV-11 (ANTS-3698) — `filter` is honoured as an alias for `status`.
     // The envelope has always echoed the applied lifecycle as `filter`, so
     // that is the name a caller writing the next call from a response sends;
@@ -215,7 +241,7 @@ static int runMain() {
         fail("INV-11",
              "roadmap_query schema does not declare the `filter` alias");
 
-    std::puts("OK remote_control_roadmap_query: 11/11 invariants");
+    std::puts("OK remote_control_roadmap_query: 12/12 invariants");
     return 0;
 }
 
