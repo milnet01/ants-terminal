@@ -139,13 +139,15 @@ export.
 # plugin init. Locally the tests pass because a real session is present, which is
 # exactly why this only shows up in a chroot build.
 export QT_QPA_PLATFORM=offscreen
-# Scoped to the project's own correctness gate. `perf` is benchmarks — a shared
-# OBS worker under arbitrary load measures nothing meaningful and can fail on
-# contention alone — and `e2e` is opt-in even locally (CMakeLists.txt gives it
-# its own label precisely so the default presets skip it). CLAUDE.md's `default`
-# preset excludes perf for the same reason; a package build should run the gate
-# the project actually gates on, not a superset it never runs itself.
-%ctest -LE '(perf|e2e)'
+# The whole suite, perf and e2e lanes included. Two things had to be checked
+# before trusting that: the perf benchmarks carry an OPTIONAL MB/s regression
+# floor that is off by default (0.0 — bench_vt_throughput.cpp:166), so a loaded
+# build worker cannot fail them on contention; and the e2e lane already passed
+# here, since CMakeLists.txt gives it its own offscreen wiring. An earlier
+# attempt to narrow this to -LE '(perf|e2e)' does NOT work regardless: %ctest is
+# declared %ctest(:-:) and getopt-parses leading dashes, so rpm rejects it with
+# "Unknown option L in ctest(:-:)" before ctest ever runs.
+%ctest
 
 %files
 %license LICENSE
