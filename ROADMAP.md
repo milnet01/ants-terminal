@@ -201,7 +201,7 @@ SSH key registered there.
 6. **One-click-install URL:** OBS auto-generates
    `software.opensuse.org/package/ants-terminal` pages for discovery.
 
-- 🚧 [ANTS-3726] **Ants Terminal published on OBS as its own sub-project, recipe committed to the repo.**
+- ✅ [ANTS-3726] **Ants Terminal published on OBS as its own sub-project, recipe committed to the repo.**
   home:milnet:ants-terminal created as a SUB-PROJECT (matching
   home:milnet:finbreak) rather than a package inside home:milnet, so its
   distro list is independent of OneUp's and finbreak's. Recipe committed at
@@ -229,6 +229,24 @@ SSH key registered there.
   Kind: package.
   Lanes: packaging.
   Source: user-request-2026-07-29.
+  Resolved (2026-07-29): openSUSE_Tumbleweed x86_64 SUCCEEDED. Published at
+  https://download.opensuse.org/repositories/home:/milnet:/ants-terminal/openSUSE_Tumbleweed/
+  (repodata HTTP 200); ants-terminal-0.7.101-8.1.x86_64.rpm, 3.9 MB download /
+  13.6 MB installed. Contents verified against the install list: binary, six
+  icon sizes, desktop file, metainfo, man page, licence, docs, all three shell
+  completions, and the OSC 133 shell-integration hooks that were previously
+  installed-but-unpackaged.
+
+  Six pre-existing spec defects had to be fixed to get there, each of which
+  would have hit any packager — this spec had never been built in a clean
+  chroot: missing cmake(Qt6Test) (REQUIRED at CMakeLists.txt:86, configure
+  died); missing cmake(GTest) (silent FetchContent download, impossible with no
+  network — and on openSUSE cmake(GTest) comes from gmock, not gtest); no
+  QT_QPA_PLATFORM=offscreen in %check; missing git-core (13 tests shell out to
+  real git); shell-integration files installed but absent from %files; and
+  fish/hicolor directories unowned by any package. The last was independently
+  confirmed by OneUp's spec, which fixes it the same way (BuildRequires +
+  Requires on hicolor-icon-theme).
 
 - 📋 [ANTS-3727] **Make the RPM spec portable so OBS can build for distros other than openSUSE.**
   Two BuildRequires in packaging/opensuse/ants-terminal.spec are
@@ -292,6 +310,35 @@ SSH key registered there.
   Kind: package.
   Lanes: packaging, release.
   Source: user-request-2026-07-29 (OBS webhook enabled).
+
+- 📋 [ANTS-3729] **Clear the two rpmlint findings the first green OBS build left behind.**
+  The build succeeds, so neither is fatal; both are worth clearing before any
+  submission to a devel project, where rpmlint is enforced harder.
+
+  1. `W: unstripped-binary-or-object /usr/bin/ants-terminal`. OBS builds this
+     package with `--undefine _enable_debug_packages`, so nothing splits the
+     debug symbols out and they ride along inside the main RPM. Installed size
+     is 13.6 MB against a 3.9 MB download, most of it symbols the user has no
+     use for. Fix: let OBS build the -debuginfo/-debugsource subpackages
+     (project config `Debuginfo: on`, or stop undefining the macro), which both
+     shrinks the shipped RPM and makes crash reports from users actually
+     resolvable.
+
+  2. `E: branding-requires-unversioned hicolor-icon-theme`. rpmlint wants a
+     versioned dependency on packages it classifies as branding/theme. Needs a
+     look at what openSUSE's own Qt applications do before changing anything —
+     the Requires is correct and necessary (it owns the icon directories, per
+     ANTS-3726), so this is about the form of the dependency, not whether to
+     have it. Verify against a shipped Factory package rather than guessing.
+
+  Already fixed in passing: four `W: macro-in-comment` warnings for %%check /
+  %%post / %%postun, which rpmlint flags as the exact class that broke the build
+  on 2026-07-29 (an unescaped macro in a comment expanded into the %%check
+  scriptlet and reached bash as a syntax error).
+  **Layman:** The package builds and installs correctly, but it ships debug symbols it does not need and trips one packaging-style check.
+  Kind: package.
+  Lanes: packaging.
+  Source: in-session-2026-07-29 (rpmlint.log, first successful build).
 
 ### P4 — Fedora COPR
 

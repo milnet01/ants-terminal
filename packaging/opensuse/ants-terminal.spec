@@ -79,7 +79,7 @@ BuildRequires:  pkgconfig(lua5.4)
 # default — the package itself is ~25 KiB, runtime dep is the matching
 # layer-shell-qt6 library which KDE Plasma already pulls in.
 BuildRequires:  cmake(LayerShellQt) >= 6.0
-# Packaging artefact validators (H2/H3/H4): invoked nowhere in %check but
+# Packaging artefact validators (H2/H3/H4): invoked nowhere in %%check but
 # good hygiene to pull them in so `cmake --install` staging under `osc build`
 # surfaces any schema drift against the current appstream / desktop-file
 # validators shipped by Tumbleweed.
@@ -115,7 +115,7 @@ export.
 
 %build
 # -DANTS_TESTS=ON is the CMake default; kept explicit so distro rebuilds
-# never silently lose the ctest invocation in %check.
+# never silently lose the ctest invocation in %%check.
 %cmake \
   -DCMAKE_BUILD_TYPE=Release \
   -DANTS_TESTS=ON
@@ -125,7 +125,7 @@ export.
 %cmake_install
 
 # Desktop DB + icon cache refresh. openSUSE's packaging guide recommends
-# these %post/%postun scriptlets for any package that ships a .desktop
+# these %%post/%%postun scriptlets for any package that ships a .desktop
 # entry or hicolor icons — without them, minimal Tumbleweed images won't
 # see the launcher until the next session restart.
 %post

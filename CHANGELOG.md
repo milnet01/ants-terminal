@@ -12,6 +12,22 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Install Ants Terminal on openSUSE with zypper (ANTS-3726)**
+  Ants Terminal is now built and hosted on openSUSE's own build servers, so
+  on Tumbleweed you can add one repository and install it like any other
+  program — and get updates automatically instead of downloading a file each
+  time:
+
+  sudo zypper ar https://download.opensuse.org/repositories/home:/milnet:/ants-terminal/openSUSE_Tumbleweed/ ants-terminal
+  sudo zypper in ants-terminal
+
+  Getting there turned up six problems in the packaging recipe that had gone
+  unnoticed because nobody had ever built it on a clean machine — including
+  one that would have left out the shell-integration scripts entirely. All
+  six are fixed.
+
 ## [0.7.102] — unreleased (Patron RC preview)
 ### Added
 
