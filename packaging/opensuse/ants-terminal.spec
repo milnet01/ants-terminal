@@ -172,6 +172,15 @@ export QT_QPA_PLATFORM=offscreen
 %{_datadir}/bash-completion/completions/%{name}
 %{_datadir}/zsh/site-functions/_%{name}
 %{_datadir}/fish/vendor_completions.d/%{name}.fish
+# OSC 133 shell-integration hooks (CMakeLists.txt:777). Sourced by the user from
+# ~/.bashrc / ~/.zshrc, so they must ship — rpm refuses to leave them unpackaged
+# and the build fails with "Installed (but unpackaged) file(s) found".
+#
+# To re-check this list after changing any install() rule, without waiting on a
+# build: DESTDIR=/tmp/d cmake --install build && find /tmp/d -type f -o -type l
+# — every entry must be matched by a line in this section.
+%dir %{_datadir}/%{name}
+%{_datadir}/%{name}/shell-integration
 
 %changelog
 # openSUSE convention keeps the changelog in a separate .changes file
