@@ -1,3 +1,25 @@
+ants-terminal (0.7.102-1) unstable; urgency=medium
+
+  * Five documentation-analysis MCP verbs — doc_dedup, spec_lint,
+    doc_symbols, doc_integrity and doc_citations — plus a
+    contract_doc_drift audit lane that catches drift between specs and
+    code, and audit_dismiss for clearing findings from a session.
+    (ANTS-3660, 3661, 3662, 3601, 3636, 1713)
+  * MCP editing and search — apply_edits can edit by guarded line range,
+    audit_run reports why a file failed to parse, workspace_search gained
+    exclude_glob, and review lanes are derived from the file tree when a
+    project has no module map. (ANTS-3711, 3706, 3704, 3705, 3709)
+  * A broad sweep of audit and documentation accuracy — cheaper invariant
+    checks with smaller replies, better spec, roadmap and changelog
+    parsing, and stronger citation tracking. (ANTS-3699, 3633, 3634,
+    3635, 3638, 3639, 3640, 3654, 3655)
+  * Spec invariant reporting, SARIF truncation, test-suite stability and
+    cross-session feedback fixes, plus path-escape validation hardening
+    for the audit compile database. (ANTS-3724, 3723, 3629, 3658, 3616,
+    3624, 3627)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 29 Jul 2026 00:00:00 +0200
+
 ants-terminal (0.7.101-1) unstable; urgency=medium
 
   * MCP tokens-saved tracking on the status bar — live session savings

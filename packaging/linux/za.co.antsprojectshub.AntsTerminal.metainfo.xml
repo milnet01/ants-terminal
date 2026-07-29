@@ -103,6 +103,17 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.102" date="2026-07-29">
+      <description>
+        <p>Five new documentation-analysis tools for the built-in Claude Code integration, a broad sweep of audit and documentation accuracy, and path-escape hardening.</p>
+        <ul>
+          <li><em>Added:</em> Documentation-analysis MCP verbs — <code>doc_dedup</code>, <code>spec_lint</code>, <code>doc_symbols</code>, <code>doc_integrity</code> and <code>doc_citations</code> — plus a <code>contract_doc_drift</code> audit lane that catches drift between specs and code, and <code>audit_dismiss</code> for clearing findings from a session. (ANTS-3660, 3661, 3662, 3601, 3636, 1713)</li>
+          <li><em>Added:</em> MCP editing and search — <code>apply_edits</code> can edit by guarded line range, <code>audit_run</code> reports why a file failed to parse, <code>workspace_search</code> gained <code>exclude_glob</code>, and review lanes are derived from the file tree when a project has no module map. (ANTS-3711, 3706, 3704, 3705, 3709)</li>
+          <li><em>Changed:</em> A broad sweep of audit and documentation accuracy — cheaper invariant checks with smaller replies, better spec, roadmap and changelog parsing, and stronger citation tracking. (ANTS-3699, 3633, 3634, 3635, 3638, 3639, 3640, 3654, 3655)</li>
+          <li><em>Fixed:</em> Spec invariant reporting, SARIF truncation, test-suite stability and cross-session feedback, plus path-escape validation hardening for the audit compile database. (ANTS-3724, 3723, 3629, 3658, 3616, 3624, 3627)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.101" date="2026-07-29">
       <description>
         <p>MCP tokens-saved tracking on the status bar, smarter build-error diagnostics, and a large internal sweep of Claude Code integration reliability and query performance.</p>
