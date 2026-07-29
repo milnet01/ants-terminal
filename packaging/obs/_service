@@ -1,0 +1,42 @@
+<services>
+  <!-- Source delivery for the OBS package (home:milnet:ants-terminal).
+
+       obs_scm runs SERVER-SIDE (no mode attribute): the OBS servers have
+       network, so they clone the pinned tag themselves and store a source
+       archive (.obscpio + .obsinfo). tar / recompress / set_version then run at
+       BUILD TIME inside the VM, off that archive.
+
+       Why buildtime and not mode="manual": `tar` does not exist as a
+       server-side service — a plain server-side run fails with
+       "400 remote error: /usr/lib/obs/service//tar.service No such file or
+       directory". mode="manual" (what finbreak uses) is the other way to avoid
+       that, but it requires a local `osc service manualrun` and committing a
+       ~7.5 MB tarball on every release. mode="buildtime" needs neither: no
+       large upload, and "Trigger Services" in the web UI is enough.
+
+       set_version is load-bearing, not cosmetic. ants-terminal.spec's Version:
+       field tracks CMakeLists.txt, which under the RC cadence always names the
+       NEXT (unreleased) version — so at any moment between /bump and the next
+       promote, the spec names a tag that does not exist yet and Source0 would
+       404. set_version overwrites it from the tag below, so the spec is never
+       hand-pinned and cannot drift.
+
+       To release a new version: bump <revision> to the new tag, commit, and run
+       packaging/obs/obs-submit.sh (or click Trigger Services). -->
+  <service name="obs_scm">
+    <param name="scm">git</param>
+    <param name="url">https://github.com/milnet01/ants-terminal.git</param>
+    <param name="revision">v0.7.101</param>
+    <param name="match-tag">v*</param>
+    <param name="versionformat">@PARENT_TAG@</param>
+    <param name="versionrewrite-pattern">v(.*)</param>
+    <param name="versionrewrite-replacement">\1</param>
+    <param name="filename">ants-terminal</param>
+  </service>
+  <service name="tar" mode="buildtime"/>
+  <service name="recompress" mode="buildtime">
+    <param name="file">ants-terminal-*.tar</param>
+    <param name="compression">gz</param>
+  </service>
+  <service name="set_version" mode="buildtime"/>
+</services>

@@ -143,3 +143,6 @@ packaging/flatpak/flathub-submission/
 # (ROADMAP.md + CHANGELOG.md + docs/roadmap/*.md) by RoadmapFoldIn::corpusHighWater,
 # so it never needs to be committed and can no longer drift out of a commit.
 .roadmap-counter
+
+# OBS package working copy (osc checkout; packaging/obs/obs-submit.sh)
+build-obs/
