@@ -263,6 +263,36 @@ SSH key registered there.
   Lanes: packaging.
   Source: in-session-2026-07-29 (OBS bring-up).
 
+- ✅ [ANTS-3728] **promote pins the OBS recipe to the tag it publishes, so a tag push cannot rebuild the previous release.**
+  The GitHub webhook + OBS workflow token are live (token 11768), and
+  .obs/workflows.yml now fires trigger_services on tag_push.
+
+  The hazard that made this worth wiring rather than pasting: trigger_services
+  re-runs the recipe OBS ALREADY HOLDS — it does not read the repo — so a tag
+  push whose _service still names the previous tag rebuilds the previous
+  release. It succeeds, publishes, and is wrong, with nothing in the log to
+  say so. OneUp's packaging README flags the same trap.
+
+  cut-rc.sh promote now rewrites packaging/obs/_service's <revision> to the
+  published tag via pin_obs_service_revision(), in the same commit that
+  date-stamps the CHANGELOG / metainfo / debian carriers, so the recipe in git
+  can never disagree with the tag it shipped alongside. Absent file is a no-op
+  so older checkouts and fixtures still promote.
+
+  Red-checked using the suite's own CUTRC override: the new assertion FAILS
+  against the pre-fix script and passes against the fixed one.
+
+  Residual, documented in .obs/workflows.yml: the bumped recipe still has to
+  REACH OBS via packaging/obs/obs-submit.sh, whose commit already triggers a
+  rebuild — so the workflow is a belt-and-braces re-trigger, not the mechanism.
+  Genuinely hands-off would be OBS's scmsync/SCM-bridge model, which needs the
+  package files at a repo root or dedicated branch; ours are under packaging/,
+  so that is a restructure and a separate decision.
+  **Layman:** The automatic rebuild could have quietly published the previous version instead of the new one; now the two cannot disagree.
+  Kind: package.
+  Lanes: packaging, release.
+  Source: user-request-2026-07-29 (OBS webhook enabled).
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ (spec is Fedora-compatible — uses `%cmake`

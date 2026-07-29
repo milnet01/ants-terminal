@@ -35,7 +35,11 @@ trap 'rm -rf "$TMPROOT"' EXIT
 
 seed_repo() {                       # $1 = repo dir
     local d=$1
-    rm -rf "$d"; mkdir -p "$d/packaging/linux" "$d/packaging/debian" "$d/.bin"
+    rm -rf "$d"; mkdir -p "$d/packaging/linux" "$d/packaging/debian" "$d/packaging/obs" "$d/.bin"
+    # ANTS-3728 — the OBS recipe pins a tag; promote must bump it in lockstep.
+    # Seeded one release BEHIND so a promote that fails to touch it is visible.
+    printf '<services>\n  <service name="obs_scm">\n    <param name="revision">v0.7.97</param>\n  </service>\n</services>\n' \
+        > "$d/packaging/obs/_service"
     git init -q -b main "$d"
     git -C "$d" config user.email t@example.com
     git -C "$d" config user.name  tester
@@ -145,6 +149,10 @@ if [ "$RC" -eq 0 ]; then
     RFCDAY=$(date -R -d "$TODAY" | sed 's/[+-][0-9]*$//')
     awk '/^ants-terminal \(0.7.98-/{f=1} f&&/^ -- /{print;exit}' "$D/packaging/debian/changelog" \
         | grep -q "$RFCDAY" && ok "INV-3 debian trailer stamped" || bad "INV-3 debian"
+    # ANTS-3728 — a stale pin makes OBS rebuild the PREVIOUS release on a tag
+    # push, which goes green and is wrong; assert promote moved it off v0.7.97.
+    grep -q '<param name="revision">v0.7.98</param>' "$D/packaging/obs/_service" \
+        && ok "INV-3 obs _service pinned to the published tag" || bad "INV-3 obs _service pin"
 else bad "INV-3/6 promote (rc=$RC): $OUT"; fi
 
 # ── INV-8 — RC age: 14 days promotes, ≥15 refuses ───────────────────────────

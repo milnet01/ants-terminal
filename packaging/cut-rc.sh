@@ -183,6 +183,7 @@ release_notes() {
 CHANGELOG_FILE="CHANGELOG.md"
 METAINFO_FILE="packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml"
 DEBIAN_CHANGELOG_FILE="packaging/debian/changelog"
+OBS_SERVICE_FILE="packaging/obs/_service"
 
 # True (exit 0) if the "## [Unreleased]" section has ≥1 real entry — a
 # changelog bullet (^\s*[-*]) or a "### Category" header. The italic
@@ -535,6 +536,32 @@ cmd_respin() {
     echo "cut-rc: respin complete; temp branch pruned."
 }
 
+# ANTS-3728 — keep packaging/obs/_service's pinned <revision> in lockstep with
+# the tag being published.
+#
+# OBS's trigger_services re-runs the recipe OBS ALREADY HAS. So when a tag push
+# fires the webhook and _service still names the previous tag, OBS happily
+# rebuilds the PREVIOUS release: green, published, and the wrong version. That
+# failure is near-invisible because nothing errors. Bumping the pin here, in the
+# same commit that stamps the other release carriers, means the recipe cannot
+# disagree with the tag it shipped alongside.
+#
+# Absent file is not an error: older checkouts and the test fixtures predate
+# packaging/obs/, and promote must stay usable there.
+pin_obs_service_revision() {
+    local tag=$1
+    [ -f "$OBS_SERVICE_FILE" ] || return 0
+    apply_rewrite "$OBS_SERVICE_FILE" -v tag="$tag" '
+        !done && /<param name="revision">/ {
+            sub(/<param name="revision">[^<]*<\/param>/,
+                "<param name=\"revision\">" tag "</param>")
+            done = 1
+        }
+        { print }
+        END { if (!done) exit 3 }
+    '
+}
+
 cmd_promote() {
     require_clean_main
     wednesday_guard
@@ -584,8 +611,10 @@ cmd_promote() {
     # (stamp self-gates write-vs-rehearsal; the commit+push are --push-gated).
     today=$(date +%F)
     stamp_release_date "$inflight" "$today"
+    pin_obs_service_revision "$pub"
     if [ "$DO_PUSH" = 1 ]; then
         git add "$CHANGELOG_FILE" "$METAINFO_FILE" "$DEBIAN_CHANGELOG_FILE"
+        [ -f "$OBS_SERVICE_FILE" ] && git add "$OBS_SERVICE_FILE"
         git diff --cached --quiet || git commit -q -m "chore: stamp ${inflight} release date ${today}"
         confirm_or_print git push origin main
     fi
