@@ -35,12 +35,29 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # (ANTS-3727) that make Fedora/Mageia unresolvable until they are conditional.
 # Debian/Ubuntu need debian.control + debian.rules as well as the spec; OBS
 # cannot build a .deb from a .spec alone.
+#
+# The <debuginfo> flag below is load-bearing (ANTS-3729). Left off, OBS invokes
+# rpmbuild with `_enable_debug_packages` undefined, so nothing extracts the
+# symbols and nothing strips the binary: the shipped /usr/bin/ants-terminal went
+# out carrying its whole symbol table (13.6 MB installed) and rpmlint reported
+# unstripped-binary-or-object. It is a project-meta flag — not a prjconf line,
+# not a spec change — and openSUSE:Factory sets the same one. The resulting
+# -debuginfo / -debugsource packages have real content rather than being empty,
+# because %optflags carries -g and CMakeLists.txt overrides neither
+# CMAKE_CXX_FLAGS nor any strip setting.
+#
+# Keep the XML free of double hyphens. They are illegal inside an XML comment,
+# so quoting an rpmbuild flag there makes OBS reject the whole meta with a
+# "Double hyphen within comment" validation error. Explanations live out here.
 # ---------------------------------------------------------------------------
 cat > "$tmp/prj.xml" <<EOF
 <project name="$PROJ">
   <title>Ants Terminal</title>
   <description>Qt6/C++20 terminal emulator with a VT100/xterm parser (Kitty keyboard and graphics, Sixel, OSC 8 hyperlinks, OSC 133 shell integration), an optional OpenGL glyph-atlas renderer, a Lua 5.4 plugin system with a sandboxed ants.* API, and a built-in Project Audit dialog with SARIF export.</description>
   <person userid="$USER" role="maintainer"/>
+  <debuginfo>
+    <enable/>
+  </debuginfo>
   <repository name="openSUSE_Tumbleweed">
     <path project="openSUSE:Factory" repository="snapshot"/>
     <arch>x86_64</arch>

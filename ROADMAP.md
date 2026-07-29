@@ -311,7 +311,7 @@ SSH key registered there.
   Lanes: packaging, release.
   Source: user-request-2026-07-29 (OBS webhook enabled).
 
-- 📋 [ANTS-3729] **Clear the two rpmlint findings the first green OBS build left behind.**
+- ✅ [ANTS-3729] **Clear the two rpmlint findings the first green OBS build left behind.**
   The build succeeds, so neither is fatal; both are worth clearing before any
   submission to a devel project, where rpmlint is enforced harder.
 
@@ -339,6 +339,68 @@ SSH key registered there.
   Kind: package.
   Lanes: packaging.
   Source: in-session-2026-07-29 (rpmlint.log, first successful build).
+  Resolved (2026-07-29): the OBS build now reports `0 errors, 0 warnings, 8
+  filtered, 0 badness`, against `1 error, 5 warnings, 7 filtered, 1 badness`
+  before. The four macro-in-comment warnings went with the same submit.
+
+  (1) This bullet's guess was wrong: it is not a prjconf line.
+  `home:milnet:ants-terminal` has no prjconf at all, and neither Factory nor
+  either sibling project sets `Debuginfo:` there. What Factory sets is
+  `&lt;debuginfo&gt;&lt;enable/&gt;&lt;/debuginfo&gt;` in the project META. Applied, and written
+  into packaging/obs/obs-setup.sh so re-running it keeps the flag.
+  /usr/bin/ants-terminal now reports `stripped`, with -debuginfo and
+  -debugsource built beside the main package.
+
+  The size claim was wrong too. Installed size went 13.6 MB → 12.7 MB, not
+  "most of it" — openSUSE's brp-strip had already been discarding the DWARF,
+  so what rode along was only the ~1 MB symbol table. The real gain is the
+  other one this bullet named: 99 MB of debuginfo now exists to resolve a
+  user's crash report, where before it was discarded unpackaged.
+
+  (2) Not a packaging defect — a bug in rpmlint's BrandingPolicyCheck. It
+  matches an unversioned Requires against `(\S+)-(branding|theme)` using
+  re.match, which is unanchored at the end and whose `\S+` is greedy, so
+  `hicolor-icon-theme` parses as "hicolor-icon" + "-theme". The form it
+  demands, `Requires: hicolor-icon-theme = &lt;version&gt;`, would be worse than
+  what we ship: pinning an icon theme to an exact version breaks on the
+  theme's next update. Verified against shipped packages as this bullet
+  asked — libgtk-3-0, libgtk-4-1, ModemManager and feh all carry the
+  identical unversioned Requires. The check also defines `re_icon_theme`
+  and never references it; the exemption was written and never wired in.
+  Filtered in packaging/opensuse/ants-terminal-rpmlintrc, which rpmlint
+  auto-loads out of SOURCES (confirmed: the build log now prints
+  `rpmlintrc: /home/abuild/rpmbuild/SOURCES/ants-terminal-rpmlintrc`).
+  obs-build passes no --rpmlintrc flag, so that auto-discovery is the only
+  mechanism. The filter self-expires: if rpmlint fixes the check it stops
+  matching and rpmlint reports `unused-rpmlintrc-filter`.
+
+  Filed while measuring: ANTS-3730 (3.5 MB of ROADMAP/CHANGELOG shipped
+  inside the RPM — now the largest remaining lever on package size).
+
+- 📋 [ANTS-3730] **Stop shipping 3.5 MB of ROADMAP and CHANGELOG inside the RPM.**
+  Measured on ants-terminal-0.7.101-2.1.x86_64.rpm, 12.7 MB installed:
+
+      /usr/bin/ants-terminal                     8.7 MB   (stripped)
+      .../doc/packages/ants-terminal/ROADMAP.md  2.4 MB
+      .../doc/packages/ants-terminal/CHANGELOG.md 1.1 MB
+      /usr/share/metainfo/....metainfo.xml       327 KB
+
+  So 3.5 MB — 28% of the installed package — is project history, and it
+  grows every week. `%doc README.md CHANGELOG.md ROADMAP.md` in the spec is
+  what puts it there. ROADMAP.md especially is a maintainer artefact: a
+  person who installed a terminal emulator has no use for a 2.4 MB list of
+  planned work, and it is on GitHub for anyone who does.
+
+  Worth checking the metainfo too. 327 KB of AppStream XML is large enough
+  to suggest every historical `&lt;release&gt;` block is being carried; most
+  projects keep only recent ones.
+
+  Not urgent — it costs disk, not correctness — but it is the single
+  largest lever left on package size now that the binary is stripped, and
+  bigger than the ~1 MB stripping itself returned.
+  **Layman:** The installed package is nearly a third project-history files that no user of the terminal reads.
+  Kind: package.
+  Source: in-session-2026-07-29 (measured while verifying ANTS-3729).
 
 ### P4 — Fedora COPR
 

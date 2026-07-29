@@ -25,9 +25,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"      # packaging/obs
 ROOT="$(cd "$HERE/../.." && pwd)"          # repo root
 WORKDIR="${OBS_WORKDIR:-$ROOT/build-obs}"  # osc checkout lives here (gitignored)
 SPEC="$ROOT/packaging/opensuse/ants-terminal.spec"
+# rpmlint auto-loads this out of SOURCES in the build VM; it needs no flag, only
+# to be committed next to the spec. Lives beside the spec for the same reason
+# the spec does — one copy, no OBS-local fork.
+LINTRC="$ROOT/packaging/opensuse/ants-terminal-rpmlintrc"
 
 command -v osc >/dev/null 2>&1 || { echo "obs-submit: osc not installed" >&2; exit 1; }
 [ -f "$SPEC" ] || { echo "obs-submit: spec not found: $SPEC" >&2; exit 1; }
+[ -f "$LINTRC" ] || { echo "obs-submit: rpmlintrc not found: $LINTRC" >&2; exit 1; }
 
 # The tag _service pins must exist on GitHub, or obs_scm cannot clone it and the
 # build breaks at source fetch rather than at compile — a confusing failure to
@@ -85,10 +90,11 @@ fi
 echo ">>> copying recipe files"
 cp "$HERE/_service" "$CO/_service"
 cp "$SPEC" "$CO/ants-terminal.spec"
+cp "$LINTRC" "$CO/ants-terminal-rpmlintrc"
 [ -f "$HERE/ants-terminal.changes" ] && cp "$HERE/ants-terminal.changes" "$CO/"
 
 cd "$CO"
-osc -A "$API" add _service ants-terminal.spec ants-terminal.changes 2>/dev/null || true
+osc -A "$API" add _service ants-terminal.spec ants-terminal-rpmlintrc ants-terminal.changes 2>/dev/null || true
 osc -A "$API" addremove 2>/dev/null || true
 osc -A "$API" commit -m "${OBS_MSG:-ants-terminal $REV}"
 

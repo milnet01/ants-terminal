@@ -32,6 +32,10 @@ Summary:        Qt6 terminal emulator with Lua plugins and a project-audit dialo
 License:        MIT
 URL:            https://github.com/milnet01/ants-terminal
 Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
+# Filters one verified rpmlint false positive; see the file for the analysis.
+# Declared here so it travels in the src.rpm — rpmlint itself does not need the
+# declaration, it auto-loads *-rpmlintrc out of SOURCES.
+Source1:        %{name}-rpmlintrc
 
 BuildRequires:  cmake >= 3.20
 BuildRequires:  gcc-c++

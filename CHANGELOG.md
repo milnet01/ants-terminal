@@ -28,6 +28,18 @@ for security-relevant changes.
   one that would have left out the shell-integration scripts entirely. All
   six are fixed.
 
+### Fixed
+
+- **openSUSE package ships a stripped binary, with debug symbols in their own subpackages** (ANTS-3729)
+  The OBS project now enables debuginfo, so `/usr/bin/ants-terminal` is
+  stripped and `ants-terminal-debuginfo` / `ants-terminal-debugsource` are
+  published alongside it — a crash report from a user can now be resolved
+  to source, where previously the symbols were discarded during the build.
+  The rpmlint report for the package is clean (0 errors, 0 warnings); the
+  one remaining error was a false positive in rpmlint's own branding check,
+  which misreads `hicolor-icon-theme` as a themed branding package, and is
+  filtered with the analysis recorded next to the filter.
+
 ## [0.7.102] — unreleased (Patron RC preview)
 ### Added
 

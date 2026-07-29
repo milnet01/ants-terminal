@@ -1,0 +1,31 @@
+# rpmlint filters for ants-terminal (ANTS-3729).
+#
+# No flag wires this up: obs-build invokes plain `rpmlint --info <rpms>`
+# (build-recipe-spec:364, no --rpmlintrc). rpmlint 2.x auto-loads any
+# *-rpmlintrc it finds in /home/abuild/rpmbuild/SOURCES, which is exactly where
+# OBS stages the package sources — see lint.py:_load_rpmlintrc. So the file only
+# has to be committed alongside the spec; obs-submit.sh copies it there.
+
+# E: branding-requires-unversioned hicolor-icon-theme
+#
+# A bug in rpmlint's BrandingPolicyCheck, not a packaging defect. The check
+# matches an unversioned Requires against
+#     (?P<name>\S+)-(?P<type>branding|theme)
+# with re.match, which is unanchored at the end and whose \S+ is greedy — so
+# "hicolor-icon-theme" reads as the generic branding package "hicolor-icon"
+# plus "-theme". It then demands `Requires: hicolor-icon-theme = <version>`,
+# which would be actively wrong here: pinning an icon theme to an exact version
+# breaks the package on the theme's next update.
+#
+# Two things say this is the check misfiring rather than a policy we are
+# ducking. The same source defines `re_icon_theme = (?P<name>\S+)-icon-theme`
+# and never references it — the exemption was written and never wired in. And
+# every shipped openSUSE package that installs hicolor icons carries the
+# identical unversioned Requires (libgtk-3-0, libgtk-4-1, ModemManager, feh).
+#
+# The Requires stays: hicolor-icon-theme owns /usr/share/icons/hicolor/*/apps,
+# which is why ANTS-3726 added it in the first place.
+#
+# Self-expiring: if rpmlint fixes the check, this filter stops matching and
+# rpmlint reports `unused-rpmlintrc-filter`. That is the signal to delete it.
+addFilter("branding-requires-unversioned hicolor-icon-theme")
