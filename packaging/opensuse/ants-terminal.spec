@@ -49,6 +49,18 @@ BuildRequires:  cmake(Qt6OpenGLWidgets)
 # single object compiles (caught by the first OBS build, 2026-07-29).
 BuildRequires:  cmake(Qt6Test)
 BuildRequires:  cmake(Qt6Widgets)
+# GoogleTest for the test bundles. CMakeLists.txt:806 does
+# `find_package(GTest 1.13 QUIET)` and falls back to FetchContent from
+# github.com when it fails — which cannot work in a build VM, since OBS gives
+# the chroot no network (the first build died on 'could not find git for clone
+# of googletest-populate'). Requiring it here keeps the system package on the
+# found path so the download never fires.
+#
+# NOTE the package split: on openSUSE it is *gmock* that provides
+# cmake(GTest); the gtest package provides only pkgconfig(gtest) and the
+# libraries. Requiring cmake(GTest) is therefore both the correct dependency
+# and the one that drags in gtest behind it.
+BuildRequires:  cmake(GTest) >= 1.13
 BuildRequires:  pkgconfig(lua5.4)
 # Optional: Wayland-native Quake-mode (0.6.38). When this devel package
 # is present, `find_package(LayerShellQt CONFIG QUIET)` in CMakeLists.txt
