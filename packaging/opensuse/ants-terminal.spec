@@ -144,9 +144,16 @@ export QT_QPA_PLATFORM=offscreen
 # floor that is off by default (0.0 — bench_vt_throughput.cpp:166), so a loaded
 # build worker cannot fail them on contention; and the e2e lane already passed
 # here, since CMakeLists.txt gives it its own offscreen wiring. An earlier
-# attempt to narrow this to -LE '(perf|e2e)' does NOT work regardless: %ctest is
-# declared %ctest(:-:) and getopt-parses leading dashes, so rpm rejects it with
-# "Unknown option L in ctest(:-:)" before ctest ever runs.
+# attempt to narrow this to -LE '(perf|e2e)' does NOT work regardless: %%ctest
+# is declared %%ctest(:-:) and getopt-parses leading dashes, so rpm rejects it
+# with "Unknown option L in ctest(:-:)" before ctest ever runs.
+#
+# Note the doubled percent signs above. rpm expands macros inside # comments —
+# they are comments to the shell, not to the macro engine — so a singly-written
+# macro reference here expands mid-comment and its trailing (:-:) reaches bash
+# as a syntax error, which is exactly how this line first broke the build.
+# (%%check / %%post appear singly elsewhere in this file and are harmless only
+# because they are section keywords with no macro body to expand.)
 %ctest
 
 %files
