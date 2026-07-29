@@ -3971,6 +3971,21 @@ void ClaudeIntegration::onMcpConnection() {
                     "failed commit is a per-edit skip. Returns applied[] (one "
                     "per file) + skipped[] (one per edit) + counts. "
                     "caller_cwd required. "
+                    "LINE RANGES (ANTS-3711): an edit may instead name an "
+                    "inclusive 1-based `start_line`/`end_line` range — use it "
+                    "to replace or delete a large contiguous block without "
+                    "re-emitting bytes you already read (`old` and a range "
+                    "together → bad_args). A range edit MUST also carry "
+                    "`expect_first_line`/`expect_last_line`, the verbatim text "
+                    "of those two lines: `old` guards itself by being unique, "
+                    "a line number guards nothing, so without them a stale "
+                    "number silently replaces the wrong lines. Mismatch → a "
+                    "`range_mismatch` skip; out-of-file coordinates → "
+                    "`range_out_of_bounds`. read_region hands back both the "
+                    "numbers and the text. Ranges resolve against the file as "
+                    "EARLIER edits in the same call left it, so a batch that "
+                    "shifts line counts will trip the guard — order "
+                    "line-shifting edits last, or send them bottom-up. "
                     "BATCH SIZE (ANTS-3712): the 4 MiB above is a cap on the "
                     "FILE being edited, NOT on this call's arguments — the "
                     "request itself is far smaller-bounded by the client's "
@@ -3992,8 +4007,10 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     QJsonObject editsProp; editsProp["type"] = "array";
                         editsProp["description"] = QStringLiteral(
-                            "Non-empty list of edits. Each: {path, old, new, "
-                            "replace_all?}.");
+                            "Non-empty list of edits. Each is {path, new} plus "
+                            "EITHER {old, replace_all?} OR (ANTS-3711) "
+                            "{start_line, end_line, expect_first_line, "
+                            "expect_last_line} — never both.");
                     QJsonObject items; items["type"] = "object";
                         items["additionalProperties"] = false;
                         QJsonObject ip;
@@ -4003,7 +4020,8 @@ void ClaudeIntegration::onMcpConnection() {
                         QJsonObject oP; oP["type"] = "string";
                             oP["description"] = QStringLiteral(
                                 "Substring to replace (non-empty; must be "
-                                "unique unless replace_all).");
+                                "unique unless replace_all). Omit when using "
+                                "a start_line/end_line range instead.");
                         QJsonObject nP; nP["type"] = "string";
                             nP["description"] = QStringLiteral(
                                 "Replacement text (may be empty for a "
@@ -4012,10 +4030,40 @@ void ClaudeIntegration::onMcpConnection() {
                             rP["description"] = QStringLiteral(
                                 "Replace every occurrence of `old` (default "
                                 "false → require a unique match).");
+                        // ANTS-3711 — the line-range alternative to `old`.
+                        QJsonObject slP; slP["type"] = "integer";
+                            slP["minimum"] = 1;
+                            slP["description"] = QStringLiteral(
+                                "First line of the range to replace (1-based, "
+                                "inclusive). Alternative to `old`; requires "
+                                "end_line + both expect_* lines.");
+                        QJsonObject elP; elP["type"] = "integer";
+                            elP["minimum"] = 1;
+                            elP["description"] = QStringLiteral(
+                                "Last line of the range to replace (1-based, "
+                                "inclusive; may equal start_line).");
+                        QJsonObject efP; efP["type"] = "string";
+                            efP["description"] = QStringLiteral(
+                                "Verbatim text of line start_line. Mandatory "
+                                "on a range edit — it is the range's only "
+                                "staleness guard. Mismatch → range_mismatch "
+                                "skip, no write.");
+                        QJsonObject elnP; elnP["type"] = "string";
+                            elnP["description"] = QStringLiteral(
+                                "Verbatim text of line end_line. Mandatory on "
+                                "a range edit; checked together with "
+                                "expect_first_line so a range that shifted at "
+                                "either end is caught.");
                         ip["path"] = pP; ip["old"] = oP; ip["new"] = nP;
                         ip["replace_all"] = rP;
+                        ip["start_line"] = slP; ip["end_line"] = elP;
+                        ip["expect_first_line"] = efP;
+                        ip["expect_last_line"]  = elnP;
                         items["properties"] = ip;
-                        QJsonArray ir; ir.append("path"); ir.append("old"); ir.append("new");
+                        // `old` is no longer unconditionally required — an
+                        // edit satisfies the handler with either selector, and
+                        // the either/or rule is enforced there (ANTS-3711).
+                        QJsonArray ir; ir.append("path"); ir.append("new");
                         items["required"] = ir;
                     editsProp["items"] = items;
                     props["edits"]      = editsProp;

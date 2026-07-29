@@ -11884,33 +11884,90 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     }
 
     // Pass 1 — validate args + paths (fail-closed on escape) before writing.
+    // ANTS-3711 — an edit names its target EITHER by unique `old` text or by an
+    // inclusive 1-based `start_line`/`end_line` range. Exactly one, never both.
     struct E {
         int index; QString rawPath; QString resolved;
-        QString oldStr; QString newStr; bool replaceAll;
+        QString oldStr; QString newStr; bool replaceAll = false;
+        bool isRange = false;
+        int startLine = 0, endLine = 0;
+        QString expectFirst, expectLast;
     };
     QVector<E> es;
     es.reserve(edits.size());
+    auto argErr = [](const QString &msg) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = msg;
+        o["code"]  = QStringLiteral("bad_args");
+        return QJsonDocument(o);
+    };
     for (int i = 0; i < edits.size(); ++i) {
         const QJsonObject e = edits.at(i).toObject();
         const QString rawPath = e.value(QStringLiteral("path")).toString();
-        const bool hasOld = e.contains(QStringLiteral("old"));
-        const bool hasNew = e.contains(QStringLiteral("new"));
+        const bool hasOld   = e.contains(QStringLiteral("old"));
+        const bool hasNew   = e.contains(QStringLiteral("new"));
+        const bool hasStart = e.contains(QStringLiteral("start_line"));
+        const bool hasEnd   = e.contains(QStringLiteral("end_line"));
+        const bool hasRange = hasStart || hasEnd;
         const QString oldStr = e.value(QStringLiteral("old")).toString();
-        if (rawPath.isEmpty() || !hasOld || oldStr.isEmpty() || !hasNew) {
-            QJsonObject o;
-            o["ok"]    = false;
-            o["error"] = QStringLiteral("apply_edits: edit %1 needs a non-empty "
-                                        "\"path\"/\"old\" and a \"new\"").arg(i);
-            o["code"]  = QStringLiteral("bad_args");
-            return QJsonDocument(o);
+        if (rawPath.isEmpty() || !hasNew) {
+            return argErr(QStringLiteral("apply_edits: edit %1 needs a non-empty "
+                                         "\"path\" and a \"new\"").arg(i));
+        }
+        if (hasOld && hasRange) {
+            return argErr(QStringLiteral(
+                "apply_edits: edit %1 has both \"old\" and a line range — an "
+                "edit names its target one way or the other").arg(i));
+        }
+        if (!hasOld && !hasRange) {
+            return argErr(QStringLiteral(
+                "apply_edits: edit %1 needs either a non-empty \"old\" or a "
+                "\"start_line\"/\"end_line\" range").arg(i));
+        }
+        E rec;
+        rec.index      = i;
+        rec.rawPath    = rawPath;
+        rec.newStr     = e.value(QStringLiteral("new")).toString();
+        rec.replaceAll = e.value(QStringLiteral("replace_all")).toBool(false);
+        if (hasOld) {
+            if (oldStr.isEmpty())
+                return argErr(QStringLiteral("apply_edits: edit %1 needs a "
+                                             "non-empty \"old\"").arg(i));
+            rec.oldStr = oldStr;
+        } else {
+            // Both bounds, and both expectations. The expectations are NOT
+            // optional: `old` carries its own uniqueness guard, a line number
+            // carries none, so an unguarded range replace would corrupt on a
+            // stale number exactly the way the Bash line splice this exists to
+            // replace does. `read_region` returns the line text alongside the
+            // numbers, so the caller is already holding them.
+            if (!hasStart || !hasEnd) {
+                return argErr(QStringLiteral(
+                    "apply_edits: edit %1 needs both \"start_line\" and "
+                    "\"end_line\"").arg(i));
+            }
+            if (!e.contains(QStringLiteral("expect_first_line")) ||
+                !e.contains(QStringLiteral("expect_last_line"))) {
+                return argErr(QStringLiteral(
+                    "apply_edits: edit %1 is a line range and must carry "
+                    "\"expect_first_line\" and \"expect_last_line\" (the "
+                    "verbatim text of those lines) — a line number has no "
+                    "uniqueness guard of its own, and a stale one would "
+                    "replace the wrong lines silently").arg(i));
+            }
+            rec.isRange     = true;
+            rec.startLine   = e.value(QStringLiteral("start_line")).toInt();
+            rec.endLine     = e.value(QStringLiteral("end_line")).toInt();
+            rec.expectFirst = e.value(QStringLiteral("expect_first_line")).toString();
+            rec.expectLast  = e.value(QStringLiteral("expect_last_line")).toString();
         }
         const auto check = PathValidation::validatePath(
             rawPath, rootCanonical,
             QStringLiteral("apply_edits"), QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);  // fail-closed bad_path
-        es.push_back({i, rawPath, check.resolved, oldStr,
-                      e.value(QStringLiteral("new")).toString(),
-                      e.value(QStringLiteral("replace_all")).toBool(false)});
+        rec.resolved = check.resolved;
+        es.push_back(rec);
     }
 
     // Pass 2 — group existing files (first-seen order), skip missing, then
@@ -11956,8 +12013,19 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         int fileReplacements = 0;
         QVector<int> appliedIdx;
         for (int k : group) {
-            const auto oc = ApplyEdits::applyToContent(
-                working, es[k].oldStr, es[k].newStr, es[k].replaceAll);
+            // ANTS-3711 — a range edit resolves against `working`, i.e. the
+            // file as earlier edits in this same group have left it, not as it
+            // was on disk. That is the only coherent choice when edits compose,
+            // and it is exactly why expect_first_line/expect_last_line are
+            // mandatory: an earlier edit that added or removed lines shifts
+            // every later range, and the guard turns that into a loud
+            // range_mismatch skip instead of a silent wrong-lines write.
+            const auto oc = es[k].isRange
+                ? ApplyEdits::applyRangeToContent(
+                      working, es[k].startLine, es[k].endLine,
+                      es[k].expectFirst, es[k].expectLast, es[k].newStr)
+                : ApplyEdits::applyToContent(
+                      working, es[k].oldStr, es[k].newStr, es[k].replaceAll);
             if (oc.applied) {
                 working = oc.newContents;
                 fileReplacements += oc.replacements;

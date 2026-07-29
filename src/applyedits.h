@@ -17,6 +17,7 @@ struct EditOutcome {
     QString newContents;           // valid iff applied
     int     replacements = 0;      // substitutions made (1, or N under replaceAll)
     QString skipReason;            // "" iff applied; else "not_found" | "ambiguous"
+                                   // | "range_mismatch" | "range_out_of_bounds"
 };
 
 // Apply one old→new edit to `contents`. Without replaceAll, `oldStr` must
@@ -29,5 +30,29 @@ EditOutcome applyToContent(const QString &contents,
                            const QString &oldStr,
                            const QString &newStr,
                            bool replaceAll);
+
+// ANTS-3711 — replace the inclusive 1-based line range [startLine, endLine]
+// with `newStr`, as an alternative to naming the text via `oldStr`. The shape
+// where apply_edits saves the most tokens is the one it could not express: a
+// 76-line deletion meant re-emitting all 76 lines, which is both the bytes the
+// caller already read and exactly where one invisible whitespace or em-dash
+// mismatch turns into a `not_found`. `read_region` already hands back 1-based
+// line numbers, so a caller reaches this point holding the coordinates.
+//
+// `expectFirst`/`expectLast` are the verbatim text of the range's first and
+// last lines and are NOT optional — see the wrapper. A line range carries no
+// intrinsic uniqueness guard the way `oldStr` does, so without them a number
+// gone stale (from an earlier edit in the same call, or another writer) would
+// silently replace the wrong lines. That is precisely the Bash line-splice
+// failure this verb exists to avoid, so a range edit refuses `range_mismatch`
+// instead. Out-of-file coordinates skip `range_out_of_bounds`.
+//
+// An empty `newStr` DELETES the range rather than leaving a blank line. Split
+// and rejoin are both on '\n', so a trailing newline round-trips (INV-8).
+EditOutcome applyRangeToContent(const QString &contents,
+                                int startLine, int endLine,
+                                const QString &expectFirst,
+                                const QString &expectLast,
+                                const QString &newStr);
 
 }  // namespace ApplyEdits

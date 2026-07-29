@@ -5,6 +5,8 @@
 
 #include "applyedits.h"
 
+#include <QStringList>
+
 namespace ApplyEdits {
 
 EditOutcome applyToContent(const QString &contents, const QString &oldStr,
@@ -37,6 +39,41 @@ EditOutcome applyToContent(const QString &contents, const QString &oldStr,
     }
     r.applied = true;
     r.newContents = out;
+    return r;
+}
+
+EditOutcome applyRangeToContent(const QString &contents, int startLine,
+                                int endLine, const QString &expectFirst,
+                                const QString &expectLast,
+                                const QString &newStr) {
+    EditOutcome r;
+    QStringList lines = contents.split(QLatin1Char('\n'));
+    if (startLine < 1 || endLine < startLine || endLine > lines.size()) {
+        r.skipReason = QStringLiteral("range_out_of_bounds");
+        return r;
+    }
+    // Verbatim, both ends. Checking only one end would let a range that has
+    // grown or shrunk at the other end through — the commonest drift there is.
+    if (lines.at(startLine - 1) != expectFirst ||
+        lines.at(endLine - 1) != expectLast) {
+        r.skipReason = QStringLiteral("range_mismatch");
+        return r;
+    }
+
+    const int count = endLine - startLine + 1;
+    // An empty replacement removes the lines outright; splicing `{""}` would
+    // leave a blank line where the caller asked for nothing.
+    const QStringList repl = newStr.isEmpty()
+                                 ? QStringList()
+                                 : newStr.split(QLatin1Char('\n'));
+    auto first = lines.begin() + (startLine - 1);
+    lines.erase(first, first + count);
+    for (int i = 0; i < repl.size(); ++i)
+        lines.insert(startLine - 1 + i, repl.at(i));
+
+    r.applied      = true;
+    r.replacements = 1;
+    r.newContents  = lines.join(QLatin1Char('\n'));
     return r;
 }
 

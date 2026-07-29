@@ -21231,7 +21231,7 @@ requesting no action and are closed in place rather than filed.
   Kind: enhancement.
   Source: DOOM-Ants-feedback-2026-07-28.
 
-- 📋 [ANTS-3711] **`apply_edits` has no line-range selector, so replacing a large contiguous block means re-emitting it verbatim.**
+- ✅ [ANTS-3711] **`apply_edits` has no line-range selector, so replacing a large contiguous block means re-emitting it verbatim.**
   `old` must be an exact unique substring, so a 76-line deletion means re-emitting
   all 76 lines — and not re-emitting bytes you already read is the whole point of the
   verb over native Edit. A hand-retyped 76-line `old` is also exactly where an
@@ -21265,6 +21265,26 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Moving a big block of code out of a file means retyping the whole block just to delete it, so people fall back to riskier hand-editing.
   Kind: enhancement.
   Source: finbreak-feedback-2026-07-28.
+  Resolved (2026-07-29): `apply_edits` entries take an inclusive 1-based
+  `start_line`/`end_line` selector as an alternative to `old`, so deleting or
+  replacing a large contiguous block no longer means re-emitting bytes you
+  already read. Two deliberate narrowings vs the request. (1) The request
+  described `expect_first_line`/`expect_last_line` as optional; they are
+  MANDATORY. `old` guards itself by having to be unique — a line number
+  guards nothing, so an unguarded range silently rewrites whatever drifted
+  into those coordinates, which is precisely the corruption finbreak
+  reported falling back to Bash for. `read_region` already returns both the
+  numbers and the text, so the guard costs the caller nothing. (2) The
+  alternative `old_start`/`old_end` anchor-pair shape was not built — the
+  line range plus the guard covers the reported case, and two selectors for
+  one job is surface nobody asked to maintain. Mismatch → `range_mismatch`
+  skip; out-of-file coordinates → `range_out_of_bounds`; selector-shape
+  errors are whole-call `bad_args`. Ranges resolve against the file as
+  earlier edits in the same call left it, so a line-shifting batch trips the
+  guard rather than writing to the wrong lines. INV-12..INV-16 in
+  docs/specs/ANTS-2022.md; 5 tests in tests/features/mcp_apply_edits,
+  red-checked (exactly those 5 fail against pre-fix src); suite 100% of
+  3063.
 
 - ✅ [ANTS-3712] **A too-large `apply_edits` payload fails as unparseable JSON, and the hint list sends you hunting for escaping bugs.**
   One `apply_edits` call with 2 edits whose combined `old`+`new` was ~5.2 KB failed

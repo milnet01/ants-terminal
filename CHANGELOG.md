@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **apply_edits can now edit by line range, not just by matching text (ANTS-3711)**
+  Deleting a big block used to mean pasting the whole block back in just to
+  say which one you meant. Now an edit can name a line range instead —
+  "lines 200 to 276" — which is far cheaper for a large chunk. You also
+  hand it the exact text of the first and last line as a safety check: if
+  the file has changed underneath you and those lines no longer match, the
+  edit is refused instead of quietly rewriting whatever moved into those
+  positions.
+
 - **`doc_integrity` catches numbered sections that run out of order** (ANTS-3700)
   Nothing used to notice a document whose sections go 5.6, 5.8, 5.7 — the eye reads them in the intended order and every link still works. The checker now flags out-of-order, skipped and repeated section numbers. Tuned to stay quiet: 2 findings across this project's 275 documents, and both are real.
 
