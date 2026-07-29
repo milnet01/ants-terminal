@@ -385,7 +385,7 @@ for security-relevant changes.
 - **`test_audit_partition` now root-anchors a caller-supplied `scope`, closing a path-traversal read.** (ANTS-3627)
   A `scope:"path:../.."` (or a `files:` entry with `../`) was concatenated onto the project root with no anchor check, so the walk enumerated files outside the project and returned their paths in the envelope. Both branches are now checked against the canonical root and refuse `bad_path`; a `files:` list refuses as a whole rather than silently dropping the bad entry.
 
-## [0.7.101] — unreleased (Patron RC preview)
+## [0.7.101] — 2026-07-29
 ### Added
 
 - **recent_errors / build_status — attach likely_fix add_include for "'X' has not been declared" diagnostics.** (ANTS-3374)

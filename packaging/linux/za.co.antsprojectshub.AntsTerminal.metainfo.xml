@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.101" date="2026-07-22">
+    <release version="0.7.101" date="2026-07-29">
       <description>
         <p>MCP tokens-saved tracking on the status bar, smarter build-error diagnostics, and a large internal sweep of Claude Code integration reliability and query performance.</p>
         <ul>

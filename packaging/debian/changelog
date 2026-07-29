@@ -16,7 +16,7 @@ ants-terminal (0.7.101-1) unstable; urgency=medium
     config isolation, and spec invariant reporting. (ANTS-3570, 3561,
     3566, 3583, 3568, 3577, 3513, 3541, 3562, 3560)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 22 Jul 2026 00:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 29 Jul 2026 00:00:00 +0200
 
 ants-terminal (0.7.100-1) unstable; urgency=medium
 
