@@ -41,6 +41,37 @@ if [ -n "$REV" ] && command -v git >/dev/null 2>&1; then
     fi
 fi
 
+# Expand the spec for real and syntax-check the scriptlets it generates.
+#
+# rpm expands macros inside `#` comments — they are comments to the shell, not
+# to the macro engine. So a singly-written macro reference in a comment (%ctest
+# rather than %%ctest) expands mid-comment and can push live text into %build or
+# %check, where bash meets it as a syntax error. That failure is invisible until
+# ten minutes into an OBS build, and it lands AFTER the whole test suite has run
+# green, which makes it read like a test problem. It cost exactly one such cycle
+# on 2026-07-29. This check costs about a second.
+if command -v rpmspec >/dev/null 2>&1; then
+    exp="$(mktemp)"
+    trap 'rm -f "$exp"' EXIT
+    if ! rpmspec -P "$SPEC" > "$exp" 2>/dev/null; then
+        echo "obs-submit: rpmspec could not parse $SPEC" >&2
+        exit 1
+    fi
+    for sect in build install check post postun; do
+        body="$(awk -v pat="^%$sect\$" '$0 ~ pat {f=1; next} f && /^%[a-z]/ {exit} f' "$exp")"
+        [ -n "$body" ] || continue
+        if ! printf '%s\n' "$body" | bash -n 2>/dev/null; then
+            echo "obs-submit: %$sect is not valid shell after macro expansion." >&2
+            echo "            A macro reference in a comment there likely needs" >&2
+            echo "            doubling (write %%${sect}-style refs as %%%%...)." >&2
+            exit 1
+        fi
+    done
+    echo ">>> spec expands and its scriptlets parse as shell"
+else
+    echo ">>> rpmspec not installed — skipping the spec expansion check" >&2
+fi
+
 mkdir -p "$WORKDIR"
 CO="$WORKDIR/$PROJ/$PKG"
 if [ -d "$CO/.osc" ]; then
