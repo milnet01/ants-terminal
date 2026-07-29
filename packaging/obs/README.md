@@ -83,10 +83,28 @@ with a committed `debian.obscpio`.
 ## Fully hands-off rebuilds (not set up)
 
 OBS can rebuild automatically when you push a tag, via an `.obs/workflows.yml`
-file. It needs two one-time credentials that only you can create: a **workflow
-token** on OBS, and a **GitHub webhook** pointing at OBS carrying that token.
-OneUp is set up this way. Until both exist the YAML does nothing, so it is safe
-to add ahead of time — but it is not currently wired up here.
+file. OneUp is set up this way. It is **not** wired up here, because it needs
+credentials only you can create. The exact flow, from the OBS
+[SCM/CI integration guide](https://openbuildservice.org/help/manuals/obs-user-guide/cha.obs.scm_ci_workflow_integration.html):
+
+1. Create a GitHub personal access token — OBS uses it to report build status
+   back onto commits. (This is the token OneUp needed.)
+2. On OBS, mint a workflow token that wraps it:
+   `osc token --create --operation workflow --scm-token <github-pat>`
+   It returns a numeric **ID** and a **secret**; both are needed next.
+3. In the GitHub repo, add a webhook under Settings → Webhooks:
+   - Payload URL: `https://build.opensuse.org/trigger/workflow?id=<TOKEN_ID>`
+   - Content type: `application/json`
+   - Secret: the token secret from step 2
+   - Events: Pushes (and Pull requests, if you want PR builds)
+4. Commit `.obs/workflows.yml` with a `trigger_services` step filtered on
+   `event: tag_push`.
+
+One trap worth knowing before enabling it: `trigger_services` re-runs the
+**existing** `_service`, which clones whatever `<revision>` that file pins. So a
+tag push only rebuilds the right version if `_service` was updated to that tag
+in the same push. Pushing a tag by hand without bumping `<revision>` silently
+rebuilds the previous release.
 
 ## Once it's green
 

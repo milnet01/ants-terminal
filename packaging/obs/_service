@@ -21,6 +21,13 @@
        404. set_version overwrites it from the tag below, so the spec is never
        hand-pinned and cannot drift.
 
+       Caveat on mode="buildtime" (OBS user guide, ch. Source Services): a
+       buildtime service package becomes a BUILD DEPENDENCY of the job and must
+       be available in the target repository. That is satisfied for
+       openSUSE_Tumbleweed; check it when adding a distro whose repo may not
+       carry obs-service-tar / -recompress / -set_version, because the symptom
+       is an unresolvable job rather than an obviously service-related error.
+
        To release a new version: bump <revision> to the new tag, commit, and run
        packaging/obs/obs-submit.sh (or click Trigger Services). -->
   <service name="obs_scm">
