@@ -43,6 +43,11 @@ BuildRequires:  cmake(Qt6Gui)
 BuildRequires:  cmake(Qt6Network)
 BuildRequires:  cmake(Qt6OpenGL)
 BuildRequires:  cmake(Qt6OpenGLWidgets)
+# Qt6Test is a REQUIRED component of the top-level find_package in
+# CMakeLists.txt:86 — unconditionally, not gated on -DANTS_TESTS. Omitting it
+# fails configure with 'Failed to find required Qt component "Test"' before a
+# single object compiles (caught by the first OBS build, 2026-07-29).
+BuildRequires:  cmake(Qt6Test)
 BuildRequires:  cmake(Qt6Widgets)
 BuildRequires:  pkgconfig(lua5.4)
 # Optional: Wayland-native Quake-mode (0.6.38). When this devel package
@@ -106,8 +111,13 @@ export.
 /usr/bin/gtk-update-icon-cache -q %{_datadir}/icons/hicolor &>/dev/null || :
 
 %check
-# Audit-rule regression suite. Pure shell + fixture tree, no GUI needed;
-# safe under `osc build` / OBS chroot.
+# The whole ctest suite, which includes Qt widget tests — not only the
+# shell-based audit-rule fixtures. CMakeLists.txt wires QT_QPA_PLATFORM=offscreen
+# for the opt-in `e2e` label only (CMakeLists.txt:991), so a build VM with no
+# display server needs it exported here or every widget test aborts on platform
+# plugin init. Locally the tests pass because a real session is present, which is
+# exactly why this only shows up in a chroot build.
+export QT_QPA_PLATFORM=offscreen
 %ctest
 
 %files
