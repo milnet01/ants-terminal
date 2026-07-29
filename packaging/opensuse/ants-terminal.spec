@@ -85,6 +85,11 @@ BuildRequires:  cmake(LayerShellQt) >= 6.0
 # validators shipped by Tumbleweed.
 BuildRequires:  appstream-glib
 BuildRequires:  desktop-file-utils
+# Owns /usr/share/icons/hicolor/*/apps. It is already a runtime Requires below,
+# but OBS's check-filelist QA step runs against the BUILD environment, where a
+# Requires is absent — so without this the icon directories read as "not owned
+# by a package" and the build fails after the RPM is already assembled.
+BuildRequires:  hicolor-icon-theme
 # Man page is installed pre-formatted (groff source); no runtime dep needed.
 
 Requires:       hicolor-icon-theme
@@ -171,6 +176,13 @@ export QT_QPA_PLATFORM=offscreen
 %{_mandir}/man1/%{name}.1%{?ext_man}
 %{_datadir}/bash-completion/completions/%{name}
 %{_datadir}/zsh/site-functions/_%{name}
+# The fish directories are owned by the fish package, which is not a build
+# dependency here — pulling in a whole shell to own two directories is not worth
+# it, so this package co-owns them instead (RPM permits shared directory
+# ownership). bash-completion and zsh's dirs need no such entry: their owners
+# happen to be present in the build root already.
+%dir %{_datadir}/fish
+%dir %{_datadir}/fish/vendor_completions.d
 %{_datadir}/fish/vendor_completions.d/%{name}.fish
 # OSC 133 shell-integration hooks (CMakeLists.txt:777). Sourced by the user from
 # ~/.bashrc / ~/.zshrc, so they must ship — rpm refuses to leave them unpackaged
