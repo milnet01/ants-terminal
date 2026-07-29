@@ -37,6 +37,15 @@ BuildRequires:  cmake >= 3.20
 BuildRequires:  gcc-c++
 BuildRequires:  ninja
 BuildRequires:  pkgconfig
+# The test suite shells out to real git: verify_changes_build_cache builds a
+# throwaway repo via initGitProject() (init/config/add/commit) and
+# cut_rc_behaviour exercises packaging/cut-rc.sh against one. A build VM has no
+# git unless it is asked for, so those 13 tests fail rather than skip — they
+# carry no 'no git in PATH' guard, unlike their siblings in
+# mcp_roadmap_branch_drift. Declaring it makes them RUN (real coverage) instead
+# of being excluded into silence. git-core is the client alone; the `git`
+# metapackage would drag in gitk/git-email for nothing.
+BuildRequires:  git-core
 BuildRequires:  cmake(Qt6Core) >= 6.2
 BuildRequires:  cmake(Qt6DBus)
 BuildRequires:  cmake(Qt6Gui)
@@ -130,7 +139,13 @@ export.
 # plugin init. Locally the tests pass because a real session is present, which is
 # exactly why this only shows up in a chroot build.
 export QT_QPA_PLATFORM=offscreen
-%ctest
+# Scoped to the project's own correctness gate. `perf` is benchmarks — a shared
+# OBS worker under arbitrary load measures nothing meaningful and can fail on
+# contention alone — and `e2e` is opt-in even locally (CMakeLists.txt gives it
+# its own label precisely so the default presets skip it). CLAUDE.md's `default`
+# preset excludes perf for the same reason; a package build should run the gate
+# the project actually gates on, not a superset it never runs itself.
+%ctest -LE '(perf|e2e)'
 
 %files
 %license LICENSE
