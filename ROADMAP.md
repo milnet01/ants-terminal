@@ -201,6 +201,68 @@ SSH key registered there.
 6. **One-click-install URL:** OBS auto-generates
    `software.opensuse.org/package/ants-terminal` pages for discovery.
 
+- 🚧 [ANTS-3726] **Ants Terminal published on OBS as its own sub-project, recipe committed to the repo.**
+  home:milnet:ants-terminal created as a SUB-PROJECT (matching
+  home:milnet:finbreak) rather than a package inside home:milnet, so its
+  distro list is independent of OneUp's and finbreak's. Recipe committed at
+  packaging/obs/ (_service + obs-setup.sh / obs-submit.sh / obs-status.sh +
+  README); build-obs/ gitignored. The spec stays at
+  packaging/opensuse/ants-terminal.spec and is copied in at submit time, so
+  there is no second spec to drift.
+
+  _service uses OneUp's buildtime model: obs_scm server-side (OBS has
+  network), tar/recompress/set_version at mode="buildtime". A plain
+  server-side run fails because `tar` has no server-side service;
+  mode="manual" (finbreak's answer) also works but costs a local manualrun
+  and a ~7.5 MB tarball per release.
+
+  Getting to a compiling build took four spec fixes, every one a real defect
+  that would hit any packager: missing cmake(Qt6Test) (REQUIRED at
+  CMakeLists.txt:86, so configure died); missing cmake(GTest) (CMake fell
+  back to a FetchContent download, impossible in a network-less VM — note
+  openSUSE's cmake(GTest) comes from gmock, not gtest); no
+  QT_QPA_PLATFORM=offscreen in %check; and missing git-core, which failed 13
+  tests whose initGitProject()/cut_rc_behaviour shell out to real git.
+
+  Still open: the build has not gone green yet.
+  **Layman:** Ants Terminal now builds on openSUSE's own servers, so people can install it with zypper instead of downloading a file.
+  Kind: package.
+  Lanes: packaging.
+  Source: user-request-2026-07-29.
+
+- 📋 [ANTS-3727] **Make the RPM spec portable so OBS can build for distros other than openSUSE.**
+  Two BuildRequires in packaging/opensuse/ants-terminal.spec are
+  openSUSE-only and block every other target:
+
+  1. `cmake(LayerShellQt) >= 6.0` is HARD, but CMakeLists.txt resolves it
+     with find_package(... CONFIG QUIET) and falls back to the Qt toplevel
+     path when absent — the spec's own comment says so. Any distro without
+     layer-shell-qt6 goes unresolvable for a feature that degrades
+     gracefully.
+  2. `pkgconfig(lua5.4)` is the openSUSE spelling. Fedora's lua-devel
+     provides pkgconfig(lua) at version 5.4, so it cannot resolve there.
+
+  Fix shape: `%if 0%{?suse_version}` / `%else` arms (or `%bcond_without
+  layershell`) so the openSUSE build keeps today's exact behaviour. See
+  https://en.opensuse.org/openSUSE:Build_Service_cross_distribution_howto
+
+  Verify empirically, not by recall: add the candidate repositories in
+  packaging/obs/obs-setup.sh and read which package each resolver names as
+  missing. Unresolvable repos report instantly and consume no build time.
+
+  DOC DRIFT to fix with this: the P4 — Fedora COPR bullet above asserts the
+  spec is "Fedora-compatible — uses %cmake macros that work on both Fedora
+  and openSUSE". The macros are portable; the BuildRequires above are not,
+  so as written that claim is false and COPR would fail the same way.
+
+  Debian/Ubuntu are a separate, larger job: OBS cannot build a .deb from a
+  .spec — it needs debian.control + debian.rules alongside it (debtransform).
+  packaging/debian/ exists but is not wired to OBS.
+  **Layman:** Two lines in the openSUSE package recipe stop it building on other Linux distributions, one of them for a feature that is optional anyway.
+  Kind: package.
+  Lanes: packaging.
+  Source: in-session-2026-07-29 (OBS bring-up).
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ (spec is Fedora-compatible — uses `%cmake`
