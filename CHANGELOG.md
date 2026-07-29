@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.102] — unreleased (Patron RC preview)
 ### Added
 
 - **apply_edits can now edit by line range, not just by matching text (ANTS-3711)**
