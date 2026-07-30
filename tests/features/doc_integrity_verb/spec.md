@@ -14,6 +14,16 @@ because the pure helpers are the sharper place to pin these two invariants.
 
 ## Invariants
 
+- **INV-17** (ANTS-3737) — `docSetDigest` is content-sensitive. The verb's
+  ETag is a sha256 of the response envelope, and doc_integrity /
+  doc_symbols / spec_lint report FINDINGS rather than content — so a doc
+  edit that changes no finding left the envelope byte-identical and
+  `etag_match` answered a false 304, skipping the post-fix re-check that
+  exists to catch a newly-introduced finding. The digest covers
+  (relpath, size, mtime_ms) per checked doc: stable across an unchanged
+  re-run (the 304 must keep working), different after a content edit, and
+  different when the checked SET changes.
+
 - **INV-16** — directory `path` scoping is exact (recursive `*.md` under that
   dir only), a file `path` → one doc, an omitted `path` → the `docs_dir` walk
   (not root files), a non-existent in-root `path` → empty. *Test:*

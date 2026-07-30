@@ -2112,7 +2112,9 @@ void ClaudeIntegration::onMcpConnection() {
                     "`include_body:true` "
                     "(ANTS-1517) adds a `body` field (truncated to "
                     "~2000 chars, `body_truncated:true` set on "
-                    "truncation) — saves the 3-5 follow-up Reads a "
+                    "truncation; a truncated body keeps its head AND "
+                    "its tail either side of an explicit elision "
+                    "marker — ANTS-3736) — saves the 3-5 follow-up Reads a "
                     "session does to pick up Kind / Lanes / Source "
                     "prose from a dense bundle table. Optional "
                     "`status` filter — \"active\" "
@@ -2351,6 +2353,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "If true, each bullet carries a `body` field "
                         "(continuation prose, truncated to ~2000 chars "
                         "with `body_truncated:true` on truncation). "
+                        "ANTS-3736 — a truncated body keeps BOTH its head "
+                        "and its final ~1 KiB, joined by an explicit "
+                        "`… [body elided — tail follows] …` marker, so an "
+                        "append-only progress-log body still reports its "
+                        "CURRENT state and not just its oldest text. "
                         "Default false. Use when triaging dense bundle "
                         "tables where the rationale lives in the body, "
                         "not the headline (ANTS-1517). ANTS-3402 — on a "
@@ -4217,8 +4224,13 @@ void ClaudeIntegration::onMcpConnection() {
                     "its *.md recursively); omitted → the project docs_dir (else "
                     "docs/). kinds=[...] filters findings + counts. A non-existent "
                     "in-root path is ok:true with empty checked_docs; a "
-                    "root-escaping path refuses bad_path. ETag-304: unchanged docs "
-                    "re-read free. caller_cwd required.");
+                    "root-escaping path refuses bad_path. Emits docs_digest — a "
+                    "fingerprint of the checked set (ANTS-3737) — so the ETag "
+                    "tracks the DOCUMENTS, not just the findings: before that, "
+                    "editing docs without changing a finding left the envelope "
+                    "identical and etag_match returned a false 304, skipping the "
+                    "post-fix re-check. ETag-304: unchanged docs re-read free. "
+                    "caller_cwd required.");
                 docInt["selection_hint"] = QStringLiteral(
                     "Use before a cold-eyes doc review, or after editing a long "
                     "contract doc, to catch dead anchors / broken links / TOC "
@@ -4272,7 +4284,9 @@ void ClaudeIntegration::onMcpConnection() {
                     "forward reference to something the doc is about to create, and deciding "
                     "which is yours — the verb emits no severity and nothing auto-fixable. "
                     "not_checked means a needle the run never looked up (cap or deadline), "
-                    "never 'does not exist'; truncated:true accompanies it. Read-only. "
+                    "never 'does not exist'; truncated:true accompanies it. Emits "
+                    "docs_digest, a fingerprint of the checked set, so the ETag tracks the "
+                    "documents and not just the findings (ANTS-3737). Read-only. "
                     "caller_cwd required.");
                 docSym["selection_hint"] = QStringLiteral(
                     "Use when reviewing a spec or design doc to get the short list of names "
@@ -4320,6 +4334,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "it is skipped and sections_checked comes back false, which is the "
                     "shipping default — a check against a guessed list would fire on every "
                     "conforming spec. Size is reported in line_count, never as a finding. "
+                    "Emits docs_digest, a fingerprint of the checked set, so the ETag "
+                    "tracks the documents and not just the findings (ANTS-3737). "
                     "Read-only. caller_cwd required.");
                 specLint["selection_hint"] = QStringLiteral(
                     "Use before a spec review to clear the mechanical findings, so reviewer "

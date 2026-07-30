@@ -47,6 +47,22 @@ An unfiltered list fetch (no `id`/`ids`, no `max_body_bytes`) still returns
 each `body` truncated to the 2000 list cap with `body_truncated: true` —
 the raised store cap is reserved for the targeted fetch.
 
+### INV-4 — a truncated body keeps its head AND its tail
+
+`cmdRoadmapQuery({include_body: true})` against a bullet whose body exceeds
+the 2000 list cap returns a body of exactly 2000 chars containing the first
+prose line, the last prose line, and an explicit `… [body elided — tail
+follows] …` marker between them. Head-only truncation served the OLDEST
+text as the answer to "what is the state of this item?" on an append-only
+progress-log body (DOOM feedback, ANTS-3736).
+
+### INV-5 — the tail survives the 16384 store cap
+
+A body larger than `kRoadmapQueryBodyStoreCap` lost its tail at the CACHE
+truncation site, before any emission cap ran — so no `max_body_bytes` value
+could reach it. A ceiling fetch (`max_body_bytes: 16384`) on a ~20 K-char
+body must still contain the tail sentinel.
+
 ## Test plan
 
 End-to-end against a seeded temp ROADMAP.md (a bullet with a ~3000-char

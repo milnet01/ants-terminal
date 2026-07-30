@@ -44,6 +44,25 @@ QByteArray roadmapWithLongBody() {
     return md;
 }
 
+// ANTS-3736 fixture — a body whose FIRST and LAST prose lines are distinct
+// sentinels, so a test can prove which end(s) of the body survived the cap.
+// `lines` sets the size: 60 clears the 2000 list cap, 400 clears the 16384
+// store cap (the case max_body_bytes could never reach before the fix).
+QByteArray roadmapWithSentinelBody(int lines) {
+    QByteArray md =
+        "# Roadmap\n\n"
+        "## Work\n\n"
+        "- \xF0\x9F\x93\x8B [ANTS-7777] **Long-body epic.**\n"
+        "  HEADSENTINEL this epic converts the level mesh.\n";
+    for (int i = 0; i < lines; ++i) {
+        md += "  Lorem ipsum dolor sit amet consectetur adipiscing.\n";
+    }
+    md += "  TAILSENTINEL current status phase L1d has shipped.\n";
+    md += "  Kind: feature.\n";
+    md += "  Source: test.\n";
+    return md;
+}
+
 bool writeFile(const QString &path, const QByteArray &body) {
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -153,4 +172,60 @@ TEST(roadmap_query_id_body_cap, Inv3ListStaysCappedAt2000) {
                    "list fetch";
         }
     }
+}
+
+// INV-4 (ANTS-3736) — a body truncated at the 2000 list cap keeps BOTH ends.
+// On an append-only progress-log body the head says what the item is and the
+// tail says where it currently stands; head-only truncation silently served
+// the OLDEST text as the answer to "what is the state of this?".
+TEST(roadmap_query_id_body_cap, Inv4TruncatedBodyKeepsHeadAndTail) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(60)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("include_body")] = true;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const QString body =
+        bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+    EXPECT_EQ(body.size(), 2000) << "elided body must land exactly on the cap";
+    EXPECT_TRUE(body.contains(QStringLiteral("HEADSENTINEL")))
+        << "head must survive truncation";
+    EXPECT_TRUE(body.contains(QStringLiteral("TAILSENTINEL")))
+        << "tail must survive truncation — it carries the CURRENT status";
+    EXPECT_TRUE(body.contains(QStringLiteral("[body elided")))
+        << "the elision must be explicit, not a silent join";
+}
+
+// INV-5 (ANTS-3736) — the fix must apply at the CACHE truncation site too.
+// A body past the 16384 store cap lost its tail before any emission cap ran,
+// so no max_body_bytes setting could reach it — the reporter's "unreachable
+// at any setting". Ceiling fetch on an oversized body must still show the tail.
+TEST(roadmap_query_id_body_cap, Inv5TailSurvivesTheStoreCap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(400)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]     = tmp.path();
+    req[QStringLiteral("id")]             = QStringLiteral("ANTS-7777");
+    req[QStringLiteral("include_body")]   = true;
+    req[QStringLiteral("max_body_bytes")] = 16384;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const QString body =
+        bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+    EXPECT_GT(body.size(), 2000);
+    EXPECT_TRUE(body.contains(QStringLiteral("TAILSENTINEL")))
+        << "a body over the store cap must still surface its tail";
 }

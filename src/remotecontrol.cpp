@@ -319,6 +319,39 @@ constexpr int kRoadmapQueryBodyCap = 2000;
 // the opt-in id/ids path sees the larger body.
 constexpr int kRoadmapQueryBodyStoreCap = 16384;
 
+// ANTS-3736 — a truncated body keeps its HEAD *and* its TAIL. On a long-lived
+// epic the body is an append-only progress log: the head says what the item
+// IS, the tail says where it currently STANDS. Head-only truncation dropped
+// exactly the part a caller asking "what is the state of this?" needs, and
+// nothing in the envelope said the omitted part was the NEWER part — a DOOM
+// fetch returned "NEXT: implement L1c then L1d" for work that had shipped
+// three days earlier. Raising max_body_bytes could not rescue it: a body past
+// the 16 KiB store cap lost its tail in the CACHE, so no emission-time cap
+// could reach it. Fixed at both truncation sites for that reason.
+//
+// The marker is a fixed string carrying no counts, so it stays byte-stable
+// across calls (prompt-cache / ETag friendly) and a second elision at
+// emission cannot render a stale count.
+const QString &kBodyElisionMarker() {
+    static const QString m =
+        QStringLiteral("\n\n… [body elided — tail follows] …\n\n");
+    return m;
+}
+
+// Chars of a truncated body reserved for its tail. Capped at cap/3 as well,
+// so a small cap still leads with the head rather than becoming tail-only.
+constexpr int kRoadmapQueryBodyTailCap = 1024;
+
+// head + marker + tail, sized to land exactly on `cap`. Falls back to a plain
+// head clip when `cap` is too small to carry both ends plus the marker.
+QString rcElideBody(const QString &body, int cap) {
+    const QString &marker = kBodyElisionMarker();
+    const int tailLen = qMin(kRoadmapQueryBodyTailCap, cap / 3);
+    const int headLen = cap - tailLen - marker.size();
+    if (headLen <= 0) return body.left(cap);
+    return body.left(headLen) + marker + body.right(tailLen);
+}
+
 // Always populate body + body_truncated on every cached bullet
 // (regardless of the caller's include_body preference), so a later
 // call that DOES want include_body doesn't need to rebuild the cache.
@@ -328,7 +361,7 @@ constexpr int kRoadmapQueryBodyStoreCap = 16384;
 void rcSetBodyFields(QJsonObject &o, const QString &body,
                      int cap = kRoadmapQueryBodyCap) {
     if (body.size() > cap) {
-        o["body"] = body.left(cap);
+        o["body"] = rcElideBody(body, cap);   // ANTS-3736 — head + tail
         o["body_truncated"] = true;
     } else {
         o["body"] = body;
@@ -349,7 +382,11 @@ void rcCapBodyFields(QJsonArray &arr, int cap) {
         if (it == o.constEnd()) continue;
         const QString body = it->toString();
         if (body.size() > cap) {
-            o["body"] = body.left(cap);
+            // ANTS-3736 — head + tail here too. Re-eliding an already-elided
+            // cached body is safe: the emission cap is <= the store cap, so
+            // the new head sits inside the old head and the new tail inside
+            // the old tail — the stored marker falls in neither slice.
+            o["body"] = rcElideBody(body, cap);
             o["body_truncated"] = true;
             arr.replace(i, o);
         }
@@ -12489,6 +12526,37 @@ QJsonDocument RemoteControl::cmdDocsIndex(const QJsonObject &req) {
                          params));
 }
 
+// ANTS-3737 — a content fingerprint of the doc set a run actually checked,
+// folded into the envelope so the CENTRAL ETag becomes content-sensitive.
+//
+// The ETag is a sha256 of the response body (ClaudeIntegration::etagFor). For
+// most verbs that is content-sensitive because the content IS the body —
+// cmdFeedbackQuery says exactly that of its own delta. The three doc verbs are
+// the exception: they report FINDINGS, not content. Edit three specs without
+// changing a finding and the body is byte-identical, so `etag_match` answers
+// 304 "unchanged" and the caller skips the re-check. That is the worst moment
+// for a false 304 — the reason to re-run after a fix batch is to catch a NEW
+// finding the fix introduced, and zero-findings is the COMMON state, so two
+// different document states collide precisely where it matters. Fin Break
+// feedback, 2026-07-30 (observed: same etag 77ce38c85a1b9ab4 across a
+// substantive three-file edit, while spec_query saw the new mtime/size).
+//
+// (relpath, size, mtime_ms) per checked file. The run just read every one of
+// them, so the stat is cheap. mtime granularity errs conservative: a touch
+// with no content change busts the cache (one wasted re-run) rather than
+// hiding a real change — the safe direction.
+QString RemoteControl::docSetDigest(const QString &rootCanonical,
+                                    const QStringList &checkedDocs) {
+    QCryptographicHash h(QCryptographicHash::Sha256);
+    for (const QString &rel : checkedDocs) {
+        const QFileInfo fi(QDir(rootCanonical).filePath(rel));
+        h.addData(rel.toUtf8());
+        h.addData(QByteArray::number(static_cast<qint64>(fi.size())));
+        h.addData(QByteArray::number(fi.lastModified().toMSecsSinceEpoch()));
+    }
+    return QString::fromUtf8(h.result().toHex().left(16));
+}
+
 // ANTS-3601 — doc_integrity: deterministic dead-anchor / broken-link / TOC
 // checks over a project-relative doc set. caller_cwd Required (the dispatcher
 // enforces caller_cwd_required before this runs). Optional `path` (a single
@@ -12530,8 +12598,11 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
     for (const auto &v : req.value(QStringLiteral("kinds")).toArray())
         kindFilter.insert(v.toString());
 
-    // etag injected centrally (isEtagSupportedTool).
-    return QJsonDocument(docIntegrityBuildResponse(findings, kindFilter, checked));
+    // etag injected centrally (isEtagSupportedTool) — over THIS envelope, so
+    // docs_digest is what makes it content-sensitive (ANTS-3737).
+    QJsonObject out = docIntegrityBuildResponse(findings, kindFilter, checked);
+    out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    return QJsonDocument(out);
 }
 
 // ANTS-3601 — pure: a validated `rawPath` → sorted project-relative doc set.
@@ -12694,8 +12765,12 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
         }
         truncated = truncated || r.truncated;
     }
-    // etag injected centrally (isEtagSupportedTool).
-    return QJsonDocument(docSymbolsBuildResponse(symbols, findings, truncated, checked));
+    // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
+    // content-sensitive (ANTS-3737 — same shape as doc_integrity).
+    QJsonObject out =
+        docSymbolsBuildResponse(symbols, findings, truncated, checked);
+    out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    return QJsonDocument(out);
 }
 
 // ANTS-3661 — pure: engine output → the response object.
@@ -12839,9 +12914,12 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         }
         truncated = truncated || r.truncated;
     }
-    // etag injected centrally (isEtagSupportedTool).
-    return QJsonDocument(specLintBuildResponse(findings, sectionsChecked,
-                                               lineCounts, truncated, checked));
+    // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
+    // content-sensitive (ANTS-3737 — same shape as doc_integrity).
+    QJsonObject out = specLintBuildResponse(findings, sectionsChecked,
+                                            lineCounts, truncated, checked);
+    out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    return QJsonDocument(out);
 }
 
 // ANTS-3662 — pure: engine output → the response object.

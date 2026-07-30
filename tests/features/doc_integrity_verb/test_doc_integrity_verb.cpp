@@ -143,3 +143,38 @@ TEST(DocIntegrityVerb, WiringRegistered) {
     EXPECT_TRUE(body.contains("validatePath("));
     EXPECT_TRUE(body.contains("check.err"));
 }
+
+// INV-17 (ANTS-3737) — the checked-doc-set digest is content-sensitive, which
+// is what makes the central ETag content-sensitive for the three findings-only
+// doc verbs. Without it, editing docs that produce no new finding leaves the
+// response envelope byte-identical, so `etag_match` answers a false 304 and a
+// post-fix re-check is skipped — exactly when it is looking for a NEW finding
+// the fix introduced. Fin Break feedback, 2026-07-30.
+TEST(DocIntegrityVerb, DocSetDigestTracksContent) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeFile(root + "/docs/one.md", "# One\n\nAlpha prose.\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/two.md", "# Two\n\nBeta prose.\n"));
+
+    const QStringList docs =
+        RemoteControl::docIntegrityEnumerate(root, QString(), "docs");
+    ASSERT_EQ(docs.size(), 2);
+
+    const QString before = RemoteControl::docSetDigest(root, docs);
+    EXPECT_FALSE(before.isEmpty());
+
+    // Re-running with nothing touched must be stable — the 304 has to keep
+    // working, or the fix would just disable the cache.
+    EXPECT_EQ(RemoteControl::docSetDigest(root, docs), before);
+
+    // A substantive edit that introduces NO finding must still bust it.
+    ASSERT_TRUE(writeFile(root + "/docs/two.md",
+                          "# Two\n\nBeta prose, materially rewritten.\n"));
+    const QString after = RemoteControl::docSetDigest(root, docs);
+    EXPECT_NE(after, before)
+        << "a content edit that changes no finding must change the digest";
+
+    // The digest covers the SET, not just the bytes: dropping a doc changes it.
+    EXPECT_NE(RemoteControl::docSetDigest(root, {docs.first()}), after);
+}

@@ -522,6 +522,14 @@ public:
     static QJsonObject docIntegrityBuildResponse(
         const QList<DocIntegrity::Finding> &findings,
         const QSet<QString> &kinds, const QStringList &checkedDocs);
+    // ANTS-3737 — content fingerprint of the checked doc set, emitted as
+    // `docs_digest` by doc_integrity / doc_symbols / spec_lint. These three
+    // report FINDINGS rather than content, so without it the central ETag
+    // (a sha256 of the response body) cannot see a doc edit that changes no
+    // finding — and `etag_match` returns a false 304 on the post-fix re-check.
+    // Public-static for the same headless-test reason as the pair above.
+    static QString docSetDigest(const QString &rootCanonical,
+                                const QStringList &checkedDocs);
     // ANTS-3661 — doc_symbols: resolve the identifiers a doc asserts something
     // about (DocSymbols::scan). Reuses docIntegrityEnumerate for the walk
     // rather than cloning it — one *.md enumeration, not two that can drift.
