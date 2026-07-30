@@ -217,7 +217,7 @@ CREATE TABLE item (
   milestone    TEXT,
   resolution   TEXT,
   body         TEXT,
-  section_id   INTEGER NOT NULL REFERENCES section(section_id),
+  -- NO section column. An item's filing is its `element` row -- see below.
   -- Format pinned HERE, not in the export: if the store held any other ISO
   -- 8601 form the export would normalise it, the rebuild would store the
   -- normalised text, and INV-2's column diff would fail on a correct writer.
@@ -245,19 +245,31 @@ standard says "Writes accept canonical values only", and a `TEXT NOT NULL`
 column accepts anything. `kind`'s 21 values are written as a `CHECK … IN (…)`
 list in the implementation; they are elided above only for width.
 
-**`section_id` is `NOT NULL`, and the default that makes it satisfiable is this
-spec's own.** The model's § 3.1 makes `section` a write obligation, but its
-§ 3.3 defaults only `kind` and `source` — `section` appears in neither the
-defaulted list nor the left-empty one. Migration will meet items that appear
-before any heading, so this spec supplies what the standard does not: **each
-project gets a synthetic root section** (`slug` `""`, level 0, no title) and
-un-sectioned items are filed there, marked `provenance.section = defaulted`.
-Its `title` is the **empty string**, not NULL — `section.title` is `TEXT NOT
-NULL`, so "no title" has to be a value, and `''` is the one a renderer can skip
-without a special case. Saying "no title" while the column forbids it is what
-stops the very first migration insert.
-An item filed nowhere is not a state the model has; an item filed in a section
-nobody wrote is honest and recoverable.
+**`item` has no `section` column, and filing lives in exactly one place: the
+item's `element` row.** The model's § 5 makes a section's ordered element list
+the serialisation of its contents, so the element row already says both *which*
+section an item is in and *where* in it. A `section_id` column beside it would
+be a second encoding of the same fact with no authority named for which wins —
+which is precisely the argument § 5 of the model settles against `sort_order`,
+and it would be incoherent to accept it there and reproduce it here. **Decided
+by the standard's author, 2026-07-30**, on the same grounds as that decision.
+
+The consequence is that "every item is filed" stops being a `NOT NULL` column
+and becomes **INV-20**: exactly one `element` row of `kind = 'item'` references
+each item. That is the same guarantee enforced one layer up, and it is strictly
+stronger — `NOT NULL` never forbade an item with *two* element rows, or with an
+element row in a different section from its own `section_id`.
+
+Migration still needs somewhere to put items that appear before any heading. The
+model's § 3.1 makes `section` a write obligation while its § 3.3 defaults only
+`kind` and `source`, so `section` appears in neither the defaulted list nor the
+left-empty one, and this spec supplies what the standard does not: **each
+project gets a synthetic root section** (`slug` `""`, level 0), and un-sectioned
+items get an element row there, marked `provenance.section = defaulted`. Its
+`title` is the **empty string**, not NULL — `section.title` is `TEXT NOT NULL`,
+so "no title" has to be a value, and `''` is the one a renderer can skip without
+a special case. An item filed nowhere is not a state the model has; an item
+filed in a section nobody wrote is honest and recoverable.
 
 **The rest of § 3.1's write tier is enforced in the write path, not by the
 schema, and that is forced rather than chosen.** `created`, `last_modified`,
@@ -511,18 +523,20 @@ de-duplicates rows uses stable identity, never a rowid.
 read from `blocked-by` edges, and therefore never exported. INV-2's "every store
 row" means rows, and a derived value is not one.
 
-**Four same-project constraints are enforced in the write path, and SQLite is
-the reason.** The model's § 4.1 says "Items are never global", so an `element`
-in project A must not reference project B's item, a `section` must not parent a
-section in another project, a `citation`'s `project_id` must match its item's,
-and `item.section_id` must name a section of the item's own project. Nothing
-above forbids any of them: each compares columns across *two rows*, and a SQLite
-`CHECK` may not contain a subquery. So `RoadmapStore` validates all four before
-insert, alongside § 3.1's obligation tier — the same place, for the same reason,
-and stated here so their absence from the DDL reads as a limit of the engine
-rather than an oversight. **`relationship` is deliberately not in this list**:
-the model's INV-4 allows cross-project edges, which is what `dst_project`
-exists for.
+**Four cross-row constraints are enforced in the write path, and SQLite is the
+reason.** Three are same-project rules — the model's § 4.1 says "Items are never
+global", so an `element` in project A must not reference project B's item, a
+`section` must not parent a section in another project, and a `citation`'s
+`project_id` must match its item's. The fourth is **INV-20**: exactly one
+`element` row of `kind = 'item'` per item. Nothing above forbids any of them:
+each compares columns across *two rows*, and a SQLite `CHECK` may not contain a
+subquery — verified, not assumed (`CREATE TABLE … CHECK (a IN (SELECT …))`
+fails with "subqueries prohibited in CHECK constraints"). So `RoadmapStore`
+validates all four before insert, alongside § 3.1's obligation tier — the same
+place, for the same reason, and stated here so their absence from the DDL reads
+as a limit of the engine rather than an oversight. **`relationship` is
+deliberately not in this list**: the model's INV-4 allows cross-project edges,
+which is what `dst_project` exists for.
 
 ### 2.4 Export serialisation — moved
 
@@ -615,6 +629,7 @@ with it to [ANTS-3761](ANTS-3761-roadmap-export-format.md) § 2.6.
 - **INV-17** — The store and both SQLite sidecars are mode 0600. *Test:* `roadmap_store_schema` opens a store, **performs a write transaction, and — with that connection still open** — asserts `0600` on all three. Both halves of that recipe are load-bearing, and an earlier draft got each of them wrong: it is the **write** that creates `-wal` and `-shm`, not a checkpoint, and SQLite **deletes both when the last connection closes**. Verified on SQLite 3.53.2 — after `PRAGMA journal_mode=WAL` alone the sidecars are absent, after a committed write both exist, a `wal_checkpoint(TRUNCATE)` leaves them exactly as they were, and closing the connection removes them. So a test that checkpoints, or that closes before asserting, checks files that are not there and **passes against a store that secures nothing**. *Breaks when:* only the main file is secured — the sidecars carry the same content, including `visibility: internal` items.
 - **INV-18** — *moved to ANTS-3761* (export golden-file conformance) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-19** — *moved to ANTS-3761* (RFC 8785 test-vector conformance) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-20** — Every item is filed **exactly once**: for each `item` row there is exactly one `element` row with `kind = 'item'` referencing it, and that row's section is the item's filing. *Test:* `roadmap_store_schema` asserts three legs — (a) an item written with no element row is refused; (b) a second `kind='item'` element referencing an already-filed item is refused; (c) a filed item's section is readable from its element row and matches the section it was written into. *Breaks when:* filing is left to a `section_id` column on `item`, which is what this replaced — a column cannot express (b) at all, so an item with two element rows in different sections was legal, exported twice, and rebuilt without complaint. Leg (a) is what a `NOT NULL` column *did* buy, and it is why removing the column needs an invariant rather than nothing.
 - **INV-14** — `history` is bounded **store-wide, and lossless below the bound**. Both halves are asserted, because each alone certifies the other's failure. (a) Below the cap **no revision is ever evicted**: writing 60 revisions to one item retains all 60. (b) At the cap a `history` write **fails and reports**, and the item write it accompanies still succeeds. *Test:* `roadmap_store_schema`, with the cap **injected** — the production figure is 250 MiB (§ 4) and a test that reached it honestly would take minutes and a disk, so the store takes the bound as a constructor parameter. **The two legs need two different injected caps**, and one value cannot serve both: leg (a) runs with a cap generous enough that 60 revisions stay well below it, and leg (b) with one small enough that a handful of writes crosses it. A single small cap would make leg (a) fail against a *correct* implementation. That injection is a requirement of this invariant, not a testing convenience: a cap reachable only in production is a cap nothing exercises. *Breaks when:* the writer implements a per-item ceiling, which fails (a) by evicting what the model's § 6 says the export exists to preserve; or swallows the at-cap refusal and returns success, which fails (b) and loses a revision invisibly; or hard-codes 250 MB, in which case neither half is testable and the invariant is a comment.
 
 ## 4. RAM / build cost
@@ -697,13 +712,17 @@ rule to every foreign key in § 2.3, rather than listing from memory:
 
 | Declared | Not declared — already leads something |
 |---|---|
-| `item(section_id)` | `item(project_id)` — leads `UNIQUE (project_id, id_fold)` |
-| `section(parent_id)` | `section(project_id)` — leads `UNIQUE (project_id, slug)` |
-| `element(item_pk)` | `element(section_id)` — leads `UNIQUE (section_id, position)` |
-| `relationship(src_pk)` | `id_prefix(project_id)` — leads its composite PK |
-| `relationship(dst_pk)` | `feedback_ref(item_pk)` — leads its composite PK |
-| `citation(project_id)` | `history(item_pk)` — leads `UNIQUE (item_pk, changed_at, seq)` |
+| `section(parent_id)` | `item(project_id)` — leads `UNIQUE (project_id, id_fold)` |
+| `element(item_pk)` | `section(project_id)` — leads `UNIQUE (project_id, slug)` |
+| `relationship(src_pk)` | `element(section_id)` — leads `UNIQUE (section_id, position)` |
+| `relationship(dst_pk)` | `id_prefix(project_id)` — leads its composite PK |
+| `citation(project_id)` | `feedback_ref(item_pk)` — leads its composite PK |
+| | `history(item_pk)` — leads `UNIQUE (item_pk, changed_at, seq)` |
 | | `citation(item_pk)` — leads `cite_item_uq` |
+
+`item(section_id)` is absent from both columns because the column itself is
+gone (§ 2.3); `element(item_pk)` is what an item's filing is now looked up
+through, and it is declared.
 
 `citation(project_id)` is in the **declared** column and its siblings are not,
 because `cite_doc_uq` is `WHERE doc_path IS NOT NULL` — it cannot serve a lookup
@@ -737,7 +756,7 @@ Feature tests under `tests/features/`, label `features;fast`:
 
 | Directory | Covers |
 |---|---|
-| `roadmap_store_schema/` | INV-6, INV-7, INV-8, INV-10, INV-11, INV-14, INV-17 |
+| `roadmap_store_schema/` | INV-6, INV-7, INV-8, INV-10, INV-11, INV-14, INV-17, INV-20 |
 | `roadmap_store_identity/` | INV-3, INV-4 |
 | `roadmap_store_concurrency/` | INV-15, INV-16 |
 
@@ -752,7 +771,7 @@ processes for INV-15, and it gets them with `fork(2)` **inside** the bundle
 test rather than as a separate target, so the exception the README allows for
 process isolation is not needed here.
 
-All **eleven** invariants this spec retains are covered; none is a grep-only
+All **twelve** invariants this spec retains are covered; none is a grep-only
 check. The **eight** tombstoned above — INV-1, 2, 5, 9, 12, 13, 18 and 19 — are
 covered by [ANTS-3761](ANTS-3761-roadmap-export-format.md) § 6, whose own
 coverage table accounts for all eight.
@@ -815,3 +834,4 @@ None outstanding. The three this spec carried are closed:
 | 4 | 2026-07-30 | 1 (store lane, cold, counterpart also read) | 5 / 6 / 6 / 6 / 0 | First gate on the post-split document. Two **seam failures** where ANTS-3761 emitted fields this schema had no column for: cross-project `rel` (no `dst_project`/`dst_id_fold`, and the CHECK forbade an unresolved edge outright) and per-project `citation` (no `project_id`, so a doc-anchored row had no path to a project and `cite_doc_uq` collided across projects). Both fixed here. `section_id NOT NULL` was justified by a migration default the model's § 3.3 does **not** contain — it defaults only `kind` and `source` — so this spec now supplies the synthetic root section itself. `id_parses` was a boolean conflating genuinely off-grammar ids with synthesised `PASS-N-M[-S]` ones, which the model's § 7.1 calls real ids; replaced by a three-value `id_origin`. § 4 carried **two** `**Disk.**` paragraphs, the second restating verbatim a figure the first retracts. Added: 0600 on the store and both WAL sidecars (INV-17), an `export_slug` charset CHECK (it is interpolated into a path), timestamp CHECKs so the export cannot normalise what the store holds loosely, `NOT NULL DEFAULT` on the JSON columns, and INV-15/16 for the creation race and busy-timeout policy — § 2.5 previously had no invariant and no test at all. |
 | 5-fold | 2026-07-30 | none — no reviewer dispatched | — | **Decision + fold-in row, not a review.** The two conflicts loops 3 and 4 surfaced were **settled by the standard's author**, and ANTS-3760's remaining verified tail was folded in without re-review (it is already verified; re-deriving it would cost a full dispatch). *`sort_order`* → `roadmap-data-model.md` § 4.1's row becomes `derived` and § 3.1's write tier drops it, so the standard now says what this schema does; § 2.3's "open against the standard" paragraph is retired. *`history` eviction* → capped **store-wide at 250 MiB with nothing evicted below it**, chosen over per-item middle-eviction and over unbounded growth; at the cap the `history` write fails and reports while the item write it accompanies still succeeds. INV-14 now asserts **both** halves and requires the cap to be **injectable**, because a bound reachable only in production is a bound no test exercises. Folded from the tail: a self-relationship `CHECK`; the four same-project rules moved to the write path with SQLite named as the reason they cannot be DDL; INV-8 bound to `QFileInfo::canonicalFilePath()` and given a third leg for its empty-string-on-missing-path behaviour, which `root TEXT UNIQUE` would otherwise fuse into a single shared project; `citation(item_pk)` dropped as redundant; two stale `§ 2.4` self-citations repointed at ANTS-3761. **Four claims were verified against SQLite 3.53.2 rather than reasoned about** — a partial index *is* used for `item_pk = ?`, a subquery in a `CHECK` *is* prohibited, the self-edge `CHECK` fires, and a generated `id_fold` both folds and **refuses a direct INSERT**. The last of those closed § 8's third open question: `id_fold` is now `GENERATED ALWAYS AS (lower(id)) VIRTUAL`, which makes a non-folding writer unreachable rather than merely tested against, and sets a real SQLite floor of **3.31** that both constrained runners clear. § 8 is consequently empty — its other two questions belong to ANTS-3761 and ANTS-3758, which have since decided them. |
 | 5 | 2026-07-30 | 2 (schema + invariants-as-tests, grounding + seam; cold, loop log withheld) | 4 / 12 / 7 / 11 / 0 | 34 verified, 0 dismissed, 33 fixed and **1 surfaced** (below). Origin split: ~4 collateral from the 5-fold edit, ~30 draft defects — draft defects dominate, so the loop was the right remedy, but all four collateral items came from one edit whose blast radius I under-swept (the 250 MiB cap left `6–9 MiB` "at its cap" standing, the unit drifted MB/MiB, and INV-14's single injected cap could not satisfy both its own legs). **Two invariants would have certified a broken store.** INV-17 said to "force a WAL checkpoint so `-wal` and `-shm` exist" — verified on SQLite 3.53.2 that a *write* creates the sidecars, a checkpoint does not, and closing the last connection deletes them, so the recipe asserted on absent files and passed against a store securing nothing. INV-11's per-enum sweep omitted `id_origin`, a closed enum with a `CHECK` of its own. **Two schema rules were unsatisfiable:** `section.title` is `NOT NULL` while § 2.3 specified a synthetic root section with "no title", which stops the first migration insert; and `relates-to` normalisation demanded the lower-sorting endpoint be `src_pk` when `src_pk` is `NOT NULL REFERENCES item` and the model's INV-4 permits an unresolved far endpoint — now scoped to both-endpoints-resolved. The 250 MiB cap had **no defined measure**, and the obvious one (`dbstat`) is a build-flag dependency of exactly the class § 2.3 refuses for JSON1; pinned to a `length()` sum instead. Grounding: "sixteen helper **libraries**" was a wrong noun on a right count — 16 comments annotate *sources inside one library*, and the file declares 8 `add_library` targets; "the MCP verb layer, which may be a second process" is contradicted by `remotecontrol.cpp:2860` (verbs run on the GUI thread). Seam with ANTS-3761: both documents said **six** invariants were tombstoned where there are **eight**; `provenance` lacked the `DEFAULT` the sibling asserts it has; `element.payload` was to be canonicalised as JSON though it is prose for `kind='narration'`; ANTS-3761's exhaustive absent/null table omitted `history.old`/`new` and mis-filed `item.source`; its INV-2 join keys omitted the two columns that lead the store's own unique indexes. Also: § 9 of the standard was claimed by **both** halves of the split; `tools/ci-parity.sh` was missing from § 7 though `dependencies.md` § 6 requires it in lockstep; three "new bundles" would have reversed ANTS-1217's consolidation and are now three directories joining `test_core`; `user_version` mismatch behaviour defined; `export_slug`'s CHECK narrowed to what its own derivation can emit. **Surfaced, not fixed:** `item.section_id` duplicates the `element` row's filing with no rule naming which wins — the same defect this spec rejects for `sort_order`, and both copies are exported, so no invariant catches the drift. It is a design decision affecting both specs and the export record shape, so it goes to the author rather than being resolved here. |
+| 6-decision | 2026-07-30 | none — no reviewer dispatched | — | **Decision row, not a review.** Loop 5's surfaced CRITICAL, answered by the standard's author the same day and on the same grounds as `sort_order`: **`item.section_id` is removed.** An item's filing is its `element` row, which already carries both the section and the position, so the column was a second encoding of one fact with no authority named — the exact defect § 5 of the model settles against `sort_order`, and accepting it there while reproducing it here would have been incoherent. What the `NOT NULL` column bought is replaced by **INV-20** (exactly one `kind='item'` element per item), which is strictly stronger: the column never forbade an item with *two* element rows, or with an element row in a section other than its own `section_id`, and both states exported and rebuilt without complaint. Swept with it: the write-path constraint list (the same-project `item.section_id` rule is gone, INV-20 takes its place), the index table (`item(section_id)` removed; `element(item_pk)` is now how filing is looked up), § 6's coverage count eleven → twelve, and on the export side ANTS-3761's `item` record loses its `section` field and the surrogate list loses `item.section_id`. |

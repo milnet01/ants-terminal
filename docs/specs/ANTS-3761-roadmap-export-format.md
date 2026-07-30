@@ -80,7 +80,7 @@ Every line is one JSON object with a `t` discriminator.
 {"t":"legend","status":"in-progress","wording":"In progress (active commit work…)"}
 {"t":"section","slug":"performance-2","title":"Performance","level":3,"parent":null,"intro":null}
 {"t":"section","slug":"vt-parser","title":"VT parser","level":4,"parent":"performance-2","intro":"Prose."}
-{"t":"item","id":"ANTS-1234","id_origin":"parsed","section":"performance-2","status":"shipped","kind":"perf","headline":"…","layman":"…","source":"…","priority":2,"visibility":"public","milestone":null,"resolution":"…","body":"…","created":"2026-07-30","last_modified":"2026-07-30","shipped":"2026-07-30","lanes":["vt"],"evidence":[],"extras":{},"provenance":{"kind":"defaulted"}}
+{"t":"item","id":"ANTS-1234","id_origin":"parsed","status":"shipped","kind":"perf","headline":"…","layman":"…","source":"…","priority":2,"visibility":"public","milestone":null,"resolution":"…","body":"…","created":"2026-07-30","last_modified":"2026-07-30","shipped":"2026-07-30","lanes":["vt"],"evidence":[],"extras":{},"provenance":{"kind":"defaulted"}}
 {"t":"element","section":"performance-2","position":0,"kind":"item","ref":"ants-1234"}
 {"t":"element","section":"performance-2","position":1,"kind":"narration","payload":"Prose belonging to no item."}
 {"t":"element","section":"performance-2","position":2,"kind":"table","payload":{"header":["A","B"],"rows":[["1","2"]]}}
@@ -106,7 +106,9 @@ doc-anchored).
   `citation_id` and `history_id` are rowids, and so is every column *holding*
   one — `section.parent_id`, `element.item_pk`, `relationship.src_pk` /
   `dst_pk`, `history.item_pk`, `citation.item_pk`, `feedback_ref.item_pk`,
-  `item.section_id`, `item.project_id`. **Any column whose value is a rowid is
+  `item.project_id`. (`item.section_id` was on this list until ANTS-3756 § 2.3
+  removed the column; the rule below is what makes the list's length
+  irrelevant.) **Any column whose value is a rowid is
   never serialised.** A rebuild inserts in *export* order while the source
   store was built in *document* order, and any deleted row leaves a gap that
   never recurs — so a serialised rowid guarantees INV-1 fails. (A list is what
@@ -123,6 +125,13 @@ doc-anchored).
   `QString::toLower()` applies full Unicode case mapping. Ids are ASCII by
   `roadmap-format.md` § 3.5.1's grammar, so the two agree — but an implementer
   must not reach for `toLower()` and assume equivalence.
+- **The `item` record carries NO `section`.** An item's filing is its `element`
+  record, which names the section and the position together — ANTS-3756 § 2.3
+  removed the `item.section_id` column for the same reason it has no
+  `sort_order` column, and the export follows the store rather than
+  re-introducing the second copy at serialisation time. A rebuild reads the
+  `element` line to file the item, which is also why `section` records are
+  emitted before `element` records (§ 2.4).
 - **`meta` carries no export timestamp.** A date inside a byte-identity
   contract defeats it: two exports of an unchanged store would differ across
   midnight, and every regeneration would churn the committed file.
