@@ -23107,6 +23107,19 @@ against current source before filing.
   - A missing required standard must be a REPORT, not a blocker. Nine
     projects will all fail on day one; a checker that refuses is a
     checker nobody runs.
+  Settled (2026-07-30, user): the baseline is TIERED — required, and
+  required-if-applicable. A standard is obligatory for every project only
+  where it can actually bind; one that cannot (dialogs.md on a
+  command-line tool) is required only for projects with that surface.
+  Avoids the placeholder-standard failure documentation.md 1.4 already
+  names, where a project ships an empty document to satisfy a checklist.
+
+  Consequence for the script: each conditional standard needs a
+  machine-decidable applicability test, or the tier is unenforceable and
+  becomes advice. E.g. dialogs.md applies if the project links a GUI
+  toolkit; dependencies.md applies if it has a dependency manifest. Where
+  no such test exists, the standard is advisory and the report says so
+  rather than pretending to check it.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
