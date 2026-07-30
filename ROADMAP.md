@@ -469,6 +469,30 @@ SSH key registered there.
   Lanes: packaging.
   Source: in-session-2026-07-30 (found while adding distros for ANTS-3727).
 
+- 📋 [ANTS-3732] **workspace_search hard-kills at 5 s on a trivial repo-wide regex.**
+  Searching the pattern `lua5\.4/` (regex, no lane/glob) over the whole
+  repo returned code:rg_failed, "rg exceeded 5 s wall budget, hard-killed".
+  A plain `grep -rn` over src/ and tests/ answered instantly, so the cost is
+  not the pattern.
+
+  The likely cause is this repo's own documentation: ROADMAP.md is ~2.8 MB
+  and CHANGELOG.md ~1.1 MB, and an un-globbed search scans both. That makes
+  the default 5 s budget too tight for the maintainer project specifically —
+  the one project where these verbs are used most.
+
+  Worth measuring before choosing a fix, since there are three plausible
+  ones and they are not equivalent: raise the default timeout_sec; keep the
+  budget but exclude the giant append-only logs from code-shaped searches by
+  default; or make the hard-kill return partial results rather than nothing,
+  so a slow search still answers. The refusal envelope's hint (narrow with
+  lane=/glob=, raise timeout_sec, fall back to Bash rg) is good and did lead
+  straight to a working fallback — this is about the default being wrong for
+  this repo, not about the error being unclear.
+  **Layman:** The project search tool times out on this repo because two of our own files are enormous, so it falls back to a slower method.
+  Kind: perf.
+  Lanes: mcp.
+  Source: in-session-2026-07-30 (hit while working ANTS-3727).
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ — and the spec is now Fedora-compatible in fact,
