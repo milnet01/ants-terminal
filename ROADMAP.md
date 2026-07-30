@@ -23239,6 +23239,25 @@ against current source before filing.
   and the seam is already visible — STORE (2.1-2.3, 2.5) vs EXPORT (2.4 +
   INV-1/2/5/12/13). Nearly all collateral landed in the export half.
   ANTS-3757 and ANTS-3758 are unaffected and still depend on this.
+  Progress (2026-07-30): store IMPLEMENTED and green — src/roadmapstore.{h,cpp},
+  ants_roadmapstore_lib (Qt6::Core + Qt6::Sql), Sql added to the Qt6 COMPONENTS
+  list. 15 feature tests in roadmap_store_identity/ and roadmap_store_schema/,
+  filed into the existing test_core bundle. All eight invariants verified to go
+  RED under the exact mutation their own "Breaks when" clause names.
+
+  Cold-eyes loop 5 first (2 lanes, 34 verified / 0 dismissed / 33 fixed): two
+  invariants would have certified a broken store — INV-17's WAL recipe asserted
+  on files a checkpoint does not create, and INV-11's per-enum sweep omitted
+  id_origin. Two schema rules were unsatisfiable (section.title NOT NULL vs a
+  titleless root section; relates-to normalisation vs src_pk NOT NULL).
+
+  Implementation closed three gaps a cold read had not: INV-20's "at most one"
+  half is a partial UNIQUE index, not a write-path rule; INSERT ... RETURNING
+  would have raised the SQLite floor 3.31 -> 3.35 unnoticed; putItem's
+  same-project check raced outside its own transaction.
+
+  Remaining for this id: roadmap_store_concurrency/ (INV-15, INV-16). ANTS-3761
+  (export writer + RFC 8785 vectors) is next and unblocked.
 
 - 📋 [ANTS-3757] **Roadmap migration — the one-shot transformation, ID allocation, status normalisation and cutover.**
   Spec seam 2 of the ANTS-3753 implementation.
