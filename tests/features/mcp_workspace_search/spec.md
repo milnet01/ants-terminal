@@ -25,7 +25,7 @@ can grep for).
 | 6 | The MCP `tools/call` dispatcher in `src/claudeintegration.cpp` has an `else-if (toolName == \"workspace_search\" && m_workspaceSearchProvider)` clause that extracts `arguments` and forwards. |
 | 7 | `ClaudeIntegration` declares `setWorkspaceSearchProvider(std::function<QString(const QJsonObject&)>)` in `src/claudeintegration.h` and a matching `m_workspaceSearchProvider` member. Signature is the full-`QJsonObject` shape (matches `cmdGetText` provider widening idiom). |
 | 8 | `MainWindow::setupClaudeMcpProviders` in `src/mainwindow.cpp` calls `setWorkspaceSearchProvider` with a lambda that delegates to `m_remoteControl->cmdWorkspaceSearch`. Falls back to the same `\"remote-control unavailable\"` JSON when `m_remoteControl` is null. |
-| 9 | The body uses ripgrep flags `--json`, `--no-heading`, `--line-number`, `--max-columns 500`, `--threads 1`. These appear in the argv literally. |
+| 9 | The body uses ripgrep flags `--json`, `--no-heading`, `--line-number`, `--max-columns 500`, `--threads`. These appear in the argv literally. The thread count itself is `kWorkspaceSearchThreads` (4 since ANTS-3732, was 1) and is deliberately NOT asserted — it is a tuning value, not a contract. |
 | 10 | Hard kill is wired via `QTimer::singleShot(2000` (or equivalent constant naming) sending `terminate()`, then a 200 ms grace before `kill()` — INV-5 in the spec. |
 | 1452-1 | `--no-ignore-vcs` and the bare `--no-ignore` umbrella appear in `remotecontrol.cpp`, gated on `respect_gitignore`. (ANTS-1452 INV-1). |
 | 1452-2 | `--hidden` appears in `remotecontrol.cpp`, gated on `include_hidden`. (ANTS-1452 INV-2). |

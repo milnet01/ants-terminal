@@ -10585,6 +10585,19 @@ constexpr int kWorkspaceSearchMaxBudgetMs  = 30000; // ANTS-1565-INV-2/5 cap
 constexpr int kWorkspaceSearchKillGraceMs  =  200;  // ANTS-1248-INV-5
 constexpr int kWorkspaceSearchMaxResultsCap = 500;  // ANTS-1248-INV-4
 constexpr int kWorkspaceSearchMaxColumns    = 500;
+// ANTS-3732 — rg worker threads. Was 1 from ANTS-1248, filed there under
+// "DoS mitigation"; measurement says that was the wrong lever. `--threads 1`
+// caps no per-line work (that is --max-columns) and costs the SAME total CPU
+// (0.84 cpu-s at 1 thread vs 0.82 at 12, measured) — what it actually removes
+// is rg's parallel directory walker, so every file open is serialised. On this
+// project's spinning disk (/mnt/Games, ROTA=1) seek latency then dominates:
+// a cold-cache scan of 31.5k files took 24.6 s single-threaded vs 0.09 s
+// multi-threaded, and even the ordinary 1.6k-file scan overran the 5 s budget
+// whenever a concurrent build had churned the page cache. The wall budget
+// (kWorkspaceSearchHardKillMs) is the real resource cap; threads are not.
+// 4 recovers ~94% of the speedup and matches the project-wide parallelism
+// cap used for ctest (see CLAUDE.md) so a heavy desktop session can't thrash.
+constexpr int kWorkspaceSearchThreads       =   4;  // ANTS-3732
 constexpr int kWorkspaceSearchStderrCapBytes = 4096; // ANTS-1248-INV-8
 constexpr int kWorkspaceSearchGlobBytesCap   =  256; // ANTS-1248-INV-9
 // ANTS-3548 — default-ON per-match line-length clip. An absent
@@ -10903,7 +10916,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
          << QStringLiteral("--no-heading")
          << QStringLiteral("--line-number")
          << QStringLiteral("--max-columns") << QString::number(kWorkspaceSearchMaxColumns)
-         << QStringLiteral("--threads")     << QStringLiteral("1");
+         << QStringLiteral("--threads")
+         << QString::number(kWorkspaceSearchThreads);
     if (caseMode == QLatin1String("smart"))           argv << QStringLiteral("--smart-case");
     else if (caseMode == QLatin1String("insensitive")) argv << QStringLiteral("--ignore-case");
     else if (caseMode == QLatin1String("sensitive"))   argv << QStringLiteral("--case-sensitive");
@@ -10996,8 +11010,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const QList<QByteArray> lines = stdoutBytes.split('\n');
     // ANTS-3405 — bound the parse loop by the wall budget too, not just the
     // rg process. rg --json over a repo with large data blobs (a ~1.2 MB
-    // YAML, per-locale files, *.mo binaries), made slower by --threads 1,
-    // can emit an enormous match stream; this loop iterates EVERY line
+    // YAML, per-locale files, *.mo binaries) can emit an enormous match
+    // stream; this loop iterates EVERY line
     // regardless of max_results (to count seenMatchEvents), so a huge
     // stream blew the client's ~60 s transport timer with a raw -32000 and
     // no envelope (RetroDB feedback). Cap the total at rg-budget + an equal
