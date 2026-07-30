@@ -23213,6 +23213,32 @@ against current source before filing.
   **Layman:** The database itself: what tables hold a roadmap item, and the committed text file that can rebuild it from scratch.
   Kind: implement.
   Source: ANTS-3753 split (spec seam 1 of 3), 2026-07-30.
+  Spec written and gated (2026-07-30): docs/specs/ANTS-3756-roadmap-store-schema.md.
+  Converged BY CAP at 3 cold-eyes loops, 2 lanes each.
+
+  Loop 1 C7 H11 M10 L10 (all draft) → loop 2 C9 H12 M12 L10 (~75%
+  collateral) → loop 3 C8 H12 M12 L12 I1 (collateral again dominant).
+  ~125 findings verified, 0 dismissed, ~110 fixed.
+
+  The run's turning point was a design decision, not an edit: section
+  2.4 guaranteed byte-identity through a hand-written table of ~20
+  serialisation freedoms, and each freedom pinned created new places for
+  the document to contradict itself — which is what generated loops 2
+  and 3's collateral. QJsonObject sorting its keys made the pinned field
+  order unproducible with Qt's own JSON classes, which settled it. On the
+  user's call the spec now delegates canonicalisation to RFC 8785 (JCS)
+  and keeps only the file-level rules JCS cannot cover. Both loop-3 lanes
+  independently verified that delegation is characterised correctly.
+
+  Deferred tail filed as ANTS-3760 — 15 verified-unfixed findings plus 2
+  surfaced conflicts with the ANTS-3753 standard (sort_order's obligation
+  tier; history eviction, which as drafted destroys the only copy of what
+  the model's 6 says the export exists to preserve).
+
+  SPLIT RECOMMENDED before implementation: 683 lines from 321 at draft,
+  and the seam is already visible — STORE (2.1-2.3, 2.5) vs EXPORT (2.4 +
+  INV-1/2/5/12/13). Nearly all collateral landed in the export half.
+  ANTS-3757 and ANTS-3758 are unaffected and still depend on this.
 
 - 📋 [ANTS-3757] **Roadmap migration — the one-shot transformation, ID allocation, status normalisation and cutover.**
   Spec seam 2 of the ANTS-3753 implementation.
@@ -23295,6 +23321,79 @@ against current source before filing.
   **Layman:** Docs should stop quoting exact counts that go out of date; keep a number only when it changes a decision, and say how to re-check it.
   Kind: doc.
   Source: user-question-2026-07-30 (during ANTS-3753 cold-eyes).
+
+- 📋 [ANTS-3760] **ANTS-3756 deferred tail — verified findings left unfixed at the cold-eyes cap, plus the split recommendation.**
+  These are VERIFIED and UNFIXED. Do NOT re-review to rediscover them — a
+  fresh loop costs a full multi-agent dispatch to regenerate what is
+  already written here. Fold them in directly.
+
+  SURFACED — decisions for the ANTS-3753 standard's author, not defects:
+  1. sort_order. roadmap-data-model.md 4.1 lists it in the write
+     obligation tier; its 5 says the element list is the source and
+     sort_order is recomputed from it. Both cannot hold. ANTS-3756
+     follows 5 and stores order once in element.position. Fix the
+     standard: either 4.1's row becomes `derived`, or 5's precedence
+     rule goes.
+  2. history eviction. ANTS-3756 4 caps history but deliberately does
+     NOT state which revisions survive, because the model's 6 makes
+     history exported precisely so it has somewhere to live — evicting
+     oldest-first destroys the only copy of what that sentence protects.
+     Three candidates ranked in the spec; pick one.
+
+  VERIFIED, UNFIXED, cheap:
+  3. citation rows anchored on doc_path carry no project_id, so a
+     per-project export has no rule for which file carries them, and
+     cite_doc_uq merges two projects' identically-relative doc paths.
+     Fix: add project_id to citation, and a `project` field to the record.
+  4. The section record shows only the parent:null variant; the non-null
+     shape is undefined, and slug-order can emit a child before its
+     parent, which the rebuild's FK must tolerate (two-pass or deferred
+     FK). Same class: the cross-project item reference {export_slug,
+     id_fold} has no record shape, pending open question 2.
+  5. element/section carry no same-project constraint, so the schema
+     permits an element in project A referencing project B's item —
+     a state the model has no meaning for ("Items are never global").
+  6. No `synchronous` pragma is pinned, and no behaviour is stated for
+     busy_timeout expiring on a write. For a store the spec calls
+     primary rather than a cache, durability is owed.
+  7. INV-8's "canonical" is not bound to a function.
+     QFileInfo::canonicalFilePath() returns EMPTY for a non-existent
+     path, which would write '' into the root column.
+  8. user_version is "set only by the transaction that created the
+     tables", but CREATE TABLE IF NOT EXISTS gives the loser no signal.
+     Gate on reading user_version == 0 inside the same BEGIN IMMEDIATE.
+  9. No self-relationship CHECK (src_pk = dst_pk); distinct from the
+     whole-store acyclicity deferred to ANTS-3758.
+  10. INV-13's resolvable set omits `parent` (section) and `doc`
+      (citation), so a writer emitting a surrogate there passes.
+  11. The corpus measurement, its find/awk command and the
+      case-insensitivity caveat are stated twice, near-verbatim (1 and
+      4). Delete one, per the delete-N-1 rule.
+  12. Disk figure "10-15 MiB" is unsupported — SQLite stores UTF-8, so
+      the data is ~4.9 MiB; the figure looks borrowed from the UTF-16
+      RAM number, and ignores history-at-cap.
+  13. Section 4's read-verb constraint legislates ANTS-3758's surface.
+      Restate as a constraint that spec inherits.
+  14. dst_path (rel) and doc (citation) name one concept two ways.
+  15. section(parent_id) index missing; feedback_ref(item_pk) and
+      citation(item_pk) indexes are redundant with their PK/unique
+      leftmost column.
+
+  OPEN QUESTION worth one command: Debian/Ubuntu have historically built
+  libsqlite3 with SQLITE_ENABLE_JSON1 well before 3.38, so ubuntu-22.04's
+  3.37.2 may carry JSON1 regardless. Unverifiable from this host. Does not
+  change the decision (the spec now depends on no JSON1) but the 3.38
+  figure is an upstream-default boundary, not a measured floor.
+
+  SPLIT RECOMMENDED. The spec is 683 lines, from 321 at draft, and
+  collateral outnumbered draft defects two loops running. The seam is
+  clean and already visible in the document: the STORE (2.1-2.3, 2.5 —
+  engine, location, schema, concurrency) and the EXPORT (2.4 and
+  INV-1/2/5/12/13 — serialisation and round-trip). Nearly all loop-2 and
+  loop-3 collateral landed in the export half.
+  **Layman:** The leftover review notes for the store spec, written down so nobody has to re-run the review to find them again.
+  Kind: doc.
+  Source: cold-eyes-2026-07-30 (ANTS-3756 loop 3, converged by cap).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

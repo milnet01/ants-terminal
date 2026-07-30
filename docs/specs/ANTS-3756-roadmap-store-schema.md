@@ -129,7 +129,8 @@ one.
 ```sql
 CREATE TABLE project (
   project_id   INTEGER PRIMARY KEY,
-  root         TEXT NOT NULL UNIQUE,   -- canonical absolute path
+  root         TEXT UNIQUE,            -- canonical absolute path; store-local,
+                                       -- NULL until first local open (§ 2.4)
   name         TEXT NOT NULL,
   export_slug  TEXT NOT NULL UNIQUE,   -- filename-safe; names the export file
   legend       TEXT                    -- JSON: {status_value: project_wording}
@@ -155,8 +156,8 @@ CREATE TABLE item (
                  ('planned','in-progress','shipped','considered','dropped')),
   headline     TEXT NOT NULL,
   layman       TEXT,
-  kind         TEXT NOT NULL,          -- CHECK against the 21-value enum, § 7.4
-  source       TEXT,
+  kind         TEXT NOT NULL,          -- CHECK vs the model's § 7.4 21-value enum
+  source       TEXT NOT NULL,          -- model § 3.3 defaults it, so never absent
   priority     INTEGER CHECK (priority IS NULL OR priority BETWEEN 1 AND 5),
   visibility   TEXT NOT NULL DEFAULT 'public'
                  CHECK (visibility IN ('public','internal')),
@@ -183,10 +184,12 @@ obligation and its § 3.3 gives migration a default — an item filed nowhere is
 not a state the model has.
 
 **The rest of § 3.1's write tier is enforced in the write path, not by the
-schema, and that is forced rather than chosen.** `source`, `created`,
-`last_modified`, and the conditional `layman` / `priority` / `resolution` /
-`shipped` are all required *at write* — but the model's § 3.3 requires
-migration to accept historical items that carry none of them. A `NOT NULL`
+schema, and that is forced rather than chosen.** `created`, `last_modified`,
+and the conditional `layman` / `priority` / `resolution` / `shipped` are
+required *at write* — but the model's § 3.3 requires migration to accept
+historical items carrying none of them. (`source` is **not** in this set: the
+model's § 3.3 gives it a migration default of `planned`, so it is never absent
+and is `NOT NULL` above, next to `kind` for the same reason.) A `NOT NULL`
 column cannot express "required of new writes, absent on migrated rows", so the
 column stays nullable and `RoadmapStore::putItem()` refuses a write missing any
 field its tier demands. The gate is real and it is this spec's; it simply
@@ -219,12 +222,36 @@ appearing once or twice. A key-value table would be a sparse join per key to
 reconstruct one item. `provenance` is per field by the model's § 7.7, so it is
 naturally an object keyed by field name.
 
-**SQLite ≥ 3.38 is the floor**, because JSON1 is built in by default only from
-that release; earlier builds require a compile flag this project does not
-control. Two runners are below it: `.github/workflows/release.yml` (`ubuntu-22.04`,
-which builds the AppImage) and `ci.yml`'s **`qt62-baseline` job** — `ci.yml`'s
-other two jobs are already on `ubuntu-24.04`. So either those two move, or the
-queries avoid JSON1 and read the columns as opaque text. `dependencies.md` requires the floor to be
+**JSON columns are STORED in the same RFC 8785 canonical form § 2.4 emits.**
+Not a tidiness rule — INV-2 diffs columns, and a rebuild writes canonical text
+while the original store holds whatever its writer produced, so an
+uncanonicalised store fails that diff against a *correct* implementation. This
+covers `item.lanes`, `item.evidence`, `item.extras`, `item.provenance`,
+`project.legend` and `element.payload`. Canonicalising once at the write path
+makes the export a copy rather than a transformation.
+
+**The store does not depend on JSON1, and that is a decision rather than a
+preference.** `extras` and `provenance` are read and written as opaque text;
+nothing in this spec requires `json_extract` or `json_each`. A report that
+wants to query inside them may use JSON1 where available, but no invariant here
+does.
+
+The reason is that the obvious alternative is foreclosed. JSON1 became a
+default-on build only in **SQLite 3.38**, and two runners predate it —
+`release.yml` (`ubuntu-22.04`) and `ci.yml`'s `qt62-baseline` job. Neither can
+move: `release.yml`'s pin is a deliberate **glibc-2.35** choice, because
+`ubuntu-24.04` would lock the AppImage to glibc 2.39 and drop still-supported
+LTS distros; and `dependencies.md` § 6 states the `qt62-baseline` pin "is *not*
+a stale pin — it mirrors the § 4 Qt 6.2 floor. Do **not** bump it in the runner
+sweep." Requiring 3.38 would therefore mean shipping an AppImage whose own
+bundled `libsqlite3` is below the floor.
+
+**Open, and deliberately not asserted:** Debian and Ubuntu have historically
+built `libsqlite3` with `SQLITE_ENABLE_JSON1` well before 3.38, so 22.04's
+3.37.2 may carry JSON1 regardless. That was not verifiable from the development
+host. It does not change the decision — depending on a distro build flag is
+worse than not depending on the feature — but it means the 3.38 figure is an
+*upstream-default* boundary, not a measured floor for these runners. `dependencies.md` requires the floor to be
 stated rather than discovered, and this is the one dependency here with a real
 version constraint.
 
@@ -329,8 +356,14 @@ because a changed item is then a one-line diff, which is the review granularity
 ANTS-3753 asked for.
 
 **No surrogate key is ever serialised.** `item_pk`, `project_id`,
-`section_id`, `element_id`, `rel_id` and `history_id` are SQLite rowids
-assigned in insertion order. A rebuild inserts in *export* order while the
+`section_id`, `element_id`, `rel_id`, `citation_id` and `history_id` are rowids
+assigned in insertion order — **and so is every column that holds one**:
+`section.parent_id`, `element.item_pk`, `relationship.src_pk`,
+`relationship.dst_pk`, `history.item_pk`, `citation.item_pk`,
+`feedback_ref.item_pk`, `item.section_id`, `item.project_id`. The rule, not the
+list, is normative: **any column whose value is a rowid is never serialised and
+is excluded from INV-2's diff.** A list is what gets four names short, which is
+how it stood one loop ago. A rebuild inserts in *export* order while the
 source store was built in *document* order, and any row ever deleted leaves a
 gap that never recurs — so a serialised rowid guarantees INV-1 fails. Records
 address each other by stable identity instead:
@@ -338,8 +371,22 @@ address each other by stable identity instead:
 | Target | Addressed by |
 |---|---|
 | project | `export_slug` (implicit — one file per project) |
-| item | `id_fold`, or `{project, id_fold}` when cross-project |
+| item | **`id_fold`** — the folded form, as `{"export_slug": …, "id_fold": …}` when the target is in another project |
 | section | `slug` |
+
+**References carry the folded id, never the authored one.** `{"t":"item","id":"ANTS-1234"}`
+declares the item with its authored spelling; every reference to it —
+`element.ref`, `rel.src`/`dst`, `feedback_ref.item`, `citation.src`,
+`history.item` — carries `"ants-1234"`. Folding once at the reference site is
+what makes `Sh-1` and `SH-1` resolve to the same row without the reader
+re-deriving identity per link.
+
+**Folding is ASCII-lowercase, and the function is named because the two obvious
+choices differ.** SQLite's `lower()` folds ASCII only; `QString::toLower()`
+applies full Unicode case mapping, so a non-ASCII prefix would fold differently
+in the store than in a Qt-side reader. Ids are ASCII by `roadmap-format.md`
+§ 3.5.1's grammar, so **ASCII-lowercase is normative** and both agree — but an
+implementer must not reach for `toLower()` and assume equivalence.
 
 #### Serialisation: RFC 8785, not a hand-written rule list
 
@@ -349,12 +396,11 @@ rather than a table of house rules because the house-rules approach does not
 converge: every freedom pinned by hand is a rule that some other passage can
 contradict, and the list is never provably complete.
 
-JCS fixes, by reference: **object key order** (lexicographic by UTF-16 code
-unit), **whitespace** (none), **string escaping** (the short forms `\b \t \n
-\f \r \" \\`, everything else below U+0020 as `\u00xx` lowercase hex, nothing
-above U+007F escaped, `/` never escaped), **number formatting**, and **UTF-8
-without a BOM**. Nothing in this spec restates those; a restatement is a second
-copy that will drift.
+JCS fixes, by reference and **without restatement here**: object key order,
+whitespace, string escaping, number formatting, and text encoding. Those five
+categories are named so a reader knows what is already settled; their *content*
+is the RFC's and is deliberately not reproduced, because a second copy is a
+second thing to keep in step.
 
 Two consequences an implementer must not discover the hard way:
 
@@ -400,9 +446,14 @@ doc-anchored).
   reader recomputes it, so the two cannot disagree.
 - **`meta` carries no export timestamp.** A date inside a byte-identity
   contract defeats it: two exports of an unchanged store would differ across
-  midnight, and every regeneration would churn the committed file. `root` is
-  likewise absent — it is a machine-local absolute path, and the export is
-  committed to a repo shared between machines.
+  midnight, and every regeneration would churn the committed file.
+- **`project.root` is store-local and deliberately unexported**, because it is
+  a machine-local absolute path and the export is committed to a repo shared
+  between machines. It is therefore the one column INV-2's round-trip does not
+  cover, and the schema makes it **nullable** to say so: a store rebuilt from an
+  export on a fresh machine has no root until that project is next opened
+  locally, and a `NOT NULL` column would make the rebuild impossible. `root` is
+  populated on first local open and is what INV-8 keys on from then.
 - `history.seq` disambiguates two edits to one field within the same second;
   without it the `history` sort is not total.
 
@@ -416,8 +467,8 @@ doc-anchored).
 | `section` order | by `slug`, code-unit order |
 | `item` order | by the id sort below |
 | `element` order | by `(section, position)` |
-| `rel` order | by `(type, src, dst, dst_path)`, code-unit order |
-| `citation` order | by `(src, doc, file, symbol)`, code-unit order |
+| `rel` order | item-target rows before document-target rows, then by `(type, src, dst)` / `(type, src, dst_path)`, code-unit order |
+| `citation` order | item-anchored rows before doc-anchored rows, then by `(src, file, symbol)` / `(doc, file, symbol)`, code-unit order |
 | `feedback_ref` order | by `(item, file)`, code-unit order |
 | `history` order | by `(item, at, seq)` — total by construction, since `seq` is unique per `(item, at)` |
 | Absent vs null | a field with no value is **omitted**; `null` appears only where a record shape shows it (`parent`, `intro`, `milestone`) |
@@ -500,20 +551,20 @@ PRAGMA busy_timeout = 5000;     -- ms; matches ConfigWriteLock's deadline
 
 ## 3. Invariants
 
-- **INV-1** — Export, rebuild from that export, re-export ⇒ byte-identical files. This holds **per project and across the whole corpus** — a corpus-wide rebuild must also preserve the cross-project relationships the model's INV-4 allows, which a per-project round-trip cannot witness. *Test:* `tests/features/roadmap_store_roundtrip/` — export all projects, rebuild into a temp store, re-export, `cmp` each pair, and assert the cross-project edge count is unchanged. *Breaks when:* any § 2.4 file-level rule is left unpinned; seed the fixture with two items whose insertion order differs from their id order, and one cross-project `blocked-by`.
-- **INV-2** — The export is complete: every store row, and every **non-surrogate** column of it, survives the round-trip. *Test:* `roadmap_store_roundtrip` — after rebuild, per-table `COUNT(*)` matches for all **ten** tables, and a column-wise diff matches, **joining rows on stable identity** (`(export_slug, id_fold)` for items, `slug` for sections) with `item_pk`, `project_id`, `section_id`, `element_id`, `rel_id` and `history_id` excluded. *Breaks when:* a writer drops a whole column — `provenance`, say — which round-trips byte-identically and preserves every row count, so INV-1 and a count-only check both pass on a lossy store. The surrogate exclusion is not a weakening: § 2.4 guarantees rowids differ after a rebuild, so a diff including them fails against a *correct* implementation.
+- **INV-1** — Export, rebuild from that export, re-export ⇒ byte-identical files. This holds **per project and across the whole corpus** — a corpus-wide rebuild must also preserve the cross-project relationships the model's INV-4 allows, which a per-project round-trip cannot witness. *Test:* `tests/features/roadmap_store_roundtrip/` builds a **synthetic three-project fixture** — never the machine's real corpus, which is not present in CI — seeded with two items whose insertion order differs from their id order, a deleted row (so rowids carry a gap), and one cross-project `blocked-by`. Export all three, rebuild into a temp store, re-export, `cmp` each pair, and assert the cross-project edge survives. *Breaks when:* any § 2.4 file-level rule is left unpinned. The cross-project half depends on § 8's open question — which project's file carries that edge — so it is written but skipped until that is answered.
+- **INV-2** — The export is complete: every store row, and every **non-surrogate** column of it, survives the round-trip. *Test:* `roadmap_store_roundtrip` — after rebuild, per-table `COUNT(*)` matches for all **nine** tables (ten *record types* — `legend` is a column on `project`, not a table), and a column-wise diff matches, **joining rows on stable identity**: `(export_slug, id_fold)` for items, `slug` for sections, `(section, position)` for elements, `(type, src, dst|dst_path)` for relationships, `(item, at, seq)` for history, `(src|doc, file, symbol)` for citations, `(item, file)` for feedback refs, `prefix` for id prefixes. Every surrogate — `item_pk`, `project_id`, `section_id`, `element_id`, `rel_id`, `citation_id`, `history_id` — and `project.root` are excluded. *Breaks when:* a writer drops a whole column — `provenance`, say — which round-trips byte-identically and preserves every row count, so INV-1 and a count-only check both pass on a lossy store. The surrogate exclusion is not a weakening: § 2.4 guarantees rowids differ after a rebuild, so a diff including them fails against a *correct* implementation.
 - **INV-3** — Item identity is case-folded within a project: inserting `Sh-1` then `SH-1` into one project raises a uniqueness violation, and the same pair in two different projects does not. *Test:* `roadmap_store_identity`. *Breaks when:* `UNIQUE (project_id, id_fold)` is written against `id`.
 - **INV-4** — An off-grammar id is stored verbatim with `id_parses = 0` and is never rewritten. *Test:* `roadmap_store_identity` inserts `[Cl9]`; assert `id` round-trips exactly and no dash is inserted. *Breaks when:* a writer normalises ids on the way in.
-- **INV-5** — Export item order follows § 2.4's numeric-segment sort and is **total**. *Test:* `roadmap_store_roundtrip` seeds `ANTS-9`, `ANTS-10`, `CL-9`, `CL-0009`, `PASS-43-5`, `PASS-43-5-B`, `PASS-9-1` and one quarantined id, and asserts the exact emitted order. *Breaks when:* the writer sorts lexically (`ANTS-10` lands before `ANTS-9`); or splits at the last hyphen (`PASS-9-1` lands after `PASS-43-5`); or omits the raw-bytes tie-break, leaving `CL-9` and `CL-0009` unordered — a non-total sort makes INV-1 fail intermittently, which is the worst way for it to fail.
-- **INV-6** — `relates-to` is stored once, normalised on stable identity. Writing A→B then B→A yields exactly one row, and the stored direction survives a rebuild. *Test:* `roadmap_store_schema` writes both directions and asserts one row; `roadmap_store_roundtrip` asserts the direction is unchanged after export-rebuild-export. *Breaks when:* normalisation keys on `item_pk` — rowids are reassigned by the rebuild, so the direction can flip and the re-export differs, defeating the invariant's own purpose.
+- **INV-5** — Export item order follows § 2.4's numeric-segment sort and is **total**. *Test:* `roadmap_store_roundtrip` seeds `ANTS-9`, `ANTS-10`, `CL-9`, `CL-0009`, `PASS-43-5`, `PASS-43-5-B`, `PASS-9-1`, **`3D_E-0007`, `3DE-0007`** and one quarantined id, then asserts the exact emitted order. The last two are not padding: `3D_E-0007` is the only seed beginning with a *numeric* run, so it is what exercises rule 3 (numeric before alphabetic), and the pair together is what exercises rule 1's separator-discard — a writer implementing neither passes a seed set without them. *Breaks when:* the writer sorts lexically (`ANTS-10` lands before `ANTS-9`); or splits at the last hyphen (`PASS-9-1` lands after `PASS-43-5`); or omits the raw-bytes tie-break, leaving `CL-9` and `CL-0009` unordered — a non-total sort makes INV-1 fail intermittently, which is the worst way for it to fail.
+- **INV-6** — `relates-to` is stored once, normalised on stable identity. Writing A→B then B→A yields exactly one row, and the stored direction survives a rebuild. *Test:* `roadmap_store_schema` writes the **higher**-sorting endpoint first and asserts the surviving row's `src` is the *lower* one — writing the lower first would pass against a writer that merely rejects the second edge without normalising anything; `roadmap_store_roundtrip` then asserts the direction is unchanged after export-rebuild-export. *Breaks when:* normalisation keys on `item_pk` — rowids are reassigned by the rebuild, so the direction can flip and the re-export differs, defeating the invariant's own purpose.
 - **INV-7** — The resolved store path is under `GenericDataLocation + "/ants-terminal"` and never under any cache location. *Test:* `roadmap_store_schema` asserts on the **resolved path at runtime** — it must equal `QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/ants-terminal/roadmap.sqlite"`, and **neither cache root may be a prefix of it** — the resolved path must not start with `writableLocation(CacheLocation)`, nor with `writableLocation(GenericCacheLocation) + "/ants-terminal"` (where the project's real caches live). The direction matters: `~/.cache/ants-terminal/roadmap.sqlite` is *not* a prefix of the cache root, so the reversed comparison passes for exactly the placement this invariant forbids. A source-grep for `CacheLocation` near the store is a secondary guard only. *Breaks when:* the path is composed from a constant defined elsewhere — a grep then sees one hit and the location is decided somewhere it never looked, so a grep-only test passes against a store sitting in the cache.
 - **INV-8** — A project is keyed on its **canonical** root: two paths that canonicalise to the same directory are one project, and a genuinely different root is a different project. *Test:* `roadmap_store_schema` — (a) insert via a symlinked path and via the real path, assert **one** `project_id`; (b) insert two genuinely distinct roots, assert two. *Breaks when:* `root` is stored unresolved, which makes (a) yield two rows. Case (a) is the one that matters: `mcp-caches.md`'s never-shadow rule applied to rows instead of files, and asserting *two* there would certify exactly the bug it forbids.
 - **INV-9** — Every export write path acquires `ConfigWriteLock`, and aborts loudly when it cannot. *Test:* `roadmap_store_concurrency` — hold the lock, attempt an export, assert it returns an error and **wrote no bytes**; release, assert it then succeeds. *Breaks when:* the writer treats `!acquired()` as permission to proceed unprotected. Phrasing matters here: `flock` is advisory, so a non-cooperating writer *can* interleave — the testable claim is about our writer, not about the file.
 - **INV-10** — `provenance` is per field, in both directions: editing `headline` through the store sets `provenance.headline` to `asserted` **and** leaves `provenance.kind` untouched. *Test:* `roadmap_store_schema` asserts both halves. *Breaks when:* provenance is stored per item — or when the writer never updates provenance at all, which a one-sided "kind is unchanged" assertion would happily certify.
-- **INV-11** — Every closed enum is rejected at the storage layer, not merely documented: `status`, `kind` (the 21-value set), `visibility`, `element.kind`, `relationship.type` and each `provenance` value outside its set, or a `priority` outside 1–5, all fail on insert. *Test:* `roadmap_store_schema` attempts one invalid insert per enum and asserts each is refused. *Breaks when:* the enums are written as SQL comments, which is how the first draft of § 2.3 had them.
-- **INV-12** — The export writer streams: peak RSS during an export of the whole corpus rises by **less than 4 MiB** above the pre-export baseline, against an export several times that size. *Test:* `roadmap_store_roundtrip` samples RSS immediately before and at peak during the export call and asserts the **delta**. *Breaks when:* the writer builds one `QString` and writes it at the end — which passes every other invariant here. The measurement must be a delta: a Qt process's absolute RSS exceeds the export's byte size before any work is done, so an absolute ceiling is unachievable and would be quietly relaxed until it passed.
+- **INV-11** — Every closed enum held in its **own column** is rejected at the storage layer, not merely documented: `status`, `kind` (the 21-value set), `visibility`, `element.kind`, `relationship.type`, and a `priority` outside 1–5, all fail on insert. *Test:* `roadmap_store_schema` attempts one invalid insert per enum and asserts each is refused. *Breaks when:* the enums are written as SQL comments, which is how the first draft of § 2.3 had them. **`provenance`'s values are deliberately excluded**: it is a JSON object with arbitrary keys, and validating each value needs `json_each`, which a SQLite `CHECK` may not contain — so that enum is enforced in the write path alongside § 3.1's tier, not in DDL.
+- **INV-12** — The export writer streams: peak RSS during an export of the whole corpus rises by **less than 4 MiB** above the pre-export baseline, against an export several times that size. *Test:* `roadmap_store_roundtrip` inflates the synthetic fixture to corpus scale (~5 MiB of generated body text), samples RSS immediately before and at peak during the export call, and asserts the **delta**. *Breaks when:* the writer builds one `QString` and writes it at the end — which passes every other invariant here. The measurement must be a delta: a Qt process's absolute RSS exceeds the export's byte size before any work is done, so an absolute ceiling is unachievable and would be quietly relaxed until it passed.
 - **INV-13** — Every cross-record reference in the export resolves to a declared stable key, and no surrogate value is emitted under any name. *Test:* `roadmap_store_roundtrip` parses the export and asserts that every `ref` / `src` / `dst` / `item` / `section` value resolves to an `id` or `slug` declared elsewhere in the same file. *Breaks when:* a writer serialises straight from `SELECT *` — the natural implementation, which silently breaks INV-1 on any store that has ever deleted a row. A name-based grep for `item_pk` and friends is **not** sufficient: it passes against a writer emitting the same rowids under a different key (`"section":3`), and it false-positives on free-text `body` or `extras` content.
-- **INV-14** — `history` is capped: no item retains more than 50 revisions, oldest evicted first. *Test:* `roadmap_store_schema` writes 60 revisions to one item's field and asserts 50 remain, the oldest gone. *Breaks when:* the cap is documented in § 4 and never implemented — which is the normal fate of a budget with no invariant behind it.
+- **INV-14** — `history` is bounded: no item's revision count grows without limit. *Test:* `roadmap_store_schema` writes 60 revisions to one item's field and asserts the retained count is ≤ 50. *Breaks when:* the cap is documented in § 4 and never implemented — the normal fate of a budget with no invariant behind it. **The invariant deliberately asserts the bound and not *which* revisions survive**, because § 4 leaves the eviction rule open against the model's § 6; tighten this clause once that is decided, rather than encoding a rule the standard may reject.
 
 ## 4. RAM / build cost
 
@@ -536,12 +587,25 @@ repeatedly, so:
   nothing to cache once reads are SQL. Adding one later needs its own eviction
   policy and its own id.
 
-**`history` is capped at 50 revisions per item**, oldest evicted first. It is
-the one table with no natural bound and it is exported, so it grows the backup
-too; `specs.md` § 4 requires a named cap rather than a promise to measure later.
-50 is chosen to cover an item's realistic edit life while bounding the export at
-roughly the item count times a small constant. Migration backfills at most one
-history row per item (ANTS-3757), so the cap binds only on live editing.
+**`history` is capped at 50 revisions per item — but the eviction rule is an
+open conflict with the standard, surfaced rather than settled here.**
+`specs.md` § 4 requires a named cap for unbounded growth, and `history` is the
+only table without a natural bound. But the model's § 6 makes history exported
+*precisely* because "the store is untracked and the render is lossy, so that
+history would otherwise have nowhere to live — which makes exporting it the
+point, not an optimisation." **Evicting the oldest revisions destroys the only
+surviving copy of exactly what that sentence protects**, which is a worse
+outcome than an oversized export.
+
+So the cap is stated and its eviction rule is not, pending a decision by the
+standard's author (as with `sort_order` above). Three candidates, in the order
+this spec would rank them: cap by **total store size** rather than per item,
+evicting nothing until a real bound is hit; evict from the **middle**, keeping
+the creation and the most recent revisions, which are the two a reader actually
+wants; or accept unbounded growth and revisit when a measured rate exists.
+Migration backfills at most one history row per item (ANTS-3757), so nothing
+binds until live editing accumulates — there is time to decide, and no reason
+to guess now.
 
 **Disk.** The store is roughly the markdown's size plus indexes and the JSON
 columns — order **10–15 MiB** for this corpus. The export is comparable. Both
@@ -571,12 +635,12 @@ Feature tests under `tests/features/`, label `features;fast`:
 
 | Directory | Covers |
 |---|---|
-| `roadmap_store_schema/` | INV-6, INV-7, INV-8, INV-10, INV-11 |
+| `roadmap_store_schema/` | INV-6, INV-7, INV-8, INV-10, INV-11, INV-14 |
 | `roadmap_store_identity/` | INV-3, INV-4 |
 | `roadmap_store_roundtrip/` | INV-1, INV-2, INV-5, INV-12, INV-13 |
 | `roadmap_store_concurrency/` | INV-9 |
 
-All thirteen invariants are covered; none is a grep-only check.
+All **fourteen** invariants are covered; none is a grep-only check.
 
 Per the project convention (`CLAUDE.md`, `testing.md`), each test must be
 verified to **fail against pre-implementation source** before the
@@ -594,7 +658,8 @@ writer passes for reasons it never checked.
   - `packaging/archlinux/PKGBUILD` — the Qt SQL module in `depends`.
   - `packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml` — the module in the manifest.
   - AppImage — bundles `sqldrivers/libqsqlite.so` **and** `libsqlite3.so.0` (§ 2.1: the plugin links system sqlite; the plugin alone is not enough).
-- **`.github/workflows/ci.yml`** — three jobs install an explicit apt list, including the `qt62-baseline` job. Without the SQL module every feature test below fails at runtime in CI. Its `qt62-baseline` job runs `ubuntu-22.04`, below § 2.3's SQLite floor; the other two are on `ubuntu-24.04`.
+- **`.github/workflows/ci.yml`** — three jobs install an explicit apt list, and they need different things. The two that run `ctest` need the **runtime** driver or every feature test below fails on a green build; `qt62-baseline` is a compile guard ("Build everything — no ctest") and needs only the **dev** package.
+- **[`docs/standards/dependencies.md`](../standards/dependencies.md)** — § 4's minimum-supported-floors table gains SQLite, with its mandatory *Guard* column, and § 6's version map gains the new runtime dependency. That standard is what § 2.3's runner reasoning rests on, so a floor added here and not there is a floor nothing sweeps.
 - **`.github/workflows/release.yml`** — carries its **own** apt list for the AppImage build, separate from `ci.yml`'s.
 - **`README.md`** — "the only thing it needs to run is Qt6" becomes false by the same argument as `CLAUDE.md`, and the per-distro build-dependency lines each gain a package.
 - **[`mcp-caches.md`](../standards/mcp-caches.md)** — gains a row recording that `roadmap.sqlite` is **not** a cache, is not path-keyed, and must never be added to a GC sweep. Its never-shadow invariant applies to the `project.root` column instead (INV-8).
@@ -614,4 +679,5 @@ writer passes for reasons it never checked.
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 2 (design + contract, grounding + cross-doc) | 7 / 11 / 10 / 10 / 0 | All 38 verified, 0 dismissed, all draft defects. Both lanes independently falsified § 2.1's engine justification — Qt's QSQLITE driver links **system** `libsqlite3` and ships in a separate package, so a third-party runtime dep does enter the graph and `CLAUDE.md`'s "Qt6 is the only runtime dep" needs amending, not defending. § 2.4 was a list of constraints on a format rather than a format: no record shape, no discriminator, surrogate rowids serialised (which makes INV-1 unachievable on any store that has ever deleted a row), and 4 of 8 record types unordered. Rewritten with nine record types, a worked example line, every freedom pinned, and a variable-length numeric sort that survives `PASS-43-5-B`. Four invariants would have certified a broken store — INV-8 asserted the exact failure its *Breaks when* forbade, INV-7 named a `QStandardPaths` constant that resolves to the wrong directory on this project, INV-1+2 were jointly satisfied by a column-lossy writer, INV-10 by a writer ignoring provenance. INV-11..13 added. Enum CHECKs, FK pragma, `busy_timeout`, export transaction, `history` cap, indexes, and five packaging carriers where the draft named one. **Doc grew 321 → 511 lines while being fixed** — noted per Phase 2 as a size signal, not re-partitioned mid-run. |
+| 3 | 2026-07-30 | 2 (same partition, cold) | 8 / 12 / 12 / 12 / 1 | **Converged by cap.** Collateral outnumbered draft defects for the second loop running — the skill's stop trigger — and the doc has grown 321 → 683 lines while being fixed, so the run exits here rather than looping a fourth time. Both lanes independently verified the RFC 8785 delegation is characterised correctly, which is the loop-2 decision holding. Fixed this loop: the surrogate-key rule was four names short in two places and is now stated as a rule rather than a list; `id_fold` was declared never-exported while every reference record emitted it; `root` was `NOT NULL` and unexportable, blocking the rebuild leg outright; INV-11 asserted a CHECK over a JSON object, which SQLite cannot express; the coverage table said "thirteen" of fourteen invariants and omitted INV-14; INV-5's seeds tested neither of the sort rules loop 2 added; `source` was treated as defaultless when the model defaults it. **The SQLite floor fork was closed against evidence**: both branches of "move the runners" are foreclosed — `release.yml`'s `ubuntu-22.04` is a deliberate glibc-2.35 pin, and `dependencies.md` § 6 forbids bumping `qt62-baseline` — so the store now depends on no JSON1. Two conflicts with the standard are **surfaced, not resolved**: `sort_order`'s obligation tier, and `history` eviction, which as drafted would destroy the only copy of what the model's § 6 says the export exists to preserve. Deferred tail filed as **ANTS-3760**. |
 | 2 | 2026-07-30 | 2 (same partition, cold) | 9 / 12 / 12 / 10 / 0 | Findings rose against loop 1 and **~75% were collateral from loop 1's own fixes** — so the loop was stopped and the cause addressed rather than dispatching loop 3. Root cause: § 2.4 guaranteed byte-identity via a hand-written table of ~20 serialisation freedoms, and every freedom pinned created new places for the document to contradict itself. The clincher was external: `QJsonObject` sorts keys, so the pinned field order was unproducible with Qt's own JSON classes. **Resolved by decision (user, 2026-07-30): adopt RFC 8785 (JCS)** — key order, whitespace, escaping, numbers and encoding now come from a published standard, and this spec keeps only the file-level rules JCS cannot cover. Also fixed: loop 1's edit had inserted prose *inside* a `sql` fence (17 fence lines, odd) so the schema rendered as one code block — `doc_integrity` and `spec_lint` both pass an unbalanced-fence document, which is why it shipped; a fence-parity check is now part of the post-fix pass. `id_prefix` gained an export record (its high-water mark was otherwise lost on every rebuild, reissuing live ids); INV-7's cache-prefix test was inverted and passed for a store in the cache; `relates-to` normalised on a rowid in contradiction of its own section; the relationship and citation UNIQUEs never fired because SQLite treats NULLs as distinct; `BEGIN IMMEDIATE`, temp+rename, and a SQLite 3.38 floor added. INV-14 added. |
