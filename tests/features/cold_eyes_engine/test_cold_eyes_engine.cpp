@@ -138,6 +138,37 @@ TEST(ColdEyesEngine, BriefManifestIsPathsOnly) {
     EXPECT_EQ(m.docPaths, lane.docPaths);
 }
 
+// ANTS-3718 — input_hash. Two workspaces rather than one rewritten file:
+// slurpUtf8 caches by (path, mtime_ms), so a rewrite inside the same
+// millisecond could serve stale bytes and make the test flaky.
+TEST(ColdEyesEngine, Ants3718InputHashStableAndContentSensitive) {
+    const auto hashFor = [](Workspace &ws, const QString &body) {
+        ColdEyesEngine::Lane lane;
+        lane.name = QStringLiteral("spec/ANTS-9999");
+        lane.summary = QStringLiteral("test lane");
+        lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
+        EXPECT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md", body));
+        return ColdEyesEngine::assembleBriefManifest(ws.root(), lane).inputHash;
+    };
+
+    Workspace wsA;
+    ASSERT_TRUE(wsA.valid());
+    const QString a = hashFor(wsA, QStringLiteral("# Spec\nalpha\n"));
+    EXPECT_EQ(a.size(), 64) << "SHA-256 hex digest";
+
+    // Same bytes, same lane → same hash (the skip must actually fire).
+    Workspace wsA2;
+    ASSERT_TRUE(wsA2.valid());
+    EXPECT_EQ(hashFor(wsA2, QStringLiteral("# Spec\nalpha\n")), a)
+        << "identical input must hash identically";
+
+    // A changed doc body must bust it.
+    Workspace wsB;
+    ASSERT_TRUE(wsB.valid());
+    EXPECT_NE(hashFor(wsB, QStringLiteral("# Spec\nbeta\n")), a)
+        << "a changed doc body must change input_hash";
+}
+
 // ENG-5
 TEST(ColdEyesEngine, CrossReferenceDocsAreContractTrio) {
     Workspace ws;

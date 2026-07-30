@@ -190,6 +190,8 @@ TEST(mcp_roadmap_bundles, Inv5GateNote) {
                     "clean implementation notes here"));
     a.append(bullet("ANTS-5004", kPlanned, "feature four work", {},
                     "blocks the cursor when active"));
+    a.append(bullet("ANTS-5005", kPlanned, "feature five work", {},
+                    "Wait for P10 to close before drafting"));
     const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
 
     const QJsonObject g1 = findItem(env, "ANTS-5001");
@@ -203,6 +205,10 @@ TEST(mcp_roadmap_bundles, Inv5GateNote) {
     EXPECT_FALSE(findItem(env, "ANTS-5003").contains("blocked"));
     EXPECT_FALSE(findItem(env, "ANTS-5004").contains("blocked"))
         << "bare 'blocks' is deliberately not a marker";
+
+    // ANTS-3389 — plain-prose imperative gate, no marker formatting.
+    EXPECT_TRUE(findItem(env, "ANTS-5005").value("blocked").toBool())
+        << "'wait for X' prose must flag blocked";
 }
 
 // INV-9 — label non-empty + deterministic; lowest-id fallback.

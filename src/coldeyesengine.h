@@ -154,6 +154,16 @@ struct BriefManifest {
     // instead of the generic lane.summary. Empty when no H1 found
     // — caller falls back to lane.summary as today.
     QString     summary;
+    // ANTS-3718 — SHA-256 over this lane's FULL review input: the assembled
+    // brief text (so a shared-block or Instructions change busts it) followed
+    // by the bytes of every docPath and every resolved cited code file. The
+    // cold-eyes Phase-5 skip ("this lane's input is byte-identical to the loop
+    // where it last passed clean") needs exactly this hash, but the
+    // orchestrator cannot compute one without reading everything it is trying
+    // to skip — which inverts the saving. The engine already resolves every
+    // path, so hashing here costs the caller nothing. Surfaces as
+    // `input_hash` in the brief envelope.
+    QString     inputHash;
 };
 
 PartitionResult derivePartition(const QString &projectPath,

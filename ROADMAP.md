@@ -20027,11 +20027,21 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (MAME Curator).
   Resolved (2026-07-22) — buildRoadmapBundlesEnvelope now clusters per-module <verb> <path>-template bullets (the MAME 1057/1058/1059 "Author src/mame_curator/<mod>/spec.md" case): new rcStructuralStem() signature (leading verb + first & last path segment + segment count) drives a structural-template edge that fires when items share the same Kind + a lane + an identical stem — catching template bullets whose only shared tokens are the paths/filenames the ANTS-2155 denoiser strips. Conjunctive guard (all three facets) means it cannot over-merge. Also emits no_clusters_found:true when no bundle reaches size >= 2, so a caller distinguishes all-singletons from real grouping. Sub-ask 3389 (body-prose gate detection) left as its own open item. Test-first: mcp_roadmap_bundles INV-14/15/16 (full suite 2824/2824 green). Behavioural contract lives in the feature spec; ANTS-1922.md design doc left as-is per prior practice (ANTS-2155 likewise).
 
-- 📋 [ANTS-3389] **roadmap_query mode:bundles gate detection misses body-prose gates (only marker-style gates flagged blocked/gate_note).**
+- ✅ [ANTS-3389] **roadmap_query mode:bundles gate detection misses body-prose gates (only marker-style gates flagged blocked/gate_note).**
   MAME: 1075's bold gate marker surfaced correctly, but 1058's plain-prose gate ('Wait for P10 to close before drafting') was not surfaced as blocked/gate_note. Only marker-style gates are detected; a 'wait for X' sentence in the body is missed. Lower priority than the clustering item.
   **Layman:** If a to-do says 'wait for X to finish' in plain prose rather than a special tag, the next-work view doesn't mark it as blocked.
   Kind: enhancement.
   Source: cc-feedback-2026-06-30 (MAME Curator, secondary).
+  Resolved (2026-07-30): `wait for ` added to rcExtractGateNote's directional
+  marker set (src/remotecontrol.cpp), so MAME Curator's plain-prose gate
+  ("Wait for P10 to close before drafting") now surfaces as gate_note+blocked.
+  Smallest change that solves the reported case: the existing markers only
+  covered participle forms (`waiting on`), never the imperative. Trailing space
+  keeps it off "wait format…". Marker-set predicate, cap and byte-stability are
+  untouched. Spec ANTS-1922 §2.4 + INV-5 updated (the form is now INV-locked,
+  not best-effort, because it carries a test). Regression: a fifth fixture in
+  tests/features/mcp_roadmap_bundles Inv5GateNote, verified RED against the
+  pre-fix binary then green. Full suite 3074/3074.
 
 - ✅ [ANTS-3390] **project_settings op:detect omits repo-root loose source files; source_roots replaces (not augments) the default walk, silently dropping them from codebase_index.**
   RetroArch: op:detect suggested 11 SUBDIR source_roots, never the repo root, though retroarch.c (~9k LoC), configuration.c, runloop.c, command.c, dynamic.c sit loose AT the root. Because source_roots REPLACES the src/ default (not additive), detect->init drops them: codebase_index(file_path:"retroarch.c") -> found:false (verified); file_count 2271 of 2513. Silent coverage gap for any repo (RetroArch, many C/Go single-binary repos) whose entrypoint/orchestration code lives at the root. Fix: make detect repo-root-aware — include the root non-recursively / an include_root_sources flag / an additive non-recursive root scan; at minimum, detect's reason must warn 'N root-level sources will NOT be covered'.
@@ -21914,7 +21924,7 @@ requesting no action and are closed in place rather than filed.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
 
-- 📋 [ANTS-3718] **`cold_eyes_brief`: return an `input_hash` and a section index — blocked on the skill not calling that verb.**
+- ✅ [ANTS-3718] **`cold_eyes_brief`: return an `input_hash` and a section index — blocked on the skill not calling that verb.**
   Two requests against `cold_eyes_brief`, merged and filed as CONSIDERED rather than
   planned. Both are sound; both are blocked by the same thing.
 
@@ -21952,6 +21962,26 @@ requesting no action and are closed in place rather than filed.
   Kind: enhancement.
   Source: claude-config-feedback-2026-07-28.
   Unblocked (2026-07-28): the stated blocker was "the /cold-eyes skill does not call cold_eyes_brief at all". Global CLAUDE.md §18 reversed that — the cold_eyes_* verbs are now the skill's preferred pipeline for every phase except the fan-out itself, and the skill text says so. Both requests are therefore live against a verb that IS called. §18's one cold_eyes_brief carve-out is narrower than the old blocker: never pass prior_loop_fixes[]; call the verb.
+  Resolved (2026-07-30) for request (a) ONLY; (b) split to ANTS-3740.
+  cold_eyes_brief now returns `input_hash` — SHA-256 over the lane's full
+  review input: the assembled brief text, then the bytes of every docPath,
+  every small cross-reference contract, and every resolved cited code file.
+  Cache it per lane and skip a lane whose hash is unchanged since the loop it
+  last passed clean; the server hashes bytes it already resolves, so the
+  caller no longer reads the input in order to hash it — which was the
+  reported defect (the skip paid for what it was skipping).
+  Two deliberate calls, both documented in-code: (1) the large append-only
+  logs (large_cross_reference_docs) are EXCLUDED — the brief routes them to
+  search-don't-read and they grow on nearly every commit, so hashing them
+  would bust every lane every loop and the skip would never fire; (2) cited
+  code is hashed whole-file, not at the cited lines — a false bust only
+  re-reviews a lane, a false match skips a change that mattered.
+  Note the request's premise "one line from returning its hash" was wrong:
+  the brief is paths-only by INV-3, so the bodies are read here for the hash.
+  That is the point — it costs the caller zero tokens.
+  Test: ColdEyesEngine.Ants3718InputHashStableAndContentSensitive (stable
+  across identical inputs, busts on a changed doc body; two workspaces rather
+  than a rewrite, because slurpUtf8 caches by mtime_ms). Full suite 3074/3074.
 
 - 📋 [ANTS-3719] **A check that a skill's frontmatter `allowed-tools` grants every MCP verb its own body mandates.**
   A Claude Code skill carries YAML frontmatter with an `allowed-tools` list and a
@@ -22224,6 +22254,58 @@ against current source before filing.
   Kind: fix.
   Lanes: mcp, feedback.
   Source: in-session-2026-07-30 (observed during the feedback triage sweep).
+
+- 📋 [ANTS-3740] **cold_eyes_brief: per-doc section index (the second half of ANTS-3718).**
+  Split out of ANTS-3718 when its `input_hash` half shipped
+  (2026-07-30). Request (a) is done; this is request (b), untouched.
+
+  Asked for by claude-config: each `doc_paths[]` entry should carry a
+  `section_index` — heading text, slug, level, line span — which
+  `docs_index` / `file_outline` in md mode already produce. The stated
+  value is NOT diff-review (a cold read does need the whole document);
+  it is that a reviewer gets the map without deriving it, and can cite
+  section anchors rather than line numbers.
+
+  Left out of the ANTS-3718 pass deliberately: `input_hash` solves the
+  reported PROBLEM (the Phase-5 skip had to read everything it wanted
+  to skip, inverting its own saving). The section index is an
+  ergonomics add with no measured cost behind it, and it changes the
+  envelope shape for every lane on every loop — worth its own sizing
+  rather than a free ride on a hash fix.
+  **Layman:** The review-brief tool could also hand each reviewer a table of contents for every document. Useful, but not what was actually hurting.
+  Kind: enhancement.
+  Source: claude-config-feedback-2026-07-28 (ANTS-3718 request (b)).
+
+- 📋 [ANTS-3741] **audit_run scope:"full" enumerates only `src/`, so a flat-layout project gets an empty file list and a misleading changed_files_count:0.**
+  VERIFIED 2026-07-30 by reading the code, not inferred.
+  `AuditScope::enumerateSourceFiles` (src/auditscope.cpp) is
+  `git ls-files src/`, hardcoded. On a project with no `src/` directory
+  (DOOM Ants keeps its code in `linuxdoom-1.10/`; Fin Break is flat too)
+  it returns EMPTY. runAudit then falls through
+  `perToolPaths[tool] = safe.isEmpty() ? req.paths : safe` to the empty
+  `req.paths`, so every file-scoped tool reverts to its own whole-tree
+  walk, and `r.changedFilesCount` is recorded as 0.
+
+  Two consequences: (a) `changed_files_count:0` on a run that in fact
+  scanned the entire tree — the envelope says the opposite of what
+  happened; (b) `scope:"full"`'s documented promise ("the whole tracked
+  src/ tree, so clazy/clang-tidy get real source positionals") silently
+  does not hold, which is the one thing scope:"full" was added for
+  (ANTS-2015).
+
+  ANTS-1456 already solved this shape for cppcheck's own argv — it
+  auto-detects `src/` and falls back to `.` (auditrunner.cpp, `srcRoot`).
+  The enumerator never got the same treatment. Fix: give
+  `enumerateSourceFiles` the same `hasSrcDir ? "src/" : ""` fallback
+  (a bare `git ls-files` for the flat case), and keep the language
+  filter in `filterForTool` as the thing that narrows it.
+
+  Interacts with ANTS-3710: on a flat project the exclusions must ride
+  on each tool's native flags, because there is no positional list to
+  filter.
+  **Layman:** On a project that does not keep its code in a folder called "src", the "audit everything" mode quietly hands the tools no file list and reports that it looked at zero files.
+  Kind: fix.
+  Source: in-session-2026-07-30 (found while scoping ANTS-3710).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

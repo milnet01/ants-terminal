@@ -7,6 +7,7 @@
 #include "roadmapfoldin.h"
 
 #include <QChar>
+#include <QCryptographicHash>   // ANTS-3718 — brief input_hash
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -1138,6 +1139,30 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
         "Flag findings with file:line citations against the doc whose claim "
         "you dispute (or the code whose behaviour the doc misstates).\n");
     m.brief = b;
+
+    // ANTS-3718 — input_hash over everything the reviewer reads in FULL: the
+    // assembled brief, the lane's own docs, the small cross-reference
+    // contracts, and every resolved cited code file. The large append-only
+    // logs are deliberately EXCLUDED — the brief routes them to
+    // search-don't-read, and they gain a line on nearly every commit, so
+    // hashing them would bust every lane every loop and the skip would never
+    // fire. Cited code is hashed whole-file rather than at the cited lines:
+    // a false bust only re-reviews a lane, a false match skips a change that
+    // mattered.
+    {
+        QCryptographicHash h(QCryptographicHash::Sha256);
+        h.addData(b.toUtf8());
+        const auto addFile = [&](const QString &rel) {
+            h.addData(QByteArray(1, '\0'));          // path/body separator
+            h.addData(rel.toUtf8());
+            h.addData(QByteArray(1, '\0'));
+            h.addData(slurpUtf8(projectPath + QChar('/') + rel).toUtf8());
+        };
+        for (const QString &p : m.docPaths)       addFile(p);
+        for (const QString &p : smallCrossRefs)   addFile(p);
+        for (const QString &p : m.citedCodePaths) addFile(p);
+        m.inputHash = QString::fromLatin1(h.result().toHex());
+    }
     return m;
 }
 

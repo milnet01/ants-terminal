@@ -3576,6 +3576,9 @@ static QString rcExtractGateNote(const QString &body) {
         QStringLiteral("blocked by"), QStringLiteral("gated"),
         QStringLiteral("depends on"), QStringLiteral("waiting on"),
         QStringLiteral("parked"),     QStringLiteral("superseded"),
+        // ANTS-3389 — the imperative prose form ("Wait for P10 to close"),
+        // which no -ing/participle marker above catches.
+        QStringLiteral("wait for "),
     };
     const QStringList lines = body.split(QLatin1Char('\n'));
     for (const QString &line : lines) {
@@ -21232,6 +21235,11 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     // have to grep the brief markdown for the H1 line.
     env["summary"]               = m.summary;
     env["byte_count"]            = m.brief.toUtf8().size();
+    // ANTS-3718 — SHA-256 of the lane's full review input (brief + docs +
+    // small cross-refs + cited code). Lets a loop-N orchestrator skip a lane
+    // whose input is unchanged since it last passed clean, without reading
+    // the input to hash it.
+    env["input_hash"]            = m.inputHash;
     // ANTS-1831 — caller-supplied doc_paths the anchor refused (empty
     // when the lane came from the cached partition or all paths were
     // valid). Non-empty entries are an accuracy signal for the caller.

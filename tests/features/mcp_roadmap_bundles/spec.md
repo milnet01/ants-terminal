@@ -24,8 +24,8 @@ bullet object carries the keys the builder reads: `id`, `status`
   `int(jac*100+0.5)` rounding); identical → 100; exactly-0.60 →
   present, score 60 (locks the inclusive `>=` gate); below-gate and
   no-match → absent.
-- **INV-5** — `blocked by` and `until`+(`lands`|`ships`) set
-  `gate_note`+`blocked`; clean and bare-`blocks` bodies do not.
+- **INV-5** — `blocked by`, `wait for ` and `until`+(`lands`|`ships`)
+  set `gate_note`+`blocked`; clean and bare-`blocks` bodies do not.
 - **INV-6** — `bundles` + `section`/`id`/`ids` ⟹ `bad_mode_combo`
   (source-grep on the three guards).
 - **INV-7** — a passed `status` is ignored, no refusal (source-grep:

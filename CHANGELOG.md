@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`cold_eyes_brief` returns an `input_hash`** (ANTS-3718)
+  A fingerprint of everything a review lane reads — the brief, its docs, the small cross-reference contracts and every cited code file. A review loop can skip a lane whose fingerprint has not changed since it last came back clean, without having to read the lane to work that out. Requested by the claude-config session.
+
 - **Mageia 10 packages, and one less thing that can break a build** (ANTS-3731)
   Ants Terminal now builds for Mageia 10 on the openSUSE Build Service. The version number stamped into the package is now worked out when the recipe is submitted rather than by a helper running inside the build machine — that helper was unavailable on Mageia and blocked it entirely. Removing it takes a dependency away from every distribution we build for, not just Mageia.
 
@@ -41,6 +44,9 @@ for security-relevant changes.
   six are fixed.
 
 ### Fixed
+
+- **`roadmap_query mode:"bundles"` now flags plain-prose gates** (ANTS-3389)
+  A to-do whose body says "Wait for X to close" in ordinary prose is now marked blocked, like one using a formal `blocked by` marker. Reported by the MAME Curator session, whose gated items were reading as ready to start.
 
 - **`doc_integrity`, `doc_symbols` and `spec_lint` returned a false ETag 304 after documents changed** (ANTS-3737)
   These three report findings rather than content, and the ETag is a hash of the response. Editing documents without changing any finding left the response identical, so `etag_match` answered "unchanged" and the caller skipped the re-check — precisely when it was looking for a new problem the edits had introduced, and precisely in the common zero-findings case. Each verb now emits `docs_digest`, a fingerprint of the checked set, which makes the ETag track the documents themselves. (Fin Break feedback.)
