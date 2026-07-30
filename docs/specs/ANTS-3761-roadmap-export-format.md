@@ -173,7 +173,7 @@ doc-anchored).
 | Record-type order | `meta`, `id_prefix`, `legend`, `section`, `item`, `element`, `rel`, `citation`, `feedback_ref`, `history` — all ten, in that order |
 | `id_prefix` order | by `prefix`, code-unit order |
 | `legend` order | by `status`, in the model's § 7.3 declared enum order |
-| `section` order | **parents before children**, then by `slug`, code-unit order |
+| `section` order | by `(depth, slug)` — `depth` counted along the `parent_id` chain, `slug` code-unit order. Depth is what makes **parents before children** a sort *key* rather than a constraint the key has to be checked against; it is not `section.level`, which is the markdown heading level and may skip (`##` then `####`) |
 | `item` order | by the id sort in § 2.5 |
 | `element` order | by `(section, position)` — `section` by code unit, `position` numeric |
 | `rel` order | same-project item targets, then cross-project item targets, then document targets; within each, by `(type, src, dst)` / `(type, src, dst_project, dst)` / `(type, src, dst_path)`, code-unit order |
@@ -192,6 +192,18 @@ doc-anchored).
 same collation § 2.5 rule 2 pins for ids — never locale collation, which varies
 by `LC_COLLATE` and would make the export machine-dependent.
 
+**That collation is also why the writer sorts in C++ rather than in `ORDER BY`,
+and the exception is instructive.** SQLite's default `BINARY` collation is
+UTF-8 *byte* order, which equals code-*point* order and therefore disagrees
+with UTF-16 code-unit order on any key holding a supplementary-plane character
+— those encode as surrogates, which sort *below* U+E000–U+FFFF in UTF-16 and
+above it in UTF-8. Section slugs come from headings and roadmap headings carry
+emoji, so this is reachable rather than theoretical. The one place `ORDER BY`
+*is* used is `history`, whose key is `(changed_at, seq)` within an item —
+fixed-width ASCII and an integer, where the two collations provably agree. That
+exception is what lets the one unbounded table stream (INV-12) instead of
+having its keys collected.
+
 #### Absent, null, or empty — per field
 
 A general "omit when absent" rule plus a null whitelist admitted two readings:
@@ -206,7 +218,7 @@ commonest field state in the corpus. So the rule is per field:
 | `item.source` | **never has no value** — ANTS-3756 § 2.3 makes the column `NOT NULL` and the model's § 3.3 gives migration a default, so it is always emitted. Listed here because an earlier draft filed it under *omitted*, which is a state the store cannot produce; a writer implementing that branch would be writing dead code against a `NOT NULL` column |
 | `history.old`, `history.new` | **omitted**. Both columns are nullable and the first revision of any field has no `old`, so this is the commonest null in the table — and this table is exhaustive by construction, so leaving them out was a gap a writer would have had to guess at |
 | `item.lanes`, `item.evidence`, `item.extras`, `item.provenance` | **always emitted**, as `[]` / `{}`. ANTS-3756 makes these columns `NOT NULL DEFAULT '[]'`/`'{}'` so NULL and empty are not distinct states at rest |
-| `legend` records | a project with no legend emits **zero** `legend` lines; the rebuild restores `{}`, matching the store's default |
+| `legend` records | a project with no legend emits **zero** `legend` lines; the rebuild restores `{}`, matching the store's default. A legend key *outside* § 7.3's enum has no position in the declared order, so no rule would emit it — the export **aborts** rather than dropping a store row silently (the same disposal as the JCS failures below) |
 
 #### When a row cannot be serialised
 
@@ -270,7 +282,39 @@ because ANTS-3756 marks synthesised ids as such rather than quarantining them.
 - **Read inside one deferred transaction.** The export spans many statements; without a transaction a commit landing mid-export tears the file — half pre-change, half post-change, and INV-1 fails against a store nobody corrupted.
 - **`ConfigWriteLock`** (`src/configbackup.h`) wraps the write. It is the project's existing RAII `flock(2)` guard, and `tests/features/concurrent_writer_lock/` already locks its behaviour; the export is a whole-file rewrite, exactly the read-modify-write shape it exists for. Reusing it beats a second locking scheme (`coding.md` — reuse before rewriting).
 - **On a failed acquire the export ABORTS and reports.** The guard is advisory and its header leaves the choice to the caller. Proceeding unprotected is not available here: the model's § 9 says a silent backup failure is worse than no backup, because it stops anyone checking.
-- **Written temp-then-`rename(2)`, inside the lock's scope.** A crash midway through an in-place write truncates the only durable copy of a primary store — the one outcome worse than not having written it.
+- **Written temp-then-`rename(2)`, inside the lock's scope.** A crash midway through an in-place write truncates the only durable copy of a primary store — the one outcome worse than not having written it. `QSaveFile` is the project's existing form of exactly that, so it is what the writer uses. (`JsonlFile::writeLinesAtomic` is the closer match by *shape* and is deliberately not reused: it takes every line in memory at once, which is what INV-12 forbids.)
+
+### 2.7 The rebuild
+
+**This spec owes a reader as well as a writer, and an earlier draft named only
+the writer.** INV-1 and INV-2 are both stated over export → **rebuild** →
+re-export, so a spec with no rebuild in it states two invariants nothing can
+satisfy. It is not deferred work either: § 5 sends *migration from markdown* to
+ANTS-3757, which is a different job — that one parses prose, this one reads a
+file this spec's own writer produced. Added at implementation (row 6-impl).
+
+- **Single pass, no deferred references.** § 2.4's record order guarantees
+  every reference is declared before it is used — that is *why* `section`
+  precedes `element` and `item` precedes both, and why sections are emitted
+  parents-first. A reader that needed two passes would mean the order was
+  bought for nothing.
+- **Inside one `BEGIN IMMEDIATE`,** never plain `BEGIN` (ANTS-3756 § 2.5): a
+  deferred transaction that reads then writes must upgrade, and SQLite returns
+  `SQLITE_BUSY` on that upgrade without honouring `busy_timeout`.
+- **`project.root` is restored as NULL**, which is the whole reason ANTS-3756
+  makes the column nullable: the path is machine-local and § 2.3 never exports
+  it.
+- **`history` rows are inserted directly, NOT through the append path.** That
+  path enforces ANTS-3756's INV-14 cap because it is adding a *revision*; a
+  rebuild is restoring rows that were already inside the cap when written.
+  Refusing them would make a store at its bound unrebuildable from its own
+  backup — the one situation the backup exists for.
+- **The reader aborts and reports exactly as the writer does.** § 2.4's "never
+  a partial file, never a substitution" is a property of the round trip, not of
+  one direction: a reader that patches a malformed record writes a store whose
+  *next* export fails, on a row nothing ever reported. Found by mutation
+  (row 6-impl) — the first implementation silently wrote `''` into a `NOT NULL`
+  JSON column when a key was missing.
 
 ## 3. Invariants
 
@@ -279,7 +323,7 @@ Numbers are **inherited from ANTS-3756 and deliberately not reflowed**
 that stayed with the store.
 
 - **INV-1** — Export, rebuild from that export, re-export ⇒ byte-identical files. This holds **per project and across the whole corpus** — a corpus-wide rebuild must also preserve the cross-project relationships the model's INV-4 allows, which a per-project round-trip cannot witness. *Test:* `tests/features/roadmap_export_roundtrip/` builds a **synthetic three-project fixture** — never the machine's real corpus, which is not present in CI — seeded with two items whose insertion order differs from their id order, a deleted row (so rowids carry a gap), a nested section, and one cross-project `blocked-by`. Export all three, rebuild into a temp store, re-export, `cmp` each pair, and assert the cross-project edge survives on the source project's file. *Breaks when:* any § 2.4 rule is left unpinned.
-- **INV-2** — The export is complete: every store row, and every **non-surrogate** column of it, survives the round-trip. *Test:* `roadmap_export_roundtrip` — after rebuild, per-table `COUNT(*)` matches for all **nine** tables (ten *record types*; `legend` is a column on `project`, not a table), and a column-wise diff matches, **joining on stable identity**: `export_slug` for the project row, `(export_slug, id_fold)` for items, `slug` for sections, `(section, position)` for elements, `(type, src, dst_project, dst|dst_path)` for relationships — `dst_project` is part of the key, because ANTS-3756's `rel_xproj_uq` leads with it and two projects can hold the same folded id, so a key omitting it merges a cross-project edge with a same-project one — `(item, at, seq)` for history, `(project, src|doc, file, symbol)` for citations — `project` likewise leads `cite_doc_uq`, and two projects each citing their own `README.md` are two rows — `(item, file)` for feedback refs, `prefix` for id prefixes. Every rowid-valued column and `project.root` are excluded. *Breaks when:* a writer drops a whole column — `provenance`, say — which round-trips byte-identically and preserves every row count, so INV-1 and a count-only check both pass on a lossy store. The surrogate exclusion is not a weakening: § 2.3 guarantees rowids differ after a rebuild, so a diff including them fails against a *correct* implementation.
+- **INV-2** — The export is complete: every store row, and every **non-surrogate** column of it, survives the round-trip. *Test:* `roadmap_export_roundtrip` — after rebuild, per-table `COUNT(*)` matches for all **nine** tables (ten *record types*; `legend` is a column on `project`, not a table), and a column-wise diff matches, **joining on stable identity**: `export_slug` for the project row, `(export_slug, id_fold)` for items, `slug` for sections, `(section, position)` for elements, `(type, src, dst_project, dst|dst_path)` for relationships — `dst_project` is part of the key, because ANTS-3756's `rel_xproj_uq` leads with it and two projects can hold the same folded id, so a key omitting it merges a cross-project edge with a same-project one — `(item, at, seq)` for history, `(project, src|doc, file, symbol)` for citations — `project` likewise leads `cite_doc_uq`, and two projects each citing their own `README.md` are two rows — `(item, file)` for feedback refs, `prefix` for id prefixes. Every rowid-valued column and `project.root` are excluded. *Breaks when:* a writer drops a whole column that § 2.4 **omits when absent** — `layman`, say. The drop round-trips byte-identically and preserves every row count, so INV-1 and a count-only check both pass on a lossy store; only the column diff sees it. **The column class matters, and an earlier draft named the wrong one:** dropping `provenance` reddens INV-1 as well, because § 2.4 emits it always and the reader therefore refuses an export missing it — measured (row 6-impl). That is the reader working correctly, but it means `provenance` cannot demonstrate what this invariant is for. The surrogate exclusion is not a weakening: § 2.3 guarantees rowids differ after a rebuild, so a diff including them fails against a *correct* implementation.
 - **INV-3** — *moved to ANTS-3756* (item identity folding) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-4** — *moved to ANTS-3756* (off-grammar id storage) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-5** — Export item order follows § 2.5's numeric-segment sort and is **total**. *Test:* `roadmap_export_roundtrip` seeds `ANTS-9`, `ANTS-10`, `CL-9`, `CL-0009`, `PASS-43-5`, `PASS-43-5-B`, `PASS-9-1`, `3D_E-0007`, `3DE-0007` and one quarantined id, then asserts the exact emitted order. The last two are not padding: `3D_E-0007` is the only seed beginning with a *numeric* run, so it is what exercises rule 3, and the pair together exercises rule 1's separator-discard — a writer implementing neither passes a seed set without them. *Breaks when:* the writer sorts lexically (`ANTS-10` before `ANTS-9`); or splits at the last hyphen (`PASS-9-1` after `PASS-43-5`); or omits the tie-break, leaving `CL-9` and `CL-0009` unordered.
@@ -344,11 +388,21 @@ All eight invariants are covered; none is a grep-only check. The bundle ships
 `golden/` (INV-18) and the RFC's test vectors (INV-19) as committed fixtures.
 
 Per `CLAUDE.md` and `testing.md`, each test must be verified to **fail against
-pre-implementation source** before the implementation is restored. For INV-1
-that means a deliberately non-conforming writer — emit one object via a
-non-JCS path and confirm the round-trip comparison fails — because a
-round-trip test written against an already-correct writer passes for reasons it
-never checked.
+pre-implementation source** before the implementation is restored.
+
+**For INV-1 this section used to prescribe the wrong mutation, and measurement
+said so** (row 6-impl). It read: "emit one object via a non-JCS path and
+confirm the round-trip comparison fails." Run, that mutation leaves INV-1
+**green**. `QJsonDocument::toJson(Compact)` is deterministic and its output
+re-parses to the same doubles, so the export, the rebuild and the re-export all
+agree — INV-18 is what goes red. The instruction was self-refuting: it asked
+INV-1 to catch a *deterministic* writer, which is precisely the thing INV-18
+was added at loop 1 because INV-1 cannot catch.
+
+What does redden INV-1 is a writer whose output the rebuild cannot reproduce:
+emit a surrogate (`"section": <rowid>`) and the re-export differs, because the
+fixture's deleted row leaves a rowid gap a rebuild never recreates. That is the
+hazard § 2.3 states, and it is the mutation to use.
 
 ## 7. Cross-doc impact
 
@@ -371,3 +425,4 @@ never checked.
 | 3-seam | 2026-07-30 | none dispatched here — findings arrived from ANTS-3756's loop 5 | — | **Seam fixes, not a review of this document.** Two cold lanes reading ANTS-3756 also read this file as its cross-reference and found six defects on the boundary; they are fixed here because this is the side that owns them. Both documents said **six** invariants were tombstoned in ANTS-3756 where there are **eight** (INV-18 and INV-19, added at loop 1 here, were tombstoned there and left out of both counts). § 2.4's absent/null table is exhaustive by construction, and omitted `history.old` / `history.new` — the commonest null in the file, since no field's first revision has an `old` — while filing `item.source` under *omitted*, a state ANTS-3756's `NOT NULL` column cannot produce. INV-2's join keys omitted `dst_project` and citation `project`, both of which **lead** the store's own unique indexes, so the diff would have merged a cross-project edge with a same-project one and fused two projects' identically-named doc citations. § 4's inherited `history` bound is now the settled figure. This document has **not** had a cold read since these edits; its next gate run is against changed bytes. |
 | 4-measure | 2026-07-30 | none — a measurement, not a review | — | **Decision row.** § 8's first open question — vendor a JCS implementation, or validate `QJsonDocument` against the RFC's vectors — closed **before** implementation by running the question rather than arguing it. The six published JCS vector files (`arrays`, `french`, `structures`, `unicode`, `values`, `weird`) and RFC 8785 Appendix B's 24-row number table were put through `QJsonDocument::toJson(Compact)` on Qt 6: **6/6 files byte-identical, 21/24 numbers**. Every miss is the same root cause — ECMAScript leaves fixed notation only outside `1e-6 … 1e21` and writes the exponent unpadded, where Qt switches earlier and pads to two digits (`0.000001` → `1e-06`; `9.999999999999997e-7` → `…e-07`). Key order, escaping, whitespace, UTF-8 and integers beyond 2^53 already agree. **Answer: neither option.** Vendoring replaces a serialiser that already conforms in order to fix three number cases; trusting Qt ships a contract Qt does not claim. The writer canonicalises numbers itself over `std::to_chars` and keeps Qt's agreement elsewhere, so § 4's build cost stays at no new dependency. No invariant changed — INV-19 was already the test, and it now has a known failure mode to catch rather than a suspicion. |
 | 5-impl | 2026-07-30 | none — implementation, not a review | — | **Implementation row (canonicaliser), written by the implementer.** `src/jsoncanonical.{h,cpp}` joins `ants_roadmapstore_lib` — ~180 lines, `Qt6::Core` and `<charconv>` only, as row 4-measure predicted. INV-19 lands in `tests/features/roadmap_export_roundtrip/` (the directory § 6 assigns it) in four legs: the six published vector files, Appendix B's 24 numbers addressed by IEEE 754 bit pattern, the RFC's mandatory lone-surrogate abort, and JCS key order. All green; the six files are committed under `vectors/` with provenance and licence. **The leg split earned itself immediately.** Under the mutation that makes `numberToString()` delegate to `QJsonDocument::toJson(Compact)` — the exact mistake § 2.2 names — the six vector files stay **GREEN** and only Appendix B goes RED. A test built from the published files alone would have certified the writer this spec exists to rule out. That is INV-18's argument one level down: self-consistency is not conformance, and neither is *partial* external agreement. Two further mutations went RED as expected (surrogate check removed; key comparator reversed). **One defect fixed outside this spec:** ANTS-3756 § 2.3 requires the store's JSON columns to be *held* in canonical form so the export copies bytes rather than transforms them, and `RoadmapStore::canonicalJson()` was implemented over `QJsonDocument` on the reasoning that sorted keys plus compact output is JCS "for the shapes this store writes". True of every column except `extras`, which the model's § 7.7 makes free-form and which can therefore hold a double. It now calls `JsonCanonical::serialise()`. The clause was always right; the code did not meet it, and only a number-level test could tell. |
+| 6-impl | 2026-07-31 | none — implementation, not a review | — | **Implementation row (the export writer), written by the implementer.** `src/roadmapexport.{h,cpp}` joins `ants_roadmapstore_lib`; INV-1, 2, 5, 12, 13 and 18 land in `roadmap_export_roundtrip/` and INV-9 in the new `roadmap_export_concurrency/`, both in the existing `test_core` bundle. All seven green, and **each proved RED first under the exact mutation its own "Breaks when" clause names** — nine mutations, each built and run in isolation. Three findings the run produced that reading would not have. **§ 6's prescribed INV-1 mutation is self-refuting.** It asked for a non-JCS emission; run, INV-1 stays **green** — `QJsonDocument::toJson(Compact)` is deterministic and re-parses to the same doubles, so writer, rebuild and re-export all agree, and INV-18 is what reddens. The instruction asked INV-1 to catch a deterministic writer, which is exactly what INV-18 exists because INV-1 cannot do. § 6 now names the mutation that does work (emit a rowid; the fixture's deleted row leaves a gap no rebuild recreates). **INV-2 named the wrong column class.** Dropping `provenance` reddens INV-1 too, because § 2.4 emits it always and the reader refuses an export missing it; only an *omitted-when-absent* column (`layman`) leaves INV-1 green and INV-2 red, which is the demonstration the invariant needs. **The spec had no reader at all** — INV-1 and INV-2 are both stated over a rebuild that § 2.4/2.6 never described, and § 5's deferral covers migration-from-markdown, a different job. § 2.7 now specifies it, including the two rules mutation exposed: the reader owes the same abort-and-report the writer does (the first cut silently wrote `''` into a `NOT NULL` JSON column), and `history` restores by direct insert so a store at INV-14's bound stays rebuildable from its own backup. Two smaller amendments: § 2.4's `section` row is now the sort key `(depth, slug)` rather than a constraint plus a key, with depth walked from `parent_id` and explicitly not `level`; and the collation note now records why ordering is done in C++ rather than `ORDER BY` — SQLite's `BINARY` is UTF-8 byte order, which disagrees with UTF-16 code-unit order on supplementary-plane characters, reachable via emoji in heading slugs. `history` is the one `ORDER BY`, because its key is fixed-width ASCII where the two provably agree, and that exception is what lets the unbounded table stream. INV-12 measured comfortably inside budget with the `Bulk` profile's 16 MiB page cache against a 5 MiB export, so ANTS-3756 § 2.5's cache figure and this spec's RSS budget do not in fact collide. |

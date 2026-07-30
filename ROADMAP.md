@@ -23461,6 +23461,15 @@ against current source before filing.
   **Layman:** The committed text file that can rebuild the roadmap database from scratch, and the rules that make it come out identical every time.
   Kind: implement.
   Source: ANTS-3756 split at the cold-eyes cap, 2026-07-30.
+  Progress (2026-07-31): export writer implemented —
+  src/roadmapexport.{h,cpp} in ants_roadmapstore_lib. All seven
+  invariants (INV-1, 2, 5, 9, 12, 13, 18) green and each proved RED
+  first under its own "Breaks when" mutation; INV-19 was already in
+  place. Suite 3116/3116. Spec amended from the run (§ 2.7 the
+  rebuild, § 2.4's section sort key and collation note, INV-2's
+  column class, § 6's falsified INV-1 mutation) — loop-log row
+  6-impl. Remaining: nothing for this id; ANTS-3757 (migration) is
+  next and unblocked.
 
 - 📋 [ANTS-3762] **Roadmap dialog — align every row on a fixed column grid so information sits where the eye expects it.**
   The earlier styling pass made the dialog far more readable, but nothing
