@@ -581,10 +581,52 @@ configuration, not an edge case.
 ```sql
 PRAGMA busy_timeout = 5000;     -- ms; matches ConfigWriteLock's deadline. FIRST:
                                 -- nothing that can block runs before it is set.
-PRAGMA journal_mode = WAL;      -- persistent, but re-asserting is harmless
+                                -- 30000 on the Bulk profile — see below.
 PRAGMA foreign_keys = ON;       -- per-connection; OFF by default
 PRAGMA synchronous  = FULL;     -- primary store, not a cache: survive power loss
+PRAGMA journal_size_limit = 67108864;  -- 64 MiB; bounds the WAL, not the store
+PRAGMA journal_mode = WAL;      -- persistent, but re-asserting is harmless
 ```
+
+**Which of those persist is a question to answer by measuring, not by
+reading.** `journal_mode` survives the connection — it lives in the database
+header. **`journal_size_limit` does not**, despite reading exactly like a file
+setting: set it, reconnect, read it back, and SQLite answers `-1`. That is
+recorded here because the plausible classification is wrong, and wrong in a
+direction that fails silently — a sibling project on this machine (RetroDB)
+classified it as file-level and moved it to a once-per-boot init path, which
+left it not in force on any of the connections that actually serve requests.
+The tests assert it per connection for that reason.
+
+**Two access profiles, differing in exactly two settings.** `Access::Interactive`
+is the default; `Access::Bulk` is for a writer that *knows* it may queue behind
+a long transaction — migration (ANTS-3757) and the export.
+
+| | Interactive | Bulk |
+|---|---|---|
+| `busy_timeout` | 5000 ms | **30000 ms** |
+| `cache_size` | SQLite's 2 MiB default | **16 MiB** |
+
+30 s is RetroDB's figure, reached there after "database is locked" under
+concurrent bulk jobs. **INV-16 is unchanged by it** — both profiles still fail
+and report at their deadline, neither retries silently. A single 30 s deadline
+everywhere was rejected: an interactive roadmap edit that hangs for half a
+minute before erroring reads as a freeze rather than an error.
+
+**Two standard performance pragmas are deliberately NOT set, and the reason is
+a budget rather than a doubt.** `mmap_size` would map the store into the
+address space, making the export's own reads **resident** and breaking
+[ANTS-3761](ANTS-3761-roadmap-export-format.md) INV-12's "peak RSS delta under
+4 MiB" for reasons unrelated to whether the writer streams. `temp_store =
+MEMORY` would build a sort's temp b-tree in RAM, and `history` is bounded at
+250 MiB — spilling to disk is the safer failure. Both are ordinary wins
+elsewhere; here they trade against a stated memory budget and lose. The tests
+assert their *defaults*, so a later performance sweep cannot switch them on
+without meeting that budget first.
+
+**`PRAGMA optimize` runs on close.** It ANALYZEs only what the connection
+touched, and it is the difference between a query plan chosen from real row
+counts and one chosen from none.
 
 - **WAL gives one writer and concurrent readers**, which is the access shape
   here — but it does **not** queue a second writer. Without `busy_timeout` the
@@ -616,6 +658,15 @@ PRAGMA synchronous  = FULL;     -- primary store, not a cache: survive power los
   `busy_timeout`** — the classic WAL upgrade deadlock, reachable in normal use
   with the two writers named above. `BEGIN IMMEDIATE` takes the write lock up
   front, where the timeout does apply.
+- **Opening an existing store must not take the write lock.** Reading
+  `user_version` needs only a shared lock, which WAL grants alongside an active
+  writer, so `createSchema()` checks it *outside* a transaction first and
+  returns when the schema is already current. Without that check every
+  ordinary open queues behind any active writer — measured at the full 5000 ms
+  deadline, and it is what made the concurrency suite take 5118 ms instead of
+  115 ms. The check is an optimisation and **not** the discriminator: the
+  authoritative read is still the one inside `BEGIN IMMEDIATE` below, so the
+  creation race is decided exactly as it was.
 - **Store creation is itself a race.** Two processes finding no store both run
   the DDL. Creation happens inside `BEGIN IMMEDIATE`, and the winner is decided
   by **reading `PRAGMA user_version` inside that same transaction**: the process
@@ -666,6 +717,16 @@ with it to [ANTS-3761](ANTS-3761-roadmap-export-format.md) § 2.6.
 command; that figure is not restated here. Qt holds text as UTF-16, so a fully
 materialised corpus is **~10 MiB of `QString`** before container and `QVariant`
 overhead — call it **12–14 MiB**. Affordable once, unaffordable repeatedly, so:
+
+**Per connection, on top of that: 2 MiB** — SQLite's default page cache, and
+the whole reason § 2.5 leaves `cache_size` alone on the interactive profile.
+`Access::Bulk` raises it to **16 MiB**, which is affordable precisely because
+migration is a one-shot with no concurrent export to starve. `mmap_size` and
+`temp_store = MEMORY` are refused outright there; § 2.5 gives the reasoning,
+and the short version is that both convert a disk cost into a resident-memory
+cost that [ANTS-3761](ANTS-3761-roadmap-export-format.md) INV-12 has already
+budgeted away.
+
 
 - **No query materialises the whole corpus by default.** Every read takes a
   project filter or a `LIMIT`, defaulting to the caller's own project. This is
@@ -865,3 +926,4 @@ None outstanding. The three this spec carried are closed:
 | 6-decision | 2026-07-30 | none — no reviewer dispatched | — | **Decision row, not a review.** Loop 5's surfaced CRITICAL, answered by the standard's author the same day and on the same grounds as `sort_order`: **`item.section_id` is removed.** An item's filing is its `element` row, which already carries both the section and the position, so the column was a second encoding of one fact with no authority named — the exact defect § 5 of the model settles against `sort_order`, and accepting it there while reproducing it here would have been incoherent. What the `NOT NULL` column bought is replaced by **INV-20** (exactly one `kind='item'` element per item), which is strictly stronger: the column never forbade an item with *two* element rows, or with an element row in a section other than its own `section_id`, and both states exported and rebuilt without complaint. Swept with it: the write-path constraint list (the same-project `item.section_id` rule is gone, INV-20 takes its place), the index table (`item(section_id)` removed; `element(item_pk)` is now how filing is looked up), § 6's coverage count eleven → twelve, and on the export side ANTS-3761's `item` record loses its `section` field and the surrogate list loses `item.section_id`. |
 | 7-impl | 2026-07-30 | none — implementation, not a review | — | **Implementation row, written by the implementer** (`/cold-eyes` writes only review rows). `src/roadmapstore.{h,cpp}` + `ants_roadmapstore_lib` built to § 2.3 / § 2.5; 15 feature tests across `roadmap_store_identity/` and `roadmap_store_schema/`, all green, **all eight verified to go RED under the exact mutation their own *Breaks when* clause names** — enums widened, `UNIQUE` moved to `id`, `elem_item_uq` dropped, sidecar `chmod` removed, the empty-canonical guard bypassed, provenance replaced rather than merged, normalisation keyed on the rowid, and the cap made unreachable. A test that stays green against its named break tests nothing, so this is the proof, not the pass. **One spec clause was proved wrong and is amended**: INV-20 was written entirely as a write-path rule on the grounds that it compares two rows, but *at most one filing* is a uniqueness property of a **single column** — it is now the partial index `elem_item_uq ON element(item_pk) WHERE kind='item'`, and only *at least one* stays in the write path. **Two defects the compiler could not see** were caught by `/write-code`'s trigger table and are recorded because both were invisible on this host: `INSERT … RETURNING` needs **SQLite 3.35** and would have silently raised § 2.3's stated **3.31** floor by four releases (replaced with `lastInsertId()`); and `putItem()`'s same-project check read *outside* its own transaction, a read-then-write race, now inside `BEGIN IMMEDIATE`. Unchanged from the spec as gated: every other DDL constraint, all four pragmas, the `user_version` creation discriminator, and the `length()`-sum history measure. |
 | 8-impl | 2026-07-30 | none — implementation, not a review | — | **Implementation row (concurrency bundle), written by the implementer.** `tests/features/roadmap_store_concurrency/` completes § 6's third directory — 3 tests joining `test_core`, INV-15 forking two openers released together through a pipe, INV-16 in two legs. Suite **3108/3108**. **Three § 2.5 clauses amended against evidence, and none of the three was reachable by reading.** (1) The DDL is written **without** `CREATE TABLE IF NOT EXISTS`, which § 2.5 prescribed: `user_version` already guarantees the loser never reaches the DDL, so a `CREATE TABLE` that runs against an existing table means the discriminator has regressed and must fail loudly — `IF NOT EXISTS` would mask exactly the failure INV-15 exists to catch. (2) **`PRAGMA journal_mode = WAL` is not covered by `busy_timeout`** — it takes an EXCLUSIVE lock *below* the busy handler, and the forked openers failed the open on **18 of 25 runs** with the deadline already at 5000. `enableWal()` supplies the retry SQLite declines to, bounded by the same constant rather than a second one; `busy_timeout` also moved to the head of the pragma list. (3) INV-16's recipe assumed waiting out the real deadline; the blocked connection's is shortened to 100 ms instead, and the 5000 ms value gets a leg of its own. **A named break that does NOT redden is recorded rather than quietly dropped:** removing the `busy_timeout` pragma entirely leaves leg (a) green, because Qt's QSQLITE plugin sets 5000 ms itself (`QSQLITE_BUSY_TIMEOUT`) — so that leg asserts the *effective* deadline, and a constant drift 5000 → 100 is what proves it has teeth. The pragma stays: a durability contract should not rest on an undocumented driver default. One API addition, `createdSchema()`, because winner and loser are identical after the fact and INV-15 otherwise has no observable. The two remaining named breaks went RED as written — `IF NOT EXISTS` creation (both children report `created`) and a `putItem()` that swallows its failed `BEGIN IMMEDIATE`. |
+| 9-impl | 2026-07-30 | none — implementation, not a review | — | **Implementation row (connection profile), written by the implementer, prompted by a user-requested review of a sibling project.** RetroDB (`/mnt/Games/Scripts/Linux/RetroDB/`) has been through "database is locked" several times and its changelog records what actually fixed it; § 2.5 now carries what transfers. **What transferred:** `journal_size_limit` (we had nothing bounding WAL growth); two access profiles, `Interactive` at the existing 5000 ms and `Bulk` at 30000 ms for migration/export, which is RetroDB's figure and leaves INV-16 untouched since both still fail and report; a 16 MiB page cache on `Bulk` only; `PRAGMA optimize` on close. **What did not, and the refusals are the load-bearing part:** `synchronous = NORMAL` (their DB is re-scrapeable, § 1 makes ours primary), and `mmap_size` / `temp_store = MEMORY`, both of which convert a disk cost into resident memory and would break [ANTS-3761](ANTS-3761-roadmap-export-format.md) INV-12's 4 MiB export budget — the tests now assert their **defaults**, so a later performance sweep cannot enable them without meeting that budget first. **One real defect found, and it was ours, not theirs:** `createSchema()` took `BEGIN IMMEDIATE` on *every* open merely to read `user_version`, so every ordinary open queued behind any active writer — measured at the full 5000 ms deadline, and the concurrency suite ran 5118 ms where it now runs 115 ms. A shared-lock read outside the transaction fixes it; the authoritative read inside `BEGIN IMMEDIATE` is untouched, so INV-15 is unaffected. **One hypothesis was falsified mid-fix and the code was reverted rather than kept:** a read-before-write guard in `enableWal()` was added on the theory that re-asserting `journal_mode` was what contended. Deleting it left the contention test green — SQLite takes the exclusive lock only when the mode actually *changes* — so the guard changed no observable behaviour and was removed. **Measurement corrected a claim on both sides:** `journal_size_limit` is connection-scoped, not file-level (set, reconnect, read back: `-1`), which is the opposite of how RetroDB classified it; there it was moved to a once-per-boot init path and is consequently not in force on the connections serving requests. Reported to the user, not edited into that project. Two new tests; all four named breaks RED, including the sibling's misclassification. |

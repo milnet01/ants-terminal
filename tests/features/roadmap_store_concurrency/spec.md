@@ -57,6 +57,12 @@ Each mutation applied to `src/roadmapstore.cpp`, built, run, reverted:
   **RED**: the policy leg would otherwise pass a lost write off as a successful
   one.
 - `kBusyTimeoutMs` drifted 5000 → 100 → **RED**: the deadline leg reads 100.
+- `createSchema()`'s `user_version` fast path removed → **RED**: opening takes
+  the full deadline while another connection holds the write lock.
+- `journal_size_limit` moved off the per-connection list → **RED**. This is the
+  sibling project's live bug, reproduced deliberately.
+- `Access::Bulk` ignored, so every connection gets the interactive deadline →
+  **RED**.
 
 **One named break does not redden its leg, and the reason is worth recording.**
 Dropping `PRAGMA busy_timeout` from the connection pragmas entirely leaves the
@@ -67,6 +73,30 @@ deadline, which is the contract that matters, and the constant-drift mutation
 above is what proves it has teeth. The pragma stays in the store because a
 durability contract should not rest on an undocumented driver default that a Qt
 upgrade can change underneath it.
+
+## The connection profile
+
+Two further tests came out of a review of RetroDB, a sibling project on this
+machine that fought "database is locked" for several releases.
+
+**`ConnectionProfileIsPerConnection`** asserts every connection-scoped pragma,
+both access profiles, *and the two that are deliberately off*. The last part is
+the point: `mmap_size` and `temp_store = MEMORY` are ordinary performance wins
+that here would convert a disk cost into resident memory and break ANTS-3761
+INV-12's 4 MiB export budget. Asserting their **defaults** is what stops a
+later performance sweep enabling them without meeting that budget.
+
+`journal_size_limit` gets its own assertion because it reads like a file
+setting and is not one — set it, reconnect, read it back, and SQLite answers
+`-1`. RetroDB classified it as file-level and moved it to a once-per-boot init
+path, which left it not in force on any connection that serves a request. That
+mutation is in the must-fail list below.
+
+**`OpenDoesNotContendWithAnActiveWriter`** holds a write transaction open and
+opens a second store against the same file. It must succeed, and quickly. This
+caught a real defect: `createSchema()` took `BEGIN IMMEDIATE` on every open
+just to read `user_version`, so every ordinary open queued behind any active
+writer — the full 5000 ms deadline. The suite ran 5118 ms; it now runs 115 ms.
 
 **What INV-15 found that a cold read did not.** `PRAGMA journal_mode = WAL`
 takes an EXCLUSIVE lock **below** the busy handler, so `busy_timeout` does not

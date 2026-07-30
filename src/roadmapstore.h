@@ -28,8 +28,30 @@ public:
     // connection pragma and enableWal()'s own retry.
     static constexpr int kBusyTimeoutMs = 5000;
 
+    // The bulk deadline, for a writer that KNOWS it may queue behind a long
+    // transaction — migration (ANTS-3757) and export. 30 s is RetroDB's
+    // figure, arrived at there after "database is locked" under concurrent
+    // bulk jobs. INV-16 is unchanged by it: both profiles still fail and
+    // report at their deadline, neither retries silently. A single 30 s
+    // deadline everywhere was rejected — an interactive roadmap edit that
+    // hangs for half a minute before erroring reads as a freeze, not an error.
+    static constexpr int kBulkBusyTimeoutMs = 30000;
+
+    // Which deadline and cache profile a connection opens with.
+    enum class Access { Interactive, Bulk };
+
+    // Bounds the WAL sidecar, which otherwise keeps whatever high-water mark
+    // one large transaction gave it. Connection-scoped despite reading like a
+    // file setting — measured (set, reconnect, read back: -1).
+    static constexpr qint64 kJournalSizeLimitBytes = 64LL * 1024 * 1024;
+
+    // Page cache for the Bulk profile only, in KiB. Interactive stays on
+    // SQLite's 2 MiB default so ANTS-3761 INV-12's 4 MiB export budget holds.
+    static constexpr int kBulkCacheKiB = 16 * 1024;
+
     explicit RoadmapStore(QString dbPath = QString(),
-                          qint64 historyCapBytes = kDefaultHistoryCapBytes);
+                          qint64 historyCapBytes = kDefaultHistoryCapBytes,
+                          Access access = Access::Interactive);
     ~RoadmapStore();
 
     RoadmapStore(const RoadmapStore &) = delete;
@@ -127,5 +149,6 @@ private:
     QString m_connName;
     QSqlDatabase m_db;
     qint64 m_historyCap;
+    Access m_access;
     bool m_createdSchema = false;
 };

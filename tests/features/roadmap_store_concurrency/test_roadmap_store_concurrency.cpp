@@ -12,6 +12,7 @@
 #include "roadmapstore.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStringList>
@@ -50,6 +51,13 @@ int busyTimeout(RoadmapStore &s) {
     if (q.exec(QStringLiteral("PRAGMA busy_timeout")) && q.next())
         return q.value(0).toInt();
     return -1;
+}
+
+qint64 pragmaValue(RoadmapStore &s, const QString &name) {
+    QSqlQuery q(s.db());
+    if (q.exec(QStringLiteral("PRAGMA ") + name) && q.next())
+        return q.value(0).toLongLong();
+    return -12345;  // distinguishable from a pragma that legitimately reads -1
 }
 
 }  // namespace
@@ -147,6 +155,97 @@ TEST(RoadmapStoreConcurrency, Inv16BusyTimeoutDeadlineIsApplied) {
         << "every connection must carry the 5000 ms deadline that matches "
            "ConfigWriteLock's — SQLite's own default is 0, an immediate "
            "SQLITE_BUSY, so nothing about this is free";
+}
+
+// INV-16 companion — the CONNECTION-scoped settings are re-issued on every
+// open, and the two access profiles differ only where they are meant to.
+//
+// journal_size_limit is the one worth a test of its own: it reads like a file
+// setting and is not one. Set it, reconnect, read it back and SQLite answers
+// -1. A sibling project classified it as file-level and moved it to a
+// once-per-boot init path, which silently left it unset on every connection
+// that serves a request. The assertion below is what stops that here.
+TEST(RoadmapStoreConcurrency, ConnectionProfileIsPerConnection) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid()) << dir.errorString().toStdString();
+    const QString path = dir.path() + QStringLiteral("/roadmap.sqlite");
+    QString err;
+
+    RoadmapStore interactive(path);
+    ASSERT_TRUE(interactive.open(&err)) << err.toStdString();
+    EXPECT_EQ(busyTimeout(interactive), RoadmapStore::kBusyTimeoutMs);
+    EXPECT_EQ(pragmaValue(interactive, QStringLiteral("journal_size_limit")),
+              RoadmapStore::kJournalSizeLimitBytes)
+        << "journal_size_limit does NOT survive a reconnect — it must be "
+           "re-issued per connection, not set once at creation";
+    EXPECT_EQ(pragmaValue(interactive, QStringLiteral("foreign_keys")), 1);
+    EXPECT_EQ(pragmaValue(interactive, QStringLiteral("synchronous")), 2)  // FULL
+        << "the store is primary, not a cache; NORMAL is the cache trade";
+
+    // The two pragmas deliberately left off, because they trade against
+    // ANTS-3761 INV-12's 4 MiB export budget and lose. Asserting the DEFAULT
+    // is what stops a later performance sweep from switching them on without
+    // meeting that budget first.
+    EXPECT_EQ(pragmaValue(interactive, QStringLiteral("mmap_size")), 0)
+        << "mmap would make the export's own reads resident";
+    EXPECT_EQ(pragmaValue(interactive, QStringLiteral("temp_store")), 0)
+        << "MEMORY would build a sort over 250 MiB of history in RAM";
+    EXPECT_EQ(pragmaValue(interactive, QStringLiteral("cache_size")), -2000)
+        << "the interactive profile stays on SQLite's default cache";
+
+    // Bulk differs in exactly two places, and in no others.
+    RoadmapStore bulk(path, RoadmapStore::kDefaultHistoryCapBytes,
+                      RoadmapStore::Access::Bulk);
+    ASSERT_TRUE(bulk.open(&err)) << err.toStdString();
+    EXPECT_EQ(busyTimeout(bulk), RoadmapStore::kBulkBusyTimeoutMs)
+        << "a writer that expects to queue behind bulk work gets the longer "
+           "deadline; INV-16's fail-and-report is unchanged by it";
+    EXPECT_EQ(pragmaValue(bulk, QStringLiteral("cache_size")), -RoadmapStore::kBulkCacheKiB);
+    EXPECT_EQ(pragmaValue(bulk, QStringLiteral("mmap_size")), 0);
+    EXPECT_EQ(pragmaValue(bulk, QStringLiteral("synchronous")), 2);
+}
+
+// INV-15 companion — opening the store must not contend with an active
+// writer. journal_mode is PERSISTENT, so it is read before it is asserted;
+// re-asserting it on every open takes an EXCLUSIVE lock that SQLite acquires
+// below the busy handler, which is what made 18 of 25 forked opens fail.
+TEST(RoadmapStoreConcurrency, OpenDoesNotContendWithAnActiveWriter) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid()) << dir.errorString().toStdString();
+    const QString path = dir.path() + QStringLiteral("/roadmap.sqlite");
+    QString err;
+
+    RoadmapStore holder(path);
+    ASSERT_TRUE(holder.open(&err)) << err.toStdString();
+    const QString root = dir.path() + QStringLiteral("/proj");
+    QDir().mkpath(root);
+    ASSERT_TRUE(holder.registerProject(root, QStringLiteral("p"), QStringLiteral("p"), &err)
+                    .has_value())
+        << err.toStdString();
+
+    {
+        QSqlQuery b(holder.db());
+        ASSERT_TRUE(b.exec(QStringLiteral("BEGIN IMMEDIATE")))
+            << b.lastError().text().toStdString();
+        QSqlQuery w(holder.db());
+        ASSERT_TRUE(w.exec(QStringLiteral("UPDATE project SET name = 'held'")))
+            << w.lastError().text().toStdString();
+    }
+
+    // The write lock is held right now. A second instance starting up must
+    // still open — it is only reading the journal mode, which WAL grants
+    // alongside a writer.
+    QElapsedTimer clock;
+    clock.start();
+    RoadmapStore second(path);
+    err.clear();
+    EXPECT_TRUE(second.open(&err))
+        << "opening must not wait on the write lock: " << err.toStdString();
+    EXPECT_LT(clock.elapsed(), 1000)
+        << "and it must not have got there by waiting out a retry loop";
+
+    QSqlQuery r(holder.db());
+    ASSERT_TRUE(r.exec(QStringLiteral("ROLLBACK")));
 }
 
 // INV-16 leg 2 — a write that cannot take the lock within the deadline FAILS

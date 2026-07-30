@@ -12,6 +12,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QVariant>
 
 #include <atomic>
@@ -40,9 +41,9 @@ QString lastErr(const QSqlQuery &q) { return q.lastError().text(); }
 
 } // namespace
 
-RoadmapStore::RoadmapStore(QString dbPath, qint64 historyCapBytes)
+RoadmapStore::RoadmapStore(QString dbPath, qint64 historyCapBytes, Access access)
     : m_path(dbPath.isEmpty() ? defaultPath() : std::move(dbPath)),
-      m_historyCap(historyCapBytes) {
+      m_historyCap(historyCapBytes), m_access(access) {
     // One QSqlDatabase connection name per instance: two stores in one process
     // (the tests open several) must not share a connection.
     static std::atomic<quint64> counter{0};
@@ -50,8 +51,14 @@ RoadmapStore::RoadmapStore(QString dbPath, qint64 historyCapBytes)
 }
 
 RoadmapStore::~RoadmapStore() {
-    if (m_db.isOpen())
+    if (m_db.isOpen()) {
+        // Refresh the planner's stale statistics on the way out. Cheap by
+        // design — it ANALYZEs only what this connection actually touched —
+        // and it is the difference between a query plan chosen from real row
+        // counts and one chosen from none at all.
+        QSqlQuery(m_db).exec(QStringLiteral("PRAGMA optimize"));
         m_db.close();
+    }
     m_db = QSqlDatabase();
     QSqlDatabase::removeDatabase(m_connName);
 }
@@ -93,11 +100,39 @@ bool RoadmapStore::applyPragmas(QString *error) {
     // this line and reading the pragma back. It stays because a durability
     // contract should not rest on an undocumented driver default a Qt upgrade
     // can change underneath it.
-    const QString pragmas[] = {
-        QStringLiteral("PRAGMA busy_timeout = %1").arg(kBusyTimeoutMs),
+    //
+    // Everything here is CONNECTION-scoped and must be re-issued on every
+    // open. journal_size_limit is on this list because it was measured to be,
+    // not because it reads that way: setting it, reconnecting and reading it
+    // back returns -1. That is worth stating because the obvious classification
+    // is wrong in the same direction on a sibling project, where it was moved
+    // to a once-per-boot init path and is consequently not in force on the
+    // connections that actually serve requests.
+    QStringList pragmas{
+        QStringLiteral("PRAGMA busy_timeout = %1")
+            .arg(m_access == Access::Bulk ? kBulkBusyTimeoutMs : kBusyTimeoutMs),
         QStringLiteral("PRAGMA foreign_keys = ON"),   // per-connection; OFF by default
         QStringLiteral("PRAGMA synchronous  = FULL"), // primary store, not a cache
+        // Bounds the WAL rather than the store: without it one large
+        // transaction leaves a WAL that never shrinks back.
+        QStringLiteral("PRAGMA journal_size_limit = %1").arg(kJournalSizeLimitBytes),
     };
+    if (m_access == Access::Bulk) {
+        // Only the bulk profile. A larger page cache is real resident memory,
+        // and ANTS-3761's INV-12 budgets the export a peak-RSS delta under
+        // 4 MiB — so the interactive/export profile stays on SQLite's 2 MiB
+        // default and migration, which has no such budget, gets the cache.
+        pragmas << QStringLiteral("PRAGMA cache_size = -%1").arg(kBulkCacheKiB);
+    }
+    // Deliberately NOT set, either profile:
+    //   mmap_size   — maps the store into the address space, which makes the
+    //                 export's own reads RESIDENT and breaks INV-12's delta
+    //                 measurement for reasons unrelated to streaming.
+    //   temp_store  — MEMORY would build a sort's temp b-tree in RAM, and
+    //                 `history` is bounded at 250 MiB. Spilling to disk is the
+    //                 safer failure.
+    // Both are standard performance pragmas elsewhere; here they trade against
+    // a stated memory budget and lose.
     for (const QString &p : pragmas) {
         QSqlQuery q(m_db);
         if (!q.exec(p)) {
@@ -115,10 +150,16 @@ bool RoadmapStore::enableWal(QString *error) {
     // second instance opening the same store gets an immediate SQLITE_BUSY no
     // matter what the deadline says — verified, not reasoned: INV-15's forked
     // openers failed here on 18 of 25 runs with "database is locked" while
-    // busy_timeout was already 5000. The retry is the busy handler SQLite does
-    // not run, held to the SAME deadline so there is no second timeout
-    // constant. A store already in WAL needs no switch and exits on the first
-    // pass; the persistent mode makes that the common case.
+    // busy_timeout was already 5000.
+    //
+    // Only CREATION contends, and that is worth stating because the obvious
+    // guard is wrong. A read-before-write ("skip the pragma if the mode is
+    // already wal") was tried and removed: SQLite takes the exclusive lock
+    // only when the mode actually CHANGES, so on an existing WAL store the
+    // pragma is already a no-op and the guard changed no observable behaviour
+    // — measured, by deleting it and re-running the contention test, which
+    // stayed green. What actually stopped every open queueing behind a writer
+    // was createSchema()'s user_version fast path, not anything here.
     QElapsedTimer clock;
     clock.start();
     QString last;
@@ -172,6 +213,23 @@ bool RoadmapStore::open(QString *error) {
 }
 
 bool RoadmapStore::createSchema(QString *error) {
+    // Fast path, and it is about CONTENTION rather than speed: on an existing
+    // store there is nothing to create, so taking a write lock to discover
+    // that makes every ordinary open queue behind any active writer. Measured
+    // — opening while another connection held a write transaction took the
+    // full 5000 ms deadline before this check existed. Reading user_version
+    // needs only a shared lock, which WAL grants alongside a writer.
+    //
+    // This is an optimisation, not the discriminator: the authoritative read
+    // is still the one inside BEGIN IMMEDIATE below, so two processes racing
+    // to create a store are decided there exactly as before.
+    {
+        QSqlQuery q(m_db);
+        if (q.exec(QStringLiteral("PRAGMA user_version")) && q.next() &&
+            q.value(0).toInt() == kSchemaVersion)
+            return true;
+    }
+
     // Creation is itself a race: two processes finding no store both run the
     // DDL. BEGIN IMMEDIATE takes the write lock up front (a deferred
     // transaction that reads then writes must upgrade, and SQLite returns
