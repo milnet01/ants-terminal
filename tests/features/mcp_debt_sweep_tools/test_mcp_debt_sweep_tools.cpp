@@ -222,9 +222,17 @@ TEST(McpDebtSweepTools, Ants3707DetectorsByCategoryMatchesImplementation) {
             << "detectorsByCategory() lists '" << id
             << "' but no detector assigns it";
 
-    // And the asymmetry the feedback was about is real, not incidental:
-    // a caller must be able to see that one category rests on one heuristic.
+    // And the asymmetry the feedback was about is real, not incidental: a
+    // caller must be able to see that the categories rest on very different
+    // numbers of heuristics. Asserted as a RATIO rather than as
+    // `packaging_drift == 1`, which ANTS-3743 falsified the moment it added a
+    // second packaging detector — the contract is that the imbalance is
+    // visible, not that any category has a particular count.
     const auto &m = DebtSweepEngine::detectorsByCategory();
-    EXPECT_EQ(m.value(QStringLiteral("packaging_drift")).size(), 1);
+    EXPECT_GE(m.value(QStringLiteral("code_drift")).size(),
+              2 * m.value(QStringLiteral("packaging_drift")).size())
+        << "the by_category denominators are no longer visibly uneven — if "
+           "that is now genuinely true, the scope_note's \"NOT evenly "
+           "covered\" wording needs revisiting with it";
     EXPECT_GT(m.value(QStringLiteral("code_drift")).size(), 1);
 }

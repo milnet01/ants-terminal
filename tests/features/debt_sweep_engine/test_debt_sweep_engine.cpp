@@ -805,3 +805,156 @@ TEST(DebtSweepEngine, Inv4CitationDoesNotMatchLongerId) {
     ASSERT_EQ(out.size(), 1) << "INV-80 must not satisfy INV-8";
     EXPECT_TRUE(out[0].message.contains("INV-8"));
 }
+
+// ANTS-3743 — dead_suppression. Fin Break carried 20 `# noqa: E501` while its
+// ruff select list never enabled E501: a directive that reads as a reviewed
+// decision and suppresses nothing.
+TEST(DebtSweepEngine, Ants3743DeadSuppressionFlagsUnselectedCode) {
+    const QStringList sel{QStringLiteral("F"), QStringLiteral("E4")};
+    const QString body =
+        "x = 1  # noqa: E501\n"          // 1 — E4 is not a prefix of E501
+        "y = 2  # noqa: F401\n"          // 2 — enabled, not flagged
+        "z = 3  # noqa\n"                // 3 — bare: suppresses all, never dead
+        "w = 4  # noqa: E401, B008\n";   // 4 — E401 enabled by E4; B008 is not
+    const auto out = DebtSweepEngine::detail::scanDeadSuppressions(
+        QStringLiteral("app/x.py"), body, sel);
+    ASSERT_EQ(out.size(), 2);
+    EXPECT_EQ(out[0].detectorId, QString("dead_suppression"));
+    EXPECT_EQ(out[0].category, QString("code_drift"));
+    EXPECT_EQ(out[0].file, QString("app/x.py"));
+    EXPECT_EQ(out[0].line, 1);
+    EXPECT_TRUE(out[0].message.contains("E501"));
+    EXPECT_FALSE(out[0].autoFixable) << "flag-only; deleting a directive is a "
+                                        "judgement call";
+    EXPECT_EQ(out[1].line, 4);
+    EXPECT_TRUE(out[1].message.contains("B008"));
+
+    // No selectors → the detector stands down entirely rather than guessing
+    // ruff's implicit defaults. This is the whole false-positive guard.
+    EXPECT_TRUE(DebtSweepEngine::detail::scanDeadSuppressions(
+                    QStringLiteral("app/x.py"), body, {}).isEmpty());
+}
+
+// ANTS-3743 — a selector matches by PREFIX. Getting this backwards is the
+// detector's entire false-positive surface: `E` enables E501.
+TEST(DebtSweepEngine, Ants3743SelectorPrefixSemantics) {
+    using DebtSweepEngine::detail::selectorEnables;
+    EXPECT_TRUE(selectorEnables({QStringLiteral("E")}, QStringLiteral("E501")));
+    EXPECT_TRUE(selectorEnables({QStringLiteral("E5")}, QStringLiteral("E501")));
+    EXPECT_TRUE(selectorEnables({QStringLiteral("E501")}, QStringLiteral("E501")));
+    EXPECT_FALSE(selectorEnables({QStringLiteral("E4")}, QStringLiteral("E501")));
+    EXPECT_FALSE(selectorEnables({QStringLiteral("F")}, QStringLiteral("E501")));
+    EXPECT_FALSE(selectorEnables({}, QStringLiteral("E501")));
+}
+
+// ANTS-3743 — the config reader. `ALL` and a missing list both mean "flag
+// nothing", so both must come back empty; a wrapped array must be read whole,
+// or the detector runs against a partial select list and invents findings.
+TEST(DebtSweepEngine, Ants3743RuffSelectorParsing) {
+    using DebtSweepEngine::detail::parseRuffSelectors;
+
+    const QString pyproject =
+        "[project]\n"
+        "select = [\"NOT_RUFF\"]\n"          // wrong table — must be ignored
+        "[tool.ruff.lint]\n"
+        "select = [\n"
+        "  \"E4\",\n"
+        "  \"F\",\n"
+        "]\n"
+        "extend-select = [\"I\"]\n";
+    const auto sel = parseRuffSelectors(pyproject, true);
+    EXPECT_EQ(sel, QStringList({QStringLiteral("E4"), QStringLiteral("F"),
+                                QStringLiteral("I")}))
+        << "a wrapped array must be read whole, and extend-select folded in";
+
+    // ruff.toml: the same keys at top level.
+    EXPECT_EQ(parseRuffSelectors(QStringLiteral("select = [\"E\", \"W\"]\n"), false),
+              QStringList({QStringLiteral("E"), QStringLiteral("W")}));
+    // Top-level keys in pyproject.toml are NOT ruff's.
+    EXPECT_TRUE(parseRuffSelectors(
+                    QStringLiteral("select = [\"E\"]\n"), true).isEmpty());
+    // ALL enables everything → nothing is dead → stand down.
+    EXPECT_TRUE(parseRuffSelectors(
+                    QStringLiteral("[tool.ruff]\nselect = [\"ALL\"]\n"), true)
+                    .isEmpty());
+    // No select anywhere → stand down (never model ruff's implicit defaults).
+    EXPECT_TRUE(parseRuffSelectors(
+                    QStringLiteral("[tool.ruff]\nline-length = 100\n"), true)
+                    .isEmpty());
+}
+
+// ANTS-3743 — version-pin extraction. A `==` comparison in code must not read
+// as a pin, or the packaging detector fires on every script that tests a value.
+TEST(DebtSweepEngine, Ants3743VersionPinExtraction) {
+    const auto pins = DebtSweepEngine::detail::extractVersionPins(
+        "pip install PyInstaller==6.21.0\n"   // 1 — lower-cased
+        "if [ \"$x\" == \"$y\" ]; then\n"     // 2 — not a version
+        "# pyinstaller==5.0.0\n"              // 3 — commented out
+        "  ruff==0.6.9  # trailing\n"         // 4
+        "if (target==0 && depth == 1) x;\n"); // 5 — awk/C integer comparison
+    ASSERT_EQ(pins.size(), 2)
+        << "a dotless integer comparison is not a pin — measured against this "
+           "repo's own packaging/cut-rc.sh, which has three";
+    EXPECT_EQ(pins[0].package, QString("pyinstaller"));
+    EXPECT_EQ(pins[0].version, QString("6.21.0"));
+    EXPECT_EQ(pins[0].line, 1);
+    EXPECT_EQ(pins[1].package, QString("ruff"));
+    EXPECT_EQ(pins[1].line, 4);
+}
+
+// ANTS-3743 — dep_pin_mismatch end-to-end. Fin Break's shape: a build tool
+// pinned in several build paths with nothing keeping them in step. Reports a
+// DISAGREEMENT only — agreeing copies are a lockstep hazard, not a defect, and
+// separating the two is what keeps this out of the ~94%-FP bucket.
+TEST(DebtSweepEngine, Ants3743DepPinMismatchAgainstManifestAndPeers) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+
+    writeFile(dir, "requirements.txt", "ruff==0.6.9\nrich==13.7.0\n");
+    writeFile(dir, "build.sh",   "pip install ruff==0.6.9\n"      // in step
+                                 "pip install rich==13.5.0\n");   // MISMATCH
+    writeFile(dir, "ci/one.yml", "run: pip install pyinstaller==6.21.0\n");
+    writeFile(dir, "ci/two.yml", "run: pip install pyinstaller==6.10.0\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "-A"}), 0);
+
+    const auto out = DebtSweepEngine::detectDepPinMismatch(
+        dir, DebtSweepEngine::ScanOptions{});
+
+    QStringList hits;
+    for (const auto &f : out) {
+        EXPECT_EQ(f.category, QString("packaging_drift"));
+        EXPECT_EQ(f.detectorId, QString("dep_pin_mismatch"));
+        EXPECT_FALSE(f.autoFixable);
+        hits << QStringLiteral("%1:%2").arg(f.file).arg(f.line);
+    }
+
+    // build.sh:2 disagrees with the manifest; ci/two.yml:1 disagrees with the
+    // peer copy in ci/one.yml (neither is in a manifest). ruff agrees with the
+    // manifest and must NOT be reported.
+    EXPECT_TRUE(hits.contains(QStringLiteral("build.sh:2"))) << hits.join(", ").toStdString();
+    EXPECT_TRUE(hits.contains(QStringLiteral("ci/two.yml:1"))) << hits.join(", ").toStdString();
+    EXPECT_EQ(out.size(), 2)
+        << "an in-step pin is not a finding: " << hits.join(", ").toStdString();
+}
+
+// ANTS-3743 — pins that all AGREE are silent. This is the deliberate scope
+// boundary: Fin Break's five identical copies are a lockstep hazard whose
+// severity needs judgement, and flagging every one would add N findings per
+// package to a set already ~94% false positive.
+TEST(DebtSweepEngine, Ants3743AgreeingPinsAreNotFlagged) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not available";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    ASSERT_EQ(runGitIn(dir, {"init", "-q"}), 0);
+
+    for (const char *f : {"a.sh", "b.sh", "c.sh"})
+        writeFile(dir, f, "pip install pyinstaller==6.21.0\n");
+    ASSERT_EQ(runGitIn(dir, {"add", "-A"}), 0);
+
+    EXPECT_TRUE(DebtSweepEngine::detectDepPinMismatch(
+                    dir, DebtSweepEngine::ScanOptions{}).isEmpty());
+}

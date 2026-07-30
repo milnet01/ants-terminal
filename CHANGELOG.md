@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **Two new `debt_sweep_scan` detectors — dead lint suppressions and disagreeing dependency pins** (ANTS-3743)
+  `dead_suppression` flags a `# noqa: CODE` whose code no ruff selector
+  enables — a directive that reads as a reviewed decision and suppresses
+  nothing. It stands down entirely unless the project states an explicit
+  select list, so it never guesses. `dep_pin_mismatch` diffs every
+  `pkg==version` in build scripts, CI and container files against the pin
+  in `requirements*.txt` (or against the first hardcoded copy, for a
+  package with no manifest entry) and reports only where two pins
+  disagree — one of them is then definitely wrong.
+
 - **`cold_eyes_brief` returns a per-doc `section_index`** (ANTS-3740)
   Each lane doc now arrives with a map of its own headings —
   {heading, slug, level, start_line, end_line} — so a reviewer cites a
@@ -63,6 +73,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`debt_sweep_scan`'s `scope_note` derives its per-category detector counts from the live roster** (ANTS-3743)
+
 - **`debt_sweep_scan` now shows how thinly each category is checked** (ANTS-3707)
   A zero next to a category used to read as "this area is clean". It really
   meant "the checks we have did not fire" — and some categories rest on a
@@ -72,6 +84,12 @@ for security-relevant changes.
   zero as an all-clear and then found real problems by hand.
 
 ### Fixed
+
+- **`dependencies.md` cites build directives instead of line numbers** (ANTS-3648)
+  The authoritative version-location map told you symbol names are the
+  stable anchor and then cited every pin by line — and every one of those
+  line hints had already drifted, pointing a dependency sweep at the wrong
+  places.
 
 - **`roadmap_query mode:"bundles"` now flags plain-prose gates** (ANTS-3389)
   A to-do whose body says "Wait for X to close" in ordinary prose is now marked blocked, like one using a formal `blocked by` marker. Reported by the MAME Curator session, whose gated items were reading as ready to start.

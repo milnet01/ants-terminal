@@ -2,8 +2,10 @@
 // /debt-sweep fold (ANTS-1113 v1; detector set expanded ANTS-1358).
 // Qt::Core only, no widgets.
 //
-// 11 detectors + scanAll + applyMechanicalFix + two prompt
-// templates. See docs/specs/ANTS-1113.md for the v1 contract and
+// A detector set + scanAll + applyMechanicalFix + two prompt
+// templates. detectorsByCategory() is the live roster — the count is
+// not written out here, because it went stale on the first addition.
+// See docs/specs/ANTS-1113.md for the v1 contract and
 // docs/specs/ANTS-1358.md for the detector-expansion addendum.
 //
 // All file IO is constrained to <projectPath>; all git invocations
@@ -177,6 +179,21 @@ QList<Finding> detectObsoleteQStringIdioms(
 QList<Finding> detectDeadBranchAfterReturn(
     const QString &projectPath, const ScanOptions &opt);
 
+// Code drift (i) — ANTS-3743, reported by Fin Break, which carried
+// 20 `# noqa: E501` directives while its ruff select list never
+// enabled E501. A suppression for a rule the linter does not run
+// reads as a reviewed decision and suppresses nothing. Ground truth
+// is the project's own ruff config, so no judgement is involved.
+// Stands down entirely (returns {}) when no EXPLICIT `select` /
+// `extend-select` list can be read, or when it contains `ALL`:
+// ruff's implicit defaults would have to be modelled to reason about
+// a config that omits select, and a wrong model there invents
+// findings against working code. Flag-only. ruff/`# noqa` ONLY — each
+// extra linter multiplies the config shapes that must be parsed
+// right, and a MISREAD config is worse than a missed finding.
+QList<Finding> detectDeadSuppressions(
+    const QString &projectPath, const ScanOptions &opt);
+
 // Pure per-file scan cores for the content-scanning detectors above.
 // The detectors enumerate git-tracked *.cpp/*.h and delegate to
 // these; exposed so invariant tests can drive the logic against an
@@ -186,6 +203,30 @@ namespace detail {
 QList<Finding> scanDuplicateIncludes(const QString &relPath, const QString &body);
 QList<Finding> scanObsoleteQStringIdioms(const QString &relPath, const QString &body);
 QList<Finding> scanDeadBranchAfterReturn(const QString &relPath, const QString &body);
+
+// ANTS-3743 — `pkg==1.2.3` occurrence. `package` is lower-cased (PyPI
+// names are case-insensitive); `version` is verbatim.
+struct VersionPin {
+    QString package;
+    int     line = 0;   // 1-based
+    QString version;
+};
+QList<VersionPin> extractVersionPins(const QString &body);
+
+// ANTS-3743 — the ruff selectors in a TOML body. `needRuffTable` is true
+// for pyproject.toml (keys live under `[tool.ruff]` / `[tool.ruff.lint]`)
+// and false for ruff.toml / .ruff.toml (top level). Returns EMPTY both
+// when no explicit list is present AND when the list contains `ALL` —
+// both mean "do not flag anything", which is the caller's contract.
+QStringList parseRuffSelectors(const QString &toml, bool needRuffTable);
+
+// ANTS-3743 — a ruff selector matches by PREFIX: `E` and `E5` both enable
+// E501. Exposed because getting this wrong is the detector's whole false-
+// positive surface.
+bool selectorEnables(const QStringList &selectors, const QString &code);
+
+QList<Finding> scanDeadSuppressions(const QString &relPath, const QString &body,
+                                    const QStringList &selectors);
 }  // namespace detail
 
 // Packaging drift — wraps `bash packaging/check-version-drift.sh`.
@@ -194,6 +235,21 @@ QList<Finding> scanDeadBranchAfterReturn(const QString &relPath, const QString &
 // silently when the script is absent or non-executable. NOT marked
 // autoFixable.
 QList<Finding> runPackagingDrift(
+    const QString &projectPath, const ScanOptions &opt);
+
+// Packaging drift (b) — ANTS-3743, reported by Fin Break, which had
+// `pyinstaller==6.21.0` in five build paths with nothing keeping them
+// in step. Diffs every `pkg==version` in build scripts / CI / container
+// files against the pin of record in `requirements*.txt`, and — where a
+// package has no manifest entry — against the first hardcoded copy seen.
+// Reports a DISAGREEMENT only, never mere duplication: two pins at
+// different versions means one is wrong (an unambiguous ground truth,
+// which is ANTS-3743's own bar), whereas N pins that agree is a lockstep
+// hazard whose severity needs the judgement this sweep does not make.
+// Skips `*.md` (prose quoting an old version is a different, noisier
+// question) and never reads pyproject's `dependencies` (range specifiers
+// are not pins, and reading one as a pin invents a mismatch). Flag-only.
+QList<Finding> detectDepPinMismatch(
     const QString &projectPath, const ScanOptions &opt);
 
 // ANTS-3710's sibling problem (ANTS-3707) — the detector_ids that make up

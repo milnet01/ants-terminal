@@ -22396,7 +22396,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-07-30 (found while scoping ANTS-3710).
 
-- 📋 [ANTS-3743] **Four proposed debt-sweep detectors, split out of ANTS-3707's envelope fix.**
+- ✅ [ANTS-3743] **Four proposed debt-sweep detectors, split out of ANTS-3707's envelope fix.**
   ANTS-3707 shipped the envelope half (detectors_by_category) on
   2026-07-30. These are its detector half, kept separate because each
   needs its own sizing and the existing set already runs ~94% FP
@@ -22426,6 +22426,46 @@ against current source before filing.
   **Layman:** Four new checks the debt scan could run, each of which caught a real bug by hand in another project.
   Kind: enhancement.
   Source: DOOM-Ants + finbreak feedback 2026-07-28 (ANTS-3707 detector half).
+  Resolved (2026-07-30): detectors (1) and (2) shipped — the two this bullet
+  itself named as strongest, on the grounds that both have an unambiguous ground
+  truth and need no judgement. (3) doc_drift link/status resolution and (4) the
+  DOOM "reserved field is assigned" comment check are NOT done and stay filed;
+  each wants its own sizing, which is why this bullet said so.
+  (1) `dead_suppression` (code_drift) — a `# noqa: CODE` whose CODE no ruff
+  selector enables. Selector matching is by PREFIX (`E` and `E5` both enable
+  E501), which is the detector's entire FP surface, so it is a separately-tested
+  function. Stands down entirely — returns nothing — when no EXPLICIT
+  select/extend-select list can be read, or when the list holds `ALL`: modelling
+  ruff's implicit defaults to reason about a config that omits select would
+  invent findings against working code. A bare `# noqa` is never flagged (it
+  suppresses everything). ruff only; each extra linter multiplies config shapes
+  that must be parsed right, and a MISREAD config is worse than a missed find.
+  (2) `dep_pin_mismatch` (packaging_drift, its second heuristic) — every
+  `pkg==version` in build scripts / CI / container files diffed against the pin
+  of record in requirements*.txt, and where a package has no manifest entry,
+  against the first hardcoded copy seen.
+  Scope narrowed on purpose, and stated rather than buried: it reports a
+  DISAGREEMENT only. Fin Break's actual instance — pyinstaller==6.21.0 in five
+  paths, all AGREEING — is therefore silent. Duplication without disagreement is
+  a lockstep hazard whose severity needs the judgement this sweep explicitly is
+  not for, and flagging every copy would add N findings per package to a set
+  already ~94% FP. A test pins the silence so it reads as a decision.
+  FP caught by measuring rather than assuming: requiring only "version starts
+  with a digit" matched `target==0`, `unrel==0` and `depth == 0` inside embedded
+  awk in this repo's own packaging/cut-rc.sh and tests/features/hook_pack. They
+  stayed silent only because the copies agreed. The version now requires a dot,
+  which costs the legal-but-rare `pkg==2` and kills the whole integer-comparison
+  class. Re-measured after the fix: zero pins matched across every .sh/.yml/
+  .yaml/.ps1/.bat/.cfg/.ini/Dockerfile in the tree.
+  Both are in detectorsByCategory() as the ANTS-3707 scrape test requires. That
+  test's `packaging_drift == 1` assertion was falsified by this change and is now
+  a RATIO (code_drift >= 2x packaging_drift) — the contract is that the imbalance
+  is visible, not that a category has a particular count. Same for the prose:
+  scope_note used to hardcode "code_drift has 7 heuristics, packaging_drift has
+  1" and now derives both from the live map, so the next detector cannot re-stale
+  the sentence that exists to stop stale denominators.
+  Tests: 6 in debt_sweep_engine (4 pure, 2 end-to-end over a git fixture) + the
+  amended scrape test. Full suite 3090/3090 green.
 
 - 📋 [ANTS-3744] **feedback_query returns mapped_ids:[] for a fully-condensed v2 file, so the reporting session cannot see its own items' status.**
   VERIFIED 2026-07-30 against three live corpus files, not inferred.

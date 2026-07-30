@@ -1026,6 +1026,267 @@ QList<Finding> detectChangelogStaleBullets(
 }
 
 // ---------------------------------------------------------------------------
+// Code drift (h) — dead suppression directive  [ANTS-3743]
+// ---------------------------------------------------------------------------
+//
+// Reported by Fin Break, which carried 20 `# noqa: E501` comments while its
+// ruff select list never enabled E501. Each one reads as a reviewed,
+// deliberate suppression and suppresses nothing — the worst shape for a
+// marker, because it looks like the decision was already made.
+//
+// Ground truth is the project's own config, so no judgement is involved,
+// which is the bar ANTS-3743 set for admitting a new detector to a set already
+// running ~94% false positive.
+//
+// Scoped to ruff on purpose. Adding flake8 / eslint / clang-tidy multiplies the
+// config shapes that must be parsed correctly, and a MISREAD config here does
+// not merely miss a finding — it invents one against working code.
+
+namespace detail {
+
+// A ruff selector matches a code by PREFIX: `E` and `E5` both enable E501.
+bool selectorEnables(const QStringList &selectors, const QString &code) {
+    for (const QString &s : selectors)
+        if (!s.isEmpty() && code.startsWith(s)) return true;
+    return false;
+}
+
+QList<Finding> scanDeadSuppressions(const QString &relPath, const QString &body,
+                                    const QStringList &selectors) {
+    if (selectors.isEmpty()) return {};   // caller decides; never guess
+    // `# noqa: E501, F401` / `# noqa:E501`. A BARE `# noqa` suppresses
+    // everything and is therefore never dead — it must not match.
+    static const QRegularExpression kNoqa(
+        QStringLiteral(R"(#\s*noqa\s*:\s*([A-Z]+[0-9]+(?:\s*,\s*[A-Z]+[0-9]+)*))"),
+        QRegularExpression::CaseInsensitiveOption);
+    QList<Finding> out;
+    const QStringList lines = body.split('\n');
+    for (int i = 0; i < lines.size(); ++i) {
+        const auto m = kNoqa.match(lines.at(i));
+        if (!m.hasMatch()) continue;
+        const QStringList codes = m.captured(1).split(
+            ',', Qt::SkipEmptyParts);
+        for (const QString &raw : codes) {
+            const QString code = raw.trimmed().toUpper();
+            if (code.isEmpty() || selectorEnables(selectors, code)) continue;
+            Finding f;
+            f.category   = QStringLiteral("code_drift");
+            f.detectorId = QStringLiteral("dead_suppression");
+            f.file       = relPath;
+            f.line       = i + 1;
+            f.message    = QStringLiteral(
+                "`# noqa: %1` suppresses a rule ruff never enables — no "
+                "selector in the configured select list (%2) is a prefix of "
+                "%1, so this reads as a reviewed suppression but suppresses "
+                "nothing").arg(code, selectors.join(QStringLiteral(", ")));
+            f.suggestedFix = QStringLiteral(
+                "Delete the directive, or add a selector that enables %1 if "
+                "the rule was meant to be on.").arg(code);
+            out.append(f);
+        }
+    }
+    return out;
+}
+
+// The `select` / `extend-select` arrays ruff is actually configured with, or an
+// EMPTY list when none can be read confidently — at which point the detector
+// stands down. There is no TOML parser in the tree and ruff's *implicit*
+// defaults ("E4", "E7", "E9", "F") would have to be modelled to reason about a
+// config that omits select entirely; a wrong model there is pure false
+// positive against code that is fine. An explicit list is the only input this
+// trusts.
+//
+// `ALL` also stands the detector down: it enables every rule, so nothing is
+// dead.
+QStringList parseRuffSelectors(const QString &toml, bool needRuffTable) {
+    static const QRegularExpression kTable(QStringLiteral(R"(^\s*\[([^\]]+)\])"));
+    static const QRegularExpression kKey(
+        QStringLiteral(R"(^\s*(?:extend-)?select\s*=\s*(.*)$)"));
+    QStringList out;
+    bool inScope = !needRuffTable;   // ruff.toml: keys sit at top level
+    const QStringList lines = toml.split('\n');
+    for (int i = 0; i < lines.size(); ++i) {
+        const auto t = kTable.match(lines.at(i));
+        if (t.hasMatch()) {
+            const QString name = t.captured(1).trimmed();
+            inScope = !needRuffTable
+                   || name == QStringLiteral("tool.ruff")
+                   || name == QStringLiteral("tool.ruff.lint");
+            continue;
+        }
+        if (!inScope) continue;
+        const auto k = kKey.match(lines.at(i));
+        if (!k.hasMatch()) continue;
+        // The array may wrap; accumulate until the closing bracket.
+        QString arr = k.captured(1);
+        for (int j = i + 1; j < lines.size() && !arr.contains(']'); ++j)
+            arr += lines.at(j);
+        static const QRegularExpression kItem(QStringLiteral(R"(["']([^"']+)["'])"));
+        auto it = kItem.globalMatch(arr);
+        while (it.hasNext()) {
+            const QString v = it.next().captured(1).trimmed().toUpper();
+            if (v == QStringLiteral("ALL")) return {};
+            if (!v.isEmpty() && !out.contains(v)) out << v;
+        }
+    }
+    return out;
+}
+
+}  // namespace detail
+
+QList<Finding> detectDeadSuppressions(
+    const QString &projectPath, const ScanOptions & /*opt*/) {
+    // pyproject.toml needs the [tool.ruff*] table; a dedicated ruff.toml puts
+    // the same keys at the top level.
+    QStringList selectors = detail::parseRuffSelectors(
+        slurpUtf8(projectPath + QStringLiteral("/pyproject.toml")), true);
+    for (const QString &f : {QStringLiteral("/ruff.toml"),
+                             QStringLiteral("/.ruff.toml")}) {
+        if (!selectors.isEmpty()) break;
+        selectors = detail::parseRuffSelectors(
+            slurpUtf8(projectPath + f), false);
+    }
+    if (selectors.isEmpty()) return {};
+
+    QList<Finding> out;
+    for (const QString &rel : lsFiles(projectPath, {QStringLiteral("*.py")})) {
+        const QString body = slurpUtf8(projectPath + QChar('/') + rel);
+        if (body.isEmpty()) continue;
+        out += detail::scanDeadSuppressions(rel, body, selectors);
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Packaging drift (b) — dependency pin DISAGREEMENT  [ANTS-3743]
+// ---------------------------------------------------------------------------
+//
+// Reported by Fin Break, which carried `pyinstaller==6.21.0` in five build
+// paths with nothing keeping them in step. packaging_drift's only other
+// heuristic delegates to a project-supplied script, so a project without that
+// script had no packaging coverage at all.
+//
+// Scope call, made deliberately and narrower than the request: this reports a
+// **disagreement**, never mere duplication. ANTS-3743's own bar for admitting a
+// detector was "an unambiguous ground truth to diff against, and no judgement".
+// Two pins of the same package at different versions meets that bar — one of
+// them is wrong. N pins that AGREE is a lockstep *hazard*, and deciding whether
+// it needs a test is exactly the judgement this sweep is not for; flagging it
+// would add N findings per package to a detector set already running ~94% false
+// positive. The hazard half stays filed rather than shipped half-thought.
+
+namespace detail {
+
+// `name==1.2.3` occurrences, as (package, line, version).
+//
+// The version must carry at least one DOT (`\d+\.\d+…`), which is what keeps
+// this out of the false-positive bucket the whole detector set is judged by.
+// Requiring merely "starts with a digit" was measured against this repo's own
+// tree and matched `target==0`, `unrel==0` and `depth == 0` inside embedded awk
+// — integer comparisons read as package pins. Those happened to stay silent
+// here because the copies agreed, which is luck, not a guard: one `target==0`
+// beside one `target==1` would have emitted a finding about a variable.
+//
+// The cost is a dotless pin (`pkg==2`), which is legal and rare. Accepted
+// deliberately: a missed finding costs nothing, and a finding against a shell
+// variable costs the caller's trust in every other finding.
+QList<VersionPin> extractVersionPins(const QString &body) {
+    static const QRegularExpression kPin(
+        QStringLiteral(R"(\b([A-Za-z][A-Za-z0-9._-]{1,63})\s*==\s*([0-9]+\.[0-9][0-9A-Za-z.+-]*))"));
+    QList<VersionPin> out;
+    const QStringList lines = body.split('\n');
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &l = lines.at(i);
+        if (l.trimmed().startsWith('#')) continue;   // commented-out pin
+        auto it = kPin.globalMatch(l);
+        while (it.hasNext()) {
+            const auto m = it.next();
+            out.append({m.captured(1).toLower(), i + 1, m.captured(2)});
+        }
+    }
+    return out;
+}
+
+}  // namespace detail
+
+QList<Finding> detectDepPinMismatch(
+    const QString &projectPath, const ScanOptions & /*opt*/) {
+    // The manifest is the pin of record. requirements*.txt only — pyproject's
+    // `dependencies` list uses range specifiers far more often than `==`, and
+    // reading a range as a pin would invent a mismatch against working config.
+    const QStringList manifests =
+        lsFiles(projectPath, {QStringLiteral("requirements*.txt"),
+                              QStringLiteral("*/requirements*.txt")});
+    QHash<QString, QPair<QString, QString>> pinOfRecord;  // pkg -> (ver, file)
+    for (const QString &rel : manifests) {
+        for (const detail::VersionPin &p : detail::extractVersionPins(
+                 slurpUtf8(projectPath + QChar('/') + rel))) {
+            if (!pinOfRecord.contains(p.package))
+                pinOfRecord.insert(p.package, {p.version, rel});
+        }
+    }
+
+    // Everywhere else a pin can be hardcoded: build scripts, CI, containers.
+    // Deliberately NOT *.md — a doc quoting an older version is prose drift,
+    // a different (and much noisier) question than a build path disagreeing.
+    const QSet<QString> manifestSet(manifests.begin(), manifests.end());
+    QList<Finding> out;
+    QHash<QString, QPair<QString, QString>> firstSeen;  // pkg -> (ver, "file:line")
+    for (const QString &rel : lsFiles(projectPath, {
+             QStringLiteral("*.sh"), QStringLiteral("*.yml"),
+             QStringLiteral("*.yaml"), QStringLiteral("*.ps1"),
+             QStringLiteral("*.bat"), QStringLiteral("*.cfg"),
+             QStringLiteral("*.ini"), QStringLiteral("Dockerfile*"),
+             QStringLiteral("*/Dockerfile*")})) {
+        if (manifestSet.contains(rel)) continue;
+        for (const detail::VersionPin &p : detail::extractVersionPins(
+                 slurpUtf8(projectPath + QChar('/') + rel))) {
+            const QString where = QStringLiteral("%1:%2").arg(rel).arg(p.line);
+            const auto rec = pinOfRecord.constFind(p.package);
+            if (rec != pinOfRecord.constEnd()) {
+                if (rec->first == p.version) continue;   // in step
+                Finding f;
+                f.category   = QStringLiteral("packaging_drift");
+                f.detectorId = QStringLiteral("dep_pin_mismatch");
+                f.file       = rel;
+                f.line       = p.line;
+                f.message    = QStringLiteral(
+                    "`%1==%2` disagrees with the pin of record `%1==%3` in %4 "
+                    "— one of the two is wrong, and nothing keeps them in step")
+                    .arg(p.package, p.version, rec->first, rec->second);
+                f.suggestedFix = QStringLiteral(
+                    "Match %1, or move the pin into the manifest and read it "
+                    "from there.").arg(rec->second);
+                out.append(f);
+                continue;
+            }
+            // No manifest entry: two hardcoded copies that disagree are still
+            // an unambiguous defect, and this is the shape a project whose
+            // build tools live outside requirements.txt actually has.
+            const auto seen = firstSeen.constFind(p.package);
+            if (seen == firstSeen.constEnd()) {
+                firstSeen.insert(p.package, {p.version, where});
+                continue;
+            }
+            if (seen->first == p.version) continue;
+            Finding f;
+            f.category   = QStringLiteral("packaging_drift");
+            f.detectorId = QStringLiteral("dep_pin_mismatch");
+            f.file       = rel;
+            f.line       = p.line;
+            f.message    = QStringLiteral(
+                "`%1==%2` here but `%1==%3` at %4, and neither is in a "
+                "manifest — the two copies have already diverged")
+                .arg(p.package, p.version, seen->first, seen->second);
+            f.suggestedFix = QStringLiteral(
+                "Pick one version and put it in a manifest both paths read.");
+            out.append(f);
+        }
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
 // Packaging drift — wraps packaging/check-version-drift.sh
 // ---------------------------------------------------------------------------
 
@@ -1072,11 +1333,14 @@ QList<Finding> runPackagingDrift(
 // ---------------------------------------------------------------------------
 
 // The denominator behind each by_category count. Note how uneven it is —
-// code_drift has seven heuristics, packaging_drift has one. That asymmetry is
+// code_drift carries several times what packaging_drift does. That asymmetry is
 // the whole reported defect: `packaging_drift: 0` was being read as "packaging
-// is clean" when it means "the single version-lockstep heuristic did not
-// fire". Locked to the implementation by a source-scrape test, so a new
-// detector cannot ship without appearing here.
+// is clean" when it meant "one version-lockstep heuristic did not fire".
+// Locked to the implementation by a source-scrape test, so a new detector
+// cannot ship without appearing here. Counts are deliberately not written into
+// the prose anywhere — cmdDebtSweepScan's scope_note derives them from this
+// map, because the hardcoded "seven / one" it used to carry went stale the
+// first time a detector was added (ANTS-3743).
 const QMap<QString, QStringList> &detectorsByCategory() {
     static const QMap<QString, QStringList> v = {
         {QStringLiteral("code_drift"), {
@@ -1087,6 +1351,7 @@ const QMap<QString, QStringList> &detectorsByCategory() {
             QStringLiteral("duplicate_include"),
             QStringLiteral("obsolete_qstring_idiom"),
             QStringLiteral("dead_branch_after_return"),
+            QStringLiteral("dead_suppression"),
         }},
         {QStringLiteral("test_coverage"), {
             QStringLiteral("missing_inv_test"),
@@ -1097,6 +1362,7 @@ const QMap<QString, QStringList> &detectorsByCategory() {
         }},
         {QStringLiteral("packaging_drift"), {
             QStringLiteral("version_drift"),
+            QStringLiteral("dep_pin_mismatch"),
         }},
     };
     return v;
@@ -1117,6 +1383,7 @@ QList<Finding> scanAll(
         out += detectDuplicateIncludes(projectPath, opt);
         out += detectObsoleteQStringIdioms(projectPath, opt);
         out += detectDeadBranchAfterReturn(projectPath, opt);
+        out += detectDeadSuppressions(projectPath, opt);
     }
     if (opt.includeTestCoverage) {
         out += detectMissingInvariantTests(projectPath, opt);
@@ -1127,6 +1394,7 @@ QList<Finding> scanAll(
     }
     if (opt.includePackagingDrift) {
         out += runPackagingDrift(projectPath, opt);
+        out += detectDepPinMismatch(projectPath, opt);
     }
     return out;
 }

@@ -20011,7 +20011,9 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
     // three zeros beside "all four ran" read as "those dimensions are clean".
     // Both projects then found real defects by hand in exactly those
     // categories. Emit the denominator: the detector_ids behind each count.
-    // code_drift has seven; packaging_drift has one.
+    // The asymmetry is large and is stated in scope_note from the live map
+    // rather than written out here — ANTS-3743 added a detector to two
+    // categories and a hardcoded "seven / one" would already be wrong.
     QJsonObject detectorsBy;
     for (auto it = DebtSweepEngine::detectorsByCategory().constBegin();
          it != DebtSweepEngine::detectorsByCategory().constEnd(); ++it) {
@@ -20019,17 +20021,25 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
         detectorsBy[it.key()] = QJsonArray::fromStringList(it.value());
     }
     env["detectors_by_category"] = detectorsBy;
+    // ANTS-3743 — the per-category counts are read from the live map, not
+    // written into the sentence. The previous wording hardcoded "7" and "1",
+    // which this very commit falsified by adding a detector to each; a caller
+    // reading a stale denominator is the defect ANTS-3707 was filed about.
+    QStringList shape;
+    for (auto it = detectorsBy.constBegin(); it != detectorsBy.constEnd(); ++it)
+        shape << QStringLiteral("%1 has %2").arg(it.key())
+                     .arg(it.value().toArray().size());
     env["scope_note"] = QStringLiteral(
         "Marker/lockstep heuristics only (TODO-FIXME age, version lockstep, "
-        "bounded dead-code / duplicate-include). Not a judgment audit: "
-        "assigned-but-never-read locals, stale prose, and action pins below "
-        "latest-major are out of scope. total_findings:0 means \"no marker "
-        "hits\", not \"no debt\" — a judgment sweep is still required. "
-        "Read every by_category count against detectors_by_category, which "
-        "lists the detector_ids behind it: the categories are NOT evenly "
-        "covered (code_drift has 7 heuristics, packaging_drift has 1), so a "
-        "0 in a thin category is a much weaker signal than a 0 in a thick "
-        "one.");
+        "bounded dead-code / duplicate-include, dead lint suppressions). Not a "
+        "judgment audit: assigned-but-never-read locals, stale prose, and "
+        "action pins below latest-major are out of scope. total_findings:0 "
+        "means \"no marker hits\", not \"no debt\" — a judgment sweep is still "
+        "required. Read every by_category count against "
+        "detectors_by_category, which lists the detector_ids behind it: the "
+        "categories are NOT evenly covered (%1), so a 0 in a thin category is "
+        "a much weaker signal than a 0 in a thick one.")
+        .arg(shape.join(QStringLiteral(", ")));
     // Resolve since for response transparency.
     QString sinceRes = opt.sinceRef;
     if (sinceRes.isEmpty()) {
