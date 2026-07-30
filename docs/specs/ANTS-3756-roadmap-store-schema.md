@@ -221,9 +221,10 @@ naturally an object keyed by field name.
 
 **SQLite ≥ 3.38 is the floor**, because JSON1 is built in by default only from
 that release; earlier builds require a compile flag this project does not
-control. `.github/workflows/ci.yml` and `release.yml` both run `ubuntu-22.04`,
-which ships **3.37** — so either those runners move, or the queries avoid JSON1
-and read the columns as opaque text. `dependencies.md` requires the floor to be
+control. Two runners are below it: `.github/workflows/release.yml` (`ubuntu-22.04`,
+which builds the AppImage) and `ci.yml`'s **`qt62-baseline` job** — `ci.yml`'s
+other two jobs are already on `ubuntu-24.04`. So either those two move, or the
+queries avoid JSON1 and read the columns as opaque text. `dependencies.md` requires the floor to be
 stated rather than discovered, and this is the one dependency here with a real
 version constraint.
 
@@ -593,7 +594,7 @@ writer passes for reasons it never checked.
   - `packaging/archlinux/PKGBUILD` — the Qt SQL module in `depends`.
   - `packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml` — the module in the manifest.
   - AppImage — bundles `sqldrivers/libqsqlite.so` **and** `libsqlite3.so.0` (§ 2.1: the plugin links system sqlite; the plugin alone is not enough).
-- **`.github/workflows/ci.yml`** — three jobs install an explicit apt list, including the `qt62-baseline` job. Without the SQL module every feature test below fails at runtime in CI. Both this and `release.yml` run `ubuntu-22.04`, whose SQLite is below § 2.3's floor.
+- **`.github/workflows/ci.yml`** — three jobs install an explicit apt list, including the `qt62-baseline` job. Without the SQL module every feature test below fails at runtime in CI. Its `qt62-baseline` job runs `ubuntu-22.04`, below § 2.3's SQLite floor; the other two are on `ubuntu-24.04`.
 - **`.github/workflows/release.yml`** — carries its **own** apt list for the AppImage build, separate from `ci.yml`'s.
 - **`README.md`** — "the only thing it needs to run is Qt6" becomes false by the same argument as `CLAUDE.md`, and the per-distro build-dependency lines each gain a package.
 - **[`mcp-caches.md`](../standards/mcp-caches.md)** — gains a row recording that `roadmap.sqlite` is **not** a cache, is not path-keyed, and must never be added to a GC sweep. Its never-shadow invariant applies to the `project.root` column instead (INV-8).
