@@ -499,6 +499,32 @@ SSH key registered there.
   class everywhere.
 
   Submitted as OBS revision 12; build outcome recorded below.
+  Outcome (2026-07-30), all four targets settled:
+
+    openSUSE_Tumbleweed   succeeded, published   ants-terminal-0.7.101-9.1
+    openSUSE_Leap_16.0    succeeded, published   ants-terminal-0.7.101-lp160.9.1
+    Fedora_44             failed  (pre-existing, see below)
+    Mageia_10             failed  (pre-existing, see below)
+
+  No regression: the two green targets published the same 0.7.101 the
+  set_version service used to produce, so stamping at submit time is
+  verified end-to-end. Both repomd.xml return HTTP 200.
+
+  Mageia went from `unresolvable` to resolving, configuring and compiling
+  29% of the tree — which is the whole of this item working. It then died
+  on the SAME defect Fedora dies on: luaengine.cpp in the pinned v0.7.101
+  tag has `#include <lua5.4/lua.hpp>`, already fixed to `<lua.hpp>` on
+  main by ANTS-3727. OBS builds the tag, not main, so both clear at
+  v0.7.102 with no further action.
+
+  That latency is itself a gap, filed as ANTS-3733: a source-level
+  portability break is only visible a release after it lands. ANTS-3727
+  declined a test here reasoning the Fedora target was a permanent guard;
+  right about coverage, wrong about when it fires.
+
+  Also removed the Flatpak manifest's now-dead lua5.4 header mirror (it
+  existed only to satisfy the old hardcoded include) and filed ANTS-3734
+  for its Lua 5.4.7 pin against upstream 5.4.8.
 
 - ✅ [ANTS-3732] **workspace_search hard-kills at 5 s on a trivial repo-wide regex.**
   Searching the pattern `lua5\.4/` (regex, no lane/glob) over the whole
