@@ -22402,6 +22402,39 @@ against current source before filing.
   Kind: enhancement.
   Source: DOOM-Ants + finbreak feedback 2026-07-28 (ANTS-3707 detector half).
 
+- 📋 [ANTS-3744] **feedback_query returns mapped_ids:[] for a fully-condensed v2 file, so the reporting session cannot see its own items' status.**
+  VERIFIED 2026-07-30 against three live corpus files, not inferred.
+
+  The ANTS-3475 condensation pass reduced each file to a header, a
+  banner and a `## Tracked in ROADMAP (detail + status there): ANTS-…`
+  line. But feedback_query harvests `mapped_ids` from each finding's
+  `**Proposed ID:**` slot, and a fully-condensed file has no finding
+  blocks left. Measured: DOOM_Ants_MCP_Feedback.md returns 18 mapped
+  ids and claude_config 11 (both retain finding blocks), while
+  MAME_Curator_Ants_MCP_Feedback.md — condensed all the way down to
+  the one-line form — returns `mapped_ids: []`.
+
+  Consequence: `mapped_id_status` is empty for exactly the files that
+  were tidied hardest, so the reporting session's documented way of
+  learning that its item shipped ("check mapped_id_status") silently
+  returns nothing. That inverts the point of the condensed form, which
+  was to keep the pointer while dropping the prose.
+
+  Fix: parse the `## Tracked in ROADMAP …` line as a mapped-id source
+  when no `**Proposed ID:**` slots are present, and resolve those ids
+  through the same live-ROADMAP lookup that already backs
+  mapped_id_status (ANTS-3478). Cheap — it is one more id-harvesting
+  branch feeding an existing resolver.
+
+  Found because ANTS-3389 (MAME's own report) had ALSO been dropped
+  from that line during condensation — the list jumps 3388 → 3393. The
+  missing id was restored by hand in the same session; this bullet is
+  the mechanism, not that one instance. Worth a sweep of the other
+  condensed files for the same omission.
+  **Layman:** After we tidied the shared feedback files, some projects can no longer see whether their reported issues were fixed.
+  Kind: fix.
+  Source: in-session-2026-07-30 (found closing the ANTS-3389 loop back to MAME Curator).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
