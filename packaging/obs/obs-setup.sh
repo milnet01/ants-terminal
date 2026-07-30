@@ -44,8 +44,23 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # python3-base", an openSUSE package name) — an upstream gap this package could
 # not patch. ANTS-3731 removed the need instead: obs-submit.sh now stamps
 # Version: from the pinned tag at submit time, so set_version is gone from
-# _service and no target depends on it. tar and recompress do build for Mageia,
-# so the remaining two buildtime services are fine.
+# _service and no target depends on it.
+#
+# That was necessary but not sufficient, and the second half is why Mageia
+# carries a SECOND <path> below. Where a distro gets the buildtime services at
+# all differs per distro, and it is not obvious: Fedora:44/standard publishes
+# the whole obs-service-* set itself (tar, recompress, even set_version), which
+# is why Fedora needed no extra path. Mageia:10/standard publishes NONE of them,
+# so the first submit failed with "nothing provides obs-service-tar, nothing
+# provides obs-service-recompress". openSUSE:Tools builds those two for Mageia_10
+# — just not set_version — so adding it as a fallback path supplies exactly the
+# gap ANTS-3731 did not close. Mageia:10 stays FIRST so its own packages win;
+# openSUSE:Tools only carries OBS tooling, so the shadowing surface is tiny.
+#
+# Check this with the binary list, never the build status:
+#   curl -s .../public/build/<prj>/<repo>/x86_64/_repository | grep obs-service-
+# obs-service-tar reports code="unknown" even for targets that work, because it
+# is a subpackage of obs-service-obs_scm and has no build record of its own.
 #
 # Debian/Ubuntu are NOT just another line here either: OBS cannot build a .deb
 # from a .spec, it needs debian.control + debian.rules alongside it
@@ -88,6 +103,7 @@ cat > "$tmp/prj.xml" <<EOF
   </repository>
   <repository name="Mageia_10">
     <path project="Mageia:10" repository="standard"/>
+    <path project="openSUSE:Tools" repository="Mageia_10"/>
     <arch>x86_64</arch>
   </repository>
 </project>

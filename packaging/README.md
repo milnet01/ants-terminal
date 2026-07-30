@@ -19,7 +19,7 @@ it produces a binary package without patching upstream.
 ```
 packaging/
 ├── opensuse/
-│   └── ants-terminal.spec         # RPM spec for openSUSE Tumbleweed + OBS
+│   └── ants-terminal.spec         # RPM spec — openSUSE, Fedora, Mageia + OBS
 ├── archlinux/
 │   └── PKGBUILD                   # AUR release recipe (ants-terminal)
 ├── debian/
@@ -50,18 +50,26 @@ set of paths (see the **Install footprint** table in the repo root
 
 ## openSUSE — RPM spec
 
-The spec targets **Tumbleweed** but works on Leap 15.5+ with the same
-BuildRequires set. All macros used (`%cmake`, `%cmake_build`,
-`%cmake_install`, `%ctest`, `%autosetup`) are core openSUSE / Fedora
-macros so the file is close to portable.
+The spec is **portable across RPM distros** (ANTS-3727) and is verified
+building on openSUSE Tumbleweed, openSUSE Leap 16.0 and Fedora 44. The
+macros it uses (`%cmake`, `%cmake_build`, `%cmake_install`, `%ctest`,
+`%autosetup`) are core openSUSE / Fedora macros.
+
+Shared macros were *not* enough on their own, so don't assume a new
+distro just works: the `BuildRequires` set genuinely differs, and the
+spec carries `%if 0%{?suse_version}` / `%if 0%{?fedora}` arms for each
+name that does (Ninja, Lua, the AppStream validator, the man-page
+suffix). The openSUSE arm resolves exactly the set it always did. See
+[`packaging/obs/README.md`](obs/README.md) for the per-distro table.
 
 ### Local build
 
 ```bash
-# Fetch the tarball for this version (or generate one from a checkout)
-osc -A https://api.opensuse.org checkout devel:languages:misc/ants-terminal
-cp packaging/opensuse/ants-terminal.spec devel:languages:misc/ants-terminal/
-osc build openSUSE_Tumbleweed x86_64
+# The live OBS project is home:milnet:ants-terminal; packaging/obs/ drives it.
+osc -A https://api.opensuse.org checkout home:milnet:ants-terminal ants-terminal
+cp packaging/opensuse/ants-terminal.spec home:milnet:ants-terminal/ants-terminal/
+cd home:milnet:ants-terminal/ants-terminal
+osc build openSUSE_Tumbleweed x86_64   # or Fedora_44, openSUSE_Leap_16.0, Mageia_10
 ```
 
 Or outside OBS:

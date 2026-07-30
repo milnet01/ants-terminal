@@ -106,15 +106,35 @@ which makes them build *dependencies* that must exist in the target repo:
   python3-base"). **ANTS-3731** removed the dependency instead of chasing it —
   see "How the source gets there" above.
 
+**Where a distro gets those services differs per distro, and it decides whether
+you need a second `<path>`.** This is the non-obvious part, and it cost a second
+round trip:
+
+| | ships `obs-service-*` in its own base repo? | needs `openSUSE:Tools` path? |
+|---|---|---|
+| openSUSE Tumbleweed / Leap | yes | no |
+| Fedora 44 | yes — the whole set, incl. `set_version` | no |
+| Mageia 10 | **none at all** | **yes** |
+
+So Mageia needed *both* halves: ANTS-3731 to stop needing `set_version` (which
+`openSUSE:Tools` can't build for Mageia), and a fallback
+`<path project="openSUSE:Tools" repository="Mageia_10"/>` to supply `tar` and
+`recompress` (which it can). Keep the distro's own path **first** so its
+packages win; `openSUSE:Tools` only carries OBS tooling, so it shadows little.
+
 Checking whether a service exists for a target: read the **binary list**, not
 the build status. `obs-service-tar` reports `code="unknown"` for every target
 including ones that work, because it is a subpackage of `obs-service-obs_scm`
 and has no build record under its own name. What settles it is
 
 ```
-curl -s https://api.opensuse.org/public/build/openSUSE:Tools/<repo>/x86_64/_repository \
+curl -s https://api.opensuse.org/public/build/<project>/<repo>/x86_64/_repository \
   | grep -o 'filename="obs-service-[^"]*"'
 ```
+
+Run it against the distro's own base repo (`Fedora:44/standard`,
+`Mageia:10/standard`) *and* against `openSUSE:Tools/<repo>` — the first tells
+you whether you need the extra path, the second whether it would even help.
 
 The lesson generalises: when a new target goes unresolvable, check whether the
 missing package is one of ours or one of OBS's own services.
