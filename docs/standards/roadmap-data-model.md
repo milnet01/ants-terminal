@@ -197,29 +197,49 @@ and an **ordered element list**. Elements hold the content that is not an item:
 | Element | Carries |
 |---|---|
 | `item` | A reference to a § 4 item. |
-| `narration` | A bullet that is not an item — **with or without** a status marker. |
+| `narration` | Section-summary prose that belongs to no single item. |
 | `table` | A markdown table: header plus ordered rows. |
 
-Sub-bullets beneath an item belong to that item's `body`; fenced code blocks
-belong to a `body` or an `intro`. Neither is a section element — both are always
-subordinate to something specific rather than interleaved at section level.
+**Prose belongs to its item.** Sub-bullets, step lists and detail lines beneath
+an item are that item's `body`; fenced code blocks belong to a `body` or an
+`intro`. Neither is a section element, because both are subordinate to something
+specific rather than interleaved at section level.
 
-`narration` deliberately covers both shapes. `roadmap-format.md` § 3.3 calls a
-bullet *without* a status emoji narration; the corpus also holds 76 bullets
-*with* a status marker that are plainly not items ("Done (shipped)", "In
-progress", sub-detail citation lines). An element type admitting only one shape
-would leave the other with no home, which is § 4.3's failure by another route.
+That distinction is load-bearing rather than tidy. Of the corpus's 76
+status-marked bullets carrying no bold headline, ~68 are item detail —
+MAME Curator's `` `tests/api/test_fp09_fixes.py:362` — wrapped the SSE
+history-replay `` and Music Production's `Step 3 — failing tests for
+TC-06-17/18/19` are sub-steps of a parent item, not free-standing content.
+Modelling them as section elements would detach them from the item they
+describe, and the item would then be published without the prose that explains
+it — § 4.3's failure by another route.
 
-### 5.1 Structures the model must survive
+### 5.1 The status legend is structured, not prose
+
+Every project writes its own key for the status vocabulary, in its own words:
+this project's `In progress (active commit work — usually direct-to-main on
+this project; rarely a branch / PR)` against Fin Break's `In progress (being
+tackled now)`. Eight such lines exist across the corpus, and they are the
+document's *metadata* — not items, and not narration.
+
+They are therefore their own per-project structure: status value → that
+project's wording. **This is what lets one renderer serve every project.**
+RoadmapDialog currently looks different across these roadmaps because it is
+parsing each one's freeform key out of prose; given the legend as data, it
+renders the vocabulary natively and the per-project divergence disappears.
+
+### 5.2 Structures the model must survive
 
 Measured across the nine-project corpus:
 
 | Count | Structure | Home |
 |---|---|---|
 | 1,209 | sub-bullets | item `body` |
-| 610 | status-marked non-item bullets | `narration` element |
+| ~68 | status-marked detail lines | item `body` |
+| 8 | status-legend lines | § 5.1 legend structure |
 | 182 | markdown table rows | `table` element |
 | 38 | fenced code blocks | `body` or `intro` |
+| residual | section-summary prose | `narration` element |
 
 ---
 
@@ -292,8 +312,9 @@ instead.
 
 **Only bullets that are items get an ID.** The discriminator is the bold
 headline `roadmap-format.md` § 3.5 already requires: of the corpus's 610
-status-marked ID-less bullets, 534 carry one and are items; the other 76 are
-narration (§ 5) and are left alone.
+status-marked ID-less bullets, 534 carry one and are items. The other 76 are
+not, and are not one thing either — ~68 are detail lines belonging to a parent
+item's `body` and 8 are status-legend lines (§ 5.1). Neither gets an ID.
 
 ### 7.3 Status
 
