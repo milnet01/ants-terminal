@@ -432,6 +432,7 @@ set_source_files_properties("${ANTS_BUILD_INFO_VALUES_CPP}" PROPERTIES
 add_library(ants_roadmapstore_lib STATIC
     src/roadmapstore.cpp
     src/jsoncanonical.cpp   # ANTS-3761 — RFC 8785; Qt6::Core only, no Sql
+    src/roadmapexport.cpp   # ANTS-3761 — the export writer + its rebuild half
 )
 target_link_libraries(ants_roadmapstore_lib
     PUBLIC  Qt6::Core Qt6::Sql
@@ -2214,12 +2215,20 @@ if(ANTS_TESTS)
                 # so no separate target is needed for process isolation.
                 tests/features/roadmap_store_concurrency/test_roadmap_store_concurrency.cpp
                 # ANTS-3761 — the export. INV-19 measures the canonicaliser
-                # against the RFC's own committed vectors.
+                # against the RFC's own committed vectors; INV-18 measures the
+                # writer against committed golden files, which is what makes
+                # § 2.4's file-level rules testable (INV-1 compares the writer
+                # against itself, so any deterministic writer passes it).
                 tests/features/roadmap_export_roundtrip/test_roadmap_export_roundtrip.cpp
+                # INV-9 holds the write lock and observes the abort. Separate
+                # directory, same bundle — no new binary (README.md's rule).
+                tests/features/roadmap_export_concurrency/test_roadmap_export_concurrency.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3761 INV-19 — the RFC's own vectors, committed under the test dir.
         ANTS_JCS_VECTOR_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/vectors"
+        # ANTS-3761 INV-18 — the committed golden exports, likewise.
+        ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden"
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h"
         SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"

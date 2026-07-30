@@ -1,0 +1,42 @@
+{"name":"Alpha","project":"alpha","schema":1,"t":"meta"}
+{"high_water":3761,"prefix":"ants","t":"id_prefix"}
+{"high_water":9,"prefix":"cl","t":"id_prefix"}
+{"status":"planned","t":"legend","wording":"Planned"}
+{"status":"in-progress","t":"legend","wording":"In progress"}
+{"status":"shipped","t":"legend","wording":"Shipped"}
+{"status":"considered","t":"legend","wording":"Considered"}
+{"intro":null,"level":0,"parent":null,"slug":"","t":"section","title":""}
+{"intro":null,"level":3,"parent":null,"slug":"performance-2","t":"section","title":"Performance"}
+{"intro":null,"level":2,"parent":null,"slug":"z-parent","t":"section","title":"Z parent"}
+{"intro":null,"level":3,"parent":"z-parent","slug":"a-child","t":"section","title":"A child"}
+{"intro":null,"level":4,"parent":"performance-2","slug":"vt-parser","t":"section","title":"VT parser"}
+{"evidence":[],"extras":{},"headline":"Headline for 3DE-0007","id":"3DE-0007","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"evidence":[],"extras":{},"headline":"Headline for 3D_E-0007","id":"3D_E-0007","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"body":"Body prose.\nSecond line, with a \"quote\" and a \\ backslash.","created":"2026-07-01","evidence":["docs/qa/shot.png"],"extras":{"note":"héllo","ratio":0.000001,"tally":42},"headline":"Headline for ANTS-9","id":"ANTS-9","id_origin":"parsed","kind":"implement","lanes":["vt","render"],"last_modified":"2026-07-30","layman":"A plain-English line.","milestone":"0.8.0","priority":2,"provenance":{},"resolution":"Resolved by measurement.","shipped":"2026-07-30","source":"fixture","status":"planned","t":"item","visibility":"internal"}
+{"evidence":[],"extras":{},"headline":"Headline for ANTS-10","id":"ANTS-10","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"evidence":[],"extras":{},"headline":"Headline for CL-0009","id":"CL-0009","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"evidence":[],"extras":{},"headline":"Headline for CL-9","id":"CL-9","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"evidence":[],"extras":{},"headline":"Headline for PASS-9-1","id":"PASS-9-1","id_origin":"synthesised","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"evidence":[],"extras":{},"headline":"Headline for PASS-43-5","id":"PASS-43-5","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"evidence":[],"extras":{},"headline":"Headline for PASS-43-5-B","id":"PASS-43-5-B","id_origin":"synthesised","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"evidence":[],"extras":{},"headline":"Headline for @@weird","id":"@@weird","id_origin":"quarantined","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
+{"kind":"item","position":0,"ref":"@@weird","section":"","t":"element"}
+{"kind":"item","position":0,"ref":"ants-10","section":"performance-2","t":"element"}
+{"kind":"item","position":1,"ref":"ants-9","section":"performance-2","t":"element"}
+{"kind":"item","position":2,"ref":"cl-9","section":"performance-2","t":"element"}
+{"kind":"item","position":3,"ref":"cl-0009","section":"performance-2","t":"element"}
+{"kind":"item","position":4,"ref":"pass-43-5","section":"performance-2","t":"element"}
+{"kind":"item","position":5,"ref":"pass-43-5-b","section":"performance-2","t":"element"}
+{"kind":"item","position":6,"ref":"pass-9-1","section":"performance-2","t":"element"}
+{"kind":"item","position":7,"ref":"3d_e-0007","section":"performance-2","t":"element"}
+{"kind":"item","position":8,"ref":"3de-0007","section":"performance-2","t":"element"}
+{"kind":"narration","payload":"Prose belonging to no item.\nWith a \"quote\".","position":9,"section":"performance-2","t":"element"}
+{"kind":"table","payload":{"header":["A","B"],"rows":[["1","2"]]},"position":10,"section":"performance-2","t":"element"}
+{"dst":"ants-10","src":"ants-9","t":"rel","type":"blocked-by"}
+{"dst":"beta-1","dst_project":"beta","src":"ants-9","t":"rel","type":"blocked-by"}
+{"dst_path":"docs/specs/ANTS-9-thing.md","src":"ants-9","t":"rel","type":"specified-by"}
+{"file":"src/vtparser.cpp","project":"alpha","src":"ants-9","symbol":"VtParser::feed","t":"citation"}
+{"doc":"docs/specs/ANTS-9-thing.md","file":"src/vtparser.cpp","project":"alpha","symbol":"VtParser::feed","t":"citation"}
+{"file":"Vestige_Ants_MCP_Feedback.md","item":"ants-9","t":"feedback_ref"}
+{"at":"2026-07-30T09:15:00Z","field":"status","item":"ants-9","new":"planned","seq":0,"t":"history"}
+{"at":"2026-07-30T09:15:00Z","field":"status","item":"ants-9","new":"shipped","old":"planned","seq":1,"t":"history"}
