@@ -22169,6 +22169,62 @@ Fixed by falling through to the process cwd when `main` is null — the same
   Kind: fix.
   Source: in-session-2026-07-28 (hit writing ANTS-3699's handler test).
 
+### 🔄 Ants MCP feedback from CC sessions — 2026-07-30 triage
+
+Triage of the un-triaged tail across all 14 *_Ants_MCP_Feedback.md files (DOOM
+Ants ×2, Fin Break ×1; the other eleven were clean). Each finding was verified
+against current source before filing.
+
+- ✅ [ANTS-3735] **file_outline: a declaration whose `;` is followed by a trailing comment latches the scanner "inside a function body", dropping every symbol until scope returns to 0.**
+  VERIFIED (2026-07-30) against DOOM_Ants/linuxdoom-1.10/r_vulkan.cpp. The scanner decides a matched definition opens a body with `funcDefOpensBody = !line.trimmed().endsWith(';')` (src/fileoutline.cpp, the rxCppFunc / rxCppMember branches). That test runs on the RAW line, including any trailing `//` comment — while netBraceDelta is comment-aware. So line 252, `extern "C" int M_CheckParm(const char* check);   // m_argv.c — for -rtverify`, reads as a definition awaiting its `{`: funcOpenAtDepth=0, funcBodyEntered=false. The next `{` the scanner meets is `namespace {` at line 264, which flips funcBodyEntered=true. The anonymous namespace is now treated as M_CheckParm's body, and every func path is suppressed by `inFuncBody` until depth returns to 0 at `} // namespace` on line 6558.
+    Blast radius: symbols jump straight from VulkanState (line 288) to line 6030 — a 5,742-line hole swallowing ~30 file-scope functions (Check, CreateInstance, DeviceHasRT, CreateSampledImage, …). It also explains the spurious `devs`/`exts` symbols (lines 159/192): local variables leak as file-scope funcs precisely where an enclosing function failed to open a scope.
+    Knock-on: workspace_search `enclosing_symbol` reads the flat outline, so every match in that span attributes to the last emitted symbol — the struct VulkanState. The contributor reported matches at 2353 / 3169 / 4238 all named VulkanState and had to fall back to an awk scan, which is the exact round-trip the flag exists to remove.
+    Fix: strip line/block comments before the terminator test so the `;` is seen (netBraceDelta already does this work per line). Regression: a feature test asserting a trailing-comment declaration does not open a scope, and that a free function after an anonymous namespace opener is still emitted.
+  **Layman:** On some big C++ files the code map silently lost thousands of lines' worth of functions, so "which function is this in?" answered with the wrong name.
+  Kind: fix.
+  Lanes: mcp, fileoutline.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-07-30.
+  Resolved (2026-07-30): netBraceDelta gained an optional `lastCodeIdxOut` (it already scanned literal/comment-aware for braces), and the three `funcDefOpensBody` sites now test that last CODE character instead of the raw line's last character. A declaration whose ';' is followed by a comment no longer latches the scanner into a phantom function body. Measured on DOOM's r_vulkan.cpp: func-definition sites detected 29 → 130, of which 98 are inside the anonymous namespace that was previously swallowed whole (Check, CreateInstance, DeviceHasRT, CreateSampledImage, …). Tests: fileoutline_cpp_scanner INV-12 (the latch; confirmed RED pre-fix) + INV-13 (literal-aware over-reach guard). Full suite 3068/3068 green.
+
+- ✅ [ANTS-3736] **roadmap_query truncates a long bullet body from the HEAD, so a progress-log body's current status — the part that matters — is the part that is dropped.**
+  VERIFIED (2026-07-30): `rcSetBodyFields` (src/remotecontrol.cpp:328) truncates with `body.left(cap)` and sets body_truncated:true. On a long-lived epic the body is an append-only progress log, so the head is the OLDEST text and the tail is the CURRENT state. The contributor's DOOM-0011 fetch returned a head ending "NEXT: implement L1c then L1d" when L1d had shipped three days earlier — the correcting note was in the dropped tail, and nothing in the envelope signals that the omitted part is the newer part. Raising max_body_bytes does not rescue it: that body already exceeds the 16384 ceiling, so the tail is unreachable at ANY setting.
+    Fix (no new argument): when a body is truncated, keep the head AND re-attach the final ~1 KiB after an explicit elision marker. The head still identifies what the item IS, the tail carries the current status, and every existing caller keeps working — body_truncated:true already tells them the string is clipped. A `body_anchor:"end"` mode was the contributor's alternative; head+tail is preferred because it needs no caller change and fixes the default path, which is the one that misled.
+    Regression: extend tests/features/roadmap_query_id_body_cap with an INV asserting a body over the cap emits both its first and last segments plus the marker.
+  **Layman:** Asking the roadmap "what's the state of this item?" could confidently answer with months-old text, because long entries were cut off at the end.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-07-30.
+  Resolved (2026-07-30): new rcElideBody() returns head + `… [body elided — tail follows] …` + the final ≤1 KiB, sized to land exactly on the cap. Applied at BOTH truncation sites — rcSetBodyFields (the cache, store cap 16384) and rcCapBodyFields (emission) — because a body past the store cap lost its tail in the cache, which is why no max_body_bytes value could reach it. Marker carries no counts so it stays byte-stable across calls and a second elision at emission cannot render a stale one. Schema text updated. Tests: roadmap_query_id_body_cap INV-4 (head+tail+marker at the 2000 cap) and INV-5 (tail survives the store cap). Full suite 3068/3068 green.
+
+- ✅ [ANTS-3737] **doc_integrity's ETag is derived from the findings envelope, not the checked content, so `etag_match` returns a false 304 after the very edits the re-check exists to verify.**
+  VERIFIED (2026-07-30). The ETag is injected centrally: `ClaudeIntegration::applyEtagPattern` computes `etagFor(responseText)` — the sha256 of the response envelope (src/claudeintegration.cpp:12161). For most verbs that is content-sensitive because the content IS the envelope (cmdFeedbackQuery says so in its own comment at remotecontrol.cpp:13627). doc_integrity is not: `docIntegrityBuildResponse` (remotecontrol.cpp:12561) emits only {ok, findings, counts, checked_docs}. Edit three specs without changing any finding and the envelope is byte-identical, so the etag is unchanged — the contributor observed the same etag (77ce38c85a1b9ab4) from a fresh no-etag_match call after substantive edits, while spec_query on the same files correctly reported new mtime/size.
+    Why it is the worst case for a false 304: the zero-findings state is the common one, so two different document states collide precisely when the post-fix re-check is hunting for a NEW finding introduced by the fix. The tool description promotes the ANTS-1499 pattern as "saves a re-emit when the underlying file hasn't changed", which a caller reasonably reads as content-sensitive.
+    Fix: fold a content digest of the checked set (per-file relpath + size + mtime_ms) into the response so the central sha256 becomes content-sensitive. Check whether the sibling verbs built on the same enumeration — doc_symbols and spec_lint — share the shape, and fix them together if so.
+  **Layman:** Re-running the docs health check after fixing docs could reply "nothing changed" and skip the check entirely — exactly when you most need it to run.
+  Kind: fix.
+  Lanes: mcp, docs.
+  Source: finbreak_Ants_MCP_Feedback.md 2026-07-30.
+  Resolved (2026-07-30): new RemoteControl::docSetDigest() hashes (relpath, size, mtime_ms) per checked doc, emitted as `docs_digest`. Because the central ETag is a sha256 of the response envelope, that one field makes it content-sensitive. Applied to all three verbs sharing the findings-only shape — doc_integrity, doc_symbols and spec_lint — since the reporter's question was whether the siblings shared it, and they do. mtime granularity errs conservative (a touch busts the cache rather than hiding a change). Schema text corrected: the old 'ETag-304: unchanged docs re-read free' was the misleading promise. Test: doc_integrity_verb INV-17 (stable on an unchanged re-run, changes on a finding-neutral content edit, changes when the checked set changes). Full suite 3068/3068 green.
+
+- 📋 [ANTS-3738] **file_outline: a function DEFINITION whose header carries a trailing comment is not detected at all — the regexes match the raw line, so the comment breaks their end anchors.**
+  VERIFIED (2026-07-30) by running the shipped regexes against the literal lines. `void CreateInstance()   // set up the instance` matches NONE of rxCppFunc / rxCppFuncOpen / rxCppFuncHeaderOpen: rxCppFuncOpen anchors `\s*$` (the comment is in the way), rxCppFunc needs `[{;]` immediately after the optional qualifier run (the comment is in the way), and rxCppFuncHeaderOpen needs `\([^)]*$` (the line's `)` is in the way). `static int helper(int a)  /* note */` fails identically. Controls: the same lines WITHOUT the comment match, and `void CreateInstance() {   // set up` matches (a trailing comment after the brace is fine).
+    Relationship to ANTS-3735: same family — the C++ scanner matches raw lines while only netBraceDelta is comment-aware — but a DIFFERENT site. ANTS-3735 fixed the declaration/definition discriminator (`funcDefOpensBody`), which is what caused the catastrophic 5,742-line suppression; this one merely drops the single symbol whose header carries the comment, so it was deliberately left out of that fix rather than widening its blast radius.
+    Fix: match the C++ regexes against a comment-stripped view of the line. netBraceDelta already computes the last code index per line (ANTS-3735), so the stripped prefix is nearly free. Care needed on the `signature` field, which today deliberately carries the raw line including the trailing comment — changing that is an output-shape change and should be a conscious decision, not a side effect.
+    Regression: extend tests/features/fileoutline_cpp_scanner with a definition-header-plus-comment case in each of the three header forms.
+  **Layman:** The code map still misses functions when the line that declares them has a note written after it.
+  Kind: fix.
+  Lanes: mcp, fileoutline.
+  Source: in-session-2026-07-30 (noticed while fixing ANTS-3735).
+
+- 📋 [ANTS-3739] **feedback_log op:compact_resolved reports duplicate ids in a skipped[] entry's `ids` array.**
+  Observed 2026-07-30 running compact_resolved on finbreak_Ants_MCP_Feedback.md. The skipped[] entry for the finding headed "IMPROVED (ANTS-3468 / ANTS-3503): session_orient's embedded codebase_index now ships a full source_files[] list" carried ids:["ANTS-3468","ANTS-3503","ANTS-3468"] — ANTS-3468 twice. It looks like ids harvested from the heading text are concatenated with ids parsed from the `**Proposed ID:**` line without a de-duplication pass; op:assign_id documents de-duplication for its own `ids` argument, so the two paths are inconsistent.
+    Cosmetic only — no wrong decision follows from it (the gating logic reads statuses, and a repeated id resolves to the same status). Filed because it is a one-line fix in the reporting path and it makes the envelope self-inconsistent with assign_id's documented contract.
+    Fix: de-duplicate (first occurrence wins, preserving order) when assembling the reported ids array, matching assign_id.
+  **Layman:** A cosmetic wart: one status line listed the same ticket number twice.
+  Kind: fix.
+  Lanes: mcp, feedback.
+  Source: in-session-2026-07-30 (observed during the feedback triage sweep).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23

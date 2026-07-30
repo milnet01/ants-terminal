@@ -42,6 +42,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_integrity`, `doc_symbols` and `spec_lint` returned a false ETag 304 after documents changed** (ANTS-3737)
+  These three report findings rather than content, and the ETag is a hash of the response. Editing documents without changing any finding left the response identical, so `etag_match` answered "unchanged" and the caller skipped the re-check — precisely when it was looking for a new problem the edits had introduced, and precisely in the common zero-findings case. Each verb now emits `docs_digest`, a fingerprint of the checked set, which makes the ETag track the documents themselves. (Fin Break feedback.)
+
+- **`roadmap_query` truncated long bullet bodies from the head, dropping the current status** (ANTS-3736)
+  A roadmap body is an append-only progress log: the head says what the item is, the tail says where it stands. Head-only truncation served the oldest text as the answer to "what is the state of this?" — one fetch reported work as pending that had shipped three days earlier. A truncated body now keeps both ends, joined by an explicit `… [body elided — tail follows] …` marker. Fixed at the cache truncation site too, so a body past the 16 KiB store cap — previously unreachable at any `max_body_bytes` setting — also surfaces its tail. (DOOM Ants feedback.)
+
+- **`file_outline` lost every symbol after a declaration whose `;` was followed by a comment** (ANTS-3735)
+  The scanner decided whether a matched definition opens a body by testing the raw line's last character, so `extern "C" int f(char* c);   // note` did not look like it ended in `;`. It was read as a definition awaiting its `{`, and the next brace it met — an anonymous `namespace {` — became that phantom function's body, suppressing every function symbol until the namespace closed. On DOOM's r_vulkan.cpp that swallowed 5,742 lines: detected definition sites went 29 → 130 with the fix, 98 of them inside the namespace. `workspace_search enclosing_symbol` was collateral — with the outline blind, it attributed every match in that span to the last symbol it had seen, the struct `VulkanState`. (DOOM Ants feedback.)
+
 - **Project search is much faster on the first search after a build** (ANTS-3732)
   The MCP `workspace_search` tool ran ripgrep with a single worker thread, which switched off its parallel directory walk and made every file read wait its turn. On a spinning disk that is the slowest possible order. A wide search over 31,500 files took 24.6 seconds; it now takes a fraction of a second, and ordinary searches no longer time out when a build has just filled the disk cache.
 
