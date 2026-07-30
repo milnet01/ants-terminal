@@ -22995,6 +22995,60 @@ against current source before filing.
   Kind: doc.
   Source: cold-eyes-2026-07-30 (ANTS-3753 standard, loop 2 stop-and-split).
 
+- 📋 [ANTS-3755] **Documentation-layout standard — folder + filename declare a doc's genre, so /cold-eyes and friends stop guessing.**
+  User's intent: standards live in docs/standards/ under a naming
+  convention, specs in docs/specs/ under theirs, and so on — so any
+  skill knows what it is reviewing from the path.
+
+  Verified gaps this would close (2026-07-30):
+  - documentation.md has no doc-tree section at all. Sections 2/3/4 cover
+    root files, ROADMAP/CHANGELOG and API docs; nothing states where a
+    spec, standard, ADR or plan goes, or what it is named.
+  - Naming has already drifted: global CLAUDE.md 14a specifies
+    docs/specs/<ID>-<topic>.md, and all 218 specs here are <ID>.md.
+  - docs/ root holds 11 loose audit reports, result JSONs and trend
+    snapshots that no rule places.
+  - docs/plans/ is deprecated, docs/superpowers/ and docs/notes/ exist
+    outside any stated convention.
+
+  TENSION to resolve first, not silently pick: cold-eyes'
+  references/review-brief.md dim 14 currently says genre is decided by a
+  document's shape and intent, NEVER by its directory, because a mature
+  docs/standards/ holds reference tables and ledgers beside real
+  standards — measured, roughly a third of 23 files here. This project's
+  own docs/standards/ matches that: mcp-error-codes.md and
+  audit-false-positives.md are taxonomies, not standards. So a
+  folder-implies-genre rule needs either a naming convention that
+  separates the two inside one folder, or a folder split. Decide before
+  writing the standard.
+
+  Also decide: does this new standard supersede documentation.md 2-4, or
+  extend it? A layout rule in two files is two rules that will disagree.
+  **Layman:** One rulebook for where each kind of document lives and what it is called, so tools can tell a rulebook from a build plan by its folder alone.
+  Kind: doc.
+  Source: user-request-2026-07-30.
+  Decision (2026-07-30, user) on the folder-vs-filename tension: if the
+  files truly relate to each other, separate them by FILENAME within one
+  folder; if they do not relate, they get their own folder. And whatever
+  this standard settles applies to ALL projects, not just this one.
+
+  Applying that test to this project's docs/standards/ (23 files):
+  - Reference tables a standard points INTO relate, so they stay and take
+    a filename marker: mcp-error-codes.md (the taxonomy mcp-tools.md
+    requires conformance to), mcp-config-keys.md, mcp-behavioural-notes.md.
+  - Things that do not relate and therefore need their own home:
+    mcp-errors.md (a superseded 2026-05-12 draft — a dead draft in a live
+    standards folder is not a standard), and test-audit-grep-patterns.json
+    (a data file, not a document).
+
+  Cross-project scope means the standard is written once here and adopted
+  by the other 8 projects; it must therefore not assume this project's
+  tree. Companion change: cold-eyes' review-brief dim 14 currently
+  decides genre by shape and explicitly NOT by directory — once the
+  layout standard lands and a project has adopted it, dim 14 gains a
+  path-based fast path for adopting projects, keeping shape-detection as
+  the fallback for projects that have not.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
