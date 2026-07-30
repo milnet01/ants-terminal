@@ -22994,6 +22994,42 @@ against current source before filing.
   **Layman:** The design document tried to be both a rulebook and a build plan; the review kept finding build-plan problems. Split it.
   Kind: doc.
   Source: cold-eyes-2026-07-30 (ANTS-3753 standard, loop 2 stop-and-split).
+  Loop 3 done (2026-07-30), genre pinned `standard`. C6 H9 M14 L15 I2
+  across 3 cold lanes; every verified finding fixed, 0 dismissed. Counts
+  fell against loop 2 (C13 H19 M17) and the collateral share collapsed —
+  2 of this loop's findings were my own fix-pass damage, against ~8 of 13
+  CRITICALs in loop 2. Pinning the genre is what changed it: loops 1-2
+  graded a standard against spec shape, which is what drove the demand
+  for schema-level precision that triggered the split.
+
+  FOUR NEW INPUTS for the implementation spec, on top of the six defects
+  this bullet already carries:
+
+  1. Pass-headings status normalisation. RetroDB tracks 144 items as
+  `#### Pass N.M`, and 136 of its 154 `- **Status**:` values fall OUTSIDE
+  the five-status enum — `deferred`, `partial`, `un-gated`, `shipped in
+  v3.6.15`, plus a prose tail. Unlike § 7.4's Kind mapping, there is no
+  canonical target for `deferred` or `partial`, so the choice is add
+  statuses or lose information. Real design work, not a lookup table.
+
+  2. The render's filename. After cutover a layman-only ROADMAP.md fails
+  roadmap-format § 3.5's required pieces (emoji, ID, bold headline,
+  Kind:), § 3.1's format marker, and §§ 3.6.2-3.6.3's headline matching —
+  and documentation.md § 3 binds the same file independently. Either
+  amend both standards or publish under a different name.
+
+  3. Archive rotation and the CHANGELOG release flow. Both are hand edits
+  to what becomes a generated file, so INV-3 kills them. Freeze the
+  archives at cutover, or move rotation into the store.
+
+  4. Off-grammar IDs. Three corpus items are `[Cl9]`/`[CE18]` — no dash,
+  so outside § 3.5.1's grammar. The standard now quarantines them; the
+  spec owns what the quarantine report looks like and when it clears.
+
+  Corpus figures corrected corpus-wide: the survey globbed ROADMAP.md and
+  missed RetroDB's lowercase roadmap.md entirely, so every count in the
+  draft was measured over 9 of 10 projects. tools/roadmap-corpus-survey.py
+  now finds them case-insensitively and is the source for every figure.
 
 - 📋 [ANTS-3755] **Documentation-layout standard — folder + filename declare a doc's genre, so /cold-eyes and friends stop guessing.**
   User's intent: standards live in docs/standards/ under a naming
@@ -23120,6 +23156,21 @@ against current source before filing.
   toolkit; dependencies.md applies if it has a dependency manifest. Where
   no such test exists, the standard is advisory and the report says so
   rather than pretending to check it.
+  First real customer, found by the ANTS-3753 cold-eyes loop 3
+  (2026-07-30): RetroDB names its roadmap `roadmap.md`, lowercase. An
+  uppercase-only glob in the corpus survey therefore excluded a
+  4,800-line, 144-item project, and the data-model standard shipped a
+  claim ("no project currently uses pass headings") that a one-line
+  filename difference made false. A naming rule would have prevented it —
+  this is the concrete cost that motivates the standard.
+
+  Two things the rename does NOT fix, recorded so they are not assumed
+  away: (1) the checker itself must stay case-INSENSITIVE, because its
+  job is to find non-conformers, and a tool that only sees conforming
+  trees can never report a violation; (2) the filename is orthogonal to
+  the FORMAT — RetroDB is a `#### Pass N.M` roadmap before and after any
+  rename, and 136 of its 154 status values sit outside the five-status
+  enum, which is a data-model problem, not a layout one.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
