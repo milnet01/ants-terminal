@@ -23256,6 +23256,46 @@ against current source before filing.
   Kind: implement.
   Source: ANTS-3753 split (spec seam 3 of 3), 2026-07-30.
 
+- 📋 [ANTS-3759] **documentation.md needs a rule on numbers in prose — keep only figures that carry an argument, and source them to a command.**
+  User asked whether specific numbers belong in documentation at all,
+  since they go stale. Evidence from this session says mostly no.
+
+  MEASURED: roadmap-data-model.md carried ~25 hand-counted corpus
+  figures. ~20 were wrong within a day of being written, and several were
+  wrong when written. Two were wrong in ways that mattered — a "normative"
+  Kind mapping listing five values that appear ZERO times in the corpus,
+  and a table-row count that counted separator rows. Meanwhile the
+  corpus grew DURING the session (my own roadmap appends moved four
+  figures), which is the general case, not an accident.
+
+  The real defect is not staleness — everything goes stale — it is
+  UNFALSIFIABLE staleness: a number with no command beside it cannot be
+  re-derived, so no reader can tell whether it still holds. It reads as
+  authoritative, survives every proofread, and dies to one grep.
+
+  Proposed rule for documentation.md 1 (Principles), three tiers:
+  1. KEEP, with the producing command stated beside it, when the decision
+     changes if the number were different (half the corpus has no Kind:
+     is WHY migration cannot demand it at write time).
+  2. REPLACE with a proportion or order of magnitude otherwise.
+     Proportions age far better than counts: "50%" survived this
+     session's corpus growth, "1,945" did not; "~1,200" says what "1,209"
+     said and cannot be wrong by one.
+  3. DELETE when decorative. "182 markdown table rows" carried no
+     argument and was also wrong.
+
+  Strongest form where available: make the figure a TEST OUTPUT rather
+  than prose, so a wrong number is a failing check rather than a lie that
+  reads well. Precedent set this session: tools/roadmap-corpus-survey.py
+  now produces every figure the standard quotes.
+
+  Overlaps cold-eyes' mechanical pre-pass, which already emits unsourced
+  counts as candidates — this is the authoring-side rule that stops them
+  being written. Coordinate with ANTS-3755 rather than duplicating.
+  **Layman:** Docs should stop quoting exact counts that go out of date; keep a number only when it changes a decision, and say how to re-check it.
+  Kind: doc.
+  Source: user-question-2026-07-30 (during ANTS-3753 cold-eyes).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
