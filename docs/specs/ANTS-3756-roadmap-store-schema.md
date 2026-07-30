@@ -114,6 +114,15 @@ The store holds every project, so it is **not** path-keyed and
 `mcp-caches.md`'s shadow rule does not apply to the file itself. It applies to
 the `project` rows inside it — see INV-8.
 
+**Mode 0600, on the store and both SQLite sidecars.** The store holds every
+project's full technical body, including `visibility: internal` items — which
+the model's § 7.5 says exist precisely to hold "security findings that are
+still open". Every other state writer in this project applies owner-only
+permissions via `setOwnerOnlyPerms()` (`src/secureio.h`), and this file is the
+most sensitive of them. WAL mode creates `roadmap.sqlite-wal` and
+`roadmap.sqlite-shm` alongside it, and **both carry the same content**, so
+securing only the main file would be theatre.
+
 ### 2.3 Schema
 
 One table per entity, all projects in each. "One table per project", as
@@ -133,8 +142,16 @@ CREATE TABLE project (
   root         TEXT UNIQUE,            -- canonical absolute path; store-local,
                                        -- NULL until first local open (§ 2.4)
   name         TEXT NOT NULL,
-  export_slug  TEXT NOT NULL UNIQUE,   -- filename-safe; names the export file
-  legend       TEXT                    -- JSON: {status_value: project_wording}
+  -- Names the export file, so its charset is a filesystem trust boundary, not
+  -- a nicety: ANTS-3761 interpolates it into a path, and a slug containing
+  -- '/' or '..' escapes the export directory. Derived from `name` by
+  -- ASCII-lowercasing, replacing every run of non-[a-z0-9] with '-', and
+  -- trimming leading/trailing '-'; collisions are resolved by appending -2, -3.
+  export_slug  TEXT NOT NULL UNIQUE
+                 CHECK (export_slug GLOB '[a-z0-9]*'
+                    AND export_slug NOT GLOB '*[^a-z0-9._-]*'
+                    AND export_slug NOT GLOB '*..*'),
+  legend       TEXT NOT NULL DEFAULT '{}'  -- {status_value: project_wording}
 );
 
 -- § 7.1 of the model: "The store owns allocation", and a project may declare
@@ -152,7 +169,12 @@ CREATE TABLE item (
   project_id   INTEGER NOT NULL REFERENCES project(project_id),
   id           TEXT NOT NULL,          -- verbatim, as authored
   id_fold      TEXT NOT NULL,          -- lowercased; the identity key
-  id_parses    INTEGER NOT NULL CHECK (id_parses IN (0,1)),
+  -- THREE origins, not a boolean. A synthesised PASS-N-M[-S] id does not match
+  -- roadmap-format § 3.5.1's grammar (it need not end in digits), yet the
+  -- model's § 7.1 says it "**is** an ID for every purpose". A boolean conflates
+  -- it with the genuinely off-grammar ids that must be quarantined.
+  id_origin    TEXT NOT NULL CHECK (id_origin IN
+                 ('parsed','synthesised','quarantined')),
   status       TEXT NOT NULL CHECK (status IN
                  ('planned','in-progress','shipped','considered','dropped')),
   headline     TEXT NOT NULL,
@@ -166,10 +188,19 @@ CREATE TABLE item (
   resolution   TEXT,
   body         TEXT,
   section_id   INTEGER NOT NULL REFERENCES section(section_id),
-  created      TEXT, last_modified TEXT, shipped TEXT,   -- ISO 8601, § 2.4
-  lanes        TEXT,                   -- JSON array
-  evidence     TEXT,                   -- JSON array
-  extras       TEXT,                   -- JSON object: the § 4.3 tail
+  -- Format pinned HERE, not in the export: if the store held any other ISO
+  -- 8601 form the export would normalise it, the rebuild would store the
+  -- normalised text, and INV-2's column diff would fail on a correct writer.
+  created      TEXT CHECK (created       IS NULL OR created       GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  last_modified TEXT CHECK (last_modified IS NULL OR last_modified GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  shipped      TEXT CHECK (shipped       IS NULL OR shipped       GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  -- NOT NULL with a default, because ANTS-3761 § 2.4 emits these as [] / {}
+  -- when empty and never omits them. Nullable columns would make NULL and
+  -- empty export identically, and the rebuild's column diff would then fail
+  -- against a correct writer.
+  lanes        TEXT NOT NULL DEFAULT '[]',
+  evidence     TEXT NOT NULL DEFAULT '[]',
+  extras       TEXT NOT NULL DEFAULT '{}',
   provenance   TEXT NOT NULL,          -- JSON object: field -> § 7.7 value
   UNIQUE (project_id, id_fold)
 );
@@ -180,9 +211,15 @@ standard says "Writes accept canonical values only", and a `TEXT NOT NULL`
 column accepts anything. `kind`'s 21 values are written as a `CHECK … IN (…)`
 list in the implementation; they are elided above only for width.
 
-**`section_id` is `NOT NULL`** because the model's § 3.1 makes `section` a write
-obligation and its § 3.3 gives migration a default — an item filed nowhere is
-not a state the model has.
+**`section_id` is `NOT NULL`, and the default that makes it satisfiable is this
+spec's own.** The model's § 3.1 makes `section` a write obligation, but its
+§ 3.3 defaults only `kind` and `source` — `section` appears in neither the
+defaulted list nor the left-empty one. Migration will meet items that appear
+before any heading, so this spec supplies what the standard does not: **each
+project gets a synthetic root section** (`slug` `""`, level 0, no title) and
+un-sectioned items are filed there, marked `provenance.section = defaulted`.
+An item filed nowhere is not a state the model has; an item filed in a section
+nobody wrote is honest and recoverable.
 
 **The rest of § 3.1's write tier is enforced in the write path, not by the
 schema, and that is forced rather than chosen.** `created`, `last_modified`,
@@ -290,24 +327,36 @@ CREATE TABLE relationship (
   type        TEXT NOT NULL CHECK (type IN ('splits-from','blocked-by',
                 'duplicate-of','supersedes','relates-to','specified-by')),
   src_pk      INTEGER NOT NULL REFERENCES item(item_pk),
-  dst_pk      INTEGER REFERENCES item(item_pk),   -- item target
-  dst_path    TEXT,                                -- document target
-  CHECK ((dst_pk IS NULL) != (dst_path IS NULL))
+  -- THREE target forms, not two. The model's INV-4 allows cross-project
+  -- relationships, and ANTS-3761 carries them on the source project's file —
+  -- so a rebuild that cannot see the far project must still be able to STORE
+  -- the edge. An unresolved edge has no dst_pk and is not a document target.
+  dst_pk       INTEGER REFERENCES item(item_pk),  -- resolved item, same store
+  dst_project  TEXT,                              -- far project's export_slug
+  dst_id_fold  TEXT,                              -- far item's folded id
+  dst_path     TEXT,                              -- document target
+  CHECK (
+    (dst_pk IS NOT NULL) + (dst_project IS NOT NULL) + (dst_path IS NOT NULL) = 1
+  ),
+  CHECK ((dst_project IS NULL) = (dst_id_fold IS NULL))
 );
 
--- Two PARTIAL indexes, not one UNIQUE over all four columns: SQLite treats
--- NULLs as distinct in a unique index, and the CHECK above guarantees one of
--- dst_pk / dst_path is always NULL — so the combined constraint would never
--- fire and INV-6 would have no storage-level backing at all.
-CREATE UNIQUE INDEX rel_item_uq ON relationship(type, src_pk, dst_pk)
+-- Three PARTIAL indexes, not one UNIQUE over every column: SQLite treats NULLs
+-- as distinct in a unique index, and the CHECK guarantees all but one target
+-- column is NULL — so a combined constraint would never fire and INV-6 would
+-- have no storage-level backing at all.
+CREATE UNIQUE INDEX rel_item_uq  ON relationship(type, src_pk, dst_pk)
   WHERE dst_pk IS NOT NULL;
-CREATE UNIQUE INDEX rel_doc_uq  ON relationship(type, src_pk, dst_path)
+CREATE UNIQUE INDEX rel_xproj_uq ON relationship(type, src_pk, dst_project, dst_id_fold)
+  WHERE dst_project IS NOT NULL;
+CREATE UNIQUE INDEX rel_doc_uq   ON relationship(type, src_pk, dst_path)
   WHERE dst_path IS NOT NULL;
 
 CREATE TABLE history (
   history_id  INTEGER PRIMARY KEY,
   item_pk     INTEGER NOT NULL REFERENCES item(item_pk),
-  changed_at  TEXT NOT NULL,
+  changed_at  TEXT NOT NULL            -- YYYY-MM-DDTHH:MM:SSZ, UTC, always Z
+                CHECK (changed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'),
   seq         INTEGER NOT NULL,       -- disambiguates edits within one second
   field       TEXT NOT NULL,
   old_value   TEXT,
@@ -323,6 +372,10 @@ CREATE TABLE feedback_ref (
 
 CREATE TABLE citation (
   citation_id INTEGER PRIMARY KEY,
+  -- project_id is NOT redundant with item_pk: a doc-anchored citation has no
+  -- item, and the export is per project, so without this column the writer
+  -- cannot decide which file a doc-anchored row belongs in.
+  project_id  INTEGER NOT NULL REFERENCES project(project_id),
   item_pk     INTEGER REFERENCES item(item_pk),
   doc_path    TEXT,
   target_file TEXT NOT NULL,
@@ -331,7 +384,9 @@ CREATE TABLE citation (
 );
 CREATE UNIQUE INDEX cite_item_uq ON citation(item_pk, target_file, symbol)
   WHERE item_pk IS NOT NULL;
-CREATE UNIQUE INDEX cite_doc_uq  ON citation(doc_path, target_file, symbol)
+-- project_id leads: two projects each citing their own README.md are two
+-- rows, not a collision.
+CREATE UNIQUE INDEX cite_doc_uq  ON citation(project_id, doc_path, target_file, symbol)
   WHERE doc_path IS NOT NULL;
 ```
 
@@ -421,7 +476,7 @@ with it to [ANTS-3761](ANTS-3761-roadmap-export-format.md) § 2.6.
 - **INV-1** — *moved to ANTS-3761* (export round-trip byte-identity) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-2** — *moved to ANTS-3761* (export completeness) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-3** — Item identity is case-folded within a project: inserting `Sh-1` then `SH-1` into one project raises a uniqueness violation, and the same pair in two different projects does not. *Test:* `roadmap_store_identity`. *Breaks when:* `UNIQUE (project_id, id_fold)` is written against `id`.
-- **INV-4** — An off-grammar id is stored verbatim with `id_parses = 0` and is never rewritten. *Test:* `roadmap_store_identity` inserts `[Cl9]`; assert `id` round-trips exactly and no dash is inserted. *Breaks when:* a writer normalises ids on the way in.
+- **INV-4** — An off-grammar id is stored verbatim with `id_origin = 'quarantined'` and is never rewritten. *Test:* `roadmap_store_identity` inserts `[Cl9]`; assert `id` round-trips exactly and no dash is inserted. *Breaks when:* a writer normalises ids on the way in.
 - **INV-5** — *moved to ANTS-3761* (export item order) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-6** — `relates-to` is stored once, normalised on stable identity. Writing A→B then B→A yields exactly one row, and the stored direction survives a rebuild. *Test:* `roadmap_store_schema` writes the **higher**-sorting endpoint first and asserts the surviving row's `src` is the *lower* one — writing the lower first would pass against a writer that merely rejects the second edge without normalising anything; `roadmap_store_roundtrip` then asserts the direction is unchanged after export-rebuild-export. *Breaks when:* normalisation keys on `item_pk` — rowids are reassigned by the rebuild, so the direction can flip and the re-export differs, defeating the invariant's own purpose.
 - **INV-7** — The resolved store path is under `GenericDataLocation + "/ants-terminal"` and never under any cache location. *Test:* `roadmap_store_schema` asserts on the **resolved path at runtime** — it must equal `QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/ants-terminal/roadmap.sqlite"`, and **neither cache root may be a prefix of it** — the resolved path must not start with `writableLocation(CacheLocation)`, nor with `writableLocation(GenericCacheLocation) + "/ants-terminal"` (where the project's real caches live). The direction matters: `~/.cache/ants-terminal/roadmap.sqlite` is *not* a prefix of the cache root, so the reversed comparison passes for exactly the placement this invariant forbids. A source-grep for `CacheLocation` near the store is a secondary guard only. *Breaks when:* the path is composed from a constant defined elsewhere — a grep then sees one hit and the location is decided somewhere it never looked, so a grep-only test passes against a store sitting in the cache.
@@ -431,6 +486,11 @@ with it to [ANTS-3761](ANTS-3761-roadmap-export-format.md) § 2.6.
 - **INV-11** — Every closed enum held in its **own column** is rejected at the storage layer, not merely documented: `status`, `kind` (the 21-value set), `visibility`, `element.kind`, `relationship.type`, and a `priority` outside 1–5, all fail on insert. *Test:* `roadmap_store_schema` attempts one invalid insert per enum and asserts each is refused. *Breaks when:* the enums are written as SQL comments, which is how the first draft of § 2.3 had them. **`provenance`'s values are deliberately excluded**: it is a JSON object with arbitrary keys, and validating each value needs `json_each`, which a SQLite `CHECK` may not contain — so that enum is enforced in the write path alongside § 3.1's tier, not in DDL.
 - **INV-12** — *moved to ANTS-3761* (export streaming) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-13** — *moved to ANTS-3761* (no surrogate in the export) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-15** — Two processes opening a store that does not yet exist produce exactly one schema: one creates the tables and sets `user_version = 1`, the other observes `user_version = 1` inside its own `BEGIN IMMEDIATE` and creates nothing. *Test:* `roadmap_store_concurrency` forks two openers against one fresh path and asserts one `user_version` bump and one set of tables. *Breaks when:* creation gates on `CREATE TABLE IF NOT EXISTS` succeeding, which succeeds for both and reports nothing — the whole reason § 2.5 reads `user_version` instead.
+- **INV-16** — A write that cannot take the lock within `busy_timeout` **fails and reports**; it is never retried silently and never dropped. *Test:* `roadmap_store_concurrency` holds a write transaction open past the timeout in one connection, attempts a write on another, and asserts an error is returned and **no row was written**. *Breaks when:* the writer swallows `SQLITE_BUSY` and returns success — a lost roadmap write is invisible to the user, which is the failure this exists to prevent.
+- **INV-17** — The store and both SQLite sidecars are mode 0600. *Test:* `roadmap_store_schema` opens a store, forces a WAL checkpoint so `-wal` and `-shm` exist, and asserts `0600` on all three. *Breaks when:* only the main file is secured — the sidecars carry the same content, including `visibility: internal` items.
+- **INV-18** — *moved to ANTS-3761* (export golden-file conformance) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-19** — *moved to ANTS-3761* (RFC 8785 test-vector conformance) — see [ANTS-3761](ANTS-3761-roadmap-export-format.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-14** — `history` is bounded: no item's revision count grows without limit. *Test:* `roadmap_store_schema` writes 60 revisions to one item's field and asserts the retained count is ≤ 50. *Breaks when:* the cap is documented in § 4 and never implemented — the normal fate of a budget with no invariant behind it. **The invariant deliberately asserts the bound and not *which* revisions survive**, because § 4 leaves the eviction rule open against the model's § 6; tighten this clause once that is decided, rather than encoding a rule the standard may reject.
 
 ## 4. RAM / build cost
@@ -474,18 +534,17 @@ Migration backfills at most one history row per item (ANTS-3757), so nothing
 binds until live editing accumulates — there is time to decide, and no reason
 to guess now.
 
-**Disk.** The store is roughly the markdown's size plus indexes and the JSON
-columns — order **10–15 MiB** for this corpus. The export is comparable. Both
-are small enough that no eviction policy is needed beyond `history`'s.
-
 **Indexes.** SQLite does **not** auto-index foreign keys, and every join this
-schema implies would otherwise scan: `item(project_id)`, `item(section_id)`,
-`element(section_id)`, `relationship(src_pk)`, `relationship(dst_pk)`,
-`history(item_pk)`, `citation(item_pk)`, `feedback_ref(item_pk)`. All are
-declared with the schema.
+schema implies would otherwise scan: `item(section_id)`, `section(parent_id)`,
+`element(section_id)`, `element(item_pk)`, `relationship(src_pk)`,
+`relationship(dst_pk)`, `history(item_pk)`, `citation(item_pk)`. All are
+declared with the schema. `item(project_id)` and `feedback_ref(item_pk)` are
+**not** declared, because each is already the leading column of an existing
+`UNIQUE (project_id, id_fold)` / composite primary key — a second index there
+costs writes and buys nothing.
 
 **Build.** One new library target, `roadmapstore`, linking `Qt6::Core` and
-`Qt6::Sql`. One new feature-test bundle. A new **external** runtime dependency
+`Qt6::Sql`. Three new feature-test bundles. A new **external** runtime dependency
 (§ 2.1) across five packaging carriers and CI.
 
 ## 5. Out of scope
@@ -502,10 +561,11 @@ Feature tests under `tests/features/`, label `features;fast`:
 
 | Directory | Covers |
 |---|---|
-| `roadmap_store_schema/` | INV-6, INV-7, INV-8, INV-10, INV-11, INV-14 |
+| `roadmap_store_schema/` | INV-6, INV-7, INV-8, INV-10, INV-11, INV-14, INV-17 |
 | `roadmap_store_identity/` | INV-3, INV-4 |
+| `roadmap_store_concurrency/` | INV-15, INV-16 |
 
-All **eight** invariants this spec retains are covered; none is a grep-only
+All **eleven** invariants this spec retains are covered; none is a grep-only
 check. The six tombstoned above are covered by
 [ANTS-3761](ANTS-3761-roadmap-export-format.md) § 6.
 
@@ -546,6 +606,7 @@ checked.
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 2 (design + contract, grounding + cross-doc) | 7 / 11 / 10 / 10 / 0 | All 38 verified, 0 dismissed, all draft defects. Both lanes independently falsified § 2.1's engine justification — Qt's QSQLITE driver links **system** `libsqlite3` and ships in a separate package, so a third-party runtime dep does enter the graph and `CLAUDE.md`'s "Qt6 is the only runtime dep" needs amending, not defending. § 2.4 was a list of constraints on a format rather than a format: no record shape, no discriminator, surrogate rowids serialised (which makes INV-1 unachievable on any store that has ever deleted a row), and 4 of 8 record types unordered. Rewritten with nine record types, a worked example line, every freedom pinned, and a variable-length numeric sort that survives `PASS-43-5-B`. Four invariants would have certified a broken store — INV-8 asserted the exact failure its *Breaks when* forbade, INV-7 named a `QStandardPaths` constant that resolves to the wrong directory on this project, INV-1+2 were jointly satisfied by a column-lossy writer, INV-10 by a writer ignoring provenance. INV-11..13 added. Enum CHECKs, FK pragma, `busy_timeout`, export transaction, `history` cap, indexes, and five packaging carriers where the draft named one. **Doc grew 321 → 511 lines while being fixed** — noted per Phase 2 as a size signal, not re-partitioned mid-run. |
-| 3-split | 2026-07-30 | none — no reviewer dispatched | — | **Provenance row, not a review.** Acting on loop 3's split recommendation (user-approved): the export half — serialisation, record types, file-level ordering, id sort and the export write path — moved to **[ANTS-3761](ANTS-3761-roadmap-export-format.md)**, taking INV-1, 2, 5, 9, 12 and 13 with it. Those numbers are **tombstoned in place here, never reflowed** (`specs.md` § 5.5), so this spec's sequence has gaps by design. What stayed is the database: engine and its dependency cost, location, schema, connection pragmas. Also folded in from ANTS-3760's tail while editing: `synchronous = FULL` and a stated busy-timeout failure mode (a primary store owes durability a cache does not), the `user_version == 0` creation-race discriminator, the duplicated corpus measurement deleted from § 4, and the disk figure corrected — it had borrowed the UTF-16 RAM number, and SQLite stores UTF-8. **This spec's three loops do not transfer to ANTS-3761**, which runs the gate from loop 1 on its own bytes; and this half is itself now materially smaller than what those loops reviewed, so its next gate run is against a changed document. |
-| 3 | 2026-07-30 | 2 (same partition, cold) | 8 / 12 / 12 / 12 / 1 | **Converged by cap.** Collateral outnumbered draft defects for the second loop running — the skill's stop trigger — and the doc has grown 321 → 683 lines while being fixed, so the run exits here rather than looping a fourth time. Both lanes independently verified the RFC 8785 delegation is characterised correctly, which is the loop-2 decision holding. Fixed this loop: the surrogate-key rule was four names short in two places and is now stated as a rule rather than a list; `id_fold` was declared never-exported while every reference record emitted it; `root` was `NOT NULL` and unexportable, blocking the rebuild leg outright; INV-11 asserted a CHECK over a JSON object, which SQLite cannot express; the coverage table said "thirteen" of fourteen invariants and omitted INV-14; INV-5's seeds tested neither of the sort rules loop 2 added; `source` was treated as defaultless when the model defaults it. **The SQLite floor fork was closed against evidence**: both branches of "move the runners" are foreclosed — `release.yml`'s `ubuntu-22.04` is a deliberate glibc-2.35 pin, and `dependencies.md` § 6 forbids bumping `qt62-baseline` — so the store now depends on no JSON1. Two conflicts with the standard are **surfaced, not resolved**: `sort_order`'s obligation tier, and `history` eviction, which as drafted would destroy the only copy of what the model's § 6 says the export exists to preserve. Deferred tail filed as **ANTS-3760**. |
 | 2 | 2026-07-30 | 2 (same partition, cold) | 9 / 12 / 12 / 10 / 0 | Findings rose against loop 1 and **~75% were collateral from loop 1's own fixes** — so the loop was stopped and the cause addressed rather than dispatching loop 3. Root cause: § 2.4 guaranteed byte-identity via a hand-written table of ~20 serialisation freedoms, and every freedom pinned created new places for the document to contradict itself. The clincher was external: `QJsonObject` sorts keys, so the pinned field order was unproducible with Qt's own JSON classes. **Resolved by decision (user, 2026-07-30): adopt RFC 8785 (JCS)** — key order, whitespace, escaping, numbers and encoding now come from a published standard, and this spec keeps only the file-level rules JCS cannot cover. Also fixed: loop 1's edit had inserted prose *inside* a `sql` fence (17 fence lines, odd) so the schema rendered as one code block — `doc_integrity` and `spec_lint` both pass an unbalanced-fence document, which is why it shipped; a fence-parity check is now part of the post-fix pass. `id_prefix` gained an export record (its high-water mark was otherwise lost on every rebuild, reissuing live ids); INV-7's cache-prefix test was inverted and passed for a store in the cache; `relates-to` normalised on a rowid in contradiction of its own section; the relationship and citation UNIQUEs never fired because SQLite treats NULLs as distinct; `BEGIN IMMEDIATE`, temp+rename, and a SQLite 3.38 floor added. INV-14 added. |
+| 3 | 2026-07-30 | 2 (same partition, cold) | 8 / 12 / 12 / 12 / 1 | **Converged by cap.** Collateral outnumbered draft defects for the second loop running — the skill's stop trigger — and the doc has grown 321 → 683 lines while being fixed, so the run exits here rather than looping a fourth time. Both lanes independently verified the RFC 8785 delegation is characterised correctly, which is the loop-2 decision holding. Fixed this loop: the surrogate-key rule was four names short in two places and is now stated as a rule rather than a list; `id_fold` was declared never-exported while every reference record emitted it; `root` was `NOT NULL` and unexportable, blocking the rebuild leg outright; INV-11 asserted a CHECK over a JSON object, which SQLite cannot express; the coverage table said "thirteen" of fourteen invariants and omitted INV-14; INV-5's seeds tested neither of the sort rules loop 2 added; `source` was treated as defaultless when the model defaults it. **The SQLite floor fork was closed against evidence**: both branches of "move the runners" are foreclosed — `release.yml`'s `ubuntu-22.04` is a deliberate glibc-2.35 pin, and `dependencies.md` § 6 forbids bumping `qt62-baseline` — so the store now depends on no JSON1. Two conflicts with the standard are **surfaced, not resolved**: `sort_order`'s obligation tier, and `history` eviction, which as drafted would destroy the only copy of what the model's § 6 says the export exists to preserve. Deferred tail filed as **ANTS-3760**. |
+| 3-split | 2026-07-30 | none — no reviewer dispatched | — | **Provenance row, not a review.** Acting on loop 3's split recommendation (user-approved): the export half — serialisation, record types, file-level ordering, id sort and the export write path — moved to **[ANTS-3761](ANTS-3761-roadmap-export-format.md)**, taking INV-1, 2, 5, 9, 12 and 13 with it. Those numbers are **tombstoned in place here, never reflowed** (`specs.md` § 5.5), so this spec's sequence has gaps by design. What stayed is the database: engine and its dependency cost, location, schema, connection pragmas. Also folded in from ANTS-3760's tail while editing: `synchronous = FULL` and a stated busy-timeout failure mode (a primary store owes durability a cache does not), the `user_version == 0` creation-race discriminator, the duplicated corpus measurement deleted from § 4, and the disk figure corrected — it had borrowed the UTF-16 RAM number, and SQLite stores UTF-8. **This spec's three loops do not transfer to ANTS-3761**, which runs the gate from loop 1 on its own bytes; and this half is itself now materially smaller than what those loops reviewed, so its next gate run is against a changed document. |
+| 4 | 2026-07-30 | 1 (store lane, cold, counterpart also read) | 5 / 6 / 6 / 6 / 0 | First gate on the post-split document. Two **seam failures** where ANTS-3761 emitted fields this schema had no column for: cross-project `rel` (no `dst_project`/`dst_id_fold`, and the CHECK forbade an unresolved edge outright) and per-project `citation` (no `project_id`, so a doc-anchored row had no path to a project and `cite_doc_uq` collided across projects). Both fixed here. `section_id NOT NULL` was justified by a migration default the model's § 3.3 does **not** contain — it defaults only `kind` and `source` — so this spec now supplies the synthetic root section itself. `id_parses` was a boolean conflating genuinely off-grammar ids with synthesised `PASS-N-M[-S]` ones, which the model's § 7.1 calls real ids; replaced by a three-value `id_origin`. § 4 carried **two** `**Disk.**` paragraphs, the second restating verbatim a figure the first retracts. Added: 0600 on the store and both WAL sidecars (INV-17), an `export_slug` charset CHECK (it is interpolated into a path), timestamp CHECKs so the export cannot normalise what the store holds loosely, `NOT NULL DEFAULT` on the JSON columns, and INV-15/16 for the creation race and busy-timeout policy — § 2.5 previously had no invariant and no test at all. |

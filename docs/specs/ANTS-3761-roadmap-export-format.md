@@ -80,7 +80,7 @@ Every line is one JSON object with a `t` discriminator.
 {"t":"legend","status":"in-progress","wording":"In progress (active commit work…)"}
 {"t":"section","slug":"performance-2","title":"Performance","level":3,"parent":null,"intro":null}
 {"t":"section","slug":"vt-parser","title":"VT parser","level":4,"parent":"performance-2","intro":"Prose."}
-{"t":"item","id":"ANTS-1234","id_parses":true,"section":"performance-2","status":"shipped","kind":"perf","headline":"…","layman":"…","source":"…","priority":2,"visibility":"public","milestone":null,"resolution":"…","body":"…","created":"2026-07-30","last_modified":"2026-07-30","shipped":"2026-07-30","lanes":["vt"],"evidence":[],"extras":{},"provenance":{"kind":"defaulted"}}
+{"t":"item","id":"ANTS-1234","id_origin":"parsed","section":"performance-2","status":"shipped","kind":"perf","headline":"…","layman":"…","source":"…","priority":2,"visibility":"public","milestone":null,"resolution":"…","body":"…","created":"2026-07-30","last_modified":"2026-07-30","shipped":"2026-07-30","lanes":["vt"],"evidence":[],"extras":{},"provenance":{"kind":"defaulted"}}
 {"t":"element","section":"performance-2","position":0,"kind":"item","ref":"ants-1234"}
 {"t":"element","section":"performance-2","position":1,"kind":"narration","payload":"Prose belonging to no item."}
 {"t":"element","section":"performance-2","position":2,"kind":"table","payload":{"header":["A","B"],"rows":[["1","2"]]}}
@@ -148,17 +148,46 @@ doc-anchored).
 | `legend` order | by `status`, in the model's § 7.3 declared enum order |
 | `section` order | **parents before children**, then by `slug`, code-unit order |
 | `item` order | by the id sort in § 2.5 |
-| `element` order | by `(section, position)` |
+| `element` order | by `(section, position)` — `section` by code unit, `position` numeric |
 | `rel` order | same-project item targets, then cross-project item targets, then document targets; within each, by `(type, src, dst)` / `(type, src, dst_project, dst)` / `(type, src, dst_path)`, code-unit order |
 | `citation` order | item-anchored rows before doc-anchored rows, then by `(src, file, symbol)` / `(doc, file, symbol)`, code-unit order |
 | `feedback_ref` order | by `(item, file)`, code-unit order |
-| `history` order | by `(item, at, seq)` — total by construction, since `seq` is unique per `(item, at)` |
-| Absent vs null | a field with no value is **omitted**; `null` appears only where a record shape shows it (`parent`, `intro`, `milestone`) |
+| `history` order | by `(item, at, seq)`, strings by code unit — total by construction, since `seq` is unique per `(item, at)` |
+| Absent vs null | **per field, from the table below** — not a general rule with a whitelist, which admitted two readings |
 | Empty string vs absent | an empty string is a **value** and is emitted; absence is omission |
-| Empty containers | `lanes`, `evidence`, `extras`, `provenance` are emitted as `[]` / `{}` when empty, never omitted — they always exist on an item |
+| Booleans | the format has **no boolean field** — `id_origin` is the enum string `parsed` / `synthesised` / `quarantined`, matching the store's column. Were one added, `true` / `false`, never `0` / `1` |
+| Byte-order mark | none. JCS mandates UTF-8 (§ 3.2.4) but says nothing about a BOM, so this spec forbids one explicitly |
 | Line ending | `\n`, including after the final line |
-| Numbers | integers only. JCS's number rules are defined over ECMAScript doubles; the model has no non-integer value, so that machinery never engages |
+| Numbers | integers only, and **JCS § 3.2.2.3 still governs how they render** — it is what forbids `1.0`, `+1` and `1e3`. Values stay inside the 2^53 safe range (§ 3.1.4.3). "No non-integer value in the model" is not licence to hand-roll integer output |
 | Timestamps | dates `YYYY-MM-DD`; `history.at` is `YYYY-MM-DDTHH:MM:SSZ` — UTC, second precision, always `Z` |
+
+**Every string comparison in the table above is UTF-16 code-unit order**, the
+same collation § 2.5 rule 2 pins for ids — never locale collation, which varies
+by `LC_COLLATE` and would make the export machine-dependent.
+
+#### Absent, null, or empty — per field
+
+A general "omit when absent" rule plus a null whitelist admitted two readings:
+that the whitelisted fields are *always* emitted, or that the omit rule wins and
+they never are. Both are defensible from the sentence, and they disagree on the
+commonest field state in the corpus. So the rule is per field:
+
+| Field | When it has no value |
+|---|---|
+| `section.parent`, `section.intro`, `item.milestone` | **always emitted**, as `null` |
+| `item.layman`, `item.source`, `item.priority`, `item.resolution`, `item.body`, `item.created`, `item.last_modified`, `item.shipped` | **omitted** |
+| `item.lanes`, `item.evidence`, `item.extras`, `item.provenance` | **always emitted**, as `[]` / `{}`. ANTS-3756 makes these columns `NOT NULL DEFAULT '[]'`/`'{}'` so NULL and empty are not distinct states at rest |
+| `legend` records | a project with no legend emits **zero** `legend` lines; the rebuild restores `{}`, matching the store's default |
+
+#### When a row cannot be serialised
+
+RFC 8785 requires a conforming implementation to **terminate with an error** on
+invalid UTF-16 (§ 3.2.2.2) and forbids duplicate object keys (§ 3.1) — both
+reachable here, since SQLite `TEXT` does not validate encoding and migrated
+`extras` come from hand-written markdown. **The export aborts and reports the
+offending row; it never emits a partial file and never substitutes a
+replacement character.** A truncated backup that looks complete is the failure
+this whole spec exists to prevent.
 
 **Partitioning each multi-variant type before sorting it is what makes those
 orders total.** On a document-target `rel` the `dst` member is *absent*, and
@@ -176,21 +205,36 @@ would force the reader to defer foreign keys or make two passes.
 Items sort by a **variable-length numeric-segment tuple**, because no simpler
 rule survives the corpus:
 
-1. Fold the id, then split it into maximal **alphabetic** and **numeric** runs. Separators (`-`, `_`) are **discarded, not compared** — they carry no ordering meaning, and treating them as runs would make `3D_E-0007` and `3DE-0007` sort differently for no reason.
-   - `ants-1234` → `("ants", 1234)`
-   - `pass-43-5-b` → `("pass", 43, 5, "b")`
-   - `3d_e-0007` → `(3, "d", "e", 7)` — note it **starts numeric**
+1. Fold the id, then **remove every separator (`-`, `_`)**, then split the remaining text into maximal **alphabetic** and **numeric** runs. Removal happens *before* splitting — that is the whole rule, and the ordering of the two steps is the part an implementer gets wrong.
+   - `ants-1234` → `ants1234` → `("ants", 1234)`
+   - `pass-43-5` → `pass435` → `("pass", 435)`
+   - `3d_e-0007` → `3de0007` → `(3, "de", 7)` — note it **starts numeric**
+   - `3de-0007` → `3de0007` → `(3, "de", 7)` — **identical**, which is the point
+
+   An earlier draft said separators were "discarded, not compared" but split on
+   them anyway, yielding `(3,"d","e",7)` for the first and `(3,"de",7)` for the
+   second — which sort *differently*, exactly the outcome the sentence claimed
+   to prevent. Remove-then-split is what makes the claim true. The raw-id
+   tie-break in rule 5 keeps the two distinguishable.
 2. Compare run by run. Two runs of the same type compare naturally: numeric by value, alphabetic by **UTF-16 code-unit order** on the folded text — never locale collation, which varies by `LC_COLLATE` and would make the export machine-dependent.
 3. **Where two runs differ in type, numeric sorts before alphabetic.** Not cosmetic: `3D_E` is a live prefix, so `3d_e-0007` begins with a numeric run where `ants-1234` begins with an alphabetic one, and without this rule the sort is undefined between two real projects' ids.
 4. A shorter tuple sorts before a longer one sharing its prefix (`pass-43-5` before `pass-43-5-b`).
 5. **Tie-break on the raw `id`, code-unit order.** Required, not defensive: zero-padding is write-side only (`roadmap-format.md` § 3.5.1), so `CL-9` and `CL-0009` fold to the identical tuple and the sort would otherwise be non-total — which makes INV-1 fail *intermittently*, the worst way for it to fail.
-6. Quarantined ids (`id_parses = 0`, ANTS-3756 § 2.3) sort **last**, among themselves by raw `id`.
+6. Only `id_origin = 'quarantined'` ids (ANTS-3756 § 2.3) sort **last**, among themselves by raw `id`. `parsed` and `synthesised` ids both use the tuple sort above — a synthesised `PASS-43-5-B` is a real id the model's § 7.1 recognises, and sorting it with the junk would bury 144 live items.
 
 Lexical sorting is not available (`ANTS-10` before `ANTS-9`), and neither is
-zero-padded string sorting (the corpus has genuinely unpadded ids). A
-two-element `(prefix, numeric)` tuple is also insufficient: it cannot express
-`PASS-43-5-B`, and splitting at the last hyphen would sort `PASS-9-*` after
-`PASS-10-*`.
+zero-padded string sorting (the corpus has genuinely unpadded ids: `CL-9`
+alongside `ANTS-0001`).
+
+**The variable-length tuple is justified by `PASS-43-5`, not by
+`PASS-43-5-B`** — and the distinction matters because an earlier draft got it
+backwards. `PASS-43-5-B` does **not** match `roadmap-format.md` § 3.5.1's
+grammar, which requires an id to end in `-<digits>`; it reaches the sort only
+because ANTS-3756 marks synthesised ids as such rather than quarantining them.
+`PASS-43-5` *does* match, and it is what defeats a two-element
+`(prefix, numeric)` tuple: splitting at the last hyphen makes the prefix
+`pass-43`, so `PASS-9-1` would sort after `PASS-43-5`. Remove-then-split gives
+`(pass, 435)` and `(pass, 91)`, ordering them correctly without a special case.
 
 ### 2.6 The write path
 
@@ -206,7 +250,7 @@ Numbers are **inherited from ANTS-3756 and deliberately not reflowed**
 that stayed with the store.
 
 - **INV-1** — Export, rebuild from that export, re-export ⇒ byte-identical files. This holds **per project and across the whole corpus** — a corpus-wide rebuild must also preserve the cross-project relationships the model's INV-4 allows, which a per-project round-trip cannot witness. *Test:* `tests/features/roadmap_export_roundtrip/` builds a **synthetic three-project fixture** — never the machine's real corpus, which is not present in CI — seeded with two items whose insertion order differs from their id order, a deleted row (so rowids carry a gap), a nested section, and one cross-project `blocked-by`. Export all three, rebuild into a temp store, re-export, `cmp` each pair, and assert the cross-project edge survives on the source project's file. *Breaks when:* any § 2.4 rule is left unpinned.
-- **INV-2** — The export is complete: every store row, and every **non-surrogate** column of it, survives the round-trip. *Test:* `roadmap_export_roundtrip` — after rebuild, per-table `COUNT(*)` matches for all **nine** tables (ten *record types*; `legend` is a column on `project`, not a table), and a column-wise diff matches, **joining on stable identity**: `(export_slug, id_fold)` for items, `slug` for sections, `(section, position)` for elements, `(type, src, dst|dst_path)` for relationships, `(item, at, seq)` for history, `(src|doc, file, symbol)` for citations, `(item, file)` for feedback refs, `prefix` for id prefixes. Every rowid-valued column and `project.root` are excluded. *Breaks when:* a writer drops a whole column — `provenance`, say — which round-trips byte-identically and preserves every row count, so INV-1 and a count-only check both pass on a lossy store. The surrogate exclusion is not a weakening: § 2.3 guarantees rowids differ after a rebuild, so a diff including them fails against a *correct* implementation.
+- **INV-2** — The export is complete: every store row, and every **non-surrogate** column of it, survives the round-trip. *Test:* `roadmap_export_roundtrip` — after rebuild, per-table `COUNT(*)` matches for all **nine** tables (ten *record types*; `legend` is a column on `project`, not a table), and a column-wise diff matches, **joining on stable identity**: `export_slug` for the project row, `(export_slug, id_fold)` for items, `slug` for sections, `(section, position)` for elements, `(type, src, dst|dst_path)` for relationships, `(item, at, seq)` for history, `(src|doc, file, symbol)` for citations, `(item, file)` for feedback refs, `prefix` for id prefixes. Every rowid-valued column and `project.root` are excluded. *Breaks when:* a writer drops a whole column — `provenance`, say — which round-trips byte-identically and preserves every row count, so INV-1 and a count-only check both pass on a lossy store. The surrogate exclusion is not a weakening: § 2.3 guarantees rowids differ after a rebuild, so a diff including them fails against a *correct* implementation.
 - **INV-3** — *moved to ANTS-3756* (item identity folding) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-4** — *moved to ANTS-3756* (off-grammar id storage) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-5** — Export item order follows § 2.5's numeric-segment sort and is **total**. *Test:* `roadmap_export_roundtrip` seeds `ANTS-9`, `ANTS-10`, `CL-9`, `CL-0009`, `PASS-43-5`, `PASS-43-5-B`, `PASS-9-1`, `3D_E-0007`, `3DE-0007` and one quarantined id, then asserts the exact emitted order. The last two are not padding: `3D_E-0007` is the only seed beginning with a *numeric* run, so it is what exercises rule 3, and the pair together exercises rule 1's separator-discard — a writer implementing neither passes a seed set without them. *Breaks when:* the writer sorts lexically (`ANTS-10` before `ANTS-9`); or splits at the last hyphen (`PASS-9-1` after `PASS-43-5`); or omits the tie-break, leaving `CL-9` and `CL-0009` unordered.
@@ -216,9 +260,14 @@ that stayed with the store.
 - **INV-9** — Every export write path acquires `ConfigWriteLock`, and aborts loudly when it cannot. *Test:* `roadmap_export_concurrency` — hold the lock, attempt an export, assert it returns an error, **wrote no bytes**, and **left no temp file**; release, assert it then succeeds. *Breaks when:* the writer treats `!acquired()` as permission to proceed unprotected. Phrasing matters: `flock` is advisory, so a non-cooperating writer *can* interleave — the testable claim is about our writer, not about the file.
 - **INV-10** — *moved to ANTS-3756* (per-field provenance) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 - **INV-11** — *moved to ANTS-3756* (enum enforcement at the storage layer) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
-- **INV-12** — The export writer streams: peak RSS during an export at corpus scale rises by **less than 4 MiB** above the pre-export baseline, against an export several times that size. *Test:* `roadmap_export_roundtrip` inflates the synthetic fixture to ~5 MiB of generated body text, samples RSS immediately before and at peak during the export call, and asserts the **delta**. *Breaks when:* the writer builds one `QString` and writes it at the end — which passes every other invariant here. The measurement must be a delta: a Qt process's absolute RSS exceeds the export's byte size before any work is done, so an absolute ceiling is unachievable and would be quietly relaxed until it passed.
+- **INV-12** — The export writer streams: peak RSS during an export at corpus scale rises by **less than 4 MiB** above the pre-export baseline, against an export several times that size. *Test:* `roadmap_export_roundtrip` inflates the synthetic fixture to ~5 MiB of generated body text, samples RSS from a **watcher thread at 10 ms intervals** across the export call — an export is synchronous, so "peak" needs a sampler; reading RSS before and after would miss it entirely — and asserts the **delta** between the pre-call baseline and the observed peak. *Breaks when:* the writer builds one `QString` and writes it at the end — which passes every other invariant here. The measurement must be a delta: a Qt process's absolute RSS exceeds the export's byte size before any work is done, so an absolute ceiling is unachievable and would be quietly relaxed until it passed.
 - **INV-13** — Every cross-record reference resolves to a declared stable key, and no surrogate value is emitted under any name. *Test:* `roadmap_export_roundtrip` parses the export and asserts every `ref` / `src` / `dst` / `item` / `section` / `parent` / `doc` value resolves — **folding before comparison**, since references are folded and `item.id` is authored. *Breaks when:* a writer serialises straight from `SELECT *` — the natural implementation, which silently breaks INV-1 on any store that has ever deleted a row. A name-based grep for `item_pk` is **not** sufficient: it passes against a writer emitting the same rowids under a different key (`"section":3`), and false-positives on free-text `body` or `extras`.
+- **INV-18** — The fixture's export matches a **committed golden file**, byte for byte. *Test:* `roadmap_export_roundtrip` compares its export against `tests/features/roadmap_export_roundtrip/golden/*.jsonl`, which are checked in and reviewed. *Breaks when:* the writer ignores § 2.4 wholesale — INV-1 compares the writer against *itself*, so **any deterministic writer passes it**, including one that emits records in insertion order. Self-consistency is not conformance; this is the invariant that makes the file-level rules testable at all. Regenerating a golden file is a reviewable diff and must never be done to make a test pass.
+- **INV-19** — The serialiser conforms to RFC 8785 on the RFC's own test vectors. *Test:* `roadmap_export_roundtrip` runs the published JCS test-vector set through the writer's canonicalisation entry point and asserts exact output. *Breaks when:* the writer uses `QJsonDocument::toJson(Compact)` and assumes it conforms — § 2.2 warns about this, and a warning with no test behind it is a comment.
 - **INV-14** — *moved to ANTS-3756* (history bounded) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-15** — *moved to ANTS-3756* (store creation race) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-16** — *moved to ANTS-3756* (busy-timeout write policy) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-17** — *moved to ANTS-3756* (store file mode 0600) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
 
 ## 4. RAM / build cost
 
@@ -251,10 +300,11 @@ Feature tests under `tests/features/`, label `features;fast`:
 
 | Directory | Covers |
 |---|---|
-| `roadmap_export_roundtrip/` | INV-1, INV-2, INV-5, INV-12, INV-13 |
+| `roadmap_export_roundtrip/` | INV-1, INV-2, INV-5, INV-12, INV-13, INV-18, INV-19 |
 | `roadmap_export_concurrency/` | INV-9 |
 
-All six invariants are covered; none is a grep-only check.
+All eight invariants are covered; none is a grep-only check. The bundle ships
+`golden/` (INV-18) and the RFC's test vectors (INV-19) as committed fixtures.
 
 Per `CLAUDE.md` and `testing.md`, each test must be verified to **fail against
 pre-implementation source** before the implementation is restored. For INV-1
@@ -266,7 +316,7 @@ never checked.
 ## 7. Cross-doc impact
 
 - **[ANTS-3756](ANTS-3756-roadmap-store-schema.md)** — its § 2.4 is replaced by a pointer here; INV-1, 2, 5, 9, 12, 13 are tombstoned there.
-- **[`roadmap-data-model.md`](../standards/roadmap-data-model.md)** — its § 9 assigns "the export: record types, field order, sort collation, encoding" to a spec; that bullet points here once this ships.
+- **[`roadmap-data-model.md`](../standards/roadmap-data-model.md)** — its § 9 assigns "the export: field order, sort collation, encoding, and every other rule that makes INV-1's 'identical file' testable" to a spec; that bullet points here once this ships.
 - **`CHANGELOG.md`** — user-invisible until ANTS-3758 lands the render.
 
 ## 8. Open questions
@@ -278,4 +328,5 @@ never checked.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| 1 | 2026-07-30 | 1 (export lane, cold, counterpart also read) | 5 / 5 / 6 / 6 / 1 | First gate on the post-split document. The lane fetched RFC 8785 and confirmed § 2.2's five delegated categories are genuinely JCS's — the split's central bet holds. Three defects it did not: **§ 2.5's separator rule contradicted its own example and rationale** (it claimed `3D_E-0007` and `3DE-0007` sort alike while splitting on separators, which makes them differ) — now remove-then-split, with the ordering of the two steps called out as the part implementers get wrong. **`PASS-43-5-B` does not match `roadmap-format.md` § 3.5.1's grammar**, so the example motivating the variable-length tuple never reached the sort; the justification is rebased onto `PASS-43-5`, which does match and does defeat a two-element tuple. **INV-1 tested the writer against itself** — any deterministic writer passes it, including one ignoring § 2.4 entirely — so INV-18 (committed golden files) and INV-19 (the RFC's own test vectors) now make conformance testable. Also: absent/null/empty is a per-field table rather than a rule plus whitelist that admitted two readings; a JCS failure mode (abort, never a partial file); code-unit collation stated on every ordering row; no BOM; and the number row corrected — JCS § 3.2.2.3 governs integer rendering too. |
 | 0-split | 2026-07-30 | none — no reviewer dispatched | — | **Provenance row, not a review.** Split out of ANTS-3756 after that spec converged by cap at 3 loops with fix collateral outnumbering draft defects in the last two, almost all of it in this half. Invariant numbers inherited, not reflowed (`specs.md` § 5.5). Three findings from ANTS-3760's deferred tail are folded in here as the split's owner: the cross-project relationship carrier, the nested-`section` record shape with parents-before-children ordering, and `dst_path`/`doc` naming. **The parent's three loops do NOT transfer** — they were run against a document that no longer exists; this spec runs the rule-14 gate from loop 1 on its own bytes. |
