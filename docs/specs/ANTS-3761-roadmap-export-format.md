@@ -60,12 +60,30 @@ Two consequences an implementer must not discover the hard way:
 - **Key order is JCS's, not a hand-chosen reading order.** The record shapes in
   § 2.3 are written readably for humans; the *emitted* order is lexicographic.
   Do not treat the examples as byte-exact.
-- **`QJsonDocument::toJson(Compact)` is not certified JCS.** `QJsonObject` does
-  hold keys sorted, which is most of the way there, but Qt's escaping and
-  number formatting are not specified to match the RFC. The writer must be
-  validated against the RFC's own test vectors, or use a JCS implementation.
+- **`QJsonDocument::toJson(Compact)` is not JCS — measured, and the gap is
+  numbers alone.** Run against the RFC's own material on Qt 6 (§ 8 records the
+  run): all **six** published vector files — `arrays`, `french`, `structures`,
+  `unicode`, `values`, `weird` — come back byte-identical, so Qt's key order,
+  string escaping, whitespace and UTF-8 already agree. Appendix B's number
+  table scores **21 of 24**, and all three failures are one root cause:
+
+  | IEEE 754 | RFC 8785 | `QJsonDocument` |
+  |---|---|---|
+  | `3eb0c6f7a0b5ed8c` | `9.999999999999997e-7` | `9.999999999999997e-07` |
+  | `3eb0c6f7a0b5ed8d` | `0.000001` | `1e-06` |
+  | `becbf647612f3696` | `-0.0000033333333333333333` | `-3.3333333333333333e-06` |
+
+  ECMAScript switches to exponential notation only outside `1e-6 … 1e21` and
+  writes the exponent unpadded; Qt switches earlier and pads to two digits.
+  Everything else Qt already gets right, integers past 2^53 included.
+
+  So the writer **canonicalises the number itself** and matches Qt elsewhere,
+  rather than vendoring a JCS library for a three-case divergence or trusting
+  Qt for a contract it does not claim. Shortest-round-trip digits come from
+  `std::to_chars`; ES6's fixed-versus-exponential boundary is applied on top.
   Assuming Qt's output conforms is the obvious mistake, and it is the one that
-  made the previous approach unimplementable.
+  made the previous approach unimplementable — INV-19 is what keeps that
+  assumption from reappearing.
 
 JCS canonicalises **one JSON value**. It says nothing about a file of them, so
 § 2.4 still owns everything at file level.
@@ -298,10 +316,12 @@ discarding what it exists to preserve. If the corpus ever approaches it, the
 decision to make is the store's eviction rule, not a second cap here.
 
 **Build.** No new target and no new dependency — the export writer lives in
-ANTS-3756's `roadmapstore` library and needs `Qt6::Core` only. A JCS
-implementation is required, and whether that is a vendored routine or a
-validated use of `QJsonDocument` is an implementation choice this spec does not
-make (§ 2.2 states the constraint: it must pass the RFC's test vectors).
+ANTS-3756's `roadmapstore` library and needs `Qt6::Core` only. The JCS
+requirement adds no third-party code: § 2.2's measurement shows the divergence
+is confined to number rendering, so the writer canonicalises numbers with
+`std::to_chars` (`<charconv>`, already available at the project's C++20 floor)
+and no JCS library is vendored. § 8's first open question is closed on that
+evidence.
 
 ## 5. Out of scope
 
@@ -338,7 +358,7 @@ never checked.
 
 ## 8. Open questions
 
-- **Does a JCS implementation exist that is worth vendoring, or is validating `QJsonDocument` against the RFC test vectors cheaper?** § 2.2 states the requirement and deliberately leaves the means open; the answer changes § 4's build cost but no invariant.
+- ~~**Does a JCS implementation exist that is worth vendoring, or is validating `QJsonDocument` against the RFC test vectors cheaper?**~~ **Closed 2026-07-30 by measurement, before implementation** — neither. `QJsonDocument::toJson(Compact)` was run against the RFC's own material: 6/6 published vector files byte-identical, 21/24 of Appendix B's number table, with all three misses on ES6's fixed-versus-exponential boundary. A vendored library would replace a whole conforming serialiser to fix three number cases, and trusting Qt would ship a contract it does not claim; the writer canonicalises numbers itself and keeps Qt's agreement elsewhere. § 2.2 carries the evidence, § 4 the (nil) build cost.
 - **Should the export carry a trailing checksum line?** It would make a truncated file detectable without a full parse. Against: it is a value derived from the rest of the file, so it must be excluded from the round-trip comparison, which is the class of exception that caused trouble in the parent spec.
 
 ## Cold-eyes loop log
@@ -349,3 +369,4 @@ never checked.
 | 1 | 2026-07-30 | 1 (export lane, cold, counterpart also read) | 5 / 5 / 6 / 6 / 1 | First gate on the post-split document. The lane fetched RFC 8785 and confirmed § 2.2's five delegated categories are genuinely JCS's — the split's central bet holds. Three defects it did not: **§ 2.5's separator rule contradicted its own example and rationale** (it claimed `3D_E-0007` and `3DE-0007` sort alike while splitting on separators, which makes them differ) — now remove-then-split, with the ordering of the two steps called out as the part implementers get wrong. **`PASS-43-5-B` does not match `roadmap-format.md` § 3.5.1's grammar**, so the example motivating the variable-length tuple never reached the sort; the justification is rebased onto `PASS-43-5`, which does match and does defeat a two-element tuple. **INV-1 tested the writer against itself** — any deterministic writer passes it, including one ignoring § 2.4 entirely — so INV-18 (committed golden files) and INV-19 (the RFC's own test vectors) now make conformance testable. Also: absent/null/empty is a per-field table rather than a rule plus whitelist that admitted two readings; a JCS failure mode (abort, never a partial file); code-unit collation stated on every ordering row; no BOM; and the number row corrected — JCS § 3.2.2.3 governs integer rendering too. |
 | 2-fold | 2026-07-30 | none — no reviewer dispatched | — | **Decision row, not a review.** Rows are ordered ascending from here, matching ANTS-3756 and `roadmap-data-model.md`; the two existing rows were previously logged newest-first, which made the split look like it followed the gate it preceded. ANTS-3756's INV-14 is now settled (store-wide 250 MB, nothing evicted below it), so § 4's "this spec inherits whatever that settles" is replaced by the figure and by *why* this spec does not add a second, tighter cap of its own: the model's § 6 makes the export the only place history survives, so bounding it here would discard exactly what it exists to preserve. No invariant changed. |
 | 3-seam | 2026-07-30 | none dispatched here — findings arrived from ANTS-3756's loop 5 | — | **Seam fixes, not a review of this document.** Two cold lanes reading ANTS-3756 also read this file as its cross-reference and found six defects on the boundary; they are fixed here because this is the side that owns them. Both documents said **six** invariants were tombstoned in ANTS-3756 where there are **eight** (INV-18 and INV-19, added at loop 1 here, were tombstoned there and left out of both counts). § 2.4's absent/null table is exhaustive by construction, and omitted `history.old` / `history.new` — the commonest null in the file, since no field's first revision has an `old` — while filing `item.source` under *omitted*, a state ANTS-3756's `NOT NULL` column cannot produce. INV-2's join keys omitted `dst_project` and citation `project`, both of which **lead** the store's own unique indexes, so the diff would have merged a cross-project edge with a same-project one and fused two projects' identically-named doc citations. § 4's inherited `history` bound is now the settled figure. This document has **not** had a cold read since these edits; its next gate run is against changed bytes. |
+| 4-measure | 2026-07-30 | none — a measurement, not a review | — | **Decision row.** § 8's first open question — vendor a JCS implementation, or validate `QJsonDocument` against the RFC's vectors — closed **before** implementation by running the question rather than arguing it. The six published JCS vector files (`arrays`, `french`, `structures`, `unicode`, `values`, `weird`) and RFC 8785 Appendix B's 24-row number table were put through `QJsonDocument::toJson(Compact)` on Qt 6: **6/6 files byte-identical, 21/24 numbers**. Every miss is the same root cause — ECMAScript leaves fixed notation only outside `1e-6 … 1e21` and writes the exponent unpadded, where Qt switches earlier and pads to two digits (`0.000001` → `1e-06`; `9.999999999999997e-7` → `…e-07`). Key order, escaping, whitespace, UTF-8 and integers beyond 2^53 already agree. **Answer: neither option.** Vendoring replaces a serialiser that already conforms in order to fix three number cases; trusting Qt ships a contract Qt does not claim. The writer canonicalises numbers itself over `std::to_chars` and keeps Qt's agreement elsewhere, so § 4's build cost stays at no new dependency. No invariant changed — INV-19 was already the test, and it now has a known failure mode to catch rather than a suspicion. |
