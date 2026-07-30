@@ -23048,6 +23048,65 @@ against current source before filing.
   layout standard lands and a project has adopted it, dim 14 gains a
   path-based fast path for adopting projects, keeping shape-detection as
   the fallback for projects that have not.
+  Also (2026-07-30, user): ship SCRIPTS with the standard, to cut token
+  use. A layout rule a skill has to read and reason about costs tokens on
+  every run; a deterministic checker costs a subprocess. So the standard
+  lands with a conformance script that answers "what genre is this path,
+  and does this tree conform" without an LLM in the loop — the same
+  pattern cold-eyes' mechanical pre-pass already uses, and the reason its
+  checks are cheap. Candidate home: a repo tool plus, if it earns it, an
+  Ants MCP verb so other projects get it without copying a file.
+  Dry-run is REQUIRED, not optional (2026-07-30, user): every script this
+  standard ships runs dry by default so we can refine the rules against
+  each project before any of them is touched. Rationale the user gave —
+  we learn what the rule should be by seeing what it would do to nine
+  different trees.
+
+  Concretely: a script that only measures (the corpus survey already
+  committed as tools/roadmap-corpus-survey.py) needs no flag, since it
+  never writes. A script that MOVES or RENAMES files needs
+  --dry-run as the default and an explicit --apply to act, printing the
+  exact from -> to list either way, so a diff of two dry runs is how we
+  review a rule change. Same shape as the Ants MCP write verbs, which
+  already take dry_run and return the would-be result — reuse that
+  contract rather than inventing a second one.
+  Publish the scripts (2026-07-30, user): make them available to other
+  people, not just this machine's nine projects.
+
+  Note before choosing a home — ants-terminal is already PUBLIC, so
+  anything under tools/ here is published the moment it is pushed. The
+  open question is therefore discoverability and coupling, not access:
+  - These scripts encode roadmap-format.md's conventions (status emojis,
+    the [PROJ-NNNN] grammar, the Kind:/Source:/Layman: fields). Someone
+    outside this ecosystem gets a tool that measures a format they do not
+    use, so publishing usefully means shipping the FORMAT with the tool.
+  - Options, cheapest first: (a) leave them in tools/ and add a short
+    README section pointing at them — zero new infrastructure, already
+    public; (b) a dedicated repo pairing roadmap-format.md +
+    documentation-layout standard + the scripts, which is the honest
+    package for an outside user but a second place to keep in sync.
+  Recommend (a) until someone actually asks for (b).
+  Scope grows (2026-07-30, user): the standard must also declare WHICH
+  standards every project is required to have — a baseline set, not just
+  where files live. So it answers two questions, and both are checkable
+  by the same script: does this tree put documents in the right place,
+  and does this project carry the standards it is obliged to carry.
+
+  Starting evidence for what the baseline is: the /start-app template
+  already ships four to every new project — coding.md, documentation.md,
+  testing.md, commits.md — which is a de-facto baseline never written
+  down as a requirement. Everything beyond those four is currently
+  per-project and discretionary (this project has 20 more; Rolodex and
+  Contact_List have far fewer).
+
+  Two things to settle when writing it:
+  - Required-for-every-project vs required-IF-applicable. dialogs.md is
+    meaningless to a CLI tool; dependencies.md is not. A flat mandatory
+    list would force placeholder standards, which is the failure mode
+    documentation.md 1.4 already names.
+  - A missing required standard must be a REPORT, not a blocker. Nine
+    projects will all fail on day one; a checker that refuses is a
+    checker nobody runs.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
