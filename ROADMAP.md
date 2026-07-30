@@ -23197,7 +23197,7 @@ against current source before filing.
   claudeintegration.cpp, and CHANGELOG/CLAUDE.md/sibling specs cite them
   too. A rename that misses those turns 218 working links into dead ones.
 
-- 📋 [ANTS-3756] **Roadmap store — schema, entities, export serialisation and the INV-1 round-trip check.**
+- ✅ [ANTS-3756] **Roadmap store — schema, entities, export serialisation and the INV-1 round-trip check.**
   Spec seam 1 of the ANTS-3753 implementation, split BEFORE drafting
   rather than at the cold-eyes cap — ANTS-3754 records what an oversized
   document cost last time.
@@ -23258,6 +23258,19 @@ against current source before filing.
 
   Remaining for this id: roadmap_store_concurrency/ (INV-15, INV-16). ANTS-3761
   (export writer + RFC 8785 vectors) is next and unblocked.
+  Resolved (2026-07-30): all three feature-test directories are in and the
+  suite is 3108/3108. roadmap_store_concurrency/ closed INV-15 (forked
+  creation race) and INV-16 (busy-timeout write policy), and writing it
+  found two defects a cold read had not: PRAGMA journal_mode = WAL takes an
+  EXCLUSIVE lock BELOW the busy handler, so busy_timeout never covered it
+  (18 of 25 forked opens failed) — enableWal() now supplies the retry
+  against the same deadline; and the spec's `CREATE TABLE IF NOT EXISTS`
+  would have masked exactly the failure INV-15 exists to catch. Spec
+  amended (§ 2.5, INV-15, INV-16) with loop-log row 8-impl.
+
+  No CHANGELOG entry yet: the store has no consumer until ANTS-3758, so
+  there is nothing user-visible to describe. Next: ANTS-3761 (export
+  writer), then ANTS-3757 (migration), then ANTS-3758.
 
 - 📋 [ANTS-3757] **Roadmap migration — the one-shot transformation, ID allocation, status normalisation and cutover.**
   Spec seam 2 of the ANTS-3753 implementation.
