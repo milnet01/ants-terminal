@@ -195,9 +195,14 @@ const QRegularExpression &rxCppTypeOnly() {
 // doesn't drift on `"{"` or `// {`. `inBlock` carries block-comment state
 // across lines. A heuristic (raw-string literals are not special-cased —
 // rare in a declaration region); good enough to keep the depth honest.
-int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullptr) {
+// ANTS-3735 — `lastCodeIdxOut` optionally reports the index of the line's
+// last non-space CODE character (comments excluded), which is what the
+// declaration-vs-definition terminator test needs.
+int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullptr,
+                  int *lastCodeIdxOut = nullptr) {
     int delta = 0;
     if (parenDeltaOut) *parenDeltaOut = 0;
+    if (lastCodeIdxOut) *lastCodeIdxOut = -1;
     const int n = line.size();
     for (int i = 0; i < n; ++i) {
         const QChar c = line.at(i);
@@ -211,6 +216,13 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
             if (d == QLatin1Char('/')) break;                       // line comment
             if (d == QLatin1Char('*')) { inBlock = true; ++i; continue; }
         }
+        // ANTS-3735 — this character is CODE (past the comment tests above).
+        // Record it so the caller can test a line's real terminator without a
+        // trailing comment hiding it: `int f(void);   // note` ends in ';',
+        // but QString::endsWith(';') on the raw line says otherwise, which
+        // read as "this definition opens a body" and latched the scanner
+        // inside a phantom function for the rest of the file.
+        if (lastCodeIdxOut && !c.isSpace()) *lastCodeIdxOut = i;
         if (c == QLatin1Char('"')) {
             // Raw string R"delim( … )delim" (L/u8/u/U prefix keyed on the
             // immediately-preceding 'R'): its content — incl. braces in a
@@ -228,6 +240,7 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
                 const int end = (j < n) ? line.indexOf(close, j) : -1;
                 if (end < 0) { i = n; break; }   // unterminated on this line
                 i = end + close.size() - 1;
+                if (lastCodeIdxOut) *lastCodeIdxOut = i;
                 continue;
             }
             for (++i; i < n; ++i) {              // ordinary string literal
@@ -235,6 +248,7 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
                 if (e == QLatin1Char('\\')) { ++i; continue; }
                 if (e == QLatin1Char('"')) break;
             }
+            if (lastCodeIdxOut) *lastCodeIdxOut = qMin(i, n - 1);
             continue;
         }
         if (c == QLatin1Char('\'')) {            // char literal
@@ -243,6 +257,7 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
                 if (e == QLatin1Char('\\')) { ++i; continue; }
                 if (e == QLatin1Char('\'')) break;
             }
+            if (lastCodeIdxOut) *lastCodeIdxOut = qMin(i, n - 1);
             continue;
         }
         if (c == QLatin1Char('{')) ++delta;
@@ -605,8 +620,19 @@ QJsonObject compute(const QString &absPath,
             // wrapped-parameter-list collector here), so inBlockComment toggles
             // exactly once per line.
             int parenDeltaThisLine = 0;
+            int lastCodeIdx        = -1;
             const int braceDeltaThisLine =
-                netBraceDelta(line, inBlockComment, &parenDeltaThisLine);
+                netBraceDelta(line, inBlockComment, &parenDeltaThisLine,
+                              &lastCodeIdx);
+            // ANTS-3735 — the declaration/definition discriminator. A trailing
+            // comment must not hide the ';': `extern "C" int f(char* c);  // n`
+            // is a DECLARATION, but `line.trimmed().endsWith(';')` reads it as a
+            // definition whose body opens later. The scanner then adopted the
+            // next `{` it met — an anonymous `namespace {` 12 lines down in
+            // DOOM's r_vulkan.cpp — as that function's body and suppressed every
+            // func symbol for the 5,742 lines until the namespace closed.
+            const bool endsWithSemicolon =
+                lastCodeIdx >= 0 && line.at(lastCodeIdx) == QLatin1Char(';');
 
             if (inFuncArgs) {
                 // Folding continuation lines of a wrapped parameter list into
@@ -618,8 +644,7 @@ QJsonObject compute(const QString &absPath,
                 if (funcArgParenDepth <= 0) {
                     offerAt(funcArgStartLine, "func", funcArgName,
                             funcArgSig.simplified());
-                    funcDefOpensBody =
-                        !line.trimmed().endsWith(QLatin1Char(';'));
+                    funcDefOpensBody = !endsWithSemicolon;
                     inFuncArgs = false;
                     funcArgSig.clear();
                 }
@@ -659,10 +684,10 @@ QJsonObject compute(const QString &absPath,
                     name = name.mid(1);
                 }
                 offer("func", name, line);
-                funcDefOpensBody = !line.trimmed().endsWith(QLatin1Char(';'));
+                funcDefOpensBody = !endsWithSemicolon;
             } else if (!inFuncBody && (m = rxCppFunc().match(line)).hasMatch()) {
                 offer("func", m.captured(2), line);
-                funcDefOpensBody = !line.trimmed().endsWith(QLatin1Char(';'));
+                funcDefOpensBody = !endsWithSemicolon;
             } else if (!inFuncBody && (m = rxCppFuncOpen().match(line)).hasMatch()) {
                 offer("func", m.captured(2), line);    // ReturnType name(args), body '{' next line
                 funcDefOpensBody = true;

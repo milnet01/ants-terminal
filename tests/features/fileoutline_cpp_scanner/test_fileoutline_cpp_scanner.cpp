@@ -244,3 +244,71 @@ TEST(FileOutlineCppScanner, TwoWordReturnTypeMemberDetected) {
     EXPECT_TRUE(fns.contains(QStringLiteral("Grid::name")));       // & glued to type
     EXPECT_TRUE(fns.contains(QStringLiteral("Grid::mutableName")));  // & glued to name
 }
+
+// INV-12 (ANTS-3735) — a DECLARATION whose ';' is followed by a trailing
+// comment must not be read as a definition that opens a body. The terminator
+// test ran on the raw line, so `int f(char* c);   // note` did not "end with
+// ';'"; the scanner set funcOpenAtDepth awaiting a '{' and then adopted the
+// next brace it met — an anonymous `namespace {` — as that function's body.
+// Because clearing the latch requires the depth to first EXCEED the recorded
+// depth and then return to it, a namespace brace never releases it: every
+// func symbol is suppressed until the namespace closes. In DOOM's
+// r_vulkan.cpp that swallowed 5,742 lines (~30 functions), and
+// workspace_search enclosing_symbol then attributed every match in that span
+// to the last emitted symbol, the struct VulkanState. DOOM feedback
+// (2026-07-30).
+TEST(FileOutlineCppScanner, TrailingCommentDeclDoesNotOpenBody) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "extern \"C\" int M_CheckParm(const char* check);   // m_argv.c\n"
+        "\n"
+        "namespace {\n"
+        "\n"
+        "struct State { int a = 0; };\n"
+        "\n"
+        "void CreateInstance()\n"
+        "{\n"
+        "    int x = 0;\n"
+        "}\n"
+        "\n"
+        "bool DeviceHasRT(int d) { return d > 0; }\n"
+        "\n"
+        "}  // namespace\n"
+        "\n"
+        "extern \"C\" void RB_Init(void) { CreateInstance(); }\n"));
+    const QStringList fns = funcNames(path);
+    // The declaration itself is still a symbol — it just must not open a body.
+    EXPECT_TRUE(fns.contains(QStringLiteral("M_CheckParm")));
+    // The functions INSIDE the anonymous namespace are the ones the latch ate.
+    EXPECT_TRUE(fns.contains(QStringLiteral("CreateInstance")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("DeviceHasRT")));
+    // And the scanner recovers past the namespace close.
+    EXPECT_TRUE(fns.contains(QStringLiteral("RB_Init")));
+    // The body-local must still be suppressed — the fix must not cost INV-1.
+    EXPECT_FALSE(fns.contains(QStringLiteral("x")));
+}
+
+// INV-13 (ANTS-3735) — over-reach guard, non-discriminating by design. The
+// terminator test must read CODE, not raw text: a ';' inside a string or
+// char literal must not be mistaken for the line's terminator, or a genuine
+// definition would be misread as a declaration and its body's locals would
+// leak as file-scope funcs (the INV-1 failure mode, in reverse). Passes
+// before and after the fix — it exists to prove the fix cost nothing.
+TEST(FileOutlineCppScanner, TerminatorTestIsLiteralAware) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "void emit(const char* s = \";\") {\n"
+        "    int inner = 0;\n"
+        "}\n"
+        "\n"
+        "void semi(char c = ';');\n"
+        "\n"
+        "void after() { }\n"));
+    const QStringList fns = funcNames(path);
+    EXPECT_TRUE(fns.contains(QStringLiteral("emit")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("semi")));
+    EXPECT_TRUE(fns.contains(QStringLiteral("after")));
+    // `emit` is a DEFINITION despite the ';' in its default argument, so its
+    // body opens and the local is suppressed.
+    EXPECT_FALSE(fns.contains(QStringLiteral("inner")));
+}
