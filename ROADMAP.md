@@ -21531,7 +21531,7 @@ requesting no action and are closed in place rather than filed.
   Source: DOOM-Ants-feedback-2026-07-28.
   Resolved (2026-07-28): added `parse_failures_detail[]` of {file, tool, reason} where reason is "<checkId>: <first diagnostic>" (capped 200 chars, first parse-failure diagnostic per file wins — later ones are cascade noise). `parse_failures[]` keeps its bare-path shape, so the ANTS-3585 consumer is unaffected: this is the same X / X_detail pairing ANTS-3585 itself established with incomplete_tools. Carried on BOTH the sync (mainwindow) and async-poll (claudeintegration) envelopes via AuditJob. A file two tools both failed on yields one row per tool, since the reasons differ. Tests: audit_run_incomplete_detail INV-7/8/9.
 
-- 📋 [ANTS-3707] **`debt_sweep_scan`'s envelope cannot distinguish "this dimension is clean" from "one thin heuristic ran".**
+- ✅ [ANTS-3707] **`debt_sweep_scan`'s envelope cannot distinguish "this dimension is clean" from "one thin heuristic ran".**
   Filed from two projects independently, merged here.
 
   Fin Break: a scan returned `by_category {code_drift:0, doc_drift:0,
@@ -21574,6 +21574,36 @@ requesting no action and are closed in place rather than filed.
   **Layman:** The debt scan reports zero problems in three categories that actually held every real issue, and nothing in the output warns you.
   Kind: enhancement.
   Source: DOOM-Ants + finbreak feedback-2026-07-28 (merged).
+  Resolved (2026-07-30) for the ENVELOPE half — the reported defect. The three
+  proposed new detectors are NOT implemented; see below.
+  debt_sweep_scan now emits `detectors_by_category`, the denominator behind
+  each `by_category` count, and the categories are wildly uneven: code_drift
+  rests on 7 heuristics, doc_drift on 2, test_coverage on 1, packaging_drift
+  on 1. That asymmetry is the whole finding — `packaging_drift: 0` beside
+  `detectors_run:[all four]` reads as "packaging is clean" when it means "the
+  single version-lockstep heuristic did not fire". Both reporting projects
+  made exactly that reading and were materially wrong. scope_note now tells
+  the caller to read every count against this map.
+  Why the envelope and not the detectors: this is the second attempt at the
+  same problem. ANTS-3564 already added detectors_run + scope_note (2026-07-17)
+  and this report is the evidence it was not enough — naming the categories
+  without their depth still reads as coverage. A count is only interpretable
+  next to its denominator, so publish the denominator. Adding detectors would
+  not have fixed the misreading; it would have moved the line at which it
+  happens, and per the debt-sweep FP history (~94% on the existing set) it
+  would likely have made the output worse first.
+  The three proposed detectors (suppression directives citing unenabled rules;
+  `<tool>==<version>` pinned in tracked files vs the manifest; relative-link
+  resolution + spec Status vs roadmap status) plus DOOM's fourth (a comment
+  calling a field "reserved" while it is assigned non-zero) are filed as
+  ANTS-3743 — each fired on a real defect in those repos and deserves proper
+  sizing, not a ride on an envelope fix.
+  Test: McpDebtSweepTools.Ants3707DetectorsByCategoryMatchesImplementation
+  scrapes every `fnd.detectorId` assignment out of debtsweepengine.cpp and
+  asserts the map matches BIDIRECTIONALLY (11 = 11) — deliberately, so the
+  check cannot pass vacuously on a scrape that silently matched two entries,
+  and so a new detector cannot ship without updating the published
+  denominator. Full suite 3077/3077.
 
 - ✅ [ANTS-3708] **`test_audit_partition` refuses a project that declares `test_roots`, because the framework gate runs before scope.**
   `test_audit_partition` returns `{ok:false, code:"no_tests_found", error:"no test
@@ -22340,6 +22370,37 @@ against current source before filing.
   **Layman:** On a project that does not keep its code in a folder called "src", the "audit everything" mode quietly hands the tools no file list and reports that it looked at zero files.
   Kind: fix.
   Source: in-session-2026-07-30 (found while scoping ANTS-3710).
+
+- 📋 [ANTS-3743] **Four proposed debt-sweep detectors, split out of ANTS-3707's envelope fix.**
+  ANTS-3707 shipped the envelope half (detectors_by_category) on
+  2026-07-30. These are its detector half, kept separate because each
+  needs its own sizing and the existing set already runs ~94% FP
+  (ANTS-3342..3347) — adding detectors carelessly makes the output worse
+  before it makes it better.
+
+  All four fired on a REAL defect found by hand in the reporting repos:
+
+  1. A suppression directive citing a rule the linter never enables —
+     e.g. `# noqa: E501` where the ruff select list does not include E501.
+     Reads as a reviewed suppression, suppresses nothing. Fin Break had 20.
+  2. `<tool>==<version>` hardcoded in tracked files, diffed against the
+     manifest pin. Fin Break had pyinstaller==6.21.0 in five build paths
+     with no lockstep test.
+  3. doc_drift: resolve relative markdown links, and diff a spec's
+     `Status:` line against the roadmap status of the same id.
+  4. (DOOM) A comment asserting a struct field or push-constant lane is
+     "reserved" / "unused" / "= 0" while that field is assigned a
+     non-zero value elsewhere. Has bitten DOOM Ants twice.
+
+  (1) and (2) are the strongest: both are mechanical, both have an
+  unambiguous ground truth to diff against, and neither needs judgement —
+  which is what the debt sweep is for. (4) is the most valuable per hit
+  and the hardest to make precise. Note that every one added must also be
+  listed in DebtSweepEngine::detectorsByCategory(), which the ANTS-3707
+  regression test enforces.
+  **Layman:** Four new checks the debt scan could run, each of which caught a real bug by hand in another project.
+  Kind: enhancement.
+  Source: DOOM-Ants + finbreak feedback 2026-07-28 (ANTS-3707 detector half).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

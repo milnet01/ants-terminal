@@ -181,8 +181,9 @@ load. Quick check: `LC_ALL=C.UTF-8 ctest --test-dir build`.
 ## MCP tool authoring
 
 **Discovering the full toolkit (ANTS-2037).** The SessionStart hook lists
-~12 high-frequency verbs; for all ~74 (grouped by category, each with a
-one-line *when to use*), call `tool_info {catalog:true}` (ANTS-1985) once,
+~12 high-frequency verbs; for the full set (grouped by category, each with a
+one-line *when to use*, and the live `tool_count`), call
+`tool_info {catalog:true}` (ANTS-1985) once,
 then `ToolSearch` `select:mcp__ants__<name>` to load a verb's schema before
 calling it. This pointer is the always-loaded fallback for when the hook
 prelude is stale (ANTS-2038) or disabled.
@@ -319,7 +320,10 @@ source of truth** — `ANTS_VERSION` propagates everywhere; never hardcode
 versions in `.cpp` / `.h`. Every bump touches `CMakeLists.txt`,
 `CHANGELOG.md` (new dated Keep-a-Changelog section), `README.md`
 ("Current version"); use `/bump` (its `.claude/bump.json` covers the
-packaging files). Completed `ROADMAP.md` items migrate to CHANGELOG.
+packaging files). Every cycle also **re-checks README.md's prose, not just
+its version banner** — a `bump.json` todo owns the criteria; update it only
+when a user-visible claim has actually drifted (the tool count is the one
+nothing else verifies). Completed `ROADMAP.md` items migrate to CHANGELOG.
 Update `PLUGINS.md` in the same commit when the `ants.*` Lua surface
 changes.
 

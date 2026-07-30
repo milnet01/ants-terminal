@@ -5,8 +5,11 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "debtsweepengine.h"   // ANTS-3707 — detectorsByCategory()
 
+#include <set>
 #include <string>
+#include <vector>
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -22,6 +25,9 @@
 #endif
 #ifndef SRC_MCPPROJECTION_CPP_PATH
 #error "SRC_MCPPROJECTION_CPP_PATH compile definition required"
+#endif
+#ifndef SRC_DEBTSWEEPENGINE_CPP_PATH
+#error "SRC_DEBTSWEEPENGINE_CPP_PATH compile definition required"
 #endif
 
 namespace {
@@ -163,4 +169,62 @@ TEST(McpDebtSweepTools, Ants3346DeferTriageGate) {
         << "cmdDebtSweepDefer missing needs_triage refusal (ANTS-3346)";
     EXPECT_NE(rc.find("evaluateTriageGate"), std::string::npos)
         << "cmdDebtSweepDefer does not call evaluateTriageGate (ANTS-3346)";
+}
+
+// ─────────────────────────────────────────── ANTS-3707 ──
+// DOOM Ants and Fin Break independently read `by_category {doc_drift:0,
+// packaging_drift:0}` as "those dimensions are clean", then found real
+// defects by hand in exactly those categories. The count was never wrong;
+// it had no denominator. detectorsByCategory() supplies it — and this test
+// is what stops that map drifting away from the detectors it describes.
+TEST(McpDebtSweepTools, Ants3707DetectorsByCategoryMatchesImplementation) {
+    const std::string src = ants_test::slurpFile(SRC_DEBTSWEEPENGINE_CPP_PATH);
+    ASSERT_FALSE(src.empty());
+
+    // Every `fnd.detectorId = QStringLiteral("x")` in the engine must appear
+    // in the published map, or a caller reads a count whose denominator
+    // silently grew.
+    std::vector<std::string> found;
+    const std::string needle = "detectorId";
+    for (size_t i = src.find(needle); i != std::string::npos;
+         i = src.find(needle, i + 1)) {
+        const size_t eq = src.find('=', i);
+        if (eq == std::string::npos || eq > i + 24) continue;   // skip uses
+        const size_t q1 = src.find('"', eq);
+        if (q1 == std::string::npos || q1 > eq + 32) continue;
+        const size_t q2 = src.find('"', q1 + 1);
+        if (q2 == std::string::npos) continue;
+        found.push_back(src.substr(q1 + 1, q2 - q1 - 1));
+    }
+    ASSERT_FALSE(found.empty()) << "scrape found no detectorId assignments";
+
+    std::set<std::string> published;
+    for (const QStringList &ids : DebtSweepEngine::detectorsByCategory())
+        for (const QString &id : ids) published.insert(id.toStdString());
+
+    for (const std::string &id : found)
+        EXPECT_EQ(published.count(id), 1u)
+            << "detector '" << id << "' is assigned in debtsweepengine.cpp "
+               "but missing from detectorsByCategory() — a by_category count "
+               "would be reported against a stale denominator";
+
+    // Bidirectional, so the check cannot pass vacuously: a scrape that
+    // silently matched only a couple of assignments would satisfy the loop
+    // above while proving nothing. Every PUBLISHED id must also be findable
+    // in the engine, which additionally catches a map entry for a detector
+    // that no longer exists.
+    const std::set<std::string> foundSet(found.begin(), found.end());
+    EXPECT_EQ(foundSet.size(), published.size())
+        << "scrape saw " << foundSet.size() << " distinct detector ids but the "
+           "map publishes " << published.size();
+    for (const std::string &id : published)
+        EXPECT_EQ(foundSet.count(id), 1u)
+            << "detectorsByCategory() lists '" << id
+            << "' but no detector assigns it";
+
+    // And the asymmetry the feedback was about is real, not incidental:
+    // a caller must be able to see that one category rests on one heuristic.
+    const auto &m = DebtSweepEngine::detectorsByCategory();
+    EXPECT_EQ(m.value(QStringLiteral("packaging_drift")).size(), 1);
+    EXPECT_GT(m.value(QStringLiteral("code_drift")).size(), 1);
 }

@@ -52,6 +52,16 @@ for security-relevant changes.
   one that would have left out the shell-integration scripts entirely. All
   six are fixed.
 
+### Changed
+
+- **`debt_sweep_scan` now shows how thinly each category is checked** (ANTS-3707)
+  A zero next to a category used to read as "this area is clean". It really
+  meant "the checks we have did not fire" — and some categories rest on a
+  single check while others rest on seven. The result now lists the checks
+  behind every count, so a zero can be weighed properly. Reported
+  independently by the DOOM Ants and Fin Break sessions, both of which read a
+  zero as an all-clear and then found real problems by hand.
+
 ### Fixed
 
 - **`roadmap_query mode:"bundles"` now flags plain-prose gates** (ANTS-3389)

@@ -20006,12 +20006,30 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
     if (opt.includeDocDrift)       detectorsRun.append(QStringLiteral("doc_drift"));
     if (opt.includePackagingDrift) detectorsRun.append(QStringLiteral("packaging_drift"));
     env["detectors_run"] = detectorsRun;
+    // ANTS-3707 (DOOM Ants + Fin Break, independently) — `detectors_run`
+    // names the categories that ran but not how thinly each is covered, so
+    // three zeros beside "all four ran" read as "those dimensions are clean".
+    // Both projects then found real defects by hand in exactly those
+    // categories. Emit the denominator: the detector_ids behind each count.
+    // code_drift has seven; packaging_drift has one.
+    QJsonObject detectorsBy;
+    for (auto it = DebtSweepEngine::detectorsByCategory().constBegin();
+         it != DebtSweepEngine::detectorsByCategory().constEnd(); ++it) {
+        if (!detectorsRun.contains(QJsonValue(it.key()))) continue;
+        detectorsBy[it.key()] = QJsonArray::fromStringList(it.value());
+    }
+    env["detectors_by_category"] = detectorsBy;
     env["scope_note"] = QStringLiteral(
         "Marker/lockstep heuristics only (TODO-FIXME age, version lockstep, "
         "bounded dead-code / duplicate-include). Not a judgment audit: "
         "assigned-but-never-read locals, stale prose, and action pins below "
         "latest-major are out of scope. total_findings:0 means \"no marker "
-        "hits\", not \"no debt\" — a judgment sweep is still required.");
+        "hits\", not \"no debt\" — a judgment sweep is still required. "
+        "Read every by_category count against detectors_by_category, which "
+        "lists the detector_ids behind it: the categories are NOT evenly "
+        "covered (code_drift has 7 heuristics, packaging_drift has 1), so a "
+        "0 in a thin category is a much weaker signal than a 0 in a thick "
+        "one.");
     // Resolve since for response transparency.
     QString sinceRes = opt.sinceRef;
     if (sinceRes.isEmpty()) {
