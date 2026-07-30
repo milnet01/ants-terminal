@@ -23466,6 +23466,27 @@ against current source before filing.
   Kind: ux.
   Source: user-request-2026-07-30 (raised during the ANTS-3753 store work).
 
+- 📋 [ANTS-3763] **Three pre-existing doc-lint findings in older specs, surfaced by an unrelated run.**
+  Found by a `doc_integrity` run over `docs/specs/` that was scoped to a
+  different document. Not caused by that work, and left unfixed so the
+  run stayed in its lane — filed rather than dropped.
+
+  - `docs/specs/ANTS-1870.md` — six `toc_gap` findings: the hand-written
+    Table of Contents omits every H2 from "3. Invariants" onward
+    (sections 3, 4, 5, 6, 7 and the loop log).
+  - `docs/specs/ANTS-1894.md:851` — `broken_link`: links to
+    `docs/specs/ANTS-1894.md`, i.e. itself by full path from inside
+    `docs/specs/`, which does not resolve.
+  - `docs/specs/ANTS-3636.md:505` — `heading_sequence`: section 2.4
+    skips 2.3.
+
+  All three are mechanical and deterministic — `doc_integrity` names the
+  file and line for each, so the fix needs no judgement. Worth doing as a
+  batch rather than one at a time.
+  **Layman:** Three small documentation faults in old spec files, noticed while checking a different one.
+  Kind: doc-fix.
+  Source: doc_integrity sweep during ANTS-3756 cold-eyes loop 5, 2026-07-30.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
