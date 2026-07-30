@@ -2209,6 +2209,9 @@ if(ANTS_TESTS)
                 # bundles to bound build-time RAM.
                 tests/features/roadmap_store_identity/test_roadmap_store_identity.cpp
                 tests/features/roadmap_store_schema/test_roadmap_store_schema.cpp
+                # INV-15 forks two openers; the fork lives INSIDE the bundle,
+                # so no separate target is needed for process isolation.
+                tests/features/roadmap_store_concurrency/test_roadmap_store_concurrency.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"

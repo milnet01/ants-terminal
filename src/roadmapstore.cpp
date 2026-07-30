@@ -4,8 +4,10 @@
 #include "secureio.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QThread>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStandardPaths>
@@ -71,21 +73,58 @@ bool RoadmapStore::applyPragmas(QString *error) {
     // Applied on EVERY connection at open, not once at creation.
     // foreign_keys is per-connection and defaults OFF, so without it every
     // REFERENCES in the schema is decorative.
-    const char *pragmas[] = {
-        "PRAGMA journal_mode = WAL",   // persistent; re-asserting is harmless
-        "PRAGMA foreign_keys = ON",    // per-connection; OFF by default
-        "PRAGMA synchronous  = FULL",  // primary store, not a cache
-        "PRAGMA busy_timeout = 5000",  // ms; matches ConfigWriteLock's deadline
+    // busy_timeout goes first so nothing that can block runs before the
+    // deadline is set. It restates rather than establishes it: Qt's QSQLITE
+    // plugin already calls sqlite3_busy_timeout with a 5000 ms default of its
+    // own (the QSQLITE_BUSY_TIMEOUT connect option) — measured, by dropping
+    // this line and reading the pragma back. It stays because a durability
+    // contract should not rest on an undocumented driver default a Qt upgrade
+    // can change underneath it.
+    const QString pragmas[] = {
+        QStringLiteral("PRAGMA busy_timeout = %1").arg(kBusyTimeoutMs),
+        QStringLiteral("PRAGMA foreign_keys = ON"),   // per-connection; OFF by default
+        QStringLiteral("PRAGMA synchronous  = FULL"), // primary store, not a cache
     };
-    for (const char *p : pragmas) {
+    for (const QString &p : pragmas) {
         QSqlQuery q(m_db);
-        if (!q.exec(QString::fromLatin1(p))) {
+        if (!q.exec(p)) {
             if (error)
-                *error = lastErr(q);
+                *error = lastErr(q) + QStringLiteral(" [") + p + QStringLiteral("]");
             return false;
         }
     }
-    return true;
+    return enableWal(error);
+}
+
+bool RoadmapStore::enableWal(QString *error) {
+    // The one statement busy_timeout does NOT cover. Switching to WAL takes an
+    // EXCLUSIVE lock, and SQLite acquires it below the busy handler, so a
+    // second instance opening the same store gets an immediate SQLITE_BUSY no
+    // matter what the deadline says — verified, not reasoned: INV-15's forked
+    // openers failed here on 18 of 25 runs with "database is locked" while
+    // busy_timeout was already 5000. The retry is the busy handler SQLite does
+    // not run, held to the SAME deadline so there is no second timeout
+    // constant. A store already in WAL needs no switch and exits on the first
+    // pass; the persistent mode makes that the common case.
+    QElapsedTimer clock;
+    clock.start();
+    QString last;
+    for (;;) {
+        QSqlQuery q(m_db);
+        if (q.exec(QStringLiteral("PRAGMA journal_mode = WAL")) && q.next() &&
+            q.value(0).toString().compare(QLatin1String("wal"), Qt::CaseInsensitive) == 0)
+            return true;
+        // A successful exec reporting a mode other than WAL is a failure too:
+        // SQLite answers with the mode still in force, not with an error.
+        last = q.lastError().text();
+        if (clock.elapsed() >= kBusyTimeoutMs)
+            break;
+        QThread::msleep(10);
+    }
+    if (error)
+        *error = last + QStringLiteral(" [PRAGMA journal_mode = WAL, after %1 ms]")
+                            .arg(kBusyTimeoutMs);
+    return false;
 }
 
 bool RoadmapStore::open(QString *error) {
@@ -287,7 +326,12 @@ bool RoadmapStore::createSchema(QString *error) {
         exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
         return false;
     }
-    return exec(m_db, QStringLiteral("COMMIT"), error);
+    if (!exec(m_db, QStringLiteral("COMMIT"), error))
+        return false;
+    // INV-15 — this connection is the creator. Only reachable through the
+    // version == 0 branch, so exactly one racing opener can ever set it.
+    m_createdSchema = true;
+    return true;
 }
 
 std::optional<qint64> RoadmapStore::registerProject(const QString &root,

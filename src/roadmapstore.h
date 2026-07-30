@@ -23,6 +23,11 @@ public:
     // record carries the same number.
     static constexpr int kSchemaVersion = 1;
 
+    // INV-16 — the write deadline, in ms, matching ConfigWriteLock's rather
+    // than introducing a second timeout constant. One number covers both the
+    // connection pragma and enableWal()'s own retry.
+    static constexpr int kBusyTimeoutMs = 5000;
+
     explicit RoadmapStore(QString dbPath = QString(),
                           qint64 historyCapBytes = kDefaultHistoryCapBytes);
     ~RoadmapStore();
@@ -38,6 +43,13 @@ public:
 
     bool open(QString *error = nullptr);
     bool isOpen() const { return m_db.isOpen(); }
+
+    // INV-15 — did THIS open create the schema? Two processes opening a store
+    // that does not exist must produce exactly one creator, and after the fact
+    // the winner and the loser are otherwise indistinguishable: both end with
+    // user_version = 1 and one set of tables. Without this the CREATE TABLE IF
+    // NOT EXISTS design the invariant forbids passes its own test.
+    bool createdSchema() const { return m_createdSchema; }
     QString path() const { return m_path; }
     QSqlDatabase &db() { return m_db; }
 
@@ -108,10 +120,12 @@ public:
 
 private:
     bool applyPragmas(QString *error);
+    bool enableWal(QString *error);
     bool createSchema(QString *error);
 
     QString m_path;
     QString m_connName;
     QSqlDatabase m_db;
     qint64 m_historyCap;
+    bool m_createdSchema = false;
 };
