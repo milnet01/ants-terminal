@@ -383,7 +383,7 @@ SSH key registered there.
   (1) This bullet's guess was wrong: it is not a prjconf line.
   `home:milnet:ants-terminal` has no prjconf at all, and neither Factory nor
   either sibling project sets `Debuginfo:` there. What Factory sets is
-  `&lt;debuginfo&gt;&lt;enable/&gt;&lt;/debuginfo&gt;` in the project META. Applied, and written
+  `<debuginfo><enable/></debuginfo>` in the project META. Applied, and written
   into packaging/obs/obs-setup.sh so re-running it keeps the flag.
   /usr/bin/ants-terminal now reports `stripped`, with -debuginfo and
   -debugsource built beside the main package.
@@ -398,7 +398,7 @@ SSH key registered there.
   matches an unversioned Requires against `(\S+)-(branding|theme)` using
   re.match, which is unanchored at the end and whose `\S+` is greedy, so
   `hicolor-icon-theme` parses as "hicolor-icon" + "-theme". The form it
-  demands, `Requires: hicolor-icon-theme = &lt;version&gt;`, would be worse than
+  demands, `Requires: hicolor-icon-theme = <version>`, would be worse than
   what we ship: pinning an icon theme to an exact version breaks on the
   theme's next update. Verified against shipped packages as this bullet
   asked — libgtk-3-0, libgtk-4-1, ModemManager and feh all carry the
@@ -429,7 +429,7 @@ SSH key registered there.
   planned work, and it is on GitHub for anyone who does.
 
   Worth checking the metainfo too. 327 KB of AppStream XML is large enough
-  to suggest every historical `&lt;release&gt;` block is being carried; most
+  to suggest every historical `<release>` block is being carried; most
   projects keep only recent ones.
 
   Not urgent — it costs disk, not correctness — but it is the single
@@ -3477,7 +3477,7 @@ minor tag (next: pre-0.8.0).
   broke `appstreamcli validate`.** CI's "Validate AppStream metainfo"
   step has been red on every commit since the 0.7.55 release
   (`packaging/linux/org.ants.Terminal.metainfo.xml:116` —
-  `Now returns const &.`). Fix: escape as `&amp;`. Other `&` in the
+  `Now returns const &.`). Fix: escape as `&`. Other `&` in the
   file are already correctly escaped. Same form not present in
   `CHANGELOG.md` or `packaging/debian/changelog` (those aren't
   XML and don't pass through validators). Root cause: the 0.7.55
@@ -8946,7 +8946,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: auditengine.
   Source: in-session-2026-05-18 Bundle G observation.
 
-- ✅ [ANTS-1729] **roadmap_query mode:section_index needs an active-only filter / pagination — busts its own &lt;5 KB budget on many-section roadmaps.**
+- ✅ [ANTS-1729] **roadmap_query mode:section_index needs an active-only filter / pagination — busts its own <5 KB budget on many-section roadmaps.**
   The section_index mode's doc claims "response < 5 KB on a 500-bullet roadmap", but the budget is bullet-count-based: this ROADMAP has ~150 sections × ~200 B each ⇒ a ~10 K+ token response regardless of bullet count. Add either (a) an `active_only:true` arg that drops sections whose active_count==0 (most are shipped/archive — would cut this response ~60%), or (b) offset/limit pagination on sections[] mirroring the bullets[] path (ANTS-1436). Cheap, and directly on-theme for the token-reduction focus. Workaround today: `fields:["sections"]` trims the envelope but not the per-section payload.
   **Layman:** The tool that lists the roadmap's section headings (so I can find where to file a new item) is supposed to be small, but on this big roadmap it dumps ~150 sections and burns a lot of tokens. Add a way to ask for only the active sections, or page through them.
   Kind: perf.
@@ -9522,7 +9522,7 @@ fixes don't address. Roadmapped here as their own design tasks.
 
   Two options, cheapest first: (a) no code — § 1e notes that a doc
   documenting the grammar self-reports, and the reviewer reads the paths;
-  (b) a region marker (`&lt;!-- doc-citations: examples --&gt;`) the scanner
+  (b) a region marker (`<!-- doc-citations: examples -->`) the scanner
   honours, which is an explicit opt-out rather than a placeholder-name
   heuristic — never guess that `foo.cpp` means "example", the corpus has
   real files with generic names.
@@ -17045,7 +17045,7 @@ template / mutate this state atomically" → movable. If it's
   
   3. Precompiled headers (PCH) for the Qt6 + std prelude. CMake target_precompile_headers on the main app + every test target. One-time cost; every subsequent compile reuses the prebuilt header binary. Compounds with ccache for incremental builds.
   
-  Out of scope for the same spec but worth noting once shipped: documenting the cmake --build build --target ants-terminal pattern for app-only iteration, and the existing -DANTS_TESTS=OFF flag, in CLAUDE.md's "Build &amp; test" section so the patterns are discoverable.
+  Out of scope for the same spec but worth noting once shipped: documenting the cmake --build build --target ants-terminal pattern for app-only iteration, and the existing -DANTS_TESTS=OFF flag, in CLAUDE.md's "Build & test" section so the patterns are discoverable.
   
   File touches: CMakeLists.txt (option declarations + launcher wiring + unity opt-in + PCH), CMakePresets.json (add a "fast" preset bundling all three), CLAUDE.md (Build & test section), README.md (Quick start). Estimated effort: 1-2 h on a test branch with verification across the workstation + debug presets.
   Layman: Right now, building Ants from scratch hammers RAM (each compile of a Qt-using file needs about 600 MB) and recompiles even files that didn't change. Three low-risk fixes: a small "remember what we built last time" cache so unchanged files get reused (huge speedup for incremental builds); an opt-in "fold many files into one bigger compile" mode that drops peak RAM by about 40 percent and shortens wall time; and a "prebuild the Qt headers once" trick that compounds with the cache. All gated behind off-by-default flags so today's behaviour stays unchanged for anyone who doesn't opt in.
@@ -22534,12 +22534,12 @@ against current source before filing.
   `definitions_count:0`, `files_scanned:826`, `truncated:false` — while
   the symbol is DECLARED at `src/debtsweepengine.h:208` and DEFINED at
   `src/debtsweepengine.cpp:1080`, both as
-  `const QMap&lt;QString, QStringList&gt; &amp;detectorsByCategory()`.
+  `const QMap<QString, QStringList> &detectorsByCategory()`.
   A follow-up `workspace_search` found both in one call.
 
   Suspected cause: the C++ definition regex cannot span a return type
   that carries BOTH a template argument list with a comma and a trailing
-  `&amp;`. Same family as ANTS-3738 (the regexes match a shape narrower
+  `&`. Same family as ANTS-3738 (the regexes match a shape narrower
   than C++ permits), different trigger — that one is a trailing comment,
   this one is the return type.
 
@@ -22549,15 +22549,274 @@ against current source before filing.
   session only caught it because a ROADMAP bullet asserted the function
   existed.
 
-  Fix: widen the definition regex to balance `&lt;&gt;` in the return type, or
+  Fix: widen the definition regex to balance `<>` in the return type, or
   fall back to the file outline (which resolves the symbol correctly —
   `file_outline` on debtsweepengine.h lists it) when the regex pass comes
   back empty. Regression: a fixture with
-  `const QMap&lt;QString, QStringList&gt; &amp;f()`, plus the pointer and
-  `std::pair&lt;int, int&gt;` variants.
+  `const QMap<QString, QStringList> &f()`, plus the pointer and
+  `std::pair<int, int>` variants.
   **Layman:** The "where is this defined?" tool draws a blank on some functions, which reads exactly like "it does not exist".
   Kind: fix.
   Source: in-session-2026-07-30 (hit while implementing ANTS-3743).
+
+- 📋 [ANTS-3747] **The two debt-sweep detectors ANTS-3743 did NOT ship — doc_drift link/status resolution, and the "reserved field is assigned" comment check.**
+  Filed so ANTS-3743's ✅ is honest. It shipped detectors (1) and (2) —
+  the pair its own body named as strongest — and flipping it to shipped
+  with two of four undone would make the status over-claim exactly the
+  way a split parent does (the hazard this same session filed as
+  ANTS-3748). ANTS-3743's resolution note says which two landed; this
+  bullet is where the other two live.
+
+  (3) doc_drift: resolve relative markdown links, and diff a spec's
+  `Status:` line against the roadmap status of the same id. Note the
+  overlap to settle first — `DocIntegrity::check` ALREADY emits
+  `broken_link` for a `[t](relpath)` whose target is missing, and
+  doc_integrity is a separate verb the cold-eyes Phase-1e feed consumes.
+  So the link half may be a routing question (surface doc_integrity's
+  findings under debt_sweep's doc_drift) rather than a new detector, and
+  deciding that is the first step, not an implementation detail. The
+  spec-Status-vs-roadmap-status half has no existing home and is the
+  genuinely new work.
+
+  (4) A comment asserting a struct field or push-constant lane is
+  "reserved" / "unused" / "= 0" while that field is assigned a non-zero
+  value elsewhere. DOOM Ants has been bitten twice. ANTS-3743 called this
+  the most valuable per hit and the hardest to make precise, which is why
+  it was not rushed into that pass: the FP surface is the assignment
+  search (a field name that is a common word, an assignment in dead code,
+  a comment that is describing a DIFFERENT field in the same struct). It
+  needs its own sizing against the existing ~94%-FP baseline, and it is
+  the one of the four that most rewards being got right.
+
+  Both must be added to `DebtSweepEngine::detectorsByCategory()`, which
+  the ANTS-3707 scrape test enforces bidirectionally.
+  **Layman:** Two of the four proposed debt-sweep checks are still to build; the harder, more valuable pair.
+  Kind: enhancement.
+  Source: DOOM-Ants + finbreak feedback 2026-07-28 (ANTS-3743 detectors 3 and 4).
+
+- 📋 [ANTS-3748] **Splitting a ROADMAP bullet silently makes the parent's ✅ over-claim in every feedback file that cites it.**
+  Hit TWICE in one session, which is the escalation trigger.
+  ANTS-3718 was split into (a) input_hash and (b) the section index
+  (ANTS-3740); ANTS-3707 was split into the envelope half and the
+  detector half (ANTS-3743). In both cases the contributor's feedback
+  file carried only the PARENT id in its `**Proposed ID:**` slot, so the
+  moment the parent flipped ✅ the reporting session's documented status
+  surface said the whole request was delivered — while the half they
+  actually asked about was still open.
+
+  Not the same defect as ANTS-3744, which is about a fully-condensed file
+  having no ids to resolve at all. This one has an id, resolves it
+  correctly, and the answer is wrong because the id no longer covers the
+  finding.
+
+  Both instances were re-pointed by hand this session (assign_id with
+  both ids + a note explaining the split). That is the workaround, not
+  the fix.
+
+  Shape: the split happens in `roadmap_log`, which knows the parent id
+  and the new id. Either (a) `op:append` gains an optional `splits_from`
+  that records the parentage, and `feedback_query` resolves a cited id to
+  its parent AND its children — so a citation of 3707 reports 3743's
+  status too; or (b) `roadmap_log` refuses to flip a parent to shipped
+  while a bullet declaring it as `splits_from` is still open, which is
+  the stronger guard and catches the ROADMAP-side over-claim as well
+  (this session had to file ANTS-3747 by hand for exactly that reason —
+  ANTS-3743 went ✅ with two of its four detectors undone).
+
+  (a) is the reporting fix and (b) is the correctness fix; they are
+  independent and (b) is the one that stops a wrong ✅ existing in the
+  first place.
+  **Layman:** When we split a reported issue into two tickets, the reporting project only ever sees the first one — so "done" can mean half-done.
+  Kind: fix.
+  Source: in-session-2026-07-30 (hit twice in one triage pass).
+
+- 📋 [ANTS-3749] **ROADMAP.md is 2.8 MB / 30.8k lines — 19x the size at which the project's own standard says to rotate closed minors into archives.**
+  Measured 2026-07-30, not estimated. ROADMAP.md is 30,792 lines /
+  2.8 MB. `roadmap-format.md` § 3.9 says rotation starts "when a
+  ROADMAP.md grows past ~150 KiB", so the file is ~19x its own trigger,
+  and `docs/roadmap/` does not exist — the rotation described in § 3.9
+  has never been run once.
+
+  Where the bulk is: 1,310 ✅ bullets against 213 active (210 📋, 1 🚧,
+  plus 62 💭 considered). 20,275 lines sit in the BODIES of shipped
+  bullets — roughly two thirds of the file is write-ups of completed
+  work. Those bodies are where this session's own resolution notes go, so
+  the growth rate is a function of how much gets shipped, not of how much
+  is outstanding.
+
+  Why it costs real tokens rather than just looking untidy: every
+  `session_orient` resolves this file, `roadmap_query` parses it, the
+  100 ms-TTL bullet cache (ANTS-1117) holds it, and it is one of the
+  cold-eyes cross-reference LOGS that ANTS-3526 had to route to
+  search-don't-read precisely because whole-file reads of it were the
+  measured #1 token sink. The 150 KiB trigger in § 3.9 exists for that
+  reason.
+
+  The rotation is specified in full and is mechanical: closed `##
+  <major>.<minor>.0 — …` release blocks move byte-identical to
+  `docs/roadmap/<major>.<minor>.md`, per-minor, named `^[0-9]+\.[0-9]+\.md$`.
+  RoadmapDialog reads archives on demand and roadmap-query deliberately
+  does not, so the read path is already built for this. The counter is
+  safe across it — `RoadmapFoldIn::corpusHighWater` floors every
+  allocation to the highest id across ROADMAP + CHANGELOG +
+  `docs/roadmap/*.md`, which the standard states is exactly so a rotated
+  id can never be reissued.
+
+  CORRECTION (measured after filing, 2026-07-30): rotating closed minors
+  as § 3.9 literally specifies reclaims almost NOTHING — 8 release blocks
+  have zero open items and they total 80 KiB, 3% of the file. The bulk is
+  in two blocks that are still nominally OPEN: `## 0.7.65` is 1,496 KiB
+  (53% of the whole file, 89 open / 723 shipped) and `## 0.7.92` is
+  716 KiB (25%, 65 open / 415 shipped). Both are labelled "target:
+  2026-05" and are months past it. So § 3.9's block-closure trigger does
+  not fit the shape this file actually has: a block stays open forever on
+  a tail of stragglers while hundreds of shipped write-ups accumulate
+  underneath it, and the rotation never fires. Parse speed is NOT the
+  problem and must not be used to justify a redesign — measured at 35 ms
+  to read and fully regex-parse all 1,329 bullets (18 ms read + 13 ms
+  parse). The cost is TOKENS: any whole-file read is ~2.8 MB.
+  The fix therefore has a format half, tracked as ANTS-3751: rotate by
+  BULLET STATUS, not by block closure. Do not start the migration before
+  that lands, or the second pass has to undo the first.
+  Candidates under the current rule: the 8 zero-open blocks. Do it as
+  its own commit per minor so each move is reviewable as a pure move, and
+  verify no id is lost by diffing the id set before and after.
+  **Layman:** Our to-do file has grown to 30,000 lines because finished work never gets moved out, even though our own rule says to move it.
+  Kind: chore.
+  Source: user-question-2026-07-30.
+
+- 📋 [ANTS-3751] **roadmap-format.md § 3.9 should rotate by BULLET STATUS, not by block closure — the current trigger cannot fire on the blocks holding 79% of the file.**
+  The prerequisite for ANTS-3749. § 3.9 rotates a `## <major>.<minor>.0`
+  release block once that block is CLOSED. Measured 2026-07-30, that
+  trigger cannot reach the problem: the 8 blocks with zero open items
+  total 80 KiB (3%), while `## 0.7.65` (1,496 KiB, 53%, 89 open / 723
+  shipped) and `## 0.7.92` (716 KiB, 25%, 65 open / 415 shipped) are both
+  still open on a tail of stragglers months past their stated target. A
+  block-scoped rule waits on its slowest bullet, so in practice it never
+  fires and 20,275 lines of shipped write-up accumulate underneath.
+
+  Proposed rule: a bullet is rotatable on its OWN status. Once ✅ and past
+  a grace window, its write-up moves to the archive and a one-line stub
+  stays. Open siblings are untouched, so a long-lived block sheds weight
+  continuously instead of all at once. This is the same shape as
+  `feedback_log op:compact_resolved`, which already does exactly this per
+  FINDING rather than per file, and which this session used — so the
+  precedent and the argument for it are both in the tree.
+
+  Open questions to settle in the spec, not here:
+  - Archive destination. § 3.9's `docs/roadmap/<major>.<minor>.md` is
+    per-minor and a bullet knows its block, so the path still derives.
+    But CLAUDE.md already says completed items "migrate to CHANGELOG",
+    and CHANGELOG.md is itself 1.1 MB — two archives with unclear
+    division is how this got confusing. Pick one and say why.
+  - Whether the stub keeps the resolution note. The notes are the
+    expensive part (66% of the file) and also the part a later session
+    most often needs. A stub plus an archive pointer is probably right.
+  - The counter is already safe: `RoadmapFoldIn::corpusHighWater` floors
+    every allocation to the highest id across ROADMAP + CHANGELOG +
+    `docs/roadmap/*.md`, which the standard says exists for this.
+  - `roadmap_query` deliberately does not read archives and RoadmapDialog
+    reads them on demand, so a rotated bullet becomes invisible to
+    status lookups. That is the point, but it interacts with ANTS-3748
+    (a feedback file citing a rotated id) and must be decided together.
+
+  Needs /write-spec + the rule-14 gate: it changes a standard AND the
+  read contract of every verb that resolves a bullet id. Explicitly NOT a
+  redesign of the roadmap format — parse cost is 35 ms for 1,329 bullets,
+  so nothing about the on-disk shape needs rethinking. Only the rotation
+  trigger is wrong.
+  **Layman:** Finished items only get filed away when their whole release section is finished, so two never-quite-finished sections have swallowed most of the file.
+  Kind: doc.
+  Source: user-question-2026-07-30 (why is ROADMAP.md 30k lines).
+
+- 📋 [ANTS-3752] **roadmap_log op:amend_body writes a multi-line new_text flush-left, detaching the rest of the bullet body.**
+  VERIFIED by doing it, then reading the bytes back. A single-line
+  `new_text` is fine. A `new_text` containing newlines has its FIRST line
+  land correctly (it replaces text inside an already-indented line) and
+  every SUBSEQUENT line written at column 0.
+
+  roadmap-format.md § 3.5 requires body continuation lines to carry a
+  2-space indent, so those flush-left lines stop being body. Measured
+  consequence, not theory: 16 lines detached from ANTS-3749, and the very
+  next `op:amend_body` against the same bullet then refused
+  `body_match_not_found` with the hint "occurs in ROADMAP.md but outside
+  the located bullet's body block" — the verb could no longer see text it
+  had itself just written. `roadmap_query include_body` also stopped at
+  the break. Repaired by hand with a re-indent pass.
+
+  The failure is silent at write time: the envelope returned
+  `{ok:true, amended:true}`. The next reader is what discovers it, and if
+  that reader is a later session rather than the same one, the bullet is
+  simply half-truncated with no signal.
+
+  Fix: apply the same continuation-indent normalisation `op:append`
+  already does for `body` — it hard-wraps and indents correctly, which is
+  why appending a long body works and amending one does not. The two
+  paths write the same structure and should share the renderer. Refusing a
+  multi-line `new_text` would also be honest, but the operation is
+  genuinely useful (this session wanted it three times).
+
+  Regression: amend a bullet with a 3-line `new_text`, then assert
+  `roadmap_query include_body` returns the whole body AND that a second
+  `amend_body` can still locate text inside the amended region.
+  **Layman:** A tool that edits a to-do item's notes breaks the item in two when the replacement spans more than one line.
+  Kind: fix.
+  Source: in-session-2026-07-30 (hit while correcting ANTS-3749).
+
+- 💭 [ANTS-3753] **Shared SQLite roadmap index across every project the terminal opens — one table per project, re-indexable and maintainable from any of them.**
+  User's proposal, verbatim intent: a SQLite DB available to every project
+  run from this terminal, one table per project to keep them separate, so
+  the DB can be maintained (re-indexed, and whatever else) from any
+  project. Needs /write-spec before any code.
+
+  RECOMMENDATION, to be vetoed rather than assumed: the DB is an INDEX,
+  and each project's ROADMAP.md stays the source of truth. Reasons, all
+  checked rather than recalled:
+  - ROADMAP.md is public-by-design and rendered on GitHub. A SQLite file
+    is a binary blob in git: no diff, no review in the Review Changes
+    dialog, and a merge conflict in it is unresolvable by hand. That is a
+    real loss with no offsetting gain, because -
+  - speed is NOT the problem. Measured 2026-07-30: 35 ms to read and
+    fully regex-parse all 1,329 bullets (18 ms + 13 ms). A DB cannot beat
+    a non-problem. What it CAN fix is the token cost, because a query
+    returns rows instead of a caller being able to slurp 2.8 MB - and that
+    it fixes just as well as an index.
+  - the pattern is already in the tree twice. codebase_index (ANTS-1637)
+    and docs_index (ANTS-2139) are both derived caches under
+    ~/.cache/ants-terminal, rebuilt on demand and served by a verb;
+    roadmap_query already caches parsed bullets (mtime + 100 ms TTL,
+    ANTS-1117). This is that cache promoted to SQLite and made
+    cross-project, not a new architecture.
+  - an index makes "maintain from any project" cheap and SAFE. Re-index
+    is a rebuild from the markdown, so a corrupt or stale DB is never
+    data loss - it is one command. If the DB were source of truth,
+    every maintenance operation would be a migration.
+
+  What it delivers that today's caches do not: cross-project queries (one
+  question over all ~15 projects, which no per-project JSON cache can
+  answer), a real query language instead of grep, and a single place to
+  run integrity checks - duplicate ids, a feedback file citing an id no
+  project owns, a spec Status disagreeing with its bullet.
+
+  Shape to spec: one DB at ${XDG_DATA_HOME}/ants-terminal/roadmap.sqlite;
+  one table per project as the user asked, keyed on the project's
+  canonical root; columns for id, status, headline, kind, lanes, section
+  slug, body, source file + line, mtime of the source. A `roadmap_index`
+  verb with ops query / refresh / verify, mirroring codebase_index's
+  shape so the contract is familiar. Writes still go through roadmap_log
+  to the markdown, which then dirties the row - never the reverse, or the
+  two disagree and the markdown loses.
+
+  SEPARABLE, and must not be conflated: this does NOT shrink ROADMAP.md.
+  A 2.8 MB markdown file with a database in front of it is still a 2.8 MB
+  markdown file, still slurped by anything that reads it directly, still
+  19x the § 3.9 rotation trigger. ANTS-3751 (rotate by bullet status) and
+  ANTS-3749 (run the rotation) are the size fix and are independent of
+  this. Doing the DB first would make the size problem invisible rather
+  than solved, which is the worse outcome of the two.
+  **Layman:** One shared database of every project's to-do items, so any project can query or repair the lot, while each project's ROADMAP.md stays the readable original.
+  Kind: feature.
+  Source: user-request-2026-07-30.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
@@ -23037,7 +23296,7 @@ shipped.
 
   Fix: a third assign_id disposition alongside ids/closure — e.g.
   `awaiting:"<question>"` rendering `**Proposed ID:** _(awaiting
-  reporter — &lt;question&gt;)_`. Teach closureRe()'s call-site in
+  reporter — <question>)_`. Teach closureRe()'s call-site in
   parse() to treat an `_(awaiting` value as UNFILLED so the finding
   stays in the delta, and have compact_resolved skip it (no id to gate
   on). Then the reporter sees their own finding, with the question
