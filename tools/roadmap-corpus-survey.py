@@ -62,17 +62,38 @@ def fenced(lines):
     return mask
 
 
+def roadmap_in(directory):
+    """The project's roadmap file, matched case-INSENSITIVELY.
+
+    RetroDB names its roadmap `roadmap.md`. An uppercase-only glob silently
+    excluded a 4,800-line project from the first survey, which then reported
+    a corpus figure and an "no project uses pass headings" claim that were
+    both wrong. Filename case is not a reason to be invisible.
+    """
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return None
+    for entry in sorted(entries):
+        if entry.lower() == "roadmap.md" and \
+                os.path.isfile(os.path.join(directory, entry)):
+            return os.path.join(directory, entry)
+    return None
+
+
 def find_roadmaps(roots):
     found = []
     for root in roots:
-        if os.path.isfile(os.path.join(root, "ROADMAP.md")):
-            found.append((os.path.basename(os.path.abspath(root)),
-                          os.path.join(root, "ROADMAP.md")))
+        own = roadmap_in(root)
+        if own:
+            found.append((os.path.basename(os.path.abspath(root)), own))
             continue
         for entry in sorted(os.listdir(root)):
-            path = os.path.join(root, entry, "ROADMAP.md")
-            if os.path.isfile(path):
-                found.append((entry, path))
+            path = os.path.join(root, entry)
+            if os.path.isdir(path):
+                hit = roadmap_in(path)
+                if hit:
+                    found.append((entry, hit))
     return found
 
 
@@ -101,6 +122,19 @@ def survey(path):
             c["fence_lines"] += 1
         if mask[i]:
             continue
+
+        # roadmap-format.md § 3.10.5: a third shape, where the item is a
+        # level-4 heading and the status is a free-text sub-bullet. It has no
+        # bullet and no status emoji, so every counter below is blind to it.
+        if re.match(r"^####\s+Pass\s+\d+\.\d+", line):
+            c["pass_heading_items"] += 1
+        st_line = re.match(r"^\s*-\s+\*\*Status\*\*\s*:\s*(.+?)\s*$", line)
+        if st_line:
+            c["pass_status_lines"] += 1
+            word = st_line.group(1).lower().lstrip("*").split()[0].strip(".,—-")
+            if word not in ("planned", "in-progress", "shipped", "considered",
+                            "dropped"):
+                c["pass_status_off_enum"] += 1
 
         if re.match(r"^\s*\|.*\|\s*$", line):
             if re.match(r"^\s*\|[\s:|-]+\|\s*$", line):
@@ -190,7 +224,14 @@ def main():
               f"{c['id_none']:>8d}{c['sub_bullets']:>8d}")
 
     n = total["items"]
-    print(f"\n{len(roadmaps)} projects, {n} items")
+    if total["pass_heading_items"]:
+        print(f"\npass-headings roadmaps (roadmap-format § 3.10.5)")
+        print(f"  `#### Pass N.M` items               {total['pass_heading_items']}")
+        print(f"  `- **Status**:` lines               {total['pass_status_lines']}")
+        print(f"  ...whose value is OUTSIDE the five-status enum  "
+              f"{total['pass_status_off_enum']}")
+
+    print(f"\n{len(roadmaps)} projects, {n} bullet-form + checkbox items")
     print(f"  with an ID matching roadmap-format § 3.5.1   {total['id_dashed']}")
     print(f"  with an ID that does NOT match that grammar  {total['id_off_grammar']}"
           f"   {dict(off_grammar)}")
