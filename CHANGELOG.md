@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Mageia 10 packages, and one less thing that can break a build** (ANTS-3731)
+  Ants Terminal now builds for Mageia 10 on the openSUSE Build Service. The version number stamped into the package is now worked out when the recipe is submitted rather than by a helper running inside the build machine — that helper was unavailable on Mageia and blocked it entirely. Removing it takes a dependency away from every distribution we build for, not just Mageia.
+
 - **openSUSE Leap 16.0 packages, and a distro-portable RPM spec** (ANTS-3727)
   The OBS repository now publishes for openSUSE Leap 16.0 alongside
   Tumbleweed, so Leap users can install and update through zypper like
@@ -38,6 +41,9 @@ for security-relevant changes.
   six are fixed.
 
 ### Fixed
+
+- **Project search is much faster on the first search after a build** (ANTS-3732)
+  The MCP `workspace_search` tool ran ripgrep with a single worker thread, which switched off its parallel directory walk and made every file read wait its turn. On a spinning disk that is the slowest possible order. A wide search over 31,500 files took 24.6 seconds; it now takes a fraction of a second, and ordinary searches no longer time out when a build has just filled the disk cache.
 
 - **Lua headers are found on distributions that do not use openSUSE's layout** (ANTS-3727)
   luaengine.cpp included &lt;lua5.4/lua.hpp&gt;, which names a directory only

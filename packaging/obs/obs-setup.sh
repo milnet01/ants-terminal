@@ -36,15 +36,16 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # status page straight away, without consuming build time — read that rather
 # than guessing, and add an arm for it.
 #
-# Mageia was tried and removed (ANTS-3727), and the reason is worth keeping so
-# nobody re-adds it and rediscovers it: our spec resolves there fine — the
-# blocker is _service. Its buildtime services must be installable in the target
-# repo, and openSUSE:Tools cannot build obs-service-set_version for Mageia at
-# all ("nothing provides python3-base", an openSUSE package name). tar and
-# recompress are available for Mageia; set_version is not, and _service needs it
-# to overwrite Version: from the pinned tag. That is an upstream gap, not
-# something this package can patch, so Mageia needs _service restructured to
-# drop the buildtime set_version before it is worth another attempt.
+# Mageia was tried and removed under ANTS-3727, then unblocked by ANTS-3731. The
+# history is worth keeping because the symptom pointed at the wrong file: our
+# spec resolved for Mageia fine, and the blocker was _service. Its buildtime
+# services must be installable in the TARGET repo, and openSUSE:Tools cannot
+# build obs-service-set_version for Mageia at all ("nothing provides
+# python3-base", an openSUSE package name) — an upstream gap this package could
+# not patch. ANTS-3731 removed the need instead: obs-submit.sh now stamps
+# Version: from the pinned tag at submit time, so set_version is gone from
+# _service and no target depends on it. tar and recompress do build for Mageia,
+# so the remaining two buildtime services are fine.
 #
 # Debian/Ubuntu are NOT just another line here either: OBS cannot build a .deb
 # from a .spec, it needs debian.control + debian.rules alongside it
@@ -83,6 +84,10 @@ cat > "$tmp/prj.xml" <<EOF
   </repository>
   <repository name="Fedora_44">
     <path project="Fedora:44" repository="standard"/>
+    <arch>x86_64</arch>
+  </repository>
+  <repository name="Mageia_10">
+    <path project="Mageia:10" repository="standard"/>
     <arch>x86_64</arch>
   </repository>
 </project>

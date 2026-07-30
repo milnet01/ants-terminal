@@ -6,8 +6,8 @@
 # script. Assumes obs-setup.sh has created the project + package once.
 #
 # There is deliberately NO `osc service manualrun` here: _service runs obs_scm
-# server-side and tar/recompress/set_version at build time, so committing
-# _service is enough to trigger a fresh source fetch. Nothing large is uploaded.
+# server-side and tar/recompress at build time, so committing _service is enough
+# to trigger a fresh source fetch. Nothing large is uploaded.
 #
 # NOTE the spec is NOT stored in packaging/obs/. It lives at
 # packaging/opensuse/ants-terminal.spec, which is the single source of truth
@@ -92,6 +92,47 @@ cp "$HERE/_service" "$CO/_service"
 cp "$SPEC" "$CO/ants-terminal.spec"
 cp "$LINTRC" "$CO/ants-terminal-rpmlintrc"
 [ -f "$HERE/ants-terminal.changes" ] && cp "$HERE/ants-terminal.changes" "$CO/"
+
+# ANTS-3731 — stamp Version: from the pinned tag, replacing _service's
+# set_version service, which used to do this inside the build VM.
+#
+# set_version ran at mode="buildtime", which makes obs-service-set_version a
+# BUILD DEPENDENCY of every job, in every target repository. openSUSE:Tools
+# cannot build that service for some targets at all (for Mageia its own status
+# is unresolvable, "nothing provides python3-base"), so a whole job went
+# unresolvable over a step that rewrites one line. Computing it here needs no
+# service in the target repo, and removes the dependency from every target
+# rather than just the one that noticed.
+#
+# The value must match what obs_scm derives, or Source0 names a tarball the tar
+# service never produced: _service's versionrewrite maps `v(.*)` to `\1`, so
+# stripping one leading `v` is that same transform.
+#
+# This is the ONE line of the committed spec that differs from the repo's, and
+# it is computed from the tag rather than maintained by hand — so the tag stays
+# the single source of truth, exactly as it was under set_version. Every other
+# line is copied verbatim, which is what stops an OBS-local fork drifting.
+[ -n "$REV" ] || {
+    echo "obs-submit: _service has no <revision>, so Version: cannot be stamped." >&2
+    exit 1
+}
+VERSION="${REV#v}"
+case "$VERSION" in
+    *-*)
+        echo "obs-submit: tag '$REV' gives RPM Version '$VERSION', which contains a" >&2
+        echo "            '-' and is not a legal rpm version. OBS tracks promoted" >&2
+        echo "            release tags only — pin one of those, not an RC tag." >&2
+        exit 1 ;;
+esac
+sed -i "s/^Version:[[:space:]].*/Version:        $VERSION/" "$CO/ants-terminal.spec"
+# Verify rather than trust: a sed that matched nothing is silent, and the
+# resulting build fails much later at source fetch with a 404 on Source0.
+grep -qx "Version:        $VERSION" "$CO/ants-terminal.spec" || {
+    echo "obs-submit: could not stamp Version: $VERSION into the copied spec." >&2
+    echo "            Does $SPEC still have a 'Version:' line?" >&2
+    exit 1
+}
+echo ">>> stamped Version: $VERSION (from tag $REV)"
 
 cd "$CO"
 osc -A "$API" add _service ants-terminal.spec ants-terminal-rpmlintrc ants-terminal.changes 2>/dev/null || true

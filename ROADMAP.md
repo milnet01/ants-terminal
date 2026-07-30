@@ -439,7 +439,7 @@ SSH key registered there.
   Kind: package.
   Source: in-session-2026-07-29 (measured while verifying ANTS-3729).
 
-- 📋 [ANTS-3731] **Drop _service's buildtime set_version so distros without it can build.**
+- ✅ [ANTS-3731] **Drop _service's buildtime set_version so distros without it can build.**
   Blocks Mageia today and will block any target whose repo lacks the
   service. _service runs tar / recompress / set_version at mode="buildtime",
   which makes each one a BUILD DEPENDENCY that must be installable in the
@@ -468,8 +468,39 @@ SSH key registered there.
   Kind: package.
   Lanes: packaging.
   Source: in-session-2026-07-30 (found while adding distros for ANTS-3727).
+  Resolved (2026-07-30): done as the item's "fix shape to evaluate"
+  described, and Mageia_10 is back in the target list.
 
-- 📋 [ANTS-3732] **workspace_search hard-kills at 5 s on a trivial repo-wide regex.**
+  obs-submit.sh now stamps `Version:` into the copied spec from the
+  tag _service pins (`${REV#v}` — the same transform _service's
+  versionrewrite applies), and `set_version` is gone from _service.
+  Guards added because the value is now load-bearing at submit time:
+  refuse an empty <revision>, refuse a tag yielding a `-` (an RC tag
+  is not a legal rpm Version), and verify the sed actually matched
+  rather than trusting it — a silent no-op would surface much later
+  as a 404 on Source0.
+
+  Verified the substitution end-to-end before submitting: the stamped
+  spec expands to Source0 `ants-terminal-0.7.101.tar.gz`, exactly the
+  tarball tar+recompress produce from .obsinfo.
+
+  Empirical check on the premise, which corrected a method error in
+  this item: build STATUS is the wrong probe. `obs-service-tar` reads
+  code="unknown" for Mageia AND for openSUSE_Factory / Fedora_44,
+  which demonstrably work — it is a subpackage of obs-service-obs_scm
+  and has no build record of its own. The binary list settles it:
+  `_repository` for Mageia_10 publishes obs-service-tar.rpm and
+  obs-service-recompress.rpm, and has NO set_version. So the item's
+  conclusion held (set_version alone is missing) but the evidence
+  behind it did not. Recipe documented in packaging/obs/README.md.
+
+  Benefit is not Mageia-specific: no target now depends on a
+  build-time service for the version, one less unresolvable-job
+  class everywhere.
+
+  Submitted as OBS revision 12; build outcome recorded below.
+
+- ✅ [ANTS-3732] **workspace_search hard-kills at 5 s on a trivial repo-wide regex.**
   Searching the pattern `lua5\.4/` (regex, no lane/glob) over the whole
   repo returned code:rg_failed, "rg exceeded 5 s wall budget, hard-killed".
   A plain `grep -rn` over src/ and tests/ answered instantly, so the cost is
@@ -492,6 +523,44 @@ SSH key registered there.
   Kind: perf.
   Lanes: mcp.
   Source: in-session-2026-07-30 (hit while working ANTS-3727).
+  Resolved (2026-07-30): the cause was `--threads 1`, not the large
+  docs. Correcting this item's own guesses, all three measured:
+
+  (a) The filed repro is not reproducible warm — the same search now
+  answers in 40 ms, and ROADMAP.md/CHANGELOG.md hold REAL matches for
+  it, so "exclude the giant logs by default" would have been a wrong
+  answer to a wrong diagnosis. rg itself scans the whole repo in
+  0.23 s.
+  (b) "Return partial results rather than nothing" was already built
+  (`if (hardKilled && matches.isEmpty())` — remotecontrol.cpp), so
+  that candidate was moot.
+  (c) The real defect: ANTS-1248 passed `--threads 1`, filed in its
+  threat table as a DoS mitigation. It is not one. `--max-columns`
+  caps per-line work and the wall budget caps total work; capping
+  threads bounds neither. What it removes is rg's parallel directory
+  walker, so every file open is serialised — and /mnt/Games is
+  `sdb`, ROTA=1, a spinning disk, where seek latency dominates.
+
+  Measured: a cold-cache scan of 31,508 files (respect_gitignore
+  false, which the schema advertises for build-dir audits) took
+  24.64 s single-threaded vs 0.09 s multi-threaded — 274x, and
+  unusable at ANY allowed timeout since the max is 30 s. Total CPU is
+  FLAT across thread counts (0.84 cpu-s at 1 thread, 0.82 at 12), so
+  single-threading was not even resource-polite: same CPU, machine
+  held 274x longer. That also explains the original 5 s kill on the
+  ordinary 1,633-file path — a concurrent build had churned the page
+  cache, and cold serialised seeks over scattered files exceed 5 s.
+
+  Fix: `kWorkspaceSearchThreads = 4` (was 1). 4 recovers ~94% of the
+  speedup (0.16 s vs 0.09 s at 12) and matches the project-wide
+  parallelism cap used for ctest, so a heavy desktop session cannot
+  thrash. Default timeout left at 5 s — with the real cause fixed it
+  has ample headroom, and raising it would have masked this.
+
+  The INV-9 test asserts the flag NAME only, so it stayed green.
+  Corrected the "DoS mitigation" claim in docs/specs/ANTS-1248.md and
+  ANTS-1452.md, and the value in tests/features/mcp_workspace_search/
+  spec.md row 9. Build clean; suite 3068/3068.
 
 ### P4 — Fedora COPR
 

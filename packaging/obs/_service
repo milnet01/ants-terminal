@@ -3,8 +3,8 @@
 
        obs_scm runs SERVER-SIDE (no mode attribute): the OBS servers have
        network, so they clone the pinned tag themselves and store a source
-       archive (.obscpio + .obsinfo). tar / recompress / set_version then run at
-       BUILD TIME inside the VM, off that archive.
+       archive (.obscpio + .obsinfo). tar / recompress then run at BUILD TIME
+       inside the VM, off that archive.
 
        Why buildtime and not mode="manual": `tar` does not exist as a
        server-side service — a plain server-side run fails with
@@ -14,19 +14,23 @@
        ~7.5 MB tarball on every release. mode="buildtime" needs neither: no
        large upload, and "Trigger Services" in the web UI is enough.
 
-       set_version is load-bearing, not cosmetic. ants-terminal.spec's Version:
-       field tracks CMakeLists.txt, which under the RC cadence always names the
-       NEXT (unreleased) version — so at any moment between /bump and the next
-       promote, the spec names a tag that does not exist yet and Source0 would
-       404. set_version overwrites it from the tag below, so the spec is never
-       hand-pinned and cannot drift.
+       There was a third buildtime service here, set_version (removed by
+       ANTS-3731). The job it did is still load-bearing: ants-terminal.spec's
+       Version: field tracks CMakeLists.txt, which under the RC cadence always
+       names the NEXT (unreleased) version, so between /bump and the next
+       promote the spec names a tag that does not exist and Source0 would 404.
+       obs-submit.sh now stamps Version: from the <revision> below when it
+       copies the spec — same single source of truth (the tag), computed at
+       submit time instead of in the VM.
 
        Caveat on mode="buildtime" (OBS user guide, ch. Source Services): a
        buildtime service package becomes a BUILD DEPENDENCY of the job and must
-       be available in the target repository. That is satisfied for
-       openSUSE_Tumbleweed; check it when adding a distro whose repo may not
-       carry obs-service-tar / -recompress / -set_version, because the symptom
-       is an unresolvable job rather than an obviously service-related error.
+       be available in the target repository. That is what forced the change —
+       openSUSE:Tools cannot build obs-service-set_version for Mageia at all,
+       so the whole job went unresolvable over one rewritten line. tar and
+       recompress remain because they have no such gap in the targets we build;
+       check the same thing when adding a distro, because the symptom is an
+       unresolvable job rather than an obviously service-related error.
 
        To release a new version: bump <revision> to the new tag, commit, and run
        packaging/obs/obs-submit.sh (or click Trigger Services). -->
@@ -40,10 +44,13 @@
     <param name="versionrewrite-replacement">\1</param>
     <param name="filename">ants-terminal</param>
   </service>
+  <!-- versionformat/versionrewrite above also name the tarball the tar service
+       produces (ants-terminal-<version>.tar). obs-submit.sh stamps the spec's
+       Version: with the same transform, so Source0 resolves. Change one and
+       you must change the other. -->
   <service name="tar" mode="buildtime"/>
   <service name="recompress" mode="buildtime">
     <param name="file">ants-terminal-*.tar</param>
     <param name="compression">gz</param>
   </service>
-  <service name="set_version" mode="buildtime"/>
 </services>

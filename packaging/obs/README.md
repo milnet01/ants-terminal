@@ -18,14 +18,21 @@ You never upload a tarball. `_service` tells OBS to do it:
 
 1. **`obs_scm`** runs on OBS's servers (they have network) and clones the tag
    pinned in `_service`.
-2. **`tar` / `recompress` / `set_version`** run *inside the build VM* at build
-   time, packing that clone into the tarball `Source0` expects.
+2. **`tar` / `recompress`** run *inside the build VM* at build time, packing
+   that clone into the tarball `Source0` expects.
 
-`set_version` is the important one. The spec's `Version:` field tracks
+The version is the fiddly part. The spec's `Version:` field tracks
 `CMakeLists.txt`, which — because of the RC cadence — always names the *next*,
 unreleased version. Left alone it would point at a tag that doesn't exist yet.
-`set_version` overwrites it from the pinned tag, so the version is never typed by
-hand and can't drift.
+`obs-submit.sh` overwrites it from the pinned tag as it copies the spec, so the
+version is never typed by hand and can't drift.
+
+This used to be a third build-time service, `set_version`. It was moved into
+`obs-submit.sh` by **ANTS-3731**, because a build-time service is a *build
+dependency* that has to exist in every target repo — and that one doesn't exist
+for Mageia, which blocked the whole distro over a single rewritten line. Doing
+it at submit time removes that dependency from every target. The tag is still
+the only source of truth; the script just applies it earlier.
 
 ## The three scripts
 
@@ -61,7 +68,8 @@ distro *can* work is free: an unresolvable repository reports the exact missing
 package immediately, without consuming any build time. Read that message rather
 than guessing — `osc api /build/<prj>/<repo>/x86_64/<pkg>/_status` prints it.
 
-**Currently building:** openSUSE Tumbleweed, openSUSE Leap 16.0, Fedora 44.
+**Currently building:** openSUSE Tumbleweed, openSUSE Leap 16.0, Fedora 44,
+Mageia 10.
 
 The spec carries `%if` arms for every package name that differs between distros
 (**ANTS-3727**), so a new RPM target should resolve without touching it. What
@@ -86,18 +94,27 @@ See the
 ### The trap that is *not* in the spec
 
 Two of the three failures hit while adding Fedora and Mageia came from
-`_service`, not from `BuildRequires` — its `tar` / `recompress` / `set_version`
-services run `mode="buildtime"`, which makes them build *dependencies* that must
-exist in the target repo:
+`_service`, not from `BuildRequires` — its services run `mode="buildtime"`,
+which makes them build *dependencies* that must exist in the target repo:
 
 - **Fedora** failed with `have choice for wget ... wget1-wget wget2-wget`. Fedora
   has no bare `wget`; both are shims that provide it. Fixed with a `Prefer:` line
   in the project config, which `obs-setup.sh` now writes.
-- **Mageia** failed with `nothing provides obs-service-set_version`, and that one
-  is not fixable here: `openSUSE:Tools` cannot build that service for Mageia at
-  all (*its* build is unresolvable, "nothing provides python3-base"). Mageia
-  needs `_service` restructured to drop the buildtime `set_version` first, so it
-  is not in the target list.
+- **Mageia** failed with `nothing provides obs-service-set_version`. That could
+  not be fixed where it broke: `openSUSE:Tools` cannot build that service for
+  Mageia at all (*its own* build there is unresolvable, "nothing provides
+  python3-base"). **ANTS-3731** removed the dependency instead of chasing it —
+  see "How the source gets there" above.
+
+Checking whether a service exists for a target: read the **binary list**, not
+the build status. `obs-service-tar` reports `code="unknown"` for every target
+including ones that work, because it is a subpackage of `obs-service-obs_scm`
+and has no build record under its own name. What settles it is
+
+```
+curl -s https://api.opensuse.org/public/build/openSUSE:Tools/<repo>/x86_64/_repository \
+  | grep -o 'filename="obs-service-[^"]*"'
+```
 
 The lesson generalises: when a new target goes unresolvable, check whether the
 missing package is one of ours or one of OBS's own services.
