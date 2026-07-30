@@ -52,11 +52,13 @@ single checkout, and a project that is not a git repository at all can still be
 backed up.
 
 **INV-1 — The export is a complete copy of the store.** Exporting the live
-store, rebuilding from that export, and re-exporting produces an identical
-file. **Both legs are required**: re-export equality alone is satisfied by an
-export that already lost half the model, since an empty file is a fixed point.
-The check therefore compares the committed export against a fresh export of the
-**live store**, not only against itself.
+store, rebuilding from that export, and re-exporting produces byte-identical
+files — **per project**, and for the corpus as a whole, since the export is one
+file per project and a whole-corpus rebuild must not lose the cross-project
+relationships of INV-4. **Both legs are required**: re-export equality alone is
+satisfied by an export that already lost half the model, since an empty file is
+a fixed point. The check therefore compares the committed export against a fresh
+export of the **live store**, not only against itself.
 
 **INV-2 — The published render is derived and lossy, deliberately.** It carries
 `layman` text and nothing technical, is never parsed back, and is **not** a
@@ -176,7 +178,7 @@ this meaning.
 | `resolution` | write (closed) | What was done and why, or why it was not. |
 | `section`, `sort_order` | write | § 5. |
 | `body` | optional | Free-form technical detail. Optional because many items are complete in one line, and a mandatory body produces filler that reads like content. |
-| `lanes`, `evidence` | optional | Subsystems touched; paths to screenshots, logs, repros. |
+| `lanes`, `evidence` | optional | Subsystems touched; paths to screenshots, logs, repros. Both are already first-class in `roadmap-format.md` § 3.5, so neither is part of § 4.3's invented tail. |
 | `visibility` | optional | § 7.5. Defaults to `public`. |
 | `milestone` | optional | Target release. Distinct from `section`, which is where the item is *filed*. |
 | `blocked` | derived | True iff a `blocked-by` relationship targets a **resolvable, same-project** item that is not closed. *Resolvable* = the target exists in the store being read. Cross-project targets are excluded — a partial rebuild cannot see them, and deriving from what is absent would make the value depend on which projects happen to be present. **So `blocked` under-reports by design** (see INV-4): an item blocked only from another project reads `blocked: false`, and a consumer that needs the true answer queries the `blocked-by` relationships themselves rather than this field. |
@@ -221,8 +223,10 @@ Items live in a section tree, and their order carries meaning: position is the
 current corpus's prioritisation, so `sort_order` is required and preserved.
 
 `priority` and `sort_order` are complementary. `sort_order` is an exact order
-within one project; `priority` is a coarse band comparable *across* projects,
-which position can never be.
+**within a section**; `priority` is a coarse band comparable *across* projects,
+which position can never be. A section's element list is the serialisation of
+that order, so the two cannot disagree — where a rebuild finds they do, the
+element list is the source and `sort_order` is recomputed from it.
 
 A **project** holds its sections, plus the status legend of § 5.1 — the legend
 belongs to the project rather than to any section, because it describes the
@@ -320,10 +324,18 @@ different sense: a value that resolves to an item ID becomes a `relates-to`
 edge, and one that does not stays in `extras` unconverted. That is a
 structured-field read, not a prose inference, so INV-5 holds.
 
-A relationship's target is an item *or* a spec document, and the two are
-addressed differently — items by identity, specs by path. `Spec:` values are
-paths, so INV-5's "declared, never inferred" governs the *field*, not the
-value's shape.
+A relationship's target is an item *or* a document, and the two are addressed
+differently — items by the `(project, id)` pair, since § 4.1 makes `id` unique
+only within its project; documents by path. `supersedes` may therefore target an
+ADR or any other decision record, not only a spec.
+
+`Spec:` values are paths rather than IDs, and that does not weaken INV-5:
+what INV-5 forbids is harvesting a relationship from *prose*, and `Spec:` is a
+declared field whatever shape its value takes.
+
+`relates-to` is the one **symmetric** type: A relates-to B implies B relates-to
+A, stored once and rendered both ways. Storing it twice would make INV-1's
+byte-identical round-trip depend on which direction happened to be written first.
 
 `splits-from`, `blocked-by`, `duplicate-of` and `supersedes` are acyclic —
 `supersedes` included, because "A replaces an earlier decision B" that also
@@ -336,10 +348,12 @@ cross-session feedback file cites which item — making ANTS-3744 a query),
 **`citation`** (item or spec → file and symbol, making `documentation.md` § 1.7
 machine-checkable), and **`history`** (one row per field change).
 
-**`history` is exported, not store-only.** Git currently carries the history of
-every roadmap edit because the roadmap *is* a tracked file. Under this model the
-store is untracked and the render is lossy, so that history would have nowhere
-to live — which makes exporting it the point, not an optimisation.
+**`history` is exported.** It is worth saying explicitly because it is the one
+record type whose bulk invites an exception, and INV-1 admits none: git
+currently carries the history of every roadmap edit because the roadmap *is* a
+tracked file, and under this model the store is untracked and the render lossy,
+so that history would otherwise have nowhere to live. Exporting it is the point,
+not an optimisation.
 
 ---
 
@@ -371,9 +385,16 @@ prefix and number; 3D_Engine writes three items as `[Cl9]`, `[Cl10]` and
 `[CE18]`, with no dash. A migration built on the grammar alone drops them
 silently, which is the one outcome § 3.3 forbids. They are **items with an
 unparseable ID**: migration MUST NOT invent a dash (rewriting an ID breaks
-§ 3.5.1's append-only rule and every citation of it), MUST NOT treat them as
-ID-less (§ 7.2's bulk allocation would issue a second identity for an item
-that already has one), and MUST surface them for a per-project decision.
+§ 3.5.1's append-only rule and every citation of it), and MUST NOT treat them as
+ID-less (§ 7.2's bulk allocation would issue a second identity for an item that
+already has one).
+
+Instead migration **quarantines** them: the item is imported with its ID
+recorded verbatim and flagged unparseable, the project's migration completes
+rather than blocking, and the run reports them. The project then either amends
+`roadmap-format.md` § 3.5.1 to admit the shape, or accepts the ID as opaque —
+both are decisions with consequences beyond one project, which is why the model
+declines to pick one. Three items in the corpus are affected.
 
 **An ID is recognised only at an item's leading position, never mid-text.** A
 bracketed token matching the grammar anywhere else is prose: `DOOM_Ants`
@@ -397,9 +418,11 @@ it, which is the one place this model's identity is not append-only. That
 tension is real and belongs to § 9 along with the rest of migration.
 
 The store owns allocation. Each project currently keeps a gitignored per-machine
-counter that is explicitly not the source of truth, with a floor recomputed by
-scanning the corpus so a wiped counter cannot reissue a live ID; a shared store
-allocates directly and that failure mode disappears.
+counter — one per prefix, for the multi-prefix projects § 3.10.4 permits — that
+is explicitly not the source of truth, with a floor recomputed by scanning the
+corpus so a wiped counter cannot reissue a live ID. A shared store allocates
+directly and that whole failure mode disappears, along with the per-prefix
+bookkeeping.
 
 ### 7.2 Allocating IDs to items that have none
 
@@ -470,7 +493,9 @@ and extends the table by amendment.
 
 ### 7.5 Priority and visibility
 
-`priority` is `1` (highest) to `5` (lowest), required on open items. Five bands
+`priority` is `1` (highest) to `5` (lowest), required on open items **written
+after cutover** — § 3.3 leaves it empty on migrated ones, like every other field
+with no source-side counterpart. Five bands
 rather than ten: ten levels are not reliably distinguishable, so they collapse
 in practice to three with the rest defaulting to the middle, and the number
 stops carrying information. The prose severity vocabulary — CRITICAL, HIGH, MEDIUM, LOW — is
@@ -687,5 +712,5 @@ than a question.
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 3 (model coherence, corpus drift, failure modes) | 6 / 12 / 14 / 18 / 1 | Structural rewrite: obligations split into tiers, export scope defined, INV-1 given its missing leg, identity grammar corrected after the survey regex was found wrong about two projects, migration source shapes corrected. |
-| 3 | 2026-07-30 | 3 (model coherence, identity/migration, cross-doc) — genre pinned `standard` | 6 / 9 / 14 / 15 / 2 | Every verified finding fixed. Corpus scope was wrong: the survey globbed `ROADMAP.md` and missed a tenth project whose file is lowercase, so the document asserted no project used pass headings when one tracks 144 items in it, 136 of whose statuses fall outside § 7.3's enum. Also fixed: § 5.1's justification was false against `roadmapdialog.cpp`; § 8 gained the render-conformance and archive-rotation touch points; identity semantics, `provenance` (new § 7.7), obligation-tier vocabulary and the `blocked-by`/INV-5 conflict all settled. Added § 10 anti-patterns and a *What checks this* table. **At the 3-loop cap — see the deferred tail in ANTS-3754.** |
-| 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split.** ~8 of the 13 CRITICALs were collateral from loop 1's own fixes; the findings were overwhelmingly schema-level, i.e. this document was a standard carrying an implementation spec. Split per ANTS-3754: the model stays here, the schema goes to a spec. Backup relocated to the private config repo, closing a leak the draft shipped. ID allocation for the corpus's 1,528 ID-less items decided (user, 2026-07-30). |
+| 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split.** ~8 of the 13 CRITICALs were collateral from loop 1's own fixes; the findings were overwhelmingly schema-level, i.e. this document was a standard carrying an implementation spec. Split per ANTS-3754: the model stays here, the schema goes to a spec. Backup relocated to the private config repo, closing a leak the draft shipped. ID allocation for the corpus's ID-less items decided (user, 2026-07-30). |
+| 3 | 2026-07-30 | 3 (model coherence, identity/migration, cross-doc) — genre pinned `standard` | 6 / 9 / 14 / 15 / 2 | Every verified finding fixed. Corpus scope was wrong: the survey globbed `ROADMAP.md` and missed a tenth project whose file is lowercase, so the document asserted no project used pass headings when one tracks 144 items in it, 136 of whose statuses fall outside § 7.3's enum. Also fixed: § 5.1's justification was false against `roadmapdialog.cpp`; § 8 gained the render-conformance and archive-rotation touch points; identity semantics, `provenance` (new § 7.7), obligation-tier vocabulary and the `blocked-by`/INV-5 conflict all settled. Added § 10 anti-patterns and a *What checks this* table. Genre pinning is what changed the run: loops 1–2 graded a standard against spec shape. **Exited at the 3-loop cap.** |
