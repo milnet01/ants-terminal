@@ -22893,6 +22893,40 @@ against current source before filing.
   Still open for the spec: what happens to an item hand-edited in the published
   ROADMAP.md between publishes (it is now a render, so the edit is lost — decide
   whether to detect and refuse, or accept and document).
+  VETOED (2026-07-30, user) — recorded because a cold reviewer correctly flagged
+  that this bullet and its own standard assert opposite architectures under one
+  id, with no record of which is current.
+
+  Decision 1 above ("the DB is an INDEX, and each project's ROADMAP.md stays the
+  source of truth") and its companion "NORMALISE ON READ, do not convert the
+  markdown" were the recommendation this bullet explicitly invited a veto on. The
+  user vetoed both. The store is PRIMARY; the markdown is a generated, layman-only
+  render; a committed export is the durable record. The reasoning that carried it:
+  the token win is structural rather than incidental — a database cannot be
+  accidentally slurped whole, where a 2.8 MB markdown file can — and a row UPDATE
+  cannot produce the class of corruption ANTS-3752 records, which is a markdown-
+  surgery bug that would not exist under a store.
+
+  What survived the veto unchanged: normalise-on-read still applies to MIGRATION
+  (the indexer reads all three source shapes and writes canonical rows, so no
+  project rewrites its markdown to join), and the concern that motivated
+  index-only — losing git's history and git's readability — is met by the export
+  plus the render rather than by keeping markdown authoritative.
+
+  Superseded here rather than edited above, so the reasoning that was actually
+  weighed stays legible.
+
+  Also amended (2026-07-30): "one table per project" is implemented as ONE table
+  keyed on project, per the reconciliation already recorded above — separate
+  tables would have made cross-project queries a nine-way stitch and every schema
+  change a nine-way migration, which fights the stated goal of maintaining the
+  whole thing from any project.
+
+  Backup location settled (2026-07-30, user): the export goes to the PRIVATE
+  claude-config repo, not into each project's own repo as the first draft of the
+  standard had it. That draft leaked — ants-terminal is a public repo, so every
+  `visibility: internal` item, including open security findings, would have been
+  published in full technical detail beside the render that carefully excluded it.
 
 - 📋 [ANTS-3754] **Split roadmap-data-model.md — the standard is carrying an implementation spec, and loop 2's findings are almost all schema-level.**
   STOP-AND-SPLIT taken at loop 2 rather than running to the cap, on the
