@@ -21238,6 +21238,29 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     QJsonArray docIntegrity;
     for (const QString &p : m.docIntegrity) docIntegrity.append(p);
 
+    // ANTS-3740 — per-doc section index for the lane's own docs. Lets a
+    // reviewer cite `<doc> § <heading>` (an anchor that survives edits above
+    // it) and fetch any section with `read_region section=<slug>`, without
+    // first deriving the map itself. Never covers the cross-reference docs.
+    QJsonArray sectionIndex;
+    for (const auto &si : m.sectionIndex) {
+        QJsonObject d;
+        d["path"] = si.path;
+        QJsonArray secs;
+        for (const auto &s : si.sections) {
+            QJsonObject o;
+            o["heading"]    = s.heading;
+            o["slug"]       = s.slug;
+            o["level"]      = s.level;
+            o["start_line"] = s.startLine;
+            o["end_line"]   = s.endLine;
+            secs.append(o);
+        }
+        d["sections"] = secs;
+        if (si.truncated) d["truncated"] = true;
+        sectionIndex.append(d);
+    }
+
     QJsonObject env;
     env["ok"]                    = true;
     env["lane"]                  = laneName;
@@ -21249,6 +21272,7 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
     env["cited_code_regions"]    = regions;
     env["stale_citations"]       = stale;
     env["doc_integrity"]         = docIntegrity;  // ANTS-3601
+    env["section_index"]         = sectionIndex;  // ANTS-3740
     // ANTS-1440 — surface the structured summary so callers don't
     // have to grep the brief markdown for the H1 line.
     env["summary"]               = m.summary;

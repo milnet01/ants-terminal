@@ -92,6 +92,33 @@ cover `fenceOpenerChar` and the masking policy through their own behaviour.
   what this verb locates — and its own INV-5b–5e cases in
   `tests/features/doc_integrity/` are the no-regression half of the hoist.
 
+- **INV-12** (ANTS-3740) — `headings` returns every ATX heading in document
+  order as `{line, level, text, slug, endLine}`, all lines **1-based**.
+  `endLine` is the line before the next heading of the same or a **higher**
+  level, or `lines.size()` for the final section — so a section owns its deeper
+  subsections. `headingLevel` accepts a 1–6 `#` run followed by a space or
+  end-of-line and nothing else. Fence-aware via `fenceMask`, so INV-8's
+  fence-teaching document keeps the headings below it. *Test:* a 4-heading
+  fixture asserts each level, line and span; a fenced `# …` and a
+  ```` ``` ````-demonstrating inline span both yield no heading;
+  `#######` / `#nospace` → level 0.
+- **INV-13** (ANTS-3740) — `headingSlug` is the key `read_region section=`
+  resolves: lowercase, every run of non-alphanumerics to a single `-`,
+  leading/trailing `-` trimmed, and **idempotent** (the slug of a slug is
+  itself), so a caller may pass either the heading text or its slug. This is
+  deliberately **not** `DocIntegrity::gfmSlug`, which implements GitHub's
+  *anchor* rules and disagrees on real corpus headings (`compact_resolved` →
+  `compact_resolved` there, `compact-resolved` here). They answer different
+  questions; a caller that wants a section it can then **fetch** needs this
+  one. *Test:* `4.2 Emission model` → `4-2-emission-model`, that slug maps to
+  itself, `2.1 a_b` → `2-1-a-b`, whitespace-only → empty.
+
+  `headings` and `headingSlug` were hoisted out of
+  `ReadRegion::resolveSection` when `cold_eyes_brief`'s `section_index` became
+  the second consumer. That resolver now calls them, so the slugs the brief
+  publishes and the slugs `read_region` accepts cannot drift apart — which is
+  the reason for the hoist, not tidiness.
+
 ## Test
 
 `tests/features/markdownscan/test_markdownscan.cpp`, compiled into the

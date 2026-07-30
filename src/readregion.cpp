@@ -250,21 +250,11 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
 // trailing '-' are trimmed. Idempotent (the slug of a slug is itself), so a
 // caller may pass either the heading text ("4.2 Emission model") or its slug
 // ("4-2-emission-model") and both resolve to the same key.
-QString mdHeadingSlug(const QString &text) {
-    QString out;
-    out.reserve(text.size());
-    bool pendingDash = false;
-    for (const QChar c : text) {
-        if (c.isLetterOrNumber()) {
-            if (pendingDash && !out.isEmpty()) out.append(QLatin1Char('-'));
-            pendingDash = false;
-            out.append(c.toLower());
-        } else {
-            pendingDash = true;
-        }
-    }
-    return out;
-}
+//
+// ANTS-3740 — hoisted to MarkdownScan::headingSlug. The cold-eyes brief
+// publishes section slugs a reviewer then passes back HERE, so the transform
+// has to be one function, not two that agree today.
+using MarkdownScan::headingSlug;
 
 // ANTS-2221 — resolve a markdown heading slug to its section-body range: the
 // ATX-heading line through the line BEFORE the next heading of the same or a
@@ -277,54 +267,33 @@ QString mdHeadingSlug(const QString &text) {
 struct SecRange {
     bool        found = false;
     int         start = 0;   // 1-based heading line
-    int         end   = 0;   // 1-based last line (INT_MAX → to EOF)
+    int         end   = 0;   // 1-based last line (the file's last line at EOF)
     QString     slug;        // the RESOLVED heading slug (may differ from the query)
     bool        ambiguous = false;  // ANTS-2234 — >1 prefix candidate
     QStringList candidates;         // the qualifying heading slugs when ambiguous
 };
-
-int mdHeadingLevel(const QString &trimmed) {
-    int h = 0;
-    while (h < trimmed.size() && trimmed.at(h) == QLatin1Char('#')) ++h;
-    // ATX heading: 1-6 leading '#' then a space (or the whole line).
-    if (h >= 1 && h <= 6 &&
-        (h == trimmed.size() || trimmed.at(h) == QLatin1Char(' ')))
-        return h;
-    return 0;
-}
 
 SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     SecRange r;
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return r;
 
-    // One pass: collect every (fence-aware) ATX heading as {line, level, slug}.
-    //
-    // ANTS-3674 — fence tracking is MarkdownScan::fenceMask, not a local
-    // `startsWith("```")` + `left(3)`. The hand-rolled version got two
-    // CommonMark rules wrong and both bit: a 4-backtick INLINE SPAN that
-    // demonstrates a fence (```` ```cpp ````) was read as an opener, so every
+    // Every (fence-aware) ATX heading with its body span — ANTS-3740 hoisted
+    // this collection to MarkdownScan::headings so the cold-eyes brief's
+    // section index and this resolver cannot disagree about what a heading is
+    // or what slug names it. Fence handling is MarkdownScan::fenceMask
+    // (ANTS-3674): a hand-rolled `startsWith("```")` + `left(3)` got two
+    // CommonMark rules wrong and both bit — a 4-backtick INLINE SPAN that
+    // demonstrates a fence (```` ```cpp ````) read as an opener, so every
     // heading after it went invisible and section mode refused
-    // `section_not_found` on any document that teaches fenced code; and
-    // `left(3)` let a 3-backtick line close a 4-backtick fence, where the
-    // closer must be at least as long. This was the last hand-rolled fence
-    // tracker in the tree.
-    struct Head { int line{}; int level{}; QString slug; };
-    QVector<Head> heads;
+    // `section_not_found` on any document that teaches fenced code.
     QStringList lines;
     while (!f.atEnd()) {
         QString line = QString::fromUtf8(f.readLine());
         if (line.endsWith(QLatin1Char('\n'))) line.chop(1);
         lines.push_back(line);
     }
-    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
-    for (int i = 0; i < lines.size(); ++i) {
-        if (fence.value(i)) continue;   // opener, closer and body are all masked
-        const QString trimmed = lines.at(i).trimmed();
-        const int level = mdHeadingLevel(trimmed);
-        if (level == 0) continue;
-        heads.push_back({i + 1, level, mdHeadingSlug(trimmed.mid(level).trimmed())});
-    }
+    const QVector<MarkdownScan::Heading> heads = MarkdownScan::headings(lines);
 
     // Tier 1 — exact slug (back-compat: full heading text / full slug). First
     // match wins. Tier 2 (ANTS-2234) — when no exact match, a dash-bounded
@@ -352,11 +321,11 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     r.found = true;
     r.start = heads[idx].line;
     r.slug  = heads[idx].slug;  // the resolved heading's slug
-    const int matchLevel = heads[idx].level;
-    // End = line before the next heading at the same-or-higher level, else EOF.
-    r.end = INT_MAX;
-    for (int i = idx + 1; i < heads.size(); ++i)
-        if (heads[i].level <= matchLevel) { r.end = heads[i].line - 1; break; }
+    // End = line before the next heading at the same-or-higher level, else the
+    // last input line — which IS EOF here (the whole file was just read), so
+    // this is the INT_MAX sentinel's clamped value, computed rather than
+    // deferred to the caller's clamp.
+    r.end = heads[idx].endLine;
     return r;
 }
 
@@ -400,7 +369,7 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     bool symAmbiguous = false;
     int  symMatchCount = 0;
     if (hasSec) {
-        const QString wantSlug = mdHeadingSlug(opts.section);
+        const QString wantSlug = headingSlug(opts.section);
         const SecRange sec = resolveSection(absPath, wantSlug);
         if (sec.ambiguous) {
             // ANTS-2234 — a short title that prefixes ≥2 headings is refused,

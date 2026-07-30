@@ -66,6 +66,14 @@ enum class Scope {
 // INV-2 cap. Surfaced in the response envelope when hit (truncated:true).
 constexpr int kMaxSpecLanes = 12;
 
+// ANTS-3740 — per-doc cap on BriefManifest::sectionIndex. 200 covers every
+// spec and standard in this corpus with room to spare (the largest is under
+// 80 headings); it exists for the contracts lane, whose docPaths include
+// CHANGELOG.md — one heading per release plus one per category, thousands of
+// them. Bounds the envelope at ~16 KB per doc; a doc that hits it is marked
+// `truncated` rather than silently shortened.
+constexpr int kMaxSectionsPerDoc = 200;
+
 struct Lane {
     QString     name;
     QString     summary;
@@ -164,6 +172,40 @@ struct BriefManifest {
     // path, so hashing here costs the caller nothing. Surfaces as
     // `input_hash` in the brief envelope.
     QString     inputHash;
+    // ANTS-3740 — per-doc section index for the lane's OWN docPaths: every ATX
+    // heading with its slug, level and body span. Asked for by claude-config,
+    // whose stated value is NOT diff-review (a cold read still needs the whole
+    // document) but that the reviewer gets the map without deriving it and can
+    // cite a section anchor instead of a line number — a citation that survives
+    // the next edit above it, where a line number does not.
+    //
+    // docPaths ONLY, never crossReferenceDocs: the same rule ANTS-3601 applies
+    // to docIntegrity, and for the same reason — the reviewer is not reviewing
+    // the cross-refs, so indexing them buys nothing and ROADMAP.md/CHANGELOG.md
+    // would dominate the envelope. `slug` is MarkdownScan::headingSlug, i.e.
+    // exactly what `read_region section=` resolves, so the reviewer can fetch
+    // any listed section by the slug it was handed.
+    //
+    // Budget: kMaxSectionsPerDoc entries per doc (~80 bytes each), so a lane
+    // is bounded at docPaths.size() × 16 KB regardless of how large its docs
+    // are. `truncated` marks a doc whose heading count hit the cap — the
+    // contracts lane's CHANGELOG.md has thousands. Deliberately NOT in the
+    // brief markdown: the brief is the input_hash's first ingredient, so
+    // putting a section index there would bust every lane's existing hash and
+    // grow the text the reviewer reads before it reads the docs.
+    struct DocSection {
+        QString heading;    // heading text, trimmed
+        QString slug;       // read_region section= key
+        int     level = 0;  // 1..6
+        int     startLine = 0;
+        int     endLine = 0;
+    };
+    struct DocSectionIndex {
+        QString         path;
+        QList<DocSection> sections;
+        bool            truncated = false;
+    };
+    QList<DocSectionIndex> sectionIndex;
 };
 
 PartitionResult derivePartition(const QString &projectPath,

@@ -3,6 +3,7 @@
 #include "docintegrity.h"      // ANTS-3601 — doc-integrity findings in the brief
 #include "falseposledger.h"
 #include "indiereviewengine.h"
+#include "markdownscan.h"       // ANTS-3740 — shared ATX-heading collector
 #include "pathvalidation.h"
 #include "roadmapfoldin.h"
 
@@ -998,6 +999,32 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
                                  : QStringLiteral("toc_gap");
         m.docIntegrity << QStringLiteral("%1:%2: [%3] %4")
                               .arg(f.file).arg(f.line).arg(kind, f.message);
+    }
+
+    // ANTS-3740 — per-doc section index. docPaths only (see the header): every
+    // ATX heading with the slug `read_region section=` resolves, so a reviewer
+    // can cite and fetch a section without deriving the map. Capped per doc.
+    for (const QString &rel : lane.docPaths) {
+        QStringList lines = slurpUtf8(projectPath + QChar('/') + rel)
+                                .split(QChar('\n'));
+        // A trailing newline splits into a phantom empty last element. It has
+        // to go: the final section's end_line is lines.size(), so keeping it
+        // would publish a line number one past the end of the file — and
+        // read_region, which reads with readLine() and chops, would disagree
+        // with the index this very lane just handed the reviewer.
+        if (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
+        const auto heads = MarkdownScan::headings(lines);
+        BriefManifest::DocSectionIndex entry;
+        entry.path = rel;
+        for (const MarkdownScan::Heading &h : heads) {
+            if (entry.sections.size() >= kMaxSectionsPerDoc) {
+                entry.truncated = true;
+                break;
+            }
+            entry.sections.append({h.text, h.slug, h.level, h.line, h.endLine});
+        }
+        if (!entry.sections.isEmpty() || entry.truncated)
+            m.sectionIndex.append(entry);
     }
 
     // ANTS-1440 — spec-lane enrichment. For lanes named `spec/...`

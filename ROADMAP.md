@@ -22319,7 +22319,7 @@ against current source before filing.
   Lanes: mcp, feedback.
   Source: in-session-2026-07-30 (observed during the feedback triage sweep).
 
-- 📋 [ANTS-3740] **cold_eyes_brief: per-doc section index (the second half of ANTS-3718).**
+- ✅ [ANTS-3740] **cold_eyes_brief: per-doc section index (the second half of ANTS-3718).**
   Split out of ANTS-3718 when its `input_hash` half shipped
   (2026-07-30). Request (a) is done; this is request (b), untouched.
 
@@ -22339,6 +22339,31 @@ against current source before filing.
   **Layman:** The review-brief tool could also hand each reviewer a table of contents for every document. Useful, but not what was actually hurting.
   Kind: enhancement.
   Source: claude-config-feedback-2026-07-28 (ANTS-3718 request (b)).
+  Resolved (2026-07-30): cold_eyes_brief returns `section_index` — one entry
+  per doc_paths[] doc, each carrying {heading, slug, level, start_line,
+  end_line} per ATX heading. Lane docs ONLY (the ANTS-3601 rule: the reviewer
+  is not reviewing the cross-refs, and ROADMAP/CHANGELOG would dominate the
+  envelope). Capped at kMaxSectionsPerDoc=200 with `truncated:true` when hit —
+  the contracts lane's CHANGELOG.md has thousands of headings.
+  Design call, stated rather than buried: `slug` is MarkdownScan::headingSlug,
+  i.e. read_region's OWN key, NOT DocIntegrity::gfmSlug. The two disagree on
+  real corpus headings (`compact_resolved` → `compact_resolved` under GFM,
+  `compact-resolved` here), so publishing the GFM anchor would have handed the
+  reviewer slugs read_region refuses — the index would name sections it could
+  not fetch. `headings()`/`headingSlug()`/`headingLevel()` were hoisted out of
+  ReadRegion::resolveSection into MarkdownScan and that resolver now calls
+  them, so the two cannot drift; resolveSection's heading loop and its INT_MAX
+  EOF sentinel both fell out (net simpler).
+  Deliberately NOT in the brief markdown: the brief text is input_hash's first
+  ingredient (ANTS-3718), so adding a section index there would bust every
+  cached lane hash and cost the Phase-5 skip a whole loop. Test pins it.
+  Off-by-one caught pre-ship: slurpUtf8().split('\n') leaves a phantom empty
+  last element on a trailing-newline file, which would have published an
+  end_line one past EOF — disagreeing with read_region, which reads via
+  readLine() and chops.
+  Tests: 4 in cold_eyes_engine (spans/slugs/fence-awareness, cross-refs
+  excluded, cap flagged, absent from brief text) + 3 in markdownscan
+  (INV-12/INV-13, added to its spec.md). Full suite 3084/3084 green.
 
 - 📋 [ANTS-3741] **audit_run scope:"full" enumerates only `src/`, so a flat-layout project gets an empty file list and a misleading changed_files_count:0.**
   VERIFIED 2026-07-30 by reading the code, not inferred.
@@ -22462,6 +22487,37 @@ against current source before filing.
   **Layman:** There is no quick way to ask "which test program do I rebuild after editing this test file?", so we fall back to scraping the build script by hand.
   Kind: enhancement.
   Source: in-session-2026-07-30 (hit four times while shipping ANTS-3389/3710/3707).
+
+- 📋 [ANTS-3746] **find_definition misses a C++ function whose return type is a reference to a comma-bearing template.**
+  VERIFIED by running it, not inferred. `find_definition
+  {symbol:"detectorsByCategory"}` returns `definitions:[]`,
+  `definitions_count:0`, `files_scanned:826`, `truncated:false` — while
+  the symbol is DECLARED at `src/debtsweepengine.h:208` and DEFINED at
+  `src/debtsweepengine.cpp:1080`, both as
+  `const QMap&lt;QString, QStringList&gt; &amp;detectorsByCategory()`.
+  A follow-up `workspace_search` found both in one call.
+
+  Suspected cause: the C++ definition regex cannot span a return type
+  that carries BOTH a template argument list with a comma and a trailing
+  `&amp;`. Same family as ANTS-3738 (the regexes match a shape narrower
+  than C++ permits), different trigger — that one is a trailing comment,
+  this one is the return type.
+
+  Why it costs more than a retry: a zero result from find_definition is
+  indistinguishable from "no such symbol", so the caller's next move is
+  to design around the symbol's absence rather than to search again. This
+  session only caught it because a ROADMAP bullet asserted the function
+  existed.
+
+  Fix: widen the definition regex to balance `&lt;&gt;` in the return type, or
+  fall back to the file outline (which resolves the symbol correctly —
+  `file_outline` on debtsweepengine.h lists it) when the regex pass comes
+  back empty. Regression: a fixture with
+  `const QMap&lt;QString, QStringList&gt; &amp;f()`, plus the pointer and
+  `std::pair&lt;int, int&gt;` variants.
+  **Layman:** The "where is this defined?" tool draws a blank on some functions, which reads exactly like "it does not exist".
+  Kind: fix.
+  Source: in-session-2026-07-30 (hit while implementing ANTS-3743).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

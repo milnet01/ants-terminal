@@ -169,6 +169,126 @@ TEST(ColdEyesEngine, Ants3718InputHashStableAndContentSensitive) {
         << "a changed doc body must change input_hash";
 }
 
+// ANTS-3740 — per-doc section index. The fenced `# Not a heading` is the case
+// a naive scanner gets wrong, and the one that decides whether the index can
+// be trusted at all: a spec that TEACHES markdown would otherwise report
+// phantom sections a reviewer then cites.
+TEST(ColdEyesEngine, Ants3740SectionIndexSpansSlugsAndFences) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md", QStringLiteral(
+        "# ANTS-9999 — Widget\n"        // 1
+        "prose\n"                       // 2
+        "## 2. Surface\n"               // 3
+        "```\n"                         // 4
+        "# Not a heading\n"             // 5  fenced — must NOT be indexed
+        "```\n"                         // 6
+        "### 2.1 compact_resolved\n"    // 7
+        "body\n"                        // 8
+        "## 3. Tests\n"                 // 9
+        "tail\n")));                    // 10
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-9999");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    ASSERT_EQ(m.sectionIndex.size(), 1);
+    const auto &si = m.sectionIndex.first();
+    EXPECT_EQ(si.path, QStringLiteral("docs/specs/ANTS-9999.md"));
+    EXPECT_FALSE(si.truncated);
+
+    ASSERT_EQ(si.sections.size(), 4)
+        << "a '#' inside a fenced block is not a heading";
+    for (const auto &s : si.sections)
+        EXPECT_NE(s.heading, QStringLiteral("Not a heading"))
+            << "fenced line indexed as a section";
+
+    // H1 owns the whole document; the H2 stops at the next H2.
+    EXPECT_EQ(si.sections[0].level, 1);
+    EXPECT_EQ(si.sections[0].startLine, 1);
+    EXPECT_EQ(si.sections[0].endLine, 10)
+        << "final section runs to the last REAL line — a trailing newline "
+           "must not publish a line one past EOF";
+    EXPECT_EQ(si.sections[1].heading, QStringLiteral("2. Surface"));
+    EXPECT_EQ(si.sections[1].startLine, 3);
+    EXPECT_EQ(si.sections[1].endLine, 8)
+        << "a section ends before the next same-or-higher-level heading, "
+           "and OWNS its deeper subsections";
+    EXPECT_EQ(si.sections[2].level, 3);
+    EXPECT_EQ(si.sections[3].startLine, 9);
+
+    // The slug is read_region's key, not a GitHub anchor: an underscore
+    // becomes a dash. Getting this wrong publishes slugs read_region refuses.
+    EXPECT_EQ(si.sections[2].slug, QStringLiteral("2-1-compact-resolved"));
+    EXPECT_EQ(si.sections[1].slug, QStringLiteral("2-surface"));
+}
+
+// ANTS-3740 — the index covers the lane's OWN docs only. ROADMAP.md and
+// CHANGELOG.md arrive as cross-references on every non-contracts lane and
+// carry thousands of headings between them.
+TEST(ColdEyesEngine, Ants3740SectionIndexSkipsCrossReferenceDocs) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("CLAUDE.md", "# Contract\n"));
+    ASSERT_TRUE(ws.writeRel("README.md", "# Readme\n"));
+    ASSERT_TRUE(ws.writeRel("CHANGELOG.md", "# Changelog\n"));
+    ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({})));
+    ASSERT_TRUE(ws.writeRel("docs/standards/coding.md", "# Coding\n"));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("standards");
+    lane.docPaths << QStringLiteral("docs/standards/coding.md");
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    ASSERT_FALSE(m.crossReferenceDocs.isEmpty());
+    ASSERT_EQ(m.sectionIndex.size(), 1);
+    EXPECT_EQ(m.sectionIndex.first().path,
+              QStringLiteral("docs/standards/coding.md"));
+}
+
+// ANTS-3740 — the per-doc cap is flagged, never silent. A truncated index that
+// reads as complete is worse than none: a reviewer concludes a section does
+// not exist.
+TEST(ColdEyesEngine, Ants3740SectionIndexCapIsFlagged) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    QString body;
+    for (int i = 0; i < ColdEyesEngine::kMaxSectionsPerDoc + 25; ++i)
+        body += QStringLiteral("## Section %1\n\n").arg(i);
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9998.md", body));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-9998");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-9998.md");
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    ASSERT_EQ(m.sectionIndex.size(), 1);
+    EXPECT_EQ(m.sectionIndex.first().sections.size(),
+              ColdEyesEngine::kMaxSectionsPerDoc);
+    EXPECT_TRUE(m.sectionIndex.first().truncated);
+}
+
+// ANTS-3740 — the section index must NOT enter the brief text, whose bytes are
+// input_hash's first ingredient. If it did, every cached lane hash from before
+// this change would bust and the Phase-5 skip would miss a whole loop.
+TEST(ColdEyesEngine, Ants3740SectionIndexIsNotInTheBriefText) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-9997.md",
+        QStringLiteral("# Spec\n## UNIQUELY_NAMED_SECTION\nbody\n")));
+
+    ColdEyesEngine::Lane lane;
+    lane.name = QStringLiteral("spec/ANTS-9997");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-9997.md");
+
+    const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
+    ASSERT_EQ(m.sectionIndex.size(), 1);
+    EXPECT_EQ(m.sectionIndex.first().sections.size(), 2);
+    EXPECT_FALSE(m.brief.contains(QStringLiteral("UNIQUELY_NAMED_SECTION")))
+        << "section index must stay out of the brief text (input_hash)";
+}
+
 // ENG-5
 TEST(ColdEyesEngine, CrossReferenceDocsAreContractTrio) {
     Workspace ws;

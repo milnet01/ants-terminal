@@ -219,4 +219,51 @@ QVector<bool> exampleMask(const QStringList &lines, const QVector<bool> &fence,
     return mask;
 }
 
+int headingLevel(const QString &trimmedLine) {
+    int h = 0;
+    while (h < trimmedLine.size() && trimmedLine.at(h) == QLatin1Char('#')) ++h;
+    if (h >= 1 && h <= 6 &&
+        (h == trimmedLine.size() || trimmedLine.at(h) == QLatin1Char(' ')))
+        return h;
+    return 0;
+}
+
+QString headingSlug(const QString &text) {
+    QString out;
+    out.reserve(text.size());
+    bool pendingDash = false;
+    for (const QChar c : text) {
+        if (c.isLetterOrNumber()) {
+            if (pendingDash && !out.isEmpty()) out.append(QLatin1Char('-'));
+            pendingDash = false;
+            out.append(c.toLower());
+        } else {
+            pendingDash = true;
+        }
+    }
+    return out;
+}
+
+QVector<Heading> headings(const QStringList &lines) {
+    QVector<Heading> out;
+    const QVector<bool> fence = fenceMask(lines);
+    for (int i = 0; i < lines.size(); ++i) {
+        if (fence.value(i)) continue;   // opener, closer and body are all masked
+        const QString trimmed = lines.at(i).trimmed();
+        const int level = headingLevel(trimmed);
+        if (level == 0) continue;
+        const QString text = trimmed.mid(level).trimmed();
+        out.push_back({i + 1, level, text, headingSlug(text), 0});
+    }
+    // Second pass for the spans: a section ends at the line before the next
+    // heading of the same or a higher level, else at the last input line.
+    for (int i = 0; i < out.size(); ++i) {
+        out[i].endLine = lines.size();
+        for (int j = i + 1; j < out.size(); ++j) {
+            if (out[j].level <= out[i].level) { out[i].endLine = out[j].line - 1; break; }
+        }
+    }
+    return out;
+}
+
 }  // namespace MarkdownScan

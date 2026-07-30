@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **`cold_eyes_brief` returns a per-doc `section_index`** (ANTS-3740)
+  Each lane doc now arrives with a map of its own headings —
+  {heading, slug, level, start_line, end_line} — so a reviewer cites a
+  section anchor instead of a line number (an anchor survives an edit
+  above it) and fetches any section with `read_region section=<slug>`.
+  The slug is that verb's own key, so every listed section is fetchable.
+  Lane docs only; capped per doc, with `truncated:true` when a doc has
+  more headings than the cap.
+
 - **`audit_run` takes `exclude_paths` — skip code that is not yours** (ANTS-3710)
   Point it at a bundled dependency folder and the audit stops reporting that
   folder's problems, without narrowing the sweep away from the rest of your

@@ -316,3 +316,81 @@ TEST(MarkdownScanSpans, UnmatchedRunAndFencedSpans) {
     // not a fence (it is mid-line), and nothing closes it.
     EXPECT_TRUE(spansOf(QStringList{QStringLiteral("a ```x` b")}).isEmpty());
 }
+
+// ANTS-3740 — headings(): the ATX collector hoisted out of
+// ReadRegion::resolveSection when cold_eyes_brief became its second consumer.
+// Level, slug and body span are all published to a reviewer, so all three are
+// contract.
+TEST(MarkdownScanHeadings, LevelsSlugsAndSpans) {
+    const QStringList doc{
+        QStringLiteral("# Title"),            // 1
+        QStringLiteral("prose"),              // 2
+        QStringLiteral("## 2. Surface"),      // 3
+        QStringLiteral("### 2.1 a_b"),        // 4
+        QStringLiteral("body"),               // 5
+        QStringLiteral("## 3. Tests"),        // 6
+        QStringLiteral("tail"),               // 7
+    };
+    const auto h = MarkdownScan::headings(doc);
+    ASSERT_EQ(h.size(), 4);
+
+    // The H1 owns the whole document; an H2 stops at the next H2 and OWNS its
+    // deeper subsections.
+    EXPECT_EQ(h[0].level, 1);
+    EXPECT_EQ(h[0].line, 1);
+    EXPECT_EQ(h[0].endLine, 7);
+    EXPECT_EQ(h[1].text, QStringLiteral("2. Surface"));
+    EXPECT_EQ(h[1].line, 3);
+    EXPECT_EQ(h[1].endLine, 5);
+    EXPECT_EQ(h[2].level, 3);
+    EXPECT_EQ(h[2].endLine, 5);
+    EXPECT_EQ(h[3].line, 6);
+    EXPECT_EQ(h[3].endLine, 7);
+
+    // Slug: lowercase, every run of non-alphanumerics to one '-', trimmed.
+    // An underscore is a dash here — this is read_region's key, NOT a GitHub
+    // anchor (DocIntegrity::gfmSlug keeps the underscore).
+    EXPECT_EQ(h[2].slug, QStringLiteral("2-1-a-b"));
+    EXPECT_EQ(MarkdownScan::headingSlug(QStringLiteral("4.2 Emission model")),
+              QStringLiteral("4-2-emission-model"));
+    // Idempotent: the slug of a slug is itself, so a caller may pass either.
+    EXPECT_EQ(MarkdownScan::headingSlug(QStringLiteral("4-2-emission-model")),
+              QStringLiteral("4-2-emission-model"));
+    EXPECT_TRUE(MarkdownScan::headingSlug(QStringLiteral("   ")).isEmpty());
+}
+
+// ANTS-3740 / ANTS-3674 — a '#' inside a fenced block is not a heading, and a
+// 4-backtick inline span that DEMONSTRATES a fence is not an opener. Both bit
+// read_region's hand-rolled tracker; both would now publish phantom sections.
+TEST(MarkdownScanHeadings, FenceAwareness) {
+    const auto fenced = MarkdownScan::headings(QStringList{
+        QStringLiteral("# Real"),
+        QStringLiteral("```"),
+        QStringLiteral("# Fenced"),
+        QStringLiteral("```"),
+        QStringLiteral("## Also real"),
+    });
+    ASSERT_EQ(fenced.size(), 2);
+    EXPECT_EQ(fenced[0].text, QStringLiteral("Real"));
+    EXPECT_EQ(fenced[1].text, QStringLiteral("Also real"));
+
+    // A 4-backtick inline span is a paragraph, so the heading after it stays
+    // visible (the ANTS-3674 defect made every later heading invisible).
+    const auto teaches = MarkdownScan::headings(QStringList{
+        QStringLiteral("Use ```` ```cpp ```` to open a block."),
+        QStringLiteral("## Still found"),
+    });
+    ASSERT_EQ(teaches.size(), 1);
+    EXPECT_EQ(teaches[0].text, QStringLiteral("Still found"));
+}
+
+// ANTS-3740 — headingLevel: 1-6 '#' followed by a space or end-of-line. A
+// 7-hash run and `#foo` are not headings, so they must not be indexed.
+TEST(MarkdownScanHeadings, LevelRule) {
+    EXPECT_EQ(MarkdownScan::headingLevel(QStringLiteral("# a")), 1);
+    EXPECT_EQ(MarkdownScan::headingLevel(QStringLiteral("######")), 6);
+    EXPECT_EQ(MarkdownScan::headingLevel(QStringLiteral("#######")), 0);
+    EXPECT_EQ(MarkdownScan::headingLevel(QStringLiteral("#nospace")), 0);
+    EXPECT_EQ(MarkdownScan::headingLevel(QStringLiteral("not a heading")), 0);
+    EXPECT_EQ(MarkdownScan::headingLevel(QString()), 0);
+}

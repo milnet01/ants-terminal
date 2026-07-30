@@ -140,4 +140,47 @@ QVector<CodeSpan> codeSpans(const QStringList &lines, const QVector<bool> &fence
 QVector<bool> exampleMask(const QStringList &lines, const QVector<bool> &fence,
                           int *unterminatedOpenerLine = nullptr);
 
+// ANTS-3740 — ATX heading level: the leading '#' run when it is 1-6 long and
+// followed by a space or end-of-line, else 0. Pass the TRIMMED line.
+int headingLevel(const QString &trimmedLine);
+
+// ANTS-3740 — the heading slug `read_region section=` resolves against:
+// lowercase, every run of non-alphanumeric characters collapses to a single
+// '-', leading/trailing '-' trimmed. Idempotent (the slug of a slug is
+// itself), so a caller may pass either the heading text ("4.2 Emission model")
+// or its slug ("4-2-emission-model").
+//
+// NOT DocIntegrity::gfmSlug, which implements GitHub's *anchor* rules
+// (apostrophes stripped, underscores kept) and therefore disagrees on real
+// headings in this corpus: `compact_resolved` slugs to `compact_resolved`
+// there and `compact-resolved` here. The two are answers to different
+// questions — a GitHub anchor URL vs. the key read_region matches — and a
+// caller wanting a section it can then FETCH needs this one.
+QString headingSlug(const QString &text);
+
+// ANTS-3740 — every ATX heading in the document, in document order, with the
+// body span each one owns. Hoisted out of ReadRegion::resolveSection when the
+// cold-eyes brief became the second consumer: the brief publishes slugs a
+// reviewer then passes back to `read_region section=`, so the two must share
+// one transform or the index names sections that verb refuses.
+//
+// `endLine` is the last line the section owns — the line before the next
+// heading at the same or a higher level (≤ '#' count), or lines.size() for the
+// final section. Both `line` and `endLine` are 1-BASED, matching read_region's
+// own line arithmetic; the input QStringList is 0-based as everywhere else
+// here.
+//
+// Fence-aware via fenceMask, so a '#' inside a code block is never a heading
+// (the ANTS-3674 defect: a document that *teaches* fenced code lost every
+// heading after the first fence). `text` is the heading text with the leading
+// '#' run and surrounding whitespace stripped, verbatim otherwise.
+struct Heading {
+    int     line = 0;      // 1-based heading line
+    int     level = 0;     // 1..6 = '#' count
+    QString text;          // heading text, trimmed
+    QString slug;          // headingSlug(text)
+    int     endLine = 0;   // 1-based last line of this section's body
+};
+QVector<Heading> headings(const QStringList &lines);
+
 }  // namespace MarkdownScan
