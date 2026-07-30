@@ -104,9 +104,16 @@ discharged by the three tiers alone.
 ### 3.1 Required at write — items created or curated after cutover
 
 `project`, `id`, `status`, `headline`, `kind`, `source`, `section`,
-`sort_order`, `created`, `last_modified`; plus `layman` and `priority` for
+`created`, `last_modified`; plus `layman` and `priority` for
 **open** items; plus `resolution` for **closed** items, and `shipped` for status
 `shipped` specifically.
+
+`sort_order` is **not** in this tier, though an earlier draft of this document
+listed it here while § 5 made it derived from the element list. Both could not
+hold, and § 5 wins: a write obligation on `sort_order` would give one fact two
+authored encodings with no rule naming which is right when they disagree. A
+curating write still places the item — it does so by position in the section's
+element list, which is where the order actually lives.
 
 `shipped` is required only for `shipped`, not for every closed item — a
 `dropped` item has no ship date, and demanding one would be a nonsense state.
@@ -176,11 +183,12 @@ this meaning.
 | `created`, `last_modified` | write | § 7.6. |
 | `shipped` | write (status `shipped`) | § 7.6. |
 | `resolution` | write (closed) | What was done and why, or why it was not. |
-| `section`, `sort_order` | write | § 5. |
+| `section` | write | § 5. Where the item is filed. |
 | `body` | optional | Free-form technical detail. Optional because many items are complete in one line, and a mandatory body produces filler that reads like content. |
 | `lanes`, `evidence` | optional | Subsystems touched; paths to screenshots, logs, repros. Both are already first-class in `roadmap-format.md` § 3.5, so neither is part of § 4.3's invented tail. |
 | `visibility` | optional | § 7.5. Defaults to `public`. |
 | `milestone` | optional | Target release. Distinct from `section`, which is where the item is *filed*. |
+| `sort_order` | derived | § 5. The item's position within its section, computed from that section's ordered element list. **An author never writes it**, and the store holds no column for it — storing it as well would be a second encoding of the element list's own ordering, and § 5's precedence rule exists because the two would drift. Readers that want an integer rank get one computed at read. |
 | `blocked` | derived | True iff a `blocked-by` relationship targets a **resolvable, same-project** item that is not closed. *Resolvable* = the target exists in the store being read. Cross-project targets are excluded — a partial rebuild cannot see them, and deriving from what is absent would make the value depend on which projects happen to be present. **So `blocked` under-reports by design** (see INV-4): an item blocked only from another project reads `blocked: false`, and a consumer that needs the true answer queries the `blocked-by` relationships themselves rather than this field. |
 | `extras` | optional | § 4.3. |
 | `provenance` | derived | § 7.7. Per field, never silently promoted to `asserted`. |
@@ -220,13 +228,14 @@ regeneration**. `extras` prevents it. Two tail keys are promoted out of
 ## 5. Structure
 
 Items live in a section tree, and their order carries meaning: position is the
-current corpus's prioritisation, so `sort_order` is required and preserved.
+current corpus's prioritisation, so that order is preserved exactly.
 
 `priority` and `sort_order` are complementary. `sort_order` is an exact order
 **within a section**; `priority` is a coarse band comparable *across* projects,
-which position can never be. A section's element list is the serialisation of
-that order, so the two cannot disagree — where a rebuild finds they do, the
-element list is the source and `sort_order` is recomputed from it.
+which position can never be. **The section's element list is where that order
+lives, and it is the only place it lives** — `sort_order` is recomputed from the
+list rather than stored beside it (§ 4.1, `derived`). The two therefore cannot
+disagree, because there is nothing for the list to disagree with.
 
 A **project** holds its sections, plus the status legend of § 5.1 — the legend
 belongs to the project rather than to any section, because it describes the

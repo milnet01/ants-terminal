@@ -23430,6 +23430,42 @@ against current source before filing.
   Kind: implement.
   Source: ANTS-3756 split at the cold-eyes cap, 2026-07-30.
 
+- 📋 [ANTS-3762] **Roadmap dialog — align every row on a fixed column grid so information sits where the eye expects it.**
+  The earlier styling pass made the dialog far more readable, but nothing
+  lines up vertically between one heading's rows and the next, so reading
+  down the list means re-finding each field on every row.
+
+  Observed on the "Next" tab, 2026-07-30 (user screenshot):
+
+  - The kind chip is an optional column, so rows without one start their
+    headline where rows with one start their chip. Three different text
+    left-edges are visible inside a single group.
+  - The `#NNNN[v]` id sits hard right against the viewport rather than in
+    a column, so it lands in a different place on every row and moves
+    again when the window resizes or a row wraps to two lines.
+  - Group header rows ("4 planned  Future external-signal lanes ...") use
+    a different indent and a different chip metric from the item rows
+    beneath them, so the tree reads as two unrelated layouts.
+  - A wrapped headline re-flows under the status chip instead of hanging
+    under the first line's text edge, breaking the left rule mid-group.
+
+  Wanted: one grid the whole view obeys — fixed-width status column,
+  fixed-width kind column that reserves its space when a row has no kind,
+  flexible headline column, fixed-width right-aligned id column — with
+  group headers on the same grid rather than their own. Wrapped text hangs
+  to the headline column's left edge.
+
+  Depends on nothing in ANTS-3753, but worth doing WITH the store cutover
+  (ANTS-3758) rather than before it: that spec replaces where the dialog
+  gets its rows from, and laying out a widget twice against two different
+  data sources is the churn the refactor-first rule exists to avoid.
+
+  Scope note: layout only. Not a re-theme — the colours and the density
+  selector ("Cozy") stay as they are.
+  **Layman:** Make the roadmap window line up in neat columns, so you always know where to look for the status, the type and the ID.
+  Kind: ux.
+  Source: user-request-2026-07-30 (raised during the ANTS-3753 store work).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
