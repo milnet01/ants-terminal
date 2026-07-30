@@ -562,6 +562,58 @@ SSH key registered there.
   ANTS-1452.md, and the value in tests/features/mcp_workspace_search/
   spec.md row 9. Build clean; suite 3068/3068.
 
+- 📋 [ANTS-3733] **Source-level portability breaks are only caught AFTER the release tag.**
+  OBS builds the tag _service pins, never main. So a source change that
+  breaks a non-openSUSE distro is invisible until the NEXT release, and
+  then it fails in public.
+
+  Observed twice with the same defect: luaengine.cpp's
+  `#include <lua5.4/lua.hpp>` names a directory only openSUSE creates. It
+  failed Fedora_44 (ANTS-3727) and, once Mageia_10 could resolve at all,
+  failed Mageia_10 identically (ANTS-3731) — both at v0.7.101, both
+  already fixed on main, neither detectable from the OBS signal until the
+  tag moves.
+
+  ANTS-3727 deliberately declined a source-grep test on the grounds that
+  the Fedora OBS target is a permanent build-time guard. That reasoning
+  was right about coverage and wrong about LATENCY: the guard fires a
+  week after the mistake, on the published release.
+
+  Options, cheapest first:
+  (a) A CI job that compiles on a Fedora container image. Real, catches
+      the whole class, costs runner minutes (repo is public, so free).
+  (b) A source-grep test banning distro-specific include prefixes
+      (`lua5.4/`, `qt6/`, …). Cheap and instant, but this repo already
+      carries brittle source-scrape tests that drift — see ANTS-2178.
+  (c) An OBS branch project pinned to main rather than a tag. Closest to
+      the real thing; costs an OBS project and needs _service to accept a
+      branch, which conflicts with the @PARENT_TAG@ versionformat.
+
+  (a) is probably right. Measure before choosing.
+  **Layman:** Our Fedora and Mageia builds only test the last released version, so a mistake that breaks them is found a week late.
+  Kind: test.
+  Lanes: packaging.
+  Source: in-session-2026-07-30 (observed twice while finishing ANTS-3731).
+
+- 📋 [ANTS-3734] **Flatpak manifest pins Lua 5.4.7; upstream is on 5.4.8.**
+  packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml pins
+  lua-5.4.7.tar.gz. lua.org/ftp/ currently lists lua-5.4.8.tar.gz.
+
+  Per docs/standards/dependencies.md a below-latest pin needs a Downgrade
+  Ledger row naming the breaking version and a re-test trigger; this one
+  has neither, so it is drift rather than a decision.
+
+  Not bumped in place because it needs a new sha256 AND a real
+  flatpak-builder run to verify, which is not a change to make blind. Do
+  it as part of the next Flathub submission pass, where a build happens
+  anyway.
+
+  No security angle known — this is currency, not a CVE.
+  **Layman:** One of our packaging recipes downloads a slightly old version of the Lua scripting library.
+  Kind: package.
+  Lanes: packaging.
+  Source: in-session-2026-07-30 (noticed while removing the manifest's dead lua5.4 header mirror).
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ — and the spec is now Fedora-compatible in fact,

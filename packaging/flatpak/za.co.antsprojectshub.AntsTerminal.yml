@@ -87,16 +87,17 @@ modules:
     buildsystem: simple
     build-commands:
       - make linux MYCFLAGS="-fPIC" -j ${FLATPAK_BUILDER_N_JOBS:-1}
+      # `make install` lays the headers FLAT under /app/include, which is
+      # exactly what luaengine.cpp's `#include <lua.hpp>` wants: CMake's
+      # FindLua finds lua.h there and passes -I/app/include.
+      #
+      # There used to be a mirror step here copying those headers into an
+      # /app/include/lua5.4/ subdir, because luaengine.cpp hardcoded
+      # `#include <lua5.4/lua.hpp>`. That prefix was never "distro-correct"
+      # as the old comment claimed — it is openSUSE's layout specifically,
+      # and it broke the Fedora and Mageia builds outright (ANTS-3727).
+      # The include is unqualified now, so the mirror has nothing to fix.
       - make install INSTALL_TOP=/app
-      # luaengine.cpp does `#include <lua5.4/lua.hpp>` (the distro header
-      # layout — Debian/openSUSE ship Lua headers under
-      # /usr/include/lua5.4/). `make install` lays them FLAT under
-      # /app/include, so CMake's FindLua finds lua.h there and passes
-      # -I/app/include — but the angle-bracket include then needs the
-      # headers under a lua5.4/ subdir. Mirror them so it resolves
-      # without patching the (portable, distro-correct) source include.
-      - mkdir -p /app/include/lua5.4
-      - cp -a /app/include/lua.h /app/include/luaconf.h /app/include/lualib.h /app/include/lauxlib.h /app/include/lua.hpp /app/include/lua5.4/
     sources:
       - type: archive
         url: https://www.lua.org/ftp/lua-5.4.7.tar.gz
