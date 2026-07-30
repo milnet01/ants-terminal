@@ -431,6 +431,7 @@ set_source_files_properties("${ANTS_BUILD_INFO_VALUES_CPP}" PROPERTIES
 # test bundles that link core do not drag the SQL module.
 add_library(ants_roadmapstore_lib STATIC
     src/roadmapstore.cpp
+    src/jsoncanonical.cpp   # ANTS-3761 — RFC 8785; Qt6::Core only, no Sql
 )
 target_link_libraries(ants_roadmapstore_lib
     PUBLIC  Qt6::Core Qt6::Sql
@@ -2212,8 +2213,13 @@ if(ANTS_TESTS)
                 # INV-15 forks two openers; the fork lives INSIDE the bundle,
                 # so no separate target is needed for process isolation.
                 tests/features/roadmap_store_concurrency/test_roadmap_store_concurrency.cpp
+                # ANTS-3761 — the export. INV-19 measures the canonicaliser
+                # against the RFC's own committed vectors.
+                tests/features/roadmap_export_roundtrip/test_roadmap_export_roundtrip.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
+        # ANTS-3761 INV-19 — the RFC's own vectors, committed under the test dir.
+        ANTS_JCS_VECTOR_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/vectors"
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h"
         SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"

@@ -1,6 +1,7 @@
 // ANTS-3756 — roadmap store implementation.
 // Spec: docs/specs/ANTS-3756-roadmap-store-schema.md
 #include "roadmapstore.h"
+#include "jsoncanonical.h"
 #include "secureio.h"
 
 #include <QDir>
@@ -64,9 +65,21 @@ QString RoadmapStore::defaultPath() {
 }
 
 QString RoadmapStore::canonicalJson(const QJsonObject &o) {
-    // QJsonObject holds keys sorted, and Compact emits no insignificant
-    // whitespace — which is JCS for the shapes this store writes.
-    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    // § 2.3 requires the JSON columns to be held in RFC 8785 canonical form,
+    // so the export can copy those bytes rather than transform them. This used
+    // to be QJsonDocument(o).toJson(Compact) on the reasoning that sorted keys
+    // plus compact output IS JCS for the shapes the store writes — true for
+    // every shape except one: `extras` is free-form (roadmap-data-model.md
+    // § 7.7) and can hold a double, and ANTS-3761 § 2.2 measured Qt against
+    // the RFC's own number table at 21 of 24. A store holding non-canonical
+    // bytes breaks INV-1 at the far end of the round-trip, where it is hardest
+    // to attribute.
+    QByteArray out;
+    if (!JsonCanonical::serialise(o, &out))
+        return QString();  // callers write this into a NOT NULL column; an
+                           // empty string fails the insert rather than
+                           // silently storing non-canonical bytes
+    return QString::fromUtf8(out);
 }
 
 bool RoadmapStore::applyPragmas(QString *error) {
