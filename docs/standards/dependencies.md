@@ -102,11 +102,11 @@ boxes and the primary CI jobs use current versions). A floor exists for reach
 
 | Floor | Where | Why | Guard |
 |---|---|---|---|
-| Qt6 ≥ **6.2** | `CMakeLists.txt:60` (`find_package(Qt6 6.2 …)`) | First LTS shipping the full component set we need — DBus stabilised in 6.2, OpenGLWidgets reached parity (`CMakeLists.txt:53-59`); 6.0/6.1 compile but silently drop DBus / trip shader edge cases | `ci.yml` `qt62-baseline` job (compiles on Ubuntu 22.04 / Qt 6.2.x); `tools/ci-parity.sh --qt62` mirrors it in a podman container |
-| Lua **5.4** _(optional)_ | `CMakeLists.txt:65,69` | Current stable Lua line; when present the plugin ABI targets 5.4 | `find_package(Lua 5.4 QUIET)` — **not** REQUIRED; absent Lua compiles the plugin system out (no hard build floor), so this is a *conditional* floor |
-| C++ **20** | `CMakeLists.txt:4` | Language baseline for the codebase | compiler |
-| CMake ≥ **3.20** | `CMakeLists.txt:1` | Project-mandated build baseline (`CMAKE_OPTIMIZE_DEPENDENCIES` needs ≥ 3.19, `CMakeLists.txt:97`; the mandate rounds up to 3.20) | `cmake_minimum_required` |
-| GoogleTest ≥ **1.13** | `CMakeLists.txt:744` (`find_package(GTest 1.13 QUIET)`) | `gtest_discover_tests` `DISCOVERY_MODE PRE_TEST` semantics | system `find_package`; FetchContent `v1.15.2` fallback when no system pkg ≥ 1.13 (§7) |
+| Qt6 ≥ **6.2** | `find_package(Qt6 6.2 …)` in `CMakeLists.txt` | First LTS shipping the full component set we need — DBus stabilised in 6.2, OpenGLWidgets reached parity (the comment block above that `find_package`); 6.0/6.1 compile but silently drop DBus / trip shader edge cases | `ci.yml` `qt62-baseline` job (compiles on Ubuntu 22.04 / Qt 6.2.x); `tools/ci-parity.sh --qt62` mirrors it in a podman container |
+| Lua **5.4** _(optional)_ | `pkg_check_modules(LUA lua5.4)` / `find_package(Lua 5.4 QUIET)` | Current stable Lua line; when present the plugin ABI targets 5.4 | `find_package(Lua 5.4 QUIET)` — **not** REQUIRED; absent Lua compiles the plugin system out (no hard build floor), so this is a *conditional* floor |
+| C++ **20** | `set(CMAKE_CXX_STANDARD 20)` | Language baseline for the codebase | compiler |
+| CMake ≥ **3.20** | `cmake_minimum_required` | Project-mandated build baseline (`set(CMAKE_OPTIMIZE_DEPENDENCIES ON)` needs ≥ 3.19; the mandate rounds up to 3.20) | `cmake_minimum_required` |
+| GoogleTest ≥ **1.13** | `find_package(GTest 1.13 QUIET)` | `gtest_discover_tests` `DISCOVERY_MODE PRE_TEST` semantics | system `find_package`; FetchContent `v1.15.2` fallback when no system pkg ≥ 1.13 (§7) |
 
 If a floor ever needs *raising* (e.g. dropping Qt 6.2 support), that is a
 deliberate decision with its own ROADMAP entry — not this ledger.
@@ -120,11 +120,11 @@ cycle**, and opportunistically when editing a manifest. Per dependency type:
 |---|---|
 | Qt / system libs | `zypper info <pkg>` / distro repos + upstream release notes |
 | Lua | upstream `lua.org` release line |
-| GoogleTest (FetchContent tag, `CMakeLists.txt:750`) | compare the pinned `GIT_TAG` against `github.com/google/googletest` releases |
+| GoogleTest (the `FetchContent_Declare(googletest …)` `GIT_TAG`) | compare the pinned `GIT_TAG` against `github.com/google/googletest` releases |
 | CI actions (`.github/workflows/*.yml`) | `gh api repos/<owner>/<repo>/releases/latest -q .tag_name`; bump the pinned **SHA** *and* its `# vX.Y.Z` comment together (§6) |
 | CI runner images (`runs-on:`) | GitHub's runner-image release notes (`ubuntu-24.04` → next LTS). **Caveat:** the `qt62-baseline` job's `ubuntu-22.04` is *not* a stale pin — it mirrors the §4 Qt 6.2 floor. Do **not** bump it in the runner sweep; it moves only if the Qt 6.2 floor itself is deliberately raised. |
 | Container base (`tools/ci-parity.sh` `qt62_image`) | keep in lockstep with the `qt62-baseline` `runs-on:` Ubuntu version it mirrors |
-| LayerShellQt (`CMakeLists.txt:83`) | optional `CONFIG`-discovered dep, no version pin — sweep is present-or-absent only (nothing to bump) |
+| LayerShellQt (`find_package(LayerShellQt CONFIG QUIET)`) | optional `CONFIG`-discovered dep, no version pin — sweep is present-or-absent only (nothing to bump) |
 
 On any bump: apply §5b (update callers/idioms in the same change) and re-run
 `tools/ci-parity.sh --full` before pushing.
@@ -132,16 +132,20 @@ On any bump: apply §5b (update callers/idioms in the same change) and re-run
 ## 6. Where the versions live (map)
 
 Keep this list current — it is the checklist for a sweep. This section is the
-**authoritative** version-location map: the `file:line` citations repeated in
-§4 / §5 / §7 are convenience copies, so if a `CMakeLists.txt` edit shifts a
-line and they disagree, §6 wins and the others are re-synced on the next sweep
-(symbol names — `find_package(GTest …)` etc. — are the stable anchor; line
-numbers drift).
+**authoritative** version-location map, and it cites by **directive name only**
+per `documentation.md` § 1.7: every pin below is a `grep` for the directive, so
+the map survives any edit that shifts a line. It previously carried `(L…)` hints
+and every one of them had drifted by 2026-07-30 — `find_package(Qt6 …)` was
+cited at L60 and sat at L86, Lua at L65/L69 and sat at L91/L95, `LayerShellQt`
+at L83 and sat at L109 — which is the argument for the rule, not against the
+map.
 
-- **`CMakeLists.txt`** — `cmake_minimum_required` (L1), `project(… VERSION)`
-  (L2), `CMAKE_CXX_STANDARD` (L4), `find_package(Qt6 6.2 …)` (L60), Lua
-  (L65/L69), GoogleTest system floor + FetchContent `GIT_TAG` (L744/L750).
-  `LayerShellQt` (L83) is an optional Wayland dep (`CONFIG QUIET`) with no
+- **`CMakeLists.txt`** — `cmake_minimum_required`, `project(… VERSION)`,
+  `set(CMAKE_CXX_STANDARD …)`, `find_package(Qt6 6.2 …)`; Lua is the
+  `pkg_check_modules(LUA lua5.4)` / `find_package(Lua 5.4 QUIET)` pair;
+  GoogleTest is the `find_package(GTest 1.13 QUIET)` system floor plus the
+  `FetchContent_Declare(googletest …)` block's `GIT_TAG`.
+  `find_package(LayerShellQt CONFIG QUIET)` is an optional Wayland dep with no
   version floor — nothing to pin, listed here only so a sweep knows it exists.
 - **`.github/workflows/ci.yml` + `release.yml`** — CI action SHAs (each pinned
   by 40-char SHA with a `# vX.Y.Z` human comment — a mutable tag is never
@@ -155,7 +159,7 @@ numbers drift).
 Flagged during the 2026-07-03 adoption sweep; not yet actioned (each is its
 own change, gated on the suite staying green):
 
-- **GoogleTest `v1.15.2`** (`CMakeLists.txt:750`) — from 2024; verify against
+- **GoogleTest `v1.15.2`** (the `FetchContent_Declare(googletest …)` `GIT_TAG`) — from 2024; verify against
   the latest upstream release and bump the `GIT_TAG` if the suite stays green.
 - **`actions/cache@v5.0.5`** (`ci.yml:74`, `:191`) — the workflow already
   carries an in-file "bump when actions/cache > v5.0.5 ships" note (Node-20 →

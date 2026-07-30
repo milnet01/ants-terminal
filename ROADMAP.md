@@ -24046,7 +24046,7 @@ to apply within a document. Follow-on work from that change.
   Kind: doc-fix.
   Source: user-request-2026-07-26.
 
-- 📋 [ANTS-3648] **`dependencies.md` § 6 contradicts itself on line-number citations.**
+- ✅ [ANTS-3648] **`dependencies.md` § 6 contradicts itself on line-number citations.**
   § 6 ("Where the versions live") states that symbol names "are the
   stable anchor; line numbers drift" — and then cites every version
   location by line: `(L1)`, `(L2)`, `(L60)`, `(L65/L69)`, `(L744/L750)`,
@@ -24060,6 +24060,22 @@ to apply within a document. Follow-on work from that change.
   **Layman:** One of our own standards documents says "don't use line numbers" and then uses line numbers.
   Kind: doc-fix.
   Source: in-session-2026-07-26 (found while writing documentation.md § 1.7)..
+  Resolved (2026-07-30): every live line citation in dependencies.md is now a
+  directive name — §6's map, the §4 floors table, the §5 sweep table and §7's
+  GoogleTest row. §6 says so explicitly and cites documentation.md § 1.7.
+  The fix is not cosmetic: EVERY hint in §6 had already drifted by the time it
+  was checked — `find_package(Qt6 6.2 …)` was cited at L60 and sits at L86, Lua
+  at L65/L69 and sits at L91/L95, `find_package(LayerShellQt CONFIG QUIET)` at
+  L83 and sits at L109, GoogleTest at L744/L750 and sits at L806/L812. The
+  authoritative version-location map was pointing a dependency sweep at the
+  wrong lines. Those measured numbers are kept in §6's prose as the frozen
+  evidence for the rule (§ 1.7's historical-records exemption), not as live
+  citations.
+  Verified against CMakeLists.txt directly, one grep per directive, rather than
+  trusting the numbers the doc carried.
+  Rule-14 note: treated as a mechanical citation-form fix, not a design change —
+  it alters no claim the standard makes, so it did not go through /cold-eyes.
+  Raising this here so the call is visible rather than silent.
 
 - ✅ [ANTS-3649] **Hoist `DocIntegrity::maskInlineCode` into `MarkdownScan::codeSpans` as its own change, ahead of ANTS-3636.**
   Split out of ANTS-3636 so the prerequisite refactor lands and is
