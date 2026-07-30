@@ -25,9 +25,13 @@ export, so it may not live under a cache path and may not be treated as
 disposable.
 
 Scale, measured 2026-07-30 with `tools/roadmap-corpus-survey.py`: **10
-projects, 3,940 bullet-form and checkbox items plus 144 pass-heading items**.
-Total markdown across all ten roadmap files is **4.91 MiB**
-(`du -cb */[Rr]oadmap.md`), which is the order of the text the store must hold.
+projects, roughly 3,900 bullet-form and checkbox items plus ~150 pass-heading
+items**, and **4.91 MiB** of markdown across the ten roadmap files
+(`find . -maxdepth 2 -iname 'roadmap.md' -printf '%s\n' | awk '{s+=$1} END {print s}'`,
+run from the projects' parent — **case-insensitively**, since one project's
+file is lowercase; see § 4). Orders of magnitude, not exact counts: the corpus
+grows whenever anyone files an item, so re-run the script rather than trusting
+a figure here.
 
 ## 2. Surface
 
@@ -117,7 +121,6 @@ the reconciliation is recorded in that bullet (nine-way stitches and nine-way
 migrations fight the stated goal of maintaining the whole thing from any
 project).
 
-```sql
 `PRAGMA user_version` carries the schema version, starting at `1`; the export's
 `meta` record carries the same number. Without it a future reader cannot tell
 which schema wrote a given file, and ANTS-3757 and ANTS-3758 both build on this
@@ -192,12 +195,10 @@ change to `derived`, or § 5's precedence rule should go. Flagged to the author
 of ANTS-3753 rather than resolved unilaterally — a spec quietly overriding its
 own standard is how the two drift.
 
-```sql
-```
-
-`id_fold` carries § 7.1's case-insensitive identity: `Sh-1` and `SH-1` are one
-item. `id` keeps what the author wrote, because § 3.5.1 makes ids append-only
-and rewriting one breaks every citation.
+`id_fold` carries `roadmap-data-model.md` § 7.1's case-insensitive identity:
+`Sh-1` and `SH-1` are one item. `id` keeps what the author wrote, because
+`roadmap-format.md` § 3.5.1 makes ids append-only and rewriting one breaks
+every citation.
 
 **`extras` and `provenance` are JSON columns, not tables.** `extras` holds a
 tail of **over 280 distinct keys** measured across the corpus, almost all
@@ -272,7 +273,7 @@ CREATE TABLE citation (
 ```
 
 `relates-to` is symmetric per § 6 and is **stored once**, normalised so that
-the endpoint whose `(project_id, id_fold)` sorts first is `src_pk`.
+the endpoint whose `(export_slug, id_fold)` sorts first is `src_pk`.
 
 **Normalising on `item_pk` would be wrong**, and subtly: surrogate rowids are
 not stable across a rebuild, so a pair normalised 5→9 in the live store can
@@ -412,7 +413,7 @@ PRAGMA busy_timeout = 5000;     -- ms; matches ConfigWriteLock's deadline
 - **INV-4** — An off-grammar id is stored verbatim with `id_parses = 0` and is never rewritten. *Test:* `roadmap_store_identity` inserts `[Cl9]`; assert `id` round-trips exactly and no dash is inserted. *Breaks when:* a writer normalises ids on the way in.
 - **INV-5** — Export item order follows § 2.4's numeric-segment sort and is **total**. *Test:* `roadmap_store_roundtrip` seeds `ANTS-9`, `ANTS-10`, `CL-9`, `CL-0009`, `PASS-43-5`, `PASS-43-5-B`, `PASS-9-1` and one quarantined id, and asserts the exact emitted order. *Breaks when:* the writer sorts lexically (`ANTS-10` lands before `ANTS-9`); or splits at the last hyphen (`PASS-9-1` lands after `PASS-43-5`); or omits the raw-bytes tie-break, leaving `CL-9` and `CL-0009` unordered — a non-total sort makes INV-1 fail intermittently, which is the worst way for it to fail.
 - **INV-6** — `relates-to` is stored once, normalised on stable identity. Writing A→B then B→A yields exactly one row, and the stored direction survives a rebuild. *Test:* `roadmap_store_schema` writes both directions and asserts one row; `roadmap_store_roundtrip` asserts the direction is unchanged after export-rebuild-export. *Breaks when:* normalisation keys on `item_pk` — rowids are reassigned by the rebuild, so the direction can flip and the re-export differs, defeating the invariant's own purpose.
-- **INV-7** — The resolved store path is under `GenericDataLocation + "/ants-terminal"` and never under any cache location. *Test:* `roadmap_store_schema` asserts on the **resolved path at runtime** — it must equal `QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/ants-terminal/roadmap.sqlite"`, and must not be a prefix of `writableLocation(CacheLocation)`. A source-grep for `CacheLocation` near the store is a secondary guard only. *Breaks when:* the path is composed from a constant defined elsewhere — a grep then sees one hit and the location is decided somewhere it never looked, so a grep-only test passes against a store sitting in the cache.
+- **INV-7** — The resolved store path is under `GenericDataLocation + "/ants-terminal"` and never under any cache location. *Test:* `roadmap_store_schema` asserts on the **resolved path at runtime** — it must equal `QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/ants-terminal/roadmap.sqlite"`, and **neither cache root may be a prefix of it** — the resolved path must not start with `writableLocation(CacheLocation)`, nor with `writableLocation(GenericCacheLocation) + "/ants-terminal"` (where the project's real caches live). The direction matters: `~/.cache/ants-terminal/roadmap.sqlite` is *not* a prefix of the cache root, so the reversed comparison passes for exactly the placement this invariant forbids. A source-grep for `CacheLocation` near the store is a secondary guard only. *Breaks when:* the path is composed from a constant defined elsewhere — a grep then sees one hit and the location is decided somewhere it never looked, so a grep-only test passes against a store sitting in the cache.
 - **INV-8** — A project is keyed on its **canonical** root: two paths that canonicalise to the same directory are one project, and a genuinely different root is a different project. *Test:* `roadmap_store_schema` — (a) insert via a symlinked path and via the real path, assert **one** `project_id`; (b) insert two genuinely distinct roots, assert two. *Breaks when:* `root` is stored unresolved, which makes (a) yield two rows. Case (a) is the one that matters: `mcp-caches.md`'s never-shadow rule applied to rows instead of files, and asserting *two* there would certify exactly the bug it forbids.
 - **INV-9** — Every export write path acquires `ConfigWriteLock`, and aborts loudly when it cannot. *Test:* `roadmap_store_concurrency` — hold the lock, attempt an export, assert it returns an error and **wrote no bytes**; release, assert it then succeeds. *Breaks when:* the writer treats `!acquired()` as permission to proceed unprotected. Phrasing matters here: `flock` is advisory, so a non-cooperating writer *can* interleave — the testable claim is about our writer, not about the file.
 - **INV-10** — `provenance` is per field, in both directions: editing `headline` through the store sets `provenance.headline` to `asserted` **and** leaves `provenance.kind` untouched. *Test:* `roadmap_store_schema` asserts both halves. *Breaks when:* provenance is stored per item — or when the writer never updates provenance at all, which a one-sided "kind is unchanged" assertion would happily certify.
@@ -468,7 +469,7 @@ declared with the schema.
 - **The published render, the backup repo's push cadence, and the fate of `roadmap_query` / `roadmap_log` / `RoadmapDialog`.** Tracked by **ANTS-3758**.
 - **The health-check suite** (duplicate ids, a feedback file citing an id no project owns, a spec `Status` disagreeing with its bullet). Scheduling and per-check behaviour are **ANTS-3758**; this spec provides only the schema they query.
 - **Multi-machine sync.** The export lands in a git repo and git is the sync mechanism; the store itself is single-machine. This is a **permanent exclusion**, not deferred work — a store synchronised at the SQLite level is a different product, and the export exists precisely so it is not needed.
-- **Full-text search over bodies.** SQLite FTS5 would serve it and no caller has asked, so it is **deferred, not excluded** — if one asks, it is a contained addition. No id is filed, because filing work nobody has requested is how a backlog fills with things nobody intends to do; the line exists so the next reader knows the door is open.
+- **Full-text search over bodies.** A **permanent exclusion** for this spec: the store's job is to hold the model and round-trip it, and search is a read surface, which ANTS-3758 owns. Not deferred, so no id is owed here — if search is wanted, it is that spec's decision whether FTS5 or a `LIKE` scan serves it.
 
 ## 6. Tests
 
