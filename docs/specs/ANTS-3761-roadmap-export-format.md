@@ -1,0 +1,281 @@
+# ANTS-3761 — Roadmap export: RFC 8785 serialisation, record types, and the round-trip
+
+**Status:** spec draft (2026-07-30).
+**Kind:** implement.
+**Source:** ROADMAP.md ANTS-3761 (split out of ANTS-3756 at its cold-eyes cap).
+**Blocked by:** [ANTS-3756](ANTS-3756-roadmap-store-schema.md) — the store schema this serialises.
+**Pairs with:** [`roadmap-data-model.md`](../standards/roadmap-data-model.md) — its § 1 defines the export as the durable record; this spec defines the bytes.
+
+**Layman:** The plain-text file committed beside the roadmap database that can rebuild it from scratch, and the rules that make it come out identical every time.
+
+## 1. Problem
+
+[`roadmap-data-model.md`](../standards/roadmap-data-model.md) § 1 makes the
+export the **durable record**: the store is untracked, the published render is
+lossy by design, so the export is the only complete copy that survives a lost
+disk. Its INV-1 requires the round-trip to be exact.
+
+"Exact" needs a serialisation nobody can implement two ways.
+[ANTS-3756](ANTS-3756-roadmap-store-schema.md) originally carried this and
+attempted it with a hand-written table of about twenty pinned freedoms. That
+approach did not converge — three cold-eyes loops, with fix collateral
+outnumbering draft defects in the last two, almost all of it in this half of
+the document. The failure was structural: every freedom pinned by hand is a
+rule some other passage can contradict, and the list is never provably
+complete. The clinching evidence was external — `QJsonObject` sorts its keys,
+so the hand-chosen field order could not be produced by Qt's own JSON classes
+at all.
+
+This spec exists because that half is a separate contract with a separate
+failure mode, and because delegating canonicalisation to a published standard
+is what makes it tractable.
+
+## 2. Surface
+
+### 2.1 File, location, and shape
+
+One file per project, **JSON Lines**, in the private `claude-config` repo at
+`roadmap-export/<export_slug>.jsonl`. JSON Lines rather than one JSON document
+because a changed item is then a one-line diff, which is the review granularity
+ANTS-3753 asked for.
+
+`export_slug` is `project.export_slug` (ANTS-3756 § 2.3), which carries a
+`UNIQUE` constraint precisely so two projects cannot overwrite one another's
+backup.
+
+### 2.2 Serialisation: RFC 8785, by reference
+
+**Each line is one JSON object serialised per
+[RFC 8785](https://www.rfc-editor.org/rfc/rfc8785), the JSON Canonicalization
+Scheme (JCS).**
+
+JCS fixes, by reference and **without restatement here**: object key order,
+whitespace, string escaping, number formatting, and text encoding. Those five
+categories are named so a reader knows what is settled; their *content* is the
+RFC's and is deliberately not reproduced, because a second copy is a second
+thing to keep in step.
+
+Two consequences an implementer must not discover the hard way:
+
+- **Key order is JCS's, not a hand-chosen reading order.** The record shapes in
+  § 2.3 are written readably for humans; the *emitted* order is lexicographic.
+  Do not treat the examples as byte-exact.
+- **`QJsonDocument::toJson(Compact)` is not certified JCS.** `QJsonObject` does
+  hold keys sorted, which is most of the way there, but Qt's escaping and
+  number formatting are not specified to match the RFC. The writer must be
+  validated against the RFC's own test vectors, or use a JCS implementation.
+  Assuming Qt's output conforms is the obvious mistake, and it is the one that
+  made the previous approach unimplementable.
+
+JCS canonicalises **one JSON value**. It says nothing about a file of them, so
+§ 2.4 still owns everything at file level.
+
+### 2.3 Record types
+
+Every line is one JSON object with a `t` discriminator.
+
+```jsonl
+{"t":"meta","schema":1,"project":"ants-terminal","name":"Ants Terminal"}
+{"t":"id_prefix","prefix":"ants","high_water":3759}
+{"t":"legend","status":"in-progress","wording":"In progress (active commit work…)"}
+{"t":"section","slug":"performance-2","title":"Performance","level":3,"parent":null,"intro":null}
+{"t":"section","slug":"vt-parser","title":"VT parser","level":4,"parent":"performance-2","intro":"Prose."}
+{"t":"item","id":"ANTS-1234","id_parses":true,"section":"performance-2","status":"shipped","kind":"perf","headline":"…","layman":"…","source":"…","priority":2,"visibility":"public","milestone":null,"resolution":"…","body":"…","created":"2026-07-30","last_modified":"2026-07-30","shipped":"2026-07-30","lanes":["vt"],"evidence":[],"extras":{},"provenance":{"kind":"defaulted"}}
+{"t":"element","section":"performance-2","position":0,"kind":"item","ref":"ants-1234"}
+{"t":"element","section":"performance-2","position":1,"kind":"narration","payload":"Prose belonging to no item."}
+{"t":"element","section":"performance-2","position":2,"kind":"table","payload":{"header":["A","B"],"rows":[["1","2"]]}}
+{"t":"rel","type":"blocked-by","src":"ants-1234","dst":"ants-1200"}
+{"t":"rel","type":"blocked-by","src":"ants-1234","dst_project":"doom-ants","dst":"doom-0082"}
+{"t":"rel","type":"specified-by","src":"ants-1234","dst_path":"docs/specs/ANTS-1234-thing.md"}
+{"t":"citation","project":"ants-terminal","src":"ants-1234","file":"src/vtparser.cpp","symbol":"VtParser::feed"}
+{"t":"citation","project":"ants-terminal","doc":"docs/specs/ANTS-1234-thing.md","file":"src/vtparser.cpp","symbol":"VtParser::feed"}
+{"t":"feedback_ref","item":"ants-1234","file":"Vestige_Ants_MCP_Feedback.md"}
+{"t":"history","item":"ants-1234","at":"2026-07-30T09:15:00Z","seq":0,"field":"status","old":"planned","new":"shipped"}
+```
+
+**Every variant is shown, because a variant with no shape is a variant nobody
+can export.** `section` appears twice (root and nested), `element` three times
+(one per `kind`), `rel` three times (same-project item target, cross-project
+item target, document target), `citation` twice (item-anchored and
+doc-anchored).
+
+#### What is and is not emitted
+
+- **No surrogate key is ever serialised, and the rule is normative rather than
+  the list.** `item_pk`, `project_id`, `section_id`, `element_id`, `rel_id`,
+  `citation_id` and `history_id` are rowids, and so is every column *holding*
+  one — `section.parent_id`, `element.item_pk`, `relationship.src_pk` /
+  `dst_pk`, `history.item_pk`, `citation.item_pk`, `feedback_ref.item_pk`,
+  `item.section_id`, `item.project_id`. **Any column whose value is a rowid is
+  never serialised.** A rebuild inserts in *export* order while the source
+  store was built in *document* order, and any deleted row leaves a gap that
+  never recurs — so a serialised rowid guarantees INV-1 fails. (A list is what
+  gets four names short; that is how it stood before the split.)
+- **References carry the FOLDED id.** `{"t":"item","id":"ANTS-1234"}` declares
+  the item with its authored spelling; every reference to it — `element.ref`,
+  `rel.src`/`dst`, `feedback_ref.item`, `citation.src`, `history.item` —
+  carries `"ants-1234"`. `id_fold` is never emitted as a *field of its own*;
+  it is the reference form. Folding at the reference site is what lets `Sh-1`
+  and `SH-1` resolve to one row without the reader re-deriving identity per
+  link.
+- **Folding is ASCII-lowercase, and the function is named because the two
+  obvious choices differ.** SQLite's `lower()` folds ASCII only;
+  `QString::toLower()` applies full Unicode case mapping. Ids are ASCII by
+  `roadmap-format.md` § 3.5.1's grammar, so the two agree — but an implementer
+  must not reach for `toLower()` and assume equivalence.
+- **`meta` carries no export timestamp.** A date inside a byte-identity
+  contract defeats it: two exports of an unchanged store would differ across
+  midnight, and every regeneration would churn the committed file.
+- **`project.root` is store-local and deliberately unexported** — a
+  machine-local absolute path, in a repo shared between machines. It is the one
+  column INV-2 does not cover, and ANTS-3756 makes it nullable to say so.
+- **A cross-project relationship is carried by the SOURCE project's file**,
+  with `dst_project` naming the far side. The alternatives — duplicating the
+  edge in both files, or a corpus-level file — were rejected: duplication makes
+  one logical edge two rows that can disagree, and a corpus file breaks the
+  one-file-per-project rule INV-1 is stated over. A rebuild that cannot see the
+  far project keeps the edge and leaves it unresolved; ANTS-3756's `blocked`
+  field already excludes cross-project targets for exactly this reason.
+- `history.seq` disambiguates two edits to one field within the same second;
+  without it the `history` sort is not total.
+
+### 2.4 File-level rules JCS does not cover
+
+| Freedom | Pinned to |
+|---|---|
+| Record-type order | `meta`, `id_prefix`, `legend`, `section`, `item`, `element`, `rel`, `citation`, `feedback_ref`, `history` — all ten, in that order |
+| `id_prefix` order | by `prefix`, code-unit order |
+| `legend` order | by `status`, in the model's § 7.3 declared enum order |
+| `section` order | **parents before children**, then by `slug`, code-unit order |
+| `item` order | by the id sort in § 2.5 |
+| `element` order | by `(section, position)` |
+| `rel` order | same-project item targets, then cross-project item targets, then document targets; within each, by `(type, src, dst)` / `(type, src, dst_project, dst)` / `(type, src, dst_path)`, code-unit order |
+| `citation` order | item-anchored rows before doc-anchored rows, then by `(src, file, symbol)` / `(doc, file, symbol)`, code-unit order |
+| `feedback_ref` order | by `(item, file)`, code-unit order |
+| `history` order | by `(item, at, seq)` — total by construction, since `seq` is unique per `(item, at)` |
+| Absent vs null | a field with no value is **omitted**; `null` appears only where a record shape shows it (`parent`, `intro`, `milestone`) |
+| Empty string vs absent | an empty string is a **value** and is emitted; absence is omission |
+| Empty containers | `lanes`, `evidence`, `extras`, `provenance` are emitted as `[]` / `{}` when empty, never omitted — they always exist on an item |
+| Line ending | `\n`, including after the final line |
+| Numbers | integers only. JCS's number rules are defined over ECMAScript doubles; the model has no non-integer value, so that machinery never engages |
+| Timestamps | dates `YYYY-MM-DD`; `history.at` is `YYYY-MM-DDTHH:MM:SSZ` — UTC, second precision, always `Z` |
+
+**Partitioning each multi-variant type before sorting it is what makes those
+orders total.** On a document-target `rel` the `dst` member is *absent*, and
+nothing in JSON defines how an absent member collates against a present one —
+so a single sort key over `(type, src, dst, dst_path)` is undefined for exactly
+the rows that mix variants. Ordering by variant first removes the comparison
+rather than defining it.
+
+**Sections are emitted parents-before-children** so a single-pass rebuild can
+resolve `parent` as it reads. Slug order alone can emit a child first, which
+would force the reader to defer foreign keys or make two passes.
+
+### 2.5 Id sort order
+
+Items sort by a **variable-length numeric-segment tuple**, because no simpler
+rule survives the corpus:
+
+1. Fold the id, then split it into maximal **alphabetic** and **numeric** runs. Separators (`-`, `_`) are **discarded, not compared** — they carry no ordering meaning, and treating them as runs would make `3D_E-0007` and `3DE-0007` sort differently for no reason.
+   - `ants-1234` → `("ants", 1234)`
+   - `pass-43-5-b` → `("pass", 43, 5, "b")`
+   - `3d_e-0007` → `(3, "d", "e", 7)` — note it **starts numeric**
+2. Compare run by run. Two runs of the same type compare naturally: numeric by value, alphabetic by **UTF-16 code-unit order** on the folded text — never locale collation, which varies by `LC_COLLATE` and would make the export machine-dependent.
+3. **Where two runs differ in type, numeric sorts before alphabetic.** Not cosmetic: `3D_E` is a live prefix, so `3d_e-0007` begins with a numeric run where `ants-1234` begins with an alphabetic one, and without this rule the sort is undefined between two real projects' ids.
+4. A shorter tuple sorts before a longer one sharing its prefix (`pass-43-5` before `pass-43-5-b`).
+5. **Tie-break on the raw `id`, code-unit order.** Required, not defensive: zero-padding is write-side only (`roadmap-format.md` § 3.5.1), so `CL-9` and `CL-0009` fold to the identical tuple and the sort would otherwise be non-total — which makes INV-1 fail *intermittently*, the worst way for it to fail.
+6. Quarantined ids (`id_parses = 0`, ANTS-3756 § 2.3) sort **last**, among themselves by raw `id`.
+
+Lexical sorting is not available (`ANTS-10` before `ANTS-9`), and neither is
+zero-padded string sorting (the corpus has genuinely unpadded ids). A
+two-element `(prefix, numeric)` tuple is also insufficient: it cannot express
+`PASS-43-5-B`, and splitting at the last hyphen would sort `PASS-9-*` after
+`PASS-10-*`.
+
+### 2.6 The write path
+
+- **Read inside one deferred transaction.** The export spans many statements; without a transaction a commit landing mid-export tears the file — half pre-change, half post-change, and INV-1 fails against a store nobody corrupted.
+- **`ConfigWriteLock`** (`src/configbackup.h`) wraps the write. It is the project's existing RAII `flock(2)` guard, and `tests/features/concurrent_writer_lock/` already locks its behaviour; the export is a whole-file rewrite, exactly the read-modify-write shape it exists for. Reusing it beats a second locking scheme (`coding.md` — reuse before rewriting).
+- **On a failed acquire the export ABORTS and reports.** The guard is advisory and its header leaves the choice to the caller. Proceeding unprotected is not available here: the model's § 9 says a silent backup failure is worse than no backup, because it stops anyone checking.
+- **Written temp-then-`rename(2)`, inside the lock's scope.** A crash midway through an in-place write truncates the only durable copy of a primary store — the one outcome worse than not having written it.
+
+## 3. Invariants
+
+Numbers are **inherited from ANTS-3756 and deliberately not reflowed**
+(`specs.md` § 5.5 — invariant ids are permanent). The gaps are the invariants
+that stayed with the store.
+
+- **INV-1** — Export, rebuild from that export, re-export ⇒ byte-identical files. This holds **per project and across the whole corpus** — a corpus-wide rebuild must also preserve the cross-project relationships the model's INV-4 allows, which a per-project round-trip cannot witness. *Test:* `tests/features/roadmap_export_roundtrip/` builds a **synthetic three-project fixture** — never the machine's real corpus, which is not present in CI — seeded with two items whose insertion order differs from their id order, a deleted row (so rowids carry a gap), a nested section, and one cross-project `blocked-by`. Export all three, rebuild into a temp store, re-export, `cmp` each pair, and assert the cross-project edge survives on the source project's file. *Breaks when:* any § 2.4 rule is left unpinned.
+- **INV-2** — The export is complete: every store row, and every **non-surrogate** column of it, survives the round-trip. *Test:* `roadmap_export_roundtrip` — after rebuild, per-table `COUNT(*)` matches for all **nine** tables (ten *record types*; `legend` is a column on `project`, not a table), and a column-wise diff matches, **joining on stable identity**: `(export_slug, id_fold)` for items, `slug` for sections, `(section, position)` for elements, `(type, src, dst|dst_path)` for relationships, `(item, at, seq)` for history, `(src|doc, file, symbol)` for citations, `(item, file)` for feedback refs, `prefix` for id prefixes. Every rowid-valued column and `project.root` are excluded. *Breaks when:* a writer drops a whole column — `provenance`, say — which round-trips byte-identically and preserves every row count, so INV-1 and a count-only check both pass on a lossy store. The surrogate exclusion is not a weakening: § 2.3 guarantees rowids differ after a rebuild, so a diff including them fails against a *correct* implementation.
+- **INV-3** — *moved to ANTS-3756* (item identity folding) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-4** — *moved to ANTS-3756* (off-grammar id storage) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-5** — Export item order follows § 2.5's numeric-segment sort and is **total**. *Test:* `roadmap_export_roundtrip` seeds `ANTS-9`, `ANTS-10`, `CL-9`, `CL-0009`, `PASS-43-5`, `PASS-43-5-B`, `PASS-9-1`, `3D_E-0007`, `3DE-0007` and one quarantined id, then asserts the exact emitted order. The last two are not padding: `3D_E-0007` is the only seed beginning with a *numeric* run, so it is what exercises rule 3, and the pair together exercises rule 1's separator-discard — a writer implementing neither passes a seed set without them. *Breaks when:* the writer sorts lexically (`ANTS-10` before `ANTS-9`); or splits at the last hyphen (`PASS-9-1` after `PASS-43-5`); or omits the tie-break, leaving `CL-9` and `CL-0009` unordered.
+- **INV-6** — *moved to ANTS-3756* (relates-to stored once) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-7** — *moved to ANTS-3756* (store location) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-8** — *moved to ANTS-3756* (canonical project root) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-9** — Every export write path acquires `ConfigWriteLock`, and aborts loudly when it cannot. *Test:* `roadmap_export_concurrency` — hold the lock, attempt an export, assert it returns an error, **wrote no bytes**, and **left no temp file**; release, assert it then succeeds. *Breaks when:* the writer treats `!acquired()` as permission to proceed unprotected. Phrasing matters: `flock` is advisory, so a non-cooperating writer *can* interleave — the testable claim is about our writer, not about the file.
+- **INV-10** — *moved to ANTS-3756* (per-field provenance) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-11** — *moved to ANTS-3756* (enum enforcement at the storage layer) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+- **INV-12** — The export writer streams: peak RSS during an export at corpus scale rises by **less than 4 MiB** above the pre-export baseline, against an export several times that size. *Test:* `roadmap_export_roundtrip` inflates the synthetic fixture to ~5 MiB of generated body text, samples RSS immediately before and at peak during the export call, and asserts the **delta**. *Breaks when:* the writer builds one `QString` and writes it at the end — which passes every other invariant here. The measurement must be a delta: a Qt process's absolute RSS exceeds the export's byte size before any work is done, so an absolute ceiling is unachievable and would be quietly relaxed until it passed.
+- **INV-13** — Every cross-record reference resolves to a declared stable key, and no surrogate value is emitted under any name. *Test:* `roadmap_export_roundtrip` parses the export and asserts every `ref` / `src` / `dst` / `item` / `section` / `parent` / `doc` value resolves — **folding before comparison**, since references are folded and `item.id` is authored. *Breaks when:* a writer serialises straight from `SELECT *` — the natural implementation, which silently breaks INV-1 on any store that has ever deleted a row. A name-based grep for `item_pk` is **not** sufficient: it passes against a writer emitting the same rowids under a different key (`"section":3`), and false-positives on free-text `body` or `extras`.
+- **INV-14** — *moved to ANTS-3756* (history bounded) — see [ANTS-3756](ANTS-3756-roadmap-store-schema.md). Number retained, never reflowed: `specs.md` § 5.5 makes invariant ids permanent, so the gap in this document's sequence is correct.
+
+## 4. RAM / build cost
+
+**Memory.** The export writer streams (INV-12), so its budget is a fixed
+per-record working set rather than a function of corpus size — under 4 MiB
+above baseline for a corpus whose markdown is 4.91 MiB (measured; ANTS-3756
+§ 1 records the command). The rebuild reads line by line for the same reason.
+
+**Disk.** The export is comparable to the store's own size, order 5–10 MiB for
+the current corpus, dominated by `body` text and `history`. `history`'s bound
+is ANTS-3756's INV-14; this spec inherits whatever that settles.
+
+**Build.** No new target and no new dependency — the export writer lives in
+ANTS-3756's `roadmapstore` library and needs `Qt6::Core` only. A JCS
+implementation is required, and whether that is a vendored routine or a
+validated use of `QJsonDocument` is an implementation choice this spec does not
+make (§ 2.2 states the constraint: it must pass the RFC's test vectors).
+
+## 5. Out of scope
+
+- **The store schema, its constraints, location and connection pragmas.** [ANTS-3756](ANTS-3756-roadmap-store-schema.md).
+- **Migration — populating the store from the ten markdown roadmaps.** ANTS-3757.
+- **The auto-publish cadence to the backup repo, and what a push conflict means.** ANTS-3758. This spec produces the bytes; when and how often they are committed is that spec's.
+- **How the writer locates the `claude-config` checkout.** ANTS-3758, with the rest of the backup surface. A **permanent exclusion here** rather than deferred work in this spec: the path is a deployment concern, not a serialisation one.
+- **Compression or a binary format.** Permanent exclusion — the whole point of the export is a git-reviewable one-line-per-item diff, which both would destroy.
+
+## 6. Tests
+
+Feature tests under `tests/features/`, label `features;fast`:
+
+| Directory | Covers |
+|---|---|
+| `roadmap_export_roundtrip/` | INV-1, INV-2, INV-5, INV-12, INV-13 |
+| `roadmap_export_concurrency/` | INV-9 |
+
+All six invariants are covered; none is a grep-only check.
+
+Per `CLAUDE.md` and `testing.md`, each test must be verified to **fail against
+pre-implementation source** before the implementation is restored. For INV-1
+that means a deliberately non-conforming writer — emit one object via a
+non-JCS path and confirm the round-trip comparison fails — because a
+round-trip test written against an already-correct writer passes for reasons it
+never checked.
+
+## 7. Cross-doc impact
+
+- **[ANTS-3756](ANTS-3756-roadmap-store-schema.md)** — its § 2.4 is replaced by a pointer here; INV-1, 2, 5, 9, 12, 13 are tombstoned there.
+- **[`roadmap-data-model.md`](../standards/roadmap-data-model.md)** — its § 9 assigns "the export: record types, field order, sort collation, encoding" to a spec; that bullet points here once this ships.
+- **`CHANGELOG.md`** — user-invisible until ANTS-3758 lands the render.
+
+## 8. Open questions
+
+- **Does a JCS implementation exist that is worth vendoring, or is validating `QJsonDocument` against the RFC test vectors cheaper?** § 2.2 states the requirement and deliberately leaves the means open; the answer changes § 4's build cost but no invariant.
+- **Should the export carry a trailing checksum line?** It would make a truncated file detectable without a full parse. Against: it is a value derived from the rest of the file, so it must be excluded from the round-trip comparison, which is the class of exception that caused trouble in the parent spec.
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | C / H / M / L / I | Outcome |
+|---|---|---|---|---|
+| 0-split | 2026-07-30 | none — no reviewer dispatched | — | **Provenance row, not a review.** Split out of ANTS-3756 after that spec converged by cap at 3 loops with fix collateral outnumbering draft defects in the last two, almost all of it in this half. Invariant numbers inherited, not reflowed (`specs.md` § 5.5). Three findings from ANTS-3760's deferred tail are folded in here as the split's owner: the cross-project relationship carrier, the nested-`section` record shape with parents-before-children ordering, and `dst_path`/`doc` naming. **The parent's three loops do NOT transfer** — they were run against a document that no longer exists; this spec runs the rule-14 gate from loop 1 on its own bytes. |

@@ -23395,6 +23395,41 @@ against current source before filing.
   Kind: doc.
   Source: cold-eyes-2026-07-30 (ANTS-3756 loop 3, converged by cap).
 
+- 📋 [ANTS-3761] **Roadmap export format — RFC 8785 serialisation, record types, ordering and the round-trip contract.**
+  Carved out of ANTS-3756 on the split recommendation its loop-3
+  cold-eyes exit made, and accepted by the user.
+
+  Why the seam is here rather than anywhere else: ANTS-3756 grew 321 ->
+  683 lines across three review loops, and collateral outnumbered draft
+  defects in the last two. Tracing where the collateral landed makes the
+  boundary obvious — nearly all of it was in the export half. The store
+  half (engine, location, schema, pragmas) was stable from loop 1; the
+  serialisation half was rewritten twice, once as a hand-pinned freedom
+  table and once against RFC 8785.
+
+  Takes from ANTS-3756: the whole serialisation surface — RFC 8785
+  delegation and what it does NOT cover, the ten record types and their
+  variants, file-level record ordering, the numeric-segment id sort, the
+  export write path (ConfigWriteLock, temp+rename), and INV-1, INV-2,
+  INV-5, INV-9, INV-12, INV-13 keeping their original numbers.
+
+  Leaves behind in ANTS-3756: the database itself — Qt6::Sql engine
+  choice and its dependency cost, XDG location, the schema and its
+  constraints, connection pragmas, and INV-3, INV-4, INV-6, INV-7,
+  INV-8, INV-10, INV-11, INV-14.
+
+  Invariant numbers are NOT reflowed. specs.md 5.5 makes them permanent,
+  so the moved ones are tombstoned in place in ANTS-3756 and keep their
+  numbers here — both documents therefore have gaps in their sequences,
+  which is correct and is what the tombstones exist to explain.
+
+  Each half runs the rule-14 gate from loop 1 on its own bytes. The
+  parent's three loops were run against a document that no longer
+  exists and do NOT transfer.
+  **Layman:** The committed text file that can rebuild the roadmap database from scratch, and the rules that make it come out identical every time.
+  Kind: implement.
+  Source: ANTS-3756 split at the cold-eyes cap, 2026-07-30.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
