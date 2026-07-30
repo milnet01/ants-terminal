@@ -4570,6 +4570,14 @@ void MainWindow::setupClaudeMcpProviders() {
                 QStringLiteral("checks")).toArray();
             for (const QJsonValue &v : checksArr)
                 req.checks.append(v.toString());
+            // ANTS-3710 — the negative counterpart to `paths`: drop code
+            // that is present but not ours (a vendored dependency tree)
+            // without also dropping the repo-global tools the way a
+            // narrowing `paths` does.
+            const QJsonArray exclArr = args.value(
+                QStringLiteral("exclude_paths")).toArray();
+            for (const QJsonValue &v : exclArr)
+                req.excludePaths.append(v.toString());
             // ANTS-3396 — opt-in async mode: spawn the sweep detached,
             // register a job, and return a handle immediately so the caller
             // never blocks on the ~60 s MCP transport cap. Default false →
@@ -4778,6 +4786,17 @@ void MainWindow::setupClaudeMcpProviders() {
             }
             if (r.noChanges)
                 env["no_changes"] = true;
+            // ANTS-3710 — echo the applied exclusions, and name the tools in
+            // this run that could not honour them. A silent partial exclusion
+            // would read as a complete one, which is worse than the noise.
+            if (!r.excludePathsApplied.isEmpty()) {
+                QJsonArray xp;
+                for (const QString &p : r.excludePathsApplied) xp.append(p);
+                env["exclude_paths_applied"] = xp;
+                QJsonArray ig;
+                for (const QString &t : r.excludePathsIgnoredBy) ig.append(t);
+                if (!ig.isEmpty()) env["exclude_paths_ignored_by"] = ig;
+            }
             // ANTS-1870 — since-last-run findings delta. `delta` and
             // `delta_unavailable_reason` are mutually exclusive; exactly one
             // appears under a narrowed since-last-run, neither otherwise.

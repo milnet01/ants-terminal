@@ -75,6 +75,18 @@ struct RunRequest {
     // `isAuditCheckSafe` before reaching the child process.
     QStringList paths;
     QStringList checks;
+    // ANTS-3710 — the negative counterpart to `paths`. Project-relative
+    // prefixes for code that is present but not ours: a vendored dependency
+    // tree, a staged cross-build SDK, a single-header library. Narrowing with
+    // `paths` is NOT the same operation — it also drops the repo-global tools
+    // and the project's own sibling lanes. Applied two ways: every positional
+    // file list is prefix-filtered, and the whole-tree invocation of each tool
+    // with a native exclusion flag gets the entries as flags
+    // (`toolExclusionArgs`). Tools with neither (gitleaks, clazy, clang-tidy,
+    // shellcheck) are named in the envelope's `exclude_paths_ignored_by` —
+    // a silent partial exclusion would be worse than the noise it removes.
+    // Each entry is validated through `isAuditArgSafe`, like `paths`.
+    QStringList excludePaths;
 };
 
 struct ToolResult {
@@ -136,6 +148,13 @@ struct RunResult {
     QString                    scopeDemoted;
     QString                    scopeDemotedReason;
     bool                       noChanges = false;
+    // ANTS-3710 — echo of the applied `exclude_paths`, and the tools in THIS
+    // run that could not honour them (no native exclusion flag, no positional
+    // list to filter). Both empty when the caller passed no exclusions. The
+    // echo is the point: an exclusion the caller believes is total but that
+    // one tool ignored would misrepresent that tool's findings as filtered.
+    QStringList                excludePathsApplied;
+    QStringList                excludePathsIgnoredBy;
     // ANTS-2032 — explicit partiality signal. `partial` is true when a
     // spawned tool did NOT finish cleanly (status != "ok": timed_out /
     // crashed), e.g. one tool blew its per-tool cap or the aggregate cap
@@ -319,8 +338,11 @@ QString sarifLevelFor(const QString &severity);
 // exclusion-set wiring can be asserted without spawning a real tool.
 // `scopedPaths` empty == the whole-tree invocation (exclusions applied);
 // non-empty == a scoped invocation (exclusions deliberately omitted).
+// ANTS-3710 — `excludePaths` are the caller's extra exclusions, applied on
+// the same whole-tree path as the hardcoded set.
 QStringList toolArgv(const QString &tool, const QString &projectRoot,
-                     const QStringList &scopedPaths = {});
+                     const QStringList &scopedPaths = {},
+                     const QStringList &excludePaths = {});
 
 }  // namespace internal
 

@@ -7641,6 +7641,32 @@ void ClaudeIntegration::onMcpConnection() {
                         "entry is sanitised through isAuditArgSafe; "
                         "any failing entry rejects the whole call "
                         "with code:\"bad_args\".");
+                    // ANTS-3710 — the negative counterpart to `paths`.
+                    // Narrowing is not excluding: `paths` also drops the
+                    // repo-global tools and the project's own sibling lanes.
+                    QJsonObject exclProp;
+                    exclProp["type"] = "array";
+                    exclProp["description"] = QStringLiteral(
+                        "Project-relative path prefixes to EXCLUDE (e.g. "
+                        "[\"mingw-deps\", \"third_party\"]) — for code that "
+                        "is present but not yours: a vendored dependency "
+                        "tree, a staged cross-build SDK, a single-header "
+                        "library. Unlike `paths` (which narrows, and so also "
+                        "skips gitleaks/trivy and your own sibling lanes), "
+                        "this keeps the sweep whole and removes only the "
+                        "named subtrees. Applied two ways: every positional "
+                        "file list is prefix-filtered at a path-segment "
+                        "boundary, and each tool with a native exclusion "
+                        "flag gets them on its whole-tree run (cppcheck -i, "
+                        "ruff --extend-exclude, bandit -x, semgrep "
+                        "--exclude, trivy --skip-dirs, mypy --exclude). "
+                        "gitleaks, clazy, clang-tidy and shellcheck have "
+                        "neither and CANNOT honour it — when any of them ran, "
+                        "the envelope's `exclude_paths_ignored_by` names "
+                        "them, alongside `exclude_paths_applied`. Each entry "
+                        "is sanitised through isAuditArgSafe; any failing "
+                        "entry rejects the whole call with "
+                        "code:\"bad_args\".");
                     QJsonObject checksProp;
                     checksProp["type"] = "array";
                     checksProp["description"] = QStringLiteral(
@@ -7680,6 +7706,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["formats"]              = formatsProp;
                     props["top_findings_count"]   = topProp;
                     props["paths"]                = pathsProp;
+                    props["exclude_paths"]        = exclProp;   // ANTS-3710
                     props["checks"]               = checksProp;
                     props["async"]                = asyncProp;
                     props["caller_cwd"]           = callerProp;

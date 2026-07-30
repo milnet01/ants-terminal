@@ -18,6 +18,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QPair>
+#include <QRegularExpression>   // ANTS-3710 — mypy's --exclude is a regex
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -560,6 +561,53 @@ TEST(mcp_audit_run, Ants3394ScopedInvocationOmitsExclusions) {
         << "a scoped invocation must not re-broaden via exclusions";
     EXPECT_FALSE(AuditRunner::internal::toolArgv("mypy", root, scoped)
                      .contains(QStringLiteral("--exclude")));
+}
+
+// ─────────────────────────────────────────── ANTS-3710 ──
+// exclude_paths: caller-supplied exclusions ride the same whole-tree path as
+// the hardcoded set, and reach cppcheck — which has no hardcoded exclusions
+// because it scans src/ (or "." on a flat layout, the case that walks a
+// vendored dependency tree).
+TEST(mcp_audit_run, Ants3710CallerExclusionsReachEachCapableTool) {
+    const QString root = QStringLiteral("/nonexistent-proj");
+    const QStringList excl = {QStringLiteral("mingw-deps")};
+    auto joined = [](const QStringList &a) { return a.join(QLatin1Char(' ')); };
+
+    const QStringList cppcheck =
+        AuditRunner::internal::toolArgv("cppcheck", root, {}, excl);
+    EXPECT_TRUE(cppcheck.contains(QStringLiteral("-i")))
+        << "cppcheck must receive -i for a caller exclusion";
+    EXPECT_TRUE(cppcheck.contains(QStringLiteral("mingw-deps")));
+
+    for (const char *tool : {"ruff", "bandit", "semgrep", "trivy"}) {
+        const QStringList a =
+            AuditRunner::internal::toolArgv(tool, root, {}, excl);
+        EXPECT_TRUE(joined(a).contains(QStringLiteral("mingw-deps")))
+            << tool << " must carry the caller exclusion";
+    }
+
+    // mypy takes ONE regex, so its entries are QRegularExpression::escape'd
+    // ("mingw\-deps") and a literal substring check would miss. Assert the
+    // contract that matters: the emitted regex matches a path under the
+    // excluded dir, and not a sibling that merely shares the prefix.
+    const QStringList mypy =
+        AuditRunner::internal::toolArgv("mypy", root, {}, excl);
+    const int flagAt = mypy.indexOf(QStringLiteral("--exclude"));
+    ASSERT_GE(flagAt, 0) << "mypy must receive --exclude";
+    ASSERT_LT(flagAt + 1, mypy.size());
+    const QRegularExpression rx(mypy.at(flagAt + 1));
+    ASSERT_TRUE(rx.isValid()) << rx.errorString().toStdString();
+    EXPECT_TRUE(rx.match(QStringLiteral("mingw-deps/foo.py")).hasMatch());
+    EXPECT_FALSE(rx.match(QStringLiteral("mingw-depsx/foo.py")).hasMatch());
+}
+
+// The hardcoded set stays off cppcheck: adding build/ and dist/ to it unasked
+// would change behaviour for every existing caller.
+TEST(mcp_audit_run, Ants3710CppcheckKeepsNoDefaultExclusions) {
+    const QString root = QStringLiteral("/nonexistent-proj");
+    const QStringList a = AuditRunner::internal::toolArgv("cppcheck", root, {});
+    EXPECT_FALSE(a.contains(QStringLiteral("-i")))
+        << "no caller exclusions ⇒ cppcheck argv unchanged";
 }
 
 // ─────────────────────────────────────────── ANTS-3395 ──

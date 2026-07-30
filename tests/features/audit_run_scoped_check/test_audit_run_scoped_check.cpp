@@ -98,9 +98,13 @@ TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {
     // clang-tidy branch (`--checks=-*,`) past the old 4000-byte edge.
     // Widened 5000 → 6500 by ANTS-2182, whose cppcheck compile-DB +
     // suppression block grew the branch above clang-tidy by ~30 lines.
+    // Widened 6500 → 8000 by ANTS-3710, whose `excludePaths` parameter and
+    // cppcheck `-i` block put `--checks=-*,` at offset 6647 — 147 bytes past
+    // the old edge. The new figure is measured, not guessed, and carries
+    // headroom so the next branch added above clang-tidy does not re-break it.
     const auto fn = src.find("QStringList toolArgv(");
     ASSERT_NE(fn, std::string::npos);
-    const std::string region = src.substr(fn, 6500);
+    const std::string region = src.substr(fn, 8000);
     EXPECT_TRUE(contains(region, "scopedPaths"));
     EXPECT_TRUE(contains(region, "scopedChecks"));
     EXPECT_TRUE(contains(region, "--checks=-*,"))

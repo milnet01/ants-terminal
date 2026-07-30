@@ -182,8 +182,38 @@ const QStringList &kExclusions() {
 // explicit set is what covers the gitignore-unaware tools (bandit, mypy,
 // trivy). A caller who really wants to audit a build tree can pass `paths`
 // (a scoped invocation), which bypasses these entirely.
-QStringList toolExclusionArgs(const QString &tool) {
-    const QStringList &dirs = kExclusions();
+// ANTS-3710 — the tools that can be told to skip a path on a whole-tree
+// run. Anything absent here CANNOT honour `exclude_paths` and is reported in
+// `exclude_paths_ignored_by`: gitleaks filters via its generated --config
+// (ANTS-2016), clazy/clang-tidy run off the compile DB, shellcheck takes
+// positionals only. Kept adjacent to toolExclusionArgs so a new branch below
+// and this list cannot drift apart.
+const QStringList &kExclusionCapableTools() {
+    static const QStringList v = {
+        QStringLiteral("cppcheck"), QStringLiteral("ruff"),
+        QStringLiteral("bandit"),   QStringLiteral("semgrep"),
+        QStringLiteral("trivy"),    QStringLiteral("mypy"),
+    };
+    return v;
+}
+
+// ANTS-3710 — `extra` is the caller's exclude_paths. They join the hardcoded
+// set for the tools that already had a branch, and drive a cppcheck branch
+// that deliberately does NOT exist for the hardcoded set: cppcheck scans
+// `src/` (or `.` on a flat layout) and adding the build-output names to it
+// unasked would change behaviour for every existing caller. A caller-supplied
+// exclusion is asked for, so it applies.
+QStringList toolExclusionArgs(const QString &tool,
+                              const QStringList &extra = {}) {
+    const QStringList dirs = kExclusions() + extra;
+    if (tool == QLatin1String("cppcheck")) {
+        // cppcheck -i <path> drops a dir or file from the scan. Caller
+        // entries only — see above.
+        QStringList a;
+        for (const QString &d : extra)
+            a += {QStringLiteral("-i"), d};
+        return a;
+    }
     if (tool == QLatin1String("ruff"))
         // ruff --extend-exclude ADDS to the default + .gitignore excludes.
         return {QStringLiteral("--extend-exclude"),
@@ -378,7 +408,8 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                      const QJsonObject &projectConfig = {},
                      const QStringList &scopedPaths = {},
                      const QStringList &scopedChecks = {},
-                     const QString &gitleaksConfig = {}) {
+                     const QString &gitleaksConfig = {},
+                     const QStringList &excludePaths = {}) {  // ANTS-3710
     // ANTS-2185 — guard every scoped positional against argv
     // option-injection before it reaches any tool branch's bare append.
     // This is the single chokepoint where positionals (from the resolved
@@ -450,6 +481,11 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         // build (kills the missingIncludeSystem flood AND the `namespace X {`
         // mis-parsed-as-C syntaxErrors). Fall back to the src/ scan otherwise.
         const QString compileDb = AuditEngine::resolveCompileCommands(projectRoot);
+        // ANTS-3710 — caller exclusions, before the scan target. `-i` is
+        // honoured against both a --project= DB and a plain directory scan,
+        // and the flat-layout case (srcRoot == ".") is exactly the one that
+        // otherwise walks a vendored dependency tree.
+        args += toolExclusionArgs(tool, excludePaths);
         if (!compileDb.isEmpty()) {
             args += QStringLiteral("--project=") + compileDb;
         } else {
@@ -501,7 +537,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
     if (tool == QLatin1String("ruff")) {
         QStringList args = {QStringLiteral("check")};
         if (!scoped.isEmpty()) args += scoped;
-        else { args += QStringLiteral("."); args += toolExclusionArgs(tool); }
+        else { args += QStringLiteral("."); args += toolExclusionArgs(tool, excludePaths); }
         args += QStringLiteral("--output-format=json");
         return args;
     }
@@ -510,7 +546,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         if (!scoped.isEmpty()) args += scoped;  // explicit files
         else {
             args += {QStringLiteral("-r"), srcRoot};       // recurse src dir
-            args += toolExclusionArgs(tool);               // ANTS-3394
+            args += toolExclusionArgs(tool, excludePaths);               // ANTS-3394
         }
         args += {QStringLiteral("-f"), QStringLiteral("json"),
                  QStringLiteral("-ll")};
@@ -524,7 +560,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                             QStringLiteral("--config"),
                             QStringLiteral("p/security-audit")};
         if (!scoped.isEmpty()) args += scoped;
-        else { args += QStringLiteral("."); args += toolExclusionArgs(tool); }
+        else { args += QStringLiteral("."); args += toolExclusionArgs(tool, excludePaths); }
         return args;
     }
     if (tool == QLatin1String("gitleaks")) {
@@ -554,7 +590,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
                             QStringLiteral("--quiet"),
                             QStringLiteral("--format"),
                             QStringLiteral("json")};
-        args += toolExclusionArgs(tool);
+        args += toolExclusionArgs(tool, excludePaths);
         args += QStringLiteral(".");
         return args;
     }
@@ -571,7 +607,7 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
     if (tool == QLatin1String("mypy")) {
         QStringList args = {QStringLiteral("--no-color-output")};
         if (!scoped.isEmpty()) args += scoped;
-        else { args += toolExclusionArgs(tool); args += QStringLiteral("."); }
+        else { args += toolExclusionArgs(tool, excludePaths); args += QStringLiteral("."); }
         return args;
     }
     return {};
@@ -1716,8 +1752,10 @@ QString flagSafeScopedPath(const QString &p) {
 
 // ANTS-3394 — test hook delegating to the anonymous-namespace argv builder.
 QStringList toolArgv(const QString &tool, const QString &projectRoot,
-                     const QStringList &scopedPaths) {
-    return AuditRunner::toolArgv(tool, projectRoot, {}, scopedPaths);
+                     const QStringList &scopedPaths,
+                     const QStringList &excludePaths) {   // ANTS-3710
+    return AuditRunner::toolArgv(tool, projectRoot, {}, scopedPaths, {}, {},
+                                 excludePaths);
 }
 
 // ANTS-1820 — test hook delegating to the anonymous-namespace parser.
@@ -1821,6 +1859,20 @@ RunResult runAudit(const RunRequest &req) {
             r.code  = QStringLiteral("bad_args");
             r.error = QStringLiteral(
                 "audit_run: paths entry \"%1\" fails argv-safety "
+                "sanitisation").arg(p);
+            return r;
+        }
+    }
+    // ── ANTS-3710 / exclude-paths sanitisation. Same gate and same
+    // refuse-the-whole-call posture as `paths` above: a typo'd exclusion that
+    // was silently dropped would leave the caller reading a noisy result as
+    // if it had been filtered.
+    for (const QString &p : req.excludePaths) {
+        if (!isAuditArgSafe(p)) {
+            r.ok = false;
+            r.code  = QStringLiteral("bad_args");
+            r.error = QStringLiteral(
+                "audit_run: exclude_paths entry \"%1\" fails argv-safety "
                 "sanitisation").arg(p);
             return r;
         }
@@ -2130,6 +2182,37 @@ RunResult runAudit(const RunRequest &req) {
         }
     }
 
+    // ── ANTS-3710 — apply exclude_paths to every positional file list, in
+    // one place, after whichever scope branch built it. Prefix match on the
+    // project-relative path, at a path-segment boundary so "src/vendor" does
+    // not also swallow "src/vendorish.c". The whole-tree half of the feature
+    // rides on each tool's native flag (toolExclusionArgs); this half is what
+    // covers a project that HAS a positional list.
+    if (!req.excludePaths.isEmpty()) {
+        const auto excluded = [&](const QString &p) {
+            for (const QString &x : req.excludePaths) {
+                const QString pre = x.endsWith(QLatin1Char('/')) ? x
+                                                                 : x + QLatin1Char('/');
+                if (p == x || p.startsWith(pre)) return true;
+            }
+            return false;
+        };
+        for (auto it = perToolPaths.begin(); it != perToolPaths.end(); ++it) {
+            QStringList kept;
+            for (const QString &p : it.value())
+                if (!excluded(p)) kept.append(p);
+            it.value() = kept;
+        }
+        r.excludePathsApplied = req.excludePaths;
+        // Name the tools in THIS run that cannot honour it, so a partial
+        // exclusion is visible rather than assumed complete.
+        for (auto it = toolAbsPath.constBegin();
+             it != toolAbsPath.constEnd(); ++it)
+            if (!kExclusionCapableTools().contains(it.key()))
+                r.excludePathsIgnoredBy.append(it.key());
+        r.excludePathsIgnoredBy.sort();
+    }
+
     // ── ANTS-1446 — compile_commands.json include-path validation.
     // Only relevant when clazy or clang-tidy is in the resolved tool
     // list; both consume the JSON via `-p`. Cheap when absent (no
@@ -2284,7 +2367,7 @@ RunResult runAudit(const RunRequest &req) {
         proc->start(it.value(),
                     toolArgv(tool, canonProject, projectConfig,
                              perToolPaths.value(tool), req.checks,
-                             gitleaksConfig));
+                             gitleaksConfig, req.excludePaths));
     }
 
     // Aggregate cap.

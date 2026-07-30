@@ -21658,7 +21658,7 @@ requesting no action and are closed in place rather than filed.
   the "one useless 195-file lane" case. Tests:
   tests/features/indie_review_computed_partition/ (INV-1..5).
 
-- 📋 [ANTS-3710] **`audit_run` has no `exclude_paths`, so a vendored dependency tree dominates the sweep.**
+- ✅ [ANTS-3710] **`audit_run` has no `exclude_paths`, so a vendored dependency tree dominates the sweep.**
   `paths` narrows a sweep; there is no negative counterpart, and narrowing is not the
   same operation as excluding. DOOM Ants stages Windows cross-build dependencies in
   `mingw-deps/` (upstream SDL2 source incl. its test programs, SDL2_mixer,
@@ -21688,6 +21688,40 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Every audit scans the bundled third-party code, and its problems drown out the ones in your own code.
   Kind: enhancement.
   Source: DOOM-Ants-feedback-2026-07-28.
+  Resolved (2026-07-30): `audit_run` takes `exclude_paths[]` — project-relative
+  prefixes, validated through the same isAuditArgSafe gate as `paths`, one bad
+  entry refusing the whole call rather than being silently dropped.
+  Applied two ways. (1) Every positional file list is prefix-filtered at a
+  path-segment boundary, in one post-pass over perToolPaths after whichever
+  scope branch built it — so "src/vendor" cannot swallow "src/vendorish.c".
+  (2) Each tool with a native exclusion flag gets the entries on its whole-tree
+  run via toolExclusionArgs: cppcheck -i, ruff --extend-exclude, bandit -x,
+  semgrep --exclude, trivy --skip-dirs, mypy --exclude.
+  cppcheck was NOT previously in toolExclusionArgs at all, and it is the tool
+  that produced 16 of DOOM's 22 error-severity findings. It is now wired for
+  CALLER entries only — the hardcoded kExclusions() set stays off it, because
+  adding build-output names unasked would change behaviour for every existing
+  caller.
+  The echo the request asked for is there and is the honest half: the envelope
+  carries `exclude_paths_applied` plus `exclude_paths_ignored_by`, which names
+  the tools in THIS run that cannot honour an exclusion at all — gitleaks
+  (filters via its generated --config), clazy / clang-tidy (compile DB),
+  shellcheck (positionals only). A partial exclusion the caller reads as total
+  would be worse than the noise it removed. The optional auto-default
+  (vendor/ third_party/ *-deps/ …) was NOT implemented — a default exclusion
+  list is a judgement about someone else's tree, and the request itself said a
+  silent one would be worse than the current noise.
+  Verified while scoping, and it changed the design: DOOM's flat layout has no
+  src/, so AuditScope::enumerateSourceFiles (`git ls-files src/`, hardcoded)
+  returns empty and every tool falls back to its own walk — the positional
+  filter would not have fired for them at all. That hardcoding is filed
+  separately as ANTS-3741.
+  Tests: mcp_audit_run Ants3710CallerExclusionsReachEachCapableTool (all six
+  tools; mypy asserted by matching its emitted regex, since its entries are
+  QRegularExpression::escape'd) + Ants3710CppcheckKeepsNoDefaultExclusions.
+  audit_run_scoped_check's fixed-byte scrape window widened 6500 → 8000 (the
+  literal moved to a measured offset 6647). Spec ANTS-1351 § 2.1 has the row.
+  Full suite 3076/3076.
 
 - ✅ [ANTS-3711] **`apply_edits` has no line-range selector, so replacing a large contiguous block means re-emitting it verbatim.**
   `old` must be an exact unique substring, so a 76-line deletion means re-emitting

@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **`audit_run` takes `exclude_paths` — skip code that is not yours** (ANTS-3710)
+  Point it at a bundled dependency folder and the audit stops reporting that
+  folder's problems, without narrowing the sweep away from the rest of your
+  project. The result tells you which exclusions were applied, and names any
+  tool that could not honour them, so a partly-filtered result never reads as
+  a fully-filtered one. Requested by the DOOM Ants session, where bundled
+  Windows build dependencies supplied over half of every sweep's most serious
+  findings.
+
 - **`cold_eyes_brief` returns an `input_hash`** (ANTS-3718)
   A fingerprint of everything a review lane reads — the brief, its docs, the small cross-reference contracts and every cited code file. A review loop can skip a lane whose fingerprint has not changed since it last came back clean, without having to read the lane to work that out. Requested by the claude-config session.
 
