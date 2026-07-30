@@ -108,8 +108,8 @@ manager without extra repository configuration.
 |-------|--------|-------------|----------------|----------------|
 | **P1 — Flathub** | Flatpak | ✅ manifest + Lua module (H6, H6.1) | 📋 submit `org.ants.Terminal` to `flathub/flathub` (H6.2) | 0.8.0 |
 | **P2 — AUR (Arch User Repository)** | PKGBUILD | ✅ recipe (H5) | 📋 push to `aur.archlinux.org/packages/ants-terminal.git` + `-git` variant | 0.8.0 |
-| **P3 — openSUSE OBS (home:ants-terminal)** | RPM spec | ✅ spec (H5) | 📋 upload to Open Build Service `home:` project, then target Tumbleweed / Leap repos | 0.8.0 |
-| **P4 — Fedora COPR** | RPM spec | ✅ spec (H5) | 📋 create `ants-terminal` COPR; later submit package review for `fedora-extras` | 0.8.0 |
+| **P3 — openSUSE OBS (home:milnet:ants-terminal)** | RPM spec | ✅ spec (H5) | ✅ published — Tumbleweed, Leap 16.0 and Fedora 44 (ANTS-3726/3727) | 0.7.101 |
+| **P4 — Fedora COPR** | RPM spec | ✅ spec (H5), Fedora-portable since ANTS-3727 | 📋 create `ants-terminal` COPR; later submit package review for `fedora-extras` | 0.8.0 |
 | **P5 — Debian / Ubuntu PPA** | deb source | ✅ debian/ tree (H5) | 📋 upload signed source package to Launchpad PPA | 0.8.0 |
 | **P6 — Snap Store (snapcraft.io)** | snapcraft.yaml | 📋 write `snap/snapcraft.yaml`, host-shell model like Flatpak | 📋 register `ants-terminal` snap name + publish via `snapcraft upload` | 0.9.0 |
 | **P7 — AppImage** | AppImage | 🚧 [`.github/workflows/release.yml`](.github/workflows/release.yml) — linuxdeploy + qt plugin on Ubuntu 22.04 (glibc 2.35) | 🚧 publishing on tag push to GitHub Releases (first build: 0.7.42) | 0.7.42+ |
@@ -248,7 +248,7 @@ SSH key registered there.
   confirmed by OneUp's spec, which fixes it the same way (BuildRequires +
   Requires on hicolor-icon-theme).
 
-- 📋 [ANTS-3727] **Make the RPM spec portable so OBS can build for distros other than openSUSE.**
+- ✅ [ANTS-3727] **Make the RPM spec portable so OBS can build for distros other than openSUSE.**
   Two BuildRequires in packaging/opensuse/ants-terminal.spec are
   openSUSE-only and block every other target:
 
@@ -280,6 +280,43 @@ SSH key registered there.
   Kind: package.
   Lanes: packaging.
   Source: in-session-2026-07-29 (OBS bring-up).
+  Resolved (2026-07-30). Leap 16.0 builds and publishes green (full RPM
+  set, rpmlint 0 errors / 0 warnings); Tumbleweed's resolved BuildRequires
+  set is byte-identical to before, verified by diffing rpmspec output
+  against the committed spec. Local suite 3063/3063.
+
+  This bullet's own diagnosis was mostly wrong and is corrected here rather
+  than quietly dropped. Of its two named blockers only pkgconfig(lua5.4)
+  was real. cmake(LayerShellQt) was NOT a blocker: Fedora ships
+  layer-shell-qt-devel providing it at 6.7.3, the same version openSUSE
+  has, so no arm was needed — it is now behind %bcond_without layershell
+  only so a distro that genuinely lacks it loses the feature instead of
+  failing to resolve. Three more spec blockers went unmentioned: ninja vs
+  ninja-build (neither Provides the other), appstream-glib's three distinct
+  names (now openSUSE-only, since the spec never invokes it), and
+  %{?ext_man}, an openSUSE macro that expands empty elsewhere while Fedora
+  still gzips man pages — globbed now.
+
+  More importantly, the three failures that actually cost cycles were not
+  BuildRequires at all. Two were _service: its buildtime services become
+  build dependencies, so Fedora died on an ambiguous `wget` (two shims
+  provide it — fixed by a Prefer line the setup script now writes) and
+  Mageia on a missing obs-service-set_version. One was our C++ source:
+  luaengine.cpp hardcoded <lua5.4/lua.hpp>, a path only openSUSE creates,
+  so Fedora failed after CMake had already found Lua and enabled plugins.
+
+  Two narrowings, both deliberate. Mageia is dropped, not deferred-with-a-
+  target-left-red: openSUSE:Tools cannot build obs-service-set_version for
+  it at all, which is upstream and unpatchable here — filed as ANTS-3731
+  with the fix shape. Fedora 44 stays in the target list and stays red
+  until the next release tag, because OBS builds from the tag and the Lua
+  fix lands on main; it already resolves, configures and compiles 125 files
+  there, so only that one include stands between it and green.
+
+  No source-grep test was added to lock the include. The Fedora target is
+  now a permanent build-time guard for exactly this class, and this repo
+  already carries brittle source-scrape tests that drift — duplicating a
+  free check with a fragile one is the wrong trade.
 
 - ✅ [ANTS-3728] **promote pins the OBS recipe to the tag it publishes, so a tag push cannot rebuild the previous release.**
   The GitHub webhook + OBS workflow token are live (token 11768), and
@@ -402,14 +439,53 @@ SSH key registered there.
   Kind: package.
   Source: in-session-2026-07-29 (measured while verifying ANTS-3729).
 
+- 📋 [ANTS-3731] **Drop _service's buildtime set_version so distros without it can build.**
+  Blocks Mageia today and will block any target whose repo lacks the
+  service. _service runs tar / recompress / set_version at mode="buildtime",
+  which makes each one a BUILD DEPENDENCY that must be installable in the
+  target repository.
+
+  openSUSE:Tools cannot build obs-service-set_version for Mageia_10 at all —
+  that package's own status there is unresolvable, "nothing provides
+  python3-base" (an openSUSE package name). So it is an upstream gap, not
+  something this package can patch. tar and recompress ARE available for
+  Mageia; set_version alone is missing, and it is load-bearing: it rewrites
+  Version: from the pinned tag, without which the spec names an unreleased
+  version between /bump and promote.
+
+  Fix shape to evaluate: have obs-submit.sh write Version: into the copied
+  spec from the tag it already validates ($REV), and drop the set_version
+  service entirely. Same single source of truth (the tag), computed at
+  submit time rather than in the VM, and it removes a build dependency from
+  every target rather than just Mageia. The cost is that the spec committed
+  to OBS then differs from the repo's by one line — weigh that against the
+  "no OBS-local fork" rule obs-submit.sh exists to enforce.
+
+  Do NOT do this speculatively: Tumbleweed, Leap 16.0 and Fedora 44 all
+  build green with the current arrangement, so this only earns its risk when
+  a target we actually want needs it.
+  **Layman:** One helper that OBS runs inside the build machine isn't available on every Linux distribution, which blocks us adding some of them.
+  Kind: package.
+  Lanes: packaging.
+  Source: in-session-2026-07-30 (found while adding distros for ANTS-3727).
+
 ### P4 — Fedora COPR
 
-**Prerequisites:** H5 ✅ (spec is Fedora-compatible — uses `%cmake`
-macros that work on both Fedora and openSUSE).
+**Prerequisites:** H5 ✅ — and the spec is now Fedora-compatible in fact,
+not just in principle: ANTS-3727 added the `%if` arms for the package
+names that differ (`ninja-build`, `pkgconfig(lua)`, the man-page glob),
+and `home:milnet:ants-terminal` builds it green on a real Fedora 44
+chroot. The earlier wording here credited the `%cmake` macros, which were
+never the problem — the macros were always portable, the package *names*
+were not, so COPR would have failed on exactly those.
 **Blocker:** Fedora Account System (FAS) account.
 
+Note COPR gives no second opinion on dependency resolution — OBS already
+builds this on Fedora 44, so COPR is about reach and the official-archive
+path, not about proving the spec.
+
 1. **Create a COPR project** at `copr.fedorainfracloud.org/coprs/`
-   with Fedora 40/41/42/rawhide chroots enabled.
+   with current Fedora chroots enabled (43/44/rawhide as of 2026-07).
 2. **Upload the spec** via `copr-cli build <project>
    /path/to/ants-terminal.spec` (or sync the GitHub repo with COPR's
    `custom build` webhook for auto-rebuild on tag push).

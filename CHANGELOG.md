@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **openSUSE Leap 16.0 packages, and a distro-portable RPM spec** (ANTS-3727)
+  The OBS repository now publishes for openSUSE Leap 16.0 alongside
+  Tumbleweed, so Leap users can install and update through zypper like
+  everyone else. The spec grew %if arms for every package name that differs
+  between distributions — Ninja, Lua, the AppStream validator and the man-page
+  suffix — which is what made a second distribution possible at all. Fedora 44
+  is wired up and resolves; it turns green from the next release, which carries
+  the Lua header fix below.
+
 - **Install Ants Terminal on openSUSE with zypper (ANTS-3726)**
   Ants Terminal is now built and hosted on openSUSE's own build servers, so
   on Tumbleweed you can add one repository and install it like any other
@@ -29,6 +38,14 @@ for security-relevant changes.
   six are fixed.
 
 ### Fixed
+
+- **Lua headers are found on distributions that do not use openSUSE's layout** (ANTS-3727)
+  luaengine.cpp included &lt;lua5.4/lua.hpp&gt;, which names a directory only
+  openSUSE creates; Fedora installs the same headers directly in /usr/include.
+  The build failed there even though CMake had located Lua and enabled the
+  plugin system. The include is now unqualified and the directory comes from
+  CMake, which was already supplying it. No effect on openSUSE, where the
+  compile line has carried -I/usr/include/lua5.4 all along.
 
 - **openSUSE package ships a stripped binary, with debug symbols in their own subpackages** (ANTS-3729)
   The OBS project now enables debuginfo, so `/usr/bin/ants-terminal` is

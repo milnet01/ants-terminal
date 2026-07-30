@@ -58,21 +58,49 @@ diagnose from a build log.
 
 Add a `<repository>` block in `obs-setup.sh` and re-run it. Finding out whether a
 distro *can* work is free: an unresolvable repository reports the exact missing
-package immediately, without consuming any build time.
+package immediately, without consuming any build time. Read that message rather
+than guessing — `osc api /build/<prj>/<repo>/x86_64/<pkg>/_status` prints it.
 
-Two things in the spec currently block everything except openSUSE
-(**ANTS-3727**):
+**Currently building:** openSUSE Tumbleweed, openSUSE Leap 16.0, Fedora 44.
 
-- `BuildRequires: cmake(LayerShellQt) >= 6.0` is a hard requirement, even though
-  `CMakeLists.txt` treats it as optional (`find_package(... QUIET)`, with a
-  fallback for Wayland Quake-mode). Any distro without `layer-shell-qt6` fails on
-  that line alone.
-- `pkgconfig(lua5.4)` is openSUSE's spelling. Fedora ships `pkgconfig(lua)` at
-  version 5.4, so it cannot resolve there.
+The spec carries `%if` arms for every package name that differs between distros
+(**ANTS-3727**), so a new RPM target should resolve without touching it. What
+actually differed, in case another distro needs an arm:
 
-Both need `%if 0%{?suse_version}` / `%else` arms before Fedora, Leap or Mageia
-will build. See the
+| | openSUSE | Fedora |
+|---|---|---|
+| Ninja | `ninja` | `ninja-build` |
+| Lua | `pkgconfig(lua5.4)` | `pkgconfig(lua) >= 5.4` |
+| AppStream validator | `appstream-glib` | *(openSUSE only — three names, and the spec never invokes it)* |
+| Man page suffix | `%{?ext_man}` | *(undefined — the spec globs `.1*` instead)* |
+
+`cmake(LayerShellQt)`, `cmake(Qt6*)` and `cmake(GTest)` needed no arms: rpm's
+dependency generators produce those on both distros. Wayland Quake-mode is
+nonetheless behind `%bcond_without layershell`, so a distro that ships no
+layer-shell package builds with `--without layershell` and loses one feature
+instead of failing to resolve.
+
+See the
 [cross-distribution howto](https://en.opensuse.org/openSUSE:Build_Service_cross_distribution_howto).
+
+### The trap that is *not* in the spec
+
+Two of the three failures hit while adding Fedora and Mageia came from
+`_service`, not from `BuildRequires` — its `tar` / `recompress` / `set_version`
+services run `mode="buildtime"`, which makes them build *dependencies* that must
+exist in the target repo:
+
+- **Fedora** failed with `have choice for wget ... wget1-wget wget2-wget`. Fedora
+  has no bare `wget`; both are shims that provide it. Fixed with a `Prefer:` line
+  in the project config, which `obs-setup.sh` now writes.
+- **Mageia** failed with `nothing provides obs-service-set_version`, and that one
+  is not fixable here: `openSUSE:Tools` cannot build that service for Mageia at
+  all (*its* build is unresolvable, "nothing provides python3-base"). Mageia
+  needs `_service` restructured to drop the buildtime `set_version` first, so it
+  is not in the target list.
+
+The lesson generalises: when a new target goes unresolvable, check whether the
+missing package is one of ours or one of OBS's own services.
 
 **Debian and Ubuntu are a bigger job.** OBS cannot build a `.deb` from a `.spec`;
 it needs `debian.control` and `debian.rules` alongside it, which OBS's
@@ -108,8 +136,17 @@ rebuilds the previous release.
 
 ## Once it's green
 
-The repository is published at:
+One published repository per target, all under the same base:
 
 ```
 https://download.opensuse.org/repositories/home:/milnet:/ants-terminal/openSUSE_Tumbleweed/
+https://download.opensuse.org/repositories/home:/milnet:/ants-terminal/openSUSE_Leap_16.0/
+https://download.opensuse.org/repositories/home:/milnet:/ants-terminal/Fedora_44/
+```
+
+The OBS package page carries ready-made install instructions per distro, which
+is the link worth giving users rather than these raw paths:
+
+```
+https://software.opensuse.org/download.html?project=home:milnet:ants-terminal&package=ants-terminal
 ```
