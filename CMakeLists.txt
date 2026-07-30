@@ -83,7 +83,13 @@ add_custom_command(
 # trips shader-compile edge cases in the OpenGL renderer — without
 # this floor a rolling-distro user with an older qt6-base installed
 # alongside a newer one could pick up the wrong one.
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus Test)
+# Sql (ANTS-3756): the roadmap store. Linked ONLY by ants_roadmapstore_lib --
+# every other target keeps its current link surface. The QSQLITE driver is a
+# runtime plugin that links the SYSTEM libsqlite3 and ships in its own distro
+# package, so a Qt SQL build with no driver fails at run time, not link time
+# (QSqlDatabase::addDatabase returns an invalid database). Packaging carriers
+# must therefore ship the plugin AND libsqlite3 -- see the spec's section 7.
+find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus Sql Test)
 
 # Lua 5.4 (optional — plugin system)
 find_package(PkgConfig)
@@ -419,6 +425,18 @@ target_sources(ants_core_lib PRIVATE "${ANTS_BUILD_INFO_VALUES_CPP}")
 set_source_files_properties("${ANTS_BUILD_INFO_VALUES_CPP}" PROPERTIES
     SKIP_PRECOMPILE_HEADERS ON
     SKIP_UNITY_BUILD_INCLUSION ON)
+
+# ANTS-3756 -- the roadmap store. Its own library, Qt6::Core + Qt6::Sql only:
+# it is the sole Sql consumer, and keeping it out of ants_core_lib means the
+# test bundles that link core do not drag the SQL module.
+add_library(ants_roadmapstore_lib STATIC
+    src/roadmapstore.cpp
+)
+target_link_libraries(ants_roadmapstore_lib
+    PUBLIC  Qt6::Core Qt6::Sql
+    PRIVATE ants_warnings)
+target_include_directories(ants_roadmapstore_lib PUBLIC src)
+set_target_properties(ants_roadmapstore_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(ants_vt_lib STATIC
     src/vtparser.cpp
@@ -2038,6 +2056,7 @@ if(ANTS_TESTS)
     # disabled, otherwise via ants_helper_lib so the .cpp compiles once.
     ants_add_core_bundle(test_core
         LIBS    ants_core_lib
+                ants_roadmapstore_lib   # ANTS-3756
                 $<$<BOOL:${ANTS_ENABLE_HELPER_CLI}>:ants_helper_lib>
         SOURCES tests/features/session_persistence_default/test_session_persistence_default.cpp
                 tests/features/session_sha256_checksum/test_session_sha256_checksum.cpp
@@ -2182,6 +2201,14 @@ if(ANTS_TESTS)
                 # RemoteControl/VtStream → unlinked GUI libs); they live in
                 # test_claude where the full lib set resolves.
                 tests/features/brief_dispatch_fence/test_brief_dispatch_fence.cpp
+                # ANTS-3756 — the roadmap store. Behavioural (a real SQLite
+                # store in a QTemporaryDir), not source-scrape: the invariants
+                # are about what the engine accepts and refuses. Filed here
+                # rather than as new binaries — README.md's bundle rule, and
+                # ANTS-1217 consolidated 141 standalone tests into seven
+                # bundles to bound build-time RAM.
+                tests/features/roadmap_store_identity/test_roadmap_store_identity.cpp
+                tests/features/roadmap_store_schema/test_roadmap_store_schema.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
