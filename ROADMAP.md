@@ -22855,6 +22855,44 @@ against current source before filing.
   hook codebase_index already uses, ANTS-2140); and add a maintenance op that
   loops the same indexer over every known project root for the one-shot
   backfill. The user's two options are the same code called twice.
+  Extended again (2026-07-30, user): the generated ROADMAP.md need NOT reproduce
+  today's file. It gets its own standard and publishes the LAYMAN content only —
+  the technical detail stays internal.
+
+  Agreed on the product. Measured: a layman-only render of the 215 open bullets
+  is ~37 KiB against today's 2.8 MB, and it is a far better artifact to put in
+  front of a GitHub visitor than 20,275 lines of internal write-up.
+
+  CONSEQUENCE that must not be lost — this invalidates the earlier "do not commit
+  the DB" pick, which rested on the markdown being a COMPLETE copy. Layman-only
+  means the DB becomes the sole home of every resolution note, evidence
+  paragraph, and kind/source/lanes value: one disk, no history, no git.
+  Resolution: keep the lossless round-trip but point it at a committed
+  machine-readable EXPORT (one item per line, stable field order, sorted by id),
+  regenerated with the published markdown. Never read by a session, so no token
+  cost; one-line diffs per changed item, which is better review granularity than
+  markdown gives today; and it is what rebuilds the DB on a fresh clone. Three
+  artifacts, three jobs — DB is the working store, export is the durable record,
+  ROADMAP.md is the published render.
+
+  `layman` becomes REQUIRED, enforced by verify. Measured today: 33% of all 1,588
+  bullets carry no Layman line, and 66 of the 215 OPEN ones (31%) do not — those
+  would silently vanish from a layman-only publish. Writing those 66 lines is
+  migration work to budget for.
+
+  Also newly available, and worth taking: a `visibility` column. Today everything
+  is public because the file IS the record, including security findings that are
+  still open. A curated render lets those be held until fixed — consistent with
+  the existing posture where audit artifacts stay local while ROADMAP.md is
+  public-by-design.
+
+  Curation call deferred to the spec: the public page should probably NOT list
+  all 1,310 finished items even once they have layman lines. Open work grouped by
+  theme plus recent releases reads better; CHANGELOG already carries the history.
+
+  Still open for the spec: what happens to an item hand-edited in the published
+  ROADMAP.md between publishes (it is now a render, so the edit is lost — decide
+  whether to detect and refuse, or accept and document).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
