@@ -103,9 +103,13 @@ value was defaulted (§ 4.2). Where no default exists — `layman`, `priority`,
 
 Incompleteness blocks **publishing**, never **migrating**. This is the only
 arrangement the corpus permits: measured across the nine surveyed projects,
-1,159 of 3,216 items carry no `Kind:`, 1,269 no `Source:`, and 1,499 no
-`Layman:` (~47%). A write-time-only reading of § 3.1 would refuse every
+of 3,320 items, 1,263 carry no `Kind:` (38%), 1,373 no `Source:` (41%), and
+1,603 no `Layman:` (48%). A write-time-only reading of § 3.1 would refuse every
 project.
+
+*"Item" here means an ID-bearing bullet or a GFM task-list entry. The 606
+narrator bullets (§ 5.1) are excluded — they are section elements, not items,
+so they neither need these fields nor count against them.*
 
 ### 3.4 Open and closed
 
@@ -212,7 +216,7 @@ mechanism named above:
 | Count | Structure | Home |
 |---|---|---|
 | 1,209 | sub-bullets | item `body` |
-| 610 | narrator bullets | section element, type `narrator` |
+| 606 | narrator bullets | section element, type `narrator` |
 | 182 | markdown table rows | section element, type `table` |
 | 38 | fenced code blocks | `body` or `intro` |
 
@@ -415,7 +419,7 @@ Three are present, and they are **not** the three a first draft named:
 |---|---|
 | Emoji bullets with IDs | Ants_Terminal, DOOM_Ants, finbreak, OneUp, Contact_List, Rolodex, MAME_Curator |
 | Emoji bullets + a parallel GFM task list | 3D_Engine (30 IDs, 994 checkboxes) |
-| Emoji bullets, no IDs | Music_Production (372 bullets) |
+| Emoji bullets, no IDs | Music_Production (372 bullets, 0 items) |
 
 **No project uses `#### Pass N.M` headings** — measured, zero occurrences
 corpus-wide. A parser for that shape is not a migration prerequisite.
@@ -537,3 +541,4 @@ Named so they are decided rather than discovered:
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 3 (model coherence, corpus drift, failure modes) | 6 / 12 / 14 / 18 / 1 | Structural rewrite: obligations split into three tiers, export scope and record schema defined, INV-1 given its missing leg, identity grammar corrected after the survey regex was found wrong about two projects, migration source shapes corrected (no project uses pass headings), § 11 added to reconcile with roadmap-format.md. |
+| 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split** rather than looping to the cap. ~8 of the 13 CRITICALs were collateral from loop 1's own fixes (entity table, provenance marker, cutover state, partial-checkout rule, obligation tiers — all added in loop 1); only ~4 were draft defects. The findings are overwhelmingly schema-level (primary keys, record shapes, sort collation, timestamp precision), i.e. this document is a standard carrying an implementation spec. ANTS-3754 records the split, the six surviving draft defects, and the pending export-location change. |

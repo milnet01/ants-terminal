@@ -22894,6 +22894,73 @@ against current source before filing.
   ROADMAP.md between publishes (it is now a render, so the edit is lost — decide
   whether to detect and refuse, or accept and document).
 
+- 📋 [ANTS-3754] **Split roadmap-data-model.md — the standard is carrying an implementation spec, and loop 2's findings are almost all schema-level.**
+  STOP-AND-SPLIT taken at loop 2 rather than running to the cap, on the
+  skill's own collateral rule. Loop 1: C6 H12 M14 L18 I1. Loop 2: C13 H19
+  M17 — findings went UP, and tracing each CRITICAL to its origin says
+  why: roughly 8 of loop 2's 13 are collateral from loop 1's own fixes
+  (the entity table, the provenance marker, the cutover state, the
+  partial-checkout rule and the obligation tiers were all ADDED in loop 1
+  and are what loop 2 disputes), 1 was an artifact of my own process
+  error, and only ~4 are genuine draft defects.
+
+  Diagnosis: the document is a standard wearing a spec's clothes. At 539
+  lines it covers three artifacts, obligation tiers, a field table,
+  structure, entities, enumerations, export serialisation, a migration
+  algorithm, fourteen health checks, a reconciliation section and a
+  deferral list. Loop 2's findings are overwhelmingly about primary keys,
+  record shapes, key collisions, sort collation and timestamp precision —
+  implementation-spec concerns, not standard concerns. Looping a cold
+  reader over them is paying review prices to design a schema.
+
+  The split:
+  - STANDARD keeps what an item IS — the obligation tiers, the
+    enumerations and identity grammar, the three-artifact split and its
+    invariants, and the § 11 reconciliation with roadmap-format.md. That
+    half is converging: the lanes stopped disputing it.
+  - IMPLEMENTATION SPEC (via /write-spec, its proper gate) takes entity
+    keys, the export record schema and byte-level serialisation, the
+    migration algorithm, health-check implementations, and concurrency.
+    Loop 2's finding list IS that spec's input — it is a worked list of
+    every decision the schema needs, already verified.
+
+  GENUINE DRAFT DEFECTS to carry into the split, not lost with the loop:
+  1. 3D_Engine's 994 GFM checkboxes are items with no IDs. § 9.2
+  allocates only for Music_Production, so 994 items have no identity, no
+  key and no re-run match. The largest single migration gap.
+  2. Bracketed prose tokens match the ID grammar — `players[idx-1]` and
+  `row[right-1]` are live in DOOM_Ants — so ID recognition must be scoped
+  to the bullet-leading position or migration hard-refuses on real data.
+  3. This standard REVERSES ANTS-3753's own recorded recommendation
+  (index-not-source-of-truth) without recording the veto. The bullet
+  invited a veto and one was given in conversation; the bullet was never
+  amended. Two documents assert opposite architectures under one id — fix
+  the bullet.
+  4. `narrator` is defined inversely to roadmap-format.md § 3.3's
+  "narration bullets WITHOUT a status emoji", and the shape that standard
+  actually calls narration has no home in the model at all.
+  5. roadmap-format.md § 3.10.5 documents pass-headings as a supported
+  read AND write format; dropping the parser because the corpus has zero
+  instances is what § 2 forbids.
+  6. Post-cutover, roadmap_query / roadmap_log / RoadmapDialog all parse
+  and WRITE ROADMAP.md today; a layman-only render breaks every one and
+  the document never names them.
+
+  PROCESS ERROR to avoid repeating: the lane copy was refreshed BEFORE
+  the 3,216 → 3,320 correction landed, so all three lanes spent a finding
+  each on a figure already fixed. Refresh the lane copy as the LAST step
+  before dispatch, never before the fix pass is closed.
+
+  Also pending, unreviewed: the export's home moves to the private
+  claude-config repo (user decision, 2026-07-30). That change FIXES a leak
+  this draft shipped — the export was specced into each project's own
+  repo, and ants-terminal is PUBLIC, so every `visibility: internal` item
+  would have been published in full technical detail next to the render
+  that carefully excluded it.
+  **Layman:** The design document tried to be both a rulebook and a build plan; the review kept finding build-plan problems. Split it.
+  Kind: doc.
+  Source: cold-eyes-2026-07-30 (ANTS-3753 standard, loop 2 stop-and-split).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
