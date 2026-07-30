@@ -32,8 +32,18 @@ than the rewrite that follows an unstated assumption.
 
 ## 2. File + naming
 
-- One spec per file at `docs/specs/<ID>.md` where `<ID>` matches
-  `^ANTS-[0-9]+$` (the stable ROADMAP id from `.roadmap-counter`).
+- One spec per file at `docs/specs/<ID>-<topic>.md`, where `<ID>` matches
+  `^ANTS-[0-9]+$` (the stable ROADMAP id from `.roadmap-counter`) and
+  `<topic>` is two to four kebab-case words.
+- **The topic slug is required on new specs** (user decision, 2026-07-30).
+  A directory of bare ids is navigable only by someone holding the id;
+  people remember names. `spec_query` resolves `<id>-*.md` as well as
+  `<id>.md` (ANTS-3356), so both shapes are addressable by id and the
+  slug costs nothing mechanically.
+- Bare `<ID>.md` remains valid for the specs already written in that
+  shape. Renaming them is a corpus-wide sweep with its own dry-run
+  script, tracked by **ANTS-3755**; do not rename them piecemeal, which
+  would leave the corpus half-converted with no record of which half.
 - The spec elaborates exactly one ROADMAP bullet. Cross-cutting work
   that spans several ids gets one spec per id, cross-referenced in the
   header, or one umbrella spec whose header lists the ids it covers.

@@ -23171,6 +23171,90 @@ against current source before filing.
   the FORMAT — RetroDB is a `#### Pass N.M` roadmap before and after any
   rename, and 136 of its 154 status values sit outside the five-status
   enum, which is a data-model problem, not a layout one.
+  Naming settled for specs (2026-07-30, user): `docs/specs/<ID>-<topic>.md`,
+  not bare `<ID>.md`. Reason given: humans remember names, not ids, so a
+  directory of bare ids is navigable only by someone who already knows
+  the id. This resolves a live contradiction — global CLAUDE.md 14a said
+  <ID>-<topic>.md, this project's docs/standards/specs.md 2 said <ID>.md,
+  and all 218 existing specs follow the latter.
+
+  Verified before adopting it: spec_query already resolves BOTH shapes —
+  its schema documents "a topic-suffixed file `<id>-*.md` such as
+  DOOM-0009-path-tracer.md also resolves" (ANTS-3356). So the slug costs
+  nothing mechanically and no verb breaks.
+
+  specs.md 2 amended now so the standard stops contradicting the
+  decision. That amendment is a standards edit and therefore owes rule
+  14's cold-eyes gate; it is deliberately NOT gated on its own — it is
+  the same subject as this item, so it rides this item's gate rather than
+  paying for a three-lane dispatch over four lines.
+
+  SWEEP WORK this item now carries: renaming the 218 existing bare-id
+  specs. Needs the dry-run script (--dry-run default, --apply to act,
+  printing every from -> to) so the rename is reviewable before it runs,
+  and needs a same-commit pass over every inbound reference — src/
+  comments cite docs/specs/ANTS-NNNN.md in at least doccitations.cpp and
+  claudeintegration.cpp, and CHANGELOG/CLAUDE.md/sibling specs cite them
+  too. A rename that misses those turns 218 working links into dead ones.
+
+- 📋 [ANTS-3756] **Roadmap store — schema, entities, export serialisation and the INV-1 round-trip check.**
+  Spec seam 1 of the ANTS-3753 implementation, split BEFORE drafting
+  rather than at the cold-eyes cap — ANTS-3754 records what an oversized
+  document cost last time.
+
+  Owns: entity set and keys, cardinalities, how `extras` and `provenance`
+  (roadmap-data-model.md § 7.7) are stored, the section/element/legend
+  structures of § 5, the export's record types, field order, sort
+  collation and encoding, what makes INV-1's "byte-identical" testable,
+  and concurrency across projects sharing one store.
+
+  Depends on nothing; the other two seams depend on it, so it is written
+  first.
+  **Layman:** The database itself: what tables hold a roadmap item, and the committed text file that can rebuild it from scratch.
+  Kind: implement.
+  Source: ANTS-3753 split (spec seam 1 of 3), 2026-07-30.
+
+- 📋 [ANTS-3757] **Roadmap migration — the one-shot transformation, ID allocation, status normalisation and cutover.**
+  Spec seam 2 of the ANTS-3753 implementation.
+
+  Owns: the migration algorithm, per-project atomicity, re-run matching,
+  what happens to an item deleted from source, and the cutover interim in
+  which some projects are migrated and others are not.
+
+  Three decisions carried in from the loop-3 cold-eyes, each verified:
+  - Pass-headings status normalisation. One project tracks 144 items as
+    `#### Pass N.M`, and 136 of its 154 `- **Status**:` values sit OUTSIDE
+    the five-status enum (`deferred`, `partial`, `un-gated`, prose). Unlike
+    § 7.4's Kind mapping there is no canonical target, so the choice is
+    add statuses or lose information.
+  - Off-grammar ID quarantine: three corpus items are `[Cl9]`/`[CE18]`,
+    outside roadmap-format § 3.5.1's grammar. The standard quarantines
+    them; this spec owns the report and when it clears.
+  - Bulk allocation for the ~1,600 ID-less items, closed vs open.
+  **Layman:** The one-time job that reads every project's roadmap file and loads it into the database without losing anything.
+  Kind: implement.
+  Source: ANTS-3753 split (spec seam 2 of 3), 2026-07-30.
+
+- 📋 [ANTS-3758] **Roadmap publish + consumer cutover — the render, and the fate of roadmap_query / roadmap_log / RoadmapDialog.**
+  Spec seam 3 of the ANTS-3753 implementation.
+
+  Owns: render curation (whether closed items are listed at all), the
+  auto-publish cadence to the private claude-config backup repo including
+  that a push conflict means two stores diverged and must surface rather
+  than auto-merge, and the health-check suite's scheduling.
+
+  Carries the sharpest unresolved question from the loop-3 cold-eyes: a
+  layman-only render STOPS conforming to roadmap-format.md (§ 3.5's
+  required pieces, § 3.1's marker, §§ 3.6.2-3.6.3's headline matching) and
+  to documentation.md § 3. So either both standards are amended or the
+  render publishes under a different filename and ROADMAP.md is retired.
+
+  Also owns what happens to archive rotation (roadmap-format § 3.9) and
+  the CHANGELOG release flow, both of which are hand edits to a file that
+  becomes generated and therefore die under INV-3.
+  **Layman:** What the public roadmap page looks like once the database drives it, and what happens to the tools that read the old file.
+  Kind: implement.
+  Source: ANTS-3753 split (spec seam 3 of 3), 2026-07-30.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
