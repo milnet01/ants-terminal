@@ -22435,6 +22435,34 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-07-30 (found closing the ANTS-3389 loop back to MAME Curator).
 
+- 📋 [ANTS-3745] **No MCP verb answers "which build target owns this file?" — every test edit falls back to awk over CMakeLists.txt.**
+  Hit four separate times in one session. After editing a
+  tests/features/<x>/test_<x>.cpp you must know its bundle to run
+  anything narrower than a full build, and nothing in the toolkit says.
+  The fallbacks used, all raw shell:
+
+    awk 'NR<LINE && /ants_add_gui_bundle|add_executable/ {last=…}' CMakeLists.txt
+    for b in build/test_*; do "$b" --gtest_list_tests | grep -c "^Suite\." ; done
+
+  The second one runs every test binary just to find which suite lives
+  where. Both are exactly the grep-happy shelling the MCP exists to
+  replace, and the answer is static — the bundle SOURCES lists are right
+  there in CMakeLists.txt.
+
+  Note the test-file → bundle mapping is NOT the obvious one, which is
+  why recall does not substitute: tests/features/cold_eyes_engine is in
+  `test_audit`, and tests/features/mcp_audit_run is in `test_claude`.
+
+  Shape: extend `focused_test` (which already owns a changed-file →
+  test mapping) with an op that returns {target, test_binary,
+  suite_names} for a path, or add a small `build_target_for` verb. The
+  `--target <bundle>` advice in CLAUDE.md's build section assumes the
+  caller already knows the bundle, so this is the missing half of
+  documented guidance rather than a new idea.
+  **Layman:** There is no quick way to ask "which test program do I rebuild after editing this test file?", so we fall back to scraping the build script by hand.
+  Kind: enhancement.
+  Source: in-session-2026-07-30 (hit four times while shipping ANTS-3389/3710/3707).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
