@@ -22817,6 +22817,44 @@ against current source before filing.
   **Layman:** One shared database of every project's to-do items, so any project can query or repair the lot, while each project's ROADMAP.md stays the readable original.
   Kind: feature.
   Source: user-request-2026-07-30.
+  Extended (2026-07-30, user): the DB should also ENFORCE one standard across
+  projects, and migration is either a bulk translation script or each project
+  handling its own table via Ants MCP.
+
+  Surveyed the corpus first — 9 projects under /mnt/Games/Scripts/Linux carry a
+  ROADMAP.md, in THREE shapes: 6 on ants-v1 (Ants_Terminal 1,588 bullets,
+  DOOM_Ants 282, finbreak 192, OneUp 70, Contact_List 55, Rolodex 35), 1 on GFM
+  task lists (3D_Engine, 994), and 2 (MAME_Curator, Music_Production) in a shape
+  a quick emoji/checkbox/pass-heading sniff does not classify at all. ~3,216
+  bullets, Ants_Terminal alone being half. So "one standard" today means
+  reconciling three formats, and that cost is separate from the DB.
+
+  Decision 1 — NORMALISE ON READ, do not convert the markdown. The indexer
+  writes canonical rows whatever shape the source is (roadmap_query already
+  sniffs all three, so the parsers exist). That delivers one standard where it
+  is actually used — cross-project queries and integrity checks — without
+  rewriting 3D_Engine's 994 bullets or inventing a format for the two
+  unclassified projects. Converting their markdown can then happen per project,
+  on its own schedule, or never.
+
+  Decision 2 — enforcement is a `verify` op PLUS a git hook, not a schema.
+  A derived index can detect violations but cannot prevent them, which is the
+  one real argument for making the DB source of truth. Rejected, on evidence
+  from this session: repairing the ANTS-3752 amend_body damage and un-escaping 36
+  entities were both raw Edits to ROADMAP.md. Under a generated-markdown model
+  those edits are silently discarded at the next render — and agents editing
+  these files directly is the normal case here, not the exception. So the markdown
+  stays writable and `verify` gets teeth from a pre-commit / pre-push check that
+  fails on a missing Kind/Source, a bad status, a duplicate id, or an id cited by
+  a feedback file that no project owns. Ants Terminal already gates pushes this
+  way for tests.
+
+  Decision 3 — ONE implementation, two entry points, not a choice between them.
+  The bulk script and the per-project path would be two parsers that drift. Build
+  the MCP indexer; have session_orient refresh the current project's table (the
+  hook codebase_index already uses, ANTS-2140); and add a maintenance op that
+  loops the same indexer over every known project root for the one-shot
+  backfill. The user's two options are the same code called twice.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
