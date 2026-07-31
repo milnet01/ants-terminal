@@ -23292,6 +23292,41 @@ against current source before filing.
   **Layman:** The one-time job that reads every project's roadmap file and loads it into the database without losing anything.
   Kind: implement.
   Source: ANTS-3753 split (spec seam 2 of 3), 2026-07-30.
+  Progress (2026-07-31): corpus re-measured before drafting the spec, and
+  four of the five technical claims above did not survive. No spec text
+  written yet — these are the measurements the spec must be built from.
+
+  Method (re-runnable): corpus = glob `/mnt/Games/Scripts/Linux/*/[Rr][Oo][Aa][Dd][Mm][Aa][Pp].md`;
+  pass headings = `^#### Pass \d+\.\d+` (re.M); statuses = `^\s*[-*] \*\*Status\*\*:\s*(.+)$`
+  (re.M), split on `[.,(]`, lowercased; id tokens = `\[([A-Za-z][A-Za-z0-9_-]*)\]`
+  against § 3.5.1's `^[A-Za-z][A-Za-z0-9]*-\d+$`.
+
+  - Ten roadmaps: holds, but only case-insensitively. `RetroDB/roadmap.md`
+  is lowercase, so a `ROADMAP.md` glob silently finds nine. The spec must
+  state its discovery rule.
+  - 144 `#### Pass N.M` items: exact, all in `RetroDB/roadmap.md`.
+  - "136 of 154 outside the enum": 154 total, **137** outside. Off by one.
+  - "No canonical target, so the choice is add statuses or lose
+  information": FALSIFIED. **119 of the 137 are plain `done`** → `shipped`;
+  +3 `done — <qualifier>`, +1 `shipped in v3`, +15 already `planned`. Only
+  ~14 genuinely lack a target (`deferred` x11, `partial` x2, one malformed
+  `**un-gated`). The binary hid a third option: map to the nearest enum
+  value and keep the author's string verbatim in `extras.source_status`
+  with `provenance.status = migrated` — nothing lost, no change to the
+  five-status enum or the store's CHECK constraint. Extending a published
+  enum for ~14 items is a much weaker case than for 136.
+  - "Three corpus items are `[Cl9]`/`[CE18]`": the tokens are `[Cl9]`,
+  `[Cl10]`, `[CE18]` across Ants_Terminal and 3D_Engine, and the detector
+  above ALSO produced false positives `[milnet01]`, `[x86_64]`, `[FOO123]`
+  — markdown link labels, a username, an architecture. The spec owes a
+  real definition of "id-shaped" that excludes them. It must also
+  distinguish declarations from references: `[Cl9]` occurs 10x in one
+  file, which is one declaration and nine references, not ten items.
+  - "~1,600 ID-less items": Ants alone has **1,614 id-BEARING** bullets;
+  corpus-wide 2,818 id-bearing / 3,794 id-less LINES. The figure looks
+  like Ants' id-bearing count transposed. Unconfirmed either way without
+  the per-format item parser, which is this spec's own job — so the spec
+  cannot cite a bulk-allocation count until it has one.
 
 - 📋 [ANTS-3758] **Roadmap publish + consumer cutover — the render, and the fate of roadmap_query / roadmap_log / RoadmapDialog.**
   Spec seam 3 of the ANTS-3753 implementation.
