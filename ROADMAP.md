@@ -23439,6 +23439,35 @@ against current source before filing.
 
   The spec is NOT implementable in its current state. ANTS-3764 blocks it
   regardless, and that blocker's brief just changed.
+  Consolidated (2026-07-31). Loop 2's ~38 findings are folded in, and most
+  of them dissolved rather than being fixed one at a time. The diagnosis
+  was structural: 2.1's type declarations, 2's prose and 3's thirteen
+  invariants each stated the same contract, so every loop found
+  disagreements BETWEEN the copies rather than defects in the design. The
+  declarations are now the single statement of shape; prose states only
+  decisions and their evidence; every invariant asserts a section by
+  reference. Delete N-1, not reconcile N.
+
+  Checking those types against ANTS-3756's shipped DDL — rather than
+  against the prose — surfaced five defects no cold read had reached.
+  PlannedElement carried a `fence` kind that element.kind's CHECK
+  ('item','narration','table') would refuse. The plan had NO carrier for a
+  section, though every item names a sectionSlug and `section` is a table
+  with title/level/intro/parent_id, so ANTS-3765 could not have created the
+  rows the plan referred to. No carrier for the 5.1 status legend either,
+  which project.legend holds. ItemWrite lacks lanes AND evidence as well as
+  extras — three owed additions, not two, though `item` has a column for
+  each. And 2.7's proposed case-fold + leading-`*` strip were already in the
+  shipped reader, so the divergence loop 2 asked 7 to cost did not exist.
+
+  Structural closes: empty_source now turns on zero ITEMS (removing its
+  contradiction with INV-11); INV-11 is a partition over four carriers with
+  notes excluded from the union (removing the double-cover falsification);
+  1.1 is the single home for every corpus figure, since the same drifting
+  item count was a finding in both loops; archives are an explicit 5
+  exclusion with the measurement behind it, tracked as ANTS-3766.
+
+  Still blocked by ANTS-3764, whose brief this widened.
 
 - 📋 [ANTS-3758] **Roadmap publish + consumer cutover — the render, and the fate of roadmap_query / roadmap_log / RoadmapDialog.**
   Spec seam 3 of the ANTS-3753 implementation.
@@ -23734,6 +23763,39 @@ against current source before filing.
   whether that fold belongs in the shared reader here (which would change
   what RoadmapDialog and roadmap_log see) or stays a documented
   migration-only divergence.
+  Scope settled + two of this bullet's own claims corrected (2026-07-31),
+  all verified against src/roadmapdialog.cpp rather than recalled:
+
+  WIDENING (the real scope growth). BulletRecord must gain the VERBATIM
+  `- **Status**:` value. BulletRecord::status is an emoji (roadmapdialog.h
+  :314), and rxStatusLine (roadmapdialog.cpp:803) captures only the first
+  [A-Za-z0-9_-] run, .toLower()-ed at :845, then discards it after mapping
+  to a glyph. ANTS-3757 2.7 needs the whole remainder of the line after
+  `**Status**:` — qualifier tail included, e.g. `done (v3.20.0, …). Adds
+  catalogs for …` — for extras.source_status. Re-deriving it from
+  BulletRecord::body is the second parser ANTS-3757 2.3 exists to forbid.
+  Additive: no existing caller reads a field that does not yet exist, so
+  RoadmapDialog and roadmap_log see no behaviour change.
+
+  CORRECTION 1 — this bullet said the pass reader is a RoadmapDialog MEMBER
+  function, not an anonymous-namespace one. FALSE.
+  parsePassHeadingBullets() at :782 is INSIDE the anonymous namespace that
+  closes at :931; only RoadmapDialog::parseBullets() at :934 is the member.
+  What is inline in that member is the GFM-task-list adapter branch. So the
+  move is: detectRoadmapFormat() + parsePassHeadingBullets() (both
+  file-static) + the GFM branch lifted out of parseBullets() + BulletRecord
+  out of the QDialog subclass.
+
+  CORRECTION 2 — this bullet said ANTS-3757 2.7 specifies a case-insensitive
+  match and a leading-`*` strip "that the shipped reader does not do", and
+  asked for a decision on where that fold belongs. FALSE, so there is no
+  decision to make. rxStatusLine is constructed with
+  QRegularExpression::CaseInsensitiveOption; its optional leading group
+  ([^\sA-Za-z0-9_-]+)? absorbs the `**` in the corpus's
+  `**un-gated (2026-07-05).**`; and the captured keyword is .toLower()-ed
+  before comparison. The reader already does both. ANTS-3757 2.7 now
+  records the verification, and neither RoadmapDialog nor roadmap_log is
+  affected.
 
 - 📋 [ANTS-3765] **Roadmap migration, load half — atomicity, re-run matching, deletion, and the cutover interim.**
   Split out of ANTS-3757, which owned parse + normalise + allocate + load +
@@ -23763,6 +23825,74 @@ against current source before filing.
   **Layman:** The second half of the one-time import: actually writing the roadmap data into the database, safely, and being able to run it again without making a mess.
   Kind: implement.
   Source: ANTS-3757 split (read/load seam), 2026-07-31.
+
+- 📋 [ANTS-3766] **Migrate rotated roadmap archives into the store — ANTS-3757 excludes them by design.**
+  roadmap-format.md 3.9 rotates closed minors out of ROADMAP.md into
+  docs/roadmap/<major>.<minor>.md and DELETES them from the live file, so
+  ANTS-3757's discovery (which resolves exactly one roadmap.md per root)
+  loses them rather than deferring them. Stated as an explicit exclusion in
+  that spec's 5 rather than left implicit, and this bullet is the item that
+  section points at.
+
+  Measured 2026-07-31: one project of the ten has archives at all (this
+  one), across two files, holding 20 emoji bullets — every one shipped and
+  every one already summarised in CHANGELOG.md. So the loss is small and
+  entirely closed items.
+
+  Not a discovery tweak. findRoadmap() would return a set rather than a
+  file, and the same `## 0.6.0` heading exists in both the archive and the
+  live file's history, so section identity across sources needs a rule
+  nothing in ANTS-3757 has. The standard already treats archives as a
+  separate tier (3.9: the roadmap-query IPC verb reads only the current
+  ROADMAP.md; archives are dialog-only by contract).
+
+  Doable without changing a type in ANTS-3757 2.1 — the archives become
+  additional sources feeding the same planFrom().
+  **Layman:** Old finished work that was moved out of the roadmap into archive files would not make it into the new database — this adds it later.
+  Kind: implement.
+  Source: ANTS-3757 § 5 exclusion, 2026-07-31.
+
+- 📋 [ANTS-3767] **RoadmapStore has no write path for item.lanes, item.evidence or item.extras.**
+  Verified 2026-07-31 against shipped source, not recalled.
+
+  `item` declares lanes / evidence / extras (roadmapstore.cpp:309-311), but
+  NEITHER public writer can set them:
+  - RoadmapStore::ItemWrite (roadmapstore.h:91-109) has no field for any of
+  the three. It carries provenance and priority; not these.
+  - setItemField()'s `writable` allowlist (roadmapstore.cpp:560-567) is
+  headline / layman / status / kind / source / resolution / body /
+  milestone / visibility / last_modified / shipped / created. None of the
+  three is in it, and an attempt refuses `field not writable`.
+
+  So through the public API those columns can only ever hold their DDL
+  defaults ('[]', '[]', '{}'). That contradicts three documents:
+  - ANTS-3756 requires exactly these columns to be STORED in RFC 8785
+  canonical form "at the write path" — a rule for a write path that cannot
+  be reached.
+  - roadmap-data-model.md 4.1 lists lanes/evidence as first-class optional
+  item fields, "already first-class in roadmap-format.md 3.5, so neither is
+  part of 4.3's invented tail", and extras as the 4.3 extension mechanism.
+  - ANTS-3761's export emits all three per item.
+
+  Consequence for the export round-trip: with the columns pinned at their
+  defaults, INV-1's exact round trip agrees on them trivially, so the
+  existing tests cannot see this.
+
+  Surfaced by ANTS-3757, which is simply the first caller that needs them —
+  the roadmap reader already parses `Lanes:` and `Evidence:` into
+  BulletRecord, and 2.7/2.8 put the author's verbatim status and kind into
+  extras. ANTS-3765 cannot file a complete item until this is fixed, so
+  this is a blocker for it, but the defect is ANTS-3756's shipped surface
+  rather than anything ANTS-3765 introduces.
+
+  Fix: widen ItemWrite with lanes/evidence/extras and canonicalise them on
+  the putItem path; add them to setItemField's allowlist (or state why a
+  JSON column is putItem-only). A test must write a non-default value and
+  read it back, since the current suite is blind to the gap by
+  construction.
+  **Layman:** Three pieces of information the roadmap database has room for can never actually be put into it — nothing can fill those columns.
+  Kind: fix.
+  Source: ANTS-3757 consolidation sweep, 2026-07-31.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
