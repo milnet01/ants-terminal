@@ -1,0 +1,17 @@
+{
+  "_what": "ANTS-3757 INV-2. Per-fixture item counts from an independently written parser, so the C++ test is not merely confirming its own rules. Generated out-of-band and committed; no interpreter runs from test_core.",
+  "_regenerate": "tools/roadmap-corpus-survey.py tests/features/roadmap_migrate_read/fixtures  -> the `items` column, one row per fixture. A pass-headings fixture reports 0 there (every counter in that column is bullet-shaped and blind to `#### Pass N.M`); run the survey on that one directory and add its `#### Pass N.M items` figure. Read the diff. Never regenerate to make the test pass.",
+  "_generated": "2026-07-31",
+  "_excluded": {
+    "malformed": "The survey applies its bold-headline test to the text AFTER a recognised id token, so `- ✅ [ANTS-119&] **A headline.**` -- an unrecognised leading token plus a bold headline -- fails a test roadmap-data-model.md § 7.2 says it should pass. planFrom() admits it, as ANTS-3757 § 2.4 and § 2.3 both require. A survey defect, filed rather than absorbed into this file.",
+    "discovery": "INV-1 roots, one level deeper so the survey never walks them; several hold no roadmap at all."
+  },
+  "items": {
+    "antsv1": 3,
+    "empty": 0,
+    "gfm": 3,
+    "identity": 7,
+    "passes": 3,
+    "prose": 0
+  }
+}
