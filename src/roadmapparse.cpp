@@ -265,6 +265,15 @@ parsePassHeadingBullets(const QStringList &lines) {
         // sparse docs; a heading without a Status marker within the
         // window defaults to planned (📋).
         QString statusWord;
+        // ANTS-3764 — the author's Status value, verbatim. The reader
+        // classifies on a lowercased keyword and throws the rest away;
+        // ANTS-3757 § 2.7 stores the whole remainder of the line so a
+        // qualifier tail (`done (v3.20.0, …). Adds catalogs for …`) is not
+        // lost, and re-deriving it from `body` is the second parser § 2.3
+        // forbids. Matching still folds case and absorbs a leading `*`;
+        // STORAGE strips nothing, so `**un-gated (2026-07-05).**` keeps its
+        // asterisks.
+        QString statusValue;
         const int probeCap = std::min<int>(
             lines.size(), i + 51);
         for (int j = i + 1; j < probeCap; ++j) {
@@ -292,7 +301,17 @@ parsePassHeadingBullets(const QStringList &lines) {
                 // A content-free `- **Status**:` line (both groups
                 // empty) is not a classification — keep scanning for a
                 // real status marker within the window.
-                if (!statusWord.isEmpty()) break;
+                if (!statusWord.isEmpty()) {
+                    // ANTS-3764 — the value starts at the first capture
+                    // that participated: group 1 when a leading emoji or
+                    // `*` run is present, group 2 otherwise. Both sit
+                    // after the regex's `:\s*`, so this is the first
+                    // non-space character of the value.
+                    int valueStart = sm.capturedStart(1);
+                    if (valueStart < 0) valueStart = sm.capturedStart(2);
+                    statusValue = peek.mid(valueStart).trimmed();
+                    break;
+                }
             }
         }
         // ANTS-2030 — collect the under-heading prose (the
@@ -304,6 +323,10 @@ parsePassHeadingBullets(const QStringList &lines) {
         // truncation + body_truncated flag is applied downstream at
         // emit by rcSetBodyFields, so no cap is needed here.
         QStringList bodyLines;
+        // ANTS-3764 — the block's last non-blank line, which is where its
+        // span ends: the trailing blanks trimmed below are outside it, so
+        // two records never overlap (ANTS-3757 INV-11 partitions on this).
+        int lastIdx = i;
         for (int j = i + 1; j < lines.size(); ++j) {
             const QString &peek = lines[j];
             if (peek.startsWith(QStringLiteral("#")) &&
@@ -311,6 +334,7 @@ parsePassHeadingBullets(const QStringList &lines) {
                 break;
             }
             bodyLines.append(peek);
+            if (!peek.trimmed().isEmpty()) lastIdx = j;
         }
         // Trim leading/trailing blank lines without disturbing interior
         // blanks (a Status/Finding block may be paragraph-separated).
@@ -324,6 +348,18 @@ parsePassHeadingBullets(const QStringList &lines) {
             ? QStringLiteral("PASS-%1-%2").arg(major).arg(minor)
             : QStringLiteral("PASS-%1-%2-%3").arg(major).arg(minor).arg(sub);
         rec.format = QStringLiteral("pass-headings");
+        // ANTS-3764 — the designator the heading regex just consumed. `id`
+        // is synthesised from it and the heading is gone by the time a
+        // record exists, so recovering it afterwards would mean re-matching
+        // rxHead. major/minor go through toInt() here exactly as they do
+        // for the id, so passIdFromDesignator(passDesignator) == id — the
+        // agreement ANTS-3757 INV-10 asserts.
+        rec.passDesignator = sub.isEmpty()
+            ? QStringLiteral("%1.%2").arg(major).arg(minor)
+            : QStringLiteral("%1.%2.%3").arg(major).arg(minor).arg(sub);
+        rec.sourceStatus = statusValue;
+        rec.firstLine    = i + 1;
+        rec.lastLine     = lastIdx + 1;
         if (statusWord == QStringLiteral("done") ||
             statusWord == QStringLiteral("shipped") ||
             statusWord == QStringLiteral("completed")) {
@@ -543,6 +579,31 @@ parseBullets(const QString &markdownText) {
         QStringLiteral("^\\s*Evidence:\\s*([^\\n]+)"),
         QRegularExpression::MultilineOption |
         QRegularExpression::CaseInsensitiveOption);
+    // ANTS-3764 — the `Source:` provenance line (ANTS-3757 § 2.1.1 / § 2.8).
+    // Three rules, each measured against ROADMAP.md on 2026-07-31 rather
+    // than inherited from whichever sibling key looked closest:
+    //  - Capture runs to END OF LINE, not to the first period. 61 of 1282
+    //    values carry an internal period — `in-session-2026-07-29
+    //    (rpmlint.log, first successful build).` — so rxKind's stop-at-period
+    //    rule would cut 4.8% of the corpus mid-value. rxEvidence already runs
+    //    to end-of-line for exactly this reason.
+    //  - UN-ANCHORED with rxLanes' backtick guard. 157 occurrences sit inline
+    //    in a prose trailer rather than at a line start, which is ANTS-2058's
+    //    finding for `Lanes:`; 22 are backticked mentions of the key itself,
+    //    which ANTS-3722's guard excludes. Deliberately NOT case-insensitive,
+    //    same reasoning as rxLanes: un-anchored + case-folded would match a
+    //    lowercase "source:" mid-prose.
+    //  - The label may be bold. 24 lines in the corpus write `**Source:**`,
+    //    and rxLayman already tolerates the same shape for its own key;
+    //    without the optional pair the closing `**` lands in the value.
+    static const QRegularExpression rxSource(
+        QStringLiteral("(?<!`)(?:\\*\\*)?Source:(?:\\*\\*)?\\s*([^\\n]+)"));
+    //  - The value stops at a following trailer key: 10 lines write two keys
+    //    on one line (`Source: regression. Lanes: packaging.`). Capital-led
+    //    (a lowercase `lanes:` mid-prose is prose, per rxLanes) and
+    //    optionally bold, since roadmap_log writes `**Layman:**`.
+    static const QRegularExpression rxTrailerKey(
+        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence):"));
 
     const QStringList lines = markdownText.split('\n');
     // ANTS-1428 — format detection runs once per parse. On
@@ -693,6 +754,28 @@ parseBullets(const QString &markdownText) {
         }
         rec.anchor = anchorValue;
         rec.format = rowFormat;
+        // ANTS-3764 — the leading-slot token AS WRITTEN, before any grammar
+        // test (ANTS-3757 § 2.5 / § 2.6). Deliberately more permissive than
+        // rxLeadBracketId above, which feeds `id` and must not change: any
+        // bracketed run without whitespace qualifies, so a digit-led prefix
+        // (`[3D_E-0042]`) and an off-grammar `[Cl9]` both survive to be
+        // classified downstream rather than being decided here. This is the
+        // field `id` cannot stand in for — `id` takes the first
+        // `[<PREFIX>-NNNN]` found ANYWHERE in the body, so a bullet whose
+        // slot says `[Cl9]` and whose prose cites `[ANTS-9999]` reports the
+        // citation, and it conflates conforming with off-grammar ids.
+        // The one thing this DOES decide is the `(?![(:])` guard: a token
+        // followed by `(` or `:` is a markdown link, not an id.
+        static const QRegularExpression rxLeadToken(
+            QStringLiteral("^\\[([^\\]\\s]+)\\](?![(:])"));
+        const auto leadTok = rxLeadToken.match(head);
+        if (leadTok.hasMatch()) {
+            rec.idToken = leadTok.captured(1);
+        } else if (!boldId.isEmpty()) {
+            // The other shape the leading slot takes: `**Sh4.**` / `**FW W5**`
+            // (extractBoldId has already dropped the token's trailing `.`).
+            rec.idToken = boldId;
+        }
 
         // Collect the bullet body — first line + subsequent indented
         // continuation lines. ANTS-1426: a blank line inside the body
@@ -702,6 +785,7 @@ parseBullets(const QString &markdownText) {
         // readability (as ANTS-1422 did) causes `Kind:` / `Lanes:` /
         // `Layman:` lines after the blank to be silently dropped.
         QString body = head;
+        const int bulletIdx = i;   // ANTS-3764 — span start, before the walk
         ++i;
         while (i < lines.size()) {
             const QString &cont = lines[i];
@@ -892,7 +976,26 @@ parseBullets(const QString &markdownText) {
                 if (!trimmed.isEmpty()) rec.evidence.append(trimmed);
             }
         }
+        // ANTS-3764 — Source: provenance. See rxSource for why the three
+        // rules below differ from the sibling keys' single regex.
+        const auto sourceMatch = rxSource.match(body);
+        if (sourceMatch.hasMatch()) {
+            QString srcRaw = sourceMatch.captured(1);
+            const auto keyAt = rxTrailerKey.match(srcRaw);
+            if (keyAt.hasMatch()) srcRaw = srcRaw.left(keyAt.capturedStart());
+            srcRaw = srcRaw.trimmed();
+            // Drop one trailing sentence period, as rxEvidence does.
+            if (srcRaw.endsWith(QLatin1Char('.'))) srcRaw.chop(1);
+            rec.source = srcRaw.trimmed();
+        }
         rec.body = body;
+        // ANTS-3764 — the span. `i` is the index of the first line that is
+        // NOT part of this bullet on every exit from the walk above, so the
+        // 1-based inclusive last line is `i` itself; absorbed blank lines are
+        // always interior (the walk only absorbs one when an indented
+        // continuation follows), so no trailing blank is ever claimed.
+        rec.firstLine = bulletIdx + 1;
+        rec.lastLine  = i;
 
         out.append(rec);
     }

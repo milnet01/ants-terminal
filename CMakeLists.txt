@@ -2253,6 +2253,10 @@ if(ANTS_TESTS)
                 # INV-9 holds the write lock and observes the abort. Separate
                 # directory, same bundle — no new binary (README.md's rule).
                 tests/features/roadmap_export_concurrency/test_roadmap_export_concurrency.cpp
+                # ANTS-3764 step 2 — the BulletRecord widening ANTS-3757 needs.
+                # Core-only: the reader left ants_dialogs_lib in step 1, which
+                # is the whole point, so its test must not need Widgets either.
+                tests/features/roadmap_parse_widening/test_roadmap_parse_widening.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3761 INV-19 — the RFC's own vectors, committed under the test dir.

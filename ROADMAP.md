@@ -23704,7 +23704,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: doc_integrity sweep during ANTS-3756 cold-eyes loop 5, 2026-07-30.
 
-- 📋 [ANTS-3764] **Extract the roadmap markdown reader out of the dialogs lib so the migration can share it.**
+- ✅ [ANTS-3764] **Extract the roadmap markdown reader out of the dialogs lib so the migration can share it.**
   Blocker for ANTS-3757. Verified 2026-07-31, not recalled:
 
   - `detectRoadmapFormat()` and `parsePassHeadingBullets()` live in an
@@ -23831,6 +23831,30 @@ against current source before filing.
 
   All five are additive; no existing caller reads a field that does not
   yet exist.
+  Resolved (2026-07-31), both steps. Step 1 moved the reader to
+  src/roadmapparse.{h,cpp} in ants_core_lib; step 2 widened BulletRecord
+  with all five fields the SCOPE CORRECTION above listed —
+  sourceStatus (verbatim `- **Status**:` value), source, idToken,
+  passDesignator and a 1-based inclusive firstLine/lastLine span.
+  Contract + tests: tests/features/roadmap_parse_widening/. Each field was
+  proven RED before it existed; full suite 3121/3121 after.
+
+  passDesignator was kept although ANTS-3757 2.9 resolved not to need it:
+  it is the only one of the five unobtainable after the fact (the heading
+  is consumed by the time a record exists), and it makes that spec's
+  INV-10 assertable directly as
+  passIdFromDesignator(passDesignator) == id.
+
+  Two corrections back into ANTS-3757, both from building it rather than
+  reading it. Its 2.3 said `[Cl9]` reaches migration as no id at all —
+  FALSE, ANTS-1987's leading-bracket rule already sets rec.id = "Cl9", and
+  that spec's own INV-3 always said so. The row survives on measurement
+  instead: rec.id is positionless (a slot reading `[Cl9]` whose prose
+  cites a bracketed ANTS id reports THAT citation, now asserted), it
+  cannot separate parsed from quarantined, and the shape the claim really
+  described is `[ANTS-119&]` — see the item filed alongside this one.
+  Second, 2.8 gained the `Source:` reading rules, which no section owned;
+  they differ from `Kind:`'s in three measured ways.
 
 - 📋 [ANTS-3765] **Roadmap migration, load half — atomicity, re-run matching, deletion, and the cutover interim.**
   Split out of ANTS-3757, which owned parse + normalise + allocate + load +
@@ -23953,6 +23977,30 @@ against current source before filing.
   **Layman:** Two files now spell out the same four status symbols; one of them can just borrow the other's.
   Kind: refactor.
   Source: ANTS-3764 extraction, in-lane surfacing 2026-07-31.
+
+- 📋 [ANTS-3769] **Seven ROADMAP bullets carry a malformed id (`[ANTS-119&]`, `[ANTS-121&]`) and are unreachable by id.**
+  Found by running ANTS-3764's new leading-slot token matcher over the whole
+  roadmap corpus rather than over its fixtures. Five bullets carry
+  `[ANTS-119&]` and two carry `[ANTS-121&]` — a literal `&` where the
+  digits should end (first at ROADMAP.md:29222, `### 🔒 Tier 1 —
+  ship-this-week fixes`, all ✅).
+
+  Consequence, verified: the `&` is refused by the body-wide `rxId` AND by
+  ANTS-1987's leading-bracket rule, so `BulletRecord::id` is EMPTY for all
+  seven. They are invisible to `roadmap_query id=`/`ids=`, and
+  `roadmap_log op:flip id=` cannot locate them. ANTS-3757's migration would
+  read them as id-less and bulk-allocate each a second identity for an item
+  that visibly carries one — which is why ANTS-3757 INV-4's fixture now
+  requires this shape.
+
+  The fix is not mechanical: the intended ids are unknown (the truncation
+  lost them), so each of the seven needs its real id recovered from the
+  git history of that section, or a fresh id allocated with a note saying
+  the original was lost. Not urgent — all seven are shipped — but they are
+  a permanent hole in id-addressability and a live trap for the migration.
+  **Layman:** Seven finished to-do entries have a broken reference number, so looking them up by number finds nothing.
+  Kind: fix.
+  Source: ANTS-3764 corpus sweep, 2026-07-31.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

@@ -73,6 +73,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap reader records what a headless migration needs (ANTS-3764)**
+  `RoadmapParse::BulletRecord` gains five fields: the verbatim
+  `- **Status**:` value, the `Source:` value, the leading-slot id token as
+  written, the pass designator, and a 1-based inclusive line span. Additive
+  — no existing caller reads a field that did not exist, so the roadmap
+  dialog, `roadmap_query` and `roadmap_log` are unchanged.
+
 - **`debt_sweep_scan`'s `scope_note` derives its per-category detector counts from the live roster** (ANTS-3743)
 
 - **`debt_sweep_scan` now shows how thinly each category is checked** (ANTS-3707)

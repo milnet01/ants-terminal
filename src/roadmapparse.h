@@ -70,6 +70,43 @@ struct BulletRecord {
     // Surfaced through the envelope as `bold_id` so callers can
     // correlate with commit-message prefixes explicitly.
     QString boldId;        // "FW W5 (cont.)", "Sh4", "Audit/FW X2", …
+    // ANTS-3764 step 2 — the five fields the roadmap migration needs and the
+    // card renderer never did (docs/specs/ANTS-3757-roadmap-migration-read.md
+    // § 2.3). Each would otherwise be re-derived by hand from `body`, which is
+    // the second bullet parser § 2.3 exists to forbid. Additive: no existing
+    // caller reads a field that does not yet exist, so RoadmapDialog,
+    // roadmap_query and roadmap_log see no behaviour change.
+    // Contract + measurements: tests/features/roadmap_parse_widening/spec.md.
+    QString sourceStatus;  // pass-headings: the whole remainder of the winning
+                           // `- **Status**:` line, VERBATIM — qualifier tail
+                           // and asterisks kept. Matching folds case and
+                           // absorbs a leading `*`; storage strips nothing.
+                           // "" on the emoji / checkbox paths, where the
+                           // marker itself is the status.
+    QString source;        // value from `Source:` line; "" if absent
+    QString idToken;       // the leading-slot id token AS WRITTEN, without its
+                           // brackets and before any acceptance test — so an
+                           // off-grammar `[Cl9]` can be quarantined rather
+                           // than issued a second identity. Distinct from
+                           // `id`, which is positionless (it takes the first
+                           // `[<PREFIX>-NNNN]` anywhere in the body) and which
+                           // conflates conforming with off-grammar ids. "" if
+                           // the leading slot holds no token, or holds a
+                           // markdown link (`[Doc](x)` / `[ref]:`).
+    QString passDesignator;  // "43.5" / "43.5.B" — the pass heading's own
+                             // designator, which the heading regex otherwise
+                             // consumes and drops. The one field here with no
+                             // consumer, kept because it is the only one
+                             // unobtainable after the fact and it makes
+                             // ANTS-3757 INV-10 assertable directly:
+                             // passIdFromDesignator(passDesignator) == id.
+                             // "" off the pass path.
+    // 1-based inclusive span of the source lines this record was built from:
+    // the bullet line through its last continuation line, or the `####`
+    // heading through the last non-blank line of its block. Trailing blanks
+    // are outside the span and two records never overlap — ANTS-3757's INV-11
+    // is a partition over these.
+    int firstLine = 0, lastLine = 0;
 };
 // The `[PROJ-NNNN]` token shape, as a bare regex fragment (no anchors, no
 // capture group). ANTS-1784 — exported rather than file-static because
