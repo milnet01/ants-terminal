@@ -23895,6 +23895,33 @@ against current source before filing.
   **Layman:** The second half of the one-time import: actually writing the roadmap data into the database, safely, and being able to run it again without making a mess.
   Kind: implement.
   Source: ANTS-3757 split (read/load seam), 2026-07-31.
+  Spec written and gated (2026-07-31):
+  docs/specs/ANTS-3765-roadmap-migration-load.md, 446 lines, 15
+  invariants. Status accepted; cold-eyes converged by cap at 3 loops
+  (77 findings verified, 3 dismissed, 74 fixed — C 6 / H 14 / M 26 /
+  L 30 / I 2). No deferred tail: every verified finding was fixed.
+
+  Blocker ANTS-3767 cleared the same day, so this is unblocked.
+
+  Three findings reshaped the design, all verified against source:
+  - putItem() commits its OWN transaction and SQLite cannot nest them
+    (measured, 3.53.2), so per-project atomicity was unexpressible
+    through the shipped API. The store gains begin/commit/rollback and
+    putItem() stops rolling back a transaction it does not own —
+    otherwise one bad item aborts the caller's transaction from inside
+    and every later write autocommits while the report says success.
+  - The re-run design named mechanisms its own surface could not
+    perform: no way to re-file an existing item, nothing able to read
+    stored fields, no provenance-carrying writer. 20 methods now land
+    on ANTS-3756.
+  - Re-run matching was defined for id-bearing items only. ~1,600
+    corpus items are id-less, ids are allocated inside the store, and
+    the source is never rewritten — so a re-run would have duplicated
+    ~40% of the corpus and burnt ~1,600 ids per pass. New § 2.6.1.
+
+  ANTS-3756 and ANTS-3757 both need amending when this ships (§ 7):
+  20 new store methods, putItem()'s changed contract, and ANTS-3757
+  § 2.10's note-code set gaining seven load-only codes.
 
 - 📋 [ANTS-3766] **Migrate rotated roadmap archives into the store — ANTS-3757 excludes them by design.**
   roadmap-format.md 3.9 rotates closed minors out of ROADMAP.md into
