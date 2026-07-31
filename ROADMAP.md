@@ -23327,6 +23327,40 @@ against current source before filing.
   like Ants' id-bearing count transposed. Unconfirmed either way without
   the per-format item parser, which is this spec's own job — so the spec
   cannot cite a bulk-allocation count until it has one.
+  Split (2026-07-31): this id now owns the READ half only — discovery, the
+  three source formats, what counts as an item, identity and quarantine,
+  status/kind normalisation, id allocation policy, and the report. The load
+  half — atomicity, re-run matching, deletion, the cutover interim — moved
+  to ANTS-3765. Spec: docs/specs/ANTS-3757-roadmap-migration-read.md.
+
+  Two further corrections to the progress note above, both from shipped
+  code rather than re-measurement:
+
+  - "Only ~14 genuinely lack a target (deferred x11, partial x2, one
+  malformed **un-gated)" does not survive either. The pass reader
+  (`src/roadmapdialog.cpp`, ANTS-1530) already maps `deferred` ->
+  considered (with `considered`/`parked`), and its final else-branch
+  takes EVERY other value to `planned` — so `partial` and `un-gated`
+  already have targets and the vocabulary has been total all along.
+  `PassHeadingWrite::passStatusKeyword()` is its exact inverse, which is
+  what makes `deferred` -> considered load-bearing: mapping it to
+  `planned` instead would break the write/re-read round trip.
+  The residual loss is that the else-branch is SILENT, which is what
+  extras.source_status + provenance.status = migrated exist to record.
+  - "the spec cannot cite a bulk-allocation count until it has [a
+  per-format item parser]": `tools/roadmap-corpus-survey.py` is one, and
+  already shipped. Run 2026-07-31 it reports 1,620 id-less items
+  (closed 1,021 / open 599) across ten projects — so
+  roadmap-data-model.md 7.2's "~1,600, ~1,020 closed / ~600 open" is
+  CONFIRMED, not a transposition of Ants' id-bearing count. The
+  annotation's 2,818 / 3,794 figures counted LINES, a different
+  population from items.
+
+  Also filed: ANTS-3764, the reader extraction this spec is blocked by.
+  `detectRoadmapFormat()` and `parsePassHeadingBullets()` have internal
+  linkage inside `roadmapdialog.cpp`, and their record type is nested in a
+  QDialog subclass, so the store lib cannot reach the one complete reader
+  the project owns.
 
 - 📋 [ANTS-3758] **Roadmap publish + consumer cutover — the render, and the fate of roadmap_query / roadmap_log / RoadmapDialog.**
   Spec seam 3 of the ANTS-3753 implementation.
@@ -23562,6 +23596,67 @@ against current source before filing.
   **Layman:** Three small documentation faults in old spec files, noticed while checking a different one.
   Kind: doc-fix.
   Source: doc_integrity sweep during ANTS-3756 cold-eyes loop 5, 2026-07-30.
+
+- 📋 [ANTS-3764] **Extract the roadmap markdown reader out of the dialogs lib so the migration can share it.**
+  Blocker for ANTS-3757. Verified 2026-07-31, not recalled:
+
+  - `detectRoadmapFormat()` and `parsePassHeadingBullets()` live in an
+    ANONYMOUS namespace in `src/roadmapdialog.cpp` (opens at line 510), so
+    they have internal linkage and no other translation unit can call them.
+  - Their return type `RoadmapDialog::BulletRecord` is a struct nested
+    inside a `QDialog` subclass, declared in `src/roadmapdialog.h`.
+  - `roadmapdialog.cpp` is in `ants_dialogs_lib` (CMakeLists.txt:567);
+    the migration belongs in `ants_roadmapstore_lib`, which links only
+    `Qt6::Core` + `Qt6::Sql` and deliberately keeps Widgets out.
+
+  So migration cannot reach the one complete reader the project owns, and
+  the alternatives are both bad: link Widgets into a headless bulk import,
+  or write a second parser for the same three formats — two parsers whose
+  disagreements would be silent and would be about the corpus itself.
+
+  Wanted: `src/roadmapparse.{h,cpp}` in `ants_core_lib` (Qt6::Core only)
+  carrying the format detector, the three per-format readers, and a
+  top-level record struct; `RoadmapDialog` keeps its widget code and calls
+  it. Rule 3(b) — refactor to cover the new case so the existing call-site
+  benefits — and the precedent is in-repo and exact: ANTS-2126 extracted
+  the pass-headings WRITER to `src/passheadingwrite.{h,cpp}` in
+  `ants_core_lib` for the same reason ("so the remotecontrol handlers and
+  the feature test share one implementation"). This is its reader half.
+
+  Do this BEFORE ANTS-3757's import path, not alongside it: a migration
+  written against a copy is a migration that has to be rewritten.
+  **Layman:** Move the code that reads roadmap files out of the window that displays them, so the new database importer can use the same reader instead of a second copy that would disagree with it.
+  Kind: refactor.
+  Source: ANTS-3757 spec research, 2026-07-31.
+
+- 📋 [ANTS-3765] **Roadmap migration, load half — atomicity, re-run matching, deletion, and the cutover interim.**
+  Split out of ANTS-3757, which owned parse + normalise + allocate + load +
+  cutover in one document — the same shape ANTS-3756 carried when it hit the
+  cold-eyes loop cap and had to be split into ANTS-3761.
+
+  The seam is pure transformation vs. transactional load, the same one
+  ANTS-3764 opens and the same one ANTS-3756/ANTS-3761 used:
+
+  - **ANTS-3757 keeps the read half** — discovery, the three source formats,
+    what counts as an item, identity and quarantine, status/kind
+    normalisation, id allocation policy, and the report. A pure function
+    over markdown producing an in-memory plan. Qt6::Core only; every
+    invariant testable on fixtures with no database.
+  - **This id owns the load half** — the `Access::Bulk` connection and the
+    transaction shape (a few large transactions on one long-lived
+    connection; that, not the pragmas, is what fixed the same problem in
+    RetroDB), per-project atomicity, re-run matching, what happens to an
+    item deleted from source, and the cutover interim in which some
+    projects are migrated and others are not.
+
+  Both halves are independently testable, which is the evidence the seam is
+  real rather than a filing convenience.
+
+  Blocked by ANTS-3757 (the plan is this half's input) and ANTS-3756 (the
+  store). Blocker for ANTS-3758.
+  **Layman:** The second half of the one-time import: actually writing the roadmap data into the database, safely, and being able to run it again without making a mess.
+  Kind: implement.
+  Source: ANTS-3757 split (read/load seam), 2026-07-31.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
