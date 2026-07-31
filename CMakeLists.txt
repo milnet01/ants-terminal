@@ -875,9 +875,21 @@ if(ANTS_TESTS)
         # are only ~4 TUs each, so cold-compiling Qt aggregate headers
         # without PCH is a noise-free no-op vs. emitting one warning per
         # TU per build. Keep ants-terminal's own PCH (where it pays off).
+        # TIMEOUT is a HANG detector, not a performance budget, and 10s was
+        # calibrated against Release only. Under ANTS_SANITIZERS the same
+        # tests run several times slower — measured 2026-07-31 in build-asan:
+        # McpWorkspaceSearch.WiringContract 14.05s, EveryToolDeclaresSelection
+        # Hint 11.12s, Osc8ApcMemoryCaps.ApcOverflowDropped 10.17s, all three
+        # of them Release-fast and all three over the 10s cap. CI's build-asan
+        # job passes them only on its runner being marginally quicker, so this
+        # was a red build waiting for a slower runner. 60s still terminates a
+        # genuine hang promptly; it just stops killing a sanitized build for
+        # being sanitized. Per-test overrides are not available here —
+        # DISCOVERY_MODE PRE_TEST means no test exists at configure time for
+        # set_tests_properties to name.
         gtest_discover_tests(${name}
             DISCOVERY_MODE PRE_TEST
-            PROPERTIES LABELS "features;fast" TIMEOUT 10)
+            PROPERTIES LABELS "features;fast" TIMEOUT 60)
     endfunction()
 
     # Core-only bundle helper — Qt::Core only, no Widgets. PCH not reused
@@ -892,9 +904,21 @@ if(ANTS_TESTS)
             ${B_LIBS} ants_warnings GTest::gtest Qt6::Core)
         target_include_directories(${name} PRIVATE
             ${CMAKE_SOURCE_DIR}/tests)
+        # TIMEOUT is a HANG detector, not a performance budget, and 10s was
+        # calibrated against Release only. Under ANTS_SANITIZERS the same
+        # tests run several times slower — measured 2026-07-31 in build-asan:
+        # McpWorkspaceSearch.WiringContract 14.05s, EveryToolDeclaresSelection
+        # Hint 11.12s, Osc8ApcMemoryCaps.ApcOverflowDropped 10.17s, all three
+        # of them Release-fast and all three over the 10s cap. CI's build-asan
+        # job passes them only on its runner being marginally quicker, so this
+        # was a red build waiting for a slower runner. 60s still terminates a
+        # genuine hang promptly; it just stops killing a sanitized build for
+        # being sanitized. Per-test overrides are not available here —
+        # DISCOVERY_MODE PRE_TEST means no test exists at configure time for
+        # set_tests_properties to name.
         gtest_discover_tests(${name}
             DISCOVERY_MODE PRE_TEST
-            PROPERTIES LABELS "features;fast" TIMEOUT 10)
+            PROPERTIES LABELS "features;fast" TIMEOUT 60)
     endfunction()
 
     add_test(NAME audit_rule_fixtures
