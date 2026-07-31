@@ -23796,6 +23796,41 @@ against current source before filing.
   before comparison. The reader already does both. ANTS-3757 2.7 now
   records the verification, and neither RoadmapDialog nor roadmap_log is
   affected.
+  SCOPE CORRECTION (2026-07-31, later the same day). The widening noted
+  above is INCOMPLETE. ANTS-3757's cold-eyes loop 3 had two independent
+  lanes check the plan's types against the shipped record field-by-field,
+  and the raw Status value is one of FIVE things BulletRecord does not
+  carry. Verified against src/roadmapdialog.h and the reader body:
+
+  1. the verbatim `- **Status**:` VALUE (as noted above).
+  2. `source` — there is no such field. The record has kind, lanes,
+  evidence, layman and no `source`; nothing in the reader reads a
+  `Source:` line. ANTS-3757 2.1.1/2.8 need it.
+  3. `firstLine` / `lastLine` — the record's only int is sectionLevel.
+  Every ANTS-3757 2.1 carrier declares a line span and INV-11 is a
+  partition over them, so without this the invariant is unimplementable.
+  4. the pass DESIGNATOR ("43.5") — consumed by the heading regex and
+  dropped. ANTS-3757 2.9 used to say migration calls
+  passIdFromDesignator(); it cannot, because the input no longer exists by
+  the time a record does. That spec now takes the reader's synthesised id
+  instead and asserts agreement in INV-10, so this field is OPTIONAL — the
+  cheapest of the five to skip.
+  5. the id TOKEN AS WRITTEN, before the reader's acceptance test. `id` is
+  documented "empty if no `[<PREFIX>-NNNN]` token", so an off-grammar id
+  like `[Cl9]` reaches migration as NO ID AT ALL and would be bulk-
+  allocated a second identity rather than quarantined. This one changes an
+  OUTCOME rather than an implementation: without it ANTS-3757 2.6 is
+  unreachable and its INV-4 cannot pass.
+
+  Also confirmed while verifying: the extraction is cleaner than this
+  bullet feared. headingLevel() and uniqueSlug(), which the moved code
+  depends on, already live in src/roadmapindex.{h,cpp} — which is already
+  in ants_core_lib (CMakeLists.txt:275-431). And uniqueSlug() is called on
+  BOTH reader paths (roadmapdialog.cpp:817 pass, :1069 ants-v1/GFM), so
+  section slugs are consistent across formats already.
+
+  All five are additive; no existing caller reads a field that does not
+  yet exist.
 
 - 📋 [ANTS-3765] **Roadmap migration, load half — atomicity, re-run matching, deletion, and the cutover interim.**
   Split out of ANTS-3757, which owned parse + normalise + allocate + load +

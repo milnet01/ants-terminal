@@ -11,6 +11,19 @@
 out exactly what should go into the database — without losing anything, and
 without guessing.
 
+**Section-reference convention.** A bare `§ N` is **this document's** section.
+Every reference to another document names that document — `roadmap-data-model.md
+§ 7.2`, `roadmap-format.md § 3.5.1`. Both standards number their sections in the
+same ranges this spec does, so an unqualified cross-doc reference resolves to
+the wrong document on a first read.
+
+**Contents.** 1 Problem (1.1 the corpus) · 2 Surface (2.1 the plan · 2.1.1 field
+disposition · 2.2 discovery · 2.3 format dispatch and the reader · 2.4 what
+counts as an item · 2.5 identity · 2.6 quarantine · 2.7 status · 2.8 kind ·
+2.9 id allocation · 2.10 the report · 2.11 the structural walk) · 3 Invariants
+(INV-1..13) · 4 RAM / build cost · 5 Out of scope · 6 Tests · 7 Cross-doc
+impact · 8 Open questions · Cold-eyes loop log.
+
 ---
 
 ## 1. Problem
@@ -43,7 +56,7 @@ tools/roadmap-corpus-survey.py     # run from /mnt/Games/Scripts/Linux
 | Bullet-form + checkbox items | 3,957 | *the bullet corpus* |
 | `#### Pass N.M` headings | 144 | *the pass corpus* |
 | `- **Status**:` lines | 154 | — |
-| …whose value is outside § 7.3's enum | 136 | — |
+| …whose value is outside `roadmap-data-model.md` § 7.3's enum | 136 | — |
 | Items with an id matching `roadmap-format.md` § 3.5.1 | 2,334 | — |
 | Items with an id that does **not** match it | 3 | *the off-grammar ids* |
 | Items with no id | 1,620 (1,021 closed / 599 open) | *the id-less* |
@@ -100,14 +113,15 @@ struct PlannedItem {
     QStringList lanes, evidence;   // `Lanes:` / `Evidence:` — the reader already
                                    // parses both, and `item` has a column for each
     QString     sectionSlug;   // the section this is filed under; § 2.1.1 on sectionId
-    int         position = 0;  // ordinal within that section's element list
+    int         position = 0;  // § 2.11 — the ONE per-section sequence, shared
+                               // with that section's PlannedElements
     QJsonObject extras;        // source_status, source_kind — verbatim (§ 2.7, § 2.8)
-    QJsonObject provenance;    // per field: asserted | defaulted | migrated (§ 7.7)
+    QJsonObject provenance;    // per field: asserted | defaulted | migrated (roadmap-data-model.md § 7.7)
     // § 2.9 — the allocation obligation rides on the ITEM, not only on a note:
     // ANTS-3765 allocates, and a note keyed on a line number cannot be
     // correlated back to the item it belongs to.
     bool        idAllocationOwed = false;
-    bool        closed = false;         // § 3.4's sense: shipped or dropped
+    bool        closed = false;         // roadmap-data-model.md § 3.4's sense: shipped or dropped
     int         firstLine = 0, lastLine = 0;   // 1-based, inclusive
 };
 
@@ -116,33 +130,50 @@ struct PlannedItem {
 // this the plan can name a `sectionSlug` it gives ANTS-3765 no way to create,
 // and INV-11 has no carrier for the heading line itself. Content preceding the
 // first heading belongs to a synthetic section with an empty slug and title,
-// which the store already accepts.
+// which the store already accepts. § 2.11 owns detection, `parentSlug`, slug
+// uniquing and the intro boundary.
 struct PlannedSection {
-    QString slug, title, intro;
+    QString slug, title;
+    QString intro;                 // § 2.11 — prose and fences between the
+                                   // heading and the section's first element
     int     level = 0;             // 2 or 3; 0 for the synthetic root
     QString parentSlug;            // "" at top level
+    // Spans the HEADING LINE AND ITS INTRO ONLY, never the section's items and
+    // elements — those carry their own spans and INV-11 is a partition.
     int     firstLine = 0, lastLine = 0;
 };
 
-// Everything inside a section that is NOT an item. `kind` is the store's own
-// element vocabulary minus `item`, and nothing else: `element.kind` CHECKs
-// exactly ('item','narration','table'). A fenced block, the
-// `<!-- ants-roadmap-format: 1 -->` marker, a plain paragraph and a section
-// heading's trailing prose are all narration carrying verbatim payload —
-// roadmap-data-model.md § 5.2 already assigns each of those a home, and this
-// type is shaped to the homes it names rather than inventing kinds the store
-// would refuse.
+// Everything inside a section that is NOT an item and NOT the intro. `kind` is
+// the store's own element vocabulary minus `item`, and nothing else:
+// `element.kind` CHECKs exactly ('item','narration','table').
+//
+// roadmap-data-model.md § 5 is explicit that a fenced block is NOT a section
+// element — "fenced code blocks belong to a `body` or an `intro`. Neither is a
+// section element" — so a fence inside an item's span is that item's `body`
+// and a fence above the first element is the section's `intro`. `narration` is
+// reserved for what roadmap-data-model.md § 5.2 calls section-summary prose: text at section level,
+// after the first element. The `<!-- ants-roadmap-format: 1 -->` marker and any
+// other stray line are narration too, since the store has no other bucket and
+// INV-11 forbids dropping them.
 struct PlannedElement {
     QString kind;              // "narration" | "table"
-    QString payload;           // verbatim source text
+    QString payload;           // narration: verbatim source text.
+                               // table: § 2.11's {header, rows} JSON — the
+                               // separator row is delimiter, not content
+                               // (roadmap-data-model.md § 5.2), so it is never stored.
     QString sectionSlug;
+    // § 2.11 — ONE 0-based sequence per section shared with that section's
+    // items, because `element` CHECKs UNIQUE (section_id, position) across
+    // item and non-item rows alike. Numbering the two independently produces a
+    // plan that dies on ANTS-3765's insert.
     int     position = 0;
     int     firstLine = 0, lastLine = 0;
 };
 
-// The § 5.1 status legend, which belongs to the PROJECT and not to any section.
+// The roadmap-data-model.md § 5.1 status legend, which belongs to the PROJECT and not to any section.
 // Two of the ten projects carry one. Without a carrier the legend lines are
 // either lost or — if § 2.4's headline half were dropped — promoted to items.
+// § 2.11 owns recognition and how the lines become `entries`.
 struct PlannedLegend {
     QJsonObject entries;       // status value -> that project's wording
     int         firstLine = 0, lastLine = 0;
@@ -193,6 +224,7 @@ plan; § 7 records that obligation.
 
 | Store field | Source in this half |
 |---|---|
+| `projectId` | not knowable here — a plan names a project, it does not create one. **Owed**: ANTS-3765 inserts the `project` row (from `projectName` / `exportSlug`, and the root it was given) and fills this in |
 | `id`, `idOrigin` | § 2.5 / § 2.6, or synthesised (§ 2.9) |
 | `status` | § 2.7 |
 | `headline`, `body` | the reader's `headline` / `body` |
@@ -201,8 +233,9 @@ plan; § 7 records that obligation.
 | `provenance` | per field, § 2.7 / § 2.8 / § 2.9 |
 | `position` | ordinal within the section's element list |
 | `visibility` | not set — the store's `public` default stands |
-| `priority`, `resolution`, `milestone` | left empty; § 4.1 makes each write- or close-time, and no source shape carries them |
-| `created`, `lastModified`, `shipped` | left empty; § 4.2 bounds what is derivable and § 5 excludes recovering dates from git |
+| `priority`, `resolution` | left empty; `roadmap-data-model.md` § 4.1 makes each write- or close-time, and no source shape carries them |
+| `milestone` | left empty; `roadmap-data-model.md` § 4.1 marks it `optional` and no source shape carries it — an absent optional, not a deferred obligation |
+| `created`, `lastModified`, `shipped` | left empty; `roadmap-data-model.md` § 4.2 bounds what is derivable and § 5 excludes recovering dates from git |
 | `lanes`, `evidence` | the `Lanes:` / `Evidence:` lines — **owed** (ANTS-3767) |
 | `extras` | § 2.7 / § 2.8 — **owed** (ANTS-3767) |
 | `sectionId` | not knowable here: a plan carries `sectionSlug`, the store row not existing yet. **Owed** — ANTS-3765 resolves slug to id inside its transaction |
@@ -217,7 +250,9 @@ directory. A glob's membership changes when an unrelated directory appears
 beside the projects, and a migration whose input set moves silently is one
 nobody can re-run and compare.
 
-Within a root the roadmap is the file whose name case-folds to `roadmap.md`.
+Within a root the roadmap is the file **directly in that directory**, not
+recursively, whose name case-folds to `roadmap.md` — so a `docs/ROADMAP.md` is
+not a candidate and cannot silently outrank the real one.
 This is not a nicety: RetroDB names its file `roadmap.md`, and an uppercase-only
 glob excluded a 4,800-line project from the first ANTS-3753 survey, which then
 reported both a corpus size and a "no project uses pass headings" claim that
@@ -250,15 +285,42 @@ ANTS-2126 extracted the pass-headings *writer* to `src/passheadingwrite.{h,cpp}`
 in `ants_core_lib` so "the remotecontrol handlers and the feature test share one
 implementation".
 
-**ANTS-3764 must widen the record, and that is a dependency this spec creates
-rather than inherits.** `RoadmapDialog::BulletRecord::status` is an *emoji*
-(`"✅"|"🚧"|"📋"|"💭"`), and the pass reader's status regex captures only the
-first `[A-Za-z0-9_-]` run, lowercased, discarding it after mapping. § 2.7 needs
-the author's **verbatim Status value** — the whole remainder of the line after
-`**Status**:`, qualifier tail included. Re-deriving it from `BulletRecord::body`
-would be the second parser § 2.3 exists to forbid, so the extraction adds the
-raw value to the record. Nothing else in this spec needs a field the shipped
-reader does not already produce.
+**The shipped reader is a BULLET parser, and the seam is exactly there.** It
+answers one question — *given these lines, what bullets are items and what are
+their fields* — because that is all `RoadmapDialog` ever needed. It does not
+walk the document: it emits nothing for narration, tables, fences, section
+bodies or the legend, and it records no line numbers for anything. So this half
+is **two jobs against one reader**, and saying which is which is what keeps
+§ 2.3's one-parser rule honest:
+
+| Job | Owner |
+|---|---|
+| Classify a bullet, extract its fields, synthesise a pass id | the shipped reader, via ANTS-3764 |
+| Walk the document once for structure — headings, non-bullet lines, table and fence extents, the legend block, and a line span for every carrier | **`planFrom()`'s own scan (§ 2.11)** |
+
+That second job is not a second parser of the *bullet* grammar, which is the
+thing § 2.3 forbids and the thing whose disagreements would be silent. It is
+the structural layer the reader never had, it never re-decides item-hood or a
+status, and § 2.11 specifies it.
+
+**ANTS-3764 must widen `BulletRecord`, and the list is longer than an earlier
+draft of this section claimed.** Verified field-by-field against
+`src/roadmapdialog.h` and the reader body; each entry is something § 2 needs
+that the record does not carry, and every one of them would otherwise be
+re-derived by hand from `body` — which *is* the forbidden second bullet parser:
+
+| Field | Why | Verified absence |
+|---|---|---|
+| the verbatim `- **Status**:` **value** | § 2.7 / INV-7 | `status` is an emoji; the pass regex captures only the first `[A-Za-z0-9_-]` run, lowercases it, and discards it after mapping |
+| `source` | § 2.1.1 and § 2.8 read a `Source:` line | the record has `kind`, `lanes`, `evidence`, `layman` — and **no `source`**; nothing in the reader extracts it |
+| `firstLine`, `lastLine` | every § 2.1 carrier declares them; INV-11's partition is built on them | the record's only `int` is `sectionLevel` |
+| the pass **designator** (`"43.5"`) | § 2.9 calls `passIdFromDesignator()` | the reader has already synthesised `rec.id` from the heading; the designator is consumed and dropped, so the call has no available input (§ 2.9 resolves this without the field — see there) |
+| the **id token as written**, before the reader's own acceptance test | § 2.5's dash-optional grammar, § 2.6's quarantine | `id` is documented "empty if no `[<PREFIX>-NNNN]` token", so `[Cl9]` reaches migration as *no id at all* and would be bulk-allocated a second identity rather than quarantined |
+
+The last row is the one that changes an outcome rather than an implementation:
+without it § 2.6 is unreachable and INV-4 cannot pass. All five are additive —
+no existing caller reads a field that does not yet exist — so `RoadmapDialog`
+and `roadmap_log` are unaffected, and § 7 carries the list.
 
 **A file that yields no items is reported, not accepted quietly.**
 `detectRoadmapFormat()` answers `ants-v1` for input it does not recognise —
@@ -275,14 +337,15 @@ holds.
 `roadmap-data-model.md` § 7.2 fixes the rule: a bullet is an item when it
 carries **both** a status marker and the bold headline `roadmap-format.md` § 3.5
 requires. This spec refines the second half — **an id token in the leading slot
-satisfies it in place of the bold headline**, since § 7.1 puts the id there and
+satisfies it in place of the bold headline**, since `roadmap-data-model.md` § 7.1 puts the id there and
 the corpus writes `- ✅ [ANTS-1234] **…**` with both. That refinement is this
-spec's, not § 7.2's, which states only the conjunction.
+spec's, not `roadmap-data-model.md` § 7.2's, which states only the conjunction.
 
 Both halves are load-bearing, and the corpus says which population each holds
 back. Dropping the **headline** half promotes the detail lines and the legend
-lines — status-marked bullets carrying neither an id nor a bold headline, about
-2.4% of the bullet corpus, which corroborates § 7.2's own "roughly 90
+lines — status-marked bullets carrying neither an id nor a bold headline, a
+low-single-digit percentage of the bullet corpus (§ 1.1 carries both counts),
+which corroborates `roadmap-data-model.md` § 7.2's own "roughly 90
 status-marked bullets". Dropping the **marker** half instead is the larger error,
 since the corpus holds far more markerless sub-bullets — but those carry no
 marker, so they are not what the headline rule is holding back, and an earlier
@@ -294,14 +357,21 @@ Two rules the corpus forced that the model does not state:
   Not merely the first such line: the shipped reader scans forward from the
   heading, bounded by the next heading of level ≤ 4 or 50 lines, and a
   content-free `- **Status**:` line (no emoji and no keyword) does not stop the
-  scan. First-match-wins is not a new convention either — it is what
-  `PassHeadingWrite::flipPassStatus()` already does ("rewrite its FIRST
-  `- **Status**:` line", "First match wins"). Migration takes the reader's
-  answer, including its bound.
+  scan. First-match-wins is not a new convention — `PassHeadingWrite::
+  flipPassStatus()` already works that way ("rewrite its FIRST `- **Status**:`
+  line", "First match wins") — but the two are **not the same rule** and citing
+  the writer as precedent for the reader would be wrong: the writer rewrites the
+  first such line whatever it holds, the reader takes the first that
+  *classifies*. On a block whose first Status line is content-free — INV-10's
+  fixture — they pick different lines. Migration takes the **reader's** answer,
+  including its 50-line bound, because the reader is what decided the status
+  this plan is filing.
 
-  The pass corpus carries 10 more Status lines than headings, and the gap
-  decomposes as every heading having at least one, nine blocks carrying a
-  second, and one Status line preceding the first heading entirely:
+  § 1.1 records more Status lines than pass headings, and the command below is
+  the single home for how that gap decomposes — every heading has at least one,
+  nine blocks carry a second, and one Status line precedes the first heading
+  entirely (measured 2026-07-31; the five numbers it prints are, in order,
+  144 · 154 · 0 · 1 · 9):
 
   ```bash
   # run from /mnt/Games/Scripts/Linux — prints: headings, Status lines,
@@ -389,8 +459,12 @@ grep -rhcE '^\s*[-*] +([✅🚧📋💭]|\[[ xX]\]) *\[[^]]+\][(:]' */[Rr][Oo][A
 grep -rhcE '^\s*[-*] +\[[^]]+\][(:]'                          */[Rr][Oo][Aa][Dd][Mm][Aa][Pp].md | awk '{s+=$1} END{print s}'
 ```
 
-The clause costs one character check, and the failure it prevents is filing a
-CVE number as an item id.
+Measured 2026-07-31, those two commands print **0** and **43**: no leading-slot
+token in the corpus is currently a markdown link, while 43 bullets open with a
+link one status marker away from that slot. The clause is therefore guarding a
+shape the corpus is one edit away from, not one it already contains — which is
+the honest reason to keep it: it costs one character check, and the failure it
+prevents is filing a CVE number as an item id.
 
 **Two items whose ids fold to the same value are one item's worth of identity
 and two items' worth of content.** `roadmap-data-model.md` § 7.1 compares ids
@@ -409,7 +483,7 @@ the surrounding brackets**, which are the markdown that delimits it and not part
 of any id in the store — with `id_origin = "quarantined"`, the project's
 migration completing rather than blocking. Migration never invents a dash
 (rewriting an id breaks § 3.5.1's append-only rule and every citation of it) and
-never treats them as id-less (§ 7.2's bulk allocation would issue a second
+never treats them as id-less (`roadmap-data-model.md` § 7.2's bulk allocation would issue a second
 identity for an item that already has one).
 
 **It clears when the item stops being off-grammar in source, and by no other
@@ -475,7 +549,7 @@ round trip, which is one more reason § 2.7 keeps the author's string.
 
 Applied to the corpus — first word of each Status value, and this table is the
 single home for that breakdown. **It does not contradict § 1.1's count of values
-outside § 7.3's enum**, which is much larger: that figure counts values whose
+outside `roadmap-data-model.md` § 7.3's enum**, which is much larger: that figure counts values whose
 *word is not one of the five status names*, and the reader names far more words
 than five. What matters here is how many fall outside the **reader's**
 vocabulary, and that is the two rows marked below:
@@ -512,7 +586,7 @@ notation differs, and § 3.5 makes the emoji this project's own notation for the
 same five values. Recording that as anything else would say migration invented a
 value the author in fact supplied.
 
-**An unnamed word is a guess, so it is `defaulted`** — the same value § 3.3
+**An unnamed word is a guess, so it is `defaulted`** — the same value `roadmap-data-model.md` § 3.3
 gives an absent field, because that is what has happened: the source carried
 nothing this model can use and a default was applied. A later reader has to be
 able to see that `planned` was migration's choice and not the author's.
@@ -532,8 +606,8 @@ with its asterisks.
 
 **`migrated` is not used for status at all**, and an earlier draft of this
 section using it was the reason this spec briefly proposed amending the
-standard. § 7.7 defines `migrated` as "generated by migration itself, with no
-source-side counterpart" — written for § 7.2's allocated ids, where nothing
+standard. `roadmap-data-model.md` § 7.7 defines `migrated` as "generated by migration itself, with no
+source-side counterpart" — written for `roadmap-data-model.md` § 7.2's allocated ids, where nothing
 existed before. No status fits that: every one of them has a source-side
 counterpart, whether or not the model could use it.
 
@@ -544,14 +618,14 @@ a refusal path here would be unreachable code guarding an impossible state.
 
 `roadmap-data-model.md` § 7.4's mapping table is **normative** and generated
 from the same survey; this spec applies it rather than restating it. Absent
-`Kind:` defaults to `implement` and absent `Source:` to `planned` per § 3.3,
+`Kind:` defaults to `implement` and absent `Source:` to `planned` per `roadmap-data-model.md` § 3.3,
 each recording `provenance.<field> = "defaulted"`. § 2.1.1 states what happens
 to every remaining field.
 
-A non-canonical value that is **not** in § 7.4's table is reported and defaulted
+A non-canonical value that is **not** in `roadmap-data-model.md` § 7.4's table is reported and defaulted
 to `implement` — not refused. The table was generated from a corpus that grows,
 so an unknown value is the expected consequence of a project joining later, and
-§ 7.4 already says such a project "re-runs it and extends the table by
+`roadmap-data-model.md` § 7.4 already says such a project "re-runs it and extends the table by
 amendment".
 
 `extras.source_kind` follows the same rule as `extras.source_status` and for the
@@ -574,23 +648,42 @@ line; ANTS-3765 writes items, not lines, so a load half handed only notes would
 have to re-derive which item each one meant. The `id_allocation_owed` note
 remains as the *report* view of the same fact, for a human reading § 2.10.
 
-| | Rule |
-|---|---|
-| Closed | Bulk, in document order. Nobody cites a finished item. |
-| Open | Into the project's normal sequence; § 3.2's publish gate then applies. |
+**What separates a closed id-less item from an open one is
+`roadmap-data-model.md` § 7.2's rule and is not restated here** — an earlier
+draft reproduced it as a table, which is one more copy to drift. `closed` is on
+`PlannedItem` precisely so ANTS-3765 can apply that rule without re-deriving it,
+and both cases carry `provenance.id = "migrated"`: they differ in what is owed
+afterwards, not in where the id came from.
 
-Both carry `provenance.id = "migrated"`; they differ in what is owed afterwards,
-not in where the id came from. The standard's "~1,600 id-less, ~1,020 closed /
+The standard's "~1,600 id-less, ~1,020 closed /
 ~600 open" is **confirmed** by the 2026-07-31 run (§ 1.1), not — as the
 ANTS-3757 bullet's annotation suspected — a transposition of Ants' own
 id-bearing count. The rival figures in that annotation (2,818 / 3,794) counted
 *lines*, a different population.
 
 Pass-heading items are **not** among the id-less: their ids are synthesised from
-the heading. Migration calls `PassHeadingWrite::passIdFromDesignator()` rather
-than reimplementing the derivation, because the reader, the writer and now
-migration must agree on `PASS-43-5-B` or a flip through `roadmap_log` stops
-finding the item it wrote. They carry `id_origin = "synthesised"`.
+the heading, and migration **takes the reader's synthesised id as-is** rather
+than calling `PassHeadingWrite::passIdFromDesignator()` itself. An earlier draft
+of this section named that call, which cannot be made: it takes the *designator*
+(`"43.5"`), and by the time a record exists the reader has consumed the heading
+and emitted `PASS-43-5` already — obtaining the designator back would mean
+re-matching the heading regex, the second parser § 2.3 forbids. The property
+that mattered is unaffected, because the two derivations are the same code path
+in the same release: the reader synthesises the id the writer's function would
+have produced, so reader, writer and migration still agree on `PASS-43-5-B` and
+a flip through `roadmap_log` still finds the item it wrote. INV-10 asserts that
+agreement directly rather than assuming it from a shared call. Pass items carry
+`id_origin = "synthesised"`.
+
+**A reader-synthesised id that is NOT a pass id is discarded.** The GFM adapter
+sets `BulletRecord::synthetic` when it derives an id from a content hash rather
+than from a token — an identity the *dialog* invented so it could address a
+bullet, which is precisely what `roadmap-data-model.md` § 7.2 must not see: it
+is neither an author's id nor an absence, and filing it would silently remove
+that item from the id-less population the standard's bulk allocation exists to
+serve. So a `synthetic` id is dropped and the item is planned id-less, with
+`idAllocationOwed` set. Pass ids are synthesised too and are kept, because they
+are derived from the author's own heading and round-trip back to it.
 
 ### 2.10 The report
 
@@ -602,14 +695,81 @@ are a closed set — an open one becomes prose nobody can grep:
 | `quarantined_id` | § 2.6 — a declared id outside § 3.5.1's grammar. |
 | `duplicate_id` | § 2.5 — two items whose ids fold to the same value. |
 | `status_defaulted` | § 2.7 — an unnamed word, **or no Status line at all**. |
-| `kind_unmapped` | § 2.8 — non-canonical and absent from § 7.4's table. |
+| `kind_unmapped` | § 2.8 — non-canonical and absent from `roadmap-data-model.md` § 7.4's table. |
 | `orphan_status_line` | § 2.4 — a `- **Status**:` line belonging to no pass block. |
 | `id_allocation_owed` | § 2.9 — an id-less item, carrying open/closed. |
 | `empty_source` | § 2.3 — a file yielding zero items. |
 
 Discovery's failures are **not** in this set. `findRoadmap()` returns an error
 before any plan exists (§ 2.2), so a missing, case-ambiguous or undecodable
-roadmap has no `MigrationPlan` to be reported on.
+roadmap has no `MigrationPlan` to be reported on. They are still a closed set:
+`findRoadmap()` reports **`not_found` | `case_ambiguous` | `not_utf8`** in a
+machine-readable code beside the human message, because INV-1 asserts *which*
+refusal happened and free text is not assertable.
+
+### 2.11 Sections, elements and the legend — the structural walk
+
+§ 2.3 splits this half into the reader's job and `planFrom()`'s own scan. This
+section is that scan, and it exists because the shipped reader answers only
+"which bullets are items"; every carrier in § 2.1 other than `PlannedItem`
+comes from here, as do the line spans INV-11 partitions.
+
+**One pass over the lines, in document order.** It never re-decides item-hood or
+a status — those are the reader's, and a disagreement between the two would be
+exactly the silent kind § 2.3 rules out.
+
+- **Sections are `##` and `###`, and no deeper.** Not an arbitrary depth limit:
+  the reader is the authority on which section an item belongs to, it tracks
+  levels 2 and 3 only, and a section set larger than the one it tracks would
+  file items under slugs it never assigns. A `####` heading (outside the
+  pass-headings format, where § 2.4 makes it an item) is therefore ordinary
+  content, carried as narration. ANTS-3761's export can represent deeper
+  sections for stores built other ways; migration does not produce them.
+- **Slugs come from `RoadmapIndex::uniqueSlug()`** — the same function, with the
+  same running `seen` set, that the shipped reader uses on both the pass path
+  and the ants-v1 / GFM path. So a section's slug equals the `sectionSlug` the
+  reader put on every item inside it *by construction* rather than by
+  coincidence, and the store's `UNIQUE (project_id, slug)` is satisfied by the
+  uniquing that function already does for duplicate headings.
+- **`parentSlug`** is the most recent `##` for a `###`, and empty for a `##`.
+- **Content before the first heading** belongs to a synthetic section: empty
+  slug, empty title, level 0, no parent.
+- **`intro` versus `narration` is a position rule, not a content rule.** Lines
+  between a heading and that section's **first element** are its `intro`;
+  section-level text after the first element is a `narration` element. That is
+  `roadmap-data-model.md` § 5's own distinction — a section has "optional intro
+  prose" *and* an ordered element list — and it is why `PlannedSection`'s span
+  covers the heading and its intro and stops there.
+- **A fenced block is never an element.** § 5 is explicit: "fenced code blocks
+  belong to a `body` or an `intro`. Neither is a section element." So a fence
+  inside an item's span is that item's `body`; a fence at section level before
+  the first element joins the `intro`; a fence at section level after one is
+  appended to the **preceding item's** `body`, since § 5's rule is that prose
+  belongs to what it is subordinate to. Fence extents are matched by their own
+  delimiters, so a `##` line *inside* a fence is not a heading — the one place
+  this walk must not read a line at face value.
+- **A table** is a maximal run of contiguous lines whose trimmed form starts and
+  ends with `|`. Its first row is the header, its second is the separator and is
+  **dropped** (`roadmap-data-model.md` § 5.2: "delimiter, not content… would have the store
+  round-tripping a line that means nothing"), and the rest are rows. The
+  `payload` is `{"header": [...], "rows": [[...], ...]}`, matching the shape
+  ANTS-3761 § 2.3 exports for `kind = "table"`.
+- **The legend** is recognised exactly as `tools/roadmap-corpus-survey.py`
+  already counts it, so the spec and its own oracle cannot disagree: a
+  status-marked bullet that § 2.4 rejects (no id, no bold headline) whose text
+  begins with a status word and is under 160 characters. A maximal run of such
+  lines is the legend block; each becomes an `entries` key of the status
+  § 2.7 maps its marker to, with the line's remaining text as the wording. A
+  project with no such run plans no legend, which is eight of the ten.
+- **`position` is ONE 0-based, contiguous, gapless sequence per section**,
+  covering that section's items and elements together in document order. The
+  store CHECKs `UNIQUE (section_id, position)` over `element` rows and an item
+  is filed by an element row, so numbering items and elements independently
+  yields a plan that dies at ANTS-3765's insert — in the half that can no longer
+  see the source. This is the cheapest mistake in the section to make and the
+  most expensive to diagnose.
+- **Every carrier records a 1-based inclusive line span**, and INV-11 is what
+  holds the walk to it.
 
 ## 3. Invariants
 
@@ -617,24 +777,29 @@ Each invariant asserts the section named in its first clause; it does not
 restate the rule, and where the two could differ § 2 wins. Every *Breaks when*
 clause is a mutation an implementer must apply and observe RED (§ 6).
 
-- **INV-1** — Discovery behaves per § 2.2. *Test:* `tests/features/roadmap_migrate_read/` — fixture roots holding `ROADMAP.md` only, `roadmap.md` only, both, neither, and one holding invalid UTF-8; the first two resolve and return the file's text, the last three return `nullopt` with an error naming the cause. *Breaks when:* discovery globs `ROADMAP.md` — which silently drops RetroDB, the only project using the pass-headings format, and with it the **whole** pass corpus plus RetroDB's own bullet-form items, a loss half again as large as the pass corpus alone (§ 1.1).
+- **INV-1** — Discovery behaves per § 2.2. *Test:* `tests/features/roadmap_migrate_read/` — fixture roots holding `ROADMAP.md` only, `roadmap.md` only, both, neither, and one holding invalid UTF-8; the first two resolve and return the file's text, the last three return `nullopt` with the § 2.10 refusal code `not_found` / `case_ambiguous` / `not_utf8` respectively — asserted on the **code**, since a human message is not assertable. *Breaks when:* discovery globs `ROADMAP.md` — which silently drops RetroDB, the only project using the pass-headings format, and with it the **whole** pass corpus plus RetroDB's own bullet-form items, a loss half again as large as the pass corpus alone (§ 1.1).
 - **INV-2** — A bullet becomes an item only under § 2.4's conjunction. *Test:* `roadmap_migrate_read` asserts the per-fixture item count equals a **committed expectation file** generated out-of-band by `tools/roadmap-corpus-survey.py` over the same fixtures — the survey is not invoked from the test, so no interpreter joins the `features;fast` path, and the oracle applies § 2.4's id-in-leading-slot refinement, which the survey already implements. Regenerating that file is a reviewable diff and must never be done to make the test pass. *Breaks when:* the bold-headline half is dropped — so **the fixtures must carry the populations that move**: at least one status-marked detail line beneath an item and one status-legend line, both of which promote to items under the mutation and neither of which any other fixture here needs. Parity against an independently-written parser is the point: a test written from this spec's own rules can only confirm what the rules say.
-- **INV-3** — An id-shaped token is an id only under § 2.5's position and link rules, and an item with no id carries `idAllocationOwed` with `closed` set per § 2.9. *Test:* `roadmap_migrate_read` — a fixture whose bullets are **all status-marked with bold headlines**, so § 2.4 admits every one of them and only identity is in question: `[milnet01]`, `[x86_64]` and `[FOO123]` appear mid-line, `[CVE-2017-1000117]` as a link label in the leading slot, `[Cl9]` in the leading slot. Only `[Cl9]` yields a non-empty `id`; the rest plan with `id` empty, `idAllocationOwed == true`, and `closed` matching their status. *Breaks when:* the **leading-slot restriction is dropped** from the id-shaped detector, which promotes the mid-line tokens to ids; or the link clause is dropped, which files the CVE number as an id. **Not** "the detector uses § 3.5.1's grammar anywhere on the line" — an earlier draft named that mutation and it cannot redden this invariant, because none of the six tokens contains the dash § 3.5.1 requires, so a strict detector never matches them wherever it runs.
+- **INV-3** — An id-shaped token is an id only under § 2.5's position and link rules, and an item with no id carries `idAllocationOwed` with `closed` set per § 2.9. *Test:* `roadmap_migrate_read` — a fixture whose bullets are **all status-marked with bold headlines**, so § 2.4 admits every one of them and only identity is in question: `[milnet01]`, `[x86_64]` and `[FOO123]` appear mid-line, `[CVE-2017-1000117]` as a link label in the leading slot, `[Cl9]` in the leading slot. Only `[Cl9]` yields a non-empty `id`; the rest plan with `id` empty, `idAllocationOwed == true`, and `closed` matching their status. A second fixture in the GFM format carries an id-less checkbox item, for which the shipped reader sets a content-hash id with `synthetic == true`: § 2.9 discards it, so it too plans `id` empty with `idAllocationOwed == true`. *Also breaks when:* a `synthetic` reader id is taken at face value — which passes every other invariant here while silently removing that item from the id-less population `roadmap-data-model.md` § 7.2's bulk allocation exists to serve. *Breaks when:* the **leading-slot restriction is dropped** from the id-shaped detector, which promotes the mid-line tokens to ids; or the link clause is dropped, which files the CVE number as an id. **Not** "the detector uses § 3.5.1's grammar anywhere on the line" — an earlier draft named that mutation and it cannot redden this invariant, because none of the six tokens contains the dash § 3.5.1 requires, so a strict detector never matches them wherever it runs.
 - **INV-4** — Quarantine behaves per § 2.6. *Test:* `roadmap_migrate_read` asserts the planned id equals the literal `Cl9` — bracket-free and unrepaired — that `id_origin` is `quarantined`, that `idAllocationOwed` is false, and that one `quarantined_id` note names its line. *Breaks when:* quarantine is implemented as "repair to `CL-9`", which breaks § 3.5.1's append-only rule; or as "treat as id-less", which issues a second identity for an item that already has one. Asserting only that two runs agree would catch neither: a repairing implementation is perfectly deterministic, so that assertion tests INV-9 and not this.
 - **INV-5** — Every source shape maps to the status § 2.7's tables give it, and `dropped` is never produced. *Test:* `roadmap_migrate_read` drives all four emoji, both checkbox states and every word in § 2.7's word table through `planFrom()`, asserting **per source shape against an expected status** rather than only in aggregate — a table of (source, expected) pairs, one row per emoji, per checkbox state and per named word, plus a mixed-case (`Done`) and an asterisk-wrapped (`**deferred**`) leg proving migration inherits the reader's matching and adds none of its own; asserts no plan anywhere yields `dropped`; and asserts that for the four statuses `PassHeadingWrite::passStatusKeyword()` covers, `status → keyword → status` returns the original. *Breaks when:* migration introduces its own word mapping — `deferred` → `planned` is the natural one and it breaks the round trip, since a later `roadmap_log` flip writes `deferred` back for `considered`; or the emoji rows are omitted, which leaves almost the whole corpus with no defined status and is what an earlier draft of § 2.7 did. The per-shape table is what makes the second mutation redden *here*: against an aggregate assertion it passes, because no plan yields `dropped` either way.
 - **INV-6** — § 2.7's `asserted` / `defaulted` split holds, and `status_defaulted` is raised for exactly the two rows that carry it. *Test:* `roadmap_migrate_read` asserts `partial` and `un-gated` are `defaulted` and reported, that a pass block with **no Status line** is likewise `defaulted` and reported, and that `done`, `todo`, `deferred`, ✅ and `- [x]` are all `asserted` and silent. *Breaks when:* the else-branch is inherited wholesale, so every value becomes `asserted` — every other invariant here still passes, the statuses are all still legal, and the store quietly gains items whose `planned` is a guess indistinguishable from an author's choice. That is the precise confusion `roadmap-data-model.md` § 7.7 exists to prevent, and no test that only checks the stored status can see it.
-- **INV-7** — `extras.source_status` holds the verbatim Status **value** per § 2.7, for every pass-headings status and for no emoji or checkbox status. *Test:* `roadmap_migrate_read` asserts the exact source string survives for a value with a qualifier tail (`done (v3.20.0, 2026-07-05). Adds catalogs for …`), that `completed` survives as `completed` and not as the `done` its round trip would write back, that `**un-gated (2026-07-05).**` survives with its asterisks, and that an emoji-format item sets it not at all. *Breaks when:* the normaliser stores its own normalised word, or the matched word rather than the whole value — either of which passes INV-5 and INV-6 while discarding the qualifier that made preservation worth doing.
+- **INV-7** — `extras.source_status` holds the verbatim Status **value** per § 2.7 for every pass block that **carries a Status line**, and is unset for a pass block that carries none as well as for every emoji or checkbox status. *Test:* `roadmap_migrate_read` asserts the exact source string survives for a value with a qualifier tail (`done (v3.20.0, 2026-07-05). Adds catalogs for …`), that `completed` survives as `completed` and not as the `done` its round trip would write back, that `**un-gated (2026-07-05).**` survives with its asterisks, and that both an emoji-format item **and a pass block with no Status line** set it not at all — the second leg being the one § 2.7's table row makes explicit and an earlier statement of this invariant contradicted. *Breaks when:* the normaliser stores its own normalised word, or the matched word rather than the whole value — either of which passes INV-5 and INV-6 while discarding the qualifier that made preservation worth doing.
 - **INV-8** — `kind` and `source` behave per § 2.8. *Test:* `roadmap_migrate_read` — a fixture item with no `Kind:` plans as `implement`/`defaulted`; one with no `Source:` plans as `planned`/`defaulted`; one with `bugfix` plans as `fix`; one with `frobnicate` plans as `implement` and raises `kind_unmapped`. *Breaks when:* `planFrom()` refuses an item carrying no `Kind:` — which refuses roughly half of every project in the corpus.
 - **INV-9** — `planFrom()` is pure per § 2.1: identical input yields an identical plan, and it touches no filesystem, clock or id counter. *Test:* `roadmap_migrate_read` calls it twice on the same fixture and compares field-wise, including `provenance` and note order; and asserts that no file under the fixture root has a changed mtime across the two calls, since a counter persisted to disk is the shape allocation would actually take. *Breaks when:* allocation is done here rather than deferred to ANTS-3765 — the mutation must **read and increment**, because a counter that is only read returns the same value twice and leaves the comparison green. That is the cheapest possible detector for exactly the mistake § 2.9 exists to prevent.
-- **INV-10** — Pass blocks behave per § 2.4 and § 2.9: ids from `PassHeadingWrite::passIdFromDesignator()`, one item per block, status from the block's first *classifying* `- **Status**:` line, and a Status line in no block reported rather than imported. *Test:* `roadmap_migrate_read` — a fixture with `Pass 43.5`, `Pass 43.5.B`, a block whose first Status line is content-free and whose second carries a different word from its third, and a Status line before the first heading; asserts ids `PASS-43-5` / `PASS-43-5-B`, one item per block, the status of the first *classifying* line, and one `orphan_status_line` note. *Breaks when:* two separate mutations, one per clause — **(a)** the letter-led sub-designator is dropped from the synthesised id, collapsing `Pass 43.5` and `Pass 43.5.B` to `PASS-43-5`, the regression ANTS-2035 already fixed once in the reader; **(b)** the **last** classifying Status line in a block wins instead of the first, which changes nine blocks in the corpus. "The derivation is reimplemented" is not a mutation — a correct reimplementation stays green — and an earlier draft named it as one.
-- **INV-11** — No source content is silently discarded. Every non-blank line of the source falls inside **exactly one** `PlannedItem`, `PlannedElement`, `PlannedSection` or `PlannedLegend` span — a partition, so a gap is a dropped line and an overlap is a double-filed one — and every `Note` with a non-zero line names a line **inside** one of those spans. *Test:* `roadmap_migrate_read` asserts the partition over the committed fixtures, and separately that each note's line resolves into a span. *Breaks when:* a parser branch falls through — the failure mode migration exists to prevent, and the only invariant here that fires on a format nobody anticipated. Notes are deliberately **not** part of the union: every § 2.10 code except `empty_source` names a line that already sits inside an item, so adding them to the union would make every conforming plan overlap and the invariant would fail on the fixtures § 6 requires. It also requires each of the four carriers: against a plan holding only `items` and `notes`, as an earlier draft declared, the invariant is unsatisfiable rather than merely unmet.
+- **INV-10** — Pass blocks behave per § 2.4 and § 2.9: one item per block, the id the reader synthesised, status from the block's first *classifying* `- **Status**:` line, and a Status line in no block reported rather than imported. *Test:* `roadmap_migrate_read` — a fixture with `Pass 43.5`, `Pass 43.5.B`, a block whose first Status line is content-free and whose second carries a different word from its third, and a Status line before the first heading; asserts ids `PASS-43-5` / `PASS-43-5-B`, one item per block, the status of the first *classifying* line, and one `orphan_status_line` note. **The id leg is asserted against `PassHeadingWrite::passIdFromDesignator("43.5")` rather than against a literal** — the two derivations must agree or `roadmap_log` stops finding what it wrote, and § 2.9 explains why migration cannot simply *call* it. *Breaks when:* two separate mutations, one per clause — **(a)** the letter-led sub-designator is dropped from the synthesised id, collapsing `Pass 43.5` and `Pass 43.5.B` to `PASS-43-5`, the regression ANTS-2035 already fixed once in the reader; **(b)** the **last** classifying Status line in a block wins instead of the first, which changes *at most* the nine corpus blocks carrying a second Status line — how many of those nine actually classify differently is unmeasured, so the fixture and not the corpus is what makes this mutation redden. "The derivation is reimplemented" is not a mutation — a correct reimplementation stays green — and an earlier draft named it as one.
+- **INV-11** — No source content is silently discarded. Every non-blank line of the source falls inside **exactly one** `PlannedItem`, `PlannedElement`, `PlannedSection` or `PlannedLegend` span — a partition, so a gap is a dropped line and an overlap is a double-filed one — and every `Note` with a non-zero line names a line **inside** one of those spans. It also asserts § 2.11's ordering: within each section, the `position` values of its items and elements together form a **contiguous 0-based sequence with no gap and no repeat**. *Test:* `roadmap_migrate_read` asserts the partition over the committed fixtures, that each note's line resolves into a span, and the per-section position sequence. *Breaks when:* **(a)** a parser branch falls through — the failure mode migration exists to prevent, and the only clause here that fires on a format nobody anticipated; **(b)** items and elements are numbered in **separate** sequences, the natural implementation, which every other invariant here passes and which then dies on ANTS-3765's `UNIQUE (section_id, position)` insert, in the half that can no longer see the source. Notes are deliberately **not** part of the union: every § 2.10 code except `empty_source` names a line that already sits inside one of the four spans — `orphan_status_line` sits in an element rather than an item, which is why this exclusion is stated over the spans and not over items — so adding notes to the union would make every conforming plan overlap and the invariant would fail on the fixtures § 6 requires. It also requires each of the four carriers: against a plan holding only `items` and `notes`, as an earlier draft declared, the invariant is unsatisfiable rather than merely unmet.
 - **INV-12** — Folded-id collisions behave per § 2.5. *Test:* `roadmap_migrate_read` — a fixture declaring `Sh-1` and `SH-1`; asserts two `PlannedItem`s, both ids verbatim, and one `duplicate_id` note per item naming its line. *Breaks when:* the parser keys items on the folded id — the natural implementation, since ANTS-3756 keys the store that way — which silently drops the second item here and would instead fail ANTS-3765's `UNIQUE (project_id, id_fold)` insert, in the half that can no longer see the source line.
 - **INV-13** — A source yielding zero **items** raises `empty_source`, per § 2.3. *Test:* `roadmap_migrate_read` plans an empty file and a prose file with no bullets; both raise it, and the prose file additionally plans narration elements — which is what makes this invariant and INV-11 consistent rather than opposed. *Breaks when:* the condition is written over the whole plan (`zero items and zero elements`), which the prose fixture then leaves silent while INV-11 stays green — the two together being the only way to see it.
 
 ## 4. RAM / build cost
 
 `planFrom()` holds one project's plan in memory. The largest roadmap in the
-corpus is Ants' own at 2.9 MB on disk (`wc -c ROADMAP.md`), and the working set
+corpus is Ants' own at 2.95 MB on disk — measured 2026-07-31 by `wc -c` over
+every `*/[Rr][Oo][Aa][Dd][Mm][Aa][Pp].md`, and larger than the runner-up by a
+factor of five, so the budget is pinned to a clear worst case rather than a
+close one. **Bytes, not lines, is the metric that matters here** and the two do
+not rank the same way: § 2.2 calls RetroDB "a 4,800-line project", which is a
+line count from the ANTS-3753 survey and a much smaller file. The working set
 starts at roughly **twice** that before any plan exists, because `QString` is
 UTF-16 and the corpus is almost entirely ASCII. On top of that a plan carries
 the item bodies and the element payloads, each a second copy of a slice of the
@@ -680,7 +845,12 @@ is that spec's to state.
   standard already treats archives as a separate tier (§ 3.9: "the
   `roadmap-query` IPC verb reads only the current `ROADMAP.md`. Archives are
   dialog-only by contract"). A later pass can add them as additional sources
-  without changing a type in § 2.1; ANTS-3766 carries it.
+  without changing a **plan** type in § 2.1 — the item, section, element,
+  legend and note carriers all stand. What it does change is `findRoadmap()`'s
+  return and `MigrationPlan`'s single `sourcePath`, both of which become
+  per-source; ANTS-3766 carries that, and an earlier statement here claiming
+  nothing in § 2.1 changed was contradicted by this same bullet's own
+  "would return a set rather than a file".
 - **Deciding whether `[Cl9]`'s shape becomes legal.** A permanent exclusion, not
   deferred work: it is an amendment to `roadmap-format.md` § 3.5.1 affecting
   every project, and § 2.6 makes migration correct under either outcome.
@@ -734,10 +904,10 @@ was self-refuting.
   `sectionSlug` → `sectionId` resolution is separate and is ANTS-3765's own.
   § 2.1.1 is the list.
 - `docs/standards/roadmap-data-model.md` — two changes, and they are not equal.
-  **Neither is an amendment to § 7.7**: § 2.7 uses `asserted` and `defaulted`
+  **Neither is an amendment to `roadmap-data-model.md` § 7.7**: § 2.7 uses `asserted` and `defaulted`
   exactly as that section defines them, and an earlier draft's proposal to widen
   `migrated`'s gloss is withdrawn.
-  - § 9's open policy question ("how the pass-headings status vocabulary
+  - `roadmap-data-model.md` § 9's open policy question ("how the pass-headings status vocabulary
     normalises") is answered by § 2.7 and should point here. **Scope the
     correction precisely:** the shipped reader falsifies the premise for
     `deferred`, which maps to `considered`. It does *not* give `partial` a
@@ -745,7 +915,16 @@ was self-refuting.
     concedes discards the fact that work started, and is why the source value
     is preserved rather than mapped. An edit claiming both were falsified
     replaces one wrong sentence with another.
-  - § 3.3 quotes "**57%** carry no `Layman:`"; the 2026-07-31 run says 56%.
+  - **§ 7.2's item rule needs an amendment, and this spec must not just assert
+    past it.** That section is normative and says a bullet is an item when it
+    carries **both** a status marker and a bold headline; § 2.4 admits an id in
+    the leading slot *in place of* the headline. Today both documents claim
+    authority and they disagree about a real bullet — `- ✅ [ANTS-1234] plain
+    text`. The refinement is the right rule (§ 7.1 puts the id in that slot, and
+    the corpus writes both together), so the fix is an amendment to § 7.2
+    rather than a silent local override. Until it lands, § 2.4's refinement is
+    this spec's and is flagged as such wherever it is used.
+  - `roadmap-data-model.md` § 3.3 quotes "**57%** carry no `Layman:`"; the 2026-07-31 run says 56%.
     Noticed, not edited here — this run did not review that document, and its
     § 2 already says its figures are re-derived by re-running the survey.
 - `tools/roadmap-corpus-survey.py` — the stronger rung for § 2.4's and § 2.5's
@@ -777,6 +956,7 @@ was self-refuting.
 |---|---|---|---|---|
 | 0-split | 2026-07-31 | none — no reviewer dispatched | — | **Provenance row, not a review.** Split from ANTS-3757, which owned parse + normalise + allocate + load + cutover in one document — the shape ANTS-3756 carried when it converged by cap at 3 loops and had to split into ANTS-3761. This id keeps the read half; ANTS-3765 takes the load half. The seam is pure transformation vs. transactional load, and both halves are independently testable, which is the evidence it is a seam rather than a filing convenience. Invariants are numbered from 1: this is a scope reduction of a spec that was never written, not a split of a reviewed document, so there is nothing to avoid reflowing. **No review has been run on this document** — the gate starts at loop 1 on these bytes. |
 | 1 | 2026-07-31 | 2 (both cold, same shared packet) | 4 / 8 / 9 / 5 / 0 | 26 verified, 25 fixed, 1 surfaced, 1 dismissed, 1 out-of-scope. **The highest-value finding is one only a mutation could produce: INV-3's own *Breaks when* could not redden it.** The clause named "the detector matches the grammar anywhere on the line", but § 3.5.1's grammar requires a dash before the digits and not one of the six measured tokens has one — so a strict detector never matches them wherever it runs, and the invariant passed under its own break. § 2.5 now states the dash-optional id-shaped grammar explicitly as a *second, looser* detector, and the mutation is restated as dropping the leading-slot restriction. Three further contract gaps: **§ 2.7 defined status for the pass-headings word only**, leaving almost the whole corpus — every emoji bullet and checkbox — with no rule, and no account of why `dropped` is unreachable; **INV-11 was unsatisfiable against its own types**, since `MigrationPlan` carried only `items` and `notes` with no line spans, so narration, tables and fences had no carrier and nothing to count; and **discovery was specified with no entry point**, its refusal reported as a plan note that a pure `planFrom()` could never produce. `findRoadmap()` is now declared as the impure half and discovery failures are errors, not notes. Also corrected: a **wrong measurement** — "~37% over-count" summed markerless sub-bullets that the rule cannot promote; the real population is the status-marked bullets lacking id and headline, ~2.4%, which corroborates the standard's own "roughly 90". INV-4 asserted determinism where it meant verbatimness, and INV-10's break ("the derivation is reimplemented") was not a mutation at all; both restated, and INV-12/INV-13 added for folded-id collisions and empty sources. **Surfaced, not fixed:** `provenance.status = "migrated"` does not fit `roadmap-data-model.md` § 7.7's "with no source-side counterpart" — an authored `done` has one — but `asserted` would make migration's guesses indistinguishable from an author's choices. |
-| 2-decision | 2026-07-31 | none — a decision, not a review | — | **Decision row, written by the author; no reviewer was dispatched.** Loop 1's one surfaced finding is closed, and **without** the amendment it asked for. Re-examined, the defect was not that `migrated` fit § 7.7 badly — it was that § 2.7 gave **one** provenance value to two cases that differ in exactly the way `provenance` exists to record. `done` → `shipped` is a faithful transcription: the author chose that status, and only the notation differs from an author writing ✅. `partial` → `planned` is a lossy guess that discards "Phase A landed". § 7.7's own rationale — "without it a defaulted `kind` and an author's considered `kind` are indistinguishable, and every later reader over-trusts the corpus" — is precisely the distinction the single value destroyed. So a named word (and every emoji and checkbox) is now **`asserted`**, an unnamed word or an absent Status line is **`defaulted`** and reported, and `migrated` is not used for status at all. **The proposed amendment to `roadmap-data-model.md` § 7.7 is withdrawn.** A fix that removes the need to change a published standard is a better fix than the one that changes it. |
+| 2-decision | 2026-07-31 | none — a decision, not a review | — | **Decision row, written by the author; no reviewer was dispatched.** Loop 1's one surfaced finding is closed, and **without** the amendment it asked for. Re-examined, the defect was not that `migrated` fit `roadmap-data-model.md` § 7.7 badly — it was that § 2.7 gave **one** provenance value to two cases that differ in exactly the way `provenance` exists to record. `done` → `shipped` is a faithful transcription: the author chose that status, and only the notation differs from an author writing ✅. `partial` → `planned` is a lossy guess that discards "Phase A landed". `roadmap-data-model.md` § 7.7's own rationale — "without it a defaulted `kind` and an author's considered `kind` are indistinguishable, and every later reader over-trusts the corpus" — is precisely the distinction the single value destroyed. So a named word (and every emoji and checkbox) is now **`asserted`**, an unnamed word or an absent Status line is **`defaulted`** and reported, and `migrated` is not used for status at all. **The proposed amendment to `roadmap-data-model.md` § 7.7 is withdrawn.** A fix that removes the need to change a published standard is a better fix than the one that changes it. |
 | 2 | 2026-07-31 | 2 (both cold, same shared packet) | 5 / 12 / 11 / ~10 / 0 | **~38 verified, none fixed in-loop — the run was stopped deliberately and the findings carried to a consolidation pass (row 3-consolidate).** Findings rose against loop 1 and roughly half were **fix collateral**: defects loop 1's own fixes introduced, not defects in the draft. `/cold-eyes` Phase 5 names that pattern — "collateral rising while draft defects fall means the sweep is under-running, and looping harder makes it worse". The diagnosis was structural and specific: § 2.1's declarations, § 2's prose and § 3's invariants each stated the same contract, so every loop found disagreements *between the three copies* rather than defects in the design. Continuing to loop would have kept reconciling N copies instead of deleting N−1. |
-| 3-consolidate | 2026-07-31 | none — a restructure, not a review | — | **Consolidation row, written by the author.** § 2.1's declarations are now the **single statement of shape**, § 2's prose states only decisions and their evidence, and every invariant asserts a section by reference instead of restating it. Three of loop 2's five CRITICALs dissolved rather than being fixed: they were disagreements between copies that no longer exist. The rest were folded in, and the restructure surfaced **five defects no cold read had reached, all from checking § 2.1's types against ANTS-3756's shipped DDL rather than against the prose**. (1) `PlannedElement::kind` included `fence`, which `element.kind`'s CHECK constraint — `('item','narration','table')` — would refuse; `roadmap-data-model.md` § 5.2 puts fenced blocks in a `body` or an `intro`, so the kind set is now the store's own minus `item`. (2) **The plan had no carrier for a section**, although `section` is a table with `title`, `level`, `intro` and `parent_id` and every item names a `sectionSlug` — ANTS-3765 could not have created the rows the plan referred to. `PlannedSection` added. (3) **No carrier for the § 5.1 status legend**, which `project.legend` holds and § 5.2 assigns a home; without it the legend lines are lost, or promoted to items under INV-2's own mutation. `PlannedLegend` added. (4) `ItemWrite` lacks `lanes` and `evidence` as well as `extras` — three owed additions, not two — although `item` has a column for each and the shipped reader already parses both lines; § 2.1.1 is now an exhaustive field-disposition table, so "left empty" is a decision rather than an omission. (5) **§ 2.7's proposed case-fold and leading-`*` strip were already in the shipped reader** — `rxStatusLine` carries `CaseInsensitiveOption`, its optional leading group absorbs the `**`, and the keyword is `.toLower()`-ed — so the divergence loop 2 asked § 7 to cost did not exist. The claim had been carried since loop 1 on recall rather than on a read of the regex. Two further corrections from the same source: the winning Status line is the first that **classifies** (a content-free `- **Status**:` line does not stop the reader's 50-line scan), and § 4 had ANTS-3764 as an anonymous-namespace pair when `parseBullets()`'s GFM branch is inline in a member function. Structural fixes: `empty_source` now turns on zero **items**, which removes its contradiction with INV-11; INV-11 is a **partition** over four carriers with notes excluded from the union, which removes the double-cover falsification; § 1.1 is the single home for every corpus figure, since the same drifting item count had been a finding in both loops; and archives are now an explicit § 5 exclusion with the measurement behind it. |
+| 3-consolidate | 2026-07-31 | none — a restructure, not a review | — | **Consolidation row, written by the author.** § 2.1's declarations are now the **single statement of shape**, § 2's prose states only decisions and their evidence, and every invariant asserts a section by reference instead of restating it. Three of loop 2's five CRITICALs dissolved rather than being fixed: they were disagreements between copies that no longer exist. The rest were folded in, and the restructure surfaced **five defects no cold read had reached, all from checking § 2.1's types against ANTS-3756's shipped DDL rather than against the prose**. (1) `PlannedElement::kind` included `fence`, which `element.kind`'s CHECK constraint — `('item','narration','table')` — would refuse; `roadmap-data-model.md` § 5.2 puts fenced blocks in a `body` or an `intro`, so the kind set is now the store's own minus `item`. (2) **The plan had no carrier for a section**, although `section` is a table with `title`, `level`, `intro` and `parent_id` and every item names a `sectionSlug` — ANTS-3765 could not have created the rows the plan referred to. `PlannedSection` added. (3) **No carrier for the `roadmap-data-model.md` § 5.1 status legend**, which `project.legend` holds and `roadmap-data-model.md` § 5.2 assigns a home; without it the legend lines are lost, or promoted to items under INV-2's own mutation. `PlannedLegend` added. (4) `ItemWrite` lacks `lanes` and `evidence` as well as `extras` — three owed additions, not two — although `item` has a column for each and the shipped reader already parses both lines; § 2.1.1 is now an exhaustive field-disposition table, so "left empty" is a decision rather than an omission. (5) **§ 2.7's proposed case-fold and leading-`*` strip were already in the shipped reader** — `rxStatusLine` carries `CaseInsensitiveOption`, its optional leading group absorbs the `**`, and the keyword is `.toLower()`-ed — so the divergence loop 2 asked § 7 to cost did not exist. The claim had been carried since loop 1 on recall rather than on a read of the regex. Two further corrections from the same source: the winning Status line is the first that **classifies** (a content-free `- **Status**:` line does not stop the reader's 50-line scan), and § 4 had ANTS-3764 as an anonymous-namespace pair when `parseBullets()`'s GFM branch is inline in a member function. Structural fixes: `empty_source` now turns on zero **items**, which removes its contradiction with INV-11; INV-11 is a **partition** over four carriers with notes excluded from the union, which removes the double-cover falsification; § 1.1 is the single home for every corpus figure, since the same drifting item count had been a finding in both loops; and archives are now an explicit § 5 exclusion with the measurement behind it. |
+| 3 | 2026-07-31 | 2 (both cold, same shared packet, `--max-loops 1`) | 2 / 5 / 7 / 12 / 0 | **26 verified, 24 fixed, 2 dismissed. NOT converged — see the recommendation below.** The consolidation held: **not one of loop 2's ~38 findings was re-raised**, which is the proof the restructure worked rather than merely moved text. Everything here is new, and it is new for a reason worth recording — making § 2.1 the single statement of the contract gave the lanes one place to check it against the shipped DDL, and both lanes independently returned the same top finding. **§ 2.3's claim that "nothing else in this spec needs a field the shipped reader does not already produce" was false five times over.** `BulletRecord` has no `source` (§ 2.8 reads a `Source:` line), no line spans (every carrier declares them and INV-11 partitions on them), no pass designator (so § 2.9's `passIdFromDesignator()` call had no available input), and an `id` that is empty unless a strict `[PREFIX-NNNN]` token matched — which means `[Cl9]` reached migration as *no id at all* and would have been bulk-allocated a second identity instead of quarantined, making § 2.6 unreachable and INV-4 unpassable. Worse, the reader emits **bullets only**: no narration, tables, sections or legend. § 2.3 now states the seam explicitly — the reader classifies bullets, `planFrom()` owns a structural walk — and § 2.11 specifies that walk, which is the section three of the five plan types were declared without. Second CRITICAL: routing fences and heading-trailing prose to `narration` contradicted `roadmap-data-model.md` § 5's "Neither is a section element", orphaned `PlannedSection::intro`, and created an INV-11 overlap on the very fixtures § 6 requires; § 2.11 now derives `intro` from position and keeps fences subordinate. Also fixed: items and elements must share **one** per-section `position` sequence or the plan dies on `UNIQUE (section_id, position)` (INV-11 now asserts it); a reader-`synthetic` GFM hash id is discarded so the item stays id-less (INV-3); § 2.1.1 gained the `projectId` row it claimed exhaustiveness without; § 7 now proposes the § 7.2 amendment § 2.4's refinement actually needs rather than asserting past a normative rule; discovery's refusals became a closed code set so INV-1 can assert on them; and 29 bare cross-doc section references were qualified. **Two lane findings dismissed on measurement, not judgement:** that `uniqueSlug()` runs only on the pass path (it is called at `roadmapdialog.cpp:1069` on the ants-v1 / GFM path too, which is what makes § 2.11's slug rule sound), and that the survey's 3,957 includes the detail and legend lines (`roadmap-corpus-survey.py:176-181` `continue`s before any item counter; 2,334 + 3 + 1,620 = 3,957 exactly, so the survey *is* § 2.4's oracle). **Recommendation, made rather than acted on:** this is loop 3, a new *structural* draft defect appeared (three declared types with no derivation rules), and the document is now ~900 lines. Phase 5's own trigger says that is a size signal, not a thoroughness shortfall. The natural seam is the one § 2.3 just had to name — bullets-to-items versus the structural walk — and it is the user's call, not this run's. |
