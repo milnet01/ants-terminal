@@ -129,7 +129,12 @@ if [[ "$do_lints" == 1 ]]; then
     echo "ci-parity: build-test lint gates"
     # cppcheck is informational in CI (--error-exitcode=0 → never blocks);
     # mirror that exactly so its findings print but do not fail the run.
-    gate "cppcheck (informational)" \
+    # Every tool-dependent gate goes through maybe_gate, per this script's own
+    # contract at the top: an absent tool is SKIPPED loudly and listed in the
+    # summary as incomplete parity. Using plain `gate` here reported a missing
+    # tool as a FAILURE (exit 127), which reads as "the check found something"
+    # rather than "the check never ran" — the two need to stay distinguishable.
+    maybe_gate cppcheck "cppcheck (informational)" \
         cppcheck --enable=all --std=c++20 --library=qt \
                  --suppress=missingIncludeSystem \
                  --suppress=unusedFunction \
@@ -137,11 +142,11 @@ if [[ "$do_lints" == 1 ]]; then
                  --suppress=normalCheckLevelMaxBranches \
                  --error-exitcode=0 \
                  -I src src/
-    gate "appstream metainfo" \
+    maybe_gate appstreamcli "appstream metainfo" \
         appstreamcli validate --explain packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
-    gate "desktop entry" \
+    maybe_gate desktop-file-validate "desktop entry" \
         desktop-file-validate packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop
-    gate "man page (groff -wall)" man_lint
+    maybe_gate groff "man page (groff -wall)" man_lint
     gate "packaging version drift" bash packaging/check-version-drift.sh
     gate "completion: bash" bash -n packaging/completions/ants-terminal.bash
     maybe_gate zsh  "completion: zsh"  zsh  -n packaging/completions/_ants-terminal

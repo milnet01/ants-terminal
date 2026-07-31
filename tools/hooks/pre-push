@@ -6,11 +6,14 @@
 # suite was red in CI). This is the FAST gate (see the ctest scope note below);
 # the complete, exact CI mirror is `tools/ci-parity.sh --full`.
 #
-# Scope: this is the FAST gate (the test-failure class that actually bites).
-# The deeper CI gates — build-asan (sanitizers), --lints (cppcheck / appstream
-# / desktop / groff / version-drift / completions), and the qt62-baseline
-# compile guard — are slower and run via `tools/ci-parity.sh --full` before a
-# release or when touching sanitizer- / packaging-sensitive code.
+# Scope: the Release correctness suite, plus ci.yml's build-asan job when a
+# sanitizer tree already exists locally (added after CI run 30587366963 went red
+# on an ASan-only failure the Release suite structurally cannot see — see the
+# build-asan leg below for why it is conditional). Still NOT covered: --lints
+# (cppcheck / appstream / desktop / groff / version-drift / completions), the
+# qt62-baseline compile guard, and e2e/perf under either build. Those run via
+# `tools/ci-parity.sh --full`, which is the exact and complete CI mirror, before
+# a release or when touching packaging- / e2e-sensitive code.
 #
 # Mirrors ci.yml's push `paths-ignore`: a docs-only push (ROADMAP / CHANGELOG /
 # README / PLUGINS / LICENSE / docs/** / .roadmap-counter) skips CI, so the hook
@@ -95,6 +98,57 @@ if ! LC_ALL=C.UTF-8 ctest --test-dir build -j4 --output-on-failure \
     echo "          NB: tests ran against your CURRENT build/ — if you changed" >&2
     echo "          behavior, rebuild (cmake --build build) and re-push." >&2
     exit 1
+fi
+
+# --- build-asan leg (ANTS-3761 follow-up) -----------------------------------
+# The Release suite above cannot see a sanitizer-only failure, and one reached
+# GitHub: CI run 30587366963 went red on an ASan-only RSS measurement while
+# build-test stayed green. So mirror ci.yml's build-asan job too — but only
+# against a sanitizer tree that ALREADY exists. Configuring one from cold is a
+# 20-minute build, which is how a hook gets bypassed; an incremental build over
+# a warm tree is the cost of the files you actually touched.
+#
+# Unlike the Release leg this one DOES build, because running a sanitized suite
+# against stale binaries is a false pass rather than a cheap one. e2e and perf
+# stay excluded for the same reasons as above (a detached hook cannot drive a
+# GUI, and benchmarks must not contend). The exact, complete mirror — full
+# sanitized ctest included — remains `tools/ci-parity.sh --full`.
+#
+# Opt out for one push with ANTS_PREPUSH_NO_ASAN=1.
+asan_dir=""
+for d in build-asan build-ci-parity-asan; do
+    if [[ -f "$d/CMakeCache.txt" ]] &&
+       grep -q '^ANTS_SANITIZERS:BOOL=ON$' "$d/CMakeCache.txt" 2>/dev/null; then
+        asan_dir="$d"
+        break
+    fi
+done
+
+if [[ -n "${ANTS_PREPUSH_NO_ASAN:-}" ]]; then
+    echo "pre-push: build-asan leg skipped (ANTS_PREPUSH_NO_ASAN set)."
+elif [[ -z "$asan_dir" ]]; then
+    echo "pre-push: ⊘ no sanitizer build tree — the build-asan gate did NOT run."
+    echo "          CI still runs it. To cover it locally, once:"
+    echo "            cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DANTS_SANITIZERS=ON"
+    echo "          or run the complete mirror: tools/ci-parity.sh --full"
+else
+    echo "pre-push: build-asan gate (incremental build + sanitized suite in $asan_dir)…"
+    if ! cmake --build "$asan_dir"; then
+        echo >&2
+        echo "pre-push: sanitizer build FAILED — push blocked." >&2
+        echo "          ('git push --no-verify' to override.)" >&2
+        exit 1
+    fi
+    if ! ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+         UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+         LC_ALL=C.UTF-8 ctest --test-dir "$asan_dir" -j2 --output-on-failure \
+                              --timeout 300 -LE 'e2e|perf'; then
+        echo >&2
+        echo "pre-push: sanitized suite FAILED — push blocked." >&2
+        echo "          This is the class that reached CI as run 30587366963." >&2
+        echo "          ('git push --no-verify' to override.)" >&2
+        exit 1
+    fi
 fi
 
 echo "pre-push: correctness suite green — push allowed."

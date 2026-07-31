@@ -126,14 +126,29 @@ should make it unnecessary; reach for it after kernel / Qt-major updates.
 Optional audit deps self-disable if absent. **Cppcheck gotcha:** pass
 `--library=qt` or it misparses `emit` as a type.
 
-### CI parity: `tools/ci-parity.sh` (ANTS-2134)
+### Local CI: `tools/ci-parity.sh` + the pre-push hook (ANTS-2134 / 3410 / 3580)
+
+**`tools/ci-parity.sh --full` IS this project's local CI check** — the exact
+mirror of `.github/workflows/ci.yml`, all three jobs (`build-test` incl. the
+packaging/lint gates, `build-asan`, and `qt62-baseline` in a podman
+ubuntu:22.04 container). There is no second script; anything calling itself
+`local-CI.sh` would be a duplicate of this one. A gate whose tool is absent
+SKIPs loudly and is listed as incomplete parity — never silently green.
 
 CI is red where local is green when the runner's environment differs:
 `C.UTF-8` POSIX collation (ANTS-2120) and a loaded 4-vCPU host that
-exposes timing races (ANTS-2130). `tools/ci-parity.sh` builds + runs the
-suite under `LC_ALL=C.UTF-8` in an isolated `build-ci-parity/` tree;
-`--repeat N` (ctest `until-fail`) flushes flakes, `--stress` adds CPU
-load. Quick check: `LC_ALL=C.UTF-8 ctest --test-dir build`.
+exposes timing races (ANTS-2130). Builds + runs in isolated
+`build-ci-parity*/` trees so the live `build/` is untouched; `--repeat N`
+(ctest `until-fail`) flushes flakes, `--stress` adds CPU load.
+
+**It runs before every push automatically, in reduced form.**
+`tools/hooks/pre-push` (wired via `core.hooksPath=tools/hooks`) gates each
+push on the Release suite against the warm `build/`, plus — when a
+sanitizer tree already exists — an incremental `build-asan` build and its
+sanitized suite. Docs-only pushes skip, mirroring `ci.yml`'s `paths-ignore`.
+Not covered by the hook: `--lints`, `qt62-baseline`, and `e2e`/`perf`; run
+`--full` before a release or when touching packaging- / e2e-sensitive code.
+Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`.
 
 ## Test harnesses
 
