@@ -23922,7 +23922,7 @@ against current source before filing.
   Kind: implement.
   Source: ANTS-3757 § 5 exclusion, 2026-07-31.
 
-- 📋 [ANTS-3767] **RoadmapStore has no write path for item.lanes, item.evidence or item.extras.**
+- ✅ [ANTS-3767] **RoadmapStore has no write path for item.lanes, item.evidence or item.extras.**
   Verified 2026-07-31 against shipped source, not recalled.
 
   `item` declares lanes / evidence / extras (roadmapstore.cpp:309-311), but
@@ -23963,6 +23963,22 @@ against current source before filing.
   **Layman:** Three pieces of information the roadmap database has room for can never actually be put into it — nothing can fill those columns.
   Kind: fix.
   Source: ANTS-3757 consolidation sweep, 2026-07-31.
+  Resolved (2026-07-31). Re-verified against shipped source before fixing —
+  ItemWrite carried none of the three, setItemField's allowlist excluded all
+  three, and the DDL columns held '[]'/'[]'/'{}'. ItemWrite now carries
+  lanes/evidence/extras; putItem() binds them canonically (an empty list
+  writes '[]' explicitly, so these columns have one producer rather than
+  two); setItemField() accepts them with a SHAPE check, since {"a":1} parses
+  cleanly and is not a lane list. canonicalJson() widened QJsonObject ->
+  QJsonValue, since two of the three are arrays — source-compatible, all
+  four existing call sites pass an object.
+  Locked by ANTS-3756 INV-21 in tests/features/roadmap_store_schema, two
+  legs, both shown RED first against the shipped surface. Leg (a) stores
+  extras.tiny = 0.000001, the ECMAScript fixed-versus-exponential boundary,
+  so "canonical" is asserted rather than merely "written". Suite 3136/3136.
+  Why five review loops missed it: no invariant asserted REACHABILITY —
+  § 2.3 constrains how a write is stored, never that it can happen.
+  This unblocks ANTS-3765.
 
 - 📋 [ANTS-3768] **passheadingwrite.cpp duplicates the four status emoji ANTS-3764 just exported.**
   Surfaced, not fixed — out of ANTS-3764's lane (rule 11), and the

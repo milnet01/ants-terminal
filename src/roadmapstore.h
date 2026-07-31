@@ -7,8 +7,10 @@
 #pragma once
 
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QSqlDatabase>
 #include <QString>
+#include <QStringList>
 #include <optional>
 
 class RoadmapStore {
@@ -100,6 +102,14 @@ public:
         std::optional<int> priority;
         QString visibility = QStringLiteral("public");
         QString created, lastModified, shipped;
+        // ANTS-3767 — the three JSON columns had a DDL column each and no way
+        // to reach them, so through the public API they could only ever hold
+        // their defaults. `lanes`/`evidence` are the `Lanes:`/`Evidence:` lines
+        // (roadmap-data-model.md § 4.1); `extras` is § 4.3's extension tail.
+        // All three are canonicalised on the way in — § 2.3's rule is about the
+        // STORED bytes, so it binds every writer, not just the export.
+        QStringList lanes, evidence;
+        QJsonObject extras;
         QJsonObject provenance;
         // INV-20 — an item is filed by its element row, and putItem() creates
         // exactly one. There is no item.section column: order and filing live
@@ -138,7 +148,10 @@ public:
     // this covers the shapes the store itself writes (flat objects and arrays
     // of strings), where QJsonObject's sorted keys plus Compact output already
     // agree with JCS byte for byte.
-    static QString canonicalJson(const QJsonObject &o);
+    // Takes a QJsonValue, not a QJsonObject: `lanes` and `evidence` are JSON
+    // ARRAYS and are held canonical by the same rule (ANTS-3767). Every
+    // existing caller passes an object, which converts implicitly.
+    static QString canonicalJson(const QJsonValue &o);
 
 private:
     bool applyPragmas(QString *error);

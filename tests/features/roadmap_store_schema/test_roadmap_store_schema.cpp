@@ -284,6 +284,123 @@ TEST(RoadmapStoreSchema, Inv10ProvenanceIsPerField) {
            "assertion certifies a writer that never updates provenance at all";
 }
 
+// INV-21 leg (a) — putItem() REACHES lanes/evidence/extras, and stores them
+// canonical. Read back through raw SQL, not through a getter: the defect this
+// locks is that the columns held their DDL defaults while every API call
+// reported success, so a reader that round-trips the writer's own idea of the
+// value cannot see it.
+TEST(RoadmapStoreSchema, Inv21JsonColumnsAreWritable) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p = f.project(QStringLiteral("alpha"));
+    const qint64 s = f.section(p);
+
+    QJsonObject extras;
+    extras.insert(QStringLiteral("source_status"), QStringLiteral("🚧"));
+    // 0.000001 is the ECMAScript fixed-versus-exponential boundary: JCS writes
+    // it as 0.000001, QJsonDocument::toJson(Compact) as 1e-06. It is here so
+    // that "canonicalised" is asserted rather than merely "written" — a writer
+    // using Qt's compact form passes every other assertion in this test.
+    extras.insert(QStringLiteral("tiny"), 0.000001);
+
+    RoadmapStore::ItemWrite w;
+    w.projectId = p;
+    w.sectionId = s;
+    w.position = 0;
+    w.id = QStringLiteral("A-1");
+    w.status = QStringLiteral("planned");
+    w.headline = QStringLiteral("h");
+    w.kind = QStringLiteral("implement");
+    w.source = QStringLiteral("test");
+    w.lanes = {QStringLiteral("vt"), QStringLiteral("chrome")};
+    w.evidence = {QStringLiteral("docs/a.png")};
+    w.extras = extras;
+    const auto pk = f.store.putItem(w, &err);
+    ASSERT_TRUE(pk.has_value()) << err.toStdString();
+
+    QSqlQuery q(f.store.db());
+    q.prepare(QStringLiteral("SELECT lanes, evidence, extras FROM item WHERE item_pk = ?"));
+    q.addBindValue(*pk);
+    ASSERT_TRUE(q.exec());
+    ASSERT_TRUE(q.next());
+
+    // JCS does not reorder an array — source order is the stored order.
+    EXPECT_EQ(q.value(0).toString().toStdString(), std::string(R"(["vt","chrome"])"));
+    EXPECT_EQ(q.value(1).toString().toStdString(), std::string(R"(["docs/a.png"])"));
+    EXPECT_EQ(q.value(2).toString().toStdString(),
+              std::string(R"({"source_status":"🚧","tiny":0.000001})"))
+        << "extras must be stored in RFC 8785 form (ANTS-3756 section 2.3), which "
+           "is what lets the export copy these bytes rather than transform them";
+}
+
+// INV-21 leg (b) — setItemField() reaches the same three columns, canonicalises
+// what it is given, and refuses a value of the wrong SHAPE. Provenance stays
+// per field (INV-10) across a JSON-column write, which is the half a writer
+// that special-cases these columns is most likely to drop.
+TEST(RoadmapStoreSchema, Inv21JsonColumnsAreEditable) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p = f.project(QStringLiteral("alpha"));
+    const qint64 s = f.section(p);
+
+    QJsonObject prov;
+    prov.insert(QStringLiteral("kind"), QStringLiteral("defaulted"));
+    const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0, prov);
+
+    ASSERT_TRUE(f.store.setItemField(pk, QStringLiteral("lanes"),
+                                     QStringLiteral(R"(["core"])"), &err))
+        << err.toStdString();
+    ASSERT_TRUE(f.store.setItemField(pk, QStringLiteral("evidence"),
+                                     QStringLiteral(R"(["b.log"])"), &err))
+        << err.toStdString();
+    // Deliberately NON-canonical input: keys out of order. The store holds
+    // canonical bytes whatever the caller passed.
+    ASSERT_TRUE(f.store.setItemField(pk, QStringLiteral("extras"),
+                                     QStringLiteral(R"({"b":1,"a":2})"), &err))
+        << err.toStdString();
+
+    QSqlQuery q(f.store.db());
+    q.prepare(QStringLiteral(
+        "SELECT lanes, evidence, extras, provenance FROM item WHERE item_pk = ?"));
+    q.addBindValue(pk);
+    ASSERT_TRUE(q.exec());
+    ASSERT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString().toStdString(), std::string(R"(["core"])"));
+    EXPECT_EQ(q.value(1).toString().toStdString(), std::string(R"(["b.log"])"));
+    EXPECT_EQ(q.value(2).toString().toStdString(), std::string(R"({"a":2,"b":1})"))
+        << "a JSON column is canonicalised on the way in, not stored verbatim";
+
+    const QJsonObject got =
+        QJsonDocument::fromJson(q.value(3).toString().toUtf8()).object();
+    EXPECT_EQ(got.value(QStringLiteral("lanes")).toString().toStdString(),
+              std::string("asserted"));
+    EXPECT_EQ(got.value(QStringLiteral("kind")).toString().toStdString(),
+              std::string("defaulted"))
+        << "INV-10 still holds across a JSON-column write";
+
+    // Shape, not just parseability: each of these parses as JSON and is still
+    // wrong for the column it targets.
+    EXPECT_FALSE(f.store.setItemField(pk, QStringLiteral("extras"),
+                                      QStringLiteral("not json"), &err));
+    EXPECT_FALSE(f.store.setItemField(pk, QStringLiteral("extras"),
+                                      QStringLiteral("[1]"), &err))
+        << "extras is an object";
+    EXPECT_FALSE(f.store.setItemField(pk, QStringLiteral("lanes"),
+                                      QStringLiteral(R"({"a":1})"), &err))
+        << "lanes is an array";
+    EXPECT_FALSE(f.store.setItemField(pk, QStringLiteral("lanes"),
+                                      QStringLiteral("[1]"), &err))
+        << "lanes is an array of STRINGS";
+
+    // A refusal must not have written anything.
+    ASSERT_TRUE(q.exec());
+    ASSERT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString().toStdString(), std::string(R"(["core"])"));
+    EXPECT_EQ(q.value(2).toString().toStdString(), std::string(R"({"a":2,"b":1})"));
+}
+
 // INV-14 leg (a) — below the bound NOTHING is evicted.
 TEST(RoadmapStoreSchema, Inv14LosslessBelowTheCap) {
     Fixture f(1024 * 1024);  // generous: 60 small revisions sit well below it

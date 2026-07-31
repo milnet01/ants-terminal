@@ -102,6 +102,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap store: `lanes`, `evidence` and `extras` are now writable** (ANTS-3767)
+  The roadmap database had a column for each of an item's lanes, evidence
+  files and extra fields, but nothing could actually put a value in one —
+  every write reported success and left the column empty. All three can now
+  be written, both when an item is created and when one is edited, and a
+  badly-shaped value is refused rather than stored.
+
 - **`dependencies.md` cites build directives instead of line numbers** (ANTS-3648)
   The authoritative version-location map told you symbol names are the
   stable anchor and then cited every pin by line — and every one of those

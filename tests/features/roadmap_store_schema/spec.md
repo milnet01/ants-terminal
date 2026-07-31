@@ -1,6 +1,6 @@
 # roadmap_store_schema — schema, location and write-path invariants
 
-Feature contract for **ANTS-3756** INV-6, 7, 8, 10, 11, 14, 17 and 20.
+Feature contract for **ANTS-3756** INV-6, 7, 8, 10, 11, 14, 17, 20 and 21.
 Parent spec: [`docs/specs/ANTS-3756-roadmap-store-schema.md`](../../../docs/specs/ANTS-3756-roadmap-store-schema.md)
 
 ## What this locks
@@ -48,6 +48,21 @@ creates `-wal`/`-shm`, not a checkpoint, and SQLite deletes both when the last
 connection closes. A test that checkpoints, or closes before asserting, checks
 files that are not there and passes against a store securing nothing.
 
+**INV-21 — `lanes`, `evidence` and `extras` are reachable, and stored
+canonical.** Two legs, because the two writers fail independently: `putItem()`
+had no field for any of the three and `setItemField()`'s allowlist excluded
+them, so both had to be widened. Read back through **raw SQL**, never through a
+getter — the defect is that the columns held their DDL defaults while every call
+reported success, which a round-trip through the writer's own idea of the value
+cannot see. Leg (a) puts `extras.tiny = 0.000001`, the ECMAScript
+fixed-versus-exponential boundary: JCS writes `0.000001`, Qt's
+`toJson(Compact)` writes `1e-06`, so that one value is what makes *canonical*
+assertable rather than merely *written*. Leg (b) passes deliberately
+out-of-order keys and asserts the stored bytes are sorted, asserts provenance is
+still per field across a JSON-column write (INV-10), and refuses three values
+that **parse** as JSON and are the wrong shape for their column — a
+parse-only guard accepts all three.
+
 **INV-20 — every item is filed exactly once.** *At most one* is the partial
 index `elem_item_uq`; *at least one* is `putItem()` writing item and element in
 one transaction, so a failed element insert rolls the item back.
@@ -63,3 +78,10 @@ Verified by mutating the implementation per each *Breaks when* clause:
 - provenance written per item → INV-10's second half fails.
 - a per-item history cap → INV-14 leg (a) evicts.
 - `elem_item_uq` dropped → INV-20 leg (b) accepts a second filing.
+- the three JSON columns left out of `putItem()`'s INSERT and out of
+  `setItemField()`'s allowlist — the shipped state ANTS-3767 fixed → INV-21
+  leg (a) reads back `[]`/`{}` and leg (b) refuses `field not writable`.
+- either writer binding `QJsonDocument::toJson(Compact)` instead of
+  `canonicalJson()` → leg (a)'s `tiny` reads `1e-06`.
+- a JSON-column write validated by parse alone → leg (b)'s three wrong-shape
+  values are accepted.

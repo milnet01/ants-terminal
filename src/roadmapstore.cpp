@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QThread>
 #include <QSqlError>
@@ -71,7 +72,7 @@ QString RoadmapStore::defaultPath() {
     return dir + QStringLiteral("/roadmap.sqlite");
 }
 
-QString RoadmapStore::canonicalJson(const QJsonObject &o) {
+QString RoadmapStore::canonicalJson(const QJsonValue &o) {
     // § 2.3 requires the JSON columns to be held in RFC 8785 canonical form,
     // so the export can copy those bytes rather than transform them. This used
     // to be QJsonDocument(o).toJson(Compact) on the reasoning that sorted keys
@@ -507,8 +508,8 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
     q.prepare(QStringLiteral(
         "INSERT INTO item (project_id, id, id_origin, status, headline, layman, kind, "
         " source, priority, visibility, milestone, resolution, body, created, "
-        " last_modified, shipped, provenance) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"));
+        " last_modified, shipped, lanes, evidence, extras, provenance) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"));
     q.addBindValue(w.projectId);
     q.addBindValue(w.id);
     q.addBindValue(w.idOrigin);
@@ -525,6 +526,13 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
     bindOpt(q, w.created);
     bindOpt(q, w.lastModified);
     bindOpt(q, w.shipped);
+    // ANTS-3767 — canonical at the write path, so the export copies these
+    // bytes rather than transforming them (§ 2.3). An empty list still writes
+    // '[]' / '{}' explicitly rather than leaning on the DDL default: one
+    // producer of these columns, not two.
+    q.addBindValue(canonicalJson(QJsonArray::fromStringList(w.lanes)));
+    q.addBindValue(canonicalJson(QJsonArray::fromStringList(w.evidence)));
+    q.addBindValue(canonicalJson(w.extras));
     q.addBindValue(canonicalJson(w.provenance));
     if (!q.exec()) {
         if (error)
@@ -563,11 +571,59 @@ bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
         QStringLiteral("body"),     QStringLiteral("milestone"),
         QStringLiteral("visibility"), QStringLiteral("last_modified"),
         QStringLiteral("shipped"),  QStringLiteral("created"),
+        // ANTS-3767 — the three JSON columns. They take a JSON TEXT value, not
+        // prose, so they are validated and canonicalised below before the
+        // UPDATE; everything else in this list is stored as given.
+        QStringLiteral("lanes"), QStringLiteral("evidence"), QStringLiteral("extras"),
     };
     if (!writable.contains(field)) {
         if (error)
             *error = QStringLiteral("field not writable: %1").arg(field);
         return false;
+    }
+
+    // Shape, not merely parseability: `{"a":1}` is valid JSON and is not a lane
+    // list. A parse-only guard puts an object in an array column, which nothing
+    // downstream — the export included — expects to have to cope with.
+    QString stored = value;
+    const bool isList = field == QLatin1String("lanes") || field == QLatin1String("evidence");
+    if (isList || field == QLatin1String("extras")) {
+        QJsonParseError pe{};
+        const QJsonDocument doc = QJsonDocument::fromJson(value.toUtf8(), &pe);
+        if (pe.error != QJsonParseError::NoError) {
+            if (error)
+                *error = QStringLiteral("%1: not JSON: %2").arg(field, pe.errorString());
+            return false;
+        }
+        if (isList) {
+            if (!doc.isArray()) {
+                if (error)
+                    *error = QStringLiteral("%1 must be a JSON array of strings").arg(field);
+                return false;
+            }
+            for (const QJsonValue &v : doc.array()) {
+                if (!v.isString()) {
+                    if (error)
+                        *error = QStringLiteral("%1 must be a JSON array of strings").arg(field);
+                    return false;
+                }
+            }
+            stored = canonicalJson(doc.array());
+        } else {
+            if (!doc.isObject()) {
+                if (error)
+                    *error = QStringLiteral("extras must be a JSON object");
+                return false;
+            }
+            stored = canonicalJson(doc.object());
+        }
+        if (stored.isEmpty()) {
+            // canonicalJson() returns empty rather than storing non-canonical
+            // bytes — a NOT NULL column would take '' happily, so refuse here.
+            if (error)
+                *error = QStringLiteral("%1: value cannot be canonicalised").arg(field);
+            return false;
+        }
     }
 
     QSqlQuery cur(m_db);
@@ -588,7 +644,7 @@ bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("UPDATE item SET %1 = ?, provenance = ? WHERE item_pk = ?")
                   .arg(field));
-    q.addBindValue(value);
+    q.addBindValue(stored);
     q.addBindValue(canonicalJson(prov));
     q.addBindValue(itemPk);
     if (!q.exec()) {
