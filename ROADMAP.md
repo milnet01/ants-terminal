@@ -23272,7 +23272,7 @@ against current source before filing.
   there is nothing user-visible to describe. Next: ANTS-3761 (export
   writer), then ANTS-3757 (migration), then ANTS-3758.
 
-- 📋 [ANTS-3757] **Roadmap migration — the one-shot transformation, ID allocation, status normalisation and cutover.**
+- ✅ [ANTS-3757] **Roadmap migration — the one-shot transformation, ID allocation, status normalisation and cutover.**
   Spec seam 2 of the ANTS-3753 implementation.
 
   Owns: the migration algorithm, per-project atomicity, re-run matching,
@@ -23468,6 +23468,17 @@ against current source before filing.
   exclusion with the measurement behind it, tracked as ANTS-3766.
 
   Still blocked by ANTS-3764, whose brief this widened.
+  Resolved (2026-07-31): the read half ships as
+  src/roadmapmigrate.{h,cpp} in ants_core_lib — findRoadmap() plus the
+  pure planFrom() — behind tests/features/roadmap_migrate_read/, 13
+  tests each shown RED under the 16 mutations its invariants name.
+  Suite 3134/3134. NOTE: this headline predates the ANTS-3753 spec
+  split and over-states the scope. Per-project atomicity, re-run
+  matching, deleted-from-source items and every write are ANTS-3765;
+  the cutover interim is ANTS-3758; archives are ANTS-3766. Building
+  it amended five spec clauses and found a survey defect (ANTS-3770) —
+  docs/specs/ANTS-3757-roadmap-migration-read.md's loop log carries
+  the implementation row.
 
 - 📋 [ANTS-3758] **Roadmap publish + consumer cutover — the render, and the fate of roadmap_query / roadmap_log / RoadmapDialog.**
   Spec seam 3 of the ANTS-3753 implementation.
@@ -24001,6 +24012,23 @@ against current source before filing.
   **Layman:** Seven finished to-do entries have a broken reference number, so looking them up by number finds nothing.
   Kind: fix.
   Source: ANTS-3764 corpus sweep, 2026-07-31.
+
+- 📋 [ANTS-3770] **roadmap-corpus-survey.py under-counts a bullet whose leading token is unrecognised.**
+  Found by running the survey as ANTS-3757 INV-2's parity oracle. Its
+  item test strips a *recognised* id token and then asks whether the
+  rest starts with `**`; a bullet carrying an unrecognised leading
+  token AND a bold headline therefore fails a test
+  roadmap-data-model.md § 7.2 says it should pass, and is counted as a
+  status-marked detail line instead. The seven ANTS-3769 bullets are
+  exactly that shape, so this project's own item count is seven low.
+  Fix: fall back to stripping any leading `[token]` (the reader's
+  rxLeadToken rule) before the headline test. Re-run afterwards —
+  § 1.1's table and roadmap-data-model.md § 3.3's proportions both
+  move. Until then ANTS-3757's expectation file excludes the
+  `malformed` fixture and names this id.
+  **Layman:** The script that counts what is in every roadmap misses a handful of items whose id has a typo in it.
+  Kind: fix.
+  Source: in-session-2026-07-31 (ANTS-3757 implementation).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

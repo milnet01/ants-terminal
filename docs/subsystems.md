@@ -270,6 +270,16 @@ Listed only where behavior isn't obvious from the name.
   `roadmap-query` IPC uses `parseBullets` + `RoadmapIndex`, not the
   renderer. Section collapse via `ants://expand-section/<slug>`; state
   persists in nine `Config::roadmap*` keys. Spec ANTS-1154.
+- `roadmapparse` (`ants_core_lib`) — the roadmap markdown reader for all
+  three formats (`detectRoadmapFormat` / `parseBullets`), lifted out of
+  `roadmapdialog` by ANTS-3764 so headless callers share one
+  implementation. Qt6::Core only.
+- `roadmapmigrate` (`ants_core_lib`) — the migration read half:
+  `findRoadmap()` resolves a project's roadmap case-insensitively and
+  decodes it; the pure `planFrom()` turns markdown into a
+  `MigrationPlan` (sections / items / elements / legend / notes) for
+  ANTS-3765 to load. Calls `roadmapparse` for bullets and owns the
+  structural walk that reader never had. Spec ANTS-3757.
 - `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers;
   `QFileSystemWatcher` + `poll()` mtime rescue for tmpfile+rename
   rewrites (which drop the watch). `sweepLiveness()` is bg-only. Parser:

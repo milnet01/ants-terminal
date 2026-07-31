@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap migration, read half — a hand-written roadmap becomes a loadable plan** (ANTS-3757)
+  New `RoadmapMigrate::findRoadmap()` + `planFrom()` in `ants_core_lib`
+  (Qt6::Core only). Discovery resolves a project's roadmap
+  case-insensitively and refuses rather than guesses on a missing,
+  case-ambiguous or non-UTF-8 file; the pure `planFrom()` turns the
+  markdown into sections, items, tables, narration, the status legend
+  and a report, over all three roadmap formats. Nothing is written yet
+  — the load half is ANTS-3765. Every non-blank source line lands in
+  exactly one carrier, so nothing is silently dropped.
+
 - **Two new `debt_sweep_scan` detectors — dead lint suppressions and disagreeing dependency pins** (ANTS-3743)
   `dead_suppression` flags a `# noqa: CODE` whose code no ruff selector
   enables — a directive that reads as a reviewed decision and suppresses
