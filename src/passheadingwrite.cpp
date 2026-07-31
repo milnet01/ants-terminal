@@ -12,7 +12,10 @@ namespace PassHeadingWrite {
 namespace {
 
 // The four canonical status glyphs (UTF-8 byte sequences, matching the
-// reader at roadmapdialog.cpp:832-835).
+// reader). ANTS-3764 moved the reader to roadmapparse.{h,cpp} and exported
+// the same four as RoadmapParse::kEmojiDone / kEmojiPlanned /
+// kEmojiInProgress / kEmojiConsidered, so these are now a duplicate of a
+// header this file could include — see ANTS-3768.
 QString glyphTodo()       { return QString::fromUtf8("\xF0\x9F\x93\x8B"); } // 📋
 QString glyphInProgress() { return QString::fromUtf8("\xF0\x9F\x9A\xA7"); } // 🚧
 QString glyphDone()       { return QString::fromUtf8("\xE2\x9C\x85");     } // ✅
@@ -166,7 +169,7 @@ WriteResult flipPassStatus(const QString &markdown,
 
     // Scan the lookahead window for the first `- **Status**:` line,
     // bounded by the next heading (level ≤ 4) or 50 lines — same window
-    // as the reader (roadmapdialog.cpp:813-815).
+    // as the reader (RoadmapParse::parsePassHeadingBullets, roadmapparse.cpp).
     const int probeCap = std::min<int>(lines.size(), head + 51);
     int statusLine = -1;
     for (int j = head + 1; j < probeCap; ++j) {

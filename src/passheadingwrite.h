@@ -16,7 +16,7 @@ namespace PassHeadingWrite {
 // The canonical write keyword for a roadmap_log status value. Total over
 // the four-value enum (planned / in-progress / shipped / considered);
 // the single keyword it emits re-parses through the reader
-// (roadmapdialog.cpp:872-889) to the intended emoji:
+// (RoadmapParse::parsePassHeadingBullets) to the intended emoji:
 //   planned     → "todo"        (reader else-branch → 📋)
 //   in-progress → "in-progress" (reader → 🚧)
 //   shipped     → "done"        (reader → ✅)

@@ -268,13 +268,22 @@ static int runMain(int argc, char **argv) {
 
     // INV-1 / INV-4 source-grep — anchor comments live next to the
     // load-bearing strings.
+    //
+    // ANTS-3764 split which file that is. INV-1 annotates the CARD RENDERER
+    // and stayed in roadmapdialog.cpp; INV-4 annotates the `Layman:` PARSE and
+    // moved to roadmapparse.cpp with the reader. Two paths rather than one,
+    // because an anchor that follows its code is the anchor working — grepping
+    // the old file for it would only prove where the comment used to be.
     {
         const std::string src = ants_test::slurpFile(ROADMAPDIALOG_CPP);
         if (src.empty())
             fail("INV-1", "roadmapdialog.cpp not readable");
         if (!contains(src, "// ANTS-1154-INV-1"))
             fail("INV-1", "// ANTS-1154-INV-1 anchor missing");
-        if (!contains(src, "// ANTS-1154-INV-4"))
+        const std::string parseSrc = ants_test::slurpFile(ROADMAPPARSE_CPP);
+        if (parseSrc.empty())
+            fail("INV-4", "roadmapparse.cpp not readable");
+        if (!contains(parseSrc, "// ANTS-1154-INV-4"))
             fail("INV-4", "// ANTS-1154-INV-4 anchor missing");
         // Anchor proximity — INV-1 should be within ~200 chars of
         // the `<tr class=\"rm-card` literal in the source file. The

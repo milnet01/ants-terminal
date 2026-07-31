@@ -376,7 +376,7 @@ QStringList Config::roadmapKindFilters() const {
         const QString s = v.toString();
         // Drop unknowns silently — defends against a stale entry
         // surviving a future KindEntry rename. Spec says known set
-        // is the KindEntry table at roadmapdialog.cpp:846.
+        // is the KindEntry table in roadmapdialog.cpp.
         if (kKnown.contains(s)) result.append(s);
     }
     return result;
@@ -404,7 +404,7 @@ void Config::setRoadmapKindFilters(const QStringList &kinds) {
     // across kind-toggle saves stay readable; QSet iteration order
     // is unspecified, so an unsorted setter would re-write the
     // same-content array in different orders. ASCII-only — every
-    // KindEntry value at roadmapdialog.cpp:846 is ASCII.
+    // KindEntry value in roadmapdialog.cpp is ASCII.
     filtered.sort();
     QJsonArray arr;
     for (const QString &k : filtered) arr.append(k);

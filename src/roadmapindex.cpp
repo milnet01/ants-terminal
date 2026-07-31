@@ -66,7 +66,7 @@ bool isCanonicalId(const QString &id) {
     return rxCanonicalId.match(id).hasMatch();
 }
 
-// Moved from roadmapdialog.cpp:511. Walk-order rule for duplicate
+// Moved out of roadmapdialog.cpp (ANTS-1287). Walk-order rule for duplicate
 // headings: the Nth occurrence of "Performance" gets "performance",
 // "performance-2", "performance-3", ... — both consumers (parseBullets
 // and buildIndex) call this in the same document order so slugs line up.

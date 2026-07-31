@@ -23929,6 +23929,31 @@ against current source before filing.
   Kind: fix.
   Source: ANTS-3757 consolidation sweep, 2026-07-31.
 
+- 📋 [ANTS-3768] **passheadingwrite.cpp duplicates the four status emoji ANTS-3764 just exported.**
+  Surfaced, not fixed — out of ANTS-3764's lane (rule 11), and the
+  duplication is pre-existing rather than something that extraction
+  introduced.
+
+  passheadingwrite.cpp:14-18 defines glyphTodo() / glyphInProgress() /
+  glyphDone() / glyphDeferred() as UTF-8 byte escapes, with a comment
+  saying they match the reader. ANTS-3764 moved that reader into
+  src/roadmapparse.{h,cpp} and exported the same four values as
+  RoadmapParse::kEmojiDone / kEmojiPlanned / kEmojiInProgress /
+  kEmojiConsidered.
+
+  Both files are now in ants_core_lib, so passheadingwrite.cpp can simply
+  `#include "roadmapparse.h"` and delete its four helpers — one definition
+  of the format's vocabulary instead of two that a comment has to keep in
+  step. That comment is the tell: a hand-maintained "matching the reader"
+  note is what a shared constant makes unnecessary.
+
+  Cheap and low-risk, but it touches a file ANTS-3764 had no other reason
+  to change, and the four helpers return QString while the constants are
+  const char*, so the call sites need a QString::fromUtf8() wrap.
+  **Layman:** Two files now spell out the same four status symbols; one of them can just borrow the other's.
+  Kind: refactor.
+  Source: ANTS-3764 extraction, in-lane surfacing 2026-07-31.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23

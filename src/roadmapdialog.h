@@ -39,6 +39,7 @@
 // renderCardsHtml also depends on; tests drive it without a widget
 // tree.
 
+#include "roadmapparse.h"   // ANTS-3764 — BulletRecord + the reader
 #include <QDialog>
 #include <QFileSystemWatcher>
 #include <QHash>
@@ -304,41 +305,13 @@ public:
     // heading detection so the indices line up.
     static QVector<TocEntry> extractToc(const QString &markdownText);
 
-    // Bullet record surfaced via the `roadmap-query` IPC verb (ANTS-1117).
-    // One entry per top-level status-emoji-prefixed bullet in document
-    // order; plain narration bullets without an emoji are omitted (they
-    // don't have stable IDs and so are out of contract). See
-    // `docs/specs/ANTS-1117.md` § Acceptance criteria.
-    struct BulletRecord {
-        QString id;          // <PREFIX>-NNNN; empty if no `[<PREFIX>-NNNN]` token (ANTS-1405)
-        QString status;      // "✅" | "🚧" | "📋" | "💭"
-        QString headline;    // first **bold** chunk after the emoji (≤ 120 chars)
-        QString headlineFull; // ANTS-2075 — untruncated headline for locator use
-        QString kind;        // value from `Kind:` line; "" if absent
-        QStringList lanes;   // values from `Lanes:` line; [] if absent
-        QStringList evidence; // ANTS-3382 — file paths from `Evidence:` line; [] if absent
-        // ANTS-1154 v2 card-renderer extensions. Additive — older
-        // callers that only inspect id/status/headline/kind/lanes
-        // see no behaviour change.
-        QString layman;      // value from `Layman:` line; "" if absent
-        QString body;        // full bullet body (post-emoji, pre-continuation-join)
-        QString sectionHeading;  // text of the most recent ## or ### heading
-        int sectionLevel = 0;    // 2 for `##`, 3 for `###`, 0 if no section
-        QString sectionSlug;     // sectionHeading → lowercase, non-alnum→`-`
-        // ANTS-1428 (adapter mode) — fields populated when the parser
-        // engages the GFM-task-list branch. native parses leave them
-        // at default (empty/false).
-        QString anchor;        // ^prefix-NNNN caret anchor; "" if absent
-        bool    synthetic = false;  // id was content-hash-derived, not from a token
-        QString format;        // "ants-v1" (default) | "github-task-list"
-        // ANTS-1438 — bold-ID token, populated when the GFM-adapter
-        // matched a `**...**` prefix at the start of the head. Distinct
-        // from `id` because id may be a synthetic content-hash when
-        // boldId is empty; when boldId is non-empty, id == boldId.
-        // Surfaced through the envelope as `bold_id` so callers can
-        // correlate with commit-message prefixes explicitly.
-        QString boldId;        // "FW W5 (cont.)", "Sh4", "Audit/FW X2", …
-    };
+    // ANTS-3764 — the record and the parser moved to RoadmapParse
+    // (src/roadmapparse.{h,cpp}, ants_core_lib) so the headless roadmap
+    // migration can share the one reader instead of linking Widgets or
+    // growing a second parser. The alias keeps every existing
+    // `RoadmapDialog::BulletRecord` call site compiling unchanged; the field
+    // documentation lives with the struct in roadmapparse.h.
+    using BulletRecord = RoadmapParse::BulletRecord;
 
     // Pure helper: parse `markdownText` into top-level status-emoji
     // bullets. Mirrors the renderHtml top-level-bullet detection so the

@@ -382,6 +382,7 @@ add_library(ants_core_lib STATIC
     src/llmclient.cpp
     src/llmdispatcher.cpp
     src/roadmapindex.cpp
+    src/roadmapparse.cpp
     src/changeloglog.cpp
     # ANTS-3533 — structured Keep-a-Changelog reader for changelog_query.
     src/changelogquery.cpp
@@ -2028,6 +2029,11 @@ if(ANTS_TESTS)
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
         ROADMAPDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapdialog.h"
         ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
+        # ANTS-3764 — the parser moved to roadmapparse.cpp, and the INV
+        # anchors annotating it moved with it. Scrape tests that assert on
+        # parser-side anchors read this path; renderer-side anchors stay in
+        # ROADMAPDIALOG_CPP.
+        ROADMAPPARSE_CPP="${CMAKE_SOURCE_DIR}/src/roadmapparse.cpp"
         # ANTS-1405 — source-scrape against claudeintegration.cpp for the
         # roadmap_query descriptor sentence (INV-9).
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"

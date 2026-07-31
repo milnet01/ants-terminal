@@ -1519,10 +1519,10 @@ QJsonArray rcComputePossibleDuplicates(
 }
 
 bool rcExtractBoldId(const QString &lineHead, QString *id) {
-    // ANTS-1937 — match readmapdialog.cpp::extractBoldId's looser pattern
+    // ANTS-1937 — match RoadmapParse::extractBoldId's looser pattern
     // to support composite IDs like "Ts20-DE1, Ts20-DE2". Captures any text
     // up to 80 chars, then trims trailing period + whitespace (matching the
-    // read-path post-processing at roadmapdialog.cpp:562-563).
+    // read-path post-processing in roadmapparse.cpp).
     static const QRegularExpression rx(QStringLiteral(
         "^\\*\\*(.{1,80}?)\\*\\*"));
     const auto m = rx.match(lineHead);
@@ -4658,7 +4658,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
 
         // Tally counts per slug. parseBullets sets sectionSlug on every
-        // record (roadmapdialog.cpp:745). Empty headline + empty id is
+        // record (RoadmapParse::parseBullets). Empty headline + empty id is
         // a rollup bullet (ANTS-1398-INV-2); INV-6 excludes those.
         const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B");
         const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7");
@@ -4974,7 +4974,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             auto bullets = RoadmapDialog::parseBullets(slice);
             // ANTS-2225 — pass-heading fallback. parseBullets engages its
             // `#### Pass N.M` reader only when it sees >= 2 pass headings AND
-            // >= 2 status markers across its INPUT (roadmapdialog.cpp:759). A
+            // >= 2 status markers across its INPUT (RoadmapParse::detectRoadmapFormat). A
             // single-section slice may carry just one pass heading, so
             // slice-local detection fails and the synthesised bullet is
             // dropped — the section reads "prose"/empty even though
