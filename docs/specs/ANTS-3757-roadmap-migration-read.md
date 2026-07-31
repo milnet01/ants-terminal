@@ -236,12 +236,14 @@ plan; § 7 records that obligation.
 | `priority`, `resolution` | left empty; `roadmap-data-model.md` § 4.1 makes each write- or close-time, and no source shape carries them |
 | `milestone` | left empty; `roadmap-data-model.md` § 4.1 marks it `optional` and no source shape carries it — an absent optional, not a deferred obligation |
 | `created`, `lastModified`, `shipped` | left empty; `roadmap-data-model.md` § 4.2 bounds what is derivable and § 5 excludes recovering dates from git |
-| `lanes`, `evidence` | the `Lanes:` / `Evidence:` lines — **owed** (ANTS-3767) |
-| `extras` | § 2.7 / § 2.8 — **owed** (ANTS-3767) |
+| `lanes`, `evidence` | the `Lanes:` / `Evidence:` lines — **landed** (ANTS-3767, 2026-07-31) |
+| `extras` | § 2.7 / § 2.8 — **landed** (ANTS-3767, 2026-07-31) |
 | `sectionId` | not knowable here: a plan carries `sectionSlug`, the store row not existing yet. **Owed** — ANTS-3765 resolves slug to id inside its transaction |
 
 Until those land, "the load half copies rather than translates" is true of every
-field except them.
+field except them. Two rows remain owed — `projectId` and `sectionId` — and both
+are ANTS-3765's own, resolved inside its transaction. The other three landed
+with **ANTS-3767** on 2026-07-31, locked by ANTS-3756 INV-21.
 
 ### 2.2 Discovery
 
@@ -986,14 +988,18 @@ was self-refuting.
   `passIdFromDesignator(passDesignator) == id`. Contract and the corpus
   measurements behind the `Source:` rules:
   `tests/features/roadmap_parse_widening/spec.md`.
-- **`extras`, `lanes` and `evidence` have no write path at all today** — a
-  defect in ANTS-3756's shipped surface rather than something ANTS-3765
-  introduces, and this spec is only the first caller to need them. `item` has a
-  column for each, `ItemWrite` has a field for none, and `setItemField()`'s
-  allowlist excludes all three, so through the public API they can only hold
-  their DDL defaults. **ANTS-3767** carries it and blocks ANTS-3765. The
-  `sectionSlug` → `sectionId` resolution is separate and is ANTS-3765's own.
-  § 2.1.1 is the list.
+- **`extras`, `lanes` and `evidence` had no write path at all** — a defect in
+  ANTS-3756's shipped surface rather than something ANTS-3765 introduces, and
+  this spec was only the first caller to need them. `item` had a column for
+  each, `ItemWrite` a field for none, and `setItemField()`'s allowlist excluded
+  all three, so through the public API they could only hold their DDL defaults.
+  **ANTS-3767 shipped it on 2026-07-31** — `ItemWrite` carries all three,
+  `putItem()` binds them canonically, `setItemField()` accepts them with a shape
+  check — so the blocker on ANTS-3765 is cleared and § 2.1.1's owed list is down
+  to `projectId` and `sectionId`, both of which are ANTS-3765's own. It is
+  locked by ANTS-3756 **INV-21**, whose absence is why the gap survived that
+  spec's five review loops: § 2.3 constrained how a JSON column is *stored* and
+  nothing asserted the write could happen at all.
 - `docs/standards/roadmap-data-model.md` — two changes, and they are not equal.
   **Neither is an amendment to `roadmap-data-model.md` § 7.7**: § 2.7 uses `asserted` and `defaulted`
   exactly as that section defines them, and an earlier draft's proposal to widen
