@@ -681,6 +681,16 @@ qint64 rssBytes() {
 
 }  // namespace
 
+// ASan replaces the allocator, so under it this measurement stops describing
+// the writer at all — see the GTEST_SKIP below.
+#if defined(__SANITIZE_ADDRESS__)
+#  define ANTS_TEST_ASAN 1
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define ANTS_TEST_ASAN 1
+#  endif
+#endif
+
 // INV-12 — the export writer STREAMS: peak RSS across the export call rises by
 // less than 4 MiB above the pre-call baseline, against an export several times
 // that size. Breaks when the writer builds one QString and writes it at the
@@ -690,7 +700,22 @@ qint64 rssBytes() {
 // is unachievable — a Qt process's RSS exceeds the export's byte size before
 // any work is done — and reading RSS before and after would miss the peak
 // entirely, an export being synchronous.
+//
+// It must also be an UNSANITIZED build, which is a precondition of the
+// instrument rather than a tolerance to widen. ASan surrounds every allocation
+// with redzones and holds freed chunks in a quarantine instead of returning
+// them, so process RSS tracks the sanitizer's bookkeeping and not the writer's:
+// measured 2026-07-31, the streaming writer that passes this assertion in
+// Release by a wide margin shows a 120 MiB delta under ASan, 30x the budget.
+// Raising the budget to fit would leave nothing for a non-streaming writer to
+// exceed, so the honest move is to report the gap and let the Release build —
+// ci.yml's build-test job, and every local preset — hold the invariant.
 TEST(RoadmapExportRoundtrip, Inv12PeakRssDeltaStaysUnderFourMiB) {
+#ifdef ANTS_TEST_ASAN
+    GTEST_SKIP() << "INV-12's RSS delta is unmeasurable under ASan: redzones "
+                    "and the free quarantine dominate process RSS. Enforced by "
+                    "the Release build.";
+#endif
     QTemporaryDir dir;
     const QString dbPath = dir.path() + QStringLiteral("/roadmap.sqlite");
     constexpr int kItems = 50;
