@@ -23404,6 +23404,41 @@ against current source before filing.
   successors rather than asides: ANTS-3764 (extract the markdown reader
   out of ants_dialogs_lib — the store lib cannot reach it) and ANTS-3765
   (the load half, split out of this id).
+  Cold-eyes loop 2 (2026-07-31): 5 CRITICAL / 12 HIGH / 11 MEDIUM / ~10 LOW.
+  **Stopped here deliberately — not at the loop cap, not on infrastructure.**
+  Full tail, at lane-level detail, in docs/reviews/ANTS-3757-RESUME.md. Do
+  NOT re-review to rediscover it; fold it in directly.
+
+  Findings went UP (26 -> ~38) and about half of loop 2's are FIX
+  COLLATERAL — defects loop 1's own fixes introduced. /cold-eyes Phase 5
+  names that pattern: collateral rising while draft defects fall means the
+  sweep is under-running, and looping harder makes it worse.
+
+  The root cause is structural and nameable: 2.1 declares three types,
+  2's prose describes the same contract, and 3's thirteen invariants
+  assert it a third time. Each loop finds disagreements BETWEEN THE THREE
+  COPIES rather than defects in the design — the reconcile-N-copies
+  anti-pattern. Next pass consolidates (let the type declarations be the
+  single statement of shape, reduce prose and invariants to pointers)
+  BEFORE any further review.
+
+  Biggest finding, verified against src/roadmapdialog.h and already
+  annotated onto ANTS-3764 because it changes that blocker's scope: the
+  reader 2.3 mandates CANNOT supply the raw Status word.
+  `BulletRecord::status` is an emoji and the record keeps no verbatim
+  `- **Status**:` value, so 2.7's asserted/defaulted split and
+  extras.source_status are both unimplementable through an as-is lift.
+
+  Two other structural ones: INV-11's "no double-cover" is falsified by
+  this spec's own note design (every note but `empty_source` sits on a line
+  inside an item span), and INV-13 is red against a correct implementation
+  (a prose file yields narration elements, so `empty_source` never fires).
+  Also newly surfaced: archives (`docs/roadmap/*.md`, which
+  roadmap-format 3.5.1 counts as corpus) are outside 2.2's discovery
+  entirely, and nothing in the read half actually reads the file.
+
+  The spec is NOT implementable in its current state. ANTS-3764 blocks it
+  regardless, and that blocker's brief just changed.
 
 - 📋 [ANTS-3758] **Roadmap publish + consumer cutover — the render, and the fate of roadmap_query / roadmap_log / RoadmapDialog.**
   Spec seam 3 of the ANTS-3753 implementation.
@@ -23671,6 +23706,34 @@ against current source before filing.
   **Layman:** Move the code that reads roadmap files out of the window that displays them, so the new database importer can use the same reader instead of a second copy that would disagree with it.
   Kind: refactor.
   Source: ANTS-3757 spec research, 2026-07-31.
+  Scope change (2026-07-31), found by ANTS-3757's cold-eyes loop 2 and
+  VERIFIED against src/roadmapdialog.h — this is not an as-is lift.
+
+  `BulletRecord::status` holds an EMOJI (`"✅"|"🚧"|"📋"|"💭"`), and the
+  record carries no raw `- **Status**:` value; `parsePassHeadingBullets()`
+  collapses the author's word at parse time. ANTS-3757 2.7 needs that
+  verbatim word — it is what distinguishes a faithful transcription
+  (`done` -> shipped, provenance `asserted`) from a lossy guess
+  (`partial` -> planned, provenance `defaulted` and reported), and it is
+  what `extras.source_status` stores.
+
+  The word survives only inside `BulletRecord::body`, and re-parsing it
+  from there is exactly the second parser this extraction exists to
+  prevent.
+
+  So the extraction MUST widen the record with the raw status value as it
+  moves. Doing that after the fact means changing a type ANTS-3757's
+  implementation already builds against.
+
+  Two smaller corrections to this bullet's own body while here, same
+  source: the pass reader is a `RoadmapDialog` MEMBER function, not an
+  anonymous-namespace one (only `detectRoadmapFormat()` is file-static), so
+  the move is dispatcher + the per-format parsers + `BulletRecord`, not
+  "two functions". And ANTS-3757 2.7 specifies case-insensitive matching
+  with a leading-`*` strip that the shipped reader does not do — decide
+  whether that fold belongs in the shared reader here (which would change
+  what RoadmapDialog and roadmap_log see) or stays a documented
+  migration-only divergence.
 
 - 📋 [ANTS-3765] **Roadmap migration, load half — atomicity, re-run matching, deletion, and the cutover interim.**
   Split out of ANTS-3757, which owned parse + normalise + allocate + load +
