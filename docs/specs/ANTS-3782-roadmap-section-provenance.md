@@ -5,7 +5,9 @@
 **Source:** ROADMAP.md ANTS-3782 (split out of ANTS-3766 at that spec's
 cold-eyes loop 4, 2026-08-01, on the structural trigger — 1060 lines, and two
 cold reads had failed to reach defects a third introduced).
-**Blocked by:** ANTS-3757 (read half), ANTS-3765 (load half) — both shipped.
+**Blocked by:** ANTS-3757 (discovery + parse), ANTS-3765 (the load half that
+performs this write) — both shipped. *"Read half" is reserved throughout for
+ANTS-3766, this spec's sibling.*
 **Blocker for:** ANTS-3758 (publish + consumer cutover).
 **Ships with:** [ANTS-3766](ANTS-3766-roadmap-migration-archives.md) — one
 change, not a sequence. § 1.1 is why.
@@ -59,26 +61,29 @@ One nullable column, added to ANTS-3756's `CREATE TABLE section`:
   source_path TEXT,          -- NULL = the live roadmap (ANTS-3782)
 ```
 
-`NULL` for the live file rather than a literal path, because `NULL` is what the
-live roadmap honestly means **and** it is what any row written before the
-column reads back as. The two arguments coincide, so no backfill is ever needed
-or attempted.
+`NULL` for the live file rather than a sentinel string — § 2.5 is the argument.
+One consequence belongs here: it is also what any row written before the column
+reads back as, so no backfill is ever needed or attempted.
 
 **Added to the DDL in place, at `kSchemaVersion` 1 — not by `ALTER TABLE`, and
 not with a version bump.** Three facts, each measured rather than assumed:
 
-- **There is no store to migrate.** Every file including `roadmapstore.h` is
+- **There is no store to migrate.** Every file that `#include`s `roadmapstore.h` is
   under `src/roadmap*` or in the test suite, so nothing user-facing can open a
   store and none exists outside a test's temp directory.
   *Measured:* `grep -rln 'roadmapstore\.h' src tests` → **8 files**, being
   `src/roadmapexport.cpp`, `src/roadmapmigrateload.h`, `src/roadmapstore.cpp`,
   and five `tests/features/roadmap_*/test_*.cpp`. No MCP verb, no dialog, no
   `mainwindow` translation unit. Enumerated from the source side rather than by
-  confirming a list written here, so an omission would show up as an extra
-  path rather than pass unnoticed.
+  confirming a list written here, so an omission would show up as an extra path
+  rather than pass unnoticed. **The grep proves *direct* includers**; the claim
+  it supports needs one more step, which holds because the three `src/` entries
+  are the store, its exporter and the migration loader, and nothing outside
+  `src/roadmap*` calls any of them — no MCP verb, dialog or menu action reaches
+  a store, so none can exist on a user's disk.
 - **There is nothing to hang an `ALTER` on.** `RoadmapStore::createSchema()`
   refuses a version above its own, no-ops on an equal one, and runs the DDL at
-  0 — with no branch between. A store in between falls through to that same
+  0 — with no branch between. A store at a version this build does not recognise falls through to that same
   DDL, which is written **without** `IF NOT EXISTS` so a second creator fails
   loudly rather than succeeding silently; ANTS-3756 INV-15 makes the
   in-transaction `user_version` read the discriminator and says `IF NOT EXISTS`
@@ -104,7 +109,7 @@ schema change landing after the cutover gets no such shortcut.
 ```cpp
 struct SectionRow {
     QString slug, title, intro;
-    int     level;
+    int     level = 0;
     std::optional<qint64>  parentId;
     std::optional<QString> sourcePath;   // nullopt = the live roadmap
 };
@@ -117,8 +122,8 @@ past it into raw SQL — which is how a stored value and a writer's idea of it
 stop being distinguishable.
 
 `std::optional` rather than an empty `QString`, matching `parentId` in the same
-struct. Here the `NULL` / `''` distinction **is** the semantics: `nullopt` is
-the live roadmap, while `''` would be a root-relative path naming nothing.
+struct: the `NULL` / `''` distinction is load-bearing (§ 2.5), and a type that
+cannot express it would lose the distinction at the reader.
 
 ### 2.3 The stored value is canonical and root-relative
 
@@ -146,15 +151,39 @@ spelling a caller happened to pass stop mattering — which is also what keeps
 this column consistent with `project.root`, keyed on `canonicalFilePath()` by
 ANTS-3756 INV-8.
 
+**Two ways the conversion can fail, and neither may be stored.**
+`QFileInfo::canonicalFilePath()` returns the **empty string** for a path that
+does not resolve — a source deleted between discovery and load, or a symlink
+loop — and an empty root would relativise every archive to nonsense. And a
+source that canonicalises *outside* the project root yields a `../…` value
+§ 2.4's membership test can never match, which would be a silently unplaceable
+section. So `load()` refuses the project — `ok == false`, nothing written,
+consistent with ANTS-3765 INV-1's one-project-one-transaction rule — when
+either canonicalisation is empty **or** the computed relative path begins
+`../`. Refusing rather than storing is the same call ANTS-3756 INV-8 makes for
+`project.root`, where Qt's empty return would otherwise fuse two projects into
+one.
+
 ### 2.4 What the render re-splits on
 
-ANTS-3758 re-emits the split by the rule `roadmap-format.md` § 3.9 already
-fixes: a section whose `source_path` matches `docs/roadmap/<M>.<N>.md` belongs
-in that archive, `NULL` belongs in the live file.
+ANTS-3758 re-emits the split on the path itself: a section whose `source_path`
+is `docs/roadmap/` + a name matching
 
-**No `isArchive` flag.** The path is the discriminator and § 3.9's naming regex
-is the test — a boolean would be a second encoding of a fact the path already
-carries, and the two would eventually disagree.
+```
+^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$
+```
+
+belongs in that archive; `NULL` belongs in the live file. **That regex is
+[ANTS-3766](ANTS-3766-roadmap-migration-archives.md) § 2.2's, cited and not
+re-decided** — it is tighter than `roadmap-format.md` § 3.9's stated one, which
+admits the zero-padded `00.07.md` its own prose forbids, and the two must be
+the same test on both sides of the store or a file discovery accepted would be
+a file the render cannot place. Nothing else matches: `0.6.1.md`, `00.07.md`
+and `v0.7.md` are not archives at either end.
+
+**No `isArchive` flag.** The path is the discriminator and the regex is the
+test — a boolean would be a second encoding of a fact the path already carries,
+and the two would eventually disagree.
 
 ### 2.5 Preference calls and a rejected alternative
 
@@ -187,8 +216,18 @@ items on `(project_id, id_fold)` rather than on parsed text.
 **INV-14 is inherited from ANTS-3766, not renumbered** (`specs.md` § 5.5, and
 the ANTS-3756 → ANTS-3761 precedent): it is cited by ANTS-3756 § 7 and
 ANTS-3765 § 2.4, and an id that changed meaning across a split is worse than a
-gap. New invariants continue that spec's sequence for the same reason — no
-number in this document means anything different there.
+gap.
+
+**The new invariants are numbered from 26, past ANTS-3756's highest, and that
+is deliberate rather than tidy.** Continuing ANTS-3766's sequence would have
+given 15 and 16 — and **ANTS-3756 already has an INV-15**, cited by name in
+§ 2.1 above and written into the very file this change touches
+(`src/roadmapstore.cpp` carries a bare `// INV-15 — this connection is the
+creator`). Two of the three invariants below are tested in
+`tests/features/roadmap_store_schema/`, whose test names are `Inv<N>…` in
+ANTS-3756's numbering, so a bare `Inv15` there would resolve two ways
+permanently. Numbering past that range costs a gap in this document and buys an
+id that means one thing everywhere it appears.
 
 - **INV-14** — the store's persisted discriminator is correct and
   machine-independent: after a load, `section.source_path` is SQL `NULL` for
@@ -206,7 +245,7 @@ number in this document means anything different there.
   computation is left un-canonicalised, for which the symlinked-root leg is the
   only detector — the trailing-slash leg passes against it, because `QDir`
   normalises that much on its own.
-- **INV-15** — the column is reachable through the typed surface:
+- **INV-26** — the column is reachable through the typed surface:
   `readSection()` returns what raw SQL holds, for both the `NULL` and the path
   case.
   *Test:* `tests/features/roadmap_store_schema/` — writes a section with a
@@ -217,9 +256,10 @@ number in this document means anything different there.
   does not, so every row reads back `nullopt` and the live-roadmap leg passes
   while the archive leg fails. **Asserted against raw SQL, not a round-trip
   through the writer** — a writer compared with its own idea of the value
-  cannot distinguish a stored value from a default, which is the ANTS-3767
-  failure one column along.
-- **INV-16** — this change does not move the schema version: a store created
+  cannot distinguish a stored value from a default, which is the ANTS-3767 failure one column along: `item`'s `lanes`, `evidence`
+  and `extras` each had a column and no way to write it, so every call reported
+  success while the columns held their DDL defaults.
+- **INV-27** — this change does not move the schema version: a store created
   by this build reports `PRAGMA user_version` = 1, and the three export goldens
   still import.
   *Test:* `tests/features/roadmap_store_schema/` asserts the pragma;
@@ -233,8 +273,8 @@ number in this document means anything different there.
 ## 4. RAM / build cost
 
 No new build target, no new library, no new external dependency. One nullable
-`TEXT` column: a root-relative archive path such as `docs/roadmap/0.6.md` is 22
-bytes, and `NULL` costs only its row-header bit — so the column's cost is
+`TEXT` column: a root-relative archive path such as `docs/roadmap/0.6.md` is 19
+bytes (`printf '%s' 'docs/roadmap/0.6.md' | wc -c`), and `NULL` costs only its row-header bit — so the column's cost is
 bounded by (sections from archives) × ~22 bytes, and every live section pays
 nothing. No row count is stated here because the store holds one row per
 section **per migrated project** and this spec has no measurement of the
@@ -255,13 +295,13 @@ Nothing here is cached and nothing outlives its call.
   discovery, per-source format detection, slug identity, positions and
   partitions, `empty_source`, and the fixture set. This spec consumes its
   `sources` vector and its `sourceIndex` and redefines neither.
-- **Backfilling an existing store** — there is none (§ 2.1), and `NULL` would
-  be the correct value for every row of one if there were.
+- **Backfilling an existing store** — § 2.1's last paragraph; there is nothing
+  to backfill and nothing to decide.
 
 ## 6. Tests
 
 Feature tests, label `features;fast`: `tests/features/roadmap_migrate_load/`
-(INV-14) and `tests/features/roadmap_store_schema/` (INV-15, INV-16). Both
+(INV-14) and `tests/features/roadmap_store_schema/` (INV-26, INV-27). Both
 directories exist and gain cases; no new bundle. Each invariant is verified RED
 against the mutation its own clause names, before the implementation is
 restored.
@@ -273,16 +313,26 @@ copy would drift from it.
 
 ## 7. Cross-doc impact
 
-- **[ANTS-3756](ANTS-3756-roadmap-store-schema.md)** — **schema change,
-  APPLIED 2026-08-01** (before this split, under ANTS-3766's id). `section`
-  carries `source_path TEXT` in its DDL at `kSchemaVersion` 1; `SectionRow` and
-  `readSection()` carry the matching `sourcePath`; and its § 2.3
-  upgrade-ownership sentence names ANTS-3781. Its § 7 amendment bullet cites
-  ANTS-3766 and should be retargeted to this id.
-- **[ANTS-3765](ANTS-3765-roadmap-migration-load.md)** — **write side, APPLIED
-  2026-08-01** (same). Its § 2.6 section-resolution paragraph writes
-  `source_path`, and its § 2.4 `SectionRow` comment cites `ANTS-3766 INV-14`;
-  both should be retargeted to this id, the invariant number unchanged.
+- **[ANTS-3756](ANTS-3756-roadmap-store-schema.md)** — **schema change, applied
+  to that spec's text on 2026-08-01** (before this split, under ANTS-3766's id);
+  **the code change lands with this item** — `src/roadmapstore.cpp` still has no
+  `source_path`, which is what § 1 states. In the spec: `section` carries
+  `source_path TEXT` in its DDL at `kSchemaVersion` 1, `SectionRow` and
+  `readSection()` carry the matching `sourcePath`, and its § 2.3
+  upgrade-ownership sentence names ANTS-3781. Its § 7 amendment bullet was
+  retargeted to this id on 2026-08-01 and is not outstanding.
+- **[ANTS-3765](ANTS-3765-roadmap-migration-load.md)** — **write side, applied
+  to that spec's text on 2026-08-01; the code change lands with this item.**
+  Its § 2.6 section-resolution paragraph performs the write and quotes § 2.3's
+  expression; its § 2.4 `SectionRow` carries `sourcePath` and cites this spec's
+  INV-14. **Both citations were retargeted on 2026-08-01 and neither is
+  outstanding.** One correction *was* outstanding and is now applied: that
+  paragraph carried the un-canonicalised
+  `QDir(projectRoot).relativeFilePath(source.path)` — the form § 2.3 rejects
+  and INV-14's symlinked-root leg is the only detector for. It was introduced
+  when the write was first specified and survived because § 2.3's
+  canonicalisation was added later, in ANTS-3766's loop 4, without sweeping the
+  paragraph that consumes it.
 - **[ANTS-3766](ANTS-3766-roadmap-migration-archives.md)** — the parent.
   Its § 2.6 becomes a pointer here, its INV-14 is tombstoned in place, and its
   § 7 sheds the two amendment bullets above. It gains this spec's id in its
@@ -296,4 +346,5 @@ copy would drift from it.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
-| 0-split | 2026-08-01 | none — no reviewer dispatched | — | **Provenance row, not a review.** Split out of [ANTS-3766](ANTS-3766-roadmap-migration-archives.md) at that spec's loop 4, which stopped on the structural trigger rather than the cap: 1060 lines, and the loop's two CRITICALs plus INV-14's absence from the test plan were all loop-3-era material that two cold reads had failed to reach. This half was chosen as the seam because it is the only part with a persisted output and its own consumer. **INV-14 is inherited, not reflowed** (`specs.md` § 5.5); INV-15 and INV-16 are new and continue the parent's sequence so no number means two things across the pair. INV-15 answers a gap the parent's loop 4 found and fixed — a column with a writer and no reader — and INV-16 makes § 2.1's no-version-bump argument falsifiable, which it was not while it lived only in prose. **The parent's four loops do NOT transfer**: they were run against a document that no longer exists, so this spec runs the rule-14 gate from loop 1 on its own bytes. |
+| 1 | 2026-08-01 | 2 cold `general-purpose` lanes, one shared byte-identical context packet | C 1 · H 2 · M 5 · L 7 — 15 verified, 1 dismissed | All 15 fixed. **C1 — both lanes, and it was live fix collateral rather than a drafting defect:** ANTS-3765 § 2.6 still carried the un-canonicalised `QDir(projectRoot).relativeFilePath(source.path)` while § 2.3 here mandates canonicalising both sides. The canonicalisation was added during ANTS-3766's loop 4 and never swept into the paragraph that performs the write, so an implementer working from the write-side spec would have produced exactly the value INV-14's symlinked-root leg exists to catch. Fixed in ANTS-3765, with this spec named as the expression's owner. **H1 — § 7 told the implementer to retarget two citations that this session had already retargeted**, which sends them to redo landed edits and hides the one item genuinely outstanding. **H2 — the new invariants collided with ANTS-3756's INV-15**, which this document cites by name and which `src/roadmapstore.cpp` carries as a bare `// INV-15` comment; two of the three tests land in `roadmap_store_schema`, where test names are `Inv<N>…` in ANTS-3756's numbering, so they are renumbered **INV-26 / INV-27** past that range. INV-14 keeps its inherited number. Also: § 2.4 made § 3.9's naming regex the discriminator without ever quoting it (now cited from ANTS-3766 § 2.2, the single statement); § 2.3 defined no failure mode for `canonicalFilePath()` returning empty or resolving outside the root (now a refusal); "read half" named two different specs; the no-store claim rested on direct includers alone; and the `NULL`-versus-sentinel decision was argued in three places (now § 2.5 alone). Four open questions the lanes raised were resolved by lookup, not by another loop: `Options` does carry `projectRoot`, ANTS-3766 has shed both amendment bullets, `SectionRow` ships `int level = 0`, and the path example is 19 bytes not 22. **A further loop is owed** — build-changing findings were fixed this pass. |
+| 0-split | 2026-08-01 | none — no reviewer dispatched | — | **Provenance row, not a review.** Split out of [ANTS-3766](ANTS-3766-roadmap-migration-archives.md) at that spec's loop 4, which stopped on the structural trigger rather than the cap: 1060 lines, and the loop's two CRITICALs plus INV-14's absence from the test plan were all loop-3-era material that two cold reads had failed to reach. This half was chosen as the seam because it is the only part with a persisted output and its own consumer. **INV-14 is inherited, not reflowed** (`specs.md` § 5.5); INV-26 and INV-27 are new and are numbered past ANTS-3756's highest so that no bare `Inv<N>` in `roadmap_store_schema` or `roadmapstore.cpp` resolves two ways (§ 3). INV-26 answers a gap the parent's loop 4 found and fixed — a column with a writer and no reader — and INV-27 makes § 2.1's no-version-bump argument falsifiable, which it was not while it lived only in prose. **The parent's four loops do NOT transfer**: they were run against a document that no longer exists, so this spec runs the rule-14 gate from loop 1 on its own bytes. |
