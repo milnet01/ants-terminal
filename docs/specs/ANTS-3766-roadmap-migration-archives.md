@@ -1,9 +1,11 @@
 # ANTS-3766 — Roadmap migration: rotated archives as additional sources
 
 **Status:** spec draft, cold-eyes loops 1–3 folded, converged by cap
-(2026-08-01) — 78 verified findings fixed, 0 deferred. **Ready to implement;
-one sign-off needed first** — § 2.6 requires a schema change to the shipped
-ANTS-3756 and a write in the shipped ANTS-3765.
+(2026-08-01) — 78 verified findings fixed, 0 deferred. **Sign-off given
+(user, 2026-08-01): amend both shipped specs.** § 2.6's column is written into
+ANTS-3756's `CREATE TABLE section` and its write into ANTS-3765 § 2.6; the
+amendment shrank to one DDL line and one write once it was established that no
+store exists yet to migrate. Re-gate pending before implementation.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3766 (ANTS-3757 § 5 exclusion, 2026-07-31; promoted
 to a prerequisite by the ANTS-3758 decision of 2026-08-01).
@@ -454,14 +456,45 @@ parent_id, UNIQUE (project_id, slug))` in `src/roadmapstore.cpp`, and
 table in the schema records which file a section came from.**
 
 So the discriminator has to be persisted, and this spec's requirement on the
-store is one nullable column:
+store is one nullable column, added to ANTS-3756's `CREATE TABLE section`:
 
 ```sql
-ALTER TABLE section ADD COLUMN source_path TEXT;   -- NULL = the live roadmap
+  source_path TEXT,          -- NULL = the live roadmap (ANTS-3766)
 ```
 
-`NULL` for the live file rather than a literal path, so every already-migrated
-project's rows are correct without a backfill.
+`NULL` for the live file rather than a literal path, because `NULL` is what the
+live roadmap honestly means *and* it is what any row written before the column
+reads back as. The two arguments coincide, so no backfill is ever needed or
+attempted.
+
+**Added to the DDL in place, at `kSchemaVersion` 1 — not by `ALTER TABLE`, and
+not with a version bump.** There is no store to migrate: every translation unit
+including `roadmapstore.h` is under `src/roadmap*` or in the test suite, so
+nothing user-facing can open one and none exists outside a test's temp
+directory. There is also nothing to hang an `ALTER` on —
+`RoadmapStore::createSchema()` (`src/roadmapstore.cpp`) refuses a version above
+its own, no-ops on an equal one and runs the DDL at 0, with no branch between;
+a store in between falls through to that same DDL, which is deliberately
+written **without** `IF NOT EXISTS` because that is ANTS-3756 INV-15's
+discriminator. And `tests/features/roadmap_export_roundtrip/golden/*.jsonl`
+each carry `"schema":1`, which `RoadmapExport` refuses on mismatch. A bump
+would therefore manufacture the upgrade case nothing implements, and
+regenerate three goldens, in order to migrate zero stores.
+
+**The freedom expires at ANTS-3758's cutover**, which is what first makes the
+store reachable. ANTS-3781 carries the missing upgrade path and the
+misattribution in ANTS-3756 that this argument exposed; a schema change landing
+after the cutover gets no such shortcut.
+
+**The column needs a reader, not only a writer.** `RoadmapStore::SectionRow`
+(declared by ANTS-3765 § 2.4) carries `slug, title, intro, level, parentId`, and
+`readSection()` returns it — so INV-14's read-back has nothing to read through
+the typed surface, and ANTS-3758 would have to reach past it into raw SQL. So
+`SectionRow` gains `std::optional<QString> sourcePath` and `readSection()`
+populates it. `std::optional` rather than an empty `QString`, matching
+`parentId` in the same struct: here the `NULL`/`''` distinction *is* the
+semantics — `NULL` is the live roadmap, while `''` would be a root-relative
+path naming nothing.
 
 **The stored value is project-root-relative, and something must relativise it.**
 `Source::path` is **absolute** — `findRoadmap()` builds it from
@@ -503,7 +536,9 @@ this section says who resolved it and why.
 - **Requiring a `section.source_path` column rather than letting ANTS-3758
   infer archive membership.** § 2.6 shows inference has nothing to work from
   once the plan is discarded. The cost is an amendment to two shipped specs,
-  which is real and is why this is a judgement call rather than a deduction.
+  which is real and is why this is a judgement call rather than a deduction —
+  though smaller than it looks: one DDL line and one write, because there is no
+  store yet to migrate (§ 2.6).
 - **Adopting § 3.9's descending sort rather than choosing oldest-first.**
   Ordering does not affect identity under § 2.3, so this is free choice; the
   standard already states a sort, and a second one would be a second rule.
@@ -727,14 +762,12 @@ linear in released minors and is written down rather than assumed away.
 
 ### 4.1 Migration / compatibility
 
-The only on-disk change is § 2.6's `section.source_path`. **ANTS-3756 owns the
-schema-migration mechanism**; this spec states only what the column must mean,
-because a second statement of the upgrade procedure is a second procedure.
+The only on-disk change is § 2.6's `section.source_path`, which lands in
+ANTS-3756's DDL at `kSchemaVersion` 1 — no migration, no backfill, no version
+bump. § 2.6 carries the argument and is the only statement of it in this
+document, because a second statement of an upgrade procedure is a second
+procedure.
 
-- **A store written before the column** reads `source_path` as `NULL` on every
-  row, which is exactly the value the live roadmap gets — so an existing store
-  is already correct for the only sources it ever held, and no backfill is
-  needed or attempted.
 - **The `findRoadmap()` → `findRoadmaps()` rename is source-level only.** It is
   not a released public API: `find_caller` reports its callers as the test
   suite and this lane's own headers, and `remotecontrol.cpp`'s similarly-named
@@ -844,9 +877,15 @@ ANTS-3765 and ANTS-3757 — which is the reason this document must be signed off
 before it is implemented, not after.**
 
 - **`docs/specs/ANTS-3756-roadmap-store-schema.md`** — **schema change.**
-  `section` gains a nullable `source_path TEXT` (§ 2.6), with a migration for
-  existing stores. Required: without it ANTS-3758 cannot re-split the render
-  and the first regeneration un-rotates the archive.
+  `section` gains a nullable `source_path TEXT` **in the DDL, at
+  `kSchemaVersion` 1** — no migration, no version bump, for the reasons § 2.6
+  gives, and `SectionRow` / `readSection()` gain the matching
+  `std::optional<QString> sourcePath` so the column has a reader. Required:
+  without the column ANTS-3758 cannot re-split the render and the first
+  regeneration un-rotates the archive. Its upgrade-ownership
+  sentence — *"a lower `user_version` is an upgrade, which ANTS-3757 owns"* —
+  is corrected in the same pass to name **ANTS-3781**, which is where that
+  still-unbuilt path now lives.
 - **`docs/specs/ANTS-3765-roadmap-migration-load.md`** — **write side of the
   same column**, exactly as § 2.6 specifies it and not restated here:
   `load()` writes `source_path` **`NULL` for `sourceIndex == 0`** and the

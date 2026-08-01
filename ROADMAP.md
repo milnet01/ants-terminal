@@ -24020,6 +24020,23 @@ against current source before filing.
   Corrections to facts this bullet and ANTS-3757 5 both carried: the archive holds 18 shipped + 2 STILL-OPEN items (ANTS-1001, ANTS-1002), not 20 shipped -- and those two appear nowhere else, not in CHANGELOG, so the archive is their only record. Also, a duplicate section slug does NOT abort the load as assumed: ANTS-3765 2.6.1 resolves sections with findSection(), so it silently MERGES -- overwriting title/intro and refiling items.
 
   Surfaced, not fixed: roadmap-format.md 3.9's prose forbids zero-padded archive names while its own stated regex accepts them; and uniqueSlug() returns an empty base without inserting it into seen, so two live headings that both slugify to empty already collide today (an ANTS-3757 defect this spec avoids for archives only).
+  Decision (2026-08-01): amend both shipped specs — the first of the
+  three options. The amendment is one DDL line in ANTS-3756's CREATE
+  TABLE section plus one write in ANTS-3765 section 2.6, at
+  kSchemaVersion 1 with no migration and no version bump. Verified
+  first: every translation unit including roadmapstore.h is under
+  src/roadmap* or the test suite, so no store is reachable from
+  user-facing code and none exists outside a test temp dir;
+  createSchema has no branch between version 0 and its own; and the
+  export goldens carry schema 1, which RoadmapExport refuses on
+  mismatch. Rejected — moving persistence into ANTS-3758 (the
+  provenance exists only at load time, and re-deriving it needs a
+  second reader that ANTS-3757 section 2.3 forbids), and splitting
+  this item at the discovery/persistence seam (the first half would
+  ship the very defect the spec exists to prevent). Amendments applied
+  to all three specs; cold-eyes re-gate pending before implementation.
+  Side effect: ANTS-3781 filed for the missing schema-upgrade path the
+  verification exposed.
 
 - ✅ [ANTS-3767] **RoadmapStore has no write path for item.lanes, item.evidence or item.extras.**
   Verified 2026-07-31 against shipped source, not recalled.
@@ -24295,6 +24312,13 @@ against current source before filing.
   **Layman:** The roadmap database can't be upgraded to a newer layout — the code that would do it was never written, and the design doc says someone else already built it.
   Kind: fix.
   Source: in-session-2026-08-01.
+  Progress (2026-08-01): ANTS-3766's spec now adds source_path
+  directly to the CREATE TABLE at version 1 rather than by ALTER, so
+  this item blocks nothing today and no store needs upgrading. Two
+  things remain and both are this item's own: build the upgrade path
+  before the first schema change that lands AFTER ANTS-3758's cutover
+  makes the store reachable, and ANTS-3756 section 2.3 has been
+  corrected to name this item rather than ANTS-3757 as the owner.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

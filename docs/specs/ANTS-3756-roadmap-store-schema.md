@@ -147,8 +147,13 @@ A store whose `user_version` is **higher** than the binary's is opened
 **not at all** — not read-only, refused with a message naming both numbers.
 Read-only sounds like the safe option and is not: a newer schema can move
 meaning rather than only add to it, so a confident partial read is worse than no
-read. A **lower** `user_version` is an upgrade, which ANTS-3757 owns; until it
-ships there is only version 1, so the case is unreachable rather than unhandled.
+read. A **lower** `user_version` is an upgrade, and **ANTS-3781** owns it —
+this document first assigned it to ANTS-3757, which shipped without
+building one, so the sentence is corrected rather than left pointing at a closed
+spec. The case remains unreachable rather than unhandled: there is only version
+1, and no store exists outside a test's temp directory. ANTS-3766 § 2.6 adds a
+column *within* version 1 on exactly that ground. It stops being unreachable at
+ANTS-3758's cutover, which is that item's deadline.
 This matters here because the launcher can leave an older binary on disk
 (`CLAUDE.md`) and this store is primary — the one file with no source to rebuild
 from except its own export.
@@ -403,6 +408,15 @@ CREATE TABLE section (
   level       INTEGER NOT NULL,
   intro       TEXT,
   parent_id   INTEGER REFERENCES section(section_id),
+  -- Added by ANTS-3766 § 2.6. Which source file this section was read from,
+  -- project-root-relative; NULL is the live roadmap. It is the only record of
+  -- that fact -- the migration plan holds a source index and is discarded at
+  -- commit -- so without it ANTS-3758 re-emits a rotated archive back into
+  -- ROADMAP.md. In this DDL rather than an ALTER, and at user_version 1: no
+  -- store is reachable from user-facing code yet, so there is nothing to
+  -- migrate and a bump would manufacture an upgrade case nothing implements.
+  -- That argument expires at ANTS-3758's cutover; ANTS-3781 owns what follows.
+  source_path TEXT,
   UNIQUE (project_id, slug)
 );
 
@@ -898,6 +912,7 @@ checked.
 - **[`docs/subsystems.md`](../subsystems.md)** — gains the `roadmapstore` lane. The module map moved there in ANTS-1292; `CLAUDE.md` carries only a pointer, and `indie_review_partition` derives one review lane per entry from that file, so a lane added to `CLAUDE.md` instead would never be reviewed.
 - **`CHANGELOG.md`** — new store, user-invisible until ANTS-3758 lands the render.
 - **[ANTS-3765](ANTS-3765-roadmap-migration-load.md) amends this document rather than merely citing it** (2026-08-01). **Twenty-three methods** land on `RoadmapStore`'s public surface: four transaction methods (`begin`/`commit`/`rollback`/`inTransaction`), ten writers (`setSectionIntro`, `updateSection`, `addElement`, `fileItem`, `unfileItem`, `clearSectionElements`, `setLegend`, `raiseIdHighWater`, `clearItemField`, and a four-argument `setItemField` overload taking the provenance value), and nine readers (`findItem`, `readItem`, `listItems`, `findSection`, `readSection`, `idPrefixFor`, `idHighWater`, `maxHistorySeq`, `access`). The four-argument `setItemField()` is an **overload**, so INV-10 is untouched. One shipped behaviour changes: `putItem()` no longer unconditionally opens its own transaction, and no longer issues `ROLLBACK` when it does not own one — INV-20's wording above and INV-23 both carry it. Its four store invariants are folded in here as **INV-22–25**, and are ANTS-3765's own INV-7–10: this document already has an INV-7, INV-8 and INV-10 meaning something else, so they are renumbered rather than imported, and `roadmap_store_schema`'s test names use these numbers.
+- **[ANTS-3766](ANTS-3766-roadmap-migration-archives.md) amends this document rather than merely citing it** (2026-08-01). `section` gains one nullable column, `source_path` — project-root-relative, `NULL` for the live roadmap — written into the `CREATE TABLE` above rather than added by `ALTER`, and **with no `kSchemaVersion` bump**: no store is reachable from user-facing code, `createSchema()` has no branch between version 0 and its own, and the export goldens carry `"schema":1`. ANTS-3766 § 2.6 carries that argument in full and is its only statement. `SectionRow` and `readSection()` — on this document's public surface, declared by ANTS-3765 § 2.4 — gain the matching `std::optional<QString> sourcePath`, without which the column would be write-only and ANTS-3766 INV-14 could not read it back. **No invariant here changes** — the column is nullable, unindexed, outside every `UNIQUE`, not a foreign key (so it adds no row to § 4's index table), and named by no invariant in *this* document; ANTS-3766's own INV-14 is what constrains its value — so nothing is renumbered and nothing needs a `specs.md` § 5.5 annotation. ANTS-3765 § 2.6 writes the value; **ANTS-3781** owns the upgrade path this exposed as missing, and § 2.3's corrected sentence now points there.
 
 ## 8. Open questions
 
