@@ -23500,6 +23500,45 @@ against current source before filing.
   **Layman:** What the public roadmap page looks like once the database drives it, and what happens to the tools that read the old file.
   Kind: implement.
   Source: ANTS-3753 split (spec seam 3 of 3), 2026-07-30.
+  Decision (2026-08-01, user): once a project is migrated, its ROADMAP.md
+  becomes a GENERATED artifact -- regenerated from the store on push /
+  release -- rather than a source of truth. Git history keeps the
+  hand-written original if it is ever needed. This is the direction
+  ANTS-3756 1 already implies ("the store is PRIMARY, not a cache"); what
+  is new is that the markdown stops being authored by hand at all.
+
+  Three consequences for work already filed:
+
+  - It RETIRES ANTS-3765 2.6.1's natural-key matching. That rule exists
+    only because allocated ids are never written back to source, so an
+    id-less bullet arrives id-less on every run. A regenerated file
+    carries its ids, so every later run matches by id and the weaker key
+    (same section + migrated + byte-identical headline, paired by order)
+    becomes transitional. Keep it until every project is migrated.
+  - It shrinks ANTS-3771 to the IMPORT boundary. Declaring a project's id
+    format stops mattering once the file is generated; it still matters
+    for the one-time import of each project and for any hand-edit window
+    before cutover.
+  - It makes ANTS-3772 a one-pass problem. 3D_Engine's `**Photo mode**`
+    and RetroDB's duplicate `Pass 49.1` need to survive a single
+    migration, not be fixed permanently -- after that the store enforces
+    uniqueness and the generated file cannot reintroduce a collision.
+
+  Two caveats this id owns, because overwriting is not reversible in the
+  working tree:
+
+  1. NEVER regenerate a project whose migration has not been verified.
+     2.10's marker (a project row exists exactly when its plan committed)
+     is the gate, and it exists for this. Two of ten projects do not
+     migrate today.
+  2. Anything the plan does not model is LOST at the first overwrite.
+     ANTS-3757 5 excludes rotated archives from the plan, so ANTS-3766
+     must land before any project with an archive is regenerated -- or
+     the archive is dropped from the working file and survives only in
+     git history. Item bodies are carried verbatim, so prose is safe;
+     relationship / citation / feedback_ref are empty after a migration
+     (ANTS-3765 5) and are derived from prose rather than stored, so
+     nothing is lost that was ever modelled.
 
 - 📋 [ANTS-3759] **documentation.md needs a rule on numbers in prose — keep only figures that carry an argument, and source them to a command.**
   User asked whether specific numbers belong in documentation at all,
