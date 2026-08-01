@@ -60,7 +60,9 @@ struct Outcome {
     int     itemsOrphaned = 0;   // in the store, absent from source (§ 2.7)
     int     idsAllocated = 0;    // § 2.8
     // INSERTED-or-UPDATED rows, not attempted ones: `sectionsWritten` counts a
-    // section created or whose title/level/intro/parent changed, `elementsWritten`
+    // section created or whose title/level/intro/parent/source_path changed
+    // (`source_path` by ANTS-3782 § 2.2 — a section whose only change is its
+    // provenance DID change), `elementsWritten`
     // every element row re-inserted by § 2.6's rebuild (so it is non-zero even on
     // an unchanged re-run), `historyRows` the rows § 2.9 appended. INV-13 compares
     // all three between a dry run and the real one.
@@ -234,6 +236,13 @@ bool updateSection(qint64 sectionId, const QString &title, int level,
 // addSection() cannot offer. std::optional on the way in as well as out —
 // a QString parameter could not distinguish "this section is the live
 // roadmap" from "this section's path is the empty string".
+//
+// An ENGAGED optional holding an empty string stores '' and does NOT fold to
+// NULL, which is where this method parts company with setSectionIntro()
+// directly above: '' is a meaningless intro and a WRONG source path, and
+// folding it would make "unplaceable, stored anyway" read back as "the live
+// roadmap". load() never produces the value — ANTS-3782 § 2.4's guard refuses
+// it first — so the rule binds a second caller, not this one.
 bool setSectionSource(qint64 sectionId, const std::optional<QString> &sourcePath,
                       QString *error = nullptr);
 
@@ -287,7 +296,7 @@ std::optional<qint64> findSection(qint64 projectId, const QString &slug,
 // what it is declared to count.
 struct SectionRow {
     QString slug, title, intro;
-    int     level;
+    int     level = 0;
     std::optional<qint64> parentId;
     // ADDED BY ANTS-3782 § 2.1 — which source file this section was read from,
     // project-root-relative; nullopt is the live roadmap. optional, not an
@@ -343,7 +352,7 @@ The refusal was protecting a distinction that does not exist. Two stored items i
 
 **The durable fix is out of this half's scope, and naming it is part of the contract.** Writing allocated ids back into `ROADMAP.md` would make every later run match by id and retire this rule entirely; that is a write to the *source*, which § 5 excludes and ANTS-3758 owns. Until then this rule is what keeps a re-run idempotent.
 
-**The project and its sections are resolved before anything is written.** `registerProject()` is already get-or-create — it selects on `root` and returns the existing `project_id` — so it needs no change and a re-run reuses the same project row. `addSection()` is **not**: it is a bare INSERT and collides on `UNIQUE (project_id, slug)` the second time, which would abort every re-run at its first section. So a re-run resolves each section with `findSection()` and calls `addSection()` only for a slug that is genuinely new, updating `intro`, `title`, `level`, `parent_id` and `source_path` on the ones that exist, parents before children so a `parentSlug` always resolves to a row that exists. **`source_path` is the column ANTS-3782 § 2.1 adds, and this paragraph is amended by it**: every section write sets it — SQL `NULL` when the section came from the live roadmap, otherwise the **both-sides-canonicalised** relative path `QDir(QFileInfo(projectRoot).canonicalFilePath()).relativeFilePath(QFileInfo(source.path).canonicalFilePath())`. **The write is `setSectionSource()` (§ 2.4), called on every section this step resolves — the ones it creates and the ones it matches alike**, and named here because "every section write sets it" is not reachable through `addSection()` or `updateSection()`: neither takes a source, so a paragraph that only *described* the value would leave the column holding its DDL `NULL` while every call reported success. Which source a section came from is `PlannedSection::sourceIndex` ([ANTS-3766](ANTS-3766-roadmap-migration-archives.md) § 2.4) resolved through `plan.sources`; index 0 is the live roadmap and writes `nullopt`. `Source::path` is absolute but **not** canonical (`fi.absoluteFilePath()` does not resolve symlinks), so storing it verbatim would make the store machine-specific, and canonicalising only one side computes a path *out of* the project. **ANTS-3782 § 2.3 owns this expression** — it is quoted here because this is the paragraph that performs the write, and an earlier form of this sentence carried the un-canonicalised `QDir(projectRoot).relativeFilePath(source.path)`, which is exactly the value ANTS-3782 INV-14's symlinked-root leg exists to catch. It is the store's only record of which file a section was read from, so a write path that leaves it unset is what makes ANTS-3758's first regeneration fold a rotated archive back into `ROADMAP.md`. **A section in the store and absent from the plan is retained, not deleted** — for § 2.7's reason, one level up: it may hold an orphaned item, and deleting it would orphan that item's filing rather than its row.
+**The project and its sections are resolved before anything is written.** `registerProject()` is already get-or-create — it selects on `root` and returns the existing `project_id` — so it needs no change and a re-run reuses the same project row. `addSection()` is **not**: it is a bare INSERT and collides on `UNIQUE (project_id, slug)` the second time, which would abort every re-run at its first section. So a re-run resolves each section with `findSection()` and calls `addSection()` only for a slug that is genuinely new, updating `intro`, `title`, `level`, `parent_id` and `source_path` on the ones that exist, parents before children so a `parentSlug` always resolves to a row that exists. **`source_path` is the column ANTS-3782 § 2.1 adds, and this paragraph is amended by it**: every section write sets it — SQL `NULL` when the section came from the live roadmap, otherwise the **both-sides-canonicalised** relative path `QDir(QFileInfo(projectRoot).canonicalFilePath()).relativeFilePath(QFileInfo(source.path).canonicalFilePath())`. **The write is `setSectionSource()` (§ 2.4), called on every section this step resolves — the ones it creates and the ones it matches alike**, and named here because "every section write sets it" is not reachable through `addSection()` or `updateSection()`: neither takes a source, so a paragraph that only *described* the value would leave the column holding its DDL `NULL` while every call reported success. Which source a section came from is `PlannedSection::sourceIndex` ([ANTS-3766](ANTS-3766-roadmap-migration-archives.md) § 2.4) resolved through `plan.sources`; index 0 is the live roadmap and writes `nullopt`. `Source::path` is absolute but **not** canonical (`fi.absoluteFilePath()` does not resolve symlinks), so storing it verbatim would make the store machine-specific, and canonicalising only one side computes a path *out of* the project. **ANTS-3782 § 2.4 owns this expression** — it is quoted here because this is the paragraph that performs the write, and an earlier form of this sentence carried the un-canonicalised `QDir(projectRoot).relativeFilePath(source.path)`, which is exactly the value ANTS-3782 INV-14's symlinked-root leg exists to catch. It is the store's only record of which file a section was read from, so a write path that leaves it unset is what makes ANTS-3758's first regeneration fold a rotated archive back into `ROADMAP.md`. **A section in the store and absent from the plan is retained, not deleted** — for § 2.7's reason, one level up: it may hold an orphaned item, and deleting it would orphan that item's filing rather than its row.
 
 For a matched item, each field the plan carries is compared with what `readItem()` returns and written only if it differs (`Outcome::itemsUpdated` versus `itemsUnchanged`). Four rules make that comparison well-defined, and § 2.11 cites them by **name** rather than by ordinal, because a list that gains a rule renumbers every citation to it:
 

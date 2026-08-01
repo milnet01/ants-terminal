@@ -794,7 +794,13 @@ subject; restating it here would leave two copies of one argument to diverge.
   inserting it into `seen`**, so it never uniques and every such heading
   collapses onto the root's slug. INV-10 cannot catch this: the collision is
   *within* one source and INV-10's note fires only archive-against-live.
-- **INV-14** — *moved to [ANTS-3782](ANTS-3782-roadmap-section-provenance.md)* (the persisted `section.source_path` discriminator) — 2026-08-01.
+- **INV-14** — *moved to ANTS-3782* — 2026-08-01, the persisted
+  `section.source_path` discriminator; its home is
+  [ANTS-3782](ANTS-3782-roadmap-section-provenance.md). **The marker is the
+  bare id in italics, closed immediately** — `spec_lint`'s tombstone test is
+  the anchored `^\*moved to ([A-Z]+-\d+)\*` (`src/speclint.cpp:33`), so the
+  markdown link this bullet used to carry inside the italics did not match it,
+  and the id was reported as an invariant with no test surface on every run.
   **Number retained there, never reflowed:** `specs.md` § 5.5 makes
   invariant ids permanent, and this one is cited from ANTS-3756 § 7 and
   ANTS-3765 § 2.4, so the gap in this document's sequence is correct and

@@ -36,7 +36,10 @@ struct Outcome {
     int     itemsOrphaned = 0;   // in the store, absent from source (§ 2.7)
     int     idsAllocated = 0;    // § 2.8
     // INSERTED-or-UPDATED rows, not attempted ones: `sectionsWritten` counts a
-    // section created or whose title/level/intro/parent changed,
+    // section created or whose title/level/intro/parent/source_path changed
+    // (`source_path` by ANTS-3782 § 2.2 — a section whose only change is its
+    // provenance DID change, and a re-run reporting it unchanged would make the
+    // one column that spec adds the one column this outcome cannot see),
     // `elementsWritten` every element row re-inserted by § 2.6's rebuild (so it
     // is non-zero even on an unchanged re-run), `historyRows` the rows § 2.9
     // appended. INV-13 compares all three between a dry run and the real one.
