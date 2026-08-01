@@ -1,11 +1,9 @@
 # ANTS-3766 — Roadmap migration: rotated archives as additional sources
 
-**Status:** spec draft, cold-eyes loops 1–3 folded, converged by cap
-(2026-08-01), then re-gate loop 4 folded — 27 further findings including two
-CRITICAL. **Split at loop 4** (2026-08-01): the persistence half is now
-[ANTS-3782](ANTS-3782-roadmap-section-provenance.md), which ships in the same
-change. This document is the read half and runs the gate from loop 5 on its
-own bytes.
+**Status:** spec draft (2026-08-01). **Split at loop 4:** the persistence half
+is [ANTS-3782](ANTS-3782-roadmap-section-provenance.md), which ships in the
+same change; this document is the read half. The loop log below is the review
+history, and this field does not restate it.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3766 (ANTS-3757 § 5 exclusion, 2026-07-31; promoted
 to a prerequisite by the ANTS-3758 decision of 2026-08-01).
@@ -166,22 +164,43 @@ spec exists to prevent, reintroduced by the field nobody moved.
 So `format` rides on `Source`. Rotation (§ 3.9) is content-preserving — it
 moves bullets byte-identically — so an archive normally inherits the format of
 the file it was cut from, and the only project with archives today is
-`ants-v1` on both sides. When it does **not** — an archive whose detected
-format differs from `sources[0]`'s — `findRoadmaps()` refuses the whole call
-with `archive_format_mismatch` rather than guessing. A per-source parse would
-be defensible; a refusal is chosen because a format difference between a file
-and its own archive means one of them is mis-detected, and migrating half a
-project under a mis-detection is the failure that is hardest to notice
-afterwards.
+`ants-v1` on both sides.
 
-**A source with no format signal inherits `sources[0]`'s format and never
-triggers that refusal.** The predicate has to be computable **inside
-`findRoadmaps()`**, which is where the refusal is raised (§ 2.2's table) and
-which has no plan: **a source has no format signal when
-`detectRoadmapFormat()` reached its fallback without matching *any* of its
-classification signals.** So that function gains an out-parameter reporting
-whether its answer rested on evidence, and this spec requires that addition to
-`src/roadmapparse.cpp`.
+**The comparison is between sources whose detection rested on EVIDENCE, and
+the reference is the first such source rather than `sources[0]`.** The
+**reference format** is the format of the lowest-indexed source whose
+detection matched a signal. Three rules follow, and together they are total:
+
+- A source with **no** format signal takes the reference format, and can never
+  raise the refusal — it carries nothing to disagree with.
+- A source **with** a format signal whose format differs from the reference
+  refuses the whole call with `archive_format_mismatch` rather than guessing.
+- When **no** source carries a signal there is no reference, every source
+  keeps `detectRoadmapFormat()`'s answer — its evidence-free `ants-v1` default
+  for all of them — so they agree and nothing is refused.
+
+**The reference is the first evidenced source and NOT `sources[0]`, because
+the rule has to hold in both directions.** Keyed on `sources[0]` it exempts an
+archive from a refusal it cannot deserve while leaving the live file exposed
+to that same refusal: a prose-only `ROADMAP.md` beside a `github-task-list`
+archive would report the evidence-free `ants-v1` default, mismatch, and refuse
+the whole project on no evidence at all — the failure the exemption removes
+for archives, with the roles swapped. Adopting the archive's format costs the
+live file nothing, because a file with no format signal carries no bullets any
+grammar would read differently, and § 2.5's `empty_source` still says out loud
+that it contributed no items.
+
+A per-source parse would be defensible; a refusal is chosen because a format
+difference between two *evidenced* files of one project means one of them is
+mis-detected, and migrating half a project under a mis-detection is the
+failure that is hardest to notice afterwards.
+
+**The no-signal predicate has to be computable inside `findRoadmaps()`**,
+which is where the refusal is raised (§ 2.2's table) and which has no plan:
+**a source has no format signal when `detectRoadmapFormat()` reached its
+fallback without matching *any* of its classification signals.** So that
+function gains an out-parameter reporting whether its answer rested on
+evidence, and this spec requires that addition to `src/roadmapparse.cpp`.
 
 **"Any signal" is not "any bullet", and the difference is load-bearing.**
 Verified against `src/roadmapparse.cpp`: the function returns `ants-v1`
@@ -273,9 +292,10 @@ down.
   do — strictly worse than the misnamed single file two bullets down, which
   does get a note. Absent and unreadable are not the same fact and must not
   share an outcome.
-- **An archive matching the regex that cannot be opened** (permissions, a
-  broken symlink target) takes the same `archive_unrecognised` note, named by
-  its own filename. `findRoadmap()` maps an open failure on the *live* file to
+- **An archive matching the regex that cannot be opened** — a permissions
+  failure; **not** a broken symlink target, which the `!isSymLink()` predicate
+  two bullets up rejects before anything is opened — takes the same
+  `archive_unrecognised` note, named by its own filename. `findRoadmap()` maps an open failure on the *live* file to
   `not_found`; an archive is skippable where the live file is not, so it takes
   the note rather than the refusal.
 - **A non-conforming entry raises `archive_unrecognised`** naming the filename
@@ -296,7 +316,7 @@ reads the note, not the error string.
 
 | Code | Raised by | Effect |
 |---|---|---|
-| `not_found`, `case_ambiguous`, `not_utf8` | `findRoadmaps()` | inherited; `nullopt`, no plan |
+| `not_found`, `case_ambiguous`, `not_utf8` | `findRoadmaps()` | codes inherited from ANTS-3757 § 2.2; `nullopt`, no plan. **`not_utf8` is inherited as a code and widened in its reach** — this spec's last § 2.2 bullet raises it for an ARCHIVE, a file ANTS-3757 never opened |
 | `archive_format_mismatch` (§ 2.1.1) | `findRoadmaps()` | `nullopt`, no plan |
 | `archive_unrecognised` | `findRoadmaps()` | **note**; that entry is skipped, the call succeeds |
 | `archive_slug_collision` (§ 2.3) | `planFrom()` | **note**; the load half refuses the plan |
@@ -381,7 +401,7 @@ substituted for the empty base **before** `uniqueSlug()`, so it uniques against
 every other heading of that source like any ordinary name. Minting a name
 outside `seen` would reproduce the very bypass this rule exists to close.
 
-It cannot take the bare form and it cannot take a
+**An empty-slugifying heading** cannot take the bare form and cannot take a
 dangling `0-6-`: `RoadmapIndex::uniqueSlug()` **returns an empty base
 immediately without uniquing it and without inserting it into `seen`** —
 `if (base.isEmpty()) return base;` — so every empty-slugifying heading yields
@@ -490,7 +510,10 @@ so it is stable under every edit to every other source.
 - **A note about a file that is not a source carries `sourceIndex == -1`.**
   `archive_unrecognised` names an entry that was deliberately never read, so it
   indexes nothing and has no line; its filename lives in `detail`. Without this
-  it would default to `0` and claim to be about the live roadmap. It does not
+  it would default to `0` and claim to be about the live roadmap. **Its `line`
+  is `0`**, which `src/roadmapmigrate.h` already fixes as "whole-file": there
+  is no file here to be inside, and any other value would point into a source
+  the note is not about. It does not
   disturb the partition above — ANTS-3757 INV-11 excludes notes from the union
   by design — so the defect is purely that the note would name the wrong file.
 
@@ -741,6 +764,17 @@ subject; restating it here would leave two copies of one argument to diverge.
   refuses the migration of a project whose archive is merely prose. The real
   corpus cannot catch this, because its live file is `ants-v1` and the default
   agrees with it by luck.
+  **A fourth leg covers the other direction**, on the `livenosignal/` root
+  (§ 6.1): a **bullet-less live `ROADMAP.md`** beside a `github-task-list`
+  archive plans normally, both sources carrying `github-task-list` — the
+  archive is the reference format because it is the lowest-indexed source with
+  a signal — and raises no `archive_format_mismatch`. *That leg breaks when:*
+  the reference is written as `sources[0]` rather than as the first evidenced
+  source, which is the natural reading of § 2.1.1's earlier form: the live
+  file's evidence-free `ants-v1` becomes the reference, the archive disagrees
+  with it, and the whole project is refused on no evidence. Leg 3 passes
+  against that mutation — its live file is the evidenced one — so this leg is
+  its only detector.
 - **INV-12** — *withdrawn — 2026-08-01, never implemented and never referenced.*
   It required an `archive_duplicate_minor` refusal for two entries
   parsing to the same `(major, minor)` tuple. § 2.2 now forbids leading zeros
@@ -846,7 +880,11 @@ against the mutation its clause names, before the implementation is restored.
 
 ### 6.1 Fixtures are copies of the real archives, not hand-written ones
 
-`fixtures/archives/` gains one root per case. The baseline root's live
+`tests/features/roadmap_migrate_read/fixtures/archives/` gains one root per
+case. **That suite owns the path**, and the load suite reads the same roots
+rather than copying them: both are compiled into the `test_core` bundle and
+both resolve fixtures through the one `ANTS_MIGRATE_FIXTURE_DIR` compile
+definition (`CMakeLists.txt`). The baseline root's live
 `ROADMAP.md` is a trimmed file that **must carry the four headings that actually
 collide** — `### 🎨 Features`, `### ⚡ Performance`, `### 🔒 Security`,
 `### 🧰 Dev experience` — plus the two extra `### ⚡ Performance` repeats that
@@ -854,7 +892,7 @@ make the live count 3, because INV-4's mutation only reddens when the counter
 has somewhere to move. Its `docs/roadmap/0.5.md` and `0.6.md` are
 **byte-identical copies of this project's own archives**, H1 title and all.
 
-Ten further roots, each carrying exactly what one invariant's mutation needs
+Eleven further roots, each carrying exactly what one invariant's mutation needs
 and nothing else:
 
 | Root | For | Carries |
@@ -864,6 +902,7 @@ and nothing else:
 | `unrecognised/` | INV-8 | `0.7.0.md`, `00.07.md`, `README.md`, a **directory** `0.8.md`, an outward symlink `0.9.md` — **all three regular files** each carrying a findable item, since a leg whose file is empty asserts nothing |
 | `mixedformat/` | INV-11 | an `ants-v1` live file and a `github-task-list` archive, plus a sibling leg whose archive matches |
 | `inherit/` | INV-11 leg 3 | a **`github-task-list`** live file and a bullet-less prose archive — the inheritance leg, which `mixedformat/` cannot host because neither of its legs has a `github-task-list` live file |
+| `livenosignal/` | INV-11 leg 4 | a **bullet-less prose** live file and a `github-task-list` archive — the roles of leg 3 swapped, and the only root that can catch a reference format keyed on `sources[0]` |
 | `noarchivedir/` | INV-3 | a copy of the baseline root with `docs/roadmap/` **removed** — the with/without pair INV-3 compares, as a committed root rather than a deletion performed at test time |
 | `collision/` | INV-10 | a live heading slugifying to `0-6-features` |
 | `dirisfile/` | INV-8 (directory leg) | a root whose `docs/roadmap` is a **regular file**, not a directory — one note naming `docs/roadmap`, and the live source still planned |
@@ -904,11 +943,17 @@ oracle, which is why committing it does not reopen § 5's exclusion of
 `tools/roadmap-corpus-survey.py`:** that script is ANTS-3757 INV-2's
 independent second implementation and its value is being written without
 reference to this spec's rules, whereas this one only reports what is in
-`docs/roadmap/` and no invariant is asserted against its output. Before the item is closed, run the real
-migration over this project's actual root and record in the loop log: the
-archive item count reaching the store, the second run's `Outcome`
-(INV-9 end-to-end on real data), and the slug list assigned to the two real
-archives.
+`docs/roadmap/` and no invariant is asserted against its output. Before the
+item is closed, run the real migration over this project's actual root and
+record three figures: the archive item count reaching the store, the second
+run's `Outcome` (INV-9 end-to-end on real data), and the slug list assigned to
+the two real archives.
+
+**Those figures land in this section, not in the loop log.** The loop log is
+review history — one row per review pass, plus the implementation row
+`/write-spec` step 8 adds when a clause is amended — and a measurement of the
+corpus is neither. Filing output there makes the field a reader consults for
+"what did the reviews find" hold something no review found.
 
 **Both checks run, and each catches what the other cannot.** On ANTS-3765 the
 corpus caught what the fixtures missed — sixteen green invariant tests beside a
@@ -978,14 +1023,15 @@ here. Everything below is still outstanding.
 - **`docs/standards/roadmap-format.md`** — no change *required*, but § 3.9
   carries an internal contradiction this spec had to work around and should not
   silently inherit: its prose says the naming rule forbids zero-padding while
-  its own stated regex `^[0-9]+\.[0-9]+\.md$` accepts `00.07.md`. § 2.2 adopts
-  the tightened `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`, which is what the
-  prose already describes; the standard should adopt the same. Surfaced for its
-  owner rather than amended here.
+  its own stated regex `^[0-9]+\.[0-9]+\.md$` accepts `00.07.md`. **§ 2.2
+  adopts a tightened form — stated there once and cited here, never
+  re-spelled**, which is what the standard's own prose already describes; the
+  standard should adopt the same. Surfaced for its owner rather than amended
+  here.
 - **`tests/features/roadmap_migrate_read/spec.md`** — its opening line is a
   test contract "for `RoadmapMigrate::findRoadmap()` and
   `RoadmapMigrate::planFrom()`"; both signatures change, and its Fixtures
-  section gains the eleven archive roots (§ 6.1 — one baseline plus ten).
+  section gains the twelve archive roots (§ 6.1 — one baseline plus eleven).
 - **`tests/features/roadmap_migrate_read/expected-counts.json`** — its
   `_excluded` map gains the archive roots and the reason (§ 6.2), and a new
   `expected-section-slugs.json` lands beside it (INV-2's golden).
@@ -998,6 +1044,7 @@ here. Everything below is still outstanding.
 
 | Loop | Reviewer | Findings | Resolution |
 |---|---|---|---|
+| 5-tail (2026-08-01) | none — no reviewer dispatched | the 11 loop-5 findings filed as **ANTS-3783**, folded in from the ROADMAP bullet rather than rediscovered | **Fold-in row, not a review.** 8 of 11 produced an edit; 2 were verified as already-correct and 1 is a judgement recorded rather than acted on. **The largest was finding 1, and it changed a rule rather than wording:** § 2.1.1's format-mismatch test was keyed on `sources[0]`, so a prose-only live `ROADMAP.md` beside a `github-task-list` archive refused the whole project on the evidence-free `ants-v1` default — the failure the inheritance rule removes for archives, with the roles swapped. The test is now against the **reference format**, the lowest-indexed source whose detection matched a signal, which makes the three cases total and symmetric; INV-11 gains a fourth leg and § 6.1 a `livenosignal/` root, since leg 3 passes against the `sources[0]` mutation. Also: § 2.2's unreachable broken-symlink example dropped (`!isSymLink()` rejects it two bullets earlier); `not_utf8`'s table row footnoted as inherited-as-a-code but widened-in-reach; § 2.3's dangling "It" given its antecedent; a note with `sourceIndex == -1` now fixed at `line == 0`; § 6.1 names the owning suite and the shared `ANTS_MIGRATE_FIXTURE_DIR`; § 6.3's corpus figures routed into § 6.3 rather than the loop log; § 7 cites § 2.2's regex instead of re-spelling it; the header `Status` field stripped of review history. **Verified and NOT changed:** finding 3 — ANTS-3757 § 2.3 genuinely owns both cited rules (it forbids a second bullet parser *and* raises `empty_source` on zero items, in its last paragraph), so both citations stand. Finding 11 — no section-anchor list, matching every sibling spec in `docs/specs/`; a list here alone would be the only one. |
 | 5 (2026-08-01) — **stopped on the ratio trigger** | 2 cold `general-purpose` lanes, one shared byte-identical packet, no prior-loop context | C 3 · H 2 · M 6 · L 8 — 19 verified, 0 dismissed | All C and H fixed; the M/L tail filed as ANTS-3783. **Origin split: ~11 of 19 are collateral from loop 4's own fixes, the second consecutive loop where collateral is the larger share — which is Phase 5's ratio trigger, so the run stops here rather than taking a sixth pass to repair its fifth.** **C1 (both lanes) — loop 4's own pseudo-code applied the `h<ordinal>` empty-slug substitution to EVERY source**, including the live file, contradicting this section's own "Live slugs never move" and § 7's "does not touch the live path"; an implementer following the block would shift live slugs on any project with an emoji-only heading, the exact orphan cascade § 2.3.1 exists to prevent, and INV-3 could not catch it because both sides of its comparison would run the new rule. Now scoped to index ≥ 1, with the synthetic root given its own line. **C2 — INV-10's mutation asserted an abort that cannot happen**: it claimed a duplicate slug aborts on `UNIQUE (project_id, slug)` while § 2.2 states the opposite two hundred lines earlier — ANTS-3765 § 2.6.1 resolves with `findSection()` and silently MERGES. A test written from that clause would have verified nothing and passed against the merge. **C3 — loop 4's evidence predicate was wrong about the code it depends on**: `detectRoadmapFormat()` returns `ants-v1` on `<!-- ants-roadmap-format: 1 -->` **before** any bullet is examined, and also classifies on `^####\s+Pass\s+\d`, so "matched no bullet" reports *no evidence* for a file that explicitly declares its format — and the inheritance rule would then override that declaration. Now "reached its fallback without matching any signal". Also: the unreadable-`docs/roadmap` rule loop 4 added had no invariant or fixture (now INV-8's second clause plus `dirisfile/`), and INV-5's legend leg had no fixture at all — *measured*, the real archives carry no legend run (`grep -cE '^\s*[✅🚧📋💭]\s*=\|legend' docs/roadmap/0.6.md` → 0), so `legend/` is now its own root and § 6.1 carries ten. |
 | 4-split | 2026-08-01 | none — no reviewer dispatched | — | **Provenance row, not a review.** Written by `/write-spec`, not by the gate. Loop 4 stopped on the structural trigger rather than the cap — 1060 lines, and that loop's two CRITICALs plus INV-14's absence from the test plan were all loop-3-era material two cold reads had failed to reach — so the persistence half was split out as [ANTS-3782](ANTS-3782-roadmap-section-provenance.md): § 2.6, INV-14, and the ANTS-3756 / ANTS-3765 amendment bullets. **The seam is the same one considered and rejected as a *scoping* option on 2026-08-01, and this is not that decision**: splitting the work would ship a read half that writes provenance-free sections, so the two halves still land in one change (§ 2.6). **INV-14 is tombstoned in place here, never reflowed** (`specs.md` § 5.5) — it is cited from ANTS-3756 § 7 and ANTS-3765 § 2.4, and keeps its number on the other side. This document dropped 1060 → 978 lines; the seam bought coherence rather than a large reduction, which is stated because the next reader will otherwise read the split as having solved the size. |
 | 4 (2026-08-01) — re-gate after the § 2.6 sign-off | 3 cold `general-purpose` lanes, one shared byte-identical context packet, no prior-loop context | C 2 · H 7 · M 8 · L 10 — 27 verified, 2 dismissed | All 27 fixed. **Origin split: 25 draft defects vs 2 fix collateral** — draft defects dominate by an order of magnitude, so the loop was the right remedy and no ratio trigger fires. The two collateral are from this session's § 2.6 amendment pass: § 7 still stating the ANTS-3756 / ANTS-3765 amendments as pending after they landed, and § 2.6 misattributing INV-15's discriminator to the absence of `IF NOT EXISTS` when ANTS-3756 says the in-transaction `user_version` read is the discriminator and `IF NOT EXISTS` cannot be one. **C1 — the format-mismatch predicate was unimplementable, and loop 3 introduced it**: that loop resolved an undefined inheritance rule by defining "no format signal" as *yields zero items*, which is a `planFrom()` result, while the refusal is raised in `findRoadmaps()`, which has no plan. All three lanes reported it independently. Now an evidence out-parameter on `detectRoadmapFormat()` (a source change § 7 now carries), computable where the refusal lives; the false identity with § 2.5's `empty_source` is deleted, since bullets `isItem()` rejects are a format signal and zero items. **C2 — § 2.3's `h<ordinal>` rule reproduced the bypass it exists to close**: the prose put the *prefixed* name through `seen`, which never compares against the unprefixed slugs already in it, so a real `### H3` and a synthesised `h3` both reached `0-6-h3`. Uniquing now runs on the unprefixed base for every heading, stated once in the pseudo-code block. **A count conflict that verification saved from a wrong fix:** "three of ten real projects" against "the remaining two" are both true — three at ANTS-3765's first corpus pass, two after the fixes that pass triggered — so both are now moment-qualified rather than reconciled to one number. Also: INV-14 absent from § 6's test mapping (the one invariant covering § 2.6); an unreadable `docs/roadmap` silently dropping every archive in a spec whose § 2.2 promises "never a silent skip"; § 6.1's fixture table two roots short of what INV-3 and INV-11's third leg need; § 2.6's relativisation un-canonicalised on both sides, which INV-14's own symlink leg would have failed. |

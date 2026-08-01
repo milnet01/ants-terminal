@@ -189,7 +189,11 @@ section. So `load()` refuses the project with the code
 **`source_unplaceable`** — `ok == false`, nothing written, consistent with
 ANTS-3765 INV-1's one-project-one-transaction rule — whenever the value it is
 about to store **would not satisfy § 2.5's membership test and is not the live
-roadmap**. That is the general form, and it is deliberately wider than the two
+roadmap**. **Raised before the transaction opens**, alongside ANTS-3765
+§ 2.1's `changedAt` validation and for the same reason: the check needs only
+`Options::projectRoot` and `plan.sources`, both available before any write, and
+a refusal that has opened a transaction is a rollback where a plain refusal
+would do. That is the general form, and it is deliberately wider than the two
 cases that motivated it: an empty canonicalisation and a `../` escape are
 instances, but so is an in-project source at `docs/archive/0.6.md` or
 `docs/roadmap/old-0.6.md`, which stores cleanly, matches nothing, and is the
@@ -379,11 +383,11 @@ copy would drift from it.
   `source_path`, which is what § 1 states. In the spec: `section` carries
   `source_path TEXT` in its DDL at `kSchemaVersion` 1, `SectionRow` and
   `readSection()` carry the matching `sourcePath`, and its § 2.3
-  upgrade-ownership sentence names ANTS-3781. **One addition is outstanding**,
-  from this spec's loop 2: `setSectionSource()` (§ 2.2) joins that document's
-  store surface — without it the column has no writer at all and can only hold
-  its DDL `NULL`. Its § 7 amendment bullet was
-  retargeted to this id on 2026-08-01 and is not outstanding.
+  upgrade-ownership sentence names ANTS-3781. **The loop-2 addition is now
+  applied too** (2026-08-01): `setSectionSource()` (§ 2.2) joins that
+  document's store surface, which is what stops the column being one with a
+  reader and no writer. Its § 7 amendment bullet was retargeted to this id on
+  the same day. **Nothing is outstanding against that spec.**
 - **[ANTS-3765](ANTS-3765-roadmap-migration-load.md)** — **write side, applied
   to that spec's text on 2026-08-01; the code change lands with this item.**
   Its § 2.6 section-resolution paragraph performs the write and quotes § 2.3's
@@ -395,11 +399,13 @@ copy would drift from it.
   and INV-14's symlinked-root leg is the only detector for. It was introduced
   when the write was first specified and survived because § 2.4's
   canonicalisation was added later, in ANTS-3766's loop 4, without sweeping the
-  paragraph that consumes it. **Two amendments to it are still outstanding**,
-  both added by this spec's own loop 2 and neither yet in that document: its
-  § 2.6 must call `setSectionSource()` (§ 2.2) on every section it resolves,
-  and its `load()` must carry the `source_unplaceable` refusal (§ 2.4, INV-28),
-  which is a new failure mode of a function that spec owns.
+  paragraph that consumes it. **The two loop-2 amendments are applied as well**
+  (2026-08-01): its § 2.6 now calls `setSectionSource()` (§ 2.2) on every
+  section it resolves — created or matched — and its § 2.11 note table carries
+  the `source_unplaceable` refusal (§ 2.4, INV-28), a new failure mode of a
+  function that spec owns, raised before the transaction opens beside its
+  `bad_options` check. Its § 2.4 declares the method and its § 7 records both.
+  **Nothing is outstanding against that spec.**
 - **[ANTS-3766](ANTS-3766-roadmap-migration-archives.md)** — the parent.
   Its § 2.6 becomes a pointer here, its INV-14 is tombstoned in place, and its
   § 7 sheds the two amendment bullets above. It gains this spec's id in its
