@@ -12,6 +12,7 @@
 
 #include "passheadingwrite.h"
 #include "roadmapmigrate.h"
+#include "roadmapparse.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -23,6 +24,7 @@
 #include <QJsonObject>
 #include <QMap>
 #include <QString>
+#include <QTemporaryDir>
 #include <QStringList>
 
 #include <algorithm>
@@ -41,24 +43,40 @@ QString fixtureRoot(const char *name) {
 
 QString fixtureText(const char *name) {
     QString err;
-    const auto src = RoadmapMigrate::findRoadmap(fixtureRoot(name), &err);
-    EXPECT_TRUE(src.has_value()) << name << ": " << err.toStdString();
-    return src ? src->markdown : QString();
+    const auto disc = RoadmapMigrate::findRoadmaps(fixtureRoot(name), &err);
+    EXPECT_TRUE(disc.has_value()) << name << ": " << err.toStdString();
+    if (!disc || disc->sources.isEmpty()) return QString();
+    return disc->sources.constFirst().markdown;
 }
 
-// findRoadmap + planFrom over a committed fixture, as migration itself runs.
+// findRoadmaps + planFrom over a committed fixture, as migration itself runs.
 MigrationPlan planFixture(const char *name) {
     QString err;
-    const auto src = RoadmapMigrate::findRoadmap(fixtureRoot(name), &err);
-    EXPECT_TRUE(src.has_value()) << name << ": " << err.toStdString();
-    if (!src) return {};
-    return RoadmapMigrate::planFrom(src->markdown, src->path,
-                                    QString::fromUtf8(name),
+    const auto disc = RoadmapMigrate::findRoadmaps(fixtureRoot(name), &err);
+    EXPECT_TRUE(disc.has_value()) << name << ": " << err.toStdString();
+    if (!disc) return {};
+    return RoadmapMigrate::planFrom(*disc, QString::fromUtf8(name),
                                     QString::fromUtf8(name));
 }
 
+// A single-source Discovery built by hand. ANTS-3766 § 2.1 moved `format` onto
+// Source and findRoadmaps() is what fills it, so a hand-built Discovery has to
+// set it too — planFrom() no longer detects anything, and leaving it empty
+// would silently skip the pass-headings orphan scan.
+RoadmapMigrate::Discovery inlineDiscovery(const QString &markdown,
+                                          const QString &path) {
+    RoadmapMigrate::Source s;
+    s.path     = path;
+    s.markdown = markdown;
+    s.format   = RoadmapParse::detectRoadmapFormat(markdown.split(QLatin1Char('\n')));
+    RoadmapMigrate::Discovery d;
+    d.sources.append(s);
+    return d;
+}
+
 MigrationPlan planText(const QString &markdown) {
-    return RoadmapMigrate::planFrom(markdown, QStringLiteral("<inline>"),
+    return RoadmapMigrate::planFrom(inlineDiscovery(markdown,
+                                                    QStringLiteral("<inline>")),
                                     QStringLiteral("Inline"),
                                     QStringLiteral("inline"));
 }
@@ -121,13 +139,14 @@ QString passDocNoStatus() {
 // Everything a plan holds, in one string, so INV-9 can compare two runs
 // field-wise and print what differs.
 QString planDigest(const MigrationPlan &p) {
-    QString d = p.projectName + '|' + p.exportSlug + '|' + p.sourcePath + '|' +
-                p.format + '\n';
+    QString d = p.projectName + '|' + p.exportSlug + '\n';
+    for (const auto &src : p.sources)
+        d += QStringLiteral("F %1|%2\n").arg(src.path, src.format);
     for (const auto &s : p.sections)
         d += QStringLiteral("S %1|%2|%3|%4|%5|%6-%7\n")
                  .arg(s.slug, s.title, s.intro, QString::number(s.level),
                       s.parentSlug, QString::number(s.firstLine))
-                 .arg(s.lastLine);
+                 .arg(s.lastLine) + QStringLiteral("@%1\n").arg(s.sourceIndex);
     for (const auto &i : p.items)
         d += QStringLiteral("I %1|%2|%3|%4|%5|%6|%7|%8|%9|")
                  .arg(i.id, i.idOrigin, i.status, i.headline, i.kind, i.source,
@@ -142,12 +161,12 @@ QString planDigest(const MigrationPlan &p) {
                  .arg(int(i.idAllocationOwed))
                  .arg(int(i.closed))
                  .arg(i.firstLine)
-                 .arg(i.lastLine);
+                 .arg(i.lastLine) + QStringLiteral("@%1\n").arg(i.sourceIndex);
     for (const auto &e : p.elements)
         d += QStringLiteral("E %1|%2|%3|%4|%5-%6\n")
                  .arg(e.kind, e.payload, e.sectionSlug,
                       QString::number(e.position), QString::number(e.firstLine))
-                 .arg(e.lastLine);
+                 .arg(e.lastLine) + QStringLiteral("@%1\n").arg(e.sourceIndex);
     if (p.legend)
         d += QStringLiteral("L %1|%2-%3\n")
                  .arg(QString::fromUtf8(QJsonDocument(p.legend->entries).toJson(
@@ -155,7 +174,8 @@ QString planDigest(const MigrationPlan &p) {
                  .arg(p.legend->firstLine)
                  .arg(p.legend->lastLine);
     for (const auto &n : p.notes)
-        d += QStringLiteral("N %1|%2|%3\n").arg(n.code, n.detail).arg(n.line);
+        d += QStringLiteral("N %1|%2|%3|@%4\n")
+                 .arg(n.code, n.detail).arg(n.line).arg(n.sourceIndex);
     return d;
 }
 
@@ -217,6 +237,118 @@ QString partitionFault(const QString &markdown, const MigrationPlan &plan) {
 const char *kPartitionFixtures[] = {"antsv1", "gfm", "passes", "identity",
                                     "malformed", "prose", "empty"};
 
+
+// --- ANTS-3766: archives as additional sources --------------------------------
+
+QString archiveRoot(const char *name) {
+    return fixtureDir() + QStringLiteral("/archives/") + QString::fromUtf8(name);
+}
+
+std::optional<RoadmapMigrate::Discovery> discover(const char *name, QString *err) {
+    return RoadmapMigrate::findRoadmaps(archiveRoot(name), err);
+}
+
+MigrationPlan planArchiveRoot(const char *name) {
+    QString err;
+    const auto disc = discover(name, &err);
+    EXPECT_TRUE(disc.has_value()) << name << ": " << err.toStdString();
+    if (!disc) return {};
+    return RoadmapMigrate::planFrom(*disc, QString::fromUtf8(name),
+                                    QString::fromUtf8(name));
+}
+
+QStringList slugsForSource(const MigrationPlan &plan, int sourceIndex) {
+    QStringList out;
+    for (const auto &s : plan.sections)
+        if (s.sourceIndex == sourceIndex) out.append(s.slug);
+    return out;
+}
+
+QStringList noteDetails(const MigrationPlan &plan, const char *code) {
+    QStringList out;
+    for (const auto &n : plan.notes)
+        if (n.code == QLatin1String(code)) out.append(n.detail);
+    out.sort();
+    return out;
+}
+
+QStringList sourceFileNames(const MigrationPlan &plan) {
+    QStringList out;
+    for (const auto &s : plan.sources) out.append(QFileInfo(s.path).fileName());
+    return out;
+}
+
+// ANTS-3766 INV-5 — INV-11's partition, now PER SOURCE: every non-blank line of
+// source i lies inside exactly one carrier whose sourceIndex == i.
+QString partitionFaultForSource(const MigrationPlan &plan, int sourceIndex) {
+    const QStringList lines =
+        plan.sources.at(sourceIndex).markdown.split(QLatin1Char('\n'));
+    QList<int> owners(lines.size() + 1, 0);
+    QMap<int, QString> owner;
+    const auto claim = [&](int first, int last, const QString &what) {
+        for (int ln = first; ln <= last && ln <= lines.size(); ++ln) {
+            if (ln < 1) continue;
+            ++owners[ln];
+            owner.insert(ln, owner.value(ln) + what + QLatin1Char(' '));
+        }
+    };
+    for (const auto &s : plan.sections)
+        if (s.sourceIndex == sourceIndex)
+            claim(s.firstLine, s.lastLine, QStringLiteral("section:") + s.slug);
+    for (const auto &i : plan.items)
+        if (i.sourceIndex == sourceIndex)
+            claim(i.firstLine, i.lastLine, QStringLiteral("item:") + i.headline);
+    for (const auto &e : plan.elements)
+        if (e.sourceIndex == sourceIndex)
+            claim(e.firstLine, e.lastLine, QStringLiteral("element:") + e.kind);
+    if (plan.legend && plan.legend->sourceIndex == sourceIndex)
+        claim(plan.legend->firstLine, plan.legend->lastLine,
+              QStringLiteral("legend"));
+
+    for (int ln = 1; ln <= lines.size(); ++ln) {
+        if (lines.at(ln - 1).trimmed().isEmpty()) continue;
+        if (owners[ln] == 1) continue;
+        return QStringLiteral("source %1 line %2 has %3 owners (%4): %5")
+            .arg(sourceIndex).arg(ln).arg(owners[ln])
+            .arg(owner.value(ln), lines.at(ln - 1));
+    }
+    return QString();
+}
+
+// A root copied to a temp directory, so INV-4's live-file edit never touches a
+// committed fixture: editing one in place corrupts every later assertion in the
+// same run and shows up as a dirty working tree.
+struct TempRoot {
+    QTemporaryDir dir;
+    QString root;
+    explicit TempRoot(const char *name) {
+        root = dir.path() + QStringLiteral("/root");
+        const QString src = archiveRoot(name);
+        QDirIterator walk(src, QDir::Files | QDir::Hidden,
+                          QDirIterator::Subdirectories);
+        while (walk.hasNext()) {
+            const QString from = walk.next();
+            const QString rel  = QDir(src).relativeFilePath(from);
+            const QString to   = root + QLatin1Char('/') + rel;
+            QDir().mkpath(QFileInfo(to).absolutePath());
+            QFile::copy(from, to);
+        }
+    }
+    void appendToLiveRoadmap(const QString &text) const {
+        QFile f(root + QStringLiteral("/ROADMAP.md"));
+        EXPECT_TRUE(f.open(QIODevice::Append | QIODevice::Text));
+        f.write(text.toUtf8());
+    }
+    MigrationPlan plan() const {
+        QString err;
+        const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+        EXPECT_TRUE(disc.has_value()) << err.toStdString();
+        if (!disc) return {};
+        return RoadmapMigrate::planFrom(*disc, QStringLiteral("T"),
+                                        QStringLiteral("t"));
+    }
+};
+
 }  // namespace
 
 // ---------------------------------------------------------------- INV-1 ----
@@ -224,37 +356,39 @@ const char *kPartitionFixtures[] = {"antsv1", "gfm", "passes", "identity",
 // asserted on their code rather than on a human message.
 TEST(roadmap_migrate_read, Inv1Discovery) {
     QString err;
-    const auto upper = RoadmapMigrate::findRoadmap(fixtureRoot("discovery/upper"), &err);
+    const auto upper = RoadmapMigrate::findRoadmaps(fixtureRoot("discovery/upper"), &err);
     ASSERT_TRUE(upper.has_value()) << err.toStdString();
-    EXPECT_TRUE(upper->markdown.contains(QStringLiteral("UP-0001")))
+    ASSERT_FALSE(upper->sources.isEmpty());
+    EXPECT_TRUE(upper->sources.constFirst().markdown.contains(QStringLiteral("UP-0001")))
         << "INV-1: the file's own text is returned, not just its path";
-    EXPECT_TRUE(upper->path.endsWith(QStringLiteral("ROADMAP.md")));
+    EXPECT_TRUE(upper->sources.constFirst().path.endsWith(QStringLiteral("ROADMAP.md")));
 
     err.clear();
-    const auto lower = RoadmapMigrate::findRoadmap(fixtureRoot("discovery/lower"), &err);
+    const auto lower = RoadmapMigrate::findRoadmaps(fixtureRoot("discovery/lower"), &err);
     ASSERT_TRUE(lower.has_value()) << err.toStdString();
-    EXPECT_TRUE(lower->markdown.contains(QStringLiteral("LOW-0001")))
+    ASSERT_FALSE(lower->sources.isEmpty());
+    EXPECT_TRUE(lower->sources.constFirst().markdown.contains(QStringLiteral("LOW-0001")))
         << "INV-1: an uppercase-only glob drops the one project that owns the "
            "whole pass corpus";
-    EXPECT_TRUE(lower->path.endsWith(QStringLiteral("roadmap.md")));
+    EXPECT_TRUE(lower->sources.constFirst().path.endsWith(QStringLiteral("roadmap.md")));
 
     err.clear();
-    EXPECT_FALSE(RoadmapMigrate::findRoadmap(fixtureRoot("discovery/none"), &err));
+    EXPECT_FALSE(RoadmapMigrate::findRoadmaps(fixtureRoot("discovery/none"), &err));
     EXPECT_EQ(err, QStringLiteral("not_found"));
 
     err.clear();
-    EXPECT_FALSE(RoadmapMigrate::findRoadmap(fixtureRoot("discovery/both"), &err));
+    EXPECT_FALSE(RoadmapMigrate::findRoadmaps(fixtureRoot("discovery/both"), &err));
     EXPECT_EQ(err, QStringLiteral("case_ambiguous"))
         << "INV-1: either choice silently discards a whole project's roadmap";
 
     err.clear();
-    EXPECT_FALSE(RoadmapMigrate::findRoadmap(fixtureRoot("discovery/badutf8"), &err));
+    EXPECT_FALSE(RoadmapMigrate::findRoadmaps(fixtureRoot("discovery/badutf8"), &err));
     EXPECT_EQ(err, QStringLiteral("not_utf8"))
         << "INV-1: a lossy U+FFFD decode leaves INV-11 green over corrupted "
            "content";
 
     err.clear();
-    EXPECT_FALSE(RoadmapMigrate::findRoadmap(fixtureRoot("discovery/absent"), &err));
+    EXPECT_FALSE(RoadmapMigrate::findRoadmaps(fixtureRoot("discovery/absent"), &err));
     EXPECT_EQ(err, QStringLiteral("not_found"));
 }
 
@@ -572,12 +706,12 @@ TEST(roadmap_migrate_read, Inv9Purity) {
     }
     ASSERT_FALSE(before.isEmpty());
 
+    const RoadmapMigrate::Discovery disc =
+        inlineDiscovery(markdown, QStringLiteral("/x/ROADMAP.md"));
     const MigrationPlan first =
-        RoadmapMigrate::planFrom(markdown, QStringLiteral("/x/ROADMAP.md"),
-                                 QStringLiteral("P"), QStringLiteral("p"));
+        RoadmapMigrate::planFrom(disc, QStringLiteral("P"), QStringLiteral("p"));
     const MigrationPlan second =
-        RoadmapMigrate::planFrom(markdown, QStringLiteral("/x/ROADMAP.md"),
-                                 QStringLiteral("P"), QStringLiteral("p"));
+        RoadmapMigrate::planFrom(disc, QStringLiteral("P"), QStringLiteral("p"));
     EXPECT_EQ(planDigest(first), planDigest(second))
         << "INV-9: an id counter read AND incremented here is what this "
            "detects; allocation belongs to ANTS-3765";
@@ -593,7 +727,8 @@ TEST(roadmap_migrate_read, Inv9Purity) {
 TEST(roadmap_migrate_read, Inv10PassBlocks) {
     const MigrationPlan plan = planFixture("passes");
     ASSERT_EQ(plan.items.size(), 3) << "INV-10: one item per block";
-    EXPECT_EQ(plan.format, QStringLiteral("pass-headings"));
+    ASSERT_FALSE(plan.sources.isEmpty());
+    EXPECT_EQ(plan.sources.constFirst().format, QStringLiteral("pass-headings"));
 
     EXPECT_EQ(plan.items[0].id,
               PassHeadingWrite::passIdFromDesignator(QStringLiteral("43.5")))
@@ -713,4 +848,371 @@ TEST(roadmap_migrate_read, Inv13EmptySource) {
 
     const MigrationPlan ok = planFixture("antsv1");
     EXPECT_EQ(noteCount(ok, "empty_source"), 0);
+}
+
+// ============================================================================
+// ANTS-3766 — rotated archives as additional sources.
+// Contract: docs/specs/ANTS-3766-roadmap-migration-archives.md § 3 (INV-1..13).
+// Fixture roots: fixtures/archives/ (§ 6.1). INV-9 and the INV-10 refusal live
+// in tests/features/roadmap_migrate_load/, which is where a store exists.
+// ============================================================================
+
+// --------------------------------------------------------- ANTS-3766 INV-1 --
+TEST(roadmap_migrate_read, Ants3766Inv1DiscoveryOrderIsNumericDescending) {
+    const MigrationPlan plan = planArchiveRoot("sort");
+    ASSERT_EQ(plan.sources.size(), 4) << "live + three archives";
+    EXPECT_EQ(sourceFileNames(plan),
+              (QStringList{QStringLiteral("ROADMAP.md"), QStringLiteral("0.10.md"),
+                           QStringLiteral("0.6.md"), QStringLiteral("0.5.md")}))
+        << "INV-1: element 0 is always the live roadmap, then the (major, minor) "
+           "INTEGER tuple DESCENDING. A lexical sort puts 0.10 LAST, since "
+           "\"0.10\" < \"0.6\" as strings — the 0.10.md fixture is what makes "
+           "the two orderings differ at all";
+}
+
+// --------------------------------------------------------- ANTS-3766 INV-2 --
+// A root with no docs/roadmap/ plans exactly as it did before this change.
+TEST(roadmap_migrate_read, Ants3766Inv2NoArchiveDirIsUnchanged) {
+    const MigrationPlan plan = planArchiveRoot("noarchivedir");
+    EXPECT_EQ(plan.sources.size(), 1);
+    for (const auto &s : plan.sections) EXPECT_EQ(s.sourceIndex, 0);
+    for (const auto &i : plan.items)    EXPECT_EQ(i.sourceIndex, 0);
+    for (const auto &e : plan.elements) EXPECT_EQ(e.sourceIndex, 0);
+    EXPECT_TRUE(plan.notes.isEmpty() ||
+                noteCount(plan, "archive_unrecognised") == 0)
+        << "INV-2: a missing archive directory is not a refusal and raises no "
+           "note — it is the only silent case, and every project in the corpus "
+           "but one is it";
+}
+
+// The golden list is what makes INV-2 more than self-report: a systematic
+// re-slug is invisible to a field-wise dump compared only against another run
+// of the same code.
+TEST(roadmap_migrate_read, Ants3766Inv2SectionSlugGolden) {
+    QFile f(QString::fromUtf8(ANTS_MIGRATE_SLUG_GOLDEN));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly)) << "expected-section-slugs.json";
+    const QJsonObject roots =
+        QJsonDocument::fromJson(f.readAll()).object()
+            .value(QStringLiteral("roots")).toObject();
+    ASSERT_FALSE(roots.isEmpty());
+
+    for (auto it = roots.begin(); it != roots.end(); ++it) {
+        const QString name = it.key();
+        QStringList want;
+        for (const auto v : it.value().toArray()) want.append(v.toString());
+
+        QString err;
+        const auto disc = RoadmapMigrate::findRoadmaps(
+            fixtureDir() + QLatin1Char('/') + name, &err);
+        // mixedformat/ and badutf8/ refuse the whole call by design; their live
+        // slugs are still golden-listed, so skip rather than fail.
+        if (!disc) continue;
+        const MigrationPlan plan =
+            RoadmapMigrate::planFrom(*disc, name, QStringLiteral("g"));
+
+        QStringList got;
+        for (const auto &s : plan.sections)
+            if (s.sourceIndex == 0 && !s.slug.isEmpty()) got.append(s.slug);
+        EXPECT_EQ(got, want)
+            << "INV-2: " << name.toStdString()
+            << " — the LIVE source's ordered slug list must match the golden, "
+               "which tools/roadmap-slug-oracle.py derives independently of "
+               "src/. Breaks when the merge path namespaces or re-numbers "
+               "unconditionally rather than only for indices >= 1, which "
+               "re-slugs every project's live sections and orphans its corpus";
+    }
+}
+
+// --------------------------------------------------------- ANTS-3766 INV-3 --
+TEST(roadmap_migrate_read, Ants3766Inv3LiveSlugsUnmovedByArchives) {
+    const MigrationPlan with    = planArchiveRoot("baseline");
+    const MigrationPlan without = planArchiveRoot("noarchivedir");
+    ASSERT_EQ(with.sources.size(), 3);
+    ASSERT_EQ(without.sources.size(), 1);
+    EXPECT_EQ(slugsForSource(with, 0), slugsForSource(without, 0))
+        << "INV-3: with archives present, every live-source slug is "
+           "byte-identical to the slug the same root produces with "
+           "docs/roadmap/ removed. Breaks when the uniquing set is shared with "
+           "archives processed first, or archives are merged before the live "
+           "file";
+}
+
+// --------------------------------------------------------- ANTS-3766 INV-4 --
+// An archive slug is a function of that archive's filename and its own heading
+// alone: appending a section to the LIVE file leaves every archive slug alone.
+TEST(roadmap_migrate_read, Ants3766Inv4ArchiveSlugsSurviveALiveEdit) {
+    const TempRoot t("baseline");
+    const MigrationPlan before = t.plan();
+    ASSERT_EQ(before.sources.size(), 3);
+    const QStringList archiveBefore = slugsForSource(before, 1) + slugsForSource(before, 2);
+    ASSERT_FALSE(archiveBefore.isEmpty());
+
+    t.appendToLiveRoadmap(QStringLiteral(
+        "\n### ⚡ Performance\n\n"
+        "- 📋 [BASE-0007] **A fourth live perf item.**\n  Kind: perf.\n"));
+
+    const MigrationPlan after = t.plan();
+    ASSERT_EQ(after.sources.size(), 3);
+    EXPECT_NE(slugsForSource(after, 0), slugsForSource(before, 0))
+        << "the live edit must actually add a section, or this proves nothing";
+    EXPECT_EQ(slugsForSource(after, 1) + slugsForSource(after, 2), archiveBefore)
+        << "INV-4: breaks when slugs come from a counter SHARED across sources "
+           "— which passes INV-1, INV-2, INV-3 and every ANTS-3757 invariant, "
+           "and then shifts `performance-4` to `performance-5` on an ordinary "
+           "week's edit, re-filing the archive's id-less items under a slug "
+           "that no longer matches and orphaning the originals on every run";
+}
+
+// --------------------------------------------------------- ANTS-3766 INV-5 --
+TEST(roadmap_migrate_read, Ants3766Inv5PartitionHoldsWithinEachSource) {
+    const MigrationPlan plan = planArchiveRoot("baseline");
+    ASSERT_EQ(plan.sources.size(), 3);
+    for (int i = 0; i < plan.sources.size(); ++i)
+        EXPECT_EQ(partitionFaultForSource(plan, i), QString())
+            << "INV-5: every non-blank line of source " << i
+            << " must lie inside exactly one carrier with that sourceIndex. "
+               "Breaks when sourceIndex defaults to 0 on carriers built from an "
+               "archive, which makes the archive's lines read as live-file "
+               "lines and leaves BOTH files' partitions false while every count "
+               "stays right";
+}
+
+// The legend leg. Only sources[0] may plan a legend, so an archive's own
+// status-legend run is demoted to narration — which keeps every line carried.
+// The real archives have no legend run, so no other root can host this.
+TEST(roadmap_migrate_read, Ants3766Inv5ArchiveLegendIsDemotedNotDropped) {
+    const MigrationPlan plan = planArchiveRoot("legend");
+    ASSERT_EQ(plan.sources.size(), 2);
+    EXPECT_FALSE(plan.legend.has_value())
+        << "INV-5: MigrationPlan holds ONE optional<PlannedLegend> and the "
+           "legend belongs to the project, so an archive may not contribute "
+           "one; this root's live file has none";
+    EXPECT_EQ(partitionFaultForSource(plan, 1), QString())
+        << "INV-5: breaks when the archive's legend is DROPPED rather than "
+           "demoted, which puts its lines in no carrier at all — every other "
+           "fixture has no legend to lose, so this leg is the only detector";
+    int narration = 0;
+    for (const auto &e : plan.elements)
+        if (e.sourceIndex == 1 && e.kind == QLatin1String("narration")) ++narration;
+    EXPECT_GE(narration, 4) << "the four legend lines survive as narration";
+}
+
+// --------------------------------------------------------- ANTS-3766 INV-6 --
+TEST(roadmap_migrate_read, Ants3766Inv6EmptySourceIsPerSource) {
+    const MigrationPlan plan = planArchiveRoot("baseline");
+    ASSERT_EQ(plan.sources.size(), 3);
+
+    QList<int> raisedFor;
+    for (const auto &n : plan.notes)
+        if (n.code == QLatin1String("empty_source")) raisedFor.append(n.sourceIndex);
+    ASSERT_EQ(raisedFor.size(), 1)
+        << "INV-6: exactly one — 0.5.md is 651 bytes of prose and yields no "
+           "items; the live file and 0.6.md both do";
+    // Asserted on sourceIndex, NOT on detail: a human message is not
+    // assertable, which is ANTS-3757 INV-1's own rule.
+    const int idx = raisedFor.constFirst();
+    ASSERT_GE(idx, 0);
+    ASSERT_LT(idx, plan.sources.size());
+    EXPECT_EQ(QFileInfo(plan.sources.at(idx).path).fileName(),
+              QStringLiteral("0.5.md"))
+        << "INV-6: the note's sourceIndex must RESOLVE through plan.sources to "
+           "the prose-only archive. Breaks when the condition is evaluated over "
+           "the MERGED plan, which raises nothing at all here (the live file "
+           "has items) and so silently drops the signal that an archive parsed "
+           "to nothing";
+    EXPECT_NE(idx, 0) << "INV-6: none may resolve to the live file";
+}
+
+// --------------------------------------------------------- ANTS-3766 INV-7 --
+TEST(roadmap_migrate_read, Ants3766Inv7ArchiveNotUtf8RefusesWholeCall) {
+    QString err;
+    EXPECT_FALSE(discover("badutf8", &err).has_value());
+    EXPECT_EQ(err, QStringLiteral("not_utf8"))
+        << "INV-7: breaks when the archive is skipped with a note instead, "
+           "which commits a transaction that looks complete and is not — the "
+           "load half is ONE transaction";
+}
+
+// --------------------------------------------------------- ANTS-3766 INV-8 --
+TEST(roadmap_migrate_read, Ants3766Inv8UnrecognisedEntriesAreNotedNotLoaded) {
+    const MigrationPlan plan = planArchiveRoot("unrecognised");
+    EXPECT_EQ(plan.sources.size(), 1) << "not one of them becomes a source";
+
+    EXPECT_EQ(noteDetails(plan, "archive_unrecognised"),
+              (QStringList{QStringLiteral("0.7.0.md"), QStringLiteral("0.8.md"),
+                           QStringLiteral("0.9.md"), QStringLiteral("00.07.md"),
+                           QStringLiteral("README.md")}))
+        << "INV-8: FIVE notes. Breaks when the filter is a *.md glob (loads "
+           "0.7.0.md); when the loose ^[0-9]+\\.[0-9]+\\.md$ is used (loads "
+           "00.07.md — the case withdrawn INV-12 hands to this invariant); on a "
+           "silent continue; on an entryInfoList() filter that does not exclude "
+           "DIRECTORIES (0.8.md is one); or on one testing isFile() ALONE, "
+           "which FOLLOWS the symlink 0.9.md and loads it — the mutation a "
+           "correct-looking Qt filter falls into";
+
+    for (const auto &n : plan.notes)
+        if (n.code == QLatin1String("archive_unrecognised")) {
+            EXPECT_EQ(n.sourceIndex, -1)
+                << "INV-8: the entry was deliberately never read, so it indexes "
+                   "nothing; without the -1 it defaults to 0 and claims to be "
+                   "about the live roadmap";
+            EXPECT_EQ(n.line, 0) << "no file here to be inside";
+        }
+
+    // The three regular .md files each carry a uniquely-identifiable item —
+    // otherwise "its items do not appear" is true of an empty file whatever
+    // the code does, and that leg tests nothing.
+    for (const auto &it : plan.items) {
+        EXPECT_FALSE(it.id.startsWith(QStringLiteral("UNREC-PATCH")));
+        EXPECT_FALSE(it.id.startsWith(QStringLiteral("UNREC-PADDED")));
+        EXPECT_FALSE(it.id.startsWith(QStringLiteral("UNREC-README")));
+    }
+}
+
+// The directory itself is one of those entries.
+TEST(roadmap_migrate_read, Ants3766Inv8UnreadableArchiveDirIsNoted) {
+    const MigrationPlan plan = planArchiveRoot("dirisfile");
+    EXPECT_EQ(plan.sources.size(), 1) << "the live source is still planned";
+    EXPECT_EQ(noteDetails(plan, "archive_unrecognised"),
+              (QStringList{QStringLiteral("docs/roadmap")}))
+        << "INV-8: a docs/roadmap that EXISTS but cannot be enumerated raises "
+           "the note naming itself, while a MISSING directory raises none. "
+           "Folding the two together makes the one case that loses EVERY "
+           "archive at once the quietest thing this lane can do — strictly "
+           "worse than a single misnamed file, which does get a note";
+}
+
+// -------------------------------------------------------- ANTS-3766 INV-10 --
+TEST(roadmap_migrate_read, Ants3766Inv10SlugCollisionIsNotedNeverRenamed) {
+    const MigrationPlan plan = planArchiveRoot("collision");
+    ASSERT_EQ(plan.sources.size(), 2);
+    EXPECT_EQ(noteCount(plan, "archive_slug_collision"), 1);
+
+    QStringList archiveSlugs = slugsForSource(plan, 1);
+    EXPECT_TRUE(archiveSlugs.contains(QStringLiteral("0-6-features")))
+        << "INV-10: the archive section's slug is still 0-6-features — NOT "
+           "renamed to 0-6-features-2. Renaming would shift an archive slug in "
+           "response to a live-file edit, reintroducing the orphan cascade "
+           "§ 2.3.1 rules out, just more rarely";
+    EXPECT_TRUE(slugsForSource(plan, 0).contains(QStringLiteral("0-6-features")));
+}
+
+// -------------------------------------------------------- ANTS-3766 INV-11 --
+TEST(roadmap_migrate_read, Ants3766Inv11MixedFormatRefuses) {
+    QString err;
+    EXPECT_FALSE(discover("mixedformat", &err).has_value());
+    EXPECT_EQ(err, QStringLiteral("archive_format_mismatch"))
+        << "INV-11: breaks when `format` stays on the plan and is detected from "
+           "the live file alone — under which this fixture's archive parses to "
+           "ZERO items with no note at all, which every other invariant here "
+           "passes, because a plan that never saw those bullets cannot report "
+           "them missing";
+}
+
+// The sibling leg: an archive matching its live file's format plans normally.
+// Without it the fix could be "refuse every archive".
+TEST(roadmap_migrate_read, Ants3766Inv11MatchingFormatPlansNormally) {
+    QString err;
+    const auto disc = discover("baseline", &err);
+    ASSERT_TRUE(disc.has_value()) << err.toStdString();
+    for (const auto &s : disc->sources)
+        EXPECT_EQ(s.format, QStringLiteral("ants-v1"));
+}
+
+// Leg 3 — inheritance. A BULLET-LESS archive under a github-task-list live file
+// inherits and raises nothing. The real corpus cannot catch this: its live file
+// is ants-v1 and detectRoadmapFormat()'s default agrees with it by luck.
+TEST(roadmap_migrate_read, Ants3766Inv11BulletlessArchiveInheritsLiveFormat) {
+    QString err;
+    const auto disc = discover("inherit", &err);
+    ASSERT_TRUE(disc.has_value()) << err.toStdString();
+    ASSERT_EQ(disc->sources.size(), 2);
+    EXPECT_EQ(disc->sources.at(0).format, QStringLiteral("github-task-list"));
+    EXPECT_EQ(disc->sources.at(1).format, QStringLiteral("github-task-list"))
+        << "INV-11 leg 3: breaks when inheritance is omitted — the archive then "
+           "reports detectRoadmapFormat()'s evidence-free ants-v1 default, "
+           "mismatches, and refuses the migration of a project whose archive is "
+           "merely prose";
+}
+
+// Leg 4 — the other direction, and the only detector for a reference format
+// keyed on sources[0] rather than on the first EVIDENCED source.
+TEST(roadmap_migrate_read, Ants3766Inv11BulletlessLiveFileInheritsArchiveFormat) {
+    QString err;
+    const auto disc = discover("livenosignal", &err);
+    ASSERT_TRUE(disc.has_value())
+        << "INV-11 leg 4: a prose-only live file beside a github-task-list "
+           "archive must NOT refuse — got: " << err.toStdString();
+    ASSERT_EQ(disc->sources.size(), 2);
+    EXPECT_EQ(disc->sources.at(1).format, QStringLiteral("github-task-list"))
+        << "the archive is the only EVIDENCED source, so it is the reference";
+    EXPECT_EQ(disc->sources.at(0).format, QStringLiteral("github-task-list"))
+        << "INV-11 leg 4: breaks when the reference is written as sources[0] "
+           "rather than as the first evidenced source — the live file's "
+           "evidence-free ants-v1 becomes the reference, the archive disagrees "
+           "with it, and the whole project is refused on no evidence at all. "
+           "Leg 3 passes against that mutation, since its live file is the "
+           "evidenced one";
+}
+
+// -------------------------------------------------------- ANTS-3766 INV-13 --
+TEST(roadmap_migrate_read, Ants3766Inv13EmptySlugTakesAnOrdinal) {
+    const MigrationPlan plan = planArchiveRoot("emptyslug");
+    ASSERT_EQ(plan.sources.size(), 2);
+    const QStringList archiveSlugs = slugsForSource(plan, 1);
+
+    EXPECT_TRUE(archiveSlugs.contains(QStringLiteral("0-6")))
+        << "the synthetic root takes the bare <M>-<N> form, and only it may";
+    bool sawOrdinal = false;
+    for (const QString &s : archiveSlugs)
+        if (s.startsWith(QStringLiteral("0-6-h"))) sawOrdinal = true;
+    EXPECT_TRUE(sawOrdinal)
+        << "INV-13: the emoji-only heading takes 0-6-h<n>. Breaks when the "
+           "empty-slug case is routed through uniqueSlug() and THEN prefixed — "
+           "the natural implementation, and silently wrong, because that "
+           "function returns an empty base WITHOUT inserting it into `seen`, so "
+           "it never uniques and every such heading collapses onto the root's "
+           "slug. INV-10 cannot catch this: the collision is WITHIN one source "
+           "and INV-10's note fires only archive-against-live";
+
+    QSet<QString> distinct(archiveSlugs.begin(), archiveSlugs.end());
+    EXPECT_EQ(distinct.size(), archiveSlugs.size())
+        << "no two sections of one archive share a slug";
+}
+
+// The h<ordinal> substitution is ARCHIVE-ONLY: applying it at index 0 would
+// change a live section's slug from "" to h<n> on any project with an
+// emoji-only heading — the live-slug shift INV-4 and INV-9 forbid, and INV-3
+// could not catch it because both sides of its comparison would run the new
+// rule.
+TEST(roadmap_migrate_read, Ants3766Inv13LivePathKeepsTodaysEmptySlugBehaviour) {
+    const MigrationPlan plan = planText(QStringLiteral(
+        "# Roadmap\n\n## 🎨\n\n- 📋 [X-0001] **An item.**\n  Kind: feature.\n"));
+    bool sawEmpty = false;
+    for (const auto &s : plan.sections)
+        if (s.sourceIndex == 0 && s.level == 2 && s.slug.isEmpty()) sawEmpty = true;
+    EXPECT_TRUE(sawEmpty)
+        << "the live path's empty-slug hole is uniqueSlug()'s pre-existing "
+           "defect; ANTS-3766 § 7 surfaces it and this change does not touch it";
+}
+
+// A bullet-less archive that DECLARES its format via the
+// `<!-- ants-roadmap-format: 1 -->` marker HAS evidence, so it must mismatch a
+// github-task-list live file rather than inherit from it.
+//
+// This is the positive case of the § 2.1.1 paragraph about the evidence
+// predicate, and no other leg covers it: leg 3's archive is bullet-less AND
+// undeclared, so it inherits correctly under both the right predicate and the
+// wrong one. Written after implementation found the gap.
+TEST(roadmap_migrate_read, Ants3766Inv11DeclaredFormatIsEvidenceNotInheritance) {
+    QString err;
+    EXPECT_FALSE(discover("declaredformat", &err).has_value());
+    EXPECT_EQ(err, QStringLiteral("archive_format_mismatch"))
+        << "INV-11: breaks when the no-signal predicate is written as \"matched "
+           "no BULLET\" — the marker is matched BEFORE any bullet is examined, "
+           "so a bullet-less file that explicitly declares ants-v1 would report "
+           "NO evidence, and the inheritance rule would then override that "
+           "declaration with the live file's github-task-list. That is the loss "
+           "class § 2.1.1 exists to close, reintroduced by the exemption meant "
+           "to prevent it";
 }

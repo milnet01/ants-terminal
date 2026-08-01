@@ -119,7 +119,25 @@ QString idTokenPattern();
 // "pass-headings". Answers "ants-v1" for input it does not recognise,
 // INCLUDING an empty file — so a returned format is no evidence that anything
 // was understood (ANTS-3757 § 2.3 relies on this and reports zero items).
-QString detectRoadmapFormat(const QStringList &lines);
+//
+// ANTS-3766 § 2.1.1 — `sawSignal` reports whether the answer rested on
+// EVIDENCE. That the return value alone cannot say so is the whole reason this
+// out-parameter exists: a genuine ants-v1 file and a file with no signal at all
+// return the identical string, and the caller has to tell them apart to decide
+// which sources may take part in the archive_format_mismatch comparison.
+//
+// `false` ONLY when the scan fell through EVERY classification signal to the
+// default. Matching any one of them — the `<!-- ants-roadmap-format: 1 -->`
+// marker, a GFM checkbox, an ants-v1 emoji bullet, a `#### Pass N` heading, a
+// `- **Status**:` marker — sets it true, whatever is returned. Writing the
+// predicate as "matched no bullet" instead would report *no evidence* for a
+// bullet-less file that explicitly DECLARES its format, and § 2.1.1's
+// inheritance rule would then override that declaration.
+//
+// Out-parameter rather than a wider return type: RoadmapDialog and
+// parseBullets() ask only for the format, and nullptr is the whole cost of
+// leaving them untouched.
+QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal = nullptr);
 
 // Pure helper: parse `markdownText` into top-level status-emoji bullets.
 // Dispatches on detectRoadmapFormat(). Result is read-only; used by the

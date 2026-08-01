@@ -302,6 +302,16 @@ bool RoadmapStore::createSchema(QString *error) {
   level       INTEGER NOT NULL,
   intro       TEXT,
   parent_id   INTEGER REFERENCES section(section_id),
+  -- ANTS-3782 § 2.1. Which source file this section was read from,
+  -- project-root-relative; NULL is the live roadmap. It is the only record of
+  -- that fact -- the migration plan holds a source index and is discarded at
+  -- commit -- so without it ANTS-3758 re-emits a rotated archive back into
+  -- ROADMAP.md. In this DDL rather than an ALTER, and at user_version 1: no
+  -- store is reachable from user-facing code yet, so there is nothing to
+  -- migrate and a bump would manufacture an upgrade case nothing implements
+  -- (and regenerate three export goldens) in order to migrate zero stores.
+  -- That freedom expires at ANTS-3758's cutover; ANTS-3781 owns what follows.
+  source_path TEXT,
   UNIQUE (project_id, slug)
 ))"),
         QStringLiteral(R"(CREATE TABLE item (
@@ -867,6 +877,35 @@ bool RoadmapStore::rollback(QString *error) {
 
 // --- ANTS-3765 § 2.4 — writers -----------------------------------------------
 
+// ANTS-3782 § 2.2. Note the deliberate DIFFERENCE from setSectionIntro()
+// below: an engaged optional holding an empty string is bound as that empty
+// string, NOT folded to NULL. '' is a meaningless intro and a wrong source
+// path — folding it would make an unplaceable value read back as the live
+// roadmap, collapsing the distinction std::optional is here to carry.
+bool RoadmapStore::setSectionSource(qint64 sectionId,
+                                    const std::optional<QString> &sourcePath,
+                                    QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE section SET source_path = ? WHERE section_id = ?"));
+    if (sourcePath) {
+        // A DEFAULT-CONSTRUCTED QString is null, and the SQLite driver binds a
+        // null string as SQL NULL — which would fold an engaged-but-empty
+        // optional back onto the live-roadmap value this method exists to keep
+        // distinct, silently. Normalise it, the same way roadmapmigrateload's
+        // notNull() does for every other text column.
+        q.addBindValue(sourcePath->isNull() ? QString::fromUtf8("") : *sourcePath);
+    } else {
+        q.addBindValue(QVariant(QMetaType(QMetaType::QString)));
+    }
+    q.addBindValue(sectionId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
 bool RoadmapStore::setSectionIntro(qint64 sectionId, const QString &intro,
                                    QString *error) {
     QSqlQuery q(m_db);
@@ -1251,7 +1290,8 @@ std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 section
                                                                   QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
     q.prepare(QStringLiteral(
-        "SELECT slug, title, level, intro, parent_id FROM section WHERE section_id = ?"));
+        "SELECT slug, title, level, intro, parent_id, source_path "
+        "FROM section WHERE section_id = ?"));
     q.addBindValue(sectionId);
     if (!q.exec()) {
         if (error)
@@ -1268,6 +1308,12 @@ std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 section
     s.intro = q.value(3).toString();
     if (!q.value(4).isNull())
         s.parentId = q.value(4).toLongLong();
+    // ANTS-3782 INV-26 — SQL NULL reads back as nullopt, anything else as the
+    // stored string. Tested against a direct SELECT rather than through the
+    // writer: a writer compared with its own idea of the value cannot
+    // distinguish a stored value from a default.
+    if (!q.value(5).isNull())
+        s.sourcePath = q.value(5).toString();
     return s;
 }
 

@@ -1,0 +1,85 @@
+{
+  "_what": "ANTS-3766 INV-2 — the ordered live-source section-slug list per fixture root, derived by tools/roadmap-slug-oracle.py, an independent reimplementation of slugifyHeading/uniqueSlug. Regenerate: tools/roadmap-slug-oracle.py tests/features/roadmap_migrate_read/fixtures",
+  "roots": {
+    "antsv1": [
+      "status-legend",
+      "active",
+      "sub-section"
+    ],
+    "empty": [],
+    "gfm": [
+      "backlog"
+    ],
+    "identity": [
+      "identity"
+    ],
+    "malformed": [
+      "malformed"
+    ],
+    "passes": [
+      "passes"
+    ],
+    "prose": [
+      "notes"
+    ],
+    "archives/badutf8": [
+      "0-7-0-in-flight",
+      "features",
+      "performance",
+      "security",
+      "dev-experience",
+      "performance-2",
+      "performance-3"
+    ],
+    "archives/baseline": [
+      "0-7-0-in-flight",
+      "features",
+      "performance",
+      "security",
+      "dev-experience",
+      "performance-2",
+      "performance-3"
+    ],
+    "archives/collision": [
+      "0-7-0-in-flight",
+      "0-6-features"
+    ],
+    "archives/dirisfile": [
+      "0-7-0-in-flight"
+    ],
+    "archives/emptyslug": [
+      "0-7-0-in-flight"
+    ],
+    "archives/inherit": [
+      "0-7-0-in-flight"
+    ],
+    "archives/legend": [
+      "0-7-0-in-flight"
+    ],
+    "archives/livenosignal": [],
+    "archives/mixedformat": [
+      "0-7-0-in-flight"
+    ],
+    "archives/noarchivedir": [
+      "0-7-0-in-flight",
+      "features",
+      "performance",
+      "security",
+      "dev-experience",
+      "performance-2",
+      "performance-3"
+    ],
+    "archives/sort": [
+      "0-7-0-in-flight",
+      "features",
+      "performance",
+      "security",
+      "dev-experience",
+      "performance-2",
+      "performance-3"
+    ],
+    "archives/unrecognised": [
+      "0-7-0-in-flight"
+    ]
+  }
+}

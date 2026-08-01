@@ -275,11 +275,14 @@ Listed only where behavior isn't obvious from the name.
   `roadmapdialog` by ANTS-3764 so headless callers share one
   implementation. Qt6::Core only.
 - `roadmapmigrate` (`ants_core_lib`) — the migration read half:
-  `findRoadmap()` resolves a project's roadmap case-insensitively and
-  decodes it; the pure `planFrom()` turns markdown into a
-  `MigrationPlan` (sections / items / elements / legend / notes) for
-  ANTS-3765 to load. Calls `roadmapparse` for bullets and owns the
-  structural walk that reader never had. Spec ANTS-3757.
+  `findRoadmaps()` resolves a project's roadmap case-insensitively,
+  decodes it, and adds every rotated archive under `docs/roadmap/`
+  beside it, detecting each source's format separately; the pure
+  `planFrom()` turns that `Discovery` into one `MigrationPlan`
+  (sections / items / elements / legend / notes) for ANTS-3765 to load.
+  Archive sections are namespaced per source file, so a live slug never
+  moves. Calls `roadmapparse` for bullets and owns the structural walk
+  that reader never had. Specs ANTS-3757 and ANTS-3766.
 - `roadmapmigrateload` (`ants_roadmapstore_lib`) — the migration load
   half: `load()` writes one `MigrationPlan` into the store as **one
   project, one transaction**. In the store lib and not `ants_core_lib`

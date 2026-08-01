@@ -48,6 +48,32 @@ QString notNull(const QString &s) {
     return s.isNull() ? QString::fromUtf8("") : s;
 }
 
+// ANTS-3782 § 2.4 — the stored `source_path`, with BOTH sides canonicalised.
+//
+// Neither alone would do. Source::path is absolute but NOT canonical
+// (findRoadmaps() builds it from absoluteFilePath(), which does not resolve
+// symlinks), so a root reached through a symlink yields
+// /home/…/link/docs/roadmap/0.6.md. Canonicalise only the root and the result
+// is a path computed OUT of the project (../link/docs/…); canonicalise only
+// the source and the mirror defect appears. Canonicalising both makes the
+// spelling a caller happened to pass stop mattering — which is also what keeps
+// this column consistent with project.root, keyed on canonicalFilePath() by
+// ANTS-3756 INV-8.
+QString relativeSourcePath(const QString &projectRoot, const QString &sourcePath) {
+    return QDir(QFileInfo(projectRoot).canonicalFilePath())
+        .relativeFilePath(QFileInfo(sourcePath).canonicalFilePath());
+}
+
+// ANTS-3782 § 2.5's membership test — what ANTS-3758 re-splits the render on.
+// The same regex ANTS-3766 § 2.2 discovers archives with, and it has to be:
+// a name discovery accepts that the render cannot place is a silently
+// unplaceable section, which is the loss this whole lane exists to close.
+bool isPlaceableSourcePath(const QString &rel) {
+    static const QRegularExpression rx(
+        QStringLiteral("\\Adocs/roadmap/(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.md\\z"));
+    return rx.match(rel).hasMatch();
+}
+
 // One field the plan is authoritative for, paired with what the store holds.
 // `planEmpty` is not `planText.isEmpty()`: an empty lane list renders as `[]`,
 // which is a non-empty string and an absent value.
@@ -94,13 +120,19 @@ QString provenanceFor(const PlannedItem &it, const QString &column) {
 
 struct Loader {
     Loader(RoadmapStore &store_, const MigrationPlan &plan_,
-           const RoadmapMigrateLoad::Options &opts_, RoadmapMigrateLoad::Outcome &out_)
-        : store(store_), plan(plan_), opts(opts_), out(out_) {}
+           const RoadmapMigrateLoad::Options &opts_, RoadmapMigrateLoad::Outcome &out_,
+           QVector<std::optional<QString>> sourcePaths_)
+        : store(store_), plan(plan_), opts(opts_), out(out_),
+          sourcePaths(std::move(sourcePaths_)) {}
 
     RoadmapStore &store;
     const MigrationPlan &plan;
     const RoadmapMigrateLoad::Options &opts;
     RoadmapMigrateLoad::Outcome &out;
+    // ANTS-3782 § 2.4 — parallel to plan.sources; the value each section's
+    // source_path takes. Computed and validated by load() BEFORE the
+    // transaction opened, so by here every entry is known placeable.
+    QVector<std::optional<QString>> sourcePaths;
     QString err;
 
     qint64 projectId = 0;
@@ -191,12 +223,24 @@ bool Loader::resolveSections() {
         if (!err.isEmpty())
             return fail(err);
 
+        // ANTS-3782 § 2.2 — which file this section came from, resolved
+        // through plan.sources. Index 0 is the live roadmap and writes NULL.
+        const std::optional<QString> wantSource =
+            (s->sourceIndex >= 0 && s->sourceIndex < sourcePaths.size())
+                ? sourcePaths.at(s->sourceIndex)
+                : std::nullopt;
+
         if (!found) {
             const auto sid = store.addSection(projectId, notNull(s->slug),
                                               notNull(s->title), s->level, parentId, &err);
             if (!sid)
                 return fail(err);
             if (!s->intro.isEmpty() && !store.setSectionIntro(*sid, s->intro, &err))
+                return fail(err);
+            // addSection() takes no source, so without this call the column
+            // could only ever hold its DDL NULL while every call reported
+            // success — the ANTS-3767 defect one column along.
+            if (!store.setSectionSource(*sid, wantSource, &err))
                 return fail(err);
             sectionIds.insert(s->slug, *sid);
             ++out.sectionsWritten;
@@ -217,6 +261,16 @@ bool Loader::resolveSections() {
         }
         if (cur->intro != s->intro) {
             if (!store.setSectionIntro(*found, s->intro, &err))
+                return fail(err);
+            changed = true;
+        }
+        // ANTS-3782 § 2.2 — a section whose only change is its provenance DID
+        // change, and counts toward sectionsWritten like any other field. A
+        // re-run reporting it unchanged would make the one column that spec
+        // adds the one column this Outcome cannot see. Reachable in practice
+        // when a minor is rotated between two runs.
+        if (cur->sourcePath != wantSource) {
+            if (!store.setSectionSource(*found, wantSource, &err))
                 return fail(err);
             changed = true;
         }
@@ -680,6 +734,51 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
                       QStringLiteral("changedAt is not an ISO-8601 Z stamp: '%1'")
                           .arg(opts.changedAt));
 
+    // ANTS-3766 § 2.2 / INV-10 — a plan carrying an archive_slug_collision is
+    // REFUSED before anything is written. planFrom() is pure and total, so it
+    // can only record the note; this is the half that can act on it. Refusing
+    // matters because the store does NOT catch the collision on its own:
+    // § 2.6.1 resolves every section with findSection() and calls addSection()
+    // only for a genuinely-new slug, so UNIQUE (project_id, slug) never fires
+    // and the archive section is silently MERGED into the live one — title and
+    // intro overwritten, the archive's items filed into the live section.
+    for (const Note &n : plan.notes)
+        if (n.code == QLatin1String("archive_slug_collision"))
+            return refuse("project_refused",
+                          QStringLiteral("archive_slug_collision: %1").arg(n.detail));
+
+    // ANTS-3782 § 2.4 / INV-28 — every source's stored `source_path` is
+    // computed and checked BEFORE the transaction opens, beside the changedAt
+    // check above and for the same reason: it needs only Options::projectRoot
+    // and plan.sources, and a refusal that has opened a transaction is a
+    // rollback where a plain refusal would do.
+    //
+    // The guard is the general membership test, not "refuse a path beginning
+    // ../": an in-project source at docs/archive/0.6.md stores cleanly, matches
+    // nothing the render can place, and is the same silently unplaceable
+    // section by a quieter route.
+    //
+    // None of the refusable shapes is reachable through findRoadmaps(), which
+    // enumerates only docs/roadmap/ entries matching its regex and rejects
+    // symlinks. They survive because load() takes a MigrationPlan and cannot
+    // tell which producer built it — the same reasoning § 2.7 already applies
+    // to a store this half did not write.
+    QVector<std::optional<QString>> sourcePaths;
+    sourcePaths.reserve(plan.sources.size());
+    for (int i = 0; i < plan.sources.size(); ++i) {
+        // sources[0] is the live roadmap: it stores NULL and is exempt by
+        // construction, so a project with no archives never reaches the test.
+        if (i == 0) {
+            sourcePaths.append(std::nullopt);
+            continue;
+        }
+        const QString rel = relativeSourcePath(opts.projectRoot,
+                                               plan.sources.at(i).path);
+        if (!isPlaceableSourcePath(rel))
+            return refuse("source_unplaceable", plan.sources.at(i).path);
+        sourcePaths.append(rel);
+    }
+
     // § 2.2 / INV-12 — refused, not run slowly. A 5 s deadline against a
     // migration-sized transaction fails *sometimes*, which is the worst
     // available behaviour: it passes locally and fails on a loaded machine.
@@ -693,7 +792,7 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
     if (!store.begin(&err))
         return refuse("project_refused", err);
 
-    Loader loader{store, plan, opts, out};
+    Loader loader{store, plan, opts, out, sourcePaths};
     if (!loader.run()) {
         // Every failure but § 2.5's one stated exception aborts the project.
         // The rollback's own error cannot displace the first one: the first is

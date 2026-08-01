@@ -202,6 +202,24 @@ public:
     // section.intro — addSection() has no argument for it. Stored VERBATIM.
     bool setSectionIntro(qint64 sectionId, const QString &intro, QString *error = nullptr);
 
+    // ANTS-3782 § 2.2 — section.source_path, which source file this section was
+    // read from. nullopt writes SQL NULL and means the live roadmap.
+    //
+    // A separate setter rather than a wider addSection(), exactly as
+    // setSectionIntro() is: ANTS-3765 § 2.6 resolves a section and then writes
+    // the fields that differ, so the write has to reach an EXISTING row, which
+    // an INSERT-only addSection() cannot offer.
+    //
+    // An ENGAGED optional holding an empty string stores '' and does NOT fold
+    // to NULL — which is where this parts company with setSectionIntro()
+    // directly above. '' is a meaningless intro and a WRONG source path, so
+    // folding it would make "unplaceable, stored anyway" read back as "the live
+    // roadmap" and collapse the one distinction the optional exists to carry.
+    // RoadmapMigrateLoad::load() never produces the value (ANTS-3782 § 2.4
+    // refuses it first), so this binds a second caller rather than that one.
+    bool setSectionSource(qint64 sectionId, const std::optional<QString> &sourcePath,
+                          QString *error = nullptr);
+
     // § 2.6's section update: addSection() is INSERT-only and a re-run can
     // change a heading's title, level or parent. Takes the whole tuple — they
     // come from one PlannedSection and a partial update has no meaning.
@@ -293,6 +311,12 @@ public:
         QString slug, title, intro;
         int     level = 0;
         std::optional<qint64> parentId;
+        // ANTS-3782 § 2.3 — nullopt = the live roadmap. std::optional rather
+        // than an empty QString, matching parentId in this same struct: the
+        // NULL / '' distinction is load-bearing, and a type that could not
+        // express it would lose the distinction at the reader. Without this
+        // field the column would be write-only and INV-14 could not observe it.
+        std::optional<QString> sourcePath;
     };
     std::optional<SectionRow> readSection(qint64 sectionId, QString *error = nullptr) const;
 

@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap migration now reads rotated archives, and records which file each section came from (ANTS-3766, ANTS-3782)**
+  The migration used to see only a project's live `ROADMAP.md`. Closed
+  minor versions that `/bump` had rotated out into `docs/roadmap/0.6.md`
+  were invisible to it — so once the roadmap file becomes machine-generated,
+  the first regeneration would have quietly deleted them. Discovery now
+  returns the live file plus every conforming archive beside it, detects
+  each one's format separately, and namespaces each archive's sections by
+  the file they came from so nothing in the live file shifts. The store
+  gained one column recording the source file per section, which is what
+  lets the archives later be written back where they belong instead of
+  being folded into the main file.
+
 - **Roadmap migration, load half — a project's roadmap can now be written into the store, atomically and repeatably** (ANTS-3765)
   The reader built in ANTS-3757 could turn a ROADMAP.md into a plan and
   had nowhere to put it. This writes the plan into the roadmap database:

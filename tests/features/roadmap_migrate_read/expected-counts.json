@@ -4,7 +4,8 @@
   "_generated": "2026-07-31",
   "_excluded": {
     "malformed": "The survey applies its bold-headline test to the text AFTER a recognised id token, so `- ✅ [ANTS-119&] **A headline.**` -- an unrecognised leading token plus a bold headline -- fails a test roadmap-data-model.md § 7.2 says it should pass. planFrom() admits it, as ANTS-3757 § 2.4 and § 2.3 both require. A survey defect, filed rather than absorbed into this file.",
-    "discovery": "INV-1 roots, one level deeper so the survey never walks them; several hold no roadmap at all."
+    "discovery": "INV-1 roots, one level deeper so the survey never walks them; several hold no roadmap at all.",
+    "archives": "ANTS-3766 § 6.2 — the archive roots, one level deeper so the survey never walks them, exactly as `discovery` is excluded and for the same reason. tools/roadmap-corpus-survey.py is ANTS-3757 INV-2's INDEPENDENT oracle and is blind to archives; teaching it this spec's rules would make it a second implementation of them and destroy the independence that is its whole value. The cost is stated rather than hidden: archive item counts are checked against ANTS-3766's own rules, not against an independently written parser, so INV-2's parity property does not extend to them. § 6.3's corpus run over this project's real docs/roadmap/ is what covers the gap instead."
   },
   "items": {
     "antsv1": 3,

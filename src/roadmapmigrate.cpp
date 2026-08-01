@@ -194,15 +194,16 @@ bool isGrammaticalId(const QString &token) {
 }
 
 void addNote(QVector<Note> &notes, const char *code, const QString &detail,
-             int line) {
-    notes.append(Note{QString::fromLatin1(code), detail, line});
+             int line, int sourceIndex = 0) {
+    notes.append(Note{QString::fromLatin1(code), detail, line, sourceIndex});
 }
 
 // One reader record as migration will file it. § 2.1.1 accounts for the fields
 // left empty; the notes this raises are § 2.10's.
 PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
-                     int position, QVector<Note> &notes) {
+                     int position, int sourceIndex, QVector<Note> &notes) {
     PlannedItem it;
+    it.sourceIndex = sourceIndex;
     it.headline = rec.headlineFull.isEmpty() ? rec.headline : rec.headlineFull;
     it.body        = rec.body;
     it.layman      = rec.layman;
@@ -302,7 +303,8 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
     return it;
 }
 
-// Per-section walk state, parallel to MigrationPlan::sections.
+
+// Per-section walk state, parallel to the sections ONE source contributed.
 struct Build {
     int  nextPosition = 0;   // § 2.11 — ONE sequence over items AND elements
     bool hasElement   = false;
@@ -311,55 +313,32 @@ struct Build {
     int  lastItemIndex = -1; // into MigrationPlan::items
 };
 
-}  // namespace
-
-std::optional<Source> findRoadmap(const QString &projectRoot, QString *error) {
-    const auto fail = [error](const char *code) -> std::optional<Source> {
-        if (error) *error = QString::fromLatin1(code);
-        return std::nullopt;
-    };
-    // The roadmap is the file DIRECTLY in the root, not recursively, whose name
-    // case-folds to `roadmap.md` — so a `docs/ROADMAP.md` is not a candidate
-    // and cannot silently outrank the real one. One project names its file
-    // `roadmap.md`, and an uppercase-only glob excluded it from an entire
-    // survey (§ 2.2).
-    const QDir dir(projectRoot);
-    if (!dir.exists()) return fail("not_found");
-    QStringList hits;
-    const QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Hidden,
-                                                    QDir::Name);
-    for (const QFileInfo &fi : entries)
-        if (fi.fileName().compare(QStringLiteral("roadmap.md"),
-                                  Qt::CaseInsensitive) == 0)
-            hits.append(fi.absoluteFilePath());
-    if (hits.isEmpty()) return fail("not_found");
-    // Reachable on a case-sensitive filesystem, and either choice silently
-    // discards a whole project's roadmap.
-    if (hits.size() > 1) return fail("case_ambiguous");
-
-    QFile f(hits.constFirst());
-    if (!f.open(QIODevice::ReadOnly)) return fail("not_found");
-    Source src;
-    if (!decodeUtf8(f.readAll(), &src.markdown)) return fail("not_utf8");
-    src.path = hits.constFirst();
-    if (error) error->clear();
-    return src;
+// ANTS-3766 § 2.2's archive name regex, expressed ONCE. Deliberately tighter
+// than roadmap-format.md § 3.9's stated `^[0-9]+\.[0-9]+\.md$`, which accepts
+// the zero-padded `00.07.md` that its own prose forbids and that parses to the
+// same (0, 7) tuple as `0.7.md`. Forbidding leading zeros makes the
+// name→tuple map injective, so there is no duplicate-minor condition left to
+// detect — the case is removed by construction rather than checked for.
+const QRegularExpression &archiveNameRx() {
+    static const QRegularExpression rx(
+        QStringLiteral("\\A(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.md\\z"));
+    return rx;
 }
 
-MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
-                       const QString &projectName, const QString &exportSlug) {
-    MigrationPlan plan;
-    plan.projectName = projectName;
-    plan.exportSlug  = exportSlug;
-    plan.sourcePath  = sourcePath;
+// ANTS-3766 § 2.3 — one source's slug namespace. `prefix` is empty for the
+// live roadmap and "<M>-<N>" for an archive.
+struct SourceCtx {
+    int     index = 0;
+    QString prefix;
+};
 
-    const QStringList lines = markdown.split(QLatin1Char('\n'));
+// The structural walk of ONE source, appending into `plan`. This is
+// ANTS-3757 § 2.11's walk unchanged except where a comment names ANTS-3766.
+void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan) {
+    const QStringList lines = src.markdown.split(QLatin1Char('\n'));
     const int n = lines.size();
-    plan.format = RoadmapParse::detectRoadmapFormat(lines);
 
-    // The reader owns bullet classification and every field on an item; this
-    // function owns the structural walk the reader never had (§ 2.3).
-    const QVector<BulletRecord> records = RoadmapParse::parseBullets(markdown);
+    const QVector<BulletRecord> records = RoadmapParse::parseBullets(src.markdown);
     QHash<int, const BulletRecord *> recordAt;
     for (const BulletRecord &rec : records)
         if (rec.firstLine >= 1) recordAt.insert(rec.firstLine, &rec);
@@ -388,18 +367,37 @@ MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
         if (openedAt != 0) fenceEnd.insert(openedAt, n);   // unterminated
     }
 
+    // ANTS-3766 § 2.3 — uniquing runs PER SOURCE, over this source's own set,
+    // never one shared across sources. That is what makes the live file's
+    // slugs identical whether or not an archive is present (INV-3), and what
+    // makes an archive's slug a function of its own file alone (INV-4).
     QVector<Build> builds;
     QSet<QString>  seenSlugs;
     QString        parentOfSubsection;
+    int            headingOrdinal = 0;   // 1-based over this source's ##/###
 
-    // Content before the first heading belongs to a synthetic section: empty
-    // slug and title, level 0, no parent. Dropped at the end if it stays empty.
-    plan.sections.append(PlannedSection{});
-    builds.append(Build{});
+    // Sections this source contributed start here; `cur` is an index into
+    // `builds`, and `sectionBase + cur` the matching index into plan.sections.
+    const int sectionBase = plan.sections.size();
+
+    // Content before the first heading belongs to a synthetic section. Its
+    // slug is "" for the live file and the bare "<M>-<N>" for an archive —
+    // it is not a heading, so it never enters `seen` (§ 2.3).
+    {
+        PlannedSection root;
+        root.slug        = ctx.prefix;
+        root.sourceIndex = ctx.index;
+        plan.sections.append(root);
+        builds.append(Build{});
+    }
     int cur = 0;
 
+    const auto section = [&](int i) -> PlannedSection & {
+        return plan.sections[sectionBase + i];
+    };
+
     const auto closeSection = [&]() {
-        PlannedSection &s = plan.sections[cur];
+        PlannedSection &s = section(cur);
         const Build &b = builds.at(cur);
         if (b.introLast <= 0) return;
         QStringList intro;
@@ -420,10 +418,11 @@ MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
         PlannedElement e;
         e.kind        = kind;
         e.payload     = payload;
-        e.sectionSlug = plan.sections.at(cur).slug;
+        e.sectionSlug = section(cur).slug;
         e.position    = builds[cur].nextPosition++;
         e.firstLine   = first;
         e.lastLine    = last;
+        e.sourceIndex = ctx.index;
         plan.elements.append(e);
         builds[cur].hasElement = true;
     };
@@ -451,9 +450,9 @@ MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
             const BulletRecord *rec = *rit;
             const int last = qMax(rec->lastLine, ln);
             if (isItem(*rec)) {
-                plan.items.append(makeItem(*rec, plan.sections.at(cur).slug,
+                plan.items.append(makeItem(*rec, section(cur).slug,
                                            builds[cur].nextPosition++,
-                                           plan.notes));
+                                           ctx.index, plan.notes));
                 builds[cur].hasElement    = true;
                 builds[cur].lastItemIndex = plan.items.size() - 1;
                 ln = last + 1;
@@ -462,10 +461,19 @@ MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
             // A maximal run of legend lines is the legend block, and it belongs
             // to the PROJECT rather than to this section (roadmap-data-model.md
             // § 5.1). Only the first such run: a later one has no carrier.
+            //
+            // ANTS-3766 § 2.4 — and only sources[0] may plan one, because
+            // MigrationPlan holds a single optional<PlannedLegend> and the
+            // legend belongs to the project rather than to a file. An
+            // archive's own legend run therefore falls through to `narration`
+            // below, which costs nothing: every line is still carried, so
+            // INV-5's per-source partition holds. Dropping it instead would
+            // leave its lines in no carrier and make INV-5 unsatisfiable.
             const QString text = rec->body.section(QLatin1Char('\n'), 0, 0).trimmed();
-            if (!plan.legend && looksLikeLegendLine(text)) {
+            if (ctx.index == 0 && !plan.legend && looksLikeLegendLine(text)) {
                 PlannedLegend legend;
-                legend.firstLine = ln;
+                legend.firstLine   = ln;
+                legend.sourceIndex = ctx.index;
                 int end = ln;
                 const BulletRecord *run = rec;
                 for (;;) {
@@ -505,20 +513,43 @@ MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
         const int level = inFence[ln] ? 0 : RoadmapIndex::headingLevel(raw, &headingText);
         if (level == 2 || level == 3) {
             closeSection();
+            ++headingOrdinal;
             PlannedSection s;
             s.title = headingText;
-            // The same function with the same running `seen` set the reader
-            // uses, so a section's slug equals the `sectionSlug` the reader put
-            // on every item inside it, and the store's UNIQUE (project_id,
-            // slug) is satisfied by the uniquing it already does.
-            s.slug       = RoadmapIndex::uniqueSlug(seenSlugs, headingText);
-            s.level      = level;
-            s.parentSlug = level == 3 ? parentOfSubsection : QString();
+
+            // ANTS-3766 § 2.3. Two rules, in this order, and the order IS the
+            // mechanism:
+            //
+            // 1. A heading that slugifies to empty takes `h<ordinal>` — but
+            //    ONLY in an archive. Applying it at index 0 would change a
+            //    live section's slug from "" to h<n> on any project with an
+            //    emoji-only heading, which is exactly the live-slug shift
+            //    INV-4 and INV-9 forbid; the live path's empty-slug hole is
+            //    uniqueSlug()'s own pre-existing defect and is left alone.
+            // 2. Uniquing runs on the UNPREFIXED base, before the prefix is
+            //    applied. Reversing it breaks the scheme: `seen` holds
+            //    unprefixed slugs, so a post-prefix `0-6-h3` would never
+            //    compare against a real `### H3` (which slugifies to `h3` and
+            //    prefixes to the same string) and the two would collide.
+            //    Minting `h<ordinal>` outside `seen` reproduces the same
+            //    bypass, which is why the substitution happens BEFORE the
+            //    uniqueSlug() call rather than instead of it.
+            QString base = RoadmapIndex::slugifyHeading(headingText);
+            if (base.isEmpty() && ctx.index >= 1)
+                base = QStringLiteral("h") + QString::number(headingOrdinal);
+            const QString unique = RoadmapIndex::uniqueSlug(seenSlugs, base);
+            s.slug = ctx.prefix.isEmpty()
+                         ? unique
+                         : ctx.prefix + QLatin1Char('-') + unique;
+
+            s.level       = level;
+            s.parentSlug  = level == 3 ? parentOfSubsection : QString();
+            s.sourceIndex = ctx.index;
             if (level == 2) parentOfSubsection = s.slug;
             s.firstLine = s.lastLine = ln;
             plan.sections.append(s);
             builds.append(Build{});
-            cur = plan.sections.size() - 1;
+            cur = builds.size() - 1;
             ++ln;
             continue;
         }
@@ -606,12 +637,14 @@ MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
 
     // § 2.4 — a `- **Status**:` line belonging to no pass block is not an item.
     // Reported, not imported and not dropped: the line is still carried by the
-    // section or element whose span it falls in.
-    if (plan.format == QLatin1String("pass-headings")) {
+    // section or element whose span it falls in. Per SOURCE, against that
+    // source's own detected format (§ 2.1.1).
+    if (src.format == QLatin1String("pass-headings")) {
         QVector<bool> insideItem(n + 2, false);
         for (const PlannedItem &it : plan.items)
-            for (int k = it.firstLine; k <= it.lastLine && k <= n; ++k)
-                insideItem[k] = true;
+            if (it.sourceIndex == ctx.index)
+                for (int k = it.firstLine; k <= it.lastLine && k <= n; ++k)
+                    insideItem[k] = true;
         static const QRegularExpression rxStatus(
             QStringLiteral("^\\s*[-*]\\s*\\*\\*Status\\*\\*\\s*:"),
             QRegularExpression::CaseInsensitiveOption);
@@ -619,13 +652,198 @@ MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
             if (!insideItem[k] && !inFence[k] &&
                 rxStatus.match(lines.at(k - 1)).hasMatch())
                 addNote(plan.notes, "orphan_status_line",
-                        lines.at(k - 1).trimmed(), k);
+                        lines.at(k - 1).trimmed(), k, ctx.index);
+    }
+
+    // The synthetic root is dropped when this source put nothing in it. Safe
+    // to erase mid-vector: items and elements reference a section by SLUG, not
+    // by index, and this source's walk is finished.
+    if (builds.at(0).nextPosition == 0 && section(0).intro.isEmpty())
+        plan.sections.remove(sectionBase);
+}
+
+}  // namespace
+
+std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error) {
+    const auto fail = [error](const char *code) -> std::optional<Discovery> {
+        if (error) *error = QString::fromLatin1(code);
+        return std::nullopt;
+    };
+
+    // 1. The live roadmap — ANTS-3757 § 2.2's rule, unchanged. The file
+    // DIRECTLY in the root, not recursively, whose name case-folds to
+    // `roadmap.md` — so a `docs/ROADMAP.md` is not a candidate and cannot
+    // silently outrank the real one. One project names its file `roadmap.md`,
+    // and an uppercase-only glob excluded it from an entire survey.
+    const QDir dir(projectRoot);
+    if (!dir.exists()) return fail("not_found");
+    QStringList hits;
+    const QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Hidden,
+                                                    QDir::Name);
+    for (const QFileInfo &fi : entries)
+        if (fi.fileName().compare(QStringLiteral("roadmap.md"),
+                                  Qt::CaseInsensitive) == 0)
+            hits.append(fi.absoluteFilePath());
+    if (hits.isEmpty()) return fail("not_found");
+    // Reachable on a case-sensitive filesystem, and either choice silently
+    // discards a whole project's roadmap.
+    if (hits.size() > 1) return fail("case_ambiguous");
+
+    Discovery disc;
+    {
+        QFile f(hits.constFirst());
+        if (!f.open(QIODevice::ReadOnly)) return fail("not_found");
+        Source live;
+        if (!decodeUtf8(f.readAll(), &live.markdown)) return fail("not_utf8");
+        live.path = hits.constFirst();
+        disc.sources.append(live);
+    }
+
+    // 2. Archives under <root>/docs/roadmap/ — ANTS-3766 § 2.2. The directory
+    // and the descending sort are roadmap-format.md § 3.9's, adopted as they
+    // stand; the name regex is deliberately tighter (see archiveNameRx()).
+    const QFileInfo archiveDir(dir.filePath(QStringLiteral("docs/roadmap")));
+    if (archiveDir.exists()) {
+        if (!archiveDir.isDir() || !archiveDir.isReadable()) {
+            // Absent and unreadable are NOT the same fact and must not share
+            // an outcome. Folding this into the missing-directory branch would
+            // make the one case that loses EVERY archive at once the quietest
+            // thing this lane can do — strictly worse than a single misnamed
+            // file, which does get a note.
+            addNote(disc.notes, "archive_unrecognised",
+                    QStringLiteral("docs/roadmap"), 0, -1);
+        } else {
+            QVector<QPair<QPair<int, int>, QString>> found;
+            const QFileInfoList archiveEntries =
+                QDir(archiveDir.absoluteFilePath())
+                    // QDir::System is load-bearing and was found missing by
+                    // INV-8's symlink leg. Measured: against this lane's own
+                    // fixture, `AllEntries` lists four of five entries and
+                    // omits the symlink `0.9.md` entirely, while
+                    // `AllEntries | System` lists all five. AllEntries is
+                    // Dirs|Files|Drives, and a symlink that does not resolve
+                    // is none of those — so without System a broken or
+                    // outward symlink under docs/roadmap/ is not skipped with
+                    // a note, it is INVISIBLE, which is exactly the silent
+                    // drop § 2.2 promises never to do.
+                    .entryInfoList(QDir::AllEntries | QDir::System |
+                                       QDir::Hidden | QDir::NoDotAndDotDot,
+                                   QDir::Name);
+            for (const QFileInfo &fi : archiveEntries) {
+                const QString name = fi.fileName();
+                const auto m = archiveNameRx().match(name);
+                // Regular files only, and symlinks are NOT followed. BOTH
+                // halves are written out because Qt will not give them for
+                // free: isFile() and a QDir::Files filter FOLLOW symlinks and
+                // report a symlink-to-file as a file, so the natural
+                // implementation loads it — and a symlink under docs/roadmap/
+                // can point outside the project root. A DIRECTORY named
+                // `0.7.md` matches the regex too.
+                if (!m.hasMatch() || !fi.isFile() || fi.isSymLink()) {
+                    // Never a silent skip: a misnamed archive is exactly the
+                    // shape whose silent loss this lane exists to prevent.
+                    addNote(disc.notes, "archive_unrecognised", name, 0, -1);
+                    continue;
+                }
+                found.append({{m.captured(1).toInt(), m.captured(2).toInt()},
+                              fi.absoluteFilePath()});
+            }
+            // Descending by the (major, minor) INTEGER tuple. Lexical sort is
+            // explicitly wrong here — "0.10" < "0.9" as strings — and this
+            // project will reach minor 10.
+            std::sort(found.begin(), found.end(),
+                      [](const auto &a, const auto &b) { return b.first < a.first; });
+
+            for (const auto &entry : std::as_const(found)) {
+                QFile f(entry.second);
+                if (!f.open(QIODevice::ReadOnly)) {
+                    // An archive is skippable where the live file is not, so a
+                    // permissions failure takes the note rather than the
+                    // refusal findRoadmap() gives the live file.
+                    addNote(disc.notes, "archive_unrecognised",
+                            QFileInfo(entry.second).fileName(), 0, -1);
+                    continue;
+                }
+                Source arc;
+                // Partial migration of a project is worse than none: the load
+                // half is one transaction, and a plan silently missing one
+                // archive would commit as though complete.
+                if (!decodeUtf8(f.readAll(), &arc.markdown)) return fail("not_utf8");
+                arc.path = entry.second;
+                disc.sources.append(arc);
+            }
+        }
+    }
+
+    // 3. Format, per source, then § 2.1.1's reference-format comparison.
+    QVector<bool> evidenced(disc.sources.size(), false);
+    for (int i = 0; i < disc.sources.size(); ++i) {
+        bool sawSignal = false;
+        disc.sources[i].format = RoadmapParse::detectRoadmapFormat(
+            disc.sources.at(i).markdown.split(QLatin1Char('\n')), &sawSignal);
+        evidenced[i] = sawSignal;
+    }
+    // The reference is the FIRST EVIDENCED source, not sources[0] — the rule
+    // has to hold in both directions. Keyed on sources[0] it would exempt an
+    // archive from a refusal it cannot deserve while leaving a prose-only live
+    // ROADMAP.md exposed to that same refusal beside a github-task-list
+    // archive: the evidence-free `ants-v1` default would mismatch and the whole
+    // project would be refused on no evidence at all.
+    int refIdx = -1;
+    for (int i = 0; i < disc.sources.size(); ++i)
+        if (evidenced.at(i)) { refIdx = i; break; }
+    if (refIdx >= 0) {
+        const QString reference = disc.sources.at(refIdx).format;
+        for (int i = 0; i < disc.sources.size(); ++i) {
+            if (!evidenced.at(i)) {
+                // No signal: inherit, and never raise the refusal — there is
+                // nothing here to disagree with.
+                disc.sources[i].format = reference;
+                continue;
+            }
+            if (disc.sources.at(i).format != reference)
+                return fail("archive_format_mismatch");
+        }
+    }
+    // refIdx < 0: no source carries a signal at all, so there is no reference.
+    // Every source keeps detectRoadmapFormat()'s answer — its evidence-free
+    // `ants-v1` default for all of them — so they agree and nothing is refused.
+
+    if (error) error->clear();
+    return disc;
+}
+
+MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
+                       const QString &exportSlug) {
+    MigrationPlan plan;
+    plan.projectName = projectName;
+    plan.exportSlug  = exportSlug;
+    plan.sources     = discovery.sources;
+    // Discovery's notes reach the plan by being PASSED IN, which is what keeps
+    // ANTS-3757 INV-9's purity intact: this function still touches no
+    // filesystem.
+    plan.notes       = discovery.notes;
+
+    for (int i = 0; i < plan.sources.size(); ++i) {
+        SourceCtx ctx;
+        ctx.index = i;
+        if (i >= 1) {
+            // "<M>-<N>" from the archive's own filename — § 2.3. Derived from
+            // the name alone, which is what makes an archive slug stable under
+            // every edit to every other source (INV-4).
+            const auto m = archiveNameRx().match(
+                QFileInfo(plan.sources.at(i).path).fileName());
+            ctx.prefix = m.captured(1) + QLatin1Char('-') + m.captured(2);
+        }
+        walkSource(plan.sources.at(i), ctx, plan);
     }
 
     // § 2.5 — both items are kept and both are reported. Merging or renaming
     // them here, or keying items on the folded id, defers the failure to
     // ANTS-3765's UNIQUE (project_id, id_fold) insert, in the half that can no
-    // longer see the source line.
+    // longer see the source line. ANTS-3766 § 2.4: a duplicate id ACROSS
+    // sources is not a new case — the store keys on (project_id, id_fold),
+    // which is source-blind, so this rule already covers it.
     QHash<QString, QVector<int>> byFold;
     for (int k = 0; k < plan.items.size(); ++k)
         if (!plan.items.at(k).id.isEmpty())
@@ -636,19 +854,42 @@ MigrationPlan planFrom(const QString &markdown, const QString &sourcePath,
     std::sort(collided.begin(), collided.end());
     for (int k : std::as_const(collided))
         addNote(plan.notes, "duplicate_id", plan.items.at(k).id,
-                plan.items.at(k).firstLine);
+                plan.items.at(k).firstLine, plan.items.at(k).sourceIndex);
 
-    // § 2.3 — detectRoadmapFormat() answers `ants-v1` for input it does not
-    // recognise, including an empty file, so a detected format is no evidence
-    // that anything was understood. The condition turns on ITEMS: a prose-only
-    // file legitimately plans elements, and "zero items and zero elements"
-    // would be unreachable for exactly the file a parse regression produces.
-    if (plan.items.isEmpty())
-        addNote(plan.notes, "empty_source",
-                QStringLiteral("the source yielded no items"), 0);
+    // ANTS-3766 § 2.5 — `empty_source` is raised PER SOURCE. Evaluated over
+    // the merged plan it would silently stop firing: the plan holds the live
+    // file's items, so it is not empty, and the fact that one archive parsed
+    // to nothing would never be reported. That is a LOST signal rather than a
+    // spurious one — the harder direction, because a prose-only archive and an
+    // archive the parser failed on then become indistinguishable, and the
+    // second is a real defect this note is the only detector for.
+    for (int i = 0; i < plan.sources.size(); ++i) {
+        bool any = false;
+        for (const PlannedItem &it : plan.items)
+            if (it.sourceIndex == i) { any = true; break; }
+        if (!any)
+            addNote(plan.notes, "empty_source",
+                    QFileInfo(plan.sources.at(i).path).fileName(), 0, i);
+    }
 
-    if (builds.at(0).nextPosition == 0 && plan.sections.at(0).intro.isEmpty())
-        plan.sections.removeFirst();
+    // ANTS-3766 § 2.3 — a prefixed archive slug that still equals a LIVE slug
+    // is a REFUSAL, never a rename: renaming would shift an archive slug in
+    // response to a live-file edit, which is the orphan cascade § 2.3.1 rules
+    // out, just more rarely. planFrom() is pure and total (it returns a plan,
+    // not an optional), so it records the note and leaves the collision
+    // visible; load() refuses a plan carrying it.
+    if (plan.sources.size() > 1) {
+        QSet<QString> liveSlugs;
+        for (const PlannedSection &s : plan.sections)
+            if (s.sourceIndex == 0) liveSlugs.insert(s.slug);
+        for (const PlannedSection &s : plan.sections) {
+            if (s.sourceIndex == 0) continue;
+            if (liveSlugs.contains(s.slug))
+                addNote(plan.notes, "archive_slug_collision", s.slug,
+                        s.firstLine, s.sourceIndex);
+        }
+    }
+
     return plan;
 }
 

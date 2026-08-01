@@ -12,6 +12,8 @@
 #include "roadmapmigrateload.h"
 
 #include <QDir>
+#include <QDirIterator>
+#include <QFile>
 #include <QFileInfo>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -58,8 +60,13 @@ MigrationPlan planOf(const QVector<PlannedItem> &items,
     MigrationPlan p;
     p.projectName = QStringLiteral("proj");
     p.exportSlug = QStringLiteral("proj");
-    p.sourcePath = QStringLiteral("/nowhere/ROADMAP.md");
-    p.format = QStringLiteral("ants-v1");
+    // ANTS-3766 § 2.1 — one Source replaces the old sourcePath/format pair.
+    // Index 0 is the live roadmap, so it stores SQL NULL and never reaches
+    // ANTS-3782 § 2.4's membership test.
+    RoadmapMigrate::Source src;
+    src.path = QStringLiteral("/nowhere/ROADMAP.md");
+    src.format = QStringLiteral("ants-v1");
+    p.sources.append(src);
     p.sections = sections;
     p.items = items;
     return p;
@@ -565,4 +572,426 @@ TEST(RoadmapMigrateLoad, Inv15HistoryCapDoesNotAbortTheProject) {
               std::string("edited"))
         << "the item update the refused history row accompanies must commit";
     EXPECT_EQ(f.count(QStringLiteral("history")), 0);
+}
+
+// ============================================================================
+// ANTS-3766 INV-9 / INV-10 and ANTS-3782 INV-14 / INV-28.
+// These are the legs that need a STORE, which is why they live here rather
+// than in roadmap_migrate_read.
+// ============================================================================
+
+namespace {
+
+QString archivesDir() {
+    return QString::fromUtf8(ANTS_MIGRATE_FIXTURE_DIR) + QStringLiteral("/archives");
+}
+
+// A committed archive root copied into a temp directory. INV-9 and INV-4
+// MUTATE their fixture (both append to the live file between two plans), and a
+// test that edits a committed fixture in place corrupts every later assertion
+// in the same run and shows up as a dirty working tree.
+struct CopiedRoot {
+    QTemporaryDir dir;
+    QString root;
+    explicit CopiedRoot(const char *name) {
+        root = dir.path() + QStringLiteral("/root");
+        const QString src = archivesDir() + QLatin1Char('/') + QString::fromUtf8(name);
+        QDirIterator walk(src, QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
+        while (walk.hasNext()) {
+            const QString from = walk.next();
+            const QString to = root + QLatin1Char('/') + QDir(src).relativeFilePath(from);
+            QDir().mkpath(QFileInfo(to).absolutePath());
+            QFile::copy(from, to);
+        }
+    }
+    void appendToLiveRoadmap(const QString &text) const {
+        QFile f(root + QStringLiteral("/ROADMAP.md"));
+        EXPECT_TRUE(f.open(QIODevice::Append | QIODevice::Text));
+        f.write(text.toUtf8());
+    }
+    MigrationPlan plan() const {
+        QString err;
+        const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+        EXPECT_TRUE(disc.has_value()) << err.toStdString();
+        if (!disc) return {};
+        return RoadmapMigrate::planFrom(*disc, QStringLiteral("arch"),
+                                        QStringLiteral("arch"));
+    }
+};
+
+// A source_path read straight out of SQL, so the assertion's oracle is the
+// column rather than the writer's idea of it.
+QString sqlSourcePath(RoadmapStore &store, const QString &slug) {
+    QSqlQuery q(store.db());
+    q.prepare(QStringLiteral("SELECT source_path FROM section WHERE slug = ?"));
+    q.addBindValue(slug);
+    if (!q.exec() || !q.next()) return QStringLiteral("<no row>");
+    return q.value(0).isNull() ? QStringLiteral("<NULL>") : q.value(0).toString();
+}
+
+}  // namespace
+
+// --------------------------------------------------------- ANTS-3766 INV-9 --
+// Archive items survive an edit to the LIVE file. The edit BETWEEN the two
+// loads is the whole invariant: stated as "load the same input twice" this is
+// vacuous, because a counter-based slug scheme is perfectly deterministic and
+// reproduces its own slugs exactly on an unchanged re-run — it would pass
+// against the very design ANTS-3766 § 2.3.1 rejects.
+TEST(roadmap_migrate_load, Ants3766Inv9ArchiveItemsSurviveALiveEdit) {
+    const CopiedRoot src("baseline");
+    QTemporaryDir dbDir;
+    RoadmapStore store(dbDir.path() + QStringLiteral("/roadmap.sqlite"),
+                       RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    ASSERT_TRUE(store.open(&err)) << err.toStdString();
+
+    RoadmapMigrateLoad::Options o;
+    o.changedAt = QStringLiteral("2026-08-01T10:00:00Z");
+    o.projectRoot = src.root;
+
+    const MigrationPlan first = src.plan();
+    ASSERT_EQ(first.sources.size(), 3);
+    const auto r1 = RoadmapMigrateLoad::load(store, first, o);
+    ASSERT_TRUE(r1.ok) << r1.error.toStdString();
+    ASSERT_GT(r1.itemsInserted, 0);
+
+    // Which item ids came from an archive, so the second run's outcome can be
+    // read restricted to them.
+    QSet<QString> archiveIds;
+    for (const auto &it : first.items)
+        if (it.sourceIndex >= 1 && !it.id.isEmpty()) archiveIds.insert(it.id.toLower());
+    ASSERT_FALSE(archiveIds.isEmpty()) << "0.6.md carries ANTS-1001 and ANTS-1002";
+
+    src.appendToLiveRoadmap(QStringLiteral(
+        "\n### ⚡ Performance\n\n"
+        "- 📋 [BASE-0007] **A fourth live perf item.**\n  Kind: perf.\n"));
+
+    const MigrationPlan second = src.plan();
+    const auto r2 = RoadmapMigrateLoad::load(store, second, o);
+    ASSERT_TRUE(r2.ok) << r2.error.toStdString();
+
+    // Every archive item must still be the row the first load wrote.
+    for (const QString &id : std::as_const(archiveIds)) {
+        QSqlQuery q(store.db());
+        q.prepare(QStringLiteral("SELECT COUNT(*) FROM item WHERE id_fold = ?"));
+        q.addBindValue(id);
+        ASSERT_TRUE(q.exec() && q.next());
+        EXPECT_EQ(q.value(0).toInt(), 1)
+            << "INV-9: " << id.toStdString()
+            << " — breaks when archive slugs depend on live-file content "
+               "(§ 2.3.1), which re-files the affected section's items under a "
+               "shifted slug and orphans the originals. This is the end-to-end "
+               "detector for INV-4";
+    }
+    EXPECT_EQ(r2.itemsInserted, 1)
+        << "INV-9: exactly the one item the live edit added — no archive item "
+           "is re-inserted";
+}
+
+// -------------------------------------------------------- ANTS-3766 INV-10 --
+// A plan carrying archive_slug_collision is REFUSED before anything is written.
+TEST(roadmap_migrate_load, Ants3766Inv10CollisionPlanIsRefused) {
+    const CopiedRoot src("collision");
+    QTemporaryDir dbDir;
+    RoadmapStore store(dbDir.path() + QStringLiteral("/roadmap.sqlite"),
+                       RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    ASSERT_TRUE(store.open(&err)) << err.toStdString();
+
+    RoadmapMigrateLoad::Options o;
+    o.changedAt = QStringLiteral("2026-08-01T10:00:00Z");
+    o.projectRoot = src.root;
+
+    const MigrationPlan plan = src.plan();
+    const auto out = RoadmapMigrateLoad::load(store, plan, o);
+    EXPECT_FALSE(out.ok)
+        << "INV-10: breaks when the note is dropped and the duplicate reaches "
+           "the store, which SILENTLY MERGES the archive section into the live "
+           "one — UNIQUE (project_id, slug) never fires, because § 2.6.1 "
+           "resolves every section with findSection() and calls addSection() "
+           "only for a genuinely-new slug. A clause asserting an ABORT would "
+           "describe a failure that cannot happen and would pass against the "
+           "merge it is meant to catch";
+    for (const QString &t : {QStringLiteral("project"), QStringLiteral("section"),
+                             QStringLiteral("item")}) {
+        QSqlQuery q(store.db());
+        ASSERT_TRUE(q.exec(QStringLiteral("SELECT COUNT(*) FROM ") + t) && q.next());
+        EXPECT_EQ(q.value(0).toInt(), 0) << t.toStdString() << " must be empty";
+    }
+}
+
+// -------------------------------------------------------- ANTS-3782 INV-14 --
+// The persisted discriminator is correct AND machine-independent.
+TEST(roadmap_migrate_load, Ants3782Inv14SourcePathIsRootRelative) {
+    const CopiedRoot src("baseline");
+    QTemporaryDir dbDir;
+    RoadmapStore store(dbDir.path() + QStringLiteral("/roadmap.sqlite"),
+                       RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    ASSERT_TRUE(store.open(&err)) << err.toStdString();
+
+    RoadmapMigrateLoad::Options o;
+    o.changedAt = QStringLiteral("2026-08-01T10:00:00Z");
+    o.projectRoot = src.root;
+
+    const MigrationPlan plan = src.plan();
+    ASSERT_EQ(plan.sources.size(), 3);
+    const auto out = RoadmapMigrateLoad::load(store, plan, o);
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+
+    // Read back through readSection(), the typed path — INV-26's surface.
+    int liveSections = 0, archiveSections = 0;
+    for (const auto &s : plan.sections) {
+        // The synthetic root's slug is a DEFAULT-CONSTRUCTED QString, which is
+        // null rather than empty; the loader stores it through notNull(), so a
+        // lookup has to normalise the same way or it misses that one row.
+        const QString slug = s.slug.isNull() ? QString::fromUtf8("") : s.slug;
+        const auto sid = store.findSection(out.projectId, slug, &err);
+        ASSERT_TRUE(sid.has_value()) << slug.toStdString() << ": " << err.toStdString();
+        const auto row = store.readSection(*sid, &err);
+        ASSERT_TRUE(row.has_value()) << err.toStdString();
+        if (s.sourceIndex == 0) {
+            ++liveSections;
+            EXPECT_FALSE(row->sourcePath.has_value())
+                << "INV-14: a live section stores SQL NULL, not a path — " 
+                << s.slug.toStdString();
+        } else {
+            ++archiveSections;
+            ASSERT_TRUE(row->sourcePath.has_value()) << s.slug.toStdString();
+            const QString want = QStringLiteral("docs/roadmap/") +
+                                 QFileInfo(plan.sources.at(s.sourceIndex).path).fileName();
+            EXPECT_EQ(*row->sourcePath, want)
+                << "INV-14: breaks when load() stores sources[sourceIndex].path "
+                   "VERBATIM, which is absolute — the store then works only on "
+                   "the machine that wrote it and § 2.5's membership test never "
+                   "matches anywhere else";
+        }
+    }
+    EXPECT_GT(liveSections, 0);
+    EXPECT_GT(archiveSections, 0) << "0.6.md contributes sections";
+    EXPECT_EQ(sqlSourcePath(store, QStringLiteral("0-6-features")),
+              QStringLiteral("docs/roadmap/0.6.md"));
+}
+
+// The same fixture through a differently-spelled but EQUIVALENT root stores
+// byte-identical values. The symlinked-root leg is the only detector for a
+// half-canonicalised conversion; the trailing-slash leg passes against it,
+// because QDir normalises that much on its own.
+TEST(roadmap_migrate_load, Ants3782Inv14EquivalentRootSpellingsAgree) {
+    const CopiedRoot src("baseline");
+
+    const auto storedFor = [&](const QString &rootSpelling) {
+        QTemporaryDir dbDir;
+        RoadmapStore store(dbDir.path() + QStringLiteral("/roadmap.sqlite"),
+                           RoadmapStore::kDefaultHistoryCapBytes,
+                           RoadmapStore::Access::Bulk);
+        QString err;
+        EXPECT_TRUE(store.open(&err)) << err.toStdString();
+        RoadmapMigrateLoad::Options o;
+        o.changedAt = QStringLiteral("2026-08-01T10:00:00Z");
+        o.projectRoot = rootSpelling;
+        QString derr;
+        const auto disc = RoadmapMigrate::findRoadmaps(rootSpelling, &derr);
+        EXPECT_TRUE(disc.has_value()) << derr.toStdString();
+        if (!disc) return QStringLiteral("<no discovery>");
+        const auto plan = RoadmapMigrate::planFrom(*disc, QStringLiteral("a"),
+                                                   QStringLiteral("a"));
+        const auto out = RoadmapMigrateLoad::load(store, plan, o);
+        EXPECT_TRUE(out.ok) << out.error.toStdString();
+        return sqlSourcePath(store, QStringLiteral("0-6-features"));
+    };
+
+    const QString plain = storedFor(src.root);
+    EXPECT_EQ(plain, QStringLiteral("docs/roadmap/0.6.md"));
+
+    EXPECT_EQ(storedFor(src.root + QLatin1Char('/')), plain)
+        << "INV-14: a trailing slash must not change the stored value — and "
+           "this leg PASSES against a half-canonicalised conversion, which is "
+           "why it cannot be the only one";
+
+    // A path through a symlink: absoluteFilePath() does not resolve one, so
+    // canonicalising only ONE side computes a path OUT of the project.
+    const QString link = src.dir.path() + QStringLiteral("/link");
+    ASSERT_TRUE(QFile::link(src.root, link)) << "could not create the symlink";
+    EXPECT_EQ(storedFor(link), plain)
+        << "INV-14: breaks when EITHER side of the conversion is left "
+           "un-canonicalised — canonicalise only the root and the result is a "
+           "path computed OUT of the project (../link/docs/…); canonicalise "
+           "only the source and the mirror defect appears. This leg is the only "
+           "detector for both";
+}
+
+// -------------------------------------------------------- ANTS-3782 INV-28 --
+// A source whose stored value would be unplaceable REFUSES the project.
+//
+// Each leg CONSTRUCTS the plan directly rather than planning a fixture root:
+// none of the three shapes is reachable through findRoadmaps(), which
+// enumerates only docs/roadmap/ entries matching its regex and rejects
+// symlinks. They survive because load() takes a MigrationPlan and cannot tell
+// which producer built it — the same technique INV-1 above uses for its
+// off-enum status, and for the same reason.
+TEST(roadmap_migrate_load, Ants3782Inv28UnplaceableSourceRefusesTheProject) {
+    struct Leg {
+        const char *what;
+        QString sourcePath;                 // relative to the root, or absolute
+        bool absolute;
+    };
+
+    QTemporaryDir outer;
+    const QString root = outer.path() + QStringLiteral("/proj");
+    QDir().mkpath(root + QStringLiteral("/docs/roadmap"));
+    QDir().mkpath(root + QStringLiteral("/docs/archive"));
+    QDir().mkpath(outer.path() + QStringLiteral("/outside"));
+    QFile::copy(archivesDir() + QStringLiteral("/baseline/docs/roadmap/0.6.md"),
+                root + QStringLiteral("/docs/archive/0.6.md"));
+    QFile::copy(archivesDir() + QStringLiteral("/baseline/docs/roadmap/0.6.md"),
+                outer.path() + QStringLiteral("/outside/0.6.md"));
+
+    const QVector<Leg> legs = {
+        // Leg 1 — a source whose canonicalFilePath() is EMPTY. Qt returns the
+        // empty string for a path that does not resolve; in production this is
+        // a source deleted between discovery and load.
+        {"a source that does not resolve",
+         root + QStringLiteral("/docs/roadmap/gone-0.6.md"), true},
+        // Leg 2 — canonicalises OUTSIDE the root, yielding a ../ value § 2.5's
+        // membership test can never match.
+        {"a source outside the project root",
+         outer.path() + QStringLiteral("/outside/0.6.md"), true},
+        // Leg 3 — INSIDE the root but outside docs/roadmap/. Stores cleanly,
+        // matches nothing, and is the same silently-unplaceable section by a
+        // quieter route.
+        {"a source inside the root but outside docs/roadmap/",
+         root + QStringLiteral("/docs/archive/0.6.md"), true},
+    };
+
+    for (const Leg &leg : legs) {
+        QTemporaryDir dbDir;
+        RoadmapStore store(dbDir.path() + QStringLiteral("/roadmap.sqlite"),
+                           RoadmapStore::kDefaultHistoryCapBytes,
+                           RoadmapStore::Access::Bulk);
+        QString err;
+        ASSERT_TRUE(store.open(&err)) << err.toStdString();
+
+        MigrationPlan p = planOf({item(QStringLiteral("A-1"),
+                                       QStringLiteral("An item."),
+                                       QStringLiteral("s"), 0)});
+        // planOf() supplies sources[0], the live roadmap; this is the archive
+        // whose converted value the guard must reject.
+        RoadmapMigrate::Source arc;
+        arc.path = leg.sourcePath;
+        arc.format = QStringLiteral("ants-v1");
+        p.sources.append(arc);
+
+        RoadmapMigrateLoad::Options o;
+        o.changedAt = QStringLiteral("2026-08-01T10:00:00Z");
+        o.projectRoot = root;
+
+        const auto out = RoadmapMigrateLoad::load(store, p, o);
+        EXPECT_FALSE(out.ok) << "INV-28 (" << leg.what << "): expected a refusal";
+        bool sawCode = false;
+        for (const auto &n : out.notes)
+            if (n.code == QLatin1String("source_unplaceable")) sawCode = true;
+        EXPECT_TRUE(sawCode)
+            << "INV-28 (" << leg.what << "): breaks when the guard is written "
+               "as \"refuse a path beginning ../\", which passes legs one and "
+               "two and STORES leg three — a section that no render can place "
+               "and no error reports, which is § 1's silent loss reappearing "
+               "inside the fix for it";
+        for (const QString &t : {QStringLiteral("project"), QStringLiteral("section"),
+                                 QStringLiteral("item")}) {
+            QSqlQuery q(store.db());
+            ASSERT_TRUE(q.exec(QStringLiteral("SELECT COUNT(*) FROM ") + t) && q.next());
+            EXPECT_EQ(q.value(0).toInt(), 0)
+                << "INV-28 (" << leg.what << "): " << t.toStdString()
+                << " must be empty — nothing is written";
+        }
+    }
+}
+
+// ANTS-3766 § 6.3 — the corpus run, over this project's ACTUAL root.
+//
+// DISABLED by default, following this project's existing `CorpusCalibration`
+// convention: it reads a real tree outside the fixture set, so it is a
+// measuring instrument rather than an assertion, and its figures are recorded
+// in § 6.3 rather than enforced here. Run it with
+//   ctest --test-dir build -R CorpusArchiveRun -V
+// after passing ANTS_PROJECT_ROOT, or it self-skips.
+//
+// § 6.3 asks for three figures: the archive item count reaching the store, the
+// SECOND run's Outcome (INV-9 end-to-end on real data), and the slug list
+// assigned to the two real archives.
+TEST(roadmap_migrate_load, DISABLED_CorpusArchiveRun) {
+    const QByteArray envRoot = qgetenv("ANTS_PROJECT_ROOT");
+    if (envRoot.isEmpty()) {
+        GTEST_SKIP() << "set ANTS_PROJECT_ROOT to the project to migrate";
+    }
+    const QString root = QString::fromUtf8(envRoot);
+
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    ASSERT_TRUE(disc.has_value()) << "discovery refused: " << err.toStdString();
+    printf("sources: %d\n", int(disc->sources.size()));
+    for (const auto &s : disc->sources)
+        printf("  %-28s format=%s\n",
+               QFileInfo(s.path).fileName().toUtf8().constData(),
+               s.format.toUtf8().constData());
+
+    const MigrationPlan plan =
+        RoadmapMigrate::planFrom(*disc, QStringLiteral("Ants_Terminal"),
+                                 QStringLiteral("ants"));
+
+    // Figure 3 — the slug list assigned to each real archive.
+    for (int i = 1; i < plan.sources.size(); ++i) {
+        printf("slugs for %s:\n",
+               QFileInfo(plan.sources.at(i).path).fileName().toUtf8().constData());
+        for (const auto &s : plan.sections)
+            if (s.sourceIndex == i)
+                printf("    %s\n", s.slug.toUtf8().constData());
+    }
+
+    // Figure 1 — archive items reaching the store.
+    int archiveItems = 0;
+    for (const auto &it : plan.items) if (it.sourceIndex >= 1) ++archiveItems;
+    printf("archive items planned: %d (of %d total)\n",
+           archiveItems, int(plan.items.size()));
+    for (const auto &n : plan.notes)
+        printf("note: %-24s src=%d line=%d %s\n", n.code.toUtf8().constData(),
+               n.sourceIndex, n.line, n.detail.left(60).toUtf8().constData());
+
+    QTemporaryDir dbDir;
+    RoadmapStore store(dbDir.path() + QStringLiteral("/roadmap.sqlite"),
+                       RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    ASSERT_TRUE(store.open(&err)) << err.toStdString();
+    RoadmapMigrateLoad::Options o;
+    o.changedAt = QStringLiteral("2026-08-01T10:00:00Z");
+    o.projectRoot = root;
+
+    const auto r1 = RoadmapMigrateLoad::load(store, plan, o);
+    printf("run 1: ok=%d inserted=%d updated=%d unchanged=%d orphaned=%d "
+           "ids=%d sections=%d elements=%d err=%s\n",
+           int(r1.ok), r1.itemsInserted, r1.itemsUpdated, r1.itemsUnchanged,
+           r1.itemsOrphaned, r1.idsAllocated, r1.sectionsWritten,
+           r1.elementsWritten, r1.error.toUtf8().constData());
+    ASSERT_TRUE(r1.ok);
+
+    // Figure 2 — the SECOND run's Outcome, on real data.
+    const auto r2 = RoadmapMigrateLoad::load(store, plan, o);
+    printf("run 2: ok=%d inserted=%d updated=%d unchanged=%d orphaned=%d "
+           "ids=%d sections=%d elements=%d\n",
+           int(r2.ok), r2.itemsInserted, r2.itemsUpdated, r2.itemsUnchanged,
+           r2.itemsOrphaned, r2.idsAllocated, r2.sectionsWritten,
+           r2.elementsWritten);
+
+    // What the archives' sections actually stored.
+    QSqlQuery q(store.db());
+    ASSERT_TRUE(q.exec(QStringLiteral(
+        "SELECT slug, source_path FROM section WHERE source_path IS NOT NULL "
+        "ORDER BY slug")));
+    while (q.next())
+        printf("stored: %-40s <- %s\n", q.value(0).toString().toUtf8().constData(),
+               q.value(1).toString().toUtf8().constData());
 }

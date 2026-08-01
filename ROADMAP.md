@@ -23986,7 +23986,7 @@ against current source before filing.
   ANTS-3757 (2.1.1's last two owed rows discharged, 2.10's code set gains
   seven load-only codes), docs/subsystems.md. Unblocks ANTS-3758.
 
-- 📋 [ANTS-3766] **Migrate rotated roadmap archives into the store — ANTS-3757 excludes them by design.**
+- ✅ [ANTS-3766] **Migrate rotated roadmap archives into the store — ANTS-3757 excludes them by design.**
   roadmap-format.md 3.9 rotates closed minors out of ROADMAP.md into
   docs/roadmap/<major>.<minor>.md and DELETES them from the live file, so
   ANTS-3757's discovery (which resolves exactly one roadmap.md per root)
@@ -24066,6 +24066,7 @@ against current source before filing.
   To resume instead of splitting: bash
   /tmp/cold-eyes-1a71289f/build-packet.sh regenerates the lane packet
   deterministically; no other run state is needed.
+  Resolved (2026-08-01): shipped as ONE change with ANTS-3782 — a read half that migrated archives while writing provenance-free sections is the defect the pair exists to prevent. findRoadmap() -> findRoadmaps() returning a Discovery; format moved onto Source and detected per file; archive sections namespaced per source so a live slug never moves; per-source positions, partitions and empty_source; a load-side refusal for archive_slug_collision. detectRoadmapFormat() gained the evidence out-parameter the no-format-signal predicate needs. Every invariant verified RED against the mutation its own clause names (18 mutations, isolated build-and-run each). Corpus run over this project's own root: 20 archive items reach the store, the second run is idempotent (0 inserted / 1818 unchanged / 0 orphaned), and the four measured colliding slugs land namespaced beside the live file's. Full suite 3181/3181.
 
 - ✅ [ANTS-3767] **RoadmapStore has no write path for item.lanes, item.evidence or item.extras.**
   Verified 2026-07-31 against shipped source, not recalled.
@@ -24349,7 +24350,7 @@ against current source before filing.
   makes the store reachable, and ANTS-3756 section 2.3 has been
   corrected to name this item rather than ANTS-3757 as the owner.
 
-- 📋 [ANTS-3782] **Roadmap section provenance — the source_path column, its reader, and what the render re-splits on.**
+- ✅ [ANTS-3782] **Roadmap section provenance — the source_path column, its reader, and what the render re-splits on.**
   Split out of ANTS-3766 on 2026-08-01 at that spec's cold-eyes loop 4,
   which stopped on the structural trigger: 1060 lines, and two cold
   reads had failed to reach defects introduced by a third. This is the
@@ -24372,8 +24373,9 @@ against current source before filing.
   **Layman:** Records which file each chunk of the roadmap came from, so the archives can be written back where they belong instead of being folded into the main file.
   Kind: implement.
   Source: split from ANTS-3766, 2026-08-01.
+  Resolved (2026-08-01): shipped as ONE change with ANTS-3766. section.source_path added in ANTS-3756's CREATE TABLE at kSchemaVersion 1 (no ALTER, no bump); setSectionSource() joins the store surface; SectionRow/readSection() carry the matching optional; load() converts with BOTH sides canonicalised and refuses source_unplaceable before the transaction opens. Cold-eyes loop 3 ran first and stopped at the cap. INV-14/26/27/28 each verified RED against their own clause's mutation — and the kSchemaVersion-bump mutation also reddened the export-goldens test, turning section 2.1's third argument into a measurement.
 
-- 📋 [ANTS-3783] **ANTS-3766 loop-5 tail — verified MEDIUM/LOW findings left unfixed when the ratio trigger stopped the run.**
+- ✅ [ANTS-3783] **ANTS-3766 loop-5 tail — verified MEDIUM/LOW findings left unfixed when the ratio trigger stopped the run.**
   These are VERIFIED and UNFIXED. Do NOT re-review to rediscover them — a
   fresh loop costs a full multi-agent dispatch to regenerate what is
   already written here. Fold them in directly.
@@ -24412,6 +24414,7 @@ against current source before filing.
   **Layman:** A list of smaller wording and citation problems already found and confirmed in the archive-migration spec; they just were not worth another full review pass.
   Kind: doc-fix.
   Source: cold-eyes ANTS-3766 loop 5 deferred tail, 2026-08-01.
+  Resolved (2026-08-01): all 11 findings folded into ANTS-3766 directly, without re-review. 8 produced an edit; 2 were verified as already-correct and dropped explicitly (the ANTS-3757 section 2.3 citations are both right — that section owns the second-reader rule AND the empty_source rule); 1 is a recorded judgement (no section-anchor list, matching every sibling spec). The substantive one was finding 1, which changed a rule rather than wording: the format-mismatch test is now against the first EVIDENCED source rather than sources[0], making it symmetric in both directions, with a new INV-11 leg and a livenosignal/ fixture root.
 
 - 📋 [ANTS-3784] **spec_lint: a DELIBERATE invariant-id gap has no way to be declared, so it reports one finding per skipped number forever.**
   Measured 2026-08-01 on the ANTS-3782 cold-eyes gate: spec_lint

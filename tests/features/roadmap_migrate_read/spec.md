@@ -1,7 +1,12 @@
 # ANTS-3757 — the roadmap migration read half
 
-Test contract for `RoadmapMigrate::findRoadmap()` and `RoadmapMigrate::planFrom()`
-(`src/roadmapmigrate.{h,cpp}`, `ants_core_lib`, Qt6::Core only).
+Test contract for `RoadmapMigrate::findRoadmaps()` and
+`RoadmapMigrate::planFrom()` (`src/roadmapmigrate.{h,cpp}`, `ants_core_lib`,
+Qt6::Core only). **Both signatures changed at ANTS-3766**, which widened
+discovery from one source per project to the live roadmap plus its rotated
+archives: `findRoadmap()` became `findRoadmaps()` returning a `Discovery`, and
+`planFrom()` takes that `Discovery` rather than a markdown/path pair. This file
+therefore also carries ANTS-3766's INV-1..8, INV-10, INV-11 and INV-13.
 
 The design contract is [`docs/specs/ANTS-3757-roadmap-migration-read.md`](../../../docs/specs/ANTS-3757-roadmap-migration-read.md);
 its § 2.1 declarations are the single statement of shape and INV-1..13 in its
@@ -13,7 +18,7 @@ that spec's cold-eyes loop log as an implementation row.
 ## Fixtures
 
 `fixtures/` holds committed roadmaps, one directory per project, so
-`findRoadmap()` and the survey oracle both see the shape they take in the
+`findRoadmaps()` and the survey oracle both see the shape they take in the
 corpus. `tools/roadmap-corpus-survey.py` walks a root's immediate
 subdirectories, so `fixtures/discovery/*` is deliberately one level deeper and
 never enters the survey's view.

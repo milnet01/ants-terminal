@@ -429,7 +429,14 @@ QString idTokenPattern() {
 // SIZE) … - **Status**: <word>` shape used by RetroDB's roadmap.
 // We scan a larger budget (300 lines) so Pass-style docs with a
 // long preamble still trigger the right adapter.
-QString detectRoadmapFormat(const QStringList &lines) {
+QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
+    // ANTS-3766 § 2.1.1 — start at "no evidence" and raise it at each signal's
+    // own match site. Doing it that way rather than deriving the flag from the
+    // accumulated booleans at the bottom is what covers the early return
+    // below: that path never reaches the bottom, and it is the one whose
+    // mis-classification § 2.1.1 spends a paragraph on.
+    if (sawSignal) *sawSignal = false;
+    const auto signalled = [sawSignal] { if (sawSignal) *sawSignal = true; };
     if (lines.isEmpty()) return QStringLiteral("ants-v1");
     int seen = 0;
     bool hasGfm           = false;
@@ -445,6 +452,9 @@ QString detectRoadmapFormat(const QStringList &lines) {
         QRegularExpression::CaseInsensitiveOption);
     for (const auto &ln : lines) {
         if (ln.contains(QStringLiteral("<!-- ants-roadmap-format: 1 -->"))) {
+            // An explicit declaration, matched before any bullet is examined —
+            // so this is evidence, and the strongest kind.
+            signalled();
             return QStringLiteral("ants-v1");
         }
         if (ln.trimmed().isEmpty()) continue;
@@ -452,15 +462,19 @@ QString detectRoadmapFormat(const QStringList &lines) {
             ln.startsWith(QStringLiteral("- [x]")) ||
             ln.startsWith(QStringLiteral("- [X]"))) {
             hasGfm = true;
+            signalled();
         }
         if (rxAntsV1Bullet.match(ln).hasMatch()) {
             hasAntsV1Emoji = true;
+            signalled();
         }
         if (rxPassHeading.match(ln).hasMatch()) {
             ++passHeadings;
+            signalled();
         }
         if (rxStatusMarker.match(ln).hasMatch()) {
             ++statusMarkers;
+            signalled();
         }
         if (++seen >= 300) break;
     }

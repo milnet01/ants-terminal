@@ -784,3 +784,109 @@ TEST(RoadmapStoreSchema, Inv25FilingPathsAreClosed) {
     EXPECT_EQ(q.value(0).toInt(), 1);
     EXPECT_EQ(q.value(1).toInt(), 3);
 }
+
+// ============================================================================
+// ANTS-3782 — section.source_path: the column, its writer and its reader.
+// Numbered from 26, past ANTS-3756's highest, so no bare Inv<N> in this file
+// resolves two ways (that spec already has an INV-15).
+// ============================================================================
+
+// -------------------------------------------------------- ANTS-3782 INV-26 --
+// The column is reachable through the TYPED surface, for both the NULL and the
+// path case. Asserted against raw SQL, never a round-trip through the writer: a
+// writer compared with its own idea of the value cannot distinguish a stored
+// value from a default, which is the ANTS-3767 failure one column along.
+TEST(RoadmapStoreSchema, Inv26SourcePathReadableThroughSectionRow) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 pid = f.project(QStringLiteral("p"));
+
+    const auto live = f.store.addSection(pid, QStringLiteral("live"),
+                                         QStringLiteral("Live"), 2,
+                                         std::nullopt, &err);
+    ASSERT_TRUE(live.has_value()) << err.toStdString();
+    const auto arch = f.store.addSection(pid, QStringLiteral("0-6-features"),
+                                         QStringLiteral("Features"), 3,
+                                         std::nullopt, &err);
+    ASSERT_TRUE(arch.has_value()) << err.toStdString();
+
+    // A section with no source written at all keeps the DDL NULL...
+    auto row = f.store.readSection(*live, &err);
+    ASSERT_TRUE(row.has_value()) << err.toStdString();
+    EXPECT_FALSE(row->sourcePath.has_value())
+        << "INV-26: an unwritten column reads back as nullopt, which is exactly "
+           "what the live roadmap means — so no backfill is ever needed";
+
+    // ...and one written explicitly reads back byte for byte.
+    const QString rel = QStringLiteral("docs/roadmap/0.6.md");
+    ASSERT_TRUE(f.store.setSectionSource(*arch, rel, &err)) << err.toStdString();
+    row = f.store.readSection(*arch, &err);
+    ASSERT_TRUE(row.has_value()) << err.toStdString();
+    ASSERT_TRUE(row->sourcePath.has_value())
+        << "INV-26: breaks when SectionRow gains the field but readSection()'s "
+           "SELECT does not — every row then reads back nullopt, and the "
+           "live-roadmap leg PASSES while this one fails";
+    EXPECT_EQ(*row->sourcePath, rel);
+
+    // The oracle is raw SQL, not the writer.
+    QSqlQuery q(f.store.db());
+    ASSERT_TRUE(q.exec(QStringLiteral(
+        "SELECT source_path FROM section WHERE slug = '0-6-features'")));
+    ASSERT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toString(), rel);
+    ASSERT_TRUE(q.exec(QStringLiteral(
+        "SELECT source_path IS NULL FROM section WHERE slug = 'live'")));
+    ASSERT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 1) << "SQL NULL, not the empty string";
+
+    // Writing nullopt back returns the row to the live-roadmap state.
+    ASSERT_TRUE(f.store.setSectionSource(*arch, std::nullopt, &err))
+        << err.toStdString();
+    row = f.store.readSection(*arch, &err);
+    ASSERT_TRUE(row.has_value());
+    EXPECT_FALSE(row->sourcePath.has_value())
+        << "a rotated section that becomes live again must clear to NULL";
+}
+
+// An ENGAGED optional holding an empty string stores '', and does NOT fold to
+// NULL the way setSectionIntro() deliberately does. Folding would make
+// "unplaceable, stored anyway" indistinguishable from "the live roadmap".
+TEST(RoadmapStoreSchema, Inv26EmptySourcePathIsNotFoldedToNull) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 pid = f.project(QStringLiteral("p"));
+    const auto sid = f.store.addSection(pid, QStringLiteral("s"),
+                                        QStringLiteral("S"), 2, std::nullopt, &err);
+    ASSERT_TRUE(sid.has_value()) << err.toStdString();
+
+    ASSERT_TRUE(f.store.setSectionSource(*sid, QString(), &err)) << err.toStdString();
+    const auto row = f.store.readSection(*sid, &err);
+    ASSERT_TRUE(row.has_value()) << err.toStdString();
+    ASSERT_TRUE(row->sourcePath.has_value())
+        << "INV-26: breaks when this method inherits setSectionIntro()'s "
+           "empty-to-NULL fold — '' is a meaningless INTRO and a WRONG source "
+           "path, and collapsing them loses the one distinction std::optional "
+           "is here to carry";
+    EXPECT_TRUE(row->sourcePath->isEmpty());
+}
+
+// -------------------------------------------------------- ANTS-3782 INV-27 --
+// This change does not move the schema version.
+TEST(RoadmapStoreSchema, Inv27SchemaVersionStillOne) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    QSqlQuery q(f.store.db());
+    ASSERT_TRUE(q.exec(QStringLiteral("PRAGMA user_version")));
+    ASSERT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), RoadmapStore::kSchemaVersion);
+    EXPECT_EQ(RoadmapStore::kSchemaVersion, 1)
+        << "INV-27: breaks when kSchemaVersion is bumped for this column — the "
+           "tempting move, which requires an upgrade path that does not exist "
+           "(ANTS-3781) against ZERO stores that would need one, and which "
+           "invalidates three export goldens carrying \"schema\":1. This "
+           "invariant is what makes § 2.1's argument a contract rather than a "
+           "comment in a commit message";
+}
