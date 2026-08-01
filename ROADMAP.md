@@ -24373,6 +24373,46 @@ against current source before filing.
   Kind: implement.
   Source: split from ANTS-3766, 2026-08-01.
 
+- 📋 [ANTS-3783] **ANTS-3766 loop-5 tail — verified MEDIUM/LOW findings left unfixed when the ratio trigger stopped the run.**
+  These are VERIFIED and UNFIXED. Do NOT re-review to rediscover them — a
+  fresh loop costs a full multi-agent dispatch to regenerate what is
+  already written here. Fold them in directly.
+
+  1. ANTS-3766 section 2.1.1 / 2.2: the format-mismatch rule is
+     one-directional. A prose-only LIVE ROADMAP.md (no format signal,
+     evidence-free ants-v1 default) beside a github-task-list archive
+     refuses the whole project on no evidence — the same failure the
+     inheritance rule removes for archives, with the roles swapped. Fix:
+     state what happens when sources[0] itself has no format signal.
+  2. Section 2.2 bullet: "An archive matching the regex that cannot be
+     opened (permissions, a broken symlink target)" — the symlink example
+     is unreachable, because the predicate two bullets up is
+     isFile() && !isSymLink(). Drop the symlink example.
+  3. ANTS-3757 section 2.3 is cited for two unrelated rules (it raises
+     empty_source at line ~471; it forbids a second reader at ~528). At
+     least one citation is wrong; check both against that spec.
+  4. Section 2.2's code table lists not_utf8 as "inherited", but its use
+     on an ARCHIVE is new, not inherited. Footnote the row.
+  5. Section 6.3 routes implementation results into the cold-eyes loop
+     log, which is review history. Record them in section 6.3 or the
+     journal instead.
+  6. Section 2.3: "It cannot take the bare form and it cannot take a
+     dangling 0-6-" — "It" is two paragraphs from its antecedent.
+  7. Section 6.1: "fixtures/archives/ gains one root per case" never says
+     which suite owns the path, though both suites use the roots.
+  8. Section 2.2: "stated here once and cited, never restated" is falsified
+     by section 7, which restates the regex. Cite instead.
+  9. Header Status carries review history ("27 further findings including
+     two CRITICAL"), duplicating the loop log in the field a reader trusts
+     for lifecycle state.
+  10. A note with sourceIndex == -1 still carries Note::line; the spec does
+      not say it must be 0.
+  11. 978 lines with no section-anchor list (dimension 11). Judge against
+      sibling specs — none currently carries one.
+  **Layman:** A list of smaller wording and citation problems already found and confirmed in the archive-migration spec; they just were not worth another full review pass.
+  Kind: doc-fix.
+  Source: cold-eyes ANTS-3766 loop 5 deferred tail, 2026-08-01.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23

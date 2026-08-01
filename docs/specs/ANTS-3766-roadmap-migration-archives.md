@@ -177,10 +177,24 @@ afterwards.
 **A source with no format signal inherits `sources[0]`'s format and never
 triggers that refusal.** The predicate has to be computable **inside
 `findRoadmaps()`**, which is where the refusal is raised (§ 2.2's table) and
-which has no plan: **a source has no format signal when the detector's scan
-matched no bullet of any grammar.** So `detectRoadmapFormat()` gains a way to
-say so — an out-parameter reporting whether its classification rested on
-evidence — and this spec requires that addition of `src/roadmapparse.cpp`.
+which has no plan: **a source has no format signal when
+`detectRoadmapFormat()` reached its fallback without matching *any* of its
+classification signals.** So that function gains an out-parameter reporting
+whether its answer rested on evidence, and this spec requires that addition to
+`src/roadmapparse.cpp`.
+
+**"Any signal" is not "any bullet", and the difference is load-bearing.**
+Verified against `src/roadmapparse.cpp`: the function returns `ants-v1`
+immediately on `<!-- ants-roadmap-format: 1 -->` — an explicit declaration,
+matched **before** any bullet is examined — and it also classifies on
+`^####\s+Pass\s+\d` pass headings, which are not bullets either. A predicate
+written as "matched no bullet" would therefore report *no evidence* for a
+bullet-less file that explicitly declares its own format, and the inheritance
+rule would then override that declaration with `sources[0]`'s — silently
+mis-parsing a declared `ants-v1` archive under a `github-task-list` live file,
+which is the loss class this section exists to close, reintroduced by the
+exemption meant to prevent it. The evidence flag is false **only** when the
+function falls through every signal to its default.
 
 **Not "yields zero items", which an earlier draft of this section used and
 which cannot work here.** Item yield is a `planFrom()` result, and § 2.5's
@@ -312,14 +326,28 @@ rejected by `UNIQUE (project_id, slug)`.
 **Live slugs never move. Archive slugs are namespaced by their source file.**
 
 ```
-each source, independently:
+the synthetic root section of any source : slug = ""      # not a heading;
+                                                          # never enters `seen`
+
+each HEADING, per source, independently:
     base = slugifyHeading(heading)
-    if base is empty : base = "h" + <ordinal>      # 1-based, over ##/### headings
+    if base is empty AND this source is an archive (index >= 1):
+        base = "h" + <ordinal>                     # 1-based, over ##/### headings
     slug = uniqueSlug(seenForThisSource, base)     # UNPREFIXED, always
+
 then, for an archive <M>.<N> only, the result is prefixed:
-    root section (empty slug) -> "<M>-<N>"
-    any other heading         -> "<M>-<N>-" + <that source's unique slug>
+    the synthetic root (slug "") -> "<M>-<N>"
+    any other heading            -> "<M>-<N>-" + <that source's unique slug>
 ```
+
+**The `h<ordinal>` substitution is archive-only, and the live file keeps
+today's behaviour exactly.** This is not a detail: applying it at index 0 would
+change a live section's slug from `""` to `h<n>` on any project with an
+emoji-only heading, which is precisely the live-slug shift § 2.3.1, INV-4 and
+INV-9 exist to forbid — and INV-3 could not catch it, because both sides of its
+comparison would run the new rule. The live path's empty-slug hole is
+`uniqueSlug()`'s pre-existing defect; § 7 surfaces it and this spec does not
+touch it.
 
 **Uniquing runs on the UNPREFIXED name, before the prefix is applied** — every
 heading, including the synthesised `h<ordinal>`. That ordering is the whole
@@ -485,8 +513,10 @@ archive-specific exemption. A prose-only archive genuinely contributed no items
 and a human should see that said out loud — the note is informative, and notes
 have never been failures. The note's `sourceIndex` is the canonical identifier
 of which file it concerns, and a test asserts on that rather than on prose.
-`detail` carries the **filename** — § 2.2's wording and INV-8's, not a path —
-and **is** assertable for the one code that has
+`detail` carries the **entry's name** — the filename for an entry inside
+`docs/roadmap/`, and the literal `docs/roadmap` for the branch where the
+directory itself is the failing entry (§ 2.2). Either way it is a name this
+spec fixes rather than prose, and **is** assertable for the one code that has
 no index to assert on, `archive_unrecognised`, whose `sourceIndex` is `-1`
 (§ 2.4) because the file was never a source. For every other code `detail` is a
 human-readable echo and nothing depends on its wording.
@@ -606,8 +636,12 @@ subject; restating it here would leave two copies of one argument to diverge.
   the file that line is in, and ANTS-3757 INV-11's partition holds **within
   each source**: every non-blank line of source *i* lies inside exactly one
   carrier with `sourceIndex == i`. *Test:* same suite — asserts the partition
-  per source over the archive fixture, **including a leg whose archive carries
-  its own status-legend run**, which § 2.4 demotes to `narration`. *Breaks
+  per source over the archive fixture, **including a leg on the `legend/` root
+  (§ 6.1) whose archive carries its own status-legend run**, which § 2.4
+  demotes to `narration`. That root exists because the baseline cannot host the
+  leg: the baseline's archives are byte-identical copies of this project's real
+  ones, and *measured* — `grep -cE '^\s*[✅🚧📋💭]\s*=|legend' docs/roadmap/0.6.md`
+  → **0** — those carry no legend run at all. *Breaks
   when:* `sourceIndex` defaults to 0 on carriers built from an archive, which
   makes the archive's lines read as live-file lines and leaves both files'
   partitions false while every count stays right; **or** the archive's legend
@@ -622,8 +656,7 @@ subject; restating it here would leave two copies of one argument to diverge.
   to the live file. **Asserted on `sourceIndex`, not on `detail`** (§ 2.5): a
   human message is not assertable, which is ANTS-3757 INV-1's own rule. *Breaks when:* the condition is evaluated over the merged plan, which
   raises nothing at all here (the live file has items) and so **silently drops
-  the signal** that an archive parsed to nothing — the inverse failure to the
-  one § 2.5 describes, and the reason this invariant asserts the note's
+  the signal** that an archive parsed to nothing — the failure § 2.5 describes, and the reason this invariant asserts the note's
   presence rather than its absence.
 - **INV-7** — an archive whose bytes are not valid UTF-8 refuses the whole
   call with `not_utf8`, and no plan is produced. *Test:* same suite — a fixture
@@ -632,8 +665,12 @@ subject; restating it here would leave two copies of one argument to diverge.
   commits a transaction that looks complete and is not.
 - **INV-8** — an entry in `docs/roadmap/` that is not a regular file matching
   **§ 2.2's regex** raises an `archive_unrecognised` note carrying its filename
-  in `detail` and `sourceIndex == -1`, and is not loaded. *Test:* same suite —
-  the `unrecognised/` fixture (§ 6.1), carrying `0.7.0.md` (a patch suffix),
+  in `detail` and `sourceIndex == -1`, and is not loaded. **And the directory
+  itself is one of those entries:** a `docs/roadmap` that exists but cannot be
+  enumerated — it is a regular file, or is unreadable — raises the same note,
+  with `detail` naming `docs/roadmap`, while a *missing* directory raises none. *Test:* same suite —
+  the `unrecognised/` fixture (§ 6.1) for the entry legs and `dirisfile/` for
+  the directory leg, carrying `0.7.0.md` (a patch suffix),
   `00.07.md` (zero-padded — the case withdrawn INV-12 hands to this invariant),
   `README.md`, a **directory** named `0.8.md`, and a **symlink** `0.9.md`
   pointing outside the root; asserts **five** notes, `sourceIndex == -1` on
@@ -673,8 +710,13 @@ subject; restating it here would leave two copies of one argument to diverge.
   slug is still `0-6-features`, and that `tests/features/roadmap_migrate_load/`
   refuses that plan. *Breaks when:* the collision is resolved by renaming
   (INV-4's second mutation); or the note is dropped and the duplicate reaches
-  the store, which aborts on `UNIQUE (project_id, slug)` mid-transaction with
-  no line number to report. **Its "never fires on the real corpus" half is
+  the store, which **silently merges** the archive section into the live one —
+  `UNIQUE (project_id, slug)` never fires, because ANTS-3765 § 2.6.1 resolves
+  every section with `findSection()` and calls `addSection()` only for a
+  genuinely-new slug (§ 2.2). A clause asserting an abort would describe a
+  failure that cannot happen and would pass against the merge it is meant to
+  catch, so the load-side leg asserts the **refusal**, and the read-side leg
+  asserts the note. **Its "never fires on the real corpus" half is
   covered by § 6.3's corpus run, not by this fixture** — a fixture built to
   make it fire cannot also show it does not.
 - **INV-11** — `format` is detected per source, and an archive whose detected
@@ -812,7 +854,7 @@ make the live count 3, because INV-4's mutation only reddens when the counter
 has somewhere to move. Its `docs/roadmap/0.5.md` and `0.6.md` are
 **byte-identical copies of this project's own archives**, H1 title and all.
 
-Eight further roots, each carrying exactly what one invariant's mutation needs
+Ten further roots, each carrying exactly what one invariant's mutation needs
 and nothing else:
 
 | Root | For | Carries |
@@ -824,6 +866,8 @@ and nothing else:
 | `inherit/` | INV-11 leg 3 | a **`github-task-list`** live file and a bullet-less prose archive — the inheritance leg, which `mixedformat/` cannot host because neither of its legs has a `github-task-list` live file |
 | `noarchivedir/` | INV-3 | a copy of the baseline root with `docs/roadmap/` **removed** — the with/without pair INV-3 compares, as a committed root rather than a deletion performed at test time |
 | `collision/` | INV-10 | a live heading slugifying to `0-6-features` |
+| `dirisfile/` | INV-8 (directory leg) | a root whose `docs/roadmap` is a **regular file**, not a directory — one note naming `docs/roadmap`, and the live source still planned |
+| `legend/` | INV-5 (legend leg) | an archive carrying its own status-legend run; the real archives have none, so no other root can host this leg |
 | `emptyslug/` | INV-13 | an archive with an emoji-only `### 🎨` heading beside its H1 title and prose intro |
 
 **`INV-4` and `INV-9` mutate their fixture** — both append a section to the live
@@ -834,7 +878,7 @@ later assertion in the same run and shows up as a dirty working tree.
 This is the lesson from ANTS-3765 applied. Sixteen green invariant tests
 coexisted with a loader that, **on that spec's first corpus pass**, could not
 migrate three of ten real projects — two after the fixes that pass triggered
-(ANTS-3773, ANTS-3769), which is the figure § 2.3.1 quotes —
+(ANTS-3773, ANTS-3769), which is the figure § 2.3 quotes —
 because every fixture named its own sections and headlines and so never built
 the shapes real files contain. A hand-written archive fixture would have a
 tidy `## Features` heading and would never produce the collision this spec is
@@ -941,7 +985,7 @@ here. Everything below is still outstanding.
 - **`tests/features/roadmap_migrate_read/spec.md`** — its opening line is a
   test contract "for `RoadmapMigrate::findRoadmap()` and
   `RoadmapMigrate::planFrom()`"; both signatures change, and its Fixtures
-  section gains the nine archive roots (§ 6.1 — one baseline plus eight).
+  section gains the eleven archive roots (§ 6.1 — one baseline plus ten).
 - **`tests/features/roadmap_migrate_read/expected-counts.json`** — its
   `_excluded` map gains the archive roots and the reason (§ 6.2), and a new
   `expected-section-slugs.json` lands beside it (INV-2's golden).
@@ -954,6 +998,7 @@ here. Everything below is still outstanding.
 
 | Loop | Reviewer | Findings | Resolution |
 |---|---|---|---|
+| 5 (2026-08-01) — **stopped on the ratio trigger** | 2 cold `general-purpose` lanes, one shared byte-identical packet, no prior-loop context | C 3 · H 2 · M 6 · L 8 — 19 verified, 0 dismissed | All C and H fixed; the M/L tail filed as ANTS-3783. **Origin split: ~11 of 19 are collateral from loop 4's own fixes, the second consecutive loop where collateral is the larger share — which is Phase 5's ratio trigger, so the run stops here rather than taking a sixth pass to repair its fifth.** **C1 (both lanes) — loop 4's own pseudo-code applied the `h<ordinal>` empty-slug substitution to EVERY source**, including the live file, contradicting this section's own "Live slugs never move" and § 7's "does not touch the live path"; an implementer following the block would shift live slugs on any project with an emoji-only heading, the exact orphan cascade § 2.3.1 exists to prevent, and INV-3 could not catch it because both sides of its comparison would run the new rule. Now scoped to index ≥ 1, with the synthetic root given its own line. **C2 — INV-10's mutation asserted an abort that cannot happen**: it claimed a duplicate slug aborts on `UNIQUE (project_id, slug)` while § 2.2 states the opposite two hundred lines earlier — ANTS-3765 § 2.6.1 resolves with `findSection()` and silently MERGES. A test written from that clause would have verified nothing and passed against the merge. **C3 — loop 4's evidence predicate was wrong about the code it depends on**: `detectRoadmapFormat()` returns `ants-v1` on `<!-- ants-roadmap-format: 1 -->` **before** any bullet is examined, and also classifies on `^####\s+Pass\s+\d`, so "matched no bullet" reports *no evidence* for a file that explicitly declares its format — and the inheritance rule would then override that declaration. Now "reached its fallback without matching any signal". Also: the unreadable-`docs/roadmap` rule loop 4 added had no invariant or fixture (now INV-8's second clause plus `dirisfile/`), and INV-5's legend leg had no fixture at all — *measured*, the real archives carry no legend run (`grep -cE '^\s*[✅🚧📋💭]\s*=\|legend' docs/roadmap/0.6.md` → 0), so `legend/` is now its own root and § 6.1 carries ten. |
 | 4-split | 2026-08-01 | none — no reviewer dispatched | — | **Provenance row, not a review.** Written by `/write-spec`, not by the gate. Loop 4 stopped on the structural trigger rather than the cap — 1060 lines, and that loop's two CRITICALs plus INV-14's absence from the test plan were all loop-3-era material two cold reads had failed to reach — so the persistence half was split out as [ANTS-3782](ANTS-3782-roadmap-section-provenance.md): § 2.6, INV-14, and the ANTS-3756 / ANTS-3765 amendment bullets. **The seam is the same one considered and rejected as a *scoping* option on 2026-08-01, and this is not that decision**: splitting the work would ship a read half that writes provenance-free sections, so the two halves still land in one change (§ 2.6). **INV-14 is tombstoned in place here, never reflowed** (`specs.md` § 5.5) — it is cited from ANTS-3756 § 7 and ANTS-3765 § 2.4, and keeps its number on the other side. This document dropped 1060 → 978 lines; the seam bought coherence rather than a large reduction, which is stated because the next reader will otherwise read the split as having solved the size. |
 | 4 (2026-08-01) — re-gate after the § 2.6 sign-off | 3 cold `general-purpose` lanes, one shared byte-identical context packet, no prior-loop context | C 2 · H 7 · M 8 · L 10 — 27 verified, 2 dismissed | All 27 fixed. **Origin split: 25 draft defects vs 2 fix collateral** — draft defects dominate by an order of magnitude, so the loop was the right remedy and no ratio trigger fires. The two collateral are from this session's § 2.6 amendment pass: § 7 still stating the ANTS-3756 / ANTS-3765 amendments as pending after they landed, and § 2.6 misattributing INV-15's discriminator to the absence of `IF NOT EXISTS` when ANTS-3756 says the in-transaction `user_version` read is the discriminator and `IF NOT EXISTS` cannot be one. **C1 — the format-mismatch predicate was unimplementable, and loop 3 introduced it**: that loop resolved an undefined inheritance rule by defining "no format signal" as *yields zero items*, which is a `planFrom()` result, while the refusal is raised in `findRoadmaps()`, which has no plan. All three lanes reported it independently. Now an evidence out-parameter on `detectRoadmapFormat()` (a source change § 7 now carries), computable where the refusal lives; the false identity with § 2.5's `empty_source` is deleted, since bullets `isItem()` rejects are a format signal and zero items. **C2 — § 2.3's `h<ordinal>` rule reproduced the bypass it exists to close**: the prose put the *prefixed* name through `seen`, which never compares against the unprefixed slugs already in it, so a real `### H3` and a synthesised `h3` both reached `0-6-h3`. Uniquing now runs on the unprefixed base for every heading, stated once in the pseudo-code block. **A count conflict that verification saved from a wrong fix:** "three of ten real projects" against "the remaining two" are both true — three at ANTS-3765's first corpus pass, two after the fixes that pass triggered — so both are now moment-qualified rather than reconciled to one number. Also: INV-14 absent from § 6's test mapping (the one invariant covering § 2.6); an unreadable `docs/roadmap` silently dropping every archive in a spec whose § 2.2 promises "never a silent skip"; § 6.1's fixture table two roots short of what INV-3 and INV-11's third leg need; § 2.6's relativisation un-canonicalised on both sides, which INV-14's own symlink leg would have failed. |
 | 3 (2026-08-01) — **converged by cap** | 3 cold `general-purpose` lanes, same brief, no prior-loop context | C 2 · H 5 · M 5 · L 8 · I 3 — 20 verified, 0 dismissed | All 20 fixed. **Origin split: ~18 of 20 were fix collateral from loop 2, and all three lanes independently reported the same top two** — which is Phase 5's ratio trigger on its second consecutive loop, so the run stops here rather than taking a fourth pass to repair its own third. Both criticals were one fact stated twice and disagreeing: the loop-2 paragraph making a refusal return a populated `Discovery` contradicted the table, INV-7 and INV-11 (resolved to `nullopt` + code everywhere); and INV-1 still carried the loose name regex loop 2 had tightened in § 2.2, which re-admitted the exact `00.07.md` case withdrawn INV-12 existed for. Fixed by **deleting N−1** — the regex, the silent-merge mechanism and the relativisation rule are each now stated once and cited. Also: INV-8 asserted four notes against a five-entry fixture; § 7 instructed the ANTS-3765 amendment to write the absolute path § 2.6 forbids; the `h<ordinal>` form bypassed `seen` exactly as the defect it fixed did; the format-inheritance predicate was undefined and untested (now "yields zero items", with an INV-11 leg); and § 2.6 — the spec's only persisted output — had no invariant at all, now **INV-14**. `tools/roadmap-archive-survey.py` was tightened in step with the regex and prints its own pattern so the two cannot drift. |
