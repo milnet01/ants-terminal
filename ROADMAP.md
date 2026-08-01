@@ -24266,6 +24266,36 @@ against current source before filing.
   15 of 3D_Engine's 17 collisions clear. The other two need ANTS-3771 or a
   reworded line in that file (ANTS-3772).
 
+- 📋 [ANTS-3781] **RoadmapStore has no schema-upgrade path, and ANTS-3756 attributes one to a spec that already shipped without it.**
+  ANTS-3756 states: "A lower user_version is an upgrade, which ANTS-3757
+  owns; until it ships there is only version 1, so the case is unreachable
+  rather than unhandled." ANTS-3757 has shipped and no upgrade path
+  exists. Verified in RoadmapStore::createSchema (src/roadmapstore.cpp):
+  version > kSchemaVersion refuses with both numbers; version ==
+  kSchemaVersion commits and returns; version 0 runs the DDL. A version
+  strictly between 0 and kSchemaVersion falls through to the same DDL,
+  which is written WITHOUT "IF NOT EXISTS" by deliberate choice (that
+  choice is recorded in ANTS-3756's loop log, row 8-impl, as the
+  discriminator for INV-15) — so an older store would fail on "table
+  already exists" rather than refuse cleanly or upgrade.
+
+  Still genuinely unreachable: kSchemaVersion is 1, so no store below it
+  can exist. The sentence's escape clause has expired while its premise
+  holds. Two things to settle, and they can be settled separately:
+  restate the ownership in ANTS-3756 (the upgrade belongs to whoever
+  first needs it, not to ANTS-3757), and build the path itself before the
+  first schema change that lands AFTER the store becomes reachable.
+
+  The store is reachable from no user-facing code path today — verified,
+  RoadmapStore and RoadmapMigrate appear only in src/roadmap* and tests,
+  with no MCP verb, dialog or mainwindow caller — so the deadline is
+  ANTS-3758's consumer cutover, not this item. Until then a column can be
+  added by editing the CREATE TABLE in place at version 1, which is what
+  ANTS-3766 section 2.6 should do rather than ALTER + a version bump.
+  **Layman:** The roadmap database can't be upgraded to a newer layout — the code that would do it was never written, and the design doc says someone else already built it.
+  Kind: fix.
+  Source: in-session-2026-08-01.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
