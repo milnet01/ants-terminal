@@ -26,8 +26,11 @@ import sys
 from collections import Counter
 
 # roadmap-format.md § 3.9 — case-sensitive, per-minor, no `v`, no zero-padding,
-# no patch suffix. Quoted from the standard, not re-invented.
-ARCHIVE_RE = re.compile(r"^[0-9]+\.[0-9]+\.md$")
+# no patch suffix. The standard's PROSE says all of that; the regex it prints
+# (`^[0-9]+\.[0-9]+\.md$`) does not actually forbid zero-padding, so `00.07.md`
+# would match it and collide with `0.7.md` on the same (0, 7) tuple. This is
+# the tightened form ANTS-3766 § 2.2 adopts, which is what the prose describes.
+ARCHIVE_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$")
 HEADING_RE = re.compile(r"^(#{2,3}) (.+)$")
 BULLET_RE = re.compile(r"^- [\U0001F4CB\U0001F6A7✅\U0001F4AD] ")
 
@@ -112,7 +115,7 @@ def main() -> int:
     arch = archives(root)
     print("=== A. archive inventory (spec § 1.1) ===")
     print(f"root: {root}")
-    print(f"conforming archives (^[0-9]+\\.[0-9]+\\.md$): {len(arch)}")
+    print(f"conforming archives ({ARCHIVE_RE.pattern}): {len(arch)}")
     for p in arch:
         print(f"  {os.path.relpath(p, root):24s} bytes={os.path.getsize(p):6d} "
               f"emoji_bullets={emoji_bullets(p):3d} sections={len(headings(p)):2d}")
