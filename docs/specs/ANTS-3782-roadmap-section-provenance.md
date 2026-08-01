@@ -24,13 +24,15 @@ plan. The plan is discarded at commit, so the plan-lifetime `sourceIndex`
 [ANTS-3766](ANTS-3766-roadmap-migration-archives.md) § 2.4 assigns does not
 reach the render: it indexes a `sources` vector nothing persists.
 
-Nothing in the schema carries the fact instead. Verified against live source
-rather than recalled: `RoadmapStore::createSchema()` (`src/roadmapstore.cpp`)
-creates `section` with `section_id, project_id, slug, title, level, intro,
-parent_id, UNIQUE (project_id, slug)`, and `RoadmapStore::SectionRow`
-(`src/roadmapstore.h`) carries `slug, title, intro, level, parentId`. **No
-table records which file a section came from, and no reader could return it if
-one did.**
+Nothing in the schema carried the fact instead. Verified against live source
+rather than recalled, **as of drafting on 2026-08-01 and before this spec
+shipped**: `RoadmapStore::createSchema()` (`src/roadmapstore.cpp`) created
+`section` with `section_id, project_id, slug, title, level, intro, parent_id,
+UNIQUE (project_id, slug)`, and `RoadmapStore::SectionRow`
+(`src/roadmapstore.h`) carried `slug, title, intro, level, parentId`. **No
+table recorded which file a section came from, and no reader could return it if
+one had.** (Past tense throughout: this section is the problem statement, and
+the column it argues for is now in that DDL — § 7 records the landing.)
 
 The consequence is not a missing feature but a silent loss. With archives
 migrated and their origin unrecorded, ANTS-3758's first regeneration writes
@@ -464,8 +466,9 @@ copy would drift from it.
 
 - **[ANTS-3756](ANTS-3756-roadmap-store-schema.md)** — **schema change, applied
   to that spec's text on 2026-08-01** (before this split, under ANTS-3766's id);
-  **the code change lands with this item** — `src/roadmapstore.cpp` still has no
-  `source_path`, which is what § 1 states. In the spec: `section` carries
+  **the code change LANDED with this item on 2026-08-01** — `src/roadmapstore.cpp`
+  now carries `source_path` in its `CREATE TABLE section`, which is what § 1
+  describes the absence of. In the spec: `section` carries
   `source_path TEXT` in its DDL at `kSchemaVersion` 1, `SectionRow` and
   `readSection()` carry the matching `sourcePath`, and its § 2.3
   upgrade-ownership sentence names ANTS-3781. **The loop-2 addition is now
@@ -474,7 +477,8 @@ copy would drift from it.
   reader and no writer. Its § 7 amendment bullet was retargeted to this id on
   the same day. **Nothing is outstanding against that spec.**
 - **[ANTS-3765](ANTS-3765-roadmap-migration-load.md)** — **write side, applied
-  to that spec's text on 2026-08-01; the code change lands with this item.**
+  to that spec's text on 2026-08-01; the code change LANDED with this item on
+  2026-08-01.**
   Its § 2.6 section-resolution paragraph performs the write and quotes § 2.4's
   expression; its § 2.4 `SectionRow` carries `sourcePath` and cites this spec's
   INV-14. **Both citations were retargeted on 2026-08-01 and neither is
