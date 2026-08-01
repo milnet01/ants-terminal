@@ -94,3 +94,47 @@ tests. Two synthetic fixtures (one ants-v1, one pass-headings) with the
 line numbers written out, so INV-3 asserts exact spans rather than a
 relation that any monotonic numbering would satisfy. INV-4 asserts against
 `PassHeadingWrite::passIdFromDesignator()` rather than a literal.
+
+## ANTS-3773 — a GFM bold lead-in is an id only when it looks like one
+
+The `github-task-list` branch adopted **any** bold run at the head of a bullet
+as the id, on a convention it asserted and never tested: "the leading bold span
+is an ID-label". The ants-v1 branch immediately below it guards the same
+extraction with an id-shaped test, and says why — in that format the bold span
+is normally the headline.
+
+**Measured over the ten-project corpus (2026-08-01), the convention is half
+true.** One project writes this shape, and there it holds for 288 bullets
+(`MT1`, `FW W5`, `Audit X1`) and fails for 166 (`Photo mode`, `Aerodynamics`,
+`Asset-pipeline tooling`). Prose adopted as an id is not cosmetic: two bullets
+sharing a lead-in fold to one identity, which fails ANTS-3756's
+`UNIQUE (project_id, id_fold)` and refuses that project's whole migration
+(ANTS-3765 § 2.5). It hit 17 bullets.
+
+**Two wider rules were tried and both are wrong.** The ants-v1 guard demands a
+whitespace-free token, and `FW W5` / `Audit X1` are real ids containing a space.
+Requiring a **digit** fitted all ten roadmaps — and broke ANTS-1438's Vestige
+fixture, whose ids are `Terrain System` and `JustBoldNoSeparator`, digitless and
+deliberate. That one was caught by the suite rather than the corpus, because
+Vestige is not among the ten files measured; a corpus check is a strong test and
+not a sufficient one.
+
+**So the guard is a trailing colon and nothing more.** It is not a heuristic:
+`idTokenPattern()` is `[A-Za-z0-9][A-Za-z0-9_-]*-\d+`, so a colon cannot occur
+in an id, and `**Phase 9E-2:**` is a label introducing prose. It clears 15 of
+the 17 collisions.
+
+**The residual two are not solvable from the text**, and saying so is part of the
+contract: 3D_Engine has two bullets whose identity is the lead-in
+`**Photo mode**`, which is structurally identical to Vestige's `Terrain System`.
+That project stays refused until **ANTS-3771** lets it declare its id format, or
+one of the two lines is reworded.
+
+A dropped lead-in does **not** leave the bullet with no id: ANTS-1428's GFM
+adapter falls back to a content-hash id and marks it `synthetic`, which
+ANTS-3757 § 2.9 discards so migration allocates a real one. The test asserts
+that destination, not merely that the label is gone.
+
+**Must fail first:** against the shipped branch, `Phase 9E-2:` and `Photo mode`
+are both returned as `idToken`, and the two `Phase 9E-2:` bullets carry one
+identity.

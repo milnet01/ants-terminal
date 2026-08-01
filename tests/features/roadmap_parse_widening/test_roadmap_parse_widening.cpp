@@ -195,3 +195,63 @@ TEST(roadmap_parse_widening, Inv5IdTokenAsWritten) {
         EXPECT_TRUE(rec.idToken.isEmpty())
             << "INV-5: a pass id is synthesised, never written in source";
 }
+
+// ANTS-3773 — in a github-task-list roadmap the leading bold run is an id for
+// some bullets and prose for others, and the branch asserted the convention
+// without testing it. Measured over the corpus 2026-08-01: one project writes
+// this shape, and there it is HALF true — 288 real ids (MT1, FW W5, Audit X1)
+// against 166 prose lead-ins (Photo mode, Aerodynamics). Applying the ants-v1
+// id-shaped guard would have stripped the real ones, several of which contain
+// a space.
+//
+// The discriminator is a TRAILING COLON and nothing more, and that narrowness
+// is deliberate. It is not a heuristic: `idTokenPattern` is
+// `[A-Za-z0-9][A-Za-z0-9_-]*-\d+`, so a colon cannot appear in an id at all.
+// A wider "must contain a digit" rule fitted the ten roadmaps measured and
+// broke ANTS-1438's Vestige fixture, whose ids are `Terrain System` and
+// `JustBoldNoSeparator`. Separating a multi-word id from a multi-word prose
+// lead-in is not possible from the text, which is ANTS-3771's argument.
+TEST(RoadmapParseWidening, GfmBoldLeadInIsAnIdOnlyWhenItLooksLikeOne) {
+    const auto recs = RoadmapParse::parseBullets(QStringLiteral(
+        "## Phase 9E\n"
+        "- [x] **MT1** Real id, the shape this branch exists to respect.\n"
+        "- [x] **FW W5** Real id with a space — the ants-v1 guard would lose it.\n"
+        "- [x] **Audit X1** Real id, likewise.\n"
+        "- [x] **Phase 9E-2:** EventBus bridge — a label, not an id.\n"
+        "- [x] **Phase 9E-2:** 12 event nodes — the same label again.\n"
+        "- [x] **Terrain System** — digitless and multi-word, and a REAL id: "
+        "ANTS-1438's Vestige fixture depends on it.\n"
+        "- [x] Plain bullet with no bold run at all.\n"));
+    ASSERT_EQ(recs.size(), 7);
+
+    EXPECT_EQ(recs[0].idToken.toStdString(), std::string("MT1"));
+    EXPECT_EQ(recs[1].idToken.toStdString(), std::string("FW W5"))
+        << "a real id may contain a space — this is why the ants-v1 id-shaped "
+           "guard cannot simply be reused here";
+    EXPECT_EQ(recs[2].idToken.toStdString(), std::string("Audit X1"));
+
+    // The two that collided. A label ending in ':' introduces prose; without
+    // this both bullets carry the id `Phase 9E-2:` and fold to one identity,
+    // which fails ANTS-3756's UNIQUE (project_id, id_fold) and refuses the
+    // whole project at migration.
+    EXPECT_TRUE(recs[3].idToken.isEmpty())
+        << "a bold label ending in ':' is not an id; got "
+        << recs[3].idToken.toStdString();
+    EXPECT_TRUE(recs[4].idToken.isEmpty());
+    EXPECT_EQ(recs[5].idToken.toStdString(), std::string("Terrain System"))
+        << "a digitless multi-word bold run is still an id — requiring a digit "
+           "looked right against the ten roadmaps measured and broke ANTS-1438's "
+           "Vestige fixture, which is why the guard is the colon and nothing more";
+    EXPECT_TRUE(recs[6].idToken.isEmpty());
+
+    // `id` moves with it, but NOT to empty: ANTS-1428's GFM adapter falls back
+    // to a content-hash id when the bullet carries no bold one, and marks it
+    // `synthetic`. That is the correct destination for these two — ANTS-3757
+    // § 2.9 discards a synthetic GFM id and plans the item id-less, so
+    // migration allocates it a real one instead of inheriting prose.
+    EXPECT_TRUE(recs[3].synthetic) << "a dropped bold label must fall through to "
+                                     "the synthetic id, not keep the label";
+    EXPECT_FALSE(recs[5].synthetic);
+    EXPECT_EQ(recs[0].id.toStdString(), std::string("MT1"));
+    EXPECT_FALSE(recs[0].synthetic) << "a real bold id is not synthetic";
+}

@@ -113,6 +113,26 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Re-importing a roadmap no longer duplicates entries that share a heading** (ANTS-3765)
+  When two entries in the same section had identical wording and no ID of
+  their own, each re-import added a fresh copy of both and set the
+  previous pair aside. Repeated often enough that grows without limit.
+  They are now matched in order, so importing the same file twice changes
+  nothing.
+
+- **Seven roadmap entries shared one malformed ID and now have their own** (ANTS-3769)
+  Seven separate fixes had been written down with the same broken ID (a
+  stray `&`), so none of them could be looked up and the roadmap could not
+  be imported. Each now has its own number; no wording changed.
+
+- **A bold label at the start of a checkbox-style roadmap line is no longer mistaken for an ID** (ANTS-3773)
+  In roadmaps written with `- [x]` checkboxes, a bold phrase opening a
+  line was always read as that item's ID. That is right for a project
+  writing `**MT1**`, and wrong for one writing `**Phase 9E-2:**` before
+  some prose — and when two lines shared such a label they became one
+  item, which blocked that project from importing at all. A label ending
+  in a colon is now never an ID.
+
 - **Roadmap store: `lanes`, `evidence` and `extras` are now writable** (ANTS-3767)
   The roadmap database had a column for each of an item's lanes, evidence
   files and extra fields, but nothing could actually put a value in one —

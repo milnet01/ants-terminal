@@ -34,6 +34,14 @@ is re-inserted with a fresh id and its predecessor orphaned — the corpus
 duplicated on every pass. Leg (a) passes against a loader with no id-less rule
 at all, which is why it cannot be the only leg.
 
+**INV-2, the ambiguous id-less group.** Two plan items sharing a headline in
+one section, loaded **three** times: the store must hold three items throughout.
+Three loads and not two, because the failure this locks is *unbounded growth* —
+two runs show a difference, only a third shows a trend. § 2.6.1 originally
+refused to match an ambiguous group at all, which made every re-run insert a
+fresh copy and orphan its predecessor, for ever. The `ambiguous_rematch` note
+must still fire: the pairing rests on order alone and the reader should know.
+
 **INV-3 — a re-run never clears a field the plan does not carry.** `milestone`
 and not `priority`: `priority` is in neither `setItemField()`'s allowlist nor
 `QString`-typed, so the obvious recipe cannot run at all.
@@ -106,16 +114,34 @@ names, in two rounds, before the implementation was restored:
   rolled back because its audit trail is full.
 - the null-slug normalisation removed → the root-section test fails on
   `NOT NULL constraint failed: section.slug`.
+- the ambiguous group refused rather than paired by order (§ 2.6.1 as first
+  written) → the store holds 3 items, then 5, then 7 across three identical
+  loads.
 
-## The one this suite did not catch
+## The ones this suite did not catch
 
-**The synthetic root section was found by running the ten real project
-roadmaps, not by any invariant above**, and the regression test for it is here
-because of that. A section holding content above the first heading has an empty
-slug *and* title, and the read half leaves both default-constructed — which
-`QSqlQuery` binds as SQL **NULL** against two `NOT NULL` columns. Every
-invariant test names its sections, and a named slug is never null, so the whole
-suite was green against a loader that refused any project with a preamble. Had
-the insert succeeded it would have been worse: `slug = NULL` is never true, so
-`findSection()` could not match it on a re-run, and SQLite's `UNIQUE` treats
-NULLs as distinct, so nothing would have stopped a second root section per run.
+**Both were found by running the ten real project roadmaps, not by any
+invariant above**, and their regression tests are here because of that.
+
+**The synthetic root section.** A section holding content above the first
+heading has an empty slug *and* title, and the read half leaves both
+default-constructed — which `QSqlQuery` binds as SQL **NULL** against two
+`NOT NULL` columns. Every invariant test names its sections, and a named slug
+is never null, so the whole suite was green against a loader that refused any
+project with a preamble. Had the insert succeeded it would have been worse:
+`slug = NULL` is never true, so `findSection()` could not match it on a re-run,
+and SQLite's `UNIQUE` treats NULLs as distinct, so nothing would have stopped a
+second root section accumulating per run.
+
+**The ambiguous id-less group.** Same shape of blind spot: every test above
+writes distinct headlines, so none built the input — a repeated headline in one
+section — that made a re-run grow the store by 15 items and 15 orphans on every
+pass of a real project.
+
+**The pattern is worth naming, because it is what a hand-written fixture cannot
+do.** These tests each construct the minimal input for one invariant, so they
+test the shapes their author thought of; real files carry shapes nobody chose —
+a null slug, a repeated headline, a bold label that looks like an id. Sixteen
+green tests coexisted with a loader that could not migrate three of ten real
+projects. The corpus run in ANTS-3765 § 4 is the check that would have caught
+all of them, and it is now part of the spec rather than a one-off.

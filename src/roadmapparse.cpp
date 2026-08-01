@@ -15,6 +15,8 @@
 #include <QSet>
 #include <QStringView>
 
+#include <algorithm>
+
 // ANTS-1287: headingLevel + slugifyHeading + uniqueSlug live in RoadmapIndex.
 // File-scope using-declarations preserve the unqualified call surface the
 // moved bodies were written against. See docs/specs/ANTS-1287.md § 7.
@@ -694,7 +696,45 @@ parseBullets(const QString &markdownText) {
             anchorValue = extractCaretAnchor(raw);
             // Bold-ID token preservation. Multi-prefix projects
             // get their existing ID respected.
-            extractBoldId(head, &boldId);
+            //
+            // ANTS-3773 — but only when the bold run LOOKS like an id. This
+            // branch used to adopt any bold run at the head of a bullet, on
+            // the stated convention that in GFM the leading bold span is an
+            // ID-label. Measured over the corpus 2026-08-01, that convention
+            // is half true: one project writes this shape, with 288 real ids
+            // (`MT1`, `FW W5`, `Audit X1`) and 166 bold runs that are plain
+            // prose (`Photo mode`, `Aerodynamics`, `Asset-pipeline tooling`).
+            // Prose adopted as an id is not cosmetic — two bullets sharing a
+            // lead-in fold to one identity, which fails ANTS-3756's
+            // UNIQUE (project_id, id_fold) and refuses that project's whole
+            // migration (ANTS-3765 § 2.5). It hit 17 bullets in that project.
+            //
+            // The guard is a TRAILING COLON and nothing more, and the
+            // narrowness is the point. It is not a heuristic:
+            // idTokenPattern() is `[A-Za-z0-9][A-Za-z0-9_-]*-\d+`, so a colon
+            // cannot occur in an id at all, and `**Phase 9E-2:**` is a label
+            // introducing prose rather than a name for the item.
+            //
+            // Two wider rules were tried against the corpus and both are
+            // wrong. The ants-v1 guard below demands a whitespace-free token,
+            // which would lose the real ids `FW W5` and `Audit X1`. Requiring
+            // a DIGIT would drop 133 further prose lead-ins and looked right
+            // on the ten roadmaps measured — but ANTS-1438's own tests carry
+            // a Vestige fixture whose ids are `Terrain System` and
+            // `JustBoldNoSeparator`, digitless and deliberate, so it broke a
+            // shipped contract that measurement of those ten files could not
+            // see.
+            //
+            // So a digitless prose lead-in is still adopted, and two bullets
+            // sharing one still collide (3D_Engine has two `**Photo mode**`
+            // bullets). Nothing in the text can separate that from a real
+            // multi-word id, which is the argument for ANTS-3771: let a
+            // project DECLARE its id format instead of inferring one.
+            QString boldCand;
+            if (extractBoldId(head, &boldCand) &&
+                !boldCand.endsWith(QLatin1Char(':'))) {
+                boldId = boldCand;
+            }
             rowFormat = QStringLiteral("github-task-list");
         } else {
             // Native path.

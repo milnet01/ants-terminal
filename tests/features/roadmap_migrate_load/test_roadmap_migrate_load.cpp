@@ -249,6 +249,51 @@ TEST(RoadmapMigrateLoad, RootSectionWithEmptySlugLoadsAndRerunsOnce) {
     EXPECT_EQ(again.itemsUnchanged, 1);
 }
 
+// INV-2, the ambiguous id-less group — found by running the corpus, not by any
+// leg above. § 2.6.1 refused to match when two stored items in one section
+// share a headline and were both migration-allocated, on the reasoning that
+// picking one of two could move history onto the wrong item. Measured against
+// 3D_Engine (2026-08-01), that refusal costs more than it protects: 15 such
+// items, so every re-run inserts 15 and orphans 15 — for ever, unbounded, on a
+// source nobody edited. Two byte-identical headlines in one section are
+// indistinguishable by every field the plan carries, so "the wrong one" is not
+// an observable state; pairing them by order is.
+TEST(RoadmapMigrateLoad, Inv2AmbiguousIdlessGroupPairsByOrderNotByGuessing) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const MigrationPlan p = planOf({
+        item(QString(), QStringLiteral("same headline"), QStringLiteral("s"), 0),
+        item(QString(), QStringLiteral("same headline"), QStringLiteral("s"), 1),
+        item(QString(), QStringLiteral("distinct"), QStringLiteral("s"), 2),
+    });
+
+    const auto first = RoadmapMigrateLoad::load(f.store, p, f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    EXPECT_EQ(first.itemsInserted, 3);
+
+    const auto again = RoadmapMigrateLoad::load(f.store, p, f.opts());
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+    EXPECT_EQ(again.itemsInserted, 0)
+        << "an ambiguous group re-inserted every run grows the store without "
+           "bound on a source that never changed";
+    EXPECT_EQ(again.itemsOrphaned, 0);
+    EXPECT_EQ(again.idsAllocated, 0);
+    EXPECT_EQ(again.itemsUnchanged, 3);
+    EXPECT_EQ(f.count(QStringLiteral("item")), 3);
+
+    // A third run, because unbounded growth is the failure and two runs cannot
+    // show a trend.
+    const auto third = RoadmapMigrateLoad::load(f.store, p, f.opts());
+    ASSERT_TRUE(third.ok) << third.error.toStdString();
+    EXPECT_EQ(f.count(QStringLiteral("item")), 3);
+
+    // The human is still told the source has an ambiguity, because the pairing
+    // is by order and order is the only thing distinguishing them.
+    EXPECT_TRUE(hasNote(again, "ambiguous_rematch"));
+}
+
 // INV-3 — a re-run never clears a field the plan does not carry.
 TEST(RoadmapMigrateLoad, Inv3ReRunKeepsFieldsThePlanDoesNotCarry) {
     Fixture f;

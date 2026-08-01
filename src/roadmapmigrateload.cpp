@@ -264,13 +264,34 @@ bool Loader::matchItems() {
                 r.headline == it.headline && !consumed.contains(r.itemPk))
                 candidates.push_back(r.itemPk);
         }
-        if (candidates.size() == 1) {
+        if (!candidates.isEmpty()) {
+            // An ambiguous group is paired BY ORDER rather than refused.
+            //
+            // § 2.6.1 originally refused to match here at all, reasoning that
+            // picking one of two could move history onto the wrong item.
+            // Running the corpus (2026-08-01) measured what that refusal
+            // costs: 3D_Engine has 15 such items, so every re-run inserted 15
+            // and orphaned 15 — for ever, unbounded, against a source nobody
+            // had edited, which is INV-2 false on real data.
+            //
+            // The refusal was protecting a distinction that does not exist.
+            // Two stored items in one section with byte-identical headlines,
+            // both migration-allocated, are indistinguishable by every field
+            // the plan carries — so "the wrong one" is not a state anything
+            // can observe. What IS observable is order, and both sides have a
+            // stable one: `existing` is ordered by item_pk and the plan is in
+            // document order, so the k-th plan item claims the k-th stored
+            // item and an unchanged re-run reproduces the same pairing.
+            // Leftovers degrade the way the rest of § 2.6 already does — a
+            // surplus stored item becomes an orphan, a surplus plan item a
+            // new insert.
+            //
+            // The note still fires, because the source really is ambiguous
+            // and the human should know the pairing rests on order alone.
+            if (candidates.size() > 1)
+                note("ambiguous_rematch", it.headline);
             matchPk[i] = candidates.first();
             consumed.insert(candidates.first());
-        } else if (candidates.size() > 1) {
-            // Never guessed: picking one of two would silently move history
-            // onto the wrong item.
-            note("ambiguous_rematch", it.headline);
         }
     }
     return true;

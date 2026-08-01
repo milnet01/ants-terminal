@@ -24056,7 +24056,7 @@ against current source before filing.
   Kind: refactor.
   Source: ANTS-3764 extraction, in-lane surfacing 2026-07-31.
 
-- 📋 [ANTS-3769] **Seven ROADMAP bullets carry a malformed id (`[ANTS-119&]`, `[ANTS-121&]`) and are unreachable by id.**
+- ✅ [ANTS-3769] **Seven ROADMAP bullets carry a malformed id (`[ANTS-119&]`, `[ANTS-121&]`) and are unreachable by id.**
   Found by running ANTS-3764's new leading-slot token matcher over the whole
   roadmap corpus rather than over its fixtures. Five bullets carry
   `[ANTS-119&]` and two carry `[ANTS-121&]` — a literal `&` where the
@@ -24079,6 +24079,22 @@ against current source before filing.
   **Layman:** Seven finished to-do entries have a broken reference number, so looking them up by number finds nothing.
   Kind: fix.
   Source: ANTS-3764 corpus sweep, 2026-07-31.
+  Resolved (2026-08-01): the seven bullets were seven DISTINCT shipped
+  items wearing one corrupted token, so merging them would have deleted
+  five write-ups. Each was given its own id instead, in document order:
+  ANTS-119& -> ANTS-3774 (zombie m_fallbackFont), ANTS-3775 (DECSTR
+  handler), ANTS-3776 (OSC 9;4 disambiguator), ANTS-3777 (per-style font
+  setters / setKerning), ANTS-3778 (recalcGridSize snapshot); ANTS-121&
+  -> ANTS-3779 (CSI X ECH BCE attrs), ANTS-3780 (setLineWidth fudge).
+  .roadmap-counter bumped to 3780.
+
+  Nothing else referenced the malformed tokens: the only other hits are
+  ANTS-3757's deliberate quarantine FIXTURE and this bullet's own prose.
+  Verified with the loader afterwards -- this project now migrates, 1794
+  items, and its re-run is idempotent (0 inserted, 0 orphaned).
+
+  The durable prevention is ANTS-3771: nothing refused these ids at write
+  time, which is how a literal & reached seven bullets in the first place.
 
 - 📋 [ANTS-3770] **roadmap-corpus-survey.py under-counts a bullet whose leading token is unrecognised.**
   Found by running the survey as ANTS-3757 INV-2's parity oracle. Its
@@ -24096,6 +24112,111 @@ against current source before filing.
   **Layman:** The script that counts what is in every roadmap misses a handful of items whose id has a typo in it.
   Kind: fix.
   Source: in-session-2026-07-31 (ANTS-3757 implementation).
+
+- 📋 [ANTS-3771] **Declare each project's id format in .ants/project.json so the reader stops guessing.**
+  Every id rule in the reader today is a HEURISTIC inferred from the text,
+  and each one is a guess that can be wrong in both directions. The GFM
+  bold-lead-in rule is the live example: with no declared format, a bold
+  run at the head of a bullet either is an id (3D_Engine writes MT1,
+  FW W5, Audit X1 that way) or is prose (Photo mode, Aerodynamics), and
+  nothing in the file says which. ANTS-3773 narrows it by measurement --
+  contains a digit, does not end in a colon -- which fits the corpus and
+  is still a guess.
+
+  .ants/project.json (ANTS-2160) already carries per-project layout
+  (source_roots, docs_dir, roadmap, changelog, specs_dir) and is the
+  natural home: an `id_format` key naming the prefix and the shape would
+  let the reader VALIDATE rather than infer, turn a malformed id into a
+  reported refusal at write time instead of a quarantine at read time,
+  and let roadmap_log refuse to write one.
+
+  Consumers to reconcile: RoadmapParse (idTokenPattern, the bold-id
+  branches), RoadmapMigrate 2.5/2.6 (parsed vs quarantined), ANTS-3765's
+  id allocation (2.8 derives a prefix by frequency and then by leaf
+  directory -- both become fallbacks), and roadmap_log's own allocator.
+
+  Would have prevented ANTS-3769 outright: seven bullets were written
+  with a literal & in the id and nothing refused them.
+
+  Spec first -- this changes a contract three specs depend on.
+  **Layman:** Write down what an ID looks like for each project, so a bold heading or a stray word can never be mistaken for one.
+  Kind: implement.
+  Source: user-request-2026-08-01.
+
+- 📋 [ANTS-3772] **3D_Engine and RetroDB carry roadmap ids that collide, so neither migrates.**
+  Found by running ANTS-3765's loader over the ten-project corpus
+  (2026-08-01). Not this project's files -- filed here so the finding is
+  not lost, and to be actioned from each project's own session.
+
+  RetroDB: two `#### Pass 49.1` headings in one file (lines 932 and
+  4293) synthesise the same PASS-49-1 id. Fix is in that file -- renumber
+  one heading.
+
+  3D_Engine: 17 collisions, all from the reader treating a bold lead-in
+  as an id. ANTS-3773 fixes 15 of them (a label ending in a colon cannot
+  be an id). The residual two are genuine and NOT fixable in the reader:
+  `**Photo mode**` heads a bullet in two different sections, and that is
+  structurally identical to a legitimate multi-word id -- ANTS-1438's
+  Vestige fixture uses `Terrain System` as one. So this project stays
+  refused until either ANTS-3771 lets it declare its id format, or one
+  of the two lines is reworded in that file.
+
+  Re-measure with the loader after ANTS-3773 lands before doing anything
+  else to either project.
+  **Layman:** Two other projects have duplicate IDs in their roadmap files, which stops them being imported until fixed.
+  Kind: fix.
+  Source: in-session-2026-08-01.
+
+- ✅ [ANTS-3773] **A GFM bold lead-in is read as an id, so prose becomes an identity and duplicates collide.**
+  RoadmapParse's github-task-list branch calls extractBoldId() with no
+  guard, so ANY bold run at the head of a bullet becomes the id. The
+  ants-v1 branch right below it already guards with an id-shaped test and
+  says why in its own comment -- in that format the bold span is normally
+  the headline. The GFM branch asserts the opposite convention ("the
+  leading bold span is an ID-label by convention") and never tests it.
+
+  Measured over the corpus 2026-08-01: only one project writes this shape,
+  and there the convention is HALF true. 3D_Engine has 288 genuine ids
+  written that way (MT1, FW W5, Audit X1) and 166 bold runs that are plain
+  prose (Photo mode, Aerodynamics, Asset-pipeline tooling). Applying the
+  ants-v1 guard would strip the real ones, since several contain a space.
+
+  The discriminator that SHIPPED is a TRAILING COLON and nothing more.
+  `**Phase 9E-2:**` is a label introducing prose, and idTokenPattern
+  cannot produce a colon, so this is not a heuristic at all. It clears
+  15 of the 17.
+
+  Two wider rules were tried and both are wrong. The ants-v1 guard
+  demands a whitespace-free token and would strip FW W5 / Audit X1.
+  Requiring a DIGIT fitted all ten roadmaps -- 0 collisions, 133 more
+  prose lead-ins dropped -- and then broke ANTS-1438's Vestige fixture,
+  whose ids are `Terrain System` and `JustBoldNoSeparator`, digitless
+  and deliberate. Caught by the suite, not by the corpus, because
+  Vestige is not among the ten files measured: a corpus check is a
+  strong test and not a sufficient one.
+
+  Consequence for ANTS-3765: 15 of 3D_Engine's 17 duplicate ids
+  disappear. The other two are `**Photo mode**` heading a bullet in two
+  sections, and nothing in the text separates that from a legitimate
+  multi-word id -- so that project stays refused until ANTS-3771 lets it
+  declare its id format, or one of the two lines is reworded.
+  **Layman:** In checkbox-style roadmaps, a bold phrase at the start of a line was being treated as an ID even when it was just a heading, which stopped one project importing.
+  Kind: fix.
+  Source: in-session-2026-08-01.
+  Resolved (2026-08-01): shipped as a trailing-colon guard in
+  RoadmapParse's github-task-list branch, with a test in
+  roadmap_parse_widening shown RED against the shipped reader first.
+
+  The rule is narrower than this bullet first proposed, and the narrowing
+  is the finding. A "must contain a digit" rule fitted all ten roadmaps
+  (0 collisions, 133 more prose lead-ins dropped) and broke ANTS-1438's
+  Vestige fixture, whose ids are Terrain System and JustBoldNoSeparator --
+  caught by the suite, not by the corpus, because Vestige is not among the
+  ten files measured. What shipped is the half that is not a heuristic:
+  idTokenPattern cannot produce a colon.
+
+  15 of 3D_Engine's 17 collisions clear. The other two need ANTS-3771 or a
+  reworded line in that file (ANTS-3772).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
@@ -29362,7 +29483,7 @@ screen mode. Comments survive but their truth conditions don't.
 
 ### 🔒 Tier 1 — ship-this-week fixes (CRITICAL after calibration)
 
-- ✅ [ANTS-119&] **Zombie feature: `m_fallbackFont` (emoji/CJK) and
+- ✅ [ANTS-3774] **Zombie feature: `m_fallbackFont` (emoji/CJK) and
   `m_nerdFallbackFont` (Powerline) loaded, sized on font-size change,
   never used in any render path.** `terminalwidget.cpp:138-166` +
   `terminalwidget.h:529-530, 685-686`. Constructor probes for fonts,
@@ -29374,14 +29495,14 @@ screen mode. Comments survive but their truth conditions don't.
   Decide: delete (~10-line reduction) or wire via per-codepoint range
   check (`cp ∈ PUA E000-F8FF` → nerd; `cp ≥ 1F000` or CJK block →
   fallback). Kind: fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-119&] **DECSTR (`CSI ! p`) handler missing.** Per xterm
+- ✅ [ANTS-3775] **DECSTR (`CSI ! p`) handler missing.** Per xterm
   ctlseqs, soft-reset MUST reset DECSTBM to full-screen, origin mode
   off, autowrap on, attrs to default, cursor to (0,0). Lane A
   confirmed neither CSI nor ESC dispatch handles intermediate `'!'`
   + final `'p'`. Same bug shape as ANTS-1194 (stale scroll region
   traps user) — closes the broader contract. Add to `processCsi` /
   `handleEsc`. Kind: fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-119&] **OSC 9;4 progress disambiguator misclassifies
+- ✅ [ANTS-3776] **OSC 9;4 progress disambiguator misclassifies
   short payload `9;4`.** `terminalgrid.cpp:1310-1331`. Length-check
   requires ≥4; payload `"9;4"` (legal ConEmu state-0 "remove
   progress") falls through to OSC 9 desktop notification at line
@@ -29391,7 +29512,7 @@ screen mode. Comments survive but their truth conditions don't.
   literally starts with "4;" — recommend documenting the
   disambiguator behaviour in CLAUDE.md. Kind: fix. Source:
   indie-review-2026-05-08.
-- ✅ [ANTS-119&] **Per-style font setters miss `setKerning(false)`,
+- ✅ [ANTS-3777] **Per-style font setters miss `setKerning(false)`,
   break monospace contract.** `terminalwidget.cpp:4950-4976` —
   `setBoldFontFamily` / `setItalicFontFamily` /
   `setBoldItalicFontFamily` reconstruct fonts but bypass
@@ -29405,7 +29526,7 @@ screen mode. Comments survive but their truth conditions don't.
 
 ### 🔒 Tier 2 — pre-release sweep (HIGH / MEDIUM)
 
-- ✅ [ANTS-119&] **`recalcGridSize` clears the snapshot
+- ✅ [ANTS-3778] **`recalcGridSize` clears the snapshot
   unconditionally; sync-block straddling resize tears for the
   inter-batch window.** `terminalwidget.cpp:2789` —
   `clearScreenSnapshot()` runs even when `m_syncOutputActive`. Spec
@@ -29512,13 +29633,13 @@ screen mode. Comments survive but their truth conditions don't.
   `effectiveCursorRow/Col()` during BSU so IME panel doesn't
   jump to live-but-unrendered cursor (Lane C M3). Kind: fix.
   Source: indie-review-2026-05-08.
-- ✅ [ANTS-121&] **CSI X (ECH) ignores BCE attrs reset.**
+- ✅ [ANTS-3779] **CSI X (ECH) ignores BCE attrs reset.**
   `terminalgrid.cpp:742-751`. Other erase paths zero attrs
   before assigning bg via `eraseBg()`; ECH leaves bold/italic/
   underline active on a space. xterm reference clears all
   attrs except bg/fg on ECH. Mirror `clearRow` pattern. Kind:
   fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-121&] **`tline.setLineWidth(length * cellW * 2)` fudge
+- ✅ [ANTS-3780] **`tline.setLineWidth(length * cellW * 2)` fudge
   + minor render polish.** `terminalwidget.cpp:1024`. UTF-16
   length not glyph cells; `* 2` factor is a fix for the wrong
   problem (CJK doubles, emoji surrogates). Replace with
