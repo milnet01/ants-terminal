@@ -24011,6 +24011,15 @@ against current source before filing.
   **Layman:** Old finished work that was moved out of the roadmap into archive files would not make it into the new database — this adds it later.
   Kind: implement.
   Source: ANTS-3757 § 5 exclusion, 2026-07-31.
+  Spec written and gated (2026-08-01): docs/specs/ANTS-3766-roadmap-migration-archives.md. Three cold-eyes loops, 78 verified findings, all fixed, 0 deferred; converged by cap. Loop 3 was ~90% collateral from loop 2's own fixes, which is why it stopped there.
+
+  Settles what ANTS-3757 5 left open: findRoadmaps() returns an ordered Discovery{sources, notes}; archive section slugs are namespaced by source file (never a shared uniquing counter, which would shift an archive slug on any live-file edit and orphan its items); format moves onto Source because it is per-file; empty_source becomes per-source.
+
+  BLOCKS ON A DECISION: 2.6 requires a nullable section.source_path column, so this amends TWO ALREADY-SHIPPED specs -- ANTS-3756 (schema) and ANTS-3765 (writes it). Without the column the discriminator dies at the load boundary and ANTS-3758's first regeneration silently un-rotates the archive back into ROADMAP.md. Needs sign-off before implementation.
+
+  Corrections to facts this bullet and ANTS-3757 5 both carried: the archive holds 18 shipped + 2 STILL-OPEN items (ANTS-1001, ANTS-1002), not 20 shipped -- and those two appear nowhere else, not in CHANGELOG, so the archive is their only record. Also, a duplicate section slug does NOT abort the load as assumed: ANTS-3765 2.6.1 resolves sections with findSection(), so it silently MERGES -- overwriting title/intro and refiling items.
+
+  Surfaced, not fixed: roadmap-format.md 3.9's prose forbids zero-padded archive names while its own stated regex accepts them; and uniqueSlug() returns an empty base without inserting it into seen, so two live headings that both slugify to empty already collide today (an ANTS-3757 defect this spec avoids for archives only).
 
 - ✅ [ANTS-3767] **RoadmapStore has no write path for item.lanes, item.evidence or item.extras.**
   Verified 2026-07-31 against shipped source, not recalled.
