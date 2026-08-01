@@ -24037,6 +24037,35 @@ against current source before filing.
   to all three specs; cold-eyes re-gate pending before implementation.
   Side effect: ANTS-3781 filed for the missing schema-upgrade path the
   verification exposed.
+  Cold-eyes re-gate, loop 4 (2026-08-01): 3 cold lanes, 27 verified
+  findings (C 2 / H 7 / M 8 / L 10), 2 dismissed, ALL 27 FIXED, 0
+  deferred. Committed 74d24482. Two CRITICAL contract defects in a
+  document that had previously converged: the format-mismatch refusal
+  was defined on a predicate only the parse can compute while being
+  raised in the discovery half, and the empty-slug rule put the
+  prefixed name through the uniquing set, reproducing the collision it
+  exists to close. Both were introduced by loop 3's own fixes in the
+  earlier cycle.
+
+  RUN STOPPED, NOT CONVERGED — on the structural trigger, not the
+  findings. Both criticals plus INV-14's absence from the test plan are
+  loop-3-era material that two cold reads never reached, which the
+  skill reads as the document being too large rather than the review
+  being insufficient. It is now 1060 lines (was 948; this loop's fixes
+  added 112). A further loop is owed and deliberately not taken: a
+  fourth read of a doc too big to read is not the remedy.
+
+  Recommendation put to the user: split at the discovery/persistence
+  seam — the read half (findRoadmaps, format, slug identity, fixtures)
+  stays here, and 2.6 + INV-14 + the store-column cross-doc bullets
+  become a sibling spec, BOTH implemented in one change so nothing
+  ships between them. This is the same seam as the rejected scoping
+  option and is not the same decision: splitting the work would have
+  shipped the defect, splitting the document does not.
+
+  To resume instead of splitting: bash
+  /tmp/cold-eyes-1a71289f/build-packet.sh regenerates the lane packet
+  deterministically; no other run state is needed.
 
 - ✅ [ANTS-3767] **RoadmapStore has no write path for item.lanes, item.evidence or item.extras.**
   Verified 2026-07-31 against shipped source, not recalled.
