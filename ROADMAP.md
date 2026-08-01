@@ -24439,6 +24439,29 @@ against current source before filing.
   Kind: enhancement.
   Source: in-session-2026-08-01, ANTS-3782 cold-eyes loop 3 doc-lint pass.
 
+- 📋 [ANTS-3785] **spec_log op:set_status corrupts a spec whose Status field wraps onto a second line.**
+  Hit 2026-08-01 on ANTS-3766. The verb replaces the FIRST LINE of the
+  `**Status:** …` field and leaves every continuation line in place, so a
+  Status that wraps — which the spec-format standard permits, and which
+  any status carrying a clause needs — is left as a valid-looking
+  `**Status:** shipped` followed by an orphaned sentence fragment
+  starting mid-clause. It reads as prose damage rather than as a failed
+  write, and the verb reports success.
+
+  The corruption is quiet in the worst way: the header still parses, the
+  Status still resolves, and the fragment looks like a dangling edit
+  somebody made by hand. Nothing in doc_integrity or spec_lint catches
+  it, because a stray paragraph is not a structural defect.
+
+  Fix: replace the whole field — first line through the last continuation
+  line, i.e. up to the next line beginning `**` — rather than the first
+  line alone. A refusal would also be acceptable (`multiline_status`),
+  since silently rewriting half a field is the one outcome that should
+  not ship.
+  **Layman:** A tool that stamps a spec as "shipped" mangles the paragraph next to the stamp when that paragraph is more than one line long.
+  Kind: fix.
+  Source: in-session-2026-08-01, hit while shipping ANTS-3766.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23

@@ -1,7 +1,7 @@
 # ANTS-3766 — Roadmap migration: rotated archives as additional sources
 
-**Status:** spec draft (2026-08-01). **Split at loop 4:** the persistence half
-is [ANTS-3782](ANTS-3782-roadmap-section-provenance.md), which ships in the
+**Status:** shipped (2026-08-01). **Split at loop 4:** the persistence half is
+[ANTS-3782](ANTS-3782-roadmap-section-provenance.md), which shipped in the
 same change; this document is the read half. The loop log below is the review
 history, and this field does not restate it.
 **Kind:** implement.

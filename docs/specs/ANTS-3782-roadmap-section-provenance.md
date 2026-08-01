@@ -1,6 +1,6 @@
 # ANTS-3782 — Roadmap section provenance: the `source_path` column, its writer and its reader
 
-**Status:** spec draft (2026-08-01).
+**Status:** shipped (2026-08-01).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3782 (split out of ANTS-3766 at that spec's
 cold-eyes loop 4, 2026-08-01, on the structural trigger — 1060 lines, and two
