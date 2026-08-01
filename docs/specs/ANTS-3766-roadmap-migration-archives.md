@@ -1,16 +1,17 @@
 # ANTS-3766 — Roadmap migration: rotated archives as additional sources
 
 **Status:** spec draft, cold-eyes loops 1–3 folded, converged by cap
-(2026-08-01) — 78 verified findings fixed, 0 deferred. **Sign-off given
-(user, 2026-08-01): amend both shipped specs.** § 2.6's column is written into
-ANTS-3756's `CREATE TABLE section` and its write into ANTS-3765 § 2.6; the
-amendment shrank to one DDL line and one write once it was established that no
-store exists yet to migrate. **Re-gate loop 4 folded** — 27 findings, including
-two CRITICAL contract defects; a further loop is owed before implementation.
+(2026-08-01), then re-gate loop 4 folded — 27 further findings including two
+CRITICAL. **Split at loop 4** (2026-08-01): the persistence half is now
+[ANTS-3782](ANTS-3782-roadmap-section-provenance.md), which ships in the same
+change. This document is the read half and runs the gate from loop 5 on its
+own bytes.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3766 (ANTS-3757 § 5 exclusion, 2026-07-31; promoted
 to a prerequisite by the ANTS-3758 decision of 2026-08-01).
 **Blocked by:** ANTS-3757 (read half), ANTS-3765 (load half) — both shipped.
+**Ships with:** [ANTS-3782](ANTS-3782-roadmap-section-provenance.md) (section
+provenance) — one change, not a sequence; that spec's § 1.1 is why.
 **Blocker for:** ANTS-3758 (publish + consumer cutover).
 **Pairs with:** `docs/standards/roadmap-format.md` § 3.9 (archive rotation).
 
@@ -490,98 +491,28 @@ no index to assert on, `archive_unrecognised`, whose `sourceIndex` is `-1`
 (§ 2.4) because the file was never a source. For every other code `detail` is a
 human-readable echo and nothing depends on its wording.
 
-### 2.6 What the render needs — and the store column it requires
+### 2.6 What the render needs — moved
 
-ANTS-3758 regenerates `ROADMAP.md` **from the store**, not from a plan. The plan
-is discarded at commit, so `sourceIndex` alone does not reach the render: it is
-a plan-lifetime index into a `sources` vector nothing persists. Verified —
-`CREATE TABLE section (section_id, project_id, slug, title, level, intro,
-parent_id, UNIQUE (project_id, slug))` in `src/roadmapstore.cpp`, and
-`RoadmapStore::SectionRow` carries `slug, title, intro, level, parentId`. **No
-table in the schema records which file a section came from.**
+**Split out to [ANTS-3782](ANTS-3782-roadmap-section-provenance.md) on
+2026-08-01**, which owns the persistence half whole: the nullable
+`section.source_path` column, its reader on `SectionRow` / `readSection()`, the
+canonicalised root-relative conversion, what ANTS-3758 re-splits on, and the
+amendments to ANTS-3756 and ANTS-3765 that carry it. **INV-14 went with it and
+is tombstoned below**, not reflowed.
 
-So the discriminator has to be persisted, and this spec's requirement on the
-store is one nullable column, added to ANTS-3756's `CREATE TABLE section`:
+**The two ship in one change.** This spec's `sourceIndex` (§ 2.4) is
+plan-lifetime and the plan is discarded at commit, so a read half that migrated
+archives without ANTS-3782's column would write provenance-free sections — and
+ANTS-3758's first regeneration would fold every archived bullet back into
+`ROADMAP.md`. That is the loss this lane exists to prevent, so neither half
+lands alone; ANTS-3782 § 1.1 is the statement of it.
 
-```sql
-  source_path TEXT,          -- NULL = the live roadmap (ANTS-3766)
-```
-
-`NULL` for the live file rather than a literal path, because `NULL` is what the
-live roadmap honestly means *and* it is what any row written before the column
-reads back as. The two arguments coincide, so no backfill is ever needed or
-attempted.
-
-**Added to the DDL in place, at `kSchemaVersion` 1 — not by `ALTER TABLE`, and
-not with a version bump.** There is no store to migrate: every translation unit
-including `roadmapstore.h` is under `src/roadmap*` or in the test suite, so
-nothing user-facing can open one and none exists outside a test's temp
-directory. There is also nothing to hang an `ALTER` on —
-`RoadmapStore::createSchema()` (`src/roadmapstore.cpp`) refuses a version above
-its own, no-ops on an equal one and runs the DDL at 0, with no branch between;
-a store in between falls through to that same DDL, which is deliberately
-written **without** `IF NOT EXISTS` — so a second creator fails loudly instead
-of succeeding silently, which is why ANTS-3756 INV-15 makes the in-transaction
-`user_version` read the discriminator and says `IF NOT EXISTS` cannot be one. And `tests/features/roadmap_export_roundtrip/golden/*.jsonl`
-each carry `"schema":1`, which `RoadmapExport` refuses on mismatch. A bump
-would therefore manufacture the upgrade case nothing implements, and
-regenerate three goldens, in order to migrate zero stores.
-
-**The freedom expires at ANTS-3758's cutover**, which is what first makes the
-store reachable. ANTS-3781 carries the missing upgrade path and the
-misattribution in ANTS-3756 that this argument exposed; a schema change landing
-after the cutover gets no such shortcut.
-
-**The column needs a reader, not only a writer.** `RoadmapStore::SectionRow`
-(declared by ANTS-3765 § 2.4) carries `slug, title, intro, level, parentId`, and
-`readSection()` returns it — so INV-14's read-back has nothing to read through
-the typed surface, and ANTS-3758 would have to reach past it into raw SQL. So
-`SectionRow` gains `std::optional<QString> sourcePath` and `readSection()`
-populates it. `std::optional` rather than an empty `QString`, matching
-`parentId` in the same struct: here the `NULL`/`''` distinction *is* the
-semantics — `NULL` is the live roadmap, while `''` would be a root-relative
-path naming nothing.
-
-**The stored value is project-root-relative, and something must relativise it.**
-`Source::path` is **absolute** — `findRoadmap()` builds it from
-`fi.absoluteFilePath()` (`src/roadmapmigrate.cpp`) and § 2.1 does not redefine
-it — so writing `sources[sourceIndex].path` verbatim would store
-`/home/…/docs/roadmap/0.6.md`, which makes the store machine-specific and never
-matches the membership test below. `load()` performs the conversion, against the
-`projectRoot` it already holds in `Options`, and **both sides are canonicalised
-first**:
-
-```cpp
-QDir(QFileInfo(projectRoot).canonicalFilePath())
-    .relativeFilePath(QFileInfo(source.path).canonicalFilePath())
-```
-
-`Source::path` itself stays absolute so ANTS-3757's discovery invariants are
-untouched. **Canonicalising both sides is what makes INV-14's symlink leg
-satisfiable, and neither side alone would do.** `absoluteFilePath()` does not
-resolve symlinks, so a root reached through one yields
-`/home/…/link/docs/roadmap/0.6.md`; canonicalising only the root then computes
-a relative path *out of* the project (`../link/docs/…`), and canonicalising
-only the source has the mirror defect. Both, and the spelling of the root a
-caller happened to pass stops mattering — which is also what keeps this column
-consistent with `project.root`, keyed on `canonicalFilePath()` by ANTS-3756
-INV-8.
-
-ANTS-3758 then
-re-emits the split by the rule § 3.9 already fixes: a section whose
-`source_path` matches `docs/roadmap/<M>.<N>.md` belongs in that archive,
-`NULL` belongs in the live file. **No `isArchive` flag** — the path is the
-discriminator and the naming regex is the test.
-
-**This is a change to two already-shipped specs and is surfaced, not assumed:**
-ANTS-3756 owns the schema and ANTS-3765 owns the write. § 7 lists both. Without
-the column, the first regeneration writes the archived bullets back into
-`ROADMAP.md` — a silent un-rotation, and the same loss class as the ANTS-3758
-caveat this spec exists to clear.
+What remains here is the read half: discovery, per-source format detection,
+section identity, positions and partitions, `empty_source`, and the fixtures.
 
 ### 2.7 Preference calls and a rejected alternative
 
-Three choices here are judgement, not deduction, and all three are drafting
+Two choices here are judgement, not deduction, and both are drafting
 calls recorded on 2026-08-01 rather than consequences of anything above. They
 are written down — rather than left implicit in the design — so a reviewer can
 overturn them instead of reverse-engineering them.
@@ -595,27 +526,15 @@ this section says who resolved it and why.
   INV-11 is unstatable across sources without it. Surfaced to the user at
   drafting time; the alternative is to let ANTS-3758 re-derive it from a second
   parse, which is a second reader and ANTS-3757 § 2.3 forbids that.
-- **Requiring a `section.source_path` column rather than letting ANTS-3758
-  infer archive membership.** § 2.6 shows inference has nothing to work from
-  once the plan is discarded. The cost is an amendment to two shipped specs,
-  which is real and is why this is a judgement call rather than a deduction —
-  though smaller than it looks: one DDL line and one write, because there is no
-  store yet to migrate (§ 2.6).
 - **Adopting § 3.9's descending sort rather than choosing oldest-first.**
   Ordering does not affect identity under § 2.3, so this is free choice; the
   standard already states a sort, and a second one would be a second rule.
 
-**Rejected: recover a section's source by string-matching its slug prefix,
-storing nothing.** Sections are namespaced per source (§ 2.3), so `0-6-features`
-does encode its origin, and this would need neither `sourceIndex` nor the
-`source_path` column. It loses on three counts. `Note` carries no section and
-the legend belongs to the project rather than any section, so the derivation
-does not cover the carriers that most need it. The encoding is ambiguous: a
-*live* section legitimately titled `## 0.6 features` slugifies into the archive
-namespace, and no parse can tell the two apart. And recovering structure by
-parsing an identifier re-introduces exactly the string-coupling the store's
-typed columns exist to remove — a rule the store already applies to itself,
-since it keys items on `(project_id, id_fold)` rather than on parsed text.
+**The rejected alternative that belonged here — recovering a section's source by
+string-matching its slug prefix instead of storing it — moved to
+[ANTS-3782](ANTS-3782-roadmap-section-provenance.md) § 2.5 with the column it
+argues against.** It turns on what the store persists, which is that spec's
+subject; restating it here would leave two copies of one argument to diverge.
 
 ## 3. Invariants
 
@@ -799,23 +718,11 @@ since it keys items on `(project_id, id_fold)` rather than on parsed text.
   inserting it into `seen`**, so it never uniques and every such heading
   collapses onto the root's slug. INV-10 cannot catch this: the collision is
   *within* one source and INV-10's note fires only archive-against-live.
-- **INV-14** — the store's persisted discriminator is correct and
-  machine-independent: after a load, `section.source_path` is SQL `NULL` for
-  every section from the live roadmap and the **project-root-relative** path
-  (`docs/roadmap/0.6.md`) for every section from an archive. *Test:*
-  `tests/features/roadmap_migrate_load/` — loads the baseline archive fixture
-  and reads back every section row; asserts `NULL` for live sections, the exact
-  relative string for archive sections, and that loading the same fixture again
-  **through a differently-spelled but equivalent root** (a trailing slash, and
-  a path through a symlink) stores byte-identical values. *Breaks when:*
-  `load()` stores `sources[sourceIndex].path` verbatim, which is absolute
-  (`fi.absoluteFilePath()`) — the store then works on the machine that wrote it
-  and ANTS-3758's membership test never matches anywhere else; **or either side
-  of § 2.6's relative computation is left un-canonicalised**, which the
-  symlinked-root leg is the only detector for — the trailing-slash leg passes
-  against it, because `QDir` normalises that much on its own. This is the only
-  invariant covering § 2.6, which is the whole reason this spec blocks
-  ANTS-3758; without it the column ships untested.
+- **INV-14** — *moved to [ANTS-3782](ANTS-3782-roadmap-section-provenance.md)* (the persisted `section.source_path` discriminator) — 2026-08-01.
+  **Number retained there, never reflowed:** `specs.md` § 5.5 makes
+  invariant ids permanent, and this one is cited from ANTS-3756 § 7 and
+  ANTS-3765 § 2.4, so the gap in this document's sequence is correct and
+  the id means the same thing on the other side of the split.
 
 ## 4. RAM / build cost
 
@@ -843,10 +750,10 @@ linear in released minors and is written down rather than assumed away.
 
 ### 4.1 Migration / compatibility
 
-The only on-disk change is § 2.6's `section.source_path`, which lands in
-ANTS-3756's DDL at `kSchemaVersion` 1 — no migration, no backfill, no version
-bump. § 2.6 carries the argument and is the only statement of it in this
-document, because a second statement of an upgrade procedure is a second
+**This half changes nothing on disk.** The one on-disk change in the pair is
+[ANTS-3782](ANTS-3782-roadmap-section-provenance.md)'s `section.source_path`,
+and that spec § 2.1 carries the no-migration argument whole — stated there and
+nowhere here, because a second statement of an upgrade procedure is a second
 procedure.
 
 - **The `findRoadmap()` → `findRoadmaps()` rename is source-level only.** It is
@@ -859,8 +766,12 @@ procedure.
 
 ## 5. Out of scope
 
-- **Writing archives back out / re-splitting the render** — ANTS-3758. This
-  spec supplies the discriminator (§ 2.6) and stops there.
+- **Persisting which file a section came from** —
+  [ANTS-3782](ANTS-3782-roadmap-section-provenance.md), the other half of this
+  change. This spec produces the per-source `sourceIndex` (§ 2.4) and stops at
+  the plan boundary.
+- **Writing archives back out / re-splitting the render** — ANTS-3758, which
+  reads ANTS-3782's column.
 - **Teaching `roadmap_query` to read archives.** A permanent exclusion, not
   deferred: `roadmap-format.md` § 3.9 states that verb reads only the current
   `ROADMAP.md` and archives are dialog-only by contract. Changing that is an
@@ -883,12 +794,11 @@ procedure.
 ## 6. Tests
 
 Feature test: `tests/features/roadmap_migrate_read/` (INV-1..8, INV-11, INV-13)
-and `tests/features/roadmap_migrate_load/` (INV-9, **INV-14**). **INV-10 spans
-both** — the note and the absence of a rename are asserted in the read suite,
-the plan's refusal in the load suite. INV-12 is withdrawn and has no surface.
-INV-14 is named explicitly because it is the only invariant covering § 2.6,
-which is what makes this spec block ANTS-3758; omitted from this list, the
-store column ships untested. Label
+and `tests/features/roadmap_migrate_load/` (INV-9). **INV-10 spans both** — the
+note and the absence of a rename are asserted in the read suite, the plan's
+refusal in the load suite. INV-12 is withdrawn and has no surface; INV-14 moved
+to [ANTS-3782](ANTS-3782-roadmap-section-provenance.md) and is tested there,
+against the same baseline fixture this section's roots supply. Label
 `features;fast`. Each invariant is verified RED
 against the mutation its clause names, before the implementation is restored.
 
@@ -966,32 +876,22 @@ one, so neither check licenses skipping the other.
 
 ## 7. Cross-doc impact
 
-**Three of these are amendments to already-shipped specs — ANTS-3756,
-ANTS-3765 and ANTS-3757 — which is the reason this document had to be signed
-off before it was implemented, not after.** The first two are **applied
-(2026-08-01)**, after the user's sign-off on § 2.6; the ANTS-3757 annotations
-and every non-spec carrier below are still outstanding. Each bullet says which
-it is, because a § 7 read as a to-do list is how a landed amendment gets
-applied twice.
+**One of these amends an already-shipped spec — ANTS-3757 — which is why this
+document had to be signed off before it was implemented, not after.** The
+ANTS-3756 and ANTS-3765 amendments that used to sit here moved to
+[ANTS-3782](ANTS-3782-roadmap-section-provenance.md) § 7 with the column they
+carry; both are **applied (2026-08-01)** and are recorded there, not restated
+here. Everything below is still outstanding.
 
-- **`docs/specs/ANTS-3756-roadmap-store-schema.md`** — **schema change,
-  APPLIED 2026-08-01.**
-  `section` gains a nullable `source_path TEXT` **in the DDL, at
-  `kSchemaVersion` 1** — no migration, no version bump, for the reasons § 2.6
-  gives, and `SectionRow` / `readSection()` gain the matching
-  `std::optional<QString> sourcePath` so the column has a reader. Required:
-  without the column ANTS-3758 cannot re-split the render and the first
-  regeneration un-rotates the archive. Its upgrade-ownership
-  sentence — *"a lower `user_version` is an upgrade, which ANTS-3757 owns"* —
-  is corrected in the same pass to name **ANTS-3781**, which is where that
-  still-unbuilt path now lives.
-- **`docs/specs/ANTS-3765-roadmap-migration-load.md`** — **write side of the
-  same column, APPLIED 2026-08-01**, exactly as § 2.6 specifies it and not
-  restated here:
-  `load()` writes `source_path` **`NULL` for `sourceIndex == 0`** and the
-  **root-relative** conversion of `sources[sourceIndex].path` otherwise. It
-  also refuses a plan carrying an `archive_slug_collision` note (§ 2.2). Its § 2.6.1 section-identity rule is
-  now load-bearing across sources; a pointer to § 2.3.1 here, which is the
+- **[ANTS-3782](ANTS-3782-roadmap-section-provenance.md)** — the persistence
+  half, split out on 2026-08-01. **Ships in the same change as this spec**
+  (§ 2.6): it consumes the `sourceIndex` § 2.4 assigns and persists what it
+  means, and a read half landing without it writes provenance-free sections.
+  It also owns the two amendments above and this spec's former INV-14.
+- **`docs/specs/ANTS-3765-roadmap-migration-load.md`** — beyond the applied
+  write, one thing this half still asks of it: `load()` refuses a plan carrying
+  an `archive_slug_collision` note (§ 2.2), and its § 2.6.1 section-identity
+  rule is now load-bearing across sources — see § 2.3.1 here, which is the
   second way that rule can be broken.
 - **`docs/specs/ANTS-3757-roadmap-migration-read.md`** — the bullets below,
   each annotated `amended by ANTS-3766` per `specs.md` § 5.5 — annotated, never
@@ -1017,7 +917,8 @@ applied twice.
     ANTS-3765 § 2.6.1 merges silently. This spec avoids it for archives (§ 2.3,
     INV-13) and does not touch the live path.
   - `src/roadmapmigrate.h`'s comment that "`sourcePath` is recorded into the
-    plan and never read" becomes false — § 2.6 reads it.
+    plan and never read" becomes false —
+    [ANTS-3782](ANTS-3782-roadmap-section-provenance.md) § 2.3 reads it.
   - **ANTS-3757's** INV-1 (discovery), INV-11 (partition) and INV-13
     (`empty_source`) are annotated as amended — that spec's numbers, written
     out because this document has an INV-11 and an INV-13 of its own meaning
@@ -1053,6 +954,7 @@ applied twice.
 
 | Loop | Reviewer | Findings | Resolution |
 |---|---|---|---|
+| 4-split | 2026-08-01 | none — no reviewer dispatched | — | **Provenance row, not a review.** Written by `/write-spec`, not by the gate. Loop 4 stopped on the structural trigger rather than the cap — 1060 lines, and that loop's two CRITICALs plus INV-14's absence from the test plan were all loop-3-era material two cold reads had failed to reach — so the persistence half was split out as [ANTS-3782](ANTS-3782-roadmap-section-provenance.md): § 2.6, INV-14, and the ANTS-3756 / ANTS-3765 amendment bullets. **The seam is the same one considered and rejected as a *scoping* option on 2026-08-01, and this is not that decision**: splitting the work would ship a read half that writes provenance-free sections, so the two halves still land in one change (§ 2.6). **INV-14 is tombstoned in place here, never reflowed** (`specs.md` § 5.5) — it is cited from ANTS-3756 § 7 and ANTS-3765 § 2.4, and keeps its number on the other side. This document dropped 1060 → 978 lines; the seam bought coherence rather than a large reduction, which is stated because the next reader will otherwise read the split as having solved the size. |
 | 4 (2026-08-01) — re-gate after the § 2.6 sign-off | 3 cold `general-purpose` lanes, one shared byte-identical context packet, no prior-loop context | C 2 · H 7 · M 8 · L 10 — 27 verified, 2 dismissed | All 27 fixed. **Origin split: 25 draft defects vs 2 fix collateral** — draft defects dominate by an order of magnitude, so the loop was the right remedy and no ratio trigger fires. The two collateral are from this session's § 2.6 amendment pass: § 7 still stating the ANTS-3756 / ANTS-3765 amendments as pending after they landed, and § 2.6 misattributing INV-15's discriminator to the absence of `IF NOT EXISTS` when ANTS-3756 says the in-transaction `user_version` read is the discriminator and `IF NOT EXISTS` cannot be one. **C1 — the format-mismatch predicate was unimplementable, and loop 3 introduced it**: that loop resolved an undefined inheritance rule by defining "no format signal" as *yields zero items*, which is a `planFrom()` result, while the refusal is raised in `findRoadmaps()`, which has no plan. All three lanes reported it independently. Now an evidence out-parameter on `detectRoadmapFormat()` (a source change § 7 now carries), computable where the refusal lives; the false identity with § 2.5's `empty_source` is deleted, since bullets `isItem()` rejects are a format signal and zero items. **C2 — § 2.3's `h<ordinal>` rule reproduced the bypass it exists to close**: the prose put the *prefixed* name through `seen`, which never compares against the unprefixed slugs already in it, so a real `### H3` and a synthesised `h3` both reached `0-6-h3`. Uniquing now runs on the unprefixed base for every heading, stated once in the pseudo-code block. **A count conflict that verification saved from a wrong fix:** "three of ten real projects" against "the remaining two" are both true — three at ANTS-3765's first corpus pass, two after the fixes that pass triggered — so both are now moment-qualified rather than reconciled to one number. Also: INV-14 absent from § 6's test mapping (the one invariant covering § 2.6); an unreadable `docs/roadmap` silently dropping every archive in a spec whose § 2.2 promises "never a silent skip"; § 6.1's fixture table two roots short of what INV-3 and INV-11's third leg need; § 2.6's relativisation un-canonicalised on both sides, which INV-14's own symlink leg would have failed. |
 | 3 (2026-08-01) — **converged by cap** | 3 cold `general-purpose` lanes, same brief, no prior-loop context | C 2 · H 5 · M 5 · L 8 · I 3 — 20 verified, 0 dismissed | All 20 fixed. **Origin split: ~18 of 20 were fix collateral from loop 2, and all three lanes independently reported the same top two** — which is Phase 5's ratio trigger on its second consecutive loop, so the run stops here rather than taking a fourth pass to repair its own third. Both criticals were one fact stated twice and disagreeing: the loop-2 paragraph making a refusal return a populated `Discovery` contradicted the table, INV-7 and INV-11 (resolved to `nullopt` + code everywhere); and INV-1 still carried the loose name regex loop 2 had tightened in § 2.2, which re-admitted the exact `00.07.md` case withdrawn INV-12 existed for. Fixed by **deleting N−1** — the regex, the silent-merge mechanism and the relativisation rule are each now stated once and cited. Also: INV-8 asserted four notes against a five-entry fixture; § 7 instructed the ANTS-3765 amendment to write the absolute path § 2.6 forbids; the `h<ordinal>` form bypassed `seen` exactly as the defect it fixed did; the format-inheritance predicate was undefined and untested (now "yields zero items", with an INV-11 leg); and § 2.6 — the spec's only persisted output — had no invariant at all, now **INV-14**. `tools/roadmap-archive-survey.py` was tightened in step with the regex and prints its own pattern so the two cannot drift. |
 | 2 (2026-08-01) | 3 cold `general-purpose` lanes, same brief, no prior-loop context | C 1 · H 6 · M 11 · L 10 · I 2 — 28 verified, 2 dismissed | All 28 fixed. Origin split: **~12 fix collateral vs ~8 draft defects** — loop 1's own fixes generated the larger share, recorded here because the trend is the signal. **Dismissed on verification:** lane A's Critical (cross-source id collision) — `ANTS-1001`/`ANTS-1002` appear only in `docs/roadmap/0.6.md`, and the case is already ANTS-3757 § 2.5's `duplicate_id` rule; and lane B's claim that `0.5.md` would refuse today — `detectRoadmapFormat()` falls back to `ants-v1`, so it agrees by luck, though the underlying gap was real and is fixed. **Biggest correction: "a second source emitting `performance` aborts the load" was wrong** — ANTS-3765 § 2.6.1 resolves sections with `findSection()`, so a duplicate slug **silently merges**, overwriting title/intro and refiling items. Worse than the claimed abort, and § 1 and § 2.2 now say so. Also: the empty-slug case escaped uniquing entirely (`uniqueSlug()` returns an empty base without inserting it) — new INV-13 and an `<M>-<N>-h<ordinal>` form; the legend had no merge rule against one `optional<PlannedLegend>`; `Source::path` is absolute so `source_path` needed an explicit relativisation; a format-less source now inherits `sources[0]`'s format; the name regex is tightened to forbid leading zeros, which **withdrew INV-12** by removing its condition rather than detecting it. Corpus moved mid-session (10 → 11 roots), so § 1.1 now leads with the proportion. Deferred: no TOC at 864 lines (INFO). |

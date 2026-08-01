@@ -24349,6 +24349,30 @@ against current source before filing.
   makes the store reachable, and ANTS-3756 section 2.3 has been
   corrected to name this item rather than ANTS-3757 as the owner.
 
+- 📋 [ANTS-3782] **Roadmap section provenance — the source_path column, its reader, and what the render re-splits on.**
+  Split out of ANTS-3766 on 2026-08-01 at that spec's cold-eyes loop 4,
+  which stopped on the structural trigger: 1060 lines, and two cold
+  reads had failed to reach defects introduced by a third. This is the
+  PERSISTENCE half — the nullable section.source_path column, the
+  reader on SectionRow / readSection(), the canonicalised
+  root-relative conversion, and the one invariant covering it.
+  ANTS-3766 keeps the read half.
+
+  SHIPS IN ONE CHANGE WITH ANTS-3766. The split is a document
+  operation, not a scoping one: a read half that writes
+  provenance-free sections is the exact defect the pair exists to
+  prevent, so neither lands alone. Sequencing them was considered and
+  rejected when the decision was taken.
+
+  Its two amendments to shipped specs are already APPLIED (2026-08-01):
+  ANTS-3756 carries the column in its CREATE TABLE at kSchemaVersion 1
+  with no migration, and ANTS-3765 carries the write. ANTS-3781 owns
+  the schema-upgrade path that is still missing and is not needed
+  until ANTS-3758's cutover makes the store reachable.
+  **Layman:** Records which file each chunk of the roadmap came from, so the archives can be written back where they belong instead of being folded into the main file.
+  Kind: implement.
+  Source: split from ANTS-3766, 2026-08-01.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
