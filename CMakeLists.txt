@@ -438,6 +438,11 @@ add_library(ants_roadmapstore_lib STATIC
     src/roadmapstore.cpp
     src/jsoncanonical.cpp   # ANTS-3761 — RFC 8785; Qt6::Core only, no Sql
     src/roadmapexport.cpp   # ANTS-3761 — the export writer + its rebuild half
+    # ANTS-3765 — the migration LOAD half. Here and not in ants_core_lib, which
+    # is the read/load seam made mechanical: the read half (roadmapmigrate.cpp)
+    # is in core precisely because it needs no database, and this half needs
+    # Qt6::Sql and the store.
+    src/roadmapmigrateload.cpp
 )
 target_link_libraries(ants_roadmapstore_lib
     PUBLIC  Qt6::Core Qt6::Sql
@@ -2265,6 +2270,11 @@ if(ANTS_TESTS)
                 # roadmaps + the survey's expectation file; no interpreter
                 # joins the features;fast path.
                 tests/features/roadmap_migrate_read/test_roadmap_migrate_read.cpp
+                # ANTS-3765 — the migration load half. Behavioural, against a
+                # real store in a QTemporaryDir, and the plans are BUILT rather
+                # than parsed: INV-1 needs an off-enum status, which no real
+                # source file can produce.
+                tests/features/roadmap_migrate_load/test_roadmap_migrate_load.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the
