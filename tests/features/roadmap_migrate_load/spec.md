@@ -104,3 +104,18 @@ names, in two rounds, before the implementation was restored:
 - `seq` restarting at 0 per run → INV-14: the third load aborts on the UNIQUE.
 - every `appendHistory()` failure treated alike → INV-15: the whole project is
   rolled back because its audit trail is full.
+- the null-slug normalisation removed → the root-section test fails on
+  `NOT NULL constraint failed: section.slug`.
+
+## The one this suite did not catch
+
+**The synthetic root section was found by running the ten real project
+roadmaps, not by any invariant above**, and the regression test for it is here
+because of that. A section holding content above the first heading has an empty
+slug *and* title, and the read half leaves both default-constructed — which
+`QSqlQuery` binds as SQL **NULL** against two `NOT NULL` columns. Every
+invariant test names its sections, and a named slug is never null, so the whole
+suite was green against a loader that refused any project with a preamble. Had
+the insert succeeded it would have been worse: `slug = NULL` is never true, so
+`findSection()` could not match it on a re-run, and SQLite's `UNIQUE` treats
+NULLs as distinct, so nothing would have stopped a second root section per run.

@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap migration, load half — a project's roadmap can now be written into the store, atomically and repeatably** (ANTS-3765)
+  The reader built in ANTS-3757 could turn a ROADMAP.md into a plan and
+  had nowhere to put it. This writes the plan into the roadmap database:
+  one project at a time, all-or-nothing, and safe to run again after the
+  file changes — a second run updates what changed, keeps anything you
+  edited in the app that the file cannot express, and never duplicates or
+  renumbers what is already there. An item you delete from the file is
+  kept, re-filed and reported rather than thrown away, because it is far
+  more often a rename or an archive move than a deletion. Nothing is
+  user-visible yet; the read side that surfaces it is still to come.
+
 - **Roadmap migration, read half — a hand-written roadmap becomes a loadable plan** (ANTS-3757)
   New `RoadmapMigrate::findRoadmap()` + `planFrom()` in `ants_core_lib`
   (Qt6::Core only). Discovery resolves a project's roadmap

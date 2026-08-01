@@ -280,6 +280,18 @@ Listed only where behavior isn't obvious from the name.
   `MigrationPlan` (sections / items / elements / legend / notes) for
   ANTS-3765 to load. Calls `roadmapparse` for bullets and owns the
   structural walk that reader never had. Spec ANTS-3757.
+- `roadmapmigrateload` (`ants_roadmapstore_lib`) — the migration load
+  half: `load()` writes one `MigrationPlan` into the store as **one
+  project, one transaction**. In the store lib and not `ants_core_lib`
+  because it needs Qt6::Sql — that split is the read/load seam made
+  mechanical. Matches a re-run on `(project_id, id_fold)`, or on a
+  natural key (same section + migration-allocated id + identical
+  headline) for the ~40% of the corpus with no id; writes only the
+  fields that differ; rebuilds each section's `element` rows rather
+  than shifting positions in place; retains, re-files and reports an
+  item absent from source; allocates ids inside the transaction so a
+  rolled-back load burns none. Refuses an `Access::Interactive` store.
+  Spec ANTS-3765.
 - `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers;
   `QFileSystemWatcher` + `poll()` mtime rescue for tmpfile+rename
   rewrites (which drop the watch). `sweepLiveness()` is bg-only. Parser:

@@ -32,6 +32,22 @@ QString canonList(const QStringList &v) {
     return RoadmapStore::canonicalJson(QJsonArray::fromStringList(v));
 }
 
+// A DEFAULT-CONSTRUCTED QString is null, and QSqlQuery binds a null QString as
+// SQL NULL — while `section.slug` and `section.title` are NOT NULL. The
+// synthetic root section, which ANTS-3757 § 2.1 gives an empty slug and title
+// for content above the first heading, therefore arrives as two nulls: the
+// insert is refused outright, and `findSection()` could never match it anyway
+// because `slug = NULL` is never true, so a re-run would try to create it
+// again — and SQLite's UNIQUE treats NULLs as distinct, so it would succeed.
+// An empty string is what the store must hold, so the null is normalised here,
+// at the boundary that knows empty is a real value rather than an absence.
+//
+// Found by running the ten-project corpus, not by a test: every invariant test
+// names its sections, and no named slug is ever null.
+QString notNull(const QString &s) {
+    return s.isNull() ? QString::fromUtf8("") : s;
+}
+
 // One field the plan is authoritative for, paired with what the store holds.
 // `planEmpty` is not `planText.isEmpty()`: an empty lane list renders as `[]`,
 // which is a non-empty string and an absent value.
@@ -167,17 +183,17 @@ bool Loader::resolveSections() {
                 // earlier run, since § 2.6 retains a section the plan stopped
                 // carrying. Unresolvable ⇒ top level, which is the shape the
                 // store can actually hold.
-                parentId = store.findSection(projectId, s->parentSlug, &err);
+                parentId = store.findSection(projectId, notNull(s->parentSlug), &err);
         }
 
         err.clear();
-        const auto found = store.findSection(projectId, s->slug, &err);
+        const auto found = store.findSection(projectId, notNull(s->slug), &err);
         if (!err.isEmpty())
             return fail(err);
 
         if (!found) {
-            const auto sid = store.addSection(projectId, s->slug, s->title, s->level,
-                                              parentId, &err);
+            const auto sid = store.addSection(projectId, notNull(s->slug),
+                                              notNull(s->title), s->level, parentId, &err);
             if (!sid)
                 return fail(err);
             if (!s->intro.isEmpty() && !store.setSectionIntro(*sid, s->intro, &err))
@@ -195,7 +211,7 @@ bool Loader::resolveSections() {
                                       : err);
         bool changed = false;
         if (cur->title != s->title || cur->level != s->level || cur->parentId != parentId) {
-            if (!store.updateSection(*found, s->title, s->level, parentId, &err))
+            if (!store.updateSection(*found, notNull(s->title), s->level, parentId, &err))
                 return fail(err);
             changed = true;
         }
@@ -580,13 +596,13 @@ bool Loader::rebuildElements() {
             // store it opened. The synthetic root is the same row the plan uses
             // for content above the first heading.
             if (!rootSection) {
-                if (const auto found = store.findSection(projectId, QString(), &err))
+                const QString rootSlug = QString::fromUtf8("");
+                if (const auto found = store.findSection(projectId, rootSlug, &err))
                     rootSection = *found;
                 else if (!err.isEmpty())
                     return fail(err);
-                else if (const auto made = store.addSection(projectId, QString(),
-                                                            QString(), 0, std::nullopt,
-                                                            &err))
+                else if (const auto made = store.addSection(projectId, rootSlug, rootSlug,
+                                                            0, std::nullopt, &err))
                     rootSection = *made;
                 else
                     return fail(err);

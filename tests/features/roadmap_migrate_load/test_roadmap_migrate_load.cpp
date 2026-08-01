@@ -215,6 +215,40 @@ TEST(RoadmapMigrateLoad, Inv2ReRunWithoutIdsIsIdempotent) {
     EXPECT_EQ(f.count(QStringLiteral("history")), 0);
 }
 
+// INV-2, the synthetic root section — regression, found by running the ten
+// real project roadmaps rather than by any invariant test. A section carrying
+// content above the first heading has an empty slug AND title, and the read
+// half leaves both DEFAULT-CONSTRUCTED, which QSqlQuery binds as SQL NULL
+// against two NOT NULL columns. Every other test here names its sections, and
+// a named slug is never null.
+TEST(RoadmapMigrateLoad, RootSectionWithEmptySlugLoadsAndRerunsOnce) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    PlannedSection root;          // slug, title: default-constructed, i.e. NULL
+    root.level = 0;
+    const MigrationPlan p =
+        planOf({item(QStringLiteral("A-1"), QStringLiteral("above the first heading"),
+                     QString(), 0)},
+               {root});
+
+    const auto first = RoadmapMigrateLoad::load(f.store, p, f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString()
+                          << " — a null slug is refused by section.slug NOT NULL";
+    EXPECT_EQ(f.count(QStringLiteral("section")), 1);
+
+    // And it must be FOUND again, not created again: `slug = NULL` is never
+    // true, so a re-run would insert a second root — and SQLite's UNIQUE treats
+    // NULLs as distinct, so nothing would stop it.
+    const auto again = RoadmapMigrateLoad::load(f.store, p, f.opts());
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+    EXPECT_EQ(f.count(QStringLiteral("section")), 1)
+        << "the root section must be resolved on a re-run, not duplicated";
+    EXPECT_EQ(again.itemsInserted, 0);
+    EXPECT_EQ(again.itemsUnchanged, 1);
+}
+
 // INV-3 — a re-run never clears a field the plan does not carry.
 TEST(RoadmapMigrateLoad, Inv3ReRunKeepsFieldsThePlanDoesNotCarry) {
     Fixture f;

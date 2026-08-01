@@ -23867,7 +23867,7 @@ against current source before filing.
   Second, 2.8 gained the `Source:` reading rules, which no section owned;
   they differ from `Kind:`'s in three measured ways.
 
-- 📋 [ANTS-3765] **Roadmap migration, load half — atomicity, re-run matching, deletion, and the cutover interim.**
+- ✅ [ANTS-3765] **Roadmap migration, load half — atomicity, re-run matching, deletion, and the cutover interim.**
   Split out of ANTS-3757, which owned parse + normalise + allocate + load +
   cutover in one document — the same shape ANTS-3756 carried when it hit the
   cold-eyes loop cap and had to be split into ANTS-3761.
@@ -23922,6 +23922,30 @@ against current source before filing.
   ANTS-3756 and ANTS-3757 both need amending when this ships (§ 7):
   20 new store methods, putItem()'s changed contract, and ANTS-3757
   § 2.10's note-code set gaining seven load-only codes.
+  Resolved (2026-08-01): shipped as src/roadmapmigrateload.{h,cpp} in
+  ants_roadmapstore_lib, with 23 methods landing on RoadmapStore and one
+  shipped decision changed — putItem() no longer opens its own transaction
+  unconditionally, and no longer rolls back one it does not own. 16 tests
+  (11 in tests/features/roadmap_migrate_load/, 4 store invariants folded
+  into roadmap_store_schema as ANTS-3756 INV-22..25, 1 corpus regression),
+  each shown RED against the mutation its own "Breaks when" clause names.
+
+  Bullet count correction: the spec's final shape is 23 store methods, not
+  the 20 this bullet predicted — three more were found missing at
+  implementation (readSection, idPrefixFor, unfileItem), each performing an
+  operation the spec's own prose mandates.
+
+  Measured on the ten real project roadmaps: 200 ms for the whole corpus
+  through one Bulk connection, worst completing project 24 ms, a re-run
+  costing what the initial load costs, and INV-2 holding on all seven
+  loadable projects. Three do not load — 3D_Engine, RetroDB and this
+  project all carry ids that fold to the same value, which ANTS-3757 2.5
+  designs to fail at this insert and reports with duplicate_id notes naming
+  the lines. Fixing those sources is a separate job.
+
+  Fold-backs done: ANTS-3756 (the methods, putItem's contract, INV-22..25),
+  ANTS-3757 (2.1.1's last two owed rows discharged, 2.10's code set gains
+  seven load-only codes), docs/subsystems.md. Unblocks ANTS-3758.
 
 - 📋 [ANTS-3766] **Migrate rotated roadmap archives into the store — ANTS-3757 excludes them by design.**
   roadmap-format.md 3.9 rotates closed minors out of ROADMAP.md into
