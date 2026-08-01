@@ -125,17 +125,24 @@ def main() -> int:
     print("=== B. corpus coverage (spec § 1.1) ===")
     roots_with_roadmap = 0
     roots_with_archives = 0
+    roots_with_nonconforming = 0
     for name in sorted(os.listdir(corpus)):
         d = os.path.join(corpus, name)
         if not os.path.isdir(d) or live_roadmap(d) is None:
             continue
         roots_with_roadmap += 1
         n = len(archives(d))
+        nc = len(non_conforming(d))
+        has_dir = os.path.isdir(os.path.join(d, "docs", "roadmap"))
         if n:
             roots_with_archives += 1
-        print(f"  {name:28s} archives={n}")
+        if nc:
+            roots_with_nonconforming += 1
+        print(f"  {name:28s} docs/roadmap={'yes' if has_dir else 'no ' :3s} "
+              f"conforming={n} non_conforming={nc}")
     print(f"  roots with a live roadmap: {roots_with_roadmap}; "
-          f"with >= 1 archive: {roots_with_archives}")
+          f"with >= 1 conforming archive: {roots_with_archives}; "
+          f"with non-conforming entries: {roots_with_nonconforming}")
 
     print()
     print("=== C. slug collisions, archive vs live (spec § 1 item 2, § 2.3) ===")

@@ -34,10 +34,14 @@ Three things make this urgent rather than tidy-up work.
    real today.** Measured — `python3 tools/roadmap-archive-survey.py` (§ 6.3),
    section C: of `docs/roadmap/0.6.md`'s 6 headings, **4** slugify to a slug the
    live file already uses (`features`, `performance`, `security`,
-   `dev-experience`). `RoadmapStore` declares `UNIQUE (project_id, slug)` on
-   `section` (`src/roadmapstore.cpp`, the `section` DDL; see also
-   `RoadmapStore::findSection()`'s contract comment), so a second source
-   emitting `performance` aborts the load.
+   `dev-experience`). **A second source emitting `performance` does not abort —
+   it silently merges.** `RoadmapStore` does declare `UNIQUE (project_id, slug)`
+   on `section` (`src/roadmapstore.cpp`, the `section` DDL), but nothing reaches
+   that constraint: ANTS-3765 § 2.6.1 has `load()` resolve each section with
+   `findSection()` and call `addSection()` only for a genuinely-new slug. So the
+   archive's `### ⚡ Performance` finds the live file's row, overwrites its title
+   and intro, and files its own items into the live section. A crash would be
+   the benign outcome; the real one is a corrupted section nobody is told about.
 3. **`MigrationPlan` cannot describe more than one file**, in two ways rather
    than one. It carries a single `sourcePath`, and every carrier's
    `firstLine`/`lastLine` is 1-based *in that file* — ANTS-3757 INV-11 asserts
@@ -53,13 +57,19 @@ Measured — same script, sections A and B:
 
 | Figure | Value |
 |---|---|
-| Project roots holding a live roadmap | 10 |
-| …of those, holding ≥ 1 conforming archive | 1 (this project) |
-| Archive files here | 2 — `0.5.md`, `0.6.md` |
+| Project roots holding a live roadmap | 11 |
+| …of those, holding a `docs/roadmap/` directory at all | 1 (this project) |
+| …holding ≥ 1 conforming archive | 1 |
+| Archive files here | 2 — `0.5.md` (651 B), `0.6.md` (3,992 B); 4,643 B total |
 | Emoji bullets in them | 0 and 20 |
 | …of those 20, shipped (✅) / still-open (💭) | 18 / 2 |
 | Sections (`##`/`###`) in them | 1 and 6 |
-| Non-conforming entries in `docs/roadmap/` | 0 |
+| Non-conforming entries under any root's `docs/roadmap/` | 0 |
+
+**The root count moves, and that is the point of sourcing it.** It was 10
+earlier the same day and is 11 now — a project was added mid-session. Read the
+proportion, not the integer: **one** project in the corpus has archives, and
+every other figure in this spec is derived from that one project's two files.
 
 Eighteen of the twenty are shipped and summarised in `CHANGELOG.md`. **The
 other two are not** — `ANTS-1001` (Kitty Unicode-placeholder graphics, "Moved
@@ -152,13 +162,25 @@ spec exists to prevent, reintroduced by the field nobody moved.
 So `format` rides on `Source`. Rotation (§ 3.9) is content-preserving — it
 moves bullets byte-identically — so an archive normally inherits the format of
 the file it was cut from, and the only project with archives today is
-`ants-v1` on both sides. When it does **not**
-— an archive whose detected format differs from `sources[0]`'s —
-`findRoadmaps()` refuses the whole call with `archive_format_mismatch` rather
-than guessing. A per-source parse would be defensible; a refusal is chosen
-because a format difference between a file and its own archive means one of
-them is mis-detected, and migrating half a project under a mis-detection is
-the failure that is hardest to notice afterwards.
+`ants-v1` on both sides. When it does **not** — an archive whose detected
+format differs from `sources[0]`'s — `findRoadmaps()` refuses the whole call
+with `archive_format_mismatch` rather than guessing. A per-source parse would
+be defensible; a refusal is chosen because a format difference between a file
+and its own archive means one of them is mis-detected, and migrating half a
+project under a mis-detection is the failure that is hardest to notice
+afterwards.
+
+**A source with no format signal inherits `sources[0]`'s format and never
+triggers that refusal.** `detectRoadmapFormat()` (`src/roadmapparse.cpp`)
+classifies from bullet grammar and **falls back to `ants-v1` when it finds
+none** — both on an empty line list and at the end of its scan. A bullet-less
+archive therefore reports `ants-v1` on no evidence, and `docs/roadmap/0.5.md`
+is exactly that file: 651 bytes of prose, zero bullets (§ 1.1). On this
+project the fallback happens to agree with the live file and nothing fires.
+On a `github-task-list` project it would not, and a prose-only archive would
+refuse the migration of the one thing this spec exists to migrate. The
+inheritance rule removes a refusal that would be triggered by the *absence* of
+evidence rather than by a conflict.
 
 **One plan per project is forced, not chosen.** `RoadmapMigrateLoad::load()`
 (`src/roadmapmigrateload.h`) is declared "one plan, one project, one
@@ -188,13 +210,16 @@ section already fixes the directory, the regex and the sort.
   integer tuple **descending** — § 3.9's stated contract, adopted rather than
   re-decided. Lexical sort is explicitly wrong there (`0.10` < `0.9`), and this
   project will reach minor 10.
-- **Zero-padding is NOT excluded by the regex, whatever § 3.9's prose says.**
-  `00.07.md` matches `^[0-9]+\.[0-9]+\.md$` and parses to the same `(0, 7)`
-  tuple as `0.7.md`, so the two would be indistinguishable after sorting. Two
-  entries parsing to the same tuple refuse the call with `archive_duplicate_minor`
-  rather than picking one. (§ 3.9's parenthetical claims the naming rule
-  excludes zero-padding; its own regex does not. That contradiction is in the
-  standard, not here — § 7 surfaces it.)
+- **The regex is tightened to forbid leading zeros:**
+  `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`. § 3.9's prose already says
+  "no zero-padding" while its own stated regex `^[0-9]+\.[0-9]+\.md$` accepts
+  `00.07.md` — which parses to the same `(0, 7)` tuple as `0.7.md`, making the
+  two indistinguishable after sorting. Tightening to match the prose removes
+  that case by construction rather than adding a rule to detect it: every
+  conforming name now maps to a distinct tuple, so there is no duplicate-minor
+  condition to refuse. A zero-padded name is simply non-conforming and takes
+  the `archive_unrecognised` branch below. (The contradiction is in the
+  standard; § 7 surfaces it rather than amending it here.)
 - **No archive directory is not a refusal.** Nine of ten roots have none
   (§ 1.1); `findRoadmaps()` returns the live source alone, notes empty.
 - **A non-conforming entry raises `archive_unrecognised`** naming the filename
@@ -217,18 +242,29 @@ reads the note, not the error string.
 |---|---|---|
 | `not_found`, `case_ambiguous`, `not_utf8` | `findRoadmaps()` | inherited; `nullopt`, no plan |
 | `archive_format_mismatch` (§ 2.1.1) | `findRoadmaps()` | `nullopt`, no plan |
-| `archive_duplicate_minor` (above) | `findRoadmaps()` | `nullopt`, no plan |
 | `archive_unrecognised` | `findRoadmaps()` | **note**; that entry is skipped, the call succeeds |
 | `archive_slug_collision` (§ 2.3) | `planFrom()` | **note**; the load half refuses the plan |
 
+**A refusal returns the `Discovery` with `sources` empty and `notes`
+populated**, not a bare `nullopt`. Otherwise the two archive refusals name no
+file at all: `*error` carries the code alone, so a project with several
+archives would learn only that *one* failed. ANTS-3757's stated reason for
+refusing an undecodable file rather than substituting U+FFFD was that "a
+fixable file is worth naming", and a refusal that names nothing does not serve
+it. The optional's `nullopt` is therefore reserved for the three whole-root
+refusals inherited from § 2.2, where there is no archive to name.
+
 The last row is shaped by the types rather than by preference: `planFrom()`
-returns a `MigrationPlan`, not an optional, and ANTS-3757 INV-9 makes it pure
-and total — so it has no way to refuse. It therefore records the note and
-**does not rename**, leaving the collision visible in the plan; `load()` refuses
-a plan carrying that note before it opens a transaction. Detecting it at the
-store's `UNIQUE (project_id, slug)` instead would abort mid-transaction with no
-line number to report, which is the failure ANTS-3757 INV-12 already exists to
-avoid one level down.
+returns a `MigrationPlan`, not an optional, and ANTS-3757 INV-9 makes it pure —
+totality follows from that return type — so it has no way to refuse. It
+therefore records the note and **does not rename**, leaving the collision
+visible in the plan; `load()` refuses a plan carrying that note before it opens
+a transaction. That refusal is what the note is *for*, because the store does
+**not** catch this: ANTS-3765 § 2.6.1 resolves every section with
+`findSection()` and calls `addSection()` only for a genuinely-new slug, so a
+duplicate slug is silently **merged** into the existing row — title and intro
+overwritten, the archive's items filed into the live section — rather than
+rejected by `UNIQUE (project_id, slug)`.
 
 ### 2.3 Section identity across sources
 
@@ -254,16 +290,36 @@ shared across sources. Two consequences, and both are the point:
   a collision and raises no note.
 
 The archive's synthetic root section — every source produces one, and its slug
-is empty today — takes the bare `"<M>-<N>"` form (`0-6`). A heading that
-slugifies to the empty string takes the bare form too rather than a dangling
-`0-6-`, matching `slugifyHeading()`'s own rule that a slug never ends in a dash.
+is empty today — takes the bare `"<M>-<N>"` form (`0-6`), and **only the root
+may take that form.**
+
+**A heading that slugifies to the empty string takes `"<M>-<N>-h<ordinal>"`**
+(`0-6-h3`), where `ordinal` is that heading's 1-based position among the
+source's `##`/`###` headings. It cannot take the bare form and it cannot take a
+dangling `0-6-`: `RoadmapIndex::uniqueSlug()` **returns an empty base
+immediately without uniquing it and without inserting it into `seen`** —
+`if (base.isEmpty()) return base;` — so every empty-slugifying heading yields
+`""`, and the prefix would map all of them, plus the synthetic root, onto the
+single slug `0-6`. Under § 2.2's silent-merge behaviour those become one
+section, not a refusal. An emoji-only `### 🎨` is one edit away from this
+project's own `### 🎨 Features`, so this is a live shape rather than a
+hypothetical. Ordinal position is a safe key here precisely because an archive
+is immutable by contract — § 3.9 writes it once at rotation and nothing edits
+it afterwards — so INV-4's "function of its own file and heading alone" still
+holds.
+
+> **A pre-existing defect this exposes, in ANTS-3757 rather than here.** The
+> live file has the same hole: two headings that both slugify to empty produce
+> two sections with slug `""`, which merge. Nothing in this spec makes it worse
+> and nothing here fixes it; § 7 surfaces it for ANTS-3757's owner.
 
 Two properties this buys:
 
-- **Live slugs do not move.** Eight of the ten projects migrate today
-  (ANTS-3765, corpus run 2026-08-01); none is yet loaded into a production
-  store, so the exposure is prospective rather than actual — but it lands the
-  moment one is. Any scheme that shifted a live slug would fail to re-match
+- **Live slugs do not move.** Eight of the ten projects then in the corpus
+  migrated cleanly at ANTS-3765's run of 2026-08-01, the remaining two blocked
+  on colliding ids (ANTS-3772); none is yet loaded into a production store, so
+  the exposure is prospective rather than actual — but it lands the moment one
+  is. Any scheme that shifted a live slug would fail to re-match
   every item filed under it (ANTS-3765 § 2.6.1 keys id-less items on *the same
   section*), orphaning and re-inserting the corpus on the next run.
 - **An archive slug is a function of its own file and heading alone**, so it is
@@ -296,9 +352,10 @@ freshly allocated ids and the old rows are orphaned, on every subsequent edit,
 against a source nobody touched.
 
 The blast radius is the shifted section, not the archive: that section holds 3
-bullets today. But nothing bounds it to one section — every slug the live file
-can collide with is exposed, and of the archive's 20 bullets **18 are id-less**
-(2 carry ids: `ANTS-1001`, `ANTS-1002`), so 18 is the ceiling for one archive.
+bullets today, of which **2 are id-less** — `ANTS-1002` sits in it and matches
+by id regardless of section, so it is unaffected. But nothing bounds the defect
+to one section: every slug the live file can collide with is exposed, and of
+the archive's 20 bullets 18 are id-less, so 18 is the ceiling for one archive.
 The defect is unbounded in *time* rather than large in one pass, which is what
 makes it worth a design rather than a note.
 
@@ -318,11 +375,34 @@ so it is stable under every edit to every other source.
   single-source plan it is the current statement verbatim.
 - `MigrationPlan::sources` is ordered and index-stable within a run; a
   carrier's `sourceIndex` is only meaningful against the plan that produced it.
+- **Only `sources[0]` may plan a legend.** `MigrationPlan` holds one
+  `std::optional<PlannedLegend>` and the legend belongs to the **project**, not
+  to a file (ANTS-3757 § 2.11), so N sources cannot each contribute one. An
+  archive's status-legend run is planned as `narration` in that archive's own
+  section instead — which is why `PlannedLegend` still carries a `sourceIndex`
+  (it records which file the *project's* legend came from) and why demoting the
+  archive's costs nothing: every line is still carried, so INV-5's per-source
+  partition holds. Dropping the losing legend instead would leave its lines in
+  no carrier and make INV-5 unsatisfiable rather than merely unmet.
+- **An item's or element's `sectionSlug` is the section's final slug**,
+  prefixed form included — `0-6-features`, not `features`. It is the same
+  string § 2.3 assigns; stated because ANTS-3757 § 2.11 guarantees the two
+  agree "by construction" via one running `seen` set, and that construction no
+  longer produces it.
+- **A duplicate id across sources is not a new case.** The store keys items on
+  `(project_id, id_fold)`, which is source-blind, so an id appearing in both the
+  live file and an archive collides — and that is exactly ANTS-3757 § 2.5's
+  existing `duplicate_id` rule, which keeps both items and reports each. Nothing
+  new is required. Measured: the archive's only two id-bearing bullets,
+  `ANTS-1001` and `ANTS-1002`, appear nowhere else —
+  `workspace_search 'ANTS-1001|ANTS-1002'` matches only `docs/roadmap/0.6.md`
+  and unrelated test fixtures.
 - **A note about a file that is not a source carries `sourceIndex == -1`.**
   `archive_unrecognised` names an entry that was deliberately never read, so it
-  indexes nothing and has no line; its filename lives in `detail`. Without this,
-  such a note would default to `0` and claim to be about the live roadmap, and
-  the per-source partition above would have a carrier it cannot place.
+  indexes nothing and has no line; its filename lives in `detail`. Without this
+  it would default to `0` and claim to be about the live roadmap. It does not
+  disturb the partition above — ANTS-3757 INV-11 excludes notes from the union
+  by design — so the defect is purely that the note would name the wrong file.
 
 ### 2.5 `empty_source` becomes per-source
 
@@ -342,8 +422,11 @@ The rule: **`empty_source` is raised per source.** No suppression, no
 archive-specific exemption. A prose-only archive genuinely contributed no items
 and a human should see that said out loud — the note is informative, and notes
 have never been failures. The note's `sourceIndex` is the canonical identifier
-of which file it concerns; `detail` echoes the path for a human reader and
-nothing parses it.
+of which file it concerns, and a test asserts on that rather than on prose.
+`detail` carries the path too, and **is** assertable for the one code that has
+no index to assert on — `archive_unrecognised`, whose `sourceIndex` is `-1`
+(§ 2.4) because the file was never a source. For every other code `detail` is a
+human-readable echo and nothing depends on its wording.
 
 ### 2.6 What the render needs — and the store column it requires
 
@@ -363,8 +446,19 @@ ALTER TABLE section ADD COLUMN source_path TEXT;   -- NULL = the live roadmap
 ```
 
 `NULL` for the live file rather than a literal path, so every already-migrated
-project's rows are correct without a backfill. The load half writes it from
-`sources[sourceIndex].path`, relative to the project root. ANTS-3758 then
+project's rows are correct without a backfill.
+
+**The stored value is project-root-relative, and something must relativise it.**
+`Source::path` is **absolute** — `findRoadmap()` builds it from
+`fi.absoluteFilePath()` (`src/roadmapmigrate.cpp`) and § 2.1 does not redefine
+it — so writing `sources[sourceIndex].path` verbatim would store
+`/home/…/docs/roadmap/0.6.md`, which makes the store machine-specific and never
+matches the membership test below. `load()` performs the conversion, against the
+`projectRoot` it already holds in `Options`, as
+`QDir(projectRoot).relativeFilePath(source.path)`. `Source::path` itself stays
+absolute so ANTS-3757's discovery invariants are untouched.
+
+ANTS-3758 then
 re-emits the split by the rule § 3.9 already fixes: a section whose
 `source_path` matches `docs/roadmap/<M>.<N>.md` belongs in that archive,
 `NULL` belongs in the live file. **No `isArchive` flag** — the path is the
@@ -379,8 +473,10 @@ caveat this spec exists to clear.
 ### 2.7 Preference calls and a rejected alternative
 
 Three choices here are judgement, not deduction, and all are mine (Claude,
-2026-08-01, drafting) — recorded, per `specs.md` § 4's *Open questions* bullet,
-so a reviewer can overturn them rather than reverse-engineer them:
+2026-08-01, drafting). They are recorded — rather than left implicit in the
+design — so a reviewer can overturn them instead of reverse-engineering them.
+They are **not** open questions in `specs.md` § 4's sense: each is resolved, and
+this section says who resolved it and why.
 
 - **Scoping per-source provenance into this spec rather than ANTS-3758.** It
   could live with the render that consumes it. It is here because the plan is
@@ -416,9 +512,11 @@ since it keys items on `(project_id, id_fold)` rather than on parsed text.
   ordered by the `(major, minor)` integer tuple descending. *Test:*
   `tests/features/roadmap_migrate_read/` — a fixture root carrying
   `ROADMAP.md` plus `docs/roadmap/{0.5.md,0.6.md,0.10.md}`; asserts the returned
-  paths in order. *Breaks when:* the sort is lexical, which puts `0.10` before
-  `0.9` — hence the `0.10.md` fixture, without which every ordering
-  implementation passes.
+  paths in order — numeric descending gives `0.10, 0.6, 0.5`. *Breaks when:* the
+  sort is lexical, which orders `0.10` **last** rather than first, since
+  `"0.10" < "0.6"` as strings. The `0.10.md` fixture is what makes the two
+  orderings differ at all; against `{0.5, 0.6}` alone every implementation
+  passes.
 - **INV-2** — a root with no `docs/roadmap/` directory plans exactly as it did
   before this change: one source, every carrier's `sourceIndex == 0`, and every
   ANTS-3757 assertion still true. *Test:* same suite — **ANTS-3757's INV-1..13
@@ -467,10 +565,14 @@ since it keys items on `(project_id, id_fold)` rather than on parsed text.
   the file that line is in, and ANTS-3757 INV-11's partition holds **within
   each source**: every non-blank line of source *i* lies inside exactly one
   carrier with `sourceIndex == i`. *Test:* same suite — asserts the partition
-  per source over the archive fixture. *Breaks when:* `sourceIndex` defaults to
-  0 on carriers built from an archive, which makes the archive's lines read as
-  live-file lines and leaves both files' partitions false while every count
-  stays right.
+  per source over the archive fixture, **including a leg whose archive carries
+  its own status-legend run**, which § 2.4 demotes to `narration`. *Breaks
+  when:* `sourceIndex` defaults to 0 on carriers built from an archive, which
+  makes the archive's lines read as live-file lines and leaves both files'
+  partitions false while every count stays right; **or** the archive's legend
+  is dropped rather than demoted, which puts its lines in no carrier at all —
+  the legend leg is the only one that can see that, because every other fixture
+  has no legend to lose.
 - **INV-6** — `empty_source` is raised per source with its `detail` naming that
   source's path, and a prose-only archive does not raise it for a live file
   that yielded items. *Test:* same suite — the archive fixture's `0.5.md` leg
@@ -515,9 +617,11 @@ since it keys items on `(project_id, id_fold)` rather than on parsed text.
   § 2.6.1 defect measured on 2026-08-01.
 - **INV-10** — a prefixed archive slug equal to a live slug produces an
   `archive_slug_collision` note naming both sections, no rename, and a load
-  that refuses the plan. *Test:* `tests/features/roadmap_migrate_read/` (not
-  the load suite INV-9 names) — a fixture whose live file carries a heading
-  slugifying to `0-6-features`; asserts the note, that the archive section's
+  that refuses the plan. *Test:* **both suites** —
+  `tests/features/roadmap_migrate_read/` for the note and the absent rename,
+  `tests/features/roadmap_migrate_load/` for the refusal. A fixture whose live
+  file carries a heading slugifying to `0-6-features`; asserts the note, that
+  the archive section's
   slug is still `0-6-features`, and that `tests/features/roadmap_migrate_load/`
   refuses that plan. *Breaks when:* the collision is resolved by renaming
   (INV-4's second mutation); or the note is dropped and the duplicate reaches
@@ -536,14 +640,25 @@ since it keys items on `(project_id, id_fold)` rather than on parsed text.
   which every other invariant here passes, because a plan that never saw those
   bullets cannot report them missing. The sibling leg is what stops the fix
   being "refuse every archive".
-- **INV-12** — two entries in `docs/roadmap/` parsing to the same
-  `(major, minor)` tuple refuse the call with `archive_duplicate_minor`.
-  *Test:* same suite — a fixture carrying both `0.7.md` and `00.07.md`;
-  asserts `nullopt` and the code. *Breaks when:* the tuple is used as a sort
-  key without a uniqueness check, which silently keeps whichever the directory
-  enumeration returned second — a coin-flip between two files claiming the same
-  minor, and § 3.9's prose wrongly implies the regex already prevents it
-  (§ 2.2).
+- **INV-12** — *withdrawn — 2026-08-01, never implemented and never referenced.*
+  It required an `archive_duplicate_minor` refusal for two entries
+  parsing to the same `(major, minor)` tuple. § 2.2 now forbids leading zeros
+  in the name regex, which makes the name→tuple map injective and removes the
+  condition by construction rather than detecting it. The id is tombstoned
+  rather than reused, per `specs.md` § 5.5. The zero-padding case it covered is
+  now INV-8's, as an `archive_unrecognised` entry.
+- **INV-13** — a section whose heading slugifies to the empty string takes
+  `<M>-<N>-h<ordinal>` and never the bare `<M>-<N>` the synthetic root holds,
+  so no two sections of one archive share a slug. *Test:*
+  `tests/features/roadmap_migrate_read/` — a fixture archive carrying an
+  emoji-only `### 🎨` heading alongside its H1 title and prose intro; asserts
+  the root section's slug is `0-6` and the emoji heading's is `0-6-h<n>`, both
+  present and distinct. *Breaks when:* the empty-slug case is routed through
+  `uniqueSlug()` and then prefixed — which is the natural implementation and is
+  silently wrong, because that function returns an empty base **without
+  inserting it into `seen`**, so it never uniques and every such heading
+  collapses onto the root's slug. INV-10 cannot catch this: the collision is
+  *within* one source and INV-10's note fires only archive-against-live.
 
 ## 4. RAM / build cost
 
@@ -567,7 +682,25 @@ one whose live roadmap alone is far past this skill's design point. No cache and
 no eviction policy, because nothing here outlives the call — but the growth is
 linear in released minors and is written down rather than assumed away.
 
-`sourceIndex` adds one `int` per carrier. No new build target, no new library.
+`sourceIndex` adds one `int` per carrier.
+
+## 4.1 Migration / compatibility
+
+The only on-disk change is § 2.6's `section.source_path`. **ANTS-3756 owns the
+schema-migration mechanism**; this spec states only what the column must mean,
+because a second statement of the upgrade procedure is a second procedure.
+
+- **A store written before the column** reads `source_path` as `NULL` on every
+  row, which is exactly the value the live roadmap gets — so an existing store
+  is already correct for the only sources it ever held, and no backfill is
+  needed or attempted.
+- **The `findRoadmap()` → `findRoadmaps()` rename is source-level only.** It is
+  not a released public API: `find_caller` reports its callers as the test
+  suite and this lane's own headers, and `remotecontrol.cpp`'s similarly-named
+  `findRoadmapUnder()` (ANTS-1459) is an unrelated function that is not touched.
+- **No behaviour changes for a project with no archives** — INV-2 is the proof,
+  and it is why that invariant re-runs ANTS-3757's whole suite rather than
+  asserting something weaker.
 
 ## 5. Out of scope
 
@@ -585,15 +718,20 @@ linear in released minors and is written down rather than assumed away.
   the archive fixtures do instead and what that costs.
 - **Rotating new archives.** `/bump` owns rotation (§ 3.9); this spec only
   reads what rotation already produced.
-- **The other nine projects.** None has an archive directory (§ 1.1), so this
-  changes nothing for them — which INV-2 is the proof of, not an assumption.
+- **Every other project in the corpus.** None has a `docs/roadmap/` directory
+  at all — not merely no *conforming* archive, so none even reaches the
+  `archive_unrecognised` branch (§ 1.1, survey section B, which reports the
+  directory's presence and the non-conforming count per root for exactly this
+  claim). This spec changes nothing for them, and INV-2 is the proof rather
+  than an assumption.
 
 ## 6. Tests
 
-Feature test: `tests/features/roadmap_migrate_read/` (INV-1..8, INV-11, INV-12)
+Feature test: `tests/features/roadmap_migrate_read/` (INV-1..8, INV-11, INV-13)
 and `tests/features/roadmap_migrate_load/` (INV-9). **INV-10 spans both** — the
 note and the absence of a rename are asserted in the read suite, the plan's
-refusal in the load suite. Label `features;fast`. Each invariant is verified RED
+refusal in the load suite. INV-12 is withdrawn and has no surface. Label
+`features;fast`. Each invariant is verified RED
 against the mutation its clause names, before the implementation is restored.
 
 ### 6.1 Fixtures are copies of the real archives, not hand-written ones
@@ -606,13 +744,22 @@ make the live count 3, because INV-4's mutation only reddens when the counter
 has somewhere to move. Its `docs/roadmap/0.5.md` and `0.6.md` are
 **byte-identical copies of this project's own archives**, H1 title and all.
 
-Four further roots, each carrying exactly what one invariant's mutation needs
-and nothing else: a `0.10.md` alongside `0.5.md`/`0.6.md` (INV-1's numeric
-sort); an invalid-UTF-8 archive (INV-7); a root holding `0.7.0.md`,
-`README.md`, a directory named `0.8.md` and an outward-pointing symlink
-`0.9.md` (INV-8); and one whose archive is in a different format from its live
-file (§ 2.1.1's refusal). The collision root — a live heading slugifying to
-`0-6-features` — is INV-10's.
+Six further roots, each carrying exactly what one invariant's mutation needs
+and nothing else:
+
+| Root | For | Carries |
+|---|---|---|
+| `sort/` | INV-1 | `0.10.md` alongside `0.5.md` / `0.6.md` |
+| `badutf8/` | INV-7 | an archive holding an invalid byte sequence |
+| `unrecognised/` | INV-8 | `0.7.0.md`, `00.07.md`, `README.md`, a **directory** `0.8.md`, an outward symlink `0.9.md` — the two regular files each carrying a findable item |
+| `mixedformat/` | INV-11 | an `ants-v1` live file and a `github-task-list` archive, plus a sibling leg whose archive matches |
+| `collision/` | INV-10 | a live heading slugifying to `0-6-features` |
+| `emptyslug/` | INV-13 | an archive with an emoji-only `### 🎨` heading beside its H1 title and prose intro |
+
+**`INV-4` and `INV-9` mutate their fixture** — both append a section to the live
+file between two plans. Each copies its root to a temp directory first and
+operates there; a test that edits a committed fixture in place corrupts every
+later assertion in the same run and shows up as a dirty working tree.
 
 This is the lesson from ANTS-3765 applied. Sixteen green invariant tests
 coexisted with a loader that could not migrate three of ten real projects,
@@ -651,8 +798,9 @@ one, so neither check licenses skipping the other.
 
 ## 7. Cross-doc impact
 
-**Two of these are amendments to already-shipped specs and are the reason this
-document must be signed off before it is implemented, not after.**
+**Three of these are amendments to already-shipped specs — ANTS-3756,
+ANTS-3765 and ANTS-3757 — which is the reason this document must be signed off
+before it is implemented, not after.**
 
 - **`docs/specs/ANTS-3756-roadmap-store-schema.md`** — **schema change.**
   `section` gains a nullable `source_path TEXT` (§ 2.6), with a migration for
@@ -670,19 +818,39 @@ document must be signed off before it is implemented, not after.**
   - § 5's archive bullet: its claim that the five plan carriers "all stand" is
     wrong (§ 2.1), and its "every one shipped" claim about the 20 archive
     bullets is wrong (§ 1.1 — 2 are 💭).
-  - § 2.2 (discovery) gains a pointer to § 2.2 here; § 2.10's **closed** note-
-    code set gains `archive_unrecognised`, `archive_slug_collision`,
-    `archive_format_mismatch` and `archive_duplicate_minor`; § 2.11's rule that
-    a section's slug comes from one running `seen` set — so a section's slug
-    equals the reader's own `sectionSlug` by construction — is false by design
-    for every archive section (§ 2.3).
+  - § 2.2 (discovery) gains a pointer to § 2.2 here, **and its refusal-code
+    enumeration** (`not_found` | `case_ambiguous` | `not_utf8`, also stated in
+    `src/roadmapmigrate.h`) gains `archive_format_mismatch`. Its § 2.10
+    **note**-code set — a different closed set — gains `archive_unrecognised`
+    and `archive_slug_collision`. The split matters: two of the four new codes
+    are refusals and two are notes, and filing all four into § 2.10 would leave
+    the refusal vocabulary unamended.
+  - § 2.11's rule that a section's slug comes from one running `seen` set — so
+    a section's slug equals the reader's own `sectionSlug` by construction — is
+    false by design for every archive section (§ 2.3).
+  - **A pre-existing defect, surfaced not fixed:** `uniqueSlug()` returns an
+    empty base without inserting it into `seen`, so two live headings that both
+    slugify to empty already produce two sections with slug `""`, which
+    ANTS-3765 § 2.6.1 merges silently. This spec avoids it for archives (§ 2.3,
+    INV-13) and does not touch the live path.
+  - `src/roadmapmigrate.h`'s comment that "`sourcePath` is recorded into the
+    plan and never read" becomes false — § 2.6 reads it.
   - INV-1 (discovery), INV-11 (partition) and INV-13 (`empty_source`) are
     annotated as amended.
 - **`docs/standards/roadmap-format.md`** — no change *required*, but § 3.9
   carries an internal contradiction this spec had to work around and should not
   silently inherit: its prose says the naming rule forbids zero-padding while
-  its own stated regex `^[0-9]+\.[0-9]+\.md$` accepts `00.07.md` (§ 2.2).
-  Surfaced for the standard's owner rather than amended here.
+  its own stated regex `^[0-9]+\.[0-9]+\.md$` accepts `00.07.md`. § 2.2 adopts
+  the tightened `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`, which is what the
+  prose already describes; the standard should adopt the same. Surfaced for its
+  owner rather than amended here.
+- **`tests/features/roadmap_migrate_read/spec.md`** — its opening line is a
+  test contract "for `RoadmapMigrate::findRoadmap()` and
+  `RoadmapMigrate::planFrom()`"; both signatures change, and its Fixtures
+  section gains the six archive roots (§ 6.1).
+- **`tests/features/roadmap_migrate_read/expected-counts.json`** — its
+  `_excluded` map gains the archive roots and the reason (§ 6.2), and a new
+  `expected-section-slugs.json` lands beside it (INV-2's golden).
 - **`CLAUDE.md`** — no change (the migration lane is not in the module map).
 - **`docs/subsystems.md`** — the roadmap-migration lane entry names
   `findRoadmap`; update to `findRoadmaps`.
@@ -692,5 +860,6 @@ document must be signed off before it is implemented, not after.**
 
 | Loop | Reviewer | Findings | Resolution |
 |---|---|---|---|
+| 2 (2026-08-01) | 3 cold `general-purpose` lanes, same brief, no prior-loop context | C 1 · H 6 · M 11 · L 10 · I 2 — 28 verified, 2 dismissed | All 28 fixed. Origin split: **~12 fix collateral vs ~8 draft defects** — loop 1's own fixes generated the larger share, recorded here because the trend is the signal. **Dismissed on verification:** lane A's Critical (cross-source id collision) — `ANTS-1001`/`ANTS-1002` appear only in `docs/roadmap/0.6.md`, and the case is already ANTS-3757 § 2.5's `duplicate_id` rule; and lane B's claim that `0.5.md` would refuse today — `detectRoadmapFormat()` falls back to `ants-v1`, so it agrees by luck, though the underlying gap was real and is fixed. **Biggest correction: "a second source emitting `performance` aborts the load" was wrong** — ANTS-3765 § 2.6.1 resolves sections with `findSection()`, so a duplicate slug **silently merges**, overwriting title/intro and refiling items. Worse than the claimed abort, and § 1 and § 2.2 now say so. Also: the empty-slug case escaped uniquing entirely (`uniqueSlug()` returns an empty base without inserting it) — new INV-13 and an `<M>-<N>-h<ordinal>` form; the legend had no merge rule against one `optional<PlannedLegend>`; `Source::path` is absolute so `source_path` needed an explicit relativisation; a format-less source now inherits `sources[0]`'s format; the name regex is tightened to forbid leading zeros, which **withdrew INV-12** by removing its condition rather than detecting it. Corpus moved mid-session (10 → 11 roots), so § 1.1 now leads with the proportion. Deferred: no TOC at 864 lines (INFO). |
 | 1 (2026-08-01) | 3 cold `general-purpose` lanes, shared context packet | C 2 · H 7 · M 12 · L 9 · I 2 — 30 verified, 0 unverified | All 30 fixed. **C1:** `archive_unrecognised` had no carrier — `findRoadmaps()` now returns `Discovery{sources, notes}` and `planFrom()` takes it, notes about a rejected file carrying `sourceIndex == -1`. **C2:** the source discriminator died at the load boundary (verified: `section` has no source column), so § 2.6 now requires a nullable `section.source_path`, and ANTS-3756 + ANTS-3765 join § 7. **H1:** `format` is per-file and was left on the plan — moved onto `Source` (§ 2.1.1) with `archive_format_mismatch`. **H6/H7:** the shared-`seen` backstop could rename an archive slug on a live edit — uniquing is now per source and a residual cross-source collision is a refusal, never a rename. Also: "twenty items, all shipped" was false (18 ✅ + 2 💭, the 💭 pair recorded nowhere else); "20 id-less items" overstated (that section holds 3; 18 of 20 are id-less); ANTS-3757 § 2.10 and § 2.11 added to § 7. Two invariants added for the new refusal codes (INV-11, INV-12). Deferred: no TOC at 694 lines (INFO). |
 |---|---|---|---|
