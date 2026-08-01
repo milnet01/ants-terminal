@@ -40,6 +40,25 @@ bool exec(QSqlDatabase &db, const QString &sql, QString *error) {
 
 QString lastErr(const QSqlQuery &q) { return q.lastError().text(); }
 
+// The item columns a field-at-a-time write may target. File-scope rather than
+// a static inside setItemField() because ANTS-3765's clearItemField() gates on
+// the same list, and two copies of an allowlist is one allowlist that will
+// disagree with itself.
+bool isWritableItemField(const QString &field) {
+    static const QStringList writable = {
+        QStringLiteral("headline"), QStringLiteral("layman"), QStringLiteral("status"),
+        QStringLiteral("kind"),     QStringLiteral("source"), QStringLiteral("resolution"),
+        QStringLiteral("body"),     QStringLiteral("milestone"),
+        QStringLiteral("visibility"), QStringLiteral("last_modified"),
+        QStringLiteral("shipped"),  QStringLiteral("created"),
+        // ANTS-3767 — the three JSON columns. They take a JSON TEXT value, not
+        // prose, so they are validated and canonicalised before the UPDATE;
+        // everything else in this list is stored as given.
+        QStringLiteral("lanes"), QStringLiteral("evidence"), QStringLiteral("extras"),
+    };
+    return writable.contains(field);
+}
+
 } // namespace
 
 RoadmapStore::RoadmapStore(QString dbPath, qint64 historyCapBytes, Access access)
@@ -478,8 +497,25 @@ std::optional<qint64> RoadmapStore::addSection(qint64 projectId, const QString &
 }
 
 std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) {
-    if (!exec(m_db, QStringLiteral("BEGIN IMMEDIATE"), error))
+    // ANTS-3765 § 2.3 / INV-8 — atomic either way. With no transaction open it
+    // opens and commits its own, because INV-20 depends on the item and its
+    // element being written together and every existing caller relies on it.
+    // With one open it PARTICIPATES, and INV-20 holds a fortiori: the
+    // enclosing transaction is wider, not narrower.
+    //
+    // The failure paths below roll back only when this call owns the
+    // transaction. Rolling back one it does not own is the sharpest edge in
+    // the change: the caller would carry on believing it was still in a
+    // transaction, every later write would autocommit and PERSIST, and the
+    // migration would report a clean partial load — INV-1 inverted with
+    // nothing observing it.
+    const bool owns = !m_inTransaction;
+    if (owns && !exec(m_db, QStringLiteral("BEGIN IMMEDIATE"), error))
         return std::nullopt;
+    const auto unwind = [&] {
+        if (owns)
+            exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
+    };
 
     // Same-project rule (write-path, as above): the section an item is filed
     // in must belong to the item's own project — "Items are never global".
@@ -494,7 +530,7 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
             if (error)
                 *error = QStringLiteral("section %1 is not in project %2")
                              .arg(w.sectionId).arg(w.projectId);
-            exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
+            unwind();
             return std::nullopt;
         }
     }
@@ -537,7 +573,7 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
     if (!q.exec()) {
         if (error)
             *error = lastErr(q);
-        exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
+        unwind();
         return std::nullopt;
     }
     const qint64 itemPk = q.lastInsertId().toLongLong();
@@ -554,29 +590,28 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
     if (!e.exec()) {
         if (error)
             *error = lastErr(e);
-        exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
+        unwind();
         return std::nullopt;
     }
 
-    if (!exec(m_db, QStringLiteral("COMMIT"), error))
+    if (owns && !exec(m_db, QStringLiteral("COMMIT"), error))
         return std::nullopt;
     return itemPk;
 }
 
 bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
                                 const QString &value, QString *error) {
-    static const QStringList writable = {
-        QStringLiteral("headline"), QStringLiteral("layman"), QStringLiteral("status"),
-        QStringLiteral("kind"),     QStringLiteral("source"), QStringLiteral("resolution"),
-        QStringLiteral("body"),     QStringLiteral("milestone"),
-        QStringLiteral("visibility"), QStringLiteral("last_modified"),
-        QStringLiteral("shipped"),  QStringLiteral("created"),
-        // ANTS-3767 — the three JSON columns. They take a JSON TEXT value, not
-        // prose, so they are validated and canonicalised below before the
-        // UPDATE; everything else in this list is stored as given.
-        QStringLiteral("lanes"), QStringLiteral("evidence"), QStringLiteral("extras"),
-    };
-    if (!writable.contains(field)) {
+    // The 3-argument form IS the human edit, so `asserted` is its meaning and
+    // stays hardcoded here rather than becoming a default argument — a default
+    // would make every migration write that forgot the parameter silently
+    // claim a human asserted it.
+    return setItemField(itemPk, field, value, QStringLiteral("asserted"), error);
+}
+
+bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
+                                const QString &value, const QString &provenance,
+                                QString *error) {
+    if (!isWritableItemField(field)) {
         if (error)
             *error = QStringLiteral("field not writable: %1").arg(field);
         return false;
@@ -635,11 +670,13 @@ bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
         return false;
     }
 
-    // INV-10 — per FIELD, both directions: this key becomes `asserted` and
-    // every other key is carried through untouched.
+    // INV-10 — per FIELD, both directions: this key takes the caller's
+    // provenance and every other key is carried through untouched. That
+    // carry-through is also ANTS-3765 § 2.6's "provenance is merged, not
+    // replaced" — a field a re-run did not write keeps the provenance it had.
     QJsonObject prov =
         QJsonDocument::fromJson(cur.value(0).toString().toUtf8()).object();
-    prov.insert(field, QStringLiteral("asserted"));
+    prov.insert(field, provenance);
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("UPDATE item SET %1 = ?, provenance = ? WHERE item_pk = ?")
@@ -775,4 +812,519 @@ bool RoadmapStore::appendHistory(qint64 itemPk, const QString &changedAt, int se
         return false;
     }
     return true;
+}
+
+// --- ANTS-3765 § 2.3 — explicit transaction control --------------------------
+
+bool RoadmapStore::begin(QString *error) {
+    // INV-7 — refuses to nest rather than no-oping. SQLite refuses the nested
+    // BEGIN itself; a no-op here would be this project's own invention layered
+    // over that refusal, and it would make a caller's commit() end a
+    // transaction it did not open.
+    if (m_inTransaction) {
+        if (error)
+            *error = QStringLiteral("a transaction is already open");
+        return false;
+    }
+    if (!exec(m_db, QStringLiteral("BEGIN IMMEDIATE"), error))
+        return false;
+    m_inTransaction = true;
+    return true;
+}
+
+bool RoadmapStore::commit(QString *error) {
+    // Refusing when none is open rather than returning success: a silent no-op
+    // is the same class of defect as a nesting begin() — the caller believes it
+    // has ended a transaction and has not.
+    if (!m_inTransaction) {
+        if (error)
+            *error = QStringLiteral("no transaction is open");
+        return false;
+    }
+    // The flag clears only on success: a COMMIT refused as SQLITE_BUSY leaves
+    // the transaction active, and clearing here would strand it open with
+    // nothing believing it owns it.
+    if (!exec(m_db, QStringLiteral("COMMIT"), error))
+        return false;
+    m_inTransaction = false;
+    return true;
+}
+
+bool RoadmapStore::rollback(QString *error) {
+    if (!m_inTransaction) {
+        if (error)
+            *error = QStringLiteral("no transaction is open");
+        return false;
+    }
+    // Unconditionally clears, unlike commit(): the guard above has already
+    // established a transaction was open, so the only reachable failure is one
+    // SQLite has itself already aborted the transaction for. Leaving the flag
+    // set there would deny the caller any way back to a usable connection.
+    const bool ok = exec(m_db, QStringLiteral("ROLLBACK"), error);
+    m_inTransaction = false;
+    return ok;
+}
+
+// --- ANTS-3765 § 2.4 — writers -----------------------------------------------
+
+bool RoadmapStore::setSectionIntro(qint64 sectionId, const QString &intro,
+                                   QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE section SET intro = ? WHERE section_id = ?"));
+    // Prose, stored VERBATIM — never canonicalised. An empty intro is NULL
+    // rather than '', so a section that never had one and a section whose one
+    // was removed are the same state (ANTS-3761's column diff sees both).
+    intro.isEmpty() ? q.addBindValue(QVariant(QMetaType(QMetaType::QString)))
+                    : q.addBindValue(intro);
+    q.addBindValue(sectionId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+bool RoadmapStore::updateSection(qint64 sectionId, const QString &title, int level,
+                                 std::optional<qint64> parentId, QString *error) {
+    // Same-project rule, write-path enforced exactly as addSection() does it: a
+    // SQLite CHECK may not contain a subquery, so a section re-parented across
+    // projects cannot be refused in DDL.
+    if (parentId) {
+        QSqlQuery own(m_db);
+        own.prepare(QStringLiteral("SELECT project_id FROM section WHERE section_id = ?"));
+        own.addBindValue(sectionId);
+        QSqlQuery p(m_db);
+        p.prepare(QStringLiteral("SELECT project_id FROM section WHERE section_id = ?"));
+        p.addBindValue(*parentId);
+        if (!own.exec() || !own.next() || !p.exec() || !p.next() ||
+            own.value(0).toLongLong() != p.value(0).toLongLong()) {
+            if (error)
+                *error = QStringLiteral("parent section %1 is not in section %2's project")
+                             .arg(*parentId).arg(sectionId);
+            return false;
+        }
+        if (*parentId == sectionId) {
+            if (error)
+                *error = QStringLiteral("section %1 cannot be its own parent").arg(sectionId);
+            return false;
+        }
+    }
+
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "UPDATE section SET title = ?, level = ?, parent_id = ? WHERE section_id = ?"));
+    q.addBindValue(title);
+    q.addBindValue(level);
+    parentId ? q.addBindValue(*parentId) : q.addBindValue(QVariant(QMetaType(QMetaType::LongLong)));
+    q.addBindValue(sectionId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+bool RoadmapStore::addElement(qint64 sectionId, int position, const QString &kind,
+                              const QString &payload, QString *error) {
+    // INV-10 — refused HERE, not by the DDL CHECK. This method has no item_pk
+    // parameter, so it could not produce a well-formed filing even if it tried,
+    // and letting the CHECK decide would report a constraint violation for
+    // what is really a misuse of the API.
+    if (kind == QLatin1String("item")) {
+        if (error)
+            *error = QStringLiteral("addElement() cannot file an item; use putItem() "
+                                    "or fileItem()");
+        return false;
+    }
+
+    // Canonicalised for `table`, VERBATIM for `narration`. § 2.3 calls
+    // canonicalising prose as JSON undefined rather than merely wasteful, so a
+    // narration payload that happens to look like JSON round-trips unchanged.
+    QString stored = payload;
+    if (kind == QLatin1String("table")) {
+        QJsonParseError pe{};
+        const QJsonDocument doc = QJsonDocument::fromJson(payload.toUtf8(), &pe);
+        if (pe.error != QJsonParseError::NoError) {
+            if (error)
+                *error = QStringLiteral("table payload is not JSON: %1").arg(pe.errorString());
+            return false;
+        }
+        stored = canonicalJson(doc.isArray() ? QJsonValue(doc.array())
+                                             : QJsonValue(doc.object()));
+        if (stored.isEmpty()) {
+            if (error)
+                *error = QStringLiteral("table payload cannot be canonicalised");
+            return false;
+        }
+    }
+
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "INSERT INTO element (section_id, position, kind, payload) VALUES (?,?,?,?)"));
+    q.addBindValue(sectionId);
+    q.addBindValue(position);
+    q.addBindValue(kind);
+    q.addBindValue(stored);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
+                            QString *error) {
+    // INV-10 — the already-filed check is here rather than left to
+    // elem_item_uq, which does catch it but as a constraint violation that
+    // aborts the caller's whole migration instead of a reported refusal.
+    QSqlQuery cur(m_db);
+    cur.prepare(QStringLiteral(
+        "SELECT 1 FROM element WHERE kind = 'item' AND item_pk = ?"));
+    cur.addBindValue(itemPk);
+    if (!cur.exec()) {
+        if (error)
+            *error = lastErr(cur);
+        return false;
+    }
+    if (cur.next()) {
+        if (error)
+            *error = QStringLiteral("item %1 is already filed").arg(itemPk);
+        return false;
+    }
+
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "INSERT INTO element (section_id, position, kind, item_pk) VALUES (?,?, 'item', ?)"));
+    q.addBindValue(sectionId);
+    q.addBindValue(position);
+    q.addBindValue(itemPk);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+bool RoadmapStore::unfileItem(qint64 itemPk, QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "DELETE FROM element WHERE kind = 'item' AND item_pk = ?"));
+    q.addBindValue(itemPk);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+bool RoadmapStore::clearSectionElements(qint64 sectionId, QString *error) {
+    // Per SECTION, never per project: the signature is the contract. A
+    // project-wide delete would take out the narration and table rows of
+    // sections the plan no longer carries, which nothing re-inserts.
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("DELETE FROM element WHERE section_id = ?"));
+    q.addBindValue(sectionId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+bool RoadmapStore::setLegend(qint64 projectId, const QJsonObject &legend,
+                             QString *error) {
+    const QString stored = canonicalJson(legend);
+    if (stored.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("legend cannot be canonicalised");
+        return false;
+    }
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE project SET legend = ? WHERE project_id = ?"));
+    q.addBindValue(stored);
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+bool RoadmapStore::raiseIdHighWater(qint64 projectId, const QString &prefix,
+                                    qint64 highWater, QString *error) {
+    // Upward only, expressed in the UPSERT rather than in a read-then-write:
+    // two migrations racing on one store must not be able to lower a counter
+    // between the read and the write, and MAX() in the conflict clause makes a
+    // value at or below the stored one a no-op rather than an error.
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "INSERT INTO id_prefix (project_id, prefix, high_water) VALUES (?,?,?) "
+        "ON CONFLICT (project_id, prefix) DO UPDATE SET "
+        "high_water = MAX(high_water, excluded.high_water)"));
+    q.addBindValue(projectId);
+    q.addBindValue(prefix);
+    q.addBindValue(highWater);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+bool RoadmapStore::clearItemField(qint64 itemPk, const QString &field,
+                                  const QString &provenance, QString *error) {
+    if (!isWritableItemField(field)) {
+        if (error)
+            *error = QStringLiteral("field not writable: %1").arg(field);
+        return false;
+    }
+
+    QSqlQuery cur(m_db);
+    cur.prepare(QStringLiteral("SELECT provenance FROM item WHERE item_pk = ?"));
+    cur.addBindValue(itemPk);
+    if (!cur.exec() || !cur.next()) {
+        if (error)
+            *error = QStringLiteral("no such item %1").arg(itemPk);
+        return false;
+    }
+    QJsonObject prov =
+        QJsonDocument::fromJson(cur.value(0).toString().toUtf8()).object();
+    prov.insert(field, provenance);
+
+    // A NOT NULL column — status, headline, or one of the three JSON ones —
+    // refuses this, and that refusal is the engine's rather than a second
+    // allowlist here: there is exactly one statement of which columns may hold
+    // NULL, and it is the DDL.
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE item SET %1 = NULL, provenance = ? WHERE item_pk = ?")
+                  .arg(field));
+    q.addBindValue(canonicalJson(prov));
+    q.addBindValue(itemPk);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+// --- ANTS-3765 § 2.4 — readers -----------------------------------------------
+
+std::optional<qint64> RoadmapStore::findItem(qint64 projectId, const QString &id,
+                                             QString *error) const {
+    // lower() and not QString::toLower(): id_fold is a GENERATED column over
+    // SQLite's own ASCII-only lower(), and folding the probe in Qt — which is
+    // Unicode-aware — would miss a row the column holds.
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT item_pk FROM item WHERE project_id = ? AND id_fold = lower(?)"));
+    q.addBindValue(projectId);
+    q.addBindValue(id);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;   // no such item — NOT an error; `error` stays clear
+    return q.value(0).toLongLong();
+}
+
+std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,
+                                                              QString *error) const {
+    // LEFT JOIN: an item is unfiled only transiently, inside § 2.6's element
+    // rebuild, but this reader is what captures a filing BEFORE that delete and
+    // an INNER JOIN would return nothing for an item read after it.
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT i.project_id, i.id, i.id_origin, i.status, i.headline, i.layman, "
+        "       i.kind, i.source, i.priority, i.visibility, i.milestone, "
+        "       i.resolution, i.body, i.created, i.last_modified, i.shipped, "
+        "       i.lanes, i.evidence, i.extras, i.provenance, "
+        "       e.section_id, e.position "
+        "FROM item i LEFT JOIN element e "
+        "  ON e.item_pk = i.item_pk AND e.kind = 'item' "
+        "WHERE i.item_pk = ?"));
+    q.addBindValue(itemPk);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+
+    const auto strList = [](const QString &json) {
+        QStringList out;
+        for (const QJsonValue &v : QJsonDocument::fromJson(json.toUtf8()).array())
+            out << v.toString();
+        return out;
+    };
+
+    ItemWrite w;
+    w.projectId = q.value(0).toLongLong();
+    w.id = q.value(1).toString();
+    w.idOrigin = q.value(2).toString();
+    w.status = q.value(3).toString();
+    w.headline = q.value(4).toString();
+    w.layman = q.value(5).toString();
+    w.kind = q.value(6).toString();
+    w.source = q.value(7).toString();
+    if (!q.value(8).isNull())
+        w.priority = q.value(8).toInt();
+    w.visibility = q.value(9).toString();
+    w.milestone = q.value(10).toString();
+    w.resolution = q.value(11).toString();
+    w.body = q.value(12).toString();
+    w.created = q.value(13).toString();
+    w.lastModified = q.value(14).toString();
+    w.shipped = q.value(15).toString();
+    w.lanes = strList(q.value(16).toString());
+    w.evidence = strList(q.value(17).toString());
+    w.extras = QJsonDocument::fromJson(q.value(18).toString().toUtf8()).object();
+    w.provenance = QJsonDocument::fromJson(q.value(19).toString().toUtf8()).object();
+    w.sectionId = q.value(20).toLongLong();   // 0 when unfiled
+    w.position = q.value(21).toInt();
+    return w;
+}
+
+std::optional<QVector<RoadmapStore::ItemRef>>
+RoadmapStore::listItems(qint64 projectId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT i.item_pk, i.id_fold, i.headline, e.section_id, i.provenance "
+        "FROM item i LEFT JOIN element e "
+        "  ON e.item_pk = i.item_pk AND e.kind = 'item' "
+        "WHERE i.project_id = ? ORDER BY i.item_pk"));
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+
+    QVector<ItemRef> out;
+    while (q.next()) {
+        ItemRef r;
+        r.itemPk = q.value(0).toLongLong();
+        r.idFold = q.value(1).toString();
+        r.headline = q.value(2).toString();
+        r.sectionId = q.value(3).toLongLong();
+        // Parsed here rather than with json_extract(): the JSON1 extension is a
+        // compile-time option and this schema deliberately depends on no build
+        // flags (§ 2.3's dbstat note is the same rule).
+        r.idFromMigration =
+            QJsonDocument::fromJson(q.value(4).toString().toUtf8())
+                .object()
+                .value(QStringLiteral("id")).toString() == QLatin1String("migrated");
+        out.push_back(r);
+    }
+    return out;
+}
+
+std::optional<qint64> RoadmapStore::findSection(qint64 projectId, const QString &slug,
+                                                QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT section_id FROM section WHERE project_id = ? AND slug = ?"));
+    q.addBindValue(projectId);
+    q.addBindValue(slug);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+    return q.value(0).toLongLong();
+}
+
+std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 sectionId,
+                                                                  QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT slug, title, level, intro, parent_id FROM section WHERE section_id = ?"));
+    q.addBindValue(sectionId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+
+    SectionRow s;
+    s.slug = q.value(0).toString();
+    s.title = q.value(1).toString();
+    s.level = q.value(2).toInt();
+    s.intro = q.value(3).toString();
+    if (!q.value(4).isNull())
+        s.parentId = q.value(4).toLongLong();
+    return s;
+}
+
+std::optional<QString> RoadmapStore::idPrefixFor(qint64 projectId,
+                                                 QString *error) const {
+    // Deterministic when a project somehow carries several: the busiest counter
+    // wins, ties by prefix. A project has one prefix in practice, and an
+    // arbitrary pick here would make the id a re-run allocates depend on row
+    // order.
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT prefix FROM id_prefix WHERE project_id = ? "
+        "ORDER BY high_water DESC, prefix ASC LIMIT 1"));
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+    return q.value(0).toString();
+}
+
+std::optional<qint64> RoadmapStore::idHighWater(qint64 projectId, const QString &prefix,
+                                                QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT high_water FROM id_prefix WHERE project_id = ? AND prefix = ?"));
+    q.addBindValue(projectId);
+    q.addBindValue(prefix);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+    return q.value(0).toLongLong();
+}
+
+std::optional<int> RoadmapStore::maxHistorySeq(qint64 itemPk, const QString &changedAt,
+                                               QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT MAX(seq) FROM history WHERE item_pk = ? AND changed_at = ?"));
+    q.addBindValue(itemPk);
+    q.addBindValue(changedAt);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    // MAX() over no rows is one row holding NULL, not zero rows — so the
+    // absence is q.value(0).isNull(), and reading it as 0 would make the first
+    // row of a stamp seq 1 and leave 0 permanently unused.
+    if (!q.next() || q.value(0).isNull())
+        return std::nullopt;
+    return q.value(0).toInt();
 }

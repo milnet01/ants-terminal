@@ -68,6 +68,30 @@ public:
     bool open(QString *error = nullptr);
     bool isOpen() const { return m_db.isOpen(); }
 
+    // ANTS-3765 § 2.3 — explicit transaction control, so a caller can make one
+    // project one transaction. putItem()'s self-committing shape made that
+    // unexpressible in both directions: SQLite refuses a nested BEGIN, so a
+    // wrapper's first putItem() failed and the migration wrote nothing; drop
+    // the wrapper and a failure at item 400 of 600 leaves 399 committed.
+    // QSqlDatabase::transaction() is deliberately not used — that driver emits
+    // a DEFERRED `BEGIN` (checked with `strings` on libqsqlite.so), which takes
+    // its write lock at the first write and can therefore fail SQLITE_BUSY
+    // mid-load, against a design whose whole concurrency story is the lock
+    // being held from the start (§ 2.5, INV-16).
+    //
+    // The flag is a member because SQLite exposes autocommit state through
+    // sqlite3_get_autocommit(), which QSqlDatabase does not surface.
+    bool begin(QString *error = nullptr);     // BEGIN IMMEDIATE; refuses to nest
+    bool commit(QString *error = nullptr);    // refuses when none is open
+    bool rollback(QString *error = nullptr);  // refuses when none is open
+    bool inTransaction() const { return m_inTransaction; }
+
+    // ANTS-3765 § 2.2 — which deadline and cache profile this connection
+    // opened with. A migration against an Interactive store is REFUSED rather
+    // than run: a 5 s deadline against a migration-sized transaction fails
+    // *sometimes*, which is the worst available behaviour.
+    Access access() const { return m_access; }
+
     // INV-15 — did THIS open create the schema? Two processes opening a store
     // that does not exist must produce exactly one creator, and after the fact
     // the winner and the loser are otherwise indistinguishable: both end with
@@ -124,6 +148,24 @@ public:
     bool setItemField(qint64 itemPk, const QString &field, const QString &value,
                       QString *error = nullptr);
 
+    // ANTS-3765 § 2.4 — the same write, with the provenance value as a
+    // parameter. `asserted` is right for a human edit and wrong for every write
+    // migration makes: it records `migrated` and `defaulted` (ANTS-3757
+    // § 2.7–2.9), and losing that distinction collapses the migrated-versus-
+    // asserted difference the model's § 3.1 write-tier gate rests on. An
+    // overload, so the 3-argument form keeps its meaning and INV-10 is
+    // untouched.
+    bool setItemField(qint64 itemPk, const QString &field, const QString &value,
+                      const QString &provenance, QString *error = nullptr);
+
+    // ANTS-3765 § 2.6 — writes SQL NULL. putItem() binds an empty `body` as
+    // NULL while setItemField() binds the QString it is given, so `''` and NULL
+    // are the same call there; without this the same logical state has two
+    // representations depending on which path last touched it, and ANTS-3761's
+    // INV-2 column diff sees a difference where there is none.
+    bool clearItemField(qint64 itemPk, const QString &field, const QString &provenance,
+                        QString *error = nullptr);
+
     // INV-6 — `relates-to` is symmetric and stored ONCE, normalised on stable
     // identity (export_slug, id_fold) — never on a rowid, which a rebuild
     // reassigns. Normalisation applies only when both endpoints resolve.
@@ -142,6 +184,132 @@ public:
                        const QString &newValue, QString *error = nullptr);
     qint64 historyBytes() const;
     qint64 historyCapBytes() const { return m_historyCap; }
+
+    // --- ANTS-3765 § 2.4 — what the migration load half needs -----------------
+    // Every method here is traceable to the section that needs it, and that
+    // traceability is the contract: an operation a later section names with no
+    // method to perform it is a defect in the list, because the only other way
+    // to perform it is raw SQL at the call site — which would make the loader a
+    // third producer of these rows after putItem() and ANTS-3761's rebuild.
+    //
+    // Only setLegend() and addElement(kind='table') canonicalise. Stated per
+    // method rather than as a blanket rule: setSectionIntro() writes prose,
+    // raiseIdHighWater() writes an integer, and narration payload is prose that
+    // § 2.3 forbids canonicalising ("undefined rather than merely wasteful").
+
+    // --- writers ---
+
+    // section.intro — addSection() has no argument for it. Stored VERBATIM.
+    bool setSectionIntro(qint64 sectionId, const QString &intro, QString *error = nullptr);
+
+    // § 2.6's section update: addSection() is INSERT-only and a re-run can
+    // change a heading's title, level or parent. Takes the whole tuple — they
+    // come from one PlannedSection and a partial update has no meaning.
+    bool updateSection(qint64 sectionId, const QString &title, int level,
+                       std::optional<qint64> parentId, QString *error = nullptr);
+
+    // element rows that are NOT items. Refuses kind='item' outright rather than
+    // letting the DDL CHECK decide, so putItem()/fileItem() stay the only ways
+    // an item is filed (INV-10, INV-20).
+    bool addElement(qint64 sectionId, int position, const QString &kind,
+                    const QString &payload, QString *error = nullptr);
+
+    // § 2.6's element rebuild re-files items that already exist, which putItem()
+    // cannot do (UNIQUE (project_id, id_fold)) and addElement() must not.
+    // Refuses an already-filed item: INV-20's "at most one" is elem_item_uq,
+    // and leaning on it here turns a reportable refusal into a constraint
+    // violation that aborts the caller's whole migration.
+    bool fileItem(qint64 itemPk, qint64 sectionId, int position, QString *error = nullptr);
+
+    // The inverse, for the one case § 2.6's rebuild cannot otherwise reach: an
+    // item that is still in source but whose STORED section the plan no longer
+    // carries — a heading deleted while its bullets moved elsewhere. Step 2
+    // clears only the plan's sections, so that item's old element row survives,
+    // fileItem() then refuses it as already filed, and § 2.5 turns the refusal
+    // into a rolled-back project. Clearing its retained section instead would
+    // destroy narration payload nothing re-inserts, so the delete has to be per
+    // ITEM. Removes the kind='item' row; the item itself is untouched.
+    bool unfileItem(qint64 itemPk, QString *error = nullptr);
+
+    // § 2.6 step 2's element delete, PER SECTION and never per project: a
+    // section retained because the plan no longer carries it also holds
+    // narration and table rows nothing re-inserts.
+    bool clearSectionElements(qint64 sectionId, QString *error = nullptr);
+
+    // project.legend — one JSON object per project (roadmap-data-model.md
+    // § 5.1). CANONICALISED.
+    bool setLegend(qint64 projectId, const QJsonObject &legend, QString *error = nullptr);
+
+    // id_prefix high-water. Advances only UPWARD: an id this migration
+    // allocated must never be reissued by a later run (§ 2.8). A value at or
+    // below the stored one is a no-op, not an error.
+    bool raiseIdHighWater(qint64 projectId, const QString &prefix, qint64 highWater,
+                          QString *error = nullptr);
+
+    // --- readers ---
+
+    // § 2.6 re-run matching — resolve an id within one project, folded. The
+    // error out-param is not decoration: without it `nullopt` conflates "no
+    // such item" with "the query failed", and the failure path of that
+    // confusion is an INSERT of an item that already exists.
+    std::optional<qint64> findItem(qint64 projectId, const QString &id,
+                                   QString *error = nullptr) const;
+
+    // § 2.6's field comparison, returned in the SAME type the writer takes so
+    // "compare, then write the difference" needs no second shape. ItemWrite
+    // already carries sectionId/position, which is the current filing § 2.7
+    // must capture BEFORE the element rebuild deletes it.
+    std::optional<ItemWrite> readItem(qint64 itemPk, QString *error = nullptr) const;
+
+    // One enumeration serving BOTH § 2.7's orphan detection (a set complement)
+    // and § 2.6.1's id-less re-run matching (a search by natural key). Neither
+    // is expressible as a point lookup however many times it is called.
+    //
+    // idFold and not id: matching is case-folded within a project (INV-3), so a
+    // set difference over raw ids reports a stored `SH-1` as an orphan of a
+    // planned `Sh-1`. idFromMigration is provenance.id == "migrated" — only
+    // rows this migration gave an id to are eligible for a headline re-match.
+    struct ItemRef {
+        qint64  itemPk = 0;
+        QString idFold, headline;
+        qint64  sectionId = 0;   // 0 when unfiled (transiently, mid-rebuild)
+        bool    idFromMigration = false;
+    };
+    std::optional<QVector<ItemRef>> listItems(qint64 projectId,
+                                              QString *error = nullptr) const;
+
+    // Section resolution on a re-run. addSection() is a bare INSERT and
+    // collides on UNIQUE (project_id, slug) the second time. registerProject()
+    // needs no equivalent — it is already get-or-create.
+    std::optional<qint64> findSection(qint64 projectId, const QString &slug,
+                                      QString *error = nullptr) const;
+
+    // The section half of § 2.6's "written only if it differs". Found missing
+    // at implementation: § 2.6 gives items readItem() for exactly this
+    // comparison and gave sections nothing, so Outcome::sectionsWritten —
+    // declared as counting the sections that CHANGED — was not computable
+    // through the declared surface.
+    struct SectionRow {
+        QString slug, title, intro;
+        int     level = 0;
+        std::optional<qint64> parentId;
+    };
+    std::optional<SectionRow> readSection(qint64 sectionId, QString *error = nullptr) const;
+
+    // § 2.8 step 1's first branch: the prefix this project already allocates
+    // under, which idHighWater() cannot answer because it takes the prefix as
+    // an argument. Also found missing at implementation. nullopt = no row.
+    std::optional<QString> idPrefixFor(qint64 projectId, QString *error = nullptr) const;
+
+    // § 2.8's starting point. Absent row ⇒ nullopt, which is not an error.
+    std::optional<qint64> idHighWater(qint64 projectId, const QString &prefix,
+                                      QString *error = nullptr) const;
+
+    // § 2.9's seq continuation: appendHistory() takes `seq` from its caller, so
+    // the caller needs the current maximum for this (item, stamp). Absent rows
+    // ⇒ nullopt, not an error — and the first row of a stamp is seq 0.
+    std::optional<int> maxHistorySeq(qint64 itemPk, const QString &changedAt,
+                                     QString *error = nullptr) const;
 
     // Canonical JSON for the store's own column writes. ANTS-3761 owns the
     // general RFC 8785 writer and INV-19 tests it against the RFC's vectors;
@@ -164,4 +332,7 @@ private:
     qint64 m_historyCap;
     Access m_access;
     bool m_createdSchema = false;
+    // ANTS-3765 § 2.3 — whose transaction is open. putItem() reads this to
+    // decide whether it owns the transaction it is writing in.
+    bool m_inTransaction = false;
 };

@@ -535,3 +535,252 @@ TEST(RoadmapStoreSchema, Inv20ItemFiledExactlyOnce) {
         << "a failed element insert must roll the item back, or an unfiled item "
            "survives — which is what the removed NOT NULL column used to prevent";
 }
+
+// --- ANTS-3765's four STORE-surface invariants -------------------------------
+// Filed here with the rest of ANTS-3756's write-path invariants rather than in
+// the migration directory, because they constrain store methods.
+//
+// They are ANTS-3765 INV-7/8/9/10 in that spec and INV-22/23/24/25 in
+// ANTS-3756's own list, which is the numbering used here: this directory
+// already tests ANTS-3756's INV-7, INV-8 and INV-10, all three of which mean
+// something else entirely, so carrying the migration spec's numbers into these
+// test names would leave two permanent meanings for one label.
+
+// INV-22 (ANTS-3765 INV-7) — begin() refuses to nest, and reports.
+TEST(RoadmapStoreSchema, Inv22BeginRefusesToNest) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p = f.project(QStringLiteral("alpha"));
+    const qint64 s = f.section(p);
+
+    ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
+    EXPECT_TRUE(f.store.inTransaction());
+
+    const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0);
+
+    err.clear();
+    EXPECT_FALSE(f.store.begin(&err))
+        << "a nested begin() must refuse — a no-op here would make the caller's "
+           "commit() end a transaction it did not open";
+    EXPECT_FALSE(err.isEmpty()) << "the refusal must REPORT";
+    EXPECT_TRUE(f.store.inTransaction())
+        << "a refused begin() must leave the open transaction alone";
+
+    // The first transaction is still the live one, and still commits its writes.
+    err.clear();
+    EXPECT_TRUE(f.store.commit(&err)) << err.toStdString();
+    EXPECT_FALSE(f.store.inTransaction());
+
+    QSqlQuery q(f.store.db());
+    q.prepare(QStringLiteral("SELECT COUNT(*) FROM item WHERE item_pk = ?"));
+    q.addBindValue(pk);
+    ASSERT_TRUE(q.exec());
+    ASSERT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 1)
+        << "the first transaction's writes must survive its own commit";
+
+    // commit()/rollback() with none open refuse rather than silently succeeding.
+    err.clear();
+    EXPECT_FALSE(f.store.commit(&err)) << "commit() with no transaction open";
+    EXPECT_FALSE(err.isEmpty());
+    err.clear();
+    EXPECT_FALSE(f.store.rollback(&err)) << "rollback() with no transaction open";
+    EXPECT_FALSE(err.isEmpty());
+}
+
+// INV-23 (ANTS-3765 INV-8) — putItem() is atomic with or without an enclosing
+// transaction, and never rolls back one it does not own.
+TEST(RoadmapStoreSchema, Inv23PutItemNeverRollsBackATransactionItDoesNotOwn) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p = f.project(QStringLiteral("alpha"));
+    const qint64 s = f.section(p);
+
+    // (a) the standalone case: no transaction open, so putItem owns and commits
+    // its own, and leaves none open behind it.
+    const qint64 standalone = f.item(p, s, QStringLiteral("A-1"), 0);
+    EXPECT_GT(standalone, 0);
+    EXPECT_FALSE(f.store.inTransaction());
+
+    // (b) inside a transaction the caller rolls back: neither the item nor its
+    // element row survives.
+    ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
+    const qint64 inner = f.item(p, s, QStringLiteral("A-2"), 1);
+    EXPECT_GT(inner, 0);
+    ASSERT_TRUE(f.store.rollback(&err)) << err.toStdString();
+
+    QSqlQuery gone(f.store.db());
+    ASSERT_TRUE(gone.exec(QStringLiteral("SELECT COUNT(*) FROM item WHERE id = 'A-2'")));
+    ASSERT_TRUE(gone.next());
+    EXPECT_EQ(gone.value(0).toInt(), 0) << "putItem() must not commit inside a "
+                                           "caller's transaction";
+    QSqlQuery goneElem(f.store.db());
+    ASSERT_TRUE(goneElem.exec(QStringLiteral(
+        "SELECT COUNT(*) FROM element WHERE position = 1 AND kind = 'item'")));
+    ASSERT_TRUE(goneElem.next());
+    EXPECT_EQ(goneElem.value(0).toInt(), 0) << "nor its element row";
+
+    // (c) the leg that matters — a FAILING putItem inside an open transaction
+    // must not abort the caller's transaction from the inside. Without this,
+    // load() carries on believing it is in a transaction, every later write
+    // autocommits and PERSISTS, and the report says the load was clean.
+    ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
+    RoadmapStore::ItemWrite bad;
+    bad.projectId = p;
+    bad.sectionId = s;
+    bad.position = 0;             // collides with A-1: UNIQUE (section_id, position)
+    bad.id = QStringLiteral("A-3");
+    bad.status = QStringLiteral("planned");
+    bad.headline = QStringLiteral("h");
+    bad.kind = QStringLiteral("implement");
+    bad.source = QStringLiteral("test");
+    err.clear();
+    EXPECT_FALSE(f.store.putItem(bad, &err).has_value());
+    EXPECT_FALSE(err.isEmpty());
+    EXPECT_TRUE(f.store.inTransaction())
+        << "a failed putItem() must leave the caller's transaction OPEN — an "
+           "internal ROLLBACK here silently drops every later write into "
+           "autocommit, where it persists";
+
+    // The caller's own unwind is what must be observed, and it must still work.
+    const qint64 after = f.item(p, s, QStringLiteral("A-4"), 2);
+    EXPECT_GT(after, 0);
+    ASSERT_TRUE(f.store.rollback(&err)) << err.toStdString();
+
+    QSqlQuery survivors(f.store.db());
+    ASSERT_TRUE(survivors.exec(QStringLiteral("SELECT COUNT(*) FROM item")));
+    ASSERT_TRUE(survivors.next());
+    EXPECT_EQ(survivors.value(0).toInt(), 1)
+        << "only the standalone item may survive: the write after the failure "
+           "must have been rolled back by the CALLER's rollback()";
+}
+
+// INV-24 (ANTS-3765 INV-9) — the two JSON-writing methods store canonical JSON;
+// the two prose-writing ones store their text verbatim.
+TEST(RoadmapStoreSchema, Inv24JsonWritersCanonicaliseAndProseWritersDoNot) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p = f.project(QStringLiteral("alpha"));
+    const qint64 s = f.section(p);
+
+    // setLegend() — canonical: keys sorted, no whitespace.
+    QJsonObject legend;
+    legend.insert(QStringLiteral("b"), QStringLiteral("in progress"));
+    legend.insert(QStringLiteral("a"), QStringLiteral("planned"));
+    ASSERT_TRUE(f.store.setLegend(p, legend, &err)) << err.toStdString();
+
+    QSqlQuery lq(f.store.db());
+    lq.prepare(QStringLiteral("SELECT legend FROM project WHERE project_id = ?"));
+    lq.addBindValue(p);
+    ASSERT_TRUE(lq.exec());
+    ASSERT_TRUE(lq.next());
+    EXPECT_EQ(lq.value(0).toString().toStdString(),
+              std::string(R"({"a":"planned","b":"in progress"})"));
+
+    // addElement(kind='table') — canonical, from deliberately out-of-order input.
+    ASSERT_TRUE(f.store.addElement(s, 0, QStringLiteral("table"),
+                                   QStringLiteral(R"({ "rows": [["x"]], "header": ["h"] })"),
+                                   &err))
+        << err.toStdString();
+
+    // addElement(kind='narration') — VERBATIM, even when the prose happens to
+    // look like JSON. ANTS-3756 § 2.3 calls canonicalising prose undefined
+    // rather than merely wasteful.
+    const QString prose = QStringLiteral(R"({"b":1,"a":2}  trailing prose)");
+    ASSERT_TRUE(f.store.addElement(s, 1, QStringLiteral("narration"), prose, &err))
+        << err.toStdString();
+
+    QSqlQuery eq(f.store.db());
+    eq.prepare(QStringLiteral(
+        "SELECT kind, payload FROM element WHERE section_id = ? ORDER BY position"));
+    eq.addBindValue(s);
+    ASSERT_TRUE(eq.exec());
+    ASSERT_TRUE(eq.next());
+    EXPECT_EQ(eq.value(0).toString().toStdString(), std::string("table"));
+    EXPECT_EQ(eq.value(1).toString().toStdString(),
+              std::string(R"({"header":["h"],"rows":[["x"]]})"));
+    ASSERT_TRUE(eq.next());
+    EXPECT_EQ(eq.value(0).toString().toStdString(), std::string("narration"));
+    EXPECT_EQ(eq.value(1).toString().toStdString(), prose.toStdString())
+        << "narration payload must round-trip byte for byte";
+
+    // setSectionIntro() — prose, verbatim, likewise.
+    const QString intro = QStringLiteral("  Two  spaces and {\"b\":1,\"a\":2}\n");
+    ASSERT_TRUE(f.store.setSectionIntro(s, intro, &err)) << err.toStdString();
+    QSqlQuery iq(f.store.db());
+    iq.prepare(QStringLiteral("SELECT intro FROM section WHERE section_id = ?"));
+    iq.addBindValue(s);
+    ASSERT_TRUE(iq.exec());
+    ASSERT_TRUE(iq.next());
+    EXPECT_EQ(iq.value(0).toString().toStdString(), intro.toStdString());
+}
+
+// INV-25 (ANTS-3765 INV-10) — addElement() cannot file an item and fileItem()
+// cannot double-file one, so putItem()/fileItem() stay the only filing paths.
+TEST(RoadmapStoreSchema, Inv25FilingPathsAreClosed) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p = f.project(QStringLiteral("alpha"));
+    const qint64 s = f.section(p);
+    const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0);
+
+    // addElement() refuses kind='item' OUTRIGHT — it has no item_pk parameter,
+    // so it could not produce a well-formed filing even if it tried.
+    //
+    // The assertion is on the refusal's SHAPE, not merely on its existence, and
+    // that is forced by the DDL: `CHECK ((kind='item') = (item_pk IS NOT NULL))`
+    // refuses this insert too, so a method that passed `kind` straight through
+    // would also return false. What distinguishes them is which layer spoke —
+    // a misuse of the API, or a constraint violation the caller now has to
+    // parse — so the error text is where the invariant is observable.
+    err.clear();
+    EXPECT_FALSE(f.store.addElement(s, 1, QStringLiteral("item"),
+                                    QStringLiteral("payload"), &err));
+    EXPECT_TRUE(err.contains(QStringLiteral("cannot file an item")))
+        << "must be refused by addElement() as a misuse, not by the DDL CHECK "
+           "as a constraint violation; got: " << err.toStdString();
+
+    // fileItem() refuses an item that is already filed — same reasoning:
+    // elem_item_uq also catches it, as a constraint violation rather than a
+    // reported refusal.
+    err.clear();
+    EXPECT_FALSE(f.store.fileItem(pk, s, 1, &err));
+    EXPECT_TRUE(err.contains(QStringLiteral("already filed")))
+        << "must be refused by fileItem()'s own check; got: " << err.toStdString();
+
+    // unfileItem() is the inverse and the only way back: it removes the filing
+    // of ONE item without touching the section's other element rows, which is
+    // what the rebuild needs for an item whose stored section the plan no
+    // longer carries.
+    ASSERT_TRUE(f.store.addElement(s, 9, QStringLiteral("narration"),
+                                   QStringLiteral("keep me"), &err))
+        << err.toStdString();
+    ASSERT_TRUE(f.store.unfileItem(pk, &err)) << err.toStdString();
+
+    QSqlQuery kept(f.store.db());
+    kept.prepare(QStringLiteral("SELECT COUNT(*) FROM element WHERE section_id = ?"));
+    kept.addBindValue(s);
+    ASSERT_TRUE(kept.exec());
+    ASSERT_TRUE(kept.next());
+    EXPECT_EQ(kept.value(0).toInt(), 1)
+        << "unfileItem() must take the item's filing and nothing else — the "
+           "narration row in the same section is payload nothing re-inserts";
+
+    // And fileItem() FILES an item that is not filed — the case § 2.6's element
+    // rebuild needs and the whole reason the method exists.
+    err.clear();
+    ASSERT_TRUE(f.store.fileItem(pk, s, 3, &err)) << err.toStdString();
+
+    QSqlQuery q(f.store.db());
+    q.prepare(QStringLiteral(
+        "SELECT COUNT(*), MIN(position) FROM element WHERE kind = 'item' AND item_pk = ?"));
+    q.addBindValue(pk);
+    ASSERT_TRUE(q.exec());
+    ASSERT_TRUE(q.next());
+    EXPECT_EQ(q.value(0).toInt(), 1);
+    EXPECT_EQ(q.value(1).toInt(), 3);
+}

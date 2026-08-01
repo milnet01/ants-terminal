@@ -1,7 +1,13 @@
 # roadmap_store_schema — schema, location and write-path invariants
 
-Feature contract for **ANTS-3756** INV-6, 7, 8, 10, 11, 14, 17, 20 and 21.
-Parent spec: [`docs/specs/ANTS-3756-roadmap-store-schema.md`](../../../docs/specs/ANTS-3756-roadmap-store-schema.md)
+Feature contract for **ANTS-3756** INV-6, 7, 8, 10, 11, 14, 17, 20, 21 and
+22–25. Parent spec: [`docs/specs/ANTS-3756-roadmap-store-schema.md`](../../../docs/specs/ANTS-3756-roadmap-store-schema.md)
+
+INV-22–25 arrive with **ANTS-3765**, whose own numbering calls them INV-7, 8, 9
+and 10. This directory already tests ANTS-3756's INV-7, INV-8 and INV-10 — all
+three of which mean something else — so they are filed here under ANTS-3756's
+next free numbers, and the test names use those. Spec:
+[`docs/specs/ANTS-3765-roadmap-migration-load.md`](../../../docs/specs/ANTS-3765-roadmap-migration-load.md)
 
 ## What this locks
 
@@ -67,6 +73,41 @@ parse-only guard accepts all three.
 index `elem_item_uq`; *at least one* is `putItem()` writing item and element in
 one transaction, so a failed element insert rolls the item back.
 
+**INV-22 (ANTS-3765 INV-7) — `begin()` refuses to nest.** A second `begin()`
+fails, reports, and leaves the open transaction alone; the first one's `commit()`
+still commits its writes. `commit()` and `rollback()` with none open refuse
+rather than returning success — a silent no-op there is the same defect one step
+later, where the caller believes it has ended a transaction and has not.
+
+**INV-23 (ANTS-3765 INV-8) — `putItem()` is atomic either way, and never rolls
+back a transaction it does not own.** Three legs, and the third is the one that
+matters: a **failing** `putItem()` inside an open transaction must leave
+`inTransaction()` true. Legs (a) and (b) — self-commit standalone, and no row
+surviving a caller's rollback — both pass against a `putItem()` that issues its
+old internal `ROLLBACK`, after which the caller carries on believing it is in a
+transaction while every later write autocommits and persists, and the migration
+reports a clean partial load.
+
+**INV-24 (ANTS-3765 INV-9) — two of the four new writers canonicalise, and two
+store prose verbatim.** `setLegend()` and `addElement(kind='table')` produce
+sorted, compact bytes from deliberately out-of-order input;
+`addElement(kind='narration')` and `setSectionIntro()` round-trip prose byte for
+byte **including prose that looks like JSON**, which ANTS-3756 § 2.3 calls
+undefined to canonicalise rather than merely wasteful.
+
+**INV-25 (ANTS-3765 INV-10) — the filing paths are closed.** `addElement()`
+refuses `kind='item'` and `fileItem()` refuses an already-filed item, so
+`putItem()` and `fileItem()` stay the only ways an item acquires a filing. A
+third leg covers `unfileItem()`, the only way back: it must take **one item's**
+filing and leave the section's other element rows alone, since a narration row
+in that section is payload nothing re-inserts. The
+assertion is on the refusal's **shape**, not its existence, and that is forced
+by the schema: the `element` CHECK and `elem_item_uq` refuse both cases too, so
+a method that passed its arguments straight through would also return `false`.
+What distinguishes them is which layer spoke — a reported misuse, or a
+constraint violation the caller must now parse — so the error text is where the
+invariant is observable.
+
 ## Must fail first
 
 Verified by mutating the implementation per each *Breaks when* clause:
@@ -85,3 +126,16 @@ Verified by mutating the implementation per each *Breaks when* clause:
   `canonicalJson()` → leg (a)'s `tiny` reads `1e-06`.
 - a JSON-column write validated by parse alone → leg (b)'s three wrong-shape
   values are accepted.
+- `begin()` no-oping inside an open transaction → INV-22's second `begin()`
+  returns true and reports nothing.
+- `putItem()`'s `ROLLBACK` issued on its failure paths whoever owns the
+  transaction — the shipped shape — → INV-23's caller-side `rollback()` fails
+  with "no transaction is active", because `putItem()` already ended it.
+- `setLegend()` binding `QJsonDocument(o).toJson()` → INV-24 reads back indented
+  JSON; `addElement()` canonicalising narration instead of `table` → the prose
+  payload is refused as "not JSON" and the table payload keeps its input order.
+- `addElement()` passing `kind` through, and `fileItem()` leaning on
+  `elem_item_uq` → INV-25 gets `CHECK constraint failed` and `UNIQUE constraint
+  failed: element.item_pk` in place of the two API refusals.
+- `unfileItem()` deleting by the item's **section** rather than by the item →
+  INV-25's third leg finds the section's narration row gone with it.
