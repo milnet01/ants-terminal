@@ -24413,6 +24413,29 @@ against current source before filing.
   Kind: doc-fix.
   Source: cold-eyes ANTS-3766 loop 5 deferred tail, 2026-08-01.
 
+- 📋 [ANTS-3784] **spec_lint: a DELIBERATE invariant-id gap has no way to be declared, so it reports one finding per skipped number forever.**
+  Measured 2026-08-01 on the ANTS-3782 cold-eyes gate: spec_lint
+  returned 11 invariant_id_gap findings (INV-15..INV-25) against a spec
+  whose own section 3 argues the gap at length and correctly — it
+  numbers its invariants past a SIBLING spec's highest so that no bare
+  `Inv<N>` test name in a shared test directory resolves two ways.
+
+  The verb already exempts a TOMBSTONED id (*moved to X*, *withdrawn
+  — ...*), which covers a number this document once used. It has no
+  form for a number this document deliberately never used, and eleven
+  tombstone bullets would be absurd prose.
+
+  Proposal: honour a single declaration line, e.g. an HTML comment
+  `invariant-id-base: 26` in an HTML comment, or a prose form the parser can
+  recognise, that suppresses the gap check below the declared floor.
+  Until then every gate run on such a spec spends its FINDINGS bucket
+  on known-correct noise, which is the bucket /cold-eyes feeds straight
+  into its verified list without LLM verification — so the noise is
+  load-bearing, not cosmetic.
+  **Layman:** A documentation checker keeps flagging deliberately skipped numbers in one spec as mistakes; give the spec a way to say the skip is on purpose.
+  Kind: enhancement.
+  Source: in-session-2026-08-01, ANTS-3782 cold-eyes loop 3 doc-lint pass.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
