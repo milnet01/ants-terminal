@@ -621,6 +621,7 @@ SSH key registered there.
   Lanes: packaging.
   Source: in-session-2026-07-30 (observed twice while finishing ANTS-3731).
   Progress (2026-08-02): first concrete instance, and it is currently live on OBS. Fedora_44 and Mageia_10 both show "failed: 1" against `luaengine.cpp:5: fatal error: lua5.4/lua.hpp: No such file or directory` — the ANTS-3727 defect, already fixed on main by 94122ab2 (2026-07-30). OBS is building it anyway because `packaging/obs/_service` pins `<revision>v0.7.101</revision>` (tagged 2026-07-22, eight days before the fix), while `obs-submit.sh` copies the SPEC from current HEAD. That split is the mechanism this item names: spec-level portability fixes go live immediately, source-level ones wait for the next tag. It also explains why the board looks contradictory — Leap 16.0 and Tumbleweed are green because their fix was spec-level AND openSUSE's header layout matches the old hardcoded include, so the two distros that still fail are exactly the two whose fix was source-level. No code change is needed; the red clears when the pin moves to a tag containing 94122ab2. Note that v0.7.102-rc1 (2026-07-29) does NOT contain it either, so the next cut is the first tag that will.
+  Progress (2026-08-02, cont.): the validation build justified itself on its first run. Pointing OBS at main turned Leap 16.0 and Tumbleweed RED — not a regression from the test, but main telling the truth for the first time: ANTS-3756 made Qt6::Sql a REQUIRED find_package component and no packaging carrier was told, so every openSUSE target died at configure with 'Failed to find required Qt component "Sql"'. Fixed in 1882d3dc; it would otherwise have shipped in Wednesday's release and broken every openSUSE and Fedora package on the day. That is this item's thesis demonstrated rather than argued. Mechanism notes from the OBS user guide, for whoever implements this properly: `osc branch` creates an isolated project for test builds WITHOUT touching the published package — that is the right tool, and editing the live package's _service (what was done here) is not; `osc build` runs a real chroot build locally per target, so a pre-tag rehearsal need not involve the server at all. Both are heavier than the bug class actually needs on every commit, so the cheap deterministic first rung is filed separately as ANTS-3791 (assert CMake's Qt6 COMPONENTS against the spec's BuildRequires — would have caught both this and the 2026-07-29 Qt6Test break at ctest time).
 
 - 📋 [ANTS-3734] **Flatpak manifest pins Lua 5.4.7; upstream is on 5.4.8.**
   packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml pins
@@ -670,6 +671,48 @@ SSH key registered there.
   **Layman:** The roadmap store needs a small database driver that is loaded at run time; on some packaging formats we may not be installing it, so the store could fail on a user's machine even though the build was fine.
   Kind: package.
   Source: in-session-2026-08-02 (found fixing the ANTS-3765 Qt6Sql packaging break).
+
+- 📋 [ANTS-3791] **Assert CMake's required Qt6 components against the spec's BuildRequires.**
+  Same defect, twice, four days apart:
+    - 2026-07-29 Qt6Test — caught by the first OBS build.
+    - 2026-08-02 Qt6Sql (ANTS-3765/3756) — caught by the ANTS-3733
+      validation build, and only because one was run by hand.
+
+  Both are the same shape: a component is added to CMakeLists.txt's
+  `find_package(Qt6 ... REQUIRED COMPONENTS ...)` and no packaging
+  carrier learns about it. Neither CI nor the local suite can see it,
+  because Debian's qt6-base-dev bundles every Qt module while openSUSE,
+  Fedora and Mageia split them — so the machine that builds green is
+  structurally blind to the failure.
+
+  The check is deterministic and needs no chroot, no network and no OBS:
+  parse the COMPONENTS list out of CMakeLists.txt, parse
+  `BuildRequires:  cmake(Qt6*)` out of packaging/opensuse/ants-terminal.spec,
+  and assert the CMake set is a subset of the spec set. It runs in
+  milliseconds as an ordinary feature-conformance test and would have
+  turned both incidents into a red local suite before the commit landed.
+
+  Notes for whoever builds it:
+    - Qt6Test is REQUIRED unconditionally, not gated on -DANTS_TESTS, so
+      the naive "tests are optional" exemption is wrong. The spec already
+      carries a comment saying so.
+    - Only the top-level find_package matters; component names map to
+      `cmake(Qt6<Name>)` one-for-one.
+    - debian/control cannot be checked the same way — it names
+      qt6-base-dev, not per-module packages — so scope the assertion to
+      the RPM spec and say why in the test.
+
+  Heavier alternatives considered and rejected as the FIRST rung: the OBS
+  user guide's `osc build` runs a real local chroot build per target
+  (correct, but downloads a full build root and takes minutes), and
+  `osc branch` gives an isolated project for test builds (the right tool
+  for a full pre-release rehearsal, and what should have been used instead
+  of editing the live package's _service on 2026-08-02). Both are worth
+  having; neither is cheap enough to run on every commit, which is what
+  this bug class needs.
+  **Layman:** Twice in four days a new Qt dependency was added to the build without telling the Linux package recipe, and both times we only found out from a remote build. A small test can compare the two lists and catch it instantly.
+  Kind: test.
+  Source: in-session-2026-08-02 (second instance of the same break in four days).
 
 ### P4 — Fedora COPR
 
