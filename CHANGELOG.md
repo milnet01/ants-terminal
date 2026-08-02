@@ -125,6 +125,20 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Spec header fields may wrap: `spec_log` no longer corrupts a multi-line `**Status:**`, and `spec_query` no longer truncates one (ANTS-3785, ANTS-3672)**
+  A spec's `**Status:**` value routinely runs onto a second line — 49 of the
+  172 specs carrying one do, because the format standard tells authors to
+  append review progress inline and the corpus wraps at ~80 columns. Both
+  sides of the toolchain assumed a single line: `spec_query` returned the
+  value truncated mid-sentence, and `spec_log op:set_status` replaced only
+  the first line, leaving the rest behind as an orphaned paragraph while
+  reporting success. Neither failure was visible — the file still parsed and
+  the stray text read like a botched hand-edit. Both now share one rule
+  (`SpecParse::headerField`) for where a header field ends. Also fixed: the
+  writer could rewrite a `**Status:**` line quoted inside a fenced code
+  example and report success; the field search is now bounded to the header
+  block.
+
 - **Re-importing a roadmap no longer duplicates entries that share a heading** (ANTS-3765)
   When two entries in the same section had identical wording and no ID of
   their own, each re-import added a fresh copy of both and set the

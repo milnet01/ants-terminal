@@ -11,6 +11,50 @@
 
 namespace SpecParse {
 
+FieldExtent headerField(const QStringList &lines, const QString &name) {
+    // A field marker at the start of a line: `**<name>:**`. The name may not
+    // contain `*` or `:`, which is what keeps an inline bold run from opening
+    // a field mid-value.
+    static const QRegularExpression markerRe(
+        QStringLiteral(R"(^\*\*[^*:]+:\*\*)"));
+    const QRegularExpression wantRe(
+        QStringLiteral(R"(^\*\*)") + QRegularExpression::escape(name) +
+        QStringLiteral(R"(:\*\*\s*(.*)$)"));
+    static const QRegularExpression headingRe(QStringLiteral(R"(^#{1,6}\s)"));
+    static const QRegularExpression blockEndRe(QStringLiteral(R"(^##\s)"));
+
+    // Bound the search to the header block (see the header comment).
+    int limit = lines.size();
+    for (int i = 0; i < lines.size(); ++i) {
+        if (blockEndRe.match(lines.at(i)).hasMatch()) { limit = i; break; }
+    }
+
+    for (int i = 0; i < limit; ++i) {
+        const auto m = wantRe.match(lines.at(i));
+        if (!m.hasMatch()) continue;
+
+        FieldExtent e;
+        e.line = i;
+        QStringList parts;
+        const QString head = m.captured(1).trimmed();
+        if (!head.isEmpty()) parts << head;
+
+        int j = i + 1;
+        for (; j < limit; ++j) {
+            const QString &l = lines.at(j);
+            if (l.trimmed().isEmpty()) break;                     // blank
+            if (markerRe.match(l).hasMatch()) break;              // next field
+            if (headingRe.match(l).hasMatch()) break;             // ATX heading
+            const QString t = l.trimmed();
+            if (!t.isEmpty()) parts << t;
+        }
+        e.lineCount = j - i;
+        e.value = parts.join(QLatin1Char(' '));
+        return e;
+    }
+    return {};
+}
+
 QJsonObject parseSpecBody(const QString &body) {
     QJsonObject out;
     QString title, status, kind;
@@ -26,17 +70,16 @@ QJsonObject parseSpecBody(const QString &body) {
     const auto titleM = titleRe.match(body);
     if (titleM.hasMatch()) title = titleM.captured(1);
 
-    // Metadata: `**Status:** ...` and `**Kind:** ...` lines.
-    static const QRegularExpression statusRe(
-        QStringLiteral(R"(^\*\*Status:\*\*\s*(.+?)\s*$)"),
-        QRegularExpression::MultilineOption);
-    static const QRegularExpression kindRe(
-        QStringLiteral(R"(^\*\*Kind:\*\*\s*(.+?)\s*$)"),
-        QRegularExpression::MultilineOption);
-    const auto statusM = statusRe.match(body);
-    if (statusM.hasMatch()) status = statusM.captured(1);
-    const auto kindM = kindRe.match(body);
-    if (kindM.hasMatch()) kind = kindM.captured(1);
+    // Metadata: the `**Status:**` / `**Kind:**` header fields. ANTS-3785 —
+    // both may wrap onto continuation lines, so the extent rule owns where each
+    // one ends; matching a single line here truncated 49 of 172 specs' Status
+    // (ANTS-3672). Costs one split of the body, which this function is the only
+    // caller of.
+    const QStringList bodyLines = body.split(QLatin1Char('\n'));
+    const FieldExtent statusExtent = headerField(bodyLines, QStringLiteral("Status"));
+    if (statusExtent.found()) status = statusExtent.value;
+    const FieldExtent kindExtent = headerField(bodyLines, QStringLiteral("Kind"));
+    if (kindExtent.found()) kind = kindExtent.value;
 
     out["title"]  = title;
     out["status"] = status;

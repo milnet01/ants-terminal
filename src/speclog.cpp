@@ -4,6 +4,9 @@
 #include "speclog.h"
 
 #include "markdownscan.h"
+// ANTS-3785 — the header-field extent rule lives in SpecParse so the reader
+// and this writer share one definition of where a field ends.
+#include "specparse.h"
 
 #include <QRegularExpression>
 #include <QStringList>
@@ -114,20 +117,29 @@ QStringList toLines(const QString &content, bool &endedWithNewline) {
 EditResult setStatus(const QString &content, const QString &newStatus) {
     bool ewn = false;
     QStringList lines = toLines(content, ewn);
-    static const QRegularExpression statusRe(
-        QStringLiteral("^\\*\\*Status:\\*\\*"));
-    for (int i = 0; i < lines.size(); ++i) {
-        if (statusRe.match(lines.at(i)).hasMatch()) {
-            lines[i] = QStringLiteral("**Status:** ") + newStatus;
-            EditResult r;
-            r.ok = true;
-            r.content = lines.join(QLatin1Char('\n'));
-            if (ewn) r.content += QLatin1Char('\n');
-            // 1-based line of the rewritten Status line.
-            r.line = i + 1;  // 1-based line of the rewritten Status line
-            return r;
-        }
+
+    // ANTS-3785 — replace the field's WHOLE extent, not just its first line.
+    // A Status that wraps is the common case (49 of 172 specs), and rewriting
+    // only the opener left the continuations behind as an orphaned paragraph
+    // while still reporting success. SpecParse owns where a field ends so the
+    // reader and this writer cannot disagree about it.
+    const SpecParse::FieldExtent e =
+        SpecParse::headerField(lines, QStringLiteral("Status"));
+    if (e.found()) {
+        const int end = e.line + e.lineCount;  // exclusive
+        for (int k = end - 1; k > e.line; --k) lines.removeAt(k);
+        lines[e.line] = QStringLiteral("**Status:** ") + newStatus;
+
+        EditResult r;
+        r.ok = true;
+        r.content = lines.join(QLatin1Char('\n'));
+        if (ewn) r.content += QLatin1Char('\n');
+        // 1-based line of the rewritten Status line (ANTS-1963 INV-10's shape;
+        // FieldExtent::line is 0-based).
+        r.line = e.line + 1;
+        return r;
     }
+
     return fail(QStringLiteral("unrecognised_format"),
                 QStringLiteral("spec_log: no \"**Status:**\" line found "
                                "(set_status needs one to rewrite)"));

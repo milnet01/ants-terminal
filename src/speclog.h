@@ -28,7 +28,8 @@ struct EditResult {
     QString error;
 };
 
-// op:"set_status" — replace the text after the first `**Status:**` line.
+// op:"set_status" — replace the first `**Status:**` field's WHOLE extent
+// (its opener plus any continuation lines) with one new line. ANTS-3785.
 // `unrecognised_format` when the spec has no Status line.
 EditResult setStatus(const QString &content, const QString &newStatus);
 

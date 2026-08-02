@@ -6,6 +6,8 @@
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <iterator>
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
@@ -51,9 +53,112 @@ const char *kSpec =
     "\n"
     "- **Loop 1 (2026-06-03)** — initial pass.\n";
 
+// ANTS-3785 — a WRAPPED Status field, the shape 49 of 172 specs in this
+// corpus carry. Modelled on docs/specs/ANTS-3766-roadmap-migration-archives.md:
+// opener + 3 continuation lines, terminated by `**Kind:**` with NO blank line,
+// and an inline `**Split at loop 4:**` bold run inside the value (INV-9).
+const char *kWrappedSpec =
+    "# ANTS-9998 — Wrapped status spec\n"
+    "\n"
+    "**Status:** shipped (2026-08-01). **Split at loop 4:** the persistence "
+    "half is\n"
+    "[ANTS-3782](ANTS-3782-roadmap-section-provenance.md), which shipped in "
+    "the\n"
+    "same change; this document is the read half.\n"
+    "**Kind:** implement.\n"
+    "**Source:** ROADMAP.md ANTS-9998.\n"
+    "\n"
+    "## 1. Problem\n"
+    "\n"
+    "body.\n";
+
+// Count of lines matching a prefix, for the orphan assertions below.
+int countLinesStartingWith(const QString &text, const QString &prefix) {
+    int n = 0;
+    const auto lines = text.split(QLatin1Char('\n'));
+    for (const QString &l : lines)
+        if (l.startsWith(prefix)) ++n;
+    return n;
+}
+
 }  // namespace
 
-// T1 (pure) — set_status rewrites only the Status line.
+// ANTS-3785 INV-4 — setStatus replaces the field's WHOLE extent, so no
+// continuation line survives the write. Against pre-fix code this FAILS:
+// only the opener is replaced and the three continuation lines are orphaned
+// as a stray paragraph, while the verb still reports ok.
+TEST(McpSpecLog, SetStatusReplacesWholeWrappedExtent) {
+    const SpecLog::EditResult r =
+        SpecLog::setStatus(QString::fromUtf8(kWrappedSpec),
+                           QStringLiteral("accepted (2026-08-02)"));
+    ASSERT_TRUE(r.ok) << r.code.toStdString();
+
+    EXPECT_EQ(countLinesStartingWith(r.content, QStringLiteral("**Status:**")), 1)
+        << "exactly one Status line must survive";
+    EXPECT_TRUE(r.content.contains("**Status:** accepted (2026-08-02)"));
+
+    // The orphan signature: any continuation fragment left behind.
+    EXPECT_FALSE(r.content.contains("[ANTS-3782]"))
+        << "continuation line 1 orphaned";
+    EXPECT_FALSE(r.content.contains("same change; this document is the read half."))
+        << "continuation line 3 orphaned";
+    EXPECT_FALSE(r.content.contains("Split at loop 4"))
+        << "the inline bold run belonged to the replaced value";
+
+    // **Kind:** is the very next line, with nothing wedged between.
+    const auto lines = r.content.split(QLatin1Char('\n'));
+    const int statusIdx = static_cast<int>(
+        std::distance(lines.cbegin(),
+                      std::find_if(lines.cbegin(), lines.cend(),
+                                   [](const QString &l) {
+                                       return l.startsWith("**Status:**");
+                                   })));
+    ASSERT_LT(statusIdx + 1, lines.size());
+    EXPECT_EQ(lines.at(statusIdx + 1), QStringLiteral("**Kind:** implement."));
+
+    // INV-5 — the returned line is 1-based and names the Status line.
+    EXPECT_EQ(r.line, statusIdx + 1);
+}
+
+// ANTS-3785 INV-5 — bytes outside the field are untouched and the trailing
+// newline is preserved exactly.
+TEST(McpSpecLog, SetStatusWrappedPreservesSurroundingBytes) {
+    const QString before = QString::fromUtf8(kWrappedSpec);
+    const SpecLog::EditResult r =
+        SpecLog::setStatus(before, QStringLiteral("accepted (2026-08-02)"));
+    ASSERT_TRUE(r.ok);
+
+    EXPECT_TRUE(r.content.startsWith("# ANTS-9998 — Wrapped status spec\n\n"))
+        << "head bytes before the field must be identical";
+    EXPECT_TRUE(r.content.endsWith("## 1. Problem\n\nbody.\n"))
+        << "tail bytes after the field must be identical";
+    EXPECT_TRUE(r.content.contains("**Source:** ROADMAP.md ANTS-9998."));
+    EXPECT_TRUE(r.content.endsWith(QLatin1Char('\n')));
+}
+
+// ANTS-3785 INV-10 — the search is bounded to the header block, so a
+// **Status:** line inside a fenced example below the first `## ` heading is
+// never matched and the refusal still fires. Against an unbounded scan this
+// FAILS: the fenced line is rewritten and the verb returns ok.
+TEST(McpSpecLog, SetStatusIgnoresFencedStatusBelowHeaderBlock) {
+    const QString doc = QStringLiteral(
+        "# ANTS-9997 — No header status\n"
+        "\n"
+        "**Kind:** doc.\n"
+        "\n"
+        "## 3. Header block\n"
+        "\n"
+        "```\n"
+        "**Status:** spec draft (YYYY-MM-DD).\n"
+        "```\n");
+    const SpecLog::EditResult r =
+        SpecLog::setStatus(doc, QStringLiteral("accepted"));
+    EXPECT_FALSE(r.ok) << "a fenced example is not this document's Status";
+    EXPECT_EQ(r.code, "unrecognised_format");
+}
+
+// T1 (pure) — set_status rewrites the Status field and nothing else. (Its
+// fixture's Status is single-line; the wrapped case is covered below.)
 TEST(McpSpecLog, SetStatusPure) {
     const SpecLog::EditResult r =
         SpecLog::setStatus(QString::fromUtf8(kSpec),

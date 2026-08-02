@@ -9979,7 +9979,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Source: user-request-2026-07-28.
 
-- 📋 [ANTS-3672] **`spec_query` truncates a wrapped `**Status:**` line mid-sentence.**
+- ✅ [ANTS-3672] **`spec_query` truncates a wrapped `**Status:**` line mid-sentence.**
   `SpecParse::parseSpecBody`'s `statusRe` / `kindRe` are anchored
   `^\*\*Status:\*\*\s*(.+?)\s*$` with `MultilineOption`, so they capture
   the first physical line and drop every continuation.
@@ -10005,6 +10005,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The spec-reading tool cuts a document's status note off at the first line, so a status written across two lines comes back ending mid-word.
   Kind: fix.
   Source: in-session-2026-07-28 (found verifying ANTS-3665 against the live corpus).
+  Resolved (2026-08-02): the read half of the same defect, shipped with ANTS-3785 under that spec (`**Covers:**` both ids). `parseSpecBody`'s line-scoped `statusRe`/`kindRe` are gone; both fields now come from `SpecParse::headerField()`, which joins continuation lines. This was under-reporting the Status of 49 of the 172 specs that carry one. Note the fix does NOT cover `docsindex.cpp`, which carries a third copy of the same line-scoped regex — filed as ANTS-3786.
 
 - 📋 [ANTS-3673] **Write a full user manual for Ants Terminal.**
   A complete end-user manual. Today the user-facing documentation is
@@ -24439,7 +24440,7 @@ against current source before filing.
   Kind: enhancement.
   Source: in-session-2026-08-01, ANTS-3782 cold-eyes loop 3 doc-lint pass.
 
-- 📋 [ANTS-3785] **spec_log op:set_status corrupts a spec whose Status field wraps onto a second line.**
+- ✅ [ANTS-3785] **spec_log op:set_status corrupts a spec whose Status field wraps onto a second line.**
   Hit 2026-08-01 on ANTS-3766. The verb replaces the FIRST LINE of the
   `**Status:** …` field and leaves every continuation line in place, so a
   Status that wraps — which the spec-format standard permits, and which
@@ -24482,7 +24483,9 @@ against current source before filing.
   **ANTS-3787** (`ANTS-1253`'s two-fields-on-one-line header, sequenced after
   this change because INV-9's fixture is derived from its current shape).
 
-  Status: spec draft, awaiting sign-off. No code written yet.
+  Status at the time of that note: spec draft, awaiting sign-off. Sign-off
+  followed the same day and the code shipped — see the Resolved line below.
+  Resolved (2026-08-02): shipped with ANTS-3672 as one change. `SpecParse::headerField()` (src/specparse.{h,cpp}) owns the header-field extent rule; `SpecLog::setStatus` now replaces the field's whole extent instead of its first line, and `parseSpecBody` reads the joined value. Verified RED first: against pre-fix code the writer left the orphaned continuation where `**Kind:**` should be, and — the finding the cold-eyes gate predicted with no corpus instance — rewrote a `**Status:**` inside a code fence and returned ok. Both now refuse/behave. Spec docs/specs/ANTS-3785-header-field-extent.md; 13 new tests (tests/features/spec_field_extent/ + mcp_spec_log); full suite 3194/3194. Third consumer (docsindex) scoped out as ANTS-3786; ANTS-1253's header rewrap as ANTS-3787.
 
 - 📋 [ANTS-3786] **docsindex carries a third copy of the Status-field rule, with the same truncation bug.**
   Found while widening ANTS-3785 § 2.2's consumer search from `statusRe` to

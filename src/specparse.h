@@ -10,8 +10,39 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
 namespace SpecParse {
+
+// ANTS-3785 — the lines one `**Field:**` header entry occupies.
+//
+// A header field's value MAY wrap: docs/standards/specs.md § 3.2 tells authors
+// to append progress to Status inline, and the corpus hard-wraps at ~80
+// columns, so 49 of 172 specs carrying a Status have a wrapped one. Modelling
+// the field as a single line is what made the reader truncate it (ANTS-3672)
+// and the writer orphan its continuations (ANTS-3785).
+struct FieldExtent {
+    int     line      = -1;  // 0-based index of the `**Field:**` line; -1 = absent
+    int     lineCount = 0;   // 1 + continuation lines
+    QString value;           // trailing text + continuations, space-joined
+    bool    found() const { return line >= 0; }
+};
+
+// First header field named `name` ("Status", "Kind"), searched from the top and
+// BOUNDED to the header block: the first `^## ` heading, else end of input.
+//
+// The bound is load-bearing, not tidiness. Unbounded, a search for an ABSENT
+// field runs to the end of the file and matches a `**Status:**` line quoted
+// inside a fenced example — after which setStatus rewrites inside a code fence
+// and reports success. docs/standards/specs.md § 3.2 contains exactly that
+// shape, and spec_log's `path` routing admits any in-repo file.
+//
+// Extent terminators (spec § 2.1): a blank line, a further `^\*\*Field:\*\*`
+// marker, an ATX heading, or the block end. A LIST BULLET is deliberately not
+// one — docs/specs/ANTS-1436.md's continuation begins `+ ` and is prose, so
+// treating bullets as terminators truncates it. Only a marker at the START of
+// a line counts; an inline bold colon-run is value text.
+FieldExtent headerField(const QStringList &lines, const QString &name);
 
 // Parse a spec file's body into {title, status, kind, invariants[],
 // invariants_count, possible_untabled_invariants}. `body` is the full file

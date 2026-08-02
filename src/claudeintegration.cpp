@@ -5813,7 +5813,9 @@ void ClaudeIntegration::onMcpConnection() {
                     t["description"] = QStringLiteral(
                         "Edit a spec's structured surface without "
                         "hand-editing markdown. op:\"set_status\" rewrites "
-                        "the **Status:** line; op:\"append_loop\" appends a "
+                        "the whole **Status:** field, including any "
+                        "continuation lines it wraps onto (ANTS-3785); "
+                        "op:\"append_loop\" appends a "
                         "cold-eyes loop-log bullet (creating the section "
                         "if absent); op:\"append_inv\" appends an INV-N "
                         "bullet at the end of the Invariants section "
@@ -5860,8 +5862,11 @@ void ClaudeIntegration::onMcpConnection() {
                             "`id` routing.");
                     QJsonObject statusProp; statusProp["type"] = "string";
                         statusProp["description"] = QStringLiteral(
-                            "set_status: the text after \"**Status:** \" "
-                            "(e.g. \"accepted (2026-06-03)\").");
+                            "set_status: the replacement value, written as "
+                            "one line after \"**Status:** \" (e.g. "
+                            "\"accepted (2026-06-03)\"). Any continuation "
+                            "lines the previous value wrapped onto are "
+                            "replaced too, not left behind.");
                     QJsonObject labelProp; labelProp["type"] = "string";
                         labelProp["description"] = QStringLiteral(
                             "append_loop: the loop label "

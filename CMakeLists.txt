@@ -1408,6 +1408,10 @@ if(ANTS_TESTS)
                 # ANTS-3448 feedback_query marker-aware v2 un-triaged delta.
                 tests/features/feedback_query_v2_delta/test_feedback_query_v2_delta.cpp
                 tests/features/mcp_spec_log/test_mcp_spec_log.cpp
+                # ANTS-3785 / ANTS-3672 — header-field extent rule (reader half
+                # + the one-implementation scrape); the writer half is in
+                # mcp_spec_log above.
+                tests/features/spec_field_extent/test_spec_field_extent.cpp
                 # ANTS-2129 — audit_falsepos_log write verb.
                 tests/features/audit_falsepos_log/test_audit_falsepos_log.cpp
                 # ANTS-2227 — dry_run preview parity (part 1).
@@ -1748,6 +1752,10 @@ if(ANTS_TESTS)
         # ANTS-3665 — parseSpecBody was hoisted out of remotecontrol.cpp into
         # ants_core_lib; the spec_query wiring scrape follows it here.
         SRC_SPECPARSE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/specparse.cpp"
+        # ANTS-3785 INV-6 — both consumers of the header-field extent rule are
+        # scraped, so a build that drops one regex without adopting the shared
+        # helper cannot pass.
+        SRC_SPECLOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclog.cpp"
         # ANTS-3661 INV-4 — the doc_symbols engine must carry no defect
         # vocabulary; a behavioural test cannot hold that claim.
         SRC_DOCSYMBOLS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsymbols.cpp"
