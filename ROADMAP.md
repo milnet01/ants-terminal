@@ -24562,6 +24562,39 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-02, ANTS-3785 cold-eyes loop 3.
 
+- 📋 [ANTS-3788] **Cold-eyes lanes spend ~100k tokens against a 60k budget even with a fully-built context packet.**
+  Measured across all six lanes of the ANTS-3786 gate (2026-08-02):
+  101,985 / 101,805 (loop 1), 104,597 / 106,261 (loop 2), 106,924 /
+  112,883 (loop 3) reported `subagent_tokens`, against the skill's
+  stated ~60k per-lane input budget.
+
+  The packet was NOT under-built, which is the explanation
+  `/cold-eyes` § Budget offers. It was a single shared
+  `shared-context.md` of 48,930 bytes (~12k tokens) plus a scrubbed
+  22,658-byte copy of the doc under review (~6k) — ~18k of content
+  total, byte-identical across lanes and loops, exactly the shape the
+  skill's shared-read-cache rule prescribes. Each lane made
+  `tool_uses: 2` (read the packet, read the doc), so the lanes did not
+  wander off and slurp source files either.
+
+  So ~18k of instructed reading reported as ~100k+ spend. Candidates,
+  none yet distinguished: `subagent_tokens` counts cumulative input
+  across turns (so a 2-turn agent re-sends its whole context and roughly
+  doubles), and/or the subagent system prompt + tool schemas dominate at
+  ~40k+ before any packet is read. If it is the former the metric is
+  being read wrong and the skill's budget language should say so; if it
+  is the latter the 60k budget is unreachable by construction and the
+  number should move.
+
+  Worth settling because the budget is load-bearing: `/cold-eyes`
+  § Budget instructs the orchestrator to treat an over-budget lane as
+  evidence the packet was under-built, and act on it by rebuilding the
+  packet. On this run that diagnosis was false, and following it would
+  have meant optimising a packet that was already minimal.
+  **Layman:** Each reviewer we send out costs about twice what the recipe says it should, even after we did the thing that was supposed to fix it.
+  Kind: investigate.
+  Source: in-session-2026-08-02, ANTS-3786 cold-eyes gate.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
