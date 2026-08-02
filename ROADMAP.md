@@ -24487,7 +24487,7 @@ against current source before filing.
   followed the same day and the code shipped — see the Resolved line below.
   Resolved (2026-08-02): shipped with ANTS-3672 as one change. `SpecParse::headerField()` (src/specparse.{h,cpp}) owns the header-field extent rule; `SpecLog::setStatus` now replaces the field's whole extent instead of its first line, and `parseSpecBody` reads the joined value. Verified RED first: against pre-fix code the writer left the orphaned continuation where `**Kind:**` should be, and — the finding the cold-eyes gate predicted with no corpus instance — rewrote a `**Status:**` inside a code fence and returned ok. Both now refuse/behave. Spec docs/specs/ANTS-3785-header-field-extent.md; 13 new tests (tests/features/spec_field_extent/ + mcp_spec_log); full suite 3194/3194. Third consumer (docsindex) scoped out as ANTS-3786; ANTS-1253's header rewrap as ANTS-3787.
 
-- 📋 [ANTS-3786] **docsindex carries a third copy of the Status-field rule, with the same truncation bug.**
+- ✅ [ANTS-3786] **docsindex carries a third copy of the Status-field rule, with the same truncation bug.**
   Found while widening ANTS-3785 § 2.2's consumer search from `statusRe` to
   `\*\*(Status|Kind):\*\*|statusRe|kindRe`. The narrow search returned two
   files; the wide one returns six, and one of the extras is a real third
@@ -24539,6 +24539,7 @@ against current source before filing.
   Caveat for the implementer: the spec is 593 lines for a ~30-line C++
   change, and loop 3's findings were dominated by collateral from loop
   2's own fixes. Worth a split decision before implementation starts.
+  Resolved (2026-08-02): scanDoc buffers the header block into a bounded QStringList and calls SpecParse::headerField once; statusRx deleted. SpecParse gains the exported isHeaderBlockEnd so the `^## ` bound has one expression and headerField uses it too. Options gains maxHeaderBlockLines (256, ~4x the 65-line corpus worst case), a silent cap per ANTS-2139 INV-19; the maxDocBytes break is distinguished from EOF by a budgetHit flag so a truncated buffer is never flushed as a complete block. New tests/features/docsindex_header_field/ covers INV-1..INV-9 (10 assertions, label features;fast); 8 of 10 verified RED against pre-fix docsindex.cpp, the other two being INV-6 (unchanged behaviour) and INV-9 (the survey tool). tools/spec-header-survey.py gains --scope=docs-index, which reproduces the spec's eight corpus figures byte-for-byte as an independent second implementation. Cross-doc: ANTS-2139 INV-17/INV-19 + its Options block amended; ANTS-3785 INV-6/INV-10 annotated and its two "does not adopt" clauses superseded.
 
 - 📋 [ANTS-3787] **ANTS-1253's header packs two fields onto one line, which ANTS-3785 makes a named nonconformance.**
   `docs/specs/ANTS-1253.md` line 9 reads:
@@ -24594,6 +24595,26 @@ against current source before filing.
   **Layman:** Each reviewer we send out costs about twice what the recipe says it should, even after we did the thing that was supposed to fix it.
   Kind: investigate.
   Source: in-session-2026-08-02, ANTS-3786 cold-eyes gate.
+
+- 📋 [ANTS-3789] **The wrapped-Status corpus figure is transcribed, so it has already drifted.**
+  `src/specparse.h`'s FieldExtent comment states "49 of 172 specs
+  carrying a Status have a wrapped one", and ANTS-3785 quotes the same
+  pair. `tools/spec-header-survey.py` now reports **50 of 173** — the
+  figure drifted the moment ANTS-3786's own spec file landed, and it
+  will drift again on every new spec.
+
+  Not caused by ANTS-3786 and deliberately not fixed there: bumping the
+  digits buys one release of accuracy and re-arms the same trap. The
+  durable fix is the rung documentation.md asks for, and the one
+  ANTS-3786 INV-9 already applies to the docs-index figures — cite the
+  tool plus a measurement date rather than a bare count, so a reader
+  re-derives instead of trusting a transcription.
+
+  Scope: src/specparse.h's comment plus whichever ANTS-3785 sections
+  quote the pair. Verify with `python3 tools/spec-header-survey.py`.
+  **Layman:** A comment in the code quotes a count of documents that has since changed; it should point at the tool that measures it rather than writing the number down.
+  Kind: doc-fix.
+  Source: in-session-2026-08-02 (noticed while implementing ANTS-3786).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

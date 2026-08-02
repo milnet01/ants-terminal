@@ -1349,6 +1349,9 @@ if(ANTS_TESTS)
                 tests/features/mcp_codebase_index/test_mcp_codebase_index.cpp
                 # ANTS-2139 — docs_index documentation-map verb.
                 tests/features/mcp_docs_index/test_mcp_docs_index.cpp
+                # ANTS-3786 — docs_index reads Status with the shared
+                # header-field rule (the third consumer of ANTS-3785's).
+                tests/features/docsindex_header_field/test_docsindex_header_field.cpp
                 # ANTS-3601 — doc_integrity verb (enumeration + kinds filter + wiring).
                 tests/features/doc_integrity_verb/test_doc_integrity_verb.cpp
                 # ANTS-3636 doc_citations verb layer + its six registration hooks.
@@ -1756,6 +1759,10 @@ if(ANTS_TESTS)
         # scraped, so a build that drops one regex without adopting the shared
         # helper cannot pass.
         SRC_SPECLOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclog.cpp"
+        # ANTS-3786 INV-7 — the third consumer of that rule gets its own scrape,
+        # in its own spec's own directory (ANTS-3785's scrape stays pinned to
+        # the two files its INV-6 names).
+        SRC_DOCSINDEX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsindex.cpp"
         # ANTS-3661 INV-4 — the doc_symbols engine must carry no defect
         # vocabulary; a behavioural test cannot hold that claim.
         SRC_DOCSYMBOLS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsymbols.cpp"

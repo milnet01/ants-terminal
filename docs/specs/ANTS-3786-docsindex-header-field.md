@@ -1,6 +1,6 @@
 # ANTS-3786 — Read docsindex's Status field with the shared header-field rule
 
-**Status:** accepted (2026-08-02) — cold-eyes loops 1–3 folded, converged by cap with an empty deferred tail; see the loop log for the size caveat.
+**Status:** shipped (2026-08-02) — implemented, INV-1..INV-9 green, must-fail-first proved; cold-eyes loops 1–3 folded, converged by cap with an empty deferred tail.
 **Kind:** fix.
 **Source:** ROADMAP.md ANTS-3786 (in-session-2026-08-02; found in ANTS-3785
 cold-eyes loop 2, while verifying that spec's own "two consumers, no third"
@@ -289,11 +289,25 @@ exclusions named rather than claiming an unconditional identity it cannot have.
 second-order effect worth stating plainly: a fence or an over-long line sitting
 *between* a `**Status:**` line and the prose after it disappears from
 `headerLines`, which makes that prose **adjacent** to the field and therefore a
-continuation of it. `headerField` over the raw lines would have seen the
-excluded line as a terminator and stopped. So the two can differ by *more* than
-the excluded line — the value can absorb text that was never part of the field.
-INV-2's per-exclusion fixtures cover this case specifically, placing the
-excluded line between the field and following prose rather than after it.
+continuation of it. So the two can differ by *more* than the excluded line — the
+value can absorb text that was never part of the field.
+
+The raw-line path reaches a different value by either of two routes, and the
+fixtures carry one each rather than assuming the first covers both:
+
+- **The excluded line is itself a terminator** — blank, a further `**Field:**`
+  marker, or an ATX heading — so `headerField` over the raw lines *stops* there
+  and never sees the following prose. `fixtures/exclusions/docs/overlong.md`:
+  its over-long line is a field marker, so raw yields `draft` where the buffered
+  path yields `draft absorbed`.
+- **The excluded line is not a terminator**, so the raw path absorbs *its* text
+  instead. A fence opener is the common case — it is neither blank, a marker,
+  nor a heading. `fixtures/exclusions/docs/fenced.md` yields `draft ~~~` raw
+  against `draft absorbed` buffered, the raw scan having terminated on a blank
+  line *inside* the fence that the buffered scan never sees.
+
+Both routes make the two differ, which is all INV-2 asserts; naming only the
+first would have described one fixture as though it were the rule.
 
 ### 2.2 The cap, and why it is not the byte budget
 
@@ -540,8 +554,9 @@ the suite fail whenever someone edits an unrelated spec, and would re-import
 § 1's dated counts into a test that must not depend on them.
 
 `tools/spec-header-survey.py` gains a `--scope=docs-index` mode (INV-9) that
-walks `walkDocs`'s two roots instead of one directory and prints the four
-simulator classes § 1 quotes, plus `largest_header_block` and
+walks `walkDocs`'s two roots instead of one directory and prints the **five**
+simulator buckets § 1 quotes — the four classes of § 2.3's table plus `other`,
+which § 1 rests its evidence on being empty — plus `largest_header_block` and
 `longest_status_extent` — the two figures § 2.2 and § 5 size their choices
 against. The § 1 figures then become the tool's output rather than a
 transcription, which is the rung `documentation.md` asks for and the reason
@@ -588,6 +603,7 @@ transcription, which is the rung `documentation.md` asks for and the reason
 
 | Loop | Date | Lanes | Findings | Resolution |
 |---|---|---|---|---|
+| 3-impl | 2026-08-02 | none — implementation, not a review | contract held; 2 corrections | **Implementation row, written by the implementer**; no reviewer was dispatched. Every § 2.1 citation was re-verified against source before building — `statusRx`'s regex, both `continue`s, the `maxDocBytes` `break`, `blockEndRe` as `^##\s`, and the `SRC_*_CPP_PATH` scrape convention all matched as written. **Built must-fail-first**: with only `src/docsindex.cpp` reverted to HEAD, **8 of 10 assertions went red**. The two that stayed green are correctly insensitive to that file and are recorded rather than treated as gaps — INV-6 pins *unchanged* behaviour (ANTS-2139 INV-17's surviving half) and INV-9 exercises the survey tool. Then 10/10 green, with the sibling `DocsIndex` and `SpecFieldExtent` suites (40 tests total) green alongside. **Strongest evidence in the run:** `--scope=docs-index`, written independently on top of the tool's existing `field_extent` / `header_block_end` helpers, reproduces § 1's eight figures **byte-for-byte** — two independent implementations of the simulator agreeing, where § 1 previously rested on one. **Two things the contract got wrong and building it exposed.** (1) **§ 2.1's absorbed-prose mechanism was stated for one route and applies via two**: "headerField over the raw lines would have seen the excluded line as a terminator and stopped" is true only when the excluded line is *itself* terminator-shaped. A fence opener is not — it is neither blank, a marker, nor a heading — so the raw path absorbs the fence text instead of stopping. Both routes still make the two differ, so INV-2 was never at risk; the prose now carries a fixture per route rather than describing one as the rule. (2) **§ 6 said "the four simulator classes" where INV-9 says five and asserts five** — `other` is the bucket § 1 rests its evidence on, so the tool must print it; corrected to five. No contract clause was found false, and no invariant needed renumbering. |
 | 3 | 2026-08-02 | 2 cold `general-purpose` lanes, same byte-identical packet, no prior-loop context | C 1 · H 3 · M 5 · L 5 · I 1 — 15 verified, **1 dismissed** | **No loop-1 or loop-2 finding resurfaced.** All 14 actionable fixed; the INFO (a time/allocation budget line) was fixed anyway in § 4. **This loop was dominated by fix collateral, which is why the run stops here rather than looping again.** Loop 2 replaced § 1's counting command with a both-paths simulator and thereby orphaned two figures — `largest_header_block` and `longest_status_extent` — that § 2.2 and § 5 still cited as "§ 1's", leaving the cap value 256 and the streaming-form rejection unsourced while § 1 claimed every figure came from it. Loop 2's INV-5 fix likewise created the CRITICAL: the byte budget became a fourth way out of the read loop, which INV-2's three named exclusions did not cover, so INV-2 demanded equality on precisely the fixture INV-5 demanded differ. Both were repaired by making § 1's command emit *every* quoted figure — including `of which wrapped`, which sources the previously-asserted claim that the 2 body-prose documents are themselves wrapped — and by naming the budget as INV-2's fourth exclusion. One finding was **dismissed on verification**: a lane doubted the `features;fast` ctest label, which `CMakeLists.txt` carries verbatim. Lane B also caught a real second-order effect nobody had stated — the skips are `continue`s, so excluded lines close up and prose can be absorbed into a field value it was never adjacent to. |
 | 2 | 2026-08-02 | 2 cold `general-purpose` lanes, same byte-identical packet, no prior-loop context | C 1 · H 4 · M 6 · L 7 · I 1 — 19 verified, 0 dismissed, **2 of them found during verification rather than by a lane** | **No loop-1 finding resurfaced, which is the evidence those fixes held.** All 18 actionable fixed. **The CRITICAL was collateral from loop 1's own fix**: the EOF flush added there ran on the `maxDocBytes` `break` too, and that buffer is a truncated prefix — so the flush would emit exactly the partial value INV-5 forbids, making the two unbuildable together. Fixed with a `budgetHit` guard, and the "three exits" passage that caused it became four, since the budget break and EOF both leave the loop with `headerDone == false` and only one means the block ended. **The largest item was not a lane's**: verifying lane B's HIGH about the measurement script — that it modelled neither `scanDoc`'s over-long-line skip, its fence skip, nor its non-empty-tail matcher — meant replacing the count with a **simulation of both code paths**, which moved two figures (`unchanged` 124 → 123, `both_empty` 118 → 119) and surfaced `docs/specs/ANTS-2161.md`, whose `**Status:**` line exceeds `kMaxLineBytes` and is therefore unreadable before and after this change; it is now named in § 5. The second verification-found item killed a fictional test seam: INV-2 and INV-4 drove tests through `DocsIndex::scanToEntry`, which `docsindex.h` does not export — both now go through `build()`, the seam the sibling suite actually uses. |
 | 1 | 2026-08-02 | 2 cold `general-purpose` lanes, one byte-identical shared packet, loop log withheld via a scrubbed copy | C 1 · H 2 · M 5 · L 7 · I 1 — 16 verified, 0 dismissed | All 15 actionable fixed; the INFO carried to the report. **Both lanes independently returned the same CRITICAL**, which is the strongest evidence the run produced: the § 2.1 snippet assigned `status` only inside its flush branch, so a document with no `^## ` heading and a header block under the cap would reach EOF with the field buffered and unread — a silent regression against the code this spec replaces, in a draft whose own § 2.3 table asserted such documents were "unchanged". Fixed by a third exit (the EOF flush) and pinned by a new **INV-8**. Two HIGHs were contract defects the author could not see: INV-2 claimed an unconditional equality that `scanDoc`'s fence and over-long-line skips make false, and INV-7 was written in exactly the scrape shape ANTS-3785 INV-6 spells out as wrong (literal instead of identifier, `#include` instead of call-site) — a sibling invariant the author had read and mis-applied. One MEDIUM was the design arguing against itself: § 5 rejected the streaming alternative for duplicating the rule while § 2.1 duplicated the block-end bound, resolved by exporting `SpecParse::isHeaderBlockEnd`. The Phase 4b sweep then caught one defect the fixes themselves introduced — a rewritten § 2.1 cited `plain_below=0` as evidence every document carries a `^## `, which that field does not measure; the § 1 command now prints `docs_with_no_h2` and the byte figure § 2.2 needs. |

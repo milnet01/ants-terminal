@@ -31,6 +31,11 @@ constexpr int    kMaxLinksPerDoc    = 500;             // INV-19 silent per-doc 
 constexpr int    kMaxTopicHits      = 50;              // INV-6 topic= response cap
 constexpr int    kMaxLinkedFrom     = 200;             // INV-18 doc_path= reverse-edge cap
 constexpr int    kMaxLineBytes      = 1024;            // INV-3 fixed regex-skip guard (not Options-overridable; mirrors FileOutline)
+// ANTS-3786 INV-4 — silent per-doc cap on the buffered header block. 256 is ~4×
+// the corpus worst case (65 lines / 4,492 B, docs/specs/ANTS-3579.md). It is a
+// LINE cap and maxDocBytes is a READ budget, so neither substitutes for the
+// other: the cost bounded here is the QStringList held, not the bytes streamed.
+constexpr int    kMaxHeaderBlockLines = 256;
 constexpr qint64 kMaxDocBytes       = 4 * 1024 * 1024; // INV-19 per-doc read budget (ROADMAP/CHANGELOG can be MB-scale)
 
 struct Heading {
@@ -43,7 +48,9 @@ struct DocEntry {
     QString          path;       // project-relative ("docs/specs/ANTS-1637.md")
     QString          id;         // filename stem ("ANTS-1637"); never empty
     QString          title;      // first H1 text; "" when the doc has no H1
-    QString          status;     // best-effort **Status:** value; "" when absent (INV-17)
+    QString          status;     // best-effort **Status:** value from the HEADER BLOCK,
+                                 // whole (wrapped values joined); "" when absent (INV-17,
+                                 // amended by ANTS-3786)
     int              lines = 0;
     qint64           mtimeMs = 0;
     QVector<Heading> headings;   // capped at maxHeadingsPerDoc (silent, INV-19)
@@ -66,6 +73,7 @@ struct Options {                       // all overridable for tests
     int    maxTopicHits      = kMaxTopicHits;
     int    maxLinkedFrom     = kMaxLinkedFrom;
     qint64 maxDocBytes       = kMaxDocBytes;
+    int    maxHeaderBlockLines = kMaxHeaderBlockLines;   // ANTS-3786 INV-4
 };
 
 // One query's selectors (§ 2.5): at most one member non-empty. The handler

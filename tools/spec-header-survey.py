@@ -15,7 +15,16 @@ parity oracle for src/specparse.cpp's headerField():
 List bullets deliberately do NOT terminate a field -- see WRAPPED_PROSE_BULLET
 below for the corpus case that settles it.
 
+A second mode, --scope=docs-index (ANTS-3786 INV-9), surveys what docs_index
+actually indexes -- <root>/*.md non-recursive plus <root>/docs/**/*.md
+recursive -- and classifies each document by how this change moves its status.
+It SIMULATES BOTH CODE PATHS rather than counting `**Status:**` lines, because
+scanDoc does not look at every line: it skips any line over kMaxLineBytes and
+every line inside a fenced block before its matcher runs, and its old matcher
+required a non-empty same-line tail where headerField accepts an empty one.
+
 Usage:  python3 tools/spec-header-survey.py [specs_dir]
+        python3 tools/spec-header-survey.py --scope=docs-index [root]
 Exit:   0 always (a survey, not a gate).
 """
 import re
@@ -127,7 +136,123 @@ def survey(specs_dir):
     return total, wrapped, in_fence, orphans, field_names, fenced_header_block
 
 
+# -- ANTS-3786: the docs_index scope -----------------------------------------
+#
+# Everything below simulates src/docsindex.cpp::scanDoc, whose reader differs
+# from the spec-corpus survey above in three ways that all change the answer.
+
+MAX_LINE_BYTES = 1024                              # DocsIndex::kMaxLineBytes
+STATUS_OLD = re.compile(r"^\*\*Status:\*\*\s*(.+)$")   # scanDoc's old matcher
+CLASSES = ("truncated_now_whole", "body_prose_now_empty",
+           "unchanged_value", "both_empty", "other")
+
+
+def considered(lines):
+    """The lines scanDoc actually looks at.
+
+    Both skips are `continue`s, so surviving lines close up: an excluded line
+    between a field and the prose after it makes that prose adjacent to the
+    field, and therefore a continuation of it.
+    """
+    out, opener = [], None
+    for line in lines:
+        if len(line.encode("utf-8")) + 1 > MAX_LINE_BYTES:
+            continue                               # over-long line (INV-3)
+        m = FENCE.match(line)
+        if opener is None and m:
+            opener = m.group(1)[0]
+            continue
+        if opener is not None:
+            if m and m.group(1)[0] == opener:
+                opener = None
+            continue                               # fenced block (ANTS-3604)
+        out.append(line)
+    return out
+
+
+def status_today(seen):
+    """(value, extent) scanDoc returns today: first non-empty-tail Status,
+    anywhere in the file, truncated to its own physical line."""
+    for i, line in enumerate(seen):
+        m = STATUS_OLD.match(line)
+        if m:
+            return m.group(1).strip(), field_extent(seen, i)[0]
+    return "", 0
+
+
+def status_after(seen):
+    """The value headerField returns over the buffered header block."""
+    limit = header_block_end(seen)
+    for i in range(limit):
+        m = FIELD.match(seen[i])
+        if m and m.group(1) == "Status":
+            return field_extent(seen, i)[1]
+    return ""
+
+
+def survey_docs_index(root):
+    """Walk walkDocs's scope: <root>/*.md then <root>/docs/**/*.md."""
+    docs = sorted(root.glob("*.md")) + sorted(root.glob("docs/**/*.md"))
+    counts = {k: 0 for k in CLASSES}
+    wrapped = {k: 0 for k in CLASSES}
+    no_h2 = 0
+    worst_block, worst_field = (0, 0, ""), (0, "")
+
+    for path in docs:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        seen = considered(lines)
+        limit = header_block_end(lines)
+        if limit == len(lines):
+            no_h2 += 1
+        block_bytes = sum(len(line) + 1 for line in lines[:limit])
+        if limit > worst_block[0]:
+            worst_block = (limit, block_bytes, str(path.relative_to(root)))
+
+        today, extent = status_today(seen)
+        after = status_after(seen)
+        if extent > worst_field[0]:
+            worst_field = (extent, str(path.relative_to(root)))
+
+        if today == after == "":
+            k = "both_empty"
+        elif today == after:
+            k = "unchanged_value"
+        elif today and after.startswith(today):
+            k = "truncated_now_whole"
+        elif today and not after:
+            k = "body_prose_now_empty"
+        else:
+            k = "other"
+        counts[k] += 1
+        if extent > 1:
+            wrapped[k] += 1
+
+    return len(docs), counts, wrapped, no_h2, worst_block, worst_field
+
+
+def main_docs_index(argv):
+    root = Path(next((a for a in argv[1:] if not a.startswith("--")), "."))
+    if not root.is_dir():
+        print(f"no such directory: {root}", file=sys.stderr)
+        return 0
+
+    total, counts, wrapped, no_h2, block, field = survey_docs_index(root)
+    print(f"docs={total}")
+    for k in CLASSES:
+        print(f"  {k}={counts[k]} (of which wrapped: {wrapped[k]})")
+    # `other` is the bucket for a document this change moves in a way the
+    # design did not predict. An empty one is what makes the survey evidence
+    # rather than a tally; a non-zero one is a design finding.
+    print(f"docs_with_no_h2={no_h2}")
+    print(f"largest_header_block={block[0]} lines, {block[1]} bytes ({block[2]})")
+    print(f"longest_status_extent={field[0]} lines ({field[1]})")
+    return 0
+
+
 def main():
+    if "--scope=docs-index" in sys.argv:
+        return main_docs_index(sys.argv)
+
     specs_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "docs/specs")
     if not specs_dir.is_dir():
         print(f"no such directory: {specs_dir}", file=sys.stderr)

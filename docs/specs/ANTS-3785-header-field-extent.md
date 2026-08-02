@@ -193,9 +193,13 @@ them). Of the three that parse:
 - `SpecLog::setStatus` (`src/speclog.cpp`) replaces lines
   `[line, line + lineCount)` with the single line `**Status:** <newStatus>`,
   instead of rewriting `lines[i]` alone.
-- `src/docsindex.cpp` carries a **third** copy — `statusRx`, the same
-  line-scoped `^\*\*Status:\*\*\s*(.+)$` — feeding `DocEntry::status`. It does
-  **not** adopt the helper here, and § 5 says why; tracked as **ANTS-3786**.
+- `src/docsindex.cpp` carried a **third** copy — `statusRx`, the same
+  line-scoped `^\*\*Status:\*\*\s*(.+)$` — feeding `DocEntry::status`. It did
+  **not** adopt the helper here, and § 5 said why. *(Superseded: **ANTS-3786**
+  shipped 2026-08-02 and folded it in — `docsindex.cpp` now buffers its header
+  block and calls `headerField` once. Recorded as superseded rather than
+  annotated: a stale "does not adopt" tells a reader the duplication is still
+  there, which is worse than silence.)*
 
 **Index conventions differ across the seam, so state the conversion rather than
 leaving it to be guessed:** `FieldExtent::line` is **0-based** (it indexes the
@@ -270,9 +274,13 @@ implementations.
   around the edit, and assert the returned `line`.
 - **INV-6** — The two consumers § 2.2 names share one implementation:
   `speclog.cpp` calls `SpecParse::headerField` and carries no field-matching
-  regex of its own. Scoped to those two deliberately — `docsindex.cpp` holds a
-  third copy that this change does not fold in (§ 5, ANTS-3786), and an
-  invariant claiming the whole library would be false on the day it shipped.
+  regex of its own. Scoped to those two deliberately — an invariant claiming
+  the whole library would have been false on the day it shipped.
+  *(ANTS-3786 shipped 2026-08-02 and folded in the third consumer,
+  `docsindex.cpp`, which now calls `headerField` and `isHeaderBlockEnd` too. It
+  carries **its own** scrape in `tests/features/docsindex_header_field/`, so
+  this invariant's two-file test surface below is unchanged and still literally
+  true. A reader should not conclude the rule has exactly two consumers.)*
   *Test:* source scrape in
   `tests/features/spec_field_extent/`, asserting **both** files: `speclog.cpp`
   and `specparse.cpp` each contain `headerField(`, and neither contains
@@ -307,6 +315,10 @@ implementations.
 - **INV-10** — The search is bounded to the header block, so a `**Status:**`
   line inside a fenced example below the first `^##\s` heading is never matched;
   a document whose only such line is fenced is still `unrecognised_format`.
+  *(ANTS-3786 moved the `^##\s` test out of a private `blockEndRe` inside
+  `headerField` into the exported `SpecParse::isHeaderBlockEnd`, so a reader of
+  § 2.1 no longer finds the regex there. Behaviour is identical — the extraction
+  was required not to change it — and this invariant holds verbatim.)*
   *Test:* one fixture, two homes, matching the § 6 split — a document with no
   header Status and a fenced `**Status:** spec draft (YYYY-MM-DD).` in a later
   section (the shape `docs/standards/specs.md` § 3.2 itself has).
@@ -354,13 +366,16 @@ cache, no state, so no eviction policy is needed. Build cost is one added
   corrective on the read side, with no repair pass to run.
 - **`src/docsindex.cpp`'s third copy of the rule — ANTS-3786.** It streams the
   file line by line under a per-doc byte budget (its own INV-19) and holds no
-  `QStringList`, so adopting `headerField` means buffering to the header-block
+  `QStringList`, so adopting `headerField` meant buffering to the header-block
   bound — a change to a different spec's invariant, made under a different
-  spec's contract. Folding it in here would widen a two-file fix into a
-  three-spec one. It is named rather than left silent because a third copy is
+  spec's contract. Folding it in here would have widened a two-file fix into a
+  three-spec one. It was named rather than left silent because a third copy is
   exactly what INV-6 exists to prevent, and scoping it out without saying so
   would make INV-6 read as achieved when it is achieved only for the two
-  consumers listed in § 2.2.
+  consumers listed in § 2.2. *(Superseded: ANTS-3786 shipped 2026-08-02 and did
+  exactly that, including exporting `SpecParse::isHeaderBlockEnd` so the block
+  bound is shared rather than re-expressed. This bullet is kept in the past
+  tense because it records why the split was made, not an open exclusion.)*
 - **Detecting a continuation line that begins with a bold colon-run** (§ 2.1's
   sharp edge). It is an authoring rule in § 2.3, and enforcing it belongs to
   `spec_lint`, whose job is the greppable half of the spec-format contract —

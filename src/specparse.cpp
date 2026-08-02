@@ -11,6 +11,11 @@
 
 namespace SpecParse {
 
+bool isHeaderBlockEnd(const QString &line) {
+    static const QRegularExpression blockEndRe(QStringLiteral(R"(^##\s)"));
+    return blockEndRe.match(line).hasMatch();
+}
+
 FieldExtent headerField(const QStringList &lines, const QString &name) {
     // A field marker at the start of a line: `**<name>:**`. The name may not
     // contain `*` or `:`, which is what keeps an inline bold run from opening
@@ -21,12 +26,12 @@ FieldExtent headerField(const QStringList &lines, const QString &name) {
         QStringLiteral(R"(^\*\*)") + QRegularExpression::escape(name) +
         QStringLiteral(R"(:\*\*\s*(.*)$)"));
     static const QRegularExpression headingRe(QStringLiteral(R"(^#{1,6}\s)"));
-    static const QRegularExpression blockEndRe(QStringLiteral(R"(^##\s)"));
 
-    // Bound the search to the header block (see the header comment).
+    // Bound the search to the header block (see the header comment). The
+    // predicate is shared with docsindex.cpp — ANTS-3786.
     int limit = lines.size();
     for (int i = 0; i < lines.size(); ++i) {
-        if (blockEndRe.match(lines.at(i)).hasMatch()) { limit = i; break; }
+        if (isHeaderBlockEnd(lines.at(i))) { limit = i; break; }
     }
 
     for (int i = 0; i < limit; ++i) {

@@ -6,6 +6,7 @@
 #include "sessionmemoryengine.h"
 #include "projectsettings.h"   // ANTS-2160 — docs_dir override
 #include "markdownscan.h"      // ANTS-3604 — shared fence-aware scanner
+#include "specparse.h"         // ANTS-3786 — shared header-field extent rule
 
 #include <QDir>
 #include <QDirIterator>
@@ -78,8 +79,6 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
 
     static const QRegularExpression headingRx(
         QStringLiteral("^(#{1,6})\\s+(.+)$"));
-    static const QRegularExpression statusRx(
-        QStringLiteral("^\\*\\*Status:\\*\\*\\s*(.+)$"));
     static const QRegularExpression linkRx(
         QStringLiteral("\\[[^\\]]*\\]\\(([^)\\s]+)\\)"));
     static const QRegularExpression trailFenceRx(
@@ -90,10 +89,19 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
     int lineNo = 0;
     QChar openFence;  // ANTS-3604 — null when not inside a fenced code block
 
+    // ANTS-3786 — the header block, buffered so SpecParse::headerField reads it
+    // once per document instead of a per-line regex that could only ever see one
+    // physical line. Bounded by maxHeaderBlockLines and released at whichever of
+    // the three exits fires (first `^## `, the cap, or EOF), never held across
+    // documents.
+    QStringList headerLines;
+    bool        headerDone = false;
+    bool        budgetHit  = false;   // the maxDocBytes break, distinguished from EOF
+
     while (!f.atEnd()) {
         const QByteArray raw = f.readLine();
         budget += raw.size();
-        if (budget > opts.maxDocBytes) break;   // per-doc read budget (INV-19)
+        if (budget > opts.maxDocBytes) { budgetHit = true; break; }  // INV-19
         ++lineNo;
         if (raw.size() > kMaxLineBytes) continue;  // over-long line skip (INV-3)
 
@@ -127,9 +135,21 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
             // headings beyond the cap are silently dropped (INV-19)
         }
 
-        if (r.status.isEmpty()) {
-            const auto sm = statusRx.match(line);
-            if (sm.hasMatch()) r.status = sm.captured(1).trimmed();
+        // ANTS-3786 — accumulate the header block, then parse it once with the
+        // shared rule. This sits AFTER the over-long-line (INV-3) and fenced
+        // block (ANTS-3604) `continue`s, so those lines never enter the buffer:
+        // every existing scanDoc invariant stays intact, at the cost of the
+        // buffer being a filtered view of the file rather than its raw lines.
+        if (!headerDone) {
+            if (SpecParse::isHeaderBlockEnd(line) ||
+                headerLines.size() >= opts.maxHeaderBlockLines) {
+                headerDone = true;                       // block end / silent cap
+                r.status = SpecParse::headerField(headerLines,
+                                                  QStringLiteral("Status")).value;
+                headerLines.clear();                     // released immediately
+            } else {
+                headerLines << line;
+            }
         }
 
         auto lit = linkRx.globalMatch(line);
@@ -141,6 +161,19 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
             }
         }
     }
+
+    // ANTS-3786 INV-8 — the EOF exit. A document whose header block is never
+    // closed by a `^## ` (and never hits the cap) reaches here with lines still
+    // buffered; without this flush its status would be silently lost. It does
+    // NOT run when the loop ended on the byte budget (INV-5): that buffer is a
+    // truncated PREFIX of the header block, not a complete one, so emitting
+    // from it would report a partial field value as a whole one. Both paths
+    // leave headerDone == false and only one of them means "the block ended".
+    if (!headerDone && !budgetHit) {
+        r.status = SpecParse::headerField(headerLines,
+                                          QStringLiteral("Status")).value;
+    }
+    headerLines.clear();
 
     r.links.sort();
     if (r.links.size() > opts.maxLinksPerDoc)

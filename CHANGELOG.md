@@ -125,6 +125,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **docsindex carries a third copy of the Status-field rule, with the same truncation bug.** (ANTS-3786)
+  A third piece of code reads a document's status line and, like the other two, stops at the first line — so a status written across two lines is cut short in the docs index.
+
 - **Spec header fields may wrap: `spec_log` no longer corrupts a multi-line `**Status:**`, and `spec_query` no longer truncates one (ANTS-3785, ANTS-3672)**
   A spec's `**Status:**` value routinely runs onto a second line — 49 of the
   172 specs carrying one do, because the format standard tells authors to

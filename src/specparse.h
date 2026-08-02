@@ -44,6 +44,18 @@ struct FieldExtent {
 // a line counts; an inline bold colon-run is value text.
 FieldExtent headerField(const QStringList &lines, const QString &name);
 
+// ANTS-3786 — true when `line` closes the header block: an `^## ` heading.
+//
+// Exported so the bound has ONE expression. headerField applies it internally;
+// docsindex.cpp needs the same predicate to know when to stop buffering (it
+// streams, and cannot hand headerField a whole file). A private `^##\s` regex
+// on that side would be a third copy of the rule this pair exists to share.
+//
+// H2 only, deliberately: `### ` does NOT close the block, so a `**Status:**`
+// beneath a level-3 heading is still a header field. That is headerField's
+// pre-existing behaviour, preserved by the extraction rather than chosen here.
+bool isHeaderBlockEnd(const QString &line);
+
 // Parse a spec file's body into {title, status, kind, invariants[],
 // invariants_count, possible_untabled_invariants}. `body` is the full file
 // text. Empty fields are emitted as empty strings; an absent Invariants
