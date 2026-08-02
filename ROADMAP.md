@@ -641,6 +641,36 @@ SSH key registered there.
   Lanes: packaging.
   Source: in-session-2026-07-30 (noticed while removing the manifest's dead lua5.4 header mirror).
 
+- 📋 [ANTS-3790] **The .deb and Flatpak may not ship Qt's SQLite driver plugin.**
+  Qt loads the SQLite driver as a runtime PLUGIN, so nothing links it
+  and no automatic shared-library dependency is generated. If it is
+  absent, QSqlDatabase::addDatabase() returns an invalid database at RUN
+  time — the roadmap store (ANTS-3756) fails on a user's machine, with a
+  perfectly green build.
+
+  The RPM half is fixed (2026-08-02): openSUSE gets an explicit
+  `Requires: qt6-sql-sqlite`; Fedora 44 needs nothing because qt6-qtbase
+  itself owns /usr/lib/qt6/plugins/sqldrivers. Both verified against the
+  distros' own package metadata.
+
+  Still open, and deliberately NOT guessed at:
+    - debian/control's `Depends:` is `${shlibs:Depends}, ${misc:Depends},
+      hicolor-icon-theme`. shlibs cannot see a runtime-loaded plugin, so
+      the .deb probably needs an explicit driver package. The likely name
+      is libqt6sql6-sqlite, but that could not be confirmed from this
+      openSUSE host — sources.debian.org indexes SOURCE packages, so its
+      empty result is not evidence. Verify on a Debian/Ubuntu box or via
+      packages.debian.org before adding it.
+    - Flatpak (org.kde.Platform 6.10) most likely ships the full Qt SQL
+      driver set, but this was not checked.
+    - Mageia: same question, same unverified state (noted in the spec).
+
+  Cheapest verification for all three: install the built artefact and
+  open the roadmap store, rather than reading manifests.
+  **Layman:** The roadmap store needs a small database driver that is loaded at run time; on some packaging formats we may not be installing it, so the store could fail on a user's machine even though the build was fine.
+  Kind: package.
+  Source: in-session-2026-08-02 (found fixing the ANTS-3765 Qt6Sql packaging break).
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ — and the spec is now Fedora-compatible in fact,

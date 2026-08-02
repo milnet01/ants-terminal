@@ -78,8 +78,16 @@ BuildRequires:  cmake(Qt6Gui)
 BuildRequires:  cmake(Qt6Network)
 BuildRequires:  cmake(Qt6OpenGL)
 BuildRequires:  cmake(Qt6OpenGLWidgets)
+# Qt6Sql is a REQUIRED component of the same find_package (ANTS-3756 — the
+# roadmap store, the sole Qt6::Sql consumer, linked only by
+# ants_roadmapstore_lib). Debian's qt6-base-dev bundles QtSql, which is why CI
+# and the .deb never noticed; openSUSE splits it into qt6-sql-devel, so every
+# openSUSE target failed configure with 'Failed to find required Qt component
+# "Sql"'. Caught by the OBS validation build of 2026-08-02 — the same way, and
+# for the same reason, as Qt6Test below.
+BuildRequires:  cmake(Qt6Sql)
 # Qt6Test is a REQUIRED component of the top-level find_package in
-# CMakeLists.txt:86 — unconditionally, not gated on -DANTS_TESTS. Omitting it
+# CMakeLists.txt:92 — unconditionally, not gated on -DANTS_TESTS. Omitting it
 # fails configure with 'Failed to find required Qt component "Test"' before a
 # single object compiles (caught by the first OBS build, 2026-07-29).
 BuildRequires:  cmake(Qt6Test)
@@ -153,6 +161,24 @@ BuildRequires:  hicolor-icon-theme
 
 Requires:       hicolor-icon-theme
 # Qt6 shlib deps are picked up automatically by rpm's auto-Requires.
+#
+# The SQLite driver is the exception, and auto-Requires cannot see it: Qt loads
+# it as a runtime PLUGIN, so nothing links it and no shlib dependency is
+# generated. Without the plugin present, QSqlDatabase::addDatabase() returns an
+# invalid database at RUN time — the roadmap store fails on a user's machine,
+# not in the build (CMakeLists.txt:86-91 says the same thing from the other side).
+#
+# Verified 2026-08-02, per distro, rather than assumed:
+#   openSUSE  — split into its own package, so it must be named (zypper: the
+#               driver is qt6-sql-sqlite, devel is qt6-sql-devel).
+#   Fedora 44 — qt6-qtbase itself owns /usr/lib/qt6/plugins/sqldrivers and
+#               there is no qt6-qtbase-sqlite subpackage, so the base package
+#               that auto-Requires already drags in covers it. Nothing to add.
+#   Mageia    — NOT verified; left unguarded deliberately rather than guessed
+#               at. If the store misbehaves there, this is the first suspect.
+%if 0%{?suse_version}
+Requires:       qt6-sql-sqlite
+%endif
 
 %description
 Ants Terminal is a terminal emulator built from scratch in C++20 with
