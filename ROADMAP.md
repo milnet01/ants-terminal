@@ -24461,6 +24461,28 @@ against current source before filing.
   **Layman:** A tool that stamps a spec as "shipped" mangles the paragraph next to the stamp when that paragraph is more than one line long.
   Kind: fix.
   Source: in-session-2026-08-01, hit while shipping ANTS-3766.
+  Progress (2026-08-02): spec written and gated —
+  `docs/specs/ANTS-3785-header-field-extent.md`, an umbrella spec that also
+  Covers ANTS-3672 (the reader half of the same defect). Cold-eyes converged
+  at the 3-loop cap with nothing deferred: 34 findings verified and fixed
+  (loop 1: C0 H4 M7 L4; loop 2: C0 H1 M4 L4 + 1 found in verification;
+  loop 3: C0 H2 M3 L4). No finding from an earlier loop resurfaced in any
+  later pass.
+
+  Scope grew on evidence, not preference. The root defect is a gap in
+  `docs/standards/specs.md` § 3.2, which tells authors to append progress to
+  Status inline but never says a field may wrap or where it ends — so the
+  reader (`specparse.cpp`) truncates and the writer (`speclog.cpp`) corrupts,
+  one missing rule with two faces. 49 of 172 specs carry a wrapped Status
+  (`tools/spec-header-survey.py`, shipped with the spec as the parity oracle).
+
+  Two items filed rather than folded in: **ANTS-3786** (`docsindex.cpp`
+  carries a THIRD copy of the rule with the same truncation bug — found only
+  because loop 2 forced the consumer search to be re-run widened) and
+  **ANTS-3787** (`ANTS-1253`'s two-fields-on-one-line header, sequenced after
+  this change because INV-9's fixture is derived from its current shape).
+
+  Status: spec draft, awaiting sign-off. No code written yet.
 
 - 📋 [ANTS-3786] **docsindex carries a third copy of the Status-field rule, with the same truncation bug.**
   Found while widening ANTS-3785 § 2.2's consumer search from `statusRe` to
