@@ -86,6 +86,25 @@ BuildRequires:  cmake(Qt6OpenGLWidgets)
 # "Sql"'. Caught by the OBS validation build of 2026-08-02 — the same way, and
 # for the same reason, as Qt6Test below.
 BuildRequires:  cmake(Qt6Sql)
+# ...and the SQLite DRIVER, at BUILD time, not just runtime. cmake(Qt6Sql) is
+# the library and headers; the driver is a separate runtime-loaded plugin, and
+# the roadmap-store tests open a real QSqlDatabase during %%check. Without it
+# they fail 217 times with 'Driver not loaded' — a red build, long after
+# everything has compiled (measured on Leap 16.0 and Tumbleweed, 2026-08-02).
+#
+# This is the hicolor-icon-theme situation further down, for the same reason:
+# a `Requires:` is NOT present in the build chroot, so a package needed by the
+# test suite has to be BuildRequired as well as Required. And it is the
+# git-core rationale too — declaring it makes those tests RUN rather than fail
+# or be excluded into silence.
+#
+# openSUSE-only, and that is verified rather than assumed: Mageia_10's chroot
+# already carries the driver (its build got past the whole suite to RPM
+# assembly in the same run), and Fedora keeps it in qt6-qtbase, which
+# cmake(Qt6Core) already drags in.
+%if 0%{?suse_version}
+BuildRequires:  qt6-sql-sqlite
+%endif
 # Qt6Test is a REQUIRED component of the top-level find_package in
 # CMakeLists.txt:92 — unconditionally, not gated on -DANTS_TESTS. Omitting it
 # fails configure with 'Failed to find required Qt component "Test"' before a

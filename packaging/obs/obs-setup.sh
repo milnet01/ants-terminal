@@ -77,9 +77,21 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # because %optflags carries -g and CMakeLists.txt overrides neither
 # CMAKE_CXX_FLAGS nor any strip setting.
 #
+# Mageia is the one target where the flag must be OFF, and turning it off there
+# loses nothing. Mageia runs find-debuginfo itself and writes a
+# SPECPARTS/rpm-debuginfo.specpart that declares `%package debuginfo`; with the
+# OBS flag also enabled, rpm sees the subpackage declared twice and the build
+# dies at the very end (after a full compile and test run) with "line 5:
+# %package debuginfo: package ants-terminal-debuginfo already exists". The
+# native machinery still produces the debuginfo packages, so ANTS-3729's
+# unstripped-binary finding stays fixed there. Diagnosed 2026-08-02, on the
+# first Mageia build that got far enough to reach RPM assembly.
+#
 # Keep the XML free of double hyphens. They are illegal inside an XML comment,
 # so quoting an rpmbuild flag there makes OBS reject the whole meta with a
 # "Double hyphen within comment" validation error. Explanations live out here.
+# (OBS also strips comments from submitted meta, so they would not survive
+# anyway - this file is the readable copy.)
 # ---------------------------------------------------------------------------
 cat > "$tmp/prj.xml" <<EOF
 <project name="$PROJ">
@@ -88,6 +100,7 @@ cat > "$tmp/prj.xml" <<EOF
   <person userid="$USER" role="maintainer"/>
   <debuginfo>
     <enable/>
+    <disable repository="Mageia_10"/>
   </debuginfo>
   <repository name="openSUSE_Tumbleweed">
     <path project="openSUSE:Factory" repository="snapshot"/>
