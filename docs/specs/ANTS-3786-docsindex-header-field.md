@@ -32,9 +32,10 @@ here (ANTS-3785 § 5).
 Three consequences, in the order they matter:
 
 1. **Truncated status.** `docs_index` misreports the status of **54** of the
-   **178** in-scope documents that carry a `**Status:**` line — **52**
-   truncated at their first physical line, and **2** sourced from body prose
-   (consequence 3). It feeds
+   **177** in-scope documents it reads one from: **52** truncated at their
+   first physical line, and **2** that are truncated *and* taken from body
+   prose rather than the header block (the same two, counted once — see
+   consequence 3, which is why they are wrong twice over). It feeds
    `DocEntry::status`, which `src/docsindex.h::DocEntry` documents as the
    "best-effort `**Status:**` value" (ANTS-2139 INV-17), so every consumer of
    the index sees the truncation.
@@ -49,51 +50,88 @@ Three consequences, in the order they matter:
    `docs/journal/2026-04-13-DISCOVERY.md` (a mid-document phase note). Neither
    is a document status; both are reported as one today.
 
-**Every figure this spec quotes comes from the one command below**, run against
-`docs_index`'s real scan scope (`<root>/*.md` non-recursive, then
-`<root>/docs/**/*.md` recursive — the walk `src/docsindex.cpp::walkDocs()`
-performs), on 2026-08-02. It emits the full cross-tabulation rather than four
-totals, so § 2.3's disjoint classes are read off it directly instead of being
-derived by subtraction:
+**Every figure this spec quotes comes from the command below**, which
+**simulates both code paths** rather than counting `**Status:**` lines. That
+distinction is load-bearing: a plain line-count answers a question the spec is
+not asking, because `scanDoc` does not look at every line. It skips any line
+over `kMaxLineBytes` (ANTS-2139 INV-3) and every line inside a fenced block
+(ANTS-3604) *before* its matcher runs, and its matcher requires a non-empty
+same-line tail (`(.+)$`) where `headerField` accepts an empty one (`(.*)$`).
+A count that models none of these reports a status for documents the scanner
+never reads one from — measured: exactly one, `docs/specs/ANTS-2161.md`, whose
+`**Status:**` line is a single run well over 1024 bytes and is therefore
+invisible to `docs_index` today **and** after this change.
+
+The scope is `walkDocs`'s: `<root>/*.md` non-recursive, then
+`<root>/docs/**/*.md` recursive. Two `walkDocs` behaviours the script does not
+model, checked by hand on 2026-08-02 and both inert here: a
+`.ants/project.json` `docs_dir` override (this repo ships no such file) and
+`QDir::NoSymLinks` (no `.md` in scope is a symlink). On a project where either
+holds, re-derive before trusting these counts.
+
+Run on 2026-08-02:
 
 ```bash
 python3 - <<'PY'
 import glob, re
+MAXLINE = 1024
+FENCE = re.compile(r'^ {0,3}(```+(?!.*`)|~~~+)')
+OLD  = re.compile(r'^\*\*Status:\*\*\s*(.+)$')   # scanDoc today: non-empty tail
+NEW  = re.compile(r'^\*\*Status:\*\*\s*(.*)$')   # headerField: empty tail ok
+TERM = re.compile(r'^\s*$|^\*\*[^*:]+:\*\*|^#{1,6}\s')
+H2   = re.compile(r'^##\s')
+
+def considered(lines):                 # the lines scanDoc actually looks at
+    out, opener = [], None
+    for line in lines:
+        if len(line.encode('utf-8')) + 1 > MAXLINE:
+            continue                   # over-long-line skip (ANTS-2139 INV-3)
+        m = FENCE.match(line)
+        if opener is None and m:
+            opener = m.group(1)[0]; continue
+        if opener is not None:
+            if m and m.group(1)[0] == opener:
+                opener = None
+            continue                   # fenced-block skip (ANTS-3604)
+        out.append(line)
+    return out
+
+def today(seen):
+    for line in seen:
+        m = OLD.match(line)
+        if m:
+            return m.group(1).strip()
+    return ""
+
+def after(seen):                       # buffer to first ^##, then headerField
+    buf = []
+    for line in seen:
+        if H2.match(line):
+            break
+        buf.append(line)
+    for i, line in enumerate(buf):
+        m = NEW.match(line)
+        if not m:
+            continue
+        parts, j = [m.group(1).strip()], i + 1
+        while j < len(buf) and not TERM.match(buf[j]):
+            parts.append(buf[j].strip()); j += 1
+        return " ".join(p for p in parts if p)
+    return ""
+
 docs = sorted(glob.glob('*.md')) + sorted(glob.glob('docs/**/*.md', recursive=True))
-S = re.compile(r'^\*\*Status:\*\*')
-T = re.compile(r'^\s*$|^\*\*[^*:]+:\*\*|^#{1,6}\s')
-H = re.compile(r'^##\s')
-n = {'wrapped_in': 0, 'wrapped_below': 0, 'plain_in': 0, 'plain_below': 0, 'none': 0}
-no_h2 = 0
-worst_block = (0, 0, '')
-worst_field = (0, '')
+cls = {}
 for p in docs:
-    L = open(p, encoding='utf-8', errors='replace').read().splitlines()
-    lim = next((i for i, l in enumerate(L) if H.match(l)), None)
-    if lim is None:
-        no_h2 += 1
-        lim = len(L)
-    blk = sum(len(l) + 1 for l in L[:lim])
-    if lim > worst_block[0]:
-        worst_block = (lim, blk, p)
-    i = next((i for i, l in enumerate(L) if S.match(l)), None)
-    if i is None:
-        n['none'] += 1
-        continue
-    j = i + 1
-    while j < len(L) and not T.match(L[j]):
-        j += 1
-    if j - i > worst_field[0]:
-        worst_field = (j - i, p)
-    n[('wrapped_' if j - i > 1 else 'plain_') + ('below' if i >= lim else 'in')] += 1
+    seen = considered(open(p, encoding='utf-8', errors='replace').read().splitlines())
+    t, a = today(seen), after(seen)
+    k = ('both_empty' if t == a == "" else 'unchanged_value' if t == a
+         else 'truncated_now_whole' if t and a.startswith(t)
+         else 'body_prose_now_empty' if t and not a else 'other')
+    cls[k] = cls.get(k, 0) + 1
 print(f"docs={len(docs)}")
-for k, v in n.items():
-    print(f"  {k}={v}")
-print(f"  wrapped_total={n['wrapped_in'] + n['wrapped_below']}"
-      f" with_status={sum(v for k, v in n.items() if k != 'none')}")
-print(f"docs_with_no_h2={no_h2}")
-print(f"largest_header_block={worst_block[0]} lines, {worst_block[1]} bytes ({worst_block[2]})")
-print(f"longest_status_extent={worst_field[0]} lines ({worst_field[1]})")
+for k in ('truncated_now_whole', 'body_prose_now_empty', 'unchanged_value',
+          'both_empty', 'other'):
+    print(f"  {k}={cls.get(k, 0)}")
 PY
 ```
 
@@ -101,33 +139,31 @@ Output on 2026-08-02:
 
 ```
 docs=296
-  wrapped_in=52
-  wrapped_below=2
-  plain_in=124
-  plain_below=0
-  none=118
-  wrapped_total=54 with_status=178
-docs_with_no_h2=0
-largest_header_block=65 lines, 4492 bytes (docs/specs/ANTS-3579.md)
-longest_status_extent=16 lines (docs/specs/ANTS-1397.md)
+  truncated_now_whole=52
+  body_prose_now_empty=2
+  unchanged_value=123
+  both_empty=119
+  other=0
 ```
 
-It is a **heredoc on purpose**: the same script written as `python3 -c "…"`
-has its `$` and `\` rewritten by the shell before Python sees them, so a reader
-who pastes it gets a regex that matches a literal `$` and silently different
-counts.
+**`other=0` is the part that makes this evidence rather than a tally.** It is
+the bucket for a document the change affects in a way the design did not
+predict; an empty one says every one of the 296 lands in a class § 2.3
+describes. A non-zero `other` would be a design finding, not a counting error.
 
-The scan scope **includes this spec**, which is why the totals moved by one
-between drafting and self-check; no figure the design rests on moved. Re-run
-the command rather than trusting the transcript — a corpus count is true at a
-date, and its date is above. § 6 makes this permanent.
+It is a **heredoc on purpose**: written as `python3 -c "…"` the shell rewrites
+`$` and `\` before Python sees them, so a pasted copy silently measures
+something else.
+
+The scope **includes this spec**. Re-run the command rather than trusting the
+transcript — a corpus count is true at a date, and its date is above. § 6 makes
+it permanent.
 
 **This population is wider than ANTS-3785's, and the counts differ for that
 reason rather than by contradiction.** That spec measured `docs/specs/` and
 reported 49 wrapped; this one measures everything `docs_index` indexes —
 `docs/standards/`, `docs/decisions/`, `docs/journal/`, `docs/qa/` and the root
-`*.md` files as well — and reports 54. § 6 makes the figure an output rather
-than a transcription.
+`*.md` files as well — and reports 54.
 
 ## 2. Surface
 
@@ -156,6 +192,7 @@ is one expression of the bound in the codebase and both callers use it.
 // src/docsindex.cpp — scanDoc locals, beside `QChar openFence;`
 QStringList headerLines;
 bool        headerDone = false;
+bool        budgetHit  = false;   // the maxDocBytes break, distinguished from EOF
 
 // …inside the read loop, at the point the statusRx match used to sit
 // (i.e. AFTER the over-long-line and fenced-block `continue`s — see below).
@@ -173,20 +210,34 @@ if (!headerDone) {
 // …after the read loop ends — the EOF flush. A document whose header block is
 // never closed by a `^## ` (and never hits the cap) reaches EOF with lines
 // still buffered; without this, its status would be silently lost (INV-8).
-if (!headerDone) {
+// It does NOT run when the loop ended on the byte budget: that buffer is a
+// truncated prefix of the header block, not a complete one (INV-5).
+if (!headerDone && !budgetHit) {
     r.status = SpecParse::headerField(headerLines, QStringLiteral("Status")).value;
-    headerLines.clear();
 }
+headerLines.clear();
+```
+
+The budget check gains the flag it needs, one line at the existing `break`:
+
+```cpp
+if (budget > opts.maxDocBytes) { budgetHit = true; break; }   // was: break;
 ```
 
 `statusRx` is deleted, `#include "specparse.h"` added, and `docsindex` gains
 `ants_core_lib`'s existing dependency on it — `SpecParse` is already in the
 same library, so no build-graph change (§ 4).
 
-**Three exits, not one, and the third is the one that is easy to miss.** The
-block closes at the first `^## `, at the cap, or at EOF. Every document in the
-scan scope has such a heading today (`docs_with_no_h2=0`, § 1), so the EOF path
-is unreachable against the current corpus; it exists
+**Four ways out of the header block, and only three of them produce a status.**
+It closes at the first `^## `, at the cap, at EOF — and the read loop can also
+end on the `maxDocBytes` budget, which is *not* a close: the buffer at that
+point is a truncated prefix, so the flush is suppressed and the status stays
+empty (INV-5). Conflating the budget break with EOF is the specific mistake
+this paragraph exists to prevent, because both leave the loop with
+`headerDone == false` and only one of them means "the header block ended".
+
+Every document in the scan scope carries a `^## ` today, so the EOF path is
+unreachable against the current corpus; it exists
 because the bound must not depend on that staying true, and because a
 `docs_index` run over a *different* project — which is the normal case, the
 verb takes any `caller_cwd` — has no such guarantee at all.
@@ -240,20 +291,23 @@ the corpus figure below it is what actually happens, not what is permitted.
 
 ### 2.3 What the emitted status changes to
 
-The four classes are disjoint and sum to the 296 documents in scope:
+These are the simulator's four classes (§ 1), disjoint by construction and
+summing to the 296 documents in scope:
 
 | Class | Count | Today | After |
 |---|---|---|---|
-| Wrapped, inside the header block | 52 | first physical line only | whole joined value |
-| Wrapped, **and** only below the first `## ` | 2 | that body line's first line | `""` |
-| Unwrapped, inside the header block | 124 | unchanged | unchanged |
-| No `**Status:**` line | 118 | `""` | `""` |
+| `truncated_now_whole` — wrapped, inside the header block | 52 | first physical line only | whole joined value |
+| `body_prose_now_empty` — wrapped, **and** only below the first `## ` | 2 | that body line's first line | `""` |
+| `unchanged_value` — read identically by both paths | 123 | unchanged | unchanged |
+| `both_empty` — no status either way | 119 | `""` | `""` |
 
-**The two below-block documents are also wrapped ones** — the 54 of § 1 is
-`52 + 2`, not a fifth class alongside them. There is no
-below-block-but-unwrapped row because that set is empty (measured: 0), and
-saying so is the point: the same two documents appear in both figures, so
-adding 54 and 2 would double-count them.
+Two things the row labels alone would hide. **The 2 below-block documents are
+also wrapped ones**, so § 1's 54 is `52 + 2` — the *classes* are disjoint, the
+two *figures* overlap, and adding 54 and 2 would count those documents twice.
+And `both_empty`'s 119 is 118 documents with no `**Status:**` line plus
+**one that has one nobody can read**: `docs/specs/ANTS-2161.md`, whose status
+line exceeds `kMaxLineBytes` and is skipped before either matcher sees it. This
+change does not fix that document and does not try to — § 5.
 
 The second row is a **behaviour change, not a regression**: both documents
 were reporting body prose as a document status, and ANTS-2139 INV-17 already
@@ -274,12 +328,13 @@ appear, which § 7 corrects.
   bounds the rule has one implementation, not two that agree today. The three
   exclusions are `scanDoc`'s pre-existing skips and this spec's own cap (§ 2.1);
   outside them the inputs are deliberately different line lists, so an
-  unconditional equality would be false rather than strict. *Test:* every
-  fixture in `tests/features/docsindex_header_field/fixtures/` that satisfies
-  the three conditions is fed to `DocsIndex::scanToEntry` and to
-  `SpecParse::headerField` on the same file's lines, asserting equality per
-  fixture; the suite also carries one fixture per exclusion, asserting the two
-  **differ** there, so the bounds are pinned in both directions.
+  unconditional equality would be false rather than strict. *Test:* each
+  fixture in `tests/features/docsindex_header_field/fixtures/` satisfying the
+  three conditions is indexed with `DocsIndex::build()` over a `QTemporaryDir`
+  and its `DocEntry::status` compared to `SpecParse::headerField` called on the
+  same file's lines; the suite also carries one fixture per exclusion,
+  asserting the two **differ** there, so the bounds are pinned in both
+  directions.
 - **INV-3** — The search is bounded to the header block: a `**Status:**` line
   appearing only after the first `^## ` leaves `status` empty. *Test:* a
   fixture whose sole status line sits below a `## ` heading → `status == ""`.
@@ -287,14 +342,19 @@ appear, which § 7 corrects.
   unwrapped, so INV-1's rule and the cap both accept it.)
 - **INV-4** — The header buffer is capped at `maxHeaderBlockLines`; past the
   cap the status is whatever was found within it, and the cap is silent — no
-  flag on the entry. *Test:* `Options{maxHeaderBlockLines:2}` over a doc whose
-  `**Status:**` sits on line 5 → `status == ""`, entry still emitted with its
-  headings.
+  flag on the entry. *Test:* `DocsIndex::build()` with
+  `Options{maxHeaderBlockLines:2}` over a doc whose `**Status:**` sits on
+  line 5 → `status == ""`, entry still emitted with its headings.
 - **INV-5** — ANTS-2139 INV-19 is unchanged: `maxDocBytes` still bounds the
   read, and a document whose budget expires before its header block closes is
-  still emitted, with an empty status rather than a partial field value.
-  *Test:* `Options{maxDocBytes:<small>}` over a doc whose status straddles the
-  budget → entry exists, `status == ""`, no partial value.
+  still emitted, with an empty status rather than a partial field value. The
+  EOF flush is suppressed on that path (§ 2.1's `budgetHit`) precisely so a
+  truncated buffer cannot be mistaken for a complete header block. *Test:*
+  `Options{maxDocBytes:<small>}` over a doc whose `**Status:**` value straddles
+  the budget → entry exists, `status == ""`. (Only the suppression can satisfy
+  this: the field's opening line is inside the budget, so an unguarded flush
+  would return its first line — a partial value, and a visibly different
+  assertion from the empty string.)
 - **INV-6** — A document with no `**Status:**` line is still indexed with
   `status == ""` and is never an error (ANTS-2139 INV-17's surviving half).
   *Test:* a fixture with no status line → indexed, `status == ""`.
@@ -310,14 +370,25 @@ appear, which § 7 corrects.
   hand-rolled matcher, and an absence assertion aimed at the literal would fail
   against a correct implementation that legitimately mentions `**Status:**` in
   a comment. The `#include` is not asserted: including a header does not prove
-  the helper is called, and `headerField(` does.
+  the helper is called, and `headerField(` does. The absence half also covers
+  the **block-end** pattern (`^##` as a `QRegularExpression` in
+  `docsindex.cpp`), so an implementation that adopts `headerField` but
+  hand-rolls the bound instead of calling `isHeaderBlockEnd` fails too — that
+  bound is the second rule this change de-duplicates (§ 2.1), and without this
+  clause nothing tests it.
 - **INV-8** — A document with a `**Status:**` line and **no `^## ` heading
   anywhere** still yields that status: the header block is flushed at EOF, not
   abandoned. *Test:* a fixture with a header block, a status line and no `##`
   heading at all → `status` equals the field's value. (Only the EOF flush can
   satisfy this fixture: the `^## ` exit never fires and the block is far under
-  the cap, so an implementation missing the flush returns `""` — which is
-  exactly what the § 2.1 snippet did before this invariant existed.)
+  the cap, so an implementation without the flush returns `""`.)
+- **INV-9** — The corpus figures are reproducible from the shipped tree:
+  `tools/spec-header-survey.py --scope=docs-index` prints the four simulator
+  classes § 1 quotes, over `walkDocs`'s scope. *Test:* the feature test runs
+  the tool against a fixture tree with one document of each class and asserts
+  the four printed counts — so a figure in this spec can be re-derived rather
+  than trusted, and a change to `scanDoc` that moves the classes breaks the
+  tool's test rather than silently ageing the spec.
 
 ## 4. RAM / build cost
 
@@ -326,25 +397,38 @@ header block is open*, released at whichever of the three exits fires — first
 `^## `, cap, or EOF — and never held across documents (`headerLines.clear()`,
 § 2.1). Two figures, and the spec budgets against the first:
 
-| | Lines | Held (QString) | vs `maxDocBytes` (4 MiB) |
-|---|---|---|---|
-| **Permitted** — at the cap | 256 | ~512–600 KiB (§ 2.2) | ~13% |
-| **Observed** — corpus worst case | 65 | ~9 KiB (4,492 B of text) | ~0.2% |
+| | Lines | Held (QString) |
+|---|---|---|
+| **Permitted** — at the cap | 256 | ~512–600 KiB (§ 2.2) |
+| **Observed** — corpus worst case | 65 | ~9 KiB (4,492 B of text) |
 
 The permitted figure is the one that bounds the feature; the observed figure is
-what the current corpus costs. ANTS-2139 § 4's binding ceiling —
-`kMaxCacheBytes` = 8 MiB over the whole index — is untouched, since nothing new
-is stored in `DocEntry`; this buffer is transient per-document scan state, not
-index content.
+what the current corpus costs. Neither is compared against `maxDocBytes`: that
+is a **read** budget governing bytes streamed off disk, not a heap ceiling, so
+a percentage of it would look like a headroom claim while measuring nothing.
+The heap ceiling that does bind is ANTS-2139 § 4's `kMaxCacheBytes` = 8 MiB
+over the whole index, and it is untouched: nothing new is stored in `DocEntry`,
+since this buffer is transient per-document scan state rather than index
+content.
 
-No new build target, no new library, no external dependency:
-`SpecParse` and `DocsIndex` are both already in `ants_core_lib`, so the
-`#include` adds a compile edge inside one library and no link edge.
+No new build target, no new library, no external dependency, and **no new link
+edge**: `SpecParse` and `DocsIndex` are both already in `ants_core_lib`, so the
+`#include` adds a compile edge inside one library. `CMakeLists.txt` is still
+edited twice — a `SRC_DOCSINDEX_CPP_PATH` definition for INV-7's scrape and a
+bundle source line for the new test (§ 6) — which is build-file churn without
+being a build-graph change.
 
 ## 5. Out of scope
 
-- **Re-wrapping or repairing the 54 wrapped documents.** They are well-formed;
+- **Re-wrapping or repairing the 52 wrapped documents.** They are well-formed;
   the reader was wrong, not the documents.
+- **`docs/specs/ANTS-2161.md`'s unreadable status.** Its `**Status:**` line is
+  one run over `kMaxLineBytes`, so ANTS-2139 INV-3's over-long-line guard drops
+  it before any matcher — today and after this change alike (§ 1). Fixing it
+  means either raising that guard or re-wrapping the document, and both are
+  ANTS-2139's call, not this spec's. Named rather than left silent because it
+  is the one document whose status this change might be expected to fix and
+  does not.
 - **The two below-block documents' prose.** `ROADMAP.md` and the journal entry
   keep their text; only the index stops mistaking it for a status.
 - **`Kind` and the other header fields.** `docsindex` extracts `Status` alone
@@ -374,8 +458,8 @@ No new build target, no new library, no external dependency:
 Feature test: `tests/features/docsindex_header_field/`, paired with its own
 `spec.md`, sourced into the same bundle that carries
 `tests/features/mcp_docs_index/` (`CMakeLists.txt`, the ANTS-2139 entry) — a
-new source line, not an `add_executable`. Covers **INV-1..INV-8**, behavioural
-and source-scrape halves alike. Label `features;fast`. Each assertion is
+new source line, not an `add_executable`. Covers **INV-1..INV-9** — behavioural,
+source-scrape and tool halves alike. Label `features;fast`. Each assertion is
 verified to **fail against pre-fix `docsindex.cpp`** before the fix is restored,
 per the project test convention.
 
@@ -393,20 +477,13 @@ repo's 296 real documents. Driving invariants off the live corpus would make
 the suite fail whenever someone edits an unrelated spec, and would re-import
 § 1's dated counts into a test that must not depend on them.
 
-`tools/spec-header-survey.py` gains a `--scope=docs-index` mode that walks
-`walkDocs`'s two roots instead of one directory and prints the cross-tabulation
-§ 1 quotes, including `largest_header_block` and `longest_status_extent` — the
-two figures § 2.2 and § 5 size their choices against. The § 1 figures then
-become the tool's output rather than a transcription, which is the rung
-`documentation.md` asks for and the reason § 1's command is recorded inline in
-the meantime.
-
-`tools/spec-header-survey.py` gains a `--scope=docs-index` mode that walks
-`walkDocs`'s two roots instead of one directory and prints the wrapped and
-below-header-block counts. The § 1 figures then become the tool's output
-rather than a transcription of a one-off command, which is the rung
-`documentation.md` asks for and the reason the § 1 command is recorded inline
-in the meantime.
+`tools/spec-header-survey.py` gains a `--scope=docs-index` mode (INV-9) that
+walks `walkDocs`'s two roots instead of one directory and prints the four
+simulator classes § 1 quotes, plus `largest_header_block` and
+`longest_status_extent` — the two figures § 2.2 and § 5 size their choices
+against. The § 1 figures then become the tool's output rather than a
+transcription, which is the rung `documentation.md` asks for and the reason
+§ 1's command is recorded inline in the meantime.
 
 ## 7. Cross-doc impact
 
@@ -417,11 +494,24 @@ in the meantime.
   `specs.md` § 5.5. **Not renumbered.**
 - **`docs/specs/ANTS-2139.md` INV-19** — gains `maxHeaderBlockLines` in its
   list of silent per-doc caps, same annotation form.
+- **`docs/specs/ANTS-2139.md` § 2.3's `constexpr` / `struct Options` block** —
+  enumerates every cap and every `Options` field, so it gains
+  `kMaxHeaderBlockLines` and `maxHeaderBlockLines` alongside the INV-19 prose.
+  Listed separately because amending the invariant text and leaving the code
+  block short is the likelier half-fix, and the block is what an implementer
+  copies from.
 - **`docs/specs/ANTS-3785-header-field-extent.md` INV-6** — reads "the two
   consumers § 2.2 names share one implementation", with a test surface pinned
   to "**both** files". Both stay literally true and **its test is not touched**
   (§ 6); it gains an annotation naming `docsindex` as a third consumer carrying
   its own scrape, so a reader does not conclude the rule has exactly two.
+  **One clause inside it does go false and must be corrected in the same
+  edit**: INV-6 currently reads "`docsindex.cpp` holds a third copy that this
+  change does not fold in (§ 5, ANTS-3786)", which stops being true the day
+  this ships. The same is true of ANTS-3785 § 5's out-of-scope bullet naming
+  this item. Both are superseded rather than annotated — a stale "does not fold
+  in" is worse than silence, because it tells a reader the duplication is still
+  there.
 - **`docs/specs/ANTS-3785-header-field-extent.md` § 2.1 / INV-10** — the
   header-block bound moves from a private `blockEndRe` inside `headerField` to
   the exported `SpecParse::isHeaderBlockEnd` (§ 2.1). Behaviour is identical
@@ -437,4 +527,5 @@ in the meantime.
 
 | Loop | Date | Lanes | Findings | Resolution |
 |---|---|---|---|---|
+| 2 | 2026-08-02 | 2 cold `general-purpose` lanes, same byte-identical packet, no prior-loop context | C 1 · H 4 · M 6 · L 7 · I 1 — 19 verified, 0 dismissed, **2 of them found during verification rather than by a lane** | **No loop-1 finding resurfaced, which is the evidence those fixes held.** All 18 actionable fixed. **The CRITICAL was collateral from loop 1's own fix**: the EOF flush added there ran on the `maxDocBytes` `break` too, and that buffer is a truncated prefix — so the flush would emit exactly the partial value INV-5 forbids, making the two unbuildable together. Fixed with a `budgetHit` guard, and the "three exits" passage that caused it became four, since the budget break and EOF both leave the loop with `headerDone == false` and only one means the block ended. **The largest item was not a lane's**: verifying lane B's HIGH about the measurement script — that it modelled neither `scanDoc`'s over-long-line skip, its fence skip, nor its non-empty-tail matcher — meant replacing the count with a **simulation of both code paths**, which moved two figures (`unchanged` 124 → 123, `both_empty` 118 → 119) and surfaced `docs/specs/ANTS-2161.md`, whose `**Status:**` line exceeds `kMaxLineBytes` and is therefore unreadable before and after this change; it is now named in § 5. The second verification-found item killed a fictional test seam: INV-2 and INV-4 drove tests through `DocsIndex::scanToEntry`, which `docsindex.h` does not export — both now go through `build()`, the seam the sibling suite actually uses. |
 | 1 | 2026-08-02 | 2 cold `general-purpose` lanes, one byte-identical shared packet, loop log withheld via a scrubbed copy | C 1 · H 2 · M 5 · L 7 · I 1 — 16 verified, 0 dismissed | All 15 actionable fixed; the INFO carried to the report. **Both lanes independently returned the same CRITICAL**, which is the strongest evidence the run produced: the § 2.1 snippet assigned `status` only inside its flush branch, so a document with no `^## ` heading and a header block under the cap would reach EOF with the field buffered and unread — a silent regression against the code this spec replaces, in a draft whose own § 2.3 table asserted such documents were "unchanged". Fixed by a third exit (the EOF flush) and pinned by a new **INV-8**. Two HIGHs were contract defects the author could not see: INV-2 claimed an unconditional equality that `scanDoc`'s fence and over-long-line skips make false, and INV-7 was written in exactly the scrape shape ANTS-3785 INV-6 spells out as wrong (literal instead of identifier, `#include` instead of call-site) — a sibling invariant the author had read and mis-applied. One MEDIUM was the design arguing against itself: § 5 rejected the streaming alternative for duplicating the rule while § 2.1 duplicated the block-end bound, resolved by exporting `SpecParse::isHeaderBlockEnd`. The Phase 4b sweep then caught one defect the fixes themselves introduced — a rewritten § 2.1 cited `plain_below=0` as evidence every document carries a `^## `, which that field does not measure; the § 1 command now prints `docs_with_no_h2` and the byte figure § 2.2 needs. |
