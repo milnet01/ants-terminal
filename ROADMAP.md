@@ -24462,6 +24462,33 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-01, hit while shipping ANTS-3766.
 
+- 📋 [ANTS-3786] **docsindex carries a third copy of the Status-field rule, with the same truncation bug.**
+  Found while widening ANTS-3785 § 2.2's consumer search from `statusRe` to
+  `\*\*(Status|Kind):\*\*|statusRe|kindRe`. The narrow search returned two
+  files; the wide one returns six, and one of the extras is a real third
+  implementation.
+
+  `src/docsindex.cpp:82` — `statusRx` is
+  `^\*\*Status:\*\*\s*(.+)$`, matched per line while the file is streamed. It
+  has exactly the ANTS-3672 defect: a wrapped Status is truncated at its first
+  physical line. It feeds `DocEntry::status` ("best-effort **Status:** value",
+  `src/docsindex.h:46`, INV-17), so `docs_index` under-reports the status of the
+  49 wrapped specs the same way `spec_query` did.
+
+  NOT folded into ANTS-3785, deliberately. That spec's shared helper takes a
+  `QStringList`, and `docsindex` streams line-by-line under a per-doc byte
+  budget (INV-19) and holds no line list — so adopting `SpecParse::headerField`
+  means buffering the header block, which touches an invariant of a different
+  spec. ANTS-3785 § 5 scopes it out and names this id.
+
+  Fix: buffer lines until the header-block bound (the first `^## `) and call
+  `SpecParse::headerField`, or accept the truncation explicitly and say so in
+  `docsindex.h` — what should not stand is a third silent copy of a rule two
+  other files now share.
+  **Layman:** A third piece of code reads a document's status line and, like the other two, stops at the first line — so a status written across two lines is cut short in the docs index.
+  Kind: fix.
+  Source: in-session-2026-08-02, ANTS-3785 cold-eyes loop 2 (found verifying the spec's own "two consumers, no third" claim).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
