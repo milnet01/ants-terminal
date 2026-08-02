@@ -1,6 +1,6 @@
 # ANTS-3786 — Read docsindex's Status field with the shared header-field rule
 
-**Status:** spec draft (2026-08-02).
+**Status:** accepted (2026-08-02) — cold-eyes loops 1–3 folded, converged by cap with an empty deferred tail; see the loop log for the size caveat.
 **Kind:** fix.
 **Source:** ROADMAP.md ANTS-3786 (in-session-2026-08-02; found in ANTS-3785
 cold-eyes loop 2, while verifying that spec's own "two consumers, no third"

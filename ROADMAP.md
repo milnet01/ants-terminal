@@ -24513,6 +24513,32 @@ against current source before filing.
   **Layman:** A third piece of code reads a document's status line and, like the other two, stops at the first line — so a status written across two lines is cut short in the docs index.
   Kind: fix.
   Source: in-session-2026-08-02, ANTS-3785 cold-eyes loop 2 (found verifying the spec's own "two consumers, no third" claim).
+  Spec (2026-08-02): docs/specs/ANTS-3786-docsindex-header-field.md,
+  accepted after 3 cold-eyes loops (C 3 · H 9 · M 16 · L 19 · I 3 across
+  the run; 50 verified, 1 dismissed, deferred tail empty). Converged by
+  cap rather than by a clean pass.
+
+  Design settled: buffer the header block into a bounded QStringList and
+  call SpecParse::headerField once, rather than re-expressing the rule a
+  third time. SpecParse gains an exported isHeaderBlockEnd so the
+  block-end bound is shared too. Options gains maxHeaderBlockLines
+  (256; corpus worst case is 65 lines / 4,492 bytes).
+
+  Two things the bullet did not anticipate. The measured impact is 54 of
+  the 177 documents docs_index reads a status from, not 49 — the bullet's
+  figure was ANTS-3785's docs/specs corpus, this one is docs_index's
+  wider scan scope. And the fix is NOT confined to ANTS-2139 INV-19: the
+  semantic invariant is INV-17 ("a **Status:** line sets status", silent
+  on position), which the header-block bound makes false for 2 documents
+  that currently draw a status from body prose.
+
+  One corpus case is explicitly not fixed: ANTS-2161's **Status:** line
+  exceeds kMaxLineBytes, so the over-long-line guard drops it before
+  either matcher — unreadable before and after (spec § 5).
+
+  Caveat for the implementer: the spec is 593 lines for a ~30-line C++
+  change, and loop 3's findings were dominated by collateral from loop
+  2's own fixes. Worth a split decision before implementation starts.
 
 - 📋 [ANTS-3787] **ANTS-1253's header packs two fields onto one line, which ANTS-3785 makes a named nonconformance.**
   `docs/specs/ANTS-1253.md` line 9 reads:
