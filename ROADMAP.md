@@ -24489,6 +24489,28 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-02, ANTS-3785 cold-eyes loop 2 (found verifying the spec's own "two consumers, no third" claim).
 
+- 📋 [ANTS-3787] **ANTS-1253's header packs two fields onto one line, which ANTS-3785 makes a named nonconformance.**
+  `docs/specs/ANTS-1253.md` line 9 reads:
+
+    **Kind:** refactor (no behaviour change). **Lanes:** claudeintegration,
+    mainwindow.
+
+  ANTS-3785 § 2.3 amendment 2 adds "one field per line" to
+  `docs/standards/specs.md` § 3.2, so this becomes the corpus's one
+  nonconformance rather than an unspecified shape. Until it is rewrapped, the
+  extent rule reads it faithfully — `Kind` returns the whole logical run with
+  `**Lanes:**` inside it, which ANTS-3785 INV-9 pins as the correct reading of a
+  malformed header rather than something the parser should repair.
+
+  Fix is one line: break `**Lanes:**` onto its own line. Deliberately NOT done
+  inside ANTS-3785 — that spec's INV-9 fixture is derived from this header's
+  current shape, so rewrapping it in the same change would invalidate the fixture
+  that proves the rule handles it. Do this after ANTS-3785 ships, and keep a
+  checked-in copy of the old shape as the INV-9 fixture.
+  **Layman:** One old spec writes two header labels on the same line; a new rule says one per line, so that spec needs a one-line rewrap.
+  Kind: doc-fix.
+  Source: in-session-2026-08-02, ANTS-3785 cold-eyes loop 3.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23

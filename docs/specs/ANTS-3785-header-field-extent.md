@@ -48,7 +48,9 @@ python3 tools/spec-header-survey.py docs/specs
 # wrapped Status: 49 of 172
 # wrapped Kind: 1 of 149
 # first field inside a fence: 0
+# fence opened inside a header block: 0
 # orphaned-continuation signature: 0
+# distinct header-field names: 46 (4 prose-shaped, each needing a human look)
 # prose-bullet continuation (ANTS-1436.md): present
 ```
 
@@ -84,7 +86,10 @@ first line that is **any** of:
   header block written without its blank separator must not swallow § 1.
 
 Running out of lines ends it too, though end-of-file is a position rather than a
-line. These are the **extent** terminators; the header-block bound above is a
+line. Every anchor is written against LF-split lines with no leading-whitespace
+tolerance — this corpus is LF-only and its header blocks are unindented, and
+admitting CommonMark's up-to-three-space heading indent here would buy nothing
+while widening what can terminate a value. These are the **extent** terminators; the header-block bound above is a
 separate, earlier constraint on *where a field is looked for at all*. They
 coincide in practice — the `^##\s` that ends the block is also an ATX heading —
 and they are stated apart because INV-1 tests the terminators and INV-10 tests
@@ -120,15 +125,17 @@ known-names-only terminator would silently swallow the next real field the day
 someone adds an eleventh. It is therefore fixed on the **authoring** side, in
 § 2.3's amendment, and left detectable rather than repaired here.
 
-The second packs two fields onto one physical line. `specs.md` § 3.2 does not
+`ANTS-1253` packs two fields onto one physical line. `specs.md` § 3.2 does not
 currently forbid that — it says only "Bold key-value lines immediately under the
 H1" — so § 2.3's amendment adds the one-field-per-line requirement that the
 extent rule depends on. Until a header is rewritten to satisfy it, this rule
 reads it faithfully rather than repairing it: `Kind` in `ANTS-1253` returns the
 whole logical run, `**Lanes:**` included. That is the correct outcome — a reader
 inventing an inline-marker split would silently disagree with the writer, which
-is the class of divergence this spec exists to end. Rewriting that one header is
-`ANTS-1253`'s business, not this rule's.
+is the class of divergence this spec exists to end. Rewrapping that one header
+is filed as **ANTS-3787**, deliberately *after* this change: INV-9's fixture is
+derived from its current shape, so fixing the header in the same commit would
+delete the evidence that the rule handles it.
 
 **A list bullet — one of `-`, `*`, `+` followed by a space — is not a
 terminator.** It is absent from the list above deliberately, and a
@@ -263,8 +270,12 @@ implementations.
   third copy that this change does not fold in (§ 5, ANTS-3786), and an
   invariant claiming the whole library would be false on the day it shipped.
   *Test:* source scrape in
-  `tests/features/spec_field_extent/`, asserting `src/speclog.cpp` **does**
-  contain `SpecParse::headerField(` **and does not** contain `statusRe`.
+  `tests/features/spec_field_extent/`, asserting **both** files: `speclog.cpp`
+  and `specparse.cpp` each contain `headerField(`, and neither contains
+  `statusRe` or `kindRe`. Scraping only `speclog.cpp` would pass a build that
+  fixed `parseSpecBody` by widening its *own* regex — which satisfies INV-3
+  behaviourally while leaving the second copy of the rule in place, the exact
+  outcome this invariant exists to reject.
   The positive half is load-bearing — an absence assertion alone passes against
   a hand-rolled `startsWith("**Status:**")` that never adopted the shared rule,
   which is the one implementation this invariant exists to reject. **The
@@ -325,11 +336,12 @@ cache, no state, so no eviction policy is needed. Build cost is one added
   caller's text as one line; a long status stays long until an author wraps it.
   Wrapping on write would reformat prose the caller did not ask to reformat.
 - **Full fence-masking *inside* the header block.** The header-block bound
-  (§ 2.1, INV-10) is what closes the fence hole in practice, and it is cheaper
-  and more predictable than masking: a fence cannot open and close above the
-  first `^##\s` heading in any conforming spec, and the survey tool reports
-  `first field inside a fence: 0` across the corpus. Should a document ever need
-  true fence-awareness here, `MarkdownScan::fenceMask` is the ready primitive
+  (§ 2.1, INV-10) closes the fence hole at the boundary; masking would close it
+  *within* the block, and nothing in the corpus needs that — the survey tool
+  reports `fence opened inside a header block: 0`, which is the figure that
+  actually measures this (`first field inside a fence: 0` measures something
+  narrower and is not offered as evidence for it). Should a document ever open a
+  fence in its header block, `MarkdownScan::fenceMask` is the ready primitive
   and both consumers would adopt it together.
 - **Repairing already-corrupted specs.** The survey tool reports
   `orphaned-continuation signature: 0` — no spec currently carries the shape a
@@ -349,8 +361,18 @@ cache, no state, so no eviction policy is needed. Build cost is one added
   sharp edge). It is an authoring rule in § 2.3, and enforcing it belongs to
   `spec_lint`, whose job is the greppable half of the spec-format contract —
   not to a parser that by construction cannot tell the two apart.
-- **The 49 wrapped specs' text.** They are well-formed under this rule; the
-  code is what changes.
+- **The 49 wrapped specs' text — measured, not assumed.** The claim that they
+  are well-formed under this rule needs evidence the wrapped-count cannot give:
+  a spec whose continuation line *begins* with a bold colon-run is read as a
+  separate field, so it never enters the 49 and no count of wrapped fields can
+  ever surface it. The tool therefore also censuses **every** header-field name
+  and flags the prose-shaped ones — currently `46 (4 prose-shaped)`, and all
+  four were opened and confirmed to be deliberate, if verbose, field names
+  (`Builds on (verified enablers, 2026-07-20)`, `Cold-eyes pass 2 hardening`,
+  `Complements (does not duplicate)`, `Hard-depends on ANTS-1893 landing
+  first`), each correctly terminating the wrapped field above it. So no corpus
+  spec is mis-split today, and the census is how the next reader re-checks
+  rather than re-assumes. The code is what changes.
 - Renaming bare-id spec files — ANTS-3755.
 
 ## 6. Tests
@@ -393,6 +415,11 @@ move an anchor; the three asserted literals are untouched by this change.
   self-maintaining.
 - `src/speclog.h` — the `EditResult` comment reads "replace the text after the
   first `**Status:**` line", which describes the defect. Update with the code.
+- `tests/features/mcp_spec_log/` — T1's comment reads "set_status rewrites only
+  the Status line". Its assertions still pass (its fixture's Status is
+  single-line), but the sentence is now wrong; it is reworded in the same
+  commit. `src/remotecontrol.cpp:17505`'s comment was checked and is **not**
+  stale — it says where Status comes from, not how much of it is rewritten.
 - `src/claudeintegration.cpp` — the `spec_log` MCP tool-description strings say
   `set_status` rewrites "the text after `**Status:** `" and "the **Status:**
   line". Both describe first-line-only behaviour to every caller of the verb,
@@ -408,5 +435,6 @@ move an anchor; the three asserted literals are untouched by this change.
 
 | Loop | Reviewer | Findings | Resolution |
 |---|---|---|---|
+| 3 (2026-08-02) — **converged at the cap; ratio trigger also fired** | 1 cold `general-purpose` lane, same byte-identical packet, no prior-loop context | C 0 · H 2 · M 3 · L 4 · I 1 — 10 verified, 0 dismissed | All 10 fixed; nothing deferred. **No loop-1 or loop-2 finding resurfaced in either subsequent pass**, which is the evidence those fixes held. **H1 — § 5's "the 49 wrapped specs are well-formed" was unevidenced, and the tool was structurally blind to its counterexample**: a spec whose continuation line *begins* with a bold colon-run is read as a separate field, so it never enters the wrapped count and no count of wrapped fields could ever surface it. The tool now censuses every header-field name and flags the prose-shaped ones — `46 (4 prose-shaped)` — and **all four were opened and confirmed** deliberate, if verbose, field names, each correctly terminating the wrapped field above it. So the claim is true, and is now re-checkable instead of assumed. **H2 — INV-6's headline claimed two consumers while its test scraped one.** A build that fixed `parseSpecBody` by widening its *own* regex would satisfy INV-3 behaviourally and pass INV-6 by construction, leaving the second copy in place — the outcome the invariant exists to reject. The scrape now asserts both files. **M1 — the fence justification rested on a figure measuring something else** (`first field inside a fence` is not `fence opened inside a header block`); the tool now emits the figure the claim actually needs, and § 5 no longer offers the narrower one as evidence. **M2 — § 2.3 turned `ANTS-1253`'s header into a named nonconformance with no id filed**, unlike `docsindex.cpp`; now **ANTS-3787**, sequenced deliberately *after* this change because INV-9's fixture is derived from that header's current shape. Also verified and **not** changed: `remotecontrol.cpp:17505`'s comment is not stale (it says where Status comes from, not how much is rewritten). Origin split: 4 draft defects vs 5 fix collateral — **the second consecutive loop where collateral leads, which is Phase 5's ratio trigger**, and it coincides with the `--max-loops 3` cap. Both say stop, and nothing verified remains unfixed, so the run exits converged rather than deferring a tail. Doc grew 411 → 439 lines (253 at loop 1). |
 | 2 (2026-08-02) | 1 cold `general-purpose` lane, same byte-identical packet, no prior-loop context | C 0 · H 1 · M 4 · L 4 · I 2 — 9 verified, 0 dismissed, **plus 1 found in verification** | **No loop-1 finding resurfaced, which is the evidence those fixes held.** All 9 fixed. **The largest item was not the lane's**: verifying its MEDIUM about the § 2.2 consumer search — that `Status:\*\*|statusRe` could not catch a `Kind`-only consumer — meant re-running the search widened to `\*\*(Status\|Kind):\*\*\|statusRe\|kindRe`, which returns **six** files rather than two. `src/docsindex.cpp:82` is a **third implementation** of the rule (`statusRx`, line-scoped, same truncation defect), feeding `DocEntry::status`. So § 2.2's headline claim "Two consumers, no third" was false, and INV-6's "one implementation in `ants_core_lib`" would have been false the day it shipped. Corrected, scoped out with its reason, and filed as **ANTS-3786** rather than folded in — `docsindex` streams under a per-doc byte budget (its own INV-19) and holds no `QStringList`, so adopting the helper is a change under a different spec's contract. Two prose sites were also stale and now ship with the code: `speclog.h`'s `EditResult` comment and `claudeintegration.cpp`'s `spec_log` tool-description strings, which describe first-line-only behaviour to every caller of the verb. **H1 (lane) — the rule's one sharp edge**: field extent depends on where the author's line wrap lands, since a continuation line beginning with a bold colon-run is *indistinguishable* from a new field; `ANTS-3766`'s own `**Split at loop 4:**` sits mid-line by luck and would truncate its Status one word earlier. Not fixable in the reader (the field-name vocabulary is open — the corpus carries `Lanes`, `Siblings`, `Applies to` beyond § 3.2's ten), so it becomes § 2.3 authoring rule 3, with detection scoped to `spec_lint`. **M1 — § 4's cost claim rested on an unverified premise**: `headerField` was said to be "a pure function over a `QStringList` already held by both callers", but `specparse.cpp` contains no `QStringList` and no `.split(` at all — it matches `MultilineOption` regexes against the whole body — so the reader gains a split that § 4 now prices, with a complexity bound. **M2 — INV-6's scrape would have reddened a correct implementation**: a correct `speclog.cpp` still contains `**Status:**` twice and must (the replacement line § 2.2 mandates, and the refusal message INV-7 keeps green), so the absence assertion now greps the identifier `statusRe` instead of the field literal. Origin split: 4 draft defects vs 6 fix collateral — collateral leads for the first time, so the Phase 5 ratio trigger is armed but not met (it needs two consecutive loops). Doc grew 343 → 411 lines. |
 | 1 (2026-08-02) | 2 cold `general-purpose` lanes, one shared byte-identical packet, no prior-loop context | C 0 · H 4 · M 7 · L 4 · I 1 — 15 verified, 0 dismissed | All 15 fixed; the INFO (no TOC at >200 lines) dismissed with reason — `specs.md` § 7's skeleton has no TOC slot and no sibling spec carries one. **Both lanes independently reported the two largest.** **H4 — the field search was unbounded**, and § 5's justification for skipping fence-awareness ("structurally impossible") was false as stated: it holds only for a document that *has* the field, while INV-7's no-Status path scans to EOF and can match a `**Status:**` inside a fenced example — `docs/standards/specs.md` § 3.2 contains exactly that shape, and `spec_log`'s `path` routing admits any in-repo file, so the writer could have rewritten inside a code fence and returned `ok`. Now bounded to the header block, with **INV-10** and a fixture whose mutation (an unbounded scan) reddens it. *Measured:* no corpus document triggers it today (`orphaned-continuation signature: 0`, `first field inside a fence: 0`), so this was a contract gap rather than a live defect. **H3 — INV-6 asserted only the ABSENCE of a regex**, which passes against a hand-rolled `startsWith("**Status:**")` that never adopted the shared rule; paired with a positive `SpecParse::headerField(` assertion, and its "exactly one implementation" claim scoped to `ants_core_lib` since the survey tool deliberately carries its own copy. **H2 — INV-3's expected literal was wrong**: it dropped a backtick from ANTS-1436's tail, so the clause could not have passed as written; the fixture is now checked in and the literal is what `--values` prints. **H1 — INV-2's bullet rule contradicted INV-1**: `**Kind:**` begins with `*`, and terminator precedence was unstated, so an implementer could have built a parser that swallowed every following field. **M1 was the subtlest: INV-3 bound a permanent test to a live corpus file that this very change would invalidate** — the first `set_status` against ANTS-1436 collapses its wrap — so every fixture is now checked in. Also: `**Amends:**` was an invented relationship line (grep: used in this file alone) and § 3.2 never actually said "one field per line", which § 2.3 now adds rather than assuming; the join separator and the 0-based/1-based seam were unasserted; and the orphan-corruption figure was prose-only, so the scan moved into the tool. Doc grew 253 → 343 lines. | 

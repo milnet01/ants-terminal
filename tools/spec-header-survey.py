@@ -76,22 +76,36 @@ def field_extent(lines, i):
     return j - i, " ".join(p for p in parts if p)
 
 
+# A field NAME is short and title-shaped. A prose sentence that happens to wrap
+# so a bold colon-run lands at column 0 would be read as a field by the extent
+# rule (spec § 2.1's sharp edge) and shows up here as a prose-shaped "name".
+# The rule cannot tell the two apart, so this census is the only evidence that
+# no corpus spec is currently mis-split; every hit needs a human look.
+def prose_shaped(name):
+    return len(name.split()) > 3 or name[:1].islower()
+
+
 def survey(specs_dir):
     total = {"Status": 0, "Kind": 0}
     wrapped = {"Status": [], "Kind": []}
     in_fence = []
     orphans = []
+    field_names = {}
+    fenced_header_block = []
 
     for path in sorted(specs_dir.glob("*.md")):
         lines = path.read_text(encoding="utf-8").split("\n")
         mask = fence_mask(lines)
         limit = header_block_end(lines)
+        if any(mask[:limit]):
+            fenced_header_block.append(path.name)
         seen = set()
         for i, line in enumerate(lines[:limit]):
             m = FIELD.match(line)
             if not m:
                 continue
             name = m.group(1)
+            field_names.setdefault(name, []).append(f"{path.name}:{i + 1}")
             if name not in total or name in seen:
                 continue
             seen.add(name)
@@ -110,7 +124,7 @@ def survey(specs_dir):
                         and len(opener.split()) <= 4
                         and nxt and nxt[0].islower()):
                     orphans.append(f"{path.name}:{i + 1} ({name})")
-    return total, wrapped, in_fence, orphans
+    return total, wrapped, in_fence, orphans, field_names, fenced_header_block
 
 
 def main():
@@ -119,16 +133,25 @@ def main():
         print(f"no such directory: {specs_dir}", file=sys.stderr)
         return 0
 
-    total, wrapped, in_fence, orphans = survey(specs_dir)
+    total, wrapped, in_fence, orphans, field_names, fenced_hdr = survey(specs_dir)
 
     for name in ("Status", "Kind"):
         print(f"wrapped {name}: {len(wrapped[name])} of {total[name]}")
     print(f"first field inside a fence: {len(in_fence)}")
     for entry in in_fence:
         print(f"  {entry}")
+    print(f"fence opened inside a header block: {len(fenced_hdr)}")
+    for entry in fenced_hdr:
+        print(f"  {entry}")
     print(f"orphaned-continuation signature: {len(orphans)}")
     for entry in orphans:
         print(f"  {entry}")
+
+    suspect = sorted(n for n in field_names if prose_shaped(n))
+    print(f"distinct header-field names: {len(field_names)} "
+          f"({len(suspect)} prose-shaped, each needing a human look)")
+    for name in suspect:
+        print(f"  {name!r} -- {', '.join(field_names[name][:3])}")
 
     bullet = [w for w in wrapped["Status"] if w[0] == WRAPPED_PROSE_BULLET]
     print(f"prose-bullet continuation ({WRAPPED_PROSE_BULLET}): "
