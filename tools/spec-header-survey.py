@@ -47,24 +47,47 @@ def fence_mask(lines):
     return mask
 
 
+def header_block_end(lines):
+    """Index one past the header block -- the first `## ` heading, else EOF.
+
+    The scan is BOUNDED because an unbounded one runs to EOF on a document
+    with no such field and can then match a `**Status:**` quoted inside a
+    later fenced example (spec § 2.2 / INV-7).
+    """
+    for i, line in enumerate(lines):
+        if re.match(r"^##\s", line):
+            return i
+    return len(lines)
+
+
 def field_extent(lines, i):
-    """Continuation-line count for the field starting at `lines[i]`."""
-    n, j = 0, i + 1
+    """The field starting at `lines[i]`, as (line_count, joined_value).
+
+    Mirrors SpecParse::headerField: line_count is 1 + continuation lines,
+    and the value is the opener's trailing text plus each continuation,
+    each stripped and joined with a single space.
+    """
+    head = FIELD.match(lines[i])
+    parts = [head.group(2).strip()] if head else []
+    j = i + 1
     while j < len(lines) and not TERMINATOR.match(lines[j]):
-        n, j = n + 1, j + 1
-    return n
+        parts.append(lines[j].strip())
+        j += 1
+    return j - i, " ".join(p for p in parts if p)
 
 
 def survey(specs_dir):
     total = {"Status": 0, "Kind": 0}
     wrapped = {"Status": [], "Kind": []}
     in_fence = []
+    orphans = []
 
     for path in sorted(specs_dir.glob("*.md")):
         lines = path.read_text(encoding="utf-8").split("\n")
         mask = fence_mask(lines)
+        limit = header_block_end(lines)
         seen = set()
-        for i, line in enumerate(lines):
+        for i, line in enumerate(lines[:limit]):
             m = FIELD.match(line)
             if not m:
                 continue
@@ -75,10 +98,19 @@ def survey(specs_dir):
             total[name] += 1
             if mask[i]:
                 in_fence.append(f"{path.name}:{i + 1} ({name})")
-            cont = field_extent(lines, i)
-            if cont:
-                wrapped[name].append((path.name, i + 1, cont))
-    return total, wrapped, in_fence
+            count, value = field_extent(lines, i)
+            if count > 1:
+                wrapped[name].append((path.name, i + 1, count, value))
+                # Orphan signature: a short sentence-final opener followed by
+                # a lowercase continuation -- what a first-line-only rewrite
+                # leaves behind (spec § 5).
+                opener = m.group(2).strip()
+                nxt = lines[i + 1].strip()
+                if (opener and re.search(r"[.)]$", opener)
+                        and len(opener.split()) <= 4
+                        and nxt and nxt[0].islower()):
+                    orphans.append(f"{path.name}:{i + 1} ({name})")
+    return total, wrapped, in_fence, orphans
 
 
 def main():
@@ -87,17 +119,27 @@ def main():
         print(f"no such directory: {specs_dir}", file=sys.stderr)
         return 0
 
-    total, wrapped, in_fence = survey(specs_dir)
+    total, wrapped, in_fence, orphans = survey(specs_dir)
 
     for name in ("Status", "Kind"):
         print(f"wrapped {name}: {len(wrapped[name])} of {total[name]}")
     print(f"first field inside a fence: {len(in_fence)}")
     for entry in in_fence:
         print(f"  {entry}")
+    print(f"orphaned-continuation signature: {len(orphans)}")
+    for entry in orphans:
+        print(f"  {entry}")
 
     bullet = [w for w in wrapped["Status"] if w[0] == WRAPPED_PROSE_BULLET]
     print(f"prose-bullet continuation ({WRAPPED_PROSE_BULLET}): "
           f"{'present' if bullet else 'ABSENT -- spec § 2.1 evidence moved'}")
+
+    if "--values" in sys.argv:
+        print("\n-- joined values (headerField parity: line_count, value) --")
+        for name in ("Status", "Kind"):
+            for fname, line, count, value in wrapped[name]:
+                print(f"  {fname}:{line} ({name}) line_count={count}")
+                print(f"    {value}")
     return 0
 
 
