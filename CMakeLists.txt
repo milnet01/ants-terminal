@@ -97,10 +97,18 @@ if(PkgConfig_FOUND)
     pkg_check_modules(LUA lua5.4)
 endif()
 if(NOT LUA_FOUND)
-    # Fallback: try FindLua
+    # Fallback: try FindLua. Fedora and Mageia ship no lua5.4.pc, so this is
+    # the branch that actually finds Lua there — not a rare edge case.
     find_package(Lua 5.4 QUIET)
     if(LUA_FOUND)
         set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
+        # FindLua reports LUA_VERSION_STRING where pkg-config reports
+        # LUA_VERSION. Without this the status line below prints "Lua  found"
+        # with a blank version, which reads in a build log exactly like the
+        # detection FAILING — the misreading that sent a 2026-08-02 session
+        # hunting a Fedora Lua bug that did not exist (the real ANTS-3727
+        # defect was the hardcoded <lua5.4/lua.hpp> include, fixed 2026-07-30).
+        set(LUA_VERSION ${LUA_VERSION_STRING})
     endif()
 endif()
 

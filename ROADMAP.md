@@ -620,6 +620,7 @@ SSH key registered there.
   Kind: test.
   Lanes: packaging.
   Source: in-session-2026-07-30 (observed twice while finishing ANTS-3731).
+  Progress (2026-08-02): first concrete instance, and it is currently live on OBS. Fedora_44 and Mageia_10 both show "failed: 1" against `luaengine.cpp:5: fatal error: lua5.4/lua.hpp: No such file or directory` — the ANTS-3727 defect, already fixed on main by 94122ab2 (2026-07-30). OBS is building it anyway because `packaging/obs/_service` pins `<revision>v0.7.101</revision>` (tagged 2026-07-22, eight days before the fix), while `obs-submit.sh` copies the SPEC from current HEAD. That split is the mechanism this item names: spec-level portability fixes go live immediately, source-level ones wait for the next tag. It also explains why the board looks contradictory — Leap 16.0 and Tumbleweed are green because their fix was spec-level AND openSUSE's header layout matches the old hardcoded include, so the two distros that still fail are exactly the two whose fix was source-level. No code change is needed; the red clears when the pin moves to a tag containing 94122ab2. Note that v0.7.102-rc1 (2026-07-29) does NOT contain it either, so the next cut is the first tag that will.
 
 - 📋 [ANTS-3734] **Flatpak manifest pins Lua 5.4.7; upstream is on 5.4.8.**
   packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml pins
