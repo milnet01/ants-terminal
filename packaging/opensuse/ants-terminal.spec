@@ -248,6 +248,27 @@ export.
 # plugin init. Locally the tests pass because a real session is present, which is
 # exactly why this only shows up in a chroot build.
 export QT_QPA_PLATFORM=offscreen
+# Same shape, different prerequisite: the grid's width logic calls the system
+# wcwidth() (terminalgrid.cpp:418), and the wide-char / combining tests adopt
+# the AMBIENT locale via setlocale(LC_CTYPE, "") — deliberately, so they test
+# what a real session does. A build chroot usually has no locale set at all,
+# and under C/POSIX glibc cannot classify these characters at all. Measured
+# locally, 2026-08-02:
+#
+#     LC_ALL=C         wcwidth(U+4E00 CJK) = -1   wcwidth(U+0301) = -1
+#     LC_ALL=C.UTF-8   wcwidth(U+4E00 CJK) =  2   wcwidth(U+0301) =  0
+#
+# Not 1 — MINUS ONE, i.e. "unprintable", which is why the failure reads as
+# "parser may not be detecting CJK as wide" rather than as an off-by-one. It
+# cost three tests on Mageia_10 (WideCharResize x2, CombiningOnResize) once
+# that target finally got far enough to run the suite.
+#
+# C.UTF-8 is built into glibc and needs no locale generation, so this works on
+# every target without a locale package. This supplies a prerequisite the tests
+# document in their own comments; it does not paper over a failure. The deeper
+# question -- that the APP itself inherits the same ambient-locale dependency
+# for CJK width -- is ANTS-3792, not something an export here can settle.
+export LC_ALL=C.UTF-8
 # The whole suite, perf and e2e lanes included. Two things had to be checked
 # before trusting that: the perf benchmarks carry an OPTIONAL MB/s regression
 # floor that is off by default (0.0 — bench_vt_throughput.cpp:166), so a loaded

@@ -714,6 +714,52 @@ SSH key registered there.
   Kind: test.
   Source: in-session-2026-08-02 (second instance of the same break in four days).
 
+- 📋 [ANTS-3792] **CJK and combining-char width depend on the ambient locale, in the app as well as the tests.**
+  `src/terminalgrid.cpp:418` calls the system `wcwidth()`. That function
+  answers from the process's LC_CTYPE locale, so the grid's notion of
+  "this glyph occupies two cells" is inherited from the environment
+  rather than owned by us.
+
+  Measured locally, 2026-08-02:
+
+      LC_ALL=C         wcwidth(U+4E00) = -1   wcwidth(U+0301) = -1
+      LC_ALL=C.UTF-8   wcwidth(U+4E00) =  2   wcwidth(U+0301) =  0
+
+  Note -1, not 1: under C/POSIX glibc reports these as unprintable, so
+  the failure mode is not an off-by-one but a total loss of
+  classification.
+
+  Two halves, and only the first is fixed:
+
+    1. TESTS (fixed 2026-08-02): the wide-char and combining suites call
+       setlocale(LC_CTYPE, "") to adopt the ambient locale, which is the
+       right thing to test. A build chroot has no locale set, so three
+       tests failed on Mageia_10 the first time that target survived far
+       enough to run the suite. The spec's %check now exports
+       LC_ALL=C.UTF-8 (built into glibc; needs no locale package).
+
+    2. APP (open, this item): nothing in src/ calls setlocale at all.
+       The application therefore inherits whatever LC_CTYPE it is started
+       with. Qt's init is what currently saves it on a normal desktop,
+       but a user launching under LC_ALL=C, or a minimal container, or a
+       systemd unit with a scrubbed environment, gets a terminal that
+       cannot render CJK at the correct width. Nothing tests that today
+       because every test either sets a UTF-8 locale or adopts one.
+
+  Options, in rough order of preference:
+    - Ship a built-in East Asian Width table (locale-independent, the
+      behaviour a terminal emulator actually wants, and what most modern
+      terminals do). Costs a generated table and its update story.
+    - Call setlocale(LC_CTYPE, "") explicitly at startup and fall back to
+      C.UTF-8 when the result is not UTF-8 — cheap, but still delegates
+      the width question to glibc.
+
+  Whichever is chosen, add a test that runs the grid under LC_ALL=C, since
+  that is the case with no coverage at all right now.
+  **Layman:** How wide a Chinese or Japanese character is drawn is decided by a system setting rather than by us; if that setting is missing, the terminal cannot tell those characters apart from ordinary ones.
+  Kind: fix.
+  Source: in-session-2026-08-02 (Mageia_10 build, first run to reach the suite).
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ — and the spec is now Fedora-compatible in fact,
