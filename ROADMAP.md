@@ -24961,6 +24961,43 @@ against current source before filing.
   the read cutover happens at the single RoadmapParse::parseBullets seam, all
   26 consumer reads funnel through RoadmapDialog::parseBullets(), and one
   umbrella spec covering two ids is no longer the shape.
+  PAUSED mid-split (2026-08-03, end of session). Resume state, in order:
+
+  DONE: ids allocated (ANTS-3809 write half, ANTS-3810 oracle+acyclicity),
+  all four bullets annotated, and the FIRST of the four specs is drafted --
+  docs/specs/ANTS-3808-item-body-and-trailer-suppression.md, 351 lines,
+  spec_lint + doc_integrity clean. It is NOT yet through the rule-14
+  cold-eyes gate; its loop log is empty, which is the signal. Do not
+  implement from it yet.
+
+  TODO, in this order (3808 first because the others cite its exports):
+    1. /cold-eyes docs/specs/ANTS-3808-item-body-and-trailer-suppression.md
+       --genre spec
+    2. Draft + gate ANTS-3793 (read seam: old §§2.1/2.2/2.5, INV-2/3/9).
+       It must RESOLVE, not inherit, the filed C1/C2/H2/H4/M1-M8.
+    3. Draft + gate ANTS-3809 (write half: old §2.4, INV-4; + H3, M6).
+    4. Draft + gate ANTS-3810 (oracle + acyclicity: old §§2.6-2.7).
+    5. Delete the 934-line umbrella docs/specs/ANTS-3793-roadmap-consumer-
+       cutover.md ONLY once all four supersede it, or rewrite it in place
+       as the read seam -- decide then, do not leave both.
+
+  Three design calls already MADE and verified this session, carry them
+  forward rather than re-deriving:
+    - renderBullet() is file-local; ANTS-3808 §2.4 exports
+      RoadmapRender::bulletText(). roadmaprender.cpp is ALREADY in
+      ants_roadmapstore_lib, so this costs NO new link edge.
+    - TrailerValues gains per-key {value, offset, anchored}; without the
+      provenance ANTS-3809's body_shadowed refusal cannot be implemented.
+    - C1 resolves better than either lane proposed: visibility DEFAULTs to
+      'public', roadmapmigrate.cpp never writes it, and no markdown status
+      maps to 'dropped' -- so a freshly migrated project holds no internal,
+      dropped or unfiled items. INV-2 therefore holds by construction for
+      migration, and the divergence is reachable only via ANTS-3809's
+      consumer writes. Scope INV-2 to renderable items; do NOT filter the
+      store path (that would silently change roadmap_query).
+
+  Findings still to fold live at docs/reviews/ANTS-3793-cold-eyes-loop3-tail.md
+  -- fold directly, do NOT re-dispatch a review to rediscover them.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
