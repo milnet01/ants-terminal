@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **`file_outline` and `read_region` understand GLSL shaders** (ANTS-3800)
+  Shader sources (`.comp`, `.frag`, `.vert`, `.glsl` and the rest of the
+  stage extensions) are outlined and can be sliced by function name, using
+  the same extension set `find_definition` and `find_caller` already
+  accepted. Previously a shader reported an unknown language with no
+  symbols, and slicing one by symbol failed outright.
+
 - **Roadmap render — `ROADMAP.md` can now be generated from the roadmap store at full fidelity** (ANTS-3758)
   The inverse of the migration: every item is written in full
   roadmap-format.md § 3.5 bullet form, so the generated file is the file
@@ -136,6 +143,14 @@ for security-relevant changes.
   zero as an all-clear and then found real problems by hand.
 
 ### Fixed
+
+- **`feedback_log op:compact_resolved` now finds shipped items in other projects' roadmaps** (ANTS-3802)
+  Cross-session feedback files are written from one project about
+  another's tooling, so their item ids belong to that other project. The
+  compaction step looked them up only in the calling project's own roadmap
+  and therefore almost never found them, while the query step on the same
+  file found them all. Both now share one lookup, a missing local roadmap
+  is no longer fatal, and the refusal says which roadmaps were searched.
 
 - **`changelog_log op:add_batch` now reports `created_category`, per entry and as a rollup.** (ANTS-3804)
   The batch path emitted the field nowhere while the single-op path always did, so callers read the absent boolean as false and could conclude no heading had been created when one had.

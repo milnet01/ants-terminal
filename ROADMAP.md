@@ -25160,6 +25160,44 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-03, found implementing ANTS-3758.
 
+- 📋 [ANTS-3807] **Per-project migration prompts — a copy-paste brief the user can hand to each project's CC session at cutover.**
+  The migration is driven per project and the user runs it by handing a
+  brief to that project's own CC session. Thirteen projects means the
+  brief is written once or explained thirteen times, and an explained-each-
+  time brief is how two projects end up migrated under different rules.
+
+  Deliverable: one prompt template plus a filled instance per project,
+  somewhere the user can copy from without opening this repo's docs.
+
+  What each prompt must carry, because each is a decision a session would
+  otherwise make differently:
+  - Which roadmap file(s) that project actually has, INCLUDING archives
+    and the lowercase case (RetroDB writes `roadmap.md`), since the
+    migration reads a set and not a file.
+  - Its ID prefix, and whether it has ids at all — roughly 40% of corpus
+    items are id-less and get ids ALLOCATED at migration (ANTS-3765
+    § 2.6.1), which is a change to that project's roadmap the user should
+    expect rather than discover.
+  - Its source FORMAT. Only the emoji-bullet form renders back today
+    (ANTS-3758 § 5), so 3D_Engine (GFM task lists) and RetroDB (pass
+    headings) must NOT be told to cut over yet.
+  - The `layman` curation debt that gates publishing (ANTS-3758 INV-5,
+    strict per user decision 2026-08-03) — a dryRun render reports it, so
+    the prompt should say to run that FIRST and fix the gate before
+    cutting over.
+  - The verification step: re-run the migration and confirm it reports
+    zero inserts and zero orphans (ANTS-3765 INV-2), which is what proves
+    the project is idempotently migrated rather than merely loaded once.
+
+  Blocked by ANTS-3793 (the consumer cutover) and ANTS-3794 (publish +
+  health checks): until those land there is no supported way for a project
+  to actually switch over, so a prompt written now would document a
+  procedure that does not exist. Write it as the LAST step of the lane,
+  against what actually shipped.
+  **Layman:** When the roadmap database is ready, I get a ready-made instruction to paste into each of my other projects so their session migrates its own roadmap correctly, instead of me explaining it thirteen times.
+  Kind: doc.
+  Source: user-request-2026-08-03.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
@@ -25202,7 +25240,7 @@ in each bullet, not just the reporter's symptom.
   Source: finbreak-feedback-2026-08-03.
   Resolved (2026-08-03). src/specparse.cpp now parses BOTH invariant forms and merges them by document position, first-occurrence-of-an-id winning, instead of gating the bullet branch on `if (invariants.isEmpty())`. A `| INV-N |` row no longer suppresses bullet parsing for the rest of the section. Regression: SpecLint.Ants3799MixedFormsInOneDocument — three bullets (two with clauses) plus a two-row withdrawn table, asserting exactly one invariant_no_test and that the bullets keep their test surfaces. Worth recording: the pre-existing INV-2 test carried a comment saying a single document could not exercise both forms, so the suite had been shaped around this defect rather than catching it.
 
-- 📋 [ANTS-3800] **file_outline / read_region have no GLSL lane, though find_definition AND find_caller both advertise `glsl` as a lang.**
+- ✅ [ANTS-3800] **file_outline / read_region have no GLSL lane, though find_definition AND find_caller both advertise `glsl` as a lang.**
   VERIFIED against the shipped schemas. file_outline's `mode` enum is
   auto|cpp|py|md|json -- no glsl -- and it returns {language:"unknown"} with NO
   symbols array for a .comp file. read_region symbol-mode resolves through that
@@ -25232,6 +25270,29 @@ in each bullet, not just the reporter's symptom.
   Kind: feature.
   Lanes: mcp, workspace.
   Source: doom-ants-feedback-2026-08-03.
+  Resolved (2026-08-03). file_outline gains Mode::Glsl, auto-selected by
+  extension and honoured as an explicit mode:"glsl"; read_region's symbol mode
+  follows for free, since it resolves through this outline. GLSL rides the Cpp
+  extractor rather than getting its own lane — shader declarations ARE C
+  declarations in shape, and a parallel regex set would drift from that one
+  silently. The extension set is the SAME one symbolquery.cpp's ANTS-3558 lane
+  accepts, deliberately: the defect WAS three verbs disagreeing about which files
+  are GLSL, and a second list would have been that defect with an extra step. It
+  keeps that lane's omission of `.fs` (also F# source).
+
+  Also fixed, same class: the schema advertised neither `generic` (accepted by
+  parseMode since ANTS-2150) nor `glsl`.
+
+  4 feature cases in tests/features/file_outline_glsl/, each verified RED against
+  its own defect — three against the removed extension branch, one against the
+  removed parseMode branch.
+
+  Collateral worth recording: McpFileOutline.WiringContract broke, because two
+  enum lines pushed "paths"/"etags" past its fixed 6000-byte scrape window. The
+  window is a bound keeping the assertion inside file_outline's own schema block,
+  NOT a contract — so it widened to 9000 and now carries a comment saying to widen
+  rather than trim the schema to fit it. This class has bitten repeatedly and
+  reads as a real wiring failure every time.
 
 - ✅ [ANTS-3801] **doc_citations: an unresolvable citation does not reset the antecedent, so the next bare `:NNNN` inherits an unrelated file and is range-checked against it — fabricated `out_of_range`.**
   VERIFIED at src/doccitations.cpp:723-732. A non-continuation token resolves
@@ -25273,7 +25334,7 @@ in each bullet, not just the reporter's symptom.
   Source: doom-ants-feedback-2026-08-03.
   Resolved (2026-08-03) — but NOT by the reporter's preferred fix, which the test suite refuted. Clearing the antecedent on an unresolvable citation reddens DocCitations.Inv7ContinuationInheritsPathOnly, because INV-7 deliberately keeps the chain across an unparsed token (its fixture uses `6.2:9`, prose noise that must not break a citation run). Implemented their fallback instead, narrowed: Antecedent gains `unresolvedSince`, and an inherited path whose chain crossed a failed resolve reports `unresolved` (with unresolved_antecedent:true) in place of a fabricated out_of_range. Only out_of_range, only when inherited, only after a failed resolve — a continuation still reading inside its inherited file keeps its ok, so INV-7 is untouched. Reported rather than suppressed: silence would read as a pass. Regression: DocCitations.Ants3801InheritedOutOfRangeAfterUnresolvedIsNotReported.
 
-- 📋 [ANTS-3802] **`feedback_log op:compact_resolved` resolves ids against the CALLER's ROADMAP, so it can never collapse a shipped finding in a cross-project feedback file.**
+- ✅ [ANTS-3802] **`feedback_log op:compact_resolved` resolves ids against the CALLER's ROADMAP, so it can never collapse a shipped finding in a cross-project feedback file.**
   VERIFIED at src/remotecontrol.cpp:14084-14095. compact_resolved builds its
   shipped-id set from `findRoadmapUnder(callerCanonical)` -- the caller
   project's own ROADMAP.md -- and returns roadmap_unavailable if that is
@@ -25307,6 +25368,29 @@ in each bullet, not just the reporter's symptom.
   Kind: fix.
   Lanes: mcp, feedback.
   Source: doom-ants-feedback-2026-08-03.
+  Resolved (2026-08-03). feedback_query's cross-repo resolver is extracted to
+  `rlResolveForeignFeedbackIds()` and BOTH verbs call it, so they can no longer
+  disagree about which ROADMAP owns an id. Extracting it is the fix rather than a
+  tidy-up: the two implementations disagreeing was the defect.
+
+  Two behaviour changes that fall out of sharing it, both of which the report
+  asked for:
+  - An absent caller ROADMAP.md is no longer fatal. Refusing before the
+    cross-repo pass is exactly what made the verb a no-op on the contributor case
+    it exists to serve.
+  - The inherited helper early-returned when the caller owned no prefixes. Empty
+    means the caller owns NOTHING, which makes every wanted id foreign rather than
+    none of them — the precise branch a project with no local roadmap hits, and
+    the one this item is about.
+
+  The refusal, when nothing anywhere resolves, now names what was searched: the
+  caller project and the sibling projects under the shared root. "unresolved"
+  previously read as "this id does not exist" when it meant "not in the file I
+  happened to open".
+
+  3 regression cases appended to tests/features/feedback_log_compact_resolved/,
+  each verified RED against the pre-fix behaviour — two against the removed
+  cross-repo pass, one against the old refusal wording. Full suite 3235/3235.
 
 - ✅ [ANTS-3803] **changelog_log's feature-grouped detector requires a flush-left `**Bold**` run, so it misses the very format `op:add_subsection` writes — `op:add` then writes a flat category at the section end.**
   VERIFIED at src/changeloglog.cpp:111-129. firstFeatureGroupedTopicLine()
