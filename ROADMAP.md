@@ -25286,6 +25286,41 @@ against current source before filing.
   **Layman:** Publishing a migrated roadmap today would print every entry's text twice inside itself.
   Kind: fix.
   Source: in-session-2026-08-03, found verifying ANTS-3806.
+  Sized (2026-08-03), asked whether it was a quick fix: it is NOT. The
+  obvious repair -- have the migration store residual prose, i.e. body
+  minus the headline line minus the trailer lines -- assumes the trailer
+  IS a set of lines. It is not, and src/roadmapparse.cpp's own regex
+  comments carry the corpus measurements that say so:
+
+  - 157 `Source:` occurrences sit INLINE in a prose trailer rather than
+  at a line start (which is why rxSource and rxLanes are deliberately
+  un-anchored, ANTS-2058 / ANTS-3764).
+  - 10 lines carry TWO keys on one line (`Source: regression. Lanes:
+  packaging.`), which is why rxTrailerKey exists.
+  - 22 are backticked mentions of a key, excluded by ANTS-3722's guard --
+  prose ABOUT the trailer, in exactly the corpus that documents the
+  format.
+
+  So for a large share of the corpus there is no field LINE to drop;
+  the metadata is a span inside a sentence, and excising it either
+  deletes prose or leaves half a sentence. Computing the residual is a
+  new parsing contract, not a tweak -- and re-deriving it outside
+  RoadmapParse is the second bullet parser ANTS-3757 § 2.3 forbids.
+
+  The one part that IS well-defined: body's first line is always the
+  head line (`QString body = head;`), so the HEADLINE duplication could
+  be fixed alone. That leaves the field duplication, which is the larger
+  half.
+
+  Sketched, not chosen: `provenance.body` already exists per field, so
+  the store could record whether a body is a verbatim bullet or residual
+  prose, and renderBullet() could skip the trailer it would otherwise
+  re-derive for a verbatim one -- no re-parsing anywhere. Needs a spec
+  pass across ANTS-3757 § 2.1.1, ANTS-3765 and ANTS-3758 § 2.4, plus the
+  rule-14 gate.
+
+  Recommendation: fold into ANTS-3793, which owns the reader/store seam
+  this straddles and lands before ANTS-3794 anyway. Not started.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
