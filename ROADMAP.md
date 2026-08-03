@@ -23701,6 +23701,10 @@ against current source before filing.
   (roadmap-format § 3.9) and the CHANGELOG release flow — both hand edits to a
   file that becomes generated, so both die under INV-3 unless the store takes
   them over. The two overwrite caveats above stay with this id.
+  Blocked by ANTS-3796 (2026-08-03): the store models no section ORDER, so the
+  render cannot reproduce the document order of the file it replaces. Found
+  while grounding this spec's § 2, before drafting. Schema fix, and cheap only
+  until this id's cutover — see that bullet for the window.
 
 - 📋 [ANTS-3759] **documentation.md needs a rule on numbers in prose — keep only figures that carry an argument, and source them to a command.**
   User asked whether specific numbers belong in documentation at all,
@@ -24867,6 +24871,57 @@ against current source before filing.
   **Layman:** The roadmap standard says the published page will drop all the technical detail. We have decided it keeps it, so the standard is now wrong.
   Kind: doc-fix.
   Source: user-decision-2026-08-03 (ANTS-3758 scoping).
+
+- 📋 [ANTS-3796] **The store models no section ORDER, so a generated ROADMAP.md cannot reproduce its own document order.**
+  BLOCKS ANTS-3758. Found by reading the schema, not by running the render
+  -- there is no render yet.
+
+  `element` carries `position` and `item` is filed by an element row, so
+  items WITHIN a section keep their order (position-is-priority holds).
+  `section` does not: `CREATE TABLE section` in `src/roadmapstore.cpp`
+  declares slug / title / level / intro / parent_id / source_path and no
+  ordering column, and `RoadmapMigrate::PlannedSection` carries
+  `firstLine`/`lastLine` for its source span but no order index. Sibling
+  sections are therefore ordered only by insertion, i.e. by the `section_id`
+  surrogate.
+
+  Two failures follow, and the second needs no disaster to fire:
+
+  1. `RoadmapExport::loadSections()` sorts by `(depth, slug)` -- depth walked
+     from `parent_id`, deliberately, so parents precede children -- because
+     ANTS-3761 INV-13 forbids emitting a surrogate. So section_ids are
+     REASSIGNED in slug order on rebuild, and render(live) != render(rebuilt).
+     Document order survives only until the first recovery from backup.
+  2. A section created after migration can only land at the end of
+     section_id order, wherever it belongs. `roadmap_log op:create_section`
+     places a heading precisely today (`after_section` + `level`); against
+     the store it has nowhere to put that.
+
+  This project's own ROADMAP.md shows the damage concretely. Its `##`
+  headings run, in document order: Distribution-adoption overview /
+  Per-store publication playbook / Table of Contents / 0.5.x and 0.6.x --
+  archived / 0.7.0 / 0.7.7 / 0.7.12 / 0.7.50-0.7.59 / 0.7.92 / 0.7.65 /
+  0.7.80-0.7.84 / 0.7.79. Not slug order, not numeric order, and
+  deliberately so. A `(depth, slug)` re-sort files the two prose sections
+  among the version numbers and re-sequences the entire release history.
+
+  Fix: an ordering column on `section`, the same shape and for the same
+  reason as ANTS-3782's `source_path` -- "the migration plan holds it and is
+  discarded at commit". The plan already knows the answer (`firstLine`
+  within a source, `sourceIndex` across sources); it just has nowhere to put
+  it.
+
+  TIME-CRITICAL, and this is the whole reason it is filed separately rather
+  than absorbed. The `source_path` DDL comment states the window: at
+  user_version 1 "no store is reachable from user-facing code yet, so there
+  is nothing to migrate and a bump would manufacture an upgrade case nothing
+  implements... That freedom expires at ANTS-3758's cutover; ANTS-3781 owns
+  what follows." Adding the column BEFORE cutover costs a DDL line and three
+  regenerated export goldens. Adding it after costs the schema-upgrade path
+  ANTS-3781 says does not exist.
+  **Layman:** The database remembers what is in each part of the roadmap but not what order the parts go in, so regenerating the file would shuffle it.
+  Kind: implement.
+  Source: in-session-2026-08-03, found while grounding ANTS-3758's render design.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
