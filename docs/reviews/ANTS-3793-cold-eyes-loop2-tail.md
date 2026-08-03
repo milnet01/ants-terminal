@@ -1,13 +1,14 @@
 # ANTS-3793 — cold-eyes loop 2: verified findings, unfixed
 
-**Status:** run STOPPED mid-loop-2 (2026-08-03), one loop owed. Loop 1 is
-folded and committed (`ce302e82`); loop 2's lanes returned and their findings
-are recorded below **unfixed**.
+**Status: FOLDED IN (2026-08-03) — this file is now a historical record.**
+All 24 findings below were folded into the spec directly, without re-dispatch;
+the spec's `2-folded` loop-log row carries the summary and the three further
+findings the fold-in's blast-radius sweep turned up. Loop 3 is still owed.
 
-> These are verified and unfixed. Do **not** re-review to rediscover them — a
-> fresh loop costs a full two-lane dispatch (~295k subagent tokens for loop 2
-> alone) to regenerate what is already written here. Fold them in directly,
-> then run loop 3 cold.
+> **Do not fold these in again**, and do not treat an unfixed-looking finding
+> here as open — check the spec first. Kept because the loop-log row points at
+> it for lane-level detail, and because the "Dismissed on verification" list at
+> the foot is still live guidance for loop 3.
 
 Subject: [`docs/specs/ANTS-3793-roadmap-consumer-cutover.md`](../specs/ANTS-3793-roadmap-consumer-cutover.md).
 Two lanes, cold, genre pinned `spec`, shared byte-stable packet.
