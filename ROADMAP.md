@@ -24932,6 +24932,35 @@ against current source before filing.
   because it needs the migration loader and a second store -- which this
   id has in hand. It is also what would have caught (1).
   Spec drafted 2026-08-03 at docs/specs/ANTS-3793-roadmap-consumer-cutover.md, covering this id AND ANTS-3808. NOT accepted — the rule-14 cold-eyes gate ran loop 1 (25 verified, all fixed, committed) and STOPPED mid-loop 2 at the user's request. Loop 2's 24 verified-but-unfixed findings are written up in full at docs/reviews/ANTS-3793-cold-eyes-loop2-tail.md; fold them in directly, do NOT re-dispatch a review to rediscover them. Both loop-2 CRITICALs are loop-1 collateral (the new field table vs § 2.3's head-line strip), so loop 3 re-runs the blast-radius sweep before dispatching. Key design decisions already settled and not to be reopened: the read cutover happens at the single RoadmapParse::parseBullets seam (26 consumer call sites unchanged in shape); ANTS-3808 is fixed by the migration dropping body's first line plus a value-equality trailer suppression in renderBullet(), NOT by the provenance verbatim/residual flag the ANTS-3808 bullet sketched.
+  Cold-eyes STOPPED AT THE CAP (2026-08-03) — spec NOT accepted, and the
+  recommendation is to SPLIT it rather than fix it in place. 3 loops run;
+  loop 3 fixed 4 contained factual defects and filed 23 verified findings to
+  docs/reviews/ANTS-3793-cold-eyes-loop3-tail.md (fold in directly, do NOT
+  re-dispatch a review). Loop 2's tail was folded in first, without dispatch.
+  Three CRITICALs remain open, each needing a decision not an edit: INV-2 is
+  unsatisfiable against § 2.1's membership rules (the markdown backend parses
+  the RENDERED file, which ANTS-3758 § 2.4 strips of internal/dropped and whose
+  INV-4 refuses outright on an unfiled item); bulletsFromStore() cannot reach
+  the renderBullet() its own body contract is defined by (anonymous namespace,
+  different TU and library); and body_shadowed is unimplementable through the
+  declared TrailerValues, which carries no match provenance. The stop is on
+  Phase 5's two triggers, not on the loop count: collateral outnumbered draft
+  defects two loops running, and two structural draft defects (no store surface
+  produces document order or a batched read; the bundle_row payload model)
+  surfaced only at loop 3 — evidence of an oversized document at 934 lines
+  carrying seven contracts. Suggested cut, each independently reviewable:
+  (1) read seam § 2.1/2.2/2.5, (2) ANTS-3808 § 2.3, (3) write half § 2.4,
+  (4) oracle + acyclicity §§ 2.6-2.7. Splitting is the user's call.
+  SPLIT FOUR WAYS (2026-08-03, user-accepted) after the cold-eyes cap above.
+  This id now owns the READ SEAM only — the resolver, the dispatch marker and
+  RoadmapDialog (§§ 2.1, 2.2, 2.5 of the old spec, INV-2 / INV-3 / INV-9).
+  The other three: ANTS-3808 (item.body + trailer suppression, §2.3),
+  ANTS-3809 (the write half, §2.4), ANTS-3810 (round-trip oracle +
+  acyclicity, §§2.6-2.7). The 934-line umbrella spec is superseded by four
+  per-id specs, each independently gated. Unchanged and NOT to be reopened:
+  the read cutover happens at the single RoadmapParse::parseBullets seam, all
+  26 consumer reads funnel through RoadmapDialog::parseBullets(), and one
+  umbrella spec covering two ids is no longer the shape.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
@@ -25346,6 +25375,66 @@ against current source before filing.
   lands before ANTS-3794, which this blocks, so it costs no extra cycle.
   Do NOT start it as a standalone change -- ANTS-3793's scope note
   carries the obligation.
+  REVERSED (2026-08-03, user-accepted): this id DOES get its own spec after
+  all. The homing note above ("folded into ANTS-3793 ... do NOT start it as a
+  standalone change") was correct while ANTS-3793 was one document; ANTS-3793
+  stopped at its cold-eyes cap on both stop-and-consolidate triggers and was
+  split four ways, which necessarily gives this id its own contract. Spec:
+  docs/specs/ANTS-3808-item-body-and-trailer-suppression.md. The DESIGN is
+  unchanged and carries over intact — the migration drops body's first line,
+  and renderBullet() suppresses a trailer key on VALUE equality (never mere
+  presence, which would break ANTS-3758's INV-12). The provenance
+  verbatim/residual flag sketched above stays REJECTED: provenance records
+  write origin, not text shape. This id now also owns two findings filed at
+  ANTS-3793's cap — the TrailerValues struct carries no match provenance, so
+  § 2.4's body_shadowed refusal is unimplementable through it (ANTS-3809
+  blocks on that decision); and INV-6 ships red for the three ^-anchored keys,
+  which are ^-anchored WITH MultilineOption and so still match a continuation
+  line beginning `Kind:` in prose.
+
+- 📋 [ANTS-3809] **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.**
+  Split out of ANTS-3793 at its cold-eyes cap (2026-08-03), which stopped
+  on both stop-and-consolidate triggers: 934 lines, seven contracts, and
+  collateral outnumbering draft defects two loops running.
+
+  Owns § 2.4 of the old spec plus its INV-4 (a failed render rolls the
+  store write back). Carries these filed findings from
+  docs/reviews/ANTS-3793-cold-eyes-loop3-tail.md: H3 (id_strategy
+  "stable_prefix" allocates no counter id and is ignored by the allocation
+  rule), M6 (idHighWater() nullopt case, append_batch contiguity, and
+  dry_run under mutate-then-render), and the two new refusal codes
+  locator_unsupported / body_shadowed — the latter blocked on the
+  TrailerValues design decision owned by the ANTS-3808 spec.
+
+  Also inherits the bundle_row correction: element.payload for
+  kind='table' is canonical JSON (ANTS-3756 INV-24), so bundle_row is a
+  read-modify-write of one table element, not an append of a new one.
+  **Layman:** Makes the eight roadmap-editing commands write to the database and rebuild the file, instead of splicing text by hand.
+  Kind: implement.
+  Source: in-session-2026-08-03 (ANTS-3793 cold-eyes loop-3 split).
+
+- 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
+  Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
+  of the old spec and their INV-7 / INV-8. Nearly free-standing: it depends
+  on the read seam only for a place to live.
+
+  Two halves. First, ANTS-3758's INV-1 deferred oracle — render, rediscover
+  with findRoadmaps(), load into a scratch store, export both and compare
+  projections under the same predicate. ANTS-3758's INV-1 states the full
+  comparison but its shipped test Inv1ExportsMatch proves only the
+  standalone half, so that invariant is REWORDED (not annotated) when this
+  lands. The oracle is built BEFORE the ANTS-3808 body fix and shown red
+  against it: a fixture that only ever runs against corrected code proves
+  the oracle compiles, not that it discriminates.
+
+  Second, whole-store relationship acyclicity, deferred here by ANTS-3760
+  finding 9 — distinct from the per-row self-relationship CHECK, which
+  stops A->A and cannot see A->B->A. It REPORTS rather than refuses, is
+  sought per relationship type, and ships with no scheduled caller
+  (ANTS-3794 owns the cadence).
+  **Layman:** Proves a roadmap survives a full save-and-reload without losing or inventing anything, and reports circular links between items.
+  Kind: test.
+  Source: in-session-2026-08-03 (ANTS-3793 cold-eyes loop-3 split).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
