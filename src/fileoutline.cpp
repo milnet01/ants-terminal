@@ -2,6 +2,7 @@
 
 #include "fileoutline.h"
 
+#include <QSet>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -364,6 +365,23 @@ QString genericLangName(const QString &ext) {
 
 bool isGenericExt(const QString &ext) { return !genericLangName(ext).isEmpty(); }
 
+// ANTS-3800 — the SAME extension set symbolquery.cpp's ANTS-3558 lane accepts,
+// deliberately: the whole defect was three verbs disagreeing about which files
+// are GLSL, and a second list here would be that defect with an extra step.
+// Note what it omits, and why: `.vs`/`.fs`/`.gs` are excluded because `.fs` is
+// also F# source.
+bool isGlslExt(const QString &ext) {
+    static const QSet<QString> kGlsl = {
+        QStringLiteral("glsl"), QStringLiteral("comp"), QStringLiteral("frag"),
+        QStringLiteral("vert"), QStringLiteral("geom"), QStringLiteral("tesc"),
+        QStringLiteral("tese"), QStringLiteral("vsh"),  QStringLiteral("fsh"),
+        QStringLiteral("mesh"), QStringLiteral("task"), QStringLiteral("rgen"),
+        QStringLiteral("rchit"),QStringLiteral("rmiss"),QStringLiteral("rahit"),
+        QStringLiteral("rint"), QStringLiteral("rcall"),
+    };
+    return kGlsl.contains(ext);
+}
+
 Mode pickModeByExt(const QString &absPath) {
     const QString ext = QFileInfo(absPath).suffix().toLower();
     // ANTS-2148 — the C family (`.c`, `.hxx`) outlines fine with the C++
@@ -380,6 +398,7 @@ Mode pickModeByExt(const QString &absPath) {
     if (ext == QLatin1String("md")   || ext == QLatin1String("markdown") ||
         ext == QLatin1String("txt")) return Mode::Md;
     if (ext == QLatin1String("json")) return Mode::Json;
+    if (isGlslExt(ext)) return Mode::Glsl;        // ANTS-3800 shader stages
     if (isGenericExt(ext)) return Mode::Generic;  // ANTS-2150 brace family
     return Mode::Auto;  // sentinel meaning "unknown" downstream
 }
@@ -391,6 +410,7 @@ const char *modeToLanguageString(Mode m) {
         case Mode::Md:      return "md";
         case Mode::Json:    return "json";
         case Mode::Generic: return "generic";  // compute() overrides w/ precise name
+        case Mode::Glsl:    return "glsl";     // ANTS-3800
         case Mode::Auto:    return "unknown";
     }
     return "unknown";
@@ -400,6 +420,7 @@ QString headerCommentMarker(Mode m) {
     switch (m) {
         case Mode::Cpp:     return QStringLiteral("//");
         case Mode::Generic: return QStringLiteral("//");  // brace family (ANTS-2150)
+        case Mode::Glsl:    return QStringLiteral("//");  // ANTS-3800
         case Mode::Py:      return QStringLiteral("#");
         case Mode::Md:      return QStringLiteral("<!--");
         default:            return QString();
@@ -436,6 +457,7 @@ Mode parseMode(const QString &s) {
     if (s == QLatin1String("md"))   return Mode::Md;
     if (s == QLatin1String("json")) return Mode::Json;
     if (s == QLatin1String("generic")) return Mode::Generic;
+    if (s == QLatin1String("glsl")) return Mode::Glsl;   // ANTS-3800
     return Mode::Auto;
 }
 
@@ -600,7 +622,10 @@ QJsonObject compute(const QString &absPath,
             appendSymbol(symbols, lineNo, kind, name, signature);
         };
 
-        if (effective == Mode::Cpp) {
+        // ANTS-3800 — GLSL rides the Cpp extractor rather than getting a lane
+        // of its own: shader declarations ARE C declarations in shape, and a
+        // parallel regex set would drift from this one silently.
+        if (effective == Mode::Cpp || effective == Mode::Glsl) {
             // ANTS-2159 — scope-aware. A function/member symbol is emitted
             // only at file or type-body scope (funcOpenAtDepth < 0); inside
             // a code body the func paths are suppressed so a local

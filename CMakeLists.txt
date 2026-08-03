@@ -1400,6 +1400,10 @@ if(ANTS_TESTS)
                 tests/features/read_regions/test_read_regions.cpp
                 # ANTS-2228 — file_outline typedef-struct aggregate registration.
                 tests/features/file_outline_typedef_struct/test_file_outline_typedef_struct.cpp
+                # ANTS-3800 — the GLSL lane. Drives FileOutline::compute against
+                # QTemporaryDir shaders; the extension-set case is what keeps
+                # this verb agreeing with symbolquery.cpp's ANTS-3558 lane.
+                tests/features/file_outline_glsl/test_file_outline_glsl.cpp
                 # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 # ANTS-3519 feedback_query resolves foreign-prefix mapped ids

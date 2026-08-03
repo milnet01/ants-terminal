@@ -37,6 +37,14 @@ enum class Mode {
     Md,
     Json,
     Generic,
+    // ANTS-3800 — GLSL / Vulkan shader stages. Extracted through the Cpp path
+    // (the declaration grammar is the same shape: `<type> <name>(<args>)` at
+    // file scope followed by `{`), but reported as its own language so the
+    // three verbs that name a language set finally agree. find_definition and
+    // find_caller have advertised `glsl` since ANTS-3558 while this verb
+    // answered {language:"unknown"} with no symbols at all — which also broke
+    // read_region's symbol mode, since it resolves through this outline.
+    Glsl,
 };
 
 Mode parseMode(const QString &s);

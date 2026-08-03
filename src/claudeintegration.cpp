@@ -3487,6 +3487,12 @@ void ClaudeIntegration::onMcpConnection() {
                     modeEnum.append("py");
                     modeEnum.append("md");
                     modeEnum.append("json");
+                    // ANTS-3800 — `generic` has been accepted by parseMode()
+                    // since ANTS-2150 and was never advertised, and `glsl` is
+                    // new here. Both are listed because the defect this fixes
+                    // IS the schema disagreeing with what the verb accepts.
+                    modeEnum.append("generic");
+                    modeEnum.append("glsl");
                     modeProp["enum"]    = modeEnum;
                     modeProp["default"] = "auto";
                     QJsonObject hdrProp;      hdrProp["type"]      = "boolean";

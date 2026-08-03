@@ -137,8 +137,16 @@ TEST(McpFileOutline, WiringContract) {
         const size_t reqPos = ciCpp.find("\"file_outline\"");
         bool ok = false;
         if (reqPos != std::string::npos) {
+            // The window exists only to keep this assertion inside
+            // file_outline's OWN schema block rather than matching some later
+            // tool's props. It is a bound, not a contract — so when a genuine
+            // schema addition pushes `paths`/`etags` past it, WIDEN IT. Trimming
+            // the schema to fit a test's magic number would be the tail wagging
+            // the dog. Widened 6000 → 9000 by ANTS-3800, which added `generic`
+            // and `glsl` to the mode enum; this class of break has bitten
+            // repeatedly and reads as a real wiring failure every time.
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 6000);
+                                              reqPos + 9000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"paths\"") &&
