@@ -2308,6 +2308,10 @@ if(ANTS_TESTS)
                 # asserts a REFIT (no second element/project reader under src/)
                 # and no behaviour of the render can observe that.
                 tests/features/roadmap_render/test_roadmap_render.cpp
+                # ANTS-3806 — the migration read+load+render round trip for a
+                # two-source project, asserting each file's preamble comes back
+                # out of the file it went in from.
+                tests/features/roadmap_migrate_archive_root/test_roadmap_migrate_archive_root.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the
