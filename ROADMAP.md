@@ -23705,6 +23705,21 @@ against current source before filing.
   render cannot reproduce the document order of the file it replaces. Found
   while grounding this spec's § 2, before drafting. Schema fix, and cheap only
   until this id's cutover — see that bullet for the window.
+  Unblocked (2026-08-03): ANTS-3795 shipped, so the contract this
+  spec cites now describes the full-fidelity render the user decided on rather
+  than the layman-only one. roadmap-data-model.md § 5 also now models section
+  `position` and `source`, which is what lets the render reproduce document order
+  and route sections to the right file.
+
+  Inherited from that gate, and this id owns it — A DECISION, NOT A DEFECT:
+  § 3.2 gates publish on `layman` (open items only) while § 3.3 leaves `layman`
+  empty on every migrated item, and over half the corpus carries none. Read
+  literally, no project can publish its first render until hundreds of open items
+  are hand-curated. § 7.5 gives `priority` an explicit "written after cutover"
+  exemption for exactly this shape; `layman` has none. The two ways out cost
+  different things: curate before the first publish, or exempt migrated items and
+  publish some open work with no reader-facing sentence. The render cannot be
+  specified without picking one.
 
 - 📋 [ANTS-3759] **documentation.md needs a rule on numbers in prose — keep only figures that carry an argument, and source them to a command.**
   User asked whether specific numbers belong in documentation at all,
@@ -24841,7 +24856,7 @@ against current source before filing.
   Kind: implement.
   Source: ANTS-3758 split (2026-08-03, user), spec seam 3c of 5.
 
-- 📋 [ANTS-3795] **roadmap-data-model.md § 1 INV-2 and § 8 describe a layman-only render the user has now ruled out.**
+- ✅ [ANTS-3795] **roadmap-data-model.md § 1 INV-2 and § 8 describe a layman-only render the user has now ruled out.**
   Decision 2026-08-03 (user): the generated ROADMAP.md is FULL fidelity —
   status emoji, `[ANTS-NNNN]` id, bold headline, `Kind:` / `Source:` and
   the `Layman:` line, exactly the file that exists today, written by the
@@ -24871,6 +24886,36 @@ against current source before filing.
   **Layman:** The roadmap standard says the published page will drop all the technical detail. We have decided it keeps it, so the standard is now wrong.
   Kind: doc-fix.
   Source: user-decision-2026-08-03 (ANTS-3758 scoping).
+  Resolved (2026-08-03). roadmap-data-model.md now describes a
+  full-fidelity render. § 1's artifact table, INV-2, § 8's conformance and
+  ID-floor bullets and § 9's two render bullets all rewritten: the render carries
+  every required piece of roadmap-format.md § 3.5, so the two-standard collision
+  dissolves, the filename does not move, and conformance becomes an obligation ON
+  the render rather than a question about it. INV-2's surviving claim is
+  lossy-in-MEMBERSHIP (§ 7.5 still excludes internal and dropped), which is what
+  keeps the full-detail backup private.
+
+  Rule 14 gate: /cold-eyes --genre standard, 3 loops, converged by cap.
+  70 verified findings, 4 dismissed, 69 fixed, 1 surfaced. Loop 3's top finding
+  was found by both lanes independently and was this item's own defect surviving
+  two loops: § 4.1's `layman` row still read "The only text a public reader sees".
+  Grepping for the premise's WORDING found every place that said "layman-only" and
+  none that merely assumed it.
+
+  Beyond the amendment, the gate fixed four things an implementer would have built
+  wrong: the Status header still said "not yet implemented" while the store,
+  migration and export had shipped; § 5's section definition omitted `position`
+  and `source_path`, the two columns ANTS-3796/3797 added and the render depends
+  on; `id` was marked a plain author `write` while § 7.1 gives allocation to the
+  store; and § 7.1 mandated flagging an unparseable ID with no field to carry it,
+  though the store had shipped `item.id_origin`. Every corpus figure was
+  re-derived by re-running tools/roadmap-corpus-survey.py rather than reasoned
+  about — it now finds 13 projects and 4,080 items against the draft's 10, so the
+  counts 86 / 78 / ~90 / 8 / 280 / 218 / 57% had all drifted and are now
+  proportions.
+
+  Not done here, handed to ANTS-3758: § 3.2 gates publish on `layman` while § 3.3
+  leaves it empty on every migrated item.
 
 - ✅ [ANTS-3796] **The store models no section ORDER, so a generated ROADMAP.md cannot reproduce its own document order.**
   BLOCKS ANTS-3758. Found by reading the schema, not by running the render
