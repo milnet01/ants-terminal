@@ -1,6 +1,7 @@
 # Roadmap Data Model Standard (ANTS-3753)
 
-> **Status:** Adopted 2026-07-30; amended 2026-08-03 (§ 1 INV-2, § 8). **Partly
+> **Status:** Adopted 2026-07-30; amended 2026-08-03
+> (§ 1 INV-2, §§ 3.3, 4.1, 5, 8). **Partly
 > implemented** — the store, the migration and the export have shipped
 > ([ANTS-3756](../specs/ANTS-3756-roadmap-store-schema.md),
 > 3757, 3761, 3764, 3765, 3766, 3767, 3782, 3796, 3797); the published render
@@ -15,6 +16,12 @@
 > [`roadmap-format.md`](roadmap-format.md) alone governs.
 >
 > **Source:** user-request-2026-07-30 (roadmap moves to a shared database).
+
+**Citation convention:** a bare `§ N` is a section *of this document*. A cite to
+another standard names it — `roadmap-format.md § 3.5` — or carries a pronoun
+whose antecedent is that standard in the same sentence. Both documents have a
+§ 3.3 and they say different things, so an unanchored cite is a defect here, not
+a shorthand.
 
 [`roadmap-format.md`](roadmap-format.md) describes one *serialisation* of a
 roadmap item (markdown). This describes the model those bytes carry, so a store,
@@ -59,10 +66,11 @@ backed up.
 store, rebuilding from that export, and re-exporting produces byte-identical
 files — **per project**, and for the corpus as a whole, since the export is one
 file per project and a whole-corpus rebuild must not lose the cross-project
-relationships of INV-4. **Both legs are required**: re-export equality alone is
+relationships of INV-4. **Two legs are required, and the second is the one that
+bites**: (a) export → rebuild → re-export is byte-identical, and (b) the
+committed export equals a fresh export of the **live store**. Leg (a) alone is
 satisfied by an export that already lost half the model, since an empty file is
-a fixed point. The check therefore compares the committed export against a fresh
-export of the **live store**, not only against itself.
+a fixed point.
 
 **INV-2 — The published render is lossy in *membership*, not in detail.** Per
 included item it is written in full `roadmap-format.md` § 3.5 bullet form — § 8
@@ -78,8 +86,9 @@ its own render is § 9's.
 
 **INV-3 — After a project cuts over, the store is its only writer of record.**
 The export and the render are generated; a hand-edit to either is lost at the
-next generation, so both are fidelity-checked. Before cutover the markdown
-remains authoritative and neither check applies (§ 9).
+next generation, so both must be fidelity-checked — the export's check has
+shipped, the render's is § 9's and does not exist yet. Before cutover the
+markdown remains authoritative and neither check applies (§ 9).
 
 **INV-4 — Relationships may cross projects.** One project's work being blocked
 by another's is currently expressible only as prose.
@@ -95,7 +104,7 @@ relationship is declared by a dedicated field, never inferred from text.
 
 Every project indexed by the shared store, including projects with no roadmap
 yet. The model MUST NOT assume the shape of any one project's corpus — most
-installations have one project, not ten. Corpus measurements below are evidence
+installations have one project, not a dozen. Corpus measurements below are evidence
 that a requirement is *satisfiable*; they never define what the model must hold.
 
 ---
@@ -116,17 +125,19 @@ discharged by the three tiers alone.
 ### 3.1 Required at write — items created or curated after cutover
 
 **§ 4.1's Obligation column is the canonical list.** Every field marked `write`
-is required at this tier, and its parenthesised qualifiers carry the conditional
-cases — `write (open)`, `write (closed)`, `write (status shipped)`. The list is
+is required at this tier. Its parenthesised qualifiers say what kind of
+requirement: `write (open)`, `write (closed)` and `write (status shipped)` are
+**conditional** — the field is required only for items in that state; `write
+(store-populated)` is **unconditional but not author-supplied** — the field must
+be present on every item and the store is what puts it there, so a write path
+that rejects a call for omitting one has misread the row. The list is
 not repeated here: one field→tier mapping in two encodings is what
 `documentation.md` § 1.5 forbids, and a field added to one and not the other is
 the drift it predicts. What the table cannot express follows.
 
-`sort_order` is **not** in this tier: § 5 derives it from the element list, and a
-write obligation on it as well would give one fact two authored encodings with
-no rule naming which is right when they disagree. A
-curating write still places the item — it does so by position in the section's
-element list, which is where the order actually lives.
+`sort_order` is **not** in this tier — § 5 derives it and § 4.1 marks it so. A
+curating write still places the item; it does so by position in the section's
+element list, which is where the order lives.
 
 `shipped` is required only for `shipped`, not for every closed item — a
 `dropped` item has no ship date, and demanding one would be a nonsense state.
@@ -137,9 +148,10 @@ item was never obliged to carry.
 
 ### 3.2 Required before publish
 
-`layman`, **on open items only**. An item without it cannot appear on the
-published render, so a project with any public open item lacking one fails the
-publish gate — it does not fail migration. A closed item publishes without
+`layman`, **on open items only**. A project with any public open item lacking
+one **fails the publish gate**, and the gate is the whole mechanism: the render
+is not generated at all, rather than generated with that item omitted. It does
+not fail migration. A closed item publishes without
 `layman`: § 3.3 leaves the field empty on migrated items, so gating closed
 items too would make the gate unsatisfiable for every project with published
 history. This is the **only** publish-gating field; `priority` and `resolution`
@@ -149,7 +161,8 @@ gate neither publishing nor migration.
 
 Migration MUST NOT reject an item for a field the source format never required.
 Where `roadmap-format.md` § 3.5.3 defines a default, migration applies it
-(`kind` → `implement`, `source` → `planned` — that is § 3.5.3's default *source*, unrelated to the `planned` **status** of § 7.3) and records that the value was
+(`kind` → `implement`, `source` → `planned` — that is § 3.5.3's default *source*,
+unrelated to the `planned` **status** of § 7.3) and records that the value was
 defaulted. Where no default exists — `layman`, `priority`, `resolution`, and any
 date not derivable from history — the field is left empty.
 
@@ -159,11 +172,14 @@ half** carry no `Layman:`. A write-time-only reading would refuse every project.
 
 Figures here and below come from `tools/roadmap-corpus-survey.py`, which finds
 every project under the shared root; it reported 13 of them on 2026-08-03, up
-from 10 four days earlier — which is the drift this paragraph is about. They are quoted as proportions and orders of
-magnitude on purpose: the corpus grows every time anyone files an item, so an
-exact count written into a standard is wrong within the day. Re-run the script
-rather than trusting a number in this file — per § 2 these measurements only
-evidence that a requirement is *satisfiable*.
+from 10 four days earlier — which is the drift this paragraph is about.
+Proportions and approximate counts are used on purpose: the corpus grows every
+time anyone files an item, so an exact count written into a standard is wrong
+within the day. The few exact figures that survive are the ones an argument
+turns on — § 7.1's three off-grammar IDs, § 8's pass-headings counts — and the
+script prints every one of them. Re-run it rather than trusting a number in this
+file: per § 2 these measurements only evidence that a requirement is
+*satisfiable*.
 
 **The survey finds roadmaps case-insensitively, and that is load-bearing.** One
 project names its file `roadmap.md`; an uppercase-only glob excluded it, and
@@ -186,15 +202,15 @@ this meaning.
 | Field | Obligation | Notes |
 |---|---|---|
 | `project` | write | Owning project. Items are never global. |
-| `id` | write | § 7.1. **Unique within its project**, not within the store — the same ID may legitimately exist in two projects. |
-| `id_origin` | write | § 7.1. What *shape* the ID arrived in: `parsed` (matched `roadmap-format.md` § 3.5.1's grammar), `synthesised` (the model derived or allocated it — § 7.1's `PASS-N-M` ids and § 7.2's allocations), `quarantined` (off-grammar, recorded verbatim). Distinct from `provenance.id` (§ 7.7), which records *who supplied* a value; an item can be `synthesised` and `migrated` at once, and § 7.1 needs a place to record that an ID is unparseable without rewriting it. |
+| `id` | write (store-populated) | § 7.1 — **the store owns allocation**, so a post-cutover author never supplies one; migration is the only path that carries an id in from outside. **Unique within its project**, not within the store — the same ID may legitimately exist in two projects. |
+| `id_origin` | write (store-populated) | § 7.1. What *shape* the ID arrived in: `parsed` (it matched `roadmap-format.md` § 3.5.1's grammar in source), `synthesised` (the model made it — § 7.1's `PASS-N-M` ids, § 7.2's migration allocations, **and every id the store allocates after cutover**), `quarantined` (off-grammar, recorded verbatim). Distinct from `provenance.id` (§ 7.7), which records *who supplied* a value; an item can be `synthesised` and `migrated` at once, and § 7.1 needs a place to record that an ID is unparseable without rewriting it. |
 | `status` | write | § 7.3. |
 | `headline` | write | One line, technical. |
 | `layman` | write (open) / publish (open) | One sentence, non-technical. The only text a public reader sees. |
 | `kind` | write | § 7.4. |
-| `source` | write | Provenance. "What did project X ask for" is a query on this field. |
+| `source` | write | Where the item came from (`roadmap-format.md` § 3.5.3's `Source:`). "What did project X ask for" is a query on this field. Not to be confused with `provenance` (§ 7.7), which records how each field's *value* was obtained. |
 | `priority` | write (open) | § 7.5. Meaningless once closed. |
-| `created`, `last_modified` | write (store-populated) | § 7.6. Required to be *present*, never supplied by an author: the store stamps them, and migration fills them per § 7.7 (`git-derived`, or `asserted` from a dated `Source:`). A write path that rejects a call for omitting them has misread this row. |
+| `created`, `last_modified` | write (store-populated) | § 7.6. The store stamps them; migration fills them per § 7.7 (`git-derived`, or `asserted` from a dated `Source:`). |
 | `shipped` | write (status `shipped`) | § 7.6. |
 | `resolution` | write (closed) | What was done and why, or why it was not. |
 | `section` | write | § 5. Where the item is filed. |
@@ -202,7 +218,7 @@ this meaning.
 | `lanes`, `evidence` | optional | Subsystems touched; paths to screenshots, logs, repros. Both are already first-class in `roadmap-format.md` § 3.5, so neither is part of § 4.3's invented tail. |
 | `visibility` | optional | § 7.5. Defaults to `public`. |
 | `milestone` | optional | Target release, as the version string the project releases under (`0.7.55`, not a section heading). Distinct from `section`, which is where the item is *filed*. |
-| `sort_order` | derived | § 5. The item's position within its section, computed from that section's ordered element list. **An author never writes it**, and it is not stored — storing it as well would be a second encoding of the element list's own ordering, and § 5's precedence rule exists because the two would drift. Readers that want an integer rank get one computed at read. |
+| `sort_order` | derived | § 5. The item's position within its section, computed from that section's ordered element list. **An author never writes it**, and it is not stored: § 5 makes the element list the only place that order lives, so a stored copy would be a second encoding with nothing to reconcile it against. Readers that want an integer rank get one computed at read. |
 | `blocked` | derived | True iff a `blocked-by` relationship targets a **resolvable, same-project** item that is not closed. *Resolvable* = the target exists in the store being read. Cross-project targets are excluded — a partial rebuild cannot see them, and deriving from what is absent would make the value depend on which projects happen to be present. **So `blocked` under-reports by design** (see INV-4): an item blocked only from another project reads `blocked: false`, and a consumer that needs the true answer queries the `blocked-by` relationships themselves rather than this field. |
 | `extras` | optional | § 4.3. |
 | `provenance` | derived | § 7.7. Per field, never silently promoted to `asserted`. |
@@ -242,8 +258,10 @@ resolves to an item ID — one that does not stays in `extras` unconverted.
 
 ## 5. Structure
 
-Items live in a section tree, and their order carries meaning: position is the
-current corpus's prioritisation, so that order is preserved exactly.
+Items live in a section tree, and their order carries meaning: an item's rank
+within its section is the current corpus's prioritisation, so that order is
+preserved exactly. (Below, `position` is a **section's** field — its place in
+the project's document order. The two orderings are different facts.)
 
 `priority` and `sort_order` are complementary. `sort_order` is an exact order
 **within a section**; `priority` is a coarse band comparable *across* projects,
@@ -300,11 +318,12 @@ Where a project documents its status vocabulary, it does so in its own words:
 this project writes `In progress (active commit work — usually direct-to-main
 on this project; rarely a branch / PR)` where `roadmap-format.md` § 3.3's own
 table says `In progress (being tackled now)`. Two of the surveyed projects carry
-such a block, eight lines in total, and they are the document's *metadata* —
-not items, and not narration.
+such a block (§ 5.2's table row counts the lines), and they are the document's
+*metadata* — not items, and not narration.
 
 They are therefore their own per-project structure: status value → that
-project's wording. Today `RoadmapDialog` cannot: `src/roadmapdialog.cpp` holds the four status
+project's wording, which is what would let one renderer serve every project.
+Today `RoadmapDialog` cannot do that: `src/roadmapdialog.cpp` holds the four status
 emojis and their labels as compile-time constants, guarded by a
 `static_assert` on the count, and nothing reads a project's legend at all. A
 project whose legend words differ is rendered in the dialog's words, not its
@@ -319,7 +338,7 @@ corpus each accounts for. **These are orders of magnitude and they drift** —
 `tools/roadmap-corpus-survey.py` prints the live values, and § 3.3 says why a
 standing number in this file is the wrong thing to trust:
 
-| Order of magnitude | Structure | Home |
+| Approx. count | Structure | Home |
 |---|---|---|
 | ~1,500 | sub-bullets | item `body` |
 | ~170 | markdown table **data** rows | `table` element |
@@ -348,8 +367,8 @@ forward** means the relationship replaces a practice, with nothing harvested.
 | `blocked-by` | Cannot start until the target closes. | **authored** | Prose block markers, which are *not* harvested — see below. |
 | `duplicate-of` | Same work as the target. | authored | Manual dedup. |
 | `supersedes` | Replaces an earlier decision. | authored | Nothing — currently unrecorded. |
-| `relates-to` | Untyped association. | converted from `Dependencies:` (21 uses) | — |
-| `specified-by` | Target is a spec **document**, addressed by path. | converted from `Spec:` (20 uses) | — |
+| `relates-to` | Untyped association. | converted from `Dependencies:` (~21 occurrences of the key; only values resolving to an item ID convert) | — |
+| `specified-by` | Target is a spec **document**, addressed by path. | converted from `Spec:` (~20 occurrences) | — |
 
 **`blocked-by` is authored-only, and migration harvests nothing for it.** Prose
 saying an item is blocked stays prose in the item's `body`. INV-5 is the reason:
@@ -382,10 +401,11 @@ holds in reverse names no current decision. Acyclicity is checked over the
 **full store only**: a partial checkout can break a cycle by not containing
 part of it, so checking there would report a pass that the whole store fails.
 
-Three adjacent record types exist for the same reason: **`feedback_ref`** (which
+Three adjacent record types exist for one reason — each makes a question that is
+currently answered by grepping prose into a query: **`feedback_ref`** (which
 cross-session feedback file cites which item — making ANTS-3744 a query),
-**`citation`** (item or spec → file and symbol, making `documentation.md` § 1.7
-machine-checkable), and **`history`** (one row per field change).
+**`citation`** (item or document → file and symbol, making `documentation.md`
+§ 1.7 machine-checkable), and **`history`** (one row per field change).
 
 **`history` is exported.** It is worth saying explicitly because it is the one
 record type whose bulk invites an exception, and INV-1 admits none: git
@@ -405,10 +425,11 @@ one**. Live prefixes include `ANTS`, `DOOM`, `FIBR`, `CL`, `ONEUP`, `ROLO`,
 `3D_E` and `mame-curator` — so a prefix may contain hyphens, underscores and
 digits, and a project may declare **several**.
 
-Two of § 3.5.1's rules are not identity rules, and the model must not read them
-as such. Its `-\d+` regex is the acceptance test; its "zero-padded to 4 digits"
-prose is a **write-side convention**, so `CL-9` is a well-formed existing ID and
-not an unparseable one. And its § 3.10.4 says id *handling* — parsing,
+Two of `roadmap-format.md` § 3.5.1's rules are not identity rules, and the model
+must not read them as such. Its `-\d+` regex is the acceptance test; its
+"zero-padded to 4 digits" prose is a **write-side convention**, so `CL-9` is a
+well-formed existing ID and not an unparseable one. And that standard's
+§ 3.10.4 says id *handling* — parsing,
 fetching, allocation — is case-insensitive, which is a statement about the
 tooling's grammar, not about when two IDs denote the same item.
 
@@ -419,12 +440,13 @@ This follows the tooling rather than fighting it — a store that treated them a
 two items would allocate an ID `roadmap_log` then refuses as a duplicate.
 
 **Some live IDs do not match that grammar, and the model must say what happens
-to them rather than assume they are absent.** § 3.5.1 requires a dash between
-prefix and number; 3D_Engine writes three items as `[Cl9]`, `[Cl10]` and
-`[CE18]`, with no dash. A migration built on the grammar alone drops them
-silently, which is the one outcome § 3.3 forbids. They are **items with an
-unparseable ID**: migration MUST NOT invent a dash (rewriting an ID breaks
-§ 3.5.1's append-only rule and every citation of it), and MUST NOT treat them as
+to them rather than assume they are absent.** `roadmap-format.md` § 3.5.1
+requires a dash between prefix and number; 3D_Engine writes three items as
+`[Cl9]`, `[Cl10]` and `[CE18]`, with no dash. A migration built on the grammar
+alone drops them silently — and silent loss is what § 3.3 exists to prevent,
+which is why it is the tier that governs here. They are **items with an
+unparseable ID**: migration MUST NOT invent a dash (rewriting an ID breaks that
+standard's append-only rule and every citation of it), and MUST NOT treat them as
 ID-less (§ 7.2's bulk allocation would issue a second identity for an item that
 already has one).
 
@@ -446,9 +468,9 @@ only one of them has bullets:
 
 | Shape | Where the ID is | Recognition rule |
 |---|---|---|
-| Emoji bullet (§ 3.5) | `- ✅ [ANTS-1234] **…**` | Immediately after the status emoji. |
-| GFM task list (§ 3.10.1) | `- [x] [3D_E-0007] **…**` | Immediately after the checkbox. |
-| Pass heading (§ 3.10.5) | nowhere in the text | **Synthesised** from the heading as `PASS-<major>-<minor>[-<sub>]`. |
+| Emoji bullet (`roadmap-format.md` § 3.5) | `- ✅ [ANTS-1234] **…**` | Immediately after the status emoji. |
+| GFM task list (`roadmap-format.md` § 3.10.1) | `- [x] [3D_E-0007] **…**` | Immediately after the checkbox. |
+| Pass heading (`roadmap-format.md` § 3.10.5) | nowhere in the text | **Synthesised** from the heading as `PASS-<major>-<minor>[-<sub>]`. |
 
 A synthesised `PASS-N-M` **is** an ID for every purpose in this document: it
 satisfies § 3.1's `id` obligation, so those items are not ID-less and § 7.2
@@ -458,7 +480,8 @@ it, which is the one place this model's identity is not append-only. That
 tension is real and belongs to § 9 along with the rest of migration.
 
 The store owns allocation. Each project currently keeps a gitignored per-machine
-counter — one per prefix, for the multi-prefix projects § 3.10.4 permits — that
+counter — one per prefix, for the multi-prefix projects `roadmap-format.md`
+§ 3.10.4 permits — that
 is explicitly not the source of truth, with a floor recomputed by scanning the
 corpus so a wiped counter cannot reissue a live ID. A shared store allocates
 directly and that whole failure mode disappears, along with the per-prefix
@@ -471,7 +494,7 @@ of it. (Pass-heading items are **not** among them: § 7.1 synthesises their ids,
 so they arrive already identified.) Allocation splits by whether anyone will
 ever need to cite the item:
 
-| | Share | Rule |
+| Items | Approx. count | Rule |
 |---|---|---|
 | **Closed** | ~1,020 | Allocated in bulk, in document order. Nobody cites a finished item, so no curation is required and none is invented. |
 | **Open** | ~600 | Allocated into the project's normal sequence and treated as a real item — it will be cited, worked on, and referenced in commits. § 3.2's publish gate then applies, so it must be curated before that project publishes. |
@@ -483,7 +506,7 @@ that can change.
 
 **Only bullets that are items get an ID**, and a bullet is an item when it
 carries **both** a status marker and the bold headline `roadmap-format.md` § 3.5
-requires. Both halves are needed: § 3.3 allows plain narration bullets with no
+requires. Both halves are needed: `roadmap-format.md` § 3.3 allows plain narration bullets with no
 status marker, which § 5 models as `narration`, so the bold headline alone would
 promote them to items. The status-marked bullets carrying a marker but neither
 an ID nor a bold headline are not items, and they are not one thing either —
@@ -497,7 +520,7 @@ gets an ID.
 
 `dropped` is new — abandoning an item currently means deleting its line, erasing
 the decision with it. It has **no markdown serialisation**: `roadmap-format.md`
-§ 3.11 makes a fifth status emoji an anti-pattern.
+`roadmap-format.md` § 3.11 makes a fifth status emoji an anti-pattern.
 
 Dropped items are excluded from the published render as **policy**, not as a
 consequence of that gap. A reader of the roadmap wants to know what is being
@@ -625,9 +648,10 @@ overridden:
   corpus, which it defines as `ROADMAP.md` + `CHANGELOG.md` +
   `docs/roadmap/*.md`. After a project cuts over the store owns allocation and
   the counter is retired **for that project**. The render keeps carrying IDs
-  (INV-2), so the layman-only premise no longer removes that leg by itself — but
-  whether the floor narrows is still open, on two counts: § 9 has yet to decide
-  whether the render lists closed items at all, and the bullet below leaves the
+  (INV-2), so `ROADMAP.md` does not stop being a floor input merely by becoming
+  generated. Whether that input **narrows** is still open on two counts: § 9 has
+  yet to decide whether the render lists closed items at all (a render of open
+  work alone carries no closed item's ID), and the bullet below leaves the
   archives' and the CHANGELOG's futures unsettled. The export is subject to
   neither and supersedes all three as the authoritative floor, which is what
   § 3.5.1's definition needs amending to say for cut-over projects.
@@ -745,11 +769,11 @@ than a question.
 
 | Rule | What catches a breach |
 |---|---|
-| § 2, §§ 3.3, 5.2, 7.2, 7.4 corpus claims | `tools/roadmap-corpus-survey.py` |
-| INV-1 export round-trip | `tests/features/roadmap_export_roundtrip` — `Inv1RoundTripIsByteIdentical`, `Inv2EveryRowAndColumnSurvives` |
+| **Every** corpus figure in this document | `tools/roadmap-corpus-survey.py` — re-run it rather than trusting a standing number (§ 3.3) |
+| INV-1 export round-trip | `tests/features/roadmap_export_roundtrip` — `Inv1RoundTripIsByteIdentical`, `Inv2EveryRowAndColumnSurvives`. Those `InvN` names are ANTS-3761's spec invariants, not this document's. |
 | INV-2 render fidelity | **nothing yet** — there is no render before ANTS-3758 |
 | INV-3 hand-edit detection | **nothing yet** — § 9's |
-| §§ 3.1–3.2 obligations, § 7.3–7.5 enums | **nothing yet** — the store's write path, § 9's |
+| §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **nothing yet** — the store's write path, § 9's |
 | § 7.1 identity grammar | `roadmap-format.md` § 3.5.1's regex, already in `RoadmapIndex::isCanonicalId` |
 | § 8 reconciliation | **nothing** — prose agreement between two standards. The one amendment it still owes (`roadmap-format.md` § 3.5.1's counter definition) is ANTS-3793's, with the rest of the cutover. |
 
@@ -761,5 +785,6 @@ than a question.
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 3 (model coherence, corpus drift, failure modes) | 6 / 12 / 14 / 18 / 1 | Structural rewrite: obligations split into tiers, export scope defined, INV-1 given its missing leg, identity grammar corrected after the survey regex was found wrong about two projects, migration source shapes corrected. |
 | 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split.** ~8 of the 13 CRITICALs were collateral from loop 1's own fixes; the findings were overwhelmingly schema-level, i.e. this document was a standard carrying an implementation spec. Split per ANTS-3754: the model stays here, the schema goes to a spec. Backup relocated to the private config repo, closing a leak the draft shipped. ID allocation for the corpus's ID-less items decided (user, 2026-07-30). |
+| 5 | 2026-08-03 | 2 (same partition, cold; no prior-loop briefing) | 0 / 4 / 12 / 13 / 1 | 29 verified, 0 dismissed, all fixed. **Roughly half were collateral from loop 4's own fixes** — deleting a sentence in § 5.1 stranded the verb after it ("Today `RoadmapDialog` cannot:"), § 3.1's rewrite and § 4.1's new `write (store-populated)` qualifier landed in one batch without being reconciled, and the ID-floor bullet was left referring to "the layman-only premise" the same loop had deleted. The remedy taken was a **harder blast-radius sweep, not another dispatch**: re-reading each edited passage in context rather than grepping it, which is what found them. Two genuine draft defects an implementer would have built wrong: `id` was marked a plain `write` obligation while § 7.1 gives allocation to the store, and § 3.1 declared itself canonical while enumerating three of the four obligation qualifiers. The sweep also generalised loop 5's top finding — a bare `§ 3.3` resolving to **this** document's § 3.3 instead of `roadmap-format.md`'s — into the class it belongs to: eight further unanchored cites, now fixed, with a citation convention stated in § 1 so the next one is a defect rather than a shorthand. |
 | 4 | 2026-08-03 | 2 (single doc, cold; genre pinned `standard`) | 0 / 4 / 7 / 9 / 0 | **ANTS-3795 amendment gate**, run on the edit that made the render full-fidelity. 20 verified, 3 dismissed, all 20 fixed, plus 2 collateral the blast-radius sweep caught. Both lanes independently led on the same three: the **Status header still said "not yet implemented"** while the store, migration and export had shipped; **§ 5's section definition omitted `position` and `source_path`**, the two columns ANTS-3796/3797 added and the render depends on, so the model as written could not round-trip what the store already stores; and the *What checks this* table still said **nothing yet** for INV-1 when `roadmap_export_roundtrip` tests it. Also fixed: § 7.1 mandated flagging an unparseable ID with no field in § 4 to carry it while the store had shipped `item.id_origin` — now a § 4.1 field. **Every corpus figure was re-derived rather than reasoned about**, and the survey now reports 13 projects and 4,080 items against the draft's 10 and its counts of 86 / 78 / ~90 / 8 / 280 / 218; the exact counts are gone in favour of the proportions § 3.3's own policy asks for. One finding landed on THIS amendment: the ID-floor claim that "all three inputs survive" ignored § 9's still-open render-curation question. |
 | 3 | 2026-07-30 | 3 (model coherence, identity/migration, cross-doc) — genre pinned `standard` | 6 / 9 / 14 / 15 / 2 | Every verified finding fixed. Corpus scope was wrong: the survey globbed `ROADMAP.md` and missed a tenth project whose file is lowercase, so the document asserted no project used pass headings when one tracks 144 items in it, 136 of whose statuses fall outside § 7.3's enum. Also fixed: § 5.1's justification was false against `roadmapdialog.cpp`; § 8 gained the render-conformance and archive-rotation touch points; identity semantics, `provenance` (new § 7.7), obligation-tier vocabulary and the `blocked-by`/INV-5 conflict all settled. Added § 10 anti-patterns and a *What checks this* table. Genre pinning is what changed the run: loops 1–2 graded a standard against spec shape. **Exited at the 3-loop cap.** |
