@@ -40,7 +40,7 @@ records which governs.
 |---|---|---|
 | Store | Working store. All reads and writes go here. | Local, untracked |
 | Backup export | Durable record. One file per project. | The **private** `claude-config` repo |
-| Published render | For human readers. Layman content only. | Each project's own repo, as `ROADMAP.md` |
+| Published render | For human readers. Full detail per item; lossy in *membership*. | Each project's own repo, as `ROADMAP.md` |
 
 **The backup lives in a private repo, and that is a safety requirement rather
 than a convenience.** The export carries every item's full technical body,
@@ -60,9 +60,17 @@ satisfied by an export that already lost half the model, since an empty file is
 a fixed point. The check therefore compares the committed export against a fresh
 export of the **live store**, not only against itself.
 
-**INV-2 — The published render is derived and lossy, deliberately.** It carries
-`layman` text and nothing technical, is never parsed back, and is **not** a
-backup — which is why INV-1 targets the export instead.
+**INV-2 — The published render is lossy in *membership*, not in detail.** Per
+included item it carries everything `roadmap-format.md` § 3.5 requires — the
+status emoji, the `[PROJ-NNNN]` id, the bold headline, `Kind:` / `Source:` and
+the `Layman:` line — so the generated file is the file that exists today,
+written by the store instead of by hand (user decision, 2026-08-03). What it
+drops is *which* items appear: § 7.5 excludes `internal` and `dropped` ones,
+which is why the full-detail backup stays in a private repo and why INV-1
+targets the export instead. The render is **not** a source of record (INV-3),
+but neither is it write-only — carrying ids is what would let ANTS-3765
+§ 2.6.1's id-less re-run matching retire; whether a cut-over project re-reads
+its own render is § 9's.
 
 **INV-3 — After a project cuts over, the store is its only writer of record.**
 The export and the render are generated; a hand-edit to either is lost at the
@@ -572,17 +580,20 @@ one point below where, after cutover, it stops describing the file at all.
 These are the points where the two touch, stated so neither is silently
 overridden:
 
-- **The render is not a conforming `ROADMAP.md`, and this is the largest
-  collision of the two standards.** Its § 3.5 makes the status emoji, the
+- **The render is a conforming `ROADMAP.md`, and that is a requirement on the
+  render rather than a happy accident.** Its § 3.5 makes the status emoji, the
   `[PROJ-NNNN]` ID, the bold headline and `Kind:` *required pieces* of every
   bullet; its § 3.1 requires the format marker; its §§ 3.6.2–3.6.3 match
-  CHANGELOG entries and commit subjects against bullet **headlines**. A
-  layman-only render carries none of these. `documentation.md` § 3 binds the
-  same file independently, to status emojis and stable per-bullet IDs. So after
-  cutover either both standards are amended, or the render is published under a
-  different filename and `ROADMAP.md` is retired. **This document does not
-  decide which** — it belongs with the rest of the cutover in § 9 — but it must
-  not be discovered during implementation.
+  CHANGELOG entries and commit subjects against bullet **headlines**.
+  `documentation.md` § 3 binds the same file independently, to status emojis and
+  stable per-bullet IDs. A full-fidelity render (INV-2) satisfies all of them,
+  so neither standard is amended and the filename does not move. **The
+  obligation runs the other way**: a render that dropped any required piece
+  would break commit and CHANGELOG matching in every cut-over project, which is
+  what made the earlier layman-only draft a choice between amending two
+  standards and retiring `ROADMAP.md`. That choice is closed (user decision,
+  2026-08-03); what remains is § 9's check that catches a render which drops a
+  required piece silently.
 
 - **Optional fields.** Its § 3.5 files `Layman:` and `Source:` as optional and
   § 3.5.3 gives defaults for absent `Kind:` / `Source:`. This document does not
@@ -593,11 +604,10 @@ overridden:
   source: the true high-water mark is the highest ID across the committed
   corpus, which it defines as `ROADMAP.md` + `CHANGELOG.md` +
   `docs/roadmap/*.md`. After a project cuts over the store owns allocation and
-  the counter is retired **for that project**. Only one of the floor's three
-  inputs is lost — the render stops carrying IDs — while the CHANGELOG and the
-  archives keep theirs, so the floor narrows rather than disappearing. The
-  export supersedes all three as the authoritative floor, and § 3.5.1's
-  definition needs amending to say so for cut-over projects.
+  the counter is retired **for that project**. All three of the floor's inputs
+  survive — the render keeps carrying IDs (INV-2) — so the floor does not
+  narrow. The export supersedes all three as the authoritative floor, and
+  § 3.5.1's definition needs amending to say so for cut-over projects.
 - **Status vocabulary.** Its § 3.11 makes a fifth status emoji an anti-pattern,
   so `dropped` has no markdown form and is excluded from the render. Adding one
   is that standard's decision, not this one's.
@@ -655,15 +665,17 @@ implementation gate rather than in a standard:
 - Whether the published render lists closed items at all, or only open work plus
   recent releases. (Which items are *eligible* is already fixed by § 7.5: public,
   not dropped. This is the curation question inside that set.)
-- Whether the render keeps `ROADMAP.md` as its filename, given § 8's finding that
-  it stops conforming to `roadmap-format.md` and `documentation.md` § 3 — and if
-  it does, which amendments those two standards need.
+- How the render **demonstrates** § 8's conformance rather than asserting it. The
+  filename and the two-standard amendment question are closed by INV-2; what is
+  open is the check that catches a render silently missing a required piece, and
+  whether a cut-over project re-reads its own render at all.
 - Whether archive rotation and the CHANGELOG release flow (§ 8) freeze at
   cutover or move into the store.
 - The fate of `roadmap_query`, `roadmap_log` and `RoadmapDialog`, all of which
-  parse and write `ROADMAP.md` today and cannot continue to against a
-  layman-only render. This includes whether `RoadmapDialog` should render each
-  project's legend (§ 5.1 makes it *possible*, not mandatory).
+  parse and write `ROADMAP.md` today. A full-fidelity render keeps them able to
+  *parse* it, so what INV-3 ends is their **writing** — which is why they still
+  need a cutover rather than none. This includes whether `RoadmapDialog` should
+  render each project's legend (§ 5.1 makes it *possible*, not mandatory).
 
 ANTS-3754 carries the verified finding list that is this spec's input.
 
