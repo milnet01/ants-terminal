@@ -23661,6 +23661,46 @@ against current source before filing.
      relationship / citation / feedback_ref are empty after a migration
      (ANTS-3765 5) and are derived from prose rather than stored, so
      nothing is lost that was ever modelled.
+  Scoped (2026-08-03, user): split three ways, and this id keeps the RENDER
+  only. ANTS-3793 takes the consumer cutover (roadmap_query / roadmap_log /
+  RoadmapDialog, the mixed-migration interim, and ANTS-3760 finding 9's
+  whole-store acyclicity); ANTS-3794 takes publish + health checks (backup
+  cadence, push-conflict divergence, silent-failure detection, check
+  scheduling, cross-project concurrency). Order: this id first, because it
+  fixes what the consumers read; ANTS-3794 can run in parallel.
+
+  Grounds for splitting rather than drafting one spec: ~16 distinct decisions
+  across three unrelated domains, and a consumer surface of 204 roadmap_log +
+  37 roadmap_query hits in remotecontrol.cpp, 22 + 30 in claudeintegration.cpp
+  and a 2,981-line dialog (measured 2026-08-03). Lane precedent is the rest of
+  the argument — ANTS-3756 grew 321 → 683 lines over three loops and split into
+  3756 + 3761 at the cap; ANTS-3757 spawned 3765 and 3766 the same way.
+
+  Decision (2026-08-03, user) — the render is FULL fidelity, not layman-only.
+  The generated ROADMAP.md carries the status emoji, the [ANTS-NNNN] id, the
+  bold headline, Kind: / Source: and the Layman: line: the file that exists
+  today, written by the store instead of by hand. This CLOSES the "sharpest
+  unresolved question" above — a conforming render collides with neither
+  roadmap-format.md nor documentation.md § 3, so neither is amended and the
+  filename stays ROADMAP.md. It does not close everything: roadmap-format.md
+  § 3.5.1's counter definition still needs amending for cut-over projects, and
+  the render is still lossy in MEMBERSHIP (§ 7.5 excludes internal and dropped),
+  which is why the full-detail backup stays in a private repo.
+
+  Consequence filed as ANTS-3795: roadmap-data-model.md § 1's artifact table,
+  § 1 INV-2 and § 8 all describe the layman-only render this decision rules
+  out, so the standard is now wrong rather than merely open.
+
+  ANTS-3761 is NOT a blocker and never was — verified 2026-08-03 and flipped to
+  ✅ the same day. The export (§ 1's durable backup, private repo) and the
+  render (§ 1's published artifact, project repo) are different artifacts
+  sharing the store, not the format.
+
+  Still owned here: render curation (whether closed items are listed at all,
+  inside § 7.5's eligible set), and the fate of archive rotation
+  (roadmap-format § 3.9) and the CHANGELOG release flow — both hand edits to a
+  file that becomes generated, so both die under INV-3 unless the store takes
+  them over. The two overwrite caveats above stay with this id.
 
 - 📋 [ANTS-3759] **documentation.md needs a rule on numbers in prose — keep only figures that carry an argument, and source them to a command.**
   User asked whether specific numbers belong in documentation at all,
@@ -24746,6 +24786,87 @@ against current source before filing.
   **Layman:** A comment in the code quotes a count of documents that has since changed; it should point at the tool that measures it rather than writing the number down.
   Kind: doc-fix.
   Source: in-session-2026-08-02 (noticed while implementing ANTS-3786).
+
+- 📋 [ANTS-3793] **Roadmap consumer cutover — roadmap_query, roadmap_log and RoadmapDialog read and write the store.**
+  Split out of ANTS-3758 so the render and the consumer cutover are
+  separate contracts. ANTS-3758 fixes what the render contains; this id
+  moves the consumers onto the store.
+
+  Surface, measured 2026-08-03: `roadmap_log` appears 204 times and
+  `roadmap_query` 37 times in `src/remotecontrol.cpp`, 22 and 30 more in
+  `src/claudeintegration.cpp`, and `src/roadmapdialog.cpp` is 2,981 lines.
+  The shared markdown reader ANTS-3764 extracted (`src/roadmapparse.cpp`)
+  is what they all go through today.
+
+  Owns:
+  - Which verb ops become store writes and which stay markdown-only, op by
+    op — `roadmap_log` alone carries append / append_batch / flip /
+    flip_batch / annotate / amend_body / create_section / bundle_row.
+  - The mixed interim: some projects migrated, some not, so every verb
+    needs both paths and a rule for choosing. ANTS-3757 § 2.10's marker (a
+    project row exists exactly when its plan committed) is the gate.
+  - Whether RoadmapDialog renders each project's legend — the model's § 5.1
+    makes it possible, not mandatory.
+  - Whole-store relationship acyclicity, deferred here by ANTS-3760
+    finding 9 (distinct from the per-row self-relationship CHECK).
+
+  Blocked by ANTS-3758 (the render contract these read).
+  **Layman:** The three tools that read and write the roadmap today all move onto the database.
+  Kind: implement.
+  Source: ANTS-3758 split (2026-08-03, user), spec seam 3b of 5.
+
+- 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
+  Split out of ANTS-3758. Operationally independent of the render and the
+  consumer cutover, so it can run in parallel with either.
+
+  Owns the items `roadmap-data-model.md` § 9 assigns to a spec and no
+  filed id yet covers:
+  - The auto-publish cadence for the backup export to the private
+    `claude-config` repo. The export itself already ships (ANTS-3761); what
+    is unowned is when and how it is pushed.
+  - A push conflict means two stores diverged. It must surface, never
+    auto-merge.
+  - A silent backup failure is worse than no backup, because it stops
+    anyone checking. Detection is owed.
+  - The remaining health checks — inputs, pass conditions, scheduling, and
+    behaviour on a machine where the store does not yet exist. INV-1
+    already fixes the export round-trip check; § 7.7 already fixes what
+    provenance must record.
+  - Concurrency across projects sharing one store.
+  **Layman:** How the roadmap database gets backed up automatically, and how we notice when a backup silently stops working.
+  Kind: implement.
+  Source: ANTS-3758 split (2026-08-03, user), spec seam 3c of 5.
+
+- 📋 [ANTS-3795] **roadmap-data-model.md § 1 INV-2 and § 8 describe a layman-only render the user has now ruled out.**
+  Decision 2026-08-03 (user): the generated ROADMAP.md is FULL fidelity —
+  status emoji, `[ANTS-NNNN]` id, bold headline, `Kind:` / `Source:` and
+  the `Layman:` line, exactly the file that exists today, written by the
+  store instead of by hand.
+
+  That contradicts the standard as written, in three places:
+
+  1. § 1's artifact table: "Published render | For human readers. Layman
+     content only."
+  2. § 1 INV-2: "carries `layman` text and nothing technical, is never
+     parsed back." All three clauses fail — it carries technical fields,
+     and ANTS-3765 § 2.6.1's re-run matching reads its ids back.
+  3. § 8's first bullet builds the whole two-standard collision on the
+     layman-only premise, and its ID-allocation bullet says "the render
+     stops carrying IDs" so the counter floor narrows. Under the decision
+     the collision dissolves and the floor does not narrow.
+
+  What SURVIVES and must not be over-corrected: the render is still lossy
+  in MEMBERSHIP — § 7.5 excludes `internal` and `dropped` items, which is
+  why the full-detail backup stays in a private repo while ants-terminal
+  is public. INV-2's "derived and lossy" is right; its "layman only" is
+  not. Also still true: `roadmap-format.md` § 3.5.1's counter definition
+  needs amending to say the store owns allocation after cutover.
+
+  Rule 14 gate: `/cold-eyes <path> --genre standard`. Coordinate with
+  ANTS-3754 (split roadmap-data-model.md) rather than editing twice.
+  **Layman:** The roadmap standard says the published page will drop all the technical detail. We have decided it keeps it, so the standard is now wrong.
+  Kind: doc-fix.
+  Source: user-decision-2026-08-03 (ANTS-3758 scoping).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
