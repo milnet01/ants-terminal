@@ -24931,6 +24931,7 @@ against current source before filing.
   2. ANTS-3758's INV-1 full round-trip oracle, deferred here at ship
   because it needs the migration loader and a second store -- which this
   id has in hand. It is also what would have caught (1).
+  Spec drafted 2026-08-03 at docs/specs/ANTS-3793-roadmap-consumer-cutover.md, covering this id AND ANTS-3808. NOT accepted — the rule-14 cold-eyes gate ran loop 1 (25 verified, all fixed, committed) and STOPPED mid-loop 2 at the user's request. Loop 2's 24 verified-but-unfixed findings are written up in full at docs/reviews/ANTS-3793-cold-eyes-loop2-tail.md; fold them in directly, do NOT re-dispatch a review to rediscover them. Both loop-2 CRITICALs are loop-1 collateral (the new field table vs § 2.3's head-line strip), so loop 3 re-runs the blast-radius sweep before dispatching. Key design decisions already settled and not to be reopened: the read cutover happens at the single RoadmapParse::parseBullets seam (26 consumer call sites unchanged in shape); ANTS-3808 is fixed by the migration dropping body's first line plus a value-equality trailer suppression in renderBullet(), NOT by the provenance verbatim/residual flag the ANTS-3808 bullet sketched.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
