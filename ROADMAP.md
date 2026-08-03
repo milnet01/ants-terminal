@@ -27970,7 +27970,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   durable state + fresh-invocation-per-task for the literal work→reset
   loop. Un-park this item only when Anthropic ships a compaction trigger.
 
-- 🚧 [ANTS-3798] **`roadmap_log op:bundle_row` is the one write op with no `dry_run` — ANTS-2136's sweep missed it.**
+- ✅ [ANTS-3798] **`roadmap_log op:bundle_row` is the one write op with no `dry_run` — ANTS-2136's sweep missed it.**
   Verified 2026-08-03 against src/remotecontrol.cpp. Every other roadmap_log
   op honours dry_run -- append + append_batch (ANTS-2077), flip, flip_batch,
   annotate, create_section and amend_body (ANTS-2136) -- and all five
@@ -27997,6 +27997,11 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-03.
+  Resolved (2026-08-03). cmdRoadmapLogBundleRow() gains the standard preview before its atomic write, matching create_section's envelope: dry_run:true, op, file, section, row_index, columns, created_table, the rendered `row`, and `bytes` (would-be) in place of bytes_written. The gate sits AFTER every guard and after the placement logic, so the preview reports the same values the write would -- including the numeric-aware `sorted` insertion point, which is the one value a caller cannot predict.
+
+  Documentation half fixed too: the schema's dry_run description now enumerates all eight ops (append, append_batch, flip, flip_batch, annotate, create_section, amend_body, bundle_row) instead of reading "when true on op:append / append_batch", which is how this gap stayed invisible from ANTS-2136 onward.
+
+  Tests: two behavioural legs in tests/features/roadmap_log_bundle_row/ (INV-14). Both verified RED against two mutations -- no gate at all, and a gate that fires EARLY before placement is resolved and returns a plausible ok:true envelope. The second is why the sorted-placement leg exists: without it the suite would pass against a preview that fakes its answer.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

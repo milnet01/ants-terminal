@@ -9990,6 +9990,37 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     }
 
     const QString updated = lines.join(QChar('\n'));
+    const QString rowText = renderRow(cells);
+
+    // ANTS-3798 — dry_run preview, parity with create_section directly above.
+    // Every guard has already run and every derived value is resolved: the
+    // section located, the column count validated, the cells escaped, and the
+    // insertion point chosen (including the numeric-aware `sorted` placement,
+    // which is the one thing here a caller cannot predict). So the preview
+    // reports the SAME row_index / columns / created_table the real write
+    // would, plus the rendered `row` — and `bytes` in place of bytes_written,
+    // the house convention for "this is what it would have cost".
+    //
+    // This op was the last roadmap_log write with no preview: ANTS-2077 added
+    // one to append/append_batch and ANTS-2136 swept flip, flip_batch,
+    // annotate, create_section and amend_body, but bundle_row was missed. It
+    // is a poor one to miss, because a mismatched column count is refused
+    // while a wrongly-sorted or wrongly-escaped cell is not — a mangled table
+    // is exactly the outcome you would want to see before it lands.
+    if (req.value(QStringLiteral("dry_run")).toBool()) {
+        QJsonObject out;
+        out["ok"]            = true;
+        out["op"]            = QStringLiteral("bundle_row");
+        out["dry_run"]       = true;
+        out["file"]          = QStringLiteral("ROADMAP.md");
+        out["section"]       = section;
+        out["row_index"]     = rowIndex;
+        out["columns"]       = createdTable ? header.size() : columns;
+        out["created_table"] = createdTable;
+        out["row"]           = rowText;
+        out["bytes"]         = static_cast<int>(rowText.toUtf8().size() + 1);
+        return QJsonDocument(out);
+    }
 
     // 7. Atomic write.
     QSaveFile rw(roadmapPath);
@@ -10004,7 +10035,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
                 .arg(roadmapPath));
 
     // 8. Success envelope.
-    const QString rowText = renderRow(cells);
     QJsonObject out;
     out["ok"]            = true;
     out["file"]          = QStringLiteral("ROADMAP.md");

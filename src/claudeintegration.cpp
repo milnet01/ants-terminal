@@ -9537,18 +9537,32 @@ void ClaudeIntegration::onMcpConnection() {
                         "(uppercase first 4 chars). Ignored under "
                         "id_strategy:\"stable_prefix\".");
 
-                    // ANTS-2077 — dry_run preview flag.
+                    // ANTS-2077 — dry_run preview flag. ANTS-2136 extended it
+                    // to every other op and ANTS-3798 to the last one
+                    // (bundle_row); the description below said "append /
+                    // append_batch" until then, which is how bundle_row's
+                    // missing preview stayed invisible — a reader checking
+                    // whether their op supported it found a doc implying none
+                    // did except append. It now enumerates, so the next op
+                    // added is either listed here or visibly absent.
                     QJsonObject dryRunProp;
                     dryRunProp["type"] = "boolean";
                     dryRunProp["description"] = QStringLiteral(
-                        "Optional. When true on op:\"append\" / "
-                        "\"append_batch\", return the would-be id(s), "
-                        "formatted bullet(s) and 1-based insertion "
-                        "line(s) WITHOUT writing ROADMAP.md or bumping "
-                        ".roadmap-counter — a free preview to verify "
-                        "prefix / format / section before committing. "
-                        "Envelope carries dry_run:true; append_batch "
-                        "reports applied_count:0 + would_apply_count.");
+                        "Optional. Supported on EVERY op — \"append\" and "
+                        "\"append_batch\" (ANTS-2077), \"flip\", "
+                        "\"flip_batch\", \"annotate\", \"create_section\" and "
+                        "\"amend_body\" (ANTS-2136), \"bundle_row\" "
+                        "(ANTS-3798). Returns the resolved preview WITHOUT "
+                        "writing ROADMAP.md or bumping .roadmap-counter — a "
+                        "free pre-flight to verify prefix / format / section / "
+                        "locator before committing. Envelope carries "
+                        "dry_run:true and reports `bytes` (would-be) in place "
+                        "of bytes_written; append/append_batch add the "
+                        "would-be id(s), formatted bullet(s) and 1-based "
+                        "insertion line(s), append_batch reporting "
+                        "applied_count:0 + would_apply_count; bundle_row adds "
+                        "the rendered `row` plus the row_index / columns / "
+                        "created_table the write would have produced.");
 
                     // ANTS-2126 — pass designator for op:"append" on a
                     // `#### Pass N.M` heading roadmap.

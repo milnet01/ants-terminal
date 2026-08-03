@@ -73,6 +73,37 @@ so it lives only here (no `docs/specs/ANTS-1691.md`).
   INV-1…12 handler seam bypassed the schema, so the wiring gap shipped
   invisibly).
 
+- **INV-14** (ANTS-3798) `dry_run` — `dry_run:true` returns the resolved
+  preview and leaves `ROADMAP.md` **byte-identical**; the envelope carries
+  `dry_run:true`, `op:"bundle_row"`, the rendered `row`, and `bytes`
+  (would-be) **in place of** `bytes_written`, which is the signal a caller
+  keys on to tell a preview from a write. Two legs, and the second is the
+  one that matters:
+  - the preview cannot drift from the write — running the same request for
+    real yields the identical `file` / `section` / `row_index` / `columns` /
+    `created_table`, and `bytes == bytes_written`;
+  - the preview resolves the **sorted** placement. `position:"sorted"` is
+    the one value a caller cannot predict, since it depends on a
+    numeric-aware collation against rows already in the table, and a gate
+    placed *before* the placement logic would still return `ok:true` with a
+    plausible envelope. Inserting `40` into a table holding `9` and `78`
+    must preview `row_index:2` — not 3, where a plain append lands it, and
+    not 1, where a codepoint compare would.
+
+  bundle_row was the **last** roadmap_log write op with no preview:
+  ANTS-2077 added one to `append`/`append_batch`, ANTS-2136 swept `flip`,
+  `flip_batch`, `annotate`, `create_section` and `amend_body`, and this op
+  was missed. It is a poor one to miss — a mismatched column count is
+  refused up front, but a wrongly-sorted or wrongly-escaped cell is not, so
+  a mangled Markdown table is exactly the outcome worth seeing first.
+
+  The gap also had a documentation half, and that is how it stayed
+  invisible: the schema's `dry_run` description read *"when true on
+  op:append / append_batch"* long after ANTS-2136 had extended it, so a
+  reader checking whether bundle_row supported the flag found a doc
+  implying nothing did except append. The description now **enumerates**
+  every op, so the next one added is either listed or visibly absent.
+
 ## Method
 
 `QTemporaryDir` holds a synthetic `ROADMAP.md` per test; the test calls

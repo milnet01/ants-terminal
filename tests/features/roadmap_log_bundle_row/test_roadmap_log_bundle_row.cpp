@@ -320,3 +320,88 @@ TEST(RoadmapLogBundleRow, Inv13SchemaDeclaresBundleRowParams) {
                "additionalProperties:false";
     }
 }
+
+// INV-14 (ANTS-3798) — dry_run previews WITHOUT writing, and the preview
+// agrees with the write it is previewing.
+//
+// bundle_row was the last roadmap_log write op with no preview: ANTS-2077
+// added one to append/append_batch and ANTS-2136 swept the rest. A poor one to
+// miss, because a mismatched column count is refused up front while a
+// wrongly-sorted or wrongly-escaped cell is not — a mangled Markdown table is
+// precisely the outcome worth seeing before it lands.
+TEST(RoadmapLogBundleRow, Inv14DryRunPreviewsWithoutWriting) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), roadmapWithTable());
+    const QString before = readRoadmap(dir.path());
+    RemoteControl rc(nullptr);
+
+    auto req = baseReq(dir.path(), {"79", "ccc333", "new", "d"});
+    req["dry_run"] = true;
+    const auto preview = rc.cmdRoadmapLogBundleRowForTest(req).object();
+
+    ASSERT_TRUE(preview["ok"].toBool()) << preview["error"].toString().toStdString();
+    EXPECT_TRUE(preview["dry_run"].toBool());
+    EXPECT_EQ(preview["op"].toString(), QStringLiteral("bundle_row"));
+    // `bytes` (would-be), never bytes_written — the house convention, and the
+    // signal a caller keys on to tell a preview from a write.
+    EXPECT_TRUE(preview.contains("bytes"));
+    EXPECT_FALSE(preview.contains("bytes_written"));
+    EXPECT_EQ(preview["row"].toString(),
+              QStringLiteral("| 79 | ccc333 | new | d |"));
+
+    EXPECT_EQ(readRoadmap(dir.path()), before)
+        << "dry_run must leave ROADMAP.md byte-identical";
+
+    // The preview cannot drift from the write, because both read the same
+    // resolved values: run it for real and compare every shared field.
+    req.remove("dry_run");
+    const auto real = rc.cmdRoadmapLogBundleRowForTest(req).object();
+    ASSERT_TRUE(real["ok"].toBool()) << real["error"].toString().toStdString();
+    for (const char *key : {"file", "section", "row_index", "columns",
+                            "created_table"}) {
+        EXPECT_EQ(preview[QLatin1String(key)], real[QLatin1String(key)])
+            << "preview and write disagree on " << key;
+    }
+    EXPECT_EQ(preview["bytes"].toInt(), real["bytes_written"].toInt());
+    EXPECT_NE(readRoadmap(dir.path()), before) << "the real call must write";
+}
+
+// The preview must resolve the SORTED insertion point too — the one value a
+// caller cannot predict, since it depends on a numeric-aware collation against
+// rows already in the table. A gate placed before the placement logic would
+// still return ok:true and a plausible envelope, so this is what distinguishes
+// a real preview from an early bail-out.
+TEST(RoadmapLogBundleRow, Inv14DryRunResolvesSortedPlacement) {
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), roadmapWithTable());   // rows: 9, then 78
+    RemoteControl rc(nullptr);
+
+    // 40 sorts numerically between 9 and 78, so row_index must be 2 — not 3,
+    // which is where a plain append would land it, and not 1, which is where a
+    // codepoint compare ("40" < "9") would.
+    auto req = baseReq(dir.path(), {"40", "ddd444", "middle", "e"});
+    req["position"] = QStringLiteral("sorted");
+    req["sort_col"] = 0;
+    req["dry_run"]  = true;
+
+    const auto preview = rc.cmdRoadmapLogBundleRowForTest(req).object();
+    ASSERT_TRUE(preview["ok"].toBool()) << preview["error"].toString().toStdString();
+    EXPECT_EQ(preview["row_index"].toInt(), 2)
+        << "dry_run short-circuited before the sorted-placement logic, so its "
+           "row_index describes an insertion that would not have happened";
+
+    req.remove("dry_run");
+    const auto real = rc.cmdRoadmapLogBundleRowForTest(req).object();
+    ASSERT_TRUE(real["ok"].toBool());
+    EXPECT_EQ(preview["row_index"].toInt(), real["row_index"].toInt());
+    const QStringList lines = readRoadmap(dir.path()).split(QChar('\n'));
+    int dataRow = 0;
+    for (const QString &ln : lines) {
+        if (!ln.startsWith(QChar('|')) || ln.contains(QStringLiteral("---")) ||
+            ln.contains(QStringLiteral("Bundle |")))
+            continue;
+        if (++dataRow == 2)
+            EXPECT_TRUE(ln.startsWith(QStringLiteral("| 40 |"))) << ln.toStdString();
+    }
+    EXPECT_EQ(dataRow, 3);
+}
