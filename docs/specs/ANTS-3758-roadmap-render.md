@@ -52,21 +52,38 @@ tests/` returns nothing.
 ## 2. Surface
 
 New: `src/roadmaprender.{h,cpp}` in `ants_roadmapstore_lib`, beside
-`src/roadmapexport.cpp` in that lib's source list. Qt6::Core only — no Widgets,
-because ANTS-3794 will call it from a headless publish path.
+`src/roadmapexport.cpp` in that lib's source list — so `Qt6::Core` and
+`Qt6::Sql`, the two that lib links, and **no Widgets**, because ANTS-3794 will
+call it from a headless publish path.
+
+That lib does **not** link `src/projectsettings.cpp`, so the render cannot read
+`.ants/project.json` to find a project's roadmap path. It therefore takes the
+live roadmap's path as a parameter and resolving `project.json` is the caller's
+job (ANTS-3794's).
 
 ### 2.1 `RoadmapStore::listElements()` — the reader that does not exist
 
 The store has **no element enumerator**: `grep -n "listElements\|ElementRow"
 src/roadmapstore.h src/roadmapstore.cpp` returns nothing. `RoadmapExport`
-consequently reaches past its own reader with raw SQL —
-`RoadmapExport::writeElements()` runs `SELECT e.position, e.kind, e.payload,
-i.id_fold FROM element e …` directly, precisely the pattern
-`RoadmapStore::listSections()`'s own header comment says that surface exists to
-prevent.
+consequently reaches past its own reader with raw SQL — `writeElements()`, a
+free function in `src/roadmapexport.cpp`'s anonymous namespace, runs `SELECT
+e.position, e.kind, e.payload, i.id_fold FROM element e …` directly, precisely
+the pattern `RoadmapStore::listSections()`'s own header comment says that
+surface exists to prevent.
 
-The render cannot be written without this, so it is added here and
-`RoadmapExport` is refitted onto it in the same change — a new reader whose
+**The same gap exists for the project row**, and § 2.8's preamble cannot be
+built without closing it: there is no reader for `project.name` or
+`project.legend` either, and `roadmapexport.cpp` hand-rolls `SELECT project_id,
+name, legend FROM project WHERE export_slug = ?` for them. So this spec adds
+**two** readers:
+
+```cpp
+struct ProjectRow { QString root, name, exportSlug; QJsonObject legend; };
+std::optional<ProjectRow> readProject(qint64 projectId, QString *error = nullptr) const;
+```
+
+The render cannot be written without either, so both are added here and
+`RoadmapExport` is refitted onto them in the same change — a new reader whose
 first caller leaves the old hand-rolled query in place ships two readers that
 will disagree, so the refit is part of this work rather than a follow-up.
 
@@ -111,9 +128,12 @@ document order (ANTS-3796), so emitting sections in that order already places a
 child after its parent, and **the emitted heading level is `section.level`,
 read directly**. `parent_id` is not consulted to compute it. It is still read,
 for one purpose only: when the depth it implies disagrees with the stored
-`level`, the render **refuses** (INV-9) rather than silently picking one. A
-store that disagrees with itself is corrupt, and a renderer that quietly
-resolves the disagreement renumbers headings on the next reparent.
+`level`, the render **refuses** (INV-9) rather than silently picking one. The
+rule is exact: a section with no parent has `level == 2`, and a section with a
+parent has `level == parent.level + 1`. The synthetic root (§ 2.8) has no
+parent and `level == 0`, and is exempt. A store that disagrees with itself is
+corrupt, and a renderer that quietly resolves the disagreement renumbers
+headings on the next reparent.
 
 ### 2.3 File routing — where each section is written
 
@@ -121,9 +141,10 @@ resolves the disagreement renumbers headings on the next reparent.
 
 | `source_path` | Rendered into |
 |---|---|
-| SQL `NULL` | the project's live roadmap (`ROADMAP.md`, or `project.json`'s `roadmap` override) |
+| SQL `NULL` | the live roadmap, at `RenderOptions::liveRoadmapPath` (the caller resolves `project.json`'s `roadmap` override) |
 | a relative path | that path **resolved against `projectRoot`** (`docs/roadmap/0.5.md`, `docs/roadmap/0.6.md`) |
-| `''`, or a path resolving outside `projectRoot` | **refusal** — see below |
+| an absolute path | accepted **only if** it canonicalises under `projectRoot`; the column is relative by convention and nothing enforces it, so the containment check is what decides |
+| `''`, or any path resolving outside `projectRoot` | **refusal** — see below |
 
 A render pass therefore writes **a set of files**, not one. This project has
 two archives today (`ls docs/roadmap/`), so the first live render writes three
@@ -151,6 +172,13 @@ breaks.
 An excluded item is excluded silently in the file and **counted in the
 outcome** (§ 2.7), because a render that quietly drops items and reports
 success is the failure this project's audit history keeps re-learning.
+
+**A section always renders, whatever survives the filter** — heading and intro
+included, even when every one of its items was excluded and even when it had
+none to begin with. Suppressing an empty section is the other defensible
+choice, and it would make the rendered document's section set depend on
+item visibility, which § 2.2's ordering and INV-1's round-trip both assume it
+does not.
 
 ### 2.5 The publish gate
 
@@ -221,14 +249,26 @@ comparison:
 
 1. **Items the render excludes by design** — `visibility = 'internal'` and
    `status = 'dropped'` (INV-4). Project A to the same predicate.
-2. **Record kinds markdown does not carry** — `history`, and any
-   `relationship` / `citation` / `feedback_ref` row, none of which has a
-   markdown serialisation. `RoadmapMigrateLoad::load()` also *writes* history
-   with a caller-supplied `Options::changedAt`, so those rows differ even in
-   principle.
-3. **Store-populated identity fields whose value is a fact about the write,
-   not about the item** — `created` / `last_modified`, which the second load
-   stamps afresh.
+2. **Record kinds markdown does not carry** — `history`, `relationship`,
+   `citation`, `feedback_ref`, and the `id_prefix` high-water record
+   `writeIdPrefixes()` emits. None has a markdown serialisation.
+   `RoadmapMigrateLoad::load()` also *writes* history with a caller-supplied
+   `Options::changedAt`, so those rows differ even in principle; and the
+   high-water drops whenever the highest id belongs to an item family 1
+   excluded.
+3. **Per-item fields the export emits and markdown has no carrier for** —
+   `id_origin` (`roadmapexport.cpp` writes it beside `id`), `provenance` (one
+   of its four JSON columns, with `lanes`, `evidence` and `extras`), and the
+   `created` / `last_modified` / `shipped` dates. A re-load reconstructs
+   `id_origin` as `parsed` and `provenance` from its own defaulting rules, so
+   these differ for a reason that is about the *format*, not about the render.
+
+**The third family is justified by what markdown can express, and NOT by
+anything the loader stamps** — an earlier draft of this section claimed the
+second load re-stamps `created`/`last_modified`, and it does not: `putItem()`
+binds caller-supplied values and writes NULL when they are empty, and neither
+`roadmapmigrate.cpp` nor `roadmapmigrateload.cpp` touches either field. The
+exclusion stands; the reason given for it was invented.
 
 What survives the projection is exactly the set of facts markdown is supposed
 to carry, and INV-1 is the claim that *that* set round-trips. The excluded
@@ -254,9 +294,13 @@ of wrapping and blank lines, reviewable as a diff before it is committed, and
 
 ```cpp
 struct RenderOptions {
+    // Where a NULL source_path routes. Required: this lib cannot read
+    // .ants/project.json (§ 2), so the caller resolves it.
+    QString liveRoadmapPath;
     // Computes everything and writes nothing. filesWritten lists the files a
-    // real run WOULD have written, so a caller can review the set before
-    // committing to it; gateFailures is populated identically either way.
+    // real run WOULD have written — and is EMPTY when the gate fails, because
+    // a real run would have written nothing either. gateFailures is populated
+    // identically either way.
     bool dryRun = false;
 };
 struct RenderOutcome {
@@ -283,22 +327,40 @@ and the false one.
 
 ### 2.8 The file preamble
 
-Everything above the first section heading, which §§ 2.1–2.2 do not reach
-because it belongs to no section's element list. Each piece names the store
-column it comes from, because a preamble sourced from nothing is how INV-8's
-format marker would come to be hardcoded:
+**The preamble is not outside the section model — it is a section.** Content
+above the first heading is filed into the **synthetic root**: the empty-slug,
+`level = 0` row ANTS-3757 § 2.1 creates and `RoadmapMigrateLoad` documents as
+"the same row the plan uses for content above the first heading". It is
+returned by `listSections()` like any other, and `sectionOrderLess()` puts it
+first.
 
-| Emitted | Source |
-|---|---|
-| `roadmap-format.md` § 3.1's format marker, first five lines | a constant — it declares the format this renderer emits, so it is the renderer's own claim, not stored data |
-| `# <name> — Roadmap` H1 | `project.name` |
-| § 5.1's status legend | `project.legend`, written by `RoadmapStore::setLegend()` and rendered back in the project's own wording |
-| a section's intro prose | `SectionRow::intro`, emitted between the heading and the section's first element |
+So §§ 2.1–2.2 **do** reach it, and two rules follow that an implementer would
+otherwise have to invent:
+
+- **A `level == 0` section emits no heading.** There is no markdown form for
+  it, and § 2.2's "the emitted heading level is `section.level`" would
+  otherwise have to produce one. Its intro and elements render normally.
+- **INV-9's level/parent agreement check does not apply to it.** A root has no
+  parent and level 0 by construction.
+
+On top of that section's own content, each file gets the pieces below. Each
+names where it comes from, because a preamble sourced from nothing is how
+INV-8's format marker would come to be hardcoded:
+
+| Emitted | Source | Which files |
+|---|---|---|
+| `roadmap-format.md` § 3.1's format marker, placed within the first five lines | a constant — it declares the format this renderer emits, so it is the renderer's own claim, not stored data | **every** rendered file, archives included: an archive that loses the marker stops being parsed as a conforming file |
+| `# <name> — Roadmap` H1 | `project.name`, via § 2.1's `readProject()` | live roadmap only |
+| `roadmap-data-model.md` § 5.1's status legend | `project.legend`, written by `RoadmapStore::setLegend()` and rendered back in the project's own wording | live roadmap only |
+| a section's intro prose | `SectionRow::intro`, emitted between the heading and the section's first element | wherever that section routes |
+
+An archive therefore carries the marker and its own sections, and nothing else
+— which is what `RoadmapMigrate::findRoadmaps()` needs to re-discover it in
+§ 2.6's oracle.
 
 A project with no stored legend emits none, rather than emitting this
 project's. The legend is per project precisely so one renderer can serve every
-project's vocabulary (`roadmap-data-model.md` § 5.1), and substituting a
-default would quietly undo that.
+project's vocabulary, and substituting a default would quietly undo that.
 
 ## 3. Invariants
 
@@ -339,21 +401,30 @@ default would quietly undo that.
   filter is written as "open items only", or `visibility` is ignored. *Test:*
   `Inv4Membership`.
 - **INV-5** — **A public open item with an empty `layman` makes the whole
-  project render nothing.** No file is written, `gateFailures` names the ids,
-  and the call reports failure. *Breaks when:* the gate is applied per item
-  (skipping the offender) rather than per project. *Test:* `Inv5PublishGate`.
-- **INV-6** — **A render pass writes every file or none.** *Breaks when:*
-  files are written in a loop with no staging, so a mid-loop failure leaves an
-  updated archive beside a stale roadmap. *Test:* `Inv6AllOrNothing`, which
-  makes the second file's write fail and asserts the first is unchanged.
+  project render nothing.** No file is written, and the call returns an
+  **engaged** `RenderOutcome` whose non-empty `gateFailures` names every
+  offending id — never `std::nullopt`, which § 2.5 reserves for I/O and SQL
+  errors. *Breaks when:* the gate is applied per item (skipping the offender)
+  rather than per project, or a refusal is signalled by returning `nullopt`,
+  which makes the ids unreachable. *Test:* `Inv5PublishGate`.
+- **INV-6** — **No failure in rendering, gating or serialising leaves a partial
+  write.** Every file is staged before any is committed. The commit phase
+  itself is the documented exception (§ 2.7): it cannot be made atomic without
+  a journal, so a failure there reports which files landed rather than
+  pretending none did. *Breaks when:* files are written in a loop with no
+  staging, so a mid-loop *render* failure leaves an updated archive beside a
+  stale roadmap. *Test:* `Inv6AllOrNothing`, which fails the second file's
+  serialisation and asserts the first is unchanged on disk.
 - **INV-7** — **Rendering is idempotent.** Rendering twice with no store
   change writes byte-identical files the second time, so a scheduled render
   produces no spurious diff. *Breaks when:* any ordering falls back to an
   unstable comparison, or a timestamp is emitted. *Test:* `Inv7Idempotent`.
-- **INV-8** — **Every rendered live roadmap carries
-  `roadmap-format.md` § 3.1's format marker in its first five lines.** *Breaks
-  when:* the marker is treated as prose belonging to the first section's intro
-  and is lost with it. *Test:* `Inv8FormatMarker`.
+- **INV-8** — **Every rendered file carries `roadmap-format.md` § 3.1's format
+  marker within its first five lines** — archives included (§ 2.8), because an
+  archive that loses it stops being parsed as a conforming file and § 2.6's
+  oracle re-discovers it through `findRoadmaps()`. *Breaks when:* the marker is
+  emitted only for the live roadmap, or is treated as prose belonging to the
+  synthetic root's intro and lost with it. *Test:* `Inv8FormatMarker`.
 - **INV-9** — **A section's emitted heading level is its stored `level`**, and
   a stored `level` that disagrees with the depth implied by `parent_id` is a
   refusal, not a silent choice between them. *Breaks when:* the renderer
@@ -363,13 +434,15 @@ default would quietly undo that.
   position**, interleaved with items. *Breaks when:* the renderer emits all
   items and then all other elements. *Test:* `Inv10ElementInterleaving`.
 - **INV-11** — **`listElements()` is the only element reader in production
-  code.** No `FROM element` SQL exists under `src/` outside
-  `src/roadmapstore.cpp`. **Tests are out of scope and that is not a
-  loophole**: ten such queries already exist under `tests/features/`, and they
+  code**, and `readProject()` the only project reader. No `FROM element` or
+  `FROM project` SQL exists under `src/` outside `src/roadmapstore.cpp`. **Tests are out of scope and that is not a
+  loophole**: nine such queries already exist under `tests/features/` (`grep -rc
+  "FROM element" tests/features/*/*.cpp` — 5 + 2 + 2), and they
   are there to assert the schema behaves as specified — routing them through
   the reader under test would make them assert the reader agrees with itself.
-  *Breaks when:* `RoadmapExport::writeElements()` keeps its raw query and the
-  two readers drift on ordering. *Test:* source grep scoped to `src/`,
+  *Breaks when:* `roadmapexport.cpp`'s `writeElements()` keeps its raw query,
+  or its project query survives, and the two readers drift. *Test:* a case-insensitive source grep for
+  `FROM\s+element` and `FROM\s+project` scoped to `src/`,
   `Inv11SingleElementReader`.
 
 ## 4. RAM / build cost
@@ -405,7 +478,9 @@ No new dependency; one new TU in an existing lib, so build cost is one
   projects use another format** — 3D_Engine GFM task lists, RetroDB pass
   headings (`scratchpad/cold-eyes-3795/gate2.py`, 2026-08-03) — and emitting
   § 3.5 for them would silently convert their roadmap's format at cutover, a
-  user-visible change nobody asked for. The
+  user-visible change nobody asked for. (Measured 2026-08-03 by classifying
+  each corpus roadmap's dominant bullet shape; `tools/roadmap-corpus-survey.py`
+  is the committed tool that reports the pass-headings half.) The
   seam already exists on the write side (`src/passheadingwrite.{h,cpp}`,
   ANTS-2126), so this is deferred work rather than a wall.
 
@@ -414,10 +489,15 @@ No new dependency; one new TU in an existing lib, so build cost is one
   refusal.** `SectionRow` carries slug, title, intro, level, `parent_id`,
   `source_path` and `position`, and `RoadmapParse::detectRoadmapFormat()`
   classifies *lines*, not stored rows. The guard has to come from the caller:
-  **ANTS-3794 must not schedule a render for a project whose roadmap
-  `detectRoadmapFormat()` does not classify as the emoji-bullet form**, and
-  that obligation is recorded here because this spec is where the hazard is
-  visible. Adding the column instead is a schema change with a migration, which
+  **ANTS-3794 must not schedule a render for a project unless
+  `RoadmapParse::detectRoadmapFormat(lines, &sawSignal)` returns `"ants-v1"`
+  *and* sets `sawSignal`.** Both halves are required: that function's own
+  header records that it "answers `ants-v1` for input it does not recognise,
+  including an empty file — so a returned format is no evidence that anything
+  was understood", and `sawSignal` exists for exactly this. A guard testing the
+  return value alone would pass every unrecognised file it is meant to catch.
+  The obligation is recorded here because this spec is where the hazard is
+  visible, and repeated in § 7 so it reaches the id that must honour it. Adding the column instead is a schema change with a migration, which
   is not this id's.
 - **When the render runs, and pushing its output anywhere** — ANTS-3794.
 - **Moving `roadmap_query` / `roadmap_log` / `RoadmapDialog` onto the store** —
@@ -470,6 +550,13 @@ accumulates silently in a binary that still links green.
   whether the render lists closed items at all") and § 9's own bullet. § 2.4
   answers it; both are amended on ship, or the standard contradicts itself
   about a question that is settled.
+- **ANTS-3794 inherits § 5's scheduling guard** — it must not schedule a render
+  unless `detectRoadmapFormat(lines, &sawSignal)` returns `"ants-v1"` *and*
+  sets `sawSignal`. Recorded here because the id that must honour it is not the
+  id that discovered it.
+- `roadmap-data-model.md` § 9's bullet asking for "the check that catches a
+  render silently missing a required piece" is answered by INV-12, and is
+  amended on ship.
 - `CLAUDE.md`'s module map and `docs/subsystems.md` gain `roadmaprender`.
 - `roadmap-format.md` § 3.5.1's counter definition still needs its cut-over
   amendment — that is ANTS-3793's, not this one's.
@@ -478,4 +565,5 @@ accumulates silently in a binary that still links green.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| 2 | 2026-08-03 | 2 (same partition, cold; no prior-loop briefing) | 6 / 6 / 10 / 12 / 0 | 34 verified, all fixed. **Stopped here at the user's explicit instruction to limit review token spend, one loop short of the 3-loop cap — recorded so nobody reads this as convergence.** Both lanes again led on the same defects and both had opened real source, which is what makes the tail credible. Three where the draft asserted behaviour that does not exist: § 2.8 claimed the preamble sits outside the section model, but content above the first heading is filed into the **synthetic root** (empty slug, `level = 0`) which `listSections()` returns — so §§ 2.1–2.2 do reach it, and a level-0 section has no markdown heading form; the equality projection omitted `id_origin`, `provenance` and the `id_prefix` high-water, all of which the export emits, so INV-1's test could not have passed; and the third exclusion family was justified by the loader re-stamping `created`/`last_modified`, which **nothing does** — `putItem()` binds caller values, and neither migration TU touches either field. The exclusion was right and its stated reason was invented. Also fixed: § 2.8's legend and H1 had no reader (`readProject()` added — `roadmapexport.cpp` hand-rolls `SELECT … FROM project`, the same anti-pattern § 2.1 exists to end); the `detectRoadmapFormat()` guard was unsound, since that function answers `ants-v1` for input it does not recognise and `sawSignal` is what distinguishes them; the lib does not link `projectsettings.cpp`, so the live-roadmap path became a `RenderOptions` field rather than a `project.json` read the render cannot perform; INV-5 and INV-6 each contradicted the prose three sections away; and `writeElements()` was cited as a member when it is a free function in an anonymous namespace. Two collateral from loop 1's own fixes were caught in the post-fix sweep rather than by a lane: INV-8 still said "live roadmap" after § 2.8 extended the marker to archives, and INV-11's grep covered `FROM element` after `readProject()` had made `FROM project` equally load-bearing. |
 | 1 | 2026-08-03 | 2 (single doc, cold; genre pinned `spec`) | 4 / 6 / 8 / 7 / 1 | 25 verified, all fixed. **Both lanes independently named the same three CRITICALs, and the first of them gutted the draft's central design.** § 2.6 proved fidelity by comparing a full export of the store against an export of the re-loaded render — unsatisfiable on any real store, because INV-4 deliberately excludes `internal` and `dropped` items, and `RoadmapMigrateLoad::load()` stamps history rows with a caller-supplied `changedAt`. The oracle now compares a **projection**, with the three excluded families enumerated. A second CRITICAL came at the same claim from the other side: the oracle proves losslessness and NOT § 3.5 conformance, because `roadmap-format.md` § 3.5.3 defaults an absent `Kind:` — so a render omitting it would round-trip clean, which is precisely the "silently missing a required piece" check `roadmap-data-model.md` § 9 assigns to this spec. INV-12 now asserts against the rendered text rather than a re-parse. Third: § 2.2 said `parent_id` drove the heading level while INV-9 said `level` did, so the two readings produced opposite implementations of the same line. Also fixed: **INV-11 was already false when written** (ten `FROM element` queries exist under `tests/features/`), now scoped to `src/`; `ElementRow` could not carry the export refit it promised, since `id_fold` is on `ItemRef` and not `ItemWrite`; the gate had three incompatible failure channels (`std::optional`, `gateFailures`, "exits non-zero"); § 2 never said where the format marker, H1, legend or section intro come from, so INV-8 asserted a marker nothing sourced (new § 2.8); `source_path` was written "verbatim" with no containment check, so a `../../` value escaped the project (new INV-13); and the RAM budget contradicted its own staging design, bounding peak by the largest file when all files are buffered at once. Two self-inflicted: § 5 froze one of the two discredited `layman` counts three sections after § 2.5 disowned both, and the exact byte count went stale during drafting because appending roadmap notes changed it. |
