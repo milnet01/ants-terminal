@@ -34,7 +34,7 @@ struct Fixture {
 
     qint64 section(qint64 projectId) {
         QString err;
-        auto s = store.addSection(projectId, QStringLiteral(""), QStringLiteral(""), 0,
+        auto s = store.addSection(projectId, QStringLiteral(""), QStringLiteral(""), 0, 0,
                                   std::nullopt, &err);
         EXPECT_TRUE(s.has_value()) << err.toStdString();
         return s.value_or(-1);

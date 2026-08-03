@@ -28,6 +28,7 @@
 #include <QTemporaryDir>
 #include <QVariant>
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <memory>
@@ -211,9 +212,9 @@ qint64 addProject(RoadmapStore &s, const QString &rootDir, const QString &slug,
 }
 
 qint64 addSection(RoadmapStore &s, qint64 project, const QString &slug, const QString &title,
-                  int level, std::optional<qint64> parent = std::nullopt) {
+                  int level, int position, std::optional<qint64> parent = std::nullopt) {
     QString err;
-    const auto id = s.addSection(project, slug, title, level, parent, &err);
+    const auto id = s.addSection(project, slug, title, level, position, parent, &err);
     EXPECT_TRUE(id.has_value()) << err.toStdString();
     return id.value_or(-1);
 }
@@ -260,17 +261,25 @@ void buildFixture(RoadmapStore &s, const QString &rootDir) {
     sqlExec(db, QStringLiteral("UPDATE project SET legend = ? WHERE project_id = ?"),
             {RoadmapStore::canonicalJson(legend), alpha});
 
-    const qint64 aRoot = addSection(s, alpha, QStringLiteral(""), QStringLiteral(""), 0);
+    // ANTS-3796 — positions are insertion order here, which for alpha is
+    // already neither slug order nor (depth, slug) order. This fixture is
+    // golden-backed, so its only job for the new column is to carry a value
+    // through § 2.4's record shape; the ORDERING invariants (INV-1, INV-5) are
+    // built in-test against their own stores, deliberately not seeded here —
+    // adding sections to this project would rewrite every record in
+    // alpha.jsonl and make the reviewed golden diff unreadable in the same pass
+    // that changes the record shape.
+    const qint64 aRoot = addSection(s, alpha, QStringLiteral(""), QStringLiteral(""), 0, 0);
     const qint64 perf = addSection(s, alpha, QStringLiteral("performance-2"),
-                                   QStringLiteral("Performance"), 3);
-    addSection(s, alpha, QStringLiteral("vt-parser"), QStringLiteral("VT parser"), 4, perf);
+                                   QStringLiteral("Performance"), 3, 1);
+    addSection(s, alpha, QStringLiteral("vt-parser"), QStringLiteral("VT parser"), 4, 2, perf);
     // A child whose slug sorts BEFORE its parent's. Without the parents-first
     // term in § 2.4 the child would be emitted first, and a single-pass rebuild
     // could not resolve its parent.
     const qint64 zParent = addSection(s, alpha, QStringLiteral("z-parent"),
-                                      QStringLiteral("Z parent"), 2);
+                                      QStringLiteral("Z parent"), 2, 3);
     const qint64 aChild = addSection(s, alpha, QStringLiteral("a-child"),
-                                     QStringLiteral("A child"), 3, zParent);
+                                     QStringLiteral("A child"), 3, 4, zParent);
 
     // Insertion order is deliberately NOT id order (ANTS-10 before ANTS-9), so
     // an export that emits in rowid order fails INV-5 and INV-18.
@@ -325,7 +334,7 @@ void buildFixture(RoadmapStore &s, const QString &rootDir) {
 
     // ---- beta ----
     const qint64 beta = addProject(s, rootDir, QStringLiteral("beta"), QStringLiteral("Beta"));
-    const qint64 bRoot = addSection(s, beta, QStringLiteral(""), QStringLiteral(""), 0);
+    const qint64 bRoot = addSection(s, beta, QStringLiteral(""), QStringLiteral(""), 0, 0);
     addItem(s, beta, bRoot, 0, QStringLiteral("BETA-1"));
     addItem(s, beta, bRoot, 1, QStringLiteral("BETA-2"));
     sqlExec(db, QStringLiteral("INSERT INTO id_prefix VALUES (?,?,?)"),
@@ -333,7 +342,7 @@ void buildFixture(RoadmapStore &s, const QString &rootDir) {
 
     // ---- gamma: the sparse project ----
     const qint64 gamma = addProject(s, rootDir, QStringLiteral("gamma"), QStringLiteral("Gamma"));
-    const qint64 gRoot = addSection(s, gamma, QStringLiteral(""), QStringLiteral(""), 0);
+    const qint64 gRoot = addSection(s, gamma, QStringLiteral(""), QStringLiteral(""), 0, 0);
     addItem(s, gamma, gRoot, 0, QStringLiteral("GAMMA-1"));
 
     // ---- the three relationship variants, all anchored on alpha ----
@@ -398,52 +407,200 @@ struct Fixture {
 };
 
 // The nine TABLES (ten record types — `legend` is a column on `project`, not a
-// table), each projected onto its non-surrogate columns and joined on the
-// stable identity INV-2 names. Every rowid-valued column and project.root are
-// excluded: § 2.3 guarantees rowids differ after a rebuild, so a diff
-// including them would fail against a CORRECT implementation.
-const QList<QPair<const char *, const char *>> &inv2Projections() {
-    static const QList<QPair<const char *, const char *>> kP = {
-        {"project", "SELECT export_slug, name, legend FROM project ORDER BY export_slug"},
-        {"id_prefix",
-         "SELECT p.export_slug, x.prefix, x.high_water FROM id_prefix x "
-         "JOIN project p USING(project_id) ORDER BY 1, 2"},
-        {"section",
-         "SELECT p.export_slug, s.slug, s.title, s.level, s.intro, par.slug FROM section s "
-         "JOIN project p USING(project_id) LEFT JOIN section par ON par.section_id = s.parent_id "
-         "ORDER BY 1, 2"},
-        {"item",
-         "SELECT p.export_slug, i.id_fold, i.id, i.id_origin, i.status, i.headline, i.layman, "
-         "i.kind, i.source, i.priority, i.visibility, i.milestone, i.resolution, i.body, "
-         "i.created, i.last_modified, i.shipped, i.lanes, i.evidence, i.extras, i.provenance "
-         "FROM item i JOIN project p USING(project_id) ORDER BY 1, 2"},
-        {"element",
-         "SELECT p.export_slug, s.slug, e.position, e.kind, i.id_fold, e.payload FROM element e "
-         "JOIN section s USING(section_id) JOIN project p ON p.project_id = s.project_id "
-         "LEFT JOIN item i ON i.item_pk = e.item_pk ORDER BY 1, 2, 3"},
+// table). Each is projected onto its non-surrogate columns and joined on the
+// stable identity INV-2 names, and — since ANTS-3796 § 2.5 — the COLUMN LIST IS
+// DERIVED FROM `PRAGMA table_info`, never written out. Three sets:
+//
+//   derived     every column the pragma reports. This is the point: an
+//               enumeration built from a literal can confirm what is listed and
+//               can never catch an omission, which is how section.source_path
+//               (ANTS-3797) survived a shipped INV-2 for two specs.
+//   excluded    project.root, which INV-2 excludes by name, plus each table's
+//               OWN surrogate primary key. Named, not derived — and excluded
+//               rather than substituted, because a surrogate PK need have no
+//               single stable rendering: `element` is identified by the
+//               composite (section slug, position), so demanding a one-column
+//               substitute for element_id would fail against the correct
+//               projection.
+//   substituted every FOREIGN-KEY rowid column, replaced by the stable
+//               rendering compared in its place. NOT the same set as "rowid
+//               columns" and not the join keys: the old literals did not merely
+//               omit parent_id / item_pk / project_id, they projected par.slug /
+//               i.id_fold / p.export_slug INSTEAD, so a rule reading "derived
+//               minus the rowid columns" would stop comparing section parentage
+//               and element→item membership altogether.
+//
+// A foreign-key rowid with NO entry in the substitution map FAILS the diff
+// rather than being quietly skipped — that is what keeps the map exhaustive as
+// the schema grows, and INV-3 is what makes it a contract.
+
+struct TableDiff {
+    const char *table;
+    const char *alias;
+    const char *from;      // FROM + JOINs, aliased
+    const char *orderBy;   // explicit expressions — never positional, because
+                           // the select list is derived and its order is the
+                           // pragma's, not this file's
+};
+
+const QList<TableDiff> &inv2Tables() {
+    static const QList<TableDiff> kT = {
+        {"project", "p", "FROM project p", "p.export_slug"},
+        {"id_prefix", "x", "FROM id_prefix x JOIN project p USING(project_id)",
+         "p.export_slug, x.prefix"},
+        {"section", "s",
+         "FROM section s JOIN project p USING(project_id) "
+         "LEFT JOIN section par ON par.section_id = s.parent_id",
+         "p.export_slug, s.slug"},
+        {"item", "i", "FROM item i JOIN project p USING(project_id)",
+         "p.export_slug, i.id_fold"},
+        {"element", "e",
+         "FROM element e JOIN section s USING(section_id) "
+         "JOIN project p ON p.project_id = s.project_id "
+         "LEFT JOIN item i ON i.item_pk = e.item_pk",
+         "p.export_slug, s.slug, e.position"},
         // dst_project leads the store's own rel_xproj_uq, and two projects can
         // hold the same folded id — a key omitting it merges a cross-project
         // edge with a same-project one.
-        {"relationship",
-         "SELECT p.export_slug, r.type, s.id_fold, d.id_fold, r.dst_project, r.dst_id_fold, "
-         "r.dst_path FROM relationship r JOIN item s ON s.item_pk = r.src_pk "
-         "JOIN project p ON p.project_id = s.project_id LEFT JOIN item d ON d.item_pk = r.dst_pk "
-         "ORDER BY 1, 2, 3, 4, 5, 6, 7"},
+        {"relationship", "r",
+         "FROM relationship r JOIN item s ON s.item_pk = r.src_pk "
+         "JOIN project p ON p.project_id = s.project_id "
+         "LEFT JOIN item d ON d.item_pk = r.dst_pk",
+         "p.export_slug, r.type, s.id_fold, d.id_fold, r.dst_project, r.dst_id_fold, r.dst_path"},
         // project likewise LEADS cite_doc_uq: two projects each citing their
         // own README.md are two rows, not a collision.
-        {"citation",
-         "SELECT p.export_slug, i.id_fold, c.doc_path, c.target_file, c.symbol FROM citation c "
-         "JOIN project p USING(project_id) LEFT JOIN item i ON i.item_pk = c.item_pk "
-         "ORDER BY 1, 2, 3, 4, 5"},
-        {"feedback_ref",
-         "SELECT p.export_slug, i.id_fold, f.file FROM feedback_ref f "
-         "JOIN item i USING(item_pk) JOIN project p ON p.project_id = i.project_id ORDER BY 1, 2, 3"},
-        {"history",
-         "SELECT p.export_slug, i.id_fold, h.changed_at, h.seq, h.field, h.old_value, h.new_value "
-         "FROM history h JOIN item i USING(item_pk) JOIN project p ON p.project_id = i.project_id "
-         "ORDER BY 1, 2, 3, 4"},
+        {"citation", "c",
+         "FROM citation c JOIN project p USING(project_id) "
+         "LEFT JOIN item i ON i.item_pk = c.item_pk",
+         "p.export_slug, i.id_fold, c.doc_path, c.target_file, c.symbol"},
+        {"feedback_ref", "f",
+         "FROM feedback_ref f JOIN item i USING(item_pk) "
+         "JOIN project p ON p.project_id = i.project_id",
+         "p.export_slug, i.id_fold, f.file"},
+        {"history", "h",
+         "FROM history h JOIN item i USING(item_pk) "
+         "JOIN project p ON p.project_id = i.project_id",
+         "p.export_slug, i.id_fold, h.changed_at, h.seq"},
     };
-    return kP;
+    return kT;
+}
+
+// Excluded, keyed "<table>.<column>". project.root is INV-2's own named
+// exclusion; the rest are each table's surrogate PK. id_prefix and feedback_ref
+// appear nowhere here — their primary keys are composite over REAL columns,
+// which are compared like any other.
+const QSet<QString> &inv2Excluded() {
+    static const QSet<QString> kE = {
+        QStringLiteral("project.root"),      QStringLiteral("project.project_id"),
+        QStringLiteral("section.section_id"), QStringLiteral("item.item_pk"),
+        QStringLiteral("element.element_id"), QStringLiteral("relationship.rel_id"),
+        QStringLiteral("history.history_id"), QStringLiteral("citation.citation_id"),
+    };
+    return kE;
+}
+
+// The substitution map, keyed "<table>.<column>". Returned BY VALUE and taken
+// as a parameter by the diff rather than closed over, so INV-3's third leg can
+// inject a deliberately incomplete one — without that, the invariant guarding
+// exhaustiveness would be the one part of § 2.5 that ships untested.
+QHash<QString, QString> inv2Substitutions() {
+    return {
+        {QStringLiteral("id_prefix.project_id"), QStringLiteral("p.export_slug")},
+        {QStringLiteral("section.project_id"), QStringLiteral("p.export_slug")},
+        {QStringLiteral("section.parent_id"), QStringLiteral("par.slug")},
+        {QStringLiteral("item.project_id"), QStringLiteral("p.export_slug")},
+        {QStringLiteral("element.section_id"), QStringLiteral("s.slug")},
+        {QStringLiteral("element.item_pk"), QStringLiteral("i.id_fold")},
+        {QStringLiteral("relationship.src_pk"), QStringLiteral("s.id_fold")},
+        {QStringLiteral("relationship.dst_pk"), QStringLiteral("d.id_fold")},
+        {QStringLiteral("citation.project_id"), QStringLiteral("p.export_slug")},
+        {QStringLiteral("citation.item_pk"), QStringLiteral("i.id_fold")},
+        {QStringLiteral("feedback_ref.item_pk"), QStringLiteral("i.id_fold")},
+        {QStringLiteral("history.item_pk"), QStringLiteral("i.id_fold")},
+    };
+}
+
+QStringList pragmaColumns(QSqlDatabase db, const QString &table) {
+    QStringList out;
+    QSqlQuery q(db);
+    if (!q.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table)))
+        return out;
+    while (q.next())
+        out << q.value(1).toString();
+    return out;
+}
+
+QSet<QString> pragmaForeignKeyColumns(QSqlDatabase db, const QString &table) {
+    QSet<QString> out;
+    QSqlQuery q(db);
+    if (!q.exec(QStringLiteral("PRAGMA foreign_key_list(%1)").arg(table)))
+        return out;
+    // Column 3 is `from` — the local column the constraint is declared on.
+    while (q.next())
+        out.insert(q.value(3).toString());
+    return out;
+}
+
+// True when the two stores agree on every table. On disagreement `why` names
+// the table and the reason, and the caller decides whether that is a pass
+// (INV-3) or a failure (INV-2).
+bool inv2Diff(QSqlDatabase live, QSqlDatabase rebuilt, const QHash<QString, QString> &subs,
+              QString *why) {
+    const auto no = [&](const QString &msg) {
+        *why = msg;
+        return false;
+    };
+    for (const TableDiff &t : inv2Tables()) {
+        const QString table = QLatin1String(t.table);
+
+        // Read the pragma on BOTH stores and compare the SETS first. Reading it
+        // once and reusing it makes this comparison vacuous, and a column
+        // present on one side only would otherwise surface as a SQL error
+        // against a projection naming a column the other store lacks — a
+        // failure that reads as a broken test rather than as the finding.
+        const QStringList liveCols = pragmaColumns(live, table);
+        const QStringList rebuiltCols = pragmaColumns(rebuilt, table);
+        if (liveCols.isEmpty())
+            return no(table + QStringLiteral(": PRAGMA table_info returned nothing"));
+        if (liveCols != rebuiltCols)
+            return no(table + QStringLiteral(": column sets differ — live [") +
+                      liveCols.join(QLatin1Char(',')) + QStringLiteral("] vs rebuilt [") +
+                      rebuiltCols.join(QLatin1Char(',')) + QLatin1Char(']'));
+
+        const QSet<QString> fks = pragmaForeignKeyColumns(live, table);
+        QStringList select;
+        for (const QString &col : liveCols) {
+            const QString key = table + QLatin1Char('.') + col;
+            if (inv2Excluded().contains(key))
+                continue;
+            if (fks.contains(col)) {
+                const auto it = subs.constFind(key);
+                if (it == subs.constEnd())
+                    return no(key + QStringLiteral(" is a foreign-key rowid with no entry in "
+                                                   "§ 2.5's substitution map — skipping it "
+                                                   "silently would narrow INV-2"));
+                select << *it;
+                continue;
+            }
+            select << QLatin1String(t.alias) + QLatin1Char('.') + col;
+        }
+        if (select.isEmpty())
+            return no(table + QStringLiteral(": every column was excluded"));
+
+        const QString sql = QStringLiteral("SELECT ") + select.join(QStringLiteral(", ")) +
+                            QLatin1Char(' ') + QLatin1String(t.from) +
+                            QStringLiteral(" ORDER BY ") + QLatin1String(t.orderBy);
+        const QString countSql = QStringLiteral("SELECT COUNT(*) FROM ") + table;
+        if (sqlRows(live, countSql) != sqlRows(rebuilt, countSql))
+            return no(table + QStringLiteral(": row count differs"));
+        const QStringList before = sqlRows(live, sql);
+        if (before.isEmpty())
+            return no(table + QStringLiteral(" has no fixture rows, so this projection proves "
+                                             "nothing"));
+        if (before != sqlRows(rebuilt, sql))
+            return no(table + QStringLiteral(": column diff — ") + sql);
+    }
+    return true;
 }
 
 QStringList recordsOfType(const QByteArray &jsonl, const char *type) {
@@ -549,17 +706,9 @@ TEST(RoadmapExportRoundtrip, Inv2EveryRowAndColumnSurvives) {
         ASSERT_TRUE(RoadmapExport::rebuildProject(rebuilt, &buf, &err)) << err.toStdString();
     }
 
-    for (const auto &p : inv2Projections()) {
-        const QString countSql =
-            QStringLiteral("SELECT COUNT(*) FROM ") + QLatin1String(p.first);
-        EXPECT_EQ(sqlRows(fx.store->db(), countSql), sqlRows(rebuilt.db(), countSql))
-            << "row count differs for table " << p.first;
-        const QStringList before = sqlRows(fx.store->db(), QLatin1String(p.second));
-        const QStringList after = sqlRows(rebuilt.db(), QLatin1String(p.second));
-        EXPECT_EQ(before, after) << "column diff for table " << p.first;
-        EXPECT_FALSE(before.isEmpty()) << "table " << p.first << " has no fixture rows, so this "
-                                          "projection proves nothing";
-    }
+    QString why;
+    EXPECT_TRUE(inv2Diff(fx.store->db(), rebuilt.db(), inv2Substitutions(), &why))
+        << why.toStdString();
 }
 
 // INV-5 — item order follows § 2.5's numeric-segment sort, and is TOTAL.
@@ -666,6 +815,284 @@ TEST(RoadmapExportRoundtrip, Inv13EveryReferenceResolves) {
     }
 }
 
+// ============================================================================
+// ANTS-3796 / ANTS-3797 — section record completeness. Test names carry the
+// spec id because this file already holds an ANTS-3761 INV-1, INV-2, INV-3 and
+// INV-5, and a bare Inv<N> would resolve two ways.
+// Contract: docs/specs/ANTS-3796-section-record-completeness.md
+// ============================================================================
+
+namespace {
+
+// Document order: zeta (level 2), alpha (level 3, child of zeta), mid (level
+// 2). Chosen so that all THREE candidate orders are different sequences —
+// document (zeta, alpha, mid), slug (alpha, mid, zeta) and the export's
+// (depth, slug) emission order (mid, zeta, alpha). A two-section fixture, or a
+// three-section one that happened to be in slug order, would pass against a
+// rebuild that recomputed the ordinal, which is the vacuity § 6 warns about.
+//
+// Built in-test rather than seeded into buildFixture()'s golden-backed
+// projects: this exercises an ORDERING, which a committed golden cannot witness
+// any better than an assertion can, and adding five sections to alpha would
+// rewrite every record in alpha.jsonl in the same pass that changes the record
+// shape — making INV-18's reviewed diff unreadable.
+qint64 buildOrderFixture(RoadmapStore &s, const QString &rootDir) {
+    const qint64 p = addProject(s, rootDir, QStringLiteral("ord"), QStringLiteral("Ord"));
+    const qint64 zeta = addSection(s, p, QStringLiteral("zeta"), QStringLiteral("Zeta"), 2, 0);
+    addSection(s, p, QStringLiteral("alpha"), QStringLiteral("Alpha"), 3, 1, zeta);
+    addSection(s, p, QStringLiteral("mid"), QStringLiteral("Mid"), 2, 2);
+
+    // ANTS-3797's leg: one section carries a rotated-archive path and one
+    // carries NULL, so a rebuild that drops the column fails on the first and
+    // would still pass on the second.
+    QString err;
+    const auto alphaId = s.findSection(p, QStringLiteral("alpha"), &err);
+    EXPECT_TRUE(alphaId.has_value()) << err.toStdString();
+    if (alphaId)
+        EXPECT_TRUE(s.setSectionSource(*alphaId, QStringLiteral("docs/roadmap/0.6.md"), &err))
+            << err.toStdString();
+    return p;
+}
+
+qint64 projectIdOf(QSqlDatabase db, const QString &exportSlug) {
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral("SELECT project_id FROM project WHERE export_slug = ?"));
+    q.addBindValue(exportSlug);
+    EXPECT_TRUE(q.exec() && q.next()) << q.lastError().text().toStdString();
+    return q.value(0).toLongLong();
+}
+
+// The walk ANTS-3758's render will make: every section of one project, ordered
+// by the SHIPPED comparator. Testing through sectionOrderLess() rather than a
+// sort written here is the difference between an invariant and a fixture
+// agreeing with itself.
+QStringList sectionWalk(RoadmapStore &s, qint64 projectId) {
+    QString err;
+    auto rows = s.listSections(projectId, &err);
+    EXPECT_TRUE(rows.has_value()) << err.toStdString();
+    if (!rows)
+        return {};
+    std::sort(rows->begin(), rows->end(), sectionOrderLess);
+    QStringList out;
+    for (const RoadmapStore::SectionRow &r : std::as_const(*rows))
+        out << r.slug;
+    return out;
+}
+
+// A store rebuilt from `bytes`, so each test states its own round trip.
+void rebuildInto(RoadmapStore &target, QByteArray bytes) {
+    QBuffer buf(&bytes);
+    ASSERT_TRUE(buf.open(QIODevice::ReadOnly));
+    QString err;
+    ASSERT_TRUE(RoadmapExport::rebuildProject(target, &buf, &err)) << err.toStdString();
+}
+
+}  // namespace
+
+// ANTS-3796 INV-1 — document order survives the round trip. Breaks when
+// writeSections() emits the column but rebuildProject() binds a RECOMPUTED
+// value: the insertion ordinal, or the (depth, slug) rank loadSections()
+// already has in hand.
+TEST(RoadmapExportRoundtrip, Ants3796Inv1DocumentOrderSurvivesTheRoundTrip) {
+    QTemporaryDir liveDir;
+    RoadmapStore live(liveDir.path() + QStringLiteral("/roadmap.sqlite"),
+                      RoadmapStore::kDefaultHistoryCapBytes, RoadmapStore::Access::Bulk);
+    QString err;
+    ASSERT_TRUE(live.open(&err)) << err.toStdString();
+    const qint64 p = buildOrderFixture(live, liveDir.path());
+
+    const QStringList want{QStringLiteral("zeta"), QStringLiteral("alpha"),
+                           QStringLiteral("mid")};
+    ASSERT_EQ(sectionWalk(live, p), want) << "the fixture is not in the order this test assumes";
+
+    const QByteArray jsonl = exportOf(live, QStringLiteral("ord"));
+
+    // The export EMITS in (depth, slug) order and § 2.4 keeps it that way, so
+    // position rides along as data. Asserting the two differ is what stops this
+    // test passing for the wrong reason — if emission order already equalled
+    // document order, a rebuild that recomputed the ordinal from its own
+    // insertion sequence would reproduce `want` by accident.
+    QStringList emitted;
+    for (const QString &line : recordsOfType(jsonl, "section"))
+        emitted << QJsonDocument::fromJson(line.toUtf8())
+                       .object().value(QStringLiteral("slug")).toString();
+    ASSERT_NE(emitted, want) << "emission order coincides with document order, so this fixture "
+                                "cannot detect a recomputed position: " << emitted.join(',').toStdString();
+
+    QTemporaryDir rebuiltDir;
+    RoadmapStore rebuilt(rebuiltDir.path() + QStringLiteral("/roadmap.sqlite"),
+                         RoadmapStore::kDefaultHistoryCapBytes, RoadmapStore::Access::Bulk);
+    ASSERT_TRUE(rebuilt.open(&err)) << err.toStdString();
+    rebuildInto(rebuilt, jsonl);
+
+    EXPECT_EQ(sectionWalk(rebuilt, projectIdOf(rebuilt.db(), QStringLiteral("ord"))), want)
+        << "INV-1: document order did not survive export → rebuild. A rebuild that reassigns "
+           "section_id in (depth, slug) order and recomputes position from it yields "
+           << emitted.join(',').toStdString();
+}
+
+// ANTS-3797 INV-2 — section.source_path survives the round trip. Asserted
+// through readSection() and not raw SQL: ANTS-3782 INV-26 already pins the
+// reader against SQL, and repeating that here would test the other invariant.
+TEST(RoadmapExportRoundtrip, Ants3796Inv2SourcePathSurvivesTheRoundTrip) {
+    QTemporaryDir liveDir;
+    RoadmapStore live(liveDir.path() + QStringLiteral("/roadmap.sqlite"),
+                      RoadmapStore::kDefaultHistoryCapBytes, RoadmapStore::Access::Bulk);
+    QString err;
+    ASSERT_TRUE(live.open(&err)) << err.toStdString();
+    buildOrderFixture(live, liveDir.path());
+
+    QTemporaryDir rebuiltDir;
+    RoadmapStore rebuilt(rebuiltDir.path() + QStringLiteral("/roadmap.sqlite"),
+                         RoadmapStore::kDefaultHistoryCapBytes, RoadmapStore::Access::Bulk);
+    ASSERT_TRUE(rebuilt.open(&err)) << err.toStdString();
+    rebuildInto(rebuilt, exportOf(live, QStringLiteral("ord")));
+
+    const qint64 p = projectIdOf(rebuilt.db(), QStringLiteral("ord"));
+    const auto archId = rebuilt.findSection(p, QStringLiteral("alpha"), &err);
+    ASSERT_TRUE(archId.has_value()) << err.toStdString();
+    const auto arch = rebuilt.readSection(*archId, &err);
+    ASSERT_TRUE(arch.has_value()) << err.toStdString();
+    ASSERT_TRUE(arch->sourcePath.has_value())
+        << "INV-2: breaks when either leg is left unfixed — writeSections() not selecting "
+           "source_path, or rebuildProject() not inserting it. Every rebuilt section then "
+           "reads back as the LIVE roadmap, which is exactly what the column's DDL comment "
+           "says it exists to prevent";
+    EXPECT_EQ(*arch->sourcePath, QStringLiteral("docs/roadmap/0.6.md"));
+
+    const auto liveId = rebuilt.findSection(p, QStringLiteral("zeta"), &err);
+    ASSERT_TRUE(liveId.has_value()) << err.toStdString();
+    const auto liveRow = rebuilt.readSection(*liveId, &err);
+    ASSERT_TRUE(liveRow.has_value()) << err.toStdString();
+    EXPECT_FALSE(liveRow->sourcePath.has_value())
+        << "a NULL source_path must round-trip as NULL, not as ''";
+}
+
+// ANTS-3796 INV-3 — the column diff § 2.5 derives from the schema FAILS BY
+// DEFAULT: on a column the export does not carry, and on a foreign-key rowid
+// missing from the substitution map. This is what makes § 2.5 a contract rather
+// than a tidier way to write the same test.
+TEST(RoadmapExportRoundtrip, Ants3796Inv3ColumnDiffFailsByDefaultOnAnUncarriedColumn) {
+    Fixture fx;
+    QTemporaryDir rebuiltDir;
+    RoadmapStore rebuilt(rebuiltDir.path() + QStringLiteral("/roadmap.sqlite"),
+                         RoadmapStore::kDefaultHistoryCapBytes, RoadmapStore::Access::Bulk);
+    QString err;
+    ASSERT_TRUE(rebuilt.open(&err)) << err.toStdString();
+    for (const char *slug : {"alpha", "beta", "gamma"})
+        rebuildInto(rebuilt, exportOf(*fx.store, QLatin1String(slug)));
+
+    QString why;
+    ASSERT_TRUE(inv2Diff(fx.store->db(), rebuilt.db(), inv2Substitutions(), &why))
+        << "baseline: " << why.toStdString();
+
+    // Leg 1 — an unsubstituted foreign-key rowid must FAIL, not be skipped.
+    // Run before the ALTER below, or the column-set check would reject the
+    // stores first and this leg would pass for the wrong reason.
+    QHash<QString, QString> incomplete = inv2Substitutions();
+    ASSERT_EQ(incomplete.remove(QStringLiteral("section.parent_id")), 1);
+    why.clear();
+    EXPECT_FALSE(inv2Diff(fx.store->db(), rebuilt.db(), incomplete, &why))
+        << "a foreign-key rowid with no substitution entry was silently skipped, which is "
+           "§ 2.5's own failure mode: the map stops being exhaustive as the schema grows";
+    EXPECT_TRUE(why.contains(QStringLiteral("substitution map"))) << why.toStdString();
+
+    // Leg 2 — a column the export does not carry. Added to the LIVE store only,
+    // and AFTER the export, so no other rule can reject it first: not the
+    // importer's strictness (INV-7), not the golden comparison.
+    sqlExec(fx.store->db(), QStringLiteral("ALTER TABLE section ADD COLUMN scratch TEXT"));
+    why.clear();
+    EXPECT_FALSE(inv2Diff(fx.store->db(), rebuilt.db(), inv2Substitutions(), &why))
+        << "INV-3: breaks when the column list is a literal — the pre-ANTS-3796 diff passed "
+           "here, which is how section.source_path went unnoticed for two specs";
+    EXPECT_TRUE(why.contains(QStringLiteral("column sets differ")))
+        << "breaks when PRAGMA table_info is read once and reused for both stores, which "
+           "makes the set comparison vacuous: " << why.toStdString();
+}
+
+// ANTS-3796 INV-5 — the sort key is TOTAL: two sections sharing a position
+// order by slug, stably, in both directions of insertion. Breaks when the sort
+// is on position alone, which is stable only by accident of the underlying
+// container and reorders when the query plan changes.
+TEST(RoadmapExportRoundtrip, Ants3796Inv5SortKeyIsTotalUnderADuplicatePosition) {
+    for (const bool reversed : {false, true}) {
+        QTemporaryDir dir;
+        RoadmapStore s(dir.path() + QStringLiteral("/roadmap.sqlite"),
+                       RoadmapStore::kDefaultHistoryCapBytes, RoadmapStore::Access::Bulk);
+        QString err;
+        ASSERT_TRUE(s.open(&err)) << err.toStdString();
+        const qint64 p = addProject(s, dir.path(), QStringLiteral("dup"), QStringLiteral("Dup"));
+
+        // The SAME position for both — permitted, because § 2.1 leaves
+        // distinctness to a writer's obligation rather than a UNIQUE
+        // constraint. The contract is that a duplicate yields a wrong-but-
+        // STABLE order, never an unstable one.
+        if (reversed) {
+            addSection(s, p, QStringLiteral("a-slug"), QStringLiteral("A"), 2, 7);
+            addSection(s, p, QStringLiteral("b-slug"), QStringLiteral("B"), 2, 7);
+        } else {
+            addSection(s, p, QStringLiteral("b-slug"), QStringLiteral("B"), 2, 7);
+            addSection(s, p, QStringLiteral("a-slug"), QStringLiteral("A"), 2, 7);
+        }
+
+        EXPECT_EQ(sectionWalk(s, p),
+                  (QStringList{QStringLiteral("a-slug"), QStringLiteral("b-slug")}))
+            << "INV-5, insertion order " << (reversed ? "a then b" : "b then a");
+    }
+}
+
+// ANTS-3796 INV-7 — an export whose section record omits either field is
+// refused by the REBUILD IMPORTER, loudly, with no partial store written.
+// Breaks when the importer defaults a missing position to 0, which reads as
+// defensive and silently flattens the document order of every project it
+// restores.
+TEST(RoadmapExportRoundtrip, Ants3796Inv7ImporterRefusesAnIncompleteSectionRecord) {
+    struct Case {
+        const char *missing;
+        const char *section;
+    };
+    static const Case kCases[] = {
+        {"position",
+         R"({"intro":null,"level":2,"parent":null,"slug":"zeta","source":null,)"
+         R"("t":"section","title":"Zeta"})"},
+        {"source",
+         R"({"intro":null,"level":2,"parent":null,"position":0,"slug":"zeta",)"
+         R"("t":"section","title":"Zeta"})"},
+    };
+
+    for (const Case &c : kCases) {
+        QTemporaryDir dir;
+        RoadmapStore s(dir.path() + QStringLiteral("/roadmap.sqlite"),
+                       RoadmapStore::kDefaultHistoryCapBytes, RoadmapStore::Access::Bulk);
+        QString err;
+        ASSERT_TRUE(s.open(&err)) << err.toStdString();
+
+        QByteArray bytes = QByteArray(R"({"name":"Ord","project":"ord","schema":1,"t":"meta"})")
+                               .append('\n')
+                               .append(c.section)
+                               .append('\n');
+        QBuffer buf(&bytes);
+        ASSERT_TRUE(buf.open(QIODevice::ReadOnly));
+
+        EXPECT_FALSE(RoadmapExport::rebuildProject(s, &buf, &err))
+            << "a section record with no " << c.missing << " was imported anyway";
+        EXPECT_FALSE(err.isEmpty()) << "the refusal must say what is wrong; a version mismatch "
+                                       "would only say the binary is too new";
+        EXPECT_TRUE(err.contains(QLatin1String(c.missing))) << err.toStdString();
+
+        // No partial store. rebuildProject() wraps its inserts in BEGIN
+        // IMMEDIATE and ROLLBACKs on failure, so this pins behaviour the code
+        // already has and a future refactor could lose.
+        for (const char *table : {"section", "project"}) {
+            QSqlQuery q(s.db());
+            ASSERT_TRUE(q.exec(QStringLiteral("SELECT COUNT(*) FROM ") + QLatin1String(table)) &&
+                        q.next());
+            EXPECT_EQ(q.value(0).toInt(), 0)
+                << table << " is non-empty after a refused import (" << c.missing << ")";
+        }
+    }
+}
+
 namespace {
 
 // The delta INV-12 measures is against /proc, not against Qt's own accounting:
@@ -727,7 +1154,7 @@ TEST(RoadmapExportRoundtrip, Inv12PeakRssDeltaStaysUnderFourMiB) {
         QString err;
         ASSERT_TRUE(seed.open(&err)) << err.toStdString();
         const qint64 p = addProject(seed, dir.path(), QStringLiteral("big"), QStringLiteral("Big"));
-        const qint64 sect = addSection(seed, p, QStringLiteral(""), QStringLiteral(""), 0);
+        const qint64 sect = addSection(seed, p, QStringLiteral(""), QStringLiteral(""), 0, 0);
         for (int i = 0; i < kItems; ++i) {
             const qint64 pk =
                 addItem(seed, p, sect, i, QStringLiteral("BIG-%1").arg(i + 1, 4, 10, QChar('0')));

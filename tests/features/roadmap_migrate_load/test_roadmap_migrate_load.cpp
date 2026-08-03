@@ -15,8 +15,12 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QMap>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+
+#include <algorithm>
+#include <climits>
 
 namespace {
 
@@ -774,6 +778,92 @@ TEST(roadmap_migrate_load, Ants3782Inv14SourcePathIsRootRelative) {
     EXPECT_GT(archiveSections, 0) << "0.6.md contributes sections";
     EXPECT_EQ(sqlSourcePath(store, QStringLiteral("0-6-features")),
               QStringLiteral("docs/roadmap/0.6.md"));
+}
+
+// -------------------------------------------------------- ANTS-3796 INV-4 --
+// The migration assigns positions that are a permutation of 0 … n-1 over the
+// sections a run's plan names, in document order across all its sources.
+//
+// Scoped to the PLAN's sections because § 2.3.1 keeps a heading deleted from a
+// re-run's source, stale position and all: a whole-table permutation assertion
+// would be false on any re-run that dropped a heading, which is an ordinary
+// re-run and not an error. This fixture is a first load, so the two sets
+// coincide — the scoping is stated so a later re-run leg cannot be added
+// against a claim that was never made.
+TEST(roadmap_migrate_load, Ants3796Inv4PositionsAreADocumentOrderPermutation) {
+    const CopiedRoot src("baseline");
+    QTemporaryDir dbDir;
+    RoadmapStore store(dbDir.path() + QStringLiteral("/roadmap.sqlite"),
+                       RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    ASSERT_TRUE(store.open(&err)) << err.toStdString();
+
+    RoadmapMigrateLoad::Options o;
+    o.changedAt = QStringLiteral("2026-08-01T10:00:00Z");
+    o.projectRoot = src.root;
+
+    const MigrationPlan plan = src.plan();
+    ASSERT_EQ(plan.sources.size(), 3);
+    const auto out = RoadmapMigrateLoad::load(store, plan, o);
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+
+    // Read back through the typed enumerator, which is what makes the sort key
+    // reachable at all — the alternative is SELECT section_id in raw SQL plus a
+    // point lookup per row, the reach-past-the-reader § 2.3.1 exists to stop.
+    const auto rows = store.listSections(out.projectId, &err);
+    ASSERT_TRUE(rows.has_value()) << err.toStdString();
+    ASSERT_EQ(rows->size(), plan.sections.size())
+        << "a first load writes exactly the plan's sections";
+
+    // Leg 1 — DENSE: the positions are a permutation of 0 … n-1. Asserted here
+    // rather than left to a UNIQUE constraint (§ 2.1 declines one), because the
+    // reachable bug is a loader that numbers PER SOURCE and restarts at 0 for
+    // each archive — which produces duplicates that § 2.2's tie-break then
+    // hides behind a plausible slug order.
+    QList<int> positions;
+    for (const RoadmapStore::SectionRow &r : std::as_const(*rows))
+        positions << r.position;
+    std::sort(positions.begin(), positions.end());
+    QList<int> dense;
+    for (int i = 0; i < rows->size(); ++i)
+        dense << i;
+    EXPECT_EQ(positions, dense)
+        << "INV-4: positions are not a permutation of 0 … n-1 — the loader is numbering per "
+           "source rather than across the whole plan";
+
+    // Leg 2 — every LIVE-roadmap section precedes every archive section. Index
+    // 0 IS the live roadmap (roadmapmigrate.h), so this is a real ordering
+    // claim and not the vacuous "an earlier-indexed archive comes first".
+    int liveMax = -1, archiveMin = INT_MAX;
+    QMap<int, QList<int>> bySource;   // sourceIndex -> that source's positions
+    for (const PlannedSection &s : plan.sections) {
+        const QString slug = s.slug.isNull() ? QString::fromUtf8("") : s.slug;
+        const auto sid = store.findSection(out.projectId, slug, &err);
+        ASSERT_TRUE(sid.has_value()) << slug.toStdString() << ": " << err.toStdString();
+        const auto row = store.readSection(*sid, &err);
+        ASSERT_TRUE(row.has_value()) << err.toStdString();
+        if (s.sourceIndex == 0)
+            liveMax = std::max(liveMax, row->position);
+        else
+            archiveMin = std::min(archiveMin, row->position);
+        bySource[s.sourceIndex] << row->position;
+    }
+    ASSERT_GT(liveMax, -1) << "the live roadmap contributes sections";
+    ASSERT_LT(archiveMin, INT_MAX) << "0.6.md contributes sections";
+    EXPECT_LT(liveMax, archiveMin)
+        << "INV-4: an archive section sorted before a live-roadmap one — breaks when the "
+           "ordinal is walked in plan order rather than (sourceIndex, firstLine)";
+
+    // Leg 3 — archive sections follow one another in sourceIndex order, so a
+    // second rotated file cannot interleave with the first.
+    int previousMax = -1;
+    for (auto it = bySource.constBegin(); it != bySource.constEnd(); ++it) {
+        const auto [lo, hi] = std::minmax_element(it->constBegin(), it->constEnd());
+        EXPECT_GT(*lo, previousMax)
+            << "source " << it.key() << " interleaves with an earlier source";
+        previousMax = *hi;
+    }
 }
 
 // The same fixture through a differently-spelled but EQUIVALENT root stores

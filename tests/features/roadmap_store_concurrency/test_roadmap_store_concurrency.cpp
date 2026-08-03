@@ -265,7 +265,7 @@ TEST(RoadmapStoreConcurrency, Inv16BlockedWriteFailsAndWritesNothing) {
     const auto project =
         holder.registerProject(root, QStringLiteral("proj"), QStringLiteral("proj"), &err);
     ASSERT_TRUE(project.has_value()) << err.toStdString();
-    const auto section = holder.addSection(*project, QStringLiteral(""), QStringLiteral(""), 0,
+    const auto section = holder.addSection(*project, QStringLiteral(""), QStringLiteral(""), 0, 0,
                                            std::nullopt, &err);
     ASSERT_TRUE(section.has_value()) << err.toStdString();
 

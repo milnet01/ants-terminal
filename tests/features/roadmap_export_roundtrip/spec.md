@@ -1,10 +1,15 @@
 # roadmap_export_roundtrip — the roadmap export
 
-Feature contract for **ANTS-3761**.
-Parent spec: [`docs/specs/ANTS-3761-roadmap-export-format.md`](../../../docs/specs/ANTS-3761-roadmap-export-format.md)
+Feature contract for **ANTS-3761**, and — since 2026-08-03 — for
+**ANTS-3796 / ANTS-3797**.
+Parent specs:
+[`docs/specs/ANTS-3761-roadmap-export-format.md`](../../../docs/specs/ANTS-3761-roadmap-export-format.md) ·
+[`docs/specs/ANTS-3796-section-record-completeness.md`](../../../docs/specs/ANTS-3796-section-record-completeness.md)
 
-§ 6 of the parent assigns INV-1, 2, 5, 12, 13, 18 and 19 to this one directory.
-**All seven are in place.**
+§ 6 of ANTS-3761 assigns INV-1, 2, 5, 12, 13, 18 and 19 to this one directory.
+**All seven are in place.** § 6 of ANTS-3796 adds its INV-1, 2, 3, 5 and 7 —
+also all in place, and named `Ants3796Inv<N>` in the source because both specs
+number from 1 and a bare `Inv2` would resolve two ways.
 
 ## The fixture
 
@@ -36,6 +41,42 @@ column survives · **INV-5** the numeric-segment id sort, and it is total ·
 **INV-12** peak RSS delta under 4 MiB · **INV-13** every reference resolves and
 no surrogate is emitted under any name · **INV-18** the export matches the
 committed golden files · **INV-19** RFC 8785 conformance.
+
+### ANTS-3796 / ANTS-3797 — what the section record carries
+
+**INV-1** document order survives the round trip · **INV-2** `section.source_path`
+survives it · **INV-3** the column diff below fails *by default* · **INV-5** the
+`(position, slug)` sort key is total · **INV-7** the rebuild importer refuses a
+section record missing either new field, with no partial store.
+
+**The ordering fixtures are built in-test and are deliberately not
+golden-backed.** INV-1's three sections (`zeta` level 2, `alpha` level 3 under
+it, `mid` level 2) and INV-5's same-position pair live in their own temp stores.
+They exercise an *ordering*, which a committed golden cannot witness any better
+than an assertion can — and seeding five sections into `alpha` would have
+rewritten every record in `alpha.jsonl` in the same pass that changed the record
+shape, making INV-18's reviewed diff unreadable.
+
+The three-section shape is the whole of INV-1's power: document order
+(`zeta, alpha, mid`), slug order (`alpha, mid, zeta`) and the export's
+`(depth, slug)` emission order (`mid, zeta, alpha`) are three *different*
+sequences. A two-section fixture, or a three-section one that happened to be in
+slug order, passes against a rebuild that recomputes the ordinal. The test also
+asserts that emission order ≠ document order before trusting its own result,
+so it cannot pass for that reason by accident.
+
+**INV-2's column diff is derived from the schema, not written out.** Since
+ANTS-3796 § 2.5 the per-table projection reads `PRAGMA table_info` on *both*
+stores and `PRAGMA foreign_key_list` for the substitutions, over three sets:
+derived (every column), excluded (`project.root` plus each table's own surrogate
+PK, named), and substituted (every foreign-key rowid, mapped to the stable
+rendering compared in its place — `par.slug`, `i.id_fold`, `p.export_slug`). A
+foreign-key rowid with no map entry **fails** rather than being skipped, and the
+map is a parameter so INV-3 can inject an incomplete one. This inverts the
+default: a column added to the schema used to be absent from the diff and pass,
+and now it is present and fails until the export learns about it. That inversion
+is the whole reason ANTS-3797 existed — `section.source_path` was dropped by
+both export legs and survived a shipped INV-2 for two specs.
 
 The golden files under `golden/` are checked in and reviewed. Regenerating them
 is possible (`ANTS_REGENERATE_EXPORT_GOLDEN=1`) and **still fails the test** by
@@ -101,6 +142,34 @@ stays green under it: Qt's compact output is deterministic and re-parses to the
 same doubles, so the writer, the rebuild and the re-export all agree. The
 instruction asked INV-1 to catch a deterministic writer, which is the one thing
 INV-18 exists because INV-1 cannot do. § 6 of the parent is amended.
+
+### ANTS-3796 / ANTS-3797 mutations (2026-08-03)
+
+Each applied alone, built, run, reverted. The **collateral** column is the point
+of recording them together: five of the six redden exactly one test, and the one
+that does not says something about the suite.
+
+| Mutation | RED | Collateral, and what it means |
+|---|---|---|
+| `rebuildProject()` binds a **recomputed** position (its own insertion ordinal) instead of the exported one | ANTS-3796 INV-1 | ANTS-3761 INV-1 and INV-2, plus INV-3's baseline assert. **INV-18 stays green** — a golden compares bytes the writer produced from the *live* store, which a rebuild bug never touches. The golden cannot witness this class at all, which is why INV-1 is an assertion and not another golden |
+| `rebuildProject()` never inserts `source_path` | ANTS-3796 INV-2 | none |
+| the importer's two guards removed, so a missing `position` defaults to 0 | ANTS-3796 INV-7 | none |
+| `sectionOrderLess()` compares `position` alone, no slug tie-break | ANTS-3796 INV-5 | none |
+| the loader numbers per source, restarting at 0 for each archive | ANTS-3796 INV-4 (in `roadmap_migrate_load`) | none |
+| the derived diff *skips* a foreign-key rowid with no substitution entry rather than failing | ANTS-3796 INV-3 | none |
+
+**The run itself had to be done twice, and the reason is worth more than the
+table.** The first harness restored each file with `shutil.copy2`, which
+preserves mtime — so a restored file looked *older* than the object compiled
+from the mutated one, ninja skipped the rebuild, and every later mutation ran
+against a binary still carrying the earlier ones. Three verdicts were measured
+against a contaminated build, and the final restore left a tree whose sources
+were correct and whose binaries were not. It surfaced only because INV-5
+reddened under a mutation it has no code path to. A mutation harness must bust
+the mtime on restore, and must re-verify a green tree between mutations; both
+are now in the script. This is the same shape as `focused_test` over a stale
+binary — the check ran, the check was green, and the check could not see the
+failure.
 
 Dropping `provenance` — the column INV-2's clause named — reddens INV-1 as
 well, because § 2.4 emits `provenance` always and the reader refuses an export

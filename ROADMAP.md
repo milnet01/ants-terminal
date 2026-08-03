@@ -24872,7 +24872,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: user-decision-2026-08-03 (ANTS-3758 scoping).
 
-- 📋 [ANTS-3796] **The store models no section ORDER, so a generated ROADMAP.md cannot reproduce its own document order.**
+- ✅ [ANTS-3796] **The store models no section ORDER, so a generated ROADMAP.md cannot reproduce its own document order.**
   BLOCKS ANTS-3758. Found by reading the schema, not by running the render
   -- there is no render yet.
 
@@ -24961,8 +24961,9 @@ against current source before filing.
   Deferred to implementation, not to another review: nothing verified is left
   unfixed. Next step is /write-code against the spec, and ANTS-3758's render
   spec is unblocked once this lands.
+  Resolved (2026-08-03): section.position INTEGER NOT NULL, project-wide document order, written by the migration from (sourceIndex, firstLine) and carried through the export. addSection()/updateSection() take it positionally before the defaulted parentId, so all 9 call sites were compile errors; SectionRow/readSection() read it; new listSections() enumerator and sectionOrderLess() free function give the (position, slug) sort key a producer and a home. Spec: docs/specs/ANTS-3796-section-record-completeness.md. Seven invariants, each verified RED against its Breaks-when mutation before the fix was restored; three export goldens regenerated as a reviewed diff (exactly two new keys on each of seven section records, no other byte). Two spec claims were found wrong at implementation and corrected in place: the blast radius was four test directories not five, and the excluded-PK set omitted citation_id.
 
-- 📋 [ANTS-3797] **section.source_path is not in the export, so archive provenance dies at the first rebuild — and INV-2 cannot see it.**
+- ✅ [ANTS-3797] **section.source_path is not in the export, so archive provenance dies at the first rebuild — and INV-2 cannot see it.**
   BLOCKS ANTS-3758, and is a shipped defect rather than a gap. ANTS-3782 added
   `section.source_path`, the migration writes it and `readSection()` reads it,
   but the EXPORT drops it on both legs:
@@ -25007,6 +25008,7 @@ against current source before filing.
   **Layman:** The database remembers which roadmap items came from an old archived file, but the backup does not — so restoring from backup would dump every archive back into the main roadmap.
   Kind: fix.
   Source: in-session-2026-08-03, found while grounding ANTS-3758's render design.
+  Resolved (2026-08-03) with ANTS-3796, one spec for both. writeSections() now selects source_path and emits it as `source` (always emitted, null when unset, per the NULL/'' distinction ANTS-3782 makes load-bearing); rebuildProject() inserts it, and refuses a section record missing either new field rather than defaulting. The reason it went unnoticed is fixed too: ANTS-3761 INV-2's column diff now derives its column list from PRAGMA table_info with an exhaustive foreign-key substitution map, so a schema column the export does not carry FAILS by default instead of passing.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
@@ -27967,6 +27969,34 @@ partition (11 lanes) is documented in this fold-in for reuse.
   context disposable; demoed 69k tokens offloaded → 250-word result) +
   durable state + fresh-invocation-per-task for the literal work→reset
   loop. Un-park this item only when Anthropic ships a compaction trigger.
+
+- 🚧 [ANTS-3798] **`roadmap_log op:bundle_row` is the one write op with no `dry_run` — ANTS-2136's sweep missed it.**
+  Verified 2026-08-03 against src/remotecontrol.cpp. Every other roadmap_log
+  op honours dry_run -- append + append_batch (ANTS-2077), flip, flip_batch,
+  annotate, create_section and amend_body (ANTS-2136) -- and all five
+  changelog_log ops do, add_subsection included. cmdRoadmapLogBundleRow
+  (remotecontrol.cpp:9736) has no gate: it goes straight from the row render
+  to the QSaveFile write and returns bytes_written. So the one op whose
+  failure mode is a mangled Markdown table is the one you cannot preview --
+  a mismatched column count is refused, but a wrongly-sorted or
+  wrongly-escaped cell is not.
+
+  Two halves. The behaviour: add the standard preview before step 7's
+  atomic write, returning dry_run:true plus `bytes` in place of
+  bytes_written, with row_index / columns / created_table already resolved
+  -- the shape flip and create_section already use. And the documentation:
+  the verb schema's dry_run description still reads "when true on
+  op:append / append_batch", which undersold the coverage from ANTS-2136
+  onward and is how this gap stayed invisible.
+
+  Note ANTS-2227 shipped as "dry_run preview parity across every mutating
+  Ants-MCP verb"; its scope was the verbs OUTSIDE roadmap_log and
+  changelog_log, which it treated as already-complete precedent. The parity
+  claim was true of what it swept and false of the whole.
+  **Layman:** One roadmap command still edits the file with no "show me what this would do first" option; every other one has it.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: in-session-2026-08-03.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

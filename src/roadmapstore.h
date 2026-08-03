@@ -109,8 +109,15 @@ public:
                                           const QString &exportSlug,
                                           QString *error = nullptr);
 
+    // ANTS-3796 § 2.3 — `position` is a required parameter and not a setter,
+    // unlike setSectionIntro()/setSectionSource(): those columns are nullable
+    // and were added to a shipped signature, this one is NOT NULL with no
+    // default, so an insert omitting it could not succeed and a setter would be
+    // unreachable. Placed BEFORE the defaulted parentId deliberately — every
+    // existing call site then fails to compile rather than silently rebinding
+    // its parent argument onto the new parameter.
     std::optional<qint64> addSection(qint64 projectId, const QString &slug,
-                                     const QString &title, int level,
+                                     const QString &title, int level, int position,
                                      std::optional<qint64> parentId = std::nullopt,
                                      QString *error = nullptr);
 
@@ -224,7 +231,8 @@ public:
     // change a heading's title, level or parent. Takes the whole tuple — they
     // come from one PlannedSection and a partial update has no meaning.
     bool updateSection(qint64 sectionId, const QString &title, int level,
-                       std::optional<qint64> parentId, QString *error = nullptr);
+                       int position, std::optional<qint64> parentId,
+                       QString *error = nullptr);
 
     // element rows that are NOT items. Refuses kind='item' outright rather than
     // letting the DDL CHECK decide, so putItem()/fileItem() stay the only ways
@@ -317,8 +325,23 @@ public:
         // express it would lose the distinction at the reader. Without this
         // field the column would be write-only and INV-14 could not observe it.
         std::optional<QString> sourcePath;
+        // ANTS-3796 § 2.1 — document order within the project: the sequence the
+        // render emits sections in, and the only record of it. Read here for
+        // the same reason sourcePath is: § 2.6's "written only if it differs"
+        // cannot see a section that MOVED without it, and Outcome::
+        // sectionsWritten would stop counting a reorder as a change.
+        int position = 0;
     };
     std::optional<SectionRow> readSection(qint64 sectionId, QString *error = nullptr) const;
+
+    // ANTS-3796 § 2.3.1 — the enumerator sectionOrderLess() sorts through.
+    // readSection() is a point lookup and findSection() resolves one slug, so
+    // neither can produce the SET a sort key applies to; without this every
+    // caller would SELECT section_id in raw SQL and read the rows back one at a
+    // time, which is the reach-past-the-reader this surface exists to prevent.
+    // Shaped after listItems() directly above, and for the same reason.
+    std::optional<QVector<SectionRow>> listSections(qint64 projectId,
+                                                    QString *error = nullptr) const;
 
     // § 2.8 step 1's first branch: the prefix this project already allocates
     // under, which idHighWater() cannot answer because it takes the prefix as
@@ -360,3 +383,23 @@ private:
     // decide whether it owns the transaction it is writing in.
     bool m_inTransaction = false;
 };
+
+// ANTS-3796 § 2.2 — the section sort key, (position, slug). A free function
+// beside SectionRow rather than a member: it compares two rows and touches no
+// store state. It has a named home because a sort key with no owner is one
+// every caller re-implements — ANTS-3758's render is the production caller, and
+// this spec's tests are the first.
+//
+// The tie-break is not decoration. § 2.1 leaves position distinctness to a
+// writer's obligation rather than a UNIQUE constraint (a re-run that swaps two
+// sections would collide mid-update, and SQLite defers only foreign keys), so a
+// duplicate position must yield a WRONG BUT STABLE order rather than an
+// unstable one. `slug` is already UNIQUE (project_id, slug), so it is a true
+// tie-break and not a second ambiguity.
+//
+// QString::compare() is UTF-16 code-unit order, matching how roadmapexport.cpp
+// sorts slugs (its cmpCodeUnit()); SQLite's BINARY collation is UTF-8 byte
+// order and the two disagree on supplementary-plane characters, which emoji in
+// a heading slug reach. That is why this is a C++ comparator and not ORDER BY.
+bool sectionOrderLess(const RoadmapStore::SectionRow &a,
+                      const RoadmapStore::SectionRow &b);

@@ -1,6 +1,6 @@
 {"name":"Beta","project":"beta","schema":1,"t":"meta"}
 {"high_water":2,"prefix":"beta","t":"id_prefix"}
-{"intro":null,"level":0,"parent":null,"slug":"","t":"section","title":""}
+{"intro":null,"level":0,"parent":null,"position":0,"slug":"","source":null,"t":"section","title":""}
 {"evidence":[],"extras":{},"headline":"Headline for BETA-1","id":"BETA-1","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
 {"evidence":[],"extras":{},"headline":"Headline for BETA-2","id":"BETA-2","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
 {"kind":"item","position":0,"ref":"beta-1","section":"","t":"element"}

@@ -1,4 +1,4 @@
 {"name":"Gamma","project":"gamma","schema":1,"t":"meta"}
-{"intro":null,"level":0,"parent":null,"slug":"","t":"section","title":""}
+{"intro":null,"level":0,"parent":null,"position":0,"slug":"","source":null,"t":"section","title":""}
 {"evidence":[],"extras":{},"headline":"Headline for GAMMA-1","id":"GAMMA-1","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
 {"kind":"item","position":0,"ref":"gamma-1","section":"","t":"element"}

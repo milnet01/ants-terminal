@@ -118,6 +118,39 @@ names, in two rounds, before the implementation was restored:
   written) → the store holds 3 items, then 5, then 7 across three identical
   loads.
 
+## ANTS-3796 INV-4 — document-order positions (2026-08-03)
+
+Also filed here, because it is a claim about what **the loader writes**, not
+about a store method. Parent spec:
+[`docs/specs/ANTS-3796-section-record-completeness.md`](../../../docs/specs/ANTS-3796-section-record-completeness.md).
+
+`Ants3796Inv4PositionsAreADocumentOrderPermutation` loads the `baseline`
+archive fixture and asserts three things about `section.position`: that the
+values are a permutation of `0 … n-1` (dense), that every live-roadmap section
+precedes every archive one, and that the archives do not interleave.
+
+Two of those are easy to state vacuously and are not:
+
+- **Dense, not merely distinct.** Asserted here because § 2.1 of the parent
+  declines a `UNIQUE (project_id, position)` constraint — a re-run swapping two
+  sections would collide mid-update, and SQLite defers only foreign keys. So the
+  reachable bug is a loader that numbers per source and restarts at 0 for each
+  archive, which produces duplicates that the `(position, slug)` tie-break then
+  hides behind a plausible-looking order. Density is what catches it.
+- **Live-before-archive, not "earlier index first."** Index 0 *is* the live
+  roadmap (`roadmapmigrate.h`), so this is a real ordering claim; phrased as
+  "an earlier-indexed source sorts first" it would be true by construction.
+
+Scoped to the **plan's** sections, not the whole table: § 2.3.1 keeps a heading
+deleted from a re-run's source, stale position and all, so a whole-table
+permutation assertion would be false on any re-run that dropped a heading —
+an ordinary re-run, not an error. This fixture is a first load, so the two sets
+coincide; the scoping is stated so a later re-run leg cannot be added against a
+claim that was never made.
+
+**Must fail first:** the loader numbering per source, restarting at 0 for each
+archive → RED, and nothing else in the roadmap suites reddens with it.
+
 ## The ones this suite did not catch
 
 **Both were found by running the ten real project roadmaps, not by any

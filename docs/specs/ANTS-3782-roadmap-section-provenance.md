@@ -1,6 +1,17 @@
 # ANTS-3782 — Roadmap section provenance: the `source_path` column, its writer and its reader
 
-**Status:** shipped (2026-08-01).
+**Status:** shipped (2026-08-01). **Followed up 2026-08-03 by
+[ANTS-3797](ANTS-3796-section-record-completeness.md)** (specified jointly with
+ANTS-3796): INV-14 and INV-26 stand unchanged, and what changed is that the
+column they pin now also survives a **rebuild**. Worth recording here because
+"the column is correct" and "the column is durable" read as the same claim and
+were not — this spec proved the migration writes `source_path` and
+`readSection()` returns it, while `RoadmapExport::writeSections()` never
+selected it and `rebuildProject()` never inserted it, so every section restored
+from a backup read back as the live roadmap. That is verbatim the outcome
+§ 2.1's DDL comment says the column exists to prevent, and it survived because
+ANTS-3761 INV-2's column diff enumerated columns from a hand-written literal
+predating this spec. ANTS-3796 § 2.5 derives that list from the schema instead.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3782 (split out of ANTS-3766 at that spec's
 cold-eyes loop 4, 2026-08-01, on the structural trigger — 1060 lines, and two

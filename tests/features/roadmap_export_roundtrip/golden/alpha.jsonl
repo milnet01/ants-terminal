@@ -5,11 +5,11 @@
 {"status":"in-progress","t":"legend","wording":"In progress"}
 {"status":"shipped","t":"legend","wording":"Shipped"}
 {"status":"considered","t":"legend","wording":"Considered"}
-{"intro":null,"level":0,"parent":null,"slug":"","t":"section","title":""}
-{"intro":null,"level":3,"parent":null,"slug":"performance-2","t":"section","title":"Performance"}
-{"intro":null,"level":2,"parent":null,"slug":"z-parent","t":"section","title":"Z parent"}
-{"intro":null,"level":3,"parent":"z-parent","slug":"a-child","t":"section","title":"A child"}
-{"intro":null,"level":4,"parent":"performance-2","slug":"vt-parser","t":"section","title":"VT parser"}
+{"intro":null,"level":0,"parent":null,"position":0,"slug":"","source":null,"t":"section","title":""}
+{"intro":null,"level":3,"parent":null,"position":1,"slug":"performance-2","source":null,"t":"section","title":"Performance"}
+{"intro":null,"level":2,"parent":null,"position":3,"slug":"z-parent","source":null,"t":"section","title":"Z parent"}
+{"intro":null,"level":3,"parent":"z-parent","position":4,"slug":"a-child","source":null,"t":"section","title":"A child"}
+{"intro":null,"level":4,"parent":"performance-2","position":2,"slug":"vt-parser","source":null,"t":"section","title":"VT parser"}
 {"evidence":[],"extras":{},"headline":"Headline for 3DE-0007","id":"3DE-0007","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
 {"evidence":[],"extras":{},"headline":"Headline for 3D_E-0007","id":"3D_E-0007","id_origin":"parsed","kind":"implement","lanes":[],"milestone":null,"provenance":{},"source":"fixture","status":"planned","t":"item","visibility":"public"}
 {"body":"Body prose.\nSecond line, with a \"quote\" and a \\ backslash.","created":"2026-07-01","evidence":["docs/qa/shot.png"],"extras":{"note":"héllo","ratio":0.000001,"tally":42},"headline":"Headline for ANTS-9","id":"ANTS-9","id_origin":"parsed","kind":"implement","lanes":["vt","render"],"last_modified":"2026-07-30","layman":"A plain-English line.","milestone":"0.8.0","priority":2,"provenance":{},"resolution":"Resolved by measurement.","shipped":"2026-07-30","source":"fixture","status":"planned","t":"item","visibility":"internal"}

@@ -39,7 +39,7 @@ struct Fixture {
 
     qint64 section(qint64 projectId) {
         QString err;
-        auto s = store.addSection(projectId, QStringLiteral(""), QStringLiteral(""), 0,
+        auto s = store.addSection(projectId, QStringLiteral(""), QStringLiteral(""), 0, 0,
                                   std::nullopt, &err);
         EXPECT_TRUE(s.has_value()) << err.toStdString();
         return s.value_or(-1);
@@ -803,11 +803,11 @@ TEST(RoadmapStoreSchema, Inv26SourcePathReadableThroughSectionRow) {
     const qint64 pid = f.project(QStringLiteral("p"));
 
     const auto live = f.store.addSection(pid, QStringLiteral("live"),
-                                         QStringLiteral("Live"), 2,
+                                         QStringLiteral("Live"), 2, 0,
                                          std::nullopt, &err);
     ASSERT_TRUE(live.has_value()) << err.toStdString();
     const auto arch = f.store.addSection(pid, QStringLiteral("0-6-features"),
-                                         QStringLiteral("Features"), 3,
+                                         QStringLiteral("Features"), 3, 1,
                                          std::nullopt, &err);
     ASSERT_TRUE(arch.has_value()) << err.toStdString();
 
@@ -858,7 +858,7 @@ TEST(RoadmapStoreSchema, Inv26EmptySourcePathIsNotFoldedToNull) {
     ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
     const qint64 pid = f.project(QStringLiteral("p"));
     const auto sid = f.store.addSection(pid, QStringLiteral("s"),
-                                        QStringLiteral("S"), 2, std::nullopt, &err);
+                                        QStringLiteral("S"), 2, 0, std::nullopt, &err);
     ASSERT_TRUE(sid.has_value()) << err.toStdString();
 
     ASSERT_TRUE(f.store.setSectionSource(*sid, QString(), &err)) << err.toStdString();
@@ -872,8 +872,19 @@ TEST(RoadmapStoreSchema, Inv26EmptySourcePathIsNotFoldedToNull) {
     EXPECT_TRUE(row->sourcePath->isEmpty());
 }
 
-// -------------------------------------------------------- ANTS-3782 INV-27 --
-// This change does not move the schema version.
+// ------------------------------- ANTS-3782 INV-27 / ANTS-3796 INV-6 --------
+// This change does not move the schema version. ANTS-3796 INV-6 is the same
+// assertion for section.position and rides on this test rather than
+// duplicating it — the argument is identical (no store is reachable from
+// user-facing code, so a bump would manufacture an upgrade case nothing
+// implements in order to migrate zero stores), and a second copy would be a
+// second thing to keep true.
+//
+// ANTS-3796's INV-6 deliberately drops the leg ANTS-3782's carried, that the
+// three export goldens still import: that cannot hold across ANTS-3796,
+// because the record shape is what changed and § 4 regenerates them. This is
+// the LAST change entitled to hold at 1 — the freedom expires at ANTS-3758's
+// cutover.
 TEST(RoadmapStoreSchema, Inv27SchemaVersionStillOne) {
     Fixture f;
     QString err;

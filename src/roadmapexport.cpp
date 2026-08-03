@@ -365,8 +365,8 @@ bool writeLegend(const QString &legendText, QIODevice *out, QString *error) {
 bool writeSections(QSqlDatabase &db, const QList<SectionRef> &order,
                    const QHash<qint64, QString> &slugOf, QIODevice *out, QString *error) {
     QSqlQuery q(db);
-    q.prepare(QStringLiteral("SELECT title, level, intro, parent_id FROM section "
-                             "WHERE section_id = ?"));
+    q.prepare(QStringLiteral("SELECT title, level, intro, parent_id, position, source_path "
+                             "FROM section WHERE section_id = ?"));
     for (const SectionRef &s : order) {
         q.addBindValue(s.id);
         if (!q.exec() || !q.next())
@@ -383,6 +383,15 @@ bool writeSections(QSqlDatabase &db, const QList<SectionRef> &order,
                                                : QJsonValue(slugOf.value(q.value(3).toLongLong())));
         o.insert(QStringLiteral("intro"),
                  q.value(2).isNull() ? QJsonValue() : QJsonValue(q.value(2).toString()));
+        // ANTS-3796 § 2.4 — position is NOT NULL, so it has no absent state and
+        // is always emitted. `source` is always emitted AS NULL when unset: the
+        // NULL / '' distinction is load-bearing (ANTS-3782 § 2.3), so it joins
+        // parent and intro above rather than the omitted-when-absent group. The
+        // key drops the _path suffix the way `parent` drops _id; it does not
+        // collide with item.source, a different record type.
+        o.insert(QStringLiteral("position"), q.value(4).toInt());
+        o.insert(QStringLiteral("source"),
+                 q.value(5).isNull() ? QJsonValue() : QJsonValue(q.value(5).toString()));
         if (!emitLine(out, o, error))
             return false;
     }
@@ -841,8 +850,25 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
                           o.value(QStringLiteral("wording")));
         } else if (t == QLatin1String("section")) {
             const QJsonValue parent = o.value(QStringLiteral("parent"));
+            // ANTS-3796 § 2.4 — both fields are always emitted, so their
+            // absence aborts the import; the same rule INV-2 already records
+            // for `provenance`. Deliberately no lenient path: defaulting a
+            // missing position to 0 would silently flatten the document order
+            // of every project restored from an older export — the precise
+            // failure this column exists to stop, arriving through the door
+            // built to tolerate it. An export written before this change clears
+            // the `meta` gate (kSchemaVersion does not move, § 2.4) and is
+            // refused here instead, which names the actual problem where a
+            // version mismatch would only say the binary is too new.
+            if (!o.value(QStringLiteral("position")).isDouble())
+                return abort(QStringLiteral("line %1: section record's position is missing "
+                                            "or not a number").arg(lineNo));
+            if (!o.contains(QStringLiteral("source")))
+                return abort(QStringLiteral("line %1: section record is missing source")
+                                 .arg(lineNo));
             q.prepare(QStringLiteral("INSERT INTO section (project_id, slug, title, level, intro, "
-                                     "parent_id) VALUES (?, ?, ?, ?, ?, ?)"));
+                                     "parent_id, position, source_path) "
+                                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"));
             q.addBindValue(projectId);
             q.addBindValue(o.value(QStringLiteral("slug")).toString());
             q.addBindValue(o.value(QStringLiteral("title")).toString());
@@ -850,6 +876,21 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
             q.addBindValue(textOrNull(o, "intro"));
             q.addBindValue(parent.isNull() ? QVariant()
                                            : QVariant(sectionIdOf.value(parent.toString())));
+            // The EXPORTED value, never a recomputed one — not the insertion
+            // ordinal and not the (depth, slug) rank loadSections() already has
+            // in hand. Recomputing either is what INV-1 exists to catch.
+            q.addBindValue(o.value(QStringLiteral("position")).toInt());
+            // NOT textOrNull(): that helper folds an omitted key onto a NULL
+            // column, which is right for every other text field and wrong here.
+            // JSON `null` is the live roadmap and `""` is an unplaceable path
+            // stored anyway (ANTS-3782 § 2.3) — two states, and a default-
+            // constructed QString binds as SQL NULL, so `""` has to be
+            // normalised the way setSectionSource() normalises it.
+            const QJsonValue src = o.value(QStringLiteral("source"));
+            q.addBindValue(src.isNull()
+                               ? QVariant()
+                               : QVariant(src.toString().isNull() ? QString::fromUtf8("")
+                                                                  : src.toString()));
             if (!q.exec())
                 return abort(q.lastError().text());
             sectionIdOf.insert(o.value(QStringLiteral("slug")).toString(),

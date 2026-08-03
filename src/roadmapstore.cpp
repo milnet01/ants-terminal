@@ -312,6 +312,35 @@ bool RoadmapStore::createSchema(QString *error) {
   -- (and regenerate three export goldens) in order to migrate zero stores.
   -- That freedom expires at ANTS-3758's cutover; ANTS-3781 owns what follows.
   source_path TEXT,
+  -- ANTS-3796 § 2.1. Document order among THIS PROJECT's sections -- one
+  -- sequence over every section, not one per parent -- and the only record of
+  -- it: the migration plan knows it while it runs (sourceIndex, firstLine) and
+  -- discards it at commit, exactly as it did source_path above. Without it
+  -- siblings are ordered only by the section_id surrogate, which a rebuild
+  -- reassigns in (depth, slug) order, so ANTS-3758's render would re-file this
+  -- project's own prose sections among its version numbers on the first
+  -- recovery from backup.
+  --
+  -- Project-wide rather than per-parent so that parents-before-children falls
+  -- out of the data (a heading precedes its subheadings in the file it was read
+  -- from) instead of needing UNIQUE (parent_id, position), which SQLite would
+  -- not bind anyway: it treats NULLs as distinct, so the top-level siblings
+  -- that actually reorder would be unconstrained.
+  --
+  -- Deliberately NOT UNIQUE (project_id, position), which reads like the
+  -- obvious constraint. `element` gets away with UNIQUE (section_id, position)
+  -- only because clearSectionElements() lets the migration delete and rewrite
+  -- the whole sequence; sections cannot be cleared (element.section_id and item
+  -- filing reference them), so a re-run swapping two sections would collide
+  -- mid-update with no escape -- SQLite offers DEFERRABLE INITIALLY DEFERRED
+  -- for foreign keys only. Distinctness is a writer's obligation within a run's
+  -- plan; sectionOrderLess()'s (position, slug) key is total regardless.
+  --
+  -- NOT NULL with no default, so every writer states it rather than silently
+  -- taking 0. At user_version 1 for the reason source_path above records, and
+  -- this is the LAST change entitled to that freedom: it expires at ANTS-3758's
+  -- cutover.
+  position    INTEGER NOT NULL,
   UNIQUE (project_id, slug)
 ))"),
         QStringLiteral(R"(CREATE TABLE item (
@@ -474,6 +503,7 @@ std::optional<qint64> RoadmapStore::registerProject(const QString &root,
 
 std::optional<qint64> RoadmapStore::addSection(qint64 projectId, const QString &slug,
                                                const QString &title, int level,
+                                               int position,
                                                std::optional<qint64> parentId,
                                                QString *error) {
     // Same-project rule, write-path enforced: a SQLite CHECK may not contain a
@@ -491,12 +521,13 @@ std::optional<qint64> RoadmapStore::addSection(qint64 projectId, const QString &
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "INSERT INTO section (project_id, slug, title, level, parent_id) "
-        "VALUES (?, ?, ?, ?, ?)"));
+        "INSERT INTO section (project_id, slug, title, level, position, parent_id) "
+        "VALUES (?, ?, ?, ?, ?, ?)"));
     q.addBindValue(projectId);
     q.addBindValue(slug);
     q.addBindValue(title);
     q.addBindValue(level);
+    q.addBindValue(position);
     parentId ? q.addBindValue(*parentId) : q.addBindValue(QVariant(QMetaType(QMetaType::LongLong)));
     if (!q.exec()) {
         if (error)
@@ -925,7 +956,8 @@ bool RoadmapStore::setSectionIntro(qint64 sectionId, const QString &intro,
 }
 
 bool RoadmapStore::updateSection(qint64 sectionId, const QString &title, int level,
-                                 std::optional<qint64> parentId, QString *error) {
+                                 int position, std::optional<qint64> parentId,
+                                 QString *error) {
     // Same-project rule, write-path enforced exactly as addSection() does it: a
     // SQLite CHECK may not contain a subquery, so a section re-parented across
     // projects cannot be refused in DDL.
@@ -952,9 +984,11 @@ bool RoadmapStore::updateSection(qint64 sectionId, const QString &title, int lev
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
-        "UPDATE section SET title = ?, level = ?, parent_id = ? WHERE section_id = ?"));
+        "UPDATE section SET title = ?, level = ?, position = ?, parent_id = ? "
+        "WHERE section_id = ?"));
     q.addBindValue(title);
     q.addBindValue(level);
+    q.addBindValue(position);
     parentId ? q.addBindValue(*parentId) : q.addBindValue(QVariant(QMetaType(QMetaType::LongLong)));
     q.addBindValue(sectionId);
     if (!q.exec()) {
@@ -1290,7 +1324,7 @@ std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 section
                                                                   QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
     q.prepare(QStringLiteral(
-        "SELECT slug, title, level, intro, parent_id, source_path "
+        "SELECT slug, title, level, intro, parent_id, source_path, position "
         "FROM section WHERE section_id = ?"));
     q.addBindValue(sectionId);
     if (!q.exec()) {
@@ -1314,7 +1348,49 @@ std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 section
     // distinguish a stored value from a default.
     if (!q.value(5).isNull())
         s.sourcePath = q.value(5).toString();
+    s.position = q.value(6).toInt();
     return s;
+}
+
+std::optional<QVector<RoadmapStore::SectionRow>>
+RoadmapStore::listSections(qint64 projectId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    // ORDER BY section_id, not by position: the ordering this enumeration feeds
+    // is sectionOrderLess()'s, applied in C++ for the collation reason its
+    // comment gives. A rowid order here is only for determinism between two
+    // reads of the same store.
+    q.prepare(QStringLiteral(
+        "SELECT slug, title, level, intro, parent_id, source_path, position "
+        "FROM section WHERE project_id = ? ORDER BY section_id"));
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+
+    QVector<SectionRow> out;
+    while (q.next()) {
+        SectionRow s;
+        s.slug = q.value(0).toString();
+        s.title = q.value(1).toString();
+        s.level = q.value(2).toInt();
+        s.intro = q.value(3).toString();
+        if (!q.value(4).isNull())
+            s.parentId = q.value(4).toLongLong();
+        if (!q.value(5).isNull())
+            s.sourcePath = q.value(5).toString();
+        s.position = q.value(6).toInt();
+        out.push_back(s);
+    }
+    return out;
+}
+
+bool sectionOrderLess(const RoadmapStore::SectionRow &a,
+                      const RoadmapStore::SectionRow &b) {
+    if (a.position != b.position)
+        return a.position < b.position;
+    return a.slug.compare(b.slug) < 0;
 }
 
 std::optional<QString> RoadmapStore::idPrefixFor(qint64 projectId,

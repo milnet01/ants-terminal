@@ -1,6 +1,10 @@
 # ANTS-3796 — Section record completeness: document order, and the columns the export drops
 
-**Status:** accepted (2026-08-03) — cold-eyes converged at loop 2; ready to implement.
+**Status:** implemented (2026-08-03) — cold-eyes converged at loop 2; built,
+all seven invariants verified RED against their "Breaks when" mutation before
+the fix was restored, three goldens regenerated as a reviewed diff. Two claims
+in this document were found wrong at implementation and are corrected in place
+(§ 2.5 and § 4), each marked.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3796 + ANTS-3797, both found 2026-08-03 while
 grounding ANTS-3758's render design against the schema.
@@ -361,7 +365,7 @@ the third is the one a careless reading drops:
 | Set | Contents | Hand-written? |
 |---|---|---|
 | Derived | every column `PRAGMA table_info` reports | no — this is the point |
-| Excluded | `project.root` (ANTS-3761 INV-2 excludes it by name), plus each table's **own surrogate primary key** — `section_id`, `element_id`, `item_pk`, `rel_id`, `history_id` | yes, named |
+| Excluded | `project.root` (ANTS-3761 INV-2 excludes it by name), plus each table's **own surrogate primary key** — `project_id`, `section_id`, `element_id`, `item_pk`, `rel_id`, `history_id`, `citation_id` | yes, named |
 | **Substituted** | every **foreign-key** rowid column, replaced by the stable rendering the diff compares instead | **yes, and exhaustively** |
 
 **The substitution set is not the join keys, and conflating the two deletes
@@ -390,6 +394,15 @@ composite `(s.slug, e.position)`, so demanding a one-column substitute for it
 would fail INV-3 against the *correct* current projection. A rowid column
 defaults to **excluded** when it is the table's own PK and to **substituted**
 when it points at another table.
+
+**Corrected at implementation (2026-08-03): the excluded list above originally
+named five surrogate PKs and missed two** — `project.project_id` and, the one
+that matters, `citation.citation_id`. `citation` carries a rowid PK exactly as
+`element` does, and the omission is not cosmetic: `citation_id` is not a foreign
+key, so the substitution rule never reaches it, and an unexcluded own-PK is
+compared directly — a column ANTS-3761 § 2.3 guarantees differs after a rebuild.
+The diff would have failed against a *correct* export, which is the same defect
+loop 2 caught for `element.element_id` one column along.
 
 This inverts the default. Today a column added to the schema is absent from the
 diff and passes; afterwards it is present and fails until someone teaches the
@@ -496,15 +509,23 @@ one DDL column, one new struct field, three function signatures
 already exist (`src/roadmapstore.{h,cpp}`, `src/roadmapexport.cpp`,
 `src/roadmapmigrateload.cpp`).
 
-**The signature change has five test call sites, not one**, and they are the
+**The signature change has several test call sites, not one**, and they are the
 compile-time blast radius: `addSection()` is called from
-`tests/features/roadmap_store_schema/`, `roadmap_store_concurrency/`,
-`roadmap_store_identity/`, `roadmap_migrate_load/` and
-`roadmap_export_roundtrip/`, besides `src/roadmapmigrateload.cpp`. Adding
-`position` as a required positional parameter **before** the defaulted
+`tests/features/roadmap_store_schema/` (four call sites),
+`roadmap_store_concurrency/`, `roadmap_store_identity/` and
+`roadmap_export_roundtrip/` (one local helper, which is why its own five
+fixture calls cost one edit), besides two in `src/roadmapmigrateload.cpp`.
+Adding `position` as a required positional parameter **before** the defaulted
 `parentId` makes every one of them a compile error rather than a silent
-rebinding, which is the intended failure mode — but it is five files to update,
-not the single call site § 2.3 discusses.
+rebinding, which is the intended failure mode.
+
+**Corrected at implementation (2026-08-03): this said FIVE test directories and
+named `roadmap_migrate_load/` among them. It is four** — `roadmap_migrate_load`
+never calls `addSection()`; its only mention of the name is inside a test's
+failure-message string, which is what a grep for the bare identifier picks up.
+Recorded rather than silently fixed because the count was the load-bearing part
+of the claim, and a blast radius counted from a grep that matched prose is the
+same error class as loop 1's truncated-grep finding.
 
 Memory: one `int` per section row, and two more keys per section record in the
 export (`"position":N` and `"source":null`). Both scale with the section count,

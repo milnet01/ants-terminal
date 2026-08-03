@@ -191,6 +191,38 @@ bool Loader::run() {
 }
 
 bool Loader::resolveSections() {
+    // ANTS-3796 § 2.3.1 — document order, computed HERE and not carried on the
+    // plan. `PlannedSection` already holds everything the ordinal is a function
+    // of, and a stored copy is a second source of truth that can disagree with
+    // the pair it was derived from; the existing `wantSource` below is derived
+    // at its call site for the same reason.
+    //
+    // (sourceIndex, firstLine): the sources are index-stable within a run and
+    // index 0 IS the live roadmap, with rotated archives following, and
+    // firstLine is the heading's own line. So the pair is document order across
+    // the live roadmap first and then every archive, which is what INV-4
+    // asserts. The synthetic root (level 0, empty slug) has an unset firstLine
+    // of 0 and therefore sorts first within its source, which is where it
+    // belongs. Dense 0..n-1 over the sections THIS plan names — a heading the
+    // plan no longer carries keeps its stale position, since § 2.6 retains the
+    // row (element.section_id and item filing reference it).
+    QHash<QString, int> wantPositionOf;
+    {
+        QVector<const PlannedSection *> byDocument;
+        byDocument.reserve(plan.sections.size());
+        for (const PlannedSection &s : plan.sections)
+            byDocument.push_back(&s);
+        std::stable_sort(byDocument.begin(), byDocument.end(),
+                         [](const PlannedSection *a, const PlannedSection *b) {
+                             return a->sourceIndex != b->sourceIndex
+                                        ? a->sourceIndex < b->sourceIndex
+                                        : a->firstLine < b->firstLine;
+                         });
+        int next = 0;
+        for (const PlannedSection *s : std::as_const(byDocument))
+            wantPositionOf.insert(s->slug, next++);
+    }
+
     // Parents before children, by LEVEL rather than by document order: a
     // parentSlug must always resolve to a row that exists, and sorting on the
     // property that defines the hierarchy makes that true whatever order the
@@ -229,10 +261,12 @@ bool Loader::resolveSections() {
             (s->sourceIndex >= 0 && s->sourceIndex < sourcePaths.size())
                 ? sourcePaths.at(s->sourceIndex)
                 : std::nullopt;
+        const int wantPosition = wantPositionOf.value(s->slug, 0);
 
         if (!found) {
             const auto sid = store.addSection(projectId, notNull(s->slug),
-                                              notNull(s->title), s->level, parentId, &err);
+                                              notNull(s->title), s->level, wantPosition,
+                                              parentId, &err);
             if (!sid)
                 return fail(err);
             if (!s->intro.isEmpty() && !store.setSectionIntro(*sid, s->intro, &err))
@@ -254,8 +288,16 @@ bool Loader::resolveSections() {
             return fail(err.isEmpty() ? QStringLiteral("section %1 vanished").arg(*found)
                                       : err);
         bool changed = false;
-        if (cur->title != s->title || cur->level != s->level || cur->parentId != parentId) {
-            if (!store.updateSection(*found, notNull(s->title), s->level, parentId, &err))
+        // ANTS-3796 § 2.3.1 — position joins the comparison, or a section that
+        // MOVED reads as unchanged and Outcome::sectionsWritten stops counting
+        // it. Note the dense sequence means a heading inserted mid-file
+        // renumbers every section after it, so a re-run marks them all changed:
+        // correct, since the rows did change, but the figure is then not a
+        // count of EDITED sections.
+        if (cur->title != s->title || cur->level != s->level ||
+            cur->position != wantPosition || cur->parentId != parentId) {
+            if (!store.updateSection(*found, notNull(s->title), s->level, wantPosition,
+                                     parentId, &err))
                 return fail(err);
             changed = true;
         }
@@ -676,8 +718,14 @@ bool Loader::rebuildElements() {
                     rootSection = *found;
                 else if (!err.isEmpty())
                     return fail(err);
+                // position 0: this root is created outside the plan, so it is
+                // outside INV-4's dense sequence, and 0 is where a synthetic
+                // root belongs in document order. A collision with the plan's
+                // own position 0 is permitted (§ 2.1 leaves distinctness to the
+                // writer) and sectionOrderLess()'s slug tie-break settles it —
+                // this row's slug is "", which sorts first regardless.
                 else if (const auto made = store.addSection(projectId, rootSlug, rootSlug,
-                                                            0, std::nullopt, &err))
+                                                            0, 0, std::nullopt, &err))
                     rootSection = *made;
                 else
                     return fail(err);
