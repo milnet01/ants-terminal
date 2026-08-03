@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap render — `ROADMAP.md` can now be generated from the roadmap store at full fidelity** (ANTS-3758)
+  The inverse of the migration: every item is written in full
+  roadmap-format.md § 3.5 bullet form, so the generated file is the file
+  that exists today, written by the store instead of by hand. Section order
+  comes from the stored document order, and each section is routed back to
+  the file it was read from, so a rotated archive cannot fold back into
+  ROADMAP.md. Publishing is gated on every open item having a plain-English
+  `Layman:` line, per project and all-or-nothing.
+
 - **`find_caller` takes an optional `lane` to scope the scan to one subdirectory.** (ANTS-3805)
   Without it a short generic method name such as `update` returns hundreds of unnarrowable callers from every class that has one. The walk itself is scoped, so `callers_count` and `truncated` describe the scoped set, and the applied lane is echoed back.
 

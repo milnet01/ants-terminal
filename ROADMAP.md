@@ -23602,7 +23602,7 @@ against current source before filing.
   docs/specs/ANTS-3757-roadmap-migration-read.md's loop log carries
   the implementation row.
 
-- 📋 [ANTS-3758] **Roadmap publish + consumer cutover — the render, and the fate of roadmap_query / roadmap_log / RoadmapDialog.**
+- ✅ [ANTS-3758] **Roadmap publish + consumer cutover — the render, and the fate of roadmap_query / roadmap_log / RoadmapDialog.**
   Spec seam 3 of the ANTS-3753 implementation.
 
   Owns: render curation (whether closed items are listed at all), the
@@ -23748,6 +23748,47 @@ against current source before filing.
   function answers ants-v1 for input it does not recognise.
 
   Ready to implement.
+  Resolved (2026-08-03). src/roadmaprender.{h,cpp} in
+  ants_roadmapstore_lib, plus RoadmapStore::listElements() /
+  readProject() / readProjectBySlug(), with roadmapexport.cpp refitted off
+  its own FROM element / FROM project SQL in the same change so the two
+  readers cannot drift (INV-11). Spec:
+  docs/specs/ANTS-3758-roadmap-render.md, accepted after 3 cold-eyes loops
+  (91 verified findings). 14 feature cases in tests/features/roadmap_render/,
+  EVERY one shown RED against a mutation of its own "Breaks when" before the
+  implementation was restored. Full suite 3228/3228.
+
+  Three spec clauses implementation disproved and amended in place, none of
+  which a cold read could have caught:
+  - The synthetic root has an EMPTY slug under UNIQUE (project_id, slug), so
+    there is one per PROJECT and an archive has no root section at all. The
+    marker is replayed where a root intro carries it and emitted as a
+    constant where none routes to the file -- never both, or it ships twice
+    and fails INV-1.
+  - The status legend is stored STRUCTURED (JSON: status -> wording), so
+    rendering it is the inverse of the migration's parse. Emitting the column
+    verbatim would have published JSON into the roadmap.
+  - INV-1's full oracle needs the migration loader and a second store, so the
+    shipped case asserts the half that stands alone (every field survives into
+    the text) and the render -> load -> export comparison moves to ANTS-3793,
+    which has the loader in hand.
+
+  Two test-side defects caught by RUNNING rather than reading: the fixture
+  default-constructed RoadmapStore, which resolves defaultPath() -- the real
+  user store -- and would have had every case writing into it; and INV-11's
+  scrape was case-insensitive over raw text, so it matched English prose
+  ("re-walking from project root") in three unrelated files and failed on day
+  one, exactly as loop 3 predicted. It now strips comments and matches
+  case-sensitively.
+
+  Surfaced, not fixed here: ANTS-3806 (one root row per project means an
+  archive's own preamble has nowhere to live -- a migration limitation, and
+  the render cannot recover what was never stored).
+
+  NOT wired to a caller: nothing schedules a render yet. ANTS-3794 owns that,
+  and inherits the guard -- it must not schedule a render unless
+  detectRoadmapFormat(lines, &sawSignal) returns "ants-v1" AND sets sawSignal,
+  because that function answers ants-v1 for input it does not recognise.
 
 - 📋 [ANTS-3759] **documentation.md needs a rule on numbers in prose — keep only figures that carry an argument, and source them to a command.**
   User asked whether specific numbers belong in documentation at all,
@@ -25082,6 +25123,42 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-03, found while grounding ANTS-3758's render design.
   Resolved (2026-08-03) with ANTS-3796, one spec for both. writeSections() now selects source_path and emits it as `source` (always emitted, null when unset, per the NULL/'' distinction ANTS-3782 makes load-bearing); rebuildProject() inserts it, and refuses a section record missing either new field rather than defaulting. The reason it went unnoticed is fixed too: ANTS-3761 INV-2's column diff now derives its column list from PRAGMA table_info with an exhaustive foreign-key substitution map, so a schema column the export does not carry FAILS by default instead of passing.
+
+- 📋 [ANTS-3806] **An archive's pre-heading content has nowhere to live: the synthetic root is one row per project, not one per source.**
+  Found while implementing the render (ANTS-3758), which is the first
+  consumer that has to put each section back into the file it came from.
+
+  `ANTS-3757 § 2.1` gives the synthetic root an EMPTY slug and title, and
+  `section` declares `UNIQUE (project_id, slug)`. So there is exactly one
+  root row per project: `RoadmapMigrateLoad` resolves it with
+  `findSection(projectId, "")` and reuses it for every source. But
+  `PlannedSection` carries a `sourceIndex`, and the plan builds a root for
+  each source that has content above its first heading.
+
+  Two consequences, and the second is the one that loses data:
+
+  1. Every source's pre-heading content collapses into ONE row, so an
+     archive's own header (its format marker, its `# … — Roadmap` H1, any
+     leading prose) either merges into the live roadmap's root or is
+     overwritten by it, depending on plan order.
+  2. The render therefore cannot replay an archive's preamble, because the
+     store never kept it. ANTS-3758 works around this by emitting the
+     format marker as a constant for any file no root section routes to —
+     which restores conformance but NOT the archive's own prose.
+
+  Not a render defect and deliberately not fixed there: the render cannot
+  recover what was never stored. The fix belongs on the migration side —
+  either a per-source root (slug scoped by source, e.g. the archive's
+  relative path) or an explicit decision that an archive's preamble is
+  dropped, recorded as such rather than happening silently.
+
+  Verify before designing: this was read off the code, not run. The
+  collapse is inferred from the UNIQUE constraint plus the
+  `findSection(projectId, "")` lookup; confirm the observable behaviour
+  with a two-source fixture before choosing a fix.
+  **Layman:** When the roadmap moves into the database, anything written at the very top of an old archive file is silently merged into the main roadmap's header instead of staying with its own file.
+  Kind: fix.
+  Source: in-session-2026-08-03, found implementing ANTS-3758.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
