@@ -1,6 +1,10 @@
 # ANTS-3756 — Roadmap store: engine, location and schema
 
-**Status:** spec draft (2026-07-30).
+**Status:** implemented (2026-07-31) — `src/roadmapstore.{h,cpp}` in
+`ants_roadmapstore_lib`, behind `tests/features/roadmap_store_schema/`,
+`roadmap_store_identity/` and `roadmap_store_concurrency/`. Two known gaps are
+tracked rather than closed: ANTS-3760 (the deferred tail this spec left at its
+cold-eyes cap) and ANTS-3781 (no schema-upgrade path).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3756 (ANTS-3753 split, spec seam 1 of 3).
 **Blocker for:** ANTS-3761 (export format), ANTS-3757 (migration), ANTS-3758 (publish + consumer cutover).

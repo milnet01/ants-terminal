@@ -23775,7 +23775,7 @@ against current source before filing.
   Kind: doc.
   Source: cold-eyes-2026-07-30 (ANTS-3756 loop 3, converged by cap).
 
-- 📋 [ANTS-3761] **Roadmap export format — RFC 8785 serialisation, record types, ordering and the round-trip contract.**
+- ✅ [ANTS-3761] **Roadmap export format — RFC 8785 serialisation, record types, ordering and the round-trip contract.**
   Carved out of ANTS-3756 on the split recommendation its loop-3
   cold-eyes exit made, and accepted by the user.
 
@@ -23818,6 +23818,16 @@ against current source before filing.
   column class, § 6's falsified INV-1 mutation) — loop-log row
   6-impl. Remaining: nothing for this id; ANTS-3757 (migration) is
   next and unblocked.
+  Resolved (2026-08-03): status flip only — the work landed 2026-07-31 and
+  the bullet already recorded it. Verified against source before flipping:
+  src/jsoncanonical.{h,cpp} (ace2a179) and src/roadmapexport.{h,cpp} in
+  ants_roadmapstore_lib; tests/features/roadmap_export_roundtrip/ (with
+  committed golden/ and RFC-8785 vectors/) plus roadmap_export_concurrency/;
+  spec loop-log rows 5-impl / 6-impl / 7-impl record all eight invariants
+  (INV-1, 2, 5, 9, 12, 13, 18, 19) green, each proved RED first under its own
+  "Breaks when" mutation. The 📋 was a missed flip, not outstanding work.
+  Its one open question (a trailing checksum line, spec § 8) stays open as a
+  question, not as work.
 
 - 📋 [ANTS-3762] **Roadmap dialog — align every row on a fixed column grid so information sits where the eye expects it.**
   The earlier styling pass made the dialog far more readable, but nothing

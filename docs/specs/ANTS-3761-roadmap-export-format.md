@@ -1,6 +1,10 @@
 # ANTS-3761 — Roadmap export: RFC 8785 serialisation, record types, and the round-trip
 
-**Status:** spec draft (2026-07-30).
+**Status:** implemented (2026-07-31) — `src/jsoncanonical.{h,cpp}` and
+`src/roadmapexport.{h,cpp}` in `ants_roadmapstore_lib`, behind
+`tests/features/roadmap_export_roundtrip/` and
+`tests/features/roadmap_export_concurrency/`. All eight invariants green
+(loop-log rows 5-impl, 6-impl, 7-impl). § 8's checksum-line question stays open.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3761 (split out of ANTS-3756 at its cold-eyes cap).
 **Blocked by:** [ANTS-3756](ANTS-3756-roadmap-store-schema.md) — the store schema this serialises.
