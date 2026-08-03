@@ -23720,6 +23720,34 @@ against current source before filing.
   different things: curate before the first publish, or exempt migrated items and
   publish some open work with no reader-facing sentence. The render cannot be
   specified without picking one.
+  Spec accepted (2026-08-03): docs/specs/ANTS-3758-roadmap-render.md,
+  14 invariants. Rule 14 gate run to the 3-loop cap: 91 verified findings,
+  all fixed. Two lanes per loop, cold, no prior-loop briefing.
+
+  Design calls the gate settled, each after a lane disproved the draft:
+  - The equality oracle is the shipped export (ANTS-3761), compared as a
+    PROJECTION of both sides. A raw comparison is unsatisfiable because INV-4
+    excludes internal/dropped items, load() writes its own history, and the
+    export carries id_origin, provenance, the id_prefix high-water and dates
+    markdown has no carrier for. Losslessness and format conformance are
+    separate claims: roadmap-format.md § 3.5.3 defaults an absent Kind:, so a
+    render omitting it round-trips clean. INV-12 asserts against rendered text.
+  - The preamble IS the synthetic root section (empty slug, level 0), replayed
+    verbatim. The migration builds intros from raw source lines with no marker
+    or H1 filter, so emitting either as a constant would duplicate it and fail
+    INV-1 on the first live render. The legend is the one exception, because
+    the migration lifts it out of the intro into its own record.
+  - Section order is sectionOrderLess() (position, slug); file routing is
+    section.source_path and nothing else, with both it and liveRoadmapPath
+    canonicalised under projectRoot (INV-13).
+  - RoadmapStore gains listElements() and readProject()/readProjectBySlug();
+    RoadmapExport is refitted off its raw SQL in the same change.
+
+  Scoped to the emoji-bullet format. ANTS-3794 inherits the scheduling guard:
+  detectRoadmapFormat() must return "ants-v1" AND set sawSignal, because that
+  function answers ants-v1 for input it does not recognise.
+
+  Ready to implement.
 
 - 📋 [ANTS-3759] **documentation.md needs a rule on numbers in prose — keep only figures that carry an argument, and source them to a command.**
   User asked whether specific numbers belong in documentation at all,
