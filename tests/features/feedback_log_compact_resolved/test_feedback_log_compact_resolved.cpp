@@ -571,3 +571,127 @@ TEST(FeedbackShipDate, WiringSharedExtractor) {
     EXPECT_NE(ci.find("shipped_date"), std::string::npos)
         << "feedback_query description must document shipped_date";
 }
+
+// ---- ANTS-3802: cross-repo resolution ------------------------------------
+//
+// The reported defect, as its own topology. A *_Ants_MCP_Feedback.md file is by
+// construction written from one project ABOUT another project's tooling, so its
+// ids are NEVER the caller's. compact_resolved resolved ids only against
+// caller_cwd's ROADMAP.md, so on the entire population the verb exists for it
+// either refused roadmap_unavailable or skipped every finding as
+// roadmap_unresolved_ids — while feedback_query, on the SAME file from the SAME
+// caller, resolved them all through its cross-repo resolver.
+//
+// Shared root/
+//   Consumer_Ants_MCP_Feedback.md   <- the file, citing ANTS-* ids
+//   Consumer/ROADMAP.md             <- the CALLER; owns CONS-*, not ANTS-*
+//   OwnerProj/ROADMAP.md            <- owns ANTS-*, and has it shipped
+namespace {
+
+bool xrWrite(const QString &path, const QByteArray &body) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    const bool ok = (f.write(body) == body.size());
+    f.close();
+    return ok;
+}
+
+QString xrSeedRoot(const QTemporaryDir &root, bool callerHasRoadmap) {
+    const QString shared = root.path();
+    const QString fb = shared + "/Consumer_Ants_MCP_Feedback.md";
+    EXPECT_TRUE(xrWrite(fb,
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 Consumer\n\n"
+        "## 2026-08-03 \xE2\x80\x94 s\n\n"
+        "### Finding A\n\n- **What:** a.\n- **Proposed ID:** ANTS-3517\n"));
+    if (callerHasRoadmap) {
+        EXPECT_TRUE(xrWrite(shared + "/Consumer/ROADMAP.md",
+            "# Consumer ROADMAP\n\n"
+            "- \xF0\x9F\x93\x8B [CONS-0100] **A local planned item.**\n"));
+    } else {
+        QDir().mkpath(shared + "/Consumer");
+    }
+    EXPECT_TRUE(xrWrite(shared + "/OwnerProj/ROADMAP.md",
+        "# Owner ROADMAP\n\n"
+        "- \xE2\x9C\x85 [ANTS-3517] **A shipped cross-repo item.**\n"
+        "  Resolved (2026-07-30): done.\n"));
+    return fb;
+}
+
+}  // namespace
+
+// A shipped id owned by a SIBLING project collapses. Breaks when: the shipped
+// set is built from caller_cwd's ROADMAP alone, so the finding is skipped as
+// roadmap_unresolved_ids — which reads as "this id does not exist" when it
+// means "not in the file I happened to open".
+TEST(FeedbackCompactResolved, Ants3802CollapsesIdOwnedByASiblingProject) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    const QString fb = xrSeedRoot(root, /*callerHasRoadmap=*/true);
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["op"] = "compact_resolved";
+    req["path"] = fb;
+    req["caller_cwd"] = root.path() + "/Consumer";
+    req["dry_run"] = true;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    ASSERT_TRUE(env.value("ok").toBool())
+        << env.value("code").toString().toStdString() << ": "
+        << env.value("error").toString().toStdString();
+    EXPECT_EQ(env.value("findings_collapsed").toInt(), 1)
+        << "a sibling project's shipped id did not resolve";
+}
+
+// The caller having NO roadmap of its own is not fatal any more: this file's
+// ids were never the caller's, so refusing before the cross-repo pass is what
+// made the verb a no-op on its whole intended population.
+// Breaks when: an absent caller ROADMAP.md returns roadmap_unavailable.
+TEST(FeedbackCompactResolved, Ants3802AbsentCallerRoadmapIsNotFatal) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    const QString fb = xrSeedRoot(root, /*callerHasRoadmap=*/false);
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["op"] = "compact_resolved";
+    req["path"] = fb;
+    req["caller_cwd"] = root.path() + "/Consumer";
+    req["dry_run"] = true;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    ASSERT_TRUE(env.value("ok").toBool())
+        << env.value("code").toString().toStdString() << ": "
+        << env.value("error").toString().toStdString();
+    EXPECT_EQ(env.value("findings_collapsed").toInt(), 1);
+}
+
+// When nothing anywhere can resolve, the refusal NAMES what was searched.
+// Breaks when: the message says only "could not locate ROADMAP.md under the
+// caller project", which is the wording that made a cross-repo miss look like a
+// missing id.
+TEST(FeedbackCompactResolved, Ants3802RefusalNamesWhatWasSearched) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    const QString shared = root.path();
+    const QString fb = shared + "/Consumer_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(xrWrite(fb,
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 Consumer\n\n"
+        "## 2026-08-03 \xE2\x80\x94 s\n\n"
+        "### Finding A\n\n- **What:** a.\n- **Proposed ID:** ANTS-3517\n"));
+    QDir().mkpath(shared + "/Consumer");   // no roadmaps anywhere
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["op"] = "compact_resolved";
+    req["path"] = fb;
+    req["caller_cwd"] = shared + "/Consumer";
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString(), QStringLiteral("roadmap_unavailable"));
+    const QString msg = env.value("error").toString();
+    EXPECT_TRUE(msg.contains(QStringLiteral("sibling")))
+        << "refusal does not say the sibling projects were searched: "
+        << msg.toStdString();
+}

@@ -13476,6 +13476,95 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     return writeOut(*merged);
 }
 
+// ANTS-3802 — the cross-repo id resolver, lifted out of cmdFeedbackQuery so
+// compact_resolved uses the SAME one. Extracting it is the fix, not a tidy-up:
+// a *_Ants_MCP_Feedback.md file is by construction written from one project
+// ABOUT another project's tooling, so its ids are never the caller's. A verb
+// that resolves only against caller_cwd's ROADMAP can therefore never collapse
+// a shipped finding in the very file it exists to compact — it succeeds only
+// when pointed at a file whose ids happen to be the caller's, which is the Ants
+// Terminal maintainer case and nothing else.
+//
+// Cost-gated on a foreign id being present; RAM-bounded — at most ONE full
+// roadmap parse per distinct foreign prefix, retaining only the mapped foreign
+// ids, discarded after. No persistent cache (a rare triage-time path). The
+// caller's own roadmap is skipped.
+//
+// Returns id → {status, resolved_from, shipped_date?}.
+static QHash<QString, QJsonObject> rlResolveForeignFeedbackIds(
+    const QString &feedbackFilePath,     // its parent dir is the shared root
+    const QString &callerRoadmapPath,    // skipped when encountered
+    const QSet<QString> &callerPrefixes,
+    const QStringList &wantedIds,
+    const QSet<QString> &alreadyResolved) {
+    // An EMPTY callerPrefixes means "the caller owns no prefixes" — because it
+    // has no roadmap, or none with ids — which makes every wanted id foreign
+    // rather than none of them. The inherited form returned early here, and
+    // that is precisely the branch a contributor project hits: no local
+    // roadmap, every id another project's, nothing resolved.
+    QHash<QString, QJsonObject> foreignResolved;
+
+    static const QString kCheckF = QString::fromUtf8("\xE2\x9C\x85");  // ✅
+    const auto idPrefixOf = [](const QString &id) {
+        const int dash = id.lastIndexOf(QLatin1Char('-'));
+        return dash > 0 ? id.left(dash) : id;
+    };
+
+    QSet<QString> neededForeignIds;
+    QSet<QString> foreignPrefixes;
+    for (const QString &id : wantedIds) {
+        if (alreadyResolved.contains(id)) continue;
+        const QString pfx = idPrefixOf(id);
+        if (!callerPrefixes.contains(pfx)) {
+            neededForeignIds.insert(id);
+            foreignPrefixes.insert(pfx);
+        }
+    }
+    if (foreignPrefixes.isEmpty())
+        return foreignResolved;
+
+    const QDir rootDir(QFileInfo(feedbackFilePath).absolutePath());
+    const QStringList subs = rootDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString &sub : subs) {
+        if (foreignPrefixes.isEmpty()) break;  // every prefix owned
+        const QString subCanon =
+            QFileInfo(rootDir.absoluteFilePath(sub)).canonicalFilePath();
+        const QString sibRoadmap =
+            subCanon.isEmpty() ? QString() : findRoadmapUnder(subCanon);
+        if (sibRoadmap.isEmpty() || sibRoadmap == callerRoadmapPath)
+            continue;
+        QFile sf(sibRoadmap);
+        if (!sf.open(QIODevice::ReadOnly | QIODevice::Text))
+            continue;
+        // Cheap ownership sniff from the file head — no full parse.
+        const QByteArray head = sf.read(32 * 1024);
+        const QString sibPrefix = rlDetectCounterPrefix(QString::fromUtf8(head));
+        if (sibPrefix.isEmpty() || !foreignPrefixes.contains(sibPrefix)) {
+            sf.close();
+            continue;
+        }
+        sf.seek(0);
+        const QString sibMd = QString::fromUtf8(sf.readAll());
+        sf.close();
+        const QString sibLeaf = QFileInfo(subCanon).fileName();
+        for (const auto &b : RoadmapDialog::parseBullets(sibMd)) {
+            if (b.id.isEmpty() || !neededForeignIds.contains(b.id))
+                continue;
+            QJsonObject fr;
+            fr[QStringLiteral("status")]        = b.status;
+            fr[QStringLiteral("resolved_from")] = sibLeaf;
+            if (b.status == kCheckF) {
+                const QString d = FeedbackFile::shipDateFromRoadmapBody(b.body);
+                if (!d.isEmpty())
+                    fr[QStringLiteral("shipped_date")] = d;
+            }
+            foreignResolved.insert(b.id, fr);  // later row wins
+        }
+        foreignPrefixes.remove(sibPrefix);
+    }
+    return foreignResolved;
+}
+
 // ANTS-1961 — feedback_query: return the un-triaged delta + mapped IDs.
 QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     QString resolved;
@@ -13599,66 +13688,15 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         // — at most ONE full roadmap parse per distinct foreign prefix,
         // retaining only the mapped foreign ids, discarded after. No persistent
         // cache (a rare triage-time path). The caller roadmap itself is skipped.
-        QHash<QString, QJsonObject> foreignResolved;  // id → {status, resolved_from, shipped_date?}
-        if (!callerPrefixes.isEmpty()) {
-            QSet<QString> neededForeignIds;
-            QSet<QString> foreignPrefixes;
-            for (const QString &id : pr.mappedIds) {
-                if (idToStatus.contains(id)) continue;
-                const QString pfx = idPrefix(id);
-                if (!callerPrefixes.contains(pfx)) {
-                    neededForeignIds.insert(id);
-                    foreignPrefixes.insert(pfx);
-                }
-            }
-            if (!foreignPrefixes.isEmpty()) {
-                const QDir rootDir(QFileInfo(resolved).absolutePath());
-                const QStringList subs = rootDir.entryList(
-                    QDir::Dirs | QDir::NoDotAndDotDot);
-                for (const QString &sub : subs) {
-                    if (foreignPrefixes.isEmpty()) break;  // every prefix owned
-                    const QString subCanon =
-                        QFileInfo(rootDir.absoluteFilePath(sub))
-                            .canonicalFilePath();
-                    const QString sibRoadmap =
-                        subCanon.isEmpty() ? QString()
-                                           : findRoadmapUnder(subCanon);
-                    if (sibRoadmap.isEmpty() || sibRoadmap == roadmapPath)
-                        continue;
-                    QFile sf(sibRoadmap);
-                    if (!sf.open(QIODevice::ReadOnly | QIODevice::Text))
-                        continue;
-                    // Cheap ownership sniff from the file head — no full parse.
-                    const QByteArray head = sf.read(32 * 1024);
-                    const QString sibPrefix =
-                        rlDetectCounterPrefix(QString::fromUtf8(head));
-                    if (sibPrefix.isEmpty() ||
-                        !foreignPrefixes.contains(sibPrefix)) {
-                        sf.close();
-                        continue;
-                    }
-                    sf.seek(0);
-                    const QString sibMd = QString::fromUtf8(sf.readAll());
-                    sf.close();
-                    const QString sibLeaf = QFileInfo(subCanon).fileName();
-                    for (const auto &b : RoadmapDialog::parseBullets(sibMd)) {
-                        if (b.id.isEmpty() || !neededForeignIds.contains(b.id))
-                            continue;
-                        QJsonObject fr;
-                        fr[QStringLiteral("status")]        = b.status;
-                        fr[QStringLiteral("resolved_from")] = sibLeaf;
-                        if (b.status == kCheckQ) {
-                            const QString d =
-                                FeedbackFile::shipDateFromRoadmapBody(b.body);
-                            if (!d.isEmpty())
-                                fr[QStringLiteral("shipped_date")] = d;
-                        }
-                        foreignResolved.insert(b.id, fr);  // later row wins
-                    }
-                    foreignPrefixes.remove(sibPrefix);
-                }
-            }
-        }
+        // ANTS-3802 — now a shared helper, so compact_resolved resolves ids the
+        // same way this verb does. The two disagreeing about which ROADMAP owns
+        // an id was the defect.
+        QSet<QString> alreadyResolved;
+        for (auto it = idToStatus.constBegin(); it != idToStatus.constEnd(); ++it)
+            alreadyResolved.insert(it.key());
+        const QHash<QString, QJsonObject> foreignResolved =
+            rlResolveForeignFeedbackIds(resolved, roadmapPath, callerPrefixes,
+                                        pr.mappedIds, alreadyResolved);
 
         QJsonArray statusArr;
         bool anyForeign = false;
@@ -14103,35 +14141,70 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             ? QString() : QFileInfo(callerRaw).canonicalFilePath();
         const QString roadmapPath = callerCanonical.isEmpty()
             ? QString() : findRoadmapUnder(callerCanonical);
-        if (roadmapPath.isEmpty()) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("roadmap_unavailable"),
-                QStringLiteral("feedback_log: compact_resolved could not locate "
-                               "ROADMAP.md under the caller project")));
-        }
-        QFile rmf(roadmapPath);
-        if (!rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("roadmap_unavailable"),
-                QStringLiteral("feedback_log: compact_resolved cannot open "
-                               "\"%1\"").arg(roadmapPath)));
-        }
-        const QString rmMarkdown = QString::fromUtf8(rmf.readAll());
-        rmf.close();
-
         FeedbackFile::ResolveOptions ropts;
         static const QString kCheck = QString::fromUtf8("\xE2\x9C\x85");  // ✅
-        for (const auto &b : RoadmapDialog::parseBullets(rmMarkdown)) {
-            if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
-            ropts.roadmapIds.insert(b.id);
-            if (b.status == kCheck) {
-                ropts.shippedIds.insert(b.id);
-                // ANTS-3504 — capture the ship-date from the same pass so the
-                // collapse stub can carry it (shared extractor with feedback_query).
-                const QString shipDate =
-                    FeedbackFile::shipDateFromRoadmapBody(b.body);
-                if (!shipDate.isEmpty()) ropts.shipDates.insert(b.id, shipDate);
+        QSet<QString> callerPrefixes;
+        const auto idPrefixOfC = [](const QString &id) {
+            const int dash = id.lastIndexOf(QLatin1Char('-'));
+            return dash > 0 ? id.left(dash) : id;
+        };
+
+        // The caller's own roadmap, when it has one. ANTS-3802 — an ABSENT one
+        // is no longer fatal: this file's ids are by construction another
+        // project's, so the cross-repo pass below is the path that matters and
+        // refusing before reaching it is what made this verb a no-op.
+        if (!roadmapPath.isEmpty()) {
+            QFile rmf(roadmapPath);
+            if (rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                const QString rmMarkdown = QString::fromUtf8(rmf.readAll());
+                rmf.close();
+                for (const auto &b : RoadmapDialog::parseBullets(rmMarkdown)) {
+                    if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
+                    ropts.roadmapIds.insert(b.id);
+                    callerPrefixes.insert(idPrefixOfC(b.id));
+                    if (b.status == kCheck) {
+                        ropts.shippedIds.insert(b.id);
+                        // ANTS-3504 — capture the ship-date from the same pass so
+                        // the collapse stub can carry it (shared extractor with
+                        // feedback_query).
+                        const QString shipDate =
+                            FeedbackFile::shipDateFromRoadmapBody(b.body);
+                        if (!shipDate.isEmpty()) ropts.shipDates.insert(b.id, shipDate);
+                    }
+                }
             }
+        }
+
+        // ANTS-3802 — the cross-repo pass, through the SAME resolver
+        // feedback_query uses. Without it this verb could only ever collapse a
+        // finding whose id happened to live in the caller's own roadmap, which
+        // for a *_Ants_MCP_Feedback.md file is close to never.
+        const FeedbackFile::ParseResult prC = FeedbackFile::parse(content);
+        const QHash<QString, QJsonObject> foreignC =
+            rlResolveForeignFeedbackIds(resolved, roadmapPath, callerPrefixes,
+                                        prC.mappedIds, ropts.roadmapIds);
+        for (auto it = foreignC.constBegin(); it != foreignC.constEnd(); ++it) {
+            ropts.roadmapIds.insert(it.key());
+            if (it.value().value(QStringLiteral("status")).toString() == kCheck) {
+                ropts.shippedIds.insert(it.key());
+                const QString d =
+                    it.value().value(QStringLiteral("shipped_date")).toString();
+                if (!d.isEmpty()) ropts.shipDates.insert(it.key(), d);
+            }
+        }
+
+        // Only now is "nothing to resolve against" a real refusal — and it says
+        // WHICH roadmaps were searched, because "unresolved" previously read as
+        // "this id does not exist" when it meant "not in the file I opened".
+        if (ropts.roadmapIds.isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("roadmap_unavailable"),
+                QStringLiteral("feedback_log: compact_resolved found no roadmap ids — "
+                               "searched the caller project (%1) and the sibling "
+                               "projects under %2")
+                    .arg(roadmapPath.isEmpty() ? QStringLiteral("no ROADMAP.md found")
+                                               : roadmapPath,
+                         QFileInfo(resolved).absolutePath())));
         }
 
         const FeedbackFile::ResolveResult rr =
