@@ -24912,6 +24912,25 @@ against current source before filing.
   **Layman:** The three tools that read and write the roadmap today all move onto the database.
   Kind: implement.
   Source: ANTS-3758 split (2026-08-03, user), spec seam 3b of 5.
+  Scope added (2026-08-03, user-accepted): this id now carries two
+  obligations beyond its own surface, both because it owns the
+  reader/store seam they straddle.
+
+  1. ANTS-3808 -- the migration stores BulletRecord::body (the whole
+  bullet) into item.body while RoadmapRender::renderBullet() reads that
+  column as residual prose, so every rendered bullet repeats its own
+  headline and every field. Sized on its own bullet and NOT trivial: the
+  trailer is not a set of lines (157 Source: values sit inline in prose,
+  10 lines carry two keys, 22 are backticked mentions), so computing the
+  residual is a new parsing contract. The sketch that avoids re-parsing:
+  provenance.body records verbatim-vs-residual and renderBullet() skips
+  the trailer it would re-derive for a verbatim body. Needs the rule-14
+  gate across ANTS-3757 § 2.1.1, ANTS-3765 and ANTS-3758 § 2.4. Must land
+  here because it blocks ANTS-3794.
+
+  2. ANTS-3758's INV-1 full round-trip oracle, deferred here at ship
+  because it needs the migration loader and a second store -- which this
+  id has in hand. It is also what would have caught (1).
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
@@ -25321,6 +25340,11 @@ against current source before filing.
 
   Recommendation: fold into ANTS-3793, which owns the reader/store seam
   this straddles and lands before ANTS-3794 anyway. Not started.
+  Homed (2026-08-03, user-accepted): folded into ANTS-3793 rather than
+  fixed on its own. That id owns the reader/store seam this straddles and
+  lands before ANTS-3794, which this blocks, so it costs no extra cycle.
+  Do NOT start it as a standalone change -- ANTS-3793's scope note
+  carries the obligation.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
