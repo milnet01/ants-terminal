@@ -69,6 +69,14 @@ struct Options {
     int  maxResults = 0;
     int  maxFiles   = 0;
     Lang lang       = Lang::Auto;
+    // ANTS-3805 — restrict the walk to this project-relative subdirectory
+    // (find_caller only). Empty = the whole project. Reported by Vestige:
+    // find_caller {symbol:"update"} returned 360 truncated callers across four
+    // unrelated subsystems with no way to narrow, so the verb silently failed
+    // at its headline question for exactly the method names most likely to
+    // change — update/render/init/reset dominate a real class API. Scoping the
+    // WALK rather than post-filtering keeps callers_count and truncated honest.
+    QString lane;
 };
 
 struct DefResult {

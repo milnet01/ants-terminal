@@ -123,6 +123,22 @@ int firstFeatureGroupedTopicLine(const QStringList &lines,
             if (firstTopic < 0) firstTopic = i + 1;  // 1-based, for humans
         } else if (t.startsWith(QStringLiteral("**"))) {
             sawBoldRun = true;
+        } else if (t.startsWith(QStringLiteral("- **")) ||
+                   t.startsWith(QStringLiteral("* **"))) {
+            // ANTS-3803 (reported by Vestige) — a LIST-ITEM bold run counts.
+            // ANTS-3416 tuned this detector on MAME Curator's layout, whose
+            // category runs are flush-left `**Bold**` lines, so `t.startsWith
+            // ("**")` was the whole test. But op:add_subsection (ANTS-3584)
+            // writes `### <date> <Category> — <headline>` followed by
+            // `- **summary** (id)` bullets, whose bold runs are list items —
+            // the trimmed line starts `- `, sawBoldRun stayed false, and the
+            // detector returned -1 on the very format this verb produces.
+            //
+            // The consequence was not cosmetic: with no canonical `###`
+            // category heading present either, the flat insert then appended
+            // the entry at the END of [Unreleased] — reported as ~10,000 lines
+            // below the top of an 11,124-line file, where no reader looks.
+            sawBoldRun = true;
         }
     }
     return (headingCount >= 1 && sawBoldRun) ? firstTopic : -1;

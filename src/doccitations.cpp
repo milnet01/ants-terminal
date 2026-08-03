@@ -632,6 +632,10 @@ struct Antecedent {
     bool        ambiguous = false;
     QString     relPath;
     QStringList candidates;
+    // ANTS-3801 — a citation failed to resolve since this antecedent was set,
+    // so any path a continuation inherits from it may not be the file the
+    // document meant at that point. Cleared whenever the antecedent is.
+    bool        unresolvedSince = false;
 };
 
 struct PendingUnparsed {
@@ -729,6 +733,18 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
             u.reason     = t.kind == Target::OutOfRoot ? QStringLiteral("out_of_root")
                                                        : QStringLiteral("unresolvable");
             unparsedRows.append(u);
+            // ANTS-3801 — the antecedent is NOT cleared here, and that is
+            // deliberate: INV-7 requires an unparsed token between an
+            // antecedent and a continuation to leave the chain intact, because
+            // the common case is prose noise (a version like `6.2:9`) rather
+            // than a real citation. Clearing it here breaks that invariant —
+            // measured, this exact edit reddened
+            // DocCitations.Inv7ContinuationInheritsPathOnly.
+            //
+            // What IS recorded is that something failed to resolve since the
+            // antecedent was set, which is what makes a later inherited
+            // out_of_range untrustworthy (see the suppression below).
+            ante.unresolvedSince = true;
             continue;
         }
 
@@ -781,6 +797,28 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
             }
             e.insert(QStringLiteral("file_lines"), rr.fileLines);
             if (tok.startLine > rr.fileLines) {
+                // ANTS-3801 — an INHERITED path is only trustworthy if nothing
+                // failed to resolve between the antecedent and here. When
+                // something did, this range check is being run against a file
+                // the document never named at this point, and out_of_range
+                // would be fabricated: DOOM Ants saw `pathtrace.comp:1080` then
+                // `:1209` both reported against an unrelated 179-line header,
+                // seven such entries in one run.
+                //
+                // Reported `unresolved` rather than suppressed silently — the
+                // citation genuinely cannot be checked, and saying so is the
+                // honest answer where a bare omission would read as a pass.
+                // Narrow on purpose: only out_of_range is affected, and only on
+                // an inherited path, so INV-7's "an unparsed token does not
+                // break the chain" is untouched — a continuation that still
+                // reads inside its inherited file keeps its `ok`.
+                if (inherited && ante.unresolvedSince) {
+                    status = QStringLiteral("unresolved");
+                    e.insert(QStringLiteral("unresolved_antecedent"), true);
+                    e.remove(QStringLiteral("path"));
+                    e.remove(QStringLiteral("file_lines"));
+                    break;
+                }
                 // Only start_line decides this, and an empty target needs no
                 // special case: file_lines is 0, so line 1 is already past it.
                 status = QStringLiteral("out_of_range");
@@ -826,6 +864,11 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
             ante.ambiguous = (t.kind == Target::Ambiguous);
             ante.relPath   = t.relPath;
             ante.candidates = t.candidates;
+            // ANTS-3801 — a fresh antecedent starts clean. Only a NON-inherited
+            // citation may clear the flag: a continuation re-setting it here
+            // carries the same inherited path, so the doubt travels with it.
+            if (!tok.continuation)
+                ante.unresolvedSince = false;
         }
     }
 

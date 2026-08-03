@@ -9,6 +9,8 @@
 #include <QRegularExpression>
 #include <QSet>
 
+#include <algorithm>   // ANTS-3799 — stable_sort over the merged invariant list
+
 namespace SpecParse {
 
 bool isHeaderBlockEnd(const QString &line) {
@@ -124,6 +126,23 @@ QJsonObject parseSpecBody(const QString &body) {
         static const QRegularExpression tableRe(
             QStringLiteral(R"(^\|[ \t]*(INV-[0-9]+)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*$)"),
             QRegularExpression::MultilineOption);
+        // ANTS-3799 — both forms are parsed and merged by document position,
+        // rather than the bullet branch being skipped whenever the table branch
+        // matched anything. The old short-circuit made ONE `| INV-N | .. | .. |`
+        // row anywhere in the section suppress every bullet invariant in it:
+        // they vanished from this list, so spec_lint read an empty
+        // `test_surface` for each and reported `invariant_no_test`, while its
+        // independent anchor scan still knew they existed. Reported by finbreak
+        // against a spec with 11 bullet invariants and a `### Withdrawn
+        // invariants` summary table — 11 false findings on a conforming doc,
+        // arriving at the top of a /cold-eyes run as unchallengeable fact.
+        //
+        // Recording withdrawn invariants as an `Id | Withdrawn | Now` table is
+        // the obvious form for that content and the permanent-id rule in
+        // specs.md pushes authors toward it, so the two forms coexisting in one
+        // document is a shape to support, not to forbid.
+        QList<QPair<int, QJsonObject>> byPosition;   // section offset -> invariant
+
         auto it = tableRe.globalMatch(section);
         while (it.hasNext()) {
             const auto m = it.next();
@@ -131,13 +150,12 @@ QJsonObject parseSpecBody(const QString &body) {
             inv["id"]           = m.captured(1);
             inv["body"]         = m.captured(2);
             inv["test_surface"] = m.captured(3);
-            invariants.append(inv);
+            byPosition.append({static_cast<int>(m.capturedStart()), inv});
         }
 
         // (b) Bullet-form: `- **INV-N** — body...` (multi-line until
-        // next `- **INV-` or blank-line-plus-non-indent). Skip if
-        // table form already matched (avoids dup).
-        if (invariants.isEmpty()) {
+        // next `- **INV-` or blank-line-plus-non-indent).
+        {
             // Split on the bullet anchor — capture group keeps the
             // INV-N marker, then accumulate body lines until the
             // next anchor.
@@ -222,8 +240,28 @@ QJsonObject parseSpecBody(const QString &body) {
                 // Omitted, never empty-string: absence is what says "this
                 // invariant has no test surface" (see specparse.h).
                 if (!testSurface.isEmpty()) inv["test_surface"] = testSurface;
-                invariants.append(inv);
+                byPosition.append({from, inv});
             }
+        }
+
+        // ANTS-3799 — emit in document order, first occurrence of an id
+        // winning. Position order matters because the two forms are now
+        // interleaved: a document whose live invariants are bullets and whose
+        // withdrawn ones are a table must come back in the order a reader sees,
+        // not tables-then-bullets. First-wins is the dedup rule for the case
+        // where an id appears in both forms; whichever the author wrote first
+        // is the live one, and the other is the tombstone.
+        std::stable_sort(byPosition.begin(), byPosition.end(),
+                         [](const QPair<int, QJsonObject> &a,
+                            const QPair<int, QJsonObject> &b) {
+                             return a.first < b.first;
+                         });
+        QSet<QString> emitted;
+        for (const auto &p : std::as_const(byPosition)) {
+            const QString id = p.second.value(QStringLiteral("id")).toString();
+            if (emitted.contains(id)) continue;
+            emitted.insert(id);
+            invariants.append(p.second);
         }
     }
 

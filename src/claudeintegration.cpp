@@ -6484,7 +6484,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "call. With `files_only:true` the `callers[]` "
                         "array is replaced by `files:[{file, count, "
                         "lines[]}]` (the matched-file manifest, no "
-                        "quoted context windows). Refusals: bad_args "
+                        "quoted context windows). `lane` scopes the scan "
+                        "to one subdirectory (ANTS-3805) — reach for it on "
+                        "a short generic name like update/render/init, "
+                        "which otherwise matches every class that has one. "
+                        "Refusals: bad_args "
                         "(symbol missing or not a valid identifier), "
                         "no_project (caller_cwd unresolved).");
                     t["selection_hint"] = QStringLiteral(
@@ -6524,6 +6528,29 @@ void ClaudeIntegration::onMcpConnection() {
                             "Cap on callers[] (default 200). "
                             "callers_count carries the pre-cap total.");
                         props["max_results"] = p;
+                    }
+                    {
+                        // ANTS-3805 — scope filter. Without one, a generic
+                        // method name (update/render/init/reset — most of a
+                        // real class API) returns hundreds of unnarrowable
+                        // rows and the verb silently fails at its headline
+                        // question. Reported by Vestige: 360 truncated callers
+                        // for `update`, none in the class they changed.
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Optional (ANTS-3805). Restrict the scan to this "
+                            "project-relative subdirectory (e.g. \"src/render\"). "
+                            "Scopes the WALK, so callers_count and truncated "
+                            "describe the scoped set rather than a filtered "
+                            "view of a wider one; the applied value is echoed "
+                            "back as `lane`. Use it whenever the symbol is a "
+                            "short generic method name — a bare `update` "
+                            "matches every class that has one. A lane that "
+                            "does not resolve to a directory under the root is "
+                            "IGNORED (you get the whole-project scan), never a "
+                            "silent empty result.");
+                        props["lane"] = p;
                     }
                     {
                         // ANTS-2087 — opt-in body of the called symbol's

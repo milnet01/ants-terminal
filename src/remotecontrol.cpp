@@ -6892,6 +6892,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     // applied insert; it sees the original (pre-batch) section, so its
     // verdict reflects the body the caller is about to compound.
     bool malformedSection = false;
+    bool anyCreatedCategory = false;   // ANTS-3804 — envelope-level rollup
     int  malformedLine = -1;
     for (int i = 0; i < entries.size(); ++i) {
         const QJsonObject e = entries.at(i).toObject();
@@ -6925,6 +6926,19 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         if (!er.id.isEmpty()) a["id"] = er.id;
         a["category"] = er.category;
         a["line"]     = res.line;
+        // ANTS-3804 — report whether THIS entry created its `### <category>`
+        // heading. The single-op path has always emitted created_category and
+        // this one emitted nothing at all, so a caller reading the batch
+        // envelope saw an absent field — which most JSON clients render as
+        // false. Vestige read that as "the tool created no heading", deleted a
+        // heading the tool had in fact created, and lost content that only
+        // version control brought back.
+        //
+        // Per entry rather than only in aggregate: in a batch the FIRST entry
+        // for a category creates the heading and later ones insert into it, so
+        // a single envelope-level flag cannot say which entry did what.
+        a["created_category"] = res.created_category;
+        if (res.created_category) anyCreatedCategory = true;
         applied.append(a);
     }
 
@@ -6945,6 +6959,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         out["bytes"]           = applied.isEmpty()
             ? static_cast<qint64>(0)
             : static_cast<qint64>(markdown.toUtf8().size());
+        out["created_category"] = anyCreatedCategory;   // ANTS-3804
         if (malformedSection) {
             out["advisory"] = changelogMalformedAdvisory(
                 malformedLine, /*plural=*/true, /*applied=*/false);
@@ -6982,6 +6997,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     out["skipped_count"] = skipped.size();
     out["bytes_written"] = bytesWritten;
     out["file_bytes"]    = fileBytes;                   // ANTS-3723
+    out["created_category"] = anyCreatedCategory;       // ANTS-3804
     if (malformedSection) {
         out["advisory"] = changelogMalformedAdvisory(
             malformedLine, /*plural=*/true, /*applied=*/true);
@@ -18679,6 +18695,11 @@ SymbolQuery::Options sqOptions(const QJsonObject &req) {
         const int n = mr.toInt();
         if (n > 0) opts.maxResults = n;
     }
+    // ANTS-3805 — find_caller's scope filter. Read here rather than in the
+    // handler so it travels with the rest of the options; findDefinition
+    // ignores it, which is deliberate — a definition search returns a handful
+    // of rows and has never needed narrowing.
+    opts.lane = req.value(QStringLiteral("lane")).toString().trimmed();
     return opts;
 }
 
@@ -18777,8 +18798,13 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
         return QJsonDocument(sqNoProject(QStringLiteral("find_caller")));
     }
 
+    const SymbolQuery::Options opts = sqOptions(req);
     const SymbolQuery::CallResult res =
-        SymbolQuery::findCaller(root, symbol, sqOptions(req));
+        SymbolQuery::findCaller(root, symbol, opts);
+    // ANTS-3805 — echoed on both emission paths below. Without it a scoped
+    // result and a whole-project one are indistinguishable, which is the same
+    // partial-reads-as-complete trap `truncated` exists for.
+    const QString lane = opts.lane;
 
     // ANTS-3555 — files_only manifest mode: return the distinct set of files
     // that call the symbol (per-file call count + the exact line numbers) and
@@ -18828,6 +18854,7 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
         out["files"]         = files;
         out["files_count"]   = static_cast<int>(order.size());
         out["callers_count"] = res.callersTotal;
+        if (!lane.isEmpty()) out["lane"] = lane;   // ANTS-3805
         out["files_only"]    = true;
         if (res.definition.has_value()) {
             // Keep the "where + who" pairing: the definition is a single small
@@ -18860,6 +18887,7 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
     out["lang"]          = sqLangEcho(req);
     out["callers"]       = callers;
     out["callers_count"] = res.callersTotal;
+    if (!lane.isEmpty()) out["lane"] = lane;   // ANTS-3805
     if (res.definition.has_value()) {
         // ANTS-2087 — body of the called symbol's definition (not the
         // call sites, which are already context lines).

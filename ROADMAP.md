@@ -25010,6 +25010,262 @@ against current source before filing.
   Source: in-session-2026-08-03, found while grounding ANTS-3758's render design.
   Resolved (2026-08-03) with ANTS-3796, one spec for both. writeSections() now selects source_path and emits it as `source` (always emitted, null when unset, per the NULL/'' distinction ANTS-3782 makes load-bearing); rebuildProject() inserts it, and refuses a section record missing either new field rather than defaulting. The reason it went unnoticed is fixed too: ANTS-3761 INV-2's column diff now derives its column list from PRAGMA table_info with an exhaustive foreign-key substitution map, so a schema column the export does not carry FAILS by default instead of passing.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
+
+Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
+The other eleven feedback files carried no un-triaged input. Every finding below
+was verified against current source before filing — root cause and file:line are
+in each bullet, not just the reporter's symptom.
+
+- ✅ [ANTS-3799] **specparse: one `| INV-N |` table row suppresses bullet-invariant parsing for the whole doc, so spec_lint reports a false `invariant_no_test` per bullet.**
+  VERIFIED at src/specparse.cpp:140. The bullet-form branch is guarded by
+  `if (invariants.isEmpty())` -- "Skip if table form already matched (avoids
+  dup)" -- so a SINGLE `| INV-N | .. | .. |` row anywhere in the invariants
+  section stops every bullet invariant being parsed. They are then absent from
+  spec_lint's parsedById, so `test_surface` reads empty, while the independent
+  anchor scan (speclint.cpp:251-265, which matches BOTH bullet and row anchors)
+  still lists them -- so each one fires invariant_no_test.
+
+  Reported by finbreak against docs/specs/FIBR-0113.md: 11 live bullet
+  invariants, each with a well-formed `*Test:*` clause, plus a `### Withdrawn
+  invariants` summary table with `| INV-N | Withdrawn | Now |` rows. Result:
+  counts {invariant_no_test: 11}. Deleting only the table rows returns the doc
+  to zero such findings. The section boundary is the next `## `, so a `### `
+  subsection table falls inside the invariants section and triggers it.
+
+  Why it matters beyond the noise: /cold-eyes runs spec_lint as its
+  deterministic pre-pass and feeds findings into the lane brief as already-
+  logged fact, so 11 fabricated mechanical findings arrive unchallengeable --
+  and the natural "fix" (adding a second *Test:* line to invariants that
+  already have one) makes the document worse. It also forbids a summary table
+  as a way to record withdrawn invariants, which is the obvious form for
+  `Id | Withdrawn | Now`.
+
+  Fix: parse BOTH forms and merge by id rather than short-circuiting on the
+  first that matches. Dedup rule needs stating (first-seen wins is the cheap
+  one). A narrower alternative -- only treat a table as an invariant table when
+  its header names a Test column -- also works but leaves the two-forms-in-one-
+  doc case unparsed.
+  **Layman:** A spec that lists its rules as bullets but also has one small table gets wrongly reported as having no tests for any of its rules.
+  Kind: fix.
+  Lanes: mcp, specs.
+  Source: finbreak-feedback-2026-08-03.
+  Resolved (2026-08-03). src/specparse.cpp now parses BOTH invariant forms and merges them by document position, first-occurrence-of-an-id winning, instead of gating the bullet branch on `if (invariants.isEmpty())`. A `| INV-N |` row no longer suppresses bullet parsing for the rest of the section. Regression: SpecLint.Ants3799MixedFormsInOneDocument — three bullets (two with clauses) plus a two-row withdrawn table, asserting exactly one invariant_no_test and that the bullets keep their test surfaces. Worth recording: the pre-existing INV-2 test carried a comment saying a single document could not exercise both forms, so the suite had been shaped around this defect rather than catching it.
+
+- 📋 [ANTS-3800] **file_outline / read_region have no GLSL lane, though find_definition AND find_caller both advertise `glsl` as a lang.**
+  VERIFIED against the shipped schemas. file_outline's `mode` enum is
+  auto|cpp|py|md|json -- no glsl -- and it returns {language:"unknown"} with NO
+  symbols array for a .comp file. read_region symbol-mode resolves through that
+  flat outline, so it refuses symbol_not_found for a function that plainly
+  exists. Meanwhile find_definition's `lang` enum is
+  auto|cpp|py|lua|sh|generic|glsl and find_caller's is the same -- so the
+  toolset is internally inconsistent across THREE verbs about whether GLSL is
+  supported (the reporter noticed two).
+
+  DOOM Ants is shader-heavy: a 1622-line pathtrace.comp plus a ~500-line shared
+  pt_common.glsl, and essentially every renderer task edits them. Without
+  symbol-mode there, locating a function costs a workspace_search for the
+  signature then a native Read with a hand-computed offset -- 2 calls and a
+  large excerpt where 1 read_region would do. That falls on the largest files
+  in the repo, which is exactly where read_region's slice-instead-of-Read
+  premise pays best.
+
+  Fix: add a `glsl` mode auto-selected by extension
+  (.glsl/.comp/.vert/.frag/.geom/.tesc/.tese/.mesh/.task). GLSL's declaration
+  grammar is close enough to the cpp lane that routing the shader extensions
+  there may largely work: functions are `<type> <name>(<args>)` at column 0
+  followed by `{`. Worth adding on top: `layout(...)` uniform/buffer/in/out
+  blocks, `struct`, and file-scope `const` (this project's tuning constants all
+  live in pt_common.glsl as top-level consts). Whatever the route, make the
+  three verbs agree on the language set.
+  **Layman:** Shader files can't be outlined or sliced by function name, even though two other tools claim to understand them.
+  Kind: feature.
+  Lanes: mcp, workspace.
+  Source: doom-ants-feedback-2026-08-03.
+
+- ✅ [ANTS-3801] **doc_citations: an unresolvable citation does not reset the antecedent, so the next bare `:NNNN` inherits an unrelated file and is range-checked against it — fabricated `out_of_range`.**
+  VERIFIED at src/doccitations.cpp:723-732. A non-continuation token resolves
+  via resolvePath(); when the result is OutOfRoot or Unresolvable the loop body
+  appends to unparsedRows and hits `continue` -- WITHOUT touching `ante`. The
+  antecedent therefore still holds the last citation that RESOLVED, not the
+  last one written. A following bare `:NNNN` takes the continuation branch,
+  inherits that stale relPath, and runs statAndGate against it -- producing a
+  real-looking out_of_range against a file the document never named at that
+  point.
+
+  DOOM reported both halves. (a) 40 shader citations in unparsed[] as
+  "unresolvable" -- same root cause as the GLSL indexing gap filed above, since
+  shaders are absent from the basename index resolution falls back to. (b) The
+  knock-on: `pathtrace.comp:1080` then `:1209` were BOTH reported against
+  rb_materials.h (179 lines) as out_of_range; same at another site where
+  `:1009`/`:7459` were attributed to r_backend.c (396 lines). Seven false
+  entries.
+
+  (b) is the damaging half and is worth fixing even if GLSL indexing is far
+  off. /cold-eyes runs doc_citations as a deterministic pre-pass precisely so
+  reviewers do not spend judgement on grep-able trivia, and its procedure puts
+  a finding into the lane brief as "already logged, do not re-confirm" -- i.e.
+  unchallengeable. Fabricated out_of_range entries entering a brief that way
+  are worse than no check: they invite edits to citations that were correct.
+  The reporter caught them only because a 179-line header cited at line 1209 is
+  implausible on its face; against two large real files the same failure is
+  invisible.
+
+  Fix: only inherit across a citation that RESOLVED -- reset `ante` (or mark it
+  invalid) on the unresolvable/out-of-root path before `continue`. A bare
+  `:NNNN` after an unresolved anchor should report as unresolved, echoing the
+  unresolved path, never silently re-pointed. Cheaper guard if the reset is
+  awkward: suppress out_of_range entirely when inherited_path is true and any
+  citation between the anchor and the continuation failed to resolve.
+  **Layman:** When a documentation link can't be found, the next short link silently attaches to a different file and gets reported as pointing past its end — a made-up error.
+  Kind: fix.
+  Lanes: mcp, docs.
+  Source: doom-ants-feedback-2026-08-03.
+  Resolved (2026-08-03) — but NOT by the reporter's preferred fix, which the test suite refuted. Clearing the antecedent on an unresolvable citation reddens DocCitations.Inv7ContinuationInheritsPathOnly, because INV-7 deliberately keeps the chain across an unparsed token (its fixture uses `6.2:9`, prose noise that must not break a citation run). Implemented their fallback instead, narrowed: Antecedent gains `unresolvedSince`, and an inherited path whose chain crossed a failed resolve reports `unresolved` (with unresolved_antecedent:true) in place of a fabricated out_of_range. Only out_of_range, only when inherited, only after a failed resolve — a continuation still reading inside its inherited file keeps its ok, so INV-7 is untouched. Reported rather than suppressed: silence would read as a pass. Regression: DocCitations.Ants3801InheritedOutOfRangeAfterUnresolvedIsNotReported.
+
+- 📋 [ANTS-3802] **`feedback_log op:compact_resolved` resolves ids against the CALLER's ROADMAP, so it can never collapse a shipped finding in a cross-project feedback file.**
+  VERIFIED at src/remotecontrol.cpp:14084-14095. compact_resolved builds its
+  shipped-id set from `findRoadmapUnder(callerCanonical)` -- the caller
+  project's own ROADMAP.md -- and returns roadmap_unavailable if that is
+  absent. feedback_query, on the SAME file, has a cross-repo resolver
+  (remotecontrol.cpp:13586+, `foreignResolved`, ANTS-3519) that reports each id
+  with `resolved_from` naming the sibling project it was found in.
+
+  So the two verbs disagree about which ROADMAP holds an ANTS-NNNN id, and only
+  one is right. DOOM reported feedback_query resolving all 19 mapped ids as ✅
+  with shipped_dates, while compact_resolved on the same file from the same
+  caller skipped five of them (3707/3710/3735/3736/3743) as
+  roadmap_unresolved_ids.
+
+  The scope is the whole intended population: a *_Ants_MCP_Feedback.md file is
+  by construction written from one project ABOUT another project's tooling, so
+  its ids are never the caller's. The verb can only succeed when pointed at a
+  file whose ids happen to be in the caller's roadmap -- which is the Ants
+  Terminal maintainer case and nothing else. A contributor session asked to
+  mark shipped items complete cannot use the verb built for it, and either
+  leaves the file stale or hand-edits it -- and hand-editing a file whose
+  maintainer annotations must not be clobbered is exactly what the verb exists
+  to prevent.
+
+  Fix: call the resolver feedback_query already has, rather than reading
+  caller_cwd's ROADMAP.md directly. If a same-project read must remain the
+  default, then at minimum fall back to the cross-project resolver before
+  emitting roadmap_unresolved_ids, and name which roadmap was searched in the
+  refusal -- "unresolved" currently reads as "this id does not exist" when it
+  means "not in the file I happened to open".
+  **Layman:** The tool for tidying up shipped feedback items looks for them in the wrong project's to-do list, so it almost never finds them.
+  Kind: fix.
+  Lanes: mcp, feedback.
+  Source: doom-ants-feedback-2026-08-03.
+
+- ✅ [ANTS-3803] **changelog_log's feature-grouped detector requires a flush-left `**Bold**` run, so it misses the very format `op:add_subsection` writes — `op:add` then writes a flat category at the section end.**
+  VERIFIED at src/changeloglog.cpp:111-129. firstFeatureGroupedTopicLine()
+  returns the topic line only when `headingCount >= 1 && sawBoldRun`, and
+  sawBoldRun is set by `t.startsWith("**")` on the TRIMMED line -- i.e. a
+  flush-left bold run. That three-signal AND was tuned for MAME Curator's
+  format (ANTS-3416, dated `### ` topics + flush-left `**Bold**` category runs
+  beneath).
+
+  Vestige's CHANGELOG is in the format ANTS-3584's own op:add_subsection
+  WRITES: `### <date> <Category> — <headline>` plus prose plus `- **summary**
+  (id)` bullets. Those bold runs are LIST ITEMS, so the trimmed line starts
+  `- `, sawBoldRun stays false, the detector returns -1, and no refusal fires.
+  The flat-category insert then runs: with no canonical `### <Category>`
+  heading present, catHeading and laterHeading are both -1, so headingAt =
+  sectionEnd and the entry lands at the very END of [Unreleased] -- reported as
+  ~10,000 lines below the top of an 11,124-line file.
+
+  So changelog_log cannot detect a layout it produces itself. That is the
+  sharpest statement of the bug and the reason it is worth more than a
+  detector tweak: ANTS-3584 added a writer for this format without teaching
+  ANTS-3416's reader about it.
+
+  The advisory Vestige saw after the write is the ANTS-2125 malformed_section
+  one (interleaved prose between category blocks), which is non-blocking by
+  design -- so their read that "the tool detected the mismatch but only after
+  writing" is nearly right: it detected a DIFFERENT thing, and the
+  feature-grouped detector never fired at all.
+
+  Fix: count an indented/list-item `**Bold**` run as a bold run, or better,
+  drop sawBoldRun as a required signal and key on ">=1 `### ` heading, none
+  canonical" plus a dated-topic shape. Then the existing feature_grouped_section
+  refusal fires, with a hint naming op:add_subsection.
+  **Layman:** The changelog tool can't recognise the layout it creates itself, so it dumps new entries thousands of lines from where they belong.
+  Kind: fix.
+  Lanes: mcp, changelog.
+  Source: vestige-feedback-2026-08-03.
+  Resolved (2026-08-03). firstFeatureGroupedTopicLine() now counts a LIST-ITEM bold run (`- **` / `* **`), not only a flush-left one, so the existing feature_grouped_section refusal finally fires on the layout op:add_subsection itself writes. ANTS-3416 tuned the detector on MAME Curator's flush-left `**Bold**` category runs; ANTS-3584 then added a writer for a format whose bold runs are bullets, and the reader was never taught about it — so changelog_log could not detect its own output and op:add appended the entry at the end of [Unreleased] instead of refusing.
+
+- ✅ [ANTS-3804] **changelog_log `op:add_batch` never reports `created_category`, though it creates headings — an absent field a client renders as `false`.**
+  VERIFIED. The single-op paths report the engine's flag faithfully
+  (src/remotecontrol.cpp:6626 dry_run, :6662 write) and the engine sets
+  created_category=true on the create path (src/changeloglog.cpp:270). But
+  cmdChangelogLogAddBatch emits `applied:[{index, id?, category, line}]` and
+  NO created_category -- not per entry, not aggregated.
+
+  Vestige reported created_category:false against a call that had in fact
+  created a `### <Category>` heading, then deleted that heading during cleanup
+  because the field said the tool had made nothing. It was a real heading, and
+  removing it was data loss the response invited; recovery depended on version
+  control.
+
+  I could not reproduce a literal `false` on the single-op path by inspection
+  -- on a feature-grouped file that path takes the create branch and sets the
+  flag TRUE -- so the reachable route to what they saw is either the batch path
+  (field absent, and an absent JSON boolean renders as false in most clients)
+  or a second call after a first had created the heading (correct per call,
+  misleading across calls). Filing the batch gap because it is the verified
+  defect; noting the other reading so a fix does not stop at the wrong one.
+
+  Fix: emit created_category per entry in applied[], and an aggregate on the
+  envelope. Their own suggestion is worth keeping as the general rule -- if the
+  value cannot be computed reliably for a path, OMIT it rather than emit false:
+  an absent field prompts the caller to look, a false one tells them not to.
+  That rule is what the batch path violates today by omission-rendered-as-false.
+
+  Note the severity ordering they gave is right: a misrouted entry is cosmetic
+  and fixed by moving it; a state field that misdescribes what the tool did
+  makes the caller reason from a false premise and act destructively.
+  **Layman:** The batch changelog command doesn't say when it made a new heading, so a caller can wrongly conclude none was made and delete a real one.
+  Kind: fix.
+  Lanes: mcp, changelog.
+  Source: vestige-feedback-2026-08-03.
+  Resolved (2026-08-03). changelog_log op:add_batch now reports created_category per entry in applied[] and as an envelope-level rollup, on both the dry_run and write paths. Previously the batch path emitted the field nowhere while the single-op path always did, so a caller saw an absent boolean — which most JSON clients render as false, and which led the reporting session to delete a heading the tool had in fact created. Per entry as well as aggregate because in a batch the first entry for a category creates the heading and later ones insert into it, so one flag cannot say which entry did what.
+
+- ✅ [ANTS-3805] **`find_caller` has no scope filter, so a common method name returns hundreds of unnarrowable rows and silently fails at its headline use case.**
+  VERIFIED against the shipped schema: find_caller takes symbol / caller_cwd /
+  lang / max_results / files_only / include_body / encoding. There is no class,
+  type, file, lane or glob filter, and a qualified `symbol:"Class::method"` is
+  not a documented form (the symbol pattern is a bare identifier,
+  ^[A-Za-z_][A-Za-z0-9_]{0,127}$, so `::` does not even validate).
+
+  Vestige changed CascadedShadowMap::update's signature and called find_caller
+  {symbol:"update"} -- the exact check /write-code's trigger table prescribes
+  for a signature change. It returned callers_count:360, truncated:true, across
+  animation/audio/core/physics, none of them the class in question, and the
+  `definition` field resolved to an unrelated AnimationStateMachine::update. A
+  grep for the receiver expression found the single real call site immediately.
+
+  This is worse than an empty result: 360 plausible rows read as a genuine
+  answer, so a caller either concludes a one-call-site change has a huge blast
+  radius, or scrolls a truncated list and misses the real site. It fails for
+  exactly the methods most likely to be changed -- update/render/init/reset
+  dominate real class APIs -- and it inverts the usual prefer-the-verb
+  guidance, since grep is here both cheaper and more accurate.
+
+  Fix, cheapest first: (a) a `lane`/`glob` filter, which workspace_search
+  already has and which at least narrows by directory; (b) accept a qualified
+  `Class::method` and match on the textual receiver before `->`/`.`; (c) when
+  results are truncated AND the matched `definition` lives in a different class
+  than the query implies, return a hint recommending a qualified search -- the
+  same shape as workspace_search's existing zero-match hint, which is a good
+  precedent.
+  **Layman:** Asking "what calls update()?" returns 360 results from all over the codebase with no way to say which class you meant.
+  Kind: enhancement.
+  Lanes: mcp, symbol.
+  Source: vestige-feedback-2026-08-03.
+  Resolved (2026-08-03). find_caller gains an optional `lane` scope filter: SymbolQuery::Options::lane restricts the WALK to a project-relative subdirectory, so callers_count and truncated describe the scoped set rather than a filtered view of a wider one, and the applied value is echoed back as `lane` on both the callers[] and files_only paths. Declared in the inputSchema — without that, additionalProperties:false strips the arg, which is the ANTS-3432 trap this verb family has hit before. A lane that does not resolve to a directory under the root is IGNORED rather than refused: a typo returning zero callers is the same silent-empty-reads-as-an-answer failure the finding is about. Took the cheapest of the reporter's three suggested fixes; qualified Class::method matching stays unimplemented because `symbol` is constrained to a bare identifier and cannot express it.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23

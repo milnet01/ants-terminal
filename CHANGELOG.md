@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`find_caller` takes an optional `lane` to scope the scan to one subdirectory.** (ANTS-3805)
+  Without it a short generic method name such as `update` returns hundreds of unnarrowable callers from every class that has one. The walk itself is scoped, so `callers_count` and `truncated` describe the scoped set, and the applied lane is echoed back.
+
 - **Roadmap migration now reads rotated archives, and records which file each section came from (ANTS-3766, ANTS-3782)**
   The migration used to see only a project's live `ROADMAP.md`. Closed
   minor versions that `/bump` had rotated out into `docs/roadmap/0.6.md`
@@ -124,6 +127,18 @@ for security-relevant changes.
   zero as an all-clear and then found real problems by hand.
 
 ### Fixed
+
+- **`changelog_log op:add_batch` now reports `created_category`, per entry and as a rollup.** (ANTS-3804)
+  The batch path emitted the field nowhere while the single-op path always did, so callers read the absent boolean as false and could conclude no heading had been created when one had.
+
+- **`changelog_log op:add` now refuses a feature-grouped `[Unreleased]` written in the format `op:add_subsection` itself produces.** (ANTS-3803)
+  The detector required a flush-left bold run and missed list-item ones, so the entry was appended at the end of the section instead of being refused.
+
+- **`doc_citations` no longer reports a fabricated `out_of_range` against a file the document never named.** (ANTS-3801)
+  A citation that failed to resolve left the inherited-path antecedent pointing at the last one that did, so a following bare `:NNNN` was range-checked against an unrelated file. Such a continuation now reports `unresolved` instead.
+
+- **`spec_lint` no longer reports a false `invariant_no_test` for every bullet-form invariant in a spec that also contains an `| INV-N |` table row.** (ANTS-3799)
+  The parser skipped bullet invariants entirely once any table row matched, so one withdrawn-invariants summary table cost a conforming spec eleven fabricated findings. Both forms are now parsed and merged in document order.
 
 - **docsindex carries a third copy of the Status-field rule, with the same truncation bug.** (ANTS-3786)
   A third piece of code reads a document's status line and, like the other two, stops at the first line — so a status written across two lines is cut short in the docs index.

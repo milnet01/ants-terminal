@@ -219,6 +219,55 @@ TEST(DocCitations, Inv7ContinuationInheritsPathOnly) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-3801 — an inherited path whose chain crossed an UNRESOLVABLE citation
+// never reports out_of_range, because the range check would be running against
+// a file the document never named at that point.
+//
+// DOOM Ants' shape: a shader citation the resolver cannot place, followed by a
+// bare continuation. The continuation used to inherit whatever resolved
+// EARLIER — a short unrelated header — and be range-checked against it,
+// producing a real-looking out_of_range. Seven fabricated entries in one run.
+// It matters more than an ordinary false positive: /cold-eyes runs this verb as
+// a deterministic pre-pass and puts findings into the lane brief as
+// already-logged fact, so a fabricated one invites an edit to a citation that
+// was correct.
+//
+// The narrowness is the design. INV-7 above requires an unparsed token NOT to
+// break the chain (its fixture uses `6.2:9`, prose noise), so clearing the
+// antecedent outright is wrong and was measured to redden that test. Only
+// out_of_range, only on an inherited path, only after a failed resolve.
+TEST(DocCitations, Ants3801InheritedOutOfRangeAfterUnresolvedIsNotReported) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("src/short.h"), "one\ntwo\ntwo\n");   // 3 lines
+
+    // short.h resolves; the shader does not; the continuation belongs to the
+    // shader but would inherit short.h and be checked against its 3 lines.
+    //
+    // The shader is a BARE BASENAME, which is how DOOM cited it and is what
+    // makes it Unresolvable: a path carrying a directory separator resolves to
+    // missing_file instead, and missing_file legitimately DOES set the
+    // antecedent. Continuations are backticked, the form the scanner reads.
+    const QString doc = fx.doc(
+        "see src/short.h:2 and then `pathtrace.comp:1080` and `:1209`\n");
+    const QJsonObject r = DocCitations::check(fx.root, doc, DocCitations::Options{});
+
+    const QJsonObject cont = cite(r, cites(r).size() - 1);
+    expect(cont.value(QStringLiteral("status")).toString() != QStringLiteral("out_of_range"),
+           "ANTS-3801: a continuation after an unresolvable citation must not be "
+           "range-checked against the last file that happened to resolve",
+           render(r));
+    expect(cont.value(QStringLiteral("status")).toString() == QStringLiteral("unresolved"),
+           "ANTS-3801: it reports unresolved — the citation genuinely cannot be "
+           "checked, and silence would read as a pass",
+           render(r));
+    expect(!cont.contains(QStringLiteral("path")),
+           "ANTS-3801: and it names no path, because the inherited one is not "
+           "the file the document meant",
+           render(r));
+    EXPECT_EQ(0, expect_failures());
+}
+
 // INV-8 — a fence is a context break, so it clears the antecedent rather than
 // merely being skipped.
 TEST(DocCitations, Inv8FenceResetsAntecedent) {

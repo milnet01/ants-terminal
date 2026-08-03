@@ -433,7 +433,20 @@ CallResult findCaller(const QString &rootCanonical,
     st.collectDefs = true;
     st.defCap = kDefDefaultResults;
 
-    walk(st, QDir::cleanPath(rootCanonical));
+    // ANTS-3805 — scope the walk to `lane` when given. Cleaned and re-checked
+    // against the root so a `..` cannot walk outside the project; a lane that
+    // does not resolve under the root, or does not exist, is ignored rather
+    // than refused — the answer is then the whole-project scan the caller would
+    // have got anyway, never a silent empty result that reads as "no callers".
+    QString scanRoot = QDir::cleanPath(rootCanonical);
+    if (!opts.lane.isEmpty()) {
+        const QString cand =
+            QDir::cleanPath(scanRoot + QLatin1Char('/') + opts.lane);
+        if ((cand == scanRoot || cand.startsWith(scanRoot + QLatin1Char('/'))) &&
+            QFileInfo(cand).isDir())
+            scanRoot = cand;
+    }
+    walk(st, scanRoot);
 
     r.callers = st.calls;
     r.callersTotal = st.callsTotal;

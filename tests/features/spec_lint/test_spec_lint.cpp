@@ -8,10 +8,13 @@
 // actually turned red.
 
 #include "speclint.h"
+#include "specparse.h"   // ANTS-3799 — the mixed-form test asserts on the parser
 
 #include <QDir>
 #include <QFile>
 #include <QHash>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -101,8 +104,10 @@ TEST(SpecLint, Inv1SectionListIsReadNotAssumed) {
 // INV-2 — every INV-N carrying no test-surface clause produces exactly one
 // invariant_no_test, in BOTH forms, except a tombstone.
 //
-// Two documents rather than one: parseSpecBody's bullet branch runs only when
-// the table branch matched nothing, so a single document cannot exercise both.
+// Separate documents per form below, which is the clean way to isolate each.
+// It used to be the ONLY way — parseSpecBody's bullet branch ran solely when
+// the table branch matched nothing — and that limitation is what ANTS-3799
+// fixed; MixedFormsInOneDocument at the end of this block is its regression.
 TEST(SpecLint, Inv2EveryInvariantNeedsATestClause) {
     const QString bulletDoc = QStringLiteral(
         "# ANTS-1 — bullets\n"
@@ -165,6 +170,63 @@ TEST(SpecLint, Inv2EveryInvariantNeedsATestClause) {
         EXPECT_GT(f.line, 0) << "the anchor scan is also where `line` comes from";
 
     EXPECT_EQ(b.findings.size() + t.findings.size() + n.findings.size(), 4);
+}
+
+// ANTS-3799 — bullet and table invariants COEXIST in one document, and the
+// bullets keep their test surfaces.
+//
+// The shape finbreak hit: live invariants in bullet form, withdrawn ones
+// collected in a `### Withdrawn invariants` summary table. The section runs to
+// the next `## `, so that table sits inside it. Before the fix a single
+// `| INV-N |` row put the parser in table mode for the whole section, every
+// bullet lost its `*Test:*` clause, and each reported invariant_no_test — 11
+// false findings on the reporting project's conforming spec, arriving at the
+// top of a /cold-eyes run as already-logged fact. The tempting "fix" for an
+// author is to add a second *Test:* line to invariants that already have one,
+// which makes the document worse.
+TEST(SpecLint, Ants3799MixedFormsInOneDocument) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — mixed\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-5** — a live rule. *Test:* `tests/x.py` — asserts the thing.\n"
+        "- **INV-7** — another live rule. *Test:* `tests/y.py` — asserts it.\n"
+        "- **INV-8** — this one genuinely has none.\n"
+        "\n"
+        "### Withdrawn invariants\n"
+        "\n"
+        "| Id | Withdrawn | Now |\n"
+        "|---|---|---|\n"
+        "| INV-1 | 2026-07-28, loop 5 split | **FIBR-0193 INV-1** — moved |\n"
+        "| INV-2 | 2026-07-28, loop 5 split | **FIBR-0193 INV-2** — moved |\n"
+        "\n"
+        "## 4. Notes\n");
+    const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("m.md"), {});
+
+    // Exactly one: INV-8. The two bullets WITH clauses must not fire, and the
+    // table rows carry a third cell so they have a surface of their own.
+    EXPECT_EQ(countKind(r, "invariant_no_test"), 1)
+        << "a `| INV-N |` row must not strip the test surface off bullet "
+           "invariants elsewhere in the same section";
+    for (const auto &f : r.findings) {
+        if (f.kind != QLatin1String("invariant_no_test")) continue;
+        EXPECT_TRUE(f.message.contains(QStringLiteral("INV-8"))) << f.message.toStdString();
+    }
+
+    // And the parser itself returns both forms, in document order — bullets
+    // first here, because that is how the document reads.
+    const QJsonObject parsed = SpecParse::parseSpecBody(doc);
+    const QJsonArray invs = parsed.value(QStringLiteral("invariants")).toArray();
+    ASSERT_EQ(invs.size(), 5) << "3 bullets + 2 table rows";
+    QStringList ids;
+    for (const auto &v : invs) ids << v.toObject().value(QStringLiteral("id")).toString();
+    EXPECT_EQ(ids, (QStringList{QStringLiteral("INV-5"), QStringLiteral("INV-7"),
+                                QStringLiteral("INV-8"), QStringLiteral("INV-1"),
+                                QStringLiteral("INV-2")}));
+    EXPECT_EQ(invs.at(0).toObject().value(QStringLiteral("test_surface")).toString(),
+              QStringLiteral("`tests/x.py` — asserts the thing."))
+        << "the bullet's clause survives the presence of a table in the section";
 }
 
 // INV-3 — an id gap fires only on a MISSING number, never on a tombstoned one.
