@@ -286,24 +286,29 @@ bool loadItems(QSqlDatabase &db, qint64 projectId, QList<ItemRef> *sortOrder,
     return true;
 }
 
-bool writeMeta(QSqlDatabase &db, const QString &slug, QIODevice *out, qint64 *projectId,
+// ANTS-3758 INV-11 — refitted onto RoadmapStore::readProjectBySlug(). This is
+// the call site that made the slug-keyed overload necessary: it resolves by
+// export_slug and OBTAINS project_id, so a projectId-only reader could not have
+// served it.
+bool writeMeta(RoadmapStore &store, const QString &slug, QIODevice *out, qint64 *projectId,
                QString *legendText, QString *error) {
-    QSqlQuery q(db);
-    q.prepare(QStringLiteral("SELECT project_id, name, legend FROM project WHERE export_slug = ?"));
-    q.addBindValue(slug);
-    if (!q.exec())
-        return failQuery(error, q);
-    if (!q.next())
-        return fail(error, QStringLiteral("no project with export_slug '%1'").arg(slug));
+    const auto p = store.readProjectBySlug(slug, error);
+    if (!p) {
+        // nullopt is both "absent row" and "query failed"; the reader sets
+        // *error only in the latter, so an untouched error means absent.
+        if (error && error->isEmpty())
+            *error = QStringLiteral("no project with export_slug '%1'").arg(slug);
+        return false;
+    }
 
-    *projectId = q.value(0).toLongLong();
-    *legendText = q.value(2).toString();
+    *projectId = p->projectId;
+    *legendText = p->legendText;
 
     QJsonObject o;
     o.insert(QStringLiteral("t"), QStringLiteral("meta"));
     o.insert(QStringLiteral("schema"), RoadmapStore::kSchemaVersion);
     o.insert(QStringLiteral("project"), slug);
-    o.insert(QStringLiteral("name"), q.value(1).toString());
+    o.insert(QStringLiteral("name"), p->name);
     // § 2.3 — no export timestamp. A date inside a byte-identity contract
     // defeats it: two exports of an unchanged store would differ across
     // midnight and every regeneration would churn the committed file.
@@ -451,38 +456,35 @@ bool writeItems(QSqlDatabase &db, const QList<ItemRef> &order, QIODevice *out, Q
     return true;
 }
 
-bool writeElements(QSqlDatabase &db, const QList<SectionRef> &slugOrder, QIODevice *out,
+// ANTS-3758 INV-11 — refitted off its own LEFT JOIN and onto
+// RoadmapStore::listElements(). The query this used to run is now that reader's,
+// so the render and the export cannot drift on element ordering.
+bool writeElements(RoadmapStore &store, const QList<SectionRef> &slugOrder, QIODevice *out,
                    QString *error) {
-    QSqlQuery q(db);
-    q.setForwardOnly(true);
-    q.prepare(QStringLiteral(
-        "SELECT e.position, e.kind, e.payload, i.id_fold FROM element e "
-        "LEFT JOIN item i ON i.item_pk = e.item_pk WHERE e.section_id = ? ORDER BY e.position"));
-
     for (const SectionRef &s : slugOrder) {
-        q.addBindValue(s.id);
-        if (!q.exec())
-            return failQuery(error, q);
-        while (q.next()) {
-            const QString kind = q.value(1).toString();
+        const auto rows = store.listElements(s.id, error);
+        if (!rows)
+            return false;
+        for (const RoadmapStore::ElementRow &e : *rows) {
             QJsonObject o;
             o.insert(QStringLiteral("t"), QStringLiteral("element"));
             o.insert(QStringLiteral("section"), s.slug);
-            o.insert(QStringLiteral("position"), q.value(0).toInt());
-            o.insert(QStringLiteral("kind"), kind);
-            if (kind == QLatin1String("item")) {
-                o.insert(QStringLiteral("ref"), q.value(3).toString());
-            } else if (kind == QLatin1String("table")) {
+            o.insert(QStringLiteral("position"), e.position);
+            o.insert(QStringLiteral("kind"), e.kind);
+            if (e.kind == QLatin1String("item")) {
+                o.insert(QStringLiteral("ref"), e.itemIdFold);
+            } else if (e.kind == QLatin1String("table")) {
                 QJsonValue v;
-                if (!jsonColumn(q.value(2).toString(), "element.payload", &v, error))
+                if (!jsonColumn(e.payload.value_or(QString()), "element.payload", &v, error))
                     return false;
                 o.insert(QStringLiteral("payload"), v);
             } else {
                 // Narration prose is stored as the author's text and emitted
                 // as a JSON string, which JCS then escapes like any other
                 // (ANTS-3756 § 2.3 — canonicalising prose as JSON is undefined,
-                // not merely wasteful).
-                o.insert(QStringLiteral("payload"), q.value(2).toString());
+                // not merely wasteful). value_or preserves the old
+                // QVariant::toString() behaviour on a NULL payload: empty.
+                o.insert(QStringLiteral("payload"), e.payload.value_or(QString()));
             }
             if (!emitLine(out, o, error))
                 return false;
@@ -669,10 +671,14 @@ bool writeHistory(QSqlDatabase &db, const QList<ItemRef> &foldOrder, QIODevice *
     return true;
 }
 
-bool writeAll(QSqlDatabase &db, const QString &slug, QIODevice *out, QString *error) {
+// Takes the store rather than the bare connection since ANTS-3758: two of its
+// helpers now go through RoadmapStore's readers (INV-11). `db` is still bound
+// here so every other helper's call is unchanged.
+bool writeAll(RoadmapStore &store, const QString &slug, QIODevice *out, QString *error) {
+    QSqlDatabase &db = store.db();
     qint64 projectId = 0;
     QString legendText;
-    if (!writeMeta(db, slug, out, &projectId, &legendText, error))
+    if (!writeMeta(store, slug, out, &projectId, &legendText, error))
         return false;
     if (!writeIdPrefixes(db, projectId, out, error))
         return false;
@@ -692,7 +698,7 @@ bool writeAll(QSqlDatabase &db, const QString &slug, QIODevice *out, QString *er
     if (!writeItems(db, itemsSorted, out, error))
         return false;
 
-    return writeElements(db, sectionsBySlug, out, error)
+    return writeElements(store, sectionsBySlug, out, error)
         && writeRelationships(db, projectId, out, error)
         && writeCitations(db, projectId, slug, out, error)
         && writeFeedbackRefs(db, projectId, out, error)
@@ -747,7 +753,7 @@ bool RoadmapExport::writeProject(RoadmapStore &store, const QString &exportSlug,
     if (!db.transaction())
         return fail(error, QStringLiteral("could not begin the export transaction: %1")
                                .arg(db.lastError().text()));
-    const bool ok = writeAll(db, exportSlug, out, error);
+    const bool ok = writeAll(store, exportSlug, out, error);
     db.rollback();   // read-only — there is nothing to commit
     return ok;
 }

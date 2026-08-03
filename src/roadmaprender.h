@@ -1,0 +1,57 @@
+// ANTS-3758 — the roadmap render: generate ROADMAP.md from the store at full
+// fidelity. Spec: docs/specs/ANTS-3758-roadmap-render.md
+//
+// The inverse of the migration (ANTS-3757/3765). Every item the render emits is
+// written in full `roadmap-format.md` § 3.5 bullet form — status emoji, id,
+// bold headline, Kind: and every optional field the item carries — so the
+// generated file is the file that exists today, written by the store instead of
+// by hand. The render is lossy in MEMBERSHIP only (§ 7.5 of
+// roadmap-data-model.md excludes `internal` and `dropped`), never in detail.
+//
+// Qt6::Core + Qt6::Sql only, in ants_roadmapstore_lib, because ANTS-3794 will
+// call it from a headless publish path.
+
+#pragma once
+
+#include <QString>
+#include <QStringList>
+#include <optional>
+
+class RoadmapStore;
+
+namespace RoadmapRender {
+
+struct Options {
+    // Where a NULL section.source_path routes. REQUIRED — this lib does not
+    // link projectsettings.cpp, so it cannot read .ants/project.json and the
+    // caller resolves the `roadmap` override (§ 2).
+    QString liveRoadmapPath;
+    // Computes everything and writes nothing. filesWritten lists the files a
+    // real pass WOULD have written, and is empty when the gate fails, because
+    // a real pass would have written nothing either.
+    bool dryRun = false;
+};
+
+struct Outcome {
+    QStringList filesWritten;   // what landed (or, under dryRun, what would have)
+    // false together with a non-empty filesWritten is the partial-commit case
+    // § 2.7 documents: QSaveFile::commit() is per file, so the commit phase is
+    // the one window staging cannot close.
+    bool committed = false;
+    int  itemsRendered = 0, itemsExcluded = 0, sectionsRendered = 0;
+    // Ids of public OPEN items with no `layman` (INV-5). Non-empty ⇒ nothing
+    // was written. Populated on every engaged return, so a caller staring at a
+    // gate failure can still see how many items would have rendered.
+    QStringList gateFailures;
+};
+
+// nullopt is reserved for failures BEFORE the commit phase — SQL errors, a
+// render error, a path refusal — where there is genuinely nothing to report.
+// A gate failure and a partial commit both return an ENGAGED Outcome, because
+// a refusal that returned nullopt would throw away the one field the caller
+// needs (INV-5, § 2.7).
+std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
+                              const QString &projectRoot, const Options &opts,
+                              QString *error = nullptr);
+
+} // namespace RoadmapRender

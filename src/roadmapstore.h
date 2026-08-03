@@ -343,6 +343,48 @@ public:
     std::optional<QVector<SectionRow>> listSections(qint64 projectId,
                                                     QString *error = nullptr) const;
 
+    // ANTS-3758 § 2.1 — the ordered contents of one section. The render's
+    // per-section input, and the reader roadmapexport.cpp's writeElements()
+    // stops hand-rolling in SQL. Without it there was no element enumerator at
+    // all: the export reached past this surface with its own LEFT JOIN, which
+    // is exactly the drift listSections()' comment above exists to prevent.
+    struct ElementRow {
+        int     position = 0;
+        QString kind;                 // 'item' | 'narration' | 'table'
+        // std::optional and not QString: the DDL makes payload NULL exactly
+        // when kind is 'item', and a bare QString collapses NULL with '' — the
+        // same distinction SectionRow::sourcePath uses std::optional to keep.
+        std::optional<QString> payload;
+        qint64  itemPk = 0;           // 'item' only; 0 otherwise
+        // The export emits the CASE-FOLDED ref and ItemWrite does not carry it
+        // (id_fold is on ItemRef). Without this field the refit would owe a
+        // readItem() per element to recover what one LEFT JOIN already returns.
+        QString itemIdFold;           // 'item' only; empty otherwise
+    };
+    std::optional<QVector<ElementRow>> listElements(qint64 sectionId,
+                                                    QString *error = nullptr) const;
+
+    // ANTS-3758 § 2.1 — the project row. Same gap as listElements(): the export
+    // hand-rolled `SELECT project_id, name, legend FROM project` because no
+    // reader existed, and § 2.8's preamble (H1 + status legend) cannot be built
+    // without one.
+    struct ProjectRow {
+        qint64  projectId = 0;
+        QString name, exportSlug;
+        // The RAW stored text, not a parsed QJsonObject: the export reads it as
+        // a string inside a byte-identity contract, so a reader that parsed and
+        // re-serialised it would put a round-trip through the middle of INV-1.
+        QString legendText;
+    };
+    // Two lookups because the two callers key differently, and one of them is
+    // the refit: the render holds a projectId; the export does NOT — writeMeta()
+    // resolves WHERE export_slug = ? and OBTAINS the id as an output. A
+    // projectId-only reader could not serve it, which would leave ANTS-3758
+    // INV-11's `FROM project` clause unsatisfiable.
+    std::optional<ProjectRow> readProject(qint64 projectId, QString *error = nullptr) const;
+    std::optional<ProjectRow> readProjectBySlug(const QString &exportSlug,
+                                                QString *error = nullptr) const;
+
     // § 2.8 step 1's first branch: the prefix this project already allocates
     // under, which idHighWater() cannot answer because it takes the prefix as
     // an argument. Also found missing at implementation. nullopt = no row.

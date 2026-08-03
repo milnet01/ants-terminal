@@ -1386,6 +1386,83 @@ RoadmapStore::listSections(qint64 projectId, QString *error) const {
     return out;
 }
 
+// ANTS-3758 § 2.1. ORDER BY position and not by rowid: unlike listSections(),
+// whose order is re-applied in C++ by sectionOrderLess(), element order IS
+// position order — UNIQUE (section_id, position) already makes it total, so the
+// SQL sort is the contract rather than a determinism aid.
+std::optional<QVector<RoadmapStore::ElementRow>>
+RoadmapStore::listElements(qint64 sectionId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.setForwardOnly(true);
+    q.prepare(QStringLiteral(
+        "SELECT e.position, e.kind, e.payload, e.item_pk, i.id_fold FROM element e "
+        "LEFT JOIN item i ON i.item_pk = e.item_pk "
+        "WHERE e.section_id = ? ORDER BY e.position"));
+    q.addBindValue(sectionId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+
+    QVector<ElementRow> out;
+    while (q.next()) {
+        ElementRow e;
+        e.position = q.value(0).toInt();
+        e.kind = q.value(1).toString();
+        // NULL stays nullopt. The DDL makes payload NULL exactly for kind
+        // 'item', and collapsing it to "" here would lose the distinction the
+        // export's own emit path depends on.
+        if (!q.value(2).isNull())
+            e.payload = q.value(2).toString();
+        if (!q.value(3).isNull())
+            e.itemPk = q.value(3).toLongLong();
+        e.itemIdFold = q.value(4).toString();
+        out.push_back(e);
+    }
+    return out;
+}
+
+namespace {
+// The two readProject* overloads differ only in their WHERE clause, so the row
+// assembly lives once. A second copy would be the drift these readers exist to
+// remove, one level down.
+std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
+                                                         const QString &column,
+                                                         const QVariant &key,
+                                                         QString *error) {
+    QSqlQuery q(const_cast<QSqlDatabase &>(db));
+    q.prepare(QStringLiteral("SELECT project_id, name, export_slug, legend "
+                             "FROM project WHERE %1 = ?")
+                  .arg(column));
+    q.addBindValue(key);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;   // absent row is not an error, per idPrefixFor()
+
+    RoadmapStore::ProjectRow p;
+    p.projectId = q.value(0).toLongLong();
+    p.name = q.value(1).toString();
+    p.exportSlug = q.value(2).toString();
+    p.legendText = q.value(3).toString();
+    return p;
+}
+} // namespace
+
+std::optional<RoadmapStore::ProjectRow>
+RoadmapStore::readProject(qint64 projectId, QString *error) const {
+    return readProjectWhere(m_db, QStringLiteral("project_id"), projectId, error);
+}
+
+std::optional<RoadmapStore::ProjectRow>
+RoadmapStore::readProjectBySlug(const QString &exportSlug, QString *error) const {
+    return readProjectWhere(m_db, QStringLiteral("export_slug"), exportSlug, error);
+}
+
 bool sectionOrderLess(const RoadmapStore::SectionRow &a,
                       const RoadmapStore::SectionRow &b) {
     if (a.position != b.position)

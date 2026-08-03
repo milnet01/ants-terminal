@@ -446,6 +446,7 @@ add_library(ants_roadmapstore_lib STATIC
     src/roadmapstore.cpp
     src/jsoncanonical.cpp   # ANTS-3761 — RFC 8785; Qt6::Core only, no Sql
     src/roadmapexport.cpp   # ANTS-3761 — the export writer + its rebuild half
+    src/roadmaprender.cpp   # ANTS-3758 — the render: store → ROADMAP.md
     # ANTS-3765 — the migration LOAD half. Here and not in ants_core_lib, which
     # is the read/load seam made mechanical: the read half (roadmapmigrate.cpp)
     # is in core precisely because it needs no database, and this half needs
@@ -2298,6 +2299,11 @@ if(ANTS_TESTS)
                 # than parsed: INV-1 needs an off-enum status, which no real
                 # source file can produce.
                 tests/features/roadmap_migrate_load/test_roadmap_migrate_load.cpp
+                # ANTS-3758 — the render. Behavioural against a real store in a
+                # QTemporaryDir; INV-11 is the one source scrape, because it
+                # asserts a REFIT (no second element/project reader under src/)
+                # and no behaviour of the render can observe that.
+                tests/features/roadmap_render/test_roadmap_render.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the
@@ -2313,6 +2319,8 @@ if(ANTS_TESTS)
         ANTS_JCS_VECTOR_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/vectors"
         # ANTS-3761 INV-18 — the committed golden exports, likewise.
         ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden"
+        # ANTS-3758 INV-11 — the source tree the refit scrape walks.
+        ANTS_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h"
         SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
