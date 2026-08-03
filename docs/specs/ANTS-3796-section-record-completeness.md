@@ -1,6 +1,6 @@
 # ANTS-3796 — Section record completeness: document order, and the columns the export drops
 
-**Status:** spec draft (2026-08-03).
+**Status:** accepted (2026-08-03) — cold-eyes converged at loop 2; ready to implement.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3796 + ANTS-3797, both found 2026-08-03 while
 grounding ANTS-3758's render design against the schema.

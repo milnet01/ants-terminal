@@ -24928,6 +24928,39 @@ against current source before filing.
   record and regenerate the same three goldens, so spec and land them in one
   pass; ANTS-3797's third part (derive the diff's columns from
   PRAGMA table_info) is what stops this id's column falling in the same hole.
+  Progress (2026-08-03): spec written and gated —
+  docs/specs/ANTS-3796-section-record-completeness.md, an umbrella covering this
+  id and ANTS-3797 (specs.md § 2's Covers: form; both widen the same section
+  record and regenerate the same three goldens).
+
+  /cold-eyes ran 2 loops, 3 cold lanes each, identical brief, no prior-loop
+  findings carried. Loop 1: 2 C / 5 H / 6 M / 6 L. Loop 2: 2 C / 3 H / 6 M / 6 L.
+  Both loops' CRITICALs were unanimous across all three lanes. All verified
+  findings fixed; 3 lane findings dismissed as packet gaps rather than defects.
+
+  The four that changed what gets built:
+  - The draft declared `position` writers and no reader — the write-only-column
+    defect ANTS-3782 § 2.3 exists to name, reproduced by the spec citing it.
+  - `sectionOrderLess()` then had no producer: the store has findSection /
+    readSection / listItems and no section enumerator, so the sort key could not
+    be applied through the typed surface. `listSections()` added.
+  - § 2.5's schema-derived column list would have DELETED coverage — the diff's
+    literals substitute stable renderings for foreign rowids (par.slug,
+    i.id_fold, p.export_slug), and "PRAGMA minus the rowid columns" drops them.
+    Now three sets, with own-surrogate PKs excluded (element_id has no single
+    rendering) and FK rowids substituted exhaustively.
+  - The export's {"schema":1,"t":"meta"} discriminator is gated on the same
+    kSchemaVersion INV-6 pins at 1, which the draft never addressed.
+
+  Stopped at loop 2 of 3 on the collateral signal, not the cap: ~8 of loop 2's
+  items were introduced by loop 1's own fixes against ~3 draft defects, which
+  /cold-eyes Phase 5 says to answer by sweeping harder rather than looping.
+  One loop-1 fix was itself wrong (a truncated grep) and loop 2 caught it.
+  Doc grew 431 -> 641 lines across the two loops.
+
+  Deferred to implementation, not to another review: nothing verified is left
+  unfixed. Next step is /write-code against the spec, and ANTS-3758's render
+  spec is unblocked once this lands.
 
 - 📋 [ANTS-3797] **section.source_path is not in the export, so archive provenance dies at the first rebuild — and INV-2 cannot see it.**
   BLOCKS ANTS-3758, and is a shipped defect rather than a gap. ANTS-3782 added
