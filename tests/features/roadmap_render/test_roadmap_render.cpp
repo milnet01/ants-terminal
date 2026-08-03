@@ -253,9 +253,12 @@ TEST(RoadmapRender, Inv8FormatMarker) {
     const QStringList head = live.split(QLatin1Char('\n')).mid(0, 5);
     EXPECT_TRUE(head.join(QLatin1Char('\n')).contains(QStringLiteral("ants-roadmap-format")));
 
-    // An archive has no root section of its own — the synthetic root is one row
-    // per project under UNIQUE (project_id, slug) — so its marker is the
-    // renderer's constant, and it must still be there.
+    // This fixture's archive has no root section of its own, so its marker is
+    // the renderer's constant and it must still be there. (Corrected under
+    // ANTS-3806: that is a property of THIS fixture, not of archives — a real
+    // archive with pre-heading content stores its own root under ANTS-3766
+    // § 2.3's per-source slug and replays it. Both paths are covered in
+    // tests/features/roadmap_migrate_archive_root/.)
     const QString archive = readAll(f->dir.filePath(QStringLiteral("docs/roadmap/0.5.md")));
     EXPECT_EQ(archive.count(QStringLiteral("ants-roadmap-format")), 1)
         << "archive shipped without a format marker";

@@ -23789,6 +23789,16 @@ against current source before filing.
   and inherits the guard -- it must not schedule a render unless
   detectRoadmapFormat(lines, &sawSignal) returns "ants-v1" AND sets sawSignal,
   because that function answers ants-v1 for input it does not recognise.
+  Correction (2026-08-03, ANTS-3806): the first of the three "disproved"
+  clauses above was itself wrong on its second half. The synthetic root is
+  NOT one row per project -- walkSource() gives each source's root
+  ctx.prefix as its slug ("" live, "<M>-<N>" per archive), so an archive
+  with pre-heading content stores its own root and the render replays it.
+  The constant marker is for a file with NO preamble, not for every
+  archive. Verified by running a two-source fixture end to end; standing
+  proof in tests/features/roadmap_migrate_archive_root/. § 2.8 of the spec
+  and the render's comment are corrected; the loop log carries a
+  correction row.
 
 - 📋 [ANTS-3759] **documentation.md needs a rule on numbers in prose — keep only figures that carry an argument, and source them to a command.**
   User asked whether specific numbers belong in documentation at all,
@@ -25124,7 +25134,11 @@ against current source before filing.
   Source: in-session-2026-08-03, found while grounding ANTS-3758's render design.
   Resolved (2026-08-03) with ANTS-3796, one spec for both. writeSections() now selects source_path and emits it as `source` (always emitted, null when unset, per the NULL/'' distinction ANTS-3782 makes load-bearing); rebuildProject() inserts it, and refuses a section record missing either new field rather than defaulting. The reason it went unnoticed is fixed too: ANTS-3761 INV-2's column diff now derives its column list from PRAGMA table_info with an exhaustive foreign-key substitution map, so a schema column the export does not carry FAILS by default instead of passing.
 
-- 📋 [ANTS-3806] **An archive's pre-heading content has nowhere to live: the synthetic root is one row per project, not one per source.**
+- ✅ [ANTS-3806] **Verified: an archive's pre-heading content DOES survive — the synthetic root is one row per source.**
+  REPORTED AS A DEFECT, DISPROVED BY RUNNING IT. The original diagnosis is
+  kept verbatim below because the correction only makes sense against it;
+  the resolution note at the end is what holds.
+
   Found while implementing the render (ANTS-3758), which is the first
   consumer that has to put each section back into the file it came from.
 
@@ -25156,9 +25170,43 @@ against current source before filing.
   collapse is inferred from the UNIQUE constraint plus the
   `findSection(projectId, "")` lookup; confirm the observable behaviour
   with a two-source fixture before choosing a fix.
-  **Layman:** When the roadmap moves into the database, anything written at the very top of an old archive file is silently merged into the main roadmap's header instead of staying with its own file.
+  **Layman:** We thought moving the roadmap into the database lost whatever was written at the very top of an old archive file; we ran it, and it does not — each file keeps its own header.
   Kind: fix.
   Source: in-session-2026-08-03, found implementing ANTS-3758.
+  Resolved (2026-08-03): NOT A DEFECT -- the diagnosis above was read off
+  the code and is wrong. Verified by running, as the bullet required: a
+  two-source fixture (live ROADMAP.md + docs/roadmap/0.7.md, each with a
+  marker, its own H1 and unique prose) through findRoadmaps() ->
+  planFrom() -> load() -> render().
+
+  What actually happens: walkSource() gives each source's root ctx.prefix
+  as its slug -- "" for the live roadmap, "<M>-<N>" for an archive
+  (ANTS-3766 § 2.3) -- so the roots are DISTINCT rows under UNIQUE
+  (project_id, slug). The archive's preamble is stored with source_path =
+  docs/roadmap/0.7.md and the render replays it back into that file.
+  Nothing collapses and nothing is dropped. The findSection(projectId, "")
+  the diagnosis rested on is rebuildElements()' fallback for an orphan
+  element, not the section-resolution path.
+
+  Even the reported shape could not have lost data silently: mutating
+  root.slug to QString() makes planFrom() raise archive_slug_collision and
+  load() refuse.
+
+  So the open question -- per-source roots, or accept the drop -- is moot:
+  per-source roots already exist. No fix was needed and none was made.
+
+  Shipped instead: tests/features/roadmap_migrate_archive_root/ (spec.md +
+  2 cases, each shown red against its own defect) as the standing proof,
+  plus the corrections to what the false claim had reached --
+  ANTS-3758 § 2.8, its loop log (new row 5-correct), the render's own
+  comment, and a correction note on the ANTS-3758 bullet. ANTS-3758's
+  constant format marker STAYS: it is for a file with no preamble, which
+  the second case locks.
+
+  Surfaced by the same fixture and filed, not fixed: ANTS-3808 (the
+  migration and the render disagree about what item.body holds, so a
+  rendered bullet repeats its own headline and every field -- blocks
+  ANTS-3794).
 
 - 📋 [ANTS-3807] **Per-project migration prompts — a copy-paste brief the user can hand to each project's CC session at cutover.**
   The migration is driven per project and the user runs it by handing a
@@ -25197,6 +25245,47 @@ against current source before filing.
   **Layman:** When the roadmap database is ready, I get a ready-made instruction to paste into each of my other projects so their session migrates its own roadmap correctly, instead of me explaining it thirteen times.
   Kind: doc.
   Source: user-request-2026-08-03.
+
+- 📋 [ANTS-3808] **The migration and the render disagree about what `item.body` holds, so a rendered bullet repeats its own headline and every field.**
+  Observed, not inferred — rendered out of a real store in the
+  ANTS-3806 fixture. Source bullet:
+
+      - ✅ [DEMO-0003] **A bare archived item.**
+        Layman: An older thing.
+        Kind: implement.
+        Source: test.
+
+  comes back as the same headline line, then the WHOLE bullet again as
+  body, then the fields a second time in canonical form.
+
+  `BulletRecord::body` is declared "full bullet body (post-emoji,
+  pre-continuation-join)" (`src/roadmapparse.h:56`) — it includes the
+  id+headline line and every `Layman:` / `Kind:` / `Source:` line.
+  ANTS-3757 § 2.1.1 files it into `item.body` verbatim ("the reader's
+  `headline` / `body`"), so the migration is doing what its spec says.
+  `RoadmapRender::renderBullet()` (`src/roadmaprender.cpp`) then emits
+  head, THEN `body`, THEN `**Layman:**` / `Kind:` / `Source:` / `Lanes:` /
+  `Evidence:` from the columns — it reads `body` as the RESIDUAL prose.
+  Two contracts, one column, opposite meanings.
+
+  Blocks ANTS-3794: publish would write this into every migrated
+  project's ROADMAP.md.
+
+  Owns the decision of which side strips, and it is a real choice:
+  - the migration strips the recognised field lines (and the headline
+  line) on the way in, so `item.body` is residual prose — matches the
+  render and the data model's field columns, but changes what ANTS-3757
+  § 2.1.1 declares and what already-migrated stores hold; or
+  - the render strips on the way out — leaves `item.body` as the
+  verbatim source of truth, but the render then needs a parser it does
+  not have, which ANTS-3757 § 2.3 forbids duplicating.
+
+  ANTS-3758's INV-1 round-trip oracle (deferred to ANTS-3793) is what
+  would have caught this; the fix needs its own regression test either
+  way, since ANTS-3793's oracle arrives later.
+  **Layman:** Publishing a migrated roadmap today would print every entry's text twice inside itself.
+  Kind: fix.
+  Source: in-session-2026-08-03, found verifying ANTS-3806.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

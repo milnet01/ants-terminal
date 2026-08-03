@@ -144,6 +144,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap migration: an archive's own preamble does survive (ANTS-3806)**
+  A reported migration limitation — that every source file's content
+  above its first heading collapsed into one row per project, so an old
+  archive's own header was lost — turned out not to exist. Verified by
+  running a two-source project end to end rather than by reading the
+  code: each file keeps its own preamble and gets it back when the
+  roadmap is written out again. Added a regression test that will notice
+  if that ever stops being true, and corrected the spec and comments that
+  had recorded the wrong explanation.
+
 - **`feedback_log op:compact_resolved` now finds shipped items in other projects' roadmaps** (ANTS-3802)
   Cross-session feedback files are written from one project about
   another's tooling, so their item ids belong to that other project. The

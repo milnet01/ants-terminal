@@ -302,10 +302,16 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
             }
         }
 
-        // A file with no root section of its own — every archive, since the
-        // synthetic root is one row per PROJECT (empty slug under
-        // UNIQUE (project_id, slug)) — has no stored marker to replay, so it
-        // gets the renderer's constant. INV-8 holds for every file either way.
+        // A file with no root section of its own has no stored marker to
+        // replay, so it gets the renderer's constant. INV-8 holds for every
+        // file either way.
+        //
+        // That is a file with no PRE-HEADING CONTENT, not every archive
+        // (corrected under ANTS-3806, which had read the empty-slug root as one
+        // row per project). Each source's root takes `ctx.prefix` as its slug —
+        // "" live, "<M>-<N>" for an archive — so an archive that has a preamble
+        // stores it and replays it here; `walkSource()` drops the root only
+        // when its source put nothing in it, and that file lands on this line.
         QString text = blocks.join(QStringLiteral("\n\n"));
         if (!sawRoot || !hasMarkerInHead(text))
             text = formatMarker() + QStringLiteral("\n\n") + text;
