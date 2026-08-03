@@ -152,11 +152,13 @@ sequence; sections cannot be cleared, because `element.section_id` and
 `item` filing reference them. A re-run that swaps two sections' positions would
 then collide mid-update with no deferred-constraint escape — SQLite offers
 `DEFERRABLE INITIALLY DEFERRED` for foreign keys only. Distinctness is a
-writer's obligation (INV-4) rather than a DDL constraint, and § 2.2's sort key
-is total whether or not it holds.
+writer's obligation **within a run's plan** (INV-4) rather than a DDL
+constraint — table-wide duplicates are permitted, because § 2.3.1 keeps a
+deleted heading's row and its stale position — and § 2.2's sort key is total
+whether or not distinctness holds.
 
 **`NOT NULL` with no default**, so every writer states it rather than silently
-taking 0. INV-6 owns the `user_version` argument; it is not restated here.
+taking 0. INV-6 states why the schema version does not move for it.
 
 ### 2.2 The sort key is `(position, slug)`
 
@@ -182,17 +184,25 @@ bool sectionOrderLess(const RoadmapStore::SectionRow &a,
                       const RoadmapStore::SectionRow &b);
 ```
 
-It is **new, not a promotion of `cmpCodeUnit()`.** That helper is file-local to
-`src/roadmapexport.cpp` and is a `QString` primitive (`a.compare(b)`), applied
-there to `a.text` and `a.rawId`; moving it would not serve those callers and
-would not give this sort key a home. `sectionOrderLess()` *uses* the same
-`QString::compare` semantics — which is where § 2.2's collation claim comes
-from — and `loadSections()` is untouched (§ 2.4).
+It is **new, and not a promotion of `cmpCodeUnit()`, though that helper already
+compares section slugs.** `src/roadmapexport.cpp` declares
+`inline int cmpCodeUnit(const QString &a, const QString &b) { return a.compare(b); }`
+and calls it on `a.slug` in **both** of `loadSections()`'s comparators, as well
+as on `a.text`, `a.rawId`, `a.idFold` and several tuple members elsewhere in
+that file. So the two sorts genuinely share a primitive, and this spec's
+collation claim is that primitive's semantics rather than a parallel assertion.
 
-ANTS-3758's render is then the second caller rather than the author, and INV-1
-and INV-5 test the shipped comparator instead of one written inside the test —
-which is the difference between an invariant and a fixture agreeing with
-itself.
+What `sectionOrderLess()` adds is the *key*, not the comparison: it takes two
+`SectionRow`s and applies `(position, slug)`, where `cmpCodeUnit()` takes two
+`QString`s and knows nothing about sections. Promoting the string primitive out
+of its TU would move a helper eight call sites depend on and still leave the
+sort key homeless, so `cmpCodeUnit()` stays exactly where it is and
+`loadSections()` is untouched (§ 2.4).
+
+Its first callers are this spec's tests; ANTS-3758's render is the second, and
+the production caller. INV-1 and INV-5 therefore test the shipped comparator
+rather than one written inside the test — the difference between an invariant
+and a fixture agreeing with itself.
 
 ### 2.3 Writers
 
@@ -214,18 +224,33 @@ their columns are nullable and were added to a shipped signature; this column
 is `NOT NULL`, so an insert that omitted it could not succeed and a setter
 would be unreachable.
 
-### 2.3.1 The reader, without which the column is write-only
+#### 2.3.1 The reader, without which the column is write-only
 
 ```cpp
 struct SectionRow {
     ...
     int position = 0;   // ANTS-3796 § 2.1 — document order within the project
 };
+
+// The enumerator. readSection() is a point lookup and findSection() resolves
+// one slug, so neither can produce the SET a sort key applies to.
+std::optional<QVector<SectionRow>> listSections(qint64 projectId,
+                                                QString *error = nullptr) const;
 ```
 
-`readSection()` populates it, and `RoadmapMigrateLoad`'s re-run comparison
-becomes `cur->title != … || cur->level != … || cur->position != … ||
-cur->parentId != …`.
+`readSection()` populates the field, and `RoadmapMigrateLoad`'s re-run
+comparison becomes `cur->title != … || cur->level != … || cur->position != …
+|| cur->parentId != …`.
+
+**`listSections()` is what makes § 2.2's sort key reachable at all.** The store
+today exposes `findSection(projectId, slug)`, `readSection(sectionId)` and
+`listItems(projectId)` — a slug resolver, a point lookup, and an enumerator for
+items only. Without a section enumerator, `sectionOrderLess()` has nothing to
+sort through the typed surface, and INV-1, INV-4 and INV-5 would each have to
+`SELECT section_id` in raw SQL and then read every row back — which is the same
+reach-past-the-reader this section exists to prevent, one level up. It is
+shaped after `listItems()`, which exists for exactly this reason: *"Neither is
+expressible as a point lookup however many times it is called."*
 
 **This clause is the whole reason `updateSection()` takes the parameter**, and
 an earlier draft of this spec declared the writers without it — which would
@@ -246,6 +271,16 @@ resolution), and `firstLine` is the heading's own line. So the pair is document
 order across the live roadmap first and then every archive. The synthetic root
 (`level = 0`, empty slug) sorts first within its source on an unset `firstLine`
 of 0, which is where it belongs and is why INV-4 can say *every* section.
+
+**The ordinal is computed in the loader, not carried on the plan.**
+`RoadmapMigrateLoad` builds a `QHash<QString /*slug*/, int>` in a pre-pass over
+`plan.sections` sorted by `(sourceIndex, firstLine)`, and each `addSection()` /
+`updateSection()` call reads its `wantPosition` from that map — the same shape
+as the existing `wantSource`, which is likewise derived at the call site from
+`plan.sources` rather than stored on `PlannedSection`. `PlannedSection` gains
+**no** field: the plan already holds everything the ordinal is a function of,
+and a stored copy is a second source of truth that can disagree with the pair
+it was derived from.
 
 **Two consequences of a project-wide dense sequence, both accepted rather than
 worked around.** A heading inserted mid-file renumbers every section after it,
@@ -298,6 +333,19 @@ distinction matters in a spec whose first CRITICAL was a missing reader:
 `rebuildProject()` is the *importer* that consumes an export, while
 `readSection()` (§ 2.3.1) is the *reader* that returns a stored row.
 
+**The export's `meta` schema value does not move, and that is a decision rather
+than an oversight.** Each export opens with `{"name":…,"project":…,"schema":1,
+"t":"meta"}`, and `rebuildProject()` aborts on `schema != RoadmapStore::
+kSchemaVersion` — the *same* constant INV-6 holds at 1. So this change widens
+the record shape without moving the discriminator, and an export written before
+it would clear the `meta` gate and then be refused a few lines later for the
+missing fields. That is the correct outcome and the reason no compatibility
+path is owed: the refusal is specific ("line N: section record missing
+position") where a version mismatch would say only that the binary is too new.
+Bumping `kSchemaVersion` to express the record change would also bump the
+store's `user_version`, which is exactly what INV-6 forbids — the two are one
+constant, and separating them is ANTS-3781's problem, not this spec's.
+
 **Emission order is unchanged.** Both of `loadSections()`'s orders — its
 `(depth, slug)` `emitOrder` and its plain-slug `slugOrder` — are untouched;
 `position` rides along as data. The export's job is a byte-stable file, the
@@ -313,19 +361,35 @@ the third is the one a careless reading drops:
 | Set | Contents | Hand-written? |
 |---|---|---|
 | Derived | every column `PRAGMA table_info` reports | no — this is the point |
-| Excluded | `project.root`, which ANTS-3761 INV-2 already excludes by name | yes |
-| **Substituted** | every rowid-valued column, replaced by the stable rendering the diff compares instead | **yes, and exhaustively** |
+| Excluded | `project.root` (ANTS-3761 INV-2 excludes it by name), plus each table's **own surrogate primary key** — `section_id`, `element_id`, `item_pk`, `rel_id`, `history_id` | yes, named |
+| **Substituted** | every **foreign-key** rowid column, replaced by the stable rendering the diff compares instead | **yes, and exhaustively** |
 
 **The substitution set is not the join keys, and conflating the two deletes
-coverage.** The current literals do not merely omit rowid columns; they project
-a stable identity *in place of* each one — `par.slug` for `section.parent_id`,
-`i.id_fold` for `element.item_pk`, `p.export_slug` for every `project_id`,
-`id_fold` for `relationship.src_pk` / `dst_pk`. A rule reading "derived, minus
-the rowid-valued columns" therefore stops comparing section parentage and
-element→item membership altogether — narrowing the very invariant this section
-exists to widen. So the substitution map is written out per column, and **a
-rowid-valued column with no entry in it fails the test** rather than being
-quietly skipped; that is what keeps the map exhaustive as the schema grows.
+coverage.** The current literals do not merely omit foreign rowid columns; they
+project a stable identity *in place of* each one — `par.slug` for
+`section.parent_id`, `i.id_fold` for `element.item_pk`, `p.export_slug` for
+every `project_id`, `id_fold` for `relationship.src_pk` / `dst_pk`. A rule
+reading "derived, minus the rowid-valued columns" therefore stops comparing
+section parentage and element→item membership altogether — narrowing the very
+invariant this section exists to widen. So the substitution map is written out
+per column, and **a foreign-key rowid with no entry in it fails the test**
+rather than being quietly skipped; that is what keeps the map exhaustive as the
+schema grows.
+
+**The diff takes the map as a parameter**, rather than closing over a
+function-static literal the way `inv2Projections()` does today. Without that,
+INV-3's third leg — pass a deliberately incomplete map, assert the diff fails —
+has no way to inject one, and the invariant guarding exhaustiveness would be
+the one part of § 2.5 that ships untested.
+
+**A table's own surrogate PK is excluded, not substituted, and the distinction
+is load-bearing** — an earlier draft said "every rowid-valued column" is
+substituted, which has no answer for `element.element_id`. That column has no
+single stable rendering: the element projection identifies a row by the
+composite `(s.slug, e.position)`, so demanding a one-column substitute for it
+would fail INV-3 against the *correct* current projection. A rowid column
+defaults to **excluded** when it is the table's own PK and to **substituted**
+when it points at another table.
 
 This inverts the default. Today a column added to the schema is absent from the
 diff and passes; afterwards it is present and fails until someone teaches the
@@ -343,9 +407,15 @@ the second instance of it in this lane.
   whose sections are, in document order, `zeta` (level 2), `alpha` (level 3,
   child of `zeta`), `mid` (level 2) — so document order, slug order and
   `(depth, slug)` order are three different sequences — exports, rebuilds into
-  a temp store, and asserts the `(position, slug)` walk matches. *Breaks when:*
-  the writer omits `position` and the rebuild leaves it defaulted, which the
-  slug-ordered fixture of any smaller test cannot detect.
+  a temp store, and asserts the `listSections()` walk under
+  `sectionOrderLess()` matches. *Breaks when:* `writeSections()` emits the
+  column but `rebuildProject()` binds a **recomputed** value — insertion
+  ordinal, or the `(depth, slug)` rank it already has in hand — instead of the
+  exported one. That is the reachable failure: `NOT NULL` with no default and
+  INV-7's refusal between them rule out a silently defaulted `position`, so an
+  earlier draft's "the rebuild leaves it defaulted" named a state the schema
+  cannot reach. A fixture whose sections are in slug order cannot detect the
+  recomputation either, which is what the three-section shape is for.
 - **INV-2** — `section.source_path` survives the round trip. *Test:* same
   fixture; one section carries `docs/roadmap/0.6.md` and one carries `NULL`,
   and after rebuild `readSection()->sourcePath` returns `docs/roadmap/0.6.md`
@@ -379,7 +449,7 @@ the second instance of it in this lane.
   each archive, which produces duplicate positions that § 2.2's tie-break then
   hides behind a plausible slug order — the reason density is asserted here
   rather than left to the absent `UNIQUE`. Scoped to the plan's sections
-  because § 2.3 keeps a deleted heading's row, stale position and all; a
+  because § 2.3.1 keeps a deleted heading's row, stale position and all; a
   whole-table permutation assertion would be false on any re-run that dropped a
   heading, which is an ordinary re-run and not an error.
 - **INV-5** — The section sort key is total: two sections sharing a `position`
@@ -396,8 +466,11 @@ the second instance of it in this lane.
   ANTS-3781 records as absent, against zero stores that would need one. Mirrors
   ANTS-3782 INV-27 with **one leg deliberately dropped**: that invariant also
   asserted the three goldens still import, which cannot hold here because § 4
-  regenerates them — the record shape is what changed. § 2.1 carries the
-  argument for why the version holds; this is the last change entitled to it.
+  regenerates them — the record shape is what changed. The argument for holding
+  at 1, stated here and pointed at from § 2.1 rather than split across both: no
+  store is reachable from user-facing code yet, so a bump would manufacture an
+  upgrade case nothing implements in order to migrate zero stores. This is the
+  **last** change entitled to it — the freedom expires at ANTS-3758's cutover.
 - **INV-7** — An export whose section record omits `position` or `source` is
   refused by the **rebuild importer** (`rebuildProject()`, not the
   `readSection()` reader of § 2.3.1), loudly, with no partial store written.
@@ -414,10 +487,24 @@ the second instance of it in this lane.
 
 ## 4. RAM / build cost
 
-No new build target, no new external library, no new source file — the change
-is one DDL column, two signatures, four SQL statements and a test fixture in
-files that already exist (`src/roadmapstore.{h,cpp}`, `src/roadmapexport.cpp`,
+No new build target, no new external library, no new source file. The change is
+one DDL column, one new struct field, three function signatures
+(`addSection()`, `updateSection()`, and the new `listSections()` +
+`sectionOrderLess()`), and six SQL statements — `addSection`'s INSERT,
+`updateSection`'s UPDATE, `readSection`'s SELECT, `listSections`' SELECT,
+`writeSections()`'s SELECT and `rebuildProject()`'s INSERT — all in files that
+already exist (`src/roadmapstore.{h,cpp}`, `src/roadmapexport.cpp`,
 `src/roadmapmigrateload.cpp`).
+
+**The signature change has five test call sites, not one**, and they are the
+compile-time blast radius: `addSection()` is called from
+`tests/features/roadmap_store_schema/`, `roadmap_store_concurrency/`,
+`roadmap_store_identity/`, `roadmap_migrate_load/` and
+`roadmap_export_roundtrip/`, besides `src/roadmapmigrateload.cpp`. Adding
+`position` as a required positional parameter **before** the defaulted
+`parentId` makes every one of them a compile error rather than a silent
+rebinding, which is the intended failure mode — but it is five files to update,
+not the single call site § 2.3 discusses.
 
 Memory: one `int` per section row, and two more keys per section record in the
 export (`"position":N` and `"source":null`). Both scale with the section count,
@@ -458,7 +545,7 @@ diff unreadable in the same pass that changes the record shape.
   to move one.** A permanent exclusion rather than deferred work: nothing in
   this lane has asked for it, so there is no follow-up id. It does **not**
   exclude the renumbering that follows *incidentally* from inserting a heading,
-  which is ANTS-3793's `create_section` and is discussed in § 2.3 and § 8 —
+  which is ANTS-3793's `create_section` and is discussed in § 2.3.1 and § 8 —
   an earlier draft's blanket "through any UI or verb" excluded that too and
   contradicted both.
 - **Emission order in the export.** § 2.4 keeps `(depth, slug)` deliberately; a
@@ -484,11 +571,13 @@ restored** — the project convention, and the one ANTS-3761's own loop-6 row
 shows earning its keep, where the mutation § 6 prescribed for INV-1 turned out
 to leave it green.
 
-Two clauses here **cannot be run yet** — the column, the comparator and the
-schema-derived diff do not exist until this spec is implemented, so there is no
-surface to invoke. They were checked by mutation on paper instead
-(`/write-spec` drafting rules): deleting the rule under test from the model of
-the engine and asking whether the fixture still fails.
+**Only INV-6 is runnable today.** Every other clause depends on surface this
+spec creates — the column, `listSections()`, `sectionOrderLess()`, the
+schema-derived diff — so there is nothing to invoke, and the two-run rule
+cannot fire. Each was checked by mutation on paper instead (`/write-spec`
+drafting rules): delete the rule under test from the model of the engine and
+ask whether the fixture still fails. Two are worth recording, because they are
+the ones where the answer was not obvious.
 
 - INV-1's fixture fails under a `position`-less writer, and *only* under it —
   the three-section shape was chosen so that document, slug and `(depth, slug)`
@@ -534,7 +623,7 @@ the engine and asking whether the fixture still fails.
   which is what INV-4 asserts and what the migration naturally produces. Sparse
   (gaps of 10) would let an insert land between two sections without
   renumbering, but a gap policy no writer maintains decays into an arbitrary
-  integer, and § 2.3 shows the renumbering is affordable — it costs a re-run
+  integer, and § 2.3.1 shows the renumbering is affordable — it costs a re-run
   marking the tail changed, inside a transaction that was rewriting them
   anyway. Recorded as decided rather than left open because INV-4 already
   makes it a contract, and a question a normative invariant has answered is a
@@ -548,4 +637,5 @@ the engine and asking whether the fixture still fails.
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
 | 0-origin | 2026-08-03 | none — no reviewer dispatched | — | **Provenance row, not a review.** Not a split: both ids were filed this session while grounding ANTS-3758's § 2 against the schema, before any of that spec was drafted. ANTS-3796 was found by reading `CREATE TABLE section` and noticing no ordering column against a file whose own heading order is neither slug nor numeric; ANTS-3797 by then checking whether `source_path` — the one column ANTS-3782 added for ANTS-3758's benefit — reached the export, and finding it in neither `writeSections()` nor `rebuildProject()` nor any of the three goldens. Merged into one document under `specs.md` § 2's umbrella form because they widen the same record and regenerate the same goldens. No review has run against these bytes; loop 1 is the rule-14 gate. |
-| 1 | 2026-08-03 | 3 (cold, identical shared brief) | 2 / 5 / 6 / 6 / 0 | First gate. Both CRITICALs were unanimous across all three lanes, and both were defects an author's re-read could not reach. **The spec added `position` writers and no reader** — `SectionRow` / `readSection()` were never widened, so its own § 2.3 re-run rule (`written only if it differs`) was uncomputable through the surface it declared and INV-1, INV-4 and INV-5 had no typed path. That is precisely the write-only-column defect ANTS-3782 § 2.3 exists to name, reproduced one column along by the spec citing it; § 2.3.1 now fixes it. **§ 2.5's schema-derived column list deleted coverage while claiming to add it** — the diff's literals do not merely omit rowid columns, they *substitute* stable renderings for them (`par.slug` for `parent_id`, `i.id_fold` for `item_pk`, `p.export_slug` for `project_id`), so "PRAGMA minus the rowid columns" would have stopped comparing section parentage and element membership. § 2.5 is now three sets with an exhaustive substitution map, and INV-3 fails on an unsubstituted column. Five HIGH: `INV-2` used unqualified for ANTS-3761's while this spec has its own; INV-4's "earlier-indexed archive" vacuous, since index 0 **is** the live roadmap; the `(position, slug)` comparator specified with no owner; a heading deleted from a re-run's source leaving an unremovable row with a stale position, against which INV-4's whole-table permutation was false; and § 4's "no other byte" golden diff contradicting INV-1/INV-5 seeding new fixture sections. **Three lane findings dismissed as packet gaps, not defects** — ANTS-3761 INV-2 does carry the `provenance` reader-refusal clause verbatim, `rebuildProject()` is transactional (`BEGIN IMMEDIATE` / `ROLLBACK`), and no sibling spec carries a TOC. **One collateral, caught by the 4b sweep:** the comparator fix first said `cmpCodeUnit()` would be *promoted*, but it is a `QString` primitive applied to `a.text` / `a.rawId` and a `SectionRow`-taking function could not serve those callers — `sectionOrderLess()` is new and `loadSections()` is untouched. |
+| 1 | 2026-08-03 | 3 (cold, identical shared brief) | 2 / 5 / 6 / 6 / 0 | First gate. Both CRITICALs were unanimous across all three lanes, and both were defects an author's re-read could not reach. **The spec added `position` writers and no reader** — `SectionRow` / `readSection()` were never widened, so its own § 2.3 re-run rule (`written only if it differs`) was uncomputable through the surface it declared and INV-1, INV-4 and INV-5 had no typed path. That is precisely the write-only-column defect ANTS-3782 § 2.3 exists to name, reproduced one column along by the spec citing it; § 2.3.1 now fixes it. **§ 2.5's schema-derived column list deleted coverage while claiming to add it** — the diff's literals do not merely omit rowid columns, they *substitute* stable renderings for them (`par.slug` for `parent_id`, `i.id_fold` for `item_pk`, `p.export_slug` for `project_id`), so "PRAGMA minus the rowid columns" would have stopped comparing section parentage and element membership. § 2.5 is now three sets with an exhaustive substitution map, and INV-3 fails on an unsubstituted column. Five HIGH: `INV-2` used unqualified for ANTS-3761's while this spec has its own; INV-4's "earlier-indexed archive" vacuous, since index 0 **is** the live roadmap; the `(position, slug)` comparator specified with no owner; a heading deleted from a re-run's source leaving an unremovable row with a stale position, against which INV-4's whole-table permutation was false; and § 4's "no other byte" golden diff contradicting INV-1/INV-5 seeding new fixture sections. **Three lane findings dismissed as packet gaps, not defects** — ANTS-3761 INV-2 does carry the `provenance` reader-refusal clause verbatim, `rebuildProject()` is transactional (`BEGIN IMMEDIATE` / `ROLLBACK`), and no sibling spec carries a TOC. **One collateral, caught by the 4b sweep:** the comparator fix first said `cmpCodeUnit()` would be *promoted* to a `SectionRow`-taking function, which would not have served its existing `QString` callers — `sectionOrderLess()` is new and `loadSections()` is untouched. (The replacement text then mis-stated *which* callers, on a truncated grep; loop 2 caught it.) |
+| 2 | 2026-08-03 | 3 (cold, identical brief — no prior-loop findings carried) | 2 / 3 / 6 / 6 / 0 | **Mostly fix collateral, which is the finding about the run rather than the document.** Split by origin before grading: roughly eight of this loop's items landed on passages loop 1 edited, against three genuine draft defects. Two CRITICAL. **`sectionOrderLess()` had no producer** — the store exposes `findSection()`, `readSection()` and `listItems()`, so a sort key over a project's sections could not be applied through the typed surface at all, and INV-1/4/5 would have reached into raw SQL to enumerate: the § 2.3.1 defect one level up, in the section written to fix it. `listSections()` closes it. **§ 2.5's substitution set over-reached from foreign-key rowids to *every* rowid**, which has no answer for `element.element_id` — identified by the composite `(slug, position)`, not by any single stable rendering — so INV-3 would have failed against the correct current projection. The set is now split, with own-PKs excluded and named. Three HIGH: the export's `{"schema":1,"t":"meta"}` discriminator, gated on the same `kSchemaVersion` INV-6 pins, was never addressed (§ 2.4 now states why it does not move); § 2.1 and INV-6 pointed the `user_version` argument at each other and neither stated it, a circularity loop 1's own de-duplication created; and **loop 1's `cmpCodeUnit` correction was itself wrong** — all three lanes caught it. That helper *is* applied to `a.slug`, twice, inside `loadSections()`; loop 1's grep was truncated by `head -3` and the author wrote the sentence from it. The "new, not a promotion" call survives on the argument that actually holds (it compares two `SectionRow`s, not two `QString`s), and the loop-1 row above is annotated rather than rewritten. Also fixed: the ordinal's computation site was unstated, INV-3's map could not be injected, `addSection()`'s five *test* call sites were missing from § 4's blast radius, and INV-1's "Breaks when" named a defaulted `position` that `NOT NULL` and INV-7 make unreachable. |
