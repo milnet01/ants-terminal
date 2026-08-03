@@ -24922,6 +24922,58 @@ against current source before filing.
   **Layman:** The database remembers what is in each part of the roadmap but not what order the parts go in, so regenerating the file would shuffle it.
   Kind: implement.
   Source: in-session-2026-08-03, found while grounding ANTS-3758's render design.
+  Pair with ANTS-3797 (2026-08-03): section.source_path has the same defect one
+  column along — written by the migration, dropped by the export — and INV-2's
+  hand-enumerated column list is why neither shows. Both change the section
+  record and regenerate the same three goldens, so spec and land them in one
+  pass; ANTS-3797's third part (derive the diff's columns from
+  PRAGMA table_info) is what stops this id's column falling in the same hole.
+
+- 📋 [ANTS-3797] **section.source_path is not in the export, so archive provenance dies at the first rebuild — and INV-2 cannot see it.**
+  BLOCKS ANTS-3758, and is a shipped defect rather than a gap. ANTS-3782 added
+  `section.source_path`, the migration writes it and `readSection()` reads it,
+  but the EXPORT drops it on both legs:
+
+  - `RoadmapExport::writeSections()` selects
+    `title, level, intro, parent_id FROM section` -- no `source_path`.
+  - `rebuildProject()` inserts
+    `(project_id, slug, title, level, intro, parent_id)` -- no `source_path`.
+  - Every section record in the three committed goldens is exactly
+    `{intro, level, parent, slug, t, title}`.
+
+  So after an export/rebuild every section reads back as the LIVE roadmap.
+  That is precisely the outcome the column's own DDL comment says it exists to
+  prevent: "without it ANTS-3758 re-emits a rotated archive back into
+  ROADMAP.md". Disaster recovery would therefore un-rotate every archive at
+  the first render.
+
+  WHY NOTHING CAUGHT IT is the more useful half. ANTS-3761 INV-2 reads "every
+  store row, and every non-surrogate column of it, survives the round-trip" --
+  this exact class. Its test cannot fire, for two independent reasons:
+
+  1. The column-wise diff enumerates columns BY HAND. The section row is
+     `SELECT p.export_slug, s.slug, s.title, s.level, s.intro, par.slug` -- a
+     list written before ANTS-3782 existed and never revisited. It can confirm
+     what is listed and can never catch an omission.
+  2. The fixture never calls `setSectionSource` (zero hits in
+     `test_roadmap_export_roundtrip.cpp`), so every section is NULL on both
+     sides and the leg would pass even if the diff covered the column.
+
+  Fix has three parts, and the third is the one that stops a recurrence:
+  - Emit and restore `source_path` (a `"source"` key on the section record --
+    distinct from the item field of the same name), regenerate the three
+    goldens as a reviewed diff.
+  - Give the fixture a section with a non-NULL `source_path`.
+  - Derive INV-2's column list from `PRAGMA table_info` instead of a literal,
+    so a column added later fails the diff by default rather than passing it.
+    Without this, ANTS-3796's ordering column lands in the same hole next.
+
+  Sequence with ANTS-3796: both change the section record and both regenerate
+  the same three goldens, so do them in one pass rather than regenerating
+  twice.
+  **Layman:** The database remembers which roadmap items came from an old archived file, but the backup does not — so restoring from backup would dump every archive back into the main roadmap.
+  Kind: fix.
+  Source: in-session-2026-08-03, found while grounding ANTS-3758's render design.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
