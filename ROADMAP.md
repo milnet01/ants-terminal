@@ -33236,6 +33236,50 @@ here.)
   across three turns. First-turn input was ~38-46k against the stated 60k.
   Any rule-firing-rate work here should measure per-turn, or it will
   conclude the packet is too big and shrink the thing that is working.
+  Evidence from the ANTS-3809 gate (2026-08-04, 3 loops, 6 lanes, 62
+  verified / 62 fixed / 8 dismissed). Four observations, two of which are
+  directly the firing-rate/precision question this id asks.
+
+  1. PACKET COMPLETENESS IS UNMEASURED, AND IT COST 4 OF THE 8 DISMISSALS.
+     /cold-eyes' context-packet rule says inline "the passage the reviewed
+     doc points at". Nothing checks that a section number the doc CITES is
+     inside the window actually extracted. I gave lanes ANTS-3793 lines
+     1-20; the "26 call sites" figure it cites sits at line 51. Four lanes
+     across three loops reported the citation as wrong -- each a full
+     verification cycle spent on a packet gap, not a doc defect. Cheap
+     mechanical fix: after building the packet, grep the reviewed doc for
+     section refs into packeted files and assert each named section falls
+     inside an extracted range. This is a MISSING-RULE data point, which
+     this bullet calls the most interesting kind.
+
+  2. PHASE 3 STEP 0 (the collateral/draft origin split) FIRES ONE LOOP TOO
+     LATE TO ACT ON. Its value is deciding whether to dispatch the NEXT
+     loop, but the stop trigger needs "two loops running". Loop 2 came back
+     13 collateral / 9 draft; the rule said keep going; loop 3 then
+     produced a CRITICAL that loop 2's own fix had created. The skill
+     already says a harder 4b sweep beats a cold dispatch for collateral --
+     the loop-count phrasing pushes the other way. Precision data: of loop
+     3's 20 verified findings ~11 were collateral, so more than half of the
+     final loop's cost was spent on damage the previous loop caused.
+
+  3. A RULE THAT FIRED AND PAID FOR ITSELF: /write-spec Step 4's manual
+     cross-reference pass caught a genuine self-contradiction (section 2.5
+     naming section 2.6's re-derivations as subject to a refusal 2.6
+     exempts) BEFORE any lane was dispatched. Fires-and-survives quadrant.
+
+  4. A CHECK CLASS THAT EXISTS IN THE CATALOGUE AND NOT IN THE VERB.
+     /doc-lint's `counts` entry declares the two self-referential shapes
+     (list-length vs stated count; a sentence's own arithmetic) as FINDINGS
+     rather than candidates -- decidable, no repo access needed. spec_lint
+     implements neither. Three such defects were introduced across the fix
+     loops ("two cases" over three, "four codes" over five, "Six of those
+     rows" over four) and all three were caught by LANES, at review prices,
+     twice. This is the cheapest instrumentation candidate on this list:
+     the rule is already written, only the mechanism is missing.
+
+  Cost note, consistent with this bullet's existing caveat: lane spend
+  reported 152-168k per lane, cumulative across turns. First-turn input was
+  ~43-44k against the stated 60k. Every lane was inside budget.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

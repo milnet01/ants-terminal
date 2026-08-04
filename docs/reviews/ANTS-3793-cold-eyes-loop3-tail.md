@@ -1,12 +1,29 @@
 # ANTS-3793 — cold-eyes loop 3 (cap): verified findings, unfixed
 
-**Status:** converged-by-cap at 3 loops (2026-08-03). Loop 3's contained factual
-corrections are folded and committed; the findings below are **verified and
-deliberately unfixed** because each needs a design decision, not an edit.
+> **FULLY DISCHARGED (2026-08-04) — this file is now a historical record.**
+> Every finding below has been resolved in one of the four specs the umbrella
+> was split into. **Nothing here is open.** Read it for provenance, not as a
+> work list.
+>
+> | Findings | Landed in | State |
+> |---|---|---|
+> | C1, C2, H2, H4, H5, M1–M5, M7, M8, the read-seam LOWs | `docs/specs/ANTS-3793-roadmap-consumer-cutover.md` (rewritten as the read seam) | resolved, accepted |
+> | C3, H1 | `docs/specs/ANTS-3808-item-body-and-trailer-suppression.md` | resolved, accepted |
+> | H3, M6 | `docs/specs/ANTS-3809-roadmap-write-half.md` | resolved, accepted |
+>
+> One filed LOW was verified **wrong** and dismissed rather than fixed: the
+> claim that stripping `"- "` and the status emoji leaves `body` with a leading
+> space. `stripInlineEmoji()` ends by consuming that whitespace, so the parser
+> strips it too.
 
-> These are verified and unfixed. Do **not** re-review to rediscover them — a
-> fresh loop costs a full two-lane dispatch to regenerate what is already
-> written here. Fold them in directly.
+**Status (original):** converged-by-cap at 3 loops (2026-08-03). Loop 3's
+contained factual corrections are folded and committed; the findings below were
+**verified and deliberately unfixed** because each needed a design decision, not
+an edit.
+
+> These were verified and unfixed *at the time of writing*. Do **not** re-review
+> to rediscover them — and see the discharge table above before treating any of
+> them as work.
 
 **The recommendation that comes with this tail: SPLIT the spec before fixing
 it.** Reasoning is at the foot, and it is the reason the run stopped rather than
