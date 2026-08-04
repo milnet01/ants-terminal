@@ -32879,6 +32879,67 @@ here.)
   Lanes: audit.
   Source: user-request-2026-08-04 — raised alongside the skill-harvest item; same scheduling (after the roadmap migrations).
 
+- 📋 [ANTS-3814] **Measure whether a skill's rules earn their place — firing rate and precision per rule, not just token cost.**
+  Budgets (global CLAUDE.md §19: ≤20 KB, /cold-eyes 42 KB) control what a
+  skill COSTS. Nothing measures whether a rule inside it ever changed an
+  outcome. Rule 19's displacement question — "what does this new lesson
+  replace?" — is answered by judgement alone, on files that grow one
+  defensible paragraph at a time.
+
+  **The tractable insight: the artifacts already record the OUTCOME half
+  and are missing the ATTRIBUTION half.** Every /cold-eyes loop log records
+  verified / fixed / dismissed by severity; every /apply-fixes ledger
+  records a per-finding disposition; doc_integrity already attributes its
+  findings by check kind. Add a `rule` field to each finding record and two
+  metrics fall out of data already being written:
+
+  - **Firing rate** — fires per rule per N runs. Zero across N runs answers
+  "half of them never fire" with evidence instead of suspicion.
+  - **Precision** — of the findings a rule produced, the fraction that
+  survived verification. The important one, and the anti-gaming guard:
+  firing rate alone rewards a rule for firing, and the measured /cold-eyes
+  pathology is that a longer instrument finds more per run — which from
+  inside a run is indistinguishable from the documents being worse.
+
+  Four quadrants, four actions. Fires-and-survives: keep. Fires-and-mostly-
+  dismissed: the expensive failure — costs a verification per fire and
+  returns noise; fix or delete. Rarely-fires-but-survives: cheap insurance,
+  keep. Never-fires: delete candidate.
+
+  **The hard part, and why this is `investigate`:** a rule that never fires
+  because it is DEAD and one that never fires because it WORKS (the defect
+  was never written) are identical in the data. Two partial answers. For
+  deterministic checks, seed the defect and confirm the check catches it —
+  the same mutation discipline testing.md already requires of feature
+  tests. For judgement rules there is no counterfactual without re-running
+  the lane with the rule removed, which costs what the original run cost;
+  so A/B is reserved for a rule already under suspicion, and the
+  byte-stable shared packets make that replay feasible.
+
+  **Day-one measurement needing NO instrumentation:** a rule never cited in
+  any commit message, ledger or loop log in the repo's history is already
+  suspect. That is a grep over artifacts that exist today.
+
+  **Attribution risk to design around:** asking a lane which rule prompted
+  a finding invites confident invention. Constrain it to an enum of rule
+  ids extracted from the skill file, and make "none — emergent" a
+  first-class value. Findings no rule prompted are the most interesting
+  data point, being evidence of a MISSING rule.
+
+  **Explicitly out of scope: "did the skill improve quality."** That needs a
+  ground truth this system does not have; promising it is how the item
+  becomes unfalsifiable.
+
+  Complements ANTS-3812, which asks which skill STEPS should become verbs
+  (cost / mechanism). This asks which RULES earn their place at all. 3812
+  can delete a step for being cheaper elsewhere; this can delete one for
+  never having worked. Live evidence from the ANTS-3808 run: 2 of the 4
+  findings filed at the cold-eyes cap did not survive verification.
+  **Layman:** We know what each instruction pack costs to run, but not whether its individual rules ever do anything. This works out how to tell — by recording which rule found each problem, then spotting the rules that never fire and the ones that cry wolf.
+  Kind: investigate.
+  Lanes: mcp, claudeintegration.
+  Source: user-request-2026-08-04 — raised after the ANTS-3808 fold-in.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
