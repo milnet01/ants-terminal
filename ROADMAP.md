@@ -25608,6 +25608,11 @@ against current source before filing.
   eight ops) is the natural seam.
 
   NEXT: step 4 of the TODO -- draft + gate ANTS-3810 (oracle + acyclicity).
+  Decision (2026-08-04, user delegated): DO NOT SPLIT. Same ruling as
+  ANTS-3810 — the standing question about splitting this 979-line spec is
+  closed as "no". Drafted, gated to convergence, accepted; the length cost
+  was review cost and it is already spent. Implement as it stands. Do not
+  reopen this.
 
 - 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
@@ -25645,6 +25650,16 @@ against current source before filing.
   Filed while grounding this spec: ANTS-3824 (Resolution: carrier -- narrowed to resolution alone; position IS priority), ANTS-3825 (subsystems.md missing three shipped roadmap lanes), ANTS-3826 (three -- actually two -- specs cite testing.md for an mtime rule it lacks), ANTS-3827 (the migration converts no relationships though the model says it converts two types; it is the trigger that would move relates-to/specified-by out of this spec's exclusion set).
 
   NEXT: step 5 of the ANTS-3793 TODO is already settled (the umbrella was rewritten in place as the read seam, not deleted). All four split specs are now drafted, gated and accepted.
+  Decision (2026-08-04, user delegated): DO NOT SPLIT. The standing
+  question about carving § 2.2 (acyclicity) out into its own spec is
+  closed as "no". The spec is drafted, gated to convergence and accepted;
+  the cost its 905 lines caused was review cost, already paid. Splitting
+  an accepted spec buys the implementer nothing and spends a fresh
+  cold-eyes run, a new id and cross-reference churn on a finished
+  document. Implement it as it stands. The forward-looking lesson — split
+  at DRAFT time when a spec runs long, not after acceptance — is already
+  carried by global CLAUDE.md rule 14 ("needing many more loops is
+  evidence the document is oversized"). Do not reopen this.
 
 - 💭 [ANTS-3811] **Decide whether `Source:` / `Lanes:` stay un-anchored, now that a residual body can shadow a column.**
   `rxSource` and `rxLanes` are deliberately un-anchored: ANTS-2058
@@ -33546,6 +33561,35 @@ here.)
   **Layman:** An old code-checking rule now complains about correct code, so every audit run carries four false alarms.
   Kind: audit-fix.
   Source: in-session-2026-08-04 (found while fixing ANTS-3828).
+
+- 📋 [ANTS-3831] **Ctrl+Shift+V dereferences `clipboard->mimeData()` with no null check.**
+  `src/terminalwidget.cpp`, the Ctrl+Shift+V handler:
+
+      const QMimeData *mime = clipboard->mimeData();
+      if (mime->hasImage()) { ... }
+
+  `QClipboard::mimeData()` is documented as able to return nullptr (no
+  owner / the source application went away between the keypress and the
+  read). Every branch in the handler — `hasImage()`, the ANTS-3828
+  `hasUrls()`, `hasText()` — dereferences it unguarded, so an empty or
+  racing clipboard is a segfault on paste rather than a no-op.
+
+  PRE-EXISTING, not introduced by ANTS-3828 — that change added a third
+  dereference of an already-unguarded pointer and was deliberately kept
+  surgical rather than fixing this in passing.
+
+  Fix: `if (!mime) return;` immediately after the assignment. One line,
+  no behaviour change in any reachable case.
+
+  VERIFY BEFORE FIXING (rule 13): confirm against the Qt 6 docs for the
+  pinned Qt version that `mimeData()` is in fact nullable. If it is not,
+  close this as n/a rather than adding a guard for an impossible state —
+  do not add the line on the strength of this bullet alone. The bullet is
+  recording an unverified suspicion, which is exactly why it is filed
+  rather than fixed.
+  **Layman:** A rare empty-clipboard state could crash the terminal on paste; one line guards it.
+  Kind: fix.
+  Source: in-session-2026-08-04 (noticed while fixing ANTS-3828).
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
