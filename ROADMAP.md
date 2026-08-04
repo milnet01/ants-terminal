@@ -25060,6 +25060,65 @@ against current source before filing.
   a decision already made.
 
   NEXT is unchanged: step 3 — draft + gate ANTS-3809 (the write half).
+  Progress (2026-08-04): the READ SEAM is implemented and shipped in
+  2e7af7b5; the CONSUMER CUTOVER is not. Suite 3256/3256 green.
+
+  Landed: src/roadmapsource.{h,cpp} in ants_roadmapstore_lib (storeFor,
+  migratedProject, bulletsFromStore, bulletsFor + enum ReadError);
+  RoadmapStore::readProjectByRoot() + ProjectRow::root; and
+  tests/features/roadmap_read_seam/ — Inv1DispatchMarker, Inv2BackendsAgree,
+  Inv2Membership, Inv3Ceiling, Inv3Latency, each proven RED first against six
+  mutations. Inv3Latency carries the perf label via
+  tests/slow_test_timeouts.cmake (a bundle case cannot carry its own label —
+  gtest_discover_tests(PRE_TEST) leaves nothing for CMakeLists.txt to name),
+  with Ants3793LatencyCaseIsPerfLabelled guarding the silent-no-op if that
+  case is ever renamed.
+
+  THREE THINGS THE NEXT SESSION MUST NOT RE-DERIVE.
+
+  1. § 7's owed RoadmapParse export is WIDER than § 7 sized it, deliberately.
+  § 2.1.1's rule is "exactly what parseBullets() would assign", and § 7 owed
+  only the headline assignment — but the field table also needs rxId, rxBold,
+  extractBoldId, rxIdShaped, rxLeadToken, rxLeadBracketId, headlinePrefixEnd
+  and stripInlineEmoji, all static in roadmapparse.cpp. Re-implementing eight
+  of them in the new TU is the second bullet grammar ANTS-3808's INV-2
+  forbids, so the per-bullet grammar was factored out of parseBullets()'s
+  walk (collectBulletBody + fillBulletRecord) and exported as
+  RoadmapParse::parseAntsV1Bullet(). Behaviour-preserving: 3256/3256 on the
+  refactor alone before anything was added. Measured cost of the choice: 8.6
+  ms of a 1,839-item read, i.e. not the bottleneck.
+
+  2. § 4's CONDITIONALLY OWED batched reader is now OWED AND BUILT. INV-3's
+  p95 case red at 101.5 ms against the 50 ms budget; the readItem() N+1 was
+  83.4 ms of it and the render-and-parse half 8.6 ms. § 4 named
+  RoadmapStore::readItems() as the remedy in advance ("not a cache and not a
+  relaxed budget"), so ANTS-3816's first half shipped here. For scale, the
+  markdown path it replaces parses this project's real 3 MB ROADMAP.md in
+  33.2 ms.
+
+  3. THE CUTOVER IS NOT 26 SITES OF THIS ID — and the split is forced, not a
+  preference. roadmap_log's read sites feed markdown SPLICING by line number
+  (cmdRoadmapLogFlip and cmdRoadmapLogAmendBody both index lines[
+  target.firstLine]), and § 2.1.1 makes firstLine/lastLine 0 on the store
+  path. Routing them through the seam today would rewrite line 0 of the file.
+  They are ANTS-3809's, which § 5 already scopes out and which owns what
+  line_range does about it. What remains for THIS id is the read-shaped
+  sites only: cmdRoadmapQuery's cache fills, cmdChangelogLog's id resolution,
+  cmdFeedbackQuery's sibling reads, and RoadmapDialog's three.
+
+  STILL OWED BY THIS ID, none of it started: the two owner wrappers
+  (RemoteControl::roadmapBullets / RoadmapDialog::roadmapBullets), the
+  read-shaped call sites above, § 2.3's stored-legend rendering plus its
+  Inv2Legend case, the two PRIVATE ants_roadmapstore_lib link edges, and
+  CMakeLists.txt's two SQL-isolation comments (both become false the moment
+  ants_core_lib links the store). Note for Inv2Legend: test_core does NOT
+  link ants_dialogs_lib, so § 6's bundle choice does not cover it.
+
+  Docs already amended: docs/subsystems.md gains roadmapsource (and
+  roadmapparse's library name corrected to ants_roadmapparse_lib);
+  roadmap-data-model.md's What-checks-this table gains the read budgets and
+  its stale "no render before ANTS-3758" row; ANTS-3765 § 2.10 now names this
+  id as what consumes the marker.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the

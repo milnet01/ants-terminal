@@ -14,6 +14,19 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap read seam — consumers can take their bullets from the store instead of ROADMAP.md** (ANTS-3793)
+  The roadmap database has been the primary copy for a while, but nothing
+  read it back — every part of the app still re-read and re-parsed the
+  ROADMAP.md text file, so the database quietly drifted out of date the
+  moment anyone edited that file. This adds the reader, and it produces
+  exactly the same entries the text file would have, so nothing downstream
+  can tell which one it was handed. A project that has not been imported
+  into the database keeps using its text file, unchanged. A database that
+  is present but broken now says so instead of silently pretending the
+  project was never imported. Reading a project's whole roadmap out of the
+  database takes about 10 ms; re-reading the text file takes 33 ms. Not yet
+  switched on for the app's own screens — that is the next step.
+
 - **`file_outline` and `read_region` understand GLSL shaders** (ANTS-3800)
   Shader sources (`.comp`, `.frag`, `.vert`, `.glsl` and the rest of the
   stage extensions) are outlined and can be sliced by function name, using
