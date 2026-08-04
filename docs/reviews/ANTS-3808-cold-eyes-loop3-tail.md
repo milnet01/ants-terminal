@@ -1,5 +1,36 @@
 # ANTS-3808 — cold-eyes loop 3 (cap): verified findings, unfixed
 
+> **CLOSED 2026-08-04 — all four folded in, plus the § 4 decision. Nothing here
+> is outstanding.** Two findings did not survive verification against source and
+> were dismissed; the record of each is below, appended in place. Disposition:
+>
+> | | Disposition |
+> |---|---|
+> | **T1** (HIGH) | **Split.** Match-failure half **fixed** — the strip no longer matches text at all; the reader records a `BulletRecord::headlineEnd` offset and the migration cuts there (§ 2.1, user-accepted). Truncation half **dismissed**, see below |
+> | **T2** (HIGH) | **Fixed** — INV-1 now counts each trailer key's *canonical value* exactly once, not the key literal, with the two-value counter-example stated and propagated to its *Test:* clause |
+> | **T3** (MEDIUM) | **Dismissed** — not reachable, see below |
+> | **T4** (MEDIUM) | **Fixed** — `makeItem()` (`src/roadmapmigrate.cpp`) named as the owning seam in § 2.1 and § 4; the `PlannedItem.headline` → `ItemWrite.headline` identity asserted against `src/roadmapmigrateload.cpp`'s `w.headline = it.headline` |
+> | **§ 4 build decision** | **Settled by the user** — hoist `roadmapparse.cpp` + `roadmapindex.cpp` into a `Qt6::Core`-only `ants_roadmapparse_lib` that both `ants_core_lib` and `ants_roadmapstore_lib` link. No new files |
+>
+> **Dismissed on verification, with the evidence:**
+>
+> - **T1's second gap ("the string may not be the untruncated one").** The
+>   premise is false. The tail claimed `roadmapparse.cpp` "has an em-dash/INV-4
+>   path that sets `rec.headline` directly and skips `assignHeadline()`". It does
+>   not — that path *calls* `assignHeadline()`, and the
+>   `if (!rec.headline.isEmpty())` line the claim rests on is a **guard** testing
+>   whether the em-dash branch already ran, not an assignment. All four headline
+>   sites go through `assignHeadline()`, which sets `headlineFull` and `headline`
+>   together, so `makeItem()`'s ternary always yields the untruncated form. Moot
+>   in any case under the accepted fix: nothing is matched.
+> - **T3 (GFM task-list bullets).** Not reachable. The reader strips the
+>   checkbox from `head` (`head.remove(0, 3)` plus a leading-space loop) on the
+>   GFM branch, and `body` is seeded from `head` **after** that — so a `[ ]` /
+>   `[x]` token never reaches `body`'s first line, which is what § 2.1's strip
+>   operates on. Reinforced by the reader's own note that the body-wide `rxId`
+>   matches only a dashed `[PROJ-NNNN]`. No table row added; § 2.1 records the
+>   dismissal so it is not re-raised.
+
 **These are verified and unfixed. Do NOT re-review to rediscover them** — a
 fresh loop costs a full two-lane dispatch (~235k subagent tokens) to regenerate
 what is already written here. **Fold them in directly.**

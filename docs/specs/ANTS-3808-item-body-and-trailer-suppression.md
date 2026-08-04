@@ -52,9 +52,10 @@ there is no field *line* to drop — the metadata is a span inside a sentence, a
 excising it either deletes prose or leaves half a sentence. Computing the residual is a new parsing contract, and re-deriving it
 outside `RoadmapParse` is the second bullet parser ANTS-3757 § 2.3 forbids.
 
-**The decision: the migration drops one line, and the render asks before it
-re-derives.** Neither half needs a schema change, a new provenance value, or a
-second parser.
+**The decision: the migration strips the render's own head-line prefix at a
+boundary the reader records, and the render asks before it re-derives.** Neither
+half needs a store-schema change, a new provenance value, or a second parser;
+the reader's record gains one integer (§ 2.1).
 
 ## 2. Surface
 
@@ -81,34 +82,85 @@ entire substance. `[ANTS-1649]` and `[ANTS-1650]` are two such bullets; the
 second carries roughly a thousand characters of methodology that a first-line
 drop would delete outright.
 
-**So the rule is a prefix strip, not a line drop**, and it is stated against
-**text the render will reconstruct**, never against token syntax — a syntactic
-rule (`[id]` then `**…**`) silently strips nothing from a GFM bullet, which
-writes neither delimiter:
+**So the rule is a prefix strip, and the boundary is RECORDED BY THE READER** —
+never re-derived by matching the stored headline back against the line it came
+from. The reader is the only party that knows where the prefix ends, and it
+already knows it exactly.
 
-1. Take `body`'s first line. Remove the leading `[<id>]` token **if present**,
-   then remove the headline text — matched as the exact string
-   `ItemWrite.headline` will carry — together with any `**` delimiters
-   immediately around it.
-2. **Trim what is left, then — if nothing but whitespace remains — drop the
-   line entirely.** Both halves are load-bearing. The separator space after
-   `[<id>]` and the space before any surviving prose are still there after
-   step 1, so an untrimmed residual is `" <prose>"` rather than `<prose>`, and
-   an untrimmed *empty* residual is `" "` — which is **not** empty, so the
-   drop never fires. Joining that back with `'\n'` yields a `body` beginning
-   with whitespace, which passes `renderBullet()`'s `if (!it.body.isEmpty())`
-   guard and emits a stray blank indented line on nearly every bullet.
+`BulletRecord` gains one field:
+
+```cpp
+// src/roadmapparse.h, in BulletRecord — ANTS-3808. The offset into `body`
+// just past the text this parse CONSUMED to build the head line's id and
+// headline; equivalently, the first character of the head line the render
+// will NOT reconstruct. QString positions (UTF-16 code units), as § 2.2's
+// `offset` is. -1 when no headline was assigned, which the migration reads
+// as "strip nothing".
+int headlineEnd = -1;
+```
+
+`parseBullets()` sets it at the **four** sites that call `assignHeadline()`, and
+setting it is that call's job — so a fifth headline site cannot be added without
+one. Cited by branch rather than line (`documentation.md` § 1.7), all four
+inside `parseBullets()` unless noted:
+
+| Site | Shape | `headlineEnd` |
+|---|---|---|
+| the GFM em-dash split (`splitOnEmDash`, ANTS-1438 INV-4) | `**BoldID** — headline` | end of the head line — the whole line is consumed |
+| the head-anchored `rxBold` branch | `[id] **headline** <prose>` | `boldMatch.capturedEnd()`, or `m2.capturedEnd()` where the bold-ID rule took the *second* bold token |
+| the GFM prose fallback (ANTS-1428 / ANTS-2046) | the first line **is** the headline | end of the head line |
+| the pass-headings reader (its own function) | `#### Pass N.M` | end of the head line |
+
+**Matching the headline as a string was the alternative, and it is rejected on
+evidence.** The reader *normalises* what it stores: the GFM prose fallback
+removes `**` markers (`h.remove("**")`, ANTS-2046 de-markup) and strips a
+trailing caret anchor before `trimmed()`, so on exactly those bullets the stored
+headline is **not a substring of the line it came from**. A string match
+therefore fails, the head line survives intact, and the duplication INV-1
+forbids returns **silently** — this spec's own defect, restored by its repair,
+on the format least likely to be in a fixture. An offset cannot fail, cut short,
+or cut long.
+
+**Two worries the offset retires rather than answers**, both verified against
+`src/roadmapparse.cpp` on 2026-08-04 and recorded so they are not re-raised:
+
+- **Headline truncation.** `rec.headline` is display-truncated to 120 characters
+  (ANTS-1811 / ANTS-2075), so a text match would have had to argue it used the
+  untruncated form. All four sites go through `assignHeadline()`, which sets
+  `headlineFull` and `headline` together, and **no other site assigns
+  `rec.headline`** — so `makeItem()`'s
+  `rec.headlineFull.isEmpty() ? rec.headline : rec.headlineFull` always yields
+  the untruncated value. The offset makes the question moot: nothing is matched.
+- **GFM task-list checkboxes.** A `- [ ]` / `- [x]` token never reaches the
+  strip. The reader does `head.remove(0, 3)` plus a leading-space loop on the
+  checkbox branch, and `body` is seeded from `head` **after** that. No bracket
+  token that is not an id can be present, and the strip matches no bracket token
+  in any case.
+
+**`makeItem()` in `src/roadmapmigrate.cpp` owns the strip** — its one line
+`it.body = rec.body;` becomes the three steps below. Not
+`RoadmapMigrateLoad::load()`: `makeItem()` is where the `BulletRecord` is, and
+it sits in `ants_core_lib`, which § 4's decision keeps off the store's link
+surface.
+
+1. `rest = rec.body.mid(rec.headlineEnd)` when `headlineEnd >= 0`; the body
+   unchanged when it is `-1`.
+2. **Trim `rest`'s own first line — the text up to its first `'\n'` — and if
+   nothing but whitespace remains, drop that line entirely.** Both halves are
+   load-bearing. The separator space after `[<id>]` and the space before any
+   surviving prose are still there, so an untrimmed residual is `" <prose>"`
+   rather than `<prose>`, and an untrimmed *empty* residual is `" "` — which is
+   **not** empty, so the drop never fires. Joining that back with `'\n'` yields
+   a `body` beginning with whitespace, which passes `renderBullet()`'s
+   `if (!it.body.isEmpty())` guard and emits a stray blank indented line on
+   nearly every bullet.
 3. Join whatever survives with the continuations, `'\n'`-separated, as before.
 
-**The headline matched in step 1 is the untruncated one.**
-`src/roadmapmigrate.cpp`'s `makeItem()` stores
-`rec.headlineFull.isEmpty() ? rec.headline : rec.headlineFull`, and
-`rec.headline` is display-truncated to 120 characters with an ellipsis
-(ANTS-1811 / ANTS-2075). Strip using the truncated form and the tail of every
-long headline survives into the residual, where the render then emits it a
-second time — reintroducing this spec's own defect on exactly the bullets most
-likely to have it. `ItemWrite.headline` is the value to match, and it is the
-value § 2.4's export re-emits.
+**`PlannedItem.headline` and `ItemWrite.headline` are the same string**, by
+direct assignment (`src/roadmapmigrateload.cpp`, `w.headline = it.headline`).
+Stated because § 2.4's render re-emits `ItemWrite.headline` into the head line,
+and INV-5's round-trip closes only if what the render puts back is what the
+strip took out.
 
 Four shapes, all determinate:
 
@@ -117,7 +169,7 @@ Four shapes, all determinate:
 | `[id] **headline**`, no continuation | empty |
 | `[id] **headline**` + continuations | the continuations only — **no leading newline** |
 | `[id] **headline** <prose>` | `<prose>`, then any continuations — the case the naive rule loses |
-| GFM, where the headline **is** the whole first line | the continuations only; matching on headline *text* is what makes this row work |
+| GFM, where the headline **is** the whole first line | the continuations only; the recorded offset is what makes this row work, with no `[id]` or `**` token to match |
 
 **An empty `body` is a normal outcome, not an error** — it is what row 1
 produces, and § 2.3's suppression then fires for no key, so every column is
@@ -299,8 +351,10 @@ therefore "a body whose continuation line starts with a trailer key" rather than
 equality is not "by construction", and saying so would be false.** The store's
 column was extracted by `parseBullets()` from the **full** body including the
 head line; § 2.1 stores the **residual** after the prefix strip. The two inputs
-differ only when the matched key sat in the stripped prefix — that is, *inside*
-the bold headline, since anything after the closing `**` survives the strip.
+differ only when the matched key sat in the stripped prefix — for a native
+bullet that means *inside* the bold headline, since anything after the closing
+`**` survives the strip; for a GFM bullet it means anywhere on the head line,
+which § 2.1's recorded offset consumes whole.
 `[ANTS-1649]` carries its `Kind:` and `Lanes:` after the `**`, so it is an
 example of the **agreeing** case, not the divergent one; a bullet whose only
 `Source:` sat *inside* the bold headline would not.
@@ -361,13 +415,25 @@ reach the file.
 `renderBullet()` becomes its body; the anonymous-namespace helper goes away
 rather than being wrapped, so there is one definition and not two.
 
-**The export itself costs no link edge; § 2.3's *call* is a different matter and
-is not settled. § 4 owns both, and is the only place they are argued.**
+**The export itself costs no link edge; § 2.3's *call* did, and § 4 settles it —
+the reader moves to a `Qt6::Core`-only leaf library both sides link. § 4 is the
+only place either is argued.**
 
 ## 3. Invariants
 
 - **INV-1** — **A migrated project's rendered bullet contains its headline
-  exactly once and each trailer key it carries exactly once**, `Kind:` included.
+  exactly once, and each trailer key's CANONICAL VALUE exactly once**, `Kind:`
+  included.
+
+  **It counts values, not key literals, and the difference is a state § 2.3.1
+  calls correct.** In the no-suppression branch the residual carries
+  `Source: B` while the column emits `Source: A.` — the key *literal* appears
+  twice, the canonical value once. That output is correct (the column is
+  canonical and wins), so an invariant counting key literals would fail on legal
+  output and a test author following it would write a case that fails against a
+  correct implementation. The value-counting form is strictly weaker than a key
+  count, and it is the one § 2.3's suppression actually protects.
+
   *Rationale, not part of the assertion:* "exactly once" is a two-sided bound.
   The upper side is the duplication this spec exists to remove; the lower side is
   that the value which survives must be the **canonical** one, which is why § 2.3
@@ -376,9 +442,11 @@ is not settled. § 4 owns both, and is the only place they are argued.**
   own head-line prefix in `item.body` (today's defect), or the render emits a
   column-sourced trailer line whose value the body already carries. *Test:*
   `Inv1NoDuplication`, over this directory's own bullet fixture, asserting
-  exactly one occurrence of the headline and exactly one of each trailer key in
-  the rendered text — **including a bullet with an empty residual**, where every
-  column is emitted unsuppressed and "exactly once" is the whole assertion.
+  exactly one occurrence of the headline and exactly one occurrence of each
+  trailer key's **stored value** in the rendered text — **including a bullet
+  with an empty residual**, where every column is emitted unsuppressed and
+  "exactly once" is the whole assertion, and **including the two-value case
+  above**, which a key-counting assertion fails and a value-counting one passes.
 - **INV-2** — **`RoadmapParse` remains the only bullet grammar in `src/`, outside
   the enumerated exemptions below.** *Breaks when:* the render or a consumer
   grows its own trailer-key matcher instead of calling `trailerValuesIn()`.
@@ -469,8 +537,9 @@ is not settled. § 4 owns both, and is the only place they are argued.**
   (false). A fixture set that only ever expects `false` passes against the
   always-false implementation this field was specified twice to avoid.
 - **INV-5** — **No bullet text is lost across migrate-then-render.** For every
-  bullet, the text of the head line **after** the closing `**` survives into the
-  rendered output. This is the assertion § 2.1's prefix strip exists to satisfy,
+  bullet, whatever of the head line the reader did **not** consume — on a native
+  bullet, the text after the closing `**` — survives into the rendered output.
+  This is the assertion § 2.1's recorded-offset strip exists to satisfy,
   and the one a first-line drop fails: measured 2026-08-04, **241 of 1646**
   bracket-id bullets in this project's `ROADMAP.md` carry such text, and for a
   single-line bullet it is the item's entire substance. *Breaks when:* § 2.1 is
@@ -482,10 +551,12 @@ is not settled. § 4 owns both, and is the only place they are argued.**
   headline-plus-continuations row is what a naive join gets wrong: an empty
   first-line residual kept as an empty string makes `body` start with `'\n'`,
   which is non-empty, so the render's `if (!it.body.isEmpty())` guard passes and
-  emits a stray indented line. The **GFM row is what proves the strip is
-  textual rather than syntactic** — a GFM bullet writes neither `[id]` nor `**`,
-  so a token-matching implementation strips nothing and the duplication returns.
-  A fixture set omitting either row passes against the defect it was written for.
+  emits a stray indented line. The **GFM row is what proves `headlineEnd` is set
+  on every headline branch, not just the bold one** — a GFM bullet writes
+  neither `[id]` nor `**`, so an implementation that records the offset only in
+  the `rxBold` branch leaves it at `-1` there, strips nothing, and the
+  duplication returns. A fixture set omitting either row passes against the
+  defect it was written for.
 
 ## 4. RAM / build cost
 
@@ -524,33 +595,44 @@ roadmap regresses by more than 20 ms, the accessor gains a single-key overload
 — the dialog does not regrow its own regex.** A named number, because "if it
 proves slow" is not a criterion anyone can act on.
 
-**Build — one open decision, and it is not editorial.** § 2.4's export costs
+**Build — settled 2026-08-04, and it was not editorial.** § 2.4's export costs
 nothing: `roadmaprender.cpp` is already in `ants_roadmapstore_lib`
-(`CMakeLists.txt:449`, `# ANTS-3758`), the library ANTS-3793's consumer lands
-in. The accessor likewise costs nothing where it is *defined* —
-`roadmapparse.cpp` is already in `ants_core_lib`.
+(`CMakeLists.txt`, its `# ANTS-3758` source line), the library ANTS-3793's
+consumer lands in.
 
-**What is not free is § 2.3's call.** It puts a `trailerValuesIn()` call inside
+**What was not free is § 2.3's call.** It puts a `trailerValuesIn()` call inside
 `ants_roadmapstore_lib`, whose link surface is today
-`PUBLIC Qt6::Core Qt6::Sql` and **nothing else** (`CMakeLists.txt:456-458`) —
-no `ants_core_lib`. That minimal surface is a stated design property, not an
-accident: `src/roadmaprender.h:11-12` says the library is "Qt6::Core + Qt6::Sql
-only … because ANTS-3794 will call it from a headless publish path." A static
-archive will still *build*, since the symbol resolves at final link and every
-current consumer (`test_core`, the executable) links both libraries — which is
-exactly why this would pass CI and surface later, at ANTS-3794.
+`PUBLIC Qt6::Core Qt6::Sql` and **nothing else** — no `ants_core_lib`. That
+minimal surface is a stated design property, not an accident:
+`src/roadmaprender.h:11-12` says the library is "Qt6::Core + Qt6::Sql only …
+because ANTS-3794 will call it from a headless publish path." A static archive
+would still *build*, since the symbol resolves at final link and every current
+consumer (`test_core`, the executable) links both libraries — which is exactly
+why the wrong choice would pass CI and surface later, at ANTS-3794.
 
-Three ways out, and **this spec does not pick one**:
+**The decision: hoist the reader into a `Qt6::Core`-only leaf library both sides
+link.** `src/roadmapparse.cpp`, together with the heading helpers it depends on
+(`src/roadmapindex.cpp` — `headingLevel` / `uniqueSlug`, reached through a
+file-scope `using`), moves out of `ants_core_lib` into a new
+`ants_roadmapparse_lib` linking `Qt6::Core` alone. `ants_core_lib` and
+`ants_roadmapstore_lib` both link it, so every existing consumer keeps the
+reader transitively and no call site changes. **No new source files** — the
+grammar's home stays `roadmapparse.cpp`, which is what keeps INV-2 true by
+construction rather than by discipline. Add the new target to
+`_ants_subset_linked_libs` so the opt-in unity build does not coarsen a
+subset-linked archive.
 
-| Option | Cost |
+The two alternatives, recorded with why they lost:
+
+| Rejected | Why |
 |---|---|
-| Declare `ants_roadmapstore_lib → ants_core_lib` | honest and one line, but every store consumer — including the headless publish path — now drags core |
-| Hoist `trailerValuesIn()` into a leaf TU both libraries link | keeps both surfaces minimal; costs a new file and a decision about where the grammar's home really is |
-| Move suppression out of `renderBullet()` — caller computes `TrailerValues` and passes it in | no new edge at all; pushes the § 2.3 contract onto every render caller, and ANTS-3793 is one |
+| Declare `ants_roadmapstore_lib → ants_core_lib` | one line, but `ants_core_lib` links `Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::DBus util` **PUBLIC** (`CMakeLists.txt:421-422`) — the whole desktop toolkit plus `libutil`, into a path built to run headless. Measured, not assumed: an earlier draft's "drags the whole of core" understated it |
+| Caller computes `TrailerValues` and passes it in | no new edge, but it pushes the § 2.3 contract onto every render caller. One that omits it passes an empty `TrailerValues`, suppression silently never fires, and this spec's defect is live with every test green |
 
-**Owner: whoever implements this, before writing § 2.3.** The choice changes
-`CMakeLists.txt` and possibly § 2.2's home, so it is a precondition of the work
-and not a cleanup after it.
+**This also settles which seam owns § 2.1's strip:** `makeItem()` stays in
+`ants_core_lib` with the `BulletRecord` it reads, the accessor is defined in
+`ants_roadmapparse_lib`, and the store's link surface gains `Qt6::Core` only —
+which it already had.
 
 Per this project's cap, builds run under `cmake --build build` with the
 `JOB_POOLS` limit and tests at `ctest -j4`.
@@ -611,7 +693,10 @@ case would write into it. Always
   § 2.1 changes what is stored, so the row is amended on ship to say the
   render's head-line prefix is stripped — otherwise the migration's own spec
   describes the defect. **The `headline` half of that row is unchanged**; the
-  amendment must not disturb it.
+  amendment must not disturb it. The same amendment records
+  **`BulletRecord::headlineEnd`** (§ 2.1) — an additive field on ANTS-3757's
+  read contract that no existing caller reads, so the widening is the same shape
+  ANTS-3764 step 2 already made.
 - **ANTS-3758's INV-12 is untouched and that is the point.** § 2.3's per-key
   suppression compares *values*, so the required `Kind:` is always in the
   rendered text — INV-12's own test asserts against rendered text, not against
@@ -633,19 +718,28 @@ case would write into it. Always
 - **ANTS-3809 depends on § 2.2's `TrailerMatch`**; its `body_shadowed` refusal is
   unimplementable without `offset` / `anchored`.
 - **ANTS-3793's `BulletRecord::body`** is defined in terms of § 2.4's export.
-- **`docs/subsystems.md`** needs no change **under two of § 4's three build
-  options**, because neither adds a translation unit. The third — hoisting the
-  accessor into a leaf TU both libraries link — does add one, and that file then
-  gains a lane entry. Conditional on that decision, not independent of it.
-  **`CLAUDE.md` is unaffected either way**: ANTS-1292 moved the per-file
-  catalogue out of it, leaving a pointer, so a new TU is `docs/subsystems.md`'s
-  business alone.
+- **`docs/subsystems.md`** needs no change. § 4's accepted option adds no
+  translation unit — `roadmapparse.cpp` and `roadmapindex.cpp` move between
+  CMake targets, and the doc maps files to subsystems rather than to libraries.
+  **`CLAUDE.md` is likewise unaffected**: ANTS-1292 moved the per-file catalogue
+  out of it, leaving a pointer.
 - **`src/roadmaprender.cpp`'s `Kind:` line carries the comment "Required piece,
   unconditionally (INV-12)"**, and § 2.3 makes that emission conditional. The
   comment is updated in the same change — it is the one place an implementer
   reading the render would be told the opposite of what this spec decided.
 
 ## Cold-eyes loop log
+
+**Post-cap fold-in, 2026-08-04 — not a loop, and no reviewer was dispatched.**
+The four findings filed at the loop-3 cap were folded in directly, per the tail
+file's instruction. Two did not survive verification against source and are
+recorded as dismissed in § 2.1 (the headline-truncation half of T1, and T3's
+task-list checkbox); two were fixed (T1's match-failure half, by replacing the
+string match with a reader-recorded offset — T2's key-versus-value question, in
+INV-1); T4's owning seam is named in § 2.1 and § 4. **§ 4's surfaced build
+decision was settled by the user**, closing the last precondition on § 2.3.
+Detail: [`docs/reviews/ANTS-3808-cold-eyes-loop3-tail.md`](../reviews/ANTS-3808-cold-eyes-loop3-tail.md).
+The rows below are frozen past-state records and were not edited.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|

@@ -25483,6 +25483,32 @@ against current source before filing.
   headless path. Decide this BEFORE implementing § 2.3; the choice also
   interacts with filed finding T4 (which function owns the strip), since
   the two candidate seams live in different libraries.
+  Progress (2026-08-04): the § 4 build decision is SETTLED and
+  user-accepted, superseding the recommendation annotated above.
+  Hoist src/roadmapparse.cpp + src/roadmapindex.cpp out of
+  ants_core_lib into a new ants_roadmapparse_lib linking Qt6::Core
+  alone; ants_core_lib and ants_roadmapstore_lib both link it. No new
+  source files, and the grammar's home stays roadmapparse.cpp, so
+  INV-2 holds by construction. Add the target to
+  _ants_subset_linked_libs. Rejected: linking core into the store —
+  CMakeLists.txt:421-422 shows ants_core_lib exports Qt6::Gui,
+  Qt6::Widgets, Qt6::Network, Qt6::DBus and util PUBLIC, i.e. the whole
+  desktop toolkit into ANTS-3794's headless path.
+
+  The four filed findings (T1-T4) are folded in; the tail file
+  docs/reviews/ANTS-3808-cold-eyes-loop3-tail.md is CLOSED. Two were
+  dismissed on verification and must not be re-raised: T1's truncation
+  half (all four headline sites go through assignHeadline(), so
+  headlineFull is never empty — the claimed direct-assignment path is a
+  guard, not an assignment) and T3 (the GFM checkbox is stripped from
+  head before body is seeded, so no bracket token reaches the strip).
+  T1's real half is fixed by a design change: BulletRecord gains a
+  headlineEnd offset the reader records, and the migration cuts there
+  instead of matching the headline as a string — matching would fail
+  on GFM bullets, whose headline the reader de-markups before storing.
+  makeItem() in src/roadmapmigrate.cpp owns the strip (T4). INV-1 now
+  counts each trailer key's canonical VALUE once, not the key literal
+  (T2). Spec is ready to implement; no further review gate is owed.
 
 - 📋 [ANTS-3809] **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03), which stopped
