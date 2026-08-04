@@ -44,15 +44,11 @@ The surface, measured 2026-08-04:
 $ awk '/^QJsonDocument RemoteControl::cmdRoadmapLog\(/,/^}/' src/remotecontrol.cpp \
     | grep -o 'op == QStringLiteral("[a-z_]*")' | sed 's/.*("//;s/")//' | sort -u
 amend_body annotate append_batch bundle_row create_section flip flip_batch
-$ grep -c 'QSaveFile [a-z]*(roadmapPath)' src/remotecontrol.cpp
-10
 ```
 
 Seven named ops plus `append`, the unnamed fallthrough
-(`RemoteControl::cmdRoadmapLog`) — eight. The `grep -c` counts matching *lines*,
-not call sites; the two coincide here only because each construction sits on its
-own line, and the figure is a scale indicator rather than a count to implement
-against.
+(`RemoteControl::cmdRoadmapLog`) — eight. Each splices markdown and commits it
+with its own `QSaveFile` on the roadmap path.
 
 **Three things make this more than a mechanical port, and each is a section
 below.**
@@ -95,8 +91,8 @@ below.**
 
 **On a migrated project every op becomes: mutate the store, render, then
 commit.** No op grows a markdown writer of its own; the splice paths stay on the
-unmigrated branch, unchanged, and are deleted by the id that retires markdown —
-not this one.
+unmigrated branch, unchanged, and are deleted by the id that retires markdown, which is
+not yet filed and is not this one.
 
 **The ordering is the contract, and it is not the obvious one.**
 `RoadmapRender::render()` writes its files itself and commits them per file
@@ -114,7 +110,7 @@ one.**
 // ordering below is INV-1 and eight call sites would each get a chance to
 // write it differently.
 namespace RoadmapWrite {
-    // Every value below reaches an MCP envelope, so every one names a `code`
+    // Every FAILING value below reaches an MCP envelope, so each names a `code`
     // (§ 7 files them): render_gate_unmet, render_failed, store_failed, and
     // the taxonomy's existing write_failed. A caller must be able to branch on
     // `code` alone (`mcp-error-codes.md`), and four of these five have
@@ -155,7 +151,8 @@ namespace RoadmapWrite {
                            const QString &projectRoot,
                            const QString &liveRoadmapPath, bool dryRun,
                            const std::function<bool(QString *)> &mutate,
-                           RoadmapRender::Outcome *outcome, QString *error);
+                           RoadmapRender::Outcome *outcome,
+                           QString *error = nullptr);
 }
 ```
 
@@ -227,17 +224,57 @@ a migrated project they are served by ANTS-3793's wrapper like every other read.
 
 | Op | Store writes |
 |---|---|
-| `append` | `putItem(ItemWrite{…, sectionId, position})` — which inserts the `element` row itself (`INSERT INTO element … 'item'`) — then `raiseIdHighWater()` (§ 2.3) |
+| `append` | `putItem(ItemWrite{…, sectionId, position})` — which inserts the `element` row itself (`INSERT INTO element … 'item'`) — then `raiseIdHighWater()` (§ 2.3). `sectionId` is `findSection(projectId, <the request's section slug>)`, refusing `section_not_found`; `position` is `max(position) + 1` over `listElements(sectionId)`, or 0 when empty — the same `UNIQUE (section_id, position)` constraint `bundle_row` is pinned against below |
 | `append_batch` | N × the above in the one transaction, ids contiguous (§ 2.3) |
 | `flip` | `setItemField(itemPk, "status", <lifecycle word>, "asserted")`, plus the body append below when a `note` is given |
 | `annotate` | the body append alone — no status write. It is the flip that changes no status, and `cmdRoadmapLog` already routes both to one handler; that stays one path |
 | `flip_batch` | N × `flip`, one transaction |
-| `amend_body` | `setItemField(itemPk, "body", …, "asserted")` with the located single-line `old_text` replaced |
+| `amend_body` | `setItemField(itemPk, "body", …, "asserted")` with the located single-line `old_text` replaced — matched against **`item.body`**, which is ANTS-3808 § 2.1's residual and *not* the markdown the op matches today (below) |
 | `create_section` | `addSection(projectId, slug, title, level, position, parentId)`, plus the renumber below |
 | `bundle_row` | read-modify-write of one `kind='table'` element (below) |
 
 Every op that writes `body` also re-derives that item's trailer columns — § 2.6,
 and it is what makes § 1's gate remediable.
+
+**Six of those rows take an `itemPk`, and nothing so far says how a locator
+becomes one.** The ops locate a bullet by `id` or `headline` against the
+`BulletRecord`s the read seam returned; the store writes take a primary key.
+The rule, in two steps, because one does not cover the corpus:
+
+1. **`RoadmapStore::findItem(projectId, rec.id)`** when `rec.id` is non-empty.
+   It keys on `id_fold` within the project, which is the same key
+   `roadmap_query` showed the caller, so the ordinary bullet resolves in one
+   point lookup.
+2. **On a miss, match `ItemRef::headline` from `listItems(projectId)` against
+   `rec.headlineFull`**, refusing `bullet_ambiguous` on more than one hit and
+   `bullet_not_found` on none — the same two refusals the markdown path's
+   `headline` locator already makes.
+
+**Step 2 exists because step 1 provably misses two reachable shapes, and
+refusing them would be a regression.** ANTS-3793 § 2.1.1 fills `rec.id` **from
+the rendered head line, not from the `id` column**: an item whose `id` column is
+empty renders no bracket and takes its `rec.id` from an id-shaped headline
+token, and an item carrying an off-grammar quarantined id whose prose cites
+another `[ID]` re-parses to the citation. `findItem()` keys on the column, so it
+misses both. `rec.headlineFull` is the stored `headline` unchanged (same
+section), so it compares equal to `ItemRef::headline` without a truncation
+allowance — which is why the fallback keys on `headlineFull` and not on
+`headline`.
+
+**`create_section` and `bundle_row` resolve a *section*, not an item**, through
+`RoadmapStore::findSection(projectId, slug)` — a bare `INSERT`-side lookup that
+exists for exactly this, refusing `section_not_found` on a miss.
+
+**`amend_body`'s uniqueness guarantee is re-evaluated over different text, and
+that is a behaviour change worth stating rather than discovering.** The op
+refuses `body_match_not_found` on zero matches and `body_match_ambiguous` on
+more than one. On the markdown path it counts those over the bullet's
+continuation lines as they sit in the file; on the store path it counts them
+over `item.body`, which ANTS-3808 § 2.1 makes the **residual** — the head line's
+content stripped off. So an `old_text` that overlapped the headline stops
+matching, and one whose only second occurrence was in the head line stops being
+ambiguous. Both refusals stay loud; neither silently edits the wrong text. The
+residual is also the right target, because it is what the render writes back.
 
 **`create_section` renumbers, and it is safe to.** The op inserts after a named
 section, so every later section's `position` shifts by one, applied with
@@ -268,6 +305,13 @@ bool setElementPayload(qint64 sectionId, int position, const QString &payload,
                        QString *error = nullptr);
 ```
 
+**Which table, when a section holds more than one:** the **first
+`kind='table'` element by `position`**. Nothing in the schema constrains a
+section to one table, and a section migrated from markdown carrying two would
+otherwise leave `setElementPayload()`'s `position` argument unpicked. First-by-
+position is the one choice that matches what the markdown path does — it splices
+into the first table under the heading.
+
 An op targeting a section with no `kind='table'` element creates one with
 `addElement(sectionId, position, "table", payload)` at
 **`max(position) + 1` over `listElements(sectionId)`**, or 0 for an empty
@@ -283,6 +327,10 @@ the payload.** `header` names the columns, and on the store path it is the
 `"rows"`**, which is now an array insert rather than a line splice. None of the
 three touches the `element.position` above — that is where the *table* sits in
 the section, and these three are about where a *row* sits in the table.
+`cells` is unchanged, and so is the shipped `column_mismatch` refusal: it now
+compares `cells.size()` against the payload's `"header"` length instead of
+against the header row's pipe count, which is the same check over a parsed
+shape rather than over text.
 
 ### 2.3 Id allocation
 
@@ -327,8 +375,10 @@ project the comparison floor is the same one allocation uses —
 `raiseIdHighWater()` records it, and a hint at or below it is `id_taken`. The
 code is unchanged; only what it is compared against moves.
 
-**`append_batch` allocates contiguously from one read.** `first_id + i` for
-`i` in `[0, n)`, one `raiseIdHighWater()` with the last, inside the one
+**`append_batch` allocates contiguously from one read.** `first_id + i` over the
+**accepted** bullets in input order — `append_batch` drops a bullet that fails
+validation into `skipped[]`, and numbering over the input instead would leave
+gaps — with one `raiseIdHighWater()` for the last, inside the one
 transaction — matching the markdown path's contiguity guarantee, which callers
 rely on to cite ids before the batch returns.
 
@@ -361,8 +411,17 @@ ANTS-3793 § 2.1.1 fills `anchor` — with `sourceStatus` and `passDesignator` �
 as **empty** on the store path, "an artefact of a dialect the store path does
 not serve"; and the store path serves `ants-v1` only (§ 5), where both
 `cmdRoadmapLogFlip` and `cmdRoadmapLogFlipBatch` already refuse an `anchor`
-locator with `bad_op_combo` before any backend is chosen. The format-level
-refusal fires first, so an `anchor` locator cannot arrive at a zeroed field.
+locator with `bad_op_combo`.
+
+**That ordering is a requirement of this spec, not an observation about today's
+code.** In the shipped handlers the refusal sits inside the `ants-v1` branch
+`detectRoadmapFormat()` selects, and § 2.1's dispatch could plausibly be wired
+ahead of that branch — which would put an `anchor` locator in front of a
+uniformly empty field, the silently-matches-nothing outcome § 2.4 exists to
+prevent. So, normatively: **both flip handlers keep their format branch and its
+`anchor` refusal ahead of the store-versus-markdown dispatch.** The format gate
+already runs on every call regardless (§ 2.2's ants-v1 check reads the same
+`detectRoadmapFormat()`), so this costs nothing.
 
 `id` and `headline` do resolve, against `BulletRecord` fields the store path
 fills. One caveat on `id`, inherited from the reader rather than introduced
@@ -388,10 +447,22 @@ wrong on exactly the projects in scope; § 7 files the message correction.
 
 **The ops that write a trailer column from the request are `append` and
 `append_batch`** — the only two taking `kind` / `source` / `lanes` / `layman` /
-`evidence` as arguments. `flip` writes `status`, which is not a trailer key.
-`annotate`, `amend_body`, `create_section` and `bundle_row` write no column
-*from the request*; the first two do write columns, but only as § 2.6's
-re-derivations, which are exempt for the reason at the foot of that section.
+`evidence` as arguments. Every other op writes no trailer column *from the
+request*: `flip` and `flip_batch` write `status`, which is not a trailer key;
+`create_section` and `bundle_row` touch no item column at all; and `annotate`,
+`amend_body` and a `flip` carrying a `note` write `body`, so their columns come
+from § 2.6's re-derivation, which is exempt for the reason at the foot of that
+section.
+
+**ANTS-3808 § 2.3.1 names a different op set, and § 2.6 is why.** It says the
+divergent state "requires a consumer to have written the column without
+rewriting the body: a `flip` or `annotate` under ANTS-3809. That is why that
+spec owns the write-side refusal." Written before § 2.6 existed, that is the
+right hazard and the wrong ops: under § 2.6 a `flip`-with-`note` or an
+`annotate` re-derives every column from the body it just wrote, so its column
+*cannot* disagree with its body and there is nothing to refuse. The refusal
+lands on `append` / `append_batch` instead — the only ops that set a column
+independently of the body they ship with. § 7 files the correction.
 
 Each such write first asks `RoadmapParse::trailerValuesIn()` what the `body`
 arriving in the same request yields for that key. **If the body yields a value
@@ -409,7 +480,7 @@ The reasoning is short and it is the whole section:
   body occurrence is reached before the column's own line, whatever either
   looks like.
 - `TrailerMatch::anchored` is true when the match **begins a line**
-  (ANTS-3808 § 2.2.1: `m == capturedStart(0)`, then
+  (ANTS-3808 § 2.2.1: `m = capturedStart(0)`, then
   `m == 0 || body.at(m - 1) == '\n'`). So a stale continuation line reading
   `Kind: refactor` is `anchored == true` — and it is the *likeliest* shadowing
   shape there is, because it is what a hand-edited or half-updated bullet
@@ -452,16 +523,25 @@ body without repeating it as an argument.
 
 ### 2.6 Body writes re-derive their columns
 
-**Any op that writes `body` re-derives the item's five trailer columns from the
-new body through `trailerValuesIn()` and writes each one that changed**, in the
-same transaction, with provenance `asserted`.
+**Any op that writes `body` re-derives, from the new body through
+`trailerValuesIn()`, every trailer column the same request did not itself
+supply, and writes each one that changed** — in the same transaction, with
+provenance `asserted`.
+
+**"Did not itself supply" is the whole qualifier, and dropping it inverts the
+rule.** Only `append` and `append_batch` carry column arguments at all, and for
+them the request is authoritative: a request with `layman: "X"` and a body
+carrying no `Layman:` line must store `"X"`, not clear the column to match the
+body. Every other op supplies no columns, so for `annotate`, `amend_body` and a
+`flip` carrying a `note`, "every key it did not supply" is all five. § 2.5's
+last paragraph is the same rule stated from the refusal's side.
 
 This is what makes § 1's gate remediable, and without it the write half is
 unusable on this project on day one. `Layman:` is a *body* line in markdown and
 a *column* in the store. An `annotate` or `amend_body` that adds the line to the
 body but not the column leaves the render's `layman.isEmpty()` gate failing
-forever, with no op able to clear it — 102 items on this project's roadmap
-(§ 1). Re-deriving fixes that with the accessor ANTS-3808 already exports, and
+forever, with no op able to clear it — § 1 counts how many items that is on
+this project. Re-deriving fixes that with the accessor ANTS-3808 already exports, and
 it keeps the two representations from drifting in every other direction too.
 
 **A re-derivation is never shadow-checked, and that is not an inconsistency
@@ -469,25 +549,30 @@ with § 2.5.** That section guards a column value the body would out-vote; a
 derived value *came from* the body, so there is nothing left to out-vote it.
 § 2.5's last paragraph settles the one op where both could apply.
 
-**Three of the five keys go through `setItemField()`; `lanes` and `evidence`
-cannot, and the difference is a real API constraint rather than a detail.**
-`setItemField(itemPk, field, value, provenance)` takes a **`QString`**, while
-`lanes` and `evidence` are JSON-array columns — `ItemWrite` carries them as
-`QStringList` and `roadmapstore.h`'s ANTS-3767 comment holds them canonical "on
-the way in … it binds every writer, not just the export". Only `setLegend()` and
-`addElement(kind='table')` canonicalise for their caller, so this one does not.
-So:
+**All five keys go through `setItemField()`, but the two list-valued ones take a
+JSON *document*, not a joined string — and the caller does not canonicalise
+it.** `setItemField(itemPk, field, value, provenance)` takes a `QString` for
+every field, and for `lanes` / `evidence` (and `extras`) it treats that string
+as JSON: it parses it, **refuses unless it is an array of strings**, and
+canonicalises it itself before the `UPDATE` (`src/roadmapstore.cpp`, the
+ANTS-3767 block). So:
 
-| Key | Written as |
+| Key | Value passed to `setItemField()` |
 |---|---|
-| `kind`, `layman`, `source` | `setItemField(pk, key, tv.<key>.value, "asserted")` |
-| `lanes`, `evidence` | `setItemField(pk, key, RoadmapStore::canonicalJson(<the split list as a QJsonArray>), "asserted")` — the list forms are `tv.lanesList` / `tv.evidenceList`, which ANTS-3808 § 2.2.1 pins |
+| `kind`, `layman`, `source` | `tv.<key>.value` — stored as given |
+| `lanes`, `evidence` | `tv.lanesList` / `tv.evidenceList` serialised as a **JSON array of strings** (`QJsonDocument(QJsonArray::fromStringList(list)).toJson(Compact)`). The store validates the shape and canonicalises; a caller that pre-canonicalises is merely doing it twice, and one that passes the joined prose form is refused |
 
-`canonicalJson()` already takes a `QJsonValue` rather than a `QJsonObject`
-precisely so an array can go through it (its own comment says so, ANTS-3767).
-An implementer who passes the raw `tv.lanes.value` string instead writes
-un-canonical, un-parseable content into a JSON column, which ANTS-3761's INV-2
-column diff then reports as a difference on every export.
+**Two ways to get this wrong, and the store catches one of them.** Passing
+`tv.lanes.value` — the raw pre-split capture, `"a, b"` — fails
+`QJsonDocument::fromJson()` and is refused with "not JSON", which is loud.
+Passing `"[]"` for a key the body no longer carries is **not** caught the same
+way: `canonicalJson()` returns empty for an unrepresentable value and the store
+refuses, but an empty *list* canonicalises to `[]` and would store an empty
+array where the column should be NULL. That is what the clearing rule below is
+for.
+
+All seven fields this spec writes — `status`, `body`, and the five trailer keys
+— are in `isWritableItemField()`'s allowlist, verified 2026-08-04.
 
 **When a re-derivation would clear a column, it does** —
 `clearItemField(itemPk, field, "asserted")` and not an empty `setItemField()`,
@@ -544,27 +629,35 @@ is new to this part.
   *Test:* `Inv3Allocation`, four cases — a store high-water above the corpus, a
   corpus high-water above the store (the fresh-clone case, and the one that
   fails if the floor is dropped), an `append_batch` of three asserting
-  `first_id`, `first_id+1`, `first_id+2` and one high-water raise, and a
-  `stable_prefix` append asserting `idHighWater()` is still `nullopt`
-  afterwards.
-- **INV-4** — **An op that writes `body` leaves the item's five trailer columns
-  equal to what `trailerValuesIn()` yields from the new body.** *Breaks when:*
-  a body write skips the re-derivation, so a `Layman:` line added by `annotate`
-  never reaches the column and the render's gate cannot be cleared; a
-  re-derivation that should clear a column writes `''` through `setItemField()`
-  instead of NULL through `clearItemField()`; or `lanes` / `evidence` are
-  written as the raw pre-split string rather than as `canonicalJson()` of the
-  split list, which puts un-parseable content in a JSON column.
-  *Test:* `Inv4BodyDerivesColumns`, three cases — `annotate` a `Layman:` line
+  `first_id`, `first_id+1`, `first_id+2` and one high-water raise, and and a
+  `stable_prefix` append asserting `idHighWater(projectId, p)` is still `nullopt`
+  afterwards for the `p` that `idPrefixFor()` returns — and, when it returns
+  `nullopt`, for the prefix the request derived.
+- **INV-4** — **An op that writes `body` leaves every trailer column the request
+  did not itself supply equal to what `trailerValuesIn()` yields from the new
+  body** — and leaves a supplied one holding what the request supplied.
+  *Breaks when:* the re-derivation is applied to all five unconditionally, so an
+  `append` carrying `layman:` and a body without a `Layman:` line has its
+  argument cleared; a body write skips the re-derivation, so a `Layman:` line
+  added by `annotate` never reaches the column and the render's gate cannot be
+  cleared; a
+  re-derivation that should clear a column writes `''` or `[]` through
+  `setItemField()` instead of NULL through `clearItemField()`; or `lanes` /
+  `evidence` are written as the raw pre-split string, which `setItemField()`
+  refuses as "not JSON".
+  *Test:* `Inv4BodyDerivesColumns`, four cases — `annotate` a `Layman:` line
   onto an item whose `layman` column is empty and assert the column, then assert
   the same op makes the previously gate-failing render succeed; `amend_body` a
-  `Lanes: a, b` line and assert the column parses as the JSON array `["a","b"]`;
-  and `amend_body` the `Layman:` line away and assert the column is SQL NULL,
-  not `''`. The first case's *second* assertion is the one that cannot pass by
-  accident: it fails against an implementation that writes the column but
-  derives it from the *request* rather than from the resulting body.
-- **INV-5** — **A trailer-column write is refused when the item's body yields a
-  different value for that key**, over all five keys, whether or not the body's
+  `Lanes: a, b` line and assert the column reads back as the JSON array
+  `["a","b"]`; `amend_body` the `Layman:` line away and assert the column is SQL
+  NULL, not `''`; and an **`append` supplying `layman:` with a body carrying no
+  `Layman:` line**, asserting the column holds the argument — the case that
+  fails against an unconditional re-derivation. The first case's *second*
+  assertion is the one that cannot pass by accident: it fails against an
+  implementation that writes the column but derives it from the *request*
+  rather than from the resulting body.
+- **INV-5** — **A trailer-column write is refused when the body it ships beside
+  yields a different value for that key**, over all five keys, whether or not the body's
   match begins a line. *Breaks when:* the refusal is gated on
   `TrailerMatch::anchored == false`, which exempts the commonest shadowing shape
   there is — a stale `Kind:` continuation line, which begins a line and so is
@@ -606,8 +699,10 @@ is new to this part.
   ANTS-3756 INV-24 defines as canonical JSON. *Test:* `Inv8BundleRow`, two
   cases — a second row appended to a section that already has a table (asserts
   one `kind='table'` element still, and `canonicalJson()` round-trips the
-  payload), and a first row on a section with none (asserts exactly one element
-  was created).
+  payload), a first row on a section with none (asserts exactly one element was
+  created), and a section holding **two** `kind='table'` elements (asserts the
+  row landed in the one with the lower `position` and the other is byte-
+  unchanged).
 
 ## 4. RAM, latency and build cost
 
@@ -632,23 +727,40 @@ emits; it has no unchanged-skip). The archives are 12 KB, so the cost is
 mtime churn rather than I/O, and it is worth naming because a `git status` after
 an unrelated `flip` will show them.
 
-**RAM** is `bulletsFromStore()`'s peak plus one rendered-text buffer, both
-already priced by ANTS-3793 § 4; this spec adds no long-lived state. The
-`RoadmapStore` connection is ANTS-3793 § 2.2's process-owned one, shared with
-the read half — a write-side connection of its own would double the page cache
-and could deadlock against the read on `BEGIN IMMEDIATE`.
+**RAM is `render()`'s peak, twice — and it is not `bulletsFromStore()`'s,
+which is the read half's.** The walk this spec adds holds two things at once
+(`src/roadmaprender.cpp`): `QHash<qint64, RoadmapStore::ItemWrite> itemOf` over
+every renderable item, and `QHash<QString, QString> contentOf` holding the full
+text of every file the pass emits before any of it is staged, plus one
+`QByteArray` UTF-8 copy per file during staging. Against § 4's own figures that
+is ~6.2 MiB for `contentOf` (3.1 MB of text, UTF-16), a ~3.0 MiB `QByteArray` at
+the staging peak, and 1,844 `ItemWrite`s:
 
-**The write transaction is held across both render walks, and that does not
-touch ANTS-3793 INV-3's `p95 < 50 ms` read budget.** The concern is real enough
-to answer rather than omit: `begin()` is `BEGIN IMMEDIATE`, it is held from step
-1 to step 6, and there are **two** connections in the process — ANTS-3793 § 2.2
-gives `RemoteControl` and `RoadmapDialog` one each. The store runs in **WAL**
-(`RoadmapStore::enableWal()`), where readers and a writer do not block each
-other: a dialog read during a verb's held write transaction proceeds against the
-last committed snapshot at full speed. What a second *writer* would hit is
-`Access::Interactive`'s 5 s busy deadline, and the only second writer is another
-`roadmap_log` op — which the verb dispatcher runs serially. No case in this spec
-puts a read behind a write.
+| Term | Peak |
+|---|---|
+| `contentOf` (all 3 files, UTF-16) | ~6.2 MiB |
+| staging `QByteArray` (one file at a time) | ~3.0 MiB |
+| `itemOf` (1,844 items, bodies dominate) | ~6.2 MiB — the same text as one full roadmap, held as columns |
+| **Peak per render walk** | **~15.4 MiB** |
+
+The two walks are sequential, not concurrent, so the peak is one walk's and not
+two. Nothing is long-lived: both hashes die with the call.
+
+**The write transaction is held across the *validating* render only.** § 2.1's
+table is the authority and it puts `commit()` at step 6 and the publishing
+render at step 7 — so `BEGIN IMMEDIATE` spans steps 1–6 and the 3.1 MB file
+write happens outside it. An implementer who read this paragraph's earlier
+wording as "both walks" would have doubled the lock window for nothing.
+
+**Nothing can observe the intermediate state, and that is a consequence of
+ANTS-3793's design rather than of WAL.** That spec gives the process **one**
+long-lived `Access::Interactive` connection for `RoadmapStore::defaultPath()`,
+shared by both owners, and `commitAndRender()` is synchronous on the thread
+that owns it — so no read can interleave with a held write transaction, and
+`begin()`'s "refuses to nest" is unreachable from a single serial dispatcher.
+ANTS-3793 INV-3's `p95 < 50 ms` read budget is therefore untouched. (Were a
+second connection ever introduced, WAL would still keep a reader from blocking
+on the writer; that is a fallback, not the argument.)
 
 **Build cost:** one new TU, `src/roadmapwrite.cpp`, in `ants_roadmapstore_lib`
 beside `roadmaprender.cpp`. No new link edge: the callers are in
@@ -673,11 +785,12 @@ lands, both render walks get it for free.
   spec is what proves the render this one commits behind is lossless; until it
   lands, INV-1's guarantee is that a render *failure* is caught, not that a
   render *success* is faithful.
-- **Backfilling the 102 missing `Layman:` lines.** § 2.6 gives the ops that can
+- **Backfilling the missing `Layman:` lines § 1 counts.** § 2.6 gives the ops that can
   fix them one at a time and INV-1 makes the refusal loud; a corpus sweep is a
   content task, not a code one, and it is **ANTS-3821** (filed by this spec).
 - **Deleting the markdown splice paths.** They serve every unmigrated project
-  for as long as the rollout takes, and the id that retires them is not this one.
+  for as long as the rollout takes; the id that retires them is not yet filed and
+  is not this one.
 - **Non-emoji formats.** The store path serves `ants-v1` only, by the same
   § 2.2 dispatch the read half uses; a migrated GFM or pass-headings project
   keeps splicing markdown. Permanent for this spec, not deferred: ANTS-3758's
@@ -733,25 +846,33 @@ replaced by an `addElement()`.
   ANTS-3756, in the shape ANTS-3758 § 2.1 used for `listElements()` and
   ANTS-3793 § 2.2 used for `readProjectByRoot()`. Without it `bundle_row` has no
   store form at all.
-- **`docs/standards/mcp-error-codes.md` gains four codes, and reuses a fifth.**
-  Every `RoadmapWrite::Result` value reaches an envelope, so every one needs a
-  `code` a caller can branch on:
+- **`docs/standards/mcp-error-codes.md` gains five codes and reuses one.**
+  Three come from `RoadmapWrite::Result`'s failing values, which all reach an
+  envelope; two are op-level refusals that never enter that enum:
 
-  | `Result` | `code` | New? |
+  | Source | `code` | New? |
   |---|---|---|
-  | `GateUnmet` | `render_gate_unmet` | new |
-  | `RenderFailed` | `render_failed` | new |
-  | `StoreFailed` | `store_failed` | new |
-  | `PublishFailed` | `write_failed` | **existing**, § 4 I/O failure — "file-system write returned an error", whose own example is `roadmap_log` |
-  | (§ 2.4 / § 2.5 refusals) | `locator_unsupported`, `body_shadowed` | new |
+  | `Result::GateUnmet` | `render_gate_unmet` | new |
+  | `Result::RenderFailed` | `render_failed` | new |
+  | `Result::StoreFailed` | `store_failed` | new |
+  | `Result::PublishFailed` | `write_failed` | **existing**, § 4 I/O failure — "file-system write returned an error", whose own example is `roadmap_log` |
+  | § 2.4 refusal | `locator_unsupported` | new |
+  | § 2.5 refusal | `body_shadowed` | new |
 
-  Verified 2026-08-04: the standard carries no `store_*`, `render_*`, `sql_*` or
-  `db_*` code today, and `io_error`'s own entry says to prefer a specific
-  variant "when the failing op is known" — which it is, for all four.
+  (`Result::Ok` names none, being the success value.) Verified 2026-08-04: the
+  standard carries no `store_*`, `render_*`, `sql_*` or `db_*` code today, and
+  `io_error`'s own entry says to prefer a specific variant "when the failing op
+  is known" — which it is, for all three of the new `Result` codes.
   Recorded while verifying that: **`bad_op_combo` is used 23 times across
   `src/remotecontrol.cpp` and `src/claudeintegration.cpp` and appears nowhere in
   the standard** (re-verified 2026-08-04) — a pre-existing documentation gap
   this spec inherits rather than causes, and not this id's to fix.
+- **ANTS-3808 § 2.3.1's closing sentence needs correcting** — it names "a `flip`
+  or `annotate` under ANTS-3809" as the write that creates a shadowed column,
+  which was right before § 2.6 existed. Under § 2.6 those two re-derive their
+  columns from the body they just wrote, so the refusal lands on `append` /
+  `append_batch` instead. § 2.5 states the corrected set; that sentence should
+  point at it rather than at the wrong ops.
 - **The shipped `anchor`-on-`ants-v1` refusal message needs one word changed.**
   `cmdRoadmapLogFlip` and `cmdRoadmapLogFlipBatch` both tell the caller to "use
   `id`, `headline`, or `line_range`" — advice § 2.4 makes wrong on a migrated
@@ -773,11 +894,10 @@ replaced by an `addElement()`.
   unavailability.
 - **`roadmap-data-model.md`'s *What checks this* table** gains INV-1 against the
   store-primary rule its own INV-3 states.
-- **The 102 open items with no `Layman:` line are filed as ANTS-3821** (§ 5).
-  It blocks nothing in this spec, and it blocks *using* the write half on this
-  project — which is why it is filed rather than mentioned.
-- **A `history` row per consumer write is filed as ANTS-3822** (§ 2.6, § 5),
-  blocked by this id since it is the write path it would hook into.
+- **Two follow-ups are filed rather than mentioned** — **ANTS-3821** (§ 1's
+  missing `Layman:` lines, which block *using* the write half on this project
+  though nothing in this spec) and **ANTS-3822** (a `history` row per consumer
+  write, blocked by this id since this is the write path it hooks into).
 - **ANTS-3793's § 5 already names this id** as the owner of the eight ops, the
   `line_range` locator, id allocation and the `body_shadowed` refusal. No
   amendment owed there; recorded so a reader does not go looking.
@@ -786,5 +906,6 @@ replaced by an `addElement()`.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| 2 | 2026-08-04 | 2 (single doc, cold; same byte-stable packet, only the `size` figure refreshed) | 2 / 6 / 5 / 9 / 0 | **22 verified, 22 fixed, 2 dismissed.** Dimensions: dim 5×6, dim 4×5, dim 7×3, dim 2×3, dim 9×2, dim 10×1, dim 6×1, dim 11×1. **Origin split: ~13 collateral against ~9 draft — the first loop where collateral leads, which is one of Phase 5's two stop triggers at its first occurrence.** Both CRITICALs are real and only one is collateral. **The draft one is structural and two cold reads missed it: nothing in the document said how a locator becomes an `item_pk`.** Six of the eight ops call `setItemField(itemPk, …)`; the ops locate a `BulletRecord` by `id` or `headline`; no rule bridged them, and § 2.4 had *ruled out* the obvious `findItem()` route by pointing at ANTS-3793 § 2.1.1's two shapes where `rec.id` ≠ the `id` column. § 2.2 now carries the two-step resolution (`findItem()`, then an `ItemRef::headline` match against `rec.headlineFull` on a miss) plus `findSection()` for the two section ops. **The collateral CRITICAL is loop 1's per-key rule against loop 1's own INV-4:** § 2.5 said a supplied column is written as given, INV-4 said all five columns equal the body's derivation — so an `append` carrying `layman:` with a body lacking a `Layman:` line would have had its argument cleared. Both now say "every key the request did not itself supply". **One loop-1 fix was verified WRONG and reversed:** loop 1 had the caller pass `canonicalJson()` for `lanes`/`evidence` on the strength of a header comment scoped to other methods — `setItemField()` in fact takes a JSON **array of strings**, validates the shape and canonicalises it itself (`src/roadmapstore.cpp`, ANTS-3767), so the rule now says pass a JSON document and do not pre-canonicalise. Also fixed: § 4 claimed the transaction is "held across both render walks" when § 2.1's own table commits at step 6 (only the *validating* render is inside it); § 4 asserted **two** store connections where ANTS-3793 § 2.2 says one, which changes the argument entirely (answered by serial single-connection dispatch, with WAL demoted to a fallback note); § 4 priced `bulletsFromStore()`'s RAM when the walk this spec adds is `render()`'s — now a table over `itemOf` + `contentOf` + staging, ~15.4 MiB per walk; `amend_body`'s `old_text` had no stated match target (it is `item.body`, ANTS-3808's residual, which silently changes the uniqueness guarantee at cutover); `append` never said how `sectionId`/`position` are resolved despite `bundle_row` being pinned against the same `UNIQUE (section_id, position)` two paragraphs earlier; a section holding two `kind='table'` elements had no rule; and § 7 said "gains four codes" over a table listing five. **Two dismissed on verification, and one is a repeat:** both lanes again said the 26-call-site figure lives in ANTS-3793 § 2.1 rather than § 1 — `grep -n '26 call sites'` puts it at **§ 1, line 51**, so the citation stands; and a lane said `capturedStart(0)`/`(1)` are pinned in ANTS-3808 § 2.2 not § 2.2.1 — § 2.2.1's normalisation table carries both rows. **Resolved by lookup rather than assumed:** `renderBullet()` emits `it.body` **before** every trailer line, which is the premise § 2.5's whole first-match argument rests on and which no packet window had shown. The document is now **910 lines** — past ANTS-3808's 750 and closing on the 934 the umbrella was split at. Lane spend 162k and 163k **cumulative** (first-turn input ~43k against the 60k per-turn budget). |
 | 1 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet, 136 KB — bounded code windows + the cited passages of ANTS-3793/3808) | 1 / 5 / 9 / 5 / 0 | **20 verified, 20 fixed, 1 dismissed.** Dimensions: dim 5×5, dim 10×3, dim 1×2, dim 2×2, dim 4×2, dim 7×2, dim 12×2, dim 9×1, dim 15×1. **Both lanes independently led on the same CRITICAL, and it inverted the section it was in:** § 2.5 refused a shadowing column write when `TrailerMatch::anchored` was **false**, but ANTS-3808 § 2.2.1 computes `anchored` off `capturedStart(0)`, so a **stale `Kind:` continuation line — the commonest shadowing shape there is — is `anchored == true` and would have been let through**, while INV-5's own third case demanded it be refused. The rule and its test shipped in opposite polarities. Resolved by dropping `anchored` from the predicate entirely (value difference alone, over all five keys, because every matcher takes its FIRST match and the body precedes the trailer in a rendered bullet) and keeping it for the *message*, where it picks between the two remedies a caller is owed. Four more HIGHs, all draft: § 2.4 said `anchor` "resolve[s] against `BulletRecord` fields the store path fills" when ANTS-3793 § 2.1.1 fills it **empty** (the practical outcome is saved by a format-level `bad_op_combo` that fires first — now stated, along with the shipped message that recommends the `line_range` this spec refuses); `append` was caught by both § 2.5 and § 2.6 with no stated order (resolved per KEY, not per op — a supplied column is the caller's and is shadow-checked, an omitted one is derived); § 2.6 could not write `lanes` / `evidence` at all, since `setItemField()` takes a `QString` and only `setLegend()`/`addElement()` canonicalise (now a two-row table naming `canonicalJson()`); and INV-2's test needed a "publish step suppressed" seam § 2.1 never declared (re-expressed as byte-identity against a fresh render, which is stronger and buildable). **One signature change resolved three findings at once** — `commitAndRender()` now takes `RoadmapRender::Outcome *` rather than a bare `QStringList *gateFailures`, which the gate refusal, `dry_run`'s preview envelope (a regression against the markdown path nobody had noticed) and `PublishFailed`'s partial-commit message all needed. Also fixed: three `Result` values reached an envelope with no `code` (§ 7 now maps all five, four new plus the taxonomy's existing `write_failed`); `id_hint` had no store-path rule; the held write transaction was never reconciled with ANTS-3793 INV-3's read budget (answered: WAL, so readers do not block on the writer); `idPrefixFor()`'s `nullopt` was described as "no id-bearing item" when it is "no `id_prefix` row". **One finding dismissed on verification:** a lane said the 26-call-site figure lives in ANTS-3793 § 2.1 and not § 1 — § 1 states it outright. Two follow-ups filed rather than folded: **ANTS-3822** (a `history` row per consumer write) and, from the draft, **ANTS-3821**. The document grew 608 → 789 lines; that is contract the fixes added, but it is the number Phase 5's split call will rest on next loop. Lane spend 154k and 153k **cumulative** (first-turn input ~43k against the 60k per-turn budget). |
 | 0-split | 2026-08-04 | 0 (no reviewer dispatched — a document operation) | — | **Split from the 934-line umbrella `ANTS-3793-roadmap-consumer-cutover.md` as the WRITE HALF only.** Not a review loop and not inherited review: the umbrella's three loops ran against a document that no longer exists, so the gate runs from loop 1 on these bytes. Sections carried over: old § 2.4 and INV-4 (renumbered to INV-1 per § 3). Filed findings folded in from [`docs/reviews/ANTS-3793-cold-eyes-loop3-tail.md`](../reviews/ANTS-3793-cold-eyes-loop3-tail.md): **H3** (`id_strategy: "stable_prefix"` allocates no counter id) → § 2.3's last paragraph and INV-3's fourth case; **M6** (`idHighWater()`'s `nullopt` case, `append_batch` contiguity, and `dry_run` under mutate-then-render) → § 2.3 and INV-7. Three defects were found by grounding rather than carried: the render's INV-5 gate is per project and fails on 102 of this roadmap's 327 open items, so every write op would refuse (§ 1, § 2.6, ANTS-3821); `bundle_row`'s read-modify-write has **no store surface** — `addElement()` is INSERT-only and `ElementRow` carries no element id (§ 2.2's `setElementPayload()`); and `line_range` on the store path does not match *nothing*, it matches *everything*, because `firstLine` is 0 and the predicate is `firstLine + 1 >= a` (§ 2.4). The umbrella's ordering (mutate, render, commit) was also corrected: `render()` commits its own files, so that sequence leaves the file ahead of the store on a commit failure — § 2.1 validates with `Options::dryRun` first instead. |
