@@ -25119,6 +25119,30 @@ against current source before filing.
   roadmap-data-model.md's What-checks-this table gains the read budgets and
   its stale "no render before ANTS-3758" row; ANTS-3765 § 2.10 now names this
   id as what consumes the marker.
+  Cutover sizing (2026-08-04), found while scoping it and NOT in the spec:
+  the hard part is not the 26 call sites, it is cmdRoadmapQuery's shape.
+
+  That verb is built around a MARKDOWN CACHE keyed on (path, mtime) with a
+  100 ms TTL (m_roadmapCachePath / m_roadmapCacheMtimeMs, remotecontrol.cpp
+  ~4477-4512), and it has two emission paths off it: a full-file path that
+  parses the whole text, and a SECTION path that slices the markdown text
+  and parses the slice. A store-served project has no mtime to key on and no
+  text to slice, so the store has to feed BOTH paths or the verb answers from
+  two different sources within one call. INV-2 guarantees the two agree on
+  record CONTENT, so the safe shape is to filter store records by
+  sectionSlug rather than to slice text — but that is a real change to the
+  cache's freshness predicate, not a one-line call swap, and § 2.1's "each
+  site is a one-line change" is true of the call and not of what surrounds
+  it. Size the cutover off this, not off the site count.
+
+  The read-shaped sites, by function rather than line number (line numbers
+  rot; these were at remotecontrol.cpp 3614 / 4515 / 4582 / 4974 / 4992 /
+  5245 / 6543 / 6873 / 13550 / 13666 / 14161 / 22478 on 2026-08-04):
+  rcBuildBulletCacheArray, cmdRoadmapQuery's four cache fills, cmdChangelogLog
+  and cmdChangelogLogAddBatch's id resolution, cmdFeedbackQuery's sibling and
+  foreign-id reads, and the feedback-file reader at the end of the file. Those
+  are ANTS-3793's. Everything under cmdRoadmapLog* is ANTS-3809's, for the
+  firstLine reason recorded above.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
