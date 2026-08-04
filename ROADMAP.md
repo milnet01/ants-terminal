@@ -25941,6 +25941,53 @@ against current source before filing.
   Kind: investigate.
   Source: in-session-2026-08-04 (ANTS-3810 cold-eyes loop 1, lane finding verified).
 
+- 📋 [ANTS-3828] **Image paste ignores `text/uri-list`, so copying an image FILE pastes a `file://` URI.**
+  User-reported 2026-08-04: "when I paste an image, it doesn't always paste
+  it the way it is meant to". Not intermittent -- two different clipboard
+  payloads take two different paths.
+
+  `src/terminalwidget.cpp`, the Ctrl+Shift+V handler, branches on
+  `mime->hasImage()` ONLY. So:
+
+  - Screenshot-to-clipboard (Spectacle default) puts an `image/png` raster
+    on the clipboard -> `hasImage()` true -> the documented behaviour runs:
+    auto-save under the validated paste dir, insert the bare filepath. OK.
+  - Copying an image FILE (Dolphin, or "copy location") puts
+    `text/uri-list` + `text/plain` on the clipboard and NO raster ->
+    `hasImage()` is false -> falls through to the ordinary text paste, which
+    writes `file:///home/.../Screenshot_....png` verbatim to the PTY.
+
+  Claude Code cannot resolve a `file://` URI as a path, so the attachment
+  never forms -- which is what the user sees as a `[Image 1]` placeholder or
+  a dead link.
+
+  Fix (small, and it must NOT re-save): add a `mime->hasUrls()` branch after
+  the `hasImage()` one. For each URL that `isLocalFile()` and whose suffix is
+  a supported image type, insert `QUrl::toLocalFile()` -- the bare local
+  path. The file already exists on disk, so the save step is skipped
+  entirely and the paste-dir validation below does not apply to it.
+
+  CAUTION -- this is the path with two prior indie-review findings recorded
+  inline (0.7.53 path validation; indie-review-2026-05-19 terminalwidget H2's
+  prefix-check and mkpath-ordering bugs). The pasted text reaches the PTY
+  verbatim for the shell to tokenise, so a URI-derived path needs the same
+  scrutiny the configured directory got: reject anything that is not a local
+  file, and do not assume the path is shell-safe just because the user
+  supplied it. Consider quoting, and decide deliberately rather than by
+  omission.
+
+  Also worth deciding in the same change: a non-image local file (a .txt, a
+  .pdf) -- insert its path too, or leave it to the text paste? Inserting the
+  path is probably right and is a wider behaviour change than the bug needs,
+  so it is called out rather than assumed.
+
+  Test: a feature case driving both clipboard shapes (set an `image/png`
+  raster; set a `text/uri-list`) and asserting the inserted text is a bare
+  path in both.
+  **Layman:** Copying a picture file and pasting it drops a `file://…` link into the terminal instead of the plain path Claude Code needs.
+  Kind: fix.
+  Source: user-report-2026-08-04 (screenshot + reproduction in session).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

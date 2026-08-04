@@ -1,7 +1,10 @@
 # ANTS-3810 — the round-trip oracle, and whole-store relationship acyclicity
 
-**Status:** draft (2026-08-04) — the rule-14 cold-eyes gate is mid-run; see the
-loop log for how far it has got. Not yet accepted, so do not implement from it.
+**Status:** accepted (2026-08-04) — rule-14 gate run to its 3-loop cap, no
+deferred tail. Two caveats a reader should have: **loop 3's own fixes were not
+themselves cold-read**, which is what the cap means; and collateral outran draft
+defects for two loops, so a further split is available and is the user's call.
+The loop log carries the numbers.
 **Kind:** test.
 **Source:** ROADMAP.md ANTS-3810 (ANTS-3793 cold-eyes loop-3 split, 2026-08-03).
 Split from the 934-line umbrella `docs/specs/ANTS-3793-roadmap-consumer-cutover.md`,
@@ -13,7 +16,10 @@ a document operation, and the loop log's `0-split` row records only that.
 **Depends on, all shipped:** ANTS-3758 (the render this oracle drives),
 ANTS-3765 (the migration loader), ANTS-3761 (the export). Implementable at any
 point — nothing in § 2 needs ANTS-3793, ANTS-3808 or ANTS-3809 to have landed.
-**`Inv1RoundTrip` is expected RED until ANTS-3808 ships; § 2.1.2 owns why.**
+**Commit-order dependency:** ANTS-3808 — build the oracle any time, but
+`Inv1RoundTrip` is expected RED until that fix ships, so it joins a green suite
+only afterwards. § 2.1.2 owns why. This is not a *shipped* dependency like the
+three above, which is why it is named separately rather than folded into them.
 **Blocker for:** ANTS-3794 (publish + health checks), which schedules the check
 § 2.2 declares and inherits the family it opens.
 **Pairs with:** ANTS-3809 (the write half). Its § 2.1 commits the store and then
@@ -162,7 +168,13 @@ halves are load-bearing and both are pinned here:
 - **The projection operates at two levels, and which one applies is decided by
   the family.** Families 1 and 2 drop **whole NDJSON lines** — an excluded item
   takes its `item` line and its `element` line with it, and an excluded record
-  kind is dropped wholesale. Family 3 drops **keys from a surviving `item`
+  kind is dropped wholesale. **A `section` line is never dropped**, even when
+  family 1 removed every item filed under it: the render emits a section
+  regardless of whether any of its items survived `isRenderable()`
+  (`src/roadmaprender.cpp` orders and routes sections independently of the item
+  filter), so the heading reaches the markdown, the re-load parses it back, and
+  the record is present on **both** sides. Dropping it on side A alone would
+  manufacture the difference. Family 3 drops **keys from a surviving `item`
   object**, which is then re-serialised through **`JsonCanonical::serialise()`**
   — named precisely because it is the function `emitLine()` itself calls
   (`src/roadmapexport.cpp`), so a projected line and an untouched one went
@@ -181,6 +193,12 @@ halves are load-bearing and both are pinned here:
 The export's own record order is total and deterministic (ANTS-3761 § 2.4), so
 sequence equality is a contract the export can actually meet — it is not a
 stricter bar invented here.
+
+**Family 3 is a per-`item` exclusion list, and nothing else is excluded at key
+level.** Every field of every `section`, `element` and `legend` record stays
+inside the comparison. This is worth stating because it tells an implementer
+staring at a `section`-level difference which way to fix it: there is no
+exclusion to widen, so the difference is a render defect.
 
 #### 2.1.1 What the projection excludes, and three fields § 2.6 misses
 
@@ -209,7 +227,21 @@ in an anonymous namespace inside `roadmaprender.cpp`, not a public
 `if (plan.legend && !store.setLegend(projectId, plan.legend->entries, &err))`
 in `src/roadmapmigrateload.cpp`. Naming the loader call is the load-bearing
 part: the plan merely *carrying* a legend would not put one on side B, and
-INV-3 asserts a `legend` record on both sides.
+INV-3 asserts a `legend` record on both sides. The render's own comment states
+the round trip as an intended property — *"Key order is the export's
+kStatusOrder, so two renders of one store agree (INV-7) and a re-load reproduces
+the same object (INV-1)"*.
+
+**With one exception, and the fixture must respect it: a `dropped` legend entry
+has no markdown form.** `renderLegend()` walks a fixed `kStatusOrder` of
+`planned`, `in-progress`, `shipped`, `considered` and skips `dropped` outright,
+because `roadmap-format.md` § 3.11 makes a fifth status emoji an anti-pattern.
+So a store whose legend carries a `dropped` wording renders four entries,
+re-loads four, and fails INV-1 on the fifth — a family-3-shaped loss at the
+legend level rather than the item level. The fixture's legend therefore covers
+**the four rendered statuses only**, and this is called out rather than left to
+be discovered, because it is the one field in the compared set whose loss is by
+design.
 
 **Family 2's `rel` exclusion is sound today and rests on an unimplemented
 conversion — so it gets a stated trigger rather than a blanket line.**
@@ -293,15 +325,30 @@ open items that carry no `layman`, and writes nothing (`src/roadmaprender.h`).
 A fixture that trips it renders no files, so side B is near-empty — the
 comparison fails, but it fails as an unreadable diff rather than as one line.
 
-**The same failure shape belongs to every other stage, so every other stage is
-asserted too.** `findRoadmaps()` returns `nullopt` with a refusal code
-(`not_found` | `case_ambiguous` | `not_utf8` | `archive_format_mismatch`), and
-`load()` returns `Outcome::ok == false` with nothing committed — each empties
-side B exactly the way a tripped gate does, and each would otherwise surface as
-the same unreadable diff. So the oracle asserts, in pipeline order:
-`gateFailures.isEmpty()`, `Outcome::committed`, `findRoadmaps()` engaged, and
-`RoadmapMigrateLoad::Outcome::ok` — **before** it compares anything. Every
-public open item in the fixture carries a `layman`.
+**The same failure shape belongs to every other stage, so every stage is
+asserted — including the two that must be checked before the gate can be read
+at all.** `render()` returns `std::optional<Outcome>`, and `nullopt` is reserved
+for failures *before* the commit phase (SQL error, render error, path refusal);
+reading `gateFailures` presupposes the optional is engaged, so an implementer
+working from a list that starts at `gateFailures` dereferences a disengaged
+optional on the one path this paragraph exists to make legible. `findRoadmaps()`
+returns `nullopt` with a refusal code (`not_found` | `case_ambiguous` |
+`not_utf8` | `archive_format_mismatch`); `load()` returns
+`Outcome::ok == false` with nothing committed; and `writeProject()` returns
+`false` on either side. Each empties or aborts a side exactly the way a tripped
+gate does. So the oracle asserts, **in pipeline order and before it compares
+anything**:
+
+1. `render()` returned **engaged**
+2. `RoadmapRender::Outcome::gateFailures.isEmpty()`
+3. `RoadmapRender::Outcome::committed`
+4. `findRoadmaps()` returned **engaged**
+5. `RoadmapMigrateLoad::Outcome::ok`
+6. both `RoadmapExport::writeProject()` calls returned **true**
+
+Two distinct types are named `Outcome` here — `RoadmapRender::Outcome` and
+`RoadmapMigrateLoad::Outcome` — so both are qualified wherever they appear.
+Every public open item in the fixture carries a `layman`.
 
 **The fixture populates every field family that survives the projection**, and
 the case asserts the projected record set is non-empty and contains at least one
@@ -314,11 +361,49 @@ asserts those fields on *each* projected `item` record. A fixture whose second
 item omitted `body` would therefore fail against a perfectly correct render, and
 the tempting repair (weaken the assertion to "at least one record") is precisely
 the projection-widening INV-3's own *Breaks when* forbids. Fix the fixture, not
-the assertion. Concretely it carries: two items in the same section, **each**
-with `body`, `layman`, `source`, `lanes` and `evidence` set, the second inserted
-in an order that differs from its position; a nested section; a stored legend;
-and one archive section with a `source_path`, so the scratch layout is exercised
-rather than assumed.
+the assertion.
+
+**And it populates the EXCLUDED families too — otherwise the projection's
+exclusion arms are never executed, which is the same vacuity one level down.**
+Populating only what survives tests only the *carrying* half: a helper that
+forgot family 1 entirely, or that never stripped § 2.1.1's three family-3
+additions, passes every case here. That is exactly the ANTS-3797 shape § 6
+cites — a check that passes because it never reached the thing it was checking —
+and it is what would make § 2.1.1's own `visibility` argument
+("it round-trips *given* family 1, and only given it") untested.
+
+Concretely the fixture carries:
+
+| Purpose | Content |
+|---|---|
+| carried fields, per-record | two items in the same section, **each** with `body`, `layman`, `source`, `lanes` and `evidence` set |
+| element ordering | the second item inserted in an order that differs from its position |
+| section shape | a nested section, and one archive section with a `source_path` |
+| legend | a stored legend over the four rendered statuses (§ 2.1.1) |
+| **family 1** | one `visibility = 'internal'` item and one `status = 'dropped'` item, both filed in the section above |
+| **family 3** | one item carrying `resolution`, `priority`, `milestone` and a migration-shaped `extras` key (`source_kind`) |
+
+INV-3 asserts each family-1 item is **absent** from the projected set and each
+family-3 key is **absent** from its item's projected record — the exclusion arms
+executed, not merely declared.
+
+**Three layout preconditions the fixture must meet, because `findRoadmaps()`
+rediscovers from disk and each of these silently empties side B.** They belong
+here rather than in § 2.1's call-shape rules because they constrain the
+*fixture's data*, not the call:
+
+1. **The live file is directly in the scratch root and its name case-folds to
+   `roadmap.md`.** `findRoadmaps()` scans the root non-recursively for exactly
+   that, so `docs/ROADMAP.md` is not a candidate and any other name is
+   `not_found`. Two files differing only in case are `case_ambiguous`.
+2. **Every archive `source_path` sits under `docs/roadmap/`**, which is the only
+   directory archives are discovered in.
+3. **Each section's stored `slug` equals what the migration derives from its
+   title** — `RoadmapIndex::slugifyHeading()` then `uniqueSlug()`, with archive
+   sections additionally namespaced by their file's prefix
+   (`src/roadmapmigrate.cpp`). Markdown carries the heading *title*, never the
+   slug, so a fixture that stores an arbitrary slug fails against a correct
+   render for a reason that looks like a render defect.
 
 **The red proof costs nothing, because the defect is still in the tree.** The
 umbrella required this oracle to be *built before* ANTS-3808's fix and shown red
@@ -512,18 +597,21 @@ a narrowed rewrite is a new contract.
 - **INV-3** — **The oracle discriminates.** A comparison of two projections that
   are both empty, or that omit the fields under test, **would** pass against a
   render that does nothing — so the case asserts against that directly. *Breaks
-  when:* the fixture leaves a markdown-carried field unpopulated; the render's
-  INV-5 gate fires, so both sides are near-empty and the failure is a diff
-  rather than a diagnosis; or the projection predicate is widened until it
-  excludes a field the render is supposed to carry. *Test:*
-  `Inv3OracleDiscriminates`, which asserts all four stage outcomes before
-  comparing (`gateFailures.isEmpty()`, `committed`, `findRoadmaps()` engaged,
-  `Outcome::ok` — § 2.1.2); asserts the projected set is non-empty and holds at
-  least one `item`, `section`, `element` and `legend` record; asserts every
-  **item** field INV-1's *Breaks when* names is present on **each** projected
-  `item` record, which § 2.1.2 makes satisfiable by requiring both fixture items
-  to carry all of them; and asserts the two non-item breaks separately — that
-  the element sequence is order-sensitive, and that the archive section's
+  when:* the fixture leaves a markdown-carried field unpopulated, or populates
+  no member of an *excluded* family, so the projection's exclusion arms never
+  run; the render's INV-5 gate fires, so **side B** is near-empty and the
+  failure is a diff rather than a diagnosis; or the projection predicate is
+  widened until it excludes a field the render is supposed to carry. *Test:*
+  `Inv3OracleDiscriminates`, which asserts all six stage outcomes before
+  comparing (§ 2.1.2's numbered list); asserts the projected set is non-empty
+  and holds at least one `item`, `section`, `element` and `legend` record;
+  asserts every **item** field INV-1's *Breaks when* names is present on
+  **each** projected `item` record, which § 2.1.2 makes satisfiable by requiring
+  both fixture items to carry all of them; asserts the **exclusion arms ran** —
+  the `internal` and `dropped` items absent from the projected set, and
+  `resolution` / `priority` / `milestone` / `extras` absent from the record of
+  the item that carries them; and asserts the two non-item breaks separately —
+  that the element sequence is order-sensitive, and that the archive section's
   `source` key is present and non-null.
 - **INV-4** — **The check's domain is the whole store, one type at a time, over
   the four acyclic types.** *Breaks when:* the walk is scoped to one project, so
@@ -541,9 +629,12 @@ a narrowed rewrite is a new contract.
   project absent, and far project present with a `dst_id_fold` matching no
   item; a two-back-edge graph asserted to report **two** cycles, which is the
   one-per-back-edge rule (a one-per-SCC implementation reports one and passes
-  every other leg); and a graph with more than `kMaxCyclesPerType` back edges of
-  one type asserted to yield `cycles.size() == kMaxCyclesPerType` for it **and**
-  `truncated == true`.
+  every other leg); and a graph carrying more than `kMaxCyclesPerType` back
+  edges **of a single type and no edges of any other**, asserted to yield
+  `cycles.size() == kMaxCyclesPerType` and `truncated == true`. The single-type
+  restriction is what makes the size assertion meaningful: `cycles` is one flat
+  vector across all four types (§ 2.2), so a mixed fixture would have to filter
+  by `type` to say anything.
 
 ## 4. RAM, latency and build cost
 
@@ -554,6 +645,13 @@ handful of items, not the corpus. No figure is quoted for a corpus-scale round
 trip because nothing runs one: the fixture is deliberately small, and quoting a
 projected number for a path that does not exist would be a measurement with no
 command behind it.
+
+**INV-4's cap leg is the one case that is not small**, and it is called out so
+"a handful of items" is not read as covering the whole suite: proving
+`truncated` needs more than `kMaxCyclesPerType` back edges of one type, so on
+the current value of 64 it builds on the order of 130 items. It is still a
+generated in-memory store with no render and no export in the loop — cheap in
+wall time, just not a handful.
 
 **The check's cost is bounded by the edges it walks, and today that set is
 empty.** All four acyclic types are **authored-only** in
@@ -624,8 +722,7 @@ production TU at all. The feature test directory joins the `test_core` bundle's
 ## 6. Tests
 
 `tests/features/roadmap_round_trip/` — carrying a `spec.md` beside the test, per
-the per-feature convention `CLAUDE.md` states and § 6 itself leans on below when
-citing another directory's `spec.md`. Label `features`, compiled into the
+the per-feature convention `CLAUDE.md` states. Label `features`, compiled into the
 **`test_core` bundle** per `tests/features/README.md` (no `add_executable`) —
 the same bundle ANTS-3793 § 6, ANTS-3808 § 6 and ANTS-3809 § 6 use, and for the
 same reason: it is the only bundle linking both `ants_core_lib` and
@@ -664,8 +761,11 @@ passed anyway.
 Per this project's convention, **every case is verified RED against its *Breaks
 when* mutation before the implementation is restored** — `testing.md` § 2.2
 (*"Verify the test fails on broken code"*) owns that rule and it is not restated
-here. **It does not own an mtime-busting rule**, contrary to what three sibling
-specs assert: `grep -rni mtime docs/standards/testing.md` returns nothing.
+here. **It does not own an mtime-busting rule**, contrary to what two sibling
+specs assert — ANTS-3793 § 6 and ANTS-3808 § 6, one occurrence each
+(`grep -c 'mtime busting'` over the three siblings returns 1 / 1 / 0;
+ANTS-3809 § 6 does not carry it). `grep -rni mtime docs/standards/testing.md`
+returns nothing.
 Restoring a mutated source by copying a file with an older timestamp lets ninja
 skip the rebuild, so the mutation stays in a green-linking binary — a real trap,
 but a harness practice with no standard behind it, so it is stated here as
@@ -705,29 +805,32 @@ Which `Access` each store opens on is § 2.1's rule 1.
   - **The claim is narrowed** to the half `Inv1ExportsMatch` proves.
   - **The *Breaks when* clause loses `resolution` and `an extras key`.**
 
-  **Why trimming the clause is not the "reflowing" § 5.5 forbids.** That rule
-  protects two things — an `INV-N`'s **id → meaning** mapping, and the **list**
-  of invariants. A *Breaks when* clause is neither: it is diagnostic prose
-  enumerating inputs that falsify the claim, and an entry naming an input that
-  **cannot** falsify it is simply wrong. § 2.1.1 shows both are exactly that —
-  the export emits them, markdown has no carrier, so the same spec's § 2.6
-  predicate must exclude them, and INV-1 as written is unsatisfiable for any
-  item carrying either. Removing an impossible break narrows nothing an
-  implementer could have relied on. The annotation is what records that this
-  happened; the umbrella proposed a bare reword instead, and the standard's own
-  form answers its objection — an annotation that says *where the wider claim
-  went* leaves one live statement and a pointer, not two claims. Nothing here
-  touches ANTS-3758's list of invariants.
+  **Why one annotation is the whole licence needed.** § 5.5 says an `INV-N`'s
+  meaning is amended *by annotating*, never by silent rewriting — so the
+  narrowing is not an exception to the rule, it is the rule's own mechanism, and
+  the annotation is what performs it. The clause trim needs no separate licence
+  for a different reason: a *Breaks when* clause enumerates inputs that falsify
+  the claim, and an entry naming an input that **cannot** falsify it is not a
+  weaker claim but a wrong one. § 2.1.1 shows both are exactly that — the export
+  emits them, markdown has no carrier, so the same spec's § 2.6 predicate must
+  exclude them, and INV-1 as written is unsatisfiable for any item carrying
+  either. The umbrella proposed a bare reword instead, and § 5.5's form answers
+  its objection: an annotation that says *where the wider claim went* leaves one
+  live statement and a pointer, not two claims. **Nothing here reflows
+  ANTS-3758's list of invariants**, which is the other thing § 5.5 protects and
+  the one this amendment genuinely does not touch.
 
   The clause keeps `layman`, `body`, `lanes` and `evidence`, all of which the
-  render does carry. **ANTS-3765's INV-3 corroborates from the loader's side**
-  for three of those fields — it names `milestone`, `resolution`, `visibility`
-  and `priority` as fields a re-run must never clear *because the plan cannot
-  carry them*, and `visibility` is family 1's rather than family 3's for the
-  reason § 2.1.1 gives.
+  render does carry. **ANTS-3765's INV-3 corroborates three of the fields
+  § 2.1.1 EXCLUDES** — not the four just kept. It names `milestone`,
+  `resolution`, `visibility` and `priority` as fields a re-run must never clear
+  *because the plan cannot carry them*; three of those are family 3, and
+  `visibility` is family 1's rather than family 3's for the reason § 2.1.1
+  gives.
 - **ANTS-3758 INV-1's *Breaks when* also keeps *"an element is emitted out of
   order"*, and the narrowing has to say why.** `Inv1ExportsMatch` is five
-  `text.contains()` assertions; it cannot falsify element ordering any more than
+  positive `text.contains()` assertions over field values plus one negative;
+  it cannot falsify element ordering any more than
   it can falsify a dropped `resolution`. By this section's own argument that
   would make it another impossible break to remove — but it is not, because the
   break is real and it is **this** spec's INV-1 that now carries it (§ 2.1's
@@ -796,13 +899,12 @@ Which `Access` each store opens on is § 2.1's rule 1.
   INV-1, not ANTS-3758's. The two are distinguished in § 5; the bullet is
   annotated on ship so a reader of that id does not conclude the render's round
   trip is covered.
-- **ANTS-3824** (filed 2026-08-04) owns the design question § 5 excludes.
-  Nothing in this spec blocks on it.
 
 ## Cold-eyes loop log
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| 3 (cap) | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; same byte-stable packet, extended again with verified source facts — no review history) | 0 / 3 / 7 / 9 / 0 | **Converged by cap. 19 verified, 19 fixed, 1 dismissed, NO deferred tail.** Origin split: **8 draft defects, 11 fix collateral** — so collateral outran draft defects a second loop running, which is Phase 5's stop trigger fully fired, and the cap is where it lands. Dimension tally: dim 2×5, dim 5×4, dim 10×3, dim 6×3, dim 7×2, dim 4×1, dim 1×1, dim 9×1. **CRITICALs reached zero and both lanes led on the same HIGH**: the fixture populated only the families that *survive* the projection, so the exclusion arms were never executed — a helper that forgot family 1 entirely, or never stripped § 2.1.1's three family-3 additions, passed every case. That is the ANTS-3797 shape this spec cites against others, one level down, and it made § 2.1.1's own `visibility` argument untested. The fixture is now a table and carries an `internal` item, a `dropped` item and a family-3 item, with INV-3 asserting each exclusion fired. Two more draft defects came from questions the lanes could not settle and verification did: `findRoadmaps()` accepts only a **root-level file case-folding to `roadmap.md`** and discovers archives **only under `docs/roadmap/`**, and section slugs are derived (`slugifyHeading()` → `uniqueSlug()`, archive-prefixed) rather than carried — three fixture preconditions each of which silently empties side B. **One finding was dismissed on verification**: a lane read the packet's roadmap enumeration as evidence that ANTS-3827 was never filed; `roadmap_query` returns it. And one defect came from neither lane — checking their legend open question against `renderLegend()` showed it walks a fixed four-status `kStatusOrder` and **skips `dropped`**, so a `dropped` legend wording is a by-design loss inside the compared set; the fixture is now scoped to the four rendered statuses. Collateral was again loop-2's own: the stage-assertion list it introduced omitted `render()`-engaged and `writeProject()`-true, so an implementer following it literally dereferences a disengaged optional on a live failure path; and its § 5.5 argument declared the id→meaning mapping protected in the same breath as narrowing it. **The trend is what closes this run: draft defects 27 → 9 → 8, falling monotonically, while collateral sat flat at 0 → 11 → 11.** The reads are still finding real things; the fixes are generating as many. That is the shape the cap exists for. Doc 807 → 905 lines. Lane spend 131k / 118k cumulative across turns. |
 | 2 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; same byte-stable packet as loop 1, extended with verified source facts — no review history) | 1 / 5 / 7 / 7 / 0 | **20 verified, 20 fixed, 0 dismissed. Origin split: 9 draft defects, 11 fix collateral** — the first loop where collateral outran draft defects, and the number Phase 5's next call rests on. Dimension tally: dim 2×4, dim 7×3, dim 1×3, dim 15×3, dim 5×2, dim 10×2, dim 6×2, dim 11×1. **Both lanes independently led on the same CRITICAL, and it was a draft defect neither loop-1 lane reached**: § 7 redirected *all* of ANTS-3756 § 5 to ANTS-3810, but that bullet covers the health-check suite's scheduling, the acyclicity check **and** the model's INV-1 second leg — so executing it literally would have contradicted this spec's own § 5 (which gives scheduling to ANTS-3794) and handed this id a check it never claims. Now split three ways, with the second leg explicitly left unowned. The sharpest HIGH is a one-word one: the excluded record kind is **`rel`**, not `relationship` — `writeRelationships()` emits `{"t":"rel",…}` and `relationship` is only the table name. § 6 insists the exclusion list be *enumerated* so widening is loud; an entry keyed `relationship` matches nothing, silently, which is the exact ANTS-3797 failure the section cites. The name is wrong in ANTS-3758 § 2.6 too, so § 7 now carries the correction there. Two more draft defects: the pipeline could not be *called* as specified (`Options::liveRoadmapPath` is REQUIRED and was in none of the four call-shape rules — now five), and rule 4's "the scratch root does not leak" was verified only for `meta`, while `section.source_path` is exported, is INV-1's third break, and is safe only because `relativeSourcePath()` stores it project-relative. **The collateral was concentrated in loop 1's own additions**, and both lanes found the worst of it: loop 1 pinned INV-3 to "**each** projected `item` record" while § 2.1.2's fixture gave only the *first* item a `body` — and `body` is emitted via `insertIfPresent`, so the spec as written guaranteed a spurious RED, whose tempting repair is the projection-widening INV-3 itself forbids. Loop 1's `kMaxCyclesPerType` / `truncated` shipped with no leg reading either. Consolidation applied per 4b: the no-conversion argument (was stated 3×), the `visibility` carve-out (2×) and the `Access` rule (2×) each reduced to one home plus pointers. My own 4b sweep caught 2 further self-inflicted defects the lanes did not see — a stale "four call-shape rules" left by the fifth, and a Status line still claiming the gate had not run. Doc 716 → 807 lines. Lane spend 114k / 114k cumulative across turns. |
 | 1 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet, ~24k of bounded windows) | 1 / 3 / 8 / 15 / 0 | **27 verified, 27 fixed, 0 dismissed, 2 re-graded.** Dimension tally: dim 6×6, dim 4×5, dim 5×4, dim 7×4, dim 1×2, dim 2×2, dim 10×2, dim 11×1, dim 13×1. All 27 are draft defects — loop 1 has no prior fixes to generate collateral. **Both lanes led on a CRITICAL and they were different ones**, which is the two-lane roll earning its cost. Lane A's survived: the header said no id blocks § 2, while § 2.1.2 named *today's code* as INV-1's red mutation — so `Inv1RoundTrip` is genuinely RED until ANTS-3808 ships and an implementer would have committed a failing case into a suite this project keeps fully green. The spec had removed the umbrella's *build-before* ordering and silently created a *commit-green-after* one; both are now stated. Lane B's was **re-graded to HIGH on verification**: it argued family 2's blanket `relationship` exclusion blinds the oracle to ~41 markdown-carried edges, correct in principle — `roadmap-data-model.md` § 6 does mark `relates-to` and `specified-by` converted — but `grep -rn 'relateItems\|relateCrossProject' src/` returns **no call site outside `roadmapstore.cpp`**, and `PlannedItem` carries no relationship field, so nothing converts them and neither side holds one. The exclusion is sound *today* and now ships with a stated trigger instead of a blanket line; the standard-vs-code divergence is filed as ANTS-3827. The other HIGHs were both real contract gaps: the **comparison relation was never defined** (byte-vs-multiset, line-vs-key — and only the byte/sequence reading catches the element-ordering break INV-1 names), and § 7 told an implementer both to annotate and to edit ANTS-3758's INV-1. Also fixed: cycle rotation, multiplicity and bound were all unpinned while INV-2/INV-4 asserted on exact path output; `unresolvedEdges` had a second dangling shape in neither bucket. Two verified-WRONG author claims died here — the `source` vs `source_path` "inconsistency" is the export's own deliberate key naming (its emitter says so in a comment), and `bug → fix` is not in `mappedKind()`; `bugfix → fix` is. Doc grew 543 → 716 lines. Lane spend 107k / 107k cumulative across turns, ~58k on the first turn against the 60k per-turn budget. |
 | 0-split | 2026-08-04 | 0 (no reviewer dispatched — a document operation) | — | **Split from the 934-line umbrella `docs/specs/ANTS-3793-roadmap-consumer-cutover.md`, carrying its §§ 2.6–2.7 and INV-7 / INV-8.** Not a review loop and not inherited review: the umbrella's three loops ran against a document that no longer exists, so the gate runs from loop 1 on these bytes. The umbrella carried seven contracts and stopped at `/cold-eyes`' cap with collateral outnumbering draft defects two loops running; the user split it four ways on 2026-08-03 (ANTS-3793 read seam, ANTS-3808 `item.body`, ANTS-3809 write half, ANTS-3810 this). Invariants renumbered from 1 with the mapping in § 3. Drafting also changed three inherited claims against source rather than carrying them: § 2.2's signature dropped its `projectId` (the model's § 6 scopes acyclicity to the full store), § 2.1.1 added three fields to ANTS-3758 § 2.6's projection, and § 2.1.2 replaced the umbrella's cross-id build-order constraint with the mutation harness. |
