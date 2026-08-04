@@ -1,6 +1,8 @@
 # ANTS-3793 — the read seam: one reader function, two backends
 
-**Status:** spec draft (2026-08-04).
+**Status:** accepted (2026-08-04) — rule-14 gate run to its 3-loop cap,
+0 CRITICAL at loop 3, no deferred tail. Loop 3's own fixes were not themselves
+cold-read; that is what the cap means.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3793 (ANTS-3758 split, spec seam 3b of 5).
 Rewritten 2026-08-04 from the 934-line umbrella of the same name, which the
@@ -102,7 +104,28 @@ namespace RoadmapSource {
     // tell "too big, tell the user" apart from "the store is broken". A
     // caller branching on error TEXT is a caller that breaks on a reworded
     // message, which mcp-error-codes.md exists to forbid.
-    enum class ReadError { None, StoreFailed, TooLarge };
+    enum class ReadError {
+        None,
+        StoreFailed,        // the store file exists and will not open
+        SourceUnrecognised, // migrated, but its ROADMAP.md is absent, empty
+                            // or unparseable — the STORE is fine, and
+                            // reporting this as StoreFailed would send the
+                            // user to fix the wrong file (§ 2.2's table)
+        TooLarge,
+    };
+
+    // Stat defaultPath(), and construct-and-open only if it is there. Returns
+    // an owned open store, or nullptr with `*why` set to None (no store on
+    // this machine — parse markdown) or StoreFailed (present, unopenable).
+    //
+    // It is a free function and not a wrapper member for one reason: INV-1's
+    // two unmigrated-project cases assert exactly this decision, and a member
+    // of RemoteControl or RoadmapDialog is not reachable from § 6's bundle.
+    // The wrapper still OWNS the decision — it is the only caller — but the
+    // decision is testable on its own.
+    std::unique_ptr<RoadmapStore> storeFor(const QString &defaultPath,
+                                           ReadError *why,
+                                           QString *error = nullptr);
 
     // The records a consumer would have got from parsing this project's
     // rendered markdown, sourced from the store instead. Document order
@@ -177,11 +200,26 @@ QVector<BulletRecord> roadmapBullets(const QString &projectRoot,
 ```
 
 and each of the 26 sites calls **that**. Two things follow, and both are why
-the wrapper is surface rather than an implementation note. It is the only place
-that may construct a `RoadmapStore`, which settles § 2.2's stat-and-open rule;
-and it is where `ReadError` becomes either an MCP refusal code (`RemoteControl`)
-or a dialog message (`RoadmapDialog`), which is the mapping INV-3's `too_large`
-otherwise has no route to.
+the wrapper is surface rather than an implementation note.
+
+**It is the only caller of `storeFor()`**, which settles § 2.2's stat-and-open
+rule: the decision is the wrapper's, and it lives in a free function purely so
+INV-1 can drive it.
+
+**It surfaces `ReadError` to its caller rather than swallowing it**, which is
+why `why` is an out-param on the wrapper too. The 26 sites do not each map it:
+`RemoteControl`'s verb layer already has one refusal-envelope path, and
+`RoadmapDialog` already has one error-presentation path, so each owner maps
+`ReadError` **once, where it already handles failure** — the wrapper hands the
+value up, the owner's existing failure path consumes it. A site that ignores
+`why` gets an empty `QVector`, which is why the wrapper's guarantee below
+matters.
+
+**The wrapper writes `*why` on every path, including success (`None`)**, and a
+caller must branch on it before trusting the returned vector: a refusal returns
+an empty `QVector<BulletRecord>`, which is otherwise indistinguishable from a
+project whose roadmap has no bullets. The seam makes the same guarantee; it is
+restated here because the wrapper is what the 26 sites actually call.
 
 **`BulletRecord` is the interface, and that is a deliberate constraint rather
 than a convenience.** Every consumer, every response field and all 82 test call
@@ -232,7 +270,7 @@ the class that cost the umbrella two review loops. It is total over
 | `kind`, `lanes`, `evidence`, `layman`, `source` | from the item columns, verbatim |
 | `id` | **from the rendered head line, NOT from the `id` column** — the same treatment as `idToken`/`boldId` below, and for the same reason. It coincides with the column on the ordinary bullet and diverges on two reachable shapes: an item whose `id` column is **empty** renders without the bracket, and `parseBullets()` then takes `rec.id` from an id-shaped bold headline token; and `rxId` matches the first `[<PREFIX>-NNNN]` **anywhere in the body**, so an item carrying an off-grammar quarantined id (`[Cl9]`, ANTS-3756 INV-4) whose prose cites `[ANTS-9999]` re-parses to the *citation*. Copying the column would fail INV-2 on both. That the reader behaves this way is a property of the format this seam must reproduce, not one it may correct — ANTS-3809 owns any change to it |
 | `status` | **mapped, never copied.** The store holds a lifecycle *word* (`roadmap-data-model.md` § 3.4); `BulletRecord::status` holds the *emoji*. The rule supplies the mapping for free — it is whatever `emojiFor()` put in the head line. Copying the column verbatim would put `"planned"` where every consumer expects `"📋"` and fail INV-2 on **every** record |
-| `headline`, `headlineFull` | both from the stored `headline`: `headlineFull` unchanged, `headline` **truncated to 120 characters and then `"…"` appended**, so an over-long display headline is 121 characters — or 120 when the cut lands on a high surrogate and `truncateEllipsis()` backs off one unit (ANTS-1811; it truncates first, surrogate-safe, then appends). **`assignHeadline()` and `truncateEllipsis()` are `static` in `src/roadmapparse.cpp` and cannot be called from `roadmapsource.cpp`** — a different TU. § 7 owes `RoadmapParse` an export for this, in the shape ANTS-3808 § 2.4 used for `bulletText()`; re-implementing the truncation instead is the duplicated grammar ANTS-3808's INV-2 forbids, and it would drift from the surrogate guard first |
+| `headline`, `headlineFull` | both from the stored `headline`: `headlineFull` unchanged, `headline` **truncated to 120 characters and then `"…"` appended**, so an over-long display headline is 121 characters — or 120 when the cut lands on a high surrogate and `truncateEllipsis()` backs off one unit (ANTS-1811; it truncates first, surrogate-safe, then appends). **`assignHeadline()` and `truncateEllipsis()` are `static` in `src/roadmapparse.cpp`**, so this needs an export — § 7 owes it |
 | `body` | `bulletText(item)` with its leading `"- "`, the status emoji, **and the whitespace that follows the emoji** removed, and **each continuation line `trimmed()`**. Those are precisely `parseBullets()`'s own steps: `head = raw.mid(2)`, then `stripInlineEmoji()` — whose final statement is `while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);` — and `body.append(cont.trimmed())` per continuation. **`trimmed()`, not "strip two spaces"**: an implementer who writes `mid(2)` diverges from the markdown backend on any continuation carrying indentation of its own and fails INV-2. It is therefore **not** an exact inverse of `appendIndented()`, which prefixes exactly two spaces — a stored body line that is itself indented renders deeper and parses back flat, so `item.body`'s own indentation does not survive a render/parse round trip. That asymmetry is ANTS-3810's oracle to characterise, not this seam's: **both backends run the same `trimmed()` over the same rendered text**, so they agree either way, which is all INV-2 asserts. **It is NOT the stored `item.body`**, which ANTS-3808 § 2.1 makes the residual alone |
 | `sectionHeading`, `sectionLevel`, `sectionSlug` | from the item's `SectionRow` via its element, **with two corrections the naive copy gets wrong**. (1) A **`level == 0` synthetic root emits no heading at all** (ANTS-3758 § 2.8), so `parseBullets()` assigns *empty* `sectionHeading` and `sectionSlug` and level 0 to every bullet above the first real heading — copying `SectionRow::title` there fails INV-2 on the preamble items every real roadmap has. (2) `sectionSlug` is `uniqueSlug(seenSlugs, headingText)`'s form, **not** `SectionRow::slug`: the parser's slugger is **stateful**, appending `-2`, `-3` … to a repeated heading text, so the store path must accumulate `seenSlugs` across the whole walk in § 2.1.3's order and never per section. A stateless per-section slug diverges on the first duplicated heading title |
 | `format` | always `"ants-v1"` — the store path serves no other dialect (§ 2.2, § 5) |
@@ -243,9 +281,15 @@ the class that cost the umbrella two review loops. It is total over
 
 #### 2.1.2 What the store path returns
 
-**Every item filed in an IN-SCOPE SECTION, except those whose `status` is
-`dropped`** — where scope is set by the caller's `includeArchive` flag, exactly
-as it is on the markdown path today.
+**Every item filed in an in-scope section, PLUS every unfiled item, except
+those whose `status` is `dropped`** — where a *section's* scope is set by the
+caller's `includeArchive` flag, exactly as it is on the markdown path today.
+
+**Unfiled items are returned under both values of the flag**, because an
+unfiled item has no element row, therefore no section, therefore no
+`sourcePath` for the flag to test. Excluding them when `includeArchive` is
+false would hide them from the live-roadmap read — the only read likely to
+surface the fault — on the strength of a property they do not have.
 
 **The source scope is surface and not an implementation detail, because the
 markdown backend already has it and the store backend would otherwise silently
@@ -265,6 +309,21 @@ all of them. So:
   This is the live roadmap, and it is what `roadmap_query` and `roadmap_log`
   mean by "the project's roadmap".
 - `includeArchive == true` → every section, in § 2.1.3's order.
+
+**INV-2 is claimed at `includeArchive == false` only, and saying so is the
+honest scope rather than an omission.** At `true` the two backends order
+differently by construction: § 2.1.3 sorts *all* sections globally by
+`sectionOrderLess()`'s `(position, slug)`, while `loadMarkdown()` concatenates
+the live file and then the archives sorted **numerically descending by the
+`(major, minor)` tuple parsed from each filename**, with a separator sentinel
+between them. Those are different sequences, and because `uniqueSlug()` is
+stateful the `-2`/`-3` suffixes — which § 2.3 makes the dialog's anchor key —
+can differ too. The consequence is bounded and belongs to the dialog's history
+view: `captureScrollAnchor()` / `restoreScrollAnchor()` may not restore an
+anchor across a history toggle on a migrated project. **Aligning the two orders
+is ANTS-3810's** (it owns the round-trip oracle, which is where an ordering
+contract can actually be asserted); this spec neither claims nor tests
+equivalence at `true`.
 
 `bulletsFromStore()`, `bulletsFor()` and each owner wrapper therefore carry
 `bool includeArchive`, positioned and named to mirror `loadMarkdown()`'s so a
@@ -393,18 +452,18 @@ Seven rules follow, and each exists because the obvious reading is wrong:
   "not migrated, parse markdown", so without the third outcome the no-silent-
   fallback rule is unimplementable through its own signature. A corrupted store
   that quietly falls back is a store nobody notices is corrupt.
-- **The OWNER'S WRAPPER stats the path and owns the lazy open — not
-  `RoadmapSource`, which cannot.** `RoadmapStore` separates construction from
-  `open()`/`isOpen()`, so "not existing" and "failing to open" are
-  distinguishable only by whoever constructs, and every function in § 2.1 takes
-  an already-constructed `RoadmapStore &`. So the two rules above are the
-  wrapper's obligations, in this order: stat `RoadmapStore::defaultPath()`;
-  **absent → do not call the seam at all**, parse `markdown` (rule 1); present
-  → construct once, `open()`, and on failure return `ReadError::StoreFailed`
-  without calling the seam (rule 2); open → call `bulletsFor()`. Naming the
-  owner matters because these two outcomes are otherwise decided by whoever
-  happened to call `open()`, and an earlier draft assigned them to a function
-  that receives its store by reference and can decide neither.
+- **The OWNER'S WRAPPER owns the lazy open, through `RoadmapSource::storeFor()`
+  — and neither `bulletsFor()` nor `bulletsFromStore()` can, because both
+  receive an already-constructed `RoadmapStore &`.** `RoadmapStore` separates
+  construction from `open()`/`isOpen()`, so "not existing" and "failing to
+  open" are distinguishable only by whoever constructs. So the two rules above
+  are the wrapper's obligations, discharged in this order by its one
+  `storeFor()` call: absent → **do not call the seam at all**, parse `markdown`
+  (rule 1); present but unopenable → return `ReadError::StoreFailed` without
+  calling the seam (rule 2); open → call `bulletsFor()`. Naming the owner
+  matters because these outcomes are otherwise decided by whoever happened to
+  call `open()`, and an earlier draft assigned them to a function that receives
+  its store by reference and can decide neither.
 - **A migrated project whose roadmap is not `ants-v1` is `nullopt`, not
   engaged.** The migration reads all three dialects
   (`src/roadmapmigrate.cpp` branches on `"pass-headings"`), so a project row
@@ -430,7 +489,7 @@ Seven rules follow, and each exists because the obvious reading is wrong:
   |---|---|---|
   | yes | `"ants-v1"`, `sawSignal` set | **store** |
   | yes | `"github-task-list"` / `"pass-headings"` (`sawSignal` set) | **markdown**, `nullopt`, no error — legitimately markdown-served (rule above) |
-  | yes | any dialect, `sawSignal` **false** | **refuse** — `ReadError::StoreFailed`, never markdown |
+  | yes | any dialect, `sawSignal` **false** | **refuse** — `ReadError::SourceUnrecognised`, never markdown. Not `StoreFailed`: the store is fine and the *file* is not, and the two send the user to different places |
   | no | — | **markdown**, `nullopt`, no error |
 
   **The detector reads at most the first 300 non-blank lines**
@@ -451,7 +510,7 @@ Seven rules follow, and each exists because the obvious reading is wrong:
   five-second deadline is
   right for a verb call and wrong for a corpus load.
 - **The `RoadmapStore &` the consumers pass is one long-lived, process-owned
-  `Access::Interactive` connection per store path, opened on the first dispatch
+  `Access::Interactive` connection for `RoadmapStore::defaultPath()`, opened on the first dispatch
   that finds a store file and never per call.** Opening SQLite, applying pragmas
   and warming the page cache is the dominant term in § 4's p95 budget, and a
   per-call connection would blow it on its own. Ownership sits with the object
@@ -537,9 +596,10 @@ the ROADMAP bullet resolves: umbrella INV-3 → **INV-1**, umbrella INV-2 →
   protects every unmigrated project); a project queried before and after
   loading it; a loaded pass-headings project (must serve markdown, `why ==
   None`); an unreadable store file (must refuse, `why == StoreFailed`); and a
-  loaded project whose roadmap text is empty (must refuse, not fall back).
-  **Two of those five outcomes belong to the owner wrapper, not to
-  `bulletsFor()`** (§ 2.2 rule 3: an absent store never reaches the seam), and
+  loaded project whose roadmap text is empty (must refuse with
+  `why == SourceUnrecognised`, not fall back).
+  **Two of those five outcomes — no store file at all, and a store file that
+  will not open — belong to the owner wrapper, not to `bulletsFor()`** (§ 2.2 rule 3: an absent store never reaches the seam), and
   the wrappers are members of `RemoteControl` and `RoadmapDialog` — the latter
   in `ants_dialogs_lib`, which § 6's bundle does not link. So the stat-and-open
   decision is factored into one free function,
@@ -581,6 +641,8 @@ the ROADMAP bullet resolves: umbrella INV-3 → **INV-1**, umbrella INV-2 →
   markdown backend will actually be handed. The fixture is written
   already-canonical, so the two texts coincide and a drift between them fails
   ANTS-3810's round-trip oracle rather than silently weakening this one.
+  **`Inv2Membership` carries the membership half** — this invariant's equality
+  is scoped to the renderable filed subset and cannot reach § 2.1.2's rules.
 - **INV-3** — **A whole-project store read is refused above a 3,500-item
   ceiling, and stays under p95 < 50 ms below it, on the corpus's largest
   project.** Both numbers are derived in § 4; a budget nothing measures is a
@@ -607,12 +669,14 @@ the ROADMAP bullet resolves: umbrella INV-3 → **INV-1**, umbrella INV-2 →
   **`RoadmapSource` itself re-reads the roadmap file from disk** (the caller's
   retained read is § 4's, and is not this breach); or the ceiling is tested
   after the item bodies are already resident, which no input can then trip.
-  *Test:* `Inv3Budgets`, over generated projects sized **from the ceiling** —
+  *Test:* **two cases, for the reason § 6 gives** — `Inv3Ceiling` over
+  generated projects sized **from the ceiling** —
   3,501 items asserting the refusal and **3,500 asserting it does not fire**,
-  which is what pins `>` rather than `>=` — plus a warm p95 over repeated reads
-  of a corpus-sized project. The latency half is a benchmark and is **excluded
-  from the default presets** for the reason `perf` already is: a timing
-  assertion on a loaded host is a flake generator. § 6 says what runs it.
+  which is what pins `>` rather than `>=`; and `Inv3Latency`, a warm p95 over
+  repeated reads of a corpus-sized project. `Inv3Latency` is a benchmark and is
+  **excluded from the default presets** for the reason `perf` already is: a
+  timing assertion on a loaded host is a flake generator. § 6 says why the two
+  cannot be one case, and what runs the second.
 
 ## 4. RAM, latency and build cost
 
@@ -653,7 +717,7 @@ list while the seam holds a `QString`, so a naive `markdown.split('\n')`
 materialises another ~6 MiB plus ~34k `QString` headers. **The gate is
 therefore fed a bounded prefix, not the whole file:** the detector reads at
 most 300 non-blank lines and returns at the format marker before that, so the
-resolver splits only as far as it needs and the peak stays at the two copies
+`migratedProject()` splits only as far as it needs and the peak stays at the two copies
 above. An implementer who splits the whole file pays a third one for lines
 nothing reads.
 
@@ -667,6 +731,18 @@ scalars, not a body. It is deliberately a *count* and not a
 byte total: a project with atypically large bodies could pass the count gate and
 still exceed 16 MiB, and closing that would need a new `SUM(LENGTH(body))`
 reader for a guard that exists to catch runaways rather than to be exact.
+**Every figure in this section is `includeArchive == false`, and the archive
+path is deliberately NOT budgeted here.** `loadMarkdown()` caps its assembled
+archive buffer at **64 MiB** and emits a truncation sentinel past it, so the
+history path's retained markdown alone can be ~21× the live figure, and the
+1,839-bullet input above counts live-roadmap bullets while `listItems()` counts
+archived ones too. A single ceiling derived from the live scope and enforced
+over both would be a number that is wrong in one of them. So: **INV-3's 3,500
+governs the live read**, the archive read inherits `loadMarkdown()`'s own 64 MiB
+cap on its markdown half, and **budgeting the store's archive half is
+ANTS-3810's**, which owns the only fixture that holds two whole stores at once.
+The dialog's history view is the sole caller of `includeArchive == true`.
+
 ANTS-3761 INV-12's 4 MiB export budget is a different path and is unaffected.
 
 **Latency.** Budget: **p95 < 50 ms** for a whole-project read on the corpus's
@@ -680,7 +756,7 @@ connection.
 reader exists. That is not novel cost: `RoadmapRender::render()` already pays
 exactly this N+1 on every roadmap write, against the same store. It is
 nonetheless the term most likely to break the budget, so the remedy is named
-here rather than invented under pressure: **if `Inv3Budgets` reds on latency,
+here rather than invented under pressure: **if `Inv3Latency` reds,
 the fix is a batched `readItems(projectId)` on `RoadmapStore`, not a cache and
 not a relaxed budget.** § 7 records it as conditionally owed.
 
@@ -704,10 +780,12 @@ the whole cost argument below turns on propagation. Neither library exposes a
 `RoadmapStore` in its own headers (the wrappers take and return only `QString`,
 `BulletRecord` and `ReadError`), so `PRIVATE` is both correct and the cheaper
 choice: a `PUBLIC` edge on `ants_core_lib` would push `Qt6::Sql` onto every
-consumer of core rather than onto core alone. The two edges are genuinely
-independent — `ants_dialogs_lib` links `ants_chrome_lib` `PUBLIC` and chrome
-links `ants_vt_lib`, so **dialogs does not reach core transitively** and cannot
-inherit the edge from it. `CMakeLists.txt` records the current arrangement as deliberate —
+consumer of core rather than onto core alone. **The two edges are genuinely
+independent**, and the evidence is the declared surfaces rather than an
+inference: `target_link_libraries(ants_dialogs_lib PUBLIC ants_chrome_lib)` and
+`target_link_libraries(ants_chrome_lib PUBLIC ants_vt_lib)` — neither names
+`ants_core_lib`, so `ants_dialogs_lib` does not reach core through chrome and
+cannot inherit core's new edge whatever keyword core uses. `CMakeLists.txt` records the current arrangement as deliberate —
 "Sql (ANTS-3756): the roadmap store. Linked ONLY by `ants_roadmapstore_lib`",
 and "keeping it out of `ants_core_lib` means the test bundles that link core do
 not drag the SQL module". **That property ends here, and it ends because the
@@ -758,7 +836,8 @@ subset core, so `test_core` stays the one bundle that has both by declaration.
 |---|---|
 | `Inv1DispatchMarker` | INV-1 |
 | `Inv2BackendsAgree` | INV-2 |
-| `Inv2Membership` | INV-2's membership difference (below) |
+| `Inv2Membership` | INV-2's membership difference (below), at `includeArchive == false` |
+| `Inv2Legend` | § 2.3's legend rule — the three rows of its table |
 | `Inv3Ceiling` | INV-3's refusal — runs by default |
 | `Inv3Latency` | INV-3's p95 — `perf` label, excluded from the default presets |
 
@@ -770,7 +849,16 @@ populates a store directly (not via migration, which cannot produce any of the
 three — § 2.1.2) with one `internal` item, one `dropped` item and one unfiled
 item beside two ordinary ones, and asserts: the `dropped` item is absent, the
 `internal` item is present, the unfiled item is present with an empty
-`sectionSlug` and sorted after every filed item.
+`sectionSlug` and sorted after every filed item. It runs at
+`includeArchive == false`, which is also what pins that unfiled items survive
+the live-only scope.
+
+**`Inv2Legend` exists because § 2.3 decides a user-visible behaviour and § 3
+has no invariant for it.** It asserts the three rows of § 2.3's table directly:
+a migrated project with a stored legend renders that legend; a migrated project
+with none renders no legend; an unmigrated project still renders the dialog's
+compile-time labels. The third row is the regression guard — it is the one a
+careless implementation of the first two removes.
 
 **INV-3 gets TWO cases, because one ctest registration cannot be half-labelled.**
 The ceiling assertions must run on every default `ctest` and the p95 benchmark
@@ -842,7 +930,7 @@ defaulting it, per § 2.2's sixth rule.
 - **`roadmap-data-model.md`'s *What checks this* table** gains INV-3 against the
   read budgets.
 - **A batched `RoadmapStore::readItems(projectId)` is conditionally owed** —
-  § 4 names it as the remedy if `Inv3Budgets` reds on latency. Filed as
+  § 4 names it as the remedy if `Inv3Latency` reds. Filed as
   **ANTS-3816**, together with the size aggregate INV-3's item-count proxy
   stands in for. Not built speculatively: the N+1 walk is what `render()`
   already does, and a second reader nothing needs is surface that has to be
@@ -852,7 +940,10 @@ defaulting it, per § 2.2's sixth rule.
   status marker, which `parseBullets()` then skips entirely — so the exclusion
   is a precondition of an exported function that does not assert it. Filed as
   **ANTS-3820**; this spec's § 2.1.2 is the only thing keeping it true today.
-- **`CLAUDE.md`'s module map and `docs/subsystems.md`** gain `roadmapsource`.
+- **`docs/subsystems.md`** gains `roadmapsource`. **Not `CLAUDE.md`** — its
+  "Module map (src/)" section is a pointer since ANTS-1292 ("the ~130-line lane
+  catalogue is not reloaded into every Claude session preamble"), so there is
+  no per-module list there to add to.
 - **ANTS-3808's ROADMAP bullet is NOT closed by this spec.** It has its own
   spec and ships on its own; this one consumes its exports.
 
@@ -860,6 +951,7 @@ defaulting it, per § 2.2's sixth rule.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| 3 (cap) | 2026-08-04 | 2 (single doc, cold; packet extended with `loadMarkdown()`'s archive contract) | 0 / 5 / 6 / 8 / 1 | **Converged by cap. 19 verified, 19 fixed, 1 dismissed — no deferred tail.** **Zero CRITICALs, completing a clean trend of 3 → 1 → 0**, and both lanes opened with "Critical (0)". **The loop is dominated by collateral from loops 1–2, which is the honest reading and the reason to stop:** loop 2 split `Inv3Budgets` into `Inv3Ceiling`/`Inv3Latency` in § 6 and left the old name in INV-3, § 4 and § 7, so INV-3's own test clause instructed the implementer to build the single case § 6 spends a paragraph forbidding (both lanes led on it); loop 2's rewritten § 2.1.2 headline excluded unfiled items 45 lines above the bullet that includes them; loop 2's `storeFor()`, introduced inside INV-1's test clause, contradicted two bolded "not `RoadmapSource`" sentences loop 1 had written — now declared in § 2.1 proper, with the wrapper owning the decision and the free function existing so INV-1 can drive it. Also fixed: `ReadError` reported an absent or mangled `ROADMAP.md` as `StoreFailed`, sending the user to fix the wrong file (a third enumerator, `SourceUnrecognised`); § 4's whole RAM derivation was computed at `includeArchive == false` and enforced over both scopes, while `loadMarkdown()` caps its assembled archive buffer at **64 MiB** — § 4 is now explicitly scoped and the archive half handed to ANTS-3810; INV-2 is now explicitly claimed at `includeArchive == false` only, because `loadMarkdown()` concatenates archives newest-first by `(major, minor)` while § 2.1.3 sorts globally, and stateful `uniqueSlug()` makes that an anchor-key difference; and § 2.3's legend decision had no invariant and no case (`Inv2Legend` added, its third row the regression guard). **One HIGH dismissed on verification, and it is the run's only unverified finding:** a lane argued that `renderBullet()` appends a period to `Kind:`/`Source:`/`Lanes:` so the "from the item columns, verbatim" row must be wrong — but `rxKind` is `^\s*Kind:\s*([^\.\n]+?)\s*[\.\n]`, which consumes the terminator **outside** the capture, as do `rxLanes` and `rxLayman`. The lane had itself routed the decisive question to Open questions rather than asserting it, which is the behaviour that made the dismissal cheap. **The document is 954 lines — the size the umbrella was when it was split** — and § 2.1 has grown a wrapper, a free function and an enum since loop 1. The trend says it is converging; the size says a further split (§ 2.3's dialog half is the natural seam) is worth the user's consideration before implementation, not another loop. Lane spend ~154k and ~153k cumulative. |
 | 2 | 2026-08-04 | 2 (single doc, cold; same packet, extended with the windows loop 1's lanes asked for) | 1 / 5 / 7 / 8 / 1 | **21 verified, 21 fixed, 0 dismissed.** Both lanes independently led on the same CRITICAL, and it is a **structural draft defect neither loop 1 nor the umbrella's three loops reached: the store path had no source scope.** `RoadmapDialog::loadMarkdown(roadmapPath, includeArchive)` takes an archive flag and the dialog's anchor consumers pass `wantsHistoryLoad()`, while `SectionRow::sourcePath` distinguishes the live roadmap from an archive and ANTS-3758's render writes one file per distinct value. So the seam as written returned archive items unconditionally — the dialog's history toggle would have stopped mattering the moment a project migrated, and INV-2 could never hold, because any one rendered file parses back to only its own sections. `includeArchive` is now carried by all three functions and both wrappers, and INV-2 names the **live** rendered file as what it parses. Four more HIGHs, all draft: `assignHeadline()`/`truncateEllipsis()` are **`static`** in `roadmapparse.cpp` and unreachable from the new TU — the same class ANTS-3808 § 2.4 fixed for `renderBullet()`, so § 7 now owes the export; the field table told the implementer to take `id` from the column, which the table's own last row proves fails INV-2 (`rxId` matches the first bracket id **anywhere in the body**, and an empty `id` column renders no bracket at all); a `level == 0` synthetic root emits no heading, so its bullets must get an *empty* `sectionHeading`, and `uniqueSlug()` is **stateful**, so `seenSlugs` accumulates across the whole walk; and `detectRoadmapFormat()` takes a `QStringList` while the seam holds a `QString`, so a naive split is a third ~6 MiB copy — the gate is now specified to split only the bounded prefix it reads. **Six findings were loop-1 collateral** and are recorded as such: the wrapper introduced in loop 1 put two of INV-1's five test cases outside the seam (resolved by extracting a free `storeFor()` helper the case can drive), and loop 1's INV-3 proxy paragraph duplicated § 4's derivation nearly verbatim. Draft defects still outnumber collateral 8 to 6, so neither stop-and-consolidate trigger fired. Lane spend ~151k and ~149k cumulative. |
 | 1 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet, 89 KB) | 3 / 5 / 8 / 13 / 1 | **29 verified, 29 fixed, 0 dismissed** — an unusually clean verification rate, and the packet is why: both lanes were handed bounded code windows, so their code claims were checkable rather than recalled. Both lanes independently led on the same defect, which is the signal that makes it credible: **§ 2.2's "the resolver owns the lazy open, and stats the path before it constructs" is unimplementable** — all three § 2.1 functions take an already-constructed `RoadmapStore &`, and § 2.2's own last rule says `RoadmapSource` owns no lifetime, so nobody owned the absent-vs-unopenable distinction INV-1 rests on. Fixed by naming the **owner wrapper** as the only thing that may construct a store, which also resolved two more findings at once: § 1's "no site grows a dispatch branch or a store reference" was false against `bulletsFor(RoadmapStore &, …)` and its three-outcome return, and INV-3's `too_large` had no channel — all three functions exposed only `QString *error`, and `RoadmapDialog` emits no MCP envelope at all, so the enum `ReadError` now carries it and the wrapper maps it. Third CRITICAL: **INV-1's headline sentence contradicted § 2.2's fourth rule** — it refused every store-row project "whose roadmap fails the ants-v1 gate", which would have broken every migrated GFM and pass-headings project that § 2.2 deliberately serves markdown; the gate now turns on `sawSignal`, not on the returned dialect, and § 2.2 carries the four-row table. Also fixed: the § 2.1.1 rule made INV-2's own `firstLine`/`lastLine` difference a defect (the carve-out moved into the rule sentence, which the table cannot override); the `body` row said "trimmed of its two-space indent" beside `cont.trimmed()`, two incompatible instructions, and an implementer writing `mid(2)` would have failed INV-2; § 4 applied the UTF-16 doubling to the records but not to the retained markdown, pricing this spec's own headline cost at half (~6 MiB, not 3.0, and a ~14 MiB peak); § 2.3's legend parenthetical was inverted (`migratedProject()` returns an id, not a `ProjectRow`) **and** its flat "no stored legend shows none" rule would have deleted the legend from every unmigrated project, since `roadmapdialog.cpp` holds the four emoji and labels as compile-time constants — a user-visible regression arriving as a side effect of a read-path change. `Inv2Membership` was added because INV-2 scopes itself to the renderable filed subset and so could not reach § 2.1.2's three membership rules at all. **One fix was caught wrong by its own verification before it landed:** § 6's `Access` example put the profile second when it is the constructor's **third** parameter, after `historyCapBytes`. Lane spend ~140k and ~145k tokens cumulative across three turns each, against a 60k per-turn budget — over, and reported rather than asserted; the packet itself was ~38k. |
 | 0-rewrite | 2026-08-04 | 0 (no reviewer dispatched — a document operation) | — | **Rewritten in place from the 934-line umbrella of the same name, as the READ SEAM only.** Not a review loop and not inherited review: the umbrella's three loops ran against a document that no longer exists, so the gate runs from loop 1 on these bytes. The umbrella carried seven contracts and stopped at `/cold-eyes`' cap with collateral outnumbering draft defects two loops running; the user split it four ways on 2026-08-03 — this id (read seam), ANTS-3808 (`item.body` + trailer suppression, accepted), ANTS-3809 (write half), ANTS-3810 (oracle + acyclicity). Sections kept: old §§ 2.1, 2.2, 2.5 and INV-2 / INV-3 / INV-9, renumbered per § 3. **The filed loop-3 tail** ([`docs/reviews/ANTS-3793-cold-eyes-loop3-tail.md`](../reviews/ANTS-3793-cold-eyes-loop3-tail.md)) **was RESOLVED here, not carried:** C1 (INV-2 unsatisfiable against the membership rules) → § 2.1.2 excludes `dropped` on representability grounds (`emojiFor()` returns empty and `stripInlineEmoji()` then skips the bullet), keeps `internal` and unfiled, and INV-2 declares membership as a second difference; C2 (`bulletsFromStore()` cannot reach `renderBullet()`) → ANTS-3808 § 2.4's `RoadmapRender::bulletText()`, same library, no new edge; H2 (no store surface produces document order or a batched read) → § 2.1.3 states the six-step walk and § 4 prices the N+1 and names its remedy; H4 (the migrated path still loads the whole roadmap) → § 4 states the read as additive, INV-3's break clause now scopes to *the resolver*, and the removal path is filed as ANTS-3815; H5 (continuation indentation) → folded into § 2.1.1's `body` row; M1/M2 → § 2.2's third and fifth rules; M3 → `bulletsFor()`'s three outcomes are in the header comment; M4/M5 → INV-3's pre-read item-count proxy and a fixture sized from the ceiling; M7 → the `idToken`/`boldId` row covers the id-less item; M8 → § 2.1.3 step 6. **One filed LOW was verified WRONG and is dismissed, not fixed:** the claim that stripping `"- "` and the emoji leaves a leading space on `body` — `stripInlineEmoji()` ends with `while (!head.isEmpty() && head.front().isSpace()) head.remove(0, 1);`, so the parser strips it too and the umbrella's illustration was correct. Findings belonging to the other parts (C3, H1, H3, M6 and two § 2.3 LOWs) travelled with them. Three counts were re-measured and **all three had moved** since the umbrella recorded them: 33,879 → 34,240 lines, 3,075,143 → 3,099,130 bytes, 1,832 → 1,838 bullets. The filename is unchanged deliberately: `spec_query` resolves `<id>-*.md`, and three historical documents cite this path. |
