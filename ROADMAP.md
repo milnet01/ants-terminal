@@ -25837,6 +25837,36 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-04 (ANTS-3809 cold-eyes loop 3, lane E).
 
+- 📋 [ANTS-3824] **Decide whether the render gains a markdown carrier for `resolution`.**
+  Verified 2026-08-04 while grounding ANTS-3810's round-trip oracle.
+  `roadmap-data-model.md` § 4.1 lists `resolution` as write-at-close and
+  NON-DEFAULTABLE, and calls closed items the institutional value. But:
+  `grep -ni resolution docs/standards/roadmap-format.md` returns zero hits
+  (no bullet line is defined), `grep -n -i resolution src/roadmaprender.cpp`
+  returns zero (the render emits nothing), and `fieldsOf()` in
+  src/roadmapmigrateload.cpp names `resolution` among the fields a source
+  file cannot express. The export DOES emit it
+  (src/roadmapexport.cpp writeItems, insertIfPresent "resolution").
+
+  So `resolution` is store-only. ANTS-3810 handles that by excluding it
+  from the oracle's projection, which is correct for the oracle and does
+  NOT answer the design question: should the render gain a `Resolution:`
+  line and `roadmap-format.md` gain the field, so a closed item's rationale
+  survives in the published file? Today the corpus writes closure notes
+  into the bullet BODY ("Resolved (date): ..."), which does round-trip —
+  so the column may simply be redundant with body, and the answer may be
+  to drop the column rather than to add a carrier.
+
+  Same question, weaker, for `priority`: the export emits it when non-NULL,
+  markdown carries position-is-priority instead, and nothing writes the
+  column today.
+
+  Owner is ANTS-3758 (the render) plus roadmap-format.md. Not a blocker
+  for ANTS-3810, which states the exclusion either way.
+  **Layman:** Closed roadmap items can record "what was done and why" in the database, but the published roadmap file has nowhere to put it — so it is lost on any rebuild from the file.
+  Kind: investigate.
+  Source: in-session-2026-08-04 (found while drafting ANTS-3810).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
