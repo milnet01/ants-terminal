@@ -300,8 +300,9 @@ above. Conflating the two is how this design gets implemented as a per-call
 > [`ANTS-3808-item-body-and-trailer-suppression.md`](ANTS-3808-item-body-and-trailer-suppression.md).
 > Everything below is the pre-split draft and is **known wrong in two ways** its
 > cold-eyes loop 1 fixed: the storage rule here drops the whole first line,
-> which destroys the body prose of 241 of 1645 bullets in this project's
-> corpus; and the claim that `trailerValuesIn(body)` "equals the column by
+> which destroys the body prose of roughly one bracket-id bullet in seven
+> (241 of 1646, measured 2026-08-04); and the claim that
+> `trailerValuesIn(body)` "equals the column by
 > construction" is false, because the column was extracted from the *full* body
 > and the stored body is a residual. Read the new spec, not this.
 

@@ -1,6 +1,6 @@
 # ANTS-3808 — `item.body`: what the migration stores and what the render re-derives
 
-**Status:** spec draft (2026-08-03).
+**Status:** spec draft (2026-08-04).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3808, found while verifying ANTS-3806 (2026-08-03);
 split out of ANTS-3793 at that spec's cold-eyes cap the same day.
@@ -73,30 +73,52 @@ only** (`src/roadmapparse.cpp`, the `boldMatch.captured(1).trimmed()` branch) �
 so any text *after* the closing `**`, on that same line, exists **nowhere but
 `body`'s first line**. It is not in `headline`, and the columns capture only the
 trailer keys within it. Measured against this project's `ROADMAP.md` on
-2026-08-04: **241 of 1645** bracket-id bullets carry text after the closing
-`**`, and for a single-line bullet dropping the head line discards the item's
+2026-08-04: **241 of 1646** bracket-id bullets carry text after the closing
+`**` — **roughly one in seven, and that ratio is the durable claim**, since the
+denominator moves with every roadmap append. For a single-line bullet dropping
+the head line discards the item's
 entire substance. `[ANTS-1649]` and `[ANTS-1650]` are two such bullets; the
 second carries roughly a thousand characters of methodology that a first-line
 drop would delete outright.
 
-**So the rule is a prefix strip, not a line drop.** Remove from `body`'s first
-line exactly what `renderBullet()` reconstructs into its head — the leading
-`[<id>] ` token and the `**<headline>**` token, through the closing `**` — and
-keep everything else on that line, joined to the continuations as before. The
-prefix is defined by the render's head shape (§ 2.4), which is why the two must
-be read together.
+**So the rule is a prefix strip, not a line drop**, and it is stated against
+**text the render will reconstruct**, never against token syntax — a syntactic
+rule (`[id]` then `**…**`) silently strips nothing from a GFM bullet, which
+writes neither delimiter:
 
-Three shapes, all determinate:
+1. Take `body`'s first line. Remove the leading `[<id>]` token **if present**,
+   then remove the headline text — matched as the exact string
+   `ItemWrite.headline` will carry — together with any `**` delimiters
+   immediately around it.
+2. **If nothing remains on that line, drop the line entirely.** Do not keep it
+   as an empty string: joining an empty first element back with `'\n'` yields a
+   `body` beginning with a newline, which is non-empty, so it passes
+   `renderBullet()`'s `if (!it.body.isEmpty())` guard and emits a stray blank
+   indented line on nearly every bullet.
+3. Join whatever survives with the continuations, `'\n'`-separated, as before.
 
-| Bullet shape | First-line residual |
+**The headline matched in step 1 is the untruncated one.**
+`src/roadmapmigrate.cpp`'s `makeItem()` stores
+`rec.headlineFull.isEmpty() ? rec.headline : rec.headlineFull`, and
+`rec.headline` is display-truncated to 120 characters with an ellipsis
+(ANTS-1811 / ANTS-2075). Strip using the truncated form and the tail of every
+long headline survives into the residual, where the render then emits it a
+second time — reintroducing this spec's own defect on exactly the bullets most
+likely to have it. `ItemWrite.headline` is the value to match, and it is the
+value § 2.4's export re-emits.
+
+Four shapes, all determinate:
+
+| Bullet shape | Stored `body` |
 |---|---|
-| `[id] **headline**` and nothing else | empty |
-| `[id] **headline** <prose>` | `<prose>` — the case the naive rule loses |
-| GFM, where `headline` **is** the whole first line | empty, and the line drop and the prefix strip agree |
+| `[id] **headline**`, no continuation | empty |
+| `[id] **headline**` + continuations | the continuations only — **no leading newline** |
+| `[id] **headline** <prose>` | `<prose>`, then any continuations — the case the naive rule loses |
+| GFM, where the headline **is** the whole first line | the continuations only; matching on headline *text* is what makes this row work |
 
-**An empty residual is a normal outcome, not an error** — it is what the first
-row produces, and § 2.3's suppression then fires for no key, so every column is
-emitted exactly once. INV-1 covers that row explicitly.
+**An empty `body` is a normal outcome, not an error** — it is what row 1
+produces, and § 2.3's suppression then fires for no key, so every column is
+emitted exactly once. INV-1 and INV-5 both cover it.
 
 ANTS-3757 § 2.1.1's row reads "the reader's `headline` / `body`" and is amended
 on ship to record the strip (§ 7) — the `headline` half of the row is unchanged
@@ -127,22 +149,29 @@ struct TrailerMatch {
     // implementer converting this to a UTF-8 offset breaks ANTS-3809's
     // sentence extraction on the first non-ASCII bullet.
     int     offset   = -1;
-    // True when THIS MATCH begins a line — `offset == 0`, or the character
-    // at `offset - 1` is '\n'. A property of the match POSITION, computed
-    // the same way for all five keys. Deliberately NOT "the pattern carries
-    // ^": as a pattern property it would be a per-key constant (always true
-    // for kind/layman/evidence, always false for lanes/source), carry no
-    // information, and leave ANTS-3809 unable to tell a canonical trailer
-    // line from a mid-prose match — which is the one question it exists to
-    // answer.
+    // True when the MATCH — `capturedStart(0)`, not `offset` — begins a line.
+    //
+    // The distinction is the whole field. Every one of the five patterns puts
+    // literal text between the line start and group 1 (`^\s*Kind:\s*(…)`,
+    // `Lanes:\s*(…)`, `Source:(?:\*\*)?\s*(…)`), so the character before the
+    // CAPTURE is a space or a colon and never '\n'. Computed off `offset` the
+    // field would be false on every key of every bullet — carrying strictly
+    // less than the per-key constant this struct rejects below, while looking
+    // like it carries more.
+    //
+    // Also deliberately NOT "the pattern carries ^": as a pattern property it
+    // is a per-key constant (true for kind/layman/evidence, false for
+    // lanes/source), which tells ANTS-3809 nothing it did not already know
+    // and cannot separate a canonical trailer line from a mid-prose match —
+    // the one question the field exists to answer.
     bool    anchored = false;
 };
 struct TrailerValues {
     TrailerMatch layman, kind, source;
-    // For these two, `value` is the post-normalisation text BEFORE the split
-    // — for `evidence` that means after the trailing-period chop, so it is
-    // `evidenceList.join(", ")`'s pre-split source and not the raw capture.
-    // § 2.2.1 pins both.
+    // `value` for these two is the text the split is applied TO, which is not
+    // the same step for each: `lanes` splits the raw capture, `evidence`
+    // splits after a trim and one trailing-period chop. § 2.2.1 pins both
+    // exactly; do not assume they are symmetric.
     TrailerMatch lanes, evidence;
     QStringList  lanesList, evidenceList;   // the split forms parseBullets() assigns
 };
@@ -178,13 +207,16 @@ cannot reasonably re-derive them differently:
 | `evidenceList` | trim; drop **one** trailing `.` unless the value ends `..`; then split/trim as `lanesList` |
 | `evidence.value` | the trimmed, period-chopped text **before** the split — i.e. the input `evidenceList` is split from |
 | `source.value` | truncate at the first following `rxTrailerKey` match, trim, drop one trailing `.`, trim again |
-| every `offset` | `capturedStart(1)` of the match that produced the value; `-1` when the key is absent |
-| every `anchored` | `offset == 0 \|\| body.at(offset - 1) == '\n'`; `false` when the key is absent |
+| every `offset` | `capturedStart(1)` — the CAPTURE, which is what ANTS-3809 needs to quote the value; `-1` when the key is absent |
+| every `anchored` | let `m = capturedStart(0)` — the MATCH, not `offset`; then `m == 0 \|\| body.at(m - 1) == '\n'`. `false` when the key is absent |
 
-**The last three rows exist because `parseBullets()` assigns no counterpart to
-them**, so INV-4's "equals what `parseBullets()` assigns" cannot grade them.
-They are pinned here instead, and INV-4 asserts them against this table rather
-than against the reader.
+**Four of these rows have no `parseBullets()` counterpart** — `lanes.value`,
+`evidence.value`, `offset` and `anchored` — because the reader assigns no
+variable corresponding to any of them. INV-4's "equals what `parseBullets()`
+assigns" therefore cannot grade those four; they are pinned here instead, and
+INV-4 asserts them against this table rather than against the reader. The other
+rows, `source.value` included, do have counterparts and are graded against the
+reader in the ordinary way.
 
 INV-4 asserts the rest of the equality directly, so a divergence fails a test
 rather than silently disabling the feature.
@@ -193,6 +225,18 @@ rather than silently disabling the feature.
 
 **`renderBullet()` emits a trailer key from its column only when the body would
 not already re-parse to that same value**, asked through § 2.2's accessor.
+
+**"That same value" is a different comparison for the list-valued keys, and
+naming which is not a detail.** Two of the five columns are `QStringList`s, and
+the accessor hands back both a pre-split string and a split list for each;
+comparing the pre-split string against a joined column diverges on separator
+spacing alone, so suppression would never fire for those two and half the
+defect would survive a passing spec:
+
+| Column | Suppress when |
+|---|---|
+| `kind`, `layman`, `source` | `trailerValuesIn(body).<key>.value == it.<key>` |
+| `lanes`, `evidence` | `lanesList == it.lanes` / `evidenceList == it.evidence` — **list equality, element by element**, never a join |
 
 **Value equality and not mere presence — and the reason is value loss, not an
 INV-12 breach.** Stated precisely, because the tempting shorter argument is
@@ -267,8 +311,8 @@ been written by a consumer through the store after migration — as opposed to a
 **migrated** item, whose columns and body were both produced by one
 `parseBullets()` pass over the source markdown.
 
-**Fixing the grammar is out of scope** (§ 5): anchoring `rxSource` / `rxLanes`
-would discard the 157 inline values they were un-anchored for.
+**Fixing the grammar is out of scope** — § 5 states why and ANTS-3811 owns the
+decision.
 
 ### 2.4 The render's one export
 
@@ -301,12 +345,8 @@ reach the file.
 `renderBullet()` becomes its body; the anonymous-namespace helper goes away
 rather than being wrapped, so there is one definition and not two.
 
-**The export itself costs no link edge** — `roadmaprender.cpp` is already in
-`ants_roadmapstore_lib` (`CMakeLists.txt:449`, tagged `# ANTS-3758`), the same
-library ANTS-3793's `roadmapsource.cpp` lands in. **§ 2.3's *call* is a
-different matter and is not settled**: it puts a `trailerValuesIn()` call inside
-that library, and the accessor lives in `ants_core_lib`. § 4 carries it as an
-open decision.
+**The export itself costs no link edge; § 2.3's *call* is a different matter and
+is not settled. § 4 owns both, and is the only place they are argued.**
 
 ## 3. Invariants
 
@@ -342,7 +382,7 @@ open decision.
   |---|---|
   | `src/roadmapparse.cpp` | the grammar itself — **exempt** by definition |
   | `src/remotecontrol.cpp:6576` and `:6749` (`rxBoldLayman`, ANTS-1933) | **exempt, and it cannot be otherwise.** Both deliberately capture the Layman sentence *including* its trailing period, because `rec.layman` is period-stripped by ANTS-1154 INV-4 and a period-less CHANGELOG body was the bug ANTS-1933 fixed. `trailerValuesIn()` returns the stripped value, so routing these through it re-introduces that defect. Two sites: the single-entry and batch `add_from_roadmap` paths carry the same block |
-  | `src/roadmapdialog.cpp:640` (`rxKind`) | **moves to `trailerValuesIn(bodyFull).kind.value`** — a deliverable of this spec. It re-implements both the trailer regex *and* `parseBullets()`'s continuation-line assembly to build a kind-filter map, which is the second grammar this invariant exists to forbid. Its `s_lastInput` / `s_lastKindMap` memo is unaffected |
+  | `src/roadmapdialog.cpp:640` (`rxKind`) | **moves to `RoadmapParse::trailerValuesIn(bodyFull).kind.value`** — a deliverable of this spec. It re-implements both the trailer regex *and* `parseBullets()`'s continuation-line assembly to build a kind-filter map, which is the second grammar this invariant exists to forbid. **Not behaviour-preserving** — the local pattern omits `CaseInsensitiveOption`; § 7 states the widening. Its `s_lastInput` / `s_lastKindMap` memo is unaffected |
   | `src/remotecontrol.cpp:22382` (`rxCommitSha()`) | **exempt.** Its pattern embeds `\bSource:\s*` as one alternative in a commit-SHA locator — the trailer key is a lead-in it skips past, not a value it extracts, so routing it through the accessor is meaningless. Listed because the scrape **will** match it |
 
   **The table above is today's inventory. The invariant's allowlist is a
@@ -352,13 +392,18 @@ open decision.
   one deliverable INV-2 exists to force is exactly the one it stops checking.
   So the test encodes:
 
-  | After this spec ships | Sites |
+  | After this spec ships | What the scrape must find |
   |---|---|
-  | **Permitted** (the scrape must find these and no others) | `src/roadmapparse.cpp`; `src/remotecontrol.cpp:6576`, `:6749`; `src/remotecontrol.cpp:22382` — **four sites, two files** |
-  | **Must be ABSENT** | `src/roadmapdialog.cpp` — any trailer-key regex construction at all |
+  | **Permitted** | `src/roadmapparse.cpp` — **any number** of matches; it is the grammar. Plus, in `src/remotecontrol.cpp`, exactly the two `rxBoldLayman` constructions and the one inside `rxCommitSha()` — **three matches in that file** |
+  | **Must be ABSENT** | `src/roadmapdialog.cpp` — **zero** matches; any trailer-key regex construction at all is a failure |
+  | **Every other file under `src/`** | **zero** matches |
 
-  Any site outside the permitted row is a failure, and so is any surviving
-  match in the must-be-absent row.
+  **The allowlist is keyed on file and symbol, never on line number.** A test
+  encoding a literal line number rots the first time an unrelated edit lands
+  above it, and would then fail for a reason that has nothing to do with the
+  invariant.
+  `roadmapparse.cpp` is uncapped rather than counted for the same reason: it
+  holds six matchers today and the count is not the thing being protected.
 
   **INV-2 catches the regex only, and that is a deliberate narrowing.** The
   dialog also hand-rolls continuation-line assembly (§ 2.3's table row says so),
@@ -396,21 +441,28 @@ open decision.
   returns raw captures, skips the `rxTrailerKey` truncation or a trailing-period
   chop, or splits `lanes` / `evidence` differently. *Test:* `Inv4AccessorAgrees`,
   over a fixture table covering each normalisation step including the two-key
-  line and the backticked-key guard, plus § 2.2.1's `offset` and `anchored` rows
-  — which have no `parseBullets()` counterpart and are asserted against that
-  table directly.
+  line and the backticked-key guard, plus the four rows with no `parseBullets()`
+  counterpart — `lanes.value`, `evidence.value`, `offset`, `anchored` — asserted
+  against § 2.2.1 directly. **`anchored` needs both polarities or it asserts
+  nothing**: a line-leading `Kind:` (true) and an inline mid-prose `Source:`
+  (false). A fixture set that only ever expects `false` passes against the
+  always-false implementation this field was specified twice to avoid.
 - **INV-5** — **No bullet text is lost across migrate-then-render.** For every
   bullet, the text of the head line **after** the closing `**` survives into the
   rendered output. This is the assertion § 2.1's prefix strip exists to satisfy,
-  and the one a first-line drop fails: measured 2026-08-04, **241 of 1645**
+  and the one a first-line drop fails: measured 2026-08-04, **241 of 1646**
   bracket-id bullets in this project's `ROADMAP.md` carry such text, and for a
   single-line bullet it is the item's entire substance. *Breaks when:* § 2.1 is
   implemented as "remove everything before the first `'\n'`" — the reading this
   invariant exists to catch, because it is the obvious one and it is silently
-  destructive. *Test:* `Inv5NoBodyLoss`, over a fixture triple — a bullet with
-  prose after the closing `**` and no continuation, one with both, and one with
-  neither — asserting the prose is present in the rendered text and that the
-  third renders clean rather than emitting a stray blank body.
+  destructive. *Test:* `Inv5NoBodyLoss`, over § 2.1's four rows — prose and no
+  continuation; prose and continuations; **no prose but continuations present**;
+  neither — asserting the prose survives into the rendered text, and that the
+  two prose-less rows render **without a leading blank or indented line**. That
+  third row is the one a naive join gets wrong: an empty first-line residual
+  kept as an empty string makes `body` start with `'\n'`, which is non-empty,
+  so the render's `if (!it.body.isEmpty())` guard passes and emits it.
+  A fixture set omitting that row passes against the defect.
 
 ## 4. RAM / build cost
 
@@ -423,10 +475,20 @@ per-bullet loop. Nothing is retained.
 **Per-bullet cost.** § 2.3 turns the render's per-bullet work from zero regex
 matches into **at most six** (`rxKind`, `rxLanes`, `rxLayman`, `rxEvidence`,
 `rxSource`, plus `rxTrailerKey` when `Source:` matched), against
-`static const` patterns already compiled once per process. Budget: a full render
-of this project's roadmap is **1645 bullets × ≤6 matches** over bodies averaging
-well under 1 KiB — bounded work on a path that already does one full file write
-per section, so it is not the dominant term and no new invariant guards it.
+patterns compiled once per process. Budget: a full render of this project's
+roadmap is **≥1645 bullets × ≤6 matches** — 1645 is the bracket-id population
+§ 2.1 measured, and the total including id-less and GFM bullets is larger — over
+bodies averaging well under 1 KiB. Bounded work on a path that already does one
+full file write per section, so it is not the dominant term and no new invariant
+guards it.
+
+**Where the six matchers live is an implementation choice with a house style.**
+§ 2.2 says they move out of `parseBullets()`; it does not say they become
+namespace-scope globals. This project's own precedent for a shared compiled
+pattern is the function-local static behind an accessor —
+`rxCommitSha()` (`src/remotecontrol.cpp:22382`) returns a
+`static const QRegularExpression &` — which keeps construction lazy and ordered.
+Follow it rather than introducing six non-POD globals.
 
 The one place this ratio matters is **`src/roadmapdialog.cpp`'s kind filter**,
 which INV-2 moves onto the accessor: that pre-walk runs one regex per bullet
@@ -533,15 +595,29 @@ case would write into it. Always
 - **`src/roadmaprender.h` gains `RoadmapRender::bulletText()`** (§ 2.4), the
   render's first exported per-bullet surface.
 - **`src/roadmapdialog.cpp`'s kind-filter pre-walk** moves onto
-  `trailerValuesIn()` as part of INV-2 — a behaviour-preserving edit to a
-  *rendering* path no other section would lead a reader to expect.
+  `RoadmapParse::trailerValuesIn()` as part of INV-2 — an edit to a *rendering*
+  path no other section would lead a reader to expect. **It is not
+  behaviour-preserving, and the change is user-visible**: the dialog's local
+  `rxKind` carries `MultilineOption` only, while `roadmapparse.cpp`'s adds
+  `CaseInsensitiveOption` (ANTS-3407), so after the swap a hand-edited
+  `kind:` / `KIND:` bullet starts matching the kind filter it is silently
+  skipped by today. That is a **widening and almost certainly the correct
+  behaviour** — ANTS-3407 case-folded the anchored labels precisely so a
+  hand-edited roadmap parses — but it is a behaviour change, so it is declared
+  here rather than discovered in a filter fixture. The `s_lastInput` /
+  `s_lastKindMap` memo is keyed on the whole source text and is unaffected.
 - **ANTS-3809 depends on § 2.2's `TrailerMatch`**; its `body_shadowed` refusal is
   unimplementable without `offset` / `anchored`.
 - **ANTS-3793's `BulletRecord::body`** is defined in terms of § 2.4's export.
-- **`CLAUDE.md`'s module map and `docs/subsystems.md`** need no change: no new TU.
+- **`CLAUDE.md`'s module map and `docs/subsystems.md`** need no change **under
+  two of § 4's three build options**, because neither adds a translation unit.
+  The third — hoisting the accessor into a leaf TU both libraries link — does
+  add one, and then both files gain it. Conditional on that decision, not
+  independent of it.
 
 ## Cold-eyes loop log
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| 2 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet, identical to loop 1's) | 1 / 4 / 4 / 6 / 0 | **15 verified, all 15 fixed, 3 dismissed — and 14 of the 15 were loop 1's own fix collateral, which is the finding about this run.** Both lanes led on the same CRITICAL, and it was loop 1's repair turned inside out: `anchored` was defined as `offset == 0 \|\| body.at(offset-1) == '\n'` with `offset` pinned to `capturedStart(1)`, but every pattern puts literal text between the line start and group 1, so the field is unreachably **false on every key of every bullet** — carrying less than the per-key constant loop 1 rejected it for. Now computed off `capturedStart(0)`, and INV-4 requires both polarities so a false-only fixture set cannot pass against it. Loop 1's prefix-strip rule also proved under-specified three ways it could not have been read as: stated in `[id]`/`**` tokens it strips nothing from a GFM bullet; an empty first-line residual kept as an empty string makes `body` begin with `'\n'` and emits a stray blank line on nearly every bullet; and it never said the stripped headline is the **untruncated** one, so any headline over 120 chars would have left its tail behind. **One genuine draft defect, and it is the loop-1 ledger's own failure:** § 7's "behaviour-preserving" claim about the dialog edit was recorded as fixed and had only been fixed in ANTS-3793 — both lanes re-found it, which is the cold re-read working exactly as designed. The harder sweep this loop then caught a figure that had gone stale *within the run*: filing ANTS-3811 moved the corpus denominator 1645 → 1646, so the ratio is now the durable claim. Lane spend 109k / 116k against a 60k budget. |
 | 1 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet) | 3 / 3 / 7 / 11 / 0 | **24 verified, 23 fixed, 1 surfaced, 2 dismissed.** Both lanes independently led on the same two — `anchored` carrying two incompatible definitions, and § 2.3.1's "same body" equality — and the second was the draft's own central correctness argument, false because § 2.1 stores a residual while the column was extracted from the full body. **The sharpest finding came out of verifying a lane's weaker version of it:** § 2.1's "drop the first line" is *lossy*, not merely imprecise. A native bullet takes `headline` from the bold token only, so text after the closing `**` lives nowhere but `body`'s first line — measured **241 of 1645** bracket-id bullets in this project's own `ROADMAP.md`, and for a single-line bullet it is the item's entire substance (`[ANTS-1649]`, `[ANTS-1650]`). The rule became a prefix strip and gained INV-5 to catch the naive reading. **Surfaced, not fixed:** § 2.3 puts a `trailerValuesIn()` call inside `ants_roadmapstore_lib`, which links `Qt6::Core` + `Qt6::Sql` and nothing else by deliberate design (`src/roadmaprender.h:11-12`, for ANTS-3794's headless path) — § 4 claimed "no edge"; it now carries three options and a named owner. Sweep also found ANTS-3793's umbrella holding a stale duplicate of this contract, including the false equality claim: banners added there rather than reconciling two copies. Lane spend 107k / 105k against a 60k budget. |
