@@ -24971,8 +24971,8 @@ against current source before filing.
   implement from it yet.
 
   TODO, in this order (3808 first because the others cite its exports):
-    1. /cold-eyes docs/specs/ANTS-3808-item-body-and-trailer-suppression.md
-       --genre spec
+    1. DONE 2026-08-04 -- the gate ran to convergence (3 loops, 62 verified,
+       61 fixed, 4 filed). Read that bullet before implementing ANTS-3808.
     2. Draft + gate ANTS-3793 (read seam: old §§2.1/2.2/2.5, INV-2/3/9).
        It must RESOLVE, not inherit, the filed C1/C2/H2/H4/M1-M8.
     3. Draft + gate ANTS-3809 (write half: old §2.4, INV-4; + H3, M6).
@@ -24985,7 +24985,7 @@ against current source before filing.
   forward rather than re-deriving:
     - renderBullet() is file-local; ANTS-3808 §2.4 exports
       RoadmapRender::bulletText(). roadmaprender.cpp is ALREADY in
-      ants_roadmapstore_lib, so this costs NO new link edge.
+      ants_roadmapstore_lib, so bulletText() itself costs no new link edge. PARTLY WRONG, corrected 2026-08-04 by the ANTS-3808 gate: §2.3's RoadmapParse::trailerValuesIn() call DOES add an edge (ants_roadmapstore_lib -> ants_core_lib), which is ANTS-3808 §4's open decision. Do not carry the "no new edge" claim forward.
     - TrailerValues gains per-key {value, offset, anchored}; without the
       provenance ANTS-3809's body_shadowed refusal cannot be implemented.
     - C1 resolves better than either lane proposed: visibility DEFAULTs to
@@ -25470,6 +25470,19 @@ against current source before filing.
   construction" claim — superseded banners added there rather than
   reconciling two copies. ANTS-3811 filed for the un-anchoring decision
   § 5 had recorded as "owed and not yet filed".
+  Recommendation on § 4's open build decision (mine, 2026-08-04 -- NOT
+  yet user-accepted, so it is a starting point, not a settled call):
+  hoist the six trailer matchers plus trailerValuesIn() into their own
+  leaf TU that both ants_core_lib and ants_roadmapstore_lib link, rather
+  than declaring a roadmapstore -> core edge. It keeps the deliberately
+  minimal link surface src/roadmaprender.h:11-12 protects for ANTS-3794's
+  headless publish path; it keeps ONE bullet grammar, so INV-2 still
+  holds (the leaf TU becomes the single home and parseBullets() calls it
+  too); and it costs one new file. The alternative -- just linking the
+  two libraries -- is one line but drags the whole of core into the
+  headless path. Decide this BEFORE implementing § 2.3; the choice also
+  interacts with filed finding T4 (which function owns the strip), since
+  the two candidate seams live in different libraries.
 
 - 📋 [ANTS-3809] **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03), which stopped
