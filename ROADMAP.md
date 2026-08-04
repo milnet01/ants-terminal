@@ -25742,6 +25742,27 @@ against current source before filing.
   Kind: fix.
   Source: ANTS-3793 spec § 2.1.2 (2026-08-04) — found while deciding what the store read path returns..
 
+- 📋 [ANTS-3821] **Backfill the missing `Layman:` lines so the render gate can pass.**
+  ANTS-3758's render refuses to write ANY file for a project holding an
+  open item with no `layman` (`roadmaprender.cpp`, `isOpen(it->status) &&
+  it->layman.isEmpty()` -> `Outcome::gateFailures`; INV-5). The gate is per
+  PROJECT, not per item.
+
+  Measured 2026-08-04 on this project's own roadmap: 327 open bullets
+  (planned / in-progress / considered), 102 of them with no `Layman:` line.
+  So on the day this project migrates, every ANTS-3809 write op refuses
+  with `render_gate_unmet` until these are filled.
+
+  Blocks USING the write half on this project; blocks nothing in its spec.
+  ANTS-3809 § 2.6 gives the ops that can fix them one at a time (a body
+  write re-derives the trailer columns), so the remedy exists -- this id is
+  the content sweep.
+
+  Command that produced the count is quoted in ANTS-3809 § 1.
+  **Layman:** Add the one-line plain-English summary to the roadmap items that are missing it, so the new roadmap file-writer will run.
+  Kind: chore.
+  Source: in-session-2026-08-04 (ANTS-3809 spec grounding).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
