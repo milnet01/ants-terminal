@@ -25955,7 +25955,7 @@ against current source before filing.
   Kind: investigate.
   Source: in-session-2026-08-04 (ANTS-3810 cold-eyes loop 1, lane finding verified).
 
-- 📋 [ANTS-3828] **Image paste ignores `text/uri-list`, so copying an image FILE pastes a `file://` URI.**
+- ✅ [ANTS-3828] **Image paste ignores `text/uri-list`, so copying an image FILE pastes a `file://` URI.**
   User-reported 2026-08-04: "when I paste an image, it doesn't always paste
   it the way it is meant to". Not intermittent -- two different clipboard
   payloads take two different paths.
@@ -26001,6 +26001,36 @@ against current source before filing.
   **Layman:** Copying a picture file and pasting it drops a `file://…` link into the terminal instead of the plain path Claude Code needs.
   Kind: fix.
   Source: user-report-2026-08-04 (screenshot + reproduction in session).
+  Resolved (2026-08-04): `keyPressEvent` gains a `mime->hasUrls()` branch
+  between the raster branch and the plain-text fallback. The URL→paste-text
+  logic is extracted as `TerminalWidget::imagePathsFromUrls()` (public
+  static) so the feature test can drive it without constructing a
+  QOpenGLWidget with a live PTY.
+
+  Decisions taken on the two questions the bullet raised:
+  - **Shell safety:** reused `shellutils.h::shellQuote()` rather than
+    hand-rolling. It leaves an ordinary path bare (the form Claude Code
+    needs) and single-quotes anything outside `[A-Za-z0-9_\-./:@%+,]`,
+    which also fixes plain filenames containing a space. This matters
+    because `pasteRiskReasons()` does NOT flag `;` or `$(…)`, so an
+    adversarially-named download would otherwise have reached the shell
+    unwarned. Verified against the helper's source, not recalled.
+  - **Non-image local files:** left alone. A copied .txt/.pdf keeps the
+    existing text-paste behaviour; widening it is a separate call, not a
+    side effect of this fix.
+
+  Suffix matching uses `QImageReader::supportedImageFormats()` rather than
+  a hardcoded list, so it tracks the installed image plugins.
+
+  Test: `tests/features/image_paste_uri_list/` (test_chrome bundle) — 9
+  cases covering INV-1..INV-5. Red-first proof recorded in its spec.md:
+  the wiring case scrapes terminalwidget.cpp and returns 0 marker hits
+  against pre-fix HEAD, so it genuinely fails there.
+
+  Full suite green at 3246/3246.
+
+  Also filed ANTS-3830: this fix adds a fifth false positive to the stale
+  `refactor_shell_quote_duplicate` audit rule.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

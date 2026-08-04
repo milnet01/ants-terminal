@@ -25,6 +25,7 @@ class QHBoxLayout;
 class QPushButton;
 class QPlainTextEdit;
 class QThread;
+class QUrl;
 
 class TerminalWidget : public QWidget {
     Q_OBJECT
@@ -281,6 +282,17 @@ public:
     // would lose data — outputTextAt is unbounded.
     int copyLastCommandOutput();
     int rerunLastCommand();
+
+    // ANTS-3828 — the paste text a `text/uri-list` clipboard payload
+    // should produce: the bare local path of every image file in it,
+    // space-separated and shell-quoted only where necessary. Empty when
+    // the payload carries no local image file, which is the caller's
+    // signal to fall through to the ordinary text paste.
+    //
+    // Static and public so the feature test can exercise it directly —
+    // keyPressEvent is protected and constructing a TerminalWidget pulls
+    // in a live PTY.
+    static QString imagePathsFromUrls(const QList<QUrl> &urls);
 
 signals:
     void titleChanged(const QString &title);

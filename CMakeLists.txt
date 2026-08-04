@@ -1197,6 +1197,8 @@ if(ANTS_TESTS)
                 tests/features/command_palette_ghost_completion/test_command_palette_ghost_completion.cpp
                 tests/features/no_anim_style/test_no_anim_style.cpp
                 tests/features/paste_dialog_custom/test_paste_dialog_custom.cpp
+                # ANTS-3828 — copied image FILE pastes its path, not a file:// URI.
+                tests/features/image_paste_uri_list/test_image_paste_uri_list.cpp
                 tests/features/tab_rename_pin/test_tab_rename_pin.cpp
                 tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
                 tests/features/help_about_menu/test_help_about_menu.cpp
