@@ -56,6 +56,15 @@ struct Outcome {
 // in step by hand.
 QString bulletText(const RoadmapStore::ItemWrite &it);
 
+// roadmap-format.md § 3.3's four status emojis, by lifecycle word. `dropped`
+// deliberately has no glyph (§ 3.11 makes a fifth an anti-pattern) and returns
+// an empty string. Exported for the same reason bulletText() is: ANTS-3793
+// § 2.3 has RoadmapDialog render a migrated project's STORED legend, whose JSON
+// is keyed by those words while the dialog is keyed by emoji, and a second
+// word→emoji table in the dialog is a correspondence someone has to keep true
+// by hand.
+QString emojiFor(const QString &status);
+
 // nullopt is reserved for failures BEFORE the commit phase — SQL errors, a
 // render error, a path refusal — where there is genuinely nothing to report.
 // A gate failure and a partial commit both return an ENGAGED Outcome, because

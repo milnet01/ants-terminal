@@ -4,6 +4,11 @@
 #include "config.h"
 #include "dialogchrome.h"      // ANTS-1242 — frameless dialog chrome
 #include "roadmapindex.h"      // ANTS-1287 — canonical home for heading/slug helpers
+// ANTS-3793 — the read seam and the store behind it. Included HERE and not in
+// roadmapdialog.h: roadmapstore.h pulls <QSqlDatabase>, and ants_dialogs_lib
+// links the store PRIVATE.
+#include "roadmapsource.h"
+#include "roadmapstore.h"
 #include "roadmapshortcutsdialog.h"  // ANTS-1236 — `?` cheatsheet overlay
 #include "themes.h"
 #include "titlebar.h"
@@ -519,6 +524,89 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     return RoadmapParse::parseBullets(markdownText);
 }
 
+// ANTS-3793 § 2.2 — see roadmapdialog.h. The up-walk stops at the same `.git`
+// boundary findRoadmapUnder()'s down-walk does, so the two are inverses on
+// every layout that helper supports (`./`, `docs/`, `docs/private/`,
+// `docs/internal/`, `.github/`).
+QString RoadmapDialog::storeProjectRoot() const {
+    if (m_roadmapPath.isEmpty()) return {};
+    const QString canonical = QFileInfo(m_roadmapPath).canonicalFilePath();
+    if (canonical.isEmpty()) return {};
+    const QString startDir = QFileInfo(canonical).path();
+    QString dir = startDir;
+    for (int depth = 0; depth < 64 && !dir.isEmpty(); ++depth) {
+        if (QFileInfo::exists(dir + QStringLiteral("/.git"))) return dir;
+        const QString parent = QFileInfo(dir).path();
+        if (parent == dir) break;
+        dir = parent;
+    }
+    return startDir;
+}
+
+// ANTS-3793 § 2.1 — the dialog's owner wrapper. Same three outcomes as
+// RemoteControl's, presented differently: a refusal has no envelope to fill, so
+// it lands in m_sourceError for rebuild() to render.
+QVector<RoadmapDialog::BulletRecord>
+RoadmapDialog::roadmapBullets(const QString &markdown,
+                              bool includeArchive) const {
+    m_sourceError.clear();
+    m_lastReadFromStore = false;
+    const QString root = storeProjectRoot();
+    if (root.isEmpty())
+        return RoadmapParse::parseBullets(markdown);
+
+    if (!m_roadmapStore) {
+        // § 2.2 rules 1 and 2: absent → markdown (the common case, and no
+        // error); present but unopenable → refuse.
+        RoadmapSource::ReadError openWhy = RoadmapSource::ReadError::None;
+        QString openErr;
+        m_roadmapStore = RoadmapSource::storeFor(RoadmapStore::defaultPath(),
+                                                 &openWhy, &openErr);
+        if (openWhy != RoadmapSource::ReadError::None) {
+            m_sourceError = openErr;
+            return {};
+        }
+    }
+    if (!m_roadmapStore)
+        return RoadmapParse::parseBullets(markdown);
+
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    QString err;
+    auto records = RoadmapSource::bulletsFor(*m_roadmapStore, root, markdown,
+                                             includeArchive, &why, &err);
+    if (records) {
+        m_lastReadFromStore = true;
+        return *records;
+    }
+    if (why != RoadmapSource::ReadError::None) {
+        m_sourceError = err;
+        return {};   // INV-1 — never the markdown behind the store's back
+    }
+    return RoadmapParse::parseBullets(markdown);
+}
+
+// ANTS-3793 § 2.3 — the stored legend, or nothing.
+QHash<QString, QString> RoadmapDialog::storeLegend() const {
+    QHash<QString, QString> out;
+    if (!m_roadmapStore) return out;   // never opened ⇒ nothing migrated
+    const QString root = storeProjectRoot();
+    if (root.isEmpty()) return out;
+
+    // The dispatch again, because migratedProject() yields only the id and
+    // bulletsFor() does not hand it back — § 2.3 prices this second lookup.
+    const QString markdown = loadRoadmapMarkdown(/*includeArchive=*/false);
+    const auto projectId =
+        RoadmapSource::migratedProject(*m_roadmapStore, root, markdown);
+    if (!projectId) return out;
+    const auto row = m_roadmapStore->readProject(*projectId);
+    if (!row || row->legendText.isEmpty()) return out;
+
+    // legendText is the RAW stored text — held that way so ANTS-3761's
+    // byte-identity contract does not round-trip through a parse — so the
+    // re-keying to status emoji happens in the seam, where a test can reach it.
+    return RoadmapSource::legendByEmoji(row->legendText);
+}
+
 QVector<RoadmapDialog::TocEntry>
 RoadmapDialog::extractToc(const QString &markdownText) {
     QVector<TocEntry> out;
@@ -963,7 +1051,11 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // Parse all bullets once so we can group by section and compute
     // count chips per section header. parseBullets sets sectionSlug,
     // status, kind, id, headline, layman, body for each record.
-    const QVector<BulletRecord> allBullets = parseBullets(sourceText);
+    // ANTS-3793 — unless the dialog already resolved them through its owner
+    // wrapper (store or markdown) and put them in `opts`. This helper stays a
+    // pure markdown→HTML function for every caller that does not.
+    const QVector<BulletRecord> allBullets =
+        opts.bullets ? *opts.bullets : parseBullets(sourceText);
 
     auto passesFilter = [&](const BulletRecord &rec) -> bool {
         // Status filter
@@ -1305,7 +1397,13 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // parser change can't turn this into a CWE-79 vector).
         html += QStringLiteral("<span class=\"rm-state\">%1</span>")
                     .arg(htmlEscape(rec.status));
-        const QString stateLabel = statusAccessibleLabel(rec.status);
+        // ANTS-3793 § 2.3 — a store-served project shows its OWN legend, and
+        // shows none when it has stored none. Every markdown-served project
+        // keeps the compile-time table, which is most of them during the
+        // rollout and is why this is a branch and not a replacement.
+        const QString stateLabel = opts.legendFromStore
+                                       ? opts.legend.value(rec.status)
+                                       : statusAccessibleLabel(rec.status);
         if (!stateLabel.isEmpty()) {
             html += QStringLiteral("<span class=\"rm-state-label\">%1</span>")
                         .arg(htmlEscape(stateLabel));
@@ -2399,8 +2497,11 @@ void RoadmapDialog::captureScrollAnchor() {
         // ID → section slug (the edit-stable fallback key) via the parsed
         // bullets. One parse on close is cheap relative to the user action.
         QString slug;
+        // ANTS-3793 — through the owner wrapper, like the render. INV-2 keeps
+        // sectionSlug — the anchor's fallback key — identical either way.
+        const bool includeArchive = wantsHistoryLoad();
         const QVector<BulletRecord> recs =
-            parseBullets(loadRoadmapMarkdown(wantsHistoryLoad()));
+            roadmapBullets(loadRoadmapMarkdown(includeArchive), includeArchive);
         for (const BulletRecord &r : recs) {
             if (r.id == topId) {
                 slug = r.sectionSlug;
@@ -2441,8 +2542,10 @@ void RoadmapDialog::restoreScrollAnchor() {
     }
     QHash<QString, QString> slugById;
     QSet<QString> presentSlugs;
+    // ANTS-3793 — same swap as captureScrollAnchor's.
+    const bool includeArchive = wantsHistoryLoad();
     const QVector<BulletRecord> recs =
-        parseBullets(loadRoadmapMarkdown(wantsHistoryLoad()));
+        roadmapBullets(loadRoadmapMarkdown(includeArchive), includeArchive);
     for (const BulletRecord &r : recs) {
         if (!presentIds.contains(r.id)) continue;
         slugById.insert(r.id, r.sectionSlug);
@@ -2936,6 +3039,21 @@ void RoadmapDialog::rebuild() {
     opts.shippedDates = m_shippedDates;
     opts.lastTouchDates = m_lastTouchDates;
     opts.density = m_density;  // ANTS-1238
+    // ANTS-3793 — resolve the records here, once per render, through the owner
+    // wrapper. § 2.3's legend follows the same backend.
+    opts.bullets = roadmapBullets(markdown, includeArchive);
+    opts.legendFromStore = m_lastReadFromStore;
+    if (m_lastReadFromStore) opts.legend = storeLegend();
+    if (!m_sourceError.isEmpty()) {
+        // A refusal is shown, never served from the markdown sitting right
+        // here (INV-1). The notice is the dialog's error-presentation path.
+        m_viewer->setHtml(QStringLiteral(
+            "<div style=\"padding:16px;font-family:sans-serif\">"
+            "<b>Could not read this roadmap.</b><br><br>%1</div>")
+                              .arg(htmlEscape(m_sourceError)));
+        m_lastHtml.reset();
+        return;
+    }
     const QString html = renderCardsHtml(markdown, filter, signals_, m_themeName,
                                          m_sortOrder, predicate, m_kindFilter,
                                          opts);

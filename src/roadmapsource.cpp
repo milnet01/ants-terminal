@@ -6,6 +6,8 @@
 #include "roadmaprender.h"   // bulletText() — ANTS-3808 § 2.4's export
 
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include <algorithm>
 
@@ -325,6 +327,25 @@ bulletsFor(RoadmapStore &store, const QString &projectRoot,
         return std::nullopt;
     }
     return bulletsFromStore(store, *projectId, includeArchive, why, error);
+}
+
+QHash<QString, QString> legendByEmoji(const QString &legendText) {
+    QHash<QString, QString> out;
+    if (legendText.isEmpty())
+        return out;
+    const QJsonObject legend =
+        QJsonDocument::fromJson(legendText.toUtf8()).object();
+    for (auto it = legend.constBegin(); it != legend.constEnd(); ++it) {
+        // roadmaprender.cpp's own word→emoji map, exported rather than
+        // duplicated: a second table here is a correspondence someone has to
+        // keep true by hand. `dropped` returns empty and is skipped, which is
+        // right — § 3.11 gives it no glyph and no rendered bullet carries it.
+        const QString emoji = RoadmapRender::emojiFor(it.key());
+        if (emoji.isEmpty())
+            continue;
+        out.insert(emoji, it.value().toString());
+    }
+    return out;
 }
 
 } // namespace RoadmapSource

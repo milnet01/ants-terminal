@@ -16,6 +16,7 @@
 #include "changelogquery.h"  // ANTS-3533 — changelog_query parse-cache member
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
+#include "roadmapparse.h"  // ANTS-3793 — BulletRecord, roadmapBullets()'s return
 
 #include <functional>  // ANTS-3543 — downshiftMatches lean-projector callback
 #include <memory>
@@ -26,6 +27,13 @@ class QWidget;                 // ANTS-2049 — e2eResolveTarget return type
 class MainWindow;
 class ClaudeIntegration;
 namespace VerifyTrust { class Client; }
+// ANTS-3793 § 4 — the read seam reaches this header by forward declaration and
+// NOT by #include: roadmapstore.h includes <QSqlDatabase>, and ants_core_lib
+// links ants_roadmapstore_lib PRIVATE precisely so Qt6::Sql stops at core. A
+// consumer of this header (mainwindow.cpp, claudeintegration.cpp, the test
+// bundles) has no Sql include path, so including it here would break them all.
+class RoadmapStore;
+namespace RoadmapSource { enum class ReadError; }
 
 // Remote-control server for Ants Terminal. Kitty-style JSON envelopes
 // over a Unix domain socket — unlocks scripting, IDE integration, CI.
@@ -973,6 +981,66 @@ private:
     QJsonDocument cmdSelectWindow(const QJsonObject &req);
     QJsonDocument cmdSetTitle(const QJsonObject &req);
     QJsonDocument cmdLaunch(const QJsonObject &req);
+
+    // ANTS-3793 § 2.1 — the owner wrapper. Returns the records for
+    // `projectRoot`: from the store when that project is migrated, from
+    // `markdown` when it is not. The three-outcome branch, the process-owned
+    // RoadmapStore and § 2.2's stat-and-open all live here, once, rather than
+    // at each read site.
+    //
+    // `*why` is written on EVERY path, success included, and a caller must
+    // branch on it before trusting the result: a refusal returns an empty
+    // vector, which is otherwise indistinguishable from a roadmap with no
+    // bullets. rcRoadmapSourceRefused() maps it to the refusal envelope.
+    //
+    // An EMPTY `projectRoot` takes the markdown path with `*why == None`. That
+    // is § 2.2 rule 1 one step earlier, not a silent fallback: the seam refuses
+    // a root it cannot resolve, so a caller that could not name a project must
+    // not reach it. Every roadmap verb resolves one from `caller_cwd`; the
+    // focused-tab back-compat path has none.
+    QVector<RoadmapParse::BulletRecord>
+    roadmapBullets(const QString &projectRoot, const QString &markdown,
+                   bool includeArchive, RoadmapSource::ReadError *why,
+                   QString *error) const;
+
+    // ANTS-3793 § 2.2 — the dispatch alone: true iff the store serves this
+    // project, with NO records materialised. One site needs it, and needs it in
+    // this shape. roadmap_query's `section=` path slices the section's text and
+    // parses the slice; a store holds records and not lines, so that path has
+    // to know which backend answers BEFORE it decides how to read — and
+    // answering by calling roadmapBullets() would read the whole project, which
+    // is exactly what ANTS-1287 INV-9 keeps section mode away from.
+    bool roadmapStoreServes(const QString &projectRoot, const QString &markdown,
+                            RoadmapSource::ReadError *why,
+                            QString *error) const;
+
+    // § 2.2 rules 1 and 2 (absent → nullptr, no error; present but unopenable
+    // → nullptr with *why set), plus the connection caching the p95 budget
+    // needs. Both readers above go through it.
+    RoadmapStore *roadmapStoreOrNull(RoadmapSource::ReadError *why,
+                                     QString *error) const;
+
+    // ANTS-3802 — the cross-repo id resolver shared by feedback_query and
+    // feedback_log's compact_resolved. ANTS-3793 made it a member: the sibling
+    // roadmaps it opens may themselves be migrated, so it reads through
+    // roadmapBullets() and therefore needs the owner's store connection.
+    // Returns id → {status, resolved_from, shipped_date?}.
+    QHash<QString, QJsonObject> rlResolveForeignFeedbackIds(
+        const QString &feedbackFilePath,
+        const QString &callerRoadmapPath,
+        const QSet<QString> &callerPrefixes,
+        const QStringList &wantedIds,
+        const QSet<QString> &alreadyResolved) const;
+
+    // § 2.2's last rule — ONE long-lived Access::Interactive connection for
+    // RoadmapStore::defaultPath(), opened on the first dispatch that finds a
+    // store file and never per call: opening SQLite, applying pragmas and
+    // warming the page cache is the dominant term in § 4's p95 budget. The
+    // MARKER is still resolved per call (inside the seam), so a project
+    // migrated mid-session is picked up. Held by unique_ptr to a
+    // forward-declared type — ~RemoteControl() is defined in the .cpp, which is
+    // where the complete type is.
+    mutable std::unique_ptr<RoadmapStore> m_roadmapStore;
 
     // Cached parse of `m_main->roadmapPathForRemote()` content. Refreshed
     // on `roadmap-query` when EITHER the mtime advances OR the wall-clock

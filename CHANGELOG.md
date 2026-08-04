@@ -138,6 +138,17 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap consumers read the store — `roadmap_query`, `changelog_log`, `feedback_query`/`feedback_log`, `roadmap_branch_drift` and the Roadmap dialog** (ANTS-3793)
+  Until now nothing read the roadmap database: every tool parsed
+  ROADMAP.md, so the database was a write-only copy. Each of those tools
+  now asks the database first, and falls back to reading the file for any
+  project that has not been migrated — which today is all of them, so
+  nothing changes yet for anyone. A project served by the database also
+  gets its own status legend in the Roadmap dialog; every other project
+  keeps the built-in one, unchanged. When the database exists but cannot
+  be read, the tools say so instead of quietly reading the file behind
+  its back.
+
 - **Roadmap reader records what a headless migration needs (ANTS-3764)**
   `RoadmapParse::BulletRecord` gains five fields: the verbatim
   `- **Status**:` value, the `Source:` value, the leading-slot id token as

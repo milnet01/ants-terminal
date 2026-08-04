@@ -25143,6 +25143,64 @@ against current source before filing.
   foreign-id reads, and the feedback-file reader at the end of the file. Those
   are ANTS-3793's. Everything under cmdRoadmapLog* is ANTS-3809's, for the
   firstLine reason recorded above.
+  Progress (2026-08-04): the CONSUMER CUTOVER is implemented. Everything the
+  prior annotation listed under "STILL OWED BY THIS ID" is done; what is left
+  under this bullet's headline is roadmap_log's WRITE half, which is
+  ANTS-3809's. Suite 3257/3257 (was 3256; +1 is the new legend case).
+
+  Landed: RemoteControl::roadmapBullets() + roadmapStoreOrNull() (the
+  process-owned Access::Interactive connection) + rcRoadmapSourceRefused()
+  mapping ReadError to too_large / read_failed / unrecognised_format;
+  RoadmapDialog::roadmapBullets() + storeProjectRoot() + storeLegend();
+  RoadmapSource::legendByEmoji(); RoadmapRender::emojiFor() exported; the two
+  PRIVATE ants_roadmapstore_lib edges and both SQL-isolation comments;
+  tests/features/roadmap_dialog_legend/ (Inv2Legend, RED-proven against three
+  mutations).
+
+  FOUR THINGS THE NEXT SESSION MUST NOT RE-DERIVE.
+
+  1. cmdRoadmapQuery's markdown cache needed NO freshness-predicate change,
+  which the prior sizing feared. `fresh` already ANDs a 100 ms wall-clock TTL
+  onto the mtime check, so store-derived records inherit the same staleness
+  bound. What DID need care is ordering: the !fresh block stamps
+  path/mtime/now BEFORE it fills bullets, so a refusal partway through leaves
+  an empty array warm and the next call inside the TTL serves it as "this
+  roadmap has no bullets". refuseRoadmapSource() invalidates first.
+
+  2. The section= path is the one site where "swap the call" is not the whole
+  change, and the fix is NOT to read everything. It slices the section's text
+  and parses the slice; a store holds records, not lines. It asks
+  roadmapStoreServes() -- the dispatch alone, no records materialised --
+  because answering by calling roadmapBullets() would read the whole project,
+  which is exactly what ANTS-1287 INV-9 keeps section mode away from. Store
+  path filters whole-project records by sectionSlug; markdown path slices
+  exactly as before; the ANTS-2225 pass-heading recovery is markdown-only.
+
+  3. The four `for (const auto &b : bullets)` loops in cmdRoadmapQuery are
+  UNTOUCHED, deliberately. roadmap_query_section_index INV-7 counts them at
+  exactly 4 and pairs each with an o["section_slug"] emission. Only the call
+  that produces `bullets` was swapped, which is also what § 2.1 means by "each
+  site is a one-line change".
+
+  4. Two surface changes the spec did not size, both forced.
+  rlResolveForeignFeedbackIds() is a RemoteControl member now (it opens
+  SIBLING projects' roadmaps, any of which may be migrated, so it needs the
+  owner's store connection). RoadmapRender::emojiFor() is exported for the
+  same reason bulletText() was: the stored legend is keyed by lifecycle WORD
+  and every BulletRecord consumer by status EMOJI, and a second word-to-emoji
+  table in the dialog is a correspondence someone has to keep true by hand.
+  The re-keying lives in RoadmapSource::legendByEmoji() so a test can reach
+  it -- ProjectRow::legendText is raw JSON and no declared reader parses it.
+
+  Inv2Legend is in tests/features/roadmap_dialog_legend/ (test_dialogs), NOT
+  in roadmap_read_seam/ where § 6 lists it: that directory compiles into
+  test_core, which does not link ants_dialogs_lib. § 6's table now records
+  this. test_dialogs names ants_roadmapstore_lib explicitly -- dialogs links
+  the store PRIVATE, so the bundle inherits the symbols but not Qt6::Sql's
+  include dirs.
+
+  NOT DONE, and still ANTS-3809's: every cmdRoadmapLog* read site, for the
+  firstLine reason already recorded above.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the

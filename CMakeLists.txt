@@ -83,8 +83,10 @@ add_custom_command(
 # trips shader-compile edge cases in the OpenGL renderer — without
 # this floor a rolling-distro user with an older qt6-base installed
 # alongside a newer one could pick up the wrong one.
-# Sql (ANTS-3756): the roadmap store. Linked ONLY by ants_roadmapstore_lib --
-# every other target keeps its current link surface. The QSQLITE driver is a
+# Sql (ANTS-3756): the roadmap store. Owned by ants_roadmapstore_lib; since
+# ANTS-3793's consumer cutover ants_core_lib and ants_dialogs_lib each link that
+# library PRIVATE (the roadmap consumers in them now read the store), so Sql
+# reaches those two and propagates no further. The QSQLITE driver is a
 # runtime plugin that links the SYSTEM libsqlite3 and ships in its own distro
 # package, so a Qt SQL build with no driver fails at run time, not link time
 # (QSqlDatabase::addDatabase returns an invalid database). Packaging carriers
@@ -448,7 +450,11 @@ add_library(ants_core_lib STATIC
 target_link_libraries(ants_core_lib
     PUBLIC  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::DBus util
             ants_roadmapparse_lib   # ANTS-3808 § 4 — the reader, as a leaf
-    PRIVATE ants_warnings)
+    # ANTS-3793 § 4 — the read seam, PRIVATE: remotecontrol.cpp's roadmap
+    # consumers read the store, and core exposes no RoadmapStore in its own
+    # headers, so Qt6::Sql stops here instead of reaching every consumer of core.
+    PRIVATE ants_roadmapstore_lib
+            ants_warnings)
 target_include_directories(ants_core_lib PUBLIC src)
 set_target_properties(ants_core_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # ANTS-3582: build_info_values.cpp holds the extern definitions for
@@ -467,9 +473,14 @@ set_source_files_properties("${ANTS_BUILD_INFO_VALUES_CPP}" PROPERTIES
     SKIP_PRECOMPILE_HEADERS ON
     SKIP_UNITY_BUILD_INCLUSION ON)
 
-# ANTS-3756 -- the roadmap store. Its own library, Qt6::Core + Qt6::Sql only:
-# it is the sole Sql consumer, and keeping it out of ants_core_lib means the
-# test bundles that link core do not drag the SQL module.
+# ANTS-3756 -- the roadmap store. Its own library, Qt6::Core + Qt6::Sql only.
+# It was kept out of ants_core_lib so the test bundles that link core did not
+# drag the SQL module; ANTS-3793's consumer cutover is the event that property
+# was waiting for -- roadmap_query / changelog_log / feedback_query in core and
+# RoadmapDialog in dialogs are store consumers now, so both link this library
+# PRIVATE. PRIVATE is what keeps the cost to those two: neither exposes a
+# RoadmapStore in its own headers, so Qt6::Sql does not propagate to their
+# consumers. test_core already linked both and pays nothing new.
 add_library(ants_roadmapstore_lib STATIC
     src/roadmapstore.cpp
     src/jsoncanonical.cpp   # ANTS-3761 — RFC 8785; Qt6::Core only, no Sql
@@ -635,7 +646,11 @@ add_library(ants_dialogs_lib STATIC
 )
 target_link_libraries(ants_dialogs_lib
     PUBLIC  ants_chrome_lib
-    PRIVATE ants_warnings)
+    # ANTS-3793 § 4 — the read seam, PRIVATE. Independent of core's edge:
+    # ants_dialogs_lib reaches chrome, and chrome reaches vt; neither names
+    # ants_core_lib, so the dialog cannot inherit core's copy.
+    PRIVATE ants_roadmapstore_lib
+            ants_warnings)
 # ANTS-1222 + ANTS-3582: aboutdialogs.cpp #includes src/build_info.h (a stable
 # extern-declaration header resolved via core's PUBLIC `src` include dir) for
 # the Help → About build line. Values live in build_info_values.cpp compiled
@@ -2041,6 +2056,12 @@ if(ANTS_TESTS)
         LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
                 ants_claude_lib ants_dialogs_lib ants_audit_lib
                 ants_audit_dialog_lib
+                # ANTS-3793 — named EXPLICITLY, not inherited: dialogs links the
+                # store PRIVATE, so the bundle gets the symbols but none of
+                # Qt6::Sql's include dirs, and roadmap_dialog_legend's case
+                # includes roadmapstore.h itself. test_core names it for the
+                # same reason.
+                ants_roadmapstore_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/settings_dependency_gating/test_settings_dependency_gating.cpp
                 # ANTS-1727 — review-dialog foundation scaffold.
@@ -2064,6 +2085,11 @@ if(ANTS_TESTS)
                 tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
                 tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
                 tests/features/roadmap_dialog_cards/test_roadmap_dialog_cards.cpp
+                # ANTS-3793 § 2.3 — the per-project stored legend. HERE and not
+                # in roadmap_read_seam/ beside its five siblings: that directory
+                # compiles into test_core, which does not link ants_dialogs_lib
+                # and so cannot reach renderCardsHtml at all.
+                tests/features/roadmap_dialog_legend/test_roadmap_dialog_legend.cpp
                 # ANTS-1264 — scroll-position persistence resolver + wiring.
                 tests/features/roadmap_scroll_persistence/test_roadmap_scroll_persistence.cpp
                 tests/features/roadmap_shortcuts_cheatsheet/test_roadmap_shortcuts_cheatsheet.cpp

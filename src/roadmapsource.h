@@ -19,6 +19,7 @@
 #include "roadmapparse.h"
 #include "roadmapstore.h"
 
+#include <QHash>
 #include <QString>
 #include <QVector>
 #include <memory>
@@ -124,5 +125,17 @@ std::optional<QVector<BulletRecord>>
 bulletsFor(RoadmapStore &store, const QString &projectRoot,
            const QString &markdown, bool includeArchive, ReadError *why,
            QString *error = nullptr);
+
+// § 2.3 — a project's stored legend, re-keyed from the lifecycle WORDS the
+// store holds ("planned", "shipped", …) to the status EMOJI every consumer of
+// a BulletRecord is keyed by. Unparseable or empty text yields an empty hash,
+// which § 2.3's second row makes meaningful: a migrated project with no stored
+// legend shows none.
+//
+// It lives here rather than in the dialog because it is a store-read concern
+// and because the dialog's copy would be unreachable from a test: ProjectRow
+// carries `legendText` as the RAW stored JSON (ANTS-3761's byte-identity
+// contract keeps it unparsed) and no declared reader returns it parsed.
+QHash<QString, QString> legendByEmoji(const QString &legendText);
 
 } // namespace RoadmapSource

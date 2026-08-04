@@ -52,6 +52,13 @@
 #include <QVector>
 
 #include <memory>
+#include <optional>
+
+// ANTS-3793 § 4 — the read seam by forward declaration, not #include:
+// roadmapstore.h pulls <QSqlDatabase>, ants_dialogs_lib links the store
+// PRIVATE, and this header is included by widgets that have no Sql include path.
+class RoadmapStore;
+namespace RoadmapSource { enum class ReadError; }
 
 class Config;
 class QCheckBox;
@@ -218,8 +225,29 @@ public:
         // cozy output (INV-1).
         Density density;
 
+        // ANTS-3793 § 2.1 — the records, already resolved by the dialog's
+        // owner wrapper (the store when this project is migrated, the markdown
+        // when it is not). ABSENT means "parse `markdownText` yourself", which
+        // is what every test driving this static helper directly does and what
+        // keeps them all unchanged. Same pattern as shippedDates above: the
+        // dialog computes, the renderer looks up.
+        // (spelled through RoadmapParse:: — the BulletRecord alias below is
+        // declared after this nested struct.)
+        std::optional<QVector<RoadmapParse::BulletRecord>> bullets;
+
+        // ANTS-3793 § 2.3 — the migrated project's OWN legend, status emoji →
+        // label, parsed from ProjectRow::legendText. Consulted only when
+        // `legendFromStore` is set, and then it is the whole vocabulary: a
+        // status the stored legend does not name renders no label, per that
+        // section's second row. On every other path the dialog's compile-time
+        // kStatusLabels table is used, unchanged — which is the third row, and
+        // the one a careless implementation of the first two deletes.
+        QHash<QString, QString> legend;
+        bool legendFromStore;
+
         CardRenderOptions() : activePreset(Preset::Full),
-                              density(Density::Cozy) {}
+                              density(Density::Cozy),
+                              legendFromStore(false) {}
     };
 
     // ANTS-1154 — new card-style renderer. Walks `markdownText` and
@@ -453,6 +481,43 @@ private:
         return loadMarkdown(m_roadmapPath, includeArchive);
     }
     bool wantsHistoryLoad() const;
+
+    // ANTS-3793 § 2.1 — the dialog's owner wrapper. Returns this project's
+    // records: from the store when it is migrated, from `markdown` when it is
+    // not. It takes no project root because the dialog has exactly one project
+    // — storeProjectRoot() derives it from m_roadmapPath.
+    //
+    // A refusal returns an empty vector AND sets m_sourceError, which rebuild()
+    // renders as a notice instead of an empty roadmap. That is the dialog's
+    // half of "never fall back silently": the markdown is right there and the
+    // wrapper deliberately does not read it.
+    QVector<BulletRecord> roadmapBullets(const QString &markdown,
+                                         bool includeArchive) const;
+
+    // The project root ANTS-3756 INV-8 keys a project on, derived from
+    // m_roadmapPath: the nearest ancestor directory holding a `.git`, which is
+    // the same boundary findRoadmapUnder()'s up-walk stops at, so a roadmap
+    // found at `<root>/docs/ROADMAP.md` resolves back to `<root>`. Falls back
+    // to the roadmap's own directory outside a git tree.
+    QString storeProjectRoot() const;
+
+    // § 2.3 — this project's STORED legend as status emoji → label, empty on
+    // every path but a migrated project that has one. Costs the one extra
+    // readProject() that section prices, and the parse it names: legendText is
+    // the raw stored JSON and no declared reader returns it parsed.
+    QHash<QString, QString> storeLegend() const;
+
+    // § 2.2's last rule — one long-lived Access::Interactive connection,
+    // opened on the first dispatch that finds a store file. The MARKER is
+    // still resolved per read.
+    mutable std::unique_ptr<RoadmapStore> m_roadmapStore;
+    // Set by roadmapBullets() on a refusal, cleared on every successful read.
+    mutable QString m_sourceError;
+    // Which backend answered the LAST roadmapBullets() call. § 2.3's table
+    // turns on it: "store, no stored legend" shows no legend while "markdown"
+    // keeps the compile-time one, and an empty legend map cannot tell those
+    // two apart on its own.
+    mutable bool m_lastReadFromStore = false;
 
     QString m_roadmapPath;
     QString m_changelogPath;

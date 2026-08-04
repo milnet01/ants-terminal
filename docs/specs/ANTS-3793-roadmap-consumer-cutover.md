@@ -837,7 +837,7 @@ subset core, so `test_core` stays the one bundle that has both by declaration.
 | `Inv1DispatchMarker` | INV-1 |
 | `Inv2BackendsAgree` | INV-2 |
 | `Inv2Membership` | INV-2's membership difference (below), at `includeArchive == false` |
-| `Inv2Legend` | § 2.3's legend rule — the three rows of its table |
+| `Inv2Legend` | § 2.3's legend rule — the three rows of its table. **Implemented in `tests/features/roadmap_dialog_legend/`, in the `test_dialogs` bundle**, not here: this directory compiles into `test_core`, which does not link `ants_dialogs_lib` and so cannot reach `renderCardsHtml` at all. That bundle names `ants_roadmapstore_lib` explicitly, because dialogs links the store `PRIVATE` and the case includes `roadmapstore.h` itself |
 | `Inv3Ceiling` | INV-3's refusal — runs by default |
 | `Inv3Latency` | INV-3's p95 — `perf` label, excluded from the default presets |
 

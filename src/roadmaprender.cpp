@@ -25,6 +25,8 @@ bool fail(QString *error, const QString &msg) {
     return false;
 }
 
+}  // namespace  (ANTS-3793 — emojiFor is exported; see roadmaprender.h)
+
 // roadmap-format.md § 3.3's four status emojis. `dropped` deliberately has no
 // glyph: § 3.11 makes a fifth an anti-pattern, and INV-4 excludes those items
 // from every rendered file, so a dropped item never reaches this function.
@@ -35,6 +37,8 @@ QString emojiFor(const QString &status) {
     if (status == QLatin1String("planned"))     return QString::fromUtf8(RoadmapParse::kEmojiPlanned);
     return QString();
 }
+
+namespace {
 
 bool isOpen(const QString &status) {
     // roadmap-data-model.md § 3.4, exactly.

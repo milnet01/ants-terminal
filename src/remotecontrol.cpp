@@ -46,6 +46,11 @@
 #include "roadmapdialog.h"
 #include "roadmapfoldin.h"
 #include "roadmapindex.h"
+// ANTS-3793 — the read seam and the store behind it. Included HERE and not in
+// remotecontrol.h: roadmapstore.h pulls <QSqlDatabase>, and the link edge that
+// gets it here is PRIVATE (CMakeLists.txt § "ANTS-3793 § 4").
+#include "roadmapsource.h"
+#include "roadmapstore.h"
 #include "changeloglog.h"
 #include "passheadingwrite.h"
 #include "subsystemmap.h"
@@ -3601,6 +3606,145 @@ static QString rcExtractGateNote(const QString &body) {
     return QString();
 }
 
+// ANTS-3793 § 2.1 — the owner wrapper. See remotecontrol.h for the contract;
+// the two rules discharged here are § 2.2's first and second, in that order.
+QVector<RoadmapParse::BulletRecord>
+RemoteControl::roadmapBullets(const QString &projectRoot,
+                              const QString &markdown,
+                              bool includeArchive,
+                              RoadmapSource::ReadError *why,
+                              QString *error) const {
+    if (why)
+        *why = RoadmapSource::ReadError::None;
+    if (error)
+        error->clear();
+
+    // A caller with no project root cannot ask the marker anything —
+    // migratedProject() refuses a root it cannot canonicalise, and passing ""
+    // would turn every focused-tab call into a refusal.
+    if (!projectRoot.isEmpty()) {
+        // The local rather than `why` directly: a caller that passed nullptr
+        // would otherwise turn rule 2's refusal into a fall-through to
+        // markdown — the silent fallback INV-1 forbids, arriving through an
+        // omitted out-param.
+        RoadmapSource::ReadError openWhy = RoadmapSource::ReadError::None;
+        RoadmapStore *store = roadmapStoreOrNull(&openWhy, error);
+        if (openWhy != RoadmapSource::ReadError::None) {
+            if (why)
+                *why = openWhy;
+            return {};
+        }
+        if (store) {
+            RoadmapSource::ReadError seamWhy = RoadmapSource::ReadError::None;
+            auto records = RoadmapSource::bulletsFor(
+                *store, projectRoot, markdown, includeArchive,
+                &seamWhy, error);
+            if (why)
+                *why = seamWhy;
+            if (records)
+                return *records;
+            // nullopt with a reason is a refusal and never a fallback (INV-1);
+            // nullopt with None means "not migrated", which falls through.
+            if (seamWhy != RoadmapSource::ReadError::None)
+                return {};
+        }
+    }
+    return RoadmapParse::parseBullets(markdown);
+}
+
+// ANTS-3793 § 2.2 rules 1 and 2, discharged once for both readers above. The
+// decision itself lives in the free storeFor() so INV-1's two unmigrated cases
+// have a driver that needs no RemoteControl; this member owns only the caching.
+//
+// Absence is NOT remembered: a store that does not exist yet costs one stat per
+// call to re-check, and remembering it would serve markdown for the rest of the
+// session to a project migrated in between. An OPEN connection is remembered —
+// that is the term § 4's p95 budget is built on.
+RoadmapStore *RemoteControl::roadmapStoreOrNull(RoadmapSource::ReadError *why,
+                                                QString *error) const {
+    if (m_roadmapStore)
+        return m_roadmapStore.get();
+    RoadmapSource::ReadError openWhy = RoadmapSource::ReadError::None;
+    QString openErr;
+    m_roadmapStore = RoadmapSource::storeFor(RoadmapStore::defaultPath(),
+                                             &openWhy, &openErr);
+    if (openWhy != RoadmapSource::ReadError::None) {
+        if (why)
+            *why = openWhy;
+        if (error)
+            *error = openErr;
+        return nullptr;
+    }
+    return m_roadmapStore.get();
+}
+
+// ANTS-3793 § 2.2 — the dispatch on its own. See remotecontrol.h for the one
+// site that needs it and why it cannot ask by reading.
+bool RemoteControl::roadmapStoreServes(const QString &projectRoot,
+                                       const QString &markdown,
+                                       RoadmapSource::ReadError *why,
+                                       QString *error) const {
+    if (why)
+        *why = RoadmapSource::ReadError::None;
+    if (error)
+        error->clear();
+    if (projectRoot.isEmpty())
+        return false;
+    // Same guard as roadmapBullets(): a dropped `why` must not silently
+    // downgrade a refusal into "not migrated, parse the markdown".
+    RoadmapSource::ReadError localWhy = RoadmapSource::ReadError::None;
+    RoadmapStore *store = roadmapStoreOrNull(&localWhy, error);
+    const bool served =
+        store && RoadmapSource::migratedProject(*store, projectRoot, markdown,
+                                                error, &localWhy).has_value();
+    if (why)
+        *why = localWhy;
+    return served;
+}
+
+// ANTS-3793 § 2.1 — the ReadError → refusal-envelope mapping, once for the
+// whole verb layer. Returns true when it filled `out` with a refusal, so a
+// read site reads `if (rcRoadmapSourceRefused(...)) return QJsonDocument(out);`.
+//
+// The codes are docs/standards/mcp-error-codes.md's, and the two failure kinds
+// stay distinct because they send the user to different files: StoreFailed is
+// the STORE not opening, SourceUnrecognised is the store being fine and the
+// ROADMAP.md being absent, empty or mangled.
+static bool rcRoadmapSourceRefused(QJsonObject &out,
+                                   RoadmapSource::ReadError why,
+                                   const QString &err) {
+    switch (why) {
+    case RoadmapSource::ReadError::None:
+        return false;
+    case RoadmapSource::ReadError::TooLarge:
+        out["ok"] = false;
+        out["error"] = err.isEmpty()
+            ? QStringLiteral("roadmap store project exceeds the read ceiling")
+            : err;
+        out["code"] = QStringLiteral("too_large");
+        return true;
+    case RoadmapSource::ReadError::StoreFailed:
+        out["ok"] = false;
+        out["error"] = err.isEmpty()
+            ? QStringLiteral("could not read the roadmap store")
+            : err;
+        out["code"] = QStringLiteral("read_failed");
+        return true;
+    case RoadmapSource::ReadError::SourceUnrecognised:
+        out["ok"] = false;
+        out["error"] = err.isEmpty()
+            ? QStringLiteral("migrated project, but its roadmap text is "
+                             "unrecognisable")
+            : err;
+        out["code"] = QStringLiteral("unrecognised_format");
+        // ANTS-1463 — every unrecognised_format envelope carries both.
+        out["expected_format"] = kUnrecognisedFormatExpected();
+        out["hint"] = kUnrecognisedFormatHint();
+        return true;
+    }
+    return false;
+}
+
 // ANTS-1922 — canonical bullet-cache array builder. Mirrors the
 // bullet-mode pre-fill loop exactly (same fields, incl. section_slug)
 // so a bundles-mode lazy-fill keeps the SHARED m_roadmapCacheBullets
@@ -3610,8 +3754,12 @@ static QString rcExtractGateNote(const QString &body) {
 // their `for (const auto &b : bullets)` loops out of the function body
 // and perturb the count-based roadmap_query_section_index INV-7 guard
 // (a follow-on can migrate them + update that test).
-static QJsonArray rcBuildBulletCacheArray(const QString &markdown) {
-    const auto bullets = RoadmapDialog::parseBullets(markdown);
+//
+// ANTS-3793 — takes RECORDS rather than markdown now: the backend choice is the
+// caller's (RemoteControl::roadmapBullets), and this builder has no
+// RemoteControl to ask. Same array, same fields.
+static QJsonArray rcBuildBulletCacheArray(
+        const QVector<RoadmapParse::BulletRecord> &bullets) {
     QJsonArray arr;
     for (const auto &b : bullets) {
         QJsonObject o;
@@ -4456,9 +4604,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     QString path;
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
+    // ANTS-3793 — the project root the store's dispatch marker is keyed on
+    // (ANTS-3756 INV-8). Empty when the caller named no cwd — the focused-tab
+    // back-compat path below — which roadmapBullets() reads as "markdown, as
+    // today" rather than as a project it failed to resolve.
+    const QString callerCanonical =
+        callerRaw.isEmpty() ? QString()
+                            : QFileInfo(callerRaw).canonicalFilePath();
     if (!callerRaw.isEmpty()) {
-        const QString callerCanonical =
-            QFileInfo(callerRaw).canonicalFilePath();
         // ANTS-1459 — shared findRoadmapUnder() helper widens the
         // search to docs/, docs/private/, docs/internal/, .github/.
         path = findRoadmapUnder(callerCanonical);
@@ -4485,6 +4638,21 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // TTL/mtime check is preserved exactly.
     // ANTS-1287-INV-5/8: section index + section-bullet cache share
     // the same freshness predicate.
+    // ANTS-3793 — a store refusal must not leave the cache looking fresh. The
+    // !fresh block below stamps path/mtime/now BEFORE it fills bullets, so a
+    // refusal partway through would leave an empty array warm and the next call
+    // inside the 100 ms TTL would serve it as "this roadmap has no bullets".
+    // Invalidate, then fill the envelope.
+    auto refuseRoadmapSource = [&](RoadmapSource::ReadError srcWhy,
+                                   const QString &srcErr) {
+        m_roadmapCachePath.clear();
+        m_roadmapCacheMtimeMs = 0;
+        m_roadmapCacheStampMs = 0;
+        m_roadmapCacheBullets = QJsonArray();
+        rcRoadmapSourceRefused(out, srcWhy, srcErr);
+        return QJsonDocument(out);
+    };
+
     const bool fresh = (m_roadmapCachePath == path) &&
                        (m_roadmapCacheMtimeMs == mtime) &&
                        (mtime != 0) &&
@@ -4512,7 +4680,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         m_roadmapCacheStampMs = nowMs;
 
         if (section.isEmpty()) {  // ANTS-1287-INV-6 — full-file path
-            const auto bullets = RoadmapDialog::parseBullets(markdown);
+            // ANTS-3793 — the store when this project is migrated, `markdown`
+            // when it is not. One call swapped; the emission loop below is
+            // untouched (roadmap_query_section_index INV-7 scrapes its shape).
+            RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
+            QString srcErr;
+            const auto bullets = roadmapBullets(callerCanonical, markdown,
+                                                /*includeArchive=*/false,
+                                                &srcWhy, &srcErr);
+            if (srcWhy != RoadmapSource::ReadError::None)
+                return refuseRoadmapSource(srcWhy, srcErr);
             QJsonArray arr;
             for (const auto &b : bullets) {
                 QJsonObject o;
@@ -4579,7 +4756,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             QFile f(path);
             if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString markdown = QString::fromUtf8(f.readAll());
-                const auto bullets = RoadmapDialog::parseBullets(markdown);
+                // ANTS-3793 — same swap as the full-file pre-fill above.
+                RoadmapSource::ReadError srcWhy =
+                    RoadmapSource::ReadError::None;
+                QString srcErr;
+                const auto bullets = roadmapBullets(callerCanonical, markdown,
+                                                    /*includeArchive=*/false,
+                                                    &srcWhy, &srcErr);
+                if (srcWhy != RoadmapSource::ReadError::None)
+                    return refuseRoadmapSource(srcWhy, srcErr);
                 QJsonArray arr;
                 for (const auto &b : bullets) {
                     QJsonObject o;
@@ -4885,7 +5070,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             QFile f(path);
             if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString markdown = QString::fromUtf8(f.readAll());
-                m_roadmapCacheBullets = rcBuildBulletCacheArray(markdown);
+                // ANTS-3793 — store-or-markdown, then the same builder.
+                RoadmapSource::ReadError srcWhy =
+                    RoadmapSource::ReadError::None;
+                QString srcErr;
+                const auto bullets = roadmapBullets(callerCanonical, markdown,
+                                                    /*includeArchive=*/false,
+                                                    &srcWhy, &srcErr);
+                if (srcWhy != RoadmapSource::ReadError::None)
+                    return refuseRoadmapSource(srcWhy, srcErr);
+                m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
                 m_roadmapCacheDuplicateIds =
                     rcComputeDuplicateIds(m_roadmapCacheBullets);
             }
@@ -4971,7 +5165,38 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // to OTHER sections, which is the whole point.
             sectionEtag = rcComputeSectionEtag(slice);
             m_roadmapSectionEtags.insert(sec->slug, sectionEtag);
-            auto bullets = RoadmapDialog::parseBullets(slice);
+            // ANTS-3793 — the ONE site where "swap the call" is not the whole
+            // change. The markdown path slices this section's TEXT and parses
+            // the slice, which a store cannot do: it holds records, not lines.
+            // So the store path takes the project's whole record list and
+            // filters by sectionSlug. INV-2 makes the two agree field-for-field
+            // on content, and § 2.1.1 fills sectionSlug from the same stateful
+            // slugger the index used, so the filter selects the same bullets
+            // the slice would have. `fromStore` is what tells them apart — a
+            // store-backed project must not be handed a text slice, and an
+            // unmigrated one must keep slicing exactly as it does today.
+            // roadmapStoreServes() answers the dispatch WITHOUT materialising
+            // records, which matters here: INV-9 keeps section mode off the
+            // whole-file parse, and asking the question by reading everything
+            // would spend exactly what that invariant saves.
+            RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
+            QString srcErr;
+            QVector<RoadmapDialog::BulletRecord> bullets;
+            const bool fromStore =
+                roadmapStoreServes(callerCanonical, markdown, &srcWhy, &srcErr);
+            if (srcWhy != RoadmapSource::ReadError::None)
+                return refuseRoadmapSource(srcWhy, srcErr);
+            if (fromStore) {
+                const auto whole = roadmapBullets(callerCanonical, markdown,
+                                                  /*includeArchive=*/false,
+                                                  &srcWhy, &srcErr);
+                if (srcWhy != RoadmapSource::ReadError::None)
+                    return refuseRoadmapSource(srcWhy, srcErr);
+                for (const auto &b : whole)
+                    if (b.sectionSlug == sec->slug) bullets.append(b);
+            } else {
+                bullets = RoadmapDialog::parseBullets(slice);
+            }
             // ANTS-2225 — pass-heading fallback. parseBullets engages its
             // `#### Pass N.M` reader only when it sees >= 2 pass headings AND
             // >= 2 status markers across its INPUT (RoadmapParse::detectRoadmapFormat). A
@@ -4988,7 +5213,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // the common (non-empty-slice) path; the whole-file parse runs only
             // on this otherwise-empty branch. A non-pass-heading doc yields no
             // bullet for the slug here, so the section stays empty as before.
-            if (bullets.empty()) {
+            // ANTS-3793 — markdown-path only. The store path already filtered
+            // the whole-project record list by slug, so this recovery would
+            // re-run it against a text parse the store path never made; and
+            // § 5 scopes the store backend to ants-v1, which is not the
+            // pass-headings dialect this fallback exists for.
+            if (!fromStore && bullets.empty()) {
                 const auto whole = RoadmapDialog::parseBullets(markdown);
                 QVector<RoadmapDialog::BulletRecord> filtered;
                 for (const auto &b : whole)
@@ -5242,7 +5472,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         QFile f(path);
         if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
             const QString markdown = QString::fromUtf8(f.readAll());
-            const auto bullets = RoadmapDialog::parseBullets(markdown);
+            // ANTS-3793 — same swap as the other two fill sites.
+            RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
+            QString srcErr;
+            const auto bullets = roadmapBullets(callerCanonical, markdown,
+                                                /*includeArchive=*/false,
+                                                &srcWhy, &srcErr);
+            if (srcWhy != RoadmapSource::ReadError::None)
+                return refuseRoadmapSource(srcWhy, srcErr);
             QJsonArray arr;
             for (const auto &b : bullets) {
                 QJsonObject o;
@@ -6540,7 +6777,20 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         }
         const QString rmMarkdown = QString::fromUtf8(rf.readAll());
         rf.close();
-        const auto bullets = RoadmapDialog::parseBullets(rmMarkdown);
+        // ANTS-3793 — the store when this project is migrated, `rmMarkdown`
+        // when it is not. A refusal is surfaced rather than served from
+        // markdown: citing a bullet resolved from a source we were told not to
+        // trust is how a wrong id reaches the CHANGELOG.
+        RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
+        QString srcErr;
+        const auto bullets = roadmapBullets(callerCanonical, rmMarkdown,
+                                            /*includeArchive=*/false,
+                                            &srcWhy, &srcErr);
+        if (srcWhy != RoadmapSource::ReadError::None) {
+            QJsonObject srcOut;
+            rcRoadmapSourceRefused(srcOut, srcWhy, srcErr);
+            return QJsonDocument(srcOut);
+        }
         const RoadmapDialog::BulletRecord *match = nullptr;
         for (const auto &cand : bullets) {
             if (cand.id == id) { match = &cand; break; }
@@ -6869,9 +7119,21 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         if (!rmPath.isEmpty()) {
             QFile rf(rmPath);
             if (rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                roadmapBullets =
-                    RoadmapDialog::parseBullets(QString::fromUtf8(rf.readAll()));
+                const QString rmMarkdown = QString::fromUtf8(rf.readAll());
                 rf.close();
+                // ANTS-3793 — store-or-markdown. `this->` because the local
+                // above shadows the member with the same name.
+                RoadmapSource::ReadError srcWhy =
+                    RoadmapSource::ReadError::None;
+                QString srcErr;
+                roadmapBullets = this->roadmapBullets(
+                    callerCanonical, rmMarkdown, /*includeArchive=*/false,
+                    &srcWhy, &srcErr);
+                if (srcWhy != RoadmapSource::ReadError::None) {
+                    QJsonObject srcOut;
+                    rcRoadmapSourceRefused(srcOut, srcWhy, srcErr);
+                    return QJsonDocument(srcOut);
+                }
                 roadmapPresent = true;
             }
         }
@@ -13491,12 +13753,17 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
 // caller's own roadmap is skipped.
 //
 // Returns id → {status, resolved_from, shipped_date?}.
-static QHash<QString, QJsonObject> rlResolveForeignFeedbackIds(
+//
+// ANTS-3793 — a member rather than a free function now, and only because of
+// that: each sibling roadmap it opens belongs to a project that may itself be
+// migrated, so the read goes through the owner wrapper, which needs a
+// RemoteControl to hold the store connection. Nothing else about it changed.
+QHash<QString, QJsonObject> RemoteControl::rlResolveForeignFeedbackIds(
     const QString &feedbackFilePath,     // its parent dir is the shared root
     const QString &callerRoadmapPath,    // skipped when encountered
     const QSet<QString> &callerPrefixes,
     const QStringList &wantedIds,
-    const QSet<QString> &alreadyResolved) {
+    const QSet<QString> &alreadyResolved) const {
     // An EMPTY callerPrefixes means "the caller owns no prefixes" — because it
     // has no roadmap, or none with ids — which makes every wanted id foreign
     // rather than none of them. The inherited form returned early here, and
@@ -13547,7 +13814,17 @@ static QHash<QString, QJsonObject> rlResolveForeignFeedbackIds(
         const QString sibMd = QString::fromUtf8(sf.readAll());
         sf.close();
         const QString sibLeaf = QFileInfo(subCanon).fileName();
-        for (const auto &b : RoadmapDialog::parseBullets(sibMd)) {
+        // ANTS-3793 — the sibling's own store when IT is migrated. A refusal
+        // skips this sibling rather than parsing its markdown: INV-1's "served
+        // neither" is a skip here, and this resolver is best-effort by design.
+        RoadmapSource::ReadError sibWhy = RoadmapSource::ReadError::None;
+        QString sibErr;
+        const auto sibBullets = roadmapBullets(subCanon, sibMd,
+                                               /*includeArchive=*/false,
+                                               &sibWhy, &sibErr);
+        if (sibWhy != RoadmapSource::ReadError::None)
+            continue;
+        for (const auto &b : sibBullets) {
             if (b.id.isEmpty() || !neededForeignIds.contains(b.id))
                 continue;
             QJsonObject fr;
@@ -13663,7 +13940,18 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
             if (rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString rmMarkdown = QString::fromUtf8(rmf.readAll());
                 rmf.close();
-                for (const auto &b : RoadmapDialog::parseBullets(rmMarkdown)) {
+                // ANTS-3793 — the caller project's store when it is migrated.
+                // Best-effort like the rest of this block: a refusal leaves
+                // every mapped id "unknown", which is what an unreadable
+                // roadmap already produces, and never falls back to markdown.
+                RoadmapSource::ReadError srcWhy =
+                    RoadmapSource::ReadError::None;
+                QString srcErr;
+                const auto rmBullets = roadmapBullets(callerCanonical,
+                                                      rmMarkdown,
+                                                      /*includeArchive=*/false,
+                                                      &srcWhy, &srcErr);
+                for (const auto &b : rmBullets) {
                     if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id))
                         continue;
                     idToStatus.insert(b.id, b.status);  // later wins (live row)
@@ -14158,7 +14446,18 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             if (rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString rmMarkdown = QString::fromUtf8(rmf.readAll());
                 rmf.close();
-                for (const auto &b : RoadmapDialog::parseBullets(rmMarkdown)) {
+                // ANTS-3793 — the caller project's store when it is migrated.
+                // A refusal leaves the id sets empty, which this verb already
+                // handles (every finding reads roadmap_unresolved_ids); it
+                // never reads markdown behind the store's back.
+                RoadmapSource::ReadError srcWhy =
+                    RoadmapSource::ReadError::None;
+                QString srcErr;
+                const auto rmBullets = roadmapBullets(callerCanonical,
+                                                      rmMarkdown,
+                                                      /*includeArchive=*/false,
+                                                      &srcWhy, &srcErr);
+                for (const auto &b : rmBullets) {
                     if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
                     ropts.roadmapIds.insert(b.id);
                     callerPrefixes.insert(idPrefixOfC(b.id));
@@ -22475,7 +22774,20 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
     }
     const QString markdown = QString::fromUtf8(rf.readAll());
     rf.close();
-    const auto bullets = RoadmapDialog::parseBullets(markdown);
+    // ANTS-3793 — the store when this project is migrated, `markdown` when it
+    // is not. This verb refuses rather than degrading: its whole output is a
+    // per-bullet classification, and one built from the wrong source is worse
+    // than none.
+    RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
+    QString srcErr;
+    const auto bullets = roadmapBullets(rootCanonical, markdown,
+                                        /*includeArchive=*/false,
+                                        &srcWhy, &srcErr);
+    if (srcWhy != RoadmapSource::ReadError::None) {
+        QJsonObject srcOut;
+        rcRoadmapSourceRefused(srcOut, srcWhy, srcErr);
+        return QJsonDocument(srcOut);
+    }
 
     // Classifier helpers.
     auto isReachable = [&](const QString &sha) -> bool {
