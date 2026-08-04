@@ -33488,6 +33488,35 @@ here.)
   Kind: doc-fix.
   Source: in-session-2026-08-04 (ANTS-3810 cold-eyes gate, /doc-lint observation).
 
+- 📋 [ANTS-3830] **`refactor_shell_quote_duplicate` is stale — it now flags every legitimate `shellQuote()` caller.**
+  The rule in `audit_rules.json` says "`shellQuote` is implemented in
+  sshdialog.cpp and re-implemented as a lambda in mainwindow.cpp ...
+  consolidate into src/shellutils.h". That consolidation SHIPPED in 0.7.57
+  (ANTS-1047), so the premise no longer holds — but the rule's grep still
+  excludes only `src/shellutils` and `src/sshdialog.cpp`, which means it
+  now fires on every legitimate *caller* of the consolidated helper.
+
+  Measured 2026-08-04, the rule's own command returns hits in four files,
+  none of them a duplicate implementation:
+    - `src/mainwindow.cpp` (3 call sites + 1 comment) — the very file the
+      rule says to consolidate INTO shellutils, already done
+    - `src/auditdialog.cpp` (4) — the rule's own description text
+    - `src/verifyengine.h` (1) — the phrase "shell-quoted" in a comment
+    - `src/terminalwidget.cpp` (3) — new ANTS-3828 caller
+
+  Fix: either retire the rule (its job is done) or invert it to detect a
+  *re-implementation* — a `shellQuote` definition outside shellutils.h,
+  e.g. grep for `QString shellQuote` / `auto shellQuote =` rather than
+  every mention of the identifier. The current form is a pure
+  false-positive generator and trains the reader to skip the rule.
+
+  Note it also matches the word "shell-quote" in prose via the `shell.quote`
+  alternation's `.` wildcard, which is how verifyengine.h and two comments
+  land in the list.
+  **Layman:** An old code-checking rule now complains about correct code, so every audit run carries four false alarms.
+  Kind: audit-fix.
+  Source: in-session-2026-08-04 (found while fixing ANTS-3828).
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
