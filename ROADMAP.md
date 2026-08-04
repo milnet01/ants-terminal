@@ -24998,6 +24998,46 @@ against current source before filing.
 
   Findings still to fold live at docs/reviews/ANTS-3793-cold-eyes-loop3-tail.md
   -- fold directly, do NOT re-dispatch a review to rediscover them.
+  SPEC ACCEPTED (2026-08-04). Step 2 of the split's TODO is DONE: the
+  934-line umbrella at docs/specs/ANTS-3793-roadmap-consumer-cutover.md was
+  REWRITTEN IN PLACE as the read seam (same path deliberately -- three
+  documents cite it). Step 5's "delete or rewrite" is therefore settled as
+  rewrite; do not also delete it.
+
+  The loop-3 tail was RESOLVED, not inherited. C1 (INV-2 vs membership),
+  C2 (bulletsFromStore cannot reach renderBullet), H2 (no store surface
+  gives document order), H4 (the retained markdown read), H5, M1-M5, M7, M8
+  and the read-seam LOWs are all folded in. One filed LOW was verified WRONG
+  and dismissed: stripInlineEmoji() strips the space after the emoji, so
+  `body` carries no leading space. C3/H1/H3/M6 travelled to ANTS-3808/3809.
+
+  Rule-14 gate: 3 loops, converged by cap. 69 verified, 69 fixed, 1
+  dismissed, NO deferred tail. CRITICALs by loop: 3 -> 1 -> 0. Loop 2's
+  CRITICAL was structural and neither loop 1 nor the umbrella's three loops
+  reached it -- the store path had no source scope, while the markdown path
+  takes loadMarkdown(path, includeArchive); all three seam functions and
+  both owner wrappers now carry the flag.
+
+  Surface this spec now declares, beyond the umbrella's: an owner wrapper
+  per consumer (RemoteControl / RoadmapDialog roadmapBullets()), a free
+  RoadmapSource::storeFor() so INV-1's unmigrated cases have a driver, and
+  enum ReadError {None, StoreFailed, SourceUnrecognised, TooLarge}. Store
+  additions: readProjectByRoot() + ProjectRow::root, and an owed
+  RoadmapParse export for the headline truncation (assignHeadline() is
+  static).
+
+  NOTE FOR THE NEXT SESSION: the doc is 954 lines -- the size the umbrella
+  was when it was split. It converged, so this is not a blocker, but § 2.3
+  (the dialog + legend) is a clean seam if a further split is wanted before
+  implementation. User's call.
+
+  Filed while verifying the store's read surface: ANTS-3815 (source-format
+  column), ANTS-3816 (batched reader + size aggregate), ANTS-3817
+  (SectionRow.section_id), ANTS-3818 (document order is a comparator a
+  consumer can forget), ANTS-3819 (RoadmapStore::db() escape hatch),
+  ANTS-3820 (a dropped item has no markdown form).
+
+  NEXT: step 3 of the TODO -- draft + gate ANTS-3809 (the write half).
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
