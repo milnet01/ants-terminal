@@ -15,6 +15,7 @@
 #include "terminalwidget.h"
 
 #include <QFile>
+#include <QImageReader>
 #include <QList>
 #include <QString>
 #include <QTextStream>
@@ -112,11 +113,27 @@ TEST(ImagePasteUriList, IgnoresEmptyList) {
 
 // INV-4 — several images become one space-separated line; a non-image in
 // the same selection is skipped rather than poisoning the whole paste.
+//
+// The second image is `.bmp` and NOT `.webp`, and the reason is the whole
+// point of the helper under test: it filters on
+// QImageReader::supportedImageFormats() — deliberately, "rather than a
+// hardcoded suffix list that would drift from the installed image plugins"
+// — so which suffixes count is a property of the MACHINE, not of the code.
+// WebP ships in Qt's separate imageformats plugin package, present on this
+// developer's distro and absent on the GitHub runner, so a `.webp`
+// expectation asserted the runner's package list and failed there while
+// passing locally. png and bmp are built into QtGui itself. The guard below
+// keeps that reasoning enforced rather than merely written down.
 TEST(ImagePasteUriList, JoinsMultipleImages) {
+    const auto supported = QImageReader::supportedImageFormats();
+    ASSERT_TRUE(supported.contains("png") && supported.contains("bmp"))
+        << "this Qt build decodes neither png nor bmp — the fixture below "
+           "asserts joining, and cannot if its suffixes are not images here";
+
     EXPECT_EQ(pasteTextFor({QStringLiteral("/home/u/a.png"),
                             QStringLiteral("/home/u/notes.txt"),
-                            QStringLiteral("/home/u/b.webp")}),
-              "/home/u/a.png /home/u/b.webp");
+                            QStringLiteral("/home/u/b.bmp")}),
+              "/home/u/a.png /home/u/b.bmp");
 }
 
 // INV-5 — the branch is actually wired into Ctrl+Shift+V, and sits after

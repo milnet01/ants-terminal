@@ -640,7 +640,38 @@ TEST(RoadmapReadSeam, Ants3793LatencyCaseIsPerfLabelled) {
            "so it is now running unlabelled in the default suite";
 }
 
+// ASan instruments every load and store, so under it this stops measuring the
+// read at all — see the GTEST_SKIP below. Same detection ANTS-3761's INV-12
+// case uses, and the same two-compiler dance (GCC defines the macro; Clang
+// answers __has_feature).
+#if defined(__SANITIZE_ADDRESS__)
+#  define ANTS_TEST_ASAN 1
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define ANTS_TEST_ASAN 1
+#  endif
+#endif
+
+// INV-3's p95, and the budget is a WALL-CLOCK one, which makes an unsanitized
+// build a precondition of the instrument rather than a tolerance to widen.
+// Measured in ci.yml's own run of 6f78990f: build-asan reported p95 217.9 ms
+// against the 50 ms budget while build-test — the SAME commit, the SAME runner
+// image, the same 1,839-item project — passed. A 4.4x spread between two jobs
+// that differ only in `-fsanitize=address` is the sanitizer's shadow-memory and
+// per-access checks being timed, not a read that got slower.
+//
+// Relaxing the number instead would be the wrong repair twice over: 218 ms is
+// above even the markdown path this seam replaces (33.2 ms for a 3 MB file, § 4),
+// so a budget wide enough to pass under ASan would no longer fail for a genuine
+// N+1 regression — which is the one thing § 4 built this case to catch, and
+// which it already caught once (101.5 ms, remedied by readItems()).
 TEST(RoadmapReadSeam, Inv3Latency) {
+#ifdef ANTS_TEST_ASAN
+    GTEST_SKIP() << "INV-3's p95 is unmeasurable under ASan: instrumented "
+                    "loads and stores dominate the timing. Enforced by the "
+                    "Release build (ci.yml's build-test job, ctest --preset=perf "
+                    "locally).";
+#endif
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
     auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
