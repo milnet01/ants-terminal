@@ -33117,6 +33117,30 @@ here.)
   per-rule precision signal this item proposes to measure, so it is the
   first datapoint rather than a separate concern. If ANTS-3793's tail
   shows the same shape, the fix is a lane-brief change, not a new rule.
+  Evidence (2026-08-04), from a 3-loop /cold-eyes run over the ANTS-3793
+  read-seam spec: 6 lanes, 69 findings verified, 69 fixed, 1 dismissed.
+  Five write-ups at docs/reviews/skill-feedback-2026-08-04.md -- hand that
+  path to the skills-maintainer session rather than re-deriving it.
+
+  The measurement this id asks for, on its clearest data point yet: with
+  /cold-eyes s1b's BOUNDED CODE WINDOWS in the shared packet, 68 of 69
+  findings verified against source. This project's standing expectation is
+  that roughly half a filed HIGH is wrong (see this bullet's own note); the
+  packet is what closed that gap, so the "lanes assert code claims without
+  opening the file" failure shape is a PACKET problem, not a lane-quality
+  problem.
+
+  The one dismissal: a lane claimed renderBullet()'s trailing period
+  corrupts kind/source/lanes. rxKind is ^\s*Kind:\s*([^\.\n]+?)\s*[\.\n] --
+  the terminator is consumed OUTSIDE the capture. The lane had routed the
+  decisive question to Open questions rather than asserting it, which is
+  the briefed behaviour and made the dismissal cheap.
+
+  Cost caveat for this id's own measurement: lane spend reported ~140-154k
+  tokens each, which is NOT a 2.5x budget overrun -- it is cumulative
+  across three turns. First-turn input was ~38-46k against the stated 60k.
+  Any rule-firing-rate work here should measure per-turn, or it will
+  conclude the packet is too big and shrink the thing that is working.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
