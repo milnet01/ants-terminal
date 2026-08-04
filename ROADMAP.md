@@ -25570,6 +25570,44 @@ against current source before filing.
   **Layman:** Makes the eight roadmap-editing commands write to the database and rebuild the file, instead of splicing text by hand.
   Kind: implement.
   Source: in-session-2026-08-03 (ANTS-3793 cold-eyes loop-3 split).
+  SPEC ACCEPTED (2026-08-04) at docs/specs/ANTS-3809-roadmap-write-half.md,
+  979 lines. Step 3 of the ANTS-3793 split's TODO is DONE. The filed H3 and
+  M6 were RESOLVED here, not inherited.
+
+  Rule-14 gate: 3 loops, converged by cap, NO deferred tail. 62 verified,
+  62 fixed, 8 dismissed. CRITICALs by loop: 2 -> 1. Loop 3's own fixes were
+  not themselves cold-read; that is what the cap means.
+
+  Three defects found by grounding rather than carried, each of which the
+  umbrella and its loop-3 tail had missed:
+  - ANTS-3758's render gate is per PROJECT and fails on 102 of this
+    roadmap's 327 open items, so EVERY write op would refuse on day one.
+    Filed ANTS-3821; the remedy is section 2.6.
+  - bundle_row's read-modify-write has no store surface at all --
+    addElement() is INSERT-only and ElementRow carries no element id.
+    The spec owes RoadmapStore::setElementPayload().
+  - line_range on the store path matches EVERYTHING, not nothing:
+    firstLine is 0 and the predicate is `firstLine + 1 >= a`.
+
+  Two structural gaps two cold reads missed, both fixed: nothing said how a
+  locator becomes an item_pk (six of eight ops need one), and the body
+  append that annotate and flip-with-note consist entirely of was never
+  defined.
+
+  One design correction to the umbrella: render() commits its own files, so
+  mutate-render-commit leaves the FILE ahead of the store on a commit
+  failure. Section 2.1 validates with Options::dryRun first, commits, then
+  publishes.
+
+  Also filed: ANTS-3822 (a history row per consumer write), ANTS-3823
+  (bad_op_combo is used 23 times and documented nowhere).
+
+  OPEN, non-blocking, user's call: collateral outnumbered draft defects two
+  loops running and the doc is 979 lines -- past the 934 the umbrella was
+  split at. A fourth loop or a further split is available. Section 2.2 (the
+  eight ops) is the natural seam.
+
+  NEXT: step 4 of the TODO -- draft + gate ANTS-3810 (oracle + acyclicity).
 
 - 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
