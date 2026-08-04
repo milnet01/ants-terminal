@@ -144,6 +144,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Migrated roadmap bullets no longer render their headline and every trailer key twice** (ANTS-3808)
+  The migration stored the whole bullet — headline line included — as the
+  item's body, while the render emitted its own headline, then that body,
+  then the trailer again from the database columns. The migration now stores
+  only the leftover text, and the render emits a `Kind:` / `Source:` /
+  `Lanes:` / `Layman:` / `Evidence:` line only when the body does not already
+  say the same thing. Values are compared rather than mere presence, so a
+  stale line in the body can never silently replace the canonical one.
+
 - **Pasting a copied image *file* now inserts its path, not a `file://` URI** (ANTS-3828)
   Ctrl+Shift+V branched on `hasImage()` only, so a screenshot on the
   clipboard (a raster) worked while a copied image *file* — which

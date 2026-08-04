@@ -227,7 +227,7 @@ plan; § 7 records that obligation.
 | `projectId` | not knowable here — a plan names a project, it does not create one. **Landed** (ANTS-3765, 2026-08-01): its `load()` calls `registerProject()` (get-or-create, from `projectName` / `exportSlug` and the root it was given) inside the transaction and fills this in |
 | `id`, `idOrigin` | § 2.5 / § 2.6, or synthesised (§ 2.9) |
 | `status` | § 2.7 |
-| `headline`, `body` | the reader's `headline` / `body` |
+| `headline`, `body` | the reader's `headline`, and its `body` **with the render's own head-line PREFIX stripped** (ANTS-3808 § 2.1, shipped) — see below. The `headline` half is unchanged |
 | `kind`, `source` | § 2.8, defaulted when absent |
 | `layman` | the `Layman:` line; empty when absent, no default |
 | `provenance` | per field, § 2.7 / § 2.8 / § 2.9 |
@@ -239,6 +239,22 @@ plan; § 7 records that obligation.
 | `lanes`, `evidence` | the `Lanes:` / `Evidence:` lines — **landed** (ANTS-3767, 2026-07-31) |
 | `extras` | § 2.7 / § 2.8 — **landed** (ANTS-3767, 2026-07-31) |
 | `sectionId` | not knowable here: a plan carries `sectionSlug`, the store row not existing yet. **Landed** (ANTS-3765, 2026-08-01): resolved slug-to-id inside its transaction, parents before children, creating the row only for a slug that is genuinely new |
+
+**The `body` row was amended by ANTS-3808 (shipped 2026-08-04), and the
+distinction it draws is the whole of that spec.** Copying the reader's `body`
+verbatim stored the render's own head line inside it, so every rendered bullet
+repeated its headline and each trailer key. The repair is a **prefix** strip and
+NOT a first-line drop: a native bullet takes its headline from the bold token
+only, so text after the closing `**` lives nowhere but `body`'s first line —
+241 of 1646 bracket-id bullets in this project's own `ROADMAP.md` carry such
+text, and for a single-line bullet it is the item's entire substance.
+
+The boundary is recorded by the reader in **`BulletRecord::headlineEnd`**, an
+additive field on this spec's read contract that no existing caller reads — the
+same shape of widening ANTS-3764 step 2 already made. It is an offset rather
+than a re-match of the stored headline because the reader *normalises* what it
+stores, so on the GFM prose path the headline is not a substring of the line it
+came from and a text match would silently strip nothing.
 
 **Nothing is owed any longer, and "the load half copies rather than translates"
 is now true of every field.** `lanes`, `evidence` and `extras` landed with

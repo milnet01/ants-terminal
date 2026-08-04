@@ -25372,7 +25372,7 @@ against current source before filing.
   Kind: doc.
   Source: user-request-2026-08-03.
 
-- 📋 [ANTS-3808] **The migration and the render disagree about what `item.body` holds, so a rendered bullet repeats its own headline and every field.**
+- ✅ [ANTS-3808] **The migration and the render disagree about what `item.body` holds, so a rendered bullet repeats its own headline and every field.**
   Observed, not inferred — rendered out of a real store in the
   ANTS-3806 fixture. Source bullet:
 
@@ -25549,6 +25549,54 @@ against current source before filing.
   makeItem() in src/roadmapmigrate.cpp owns the strip (T4). INV-1 now
   counts each trailer key's canonical VALUE once, not the key literal
   (T2). Spec is ready to implement; no further review gate is owed.
+  Resolved (2026-08-04): shipped. Five pieces, all against the accepted spec.
+  (1) BulletRecord::headlineEnd, set inside assignHeadline() so a fifth
+  headline site cannot be added without one; (2) the six trailer matchers
+  hoisted out of parseBullets() behind rxKind()/rxLanes()/… accessors plus
+  RoadmapParse::trailerValuesIn() — and parseBullets() now assigns its own
+  record fields FROM that call, so INV-4's equality holds by construction
+  rather than by two implementations agreeing; (3) makeItem()'s prefix strip;
+  (4) renderBullet() -> exported RoadmapRender::bulletText() with per-key
+  value-equality suppression, guarded by `offset >= 0` so an ABSENT key can
+  never suppress (an empty kind would otherwise compare equal to an empty
+  body and INV-12's required line would vanish); (5) the § 4 build decision —
+  new Qt6::Core-only ants_roadmapparse_lib holding roadmapparse.cpp +
+  roadmapindex.cpp, linked PUBLIC by both ants_core_lib and
+  ants_roadmapstore_lib, so the store's headless surface never gains
+  Widgets/Network/DBus. roadmapdialog.cpp's kind pre-walk moved onto the
+  accessor (INV-2's one deliverable); its case-folding widening is real and
+  was declared in § 7, not discovered.
+
+  Tests: tests/features/roadmap_item_body/ (5 cases, test_core bundle).
+  Verified RED first against 7 mutations, one per stated *Breaks when* —
+  INV-1 (suppression disabled), INV-2 (dialog regrows its regex), INV-3
+  (render emits a Kind: the reader parses back differently), INV-4 (anchored
+  off the capture instead of the match; Source: skips the trailer-key
+  truncation), INV-5 (first-line drop; headlineEnd unset on the GFM branch).
+  Each reddened exactly the intended case. Full suite 3251/3251 green.
+
+  TWO THINGS THE NEXT SESSION SHOULD KNOW, neither a defect:
+
+  1. headlinePrefixEnd() is a guard BEYOND § 2.1's table. That table assumes
+  the text consumed for the head line is always a prefix of the body; for a
+  native bullet whose bold sits mid-prose it is not, and stripping to
+  capturedEnd() would DELETE the leading prose. The guard returns -1 there
+  (strip nothing) — duplication rather than loss. Measured on this project's
+  ROADMAP.md: it fires on ZERO bullets, because every apparent mid-prose bold
+  is a soft-wrapped headline whose closing `**` is on the next line and
+  rxBold's DotMatchesEverythingOption matches it as one head-anchored span.
+
+  2. § 2.1's corpus figure did not reproduce. The spec measured 241 of 1646
+  bracket-id bullets carrying text after the closing `**`; an independent
+  re-count on 2026-08-04 got 539 of 1666, the difference being whether a
+  soft-wrapped bold headline counts. The spec already says the RATIO is the
+  durable claim and the denominator moves, so this is a counting-rule
+  difference, not a wrong premise — but the pair of numbers was replaced with
+  the range wherever this session restated it, rather than repeated as
+  verified.
+
+  Also amended: ANTS-3757 § 2.1.1's `body` row + a paragraph recording
+  BulletRecord::headlineEnd (§ 7's stated obligation).
 
 - 📋 [ANTS-3809] **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03), which stopped
