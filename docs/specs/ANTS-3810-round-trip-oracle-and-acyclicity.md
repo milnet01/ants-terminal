@@ -375,12 +375,15 @@ migration, and § 2.2 excludes both. So on this project's store the check runs
 over zero edges and returns clean; it is built ahead of its data, which is the
 point of building it before someone starts authoring the edges by hand. The walk
 is O(items + edges) in time and holds one `QVector` of edges plus the DFS stack.
-For scale: this project's roadmap carries **1,659** bracket-id bullets, measured
-2026-08-04 with `grep -cE '^- [^ ]+ \[[A-Z]+-[0-9]+\]' ROADMAP.md`, over a live
-file and **2** rotated archives (`ls docs/roadmap/` → `0.5.md`, `0.6.md`).
-An item-per-bullet store therefore walks a few thousand nodes at most — and the
-bullet figure is an anchor rather than a constant, since the corpus grows on
-every triage pass (it moved by one *while this spec was being drafted*).
+For scale: this project's roadmap carries **~1.66k** bracket-id bullets,
+measured 2026-08-04 with `grep -cE '^- [^ ]+ \[[A-Z]+-[0-9]+\]' ROADMAP.md`,
+over a live file and **2** rotated archives (`ls docs/roadmap/` → `0.5.md`,
+`0.6.md`). An item-per-bullet store therefore walks a few thousand nodes at
+most. **The bullet figure is deliberately an order of magnitude and not an
+exact count** — it moved three times while this spec was being drafted, once
+for each item the drafting itself filed, so an exact number here would be
+stale before the gate finished and would read as authoritative anyway. The
+argument needs the magnitude; it never needed the digits.
 
 **Build cost: one new TU, no new link edge.** `src/roadmapcheck.cpp` joins
 `ants_roadmapstore_lib`, which already links `Qt6::Core Qt6::Sql` PUBLIC and
@@ -440,9 +443,17 @@ of not having it: a column went uncarried in the export's own diff and the check
 passed anyway.
 
 Per this project's convention, **every case is verified RED against its *Breaks
-when* mutation before the implementation is restored** (`testing.md` owns the
-mutation-harness rules, including mtime busting, and they are not restated
-here). INV-1's mutation is named in § 2.1.2 and needs no new code: it is the
+when* mutation before the implementation is restored** — `testing.md` § 2.2
+(*"Verify the test fails on broken code"*) owns that rule and it is not restated
+here. **It does not own an mtime-busting rule**, contrary to what three sibling
+specs assert: `grep -rni mtime docs/standards/testing.md` returns nothing.
+Restoring a mutated source by copying a file with an older timestamp lets ninja
+skip the rebuild, so the mutation stays in a green-linking binary — a real trap,
+but a harness practice with no standard behind it, so it is stated here as
+practice rather than cited as a rule. The mis-citation in the siblings is filed
+as **ANTS-3826**, which also carries the better remedy — give the rule a home in
+`testing.md` § 2.2, so their citation becomes correct rather than deleted.
+INV-1's mutation is named in § 2.1.2 and needs no new code: it is the
 `item.body` write `src/roadmapmigrate.cpp` performs today. INV-2's, INV-3's and
 INV-4's are run against the first implementation with the rule under test
 removed — the report replaced by a refusal inside `relateItems()`, the gate and
@@ -469,16 +480,24 @@ refuses an `Interactive` connection (§ 2.1, rule 1); the source store opens
 
 ## 7. Cross-doc impact
 
-- **ANTS-3758's INV-1 is REWORDED to the half its test proves**, and points the
-  full oracle at this spec's INV-1. Rewording rather than annotating: annotating
-  would leave two live statements of one contract, which is the conflict class
-  the rule-14 gate exists to catch. `specs.md` § 5.5 permits it — the id is
-  permanent, the wording is not.
+- **ANTS-3758's INV-1 is narrowed to the half its test proves, and ANNOTATED in
+  the form `specs.md` § 5.5 prescribes** — `INV-1 amended by ANTS-3810` — with
+  the annotation naming this spec's INV-1 as where the full round-trip claim now
+  lives. **The annotation is what makes this a narrowing rather than a reword.**
+  § 5.5 says an `INV-N` never changes meaning and is amended by adding or
+  annotating, never by silent rewriting; the umbrella proposed a bare reword on
+  the grounds that annotating leaves two live statements of one contract, and
+  the standard's own form answers that — an annotation that says *where the
+  wider claim went* leaves one live statement and a pointer, not two claims.
+  Nothing here reflows ANTS-3758's list.
 - **ANTS-3758 INV-1's *Breaks when* clause loses `resolution` and `an extras
   key`.** § 2.1.1 shows both are unsatisfiable: the export emits them, markdown
   has no carrier, and the same spec's § 2.6 predicate must therefore exclude
   them. The clause keeps `layman`, `body`, `lanes` and `evidence`, all of which
-  the render does carry.
+  the render does carry. **ANTS-3765's INV-3 corroborates independently**: it
+  names `milestone`, `resolution`, `visibility` and `priority` as the fields a
+  re-run must never clear *because the plan cannot carry them* — the same four
+  the export emits, arrived at from the loader's side.
 - **ANTS-3758 § 2.6's family 3 gains `resolution`, `priority` and `extras`**,
   with the `extras` entry carrying § 2.1.1's reasoning — that the migration
   writes it from keys the render deliberately cannot reproduce, so it is the one
@@ -499,8 +518,13 @@ refuses an `Interactive` connection (§ 2.1, rule 1); the source store opens
   conforms to it, including the whole-store scope that corrected the umbrella's
   per-project signature.
 - **`src/roadmapcheck.h` / `.cpp` are new**, and `docs/subsystems.md` gains a
-  `roadmapcheck` entry beside `roadmapexport` and `roadmaprender`. `CLAUDE.md`
-  is unaffected — ANTS-1292 moved the per-file catalogue out of it.
+  `roadmapcheck` entry. **It joins a catalogue that is already behind**: that
+  file's roadmap entries are `roadmapdialog`, `roadmapparse`, `roadmapmigrate`
+  and `roadmapmigrateload` (`grep -n '^- \`roadmap' docs/subsystems.md`, four
+  hits, 2026-08-04) — `roadmapstore`, `roadmapexport` and `roadmaprender` have
+  no entry at all despite having shipped. That gap is pre-existing and is filed
+  as **ANTS-3825**, not fixed here; this spec adds its own entry only.
+  `CLAUDE.md` is unaffected — ANTS-1292 moved the per-file catalogue out of it.
 - **`CMakeLists.txt`** gains `src/roadmapcheck.cpp` in `ants_roadmapstore_lib`
   and `tests/features/roadmap_round_trip/test_roadmap_round_trip.cpp` in the
   `test_core` bundle's `SOURCES`.

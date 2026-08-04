@@ -25867,6 +25867,47 @@ against current source before filing.
   Kind: investigate.
   Source: in-session-2026-08-04 (found while drafting ANTS-3810).
 
+- 📋 [ANTS-3825] **docs/subsystems.md is missing the three shipped roadmap-store lanes.**
+  Measured 2026-08-04: `grep -n '^- `roadmap' docs/subsystems.md` returns
+  four hits -- roadmapdialog, roadmapparse, roadmapmigrate,
+  roadmapmigrateload. `roadmapstore` (ANTS-3756), `roadmapexport`
+  (ANTS-3761) and `roadmaprender` (ANTS-3758) have NO entry despite all
+  three having shipped and all three living in ants_roadmapstore_lib.
+
+  CLAUDE.md tells every session to query this file with the `subsystem`
+  verb instead of reloading the lane catalogue, and `indie_review_partition`
+  derives one review lane per entry -- so three shipped subsystems are
+  invisible to both the orientation path and the review partition.
+
+  ANTS-3810 adds a `roadmapcheck` entry when it lands; this id is the
+  backfill for the three that are already missing.
+  **Layman:** The map of what lives in which source file never got entries for three files that already shipped.
+  Kind: doc-fix.
+  Source: in-session-2026-08-04 (found while grounding ANTS-3810 § 7).
+
+- 📋 [ANTS-3826] **Three specs cite testing.md for an mtime rule it does not contain.**
+  ANTS-3793 § 6 and ANTS-3808 § 6 both read "testing.md owns the
+  mutation-harness rules, including mtime busting". Measured 2026-08-04:
+  `grep -rni mtime docs/standards/testing.md` returns NOTHING. The
+  must-fail-first rule IS there -- § 2.2, "Verify the test fails on broken
+  code" -- but the mtime half is not, in testing.md or anywhere in
+  docs/standards/.
+
+  The underlying trap is real: restoring a mutated source by copying a file
+  with an older timestamp lets ninja skip the rebuild, so the mutation
+  survives into a green-linking binary and the must-fail-first proof is
+  vacuous. So this is a genuine rule with no home, cited as though it had
+  one.
+
+  Two halves: (a) correct the citation in the two accepted specs (ANTS-3810
+  already states it as practice rather than citing it); (b) decide whether
+  testing.md § 2.2 should gain the rule, which would make (a) a citation
+  fix rather than a deletion. (b) is the better outcome -- the trap has bitten
+  before.
+  **Layman:** Several design documents point at a standard for a rule that was never written into it.
+  Kind: doc-fix.
+  Source: in-session-2026-08-04 (found while grounding ANTS-3810 § 6).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
