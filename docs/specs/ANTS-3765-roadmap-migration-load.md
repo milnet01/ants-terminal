@@ -420,7 +420,7 @@ Some projects are migrated and others are not, for as long as the rollout takes,
 
 That works because per-project atomicity (§ 2.5) makes "half a project" unreachable. A project row that exists is a project whose whole plan committed, so the marker cannot be observed in a partial state — which is exactly the property a `migrated_at` column would have had to be maintained by hand to provide.
 
-What consumes the marker is ANTS-3758, not this half: a read verb asks whether the caller's project has a row and falls back to `roadmap_query`'s markdown path when it does not. This spec states the marker and its guarantee; it does not build the fallback.
+What consumes the marker is **ANTS-3793**, not this half: `RoadmapSource::migratedProject()` canonicalises the caller's project root, asks `RoadmapStore::readProjectByRoot()` whether it has a row, and falls back to the markdown path when it does not. This spec states the marker and its guarantee; it does not build the fallback. (It named ANTS-3758 until 2026-08-04 — that id built the render these consumers read back, and left the fallback unbuilt.)
 
 ### 2.11 The report
 

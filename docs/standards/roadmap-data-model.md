@@ -788,7 +788,8 @@ than a question.
 | **Every** corpus figure in this document | `tools/roadmap-corpus-survey.py` — re-run it rather than trusting a standing number (§ 3.3) |
 | INV-1 leg (a), round-trip byte-identity | `tests/features/roadmap_export_roundtrip` — `Inv1RoundTripIsByteIdentical`, `Inv2EveryRowAndColumnSurvives`. Those `InvN` names are ANTS-3761's spec invariants, not this document's. |
 | INV-1 leg (b), committed export == live store | **nothing yet** — it needs the publish cadence, so it is ANTS-3794's |
-| INV-2 render fidelity | **nothing yet** — there is no render before ANTS-3758 |
+| INV-2 render fidelity | `tests/features/roadmap_render`, since ANTS-3758 shipped. `tests/features/roadmap_read_seam`'s `Inv2BackendsAgree` is the stronger check of the same property: it renders a migrated store back to markdown, parses that file, and compares record-for-record against the store read. |
+| Read budgets — a whole-project store read stays under its item ceiling and its p95 | `tests/features/roadmap_read_seam` — `Inv3Ceiling` (default suite) and `Inv3Latency` (`perf` label). ANTS-3793's INV-3, not this document's numbering. A budget nothing measures is a comment: the p95 case is what forced the batched `RoadmapStore::readItems()`, the N+1 having been 83 of 101 ms. |
 | INV-3 hand-edit detection | **nothing yet** — § 9's |
 | INV-4 cross-project relationships | the `relationship` table carries them; that they are *used* is not checkable |
 | INV-5 no relationship inferred from prose | **nothing** — a prohibition on authors and on migration, enforced by § 6 giving migration only two structured fields to read |

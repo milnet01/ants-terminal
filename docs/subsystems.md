@@ -270,10 +270,23 @@ Listed only where behavior isn't obvious from the name.
   `roadmap-query` IPC uses `parseBullets` + `RoadmapIndex`, not the
   renderer. Section collapse via `ants://expand-section/<slug>`; state
   persists in nine `Config::roadmap*` keys. Spec ANTS-1154.
-- `roadmapparse` (`ants_core_lib`) — the roadmap markdown reader for all
-  three formats (`detectRoadmapFormat` / `parseBullets`), lifted out of
-  `roadmapdialog` by ANTS-3764 so headless callers share one
-  implementation. Qt6::Core only.
+- `roadmapparse` (`ants_roadmapparse_lib`) — the roadmap markdown reader
+  for all three formats (`detectRoadmapFormat` / `parseBullets`), lifted
+  out of `roadmapdialog` by ANTS-3764 so headless callers share one
+  implementation. Qt6::Core only, in its own leaf library since ANTS-3808
+  so the store's headless path reaches the grammar without dragging
+  `ants_core_lib`'s Widgets/Network/DBus surface. Owns the ONLY bullet
+  grammar: `parseAntsV1Bullet()` (ANTS-3793) hands one bullet's worth of
+  it to the store reader rather than letting that reader grow a copy.
+- `roadmapsource` (`ants_roadmapstore_lib`) — the read seam: the same
+  `BulletRecord`s a consumer would have parsed out of `ROADMAP.md`,
+  sourced from the store instead. `bulletsFor()` dispatches on a project
+  row existing AND its roadmap being recognisably `ants-v1`, with three
+  outcomes — store, markdown, or refuse, never a silent fallback;
+  `bulletsFromStore()` walks sections in `sectionOrderLess()` order and
+  builds each record by parsing `RoadmapRender::bulletText()`, so the two
+  backends agree by construction. Refuses over 3,500 items. Spec
+  ANTS-3793.
 - `roadmapmigrate` (`ants_core_lib`) — the migration read half:
   `findRoadmaps()` resolves a project's roadmap case-insensitively,
   decodes it, and adds every rotated archive under `docs/roadmap/`

@@ -475,6 +475,10 @@ add_library(ants_roadmapstore_lib STATIC
     src/jsoncanonical.cpp   # ANTS-3761 — RFC 8785; Qt6::Core only, no Sql
     src/roadmapexport.cpp   # ANTS-3761 — the export writer + its rebuild half
     src/roadmaprender.cpp   # ANTS-3758 — the render: store → ROADMAP.md
+    # ANTS-3793 — the read seam. Here and not in ants_core_lib for the same
+    # reason the render is: it reads the store, and its records are defined as
+    # what parseBullets() would make of roadmaprender.cpp's bulletText().
+    src/roadmapsource.cpp
     # ANTS-3765 — the migration LOAD half. Here and not in ants_core_lib, which
     # is the read/load seam made mechanical: the read half (roadmapmigrate.cpp)
     # is in core precisely because it needs no database, and this half needs
@@ -2352,6 +2356,11 @@ if(ANTS_TESTS)
                 # store; INV-2 is the one source scrape, because it asserts a
                 # REFIT (no second trailer-key grammar under src/).
                 tests/features/roadmap_item_body/test_roadmap_item_body.cpp
+                # ANTS-3793 — the read seam. Behavioural against real stores;
+                # INV-2 drives the whole realistic path (migrate → render →
+                # parse the file that lands) because that file IS what the
+                # markdown backend is handed after cutover.
+                tests/features/roadmap_read_seam/test_roadmap_read_seam.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the
@@ -2436,7 +2445,11 @@ if(ANTS_TESTS)
         # ANTS-1450 — test_audit pattern/dimension drift guard.
         TEST_AUDIT_PATTERNS_JSON="${CMAKE_SOURCE_DIR}/docs/standards/test-audit-grep-patterns.json"
         # ANTS-1901 — master MCP toggle registration grep.
-        MCP_ERROR_CODES_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md")
+        MCP_ERROR_CODES_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
+        # ANTS-3793 § 6 — the drift guard for the p95 benchmark's `perf` label,
+        # which is applied at ctest time and silently ignored if it names a case
+        # that no longer exists.
+        ANTS_SLOW_TEST_TIMEOUTS_CMAKE="${CMAKE_SOURCE_DIR}/tests/slow_test_timeouts.cmake")
 
     # ANTS-3658 — per-test TIMEOUT overrides. PRE_TEST discovery means the
     # gtest test names do not exist at configure time, so the properties are

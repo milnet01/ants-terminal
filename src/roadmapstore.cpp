@@ -1211,30 +1211,25 @@ std::optional<qint64> RoadmapStore::findItem(qint64 projectId, const QString &id
     return q.value(0).toLongLong();
 }
 
-std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,
-                                                              QString *error) const {
-    // LEFT JOIN: an item is unfiled only transiently, inside § 2.6's element
-    // rebuild, but this reader is what captures a filing BEFORE that delete and
-    // an INNER JOIN would return nothing for an item read after it.
-    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
-    q.prepare(QStringLiteral(
-        "SELECT i.project_id, i.id, i.id_origin, i.status, i.headline, i.layman, "
-        "       i.kind, i.source, i.priority, i.visibility, i.milestone, "
-        "       i.resolution, i.body, i.created, i.last_modified, i.shipped, "
-        "       i.lanes, i.evidence, i.extras, i.provenance, "
-        "       e.section_id, e.position "
-        "FROM item i LEFT JOIN element e "
-        "  ON e.item_pk = i.item_pk AND e.kind = 'item' "
-        "WHERE i.item_pk = ?"));
-    q.addBindValue(itemPk);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return std::nullopt;
-    }
-    if (!q.next())
-        return std::nullopt;
+namespace {
+// The item SELECT list, and the row assembly that reads it back. Shared by the
+// point lookup and the batched reader below so the two cannot drift into
+// returning different ItemWrites for the same row — which would be invisible
+// until something compared them.
+//
+// LEFT JOIN: an item is unfiled only transiently, inside § 2.6's element
+// rebuild, but this reader is what captures a filing BEFORE that delete and an
+// INNER JOIN would return nothing for an item read after it.
+constexpr const char *kItemColumns =
+    "SELECT i.project_id, i.id, i.id_origin, i.status, i.headline, i.layman, "
+    "       i.kind, i.source, i.priority, i.visibility, i.milestone, "
+    "       i.resolution, i.body, i.created, i.last_modified, i.shipped, "
+    "       i.lanes, i.evidence, i.extras, i.provenance, "
+    "       e.section_id, e.position, i.item_pk "
+    "FROM item i LEFT JOIN element e "
+    "  ON e.item_pk = i.item_pk AND e.kind = 'item' ";
 
+RoadmapStore::ItemWrite itemFromRow(const QSqlQuery &q) {
     const auto strList = [](const QString &json) {
         QStringList out;
         for (const QJsonValue &v : QJsonDocument::fromJson(json.toUtf8()).array())
@@ -1242,7 +1237,7 @@ std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,
         return out;
     };
 
-    ItemWrite w;
+    RoadmapStore::ItemWrite w;
     w.projectId = q.value(0).toLongLong();
     w.id = q.value(1).toString();
     w.idOrigin = q.value(2).toString();
@@ -1267,6 +1262,38 @@ std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,
     w.sectionId = q.value(20).toLongLong();   // 0 when unfiled
     w.position = q.value(21).toInt();
     return w;
+}
+} // namespace
+
+std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,
+                                                              QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QLatin1String(kItemColumns) + QStringLiteral("WHERE i.item_pk = ?"));
+    q.addBindValue(itemPk);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+    return itemFromRow(q);
+}
+
+std::optional<QHash<qint64, RoadmapStore::ItemWrite>>
+RoadmapStore::readItems(qint64 projectId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QLatin1String(kItemColumns) + QStringLiteral("WHERE i.project_id = ?"));
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    QHash<qint64, ItemWrite> out;
+    while (q.next())
+        out.insert(q.value(22).toLongLong(), itemFromRow(q));
+    return out;
 }
 
 std::optional<QVector<RoadmapStore::ItemRef>>
@@ -1432,7 +1459,7 @@ std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
                                                          const QVariant &key,
                                                          QString *error) {
     QSqlQuery q(const_cast<QSqlDatabase &>(db));
-    q.prepare(QStringLiteral("SELECT project_id, name, export_slug, legend "
+    q.prepare(QStringLiteral("SELECT project_id, name, export_slug, legend, root "
                              "FROM project WHERE %1 = ?")
                   .arg(column));
     q.addBindValue(key);
@@ -1449,6 +1476,7 @@ std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
     p.name = q.value(1).toString();
     p.exportSlug = q.value(2).toString();
     p.legendText = q.value(3).toString();
+    p.root = q.value(4).toString();
     return p;
 }
 } // namespace
@@ -1461,6 +1489,11 @@ RoadmapStore::readProject(qint64 projectId, QString *error) const {
 std::optional<RoadmapStore::ProjectRow>
 RoadmapStore::readProjectBySlug(const QString &exportSlug, QString *error) const {
     return readProjectWhere(m_db, QStringLiteral("export_slug"), exportSlug, error);
+}
+
+std::optional<RoadmapStore::ProjectRow>
+RoadmapStore::readProjectByRoot(const QString &canonicalRoot, QString *error) const {
+    return readProjectWhere(m_db, QStringLiteral("root"), canonicalRoot, error);
 }
 
 bool sectionOrderLess(const RoadmapStore::SectionRow &a,

@@ -6,6 +6,7 @@
 // why it is created with synchronous=FULL and mode 0600.
 #pragma once
 
+#include <QHash>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QSqlDatabase>
@@ -287,6 +288,19 @@ public:
     // must capture BEFORE the element rebuild deletes it.
     std::optional<ItemWrite> readItem(qint64 itemPk, QString *error = nullptr) const;
 
+    // ANTS-3816 — every item of one project in ONE query, keyed by item_pk.
+    // ANTS-3793 § 4 named this as the remedy if its p95 budget reds and said to
+    // build it only then; it red, and this is the measurement that earned it:
+    // a 1,839-item project cost 83.4 ms through readItem() per item against a
+    // 50 ms budget, with the render-and-parse half of the same read costing
+    // 8.6 ms (2026-08-04). The N+1 was 90% of the work.
+    //
+    // A QHash and not a QVector because both callers — the read seam's walk and
+    // the render's — resolve an element's item_pk against it rather than
+    // iterating. RoadmapRender::render() builds exactly this hash by hand today.
+    std::optional<QHash<qint64, ItemWrite>> readItems(qint64 projectId,
+                                                      QString *error = nullptr) const;
+
     // One enumeration serving BOTH § 2.7's orphan detection (a set complement)
     // and § 2.6.1's id-less re-run matching (a search by natural key). Neither
     // is expressible as a point lookup however many times it is called.
@@ -375,6 +389,14 @@ public:
         // a string inside a byte-identity contract, so a reader that parsed and
         // re-serialised it would put a round-trip through the middle of INV-1.
         QString legendText;
+        // ANTS-3793 § 2.2 — the canonical root INV-8 keys the project on. No
+        // consumer of readProjectByRoot() reads it back (that reader returns
+        // only the id), so this field is justified by the TEST: ANTS-3793's
+        // Inv1DispatchMarker asserts that a symlinked or non-normalised path
+        // resolves to the same row as its canonical form, and it cannot make
+        // that assertion against a struct that does not carry the value being
+        // canonicalised.
+        QString root;
     };
     // Two lookups because the two callers key differently, and one of them is
     // the refit: the render holds a projectId; the export does NOT — writeMeta()
@@ -383,6 +405,22 @@ public:
     // INV-11's `FROM project` clause unsatisfiable.
     std::optional<ProjectRow> readProject(qint64 projectId, QString *error = nullptr) const;
     std::optional<ProjectRow> readProjectBySlug(const QString &exportSlug,
+                                                QString *error = nullptr) const;
+
+    // ANTS-3793 § 2.2 — the third key, and the one the read seam's dispatch
+    // marker needs: "has this project been migrated?" is asked of a project
+    // ROOT, which is what INV-8 keys a project on. Until now `root TEXT UNIQUE`
+    // was write-only through this surface — registerProject() wrote it and no
+    // reader could take it back — so the marker ANTS-3765 § 2.10 defines had
+    // nothing able to read it.
+    //
+    // Takes an ALREADY-canonical path. Canonicalising here would hide the one
+    // failure that matters from the caller: QFileInfo::canonicalFilePath()
+    // returns empty for a path that does not resolve, and an empty key would
+    // silently match nothing and read as "not migrated" — the silent fallback
+    // ANTS-3793 INV-1 exists to forbid. RoadmapSource::migratedProject() does
+    // the canonicalisation and refuses the empty result outright.
+    std::optional<ProjectRow> readProjectByRoot(const QString &canonicalRoot,
                                                 QString *error = nullptr) const;
 
     // § 2.8 step 1's first branch: the prefix this project already allocates

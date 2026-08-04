@@ -23,6 +23,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <optional>
 
 namespace RoadmapParse {
 
@@ -193,5 +194,29 @@ TrailerValues trailerValuesIn(const QString &body);
 // `roadmap-query` IPC verb to feed Claude a structured snapshot without
 // re-burning the file content as tokens.
 QVector<BulletRecord> parseBullets(const QString &markdownText);
+
+// ANTS-3793 § 2.1.1 — the record parseBullets() would build for ONE ants-v1
+// bullet, given exactly that bullet's text. The read seam's normative rule is
+// "fill each record with what parseBullets() would assign if it parsed
+// RoadmapRender::bulletText(item)", and this is the function that makes that
+// literally true instead of approximately so: the store reader runs the same
+// grammar rather than a second copy of it (ANTS-3808 INV-2).
+//
+// `bulletText` is one bullet: its `- <emoji> …` line plus any two-space-
+// indented continuation lines. Trailing lines beyond the bullet are ignored.
+//
+// nullopt when the text is not an ants-v1 bullet — no `- `/`* ` marker, or no
+// status emoji after it. The second case is load-bearing rather than defensive:
+// a `dropped` item renders with an EMPTY status marker (roadmap-format.md
+// § 3.11 makes a fifth glyph an anti-pattern), so it produces no record here,
+// exactly as it produces none in a document walk. ANTS-3793 § 2.1.2's `dropped`
+// exclusion is that behaviour, not a filter layered on top of it.
+//
+// Three groups of fields are NOT set, because a bullet in isolation cannot
+// decide them and the caller can: `sectionHeading` / `sectionLevel` /
+// `sectionSlug` (the document's, and the store walk's own — its slugger is
+// stateful across sections), and `firstLine` / `lastLine` (a store has no
+// lines, which is ANTS-3793 INV-2's one declared field difference).
+std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText);
 
 }  // namespace RoadmapParse
