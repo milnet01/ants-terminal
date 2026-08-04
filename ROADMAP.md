@@ -33445,6 +33445,48 @@ here.)
   Cost note, consistent with this bullet's existing caveat: lane spend
   reported 152-168k per lane, cumulative across turns. First-turn input was
   ~43-44k against the stated 60k. Every lane was inside budget.
+  Second data point (2026-08-04, ANTS-3810 gate — 3 loops, 6 lanes, 66 verified / 66 fixed / 1 dismissed). The `[dim N]` tags were aggregated across all three loops, which is the ATTRIBUTION half this bullet says is missing, on a real run:
+
+  dim 2 (accuracy) 11 · dim 5 (completeness) 10 · dim 7 (conflicts) 9 · dim 4 (internal consistency) 6 · dim 6 (clarity) 6 · dim 1 (dedup) 6 · dim 10 (quality discipline) 5 · dim 15 (testability) 4 · dim 11 (token efficiency) 2 · dim 13 (examples) 1 · dim 9 (perf discipline) 1.
+
+  Every CRITICAL and all but one HIGH came from dims 2, 5, 7, 10, 15. Dims 9, 11 and 13 produced four findings between them across three loops, all cosmetic, all one-line fixes — the rarely-fires quadrant, though this sample cannot yet separate "dead" from "works" (the distinction this bullet calls the hard part).
+
+  NOT yet an argument to trim: one run, one genre, one author. The actionable part is that the data now EXISTS without any new instrumentation — the tags are already in the lane output and the loop-log rows already carry the per-loop tally. A second run's table compared against this one is the cheap next step; full table in docs/reviews/skill-feedback-2026-08-04.md § 7.
+
+  Also relevant to this bullet's item 4 (a check class in the catalogue but not in the verb): the same gap recurred. Three self-referential count defects were introduced by fix loops and caught by lanes at review prices — a stale "four call-shape rules" after a fifth was added, "three sibling specs" where the grep returns two, and "five text.contains()" where the case has five positive plus one negative. `spec_lint` still implements neither self-referential shape.
+
+- 📋 [ANTS-3829] **`specs.md` ships no `required-sections` block, so spec_lint's section check has never run here.**
+  Measured 2026-08-04: `grep -c required-sections docs/standards/specs.md`
+  returns **0**, and every `spec_lint` call in this session returned
+  `sections_checked: false`.
+
+  `/doc-lint`'s `sections` check reads the project format standard's
+  `<!-- required-sections -->` block and uses it as the checklist. With no
+  block, the field comes back false and **the check never runs on any spec
+  in this project** -- it has presumably never run, on any of the ~1700
+  bullets' worth of specs written here.
+
+  This is invisible unless someone reads the field. `spec_lint` returns
+  `findings: []` and `ok: true`, which reads as coverage. The doc-lint
+  skill calls this exact shape out ("an unstated gap reads as coverage,
+  which is the one failure this whole skill exists to prevent") and says
+  the remedy is a one-time project fix, not a per-run workaround.
+
+  Fix: add a `<!-- required-sections -->` block to docs/standards/specs.md
+  listing the sections § 3 already mandates -- H1 title, the Status/Kind/
+  Source header block, 1. Problem, 2. Surface, 3. Invariants, 6. Tests --
+  and decide whether the § 4 / § 5 / § 7 recommended sections belong in it
+  (§ 4 "Recommended sections" suggests not).
+
+  Verify by re-running spec_lint over any accepted spec and confirming
+  `sections_checked: true`.
+
+  Caveat worth stating: turning the check ON will retro-flag existing specs
+  that omit a mandated section. That is the check working, but it means this
+  is a two-part job -- add the block, then triage what it surfaces.
+  **Layman:** One of the automatic spec checks has been silently switched off on this project the whole time, because the rulebook is missing a small marker it looks for.
+  Kind: doc-fix.
+  Source: in-session-2026-08-04 (ANTS-3810 cold-eyes gate, /doc-lint observation).
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
