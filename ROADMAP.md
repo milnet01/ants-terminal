@@ -25782,6 +25782,23 @@ against current source before filing.
   Kind: implement.
   Source: in-session-2026-08-04 (ANTS-3809 cold-eyes loop 1, lane A).
 
+- 📋 [ANTS-3823] **`bad_op_combo` is used 23 times and documented nowhere.**
+  `grep -o 'bad_op_combo' src/remotecontrol.cpp src/claudeintegration.cpp |
+  wc -l` -> 23; `grep -c bad_op_combo docs/standards/mcp-error-codes.md` -> 0
+  (both 2026-08-04).
+
+  The standard exists so a caller can branch on `code` alone, and this is
+  the code roadmap_log reaches for on every locator/argument mismatch. Add
+  it to section 1 (input validation) with its live uses as examples.
+
+  Surfaced twice: ANTS-3809's spec noted it as inherited-not-caused, and its
+  loop-3 cold read pointed out that every other deferral in that document
+  carries an id while this one named an owner-less gap. Filing it is the
+  cheaper answer than the disclaimer.
+  **Layman:** One of the error codes the tools return isn't in the error-code list, so a caller has no way to look up what it means.
+  Kind: doc-fix.
+  Source: in-session-2026-08-04 (ANTS-3809 cold-eyes loop 3, lane E).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
