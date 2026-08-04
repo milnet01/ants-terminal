@@ -280,6 +280,33 @@ target_compile_options(ants_warnings INTERFACE
 #   ants_dialogs_lib ← settings/about/diff/ssh/etc. (depends on chrome)
 #   ants_lua_lib     ← only if LUA_FOUND
 #   ants_helper_lib  ← only if ANTS_ENABLE_HELPER_CLI
+# ANTS-3808 § 4 -- the roadmap markdown READER, as a Qt6::Core-only leaf.
+#
+# It was in ants_core_lib, and ANTS-3808 § 2.3 puts a RoadmapParse call inside
+# ants_roadmapstore_lib -- whose link surface is `Qt6::Core Qt6::Sql` and
+# nothing else BY DESIGN (src/roadmaprender.h: "because ANTS-3794 will call it
+# from a headless publish path"). Declaring store -> core instead would drag
+# Qt6::Gui, Qt6::Widgets, Qt6::Network, Qt6::DBus and libutil into that headless
+# path. A static archive would still LINK either way -- every current consumer
+# links both -- which is exactly why the wrong choice would pass CI and surface
+# later, at ANTS-3794.
+#
+# Both ants_core_lib and ants_roadmapstore_lib link this PUBLIC, so every
+# existing consumer keeps the reader transitively and no call site changed. No
+# new source files: the grammar's home stays roadmapparse.cpp, which is what
+# keeps INV-2 ("RoadmapParse is the only bullet grammar") true by construction
+# rather than by discipline. roadmapindex.cpp comes along because the reader
+# reaches headingLevel() / uniqueSlug() through a file-scope `using`.
+add_library(ants_roadmapparse_lib STATIC
+    src/roadmapindex.cpp
+    src/roadmapparse.cpp
+)
+target_link_libraries(ants_roadmapparse_lib
+    PUBLIC  Qt6::Core
+    PRIVATE ants_warnings)
+target_include_directories(ants_roadmapparse_lib PUBLIC src)
+set_target_properties(ants_roadmapparse_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(ants_core_lib STATIC
     src/config.cpp
     src/debuglog.cpp
@@ -389,8 +416,8 @@ add_library(ants_core_lib STATIC
     src/briefdispatch.cpp
     src/llmclient.cpp
     src/llmdispatcher.cpp
-    src/roadmapindex.cpp
-    src/roadmapparse.cpp
+    # ANTS-3808 § 4 — roadmapindex.cpp + roadmapparse.cpp moved out to
+    # ants_roadmapparse_lib (declared above); this target links it PUBLIC.
     # ANTS-3757 — the roadmap migration read half: findRoadmap() +
     # the pure planFrom(). Core-only by design, so the whole read half
     # is testable without a database.
@@ -420,6 +447,7 @@ add_library(ants_core_lib STATIC
 )
 target_link_libraries(ants_core_lib
     PUBLIC  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::DBus util
+            ants_roadmapparse_lib   # ANTS-3808 § 4 — the reader, as a leaf
     PRIVATE ants_warnings)
 target_include_directories(ants_core_lib PUBLIC src)
 set_target_properties(ants_core_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -454,7 +482,9 @@ add_library(ants_roadmapstore_lib STATIC
     src/roadmapmigrateload.cpp
 )
 target_link_libraries(ants_roadmapstore_lib
-    PUBLIC  Qt6::Core Qt6::Sql
+    # ANTS-3808 § 4 — the reader, NOT ants_core_lib: this surface stays
+    # headless for ANTS-3794's publish path.
+    PUBLIC  Qt6::Core Qt6::Sql ants_roadmapparse_lib
     PRIVATE ants_warnings)
 target_include_directories(ants_roadmapstore_lib PUBLIC src)
 set_target_properties(ants_roadmapstore_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -645,7 +675,10 @@ endif()
 # FULL (the full-stack bundles + the main exe), so their unity coarsening
 # always resolves — and they are the Widgets-heavy, RAM-hungry cc1plus
 # instances where unity pays off most. No-op unless ANTS_UNITY_BUILD=ON.
-set(_ants_subset_linked_libs ants_core_lib ants_vt_lib ants_audit_lib)
+# ANTS-3808 § 4 — ants_roadmapparse_lib is subset-linked by the same test
+# bundles core is, so unity must not coarsen it either.
+set(_ants_subset_linked_libs ants_core_lib ants_vt_lib ants_audit_lib
+                             ants_roadmapparse_lib)
 if(LUA_FOUND)
     list(APPEND _ants_subset_linked_libs ants_lua_lib)
 endif()
@@ -2314,6 +2347,11 @@ if(ANTS_TESTS)
                 # two-source project, asserting each file's preamble comes back
                 # out of the file it went in from.
                 tests/features/roadmap_migrate_archive_root/test_roadmap_migrate_archive_root.cpp
+                # ANTS-3808 — item.body's head-line strip + the render's
+                # value-equality trailer suppression. Behavioural against a real
+                # store; INV-2 is the one source scrape, because it asserts a
+                # REFIT (no second trailer-key grammar under src/).
+                tests/features/roadmap_item_body/test_roadmap_item_body.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the

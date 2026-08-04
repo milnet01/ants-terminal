@@ -198,6 +198,41 @@ void addNote(QVector<Note> &notes, const char *code, const QString &detail,
     notes.append(Note{QString::fromLatin1(code), detail, line, sourceIndex});
 }
 
+// ANTS-3808 § 2.1 — `item.body` is the bullet body with the render's own
+// head-line PREFIX removed, not with its first line removed. The distinction is
+// the whole of this helper: a native bullet takes its headline from the bold
+// token only, so text after the closing `**` lives nowhere but `body`'s first
+// line, and for a single-line bullet it is the item's entire substance.
+// Dropping the line would delete it outright (INV-5). The share of this
+// project's own ROADMAP.md affected is somewhere between a seventh and a third
+// depending on how a soft-wrapped bold headline is counted — ANTS-3808 § 2.1
+// measured 241 of 1646 on 2026-08-04, a re-count the same day 539 of 1666. The
+// ratio is the durable claim; the denominator moves with every append.
+//
+// The boundary is the one the READER recorded (`rec.headlineEnd`), never a
+// re-match of the stored headline against the line it came from: the reader
+// normalises what it stores, so on the GFM prose path the headline is not a
+// substring of its own source line and a text match would silently strip
+// nothing.
+QString bodyWithoutHeadPrefix(const BulletRecord &rec) {
+    if (rec.headlineEnd < 0 || rec.headlineEnd > rec.body.size())
+        return rec.body;   // no headline assigned, or not a prefix — strip nothing
+    const QString rest = rec.body.mid(rec.headlineEnd);
+    const qsizetype nl = rest.indexOf(QLatin1Char('\n'));
+    // Both halves below are load-bearing. The separator space after `[<id>]`
+    // survives the strip, so an untrimmed residual is `" <prose>"` rather than
+    // `<prose>` — and an untrimmed EMPTY residual is `" "`, which is not empty,
+    // so the drop would never fire and every bullet would gain a stray blank
+    // indented line from renderBullet()'s `if (!it.body.isEmpty())` guard.
+    const QString firstLine = (nl < 0 ? rest : rest.left(nl)).trimmed();
+    const QString continuations = nl < 0 ? QString() : rest.mid(nl + 1);
+    if (firstLine.isEmpty())
+        return continuations;
+    if (nl < 0)
+        return firstLine;
+    return firstLine + QLatin1Char('\n') + continuations;
+}
+
 // One reader record as migration will file it. § 2.1.1 accounts for the fields
 // left empty; the notes this raises are § 2.10's.
 PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
@@ -205,7 +240,7 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
     PlannedItem it;
     it.sourceIndex = sourceIndex;
     it.headline = rec.headlineFull.isEmpty() ? rec.headline : rec.headlineFull;
-    it.body        = rec.body;
+    it.body        = bodyWithoutHeadPrefix(rec);   // ANTS-3808 § 2.1
     it.layman      = rec.layman;
     it.lanes       = rec.lanes;
     it.evidence    = rec.evidence;

@@ -133,10 +133,48 @@ static void truncateEllipsis(QString &s, int maxChars) {
 // narrator bullet) and the display-capped headline. Single source of
 // truth for the truncate-then-assign pattern repeated at every headline
 // site in the parser.
-static void assignHeadline(BulletRecord &rec, QString h) {
+// ANTS-3808 § 2.1 — `headlineEnd` is set HERE and not at the call sites, so a
+// fifth headline site cannot be added without deciding what the render will
+// reconstruct. It is an offset into `rec.body`, never a re-match of the stored
+// headline: the reader NORMALISES what it stores (the GFM prose fallback
+// removes `**` markers and strips a trailing caret anchor), so on exactly those
+// bullets the headline is not a substring of the line it came from and a text
+// match would silently strip nothing.
+static void assignHeadline(BulletRecord &rec, QString h, int headlineEnd) {
     rec.headlineFull = h;
     truncateEllipsis(h, 120);  // ANTS-1811 — surrogate-safe
     rec.headline = h;
+    rec.headlineEnd = headlineEnd;
+}
+
+// ANTS-3808 § 2.1 — the offset the migration strips, or -1 for "strip nothing".
+// `end` is one past the text this parse consumed for the head line; it is only
+// a PREFIX of the body when nothing but the leading `[id]` token and whitespace
+// precedes `start`. A native bullet whose bold span sits mid-prose
+// (`- ✅ fixed the **thing**.`) leaves that prose unconsumed, so stripping to
+// `end` would DELETE it — INV-5 forbids losing text, and the render re-emitting
+// the headline a second time is the lesser outcome.
+//
+// This guard is BEYOND § 2.1's table, which assumes the consumed span is always
+// a prefix. Measured against this project's own ROADMAP.md on 2026-08-04 it
+// fires on ZERO bullets — every apparent mid-prose bold there is a soft-wrapped
+// headline whose closing `**` sits on the next line (ANTS-1561), which rxBold's
+// DotMatchesEverythingOption matches as one head-anchored span. So it costs no
+// duplication today and exists to keep the lossy case unreachable.
+static int headlinePrefixEnd(const QString &body, int start, int end) {
+    QStringView lead = QStringView(body).left(start).trimmed();
+    if (lead.startsWith(QLatin1Char('['))) {
+        const qsizetype close = lead.indexOf(QLatin1Char(']'));
+        if (close >= 0) lead = lead.sliced(close + 1).trimmed();
+    }
+    return lead.isEmpty() ? end : -1;
+}
+
+// The end of `body`'s first line — the whole head line, for the branches that
+// consume it entirely (the GFM em-dash split and the GFM prose fallback).
+static int headLineEnd(const QString &body) {
+    const int nl = int(body.indexOf(QLatin1Char('\n')));
+    return nl < 0 ? int(body.size()) : nl;
 }
 
 QString splitOnEmDash(const QString &head) {
@@ -208,6 +246,147 @@ bool stripInlineEmoji(QString &head, QString &status) {
     return true;
 }
 
+
+// ANTS-3808 § 2.2 — the six trailer matchers. They were `static const` inside
+// parseBullets() and reachable from nowhere; trailerValuesIn() needs the same
+// objects, so they move out behind accessors and are SHARED, not copied.
+// Function-local statics rather than namespace-scope globals, following this
+// project's own precedent for a shared compiled pattern (rxCommitSha() in
+// remotecontrol.cpp) — construction stays lazy and ordered.
+//
+// Every comment below is the pattern's own, moved verbatim with it.
+
+// MultilineOption so `^` anchors at the start of any line within
+// the bullet body — Kind: / Lanes: / Layman: live as continuation
+// lines, not at the start of the string.
+// ANTS-3407 — CaseInsensitiveOption: the `^`-anchored metadata labels
+// (Kind:/Layman:/Evidence:) all tolerate any case, so a hand-edited
+// ROADMAP.md parses `kind:`/`KIND:` identically to the canonical
+// capital form the MCP writer emits. (Lanes: is the deliberate
+// exception — see its note below.)
+const QRegularExpression &rxKind() {
+    static const QRegularExpression rx(
+        QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
+        QRegularExpression::MultilineOption |
+        QRegularExpression::CaseInsensitiveOption);
+    return rx;
+}
+// ANTS-2058 — no `^` anchor. Bullets routinely write their metadata
+// inline as one prose sentence (`Kind: refactor. Lanes: backend tests.
+// Source: …`), so `Lanes:` lands mid-line, not at a line start. The
+// old `^\\s*` anchor matched only line-leading `Lanes:` and returned
+// lanes:[] for every inline bullet — while rxKind worked purely because
+// `Kind:` happened to sit first. Match `Lanes:` anywhere; the non-greedy
+// capture still stops at the first period/newline.
+// ANTS-3407 — deliberately NOT CaseInsensitive (unlike the anchored
+// Kind:/Layman:/Evidence: labels). Because this pattern is un-anchored,
+// case-insensitivity would match a lowercase "lanes:" occurring mid-prose
+// (e.g. "split the review lanes: audit, tests.") and mis-extract it as
+// metadata. Canonical `Lanes:` is the only form the writer emits.
+// ANTS-3722 — but NOT when the label is inside backticks. Un-anchoring is
+// still right (ANTS-2058's inline trailer is real), so the guard is the
+// narrowest thing that separates the two: a bullet that QUOTES the trailer
+// keys is talking ABOUT them, never declaring them. Reading ANTS-3696's own
+// body back returned lanes:["`/`Source:` trailer below the"], captured out
+// of the sentence "the `Layman:`/`Kind:`/`Lanes:`/`Source:` trailer" — and
+// the corpus most likely to write that sentence is the one documenting the
+// roadmap format, i.e. exactly the bullets a lane filter should trust.
+const QRegularExpression &rxLanes() {
+    static const QRegularExpression rx(
+        QStringLiteral("(?<!`)Lanes:\\s*(.+?)\\s*[\\.\\n]"),
+        QRegularExpression::MultilineOption);
+    return rx;
+}
+// ANTS-1154-INV-4: optional Layman: line — case-insensitive label,
+// takes the rest of the line up to a period or newline.
+// ANTS-1861: match both plain "Layman:" and bold "**Layman:**" forms
+// (roadmap_log writes the bold version).
+// NOTE — `[\\.\\n]` is intentional: it strips the trailing sentence
+// period so rec.layman is punctuation-free (INV-4 invariant). CHANGELOG
+// consumers that need the full sentence should use match->body via
+// rxBoldLayman (see remotecontrol.cpp cmdChangelogLog, ANTS-1933).
+const QRegularExpression &rxLayman() {
+    static const QRegularExpression rx(
+        QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+?)\\s*[\\.\\n]"),
+        QRegularExpression::MultilineOption |
+        QRegularExpression::CaseInsensitiveOption);
+    return rx;
+}
+// ANTS-3382 — optional `Evidence:` line listing file paths. Unlike
+// Lanes:, the capture runs to end-of-line (NOT to the first period):
+// evidence paths routinely contain dots (`photos/IMG_2031.jpg`), so a
+// `[^\\.\\n]` stop would truncate at the extension.
+// ANTS-3407 — CaseInsensitiveOption for parity with rxLayman/rxKind, so a
+// hand-edited `evidence:`/`EVIDENCE:` label is still recognised. The MCP
+// writer always emits capital `Evidence:`, so the round-trip is unchanged.
+const QRegularExpression &rxEvidence() {
+    static const QRegularExpression rx(
+        QStringLiteral("^\\s*Evidence:\\s*([^\\n]+)"),
+        QRegularExpression::MultilineOption |
+        QRegularExpression::CaseInsensitiveOption);
+    return rx;
+}
+// ANTS-3764 — the `Source:` provenance line (ANTS-3757 § 2.1.1 / § 2.8).
+// Three rules, each measured against ROADMAP.md on 2026-07-31 rather
+// than inherited from whichever sibling key looked closest:
+//  - Capture runs to END OF LINE, not to the first period. 61 of 1282
+//    values carry an internal period — `in-session-2026-07-29
+//    (rpmlint.log, first successful build).` — so rxKind's stop-at-period
+//    rule would cut 4.8% of the corpus mid-value. rxEvidence already runs
+//    to end-of-line for exactly this reason.
+//  - UN-ANCHORED with rxLanes' backtick guard. 157 occurrences sit inline
+//    in a prose trailer rather than at a line start, which is ANTS-2058's
+//    finding for `Lanes:`; 22 are backticked mentions of the key itself,
+//    which ANTS-3722's guard excludes. Deliberately NOT case-insensitive,
+//    same reasoning as rxLanes: un-anchored + case-folded would match a
+//    lowercase "source:" mid-prose.
+//  - The label may be bold. 24 lines in the corpus write `**Source:**`,
+//    and rxLayman already tolerates the same shape for its own key;
+//    without the optional pair the closing `**` lands in the value.
+const QRegularExpression &rxSource() {
+    static const QRegularExpression rx(
+        QStringLiteral("(?<!`)(?:\\*\\*)?Source:(?:\\*\\*)?\\s*([^\\n]+)"));
+    return rx;
+}
+//  - The value stops at a following trailer key: 10 lines write two keys
+//    on one line (`Source: regression. Lanes: packaging.`). Capital-led
+//    (a lowercase `lanes:` mid-prose is prose, per rxLanes) and
+//    optionally bold, since roadmap_log writes `**Layman:**`.
+const QRegularExpression &rxTrailerKey() {
+    static const QRegularExpression rx(
+        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence):"));
+    return rx;
+}
+
+// ANTS-3808 § 2.2.1 — fill one TrailerMatch from a match of `rx` against
+// `body`. `offset` is the CAPTURE's start, which is what a consumer quoting
+// the value needs; `anchored` is computed off the MATCH's start, because every
+// pattern puts literal text between the line start and group 1.
+TrailerMatch matchIn(const QRegularExpression &rx, const QString &body) {
+    TrailerMatch out;
+    const QRegularExpressionMatch m = rx.match(body);
+    if (!m.hasMatch())
+        return out;
+    out.value    = m.captured(1);
+    out.offset   = m.capturedStart(1);
+    const int at = m.capturedStart(0);
+    out.anchored = (at == 0) || (at > 0 && body.at(at - 1) == QLatin1Char('\n'));
+    return out;
+}
+
+// Split a comma-separated trailer value the way parseBullets() always has:
+// SkipEmptyParts, each part trimmed, whitespace-only parts dropped.
+QStringList splitTrailerList(const QString &raw) {
+    QStringList out;
+    // Bind split() result first — clazy `range-loop-detach`
+    // (ANTS-1122 audit-fold-in r2 2026-04-30).
+    const QStringList parts = raw.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        const QString trimmed = part.trimmed();
+        if (!trimmed.isEmpty()) out.append(trimmed);
+    }
+    return out;
+}
 
 // ANTS-1530 — parse a doc in `pass-headings` format. Each `####
 // Pass N.M (SEVERITY, SIZE) …` heading becomes one bullet; the
@@ -387,7 +566,13 @@ parsePassHeadingBullets(const QStringList &lines) {
         if (!meta.isEmpty()) {
             headline = QStringLiteral("(%1) %2").arg(meta, tail).trimmed();
         }
-        assignHeadline(rec, headline);  // ANTS-2075 / ANTS-1811
+        // ANTS-3808 — a pass block's headline comes from the `####` HEADING,
+        // which is not part of `body` at all, so the render reconstructs it
+        // out of nothing the body holds and there is nothing to strip. The one
+        // exception is the fallback on the next line: when the block has no
+        // prose, `body` IS the headline, and the whole of it is consumed.
+        assignHeadline(rec, headline,  // ANTS-2075 / ANTS-1811
+                       passBody.isEmpty() ? int(headline.size()) : 0);
         // ANTS-2030 — real under-heading prose; fall back to the
         // headline only when the heading has no content beneath it
         // (keeps body non-empty, matching the prior contract).
@@ -498,6 +683,54 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
     if (hasGfm)          return QStringLiteral("github-task-list");
     return QStringLiteral("ants-v1");
 }
+// ANTS-3808 § 2.2.1 — the normalisation contract. Every step below is the one
+// parseBullets() has always applied; the values are returned post-match, NOT as
+// raw captures, because the render compares them against the store's columns
+// and raw captures would never compare equal — the suppression would never
+// fire and this verb would be documented as working while the duplication
+// stayed live.
+TrailerValues trailerValuesIn(const QString &body) {
+    TrailerValues out;
+
+    out.kind   = matchIn(rxKind(), body);
+    out.kind.value = out.kind.value.trimmed();
+
+    out.layman = matchIn(rxLayman(), body);
+    out.layman.value = out.layman.value.trimmed();
+
+    // `lanes.value` is the RAW capture: parseBullets() applies neither a trim
+    // nor a period chop before splitting it.
+    out.lanes     = matchIn(rxLanes(), body);
+    out.lanesList = splitTrailerList(out.lanes.value);
+
+    // ANTS-3382 — `evidence.value` is the text the split is applied TO, which
+    // for this key is trimmed and period-chopped first. Dots inside paths are
+    // kept, so only ONE trailing period goes, and not when the value ends `..`.
+    out.evidence = matchIn(rxEvidence(), body);
+    if (out.evidence.offset >= 0) {
+        QString evRaw = out.evidence.value.trimmed();
+        if (evRaw.endsWith(QLatin1Char('.')) && !evRaw.endsWith(QStringLiteral("..")))
+            evRaw.chop(1);
+        out.evidence.value = evRaw;
+        out.evidenceList   = splitTrailerList(evRaw);
+    }
+
+    // ANTS-3764 — Source: stops at a following trailer key (10 corpus lines
+    // write two keys on one line), then trims, drops one trailing period, and
+    // trims again.
+    out.source = matchIn(rxSource(), body);
+    if (out.source.offset >= 0) {
+        QString srcRaw = out.source.value;
+        const auto keyAt = rxTrailerKey().match(srcRaw);
+        if (keyAt.hasMatch()) srcRaw = srcRaw.left(keyAt.capturedStart());
+        srcRaw = srcRaw.trimmed();
+        if (srcRaw.endsWith(QLatin1Char('.'))) srcRaw.chop(1);
+        out.source.value = srcRaw.trimmed();
+    }
+
+    return out;
+}
+
 QVector<BulletRecord>
 parseBullets(const QString &markdownText) {
     // ANTS-2119 (roadmapdialog M-1) — function-local memo, mirroring
@@ -537,89 +770,9 @@ parseBullets(const QString &markdownText) {
     static const QRegularExpression rxBold(
         QStringLiteral("\\*\\*(.+?)\\*\\*"),
         QRegularExpression::DotMatchesEverythingOption);
-    // MultilineOption so `^` anchors at the start of any line within
-    // the bullet body — Kind: / Lanes: / Layman: live as continuation
-    // lines, not at the start of the string.
-    // ANTS-3407 — CaseInsensitiveOption: the `^`-anchored metadata labels
-    // (Kind:/Layman:/Evidence:) all tolerate any case, so a hand-edited
-    // ROADMAP.md parses `kind:`/`KIND:` identically to the canonical
-    // capital form the MCP writer emits. (Lanes: is the deliberate
-    // exception — see its note below.)
-    static const QRegularExpression rxKind(
-        QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
-        QRegularExpression::MultilineOption |
-        QRegularExpression::CaseInsensitiveOption);
-    // ANTS-2058 — no `^` anchor. Bullets routinely write their metadata
-    // inline as one prose sentence (`Kind: refactor. Lanes: backend tests.
-    // Source: …`), so `Lanes:` lands mid-line, not at a line start. The
-    // old `^\\s*` anchor matched only line-leading `Lanes:` and returned
-    // lanes:[] for every inline bullet — while rxKind worked purely because
-    // `Kind:` happened to sit first. Match `Lanes:` anywhere; the non-greedy
-    // capture still stops at the first period/newline.
-    // ANTS-3407 — deliberately NOT CaseInsensitive (unlike the anchored
-    // Kind:/Layman:/Evidence: labels). Because this pattern is un-anchored,
-    // case-insensitivity would match a lowercase "lanes:" occurring mid-prose
-    // (e.g. "split the review lanes: audit, tests.") and mis-extract it as
-    // metadata. Canonical `Lanes:` is the only form the writer emits.
-    // ANTS-3722 — but NOT when the label is inside backticks. Un-anchoring is
-    // still right (ANTS-2058's inline trailer is real), so the guard is the
-    // narrowest thing that separates the two: a bullet that QUOTES the trailer
-    // keys is talking ABOUT them, never declaring them. Reading ANTS-3696's own
-    // body back returned lanes:["`/`Source:` trailer below the"], captured out
-    // of the sentence "the `Layman:`/`Kind:`/`Lanes:`/`Source:` trailer" — and
-    // the corpus most likely to write that sentence is the one documenting the
-    // roadmap format, i.e. exactly the bullets a lane filter should trust.
-    static const QRegularExpression rxLanes(
-        QStringLiteral("(?<!`)Lanes:\\s*(.+?)\\s*[\\.\\n]"),
-        QRegularExpression::MultilineOption);
-    // ANTS-1154-INV-4: optional Layman: line — case-insensitive label,
-    // takes the rest of the line up to a period or newline.
-    // ANTS-1861: match both plain "Layman:" and bold "**Layman:**" forms
-    // (roadmap_log writes the bold version).
-    // NOTE — `[\\.\\n]` is intentional: it strips the trailing sentence
-    // period so rec.layman is punctuation-free (INV-4 invariant). CHANGELOG
-    // consumers that need the full sentence should use match->body via
-    // rxBoldLayman (see remotecontrol.cpp cmdChangelogLog, ANTS-1933).
-    static const QRegularExpression rxLayman(
-        QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+?)\\s*[\\.\\n]"),
-        QRegularExpression::MultilineOption |
-        QRegularExpression::CaseInsensitiveOption);
-    // ANTS-3382 — optional `Evidence:` line listing file paths. Unlike
-    // Lanes:, the capture runs to end-of-line (NOT to the first period):
-    // evidence paths routinely contain dots (`photos/IMG_2031.jpg`), so a
-    // `[^\\.\\n]` stop would truncate at the extension.
-    // ANTS-3407 — CaseInsensitiveOption for parity with rxLayman/rxKind, so a
-    // hand-edited `evidence:`/`EVIDENCE:` label is still recognised. The MCP
-    // writer always emits capital `Evidence:`, so the round-trip is unchanged.
-    static const QRegularExpression rxEvidence(
-        QStringLiteral("^\\s*Evidence:\\s*([^\\n]+)"),
-        QRegularExpression::MultilineOption |
-        QRegularExpression::CaseInsensitiveOption);
-    // ANTS-3764 — the `Source:` provenance line (ANTS-3757 § 2.1.1 / § 2.8).
-    // Three rules, each measured against ROADMAP.md on 2026-07-31 rather
-    // than inherited from whichever sibling key looked closest:
-    //  - Capture runs to END OF LINE, not to the first period. 61 of 1282
-    //    values carry an internal period — `in-session-2026-07-29
-    //    (rpmlint.log, first successful build).` — so rxKind's stop-at-period
-    //    rule would cut 4.8% of the corpus mid-value. rxEvidence already runs
-    //    to end-of-line for exactly this reason.
-    //  - UN-ANCHORED with rxLanes' backtick guard. 157 occurrences sit inline
-    //    in a prose trailer rather than at a line start, which is ANTS-2058's
-    //    finding for `Lanes:`; 22 are backticked mentions of the key itself,
-    //    which ANTS-3722's guard excludes. Deliberately NOT case-insensitive,
-    //    same reasoning as rxLanes: un-anchored + case-folded would match a
-    //    lowercase "source:" mid-prose.
-    //  - The label may be bold. 24 lines in the corpus write `**Source:**`,
-    //    and rxLayman already tolerates the same shape for its own key;
-    //    without the optional pair the closing `**` lands in the value.
-    static const QRegularExpression rxSource(
-        QStringLiteral("(?<!`)(?:\\*\\*)?Source:(?:\\*\\*)?\\s*([^\\n]+)"));
-    //  - The value stops at a following trailer key: 10 lines write two keys
-    //    on one line (`Source: regression. Lanes: packaging.`). Capital-led
-    //    (a lowercase `lanes:` mid-prose is prose, per rxLanes) and
-    //    optionally bold, since roadmap_log writes `**Layman:**`.
-    static const QRegularExpression rxTrailerKey(
-        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence):"));
+    // ANTS-3808 — the five trailer matchers moved out to file scope so
+    // trailerValuesIn() can share them; the extraction below asks it rather
+    // than matching them again.
 
     const QStringList lines = markdownText.split('\n');
     // ANTS-1428 — format detection runs once per parse. On
@@ -916,7 +1069,10 @@ parseBullets(const QString &markdownText) {
                     QStringLiteral("\\s*\\^[a-z0-9-]+\\s*$"));
                 h.replace(rxTrailAnchor, QString());
                 h = h.trimmed();
-                assignHeadline(rec, h);  // ANTS-2075 / ANTS-1811
+                // ANTS-3808 — the bold-ID label and the post-separator
+                // headline are both re-emitted by the render (as `[id]` and
+                // `**headline**`), so the whole head line is consumed.
+                assignHeadline(rec, h, headLineEnd(body));  // ANTS-2075 / ANTS-1811
             }
         }
         const auto boldMatch = rxBold.match(body);
@@ -942,6 +1098,10 @@ parseBullets(const QString &markdownText) {
         } else if (boldMatch.hasMatch() &&
                    (!gfmHere || boldIsHeadAnchored)) {
             QString h = boldMatch.captured(1).trimmed();
+            // ANTS-3808 — one past the text this branch consumes for the head
+            // line, tracked alongside `h` because each sub-case below ends
+            // somewhere different.
+            int consumedEnd = boldMatch.capturedEnd();
             // Strip a trailing `.` if the bold token is actually
             // a Bold-ID locator (e.g. `**Sh4.**`); the visible
             // headline of a bold-ID'd bullet is the *next* bold
@@ -953,15 +1113,21 @@ parseBullets(const QString &markdownText) {
                 const auto m2 = rxBold.match(body, after);
                 if (m2.hasMatch()) {
                     h = m2.captured(1).trimmed();
+                    consumedEnd = m2.capturedEnd();
                 } else {
                     // Use the prose immediately following the
                     // bold-ID token; trim to one line.
                     h = body.mid(after).trimmed();
                     const int nl = h.indexOf(QLatin1Char('\n'));
                     if (nl >= 0) h = h.left(nl).trimmed();
+                    // The rest of the head line went into the headline.
+                    const qsizetype nlAt = body.indexOf(QLatin1Char('\n'), after);
+                    consumedEnd = nlAt < 0 ? int(body.size()) : int(nlAt);
                 }
             }
-            assignHeadline(rec, h);  // ANTS-2075 / ANTS-1811
+            assignHeadline(rec, h,  // ANTS-2075 / ANTS-1811
+                           headlinePrefixEnd(body, boldMatch.capturedStart(),
+                                             consumedEnd));
         } else if (gfmHere) {
             // ANTS-1428 — GFM bullets often have no `**bold**`
             // formatting at all (Vestige's roadmap is mixed). Use
@@ -981,7 +1147,11 @@ parseBullets(const QString &markdownText) {
             h.replace(rxTrailAnchor, QString());
             h.remove(QStringLiteral("**"));  // ANTS-2046 — de-markup
             h = h.trimmed();
-            assignHeadline(rec, h);  // ANTS-2075 / ANTS-1811
+            // ANTS-3808 — the first line IS the headline here, so all of it is
+            // consumed. This is the branch a headline-text match could not
+            // strip: `h` has had its `**` markers and caret anchor removed, so
+            // it is not a substring of the line it came from.
+            assignHeadline(rec, h, headLineEnd(body));  // ANTS-2075 / ANTS-1811
         }
         // ANTS-1428 — synthetic ID when GFM bullet has no bold-ID
         // and no `[ANTS-NNNN]` legacy token. Stable across line
@@ -993,55 +1163,18 @@ parseBullets(const QString &markdownText) {
                 rec.synthetic = true;
             }
         }
-        const auto kindMatch = rxKind.match(body);
-        if (kindMatch.hasMatch()) {
-            rec.kind = kindMatch.captured(1).trimmed();
-        }
-        const auto lanesMatch = rxLanes.match(body);
-        if (lanesMatch.hasMatch()) {
-            const QString lanesRaw = lanesMatch.captured(1);
-            // Bind split() result first — clazy `range-loop-detach`
-            // (ANTS-1122 audit-fold-in r2 2026-04-30).
-            const QStringList parts =
-                lanesRaw.split(',', Qt::SkipEmptyParts);
-            for (const QString &part : parts) {
-                const QString trimmed = part.trimmed();
-                if (!trimmed.isEmpty()) rec.lanes.append(trimmed);
-            }
-        }
-        // ANTS-1154-INV-4
-        const auto laymanMatch = rxLayman.match(body);
-        if (laymanMatch.hasMatch()) {
-            rec.layman = laymanMatch.captured(1).trimmed();
-        }
-        // ANTS-3382 — Evidence: file paths (comma-separated, dots intact).
-        const auto evidenceMatch = rxEvidence.match(body);
-        if (evidenceMatch.hasMatch()) {
-            QString evRaw = evidenceMatch.captured(1).trimmed();
-            // Drop a single trailing sentence period if the writer added
-            // one, but keep dots inside paths.
-            if (evRaw.endsWith(QLatin1Char('.')) &&
-                !evRaw.endsWith(QStringLiteral(".."))) {
-                evRaw.chop(1);
-            }
-            const QStringList parts = evRaw.split(',', Qt::SkipEmptyParts);
-            for (const QString &part : parts) {
-                const QString trimmed = part.trimmed();
-                if (!trimmed.isEmpty()) rec.evidence.append(trimmed);
-            }
-        }
-        // ANTS-3764 — Source: provenance. See rxSource for why the three
-        // rules below differ from the sibling keys' single regex.
-        const auto sourceMatch = rxSource.match(body);
-        if (sourceMatch.hasMatch()) {
-            QString srcRaw = sourceMatch.captured(1);
-            const auto keyAt = rxTrailerKey.match(srcRaw);
-            if (keyAt.hasMatch()) srcRaw = srcRaw.left(keyAt.capturedStart());
-            srcRaw = srcRaw.trimmed();
-            // Drop one trailing sentence period, as rxEvidence does.
-            if (srcRaw.endsWith(QLatin1Char('.'))) srcRaw.chop(1);
-            rec.source = srcRaw.trimmed();
-        }
+        // ANTS-3808 § 2.2.1 — one pass over the five trailer keys, through the
+        // accessor the render also uses. Assigning the record's fields FROM it
+        // is what makes INV-4's equality hold by construction rather than by
+        // two implementations happening to agree; an absent key yields an
+        // empty value / empty list, which is what the per-key `hasMatch()`
+        // guards used to leave behind.
+        const TrailerValues tv = trailerValuesIn(body);
+        rec.kind     = tv.kind.value;       // ANTS-3407
+        rec.lanes    = tv.lanesList;        // ANTS-2058 / ANTS-3722
+        rec.layman   = tv.layman.value;     // ANTS-1154-INV-4
+        rec.evidence = tv.evidenceList;     // ANTS-3382
+        rec.source   = tv.source.value;     // ANTS-3764
         rec.body = body;
         // ANTS-3764 — the span. `i` is the index of the first line that is
         // NOT part of this bullet on every exit from the walk above, so the

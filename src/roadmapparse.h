@@ -101,6 +101,14 @@ struct BulletRecord {
                              // ANTS-3757 INV-10 assertable directly:
                              // passIdFromDesignator(passDesignator) == id.
                              // "" off the pass path.
+    // ANTS-3808 — the offset into `body` just past the text this parse
+    // CONSUMED to build the head line's id and headline; equivalently, the
+    // first character of the head line the render will NOT reconstruct.
+    // QString positions (UTF-16 code units), as TrailerMatch::offset is.
+    // -1 when no headline was assigned OR when the consumed text is not a
+    // PREFIX of the body (a bold span sitting mid-prose), which the migration
+    // reads as "strip nothing" — see docs/specs/ANTS-3808-*.md § 2.1.
+    int headlineEnd = -1;
     // 1-based inclusive span of the source lines this record was built from:
     // the bullet line through its last continuation line, or the `####`
     // heading through the last non-blank line of its block. Trailing blanks
@@ -138,6 +146,47 @@ QString idTokenPattern();
 // parseBullets() ask only for the format, and nullptr is the whole cost of
 // leaving them untouched.
 QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal = nullptr);
+
+// ANTS-3808 § 2.2 — the trailer matchers, asked rather than duplicated. INV-2
+// is phrased as "RoadmapParse remains the only bullet grammar", and that is
+// this namespace: a consumer that needs a trailer value calls in here instead
+// of growing its own regex.
+//
+// Per key: the value as parseBullets() derives it (§ 2.2.1 pins each
+// normalisation step), plus where the match sat and whether it began a line —
+// its MATCH POSITION. Deliberately not called "provenance": the store already
+// uses that word for per-field write origin, and one term with two meanings is
+// how an implementer conflates them. The match position is not decoration —
+// ANTS-3809's `body_shadowed` refusal has to name the shadowing sentence, and a
+// bare value cannot answer "was this an un-anchored mid-prose match?".
+struct TrailerMatch {
+    QString value;         // empty when the key is absent
+    // Index of the CAPTURE (`capturedStart(1)`) into `body`, in QString
+    // positions — UTF-16 code units, NOT bytes. -1 when absent. Converting
+    // this to a UTF-8 offset breaks ANTS-3809's sentence extraction on the
+    // first non-ASCII bullet.
+    int     offset   = -1;
+    // True when the MATCH — `capturedStart(0)`, not `offset` — begins a line.
+    //
+    // The distinction is the whole field. Every one of the five patterns puts
+    // literal text between the line start and group 1 (`^\s*Kind:\s*(…)`,
+    // `Lanes:\s*(…)`), so computed off `offset` the field would be false on
+    // essentially every key of every bullet.
+    bool    anchored = false;
+};
+struct TrailerValues {
+    TrailerMatch layman, kind, source;
+    // `value` for these two is the text the split is applied TO, which is not
+    // the same step for each: `lanes` splits the raw capture, `evidence`
+    // splits after a trim and one trailing-period chop. They are not
+    // symmetric — § 2.2.1 pins both exactly.
+    TrailerMatch lanes, evidence;
+    QStringList  lanesList, evidenceList;   // the split forms parseBullets() assigns
+};
+// The five trailer keys as they appear in `body`. parseBullets() assigns its
+// own record fields from this call, so the equality INV-4 asserts holds by
+// construction rather than by two implementations agreeing.
+TrailerValues trailerValuesIn(const QString &body);
 
 // Pure helper: parse `markdownText` into top-level status-emoji bullets.
 // Dispatches on detectRoadmapFormat(). Result is read-only; used by the

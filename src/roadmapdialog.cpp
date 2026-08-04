@@ -637,9 +637,13 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
                 sourceText == s_lastInput) {
             kindByLine = s_lastKindMap;
         } else {
-            static const QRegularExpression rxKind(
-                QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
-                QRegularExpression::MultilineOption);
+            // ANTS-3808 INV-2 — this used to construct its own `Kind:` regex,
+            // the second bullet grammar under src/. It now asks
+            // RoadmapParse::trailerValuesIn(), which is the one grammar.
+            // NOT behaviour-preserving, and deliberately so: the local pattern
+            // omitted CaseInsensitiveOption, so a hand-edited `kind:`/`KIND:`
+            // bullet was silently skipped by the kind filter and now matches it
+            // — the widening ANTS-3407 case-folded the anchored labels for.
             int j = 0;
             while (j < lines.size()) {
                 const QString &row = lines[j];
@@ -665,9 +669,10 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
                     }
                     break;
                 }
-                const auto km = rxKind.match(bodyFull);
-                if (km.hasMatch())
-                    kindByLine.insert(j, km.captured(1).trimmed());
+                const QString kind =
+                    RoadmapParse::trailerValuesIn(bodyFull).kind.value;
+                if (!kind.isEmpty())
+                    kindByLine.insert(j, kind);
                 j = k;  // skip past the continuation lines
             }
             s_lastInput = sourceText;

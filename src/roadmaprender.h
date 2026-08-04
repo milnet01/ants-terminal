@@ -13,11 +13,15 @@
 
 #pragma once
 
+// ANTS-3808 § 2.4 — bulletText() names RoadmapStore::ItemWrite, a NESTED type,
+// which a forward declaration cannot satisfy. Same library, so this costs no
+// new link edge; render()'s own `RoadmapStore &` parameter kept the forward
+// declaration sufficient until now.
+#include "roadmapstore.h"
+
 #include <QString>
 #include <QStringList>
 #include <optional>
-
-class RoadmapStore;
 
 namespace RoadmapRender {
 
@@ -44,6 +48,13 @@ struct Outcome {
     // gate failure can still see how many items would have rendered.
     QStringList gateFailures;
 };
+
+// ANTS-3808 § 2.4 — one bullet's markdown, byte-identical to what the file
+// writer below emits for this item. Exported for ANTS-3793's reader seam, whose
+// `BulletRecord::body` is defined as this text and which cannot reach a
+// file-local function; the alternative is a second renderer that has to be kept
+// in step by hand.
+QString bulletText(const RoadmapStore::ItemWrite &it);
 
 // nullopt is reserved for failures BEFORE the commit phase — SQL errors, a
 // render error, a path refusal — where there is genuinely nothing to report.

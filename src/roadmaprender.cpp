@@ -53,11 +53,25 @@ void appendIndented(QStringList *out, const QString &text) {
         out->append(l.isEmpty() ? QString() : QStringLiteral("  ") + l);
 }
 
-// One bullet in full § 3.5 form. INV-12: the four REQUIRED pieces are emitted
-// unconditionally — `Kind:` included, even when its value equals § 3.5.3's
-// default, because a re-parse restoring the default is exactly why INV-1's
-// oracle cannot see the omission.
-QString renderBullet(const RoadmapStore::ItemWrite &it) {
+} // namespace
+
+// One bullet in full § 3.5 form.
+//
+// ANTS-3808 § 2.3 — each trailer key is emitted from its column UNLESS the
+// body would already re-parse to that same value. Value equality and not mere
+// presence: a body line reading `Kind: refactor` — stale prose, or a key the
+// author typed into the body — has the key present and a value the store
+// disagrees with, and suppressing on presence would drop the canonical column
+// line and leave the STALE value as the only one in the file, which the next
+// migration would read back and adopt. Comparing values means a mismatch always
+// emits from the column, which is canonical.
+//
+// INV-12 still holds as written: it asserts against the RENDERED TEXT, and
+// whichever branch the test takes, the required `Kind:` piece is in the output
+// exactly once. `offset >= 0` is what keeps that true — an ABSENT key must
+// never suppress, or an item with an empty `kind` would compare equal to an
+// empty body and the required line would vanish.
+QString bulletText(const RoadmapStore::ItemWrite &it) {
     QStringList lines;
     QString head = QStringLiteral("- ") + emojiFor(it.status);
     if (!it.id.isEmpty())
@@ -65,23 +79,38 @@ QString renderBullet(const RoadmapStore::ItemWrite &it) {
     head += QStringLiteral(" **") + it.headline + QStringLiteral("**");
     lines.append(head);
 
+    // One accessor call per bullet, reused across all five comparisons: calling
+    // it per key would be five passes and up to thirty matches per bullet.
+    const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(it.body);
+    const auto shadows = [](const RoadmapParse::TrailerMatch &m, const QString &v) {
+        return m.offset >= 0 && m.value == v;
+    };
+
     if (!it.body.isEmpty())
         appendIndented(&lines, it.body);
-    if (!it.layman.isEmpty())
+    if (!it.layman.isEmpty() && !shadows(tv.layman, it.layman))
         appendIndented(&lines, QStringLiteral("**Layman:** ") + it.layman);
-    // Required piece, unconditionally (INV-12).
-    appendIndented(&lines, QStringLiteral("Kind: ") + it.kind + QLatin1Char('.'));
-    if (!it.source.isEmpty())
+    // Required piece (INV-12) — emitted whenever the body does not already
+    // carry this exact value.
+    if (!shadows(tv.kind, it.kind))
+        appendIndented(&lines, QStringLiteral("Kind: ") + it.kind + QLatin1Char('.'));
+    if (!it.source.isEmpty() && !shadows(tv.source, it.source))
         appendIndented(&lines, QStringLiteral("Source: ") + it.source + QLatin1Char('.'));
-    if (!it.lanes.isEmpty())
+    // The two list-valued keys compare ELEMENT BY ELEMENT, never as a join:
+    // comparing a pre-split string against a joined column diverges on
+    // separator spacing alone, so suppression would never fire for them and
+    // half the duplication would survive a passing test.
+    if (!it.lanes.isEmpty() && !(tv.lanes.offset >= 0 && tv.lanesList == it.lanes))
         appendIndented(&lines, QStringLiteral("Lanes: ") + it.lanes.join(QStringLiteral(", ")) + QLatin1Char('.'));
     // Rendered WITHOUT a trailing period: paths contain dots, so a sentence
     // period would read as part of the last path (roadmap-format.md § 3.5).
-    if (!it.evidence.isEmpty())
+    if (!it.evidence.isEmpty() && !(tv.evidence.offset >= 0 && tv.evidenceList == it.evidence))
         appendIndented(&lines, QStringLiteral("Evidence: ") + it.evidence.join(QStringLiteral(", ")));
 
     return lines.join(QLatin1Char('\n'));
 }
+
+namespace {
 
 // The status legend is stored STRUCTURED (roadmap-data-model.md § 5.1 — status
 // value → that project's wording), so rendering it is the inverse of the
@@ -291,7 +320,7 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                     const auto it = itemOf.constFind(e.itemPk);
                     if (it == itemOf.constEnd())
                         continue;   // excluded by INV-4; already counted
-                    blocks.append(renderBullet(*it));
+                    blocks.append(bulletText(*it));
                     ++out.itemsRendered;
                 } else if (e.payload) {
                     // Verbatim — never re-wrapped, never re-canonicalised. The
