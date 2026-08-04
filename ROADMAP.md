@@ -25576,6 +25576,132 @@ against current source before filing.
   Kind: investigate.
   Source: cold-eyes ANTS-3808 loop 1, 2026-08-04 — the spec's own §5 recorded this as "owed and not yet filed".
 
+- 📋 [ANTS-3815] **Record each project's source roadmap format in the store, so the read seam stops re-reading ROADMAP.md.**
+  No store column records a source format: `format` lives on the migration's
+  `RoadmapMigrate::Source` struct and nowhere in `roadmapstore.h`. So
+  ANTS-3793 § 2.2's ants-v1 gate has to run `detectRoadmapFormat()` over the
+  LIVE file, which means every consumer call on a MIGRATED project still reads
+  the whole `ROADMAP.md` — 3.0 MiB / 34,240 lines on this project, measured
+  2026-08-04. ANTS-3793 § 4 prices that read as additive to the store read
+  rather than replacing it, which is the honest costing but not the desirable
+  end state.
+
+  Owns: the column on `project` (or `item`-adjacent) in
+  `roadmap-data-model.md`, the migration writing it, and ANTS-3793 § 2.2's
+  gate reading it instead of the file. Once it lands, `bulletsFor()`'s
+  `markdown` argument becomes needed only on the UNMIGRATED path, and the
+  migrated path stops touching the filesystem at all.
+
+  Blocked by ANTS-3793 (the gate that consumes it).
+  **Layman:** Save which roadmap dialect a project uses in the database, so we stop opening the big text file just to check.
+  Kind: implement.
+  Source: ANTS-3793 spec § 7 (2026-08-04) — filed while resolving cold-eyes finding H4..
+
+- 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
+  Verified 2026-08-04. The store has exactly three enumerators —
+  `listItems()`, `listSections()`, `listElements()` — and `listItems()`
+  returns the NARROW `ItemRef` (itemPk, idFold, headline, sectionId,
+  idFromMigration). The only full-item reader is `readItem(itemPk)`, one
+  row at a time. So "every item of a project" is 1 + N queries: ~1,839 point
+  lookups on this project.
+
+  This is already the hot path, not a hypothetical — `RoadmapRender::render()`
+  pays it on every roadmap write, and ANTS-3793's `bulletsFromStore()` will pay
+  it on every consumer read. ANTS-3793 § 4 names a batched
+  `readItems(projectId)` as the remedy if its p95 < 50 ms budget reds, and
+  defers building it until measured.
+
+  Second half, same theme: there is no aggregate reader, so a size guard
+  cannot ask the store how big a project is without materialising it.
+  ANTS-3793's INV-3 therefore proxies on ITEM COUNT and accepts that a project
+  with atypically large bodies passes the gate. A `SELECT SUM(LENGTH(body))`
+  reader would make that budget exact instead of indicative.
+  **Layman:** Reading a whole project out of the roadmap database currently costs one query per item; make it one query.
+  Kind: perf.
+  Source: ANTS-3793 spec § 4 (2026-08-04) — surfaced while pricing the read seam's latency budget..
+
+- 📋 [ANTS-3817] **SectionRow should carry its own section_id.**
+  Verified 2026-08-04. `listSections()` selects
+  `slug, title, level, intro, parent_id, source_path, position` and
+  `SectionRow` has no `section_id` field, so every caller that wants a
+  section's ELEMENTS must re-resolve the id with `findSection(projectId,
+  slug)` — one extra query per section, plus an error path for the id
+  vanishing between the two reads that `RoadmapRender::render()` already
+  carries verbatim ("section '%1' vanished between reads").
+
+  ANTS-3793's `bulletsFromStore()` will reproduce the same dance for the same
+  reason. Adding the column to the SELECT and the field to the struct removes
+  both the query and the error path from every present and future caller.
+  Note the reason it is absent is not an oversight to undo blindly:
+  `readSection()` TAKES the id, so the struct was shaped as its output. Widening
+  it is a surface addition in the shape ANTS-3758 § 2.1 used for
+  `listElements()`.
+  **Layman:** Reading the database's section list leaves out each section's ID, so callers have to look it up again one by one.
+  Kind: refactor.
+  Source: ANTS-3793 spec § 2.1.3 (2026-08-04) — surfaced while stating the document-order walk..
+
+- 📋 [ANTS-3818] **Document order is a C++ comparator a consumer can silently forget.**
+  Verified 2026-08-04. `listSections()` deliberately returns
+  `ORDER BY section_id` — rowid order, "only for determinism between two reads
+  of the same store" per its own comment — and real document order is the free
+  function `sectionOrderLess()`, key `(position, slug)`, applied by the caller
+  in C++. The reason is sound and should not be undone: `QString::compare()` is
+  UTF-16 code-unit order while SQLite's BINARY collation is UTF-8 byte order,
+  and they disagree on the supplementary-plane characters an emoji heading slug
+  reaches.
+
+  The trap is that a consumer which simply iterates `listSections()` gets a
+  plausible order, no error, and a wrong file. Today there is exactly one such
+  consumer (`render()`) and it sorts correctly; ANTS-3793 adds a second and
+  ANTS-3809/3810 may add more, and nothing tests that a CONSUMER remembered.
+
+  Cheapest fix: a `listSectionsOrdered()` that returns the sorted vector, so the
+  unsorted enumerator stops being the obvious call. Alternative: keep one
+  enumerator and add an invariant + test asserting each consumer's output order,
+  which is more test surface for the same guarantee.
+  **Layman:** The order sections appear in is applied by hand after reading them; anyone who forgets gets the wrong order with no warning.
+  Kind: refactor.
+  Source: ANTS-3793 spec § 2.1.3 (2026-08-04) — surfaced while stating the document-order walk..
+
+- 📋 [ANTS-3819] **RoadmapStore::db() hands out a mutable QSqlDatabase, past the typed reader surface.**
+  Verified 2026-08-04. Alongside the typed readers, `RoadmapStore` exposes
+  `QSqlDatabase &db()` — non-const, returning a mutable handle. Every invariant
+  this store relies on is enforced in C++ around the typed surface, not in the
+  schema: element position density, the at-most-one filing index's companion
+  "at least one" rule in `putItem()`, provenance semantics, and the canonical-
+  JSON payload rule. A caller holding `db()` can write around all of them, and
+  the schema will accept it.
+
+  Not a live incident — this is an audit-and-narrow item, in the same spirit as
+  ANTS-3796's note that a missing enumerator makes callers "SELECT section_id in
+  raw SQL", i.e. that the escape hatch gets used when the typed surface has a
+  gap. Wanted: enumerate today's `db()` callers, give each the typed surface it
+  actually needed, then make the accessor private or const.
+  **Layman:** The roadmap database exposes a raw back door that lets code bypass the safety checks built around it.
+  Kind: security.
+  Source: ANTS-3793 store-surface review (2026-08-04) — noticed while mapping the read surface..
+
+- 📋 [ANTS-3820] **A dropped item has no markdown form, and nothing asserts that the render never tries.**
+  Verified 2026-08-04, and the round trip is worse than "no glyph":
+  `emojiFor()` returns an EMPTY string for `dropped` by design
+  (roadmap-format.md § 3.11 makes a fifth emoji an anti-pattern), so
+  `renderBullet()` would emit a head line with no status marker — and
+  `parseBullets()`' native path then fails `stripInlineEmoji()` and SKIPS THE
+  BULLET ENTIRELY (`if (!stripInlineEmoji(head, status)) { ++i; continue; }`).
+  A dropped item rendered to markdown re-parses to nothing at all.
+
+  Today `isRenderable()` excludes it before `renderBullet()` is reached, so the
+  pairing holds by call order and by nothing else. ANTS-3808 § 2.4 EXPORTS that
+  render as `RoadmapRender::bulletText()` for ANTS-3793's reader, which is the
+  first caller outside the guarded loop; ANTS-3793 § 2.1.2 excludes dropped
+  items on exactly this ground.
+
+  Wanted: state the precondition on `bulletText()` and assert it, so the
+  emojiFor/isRenderable pairing is enforced rather than merely true.
+  **Layman:** Items marked 'dropped' can't be written to the roadmap file at all; add a guard so a future change can't quietly try.
+  Kind: fix.
+  Source: ANTS-3793 spec § 2.1.2 (2026-08-04) — found while deciding what the store read path returns..
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
