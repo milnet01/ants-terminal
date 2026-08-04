@@ -25038,6 +25038,28 @@ against current source before filing.
   ANTS-3820 (a dropped item has no markdown form).
 
   NEXT: step 3 of the TODO -- draft + gate ANTS-3809 (the write half).
+  Progress (2026-08-04): step 1 of the split's TODO is now IMPLEMENTED, not
+  just gated. ANTS-3808 shipped in 1db29f9c + 0af92ce8 — read that bullet, not
+  this one, for what landed and for two recorded caveats. Full suite
+  3251/3251; the pre-push gate re-ran it green.
+
+  What this means for the remaining steps: RoadmapParse::trailerValuesIn()
+  and its TrailerMatch {value, offset, anchored} now EXIST in
+  src/roadmapparse.h, so ANTS-3809's body_shadowed refusal has the surface it
+  was blocked on, and RoadmapRender::bulletText() is exported in
+  src/roadmaprender.h for ANTS-3793's own bulletsFromStore(). Both were
+  prospective when the four specs were written; they are source facts now and
+  should be verified against the headers rather than re-derived from the
+  specs.
+
+  One build fact the other three specs may still state the old way: a new
+  Qt6::Core-only ants_roadmapparse_lib now holds roadmapparse.cpp +
+  roadmapindex.cpp, and ants_core_lib + ants_roadmapstore_lib both link it
+  PUBLIC. So the reader is reachable from the store's headless path WITHOUT
+  an ants_core_lib edge. Any spec text arguing about that edge is describing
+  a decision already made.
+
+  NEXT is unchanged: step 3 — draft + gate ANTS-3809 (the write half).
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
