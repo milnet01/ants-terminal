@@ -25428,6 +25428,48 @@ against current source before filing.
   blocks on that decision); and INV-6 ships red for the three ^-anchored keys,
   which are ^-anchored WITH MultilineOption and so still match a continuation
   line beginning `Kind:` in prose.
+  Cold-eyes gate (2026-08-04): CONVERGED BY CAP at 3 loops, 2 cold lanes
+  each. 62 verified across the run — 3/3/7/11 then 1/4/4/6 then 0/5/9/9 —
+  61 fixed, 4 filed, 5 dismissed. The spec is rule-14 gated and ready to
+  implement, with two things to read first.
+
+  (1) FOUR VERIFIED FINDINGS REMAIN, filed at
+  docs/reviews/ANTS-3808-cold-eyes-loop3-tail.md. Fold them in directly —
+  do NOT re-review to rediscover them; a fresh loop costs ~235k subagent
+  tokens to regenerate what is written there. Two HIGH (the headline-strip
+  match has no defined failure behaviour; INV-1 and § 2.3.1 disagree on
+  whether "exactly once" counts key literals or canonical values) and two
+  MEDIUM (GFM task-list bullets unhandled by the strip; the owning
+  function is never named).
+
+  (2) ONE OPEN DECISION IS A PRECONDITION OF § 2.3, not a cleanup after
+  it. § 2.3 places a RoadmapParse::trailerValuesIn() call inside
+  ants_roadmapstore_lib, which links Qt6::Core + Qt6::Sql and nothing else
+  by deliberate design (src/roadmaprender.h:11-12, for ANTS-3794's
+  headless publish path). § 4 carries three options and a named owner.
+
+  Loop 1's sharpest find was the draft's central rule: "store body minus
+  its first line" is LOSSY, not merely imprecise — a native bullet takes
+  its headline from the bold token only, so text after the closing ** lives
+  nowhere but body's first line. Roughly one bracket-id bullet in seven
+  (241 of 1646) carries such text, and for a single-line bullet it is the
+  item's whole substance. The rule is now a prefix strip; INV-5 was added
+  to catch the naive reading.
+
+  Loops 2 and 3 were dominated by this run's OWN fix collateral (14 v 1,
+  then 20 v 3 against draft defects), which fired Phase 5's
+  stop-and-consolidate trigger — that, not the loop count, is why the
+  remaining four were filed rather than fixed. Loop 2's CRITICAL was loop
+  1's repair inverted: `anchored` computed off capturedStart(1) is
+  unreachably false on every key of every bullet. Loop 3's one CRITICAL
+  was dismissed on verification — the render reconstructs the headline
+  into the head line, so the claimed INV-3 divergence cannot occur.
+
+  Collateral outside this spec: ANTS-3793's umbrella held a stale
+  duplicate of this contract including the false "equals the column by
+  construction" claim — superseded banners added there rather than
+  reconciling two copies. ANTS-3811 filed for the un-anchoring decision
+  § 5 had recorded as "owed and not yet filed".
 
 - 📋 [ANTS-3809] **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03), which stopped
@@ -32739,6 +32781,64 @@ here.)
   **Layman:** When Claude marks a roadmap item done via the MCP tool, it should be able to add the "shipped in pull N" note in the same step instead of a second manual edit.
   Kind: enhancement.
   Source: in-session-2026-05-20 (dogfooding during pull 35 / ANTS-1303).
+
+- 📋 [ANTS-3812] **Harvest the global skill set for behaviour Ants MCP / Terminal should own natively.**
+  Every skill under `~/.claude/skills/` is a procedure a session pays
+  for in tokens on every run. Some of those procedures are
+  deterministic enough to be a verb instead, and the ones that already
+  moved (`doc_integrity`, `spec_lint`, `doc_citations`, `cold_eyes_brief`,
+  `debt_sweep_scan`) are the proof of the pattern rather than the end of
+  it.
+
+  Sweep every skill and classify each step:
+  - **Verb candidate** — deterministic, no judgement, currently costing a
+    lane a grep. These are the wins; each one both cuts tokens and stops
+    the check being skipped.
+  - **Stays a skill** — needs judgement, or its value IS the independent
+    read (the `/cold-eyes` lane dispatch is the standing example, and the
+    two carve-outs in CLAUDE.md §18 say why some verbs must NOT replace
+    the skill).
+  - **Should not exist** — superseded, or enforced by something else now.
+
+  Measured motivation from this session's own run: three `/cold-eyes`
+  loops spent ~700k subagent tokens, and the deterministic pre-pass
+  (`spec_lint` + `doc_integrity` + `doc_citations`) returned clean every
+  time for a few hundred tokens. The gap between those two numbers is
+  what this item is trying to close.
+
+  Prerequisite: the roadmap-migration bundle, because several skills are
+  about to change shape when the store becomes the primary reader.
+  **Layman:** Go through the reusable instruction packs Claude runs on, and work out which of their steps the terminal could just do itself — faster, and without spending words explaining them every session.
+  Kind: investigate.
+  Lanes: mcp, claudeintegration.
+  Source: user-request-2026-08-04 — raised during the ANTS-3808 cold-eyes run; explicitly scheduled AFTER the roadmap-migration bundle (ANTS-3793/3808/3809/3810) lands.
+
+- 📋 [ANTS-3813] **Project Audit tool — improvement pass off the same skill sweep.**
+  Companion to the skill-harvest item above, and deliberately separate
+  so each can ship alone.
+
+  The audit tool and the review skills overlap: `/audit` runs the
+  external analysers, `/code-quality-review` runs judgement lanes, and
+  the in-app Project Audit dialog runs the rule pack. Anything the
+  skills check by hand that the rule pack could check deterministically
+  is a candidate to move in — the same test as the sweep above, pointed
+  at a different target.
+
+  Known starting material rather than a blank sheet:
+  - `debt_sweep_scan` measured ~94% false positives (see the detector
+    fixes ANTS-3342..3347) — the precision problem is documented and
+    unfinished.
+  - The confidence score's weights (floor +10, severity x15, +20
+    cross-tool corroboration, +10 external AST, -5 short grep, -20 test
+    path) have never been re-fitted against outcomes.
+  - `.ants_review_falsepos.jsonl` records confirmed false positives and
+    nothing feeds them back into scoring.
+
+  Scope it from the sweep's findings rather than guessing up front.
+  **Layman:** The built-in code-checking tool gets a review of its own: what it misses, what it reports that nobody acts on, and what it could check that a person currently has to remember.
+  Kind: enhancement.
+  Lanes: audit.
+  Source: user-request-2026-08-04 — raised alongside the skill-harvest item; same scheduling (after the roadmap migrations).
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
