@@ -25763,6 +25763,25 @@ against current source before filing.
   Kind: chore.
   Source: in-session-2026-08-04 (ANTS-3809 spec grounding).
 
+- 📋 [ANTS-3822] **Consumer writes should append a `history` row, not just change the column.**
+  `RoadmapStore::appendHistory()` + `maxHistorySeq()` exist and ANTS-3756
+  INV-14 governs the cap, and ANTS-3765's migration writes history rows.
+  ANTS-3809's eight write ops change item columns via `setItemField()` and
+  write NO history row, so the audit trail gains a hole the moment the
+  consumers cut over -- a field's old value is recoverable for a migrated
+  write and not for a consumer one.
+
+  Deliberately NOT in ANTS-3809: a history row per op is a second contract
+  (what counts as one revision when one op writes body plus five re-derived
+  trailer columns? does dry_run write one? does the seq continue across a
+  rolled-back transaction?) and folding it in was what made the umbrella
+  oversized in the first place.
+
+  Blocked by ANTS-3809 (the write path it would hook into).
+  **Layman:** Record who changed each roadmap field and when, so the edit history has no gaps once the tools write to the database.
+  Kind: implement.
+  Source: in-session-2026-08-04 (ANTS-3809 cold-eyes loop 1, lane A).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
