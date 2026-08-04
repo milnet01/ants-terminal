@@ -1,6 +1,8 @@
 # ANTS-3808 — `item.body`: what the migration stores and what the render re-derives
 
-**Status:** spec draft (2026-08-04).
+**Status:** accepted (2026-08-04) — cold-eyes loops 1–3 folded, converged by
+cap; the loop-3 tail folded in post-cap and § 4's build decision settled. Ready
+to implement; no further review gate is owed.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3808, found while verifying ANTS-3806 (2026-08-03);
 split out of ANTS-3793 at that spec's cold-eyes cap the same day.

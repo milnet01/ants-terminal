@@ -32939,6 +32939,18 @@ here.)
   Kind: investigate.
   Lanes: mcp, claudeintegration.
   Source: user-request-2026-08-04 — raised after the ANTS-3808 fold-in.
+  Evidence (2026-08-04), recorded before it is lost: the two ANTS-3808
+  findings that failed verification had the SAME shape, and it is a
+  rule-13 shape. One read a guard (`if (!rec.headline.isEmpty())`) as an
+  assignment; the other assumed a token reached a string that a strip
+  three call-sites earlier had already removed. Neither was a judgement
+  error — both were one file-open away, and both were asserted as fact in
+  a filed HIGH/MEDIUM finding. Global CLAUDE.md §14 already tells review
+  loops to treat "is this assumption or verified?" as a per-pass checklist
+  item; n=2 says it is not firing inside lanes. That is exactly the
+  per-rule precision signal this item proposes to measure, so it is the
+  first datapoint rather than a separate concern. If ANTS-3793's tail
+  shows the same shape, the fix is a lane-brief change, not a new rule.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
