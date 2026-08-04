@@ -25473,6 +25473,28 @@ against current source before filing.
   Kind: test.
   Source: in-session-2026-08-03 (ANTS-3793 cold-eyes loop-3 split).
 
+- 💭 [ANTS-3811] **Decide whether `Source:` / `Lanes:` stay un-anchored, now that a residual body can shadow a column.**
+  `rxSource` and `rxLanes` are deliberately un-anchored: ANTS-2058
+  measured inline `Lanes:` values, and ANTS-3764 measured 157 inline
+  `Source:` occurrences plus 24 bold `**Source:**` lines, so anchoring
+  them would discard real metadata. ANTS-3722's backtick guard absorbs
+  the mentions-of-the-key case.
+
+  ANTS-3808 § 2.3.1 names the residual exposure this leaves and scopes
+  it out, correctly — but its § 5 then recorded the follow-up as "owed
+  and not yet filed", which is a spec carrying untracked debt. This is
+  that id.
+
+  Not a defect and not scheduled. The question only becomes live once
+  consumer writes can produce a body that shadows a column
+  (ANTS-3809), and ANTS-3809's `body_shadowed` refusal may well be the
+  whole answer — in which case this closes as "no grammar change
+  needed". Filed so that decision is recorded somewhere other than a
+  parenthetical.
+  **Layman:** A roadmap bullet can mention "Source:" in the middle of a sentence, and the parser deliberately treats that as real metadata — this asks whether that is still the right call.
+  Kind: investigate.
+  Source: cold-eyes ANTS-3808 loop 1, 2026-08-04 — the spec's own §5 recorded this as "owed and not yet filed".
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

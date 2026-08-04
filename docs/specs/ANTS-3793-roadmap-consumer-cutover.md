@@ -5,7 +5,11 @@
 **Source:** ROADMAP.md ANTS-3793 (ANTS-3758 split, spec seam 3b of 5); the
 `item.body` half from ANTS-3808, found while verifying ANTS-3806 (2026-08-03)
 and homed here by the user the same day.
-**Covers:** ANTS-3793, ANTS-3808.
+**Covers:** ANTS-3793. **NOT ANTS-3808 — split out 2026-08-03** to
+[`ANTS-3808-item-body-and-trailer-suppression.md`](ANTS-3808-item-body-and-trailer-suppression.md),
+which is now the sole contract for `item.body` and the trailer accessor.
+**§ 2.3 below is superseded and must not be implemented from** — it is retained
+only until this document is rewritten as the read seam (see its loop log).
 **Blocked by:** ANTS-3758 (the render these consumers write through) — shipped.
 **Blocker for:** ANTS-3794 (publish + health checks), which would otherwise
 publish § 2.3's duplication into every migrated project's `ROADMAP.md`.
@@ -290,6 +294,16 @@ above. Conflating the two is how this design gets implemented as a per-call
 `QSqlDatabase::open()`, which is why they are written as separate sentences.
 
 ### 2.3 What `item.body` holds (ANTS-3808)
+
+> **SUPERSEDED 2026-08-04 — do not implement from this section.** ANTS-3808 has
+> its own spec:
+> [`ANTS-3808-item-body-and-trailer-suppression.md`](ANTS-3808-item-body-and-trailer-suppression.md).
+> Everything below is the pre-split draft and is **known wrong in two ways** its
+> cold-eyes loop 1 fixed: the storage rule here drops the whole first line,
+> which destroys the body prose of 241 of 1645 bullets in this project's
+> corpus; and the claim that `trailerValuesIn(body)` "equals the column by
+> construction" is false, because the column was extracted from the *full* body
+> and the stored body is a residual. Read the new spec, not this.
 
 **The disagreement, stated exactly.** `RoadmapParse::parseBullets()` seeds
 `QString body = head` where `head` is the bullet line minus its `"- "` and minus
@@ -918,12 +932,17 @@ case would write into it. Always
   split out it needs its own id.
 - **`src/roadmapdialog.cpp`'s kind-filter pre-walk** (its own `rxKind` plus a
   re-implementation of `parseBullets()`'s continuation assembly) moves onto
-  `trailerValuesIn()` as part of INV-5. Listed here because it is a behaviour-
-  preserving edit to a *rendering* path that no other section would lead a
-  reader to expect.
+  `trailerValuesIn()` as part of INV-5. Listed here because it edits a
+  *rendering* path no other section would lead a reader to expect. **It is NOT
+  behaviour-preserving** (corrected 2026-08-04): the dialog's local `rxKind`
+  carries `MultilineOption` only, while `roadmapparse.cpp`'s adds
+  `CaseInsensitiveOption` (ANTS-3407), so the swap newly matches `kind:` /
+  `KIND:`. ANTS-3808's spec owns this item now.
 - **`CLAUDE.md`'s module map and `docs/subsystems.md`** gain `roadmapsource`.
-- **ANTS-3808's ROADMAP bullet** is closed by this spec's ship, not by a separate
-  change — its own body records that homing.
+- **ANTS-3808's ROADMAP bullet is NOT closed by this spec** — reversed
+  2026-08-03 when the umbrella was split four ways. It has its own spec and
+  ships on its own; § 2.3 above is superseded. The bullet's own body records
+  both the original homing and the reversal.
 
 ## Cold-eyes loop log
 
