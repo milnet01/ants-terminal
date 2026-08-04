@@ -25857,7 +25857,7 @@ against current source before filing.
   so the column may simply be redundant with body, and the answer may be
   to drop the column rather than to add a carrier.
 
-  Same question, weaker, for `priority`: the export emits it when non-NULL,
+  NOT the same question for `priority`, corrected 2026-08-04 by ANTS-3810's cold-eyes loop 1: `roadmap-format.md` line 633 already answers it ("Position is priority"), so there is no carrier to decide -- only a column nothing writes. Scope this id to `resolution` alone. For the record: the export emits priority when non-NULL,
   markdown carries position-is-priority instead, and nothing writes the
   column today.
 
@@ -25907,6 +25907,39 @@ against current source before filing.
   **Layman:** Several design documents point at a standard for a rule that was never written into it.
   Kind: doc-fix.
   Source: in-session-2026-08-04 (found while grounding ANTS-3810 § 6).
+
+- 📋 [ANTS-3827] **The migration converts no relationships, though the model says it converts two types.**
+  `roadmap-data-model.md` § 6's Migration column marks two of the six
+  relationship types as converted, not authored: `relates-to` "converted
+  from `Dependencies:` (~21 occurrences)" and `specified-by` "converted
+  from `Spec:` (~20 occurrences)". The other four are authored-only.
+
+  Measured 2026-08-04: `grep -rn 'relateItems\|relateCrossProject' src/`
+  returns NO call site outside `roadmapstore.cpp` itself -- the only callers
+  are tests. `PlannedItem` (`src/roadmapmigrate.h`) carries no relationship
+  field at all, so the migration READ half never plans one and the load half
+  never writes one.
+
+  So ~41 declared `Dependencies:` / `Spec:` values across the corpus are
+  carried into `extras` or dropped, not converted, and the store's
+  relationship table stays empty after a full migration.
+
+  Three ways out, and the choice is the work: (a) implement the conversion
+  in the read half (PlannedItem gains a relationships list, load calls
+  relateItems / relateCrossProject); (b) amend § 6's Migration column to
+  say authored-only for all six and record the ~41 values as deliberately
+  unconverted; (c) split -- convert `Spec:` (paths, unambiguous) and leave
+  `Dependencies:` (free text) unconverted, which is closest to what § 6's
+  own conversion rule already describes.
+
+  Consequence for ANTS-3810: its § 2.1.1 excludes every `relationship`
+  record from the round-trip projection, which is CORRECT while the
+  conversion does not exist and becomes WRONG the day (a) or (c) ships.
+  That spec states the trigger explicitly; this id is the thing that fires
+  it.
+  **Layman:** The rulebook says two kinds of link between roadmap items get imported automatically; nothing actually imports them.
+  Kind: investigate.
+  Source: in-session-2026-08-04 (ANTS-3810 cold-eyes loop 1, lane finding verified).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
