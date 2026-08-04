@@ -25631,6 +25631,20 @@ against current source before filing.
   **Layman:** Proves a roadmap survives a full save-and-reload without losing or inventing anything, and reports circular links between items.
   Kind: test.
   Source: in-session-2026-08-03 (ANTS-3793 cold-eyes loop-3 split).
+  SPEC ACCEPTED (2026-08-04) at docs/specs/ANTS-3810-round-trip-oracle-and-acyclicity.md. Step 4 of the ANTS-3793 split's TODO is DONE.
+
+  Rule-14 gate: 3 loops, converged by cap. 66 verified, 66 fixed, 1 dismissed, NO deferred tail. CRITICALs by loop: 1 -> 1 -> 0. Draft defects 27 -> 9 -> 8 (monotonic); fix collateral 0 -> 11 -> 11 (flat), so collateral outran draft defects for two loops -- Phase 5's stop trigger, which the cap discharged. Doc is 905 lines; a further split at § 2.2 (acyclicity is genuinely free-standing) is available and is the user's call.
+
+  Three inherited claims were CHANGED against source rather than carried forward:
+  - The acyclicity check is WHOLE-STORE and takes no projectId. roadmap-data-model.md § 6 scopes it to the full store, and relateCrossProject() makes A(p1)->B(p2)->A(p1) reachable, so a per-project walk cannot see it. Path elements are (export_slug, id_fold) pairs.
+  - ANTS-3758 § 2.6's projection was incomplete by three fields -- resolution, priority and extras all emitted by the export with no markdown carrier. extras looks like it round-trips and does not: the render emits the canonical Kind: while source_kind holds the raw token normalisation discarded. ANTS-3758's INV-1 names two of them as fields whose loss breaks it, so as written it was unsatisfiable.
+  - The umbrella's cross-id build-order constraint is replaced by a commit-order one: build the oracle any time, but Inv1RoundTrip is expected RED until ANTS-3808 ships (the defect is in today's code, so the discrimination proof is free).
+
+  Also corrected in ANTS-3758 § 2.6, found at loop 2: the excluded record kind is `rel`, not `relationship` -- an enumerated exclusion keyed on the table name matches nothing, silently.
+
+  Filed while grounding this spec: ANTS-3824 (Resolution: carrier -- narrowed to resolution alone; position IS priority), ANTS-3825 (subsystems.md missing three shipped roadmap lanes), ANTS-3826 (three -- actually two -- specs cite testing.md for an mtime rule it lacks), ANTS-3827 (the migration converts no relationships though the model says it converts two types; it is the trigger that would move relates-to/specified-by out of this spec's exclusion set).
+
+  NEXT: step 5 of the ANTS-3793 TODO is already settled (the umbrella was rewritten in place as the read seam, not deleted). All four split specs are now drafted, gated and accepted.
 
 - 💭 [ANTS-3811] **Decide whether `Source:` / `Lanes:` stay un-anchored, now that a residual body can shadow a column.**
   `rxSource` and `rxLanes` are deliberately un-anchored: ANTS-2058
