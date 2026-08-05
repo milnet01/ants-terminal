@@ -195,12 +195,13 @@ The ID is a project-prefixed monotonic integer:
   deleted (a deleted ID is *retired*; the next new bullet uses
   the next free number, not the deleted one).
 
-On a project the roadmap store does not serve — see the carrier table
-below, which is not simply "has no store row" — the high-water mark
-lives in `.roadmap-counter` at the project root: a one-line file with
-the highest assigned integer. New IDs increment this counter
-atomically. Concurrent sessions read-modify-write under a brief flock
-so collisions are impossible.
+On a project the roadmap store does not serve, and whose roadmap is not
+pass-headings — the carrier table below states exactly which those are,
+and it is not simply "has no store row" — the high-water mark lives in
+`.roadmap-counter` at the project root: a one-line file with the highest
+assigned integer. An absent file reads as 0 rather than failing. New IDs
+increment this counter atomically, and concurrent sessions
+read-modify-write under a brief flock so collisions are impossible.
 
 **The counter is a derived, per-machine cache — NOT source (ANTS-3450).**
 It is `.gitignore`d, not committed. Its true value is the highest
@@ -218,25 +219,28 @@ Projects move onto the roadmap store
 ([`roadmap-data-model.md`](roadmap-data-model.md)) one at a time, so the id
 high-water lives in more than one place. **"Store-migrated" below means a
 project has a store row *and* a roadmap this format's detector classifies as
-`ants-v1`** — the pair `RoadmapSource::migratedProject()` tests. The detector
-answers on the § 3.1 marker where one is present and on best-effort parsing
-where it is not, so the marker is the way to make the classification
-deterministic rather than a second condition. Store-migration is **not**
+`ants-v1`** — the pair `RoadmapSource::migratedProject()` tests. `ants-v1` is
+the detector's name for a file conforming to this standard; its siblings are
+`gfm` for a task list (§ 3.10.3) and `pass-headings` for § 3.10.5's shape. The
+detector answers on the § 3.1 marker where one is present and on a best-effort
+parse where it is not, so a roadmap **SHOULD** carry that marker: without it
+the classification — and therefore the carrier — is best-effort rather than
+deterministic. Store-migration is **not**
 § 3.10.3's migration, which converts a GFM task list into this format and is a
 fact about the file, not about the store; a project can be one without the
 other.
 
 | Project | High-water carrier | `.roadmap-counter` |
 |---|---|---|
-| **Store-migrated** — store row *and* `ants-v1` | the store's `id_high_water` row, per `(project, prefix)` | neither read nor written; a stale file is simply left behind |
-| **Pass-headings** (§ 3.10.5), store row or not | the heading itself — `PASS-N-M` is derived, never allocated | untouched |
-| **Everything else** — no store row, *or* a store row with a GFM roadmap | `.roadmap-counter`, exactly as above | read and written |
+| **Store-migrated** — store row *and* `ants-v1` | the store's `id_high_water` row, per `(project, prefix)`, **floored to the committed corpus exactly as above** | neither read nor written; a stale file is simply left behind |
+| **Pass-headings** (§ 3.10.5), store row or not | derived from the heading, never allocated | neither read nor written |
+| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, exactly as above | read and written |
 
 On a store-migrated project an allocation is
 `max(idHighWater(project, prefix), corpusHighWater(root, prefix)) + 1`,
 followed by `raiseIdHighWater()`. An absent `id_high_water` row is *not* an
 error — it is the state of every project until its first store-side
-allocation, and is read as 0, exactly as an absent counter file already is.
+allocation, and is read as 0, exactly as an absent counter file is above.
 
 **Concurrent allocations are serialised by the store transaction, not by the
 flock above.** The read-modify-write runs inside the `BEGIN IMMEDIATE` the
@@ -617,8 +621,11 @@ the extra surface.
 #### 3.10.3 Migration
 
 A project that wants the full emoji-bullet format from a
-GFM-task-list starting point converts in four passes:
+GFM-task-list starting point converts in five passes:
 
+0. Add the § 3.1 format marker `<!-- ants-roadmap-format: 1 -->`, so
+   the result classifies `ants-v1` deterministically rather than by
+   best-effort parse — which is what selects the id carrier (§ 3.5.1).
 1. Replace `- [x]` with `- ✅`, `- [ ]` with `- 📋`.
 2. Assign stable IDs (`[PROJ-NNNN]`) bottom-up against a fresh
    `.roadmap-counter` (§ 3.5.1) — unless the project already has a
@@ -699,6 +706,12 @@ refuses `format_mismatch`.
 - ❌ Mixing `[ ]` / `[x]` task-list syntax with the emoji
   status system on the same bullet (the formats coexist at
   file scope per § 3.10, but not at bullet scope).
+- ❌ Reading or bumping `.roadmap-counter` on a store-migrated
+  project (§ 3.5.1). Its carrier is the store's `id_high_water`
+  row; the file is stale there by construction.
+- ❌ Allocating from that row **without** the committed-corpus
+  floor under it (§ 3.5.1). That is the silent drop which lets a
+  fresh clone reissue a live ID.
 
 
 ## 4. CHANGELOG.md format spec

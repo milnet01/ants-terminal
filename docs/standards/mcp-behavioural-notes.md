@@ -394,18 +394,20 @@ server-controllable beyond this per-tool hint.
   roadmap keeps that format's own path (the bullet above, for the ops it
   covers), and a project with no store row is unaffected. Differences a
   caller sees:
-  - **Envelope**: `line` / `lines` / `bytes` are dropped, and
-    `files_written` / `items_rendered` come from the render. `line` is
-    reported as `firstLine + 1`, and ANTS-3793 INV-2 declares `firstLine` /
-    `lastLine` to be 0 on the store path — so every bullet would report
-    line 1, which is why the field is dropped rather than sent meaningless.
+  - **Envelope**: `line`, `lines`, `bytes` and `bytes_written` are all
+    dropped, and `files_written` / `items_rendered` come from the render.
+    On the markdown path `line` **would be** `firstLine + 1`, and ANTS-3793
+    INV-2 declares `firstLine` / `lastLine` to be 0 on the store path — so
+    every bullet would report line 1, which is why the field is dropped
+    instead of sent meaningless.
   - **`dry_run` commits nothing on either path, but the store path can
     refuse instead of previewing.** The preview is produced by the same
     validating render, and the gate is checked *before* the dry-run return,
     so on a project with an unmet gate a `dry_run` call refuses
-    `render_gate_unmet` and returns no would-be result — where the markdown
-    path always previews. Otherwise the would-be result comes back and
-    neither the store nor the file is touched.
+    `render_gate_unmet` and returns no would-be bullet — where the markdown
+    path has no equivalent gate and previews whenever the op resolves at
+    all. Otherwise the would-be result comes back and neither the store nor
+    the file is touched.
   - **`line_range` has three outcomes, not one.** It exists only inside
     `flip_batch`'s `locators[]`, and it is last in locator precedence. A
     range that is the **effective** locator (no `id` / `anchor` /
@@ -414,8 +416,9 @@ server-controllable beyond this per-tool hint.
     range from line 1 would match *every* bullet. One accompanied by an
     `anchor` still refuses `bad_op_combo`, the `ants-v1` format refusal
     that runs ahead of the store dispatch. One accompanied by an `id` or
-    `headline` is simply unused — those win on precedence. A refusal lands
-    in `skipped[]`, so the batch's other locators still apply.
+    `headline` is simply unused — those win on precedence. Both refusals
+    are **per locator** and land in `skipped[]`, so the batch's other
+    locators still apply.
   - **Trailer columns follow the body — for the columns the request did not
     itself supply.** `flip` / `annotate` / `amend_body` re-derive `kind` /
     `layman` / `source` / `lanes` / `evidence` from the body they just
@@ -428,7 +431,8 @@ server-controllable beyond this per-tool hint.
     ids are assigned, so a dropped bullet leaves no gap in the batch's
     contiguous id run.
   - **Id allocation** reads the store's `id_high_water` row, still floored
-    to the committed corpus (roadmap-format.md § 3.5.1); `.roadmap-counter`
+    to the committed corpus ([`roadmap-format.md`](roadmap-format.md)
+    § 3.5.1); `.roadmap-counter`
     is neither read nor written. `id_strategy:"stable_prefix"` consults
     neither carrier. This is the cutover's **interim** rule — ANTS-3794
     replaces the corpus floor with the published export.
@@ -440,16 +444,17 @@ server-controllable beyond this per-tool hint.
     caller's own bullet may be blameless), `render_failed` and
     `store_failed`, plus `locator_unsupported` and `body_shadowed` above,
     and `write_failed` reused for a committed store whose publishing
-    render did not land. The first three write nothing, rolling the
-    transaction back wherever one had opened (ANTS-3809 INV-1);
+    render did not land. `render_gate_unmet`, `render_failed` and
+    `store_failed` write nothing, rolling the transaction back wherever
+    one had opened (ANTS-3809 INV-1);
     `write_failed` leaves the store committed and the file stale-behind,
     recoverable by re-running the render — any later successful op on that
     project does it, since every op re-renders the whole project.
     `render_gate_unmet`'s envelope carries `gate_failures[]` naming the
     offending ids, so a blameless caller is not left guessing which items
     block it. Full entries in
-    [`mcp-error-codes.md`](mcp-error-codes.md); spec
-    [`ANTS-3809-roadmap-write-half.md`](../specs/ANTS-3809-roadmap-write-half.md).
+    [`mcp-error-codes.md`](mcp-error-codes.md). Spec
+    `docs/specs/ANTS-3809-roadmap-write-half.md`.
 
 ## `model_switch_stats`
 

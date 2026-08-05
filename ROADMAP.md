@@ -26674,6 +26674,44 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-05 (ANTS-3809 § 7 cold-eyes gate, loop 2).
 
+- 📋 [ANTS-3838] **Store append stamps provenance id=asserted where the data model says store-generated.**
+  ANTS-3809's store `append` path stamps
+  (src/remotecontrol.cpp:8028-8032):
+
+      w.provenance = { id: "asserted", status: "asserted",
+                       headline: "asserted" }
+
+  unconditionally — the same value whether the id was allocated from the
+  counter/store high-water or pinned by the caller via
+  id_strategy:"stable_prefix".
+
+  roadmap-data-model.md § 7.7 defines `store-generated` as "Stamped by
+  the store on a post-cutover write — the `write (store-populated)`
+  fields of § 4.1", and § 4.1 marks `id` exactly `write
+  (store-populated)`. So for a counter allocation the shipped value
+  looks wrong; for a stable_prefix id "asserted" looks right.
+
+  NOT resolved here, and deliberately not papered over in the doc: a
+  cold-eyes lane raised it, the divergence is verified, but which side
+  is canonical is a design call. Two candidate answers:
+    (a) the code is right and § 7.7/§ 4.1 need the nuance (an id can be
+        asserted when the caller pinned it);
+    (b) the model is right and the append path should stamp
+        store-generated on the allocated branch and asserted only under
+        stable_prefix.
+
+  (b) is the likelier reading, since § 7.7 added `store-generated`
+  specifically for "the commonest case there will ever be" (that
+  document's own loop-6 note). Note ANTS-3809's separate, already-closed
+  decision that `id_origin` is "synthesised" for BOTH branches —
+  id_origin and provenance.id are different fields and that ruling does
+  not settle this one.
+
+  Verify against the code before writing either doc.
+  **Layman:** When the roadmap database creates an item, it labels who supplied the ID in a way the design document disagrees with — worth settling which is right before more code relies on it.
+  Kind: investigate.
+  Source: in-session-2026-08-05 (ANTS-3809 § 7 cold-eyes gate, loop 3).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
