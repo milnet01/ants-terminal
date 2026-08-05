@@ -103,6 +103,19 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.103" date="2026-08-05">
+      <description>
+        <p>The roadmap store lands end to end — a project's roadmap can be migrated into a database, read from it, edited through it and regenerated back to ROADMAP.md — plus zypper installs on openSUSE, and packages for Leap 16.0 and Mageia 10.</p>
+        <ul>
+          <li><em>Added:</em> Roadmap store, end to end — the migration reads a hand-written roadmap (including rotated archives) and writes it into the database, the render regenerates <code>ROADMAP.md</code> from it at full fidelity, consumers read through one seam, and all eight roadmap-editing commands now write to the database rather than splicing the file. (ANTS-3757, 3765, 3766, 3782, 3758, 3793, 3809)</li>
+          <li><em>Added:</em> Install on openSUSE with <code>zypper</code>, plus packages for openSUSE Leap 16.0 and Mageia 10 from a distro-portable RPM spec. (ANTS-3726, 3727, 3731)</li>
+          <li><em>Added:</em> Claude Code integration — <code>file_outline</code> and <code>read_region</code> understand GLSL shaders, <code>find_caller</code> can be scoped to one subdirectory, <code>audit_run</code> takes <code>exclude_paths</code>, <code>cold_eyes_brief</code> returns a per-document section index and an input hash, and <code>debt_sweep_scan</code> gained two detectors. (ANTS-3800, 3805, 3710, 3740, 3718, 3743)</li>
+          <li><em>Fixed:</em> Roadmap accuracy — a migrated table no longer re-emits as raw JSON, bullets no longer render their headline and trailer twice, re-importing no longer duplicates entries sharing a heading, and seven entries that shared one malformed ID now have their own. (ANTS-3832, 3808, 3765, 3769, 3773, 3767, 3806)</li>
+          <li><em>Fixed:</em> Documentation tooling and query correctness — false ETag hits after a document changed, a false invariant-without-test report, wrapped spec header fields, head-truncated roadmap bodies, and a symbol scan that stopped at a commented declaration. (ANTS-3737, 3799, 3785, 3672, 3786, 3736, 3735, 3801, 3803, 3804, 3802)</li>
+          <li><em>Fixed:</em> Pasting a copied image file inserts its path rather than a <code>file://</code> URI, and project search is much faster on the first search after a build. (ANTS-3828, 3732)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.102" date="2026-08-05">
       <description>
         <p>Five new documentation-analysis tools for the built-in Claude Code integration, a broad sweep of audit and documentation accuracy, and path-escape hardening.</p>

@@ -1,3 +1,35 @@
+ants-terminal (0.7.103-1) unstable; urgency=medium
+
+  * Roadmap store, end to end — the migration reads a hand-written
+    roadmap (including rotated archives) and writes it into the
+    database, the render regenerates ROADMAP.md from it at full
+    fidelity, consumers read through one seam, and all eight
+    roadmap-editing commands now write to the database rather than
+    splicing the file. (ANTS-3757, 3765, 3766, 3782, 3758, 3793, 3809)
+  * Install on openSUSE with zypper, plus packages for openSUSE Leap
+    16.0 and Mageia 10 from a distro-portable RPM spec. (ANTS-3726,
+    3727, 3731)
+  * Claude Code integration — file_outline and read_region understand
+    GLSL shaders, find_caller can be scoped to one subdirectory,
+    audit_run takes exclude_paths, cold_eyes_brief returns a per-document
+    section index and an input hash, and debt_sweep_scan gained two
+    detectors. (ANTS-3800, 3805, 3710, 3740, 3718, 3743)
+  * Roadmap accuracy — a migrated table no longer re-emits as raw JSON,
+    bullets no longer render their headline and trailer twice,
+    re-importing no longer duplicates entries sharing a heading, and
+    seven entries that shared one malformed ID now have their own.
+    (ANTS-3832, 3808, 3765, 3769, 3773, 3767, 3806)
+  * Documentation tooling and query correctness — false ETag hits after a
+    document changed, a false invariant-without-test report, wrapped spec
+    header fields, head-truncated roadmap bodies, and a symbol scan that
+    stopped at a commented declaration. (ANTS-3737, 3799, 3785, 3672,
+    3786, 3736, 3735, 3801, 3803, 3804, 3802)
+  * Pasting a copied image file inserts its path rather than a file://
+    URI, and project search is much faster on the first search after a
+    build. (ANTS-3828, 3732)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 05 Aug 2026 00:00:00 +0200
+
 ants-terminal (0.7.102-1) unstable; urgency=medium
 
   * Five documentation-analysis MCP verbs — doc_dedup, spec_lint,
