@@ -190,8 +190,20 @@ void detectToc(const QStringList &lines, DocData &d) {
     int lastItem = -1;
     for (int j = idx; j < n; ++j) {
         if (lines[j].trimmed().isEmpty()) continue;  // blank within a loose list
-        if (!isListItem(lines[j])) break;            // run ends
-        lastItem = j + 1;                            // 1-based
+        // ANTS-3836 — an INDENTED line that is not itself a list item is a
+        // CONTINUATION of the item above (CommonMark: a wrapped item's later
+        // lines sit at the item's content column), not the end of the run.
+        // Breaking here truncated the TOC at the first wrapped entry, and every
+        // section below it was then reported as missing from a Contents list
+        // that named it — six such findings on ANTS-1870, whose entry 2 wraps
+        // onto lines beginning "2.4 delta ·". Those continuation lines match no
+        // ordered-list pattern (`2.4` is not `2.` + space), so the run ended at
+        // entry 2. Still scanned for anchors below: a wrapped entry can carry
+        // its link on the second line.
+        const bool continuation =
+            lastItem >= 0 && !lines[j].isEmpty() && lines[j].at(0).isSpace();
+        if (!isListItem(lines[j]) && !continuation) break;   // run ends
+        if (!continuation) lastItem = j + 1;                 // 1-based
         // Collect the item's in-doc anchor entries (a linkless item is skipped
         // but does not end the run).
         auto it = linkRe().globalMatch(lines[j]);

@@ -14,8 +14,6 @@
 
 ## 1. Project map
 
-## 1. Project map
-
 | Attribute | Value |
 |---|---|
 | Name / version | `ants-terminal` 0.4.0 |

@@ -12,6 +12,15 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **doc_integrity truncated a Contents list at its first WRAPPED entry.** (ANTS-3836)
+  The documentation checker reported table-of-contents entries as
+  missing when they were in fact listed, whenever an entry ran onto a
+  second line — it stopped reading the contents list at that point and
+  called everything below it absent. It now reads a wrapped entry as
+  one entry. A genuinely missing entry is still reported.
+
 ## [0.7.104] — unreleased (Patron RC preview)
 ### Added
 

@@ -133,7 +133,7 @@ on a new spec rather than a rewrite. 3 loops, 6 lanes, **66 verified, 66 fixed,
 from that run only, and are *additional* to the four above — none of them
 displaces one.
 
-## 5. `/cold-eyes` § 1b is a free review pass, and the skill treats it as plumbing
+## 6. `/cold-eyes` § 1b is a free review pass, and the skill treats it as plumbing
 
 Building the context packet means opening every citation the document makes, in
 order to extract a bounded window for it. That is a review — and on this run it
@@ -151,7 +151,7 @@ doing it carefully *is* a pass. Worth one line in the phase, because a session
 that treats it as mechanical will skim it — and skimming still produces a valid
 packet, so nothing downstream notices.
 
-## 6. The packet needs a "verified source facts" section, and § 1b never mentions one
+## 7. The packet needs a "verified source facts" section, and § 1b never mentions one
 
 `references/loop-carryover.md` permits carrying "settled facts about unchanged
 source files" between loops. It does not say to write them down as a *packet
@@ -170,7 +170,7 @@ in) after each loop's Phase 3, holding only facts about files the run did not
 edit. It is emphatically *not* review history — no findings, no fixes, no
 severities — which is what keeps it inside the cold re-brief rule.
 
-## 7. The `[dim N]` tally now has enough data to act on — evidence for ANTS-3814
+## 8. The `[dim N]` tally now has enough data to act on — evidence for ANTS-3814
 
 Three loops, tagged per the brief's RULES. Aggregated:
 
@@ -198,7 +198,7 @@ attribution half exists.
 author. It is a data point toward the four-quadrant call that bullet describes,
 and the useful next step is a second run's tally to compare, not a trim.
 
-## 8. `spec_lint`'s `sections_checked: false` is silent here — filed as ANTS-3829
+## 9. `spec_lint`'s `sections_checked: false` is silent here — filed as ANTS-3829
 
 Confirms `/doc-lint`'s own note at full strength. `docs/standards/specs.md`
 ships no `<!-- required-sections -->` block
@@ -209,7 +209,7 @@ is the exact failure `/doc-lint` § SKILL.md warns about. The remedy is the
 one-time project fix that skill prescribes; ANTS-3829 carries it, including the
 caveat that enabling it will retro-flag existing specs.
 
-## 9. One thing that worked, again, and should not be traded away
+## 10. One thing that worked, again, and should not be traded away
 
 Same finding as (4) above, on a second sample: with bounded code windows in the
 packet, **65 of 66 findings verified against source**, and the single dismissal

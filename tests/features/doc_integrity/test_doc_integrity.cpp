@@ -245,6 +245,55 @@ TEST(DocIntegrity, TocCoverage) {
     EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/a.md"}), Kind::TocGap), 0);
 }
 
+// ANTS-3836 — a WRAPPED TOC entry does not end the Contents run. Before the
+// fix, detectToc() broke at the first line that was not itself a list item, so
+// an entry continued onto a second line truncated the TOC there and every
+// section below was reported missing from a Contents list that named it.
+//
+// The continuation here begins "2.4 delta ·" — the real shape from
+// docs/specs/ANTS-1870.md, and one no ordered-list pattern matches, since
+// `2.4` is not `2.` followed by a space.
+TEST(DocIntegrity, WrappedTocEntryDoesNotEndTheRun) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "## Contents\n"
+                          "\n"
+                          "1. [Alpha](#1-alpha)\n"
+                          "2. [Beta](#2-beta) — 2.1 one · 2.2 two · 2.3 three ·\n"
+                          "   2.4 delta · 2.5 echo\n"
+                          "3. [Gamma](#3-gamma)\n"
+                          "4. [Delta](#4-delta)\n"
+                          "\n"
+                          "## 1. Alpha\ntext\n"
+                          "## 2. Beta\ntext\n"
+                          "## 3. Gamma\ntext\n"
+                          "## 4. Delta\ntext\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs, Kind::TocGap), 0)
+        << "entries 3 and 4 sit BELOW a wrapped entry and are listed in the "
+           "Contents; neither is a gap";
+
+    // The check still works through a wrap: drop Delta's entry, keep the wrap.
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "## Contents\n"
+                          "\n"
+                          "1. [Alpha](#1-alpha)\n"
+                          "2. [Beta](#2-beta) — 2.1 one · 2.2 two · 2.3 three ·\n"
+                          "   2.4 delta · 2.5 echo\n"
+                          "3. [Gamma](#3-gamma)\n"
+                          "\n"
+                          "## 1. Alpha\ntext\n"
+                          "## 2. Beta\ntext\n"
+                          "## 3. Gamma\ntext\n"
+                          "## 4. Delta\ntext\n"));
+    const auto fs2 = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_EQ(countKind(fs2, Kind::TocGap), 1)
+        << "a genuinely absent entry must still be reported past a wrap";
+    EXPECT_TRUE(hasMention(fs2, Kind::TocGap, "Delta"));
+}
+
 // INV-8 — a duplicate TOC entry (same slug twice) is a TocGap.
 TEST(DocIntegrity, DuplicateTocEntry) {
     QTemporaryDir tmp;

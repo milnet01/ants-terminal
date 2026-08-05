@@ -26582,6 +26582,54 @@ against current source before filing.
   Also corrected: packaging/obs/README.md's "Currently building" list is
   true again now that all four targets are green.
 
+- ✅ [ANTS-3836] **doc_integrity truncated a Contents list at its first WRAPPED entry.**
+  detectToc() ended the Contents run at the first line that was not itself
+  a list item (src/docintegrity.cpp), so an entry wrapped onto a
+  continuation line truncated the TOC there and EVERY section below it was
+  reported missing from a list that named it.
+
+  Six such findings on docs/specs/ANTS-1870.md, whose entry 2 wraps onto
+  lines beginning "2.4 delta ·" — a shape no ordered-list pattern matches,
+  because `2.4` is not `2.` followed by a space. Its TOC is complete and
+  correct; all six were false.
+
+  Same class as ANTS-3634 (a plain-text contents list reported every
+  section as missing), one variant along: there the TOC was not recognised
+  at all, here it is recognised and cut short.
+
+  Fixed by treating an INDENTED non-list line inside the run as a
+  continuation of the item above (CommonMark: a wrapped item's later lines
+  sit at the item's content column), rather than as the end of the run.
+  Continuations are still scanned for anchors, since a wrapped entry can
+  carry its link on the second line, and do not advance the region end,
+  which only real items set.
+
+  Test: DocIntegrity.WrappedTocEntryDoesNotEndTheRun reproduces ANTS-1870's
+  exact shape and also asserts that a genuinely absent entry is STILL
+  reported past a wrap — shown RED against the pre-fix parser before the
+  fix was restored. Suite 3268/3268.
+
+  Also fixed the four genuine findings the same sweep surfaced:
+  2026-04-13-DISCOVERY.md emitted "## 1. Project map" twice in a row;
+  ANTS-1894.md linked to ITSELF by a repo-root path that cannot resolve
+  from inside docs/specs/; ANTS-3636.md carried "2.2 ... · 2.3 ..." as ONE
+  heading so the sequence read 2.2 -> 2.4; and skill-feedback-2026-08-04.md
+  restarted its second run at 5, duplicating the first run's 5 (renumbered
+  6-10; its (1)/(4) prose citations point at first-run findings and are
+  unaffected).
+
+  Editorial only on the two specs — a link path and a heading split, no
+  INV or contract text touched — so this is not the rule-14 amendment class
+  ANTS-3834 tracks.
+
+  NOTE for whoever reads doc_integrity next: the verb runs inside the LIVE
+  Ants process, so a code fix here does not change its output until the app
+  is relaunched. The six ANTS-1870 findings still appeared after the fix
+  because the running server was built at e43a80a6 (15:34), before it.
+  **Layman:** The documentation checker was reporting missing table-of-contents entries that were in fact present, whenever an entry ran onto a second line.
+  Kind: fix.
+  Source: in-session-2026-08-05 (doc-integrity sweep).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
