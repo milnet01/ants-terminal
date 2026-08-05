@@ -1339,6 +1339,11 @@ if(ANTS_TESTS)
         LIBS    ants_chrome_lib ants_vt_lib ants_core_lib
                 ants_claude_lib ants_dialogs_lib ants_audit_lib
                 ants_audit_dialog_lib
+                # ANTS-3809 — roadmap_write_half drives the roadmap_log verbs
+                # against a real store, so this bundle needs the store library
+                # INSIDE the --start-group (ants_core_lib links it PRIVATE, and
+                # a LINK_ONLY dependency lands outside the group).
+                ants_roadmapstore_lib
                 $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
         SOURCES tests/features/claude_status_bar/test_claude_status.cpp
                 tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp
@@ -1637,6 +1642,10 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_amend_body/test_roadmap_log_amend_body.cpp
                 # ANTS-1690 roadmap_log op:flip_batch (N bullets, one commit).
                 tests/features/roadmap_log_flip_batch/test_roadmap_log_flip_batch.cpp
+                # ANTS-3809 — the write half: every op mutates the store and
+                # re-renders on a migrated project. Behavioural through the
+                # verbs, against stores the migration actually built.
+                tests/features/roadmap_write_half/test_roadmap_write_half.cpp
                 # ANTS-2059 roadmap_log flip/flip_batch on fully id-less ants-v1 bullets.
                 tests/features/roadmap_log_flip_idless_antsv1/test_roadmap_log_flip_idless_antsv1.cpp
                 # ANTS-3378 roadmap_log flip GFM headline locator (canonical headline match).
