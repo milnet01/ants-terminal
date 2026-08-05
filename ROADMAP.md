@@ -26508,6 +26508,38 @@ against current source before filing.
   Kind: doc.
   Source: in-session-2026-08-05 (self-reported while closing ANTS-3832).
 
+- 📋 [ANTS-3835] **OBS Fedora 44 + Mageia 10 are red on v0.7.102 — the Lua-include fix ships in 0.7.103.**
+  Both fail identically at
+  src/luaengine.cpp:5 — `fatal error: lua5.4/lua.hpp: No such file or
+  directory`. That prefix is openSUSE's header layout; Fedora and Mageia
+  ship lua.hpp in /usr/include, so the compile dies even though CMake
+  resolved Lua correctly.
+
+  ANTS-3727 already fixed it (unqualified `#include <lua.hpp>`, directory
+  supplied via LUA_INCLUDE_DIRS). `git tag --contains` on that commit
+  returns v0.7.103-rc1 ONLY — so the fix is NOT in v0.7.102, which is what
+  packaging/obs/_service pins and what OBS just built.
+
+  NO ACTION NEEDED beyond the normal cadence: cut-rc.sh promote re-stamps
+  _service to v0.7.103 next Wednesday, and both targets should go green on
+  the following obs-submit.sh. openSUSE Tumbleweed and Leap 16.0 succeeded
+  on v0.7.102.
+
+  Verify after the next promote rather than assuming: `osc results
+  home:milnet:ants-terminal ants-terminal` must show four succeeded. If
+  Fedora/Mageia are still red, the cause is NOT this one and the log needs
+  re-reading.
+
+  Watch item, not a defect: packaging/obs/README.md says "Currently
+  building: openSUSE Tumbleweed, openSUSE Leap 16.0, Fedora 44, Mageia 10".
+  That is true of the configured targets and false of the currently
+  PUBLISHED package, so a Fedora user following the README today gets
+  nothing. Self-resolving next Wednesday; if the promote slips, the README
+  sentence is the thing to qualify.
+  **Layman:** Two of the four Linux distributions can't build the published package until next week's release, because the fix they need is already written but not yet released.
+  Kind: package.
+  Source: in-session-2026-08-05 (0.7.102 OBS publish).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
