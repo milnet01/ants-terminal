@@ -1,8 +1,8 @@
 # Roadmap Data Model Standard (ANTS-3753)
 
 > **Status:** Adopted 2026-07-30; amended 2026-08-03
-> (§ 1 INV-2, §§ 3.3, 4.1, 5, 8) and 2026-08-05 (§ 3.2, § 4.1, § 7.1, § 8,
-> § 9, *What checks this*). **Partly
+> (§ 1 INV-2, §§ 3.3, 4.1, 5, 8) and 2026-08-05 (§ 1 INV-3, § 3.2, § 4.1,
+> § 7.1, § 8, § 9, *What checks this*). **Partly
 > implemented** — the store, the migration, the export and the published
 > render have shipped
 > ([ANTS-3756](../specs/ANTS-3756-roadmap-store-schema.md),
@@ -89,17 +89,19 @@ its own render is § 9's.
 
 **INV-3 — After a project cuts over, the store is its only writer of record.**
 The export and the render are generated; a hand-edit to either is lost at the
-next generation, so both must be fidelity-checked — the export's check has
-shipped, the render's *hand-edit* check is § 9's and does not exist yet (its
-fidelity check does: see *What checks this*). Before cutover the
+next generation, so both must be fidelity-checked — the export's **round-trip**
+check (INV-1 leg (a)) has shipped, leg (b) has not, and the render's
+*hand-edit* check is § 9's and does not exist yet (its fidelity check does: see
+*What checks this*). Before cutover the
 markdown remains authoritative and neither check applies (§ 9).
 
 **A failed publish leaves the store ahead of the file, and that is the
 sanctioned direction.** A write whose store commit succeeded but whose render
 did not land refuses `write_failed` (`mcp-behavioural-notes.md`) with the store
-committed and the file stale-behind. The recovery is to re-run the render —
-never a hand-edit to close the gap, which § 10 forbids for exactly the reason
-the next generation would discard it.
+committed and the file stale-behind. The recovery is to re-run the render, which
+any later successful write op on that project does — every op re-renders the
+whole project — never a hand-edit to close the gap, which § 10 forbids for
+exactly the reason the next generation would discard it.
 
 **INV-4 — Relationships may cross projects.** One project's work being blocked
 by another's is currently expressible only as prose.
@@ -166,12 +168,18 @@ one **fails the publish gate**, and the gate is the whole mechanism: the render
 is not generated at all, rather than generated with that item omitted. It does
 not fail migration.
 
-**After cutover the gate blocks every store write, not only publication.**
-Each write op validates by rendering (ANTS-3809 INV-1), so an unmet gate
-refuses it `render_gate_unmet` — and because the gate is per *project*, a
-status flip on a blameless item is refused by other items' missing `layman`
-values. That is a deliberate consequence of making the render the only writer,
-not a separate rule; the remedy is to fill the named lines in. A closed item publishes without
+**Once a project cuts over *and* its roadmap is in the emoji-bullet shape
+(`roadmap-format.md` § 3.5, format marker `ants-v1`), the gate blocks every
+store write, not only publication.** Each write op on such a project validates
+by rendering (ANTS-3809 INV-1), so an unmet gate refuses it
+`render_gate_unmet` — including a `dry_run` preview, which the same render
+produces. Because the gate is per *project*, a status flip on a blameless item
+is refused by other items' missing `layman` values; the refusal's
+`gate_failures[]` names them, and filling those lines in is the remedy. That
+is a deliberate consequence of making the render the only writer **of the
+markdown files**, not a separate rule. A cut-over project whose roadmap is a
+GFM or pass-headings dialect still splices markdown, renders nothing, and so
+meets no gate on write. A closed item publishes without
 `layman`: § 3.3 leaves the field empty on migrated items, so gating closed
 items too would make the gate unsatisfiable for every project with published
 history. This is the **only** publish-gating field; `priority` and `resolution`
@@ -183,8 +191,12 @@ read literally, no project can publish until every one of its open items is
 hand-curated. § 7.5 gives `priority` an explicit "written after cutover"
 exemption for exactly this; `layman` has none, and whether it should is a
 decision with a real cost either way (curate hundreds of items before the first
-publish, or publish open items with no reader-facing sentence). **ANTS-3758
-owns it** — it is the id that builds the gate.
+publish, or publish open items with no reader-facing sentence). ANTS-3758 built
+the gate and has shipped, so **the exemption question outlived its owner and is
+now unassigned** — and the paragraph above raises its cost, since after cutover
+an unmet gate blocks writes and not merely the first publish. ANTS-3821 tracks
+filling this project's own missing lines in, which relieves the symptom without
+deciding the rule.
 
 ### 3.3 Accepted at migration — historical items
 
@@ -491,9 +503,12 @@ declines to pick one. Three items in the corpus are affected.
 `quarantined` (ANTS-3809).** `roadmap_log`'s `id_strategy: "stable_prefix"` is a
 live argument under which the caller passes a stable string id — `Ts20-SP6`,
 `Sh4` — and the store records it verbatim, allocating nothing and raising no
-high-water. It is the one post-cutover write that carries an id in from
-outside, so § 4.1's "the store owns allocation" holds for every other write and
-names this as its exception. Of the three `id_origin` values it is
+high-water. It is the one post-cutover write that carries a **complete, unallocated** id in
+from outside, so § 4.1's "the store owns allocation" holds for every other
+write and names this as its exception. `id_hint` is the near case and not the
+same one: it pins the *number* an allocation will use, is refused `id_taken`
+when it sits at or below the high-water, and still runs through the allocator —
+so the id it produces is `synthesised` like any other allocation. Of the three `id_origin` values it is
 `synthesised`: `parsed` would claim the id matched the § 3.5.1 grammar *in
 source*, which is a statement about a file nobody read, and `quarantined` is
 migration's verdict on an id it could not honour — filing a deliberately-chosen
@@ -835,8 +850,8 @@ than a question.
 | INV-3 hand-edit detection | **nothing yet** — § 9's |
 | INV-4 cross-project relationships | the `relationship` table carries them; that they are *used* is not checkable |
 | INV-5 no relationship inferred from prose | **nothing** — a prohibition on authors and on migration, enforced by § 6 giving migration only two structured fields to read |
-| § 7.7 provenance never silently promoted | **nothing yet** — the store's write path, § 9's |
-| §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **nothing yet** — the store's write path, § 9's |
+| § 7.7 provenance never silently promoted | **nothing yet.** ANTS-3809 landed the write path that stamps it, but no test asserts a value is never promoted; the check is still § 9's |
+| §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **partly.** § 3.2's gate is enforced on every store write and checked by `Inv1RenderFailureRollsBack`; § 3.1's write-time obligations and the §§ 7.3–7.5 enums are validated nowhere, and remain § 9's |
 | § 7.1 identity grammar | `roadmap-format.md` § 3.5.1's regex, already in `RoadmapIndex::isCanonicalId` |
 | § 8 reconciliation | **nothing** — prose agreement between two standards; § 8's ID-allocation bullet records how far the amendment it owes has got. |
 
@@ -848,6 +863,7 @@ than a question.
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 3 (model coherence, corpus drift, failure modes) | 6 / 12 / 14 / 18 / 1 | Structural rewrite: obligations split into tiers, export scope defined, INV-1 given its missing leg, identity grammar corrected after the survey regex was found wrong about two projects, migration source shapes corrected. |
 | 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split.** ~8 of the 13 CRITICALs were collateral from loop 1's own fixes; the findings were overwhelmingly schema-level, i.e. this document was a standard carrying an implementation spec. Split per ANTS-3754: the model stays here, the schema goes to a spec. Backup relocated to the private config repo, closing a leak the draft shipped. ID allocation for the corpus's ID-less items decided (user, 2026-07-30). |
+| 8 | 2026-08-05 | 3 (one per host doc, cold; no prior-loop briefing) | 1 / 7 / 9 / 9 / 1 | 27 raised, 25 verified and fixed, **1 dismissed on evidence**, 1 INFO. Dimension tally: dim 4×5, dim 6×4, dim 8×4, dim 7×3, dim 2×3, dim 1×3, dim 5×2, dim 12×1, dim 13×1. Roughly half were collateral from loop 7's own fixes, which is what the loop is for: the pass-headings case had been folded into loop 7's carrier table as a prose caveat that flatly contradicted the row above it ("read and written" vs "left untouched") — now its own row; the framing sentence loop 7 added keyed on "has no store row" while the table it introduces includes store-row projects; and § 3.2's new paragraph said "after cutover" where the trigger is cutover **and** the emoji-bullet shape, which this document already scoped correctly in two other places. Genuine draft defects loop 7 missed: `dry_run` was documented as always previewing, but `commitAndRender()` checks the gate *before* the dry-run return, so on a gate-failing project — this project, today — a preview refuses `render_gate_unmet` instead; § 7.1's `stable_prefix` carve-out claimed to be "the one post-cutover write that carries an id in from outside" while `id_hint` also does; and INV-3's "the export's check has shipped" is leg (a) only, contradicted by the table's own "leg (b) — nothing yet". **The dismissal is the reason findings are verified rather than applied:** a lane argued that if every store bullet's `firstLine` is 0 then a range from line 1 matches *nothing*, so the stated reason for refusing `line_range` was backwards. The envelope reports `line` as `firstLine + 1` (`src/remotecontrol.cpp:8944`), so every store bullet reports line 1 and `[1,10]` matches all of them — the original wording was right. **Filed, not fixed:** ANTS-3837, the neighbouring pass-headings bullet's op list predating `amend_body` and `bundle_row`. |
 | 7 | 2026-08-05 | 3 (one per host doc, cold; genre pinned `standard`) | 2 / 6 / 11 / 14 / 0 | **ANTS-3809 § 7 gate**, run on the three cross-doc rows the write half owes. 33 verified, 0 dismissed, all fixed; 1 collateral self-caught by the sweep, 1 surfaced. Dimension tally: dim 2×7, dim 4×9, dim 5×7, dim 8×5, dim 6×3, dim 7×2, dim 1×1. This document's own two led: § 4.1 said "**the store owns allocation**, so a post-cutover author never supplies one" while `id_strategy: "stable_prefix"` — a live argument the shipped schema accepts — has the caller supply one, and `id_origin` had no value for it (now `synthesised`, with § 7.1 stating why `parsed` and `quarantined` are both wrong). The Status header still said the published render "**ha[s] not**" shipped while three rows of the *What checks this* table it sits above cite ANTS-3758 as shipped. Also fixed: § 3.2 stated the publish gate's whole consequence as publication not happening, when after cutover it refuses **every** write op project-wide; § 9 still listed `roadmap_log` among the consumers that write markdown; and the new row's own "migrated project" / "`ants-v1`" were this document's only uses of either term against 30 uses of "cut over". The added row and § 8's bullet stated the same three facts twice — the § 8-reconciliation row is now a pointer, per the delete-N−1 rule rather than a reconcile. The self-caught collateral is the shape the sweep exists for: a fix citing the emoji-bullet row as "§ 5" when it is in § 7.1. **Surfaced, not fixed:** the store fills `firstLine`/`lastLine` with 0 on the read side too, so `mcp-behavioural-notes.md`'s `roadmap_query` entry may owe the same caveat — ANTS-3793's, not this run's. |
 | 6 | 2026-08-03 | 2 (same partition, cold; no prior-loop briefing) | 1 / 2 / 10 / 8 / 1 | **Converged by cap (3 loops this run).** 21 verified, 1 dismissed, 20 fixed, 1 surfaced. Both lanes independently led on the same line, and it is the ANTS-3795 defect the two earlier loops missed: § 4.1's `layman` row still read "**The only text a public reader sees**" — the layman-only premise surviving inside the canonical field table, contradicting the INV-2 this whole amendment rewrote. Loops 4 and 5 swept for the phrase and not for the *claim*, which is why grepping a premise finds only the wording that states it. Also fixed: `provenance`'s four-value enum had no value for a post-cutover store-stamped field — the commonest case there will ever be — now `store-generated`; the INV-1 row implied both of that invariant's legs were checked when the shipped tests cover only leg (a); and § 7.5's severity vocabulary was attributed wholesale to `roadmap-format.md` § 3.8, which owns the headline convention but enumerates no values (one lane over-claimed here and was corrected on the evidence). **Surfaced, not fixed:** § 3.2 gates publish on `layman` while § 3.3 leaves it empty on every migrated item, so read literally no project can publish its first render until hundreds of items are hand-curated. That is a cost decision, not a defect, and § 3.2 now says so and hands it to ANTS-3758. |
 | 5 | 2026-08-03 | 2 (same partition, cold; no prior-loop briefing) | 0 / 4 / 12 / 13 / 1 | 29 verified, 0 dismissed, all fixed. **Roughly half were collateral from loop 4's own fixes** — deleting a sentence in § 5.1 stranded the verb after it ("Today `RoadmapDialog` cannot:"), § 3.1's rewrite and § 4.1's new `write (store-populated)` qualifier landed in one batch without being reconciled, and the ID-floor bullet was left referring to "the layman-only premise" the same loop had deleted. The remedy taken was a **harder blast-radius sweep, not another dispatch**: re-reading each edited passage in context rather than grepping it, which is what found them. Two genuine draft defects an implementer would have built wrong: `id` was marked a plain `write` obligation while § 7.1 gives allocation to the store, and § 3.1 declared itself canonical while enumerating three of the four obligation qualifiers. The sweep also generalised this loop's top finding — a bare `§ 3.3` resolving to **this** document's § 3.3 instead of `roadmap-format.md`'s — into the class it belongs to: eight further unanchored cites, now fixed, with a citation convention stated in § 1 so the next one is a defect rather than a shorthand. |

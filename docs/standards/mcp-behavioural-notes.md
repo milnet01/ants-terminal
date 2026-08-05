@@ -387,16 +387,25 @@ server-controllable beyond this per-tool hint.
   re-render** instead of splicing markdown; `RoadmapRender::render()`
   writes every byte of the roadmap files. "Store-migrated" is the pair
   ANTS-3793's `RoadmapSource::migratedProject()` tests — a store row *and*
-  an `ants-v1` emoji-format roadmap (`roadmap-data-model.md`,
-  `roadmap-format.md` § 3.5.1). A project with a store row but a GFM
-  roadmap keeps the GFM splice path, one with a pass-headings roadmap keeps
-  the pass-headings path in the bullet above, and a project with no store
-  row is unaffected. Differences a caller sees:
-  - **Envelope**: `line` / `lines` / `bytes` are dropped — a store has no
-    lines, and the render reports the files it wrote rather than spliced
-    bytes — and `files_written` / `items_rendered` come from the render
-    (ANTS-3793 INV-2's declared field difference). `dry_run` still commits
-    nothing on either path and still returns the would-be result.
+  an `ants-v1` emoji-format roadmap
+  ([`roadmap-data-model.md`](roadmap-data-model.md),
+  [`roadmap-format.md`](roadmap-format.md) § 3.5.1). A project with a store
+  row but a GFM roadmap keeps the GFM splice path, one with a pass-headings
+  roadmap keeps that format's own path (the bullet above, for the ops it
+  covers), and a project with no store row is unaffected. Differences a
+  caller sees:
+  - **Envelope**: `line` / `lines` / `bytes` are dropped, and
+    `files_written` / `items_rendered` come from the render. `line` is
+    reported as `firstLine + 1`, and ANTS-3793 INV-2 declares `firstLine` /
+    `lastLine` to be 0 on the store path — so every bullet would report
+    line 1, which is why the field is dropped rather than sent meaningless.
+  - **`dry_run` commits nothing on either path, but the store path can
+    refuse instead of previewing.** The preview is produced by the same
+    validating render, and the gate is checked *before* the dry-run return,
+    so on a project with an unmet gate a `dry_run` call refuses
+    `render_gate_unmet` and returns no would-be result — where the markdown
+    path always previews. Otherwise the would-be result comes back and
+    neither the store nor the file is touched.
   - **`line_range` has three outcomes, not one.** It exists only inside
     `flip_batch`'s `locators[]`, and it is last in locator precedence. A
     range that is the **effective** locator (no `id` / `anchor` /
@@ -414,7 +423,10 @@ server-controllable beyond this per-tool hint.
     keeps the supplied value and is not re-derived. `append` /
     `append_batch` instead refuse `body_shadowed` when a supplied column
     and the body in the same request disagree on that key's value
-    (ANTS-3809 § 2.5).
+    (ANTS-3809 § 2.5). `append` refuses the call; `append_batch` refuses
+    **per bullet**, dropping that one into `skipped[]` — evaluated before
+    ids are assigned, so a dropped bullet leaves no gap in the batch's
+    contiguous id run.
   - **Id allocation** reads the store's `id_high_water` row, still floored
     to the committed corpus (roadmap-format.md § 3.5.1); `.roadmap-counter`
     is neither read nor written. `id_strategy:"stable_prefix"` consults
@@ -431,8 +443,13 @@ server-controllable beyond this per-tool hint.
     render did not land. The first three write nothing, rolling the
     transaction back wherever one had opened (ANTS-3809 INV-1);
     `write_failed` leaves the store committed and the file stale-behind,
-    recoverable by re-running the render. Full entries in
-    [`mcp-error-codes.md`](mcp-error-codes.md).
+    recoverable by re-running the render — any later successful op on that
+    project does it, since every op re-renders the whole project.
+    `render_gate_unmet`'s envelope carries `gate_failures[]` naming the
+    offending ids, so a blameless caller is not left guessing which items
+    block it. Full entries in
+    [`mcp-error-codes.md`](mcp-error-codes.md); spec
+    [`ANTS-3809-roadmap-write-half.md`](../specs/ANTS-3809-roadmap-write-half.md).
 
 ## `model_switch_stats`
 

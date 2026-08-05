@@ -25228,6 +25228,21 @@ against current source before filing.
 
   NOT DONE, and still ANTS-3809's: every cmdRoadmapLog* read site, for the
   firstLine reason already recorded above.
+  Surfaced by ANTS-3809's cold-eyes gate (2026-08-05), not acted on
+  here because it is this item's read half, not that one's write half.
+
+  `bulletsFromStore()` leaves `firstLine` / `lastLine` at 0 on a
+  cut-over project (src/roadmapsource.cpp:74 — "a store has no lines to
+  number"). ANTS-3809 documents that on the WRITE side, because it is
+  why `line_range` is refused `locator_unsupported`. The read side has
+  the same zeroed fields and nothing says so: `mcp-behavioural-notes.md`'s
+  `roadmap_query` entry mentions line numbers nowhere, so there is no
+  false claim to correct — the open question is whether the verb surfaces
+  those fields to a caller at all, and if it does, whether the entry owes
+  the same caveat its write-side sibling now carries.
+
+  Verify before writing anything: this was noted from the store-side
+  comment, NOT from reading roadmap_query's response shape.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
@@ -26629,6 +26644,35 @@ against current source before filing.
   **Layman:** The documentation checker was reporting missing table-of-contents entries that were in fact present, whenever an entry ran onto a second line.
   Kind: fix.
   Source: in-session-2026-08-05 (doc-integrity sweep).
+
+- 📋 [ANTS-3837] **Pass-headings roadmap_log note names five ops; amend_body and bundle_row post-date it.**
+  `docs/standards/mcp-behavioural-notes.md`'s "`roadmap_log` on
+  pass-headings (`#### Pass N.M`) roadmaps" bullet says
+  append/append_batch/flip/flip_batch/annotate WRITE the format and that
+  "Only `op:\"create_section\"` still refuses `format_mismatch`".
+
+  That sentence dates from ANTS-2126. Two ops have shipped since and
+  appear nowhere in it: `amend_body` (ANTS-3406) and `bundle_row`
+  (ANTS-1691). `PassHeadingWrite` exposes only passStatusKeyword /
+  isValidPassDesignator / formatPassBlock / passIdFromDesignator /
+  annotatePass / flipPassStatus (src/remotecontrol.cpp:3147-3507), so
+  neither new op has a pass-headings writer — but what they actually
+  return on such a roadmap was NOT verified here, so the claim to fix
+  is "only create_section refuses format_mismatch", not a guess at the
+  replacement.
+
+  Pre-existing; NOT caused by ANTS-3809. Surfaced because that item's
+  new store-path bullet points readers at this one, which makes its
+  op list load-bearing rather than merely adjacent. ANTS-3809's own
+  sentence was softened to "the bullet above, for the ops it covers"
+  so it does not inherit the over-claim.
+
+  Fix: run the two ops against a pass-headings fixture, then either add
+  them to the WRITE list or extend the format_mismatch sentence to name
+  them.
+  **Layman:** A help note about roadmaps written as headings lists only the older editing commands, so two newer ones are undocumented for that format.
+  Kind: doc-fix.
+  Source: in-session-2026-08-05 (ANTS-3809 § 7 cold-eyes gate, loop 2).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
