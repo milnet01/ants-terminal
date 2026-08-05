@@ -668,7 +668,11 @@ overridden:
   work alone carries no closed item's ID), and the bullet below leaves the
   archives' and the CHANGELOG's futures unsettled. The export is subject to
   neither and supersedes all three as the authoritative floor, which is what
-  § 3.5.1's definition needs amending to say for cut-over projects.
+  § 3.5.1's definition needs amending to say for cut-over projects. **The
+  interim half of that amendment has landed** (ANTS-3809): § 3.5.1 now names the
+  store's `id_high_water` row as a migrated project's carrier and keeps the
+  committed-corpus floor under it. What is still owed is the end state above —
+  the export as the floor — which waits on the publish cadence (ANTS-3794).
 - **Status vocabulary.** Its § 3.11 makes a fifth status emoji an anti-pattern,
   so `dropped` has no markdown form and is excluded from the render. Adding one
   is that standard's decision, not this one's.
@@ -790,13 +794,14 @@ than a question.
 | INV-1 leg (b), committed export == live store | **nothing yet** — it needs the publish cadence, so it is ANTS-3794's |
 | INV-2 render fidelity | `tests/features/roadmap_render`, since ANTS-3758 shipped. `tests/features/roadmap_read_seam`'s `Inv2BackendsAgree` is the stronger check of the same property: it renders a migrated store back to markdown, parses that file, and compares record-for-record against the store read. |
 | Read budgets — a whole-project store read stays under its item ceiling and its p95 | `tests/features/roadmap_read_seam` — `Inv3Ceiling` (default suite) and `Inv3Latency` (`perf` label). ANTS-3793's INV-3, not this document's numbering. A budget nothing measures is a comment: the p95 case is what forced the batched `RoadmapStore::readItems()`, the N+1 having been 83 of 101 ms. |
+| INV-3, the store-is-the-only-writer leg, for `roadmap_log`'s eight ops | `tests/features/roadmap_write_half` — ANTS-3809's `Inv1RenderFailureRollsBack` (a validating render that fails rolls the store write back, so the published file can never lead the store) and `Inv2RenderIsTheOnlyWriter` (each of the eight ops writes markdown only through `RoadmapRender::render()`). Those `InvN` names are ANTS-3809's, not this document's. Scoped to a **migrated** project in the `ants-v1` format; every other writer of a roadmap file is still § 9's. |
 | INV-3 hand-edit detection | **nothing yet** — § 9's |
 | INV-4 cross-project relationships | the `relationship` table carries them; that they are *used* is not checkable |
 | INV-5 no relationship inferred from prose | **nothing** — a prohibition on authors and on migration, enforced by § 6 giving migration only two structured fields to read |
 | § 7.7 provenance never silently promoted | **nothing yet** — the store's write path, § 9's |
 | §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **nothing yet** — the store's write path, § 9's |
 | § 7.1 identity grammar | `roadmap-format.md` § 3.5.1's regex, already in `RoadmapIndex::isCanonicalId` |
-| § 8 reconciliation | **nothing** — prose agreement between two standards. The one amendment it still owes (`roadmap-format.md` § 3.5.1's counter definition) is ANTS-3793's, with the rest of the cutover. |
+| § 8 reconciliation | **nothing** — prose agreement between two standards. `roadmap-format.md` § 3.5.1's counter definition is half amended: ANTS-3809 added the interim carrier rule (store `id_high_water`, corpus floor kept); the export-as-floor end state waits on ANTS-3794's publish cadence. |
 
 ---
 

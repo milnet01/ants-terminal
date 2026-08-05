@@ -212,8 +212,43 @@ recovered from committed content on first use. This removes a whole class
 of "the counter bump got left out of the commit" drift: git can't drift a
 file it doesn't track.
 
+**Which carrier is authoritative during the store cutover (ANTS-3809).**
+While projects migrate onto the roadmap store one at a time, the id
+high-water lives in two places, and *which* one an allocation reads depends
+on the project, not on the machine:
+
+| Project | High-water carrier | `.roadmap-counter` |
+|---|---|---|
+| Not migrated | `.roadmap-counter` | read and written, as above |
+| Migrated | the store's `id_high_water` row, per `(project, prefix)` | **not written**; a stale file is simply left behind |
+
+On a migrated project an allocation is
+`max(idHighWater(project, prefix), corpusHighWater(root, prefix)) + 1`,
+followed by `raiseIdHighWater()`. An absent `id_high_water` row is *not* an
+error — it is the state of every project until its first store-side
+allocation, and is read as 0, exactly as an absent counter file already is.
+
+**The committed-corpus floor applies to both carriers, and this does not
+overturn ANTS-3450.** The store row is a second derived cache, not a second
+source: it is machine-local like the counter, and the corpus is still what
+either one is recovered from. Dropping the floor on the store path would
+re-open the very failure the rule above closes — a fresh clone reissuing an
+id the committed corpus already holds.
+
+`id_strategy: "stable_prefix"` (a caller-supplied string id such as
+`Ts20-SP6`) consults neither carrier and raises neither, on either path: a
+stable string id is not a counter value, and seeding a counter from one
+would corrupt the next counter-project allocation.
+
+This is the **interim** rule, named as such because the cutover is not
+finished: `roadmap-data-model.md` § 8 records that once the store's export
+is published on a cadence (ANTS-3794), the export — not the rendered
+`ROADMAP.md` — becomes a cut-over project's authoritative floor. Until
+then the committed corpus above is that floor for every project, migrated
+or not.
+
 ```bash
-# Allocate the next ID:
+# Allocate the next ID (unmigrated projects):
 echo $(($(cat .roadmap-counter) + 1)) > .roadmap-counter
 printf "PROJ-%04d\n" $(cat .roadmap-counter)
 ```

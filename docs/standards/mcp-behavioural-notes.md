@@ -381,6 +381,41 @@ server-controllable beyond this per-tool hint.
   `.roadmap-counter` untouched. Flip/annotate locate by the synthesised
   `PASS-N-M` id or `headline`; a missing required arg is `bad_args`. Only
   `op:"create_section"` still refuses `format_mismatch`.
+- **`roadmap_log` on a MIGRATED project (ANTS-3809)** — all eight ops
+  (`append`, `append_batch`, `flip`, `flip_batch`, `annotate`,
+  `amend_body`, `create_section`, `bundle_row`) **mutate the store and
+  re-render** instead of splicing markdown; `RoadmapRender::render()`
+  writes every byte of the roadmap files. Routed by ANTS-3793's
+  `migratedProject()` dispatch and scoped to the `ants-v1` emoji format —
+  a migrated GFM or pass-headings project keeps the splice paths above,
+  and every unmigrated project is unaffected. Differences a caller sees:
+  - **Envelope**: `line` / `lines` / `bytes` are dropped (a store has no
+    lines) and `files_written` / `items_rendered` come from the render —
+    ANTS-3793 INV-2's declared field difference. `dry_run` still commits
+    nothing on either path and still returns the would-be result.
+  - **`line_range` is refused**, per locator, with `locator_unsupported`
+    (§ 2.4): the store fills `firstLine`/`lastLine` with 0, so a range
+    from line 1 would match *every* bullet. In `flip_batch` it lands in
+    `skipped[]` and the batch's other locators still apply.
+  - **Trailer columns follow the body.** `flip` / `annotate` /
+    `amend_body` re-derive `kind` / `layman` / `source` / `lanes` /
+    `evidence` from the body they just wrote (§ 2.6); `append` /
+    `append_batch` refuse `body_shadowed` when a supplied column and the
+    body in the same request disagree on that key's value (§ 2.5).
+  - **Id allocation** reads the store's `id_high_water` row, still floored
+    to the committed corpus (roadmap-format.md § 3.5.1); `.roadmap-counter`
+    is not written. `id_strategy:"stable_prefix"` consults neither.
+  - **`bundle_row`** is a read-modify-write of the section's first
+    `kind='table'` element's canonical-JSON payload (ANTS-3756 INV-24),
+    creating exactly one when the section has none.
+  - **New refusal codes**: `render_gate_unmet` (a public open item with no
+    `Layman:` line blocks the render — the gate is per *project*, so the
+    caller's own bullet may be blameless), `render_failed`, `store_failed`,
+    plus `write_failed` reused for a committed store whose publishing
+    render did not land. The first three roll the transaction back and
+    write nothing (ANTS-3809 INV-1); `write_failed` leaves the store
+    committed and the file stale-behind. Full entries in
+    [`mcp-error-codes.md`](mcp-error-codes.md).
 
 ## `model_switch_stats`
 

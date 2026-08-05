@@ -885,9 +885,13 @@ lookups — lands, both walks get it for free.
 ## 6. Tests
 
 `tests/features/roadmap_write_half/`, label `features`, compiled into the
-**`test_core` bundle** per `tests/features/README.md` (no `add_executable`) —
-the same bundle ANTS-3793 § 6 uses, and for the same reason: it is the only one
-linking both `ants_core_lib` and `ants_roadmapstore_lib`.
+**`test_claude` bundle** per `tests/features/README.md` (no `add_executable`).
+Corrected at implementation (2026-08-05): this section originally named
+`test_core`, ANTS-3793 § 6's bundle. `test_core` is subset-linked, and a case
+that drives `RemoteControl` — which every case here does — fails to link
+against it (`MainWindow`, `VtParser`, `AuditEngine`, `RoadmapDialog` all
+unresolved). `test_claude` links the full chrome and gained an explicit
+`ants_roadmapstore_lib` inside its `--start-group` for these cases.
 
 | Case | Invariants |
 |---|---|
@@ -970,9 +974,13 @@ replaced by an `addElement()`.
 - **`src/roadmapwrite.cpp` joins `ants_roadmapstore_lib`** and
   **`docs/subsystems.md`** gains `roadmapwrite`. Not `CLAUDE.md` — its module
   map has been a pointer since ANTS-1292.
-- **`docs/standards/mcp-tools.md`'s per-verb notes** gain the migrated-project
-  behaviour of `roadmap_log`: the new refusal codes above and `line_range`'s
-  unavailability.
+- **`docs/standards/mcp-behavioural-notes.md`'s per-verb notes** gain the
+  migrated-project behaviour of `roadmap_log`: the new refusal codes above and
+  `line_range`'s unavailability. (Corrected at implementation, 2026-08-05: this
+  row named `mcp-tools.md`, which has held no per-verb notes since ANTS-2088
+  moved them out. `mcp-tools.md` is the authoring checklist; the per-verb notes
+  are the other file, and its `Write / edit verbs` section is where the sibling
+  `roadmap_log` note already lives.)
 - **`roadmap-data-model.md`'s *What checks this* table** gains INV-1 against the
   store-primary rule its own INV-3 states.
 - **Two follow-ups are filed rather than mentioned** — **ANTS-3821** (§ 1's
