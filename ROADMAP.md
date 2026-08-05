@@ -25994,6 +25994,56 @@ against current source before filing.
   REMAINING: only the § 7 doc rows — mcp-tools.md per-verb notes,
   roadmap-format.md § 3.5.1's interim id-carrier rule, and
   roadmap-data-model.md's "What checks this" row.
+  Progress (2026-08-05, § 7 doc rows): COMPLETE. All three landed, then
+  went through the rule-14 /cold-eyes gate — 3 loops, converged by cap.
+
+  The three rows (7cdb634f):
+  - mcp-behavioural-notes.md, NOT mcp-tools.md. § 7 named the wrong file:
+    per-verb notes moved out of mcp-tools.md under ANTS-2088. § 7 corrected
+    in place.
+  - roadmap-format.md § 3.5.1 — the interim id-carrier rule, as a
+    three-row table (store-migrated / pass-headings / everything else).
+  - roadmap-data-model.md — the What-checks-this row, plus Inv3Allocation's.
+
+  Gate: 3 loops, 9 lanes, 94 raised / 90 verified and fixed / 2 dismissed
+  on evidence / 2 filed. CRITICALs by loop: 2 -> 1 -> 3.
+
+  The single most valuable finding, raised independently by two lanes in
+  loop 3: "cut over" and "store-migrated" are DIFFERENT SETS — the second
+  is the first plus an ants-v1 roadmap, because migratedProject() gates on
+  the format (roadmapsource.cpp:174). Every doc had passages keyed on
+  cutover alone, and an implementer reading roadmap-data-model INV-3 first
+  would have built a store-only writer for cut-over GFM and pass-headings
+  projects that still splice markdown. Fixed across all three docs.
+
+  Two other contract errors worth naming, since neither was in the draft's
+  own scope and both would have misled:
+  - roadmap-data-model § 4.1 said a post-cutover author never supplies an
+    id, while id_strategy:"stable_prefix" is live and has the caller supply
+    one; § 7.1 now states why synthesised is right for it.
+  - § 7.1 claimed a shared store makes the wiped-counter failure mode
+    "disappear, along with the per-prefix bookkeeping". rlStoreIdHighWater()
+    keeps BOTH. That sentence would have talked an implementer out of the
+    corpus floor.
+  - A3's dry_run claim was wrong: commitAndRender() checks the gate BEFORE
+    the dry-run return, so on a gate-failing project (this one, today) a
+    preview refuses render_gate_unmet rather than previewing.
+
+  Two spec inaccuracies corrected in place: § 7's mcp-tools.md row (above)
+  and § 6's test bundle (test_claude, not test_core — the cases drive
+  RemoteControl, which test_core is too narrowly linked to serve).
+
+  Filed rather than fixed:
+  - ANTS-3837 — the neighbouring pass-headings roadmap_log note lists five
+    ops and predates amend_body and bundle_row.
+  - ANTS-3838 — the store append path stamps provenance.id="asserted" on
+    every branch while § 7.7 reserves store-generated for that write.
+    Verified divergence; canonical side is a design call.
+  - ANTS-3793 annotated: bulletsFromStore() zeroes firstLine/lastLine on
+    the READ side too, so roadmap_query's note may owe the same caveat.
+
+  ANTS-3809 is now DONE end to end: seam, eight ops, eight tests, docs.
+  Nothing in § 7 remains.
 
 - 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
