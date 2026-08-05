@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.102" date="2026-07-29">
+    <release version="0.7.102" date="2026-08-05">
       <description>
         <p>Five new documentation-analysis tools for the built-in Claude Code integration, a broad sweep of audit and documentation accuracy, and path-escape hardening.</p>
         <ul>

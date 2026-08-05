@@ -334,7 +334,7 @@ for security-relevant changes.
   which misreads `hicolor-icon-theme` as a themed branding package, and is
   filtered with the analysis recorded next to the filter.
 
-## [0.7.102] — unreleased (Patron RC preview)
+## [0.7.102] — 2026-08-05
 ### Added
 
 - **apply_edits can now edit by line range, not just by matching text (ANTS-3711)**
