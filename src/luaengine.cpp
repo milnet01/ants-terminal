@@ -2,7 +2,12 @@
 
 #include "pathvalidation.h"
 
-#include <lua5.4/lua.hpp>
+// Unqualified on purpose (ANTS-3727): the directory comes from
+// LUA_INCLUDE_DIRS, which CMakeLists.txt puts on this target's include path.
+// openSUSE ships the headers in /usr/include/lua5.4, Fedora in /usr/include —
+// so the <lua5.4/...> prefix that worked here resolved only on openSUSE and
+// broke the Fedora build even though CMake had found Lua correctly.
+#include <lua.hpp>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>

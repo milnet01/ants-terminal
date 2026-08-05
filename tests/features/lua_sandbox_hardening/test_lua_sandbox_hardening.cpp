@@ -21,7 +21,9 @@
 #include <QString>
 #include <QUuid>
 
-#include <lua5.4/lua.hpp>
+// Unqualified — see the note in src/luaengine.cpp (ANTS-3727). The include path
+// arrives via ants_lua_lib's PUBLIC LUA_INCLUDE_DIRS, which this bundle links.
+#include <lua.hpp>
 
 #include <cstdio>
 
