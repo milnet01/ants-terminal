@@ -26508,7 +26508,7 @@ against current source before filing.
   Kind: doc.
   Source: in-session-2026-08-05 (self-reported while closing ANTS-3832).
 
-- 📋 [ANTS-3835] **OBS Fedora 44 + Mageia 10 are red on v0.7.102 — the Lua-include fix ships in 0.7.103.**
+- ✅ [ANTS-3835] **OBS Fedora 44 + Mageia 10 are red on v0.7.102 — the Lua-include fix ships in 0.7.103.**
   Both fail identically at
   src/luaengine.cpp:5 — `fatal error: lua5.4/lua.hpp: No such file or
   directory`. That prefix is openSUSE's header layout; Fedora and Mageia
@@ -26539,6 +26539,48 @@ against current source before filing.
   **Layman:** Two of the four Linux distributions can't build the published package until next week's release, because the fix they need is already written but not yet released.
   Kind: package.
   Source: in-session-2026-08-05 (0.7.102 OBS publish).
+  Resolved (2026-08-05): shipped as a HOTFIX the same day, not deferred to
+  the next cadence. All four OBS targets now report succeeded — Fedora 44
+  and Mageia 10 included.
+
+  The original note here said the fix would arrive at next Wednesday's
+  promote. The user rejected that, correctly: today WAS the Wednesday the
+  previous deferral had pointed at, and Fedora/Mageia users still could not
+  install anything. ANTS-2165's hotfix path exists for exactly this — an
+  urgent defect in the already-published release, with the fix already on
+  trunk.
+
+  What shipped: public v0.7.103 = v0.7.102 + the two include lines from
+  94122ab2 and nothing else. Applied BY PATH rather than by cherry-pick:
+  that commit also carries CHANGELOG, ROADMAP, the OBS README, obs-setup.sh
+  and the spec, five files that conflict against v0.7.102, and cut-rc.sh
+  aborts a hotfix on conflict (INV-6). Verified first that the two files
+  differ from v0.7.102 by the include change ALONE, so this is that
+  commit's source fix exactly.
+
+  The portable spec from the same commit was deliberately left out:
+  obs-submit.sh copies packaging/opensuse/ants-terminal.spec from the
+  WORKING TREE at submit time, so OBS was already building with the
+  portable one. Only the tarball's source was stale.
+
+  Numbering: main's rolled [0.7.103] section and v0.7.103-rc1 both claimed
+  the number the hotfix needed, so the in-flight release rolled up to
+  0.7.104 BEFORE publishing — cut-rc.sh's record_hotfix_on_main anchors on
+  "## [0.7.102]", and leaving main's heading in place would have produced
+  two [0.7.103] sections. v0.7.103-rc1 was deleted (0 downloads on both
+  assets, checked before deleting) and re-cut as v0.7.104-rc1 with the same
+  42 entries, so the patron preview window is intact.
+
+  One trap worth remembering: the hotfix's final `git push origin main`
+  was blocked by three failing tests that were NOT real — the pre-push gate
+  runs ctest against build/ WITHOUT building, and build/ still held
+  binaries the script had just built from the _hotfix tree (3063 tests,
+  v0.7.102-era) while the working tree was main. Source-scrape tests read
+  their inputs at runtime, so they compared old binaries against new
+  source. Rebuilding build/ from main made all three pass.
+
+  Also corrected: packaging/obs/README.md's "Currently building" list is
+  true again now that all four targets are green.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
