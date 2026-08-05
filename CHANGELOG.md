@@ -12,6 +12,16 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.** (ANTS-3809)
+  On a project migrated to the roadmap store, all eight `roadmap_log`
+  ops now mutate the store and re-render, instead of splicing markdown.
+  Unmigrated projects, and migrated ones whose roadmap is a GFM or
+  pass-headings dialect, are unaffected. Adds the `render_gate_unmet`,
+  `render_failed`, `store_failed`, `locator_unsupported` and
+  `body_shadowed` refusals.
+
 ### Fixed
 
 - **doc_integrity truncated a Contents list at its first WRAPPED entry.** (ANTS-3836)
