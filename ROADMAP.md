@@ -26438,6 +26438,33 @@ against current source before filing.
   mutation, which is the blindness this item reported. Suite
   3259/3259.
 
+- 📋 [ANTS-3834] **Three specs amended post-acceptance under ANTS-3832 without a rule-14 gate run.**
+  All three landed in e579f114. None is a new contract; each records
+  what ANTS-3832 built. But all three were ACCEPTED documents that had
+  already converged through /cold-eyes, and global CLAUDE.md rule 14
+  puts every spec edit through the gate — so this is an unrun gate, not
+  an exempt one.
+
+  - ANTS-3758 § 2.2 — the verbatim rule now carves out `table` and
+    states the serialisation + escaping contract. This is the
+    substantive one: it changes what an implementer builds, and its
+    own INV-1 is what the carve-out rests on. Also folded away a
+    paragraph the section had been carrying TWICE (lines 142-158),
+    differing only in its last clause.
+  - ANTS-3809 § 2.2 — records that bundle_row folds cell newlines at
+    the write boundary while pipes stay for the render. Replaces the
+    now-false "`cells` is unchanged".
+  - ANTS-3810 § 2.1.2 — the fixture inventory gains a table element
+    carrying a literal pipe. ANTS-3810 is UNBUILT, so this one reaches
+    an implementer who has not started; it is the one where a gate run
+    is cheapest and most useful.
+
+  Cheapest close: gate ANTS-3758 alone (the substantive edit) and let
+  the other two ride its findings, rather than three separate runs.
+  **Layman:** Three design documents were edited after they had already been reviewed and signed off; the review has not been re-run over the edits.
+  Kind: doc.
+  Source: in-session-2026-08-05 (self-reported while closing ANTS-3832).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
