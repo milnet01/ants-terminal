@@ -9378,6 +9378,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
     int     bodyAnchorLine = -1;
     int     reportLine     = -1;
     QString matchedId;
+    // ANTS-3809 § 2.2 — the store path's step-2 locate keys on the headline, so
+    // the ants-v1 branch below keeps it rather than only the id.
+    QString matchedHeadline;
     QString format;
 
     const QVector<GfmBullet> bullets = walkGfmBullets(lines);
@@ -9504,14 +9507,138 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
                                "fenced code block — refusing to edit")
                     + rcFenceOpenerHint(t.fenceOpenLine));
         }
-        bodyAnchorLine = t.firstLine;
-        reportLine     = t.firstLine + 1;
-        matchedId      = t.id;
+        bodyAnchorLine  = t.firstLine;
+        reportLine      = t.firstLine + 1;
+        matchedId       = t.id;
+        matchedHeadline = t.headline;
     } else {
         return rlErr(QStringLiteral("unrecognised_format"),
             QStringLiteral("roadmap_log: \"%1\" parsed zero bullets (neither "
                            "GFM-task-list nor ants-v1 native format)")
                 .arg(roadmapPath));
+    }
+
+    // ANTS-3809 § 2.2 — the store path, after the locate and before the
+    // markdown patch below. ants-v1 only (§ 5), which the format gate above
+    // has already decided.
+    //
+    // The uniqueness guarantee is re-evaluated over DIFFERENT TEXT, and that is
+    // a behaviour change worth stating rather than discovering. In markdown the
+    // two refusals count over the bullet's continuation lines as they sit in
+    // the file; here they count over `item.body`, which ANTS-3808 § 2.1 makes
+    // the RESIDUAL — the head line's content stripped off. So an `old_text`
+    // that overlapped the headline stops matching, and one whose only second
+    // occurrence was in the head line stops being ambiguous. Both refusals stay
+    // loud; neither silently edits the wrong text. The residual is also the
+    // right target, because it is what the render writes back.
+    if (format == QStringLiteral("ants-v1")) {
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        const auto target =
+            roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (target) {
+            RoadmapStore &store = *target->store;
+            const qint64 projectId = target->projectId;
+
+            RoadmapParse::BulletRecord rec;
+            rec.id           = matchedId;
+            rec.headlineFull = matchedHeadline;
+            QString pkCode, pkErr;
+            const auto itemPk =
+                rlStoreItemPk(store, projectId, rec, &pkCode, &pkErr);
+            if (!itemPk)
+                return rlErr(pkCode, QStringLiteral("roadmap_log: %1").arg(pkErr));
+            const auto before = store.readItem(*itemPk, &seamErr);
+            if (!before)
+                return rlErr(QStringLiteral("store_failed"), seamErr);
+
+            // Single-line, exactly as amendBodyExact() is: a phrase spanning a
+            // line break does not match, and the hint below says so.
+            QStringList bodyLines = before->body.split(QChar('\n'));
+            int hits = 0, hitLine = -1;
+            for (int i = 0; i < bodyLines.size(); ++i) {
+                const int c = bodyLines.at(i).count(oldText);
+                if (c > 0 && hitLine < 0)
+                    hitLine = i;
+                hits += c;
+            }
+            if (hits == 0) {
+                QJsonObject env;
+                env[QStringLiteral("ok")]    = false;
+                env[QStringLiteral("code")]  = QStringLiteral("body_match_not_found");
+                env[QStringLiteral("error")] =
+                    QStringLiteral("roadmap_log: `old_text` not found in the body of "
+                                   "the located bullet");
+                const QString foldedOld = oldText.simplified();
+                if (matchedHeadline.contains(oldText)) {
+                    // The residual's own failure mode, and the one a caller
+                    // coming from the markdown path will hit first.
+                    env[QStringLiteral("hint")] =
+                        QStringLiteral("`old_text` occurs in the bullet's HEADLINE, "
+                                       "which amend_body does not edit — the store "
+                                       "holds the body as the residual with the head "
+                                       "line stripped off");
+                } else if (!foldedOld.isEmpty() &&
+                           before->body.simplified().contains(foldedOld)) {
+                    env[QStringLiteral("hint")] =
+                        QStringLiteral("`old_text` appears to span a hard-wrapped "
+                                       "line break (bodies wrap at ~70 cols); "
+                                       "amend_body matches within one physical line — "
+                                       "pass a substring that fits on a single line");
+                }
+                return QJsonDocument(env);
+            }
+            if (hits > 1) {
+                return rlErr(QStringLiteral("body_match_ambiguous"),
+                    QStringLiteral("roadmap_log: `old_text` occurs %1 times in the "
+                                   "body — narrow it to a unique substring")
+                        .arg(hits));
+            }
+            bodyLines[hitLine].replace(oldText, newText);
+            const QString newBody = bodyLines.join(QChar('\n'));
+
+            const auto mutate = [&](QString *err) -> bool {
+                if (!store.setItemField(*itemPk, QStringLiteral("body"), newBody,
+                                        QStringLiteral("asserted"), err))
+                    return false;
+                // § 2.6 — all five keys, since amend_body supplies none.
+                return rlDeriveTrailerColumns(store, *itemPk, *before, newBody,
+                                              {}, err);
+            };
+
+            RoadmapRender::Outcome outcome;
+            QString writeErr;
+            const auto r = RoadmapWrite::commitAndRender(
+                store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+                &outcome, &writeErr);
+            QJsonObject env;
+            if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+                return QJsonDocument(env);
+
+            env[QStringLiteral("ok")]      = true;
+            env[QStringLiteral("op")]      = QStringLiteral("amend_body");
+            env[QStringLiteral("format")]  = QStringLiteral("ants-v1");
+            env[QStringLiteral("file")]    = QStringLiteral("ROADMAP.md");
+            env[QStringLiteral("amended")] = true;
+            if (!matchedId.isEmpty())
+                env[QStringLiteral("id")] = matchedId;
+            // No `line` / `body_line` / `bytes` — a store has no lines
+            // (ANTS-3793 INV-2), and `body_line` was an index into the file.
+            env[QStringLiteral("files_written")] =
+                QJsonArray::fromStringList(outcome.filesWritten);
+            env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+            if (!newTextScrubbedNames.isEmpty()) {
+                QJsonArray dropped;
+                for (const QString &n : newTextScrubbedNames) dropped.append(n);
+                env[QStringLiteral("note_scrubbed_params")] = dropped;
+            }
+            if (dryRun)
+                env[QStringLiteral("dry_run")] = true;
+            return QJsonDocument(env);
+        }
     }
 
     // 6. Patch the body span (single-occurrence uniqueness enforced).

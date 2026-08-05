@@ -25907,6 +25907,35 @@ against current source before filing.
   Envelope shape on the store path (spec is silent): ops return the
   render's own files_written/items_rendered and DROP `line`, because a
   store has no lines (ANTS-3793 INV-2's declared field difference).
+  Progress (2026-08-05, later): FIVE of eight ops wired — the two
+  above plus flip, annotate and amend_body. Suite 3259/3259 after
+  each. ANTS-3832 is SHIPPED, so bundle_row's store path is now safe
+  to use.
+
+  flip + annotate share one handler and landed together (e43a80a6).
+  Their branch sits at the TOP of applyAntsV1FlipResult, inside the
+  ants-v1 branch, which is what § 2.4's ordering requirement asks
+  for rather than what the shipped code happened to do.
+
+  amend_body's branch sits after its locate and before the markdown
+  patch, gated on `format == "ants-v1"`. Its uniqueness guarantee is
+  re-evaluated over item.body (ANTS-3808 § 2.1's residual) rather
+  than over the file's lines, per § 2.2 — so an `old_text` that
+  overlapped the headline stops matching, and that case gets its own
+  hint rather than reading as "text not found".
+
+  Two variables were added to the amend_body handler for it:
+  matchedHeadline (§ 2.2's step-2 locate keys on the headline) and
+  targetStatusWord in cmdRoadmapLogFlip (setItemField takes the
+  lifecycle WORD; resolved beside targetEmoji in the same if-chain
+  so the two cannot disagree).
+
+  REMAINING: three ops — flip_batch (handler at
+  remotecontrol.cpp:9741; needs per-locator locator_unsupported for
+  line_range into the existing skipped[], § 2.4), append and
+  append_batch (the last three unused helpers — rlBodyShadows,
+  rlStoreIdHighWater, rlStoreCounterPrefix — are exactly theirs).
+  Then the eight feature tests (§ 6) and the remaining § 7 doc rows.
 
 - 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
