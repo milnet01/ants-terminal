@@ -14,6 +14,30 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap edits on a migrated project now change the database, and the file is rebuilt from it** (ANTS-3809)
+  All eight roadmap-editing commands — add an item, add several,
+  mark one done, mark several, add a note, patch a note's wording,
+  add a section, add a table row — now write to the roadmap database
+  and regenerate ROADMAP.md from it. Before this they still edited
+  the file's text by hand, so on a project that had been migrated the
+  read came from the database, the write went to the file, and the
+  next read saw a database that never heard about the edit.
+
+  Nothing is written unless the regenerated file is valid: the
+  database change and the rebuild either both happen or neither
+  does. A preview (`dry_run`) still commits nothing. New IDs are
+  allocated from the database rather than the `.roadmap-counter`
+  file, floored to the highest ID anywhere in the committed project
+  so a fresh clone can never hand out an ID that is already in use.
+
+  Two things a caller will notice. Locating a bullet by line range is
+  now refused on a migrated project, per locator, so the rest of a
+  batch still applies — a database has no line numbers, and the old
+  comparison would have matched every bullet in the file. And a
+  request that sets a field the note text would contradict is
+  refused rather than silently stored, because the file would render
+  one value and re-read as the other.
+
 - **Roadmap read seam — consumers can take their bullets from the store instead of ROADMAP.md** (ANTS-3793)
   The roadmap database has been the primary copy for a while, but nothing
   read it back — every part of the app still re-read and re-parsed the

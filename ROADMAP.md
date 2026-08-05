@@ -25936,6 +25936,49 @@ against current source before filing.
   append_batch (the last three unused helpers — rlBodyShadows,
   rlStoreIdHighWater, rlStoreCounterPrefix — are exactly theirs).
   Then the eight feature tests (§ 6) and the remaining § 7 doc rows.
+  Progress (2026-08-05, final three): ALL EIGHT ops are wired and the
+  eight § 6 feature tests are green. Suite 3267/3267.
+
+  flip_batch, append and append_batch landed in 0e55ec7c; the tests in
+  6a3617fa. The three previously-unused helpers are consumed and their
+  -Wunused-function warnings are gone.
+
+  Shape notes, so a later session need not re-derive them:
+  - flip_batch's line_range refusal carries three emptiness guards
+    (id/anchor/headline all absent) so it fires only when the range is the
+    EFFECTIVE locator. That is what keeps § 2.4's anchor bad_op_combo
+    ahead of the store dispatch without duplicating the check in both
+    format branches.
+  - append branches AHEAD of the counter machinery, and ANTS-1905's
+    stable_id validation was hoisted out of the counter block so both
+    paths share it (behaviour-identical — the counter file was never
+    opened under that strategy).
+  - append_batch resolves the target early and consumes it at four later
+    points rather than as one early branch, because the per-bullet
+    validation, the section refusals, the skipped[] granularity and the
+    contiguous id assignment are all shared. § 2.5's per-bullet
+    body_shadowed runs inside that loop, BEFORE ids are assigned, or a
+    bullet dropped afterwards would gap the run.
+  - rlFillItemBody() is the extracted per-bullet fill both append ops use.
+
+  Two judgment calls where the spec was silent: id_origin is
+  "synthesised" for both an allocated id and a caller's stable_id (per
+  roadmap-data-model.md § 7.1 — "every id the store allocates after
+  cutover"; parsed would claim it matched the grammar in source and
+  quarantined would file a first-class id with the junk), and no
+  created/last_modified is written, matching what a markdown bullet
+  carries.
+
+  Tests live in tests/features/roadmap_write_half/, bundle test_claude
+  NOT test_core: test_core is subset-linked and a test driving
+  RemoteControl fails to link (MainWindow, VtParser, AuditEngine,
+  RoadmapDialog). test_claude gained ants_roadmapstore_lib explicitly,
+  inside the --start-group. All eight were shown RED against a mutation
+  of the rule each pins; the table is in the test's spec.md.
+
+  REMAINING: only the § 7 doc rows — mcp-tools.md per-verb notes,
+  roadmap-format.md § 3.5.1's interim id-carrier rule, and
+  roadmap-data-model.md's "What checks this" row.
 
 - 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
