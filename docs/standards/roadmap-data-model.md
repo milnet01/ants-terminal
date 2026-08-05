@@ -1,12 +1,15 @@
 # Roadmap Data Model Standard (ANTS-3753)
 
 > **Status:** Adopted 2026-07-30; amended 2026-08-03
-> (§ 1 INV-2, §§ 3.3, 4.1, 5, 8). **Partly
-> implemented** — the store, the migration and the export have shipped
+> (§ 1 INV-2, §§ 3.3, 4.1, 5, 8) and 2026-08-05 (§ 3.2, § 4.1, § 7.1, § 8,
+> § 9, *What checks this*). **Partly
+> implemented** — the store, the migration, the export and the published
+> render have shipped
 > ([ANTS-3756](../specs/ANTS-3756-roadmap-store-schema.md),
-> 3757, 3761, 3764, 3765, 3766, 3767, 3782, 3796, 3797); the published render
-> (ANTS-3758), the consumer cutover (ANTS-3793) and the publish + health checks
-> (ANTS-3794) have not. Defines *what a roadmap item is*. The schema, export
+> 3757, 3758, 3761, 3764, 3765, 3766, 3767, 3782, 3796, 3797), as has
+> `roadmap_log`'s write half (ANTS-3809). The consumer cutover (ANTS-3793)
+> is partly built — its read seam ships, `roadmap_query` and `RoadmapDialog`
+> do not — and the publish + health checks (ANTS-3794) have not started. Defines *what a roadmap item is*. The schema, export
 > serialisation, migration algorithm and check implementations live in the
 > implementation specs (§ 9), not here.
 >
@@ -87,8 +90,16 @@ its own render is § 9's.
 **INV-3 — After a project cuts over, the store is its only writer of record.**
 The export and the render are generated; a hand-edit to either is lost at the
 next generation, so both must be fidelity-checked — the export's check has
-shipped, the render's is § 9's and does not exist yet. Before cutover the
+shipped, the render's *hand-edit* check is § 9's and does not exist yet (its
+fidelity check does: see *What checks this*). Before cutover the
 markdown remains authoritative and neither check applies (§ 9).
+
+**A failed publish leaves the store ahead of the file, and that is the
+sanctioned direction.** A write whose store commit succeeded but whose render
+did not land refuses `write_failed` (`mcp-behavioural-notes.md`) with the store
+committed and the file stale-behind. The recovery is to re-run the render —
+never a hand-edit to close the gap, which § 10 forbids for exactly the reason
+the next generation would discard it.
 
 **INV-4 — Relationships may cross projects.** One project's work being blocked
 by another's is currently expressible only as prose.
@@ -153,7 +164,14 @@ item was never obliged to carry.
 `layman`, **on open items only**. A project with any public open item lacking
 one **fails the publish gate**, and the gate is the whole mechanism: the render
 is not generated at all, rather than generated with that item omitted. It does
-not fail migration. A closed item publishes without
+not fail migration.
+
+**After cutover the gate blocks every store write, not only publication.**
+Each write op validates by rendering (ANTS-3809 INV-1), so an unmet gate
+refuses it `render_gate_unmet` — and because the gate is per *project*, a
+status flip on a blameless item is refused by other items' missing `layman`
+values. That is a deliberate consequence of making the render the only writer,
+not a separate rule; the remedy is to fill the named lines in. A closed item publishes without
 `layman`: § 3.3 leaves the field empty on migrated items, so gating closed
 items too would make the gate unsatisfiable for every project with published
 history. This is the **only** publish-gating field; `priority` and `resolution`
@@ -213,8 +231,8 @@ this meaning.
 | Field | Obligation | Notes |
 |---|---|---|
 | `project` | write | Owning project. Items are never global. |
-| `id` | write (store-populated) | § 7.1 — **the store owns allocation**, so a post-cutover author never supplies one; migration is the only path that carries an id in from outside. **Unique within its project**, not within the store — the same ID may legitimately exist in two projects. |
-| `id_origin` | write (store-populated) | § 7.1. How the ID came to exist: `parsed` (it matched `roadmap-format.md` § 3.5.1's grammar in source), `synthesised` (the model made it — § 7.1's `PASS-N-M` ids, § 7.2's migration allocations, **and every id the store allocates after cutover**), `quarantined` (off-grammar, recorded verbatim). Distinct from `provenance.id` (§ 7.7), which records *who supplied* a value; an item can be `synthesised` and `migrated` at once, and § 7.1 needs a place to record that an ID is unparseable without rewriting it. |
+| `id` | write (store-populated) | § 7.1 — **the store owns allocation**, so a post-cutover author never supplies one; migration is the only path that carries an id in from outside, **except** `id_strategy: "stable_prefix"`, under which a caller supplies a stable string id (`Ts20-SP6`) that the store records rather than allocates — § 7.1 states what that is worth. **Unique within its project**, not within the store — the same ID may legitimately exist in two projects. |
+| `id_origin` | write (store-populated) | § 7.1. How the ID came to exist: `parsed` (it matched `roadmap-format.md` § 3.5.1's grammar in source), `synthesised` (the model made it — § 7.1's `PASS-N-M` ids, § 7.2's migration allocations, **every id the store allocates after cutover, and a caller's `stable_prefix` id**, which § 7.1 explains), `quarantined` (off-grammar, recorded verbatim). Distinct from `provenance.id` (§ 7.7), which records *who supplied* a value; an item can be `synthesised` and `migrated` at once, and § 7.1 needs a place to record that an ID is unparseable without rewriting it. |
 | `status` | write | § 7.3. |
 | `headline` | write | One line, technical. |
 | `layman` | write (open) / publish (open) | One sentence, non-technical, for a non-programmer reader. **Not** the only published text — INV-2 publishes the full bullet; this is what a reader is shown first (`roadmap-format.md` § 3.5 puts it on the card face, the headline behind it). § 3.2 gates publish on it. |
@@ -469,6 +487,21 @@ rather than blocking, and the run reports them. The project then either amends
 both are decisions with consequences beyond one project, which is why the model
 declines to pick one. Three items in the corpus are affected.
 
+**A caller-supplied `stable_prefix` id is `synthesised`, not `parsed` and not
+`quarantined` (ANTS-3809).** `roadmap_log`'s `id_strategy: "stable_prefix"` is a
+live argument under which the caller passes a stable string id — `Ts20-SP6`,
+`Sh4` — and the store records it verbatim, allocating nothing and raising no
+high-water. It is the one post-cutover write that carries an id in from
+outside, so § 4.1's "the store owns allocation" holds for every other write and
+names this as its exception. Of the three `id_origin` values it is
+`synthesised`: `parsed` would claim the id matched the § 3.5.1 grammar *in
+source*, which is a statement about a file nobody read, and `quarantined` is
+migration's verdict on an id it could not honour — filing a deliberately-chosen
+id under it would make a first-class identity indistinguishable from salvaged
+junk. Such an id need not match § 3.5.1's `-\d+` shape, and does not become
+`quarantined` by failing it; the shape rule governs the ids this model
+*allocates*, not the ones a caller pins.
+
 **An ID is recognised only at an item's leading position, never mid-text.** A
 bracketed token matching the grammar anywhere else is prose: `DOOM_Ants`
 contains `players[idx-1]` and `row[right-1]`, both of which match the grammar,
@@ -670,7 +703,7 @@ overridden:
   neither and supersedes all three as the authoritative floor, which is what
   § 3.5.1's definition needs amending to say for cut-over projects. **The
   interim half of that amendment has landed** (ANTS-3809): § 3.5.1 now names the
-  store's `id_high_water` row as a migrated project's carrier and keeps the
+  store's `id_high_water` row as a cut-over project's carrier and keeps the
   committed-corpus floor under it. What is still owed is the end state above —
   the export as the floor — which waits on the publish cadence (ANTS-3794).
 - **Status vocabulary.** Its § 3.11 makes a fifth status emoji an anti-pattern,
@@ -739,11 +772,15 @@ implementation gate rather than in a standard:
   whether a cut-over project re-reads its own render at all.
 - Whether archive rotation and the CHANGELOG release flow (§ 8) freeze at
   cutover or move into the store.
-- The fate of `roadmap_query`, `roadmap_log` and `RoadmapDialog`, all of which
-  parse and write `ROADMAP.md` today. A full-fidelity render keeps them able to
-  *parse* it, so what INV-3 ends is their **writing** — which is why they still
+- The fate of `roadmap_query` and `RoadmapDialog`, both of which parse and write
+  `ROADMAP.md` today. A full-fidelity render keeps them able to *parse* it, so
+  what INV-3 ends is their **writing** — which is why they still
   need a cutover rather than none. This includes whether `RoadmapDialog` should
   render each project's legend (§ 5.1 makes it *possible*, not mandatory).
+  **`roadmap_log` is no longer among them**: ANTS-3809 landed its write half, so
+  on a cut-over project in the emoji-bullet shape its eight ops mutate the store
+  and re-render (*What checks this*). Its splice paths remain for every other
+  project, and retiring those is not yet filed.
 
 ANTS-3754 carries the verified finding list that is those specs' input.
 
@@ -794,14 +831,14 @@ than a question.
 | INV-1 leg (b), committed export == live store | **nothing yet** — it needs the publish cadence, so it is ANTS-3794's |
 | INV-2 render fidelity | `tests/features/roadmap_render`, since ANTS-3758 shipped. `tests/features/roadmap_read_seam`'s `Inv2BackendsAgree` is the stronger check of the same property: it renders a migrated store back to markdown, parses that file, and compares record-for-record against the store read. |
 | Read budgets — a whole-project store read stays under its item ceiling and its p95 | `tests/features/roadmap_read_seam` — `Inv3Ceiling` (default suite) and `Inv3Latency` (`perf` label). ANTS-3793's INV-3, not this document's numbering. A budget nothing measures is a comment: the p95 case is what forced the batched `RoadmapStore::readItems()`, the N+1 having been 83 of 101 ms. |
-| INV-3, the store-is-the-only-writer leg, for `roadmap_log`'s eight ops | `tests/features/roadmap_write_half` — ANTS-3809's `Inv1RenderFailureRollsBack` (a validating render that fails rolls the store write back, so the published file can never lead the store) and `Inv2RenderIsTheOnlyWriter` (each of the eight ops writes markdown only through `RoadmapRender::render()`). Those `InvN` names are ANTS-3809's, not this document's. Scoped to a **migrated** project in the `ants-v1` format; every other writer of a roadmap file is still § 9's. |
+| INV-3, the store-is-the-only-writer leg, for `roadmap_log`'s eight ops (`append`, `append_batch`, `flip`, `flip_batch`, `annotate`, `amend_body`, `create_section`, `bundle_row` — `mcp-behavioural-notes.md`) | `tests/features/roadmap_write_half` — ANTS-3809's `Inv1RenderFailureRollsBack` (a validating render that does not succeed, **including one that succeeds carrying gate failures**, rolls the store write back, so the published file can never lead the store) and `Inv2RenderIsTheOnlyWriter` (each of the eight ops writes markdown only through `RoadmapRender::render()`). Those `InvN` names are ANTS-3809's, not this document's. Scoped to a **cut-over** project whose roadmap is in the emoji-bullet shape § 7.1 lists (`roadmap-format.md` § 3.5, format marker `ants-v1`); the other writers named in §§ 8–9 are unchanged. |
 | INV-3 hand-edit detection | **nothing yet** — § 9's |
 | INV-4 cross-project relationships | the `relationship` table carries them; that they are *used* is not checkable |
 | INV-5 no relationship inferred from prose | **nothing** — a prohibition on authors and on migration, enforced by § 6 giving migration only two structured fields to read |
 | § 7.7 provenance never silently promoted | **nothing yet** — the store's write path, § 9's |
 | §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **nothing yet** — the store's write path, § 9's |
 | § 7.1 identity grammar | `roadmap-format.md` § 3.5.1's regex, already in `RoadmapIndex::isCanonicalId` |
-| § 8 reconciliation | **nothing** — prose agreement between two standards. `roadmap-format.md` § 3.5.1's counter definition is half amended: ANTS-3809 added the interim carrier rule (store `id_high_water`, corpus floor kept); the export-as-floor end state waits on ANTS-3794's publish cadence. |
+| § 8 reconciliation | **nothing** — prose agreement between two standards; § 8's ID-allocation bullet records how far the amendment it owes has got. |
 
 ---
 
@@ -811,6 +848,7 @@ than a question.
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 3 (model coherence, corpus drift, failure modes) | 6 / 12 / 14 / 18 / 1 | Structural rewrite: obligations split into tiers, export scope defined, INV-1 given its missing leg, identity grammar corrected after the survey regex was found wrong about two projects, migration source shapes corrected. |
 | 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split.** ~8 of the 13 CRITICALs were collateral from loop 1's own fixes; the findings were overwhelmingly schema-level, i.e. this document was a standard carrying an implementation spec. Split per ANTS-3754: the model stays here, the schema goes to a spec. Backup relocated to the private config repo, closing a leak the draft shipped. ID allocation for the corpus's ID-less items decided (user, 2026-07-30). |
+| 7 | 2026-08-05 | 3 (one per host doc, cold; genre pinned `standard`) | 2 / 6 / 11 / 14 / 0 | **ANTS-3809 § 7 gate**, run on the three cross-doc rows the write half owes. 33 verified, 0 dismissed, all fixed; 1 collateral self-caught by the sweep, 1 surfaced. Dimension tally: dim 2×7, dim 4×9, dim 5×7, dim 8×5, dim 6×3, dim 7×2, dim 1×1. This document's own two led: § 4.1 said "**the store owns allocation**, so a post-cutover author never supplies one" while `id_strategy: "stable_prefix"` — a live argument the shipped schema accepts — has the caller supply one, and `id_origin` had no value for it (now `synthesised`, with § 7.1 stating why `parsed` and `quarantined` are both wrong). The Status header still said the published render "**ha[s] not**" shipped while three rows of the *What checks this* table it sits above cite ANTS-3758 as shipped. Also fixed: § 3.2 stated the publish gate's whole consequence as publication not happening, when after cutover it refuses **every** write op project-wide; § 9 still listed `roadmap_log` among the consumers that write markdown; and the new row's own "migrated project" / "`ants-v1`" were this document's only uses of either term against 30 uses of "cut over". The added row and § 8's bullet stated the same three facts twice — the § 8-reconciliation row is now a pointer, per the delete-N−1 rule rather than a reconcile. The self-caught collateral is the shape the sweep exists for: a fix citing the emoji-bullet row as "§ 5" when it is in § 7.1. **Surfaced, not fixed:** the store fills `firstLine`/`lastLine` with 0 on the read side too, so `mcp-behavioural-notes.md`'s `roadmap_query` entry may owe the same caveat — ANTS-3793's, not this run's. |
 | 6 | 2026-08-03 | 2 (same partition, cold; no prior-loop briefing) | 1 / 2 / 10 / 8 / 1 | **Converged by cap (3 loops this run).** 21 verified, 1 dismissed, 20 fixed, 1 surfaced. Both lanes independently led on the same line, and it is the ANTS-3795 defect the two earlier loops missed: § 4.1's `layman` row still read "**The only text a public reader sees**" — the layman-only premise surviving inside the canonical field table, contradicting the INV-2 this whole amendment rewrote. Loops 4 and 5 swept for the phrase and not for the *claim*, which is why grepping a premise finds only the wording that states it. Also fixed: `provenance`'s four-value enum had no value for a post-cutover store-stamped field — the commonest case there will ever be — now `store-generated`; the INV-1 row implied both of that invariant's legs were checked when the shipped tests cover only leg (a); and § 7.5's severity vocabulary was attributed wholesale to `roadmap-format.md` § 3.8, which owns the headline convention but enumerates no values (one lane over-claimed here and was corrected on the evidence). **Surfaced, not fixed:** § 3.2 gates publish on `layman` while § 3.3 leaves it empty on every migrated item, so read literally no project can publish its first render until hundreds of items are hand-curated. That is a cost decision, not a defect, and § 3.2 now says so and hands it to ANTS-3758. |
 | 5 | 2026-08-03 | 2 (same partition, cold; no prior-loop briefing) | 0 / 4 / 12 / 13 / 1 | 29 verified, 0 dismissed, all fixed. **Roughly half were collateral from loop 4's own fixes** — deleting a sentence in § 5.1 stranded the verb after it ("Today `RoadmapDialog` cannot:"), § 3.1's rewrite and § 4.1's new `write (store-populated)` qualifier landed in one batch without being reconciled, and the ID-floor bullet was left referring to "the layman-only premise" the same loop had deleted. The remedy taken was a **harder blast-radius sweep, not another dispatch**: re-reading each edited passage in context rather than grepping it, which is what found them. Two genuine draft defects an implementer would have built wrong: `id` was marked a plain `write` obligation while § 7.1 gives allocation to the store, and § 3.1 declared itself canonical while enumerating three of the four obligation qualifiers. The sweep also generalised this loop's top finding — a bare `§ 3.3` resolving to **this** document's § 3.3 instead of `roadmap-format.md`'s — into the class it belongs to: eight further unanchored cites, now fixed, with a citation convention stated in § 1 so the next one is a defect rather than a shorthand. |
 | 4 | 2026-08-03 | 2 (single doc, cold; genre pinned `standard`) | 0 / 4 / 7 / 9 / 0 | **ANTS-3795 amendment gate**, run on the edit that made the render full-fidelity. 20 verified, 3 dismissed, all 20 fixed, plus 2 collateral the blast-radius sweep caught. Both lanes independently led on the same three: the **Status header still said "not yet implemented"** while the store, migration and export had shipped; **§ 5's section definition omitted `position` and `source_path`**, the two columns ANTS-3796/3797 added and the render depends on, so the model as written could not round-trip what the store already stores; and the *What checks this* table still said **nothing yet** for INV-1 when `roadmap_export_roundtrip` tests it. Also fixed: § 7.1 mandated flagging an unparseable ID with no field in § 4 to carry it while the store had shipped `item.id_origin` — now a § 4.1 field. **Every corpus figure was re-derived rather than reasoned about**, and the survey now reports 13 projects and 4,080 items against the draft's 10 and its counts of 86 / 78 / ~90 / 8 / 280 / 218; the exact counts are gone in favour of the proportions § 3.3's own policy asks for. One finding landed on THIS amendment: the ID-floor claim that "all three inputs survive" ignored § 9's still-open render-curation question. |

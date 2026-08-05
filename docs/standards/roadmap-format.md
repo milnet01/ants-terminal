@@ -195,11 +195,13 @@ The ID is a project-prefixed monotonic integer:
   deleted (a deleted ID is *retired*; the next new bullet uses
   the next free number, not the deleted one).
 
-The high-water mark lives in `.roadmap-counter` at the project
-root — a one-line file with the highest assigned integer. New
-IDs increment this counter atomically. Concurrent sessions
-read-modify-write under a brief flock so collisions are
-impossible.
+On a project that has **not** moved onto the roadmap store, the
+high-water mark lives in `.roadmap-counter` at the project root — a
+one-line file with the highest assigned integer. New IDs increment
+this counter atomically. Concurrent sessions read-modify-write under
+a brief flock so collisions are impossible. The carrier table below
+states which projects those are, and what replaces the counter for
+the rest.
 
 **The counter is a derived, per-machine cache — NOT source (ANTS-3450).**
 It is `.gitignore`d, not committed. Its true value is the highest
@@ -213,25 +215,39 @@ of "the counter bump got left out of the commit" drift: git can't drift a
 file it doesn't track.
 
 **Which carrier is authoritative during the store cutover (ANTS-3809).**
-While projects migrate onto the roadmap store one at a time, the id
-high-water lives in two places, and *which* one an allocation reads depends
-on the project, not on the machine:
+Projects move onto the roadmap store
+([`roadmap-data-model.md`](roadmap-data-model.md)) one at a time, so the id
+high-water lives in two places. **"Store-migrated" below means a project has a
+store row *and* a roadmap in this emoji format** — the pair
+`RoadmapSource::migratedProject()` tests. It is **not** § 3.10.3's migration,
+which converts a GFM task list into this format and is a fact about the file,
+not about the store; a project can be one without the other.
 
 | Project | High-water carrier | `.roadmap-counter` |
 |---|---|---|
-| Not migrated | `.roadmap-counter` | read and written, as above |
-| Migrated | the store's `id_high_water` row, per `(project, prefix)` | **not written**; a stale file is simply left behind |
+| **Store-migrated** — store row *and* emoji format | the store's `id_high_water` row, per `(project, prefix)` | neither read nor written; a stale file is simply left behind |
+| **Everything else** — no store row, *or* a store row with a GFM / pass-headings roadmap | `.roadmap-counter`, exactly as above | read and written |
 
-On a migrated project an allocation is
+A pass-headings roadmap (§ 3.10.5) falls in the second row but allocates no
+counter id at all: its ids are derived from the headings and the counter is
+left untouched.
+
+On a store-migrated project an allocation is
 `max(idHighWater(project, prefix), corpusHighWater(root, prefix)) + 1`,
 followed by `raiseIdHighWater()`. An absent `id_high_water` row is *not* an
 error — it is the state of every project until its first store-side
 allocation, and is read as 0, exactly as an absent counter file already is.
 
+**Concurrent allocations are serialised by the store transaction, not by the
+flock above.** The read-modify-write runs inside the `BEGIN IMMEDIATE` the
+whole write op holds, so two sessions cannot interleave — the same guarantee
+the counter's flock gives, reached by a different mechanism.
+
 **The committed-corpus floor applies to both carriers, and this does not
 overturn ANTS-3450.** The store row is a second derived cache, not a second
-source: it is machine-local like the counter, and the corpus is still what
-either one is recovered from. Dropping the floor on the store path would
+source: it lives outside the repo (under `GenericDataLocation`), so it is
+machine-local exactly as the gitignored counter is, and the corpus is still
+what either one is recovered from. Dropping the floor on the store path would
 re-open the very failure the rule above closes — a fresh clone reissuing an
 id the committed corpus already holds.
 
@@ -241,14 +257,16 @@ stable string id is not a counter value, and seeding a counter from one
 would corrupt the next counter-project allocation.
 
 This is the **interim** rule, named as such because the cutover is not
-finished: `roadmap-data-model.md` § 8 records that once the store's export
-is published on a cadence (ANTS-3794), the export — not the rendered
-`ROADMAP.md` — becomes a cut-over project's authoritative floor. Until
-then the committed corpus above is that floor for every project, migrated
-or not.
+finished: [`roadmap-data-model.md`](roadmap-data-model.md) § 8 records that
+once the store's export is published on a cadence (ANTS-3794), the export —
+not the committed corpus — becomes a cut-over project's authoritative floor.
+Until then the committed corpus above is that floor for every project,
+store-migrated or not.
 
 ```bash
-# Allocate the next ID (unmigrated projects):
+# Allocate the next ID — illustrative, and for the counter carrier only.
+# A real allocator also floors to the committed corpus, and treats an absent
+# counter file as 0 rather than failing on the `cat`.
 echo $(($(cat .roadmap-counter) + 1)) > .roadmap-counter
 printf "PROJ-%04d\n" $(cat .roadmap-counter)
 ```
@@ -641,7 +659,9 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
 
 The single-prefix rule is convention because it keeps
 `.roadmap-counter` unambiguous; multi-prefix repos need one
-counter per prefix.
+counter per prefix. That constraint is the counter carrier's: a
+store-migrated project's `id_high_water` row is already keyed per
+`(project, prefix)` (§ 3.5.1), so multi-prefix is native there.
 
 #### 3.10.5 Heading-format roadmaps (`#### Pass N.M`)
 
