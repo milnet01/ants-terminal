@@ -12,7 +12,18 @@ for security-relevant changes.
 
 ## [Unreleased]
 
-## [0.7.102] — unreleased (Patron RC preview)
+## [0.7.103] — 2026-08-05
+
+### Fixed
+
+- **Ants Terminal builds on Fedora and Mageia again** (ANTS-3727)
+  The Lua header was included by openSUSE's path layout, so on Fedora and
+  Mageia — which put the same header somewhere else — the build stopped
+  before it started. It now asks the build system where the header is
+  instead of assuming. openSUSE was unaffected; this is what kept the
+  Fedora 44 and Mageia 10 packages from being published.
+
+## [0.7.102] — 2026-08-05
 ### Added
 
 - **apply_edits can now edit by line range, not just by matching text (ANTS-3711)**

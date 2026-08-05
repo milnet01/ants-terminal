@@ -1,3 +1,12 @@
+ants-terminal (0.7.103-1) unstable; urgency=medium
+
+  * Hotfix: the Lua header was included by openSUSE's path layout, so the
+    build failed immediately on Fedora and Mageia, which place it
+    elsewhere. The location now comes from the build system. openSUSE was
+    unaffected. (ANTS-3727)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 05 Aug 2026 20:00:00 +0200
+
 ants-terminal (0.7.102-1) unstable; urgency=medium
 
   * Five documentation-analysis MCP verbs — doc_dedup, spec_lint,

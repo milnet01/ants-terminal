@@ -103,6 +103,14 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.103" date="2026-08-05">
+      <description>
+        <p>Hotfix: Ants Terminal builds on Fedora and Mageia again.</p>
+        <ul>
+          <li><em>Fixed:</em> The Lua header was included by openSUSE's path layout, so the build failed immediately on distributions that place it elsewhere. It now takes the location from the build system. This is what kept the Fedora 44 and Mageia 10 packages from being published; openSUSE was unaffected. (ANTS-3727)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.102" date="2026-07-29">
       <description>
         <p>Five new documentation-analysis tools for the built-in Claude Code integration, a broad sweep of audit and documentation accuracy, and path-escape hardening.</p>
