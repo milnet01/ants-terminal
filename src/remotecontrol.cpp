@@ -8368,6 +8368,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     // to_status accepts either the word form or the emoji directly.
     // Unused under annotate (status is preserved).
     QString targetEmoji;
+    // ANTS-3809 § 2.2 — the same choice as a lifecycle WORD, which is what
+    // setItemField(itemPk, "status", …) takes. Resolved here beside the emoji
+    // rather than mapped back from it later, so the two cannot disagree.
+    QString targetStatusWord;
     if (annotateMode) {
         if (!toStatus.isEmpty()) {
             return rlErr(QStringLiteral("bad_op_combo"),
@@ -8391,13 +8395,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         // pass-headings flip path).
         const QString toStatusResolved = rlCanonicalToStatus(toStatus);
         if      (toStatusResolved == QStringLiteral("planned")     ||
-                 toStatusResolved == QStringLiteral("📋")) targetEmoji = QStringLiteral("📋");
+                 toStatusResolved == QStringLiteral("📋")) { targetEmoji = QStringLiteral("📋"); targetStatusWord = QStringLiteral("planned"); }
         else if (toStatusResolved == QStringLiteral("in-progress") ||
-                 toStatusResolved == QStringLiteral("🚧")) targetEmoji = QStringLiteral("🚧");
+                 toStatusResolved == QStringLiteral("🚧")) { targetEmoji = QStringLiteral("🚧"); targetStatusWord = QStringLiteral("in-progress"); }
         else if (toStatusResolved == QStringLiteral("shipped")     ||
-                 toStatusResolved == QStringLiteral("✅")) targetEmoji = QStringLiteral("✅");
+                 toStatusResolved == QStringLiteral("✅")) { targetEmoji = QStringLiteral("✅"); targetStatusWord = QStringLiteral("shipped"); }
         else if (toStatusResolved == QStringLiteral("considered")  ||
-                 toStatusResolved == QStringLiteral("💭")) targetEmoji = QStringLiteral("💭");
+                 toStatusResolved == QStringLiteral("💭")) { targetEmoji = QStringLiteral("💭"); targetStatusWord = QStringLiteral("considered"); }
         else {
             return rlErr(QStringLiteral("bad_status"),
                 QStringLiteral("roadmap_log: unknown to_status \"%1\" — "
@@ -8537,6 +8541,116 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                                "refusing to edit")
                     + rcFenceOpenerHint(v1target.fenceOpenLine));
         }
+        // ANTS-3809 § 2.2 — the store path, at the TOP of this lambda and so
+        // INSIDE the ants-v1 branch. § 2.4 requires exactly that ordering: the
+        // `anchor` locator's bad_op_combo is a FORMAT refusal and must run
+        // ahead of the store-versus-markdown dispatch, or an anchor locator
+        // would be matched against a field the store path fills as empty and
+        // would silently match nothing. Locating is shared for the same reason
+        // create_section shares its validation — on a migrated project the file
+        // is the render's own output, so the same walk finds the same bullet.
+        {
+            RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+            QString seamErr;
+            const auto target =
+                roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+            QJsonObject refusal;
+            if (rcRoadmapSourceRefused(refusal, why, seamErr))
+                return QJsonDocument(refusal);
+            if (target) {
+                RoadmapStore &store = *target->store;
+                const qint64 projectId = target->projectId;
+
+                // § 2.2's two-step locate. AntsV1Bullet::headline is the
+                // post-strip headline with its `**` wrappers removed, which is
+                // the form ItemRef::headline holds, so the step-2 fallback
+                // compares equal without a truncation allowance.
+                RoadmapParse::BulletRecord rec;
+                rec.id           = v1target.id;
+                rec.headlineFull = v1target.headline;
+                QString pkCode, pkErr;
+                const auto itemPk =
+                    rlStoreItemPk(store, projectId, rec, &pkCode, &pkErr);
+                if (!itemPk)
+                    return rlErr(pkCode, QStringLiteral("roadmap_log: %1").arg(pkErr));
+                const auto before = store.readItem(*itemPk, &seamErr);
+                if (!before)
+                    return rlErr(QStringLiteral("store_failed"), seamErr);
+
+                // Idempotent re-annotate, mirroring appendBodyNote()'s
+                // noteAlreadyPresent: the markdown path does not append a note
+                // the bullet already carries, and a caller re-running an
+                // annotate must not get a second copy for having migrated.
+                const bool alreadyPresent =
+                    !note.isEmpty() && before->body.contains(note);
+                const QString newBody =
+                    (note.isEmpty() || alreadyPresent)
+                        ? before->body
+                        : rlAppendBodyNote(before->body, note);
+
+                const auto mutate = [&](QString *err) -> bool {
+                    if (!annotateMode &&
+                        !store.setItemField(*itemPk, QStringLiteral("status"),
+                                            targetStatusWord,
+                                            QStringLiteral("asserted"), err))
+                        return false;
+                    if (newBody == before->body)
+                        return true;
+                    if (!store.setItemField(*itemPk, QStringLiteral("body"),
+                                            newBody, QStringLiteral("asserted"), err))
+                        return false;
+                    // § 2.6 — a body write re-derives every trailer column the
+                    // request did not supply, which for flip/annotate is all
+                    // five. This is what keeps `Layman:` from being a body line
+                    // the render's gate can never see.
+                    return rlDeriveTrailerColumns(store, *itemPk, *before,
+                                                  newBody, {}, err);
+                };
+
+                RoadmapRender::Outcome outcome;
+                QString writeErr;
+                const auto r = RoadmapWrite::commitAndRender(
+                    store, projectId, callerCanonical, roadmapPath, dryRun,
+                    mutate, &outcome, &writeErr);
+                QJsonObject env;
+                if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+                    return QJsonDocument(env);
+
+                env[QStringLiteral("ok")]          = true;
+                env[QStringLiteral("op")]          = annotateMode
+                                                        ? QStringLiteral("annotate")
+                                                        : QStringLiteral("flip");
+                env[QStringLiteral("format")]      = QStringLiteral("ants-v1");
+                env[QStringLiteral("from_status")] = v1target.status;
+                env[QStringLiteral("to_status")]   = annotateMode
+                                                        ? v1target.status
+                                                        : targetEmoji;
+                env[QStringLiteral("file")]        = QStringLiteral("ROADMAP.md");
+                env[QStringLiteral("id")]          = v1target.id;
+                // No `line` / `bytes` / `note_line`: a store has no lines
+                // (ANTS-3793 INV-2's declared field difference), and the render
+                // decides placement. anchor_injected stays, and stays false —
+                // ants-v1 never injects one.
+                env[QStringLiteral("anchor_injected")] = false;
+                env[QStringLiteral("files_written")] =
+                    QJsonArray::fromStringList(outcome.filesWritten);
+                env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+                if (!note.isEmpty()) {
+                    env[QStringLiteral("note_appended")] = !alreadyPresent;
+                    if (alreadyPresent)
+                        env[QStringLiteral("note_already_present")] = true;
+                }
+                if (!noteScrubbedNames.isEmpty()) {
+                    QJsonArray dropped;
+                    for (const QString &n : noteScrubbedNames) dropped.append(n);
+                    env[QStringLiteral("note_scrubbed_params")] = dropped;
+                }
+                if (dryRun)
+                    env[QStringLiteral("dry_run")] = true;
+                return QJsonDocument(env);
+            }
+        }
+
         // Apply flip (skipped under annotate) + optional note, then
         // atomic write. applyAntsV1Flip edits the headline in place
         // (no line-count change), so appendBodyNote's firstLine
