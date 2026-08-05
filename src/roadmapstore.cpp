@@ -999,6 +999,36 @@ bool RoadmapStore::updateSection(qint64 sectionId, const QString &title, int lev
     return true;
 }
 
+// The `table` payload rule, shared by addElement() and setElementPayload().
+// ANTS-3809 § 2.2 requires the second to canonicalise "exactly as addElement()
+// does"; one function is what makes that literally true rather than two copies
+// that agree today. Returns false with *error set; `stored` is the bytes to
+// bind. Non-table kinds are VERBATIM — § 2.3 calls canonicalising prose as JSON
+// undefined rather than merely wasteful, so a narration payload that happens to
+// look like JSON round-trips unchanged.
+static bool rsCanonicalisePayload(const QString &kind, const QString &payload,
+                                  QString *stored, QString *error) {
+    if (kind != QLatin1String("table")) {
+        *stored = payload;
+        return true;
+    }
+    QJsonParseError pe{};
+    const QJsonDocument doc = QJsonDocument::fromJson(payload.toUtf8(), &pe);
+    if (pe.error != QJsonParseError::NoError) {
+        if (error)
+            *error = QStringLiteral("table payload is not JSON: %1").arg(pe.errorString());
+        return false;
+    }
+    *stored = RoadmapStore::canonicalJson(doc.isArray() ? QJsonValue(doc.array())
+                                                        : QJsonValue(doc.object()));
+    if (stored->isEmpty()) {
+        if (error)
+            *error = QStringLiteral("table payload cannot be canonicalised");
+        return false;
+    }
+    return true;
+}
+
 bool RoadmapStore::addElement(qint64 sectionId, int position, const QString &kind,
                               const QString &payload, QString *error) {
     // INV-10 — refused HERE, not by the DDL CHECK. This method has no item_pk
@@ -1012,26 +1042,9 @@ bool RoadmapStore::addElement(qint64 sectionId, int position, const QString &kin
         return false;
     }
 
-    // Canonicalised for `table`, VERBATIM for `narration`. § 2.3 calls
-    // canonicalising prose as JSON undefined rather than merely wasteful, so a
-    // narration payload that happens to look like JSON round-trips unchanged.
-    QString stored = payload;
-    if (kind == QLatin1String("table")) {
-        QJsonParseError pe{};
-        const QJsonDocument doc = QJsonDocument::fromJson(payload.toUtf8(), &pe);
-        if (pe.error != QJsonParseError::NoError) {
-            if (error)
-                *error = QStringLiteral("table payload is not JSON: %1").arg(pe.errorString());
-            return false;
-        }
-        stored = canonicalJson(doc.isArray() ? QJsonValue(doc.array())
-                                             : QJsonValue(doc.object()));
-        if (stored.isEmpty()) {
-            if (error)
-                *error = QStringLiteral("table payload cannot be canonicalised");
-            return false;
-        }
-    }
+    QString stored;
+    if (!rsCanonicalisePayload(kind, payload, &stored, error))
+        return false;
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
@@ -1040,6 +1053,54 @@ bool RoadmapStore::addElement(qint64 sectionId, int position, const QString &kin
     q.addBindValue(position);
     q.addBindValue(kind);
     q.addBindValue(stored);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
+// ANTS-3809 § 2.2. See roadmapstore.h for the contract; the row's own kind
+// drives both the refusal and the canonicalisation, so it is read first and
+// nothing is written until both have passed.
+bool RoadmapStore::setElementPayload(qint64 sectionId, int position,
+                                     const QString &payload, QString *error) {
+    QSqlQuery sel(m_db);
+    sel.prepare(QStringLiteral(
+        "SELECT kind FROM element WHERE section_id = ? AND position = ?"));
+    sel.addBindValue(sectionId);
+    sel.addBindValue(position);
+    if (!sel.exec()) {
+        if (error)
+            *error = lastErr(sel);
+        return false;
+    }
+    if (!sel.next()) {
+        if (error)
+            *error = QStringLiteral("no element at section %1 position %2")
+                         .arg(sectionId).arg(position);
+        return false;
+    }
+
+    const QString kind = sel.value(0).toString();
+    if (kind == QLatin1String("item")) {
+        if (error)
+            *error = QStringLiteral("setElementPayload() cannot rewrite an item "
+                                    "filing; use putItem() or fileItem()");
+        return false;
+    }
+
+    QString stored;
+    if (!rsCanonicalisePayload(kind, payload, &stored, error))
+        return false;
+
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "UPDATE element SET payload = ? WHERE section_id = ? AND position = ?"));
+    q.addBindValue(stored);
+    q.addBindValue(sectionId);
+    q.addBindValue(position);
     if (!q.exec()) {
         if (error)
             *error = lastErr(q);

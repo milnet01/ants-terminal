@@ -51,6 +51,9 @@
 // gets it here is PRIVATE (CMakeLists.txt § "ANTS-3793 § 4").
 #include "roadmapsource.h"
 #include "roadmapstore.h"
+// ANTS-3809 — the write shape the eight roadmap_log ops go through on a
+// migrated project. Same PRIVATE link edge as the read seam above.
+#include "roadmapwrite.h"
 #include "changeloglog.h"
 #include "passheadingwrite.h"
 #include "subsystemmap.h"
@@ -3702,6 +3705,47 @@ bool RemoteControl::roadmapStoreServes(const QString &projectRoot,
     return served;
 }
 
+// ANTS-3809 § 2.1 — the write-side dispatch. See remotecontrol.h for the
+// contract; it is deliberately roadmapStoreOrNull() plus migratedProject() and
+// nothing more, so it cannot disagree with roadmapBullets() about whether a
+// project is migrated.
+std::optional<RemoteControl::RoadmapWriteTarget>
+RemoteControl::roadmapWriteTarget(const QString &projectRoot,
+                                  const QString &markdown,
+                                  RoadmapSource::ReadError *why,
+                                  QString *error) const {
+    if (why)
+        *why = RoadmapSource::ReadError::None;
+    if (error)
+        error->clear();
+    // Same rule as roadmapBullets(): a caller with no project root cannot ask
+    // the marker anything, and passing "" would turn every such call into a
+    // refusal rather than the markdown path it belongs on.
+    if (projectRoot.isEmpty())
+        return std::nullopt;
+
+    // The local rather than `why` directly: a caller that dropped `why` would
+    // otherwise turn a refusal into a fall-through to the splice path — the
+    // silent fallback INV-1 forbids, arriving through an omitted out-param.
+    RoadmapSource::ReadError localWhy = RoadmapSource::ReadError::None;
+    RoadmapStore *store = roadmapStoreOrNull(&localWhy, error);
+    if (localWhy != RoadmapSource::ReadError::None) {
+        if (why)
+            *why = localWhy;
+        return std::nullopt;
+    }
+    if (!store)
+        return std::nullopt;
+
+    const auto projectId = RoadmapSource::migratedProject(
+        *store, projectRoot, markdown, error, &localWhy);
+    if (why)
+        *why = localWhy;
+    if (!projectId)
+        return std::nullopt;
+    return RoadmapWriteTarget{store, *projectId};
+}
+
 // ANTS-3793 § 2.1 — the ReadError → refusal-envelope mapping, once for the
 // whole verb layer. Returns true when it filled `out` with a refusal, so a
 // read site reads `if (rcRoadmapSourceRefused(...)) return QJsonDocument(out);`.
@@ -3743,6 +3787,325 @@ static bool rcRoadmapSourceRefused(QJsonObject &out,
         return true;
     }
     return false;
+}
+
+// ─── ANTS-3809 — the store-backed write path, shared by all eight ops ──────
+
+// § 7's code table, once for the whole verb layer. Mirrors
+// rcRoadmapSourceRefused() above and reads the same way at a call site:
+// `if (rcRoadmapWriteRefused(out, r, err, outcome)) return QJsonDocument(out);`
+//
+// All five values carry genuinely different remedies — fill in the missing
+// Layman lines, fix the store's contents, fix the store file, re-run the
+// render — which is why they are five codes and not one.
+static bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
+                                  const QString &err,
+                                  const RoadmapRender::Outcome &outcome) {
+    const auto fail = [&out, &err](const char *code, const char *fallback) {
+        out[QStringLiteral("ok")] = false;
+        out[QStringLiteral("error")] = err.isEmpty() ? QString::fromLatin1(fallback) : err;
+        out[QStringLiteral("code")] = QString::fromLatin1(code);
+        return true;
+    };
+    switch (r) {
+    case RoadmapWrite::Result::Ok:
+        return false;
+    case RoadmapWrite::Result::GateUnmet:
+        // The gate is per PROJECT, so the caller's own item may be blameless;
+        // naming the offenders is the only way the refusal is actionable.
+        out[QStringLiteral("gate_failures")] =
+            QJsonArray::fromStringList(outcome.gateFailures);
+        return fail("render_gate_unmet",
+                    "the roadmap render refuses this project: an open item "
+                    "carries no Layman: line");
+    case RoadmapWrite::Result::RenderFailed:
+        return fail("render_failed", "the roadmap render failed");
+    case RoadmapWrite::Result::StoreFailed:
+        return fail("store_failed", "the roadmap store write failed");
+    case RoadmapWrite::Result::PublishFailed:
+        // § 2.1 step 7: the store IS committed and stays so. The envelope says
+        // which files landed precisely so a caller can tell a total failure
+        // from ANTS-3758 § 2.7's partial commit.
+        out[QStringLiteral("files_written")] =
+            QJsonArray::fromStringList(outcome.filesWritten);
+        return fail("write_failed",
+                    "the roadmap store committed, but the render did not land");
+    }
+    return false;
+}
+
+// The five trailer keys in ONE place: the item column, where the key sits in a
+// TrailerValues, and — for the two list-valued ones — the split form and the
+// ItemWrite column to compare against. § 2.5 and § 2.6 both walk exactly this
+// set, and two copies of it would be two answers to "which keys are trailer
+// keys".
+struct RlTrailerKey {
+    const char *field;
+    RoadmapParse::TrailerMatch RoadmapParse::TrailerValues::*match;
+    // nullptr on the three scalar keys; set on lanes/evidence, whose stored
+    // form is a JSON array and not the raw capture.
+    QStringList RoadmapParse::TrailerValues::*list;
+    QString     RoadmapStore::ItemWrite::*col;
+    QStringList RoadmapStore::ItemWrite::*colList;
+};
+static const RlTrailerKey kRlTrailerKeys[] = {
+    {"kind",   &RoadmapParse::TrailerValues::kind,   nullptr,
+     &RoadmapStore::ItemWrite::kind,   nullptr},
+    {"layman", &RoadmapParse::TrailerValues::layman, nullptr,
+     &RoadmapStore::ItemWrite::layman, nullptr},
+    {"source", &RoadmapParse::TrailerValues::source, nullptr,
+     &RoadmapStore::ItemWrite::source, nullptr},
+    {"lanes",  &RoadmapParse::TrailerValues::lanes,
+     &RoadmapParse::TrailerValues::lanesList,  nullptr,
+     &RoadmapStore::ItemWrite::lanes},
+    {"evidence", &RoadmapParse::TrailerValues::evidence,
+     &RoadmapParse::TrailerValues::evidenceList, nullptr,
+     &RoadmapStore::ItemWrite::evidence},
+};
+
+// The stored form of a list-valued trailer column: a JSON array of strings.
+// setItemField() takes a QString for every field and treats it as JSON for
+// lanes/evidence — it parses, refuses unless it is an array of strings, and
+// canonicalises itself (ANTS-3767), so a caller that pre-canonicalises is
+// merely doing it twice and one that passes the joined prose form ("a, b") is
+// refused as "not JSON".
+static QString rlJsonArrayText(const QStringList &list) {
+    return QString::fromUtf8(
+        QJsonDocument(QJsonArray::fromStringList(list)).toJson(QJsonDocument::Compact));
+}
+
+// What `body` yields for one trailer key, in the same form the column stores.
+static QString rlBodyValueFor(const RoadmapParse::TrailerValues &tv,
+                              const RlTrailerKey &k) {
+    if ((tv.*(k.match)).value.isEmpty())
+        return QString();
+    return k.list ? rlJsonArrayText(tv.*(k.list)) : (tv.*(k.match)).value;
+}
+
+// § 2.5 — refuse a trailer-column write the body arriving in the same request
+// would hide. Returns true when the op must refuse, filling *error with the
+// message a caller can act on.
+//
+// The predicate is VALUE DIFFERENCE alone, over all five keys, and `anchored`
+// is deliberately not part of it. A rendered bullet is head line, then body,
+// then the canonical trailer lines, and every one of the five matchers takes
+// its FIRST match over that text — so a body occurrence is reached before the
+// column's own line whatever either looks like. Gating on `anchored == false`
+// would exempt the commonest shadowing shape there is: a stale `Kind:`
+// continuation line, which begins a line and so is anchored == true.
+//
+// `anchored` still earns its place — in the MESSAGE, where it picks between
+// the two remedies the caller is owed.
+static bool rlBodyShadows(const RoadmapParse::TrailerValues &tv,
+                          const QString &body, const RlTrailerKey &k,
+                          const QString &supplied, QString *error) {
+    const QString fromBody = rlBodyValueFor(tv, k);
+    // Value difference, not presence. A migrated item's body agrees with its
+    // columns by construction (ANTS-3808 § 2.3.1), so the ordinary bullet
+    // carrying its own `Kind:` line does not refuse.
+    if (fromBody.isEmpty() || fromBody == supplied)
+        return false;
+    if (!error)
+        return true;
+
+    const RoadmapParse::TrailerMatch &m = tv.*(k.match);
+    // The shadowing text itself: from the capture to the end of its line.
+    QString quoted;
+    if (m.offset >= 0 && m.offset <= body.size()) {
+        const int nl = body.indexOf(QLatin1Char('\n'), m.offset);
+        const int lineStart = body.lastIndexOf(QLatin1Char('\n'), m.offset) + 1;
+        quoted = body.mid(lineStart, (nl < 0 ? body.size() : nl) - lineStart).trimmed();
+        if (quoted.size() > 160)
+            quoted.truncate(160);
+    }
+    *error = QStringLiteral(
+                 "the body shadows the `%1` column: it yields \"%2\" while this "
+                 "request writes \"%3\", and a re-parse reaches the body first. %4 "
+                 "(shadowing text: %5)")
+                 .arg(QString::fromLatin1(k.field), fromBody, supplied,
+                      m.anchored
+                          ? QStringLiteral("Delete or correct that stale trailer "
+                                           "line in the body")
+                          : QStringLiteral("Reword that mention, or wrap the key "
+                                           "in backticks"),
+                      quoted);
+    return true;
+}
+
+// § 2.6 — after an op writes `body`, re-derive from the NEW body every trailer
+// column the same request did not itself supply, and write each one that
+// changed.
+//
+// This is what makes § 1's render gate remediable: `Layman:` is a body line in
+// markdown and a column in the store, so an annotate that adds the line but not
+// the column would leave the gate failing forever with no op able to clear it.
+//
+// `supplied` names the keys the request set itself — empty for annotate,
+// amend_body and a flip carrying a note; up to five for append. A supplied key
+// is the caller's and is left alone: a request with layman:"X" and a body with
+// no `Layman:` line must store "X", not clear the column to match the body.
+//
+// The OLD body is what makes clearing safe, and dropping it inverts the rule
+// one op later and invisibly. Stated the short way — "clear whatever the new
+// body does not yield" — an append that supplied layman:"X" with a body
+// carrying no `Layman:` line has that column cleared by the very next annotate.
+// Every single-op test passes; the two-op sequence is where it shows. So a
+// column is cleared ONLY when the body it replaced also yielded that key.
+static bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
+                                   const RoadmapStore::ItemWrite &before,
+                                   const QString &newBody,
+                                   const QSet<QString> &supplied, QString *error) {
+    const RoadmapParse::TrailerValues oldTv = RoadmapParse::trailerValuesIn(before.body);
+    const RoadmapParse::TrailerValues newTv = RoadmapParse::trailerValuesIn(newBody);
+    for (const RlTrailerKey &k : kRlTrailerKeys) {
+        const QString field = QString::fromLatin1(k.field);
+        if (supplied.contains(field))
+            continue;
+        const QString oldValue = rlBodyValueFor(oldTv, k);
+        const QString newValue = rlBodyValueFor(newTv, k);
+        if (oldValue.isEmpty() && newValue.isEmpty())
+            continue;  // untouched — it came from a request argument or the
+                       // migration, and this op has no opinion about it.
+
+        const QString current =
+            k.colList ? rlJsonArrayText(before.*(k.colList)) : before.*(k.col);
+        if (!newValue.isEmpty()) {
+            if (current == newValue)
+                continue;  // § 2.6 writes each one that CHANGED.
+            if (!store.setItemField(itemPk, field, newValue,
+                                    QStringLiteral("asserted"), error))
+                return false;
+        } else {
+            // The body carried it and the write removed it. clearItemField(),
+            // never an empty setItemField(): putItem() binds an empty value as
+            // SQL NULL while setItemField() binds the string it is given, and
+            // ANTS-3761's INV-2 column diff reads '' and NULL as different. For
+            // lanes/evidence the trap is sharper — "[]" is valid JSON and an
+            // empty array canonicalises happily, so setItemField() would store
+            // an empty array where NULL is meant and nothing would refuse it.
+            if (current.isEmpty() || current == QLatin1String("[]"))
+                continue;
+            if (!store.clearItemField(itemPk, field, QStringLiteral("asserted"), error))
+                return false;
+        }
+    }
+    return true;
+}
+
+// § 2.2's body append — the whole of `annotate`, and of `flip` when it carries
+// a note. Simpler on the store path than in markdown: item.body is already
+// exactly the continuation span the markdown helper has to go and find, and it
+// is held UN-INDENTED (parseBullets() builds it with body.append(cont.trimmed())),
+// so appendBodyNote()'s indent-sniffing and end-of-run walk both drop out. The
+// render's appendIndented() puts the two spaces back on the way out.
+//
+// The caller scrubs and caps the note first, exactly as the markdown path does.
+static QString rlAppendBodyNote(const QString &body, const QString &note) {
+    QString out = body;
+    while (out.endsWith(QLatin1Char('\n')) || out.endsWith(QLatin1Char(' ')))
+        out.chop(1);
+    if (out.isEmpty())
+        return note;
+    return out + QLatin1Char('\n') + note;
+}
+
+// § 2.2 — a located BulletRecord becomes an item_pk. Two steps, because one
+// does not cover the corpus.
+//
+// Step 1 is the point lookup on the id the caller was shown. Step 2 exists
+// because it provably misses two reachable shapes and refusing them would be a
+// regression: ANTS-3793 § 2.1.1 fills rec.id from the RENDERED HEAD LINE and
+// not from the id column, so an item whose column is empty takes its rec.id
+// from an id-shaped headline token, and one carrying an off-grammar quarantined
+// id whose prose cites another [ID] re-parses to the citation. findItem() keys
+// on the column and misses both.
+//
+// The fallback keys on headlineFull — the stored headline unchanged — so it
+// compares equal to ItemRef::headline without a truncation allowance.
+//
+// Fills *code with the same two refusals the markdown path's `headline` locator
+// already makes.
+static std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId,
+                                           const RoadmapParse::BulletRecord &rec,
+                                           QString *code, QString *error) {
+    if (!rec.id.isEmpty()) {
+        if (const auto pk = store.findItem(projectId, rec.id, error))
+            return pk;
+    }
+    const auto refs = store.listItems(projectId, error);
+    if (!refs) {
+        if (code)
+            *code = QStringLiteral("store_failed");
+        return std::nullopt;
+    }
+    std::optional<qint64> hit;
+    for (const auto &ref : *refs) {
+        if (ref.headline != rec.headlineFull)
+            continue;
+        if (hit) {
+            if (code)
+                *code = QStringLiteral("bullet_ambiguous");
+            if (error)
+                *error = QStringLiteral("more than one bullet matches that headline");
+            return std::nullopt;
+        }
+        hit = ref.itemPk;
+    }
+    if (!hit) {
+        if (code)
+            *code = QStringLiteral("bullet_not_found");
+        if (error)
+            *error = QStringLiteral("no bullet matches that locator");
+    }
+    return hit;
+}
+
+// § 2.3 — the counter high-water the store path allocates from, floored to the
+// committed corpus.
+//
+// The floor is not belt-and-braces. roadmap-format.md § 3.5.1 defines
+// .roadmap-counter as a derived, per-machine cache — NOT source (ANTS-3450) —
+// whose true value is the highest id across the committed corpus, and both
+// existing allocators already floor to corpusHighWater(). Swapping in
+// idHighWater() alone would silently drop that floor, which is the mechanism
+// that stops a fresh clone reissuing a live id.
+//
+// idHighWater() returning nullopt is NOT an error — its own comment says so,
+// and it is the state of every project until its first store-side allocation.
+// Treated as 0, exactly as the markdown path treats an absent counter file.
+static qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
+                                 const QString &projectRoot, const QString &prefix) {
+    qint64 floor = RoadmapFoldIn::corpusHighWater(projectRoot, prefix);
+    QString ignored;
+    if (const auto hw = store.idHighWater(projectId, prefix, &ignored))
+        floor = std::max(floor, *hw);
+    return floor;
+}
+
+// § 2.3 — the prefix idHighWater() is keyed on. idPrefixFor() takes the place
+// of rlResolveCounterPrefix()'s markdown SNIFF step: it is the store's own
+// record of the project's prefix, and it is a better answer than re-sniffing
+// text. It returns nullopt when the project has no id_prefix row — an absent
+// row, explicitly not an error, and a narrower condition than "no id-bearing
+// item", since the row is written by raiseIdHighWater() and a project migrated
+// in without an allocation ever running has ids and no row.
+//
+// An EXPLICIT id_prefix argument still wins, because that is what the shipped
+// argument is documented to do ("overrides BOTH the prefix sniffed from
+// existing IDs and the project-dir default"); on nullopt the whole markdown
+// resolution applies unchanged.
+static QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
+                                    const QString &idPrefixArg,
+                                    const QString &markdown,
+                                    const QString &callerCanonical) {
+    if (!idPrefixArg.isEmpty())
+        return idPrefixArg;
+    QString ignored;
+    if (const auto pfx = store.idPrefixFor(projectId, &ignored)) {
+        if (!pfx->isEmpty())
+            return *pfx;
+    }
+    return rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
 }
 
 // ANTS-1922 — canonical bullet-cache array builder. Mirrors the
@@ -9351,9 +9714,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             }
         } else {  // ants-v1
             if (!locAnchor.isEmpty()) {
+                // ANTS-3809 § 7 — `line_range` dropped from the advice. It is
+                // refused outright on a migrated project (§ 2.4: the store
+                // path zeroes firstLine, so a range starting at line 1 would
+                // match EVERY bullet), and a migrated project is the only kind
+                // the store path serves — so this hint sent a caller from one
+                // refusal straight into another.
                 skip(li, QStringLiteral("bad_op_combo"),
                      QStringLiteral("anchor locator unsupported on ants-v1 "
-                                    "— use id, headline, or line_range"));
+                                    "— use id or headline"));
                 continue;
             }
             if (!locId.isEmpty()) {
@@ -9878,6 +10247,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
 
     const QString introBody =
         req.value(QStringLiteral("intro_body")).toString();
+    // ANTS-3809 § 2.2 — hoisted out of the block below so the store path can
+    // hand setSectionIntro() the SAME wrapped text the splice would have
+    // inserted, rather than re-deriving it and drifting.
+    QStringList introWrapped;
     if (!introBody.isEmpty()) {
         // Single newline = paragraph break; double newlines collapse.
         // Then hard-wrap each paragraph at 80 cols on word boundaries.
@@ -9902,7 +10275,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
             }
             if (!current.isEmpty()) paragraphs.append(current);
         }
-        QStringList wrapped;
+        QStringList &wrapped = introWrapped;
         constexpr int kWrapCols = 80;
         for (const QString &para : paragraphs) {
             const QStringList words = para.split(QChar(' '),
@@ -9944,6 +10317,93 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
         }
         for (const QString &ln : wrapped) toInsert << ln;
         toInsert << QString();   // blank closing the intro block
+    }
+
+    // ANTS-3809 § 2.2 — the store path. Everything above is validation against
+    // the markdown index, and it is SHARED deliberately: on a migrated project
+    // the file is the render's own output, so after_section, the computed slug
+    // and the collision check resolve against the same text either way. Only
+    // the mutation and the write differ, which is what INV-2 is about.
+    {
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        const auto target =
+            roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (target) {
+            RoadmapStore &store = *target->store;
+            const qint64 projectId = target->projectId;
+            const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+            const auto mutate = [&](QString *err) -> bool {
+                const auto afterId = store.findSection(projectId, afterSection, err);
+                if (!afterId) {
+                    if (err && err->isEmpty())
+                        *err = QStringLiteral("section \"%1\" is not in the store")
+                                   .arg(afterSection);
+                    return false;
+                }
+                const auto afterRow = store.readSection(*afterId, err);
+                if (!afterRow)
+                    return false;
+                const int newPos = afterRow->position + 1;
+
+                // The renumber. `section` is deliberately NOT
+                // UNIQUE (project_id, position) — the DDL comment says so
+                // outright — so this has no transient-collision problem. It is
+                // still required rather than optional: sectionOrderLess()'s key
+                // is (position, slug), so two sections left sharing a position
+                // would order by slug and not by where the caller put them.
+                const auto all = store.listSections(projectId, err);
+                if (!all)
+                    return false;
+                for (const auto &s : *all) {
+                    if (s.position < newPos)
+                        continue;
+                    const auto sid = store.findSection(projectId, s.slug, err);
+                    if (!sid)
+                        return false;
+                    if (!store.updateSection(*sid, s.title, s.level,
+                                             s.position + 1, s.parentId, err))
+                        return false;
+                }
+
+                const auto created = store.addSection(projectId, newSlug, title,
+                                                      level, newPos,
+                                                      std::nullopt, err);
+                if (!created)
+                    return false;
+                return introWrapped.isEmpty()
+                       || store.setSectionIntro(
+                              *created, introWrapped.join(QChar('\n')), err);
+            };
+
+            RoadmapRender::Outcome outcome;
+            QString writeErr;
+            const auto r = RoadmapWrite::commitAndRender(
+                store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+                &outcome, &writeErr);
+            QJsonObject env;
+            if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+                return QJsonDocument(env);
+
+            env[QStringLiteral("ok")]   = true;
+            env[QStringLiteral("op")]   = QStringLiteral("create_section");
+            env[QStringLiteral("slug")] = newSlug;
+            env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
+            // No `line`: a store has no lines — ANTS-3793 INV-2's one declared
+            // field difference — and the render, not this op, decides placement.
+            // The render's own result is what a caller can act on, and under
+            // dry_run it is the non-empty preview INV-7 requires.
+            env[QStringLiteral("files_written")] =
+                QJsonArray::fromStringList(outcome.filesWritten);
+            env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+            if (dryRun)
+                env[QStringLiteral("dry_run")] = true;
+            return QJsonDocument(env);
+        }
     }
 
     // 6. Splice at sec->lineEnd (0-indexed, exclusive).
@@ -10119,6 +10579,160 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
         return rlErr(QStringLiteral("bad_section"),
             QStringLiteral("roadmap_log: unknown section slug \"%1\"")
                 .arg(section));
+    }
+
+    // ANTS-3809 § 2.2 — the store path, branching ABOVE the markdown table
+    // scan rather than below it: everything that scan derives — the column
+    // count, the data-row span, the insertion line — is markdown geometry the
+    // store answers differently. ANTS-3756 INV-24 makes element.payload
+    // canonical JSON when kind='table', so the new row is an array insert into
+    // "rows", not a rendered markdown line.
+    //
+    // NOTE (ANTS-3832): RoadmapRender::render() has no table renderer — it
+    // emits every non-item payload verbatim — so on a project whose roadmap
+    // carries a table the rendered file gets the raw JSON. That is a
+    // pre-existing ANTS-3758 defect this op surfaces rather than causes, and
+    // it is filed; the store side below is what this spec owns.
+    {
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString seamErr;
+        const auto target =
+            roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+        QJsonObject refusal;
+        if (rcRoadmapSourceRefused(refusal, why, seamErr))
+            return QJsonDocument(refusal);
+        if (target) {
+            RoadmapStore &store = *target->store;
+            const qint64 projectId = target->projectId;
+            const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+            const auto sectionId = store.findSection(projectId, section, &seamErr);
+            if (!sectionId)
+                return rlErr(QStringLiteral("section_not_found"),
+                    QStringLiteral("roadmap_log: section \"%1\" is not in the "
+                                   "roadmap store").arg(section));
+            const auto elements = store.listElements(*sectionId, &seamErr);
+            if (!elements)
+                return rlErr(QStringLiteral("store_failed"), seamErr);
+
+            // The FIRST kind='table' element BY POSITION. Nothing in the schema
+            // constrains a section to one table, and first-by-position is the
+            // one choice that matches what the markdown path does — it splices
+            // into the first table under the heading. Compared explicitly
+            // rather than taken as listElements()' first hit, so the choice
+            // does not silently depend on that reader's ordering.
+            const RoadmapStore::ElementRow *tableRow = nullptr;
+            int maxPos = -1;
+            for (const RoadmapStore::ElementRow &e : *elements) {
+                maxPos = std::max(maxPos, e.position);
+                if (e.kind == QLatin1String("table") &&
+                    (!tableRow || e.position < tableRow->position))
+                    tableRow = &e;
+            }
+
+            QJsonArray headerArr, rowsArr;
+            bool createdTable = false;
+            if (tableRow) {
+                const QJsonObject payload =
+                    QJsonDocument::fromJson(
+                        tableRow->payload.value_or(QString()).toUtf8()).object();
+                headerArr = payload.value(QStringLiteral("header")).toArray();
+                rowsArr   = payload.value(QStringLiteral("rows")).toArray();
+            } else {
+                if (header.isEmpty())
+                    return rlErr(QStringLiteral("no_table"),
+                        QStringLiteral("roadmap_log: section \"%1\" has no "
+                                       "Markdown table — pass `header` (column "
+                                       "names) to create one").arg(section));
+                headerArr    = QJsonArray::fromStringList(header);
+                createdTable = true;
+            }
+
+            // The shipped column_mismatch refusal, unchanged in meaning: the
+            // same check over a parsed shape rather than over a header row's
+            // pipe count.
+            const int columns = headerArr.size();
+            if (cells.size() != columns)
+                return rlErr(QStringLiteral("column_mismatch"),
+                    QStringLiteral("roadmap_log: cells (%1) must match the "
+                                   "table's column count (%2)")
+                        .arg(cells.size()).arg(columns));
+            if (!createdTable && !header.isEmpty() && header.size() != columns)
+                return rlErr(QStringLiteral("column_mismatch"),
+                    QStringLiteral("roadmap_log: header (%1) must match the "
+                                   "existing table's column count (%2)")
+                        .arg(header.size()).arg(columns));
+
+            // `position` and `sort_col` decide where the row lands WITHIN
+            // "rows" — an array insert. Neither touches element.position, which
+            // is where the TABLE sits in the section.
+            int rowIndex = rowsArr.size() + 1;   // 1-based; default is the end
+            if (position == QStringLiteral("sorted") && sortCol >= 0 &&
+                sortCol < columns) {
+                // Same explicit locale as the markdown path, and for the same
+                // reason: a default QCollator follows the system locale, which
+                // under C/POSIX degrades to a codepoint compare that ignores
+                // setNumericMode — filing "40" before "9".
+                QCollator coll(QLocale(QLocale::English, QLocale::UnitedStates));
+                coll.setNumericMode(true);
+                coll.setCaseSensitivity(Qt::CaseInsensitive);
+                const QString key = cells.value(sortCol);
+                for (int i = 0; i < rowsArr.size(); ++i) {
+                    const QString existing =
+                        rowsArr.at(i).toArray().at(sortCol).toString();
+                    if (coll.compare(key, existing) < 0) {
+                        rowIndex = i + 1;
+                        break;
+                    }
+                }
+            }
+
+            // `cells` is unchanged — no pipe-escaping and no <br> folding. Those
+            // are GFM concerns and the payload is JSON; the render owns turning
+            // a row back into markdown.
+            rowsArr.insert(rowIndex - 1, QJsonArray::fromStringList(cells));
+            QJsonObject payload;
+            payload.insert(QStringLiteral("header"), headerArr);
+            payload.insert(QStringLiteral("rows"), rowsArr);
+            const QString payloadText = QString::fromUtf8(
+                QJsonDocument(payload).toJson(QJsonDocument::Compact));
+
+            const int tablePos = tableRow ? tableRow->position : maxPos + 1;
+            const auto mutate = [&](QString *err) -> bool {
+                if (tableRow)
+                    return store.setElementPayload(*sectionId, tablePos,
+                                                   payloadText, err);
+                // The create case. Pinned at max(position) + 1 — or 0 for an
+                // empty section — because element carries
+                // UNIQUE (section_id, position) and item rows occupy positions
+                // too, so "at the end" left unpinned is a constraint violation
+                // rather than a mis-placement.
+                return store.addElement(*sectionId, tablePos,
+                                        QStringLiteral("table"), payloadText, err);
+            };
+
+            RoadmapRender::Outcome outcome;
+            QString writeErr;
+            const auto r = RoadmapWrite::commitAndRender(
+                store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+                &outcome, &writeErr);
+            QJsonObject env;
+            if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+                return QJsonDocument(env);
+
+            env[QStringLiteral("ok")]            = true;
+            env[QStringLiteral("op")]            = QStringLiteral("bundle_row");
+            env[QStringLiteral("file")]          = QStringLiteral("ROADMAP.md");
+            env[QStringLiteral("section")]       = section;
+            env[QStringLiteral("row_index")]     = rowIndex;
+            env[QStringLiteral("columns")]       = columns;
+            env[QStringLiteral("created_table")] = createdTable;
+            env[QStringLiteral("files_written")] =
+                QJsonArray::fromStringList(outcome.filesWritten);
+            if (dryRun)
+                env[QStringLiteral("dry_run")] = true;
+            return QJsonDocument(env);
+        }
     }
 
     // 5. Within the section's line range, find an existing GFM table:

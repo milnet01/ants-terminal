@@ -287,6 +287,17 @@ Listed only where behavior isn't obvious from the name.
   builds each record by parsing `RoadmapRender::bulletText()`, so the two
   backends agree by construction. Refuses over 3,500 items. Spec
   ANTS-3793.
+- `roadmapwrite` (`ants_roadmapstore_lib`) — the write seam's ordering,
+  in one function because eight `roadmap_log` ops would each get a chance
+  to write it differently. `commitAndRender()` is begin → mutate → **dry**
+  render → commit → real render: the render commits its own files, so
+  validating with the real one would leave a file ahead of a store that
+  then rolled back, and `Options::dryRun` is what makes the safe order
+  expressible. Five outcomes, each with its own refusal code
+  (`render_gate_unmet` / `render_failed` / `store_failed` /
+  `write_failed`). The one open window is deliberate: a failed *publish*
+  leaves the store committed and the file stale-behind, because the store
+  is primary. Spec ANTS-3809.
 - `roadmapmigrate` (`ants_core_lib`) — the migration read half:
   `findRoadmaps()` resolves a project's roadmap case-insensitively,
   decodes it, and adds every rotated archive under `docs/roadmap/`

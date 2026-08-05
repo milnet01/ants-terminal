@@ -490,6 +490,9 @@ add_library(ants_roadmapstore_lib STATIC
     # reason the render is: it reads the store, and its records are defined as
     # what parseBullets() would make of roadmaprender.cpp's bulletText().
     src/roadmapsource.cpp
+    # ANTS-3809 — the write shape: mutate, validate with a dry render, commit,
+    # publish. Beside the render it drives, for the same reason.
+    src/roadmapwrite.cpp
     # ANTS-3765 — the migration LOAD half. Here and not in ants_core_lib, which
     # is the read/load seam made mechanical: the read half (roadmapmigrate.cpp)
     # is in core precisely because it needs no database, and this half needs

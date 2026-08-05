@@ -241,6 +241,26 @@ public:
     bool addElement(qint64 sectionId, int position, const QString &kind,
                     const QString &payload, QString *error = nullptr);
 
+    // ANTS-3809 § 2.2 — the read-modify-write `bundle_row` needs and the
+    // declared surface could not express: addElement() is INSERT-only,
+    // clearSectionElements() is the whole section, and ElementRow carries no
+    // element id, so there was no way to reach ONE element's payload.
+    //
+    // Keyed on (section_id, position) because that pair is UNIQUE and is what
+    // listElements() already hands back; exposing an element_id would be a
+    // wider surface than one op needs (§ 5). Takes no `kind`: the row's own
+    // kind decides whether the payload is canonicalised, exactly as
+    // addElement() does for the kind it was given.
+    //
+    // Refuses kind='item' for addElement()'s reason rather than its check —
+    // that one rejects its `kind` ARGUMENT, this one the row already there —
+    // so putItem()/fileItem() stay the only ways an item is filed (INV-10,
+    // INV-20). Refuses a (section_id, position) with no row: there is nothing
+    // to modify, and inserting instead would make this a second addElement()
+    // that skips its kind='item' guard.
+    bool setElementPayload(qint64 sectionId, int position, const QString &payload,
+                           QString *error = nullptr);
+
     // § 2.6's element rebuild re-files items that already exist, which putItem()
     // cannot do (UNIQUE (project_id, id_fold)) and addElement() must not.
     // Refuses an already-filed item: INV-20's "at most one" is elem_item_uq,

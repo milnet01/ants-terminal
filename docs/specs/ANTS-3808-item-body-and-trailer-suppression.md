@@ -374,9 +374,17 @@ Both branches land on exactly one occurrence of the canonical value, which is
 what INV-1 and INV-3 actually assert. The failure mode the equality argument was
 reaching for — a *stale* value winning over the column — needs a residual that
 carries the key with a value the column disagrees with, and that requires a
-consumer to have written the column without rewriting the body: a `flip` or
-`annotate` under ANTS-3809. That is why that spec owns the write-side refusal
-and this one owns the accessor it is built on.
+consumer to have written the column without rewriting the body: an `append` or
+`append_batch` under ANTS-3809 § 2.5. That is why that spec owns the write-side
+refusal and this one owns the accessor it is built on.
+
+**Corrected 2026-08-05, per ANTS-3809 § 7.** This sentence named `flip` and
+`annotate`, which was right when it was written and is now wrong: ANTS-3809
+§ 2.6 has every op that writes `body` re-derive its trailer columns from the
+body it just wrote, so a `flip`-with-`note` or an `annotate` *cannot* leave a
+column disagreeing with its body. The hazard is unchanged; the ops that can
+reach it are `append` and `append_batch`, the only two that set a column
+independently of the body they ship with.
 
 **"Post-cutover"**, used here and in INV-3, means an item whose columns have
 been written by a consumer through the store after migration — as opposed to a

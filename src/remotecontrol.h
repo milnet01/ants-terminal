@@ -1014,6 +1014,27 @@ private:
                             RoadmapSource::ReadError *why,
                             QString *error) const;
 
+    // ANTS-3809 § 2.1 — the write-side companion to roadmapBullets(). Hands
+    // back the process-owned store rather than records, because the eight
+    // roadmap_log ops mutate rows and then let RoadmapWrite::commitAndRender()
+    // re-render the file.
+    //
+    // It is storeFor() plus migratedProject() and nothing else — the same two
+    // calls the read seam makes, the same three outcomes, the same
+    // Access::Interactive connection. A second dispatch rule here would be a
+    // second answer to "is this project migrated", and the read and write
+    // halves of one verb call must not be able to disagree.
+    //
+    // nullopt with `*why == None` means NOT migrated: splice markdown exactly
+    // as today. nullopt with `*why != None` is a refusal and never a fallback.
+    struct RoadmapWriteTarget {
+        RoadmapStore *store = nullptr;
+        qint64 projectId = 0;
+    };
+    std::optional<RoadmapWriteTarget>
+    roadmapWriteTarget(const QString &projectRoot, const QString &markdown,
+                       RoadmapSource::ReadError *why, QString *error) const;
+
     // § 2.2 rules 1 and 2 (absent → nullptr, no error; present but unopenable
     // → nullptr with *why set), plus the connection caching the p95 budget
     // needs. Both readers above go through it.

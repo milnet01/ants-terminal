@@ -25824,6 +25824,62 @@ against current source before filing.
   closed as "no". Drafted, gated to convergence, accepted; the length cost
   was review cost and it is already spent. Implement as it stands. Do not
   reopen this.
+  Progress (2026-08-05): the write SEAM is built and green; 2 of 8 ops
+  wired. Suite passes. Resume from here — nothing below needs redeciding.
+
+  DONE:
+  - RoadmapStore::setElementPayload() (§ 2.2) + rsCanonicalisePayload()
+    extracted so addElement() and it canonicalise through ONE function
+    (§ 2.2 asks for "exactly as addElement() does").
+  - src/roadmapwrite.{h,cpp} — commitAndRender(), § 2.1's table verbatim
+    (INV-1, INV-7's mechanism). In ants_roadmapstore_lib; CMake wired.
+  - RemoteControl::roadmapWriteTarget() (§ 2.1), beside roadmapBullets().
+  - Shared helpers in remotecontrol.cpp, all § 2.x-cited:
+    rcRoadmapWriteRefused (§ 7's five codes), kRlTrailerKeys (the five
+    keys once), rlJsonArrayText/rlBodyValueFor, rlBodyShadows (§ 2.5),
+    rlDeriveTrailerColumns (§ 2.6, incl. the OLD-body clearing rule),
+    rlAppendBodyNote (§ 2.2), rlStoreItemPk (§ 2.2's two-step),
+    rlStoreIdHighWater + rlStoreCounterPrefix (§ 2.3).
+  - Ops wired: create_section, bundle_row.
+  - Docs: mcp-error-codes.md gained all five codes + write_failed's reuse
+    note; subsystems.md gained `roadmapwrite`; ANTS-3808 § 2.3.1's closing
+    sentence corrected to append/append_batch per § 7; flip_batch's
+    anchor-refusal message dropped `line_range` per § 7.
+
+  REMAINING:
+  - Six ops: flip, annotate, flip_batch, amend_body, append, append_batch.
+    Insertion points found: flip/annotate go at the top of the
+    `applyAntsV1FlipResult` lambda in cmdRoadmapLogFlip (inside the ants-v1
+    branch, which satisfies § 2.4's ordering requirement for free);
+    flip_batch's ants-v1 branch is beside its bad_op_combo anchor refusal.
+    The six unused helpers above are exactly what they need — the
+    -Wunused-function warnings clear as they are wired.
+  - The eight feature tests (§ 6), tests/features/roadmap_write_half/.
+  - Remaining § 7 docs: mcp-tools.md per-verb notes, roadmap-format.md
+    § 3.5.1's interim id-carrier rule, roadmap-data-model.md's
+    "What checks this" row.
+
+  TWO FINDINGS, both filed, neither invented:
+  - ANTS-3832 (NEW, blocking for bundle_row's usefulness): the render has
+    NO table renderer — roadmaprender.cpp:329-333 emits every non-item
+    payload verbatim, while the migration stores a GFM table as canonical
+    JSON. So a migrated project with a table renders raw JSON into
+    ROADMAP.md. Pre-existing ANTS-3758 defect, sanctioned by its § 2.2;
+    violates its own INV-1; no test covers it. bundle_row's store path is
+    implemented as specced and its INV-8 (a STORE assertion) still passes.
+  - § 7 says BOTH flip handlers recommend `line_range` in their anchor
+    refusal. Only flip_batch's does; cmdRoadmapLogFlip's already says
+    "use `id` or `headline`". Spec inaccuracy, no code owed.
+
+  ONE JUDGMENT CALL made where § 2.3 was silent: prefix resolution is
+  explicit id_prefix arg > idPrefixFor() > markdown sniff > leaf dir.
+  § 2.3 names only idPrefixFor() then rlResolveCounterPrefix(), which read
+  literally would break the shipped id_prefix override; idPrefixFor()
+  slots into that helper's SNIFF step instead, preserving both contracts.
+
+  Envelope shape on the store path (spec is silent): ops return the
+  render's own files_written/items_rendered and DROP `line`, because a
+  store has no lines (ANTS-3793 INV-2's declared field difference).
 
 - 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
@@ -26257,6 +26313,50 @@ against current source before filing.
 
   Also filed ANTS-3830: this fix adds a fifth false positive to the stale
   `refactor_shell_quote_duplicate` audit rule.
+
+- 📋 [ANTS-3832] **The render has no table renderer — a migrated table re-emits as raw JSON.**
+  Found grounding ANTS-3809's bundle_row against the render, and
+  confirmed by an independent sweep. Pre-existing in ANTS-3758, not
+  caused by ANTS-3809.
+
+  The chain:
+  1. roadmapmigrate.cpp:620-638 stores a GFM table as canonical JSON
+     under kind='table' — {"header":[...],"rows":[[...]]}.
+  2. roadmaprender.cpp:329-333 is the ONLY non-item branch and appends
+     *e.payload verbatim. `e.kind` is never compared against "table"
+     anywhere in the file. So the JSON string lands in ROADMAP.md where
+     `| a | b |` rows belong.
+  3. ANTS-3758 § 2.2 (line 143) sanctions it outright: a narration or
+     table payload "is emitted verbatim — never re-wrapped, never
+     re-canonicalised; the store holds the author's bytes". True for
+     narration; FALSE for table, where the store holds canonical JSON.
+     So this is a spec defect, not just a code one — the fix amends
+     § 2.2 as well.
+
+  It violates ANTS-3758's own INV-1 (render → re-load → export is
+  byte-identical): the JSON text is not isTableRow(), so it re-migrates
+  as a `narration` element and the exports differ.
+
+  Nothing catches it. No render test builds a table element —
+  Inv10ElementInterleaving uses two `narration` elements, and
+  Inv1ExportsMatch does not compare exports. A real `|` table fixture
+  exists (tests/features/roadmap_migrate_read/fixtures/antsv1/ROADMAP.md
+  :34-37) but is never piped back out through render(). ANTS-3810's
+  round-trip oracle is the thing that would catch it, and it is both
+  unbuilt and specced with a fixture carrying no table element — so its
+  § 2.1.2 inventory should gain one as part of this.
+
+  Blocking for ANTS-3809's bundle_row store path: that op's own INV-8
+  asserts the STORE's payload and still passes, but the user-visible
+  outcome on a migrated project with a table is a corrupted ROADMAP.md.
+  ANTS-3809 is otherwise implementable as specced.
+
+  Also noted while reading: ANTS-3758 § 2.2's verbatim paragraph appears
+  TWICE (lines 143-150 and 152-159), differing only in the last clause.
+  Editorial, fold into the same fix.
+  **Layman:** A roadmap containing a table would come out of the database as computer code instead of a table; the tool that rebuilds the file never learned to turn tables back.
+  Kind: fix.
+  Source: in-session-2026-08-05 (found implementing ANTS-3809 bundle_row).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
