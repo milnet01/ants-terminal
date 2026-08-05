@@ -127,9 +127,36 @@ list of supported terminal codes is in
 
 ## Install
 
-### The easy way (Linux, 64-bit)
+### From your package manager
 
-Grab the ready-to-run **AppImage** from the
+If you're on one of these, this is the best option — you get updates
+automatically, like any other program on your system. Add the repository once,
+then install:
+
+```bash
+# openSUSE Tumbleweed
+sudo zypper ar https://download.opensuse.org/repositories/home:/milnet:/ants-terminal/openSUSE_Tumbleweed/ ants-terminal
+sudo zypper in ants-terminal
+
+# openSUSE Leap 16.0
+sudo zypper ar https://download.opensuse.org/repositories/home:/milnet:/ants-terminal/openSUSE_Leap_16.0/ ants-terminal
+sudo zypper in ants-terminal
+
+# Fedora 44
+sudo dnf config-manager addrepo --from-repofile=https://download.opensuse.org/repositories/home:milnet:ants-terminal/Fedora_44/home:milnet:ants-terminal.repo
+sudo dnf install ants-terminal
+
+# Mageia 10
+sudo urpmi.addmedia ants-terminal https://download.opensuse.org/repositories/home:/milnet:/ants-terminal/Mageia_10/
+sudo urpmi ants-terminal
+```
+
+The packages are built on openSUSE's own build servers. (Yes, Fedora and Mageia
+too — that service builds for more than openSUSE.)
+
+### The easy way (any Linux, 64-bit)
+
+Not on one of the above? Grab the ready-to-run **AppImage** from the
 [Releases page](https://github.com/milnet01/ants-terminal/releases/latest) —
 download it, make it executable, and run it:
 
