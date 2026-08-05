@@ -12,7 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
-## [0.7.103] — unreleased (Patron RC preview)
+## [0.7.104] — unreleased (Patron RC preview)
 ### Added
 
 - **Roadmap edits on a migrated project now change the database, and the file is rebuilt from it** (ANTS-3809)
