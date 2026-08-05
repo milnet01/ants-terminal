@@ -3155,6 +3155,33 @@ minor tag (next: pre-0.8.0).
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 
+- 📋 [ANTS-3833] **`remotecontrol.cpp` decomposition (23,849 LoC / 1.1 MB).**
+  Same shape as ANTS-1043 (mainwindow.cpp), one order of magnitude
+  worse: the largest source in the tree by 2x, and every MCP verb
+  lives in it. C++ has no runtime cost here — the costs are build
+  time (one verb edit recompiles the whole TU plus its AUTOMOC) and
+  edit safety (no session can hold it, so every change is a blind
+  targeted edit).
+
+  Low-risk shape: keep the class and its header exactly as they are,
+  move verb BODIES into remotecontrol_&lt;family&gt;.cpp TUs that define
+  RemoteControl::cmdXxx members. No API change, no header churn, no
+  new class — only translation units.
+
+  Two traps that make it non-mechanical:
+  - the source-scrape tests with fixed byte windows anchored in this
+    file (mcp_*_verb / build_status / tool_prefix_tags) re-anchor on
+    the first textual mention of a symbol, so moving code slides
+    their windows;
+  - verbs registered by dispatch table must keep their registration
+    order and kindForName bucketing.
+
+  Sequence after ANTS-3809 ships — its remaining six ops all land in
+  this file, so splitting mid-flight would collide with them.
+  **Layman:** The file holding every MCP command is now so big that changing one command makes the computer recompile all of them; split it into a few files so edits are quick.
+  Kind: refactor.
+  Source: user-question-2026-08-05.
+
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
 - ✅ [ANTS-1050] **Auto-return focus to terminal when any dialog closes.**
@@ -26314,7 +26341,7 @@ against current source before filing.
   Also filed ANTS-3830: this fix adds a fifth false positive to the stale
   `refactor_shell_quote_duplicate` audit rule.
 
-- 📋 [ANTS-3832] **The render has no table renderer — a migrated table re-emits as raw JSON.**
+- ✅ [ANTS-3832] **The render has no table renderer — a migrated table re-emits as raw JSON.**
   Found grounding ANTS-3809's bundle_row against the render, and
   confirmed by an independent sweep. Pre-existing in ANTS-3758, not
   caused by ANTS-3809.
@@ -26357,6 +26384,30 @@ against current source before filing.
   **Layman:** A roadmap containing a table would come out of the database as computer code instead of a table; the tool that rebuilds the file never learned to turn tables back.
   Kind: fix.
   Source: in-session-2026-08-05 (found implementing ANTS-3809 bundle_row).
+  Resolved (2026-08-05): RoadmapRender now SERIALISES a `table`
+  element instead of replaying it — header row, a synthesised `---`
+  separator, then the stored rows. The escaping is split by
+  invertibility, which is what INV-1 actually needs: a literal `|`
+  stays in the store and the render spells it `\|`, which
+  roadmapmigrate's tableCells() now inverts (it split naively before,
+  so `a | b` went in as two cells and no render could put it back); a
+  newline cannot be spelled in a GFM row invertibly at all, so
+  bundle_row folds it to `<br>` at the write boundary and it never
+  reaches the render. A payload that parses but carries no `header`,
+  or a row whose cell count disagrees with the header's, is refused —
+  INV-9's posture, not a silently malformed table.
+
+  ANTS-3758 § 2.2's verbatim rule is amended to state the exception
+  (and its duplicated paragraph folded away); ANTS-3809 § 2.2 records
+  the fold; ANTS-3810 § 2.1.2's fixture inventory gains a table
+  element carrying a pipe, since narration alone cannot tell the two
+  serialisation rules apart.
+
+  Tests: `Inv1TableRendersAsGfm` + `TableRefusesShapelessPayload` in
+  tests/features/roadmap_render/. Both shown RED against the
+  pre-fix branch; `Inv1ExportsMatch` stayed green through that
+  mutation, which is the blindness this item reported. Suite
+  3259/3259.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

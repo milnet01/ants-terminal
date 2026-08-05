@@ -14,6 +14,8 @@ itself.
 | Case | INV | Breaks when |
 |---|---|---|
 | `Inv1ExportsMatch` | 1 | a non-defaultable field is dropped from the bullet, or an element is emitted out of order |
+| `Inv1TableRendersAsGfm` | 1 | a `table` element's canonical JSON payload is emitted verbatim instead of serialised, the separator row is omitted, or a literal `\|` in a cell is left unescaped (ANTS-3832) |
+| `TableRefusesShapelessPayload` | 1 | a payload with no `header` renders a malformed table rather than refusing |
 | `Inv2SectionOrder` | 2 | sections are sorted by slug, by `section_id`, or by walking `parent_id` |
 | `Inv3ArchiveRouting` | 3 | a rotated archive's sections fold back into `ROADMAP.md` |
 | `Inv4Membership` | 4 | the filter reads "open items only", `visibility` is ignored, or an unfiled item is skipped silently |

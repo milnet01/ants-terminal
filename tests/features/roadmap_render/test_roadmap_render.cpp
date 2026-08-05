@@ -305,6 +305,56 @@ TEST(RoadmapRender, Inv10ElementInterleaving) {
     EXPECT_LT(item, after) << "elements grouped instead of interleaved";
 }
 
+// INV-1 — a `table` element is SERIALISED back into GFM, not replayed. The
+// store holds § 5.2's canonical {header, rows} JSON, so a render that emitted
+// the payload verbatim (as this one did until ANTS-3832) wrote that JSON into
+// the file where the rows belong — and the JSON is not a table row, so a
+// re-load files it as narration and the round-trip fails.
+//
+// The cell carrying a literal `|` is the half that pins the escaping: it must
+// be spelled `\|` and it must be what the migration's tableCells() inverts,
+// or INV-1 fails on the first pipe-bearing cell instead of on the payload.
+TEST(RoadmapRender, Inv1TableRendersAsGfm) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+    const auto sec = f->store->addSection(f->projectId, QStringLiteral("s"), QStringLiteral("S"), 2, 1, std::nullopt, &err);
+    ASSERT_TRUE(sec);
+    ASSERT_TRUE(f->store->addElement(
+        *sec, 0, QStringLiteral("table"),
+        QStringLiteral(R"({"header":["Lane","Note"],"rows":[["vt","x | y"],["chrome","plain"]]})"),
+        &err)) << err.toStdString();
+
+    ASSERT_TRUE(RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err))
+        << err.toStdString();
+    const QString text = readAll(f->liveAbs());
+    EXPECT_TRUE(text.contains(QStringLiteral(
+        "| Lane | Note |\n"
+        "| --- | --- |\n"
+        "| vt | x \\| y |\n"
+        "| chrome | plain |")))
+        << "table not serialised as GFM:\n" << text.toStdString();
+    EXPECT_FALSE(text.contains(QStringLiteral("\"header\"")))
+        << "raw payload JSON reached the file:\n" << text.toStdString();
+}
+
+// INV-1's other half — a payload the store accepted but the render cannot turn
+// into a table is refused, not emitted malformed. `header` is absent, which the
+// store's canonicaliser has no opinion about: it checks JSON, not shape.
+TEST(RoadmapRender, TableRefusesShapelessPayload) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+    const auto sec = f->store->addSection(f->projectId, QStringLiteral("s"), QStringLiteral("S"), 2, 1, std::nullopt, &err);
+    ASSERT_TRUE(sec);
+    ASSERT_TRUE(f->store->addElement(*sec, 0, QStringLiteral("table"),
+                                     QStringLiteral(R"({"rows":[["a"]]})"), &err));
+
+    EXPECT_FALSE(RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err));
+    EXPECT_TRUE(err.contains(QStringLiteral("header"))) << err.toStdString();
+    EXPECT_FALSE(QFileInfo::exists(f->liveAbs())) << "a refused render wrote a file";
+}
+
 // INV-12 — the four required § 3.5 pieces are emitted literally. Kind: in
 // particular, even when its value equals § 3.5.3's default: INV-1's oracle
 // cannot see that omission, because a re-parse restores the default.

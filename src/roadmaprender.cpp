@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
@@ -153,6 +154,66 @@ bool hasMarkerInHead(const QString &text) {
         if (lines.at(i).contains(QLatin1String("ants-roadmap-format")))
             return true;
     return false;
+}
+
+// ANTS-3832 — a `table` element is the one kind the render SERIALISES rather
+// than replays. Its payload is roadmap-data-model.md § 5.2's canonical
+// {header, rows} JSON, not the author's bytes, so emitting it verbatim (as
+// § 2.2 used to say) writes raw JSON where the rows belong.
+//
+// The separator row is delimiter rather than content, so the migration never
+// stored one and it is synthesised here. A literal `|` in a cell is spelled
+// `\|`, which the migration's tableCells() inverts exactly — the escaping has
+// to be invertible or INV-1's round-trip fails on the first pipe-bearing cell.
+// A newline cannot be spelled in a GFM row invertibly at all, which is why it
+// is folded to `<br>` at the WRITE boundary (roadmap_log's bundle_row) and
+// never reaches here.
+QString escapeCell(const QString &cell) {
+    QString s = cell;
+    s.replace(QLatin1Char('|'), QLatin1String("\\|"));
+    return s;
+}
+
+QString tableRow(const QJsonArray &cells) {
+    QStringList out;
+    out.reserve(int(cells.size()));
+    for (const QJsonValue &c : cells)
+        out.append(escapeCell(c.toString()));
+    return QStringLiteral("| ") + out.join(QStringLiteral(" | ")) + QStringLiteral(" |");
+}
+
+// A payload the store accepted but this cannot render is corrupt, and the
+// render REFUSES it rather than emitting a malformed table — the same posture
+// INV-9 takes on a store that disagrees with itself, and the one that would
+// have caught this defect had it existed.
+std::optional<QString> tableText(const QString &payload, QString *error) {
+    QJsonParseError pe{};
+    const QJsonDocument doc = QJsonDocument::fromJson(payload.toUtf8(), &pe);
+    if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+        fail(error, QStringLiteral("table payload is not a JSON object: %1").arg(pe.errorString()));
+        return std::nullopt;
+    }
+    const QJsonObject o = doc.object();
+    const QJsonArray header = o.value(QStringLiteral("header")).toArray();
+    const QJsonArray rows = o.value(QStringLiteral("rows")).toArray();
+    if (header.isEmpty()) {
+        fail(error, QStringLiteral("table payload carries no \"header\" columns"));
+        return std::nullopt;
+    }
+
+    QStringList lines;
+    lines.append(tableRow(header));
+    lines.append(QStringLiteral("|") + QStringLiteral(" --- |").repeated(int(header.size())));
+    for (const QJsonValue &r : rows) {
+        const QJsonArray cells = r.toArray();
+        if (cells.size() != header.size()) {
+            fail(error, QStringLiteral("table row has %1 cells against %2 columns")
+                            .arg(cells.size()).arg(header.size()));
+            return std::nullopt;
+        }
+        lines.append(tableRow(cells));
+    }
+    return lines.join(QLatin1Char('\n'));
 }
 
 // INV-13. Both source_path and liveRoadmapPath go through this: the live
@@ -326,10 +387,19 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                         continue;   // excluded by INV-4; already counted
                     blocks.append(bulletText(*it));
                     ++out.itemsRendered;
+                } else if (e.kind == QLatin1String("table")) {
+                    // Serialised, not replayed — the store holds § 5.2's
+                    // canonical JSON here rather than the author's bytes
+                    // (ANTS-3832).
+                    const auto text = tableText(e.payload.value_or(QString()), error);
+                    if (!text)
+                        return std::nullopt;
+                    blocks.append(*text);
                 } else if (e.payload) {
-                    // Verbatim — never re-wrapped, never re-canonicalised. The
-                    // store holds the author's bytes and INV-1 and INV-7 both
-                    // rest on the render having no opinion about them.
+                    // Narration: verbatim — never re-wrapped, never
+                    // re-canonicalised. The store holds the author's bytes and
+                    // INV-1 and INV-7 both rest on the render having no
+                    // opinion about them.
                     blocks.append(*e.payload);
                 }
             }

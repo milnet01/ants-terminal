@@ -140,22 +140,37 @@ the other elements: `element.position` ascending, which
 `UNIQUE (section_id, position)` already makes total.
 
 **Whitespace is part of the contract, because INV-1 and INV-7 both rest on
-it.** A `narration` or `table` element's `payload` is emitted **verbatim** —
-never re-wrapped, never re-canonicalised; the store holds the author's bytes
-and the render is not the place to have opinions about them. Exactly one blank
-line separates a heading from what follows it, and each element from the next;
-each file ends with exactly one newline. Without a stated policy two conforming
+it.** A `narration` element's `payload` is emitted **verbatim** — never
+re-wrapped, never re-canonicalised; the store holds the author's bytes and the
+render is not the place to have opinions about them. Exactly one blank line
+separates a heading from what follows it, and each element from the next; each
+file ends with exactly one newline. Without a stated policy two conforming
 implementations would differ on every blank line, and INV-7 would be asserting
 nothing but agreement with its own predecessor.
 
-**Whitespace is part of the contract, because INV-1 and INV-7 both rest on
-it.** A `narration` or `table` element's `payload` is emitted **verbatim** —
-never re-wrapped, never re-canonicalised; the store holds the author's bytes
-and the render is not the place to have opinions about them. Exactly one blank
-line separates a heading from what follows it, and each element from the next;
-each file ends with exactly one newline. Without a stated policy two conforming
-implementations would differ on every blank line, and INV-7 would fail against
-nothing but its own predecessor.
+**A `table` element is the one exception, and it is not a wrinkle in the
+verbatim rule but its opposite: the payload is not markdown at all.**
+`roadmap-data-model.md` § 5.2 stores a table as canonical
+`{"header": […], "rows": [[…]]}` JSON, so a render that replayed it would write
+that JSON into the file where the rows belong — and the JSON is not
+`isTableRow()`, so a re-load files it as `narration` and INV-1 fails. A table
+is therefore **serialised**, by the exact inverse of the migration's reader
+(ANTS-3832):
+
+- the header cells, then a separator row of `---` per column — the migration
+  drops the separator as delimiter rather than content, so it has none to
+  replay and one is synthesised;
+- each row's cells, in stored order;
+- every cell with a literal `|` spelled `\|`, which the migration's
+  `tableCells()` inverts. **The escaping must be invertible or INV-1 fails on
+  the first pipe-bearing cell**, which is also why a newline is *not* escaped
+  here: `<br>` is not invertible (a re-load reads it as literal text), so a
+  newline is folded at the write boundary — `roadmap_log`'s `bundle_row`,
+  ANTS-3809 § 2.2 — and never reaches the render;
+- a payload that parses but carries no `header`, or a row whose cell count
+  disagrees with the header's, is **refused**. INV-9's posture applies: a store
+  that disagrees with itself is corrupt, and a render that quietly resolved it
+  would emit a broken table.
 
 Nesting is **not** re-derived from `parent_id`. `position` is project-wide
 document order (ANTS-3796), so emitting sections in that order already places a

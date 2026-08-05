@@ -147,14 +147,30 @@ bool isSeparatorRow(const QString &line) {
     return rx.match(line).hasMatch();
 }
 
+// Cells split on UNESCAPED pipes, and `\|` restores a literal `|` — so the
+// store holds the author's text rather than its GFM spelling, and this is the
+// exact inverse of the render's escapeCell() (ANTS-3832). A naive split() put
+// `a \` and `b` in the store for a cell reading `a | b`, which no render could
+// have put back.
 QStringList tableCells(const QString &line) {
     QString t = line.trimmed();
     t.chop(1);
     t.remove(0, 1);
     QStringList out;
-    const QStringList parts = t.split(QLatin1Char('|'));
-    out.reserve(parts.size());
-    for (const QString &p : parts) out.append(p.trimmed());
+    QString cur;
+    for (int i = 0; i < t.size(); ++i) {
+        const QChar c = t.at(i);
+        if (c == QLatin1Char('\\') && i + 1 < t.size() && t.at(i + 1) == QLatin1Char('|')) {
+            cur.append(QLatin1Char('|'));
+            ++i;
+        } else if (c == QLatin1Char('|')) {
+            out.append(cur.trimmed());
+            cur.clear();
+        } else {
+            cur.append(c);
+        }
+    }
+    out.append(cur.trimmed());
     return out;
 }
 

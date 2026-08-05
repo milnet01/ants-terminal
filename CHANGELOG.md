@@ -168,6 +168,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The render has no table renderer — a migrated table re-emits as raw JSON.** (ANTS-3832)
+  A roadmap table stored in the database now comes back out as a
+  table. It was being written into ROADMAP.md as raw JSON, because
+  the file generator replayed every non-item block verbatim while
+  the migration stores a table as structured data. Cells keep a
+  literal `|` in the store and gain their `\|` spelling only in the
+  file, so the round-trip survives it.
+
 - **Migrated roadmap bullets no longer render their headline and every trailer key twice** (ANTS-3808)
   The migration stored the whole bullet — headline line included — as the
   item's body, while the render emitted its own headline, then that body,

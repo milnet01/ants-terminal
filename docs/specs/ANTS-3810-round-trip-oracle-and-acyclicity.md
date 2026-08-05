@@ -379,6 +379,7 @@ Concretely the fixture carries:
 | carried fields, per-record | two items in the same section, **each** with `body`, `layman`, `source`, `lanes` and `evidence` set |
 | element ordering | the second item inserted in an order that differs from its position |
 | section shape | a nested section, and one archive section with a `source_path` |
+| **element kinds** | one `narration` element **and one `table`**, the table carrying a cell with a literal `|` — the kinds serialise by opposite rules (ANTS-3758 § 2.2), and a fixture with narration alone cannot tell the render's table serialiser from the verbatim replay ANTS-3832 fixed |
 | legend | a stored legend over the four rendered statuses (§ 2.1.1) |
 | **family 1** | one `visibility = 'internal'` item and one `status = 'dropped'` item, both filed in the section above |
 | **family 3** | one item carrying `resolution`, `priority`, `milestone` and a migration-shaped `extras` key (`source_kind`) |

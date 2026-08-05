@@ -360,10 +360,18 @@ the payload.** `header` names the columns, and on the store path it is the
 `"rows"`**, which is now an array insert rather than a line splice. None of the
 three touches the `element.position` above — that is where the *table* sits in
 the section, and these three are about where a *row* sits in the table.
-`cells` is unchanged, and so is the shipped `column_mismatch` refusal: it now
-compares `cells.size()` against the payload's `"header"` length instead of
-against the header row's pipe count, which is the same check over a parsed
-shape rather than over text.
+The shipped `column_mismatch` refusal is unchanged: it now compares
+`cells.size()` against the payload's `"header"` length instead of against the
+header row's pipe count, which is the same check over a parsed shape rather
+than over text.
+
+`cells` keeps its **pipes** — those are a GFM spelling and the payload is JSON,
+so ANTS-3758 § 2.2's render owns turning `|` into `\|` and the store holds the
+author's text. Its **newlines** are folded to `<br>` here, exactly as the
+markdown path folds them, and the asymmetry is deliberate: the render's
+escaping has to be invertible or ANTS-3758 INV-1's round-trip fails, and `<br>`
+is not — a re-load reads it as literal text. Folding at the write boundary is
+what keeps the store holding only what a GFM row can carry (ANTS-3832).
 
 ### 2.3 Id allocation
 

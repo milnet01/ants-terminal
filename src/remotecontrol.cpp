@@ -10588,11 +10588,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     // canonical JSON when kind='table', so the new row is an array insert into
     // "rows", not a rendered markdown line.
     //
-    // NOTE (ANTS-3832): RoadmapRender::render() has no table renderer — it
-    // emits every non-item payload verbatim — so on a project whose roadmap
-    // carries a table the rendered file gets the raw JSON. That is a
-    // pre-existing ANTS-3758 defect this op surfaces rather than causes, and
-    // it is filed; the store side below is what this spec owns.
+    // ANTS-3832 gave RoadmapRender::render() the table renderer this path
+    // needs; before it, a rendered file got the payload's raw JSON where the
+    // rows belonged.
     {
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
         QString seamErr;
@@ -10630,6 +10628,26 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
                     tableRow = &e;
             }
 
+            // A newline is folded HERE and not in the render, unlike the pipe
+            // (ANTS-3832). The render's escaping has to be invertible or
+            // ANTS-3758 INV-1's round-trip fails, and `<br>` is not: a
+            // re-migration reads it as the literal text. So the store never
+            // holds a newline in a cell, while it does hold the author's `|`
+            // and lets the render spell it `\|`.
+            const auto foldCells = [](const QStringList &in) {
+                QStringList out;
+                out.reserve(in.size());
+                for (const QString &raw : in) {
+                    QString s = raw;
+                    s.replace(QStringLiteral("\r\n"), QStringLiteral("<br>"));
+                    s.replace(QChar('\n'), QStringLiteral("<br>"));
+                    s.replace(QChar('\r'), QStringLiteral("<br>"));
+                    out.append(s.trimmed());
+                }
+                return out;
+            };
+            const QStringList storeCells = foldCells(cells);
+
             QJsonArray headerArr, rowsArr;
             bool createdTable = false;
             if (tableRow) {
@@ -10644,7 +10662,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
                         QStringLiteral("roadmap_log: section \"%1\" has no "
                                        "Markdown table — pass `header` (column "
                                        "names) to create one").arg(section));
-                headerArr    = QJsonArray::fromStringList(header);
+                headerArr    = QJsonArray::fromStringList(foldCells(header));
                 createdTable = true;
             }
 
@@ -10676,7 +10694,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
                 QCollator coll(QLocale(QLocale::English, QLocale::UnitedStates));
                 coll.setNumericMode(true);
                 coll.setCaseSensitivity(Qt::CaseInsensitive);
-                const QString key = cells.value(sortCol);
+                const QString key = storeCells.value(sortCol);
                 for (int i = 0; i < rowsArr.size(); ++i) {
                     const QString existing =
                         rowsArr.at(i).toArray().at(sortCol).toString();
@@ -10687,10 +10705,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
                 }
             }
 
-            // `cells` is unchanged — no pipe-escaping and no <br> folding. Those
-            // are GFM concerns and the payload is JSON; the render owns turning
-            // a row back into markdown.
-            rowsArr.insert(rowIndex - 1, QJsonArray::fromStringList(cells));
+            // Pipes are NOT escaped — that is a GFM spelling and the payload is
+            // JSON, so the render owns it. Newlines are already folded above,
+            // for the invertibility reason stated there.
+            rowsArr.insert(rowIndex - 1, QJsonArray::fromStringList(storeCells));
             QJsonObject payload;
             payload.insert(QStringLiteral("header"), headerArr);
             payload.insert(QStringLiteral("rows"), rowsArr);
