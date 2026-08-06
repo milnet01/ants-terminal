@@ -1,4 +1,5 @@
 #include "remotecontrol.h"
+#include "remotecontrol_internal.h"  // ANTS-3833 — shared rcdetail helpers
 #include "build_info.h"          // ANTS-2073 — server build identity for session_orient
 #include "buildcache.h"
 #include "coldeyesengine.h"
@@ -109,12 +110,14 @@
 // so the Claude hook + MCP server start paths can share the same
 // helper. The file-scope static here was unified with that lift.
 
-namespace {
+using namespace rcdetail;  // ANTS-3833
+
+namespace rcdetail {
 // Forward decl for early callers (ANTS-1347 cmdLaunch / cmdNewTab,
-// post-bundle-A). Definition lives in the anonymous namespace below
-// next to the rest of the git_state helpers. The two anon-namespace
-// blocks in this TU share internal linkage so this forward decl
-// resolves at the same `resolveRootCanonical` symbol.
+// post-bundle-A). Definition lives in the rcdetail namespace below
+// next to the rest of the git_state helpers. Every rcdetail block in
+// this TU names the same namespace, so this forward decl resolves at
+// the same `resolveRootCanonical` symbol (ANTS-3833).
 QString resolveRootCanonical(MainWindow *main);
 // ANTS-1391 — read-verb overload: prefer caller_cwd in the request
 // body over the focused-tab default. Definition next to the legacy
@@ -367,7 +370,7 @@ QString rcElideBody(const QString &body, int cap) {
 // include_body is false. `cap` defaults to the 2000 list cap; the cache
 // builder passes kRoadmapQueryBodyStoreCap (ANTS-3402).
 void rcSetBodyFields(QJsonObject &o, const QString &body,
-                     int cap = kRoadmapQueryBodyCap) {
+                     int cap) {
     if (body.size() > cap) {
         o["body"] = rcElideBody(body, cap);   // ANTS-3736 — head + tail
         o["body_truncated"] = true;
@@ -573,7 +576,7 @@ QString rlDetectCounterPrefix(const QString &markdown) {
 // ANTS-3498 — the same grammar is single-sourced as
 // RoadmapFoldIn::isValidIdPrefix (used by the three fold-in verbs); keep the
 // two literals in sync (both carry the ANTS-3492 letter-lookahead).
-static const QRegularExpression kIdPrefixShape(
+const QRegularExpression kIdPrefixShape(
     QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
 
 // ANTS-2076 — project-default counter-ID prefix derived from the
@@ -804,7 +807,7 @@ QString rcStatusWord(const QString &emoji) {
 // drops any leftover C0/C1 control chars rcHeadlineOneline doesn't
 // treat as whitespace, and caps length so a pathological field can't
 // bloat the file. `body` is exempt — it is intentionally multi-line.
-static QString rcSanitizeBulletField(const QString &in, int maxLen) {
+QString rcSanitizeBulletField(const QString &in, int maxLen) {
     const QString folded = rcHeadlineOneline(in);
     QString out;
     out.reserve(folded.size());
@@ -1129,7 +1132,7 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
 // empty body/note continuation line renders as the bare 2-space hang indent
 // ("  ") — trailing whitespace that the ubiquitous trim-trailing-whitespace
 // pre-commit hook rejects, forcing a re-stage + re-commit after every write.
-static QString rcRightStrip(QString s) {
+QString rcRightStrip(QString s) {
     while (s.endsWith(QLatin1Char(' ')) || s.endsWith(QLatin1Char('\t')))
         s.chop(1);
     return s;
@@ -1155,7 +1158,7 @@ static QString rcRightStrip(QString s) {
 // ANTS-3724 — spec_log was the last write verb on the old convention; it now
 // routes through here too, so every ROADMAP/CHANGELOG/spec write reports the
 // same two fields with the same meanings.
-static void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after) {
+void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after) {
     out[QStringLiteral("bytes_written")] = after - before;
     out[QStringLiteral("file_bytes")]    = after;
 }
@@ -1177,7 +1180,7 @@ static void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after) {
 // set true; the return value then points at the first line of the
 // existing copy. See the dedup rationale block below.
 int appendBodyNote(QStringList &lines, int headlineLine,
-                   const QString &note, bool *alreadyPresent = nullptr) {
+                   const QString &note, bool *alreadyPresent) {
     if (alreadyPresent) *alreadyPresent = false;
     int insertAt = headlineLine + 1;
     QString indent = QStringLiteral("  ");
@@ -1394,7 +1397,7 @@ QString rcNormaliseHeadline(const QString &raw) {
 // depth) does not. Empty when the headline is not template-shaped (no
 // alphabetic leading verb, or no multi-segment path token). Cheap: one
 // normalise + split, computed once per bullet.
-static QString rcStructuralStem(const QString &headline) {
+QString rcStructuralStem(const QString &headline) {
     const QStringList toks = rcNormaliseHeadline(headline)
                                  .split(QLatin1Char(' '), Qt::SkipEmptyParts);
     if (toks.size() < 2) return {};
@@ -1449,7 +1452,7 @@ bool rcIsNonconformingIdToken(const QString &tok) {
 // ✅-sibling check uses 0.60.
 double rcHeadlineJaccard(const QSet<QString> &tokA,
                          const QSet<QString> &tokB,
-                         int minShared = 2) {
+                         int minShared) {
     if (tokA.isEmpty() || tokB.isEmpty()) return -1.0;
     const QSet<QString> &small = (tokA.size() <= tokB.size()) ? tokA : tokB;
     const QSet<QString> &large = (tokA.size() <= tokB.size()) ? tokB : tokA;
@@ -1603,35 +1606,6 @@ QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead,
     return hashes;
 }
 
-// ANTS-1428 Tier 2 — GFM-format bullet walker for the flip locator.
-// Single forward pass over the file, fence-tracked, recording each
-// top-level `- [ ]` / `- [x]` bullet with the data the locator and
-// the surgery step need:
-//   - firstLine: 0-based index of the checkbox line (where the
-//     status token lives).
-//   - headlineLine: 0-based index of the last line of the bullet's
-//     headline content (where an anchor would be appended). Equal to
-//     firstLine for a single-line bullet; later for a multi-line
-//     bullet whose headline spans continuation lines before any
-//     metadata key (Lanes: / Kind: / Source: / Layman:) or blank.
-//   - status / headline / boldId / anchor extracted per the same
-//     rules as roadmapdialog.cpp's GFM branch.
-//   - insideFenced: true iff the checkbox line was reached while
-//     inside an open ```...``` block — surfaces the
-//     anchor_unsafe_context refusal.
-//   - fenceOpenLine: 0-based index of the line that opened that fence,
-//     -1 when not fenced. ANTS-3640 — the refusal reports it, because
-//     the opener is the line the caller has to repair.
-struct GfmBullet {
-    int     firstLine     = -1;
-    int     headlineLine  = -1;
-    QString boldId;
-    QString anchor;
-    QString status;        // "✅" | "📋" | "🚧" | "💭"
-    QString headline;      // first non-empty line text (post-strip)
-    bool    insideFenced   = false;
-    int     fenceOpenLine  = -1;
-};
 
 // kAdapterEmoji* — same byte sequences as roadmapdialog.cpp's
 // kEmojiDone/etc. Duplicated locally for the walker's inline-emoji
@@ -1792,23 +1766,6 @@ void applyGfmFlip(QStringList &lines,
     lines[targetIdx] = target;
 }
 
-// ANTS-1441 — ants-v1 native bullet support for op:"flip". GFM
-// path (above) requires either a `**Bold-ID.**` token or a caret
-// `^anchor`; ants-v1 bullets carry a canonical bracket-ID
-// `[PREFIX-NNNN]` right after the status emoji, so no anchor
-// injection is needed and no counter is consumed. Simpler than GFM.
-//
-// Recognised line shape:
-//   `- <emoji> [<PREFIX-NNNN>] <headline...>`
-// where <emoji> is one of ✅ 📋 🚧 💭.
-struct AntsV1Bullet {
-    int     firstLine    = -1;
-    QString id;            // e.g. "ANTS-1394"
-    QString status;        // "✅" | "📋" | "🚧" | "💭"
-    QString headline;      // post-strip; "**" wrappers removed
-    bool    insideFenced   = false;
-    int     fenceOpenLine  = -1;   // ANTS-3640 — see GfmBullet
-};
 
 // Match the bracket-ID token that immediately follows the status
 // emoji + space. Anchored loosely; the walker checks the prefix
@@ -1923,7 +1880,7 @@ void applyAntsV1Flip(QStringList &lines, const AntsV1Bullet &b,
     lines[b.firstLine] = line;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 RemoteControl::RemoteControl(MainWindow *main, QObject *parent)
     : QObject(parent), m_main(main) {}
@@ -7367,7 +7324,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
-namespace {
+namespace rcdetail {
 // ANTS-2044 — resolve one add_batch entry into (category, rendered
 // bullet, id). Mode is auto-detected: a `summary` makes it an `add`
 // (needs `category` or `kind`); an `id` with no `summary` makes it an
@@ -7471,7 +7428,7 @@ ClBatchEntryResult resolveClBatchEntry(
     r.bullet   = ChangelogLog::formatBullet(summary, body, id);
     return r;
 }
-}  // namespace
+}  // namespace rcdetail
 
 // ANTS-2044 — changelog_log op:"add_batch". N entries, one read + one
 // atomic QSaveFile commit (parity with roadmap_log op:append_batch,
@@ -12500,7 +12457,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
 // waitForFinished(kWorkspaceSearchKillGraceMs) then SIGKILL (INV-5).
 // Stderr capped at 4 KiB and surfaced only in the ok:false branch
 // to avoid path enumeration on the ok:true path (INV-8).
-namespace {
+namespace rcdetail {
 // Forward decl — definition in the second anonymous namespace below
 // (it lives next to the rest of the git_state helpers). Both
 // unnamed-namespace blocks in this TU share linkage.
@@ -12548,7 +12505,7 @@ QJsonObject wsErr(const char *code, const QString &message) {
     return o;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 // ANTS-2181 — a regex:true alternation that contains very short (<=3 char)
 // bare (un-anchored, plain-word) terms substring-matches inside longer words
@@ -14034,7 +13991,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
 // `path` resolves under the caller_cwd canonical (mirrors the
 // changelog_log resolution posture, NOT the focused-tab fallback).
 
-namespace {
+namespace rcdetail {
 
 // Forward decl — isValidSpecId is defined in the spec-tools anonymous
 // namespace block further down (it predates these verbs). cmdSpecLog
@@ -14135,7 +14092,7 @@ QStringList feedbackConventionalNames(const QString &leaf) {
 // all belong to OTHER projects — say so (`all_other_projects`) rather than
 // implying one fits.
 QJsonObject fbNotFound(const QString &message, const QString &resolved,
-                       const QString &callerLeaf = QString()) {
+                       const QString &callerLeaf) {
     QJsonObject e = fbErr(QStringLiteral("not_found"), message);
     QJsonArray cands = feedbackSiblingCandidates(resolved);
     if (cands.isEmpty())
@@ -14213,7 +14170,7 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
 // from caller_cwd (ANTS-3376) rather than supplied by the caller.
 bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                          QString &resolvedOut, bool &existsOut,
-                         QJsonObject &err, bool *derivedOut = nullptr) {
+                         QJsonObject &err, bool *derivedOut) {
     if (derivedOut) *derivedOut = false;
     const QString rawPath = req.value(QStringLiteral("path")).toString();
     if (rawPath.isEmpty()) {
@@ -14325,7 +14282,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
     return true;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 // ANTS-1637 — codebase_index: serve a pre-computed project structural map.
 // caller_cwd Required. A `file_path` selector routes through PathValidation
@@ -16872,12 +16829,12 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
 // cap). Argv-injection guards: strict regex on `range`, `--`
 // separator before user-derived positional args, `./` prefix on
 // `-`-leading paths.
-namespace {
+namespace rcdetail {
 constexpr int kGitLogMaxN          = 100;   // ANTS-1250-INV-3
 constexpr int kGitLogBodyCapBytes  = 1024;  // ANTS-1250-INV-3
 
 QJsonObject gitErr(const char *code, const QString &message,
-                   const QByteArray &stderrTail = {}) {
+                   const QByteArray &stderrTail) {
     QJsonObject o;
     o["ok"]    = false;
     o["error"] = message;
@@ -16956,7 +16913,7 @@ QString resolveRootCanonical(MainWindow *main, const QJsonObject &req) {
     return QString();  // -Wreturn-type
 }
 
-}  // namespace (anonymous from line 1320 — closed early so the
+}  // namespace rcdetail (opened above — closed early so the
    // `ants::resolveCallerCwdRoot` definition below has external
    // linkage and matches its declaration in resolvedroot.h).
 
@@ -17043,9 +17000,10 @@ QString expandGlobalConfigSentinel(const QString &callerCwd) {
 
 }  // namespace ants
 
-namespace {  // reopen the anonymous namespace closed above so the rest
-             // of the gitwrap helpers (parseStatusHeader, runStatusOp,
-             // etc.) keep their internal-linkage placement.
+namespace rcdetail {  // reopen the helper namespace closed above so the
+                      // rest of the gitwrap helpers (parseStatusHeader,
+                      // runStatusOp, etc.) keep their placement. External
+                      // linkage since ANTS-3833 — TU 9 calls them.
 
 // ANTS-1250-INV-8 / ANTS-1295: per-call path validation now lives in
 // the central PathValidation chokepoint. See src/pathvalidation.{h,cpp}.
@@ -17502,7 +17460,7 @@ QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
     out["totals"] = totals;
     return out;
 }
-}  // namespace
+}  // namespace rcdetail
 
 // ANTS-2129 — audit_falsepos_log: append a confirmed false positive to
 // <root>/.ants_review_falsepos.jsonl via the atomic O_APPEND in
@@ -17814,7 +17772,7 @@ int RemoteControl::runClient(const QString &command,
 // ANTS-1251 — subsystem (consolidated; map / files / recent_changes)
 // =====================================================================
 
-namespace {
+namespace rcdetail {
 
 QJsonObject subsystemErr(const QString &code, const QString &message) {
     QJsonObject o;
@@ -17897,7 +17855,7 @@ QStringList resolveLaneFiles(const QString &lane, const QString &rootCanonical) 
     return out;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
     const QString op = req.value("op").toString();
@@ -18063,7 +18021,7 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
 // returns counts + top_findings. Single-entry mtime-keyed cache.
 // Reachability gate inherits from UDS + MCP socket (INV-5).
 
-namespace {
+namespace rcdetail {
 
 // ANTS-1576 — forward declaration of the runGit helper defined further
 // down in this file (used by the live-git fallback in cmdLastAuditSummary).
@@ -18285,7 +18243,7 @@ AuditEngine::AuditSummary applyRuleIdsFilter(
     return s;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     // INV-8: severity_floor validation runs before disk scanning.
@@ -18673,7 +18631,7 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
 
 // ----- ANTS-1569 — current_state aggregator ------------------------
 
-namespace {
+namespace rcdetail {
 
 QJsonObject csErr(const QString &code, const QString &message) {
     QJsonObject o;
@@ -18722,7 +18680,7 @@ QString readWorkflowStatusLine(const QString &rootCanonical,
     return QString();  // file exists but block missing or empty
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
     if (!m_main) {
@@ -19508,7 +19466,7 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
 // `# ANTS-NNNN — <title>` line; Status / Kind come from the
 // `**Status:**` / `**Kind:**` metadata block.
 
-namespace {
+namespace rcdetail {
 
 QJsonObject sqErr(const QString &code, const QString &message) {
     QJsonObject o;
@@ -19634,7 +19592,7 @@ QJsonObject specListEnvelope(const QString &rootCanonical) {
     return out;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     const QString id = req.value(QStringLiteral("id")).toString();
@@ -19902,7 +19860,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
 // source-existence check. Both MCP-only. Specs docs/specs/ANTS-1306.md
 // and docs/specs/ANTS-1307.md.
 
-namespace {
+namespace rcdetail {
 
 QJsonObject tpErr(const QString &code, const QString &message) {
     QJsonObject o;
@@ -20020,7 +19978,7 @@ struct TpScored {
     QString     sortKey;
 };
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
     const QString description =
@@ -20616,7 +20574,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
 
 // ----- ANTS-1303 — find_definition / find_caller symbol queries -----
 
-namespace {
+namespace rcdetail {
 
 QJsonObject sqArgErr(const QString &tool) {
     QJsonObject o;
@@ -20701,7 +20659,7 @@ void sqAttachBody(QJsonObject &defJson, const QString &root,
         defJson[QStringLiteral("body_truncated")] = true;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdFindDefinition(const QJsonObject &req) {
     const QString symbol = req.value(QStringLiteral("symbol")).toString().trimmed();
@@ -20862,7 +20820,7 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
 
 // ----- ANTS-1305 — similar_code shape matcher -----
 
-namespace {
+namespace rcdetail {
 
 QJsonObject scArgErr() {
     QJsonObject o;
@@ -20919,7 +20877,7 @@ QString scSymbolFromSignature(const QString &signature, const QString &kind) {
     return s;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
     const QString shape = req.value(QStringLiteral("shape")).toString().trimmed();
@@ -21002,7 +20960,7 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
 
 // ----- ANTS-1112 — five `indie_review_*` MCP-tool handlers ---------
 
-namespace {
+namespace rcdetail {
 
 QJsonObject irErr(const QString &code, const QString &message) {
     QJsonObject o;
@@ -21012,7 +20970,7 @@ QJsonObject irErr(const QString &code, const QString &message) {
     return o;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
@@ -21227,7 +21185,7 @@ QJsonDocument RemoteControl::cmdIndieReviewBrief(const QJsonObject &req) {
     return QJsonDocument(env);
 }
 
-namespace {
+namespace rcdetail {
 // ANTS-1279 — filesystem-safe stem for a lane's report file. Lane names
 // can be comma-joined multi-name groups ("a, b"); collapse any run of
 // non-[A-Za-z0-9_] to a single '-' so the stem is a clean filename and
@@ -21249,7 +21207,7 @@ QString laneReportStem(const QString &laneName) {
     while (s.startsWith(QLatin1Char('-'))) s.remove(0, 1);
     return s.isEmpty() ? QStringLiteral("lane") : s;
 }
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdIndieReviewOrchestrate(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
@@ -21691,7 +21649,7 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
 
 // ----- ANTS-1352 — indie_review_dispatch orchestrator ----------------
 
-namespace {
+namespace rcdetail {
 
 // Pinned reviewer system prompt — see docs/specs/ANTS-1352.md § 3.1.
 // Inlined here so the implementation is self-contained; the spec
@@ -21716,7 +21674,7 @@ const char *kReviewerSystemPrompt =
     "If you find no issues, emit a single line: `## CLEAN — no issues "
     "found in this lane.`";
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
@@ -21895,7 +21853,7 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req) {
 // ANTS-1113 — debt_sweep_* MCP tools
 // ---------------------------------------------------------------------------
 
-namespace {
+namespace rcdetail {
 
 QJsonObject dsErr(const QString &code, const QString &msg) {
     QJsonObject o;
@@ -21929,7 +21887,7 @@ DebtSweepEngine::Finding dsJsonToFinding(const QJsonObject &o) {
     return f;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
@@ -22265,7 +22223,7 @@ QJsonDocument RemoteControl::cmdDebtSweepTriagePrompt(const QJsonObject &req) {
 // ANTS-1289 — verify_changes MCP tool
 // ---------------------------------------------------------------------------
 
-namespace {
+namespace rcdetail {
 
 QJsonObject vcErr(const QString &code, const QString &msg) {
     QJsonObject o;
@@ -22305,23 +22263,14 @@ QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
     return o;
 }
 
-}  // anonymous
+}  // namespace rcdetail
 
 // ANTS-1359 — verify_changes session build-cache helpers. Per
 // docs/specs/ANTS-1359.md § 2.3 + § 2.7 the cache key is built from
 // projectRoot + git HEAD + git status SHA + trust-outcome SHA +
 // ANTS_VERIFY_TRUST_AUTOTRUST + canonicalised options.
-namespace {
+namespace rcdetail {
 
-struct VerifyGitSnapshot {
-    bool    valid = false;
-    QString head;            // 40-hex commit SHA
-    QString statusSha;       // SHA256-hex16 of `git status --porcelain=v1 -z`
-    // ANTS-3373 — repo-relative source files newly added in the working
-    // tree (index-add `A` or untracked `??`), parsed out of the same
-    // porcelain output. Feeds VerifyEngine::findUnreferencedSources.
-    QStringList addedSources;
-};
 
 // Run `git -C <root> <argv...>` and return stdout on exit 0 or {} on
 // any failure. 2 s wall-clock cap; merged stderr discarded.
@@ -22459,7 +22408,7 @@ bool anyGateNotNaturallyCompleted(const VerifyEngine::VerifyReport &rep) {
     return false;
 }
 
-}  // anonymous
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(vcErr(QStringLiteral("no_window"),
@@ -22760,7 +22709,7 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
 // ANTS-1290 — plan_template
 // ===========================================================================
 
-namespace {
+namespace rcdetail {
 
 QJsonObject ptErr(const QString &code, const QString &msg,
                   const QString &planPath = QString(),
@@ -22788,7 +22737,7 @@ QJsonObject ptConventions() {
     return c;
 }
 
-}  // anonymous
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdPlanTemplate(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(ptErr(QStringLiteral("no_window"),
@@ -22934,7 +22883,7 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
 // ANTS-1319 — cold_eyes_* MCP tools
 // ---------------------------------------------------------------------------
 
-namespace {
+namespace rcdetail {
 
 QJsonObject ceErr(const QString &code, const QString &msg) {
     QJsonObject o;
@@ -22987,7 +22936,7 @@ QJsonArray ceLaneArrayToJson(const QList<ColdEyesEngine::Lane> &lanes) {
     return arr;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(ceErr(
@@ -23788,7 +23737,7 @@ QJsonDocument RemoteControl::cmdCrossDocDiff(const QJsonObject &req) {
 // user-supplied string echoed in error responses. See
 // docs/specs/ANTS-1283.md.
 
-namespace {
+namespace rcdetail {
 
 QString smSanitiseEcho(const QString &raw) {
     QString verbatim = raw;
@@ -23813,7 +23762,7 @@ QJsonObject smErr(const QString &code, const QString &msg,
     return o;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(smErr(
@@ -24248,7 +24197,7 @@ QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
 //
 // See docs/specs/ANTS-1583.md for invariants.
 
-namespace {
+namespace rcdetail {
 
 QJsonObject rbdErr(const QString &code, const QString &msg) {
     QJsonObject o;
@@ -24276,7 +24225,7 @@ static const QRegularExpression &rxCommitSha() {
     return r;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
     // Caller_cwd contract is Required — enforced at the dispatch layer
@@ -24597,7 +24546,7 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
 // directory, the op surface ({read, record}), and the refusal-code
 // taxonomy (see docs/standards/mcp-error-codes.md § 2).
 
-namespace {
+namespace rcdetail {
 
 QJsonObject btErr(const QString &code, const QString &message) {
     QJsonObject o;
@@ -24607,7 +24556,7 @@ QJsonObject btErr(const QString &code, const QString &message) {
     return o;
 }
 
-}  // namespace
+}  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_main, req);
