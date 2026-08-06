@@ -29,37 +29,40 @@ gate**, which is the part callers get wrong:
   `workspace_search`→ a narrower `lane=`/`glob=`, or
   `headline_only=`/`count_only=`/`files_only=` for a leaner row shape;
   `file_outline`→`filter`; else the generic `fields=`). **Gated on a body
-  of ≥ 4 KiB** (`kLeanerThresholdBytes`) — a lean-mode tip only pays on a
-  worthwhile body. The `roadmap_query`, `file_outline` and `fields=`
-  branches additionally fire only when the caller isn't already on that
-  lean path; the `workspace_search` branch has no such check.
+  of ≥ 4 KiB** (`kLeanerThresholdBytes`) — a lean-mode hint only pays on a
+  worthwhile body. The `roadmap_query` and `file_outline` branches
+  additionally fire only when the caller isn't already on that lean path;
+  the `workspace_search` branch has no such check.
 
-Two traps in that second list, both live:
+Two traps in `leanerModeHintFor`'s branch list, both live:
 
-- **`workspace_search`'s tip no longer names `max_match_bytes`**, and a
-  maintainer re-deriving the table from an older copy of this doc will
-  put it back. ANTS-3548 made that clip default-ON (512 B), so nudging it
-  buys nothing; the remaining levers are the narrower search and the
-  leaner row shape above.
-- **`file_outline`'s tip names a `filter` argument its published schema
-  does not expose** (`leanerModeHintFor` emits `pass filter=<substr>`;
-  the verb's inputSchema has no such property). A caller cannot act on
-  it. Tracked as ANTS-3839 — the defect is code-side, not here.
+- **The `workspace_search` branch no longer names `max_match_bytes`**, and
+  a maintainer re-deriving the branch list from an older copy of this doc
+  will put it back. ANTS-3548 made that clip default-ON (512 B), so
+  nudging it buys nothing; the remaining levers are the narrower search
+  and the leaner row shape above.
+- **The `file_outline` branch names a `filter` argument its published
+  schema does not expose** (`leanerModeHintFor` emits `pass
+  filter=<substr>`; the verb's inputSchema has no such property). A caller
+  cannot act on it. Tracked as ANTS-3839 — the defect is code-side, not
+  here.
 
-Both nudges are presentation-only (added after the etag is computed, so
+Both hints are presentation-only (added after the etag is computed, so
 they never perturb the hash) and are skipped on 304s, refusals
 (`ok:false`) and `fields=`-narrowed calls. **Each is also emitted at most
-once per process per tool** — `claimHint`'s test-and-set latch
-(ANTS-3550, config key `claude.mcp_hint_latch`, default true, no Settings
-toggle). So a hint that appears once and never again is working as
-designed, not a bug; a test or retry path written against "every
-qualifying response" will be wrong on the second call.
+once per process per tool** — `claimHint`'s test-and-set latch (ANTS-3550;
+the key is `claude.mcp_hint_latch`, catalogued with its default in
+[`mcp-config-keys.md`](mcp-config-keys.md)). So a hint that appears once
+and never again is working as designed, not a bug; a test or retry path
+written against "every qualifying response" will be wrong on the second
+call.
 
 ## Tabular (columnar) array encoding (ANTS-2090)
 
 Opt-in per-call `encoding:"tabular"` on the list-shaped read verbs —
 `roadmap_query`, `workspace_search`, `file_outline`, `find_sources`,
-`find_caller`, `codebase_index`, `docs_index`. The dispatcher runs
+`find_caller`, `codebase_index`, `docs_index`, `changelog_query`. The
+dispatcher runs
 `mcp::tabularize` after `appendReadHints` and before `offloadBody`: each
 **top-level** array-of-objects is repacked into a columnar form that drops
 the per-row key repetition dominating list replies (30–60% smaller on big
@@ -85,7 +88,17 @@ caller must know how to decode it; there is no session default (unlike
 `compact`/`offload`). Composes with `fields=` (tabularizes whatever
 survived projection) and `offload` (a smaller body may now fit under the
 spill threshold; if it still spills, the spill file holds valid tabular
-JSON). Spec + cold-eyes log: `docs/specs/ANTS-2090.md`.
+JSON).
+
+**But tabular + offload costs you row paging, and that is not obvious from
+either feature on its own.** `dominantArrayKey` does not recurse into
+nested objects, so a `{__cols__,__rows__}` member is never selected as the
+dominant array — a tabularised body that spills therefore carries no
+`head_rows` preview and no `head_rows_key`, and `read_spill` **row mode
+refuses `not_array`** on it. Byte-page a tabularised spill
+(`offset`/`max_bytes`); reach for row mode only on an untabularised one.
+
+Spec + cold-eyes log: `docs/specs/ANTS-2090.md`.
 
 ## Result offload + `read_spill` (ANTS-2094 / ANTS-3538 / ANTS-3545)
 
@@ -117,16 +130,23 @@ byte-paging-only `hint`.
 **`read_spill` — byte mode (default).** `offset`/`max_bytes` return
 `{ok, content, offset, bytes, total_bytes, truncated}`; page forward by
 re-calling with `offset` ← the returned `offset + bytes` until
-`truncated` is false. Byte mode never parses the body, so it works on any
+`truncated` is false. **`bytes` here is *this page's* length**, not the
+offload envelope's `bytes` (which is the whole body) — the whole-body
+figure in this envelope is `total_bytes`. Sizing a page loop off the wrong
+one of the two fetches everything in one go. Byte mode never parses the body, so it works on any
 spill regardless of size or shape.
 
 **`read_spill` — row mode (ANTS-3545).** A numeric `row_offset`/`row_count`
 routes to the parsed row-pager and returns
 `{ok, mode:"rows", key, rows, row_offset, total_rows, truncated}` — clean
 element boundaries over the dominant array (same key as `head_rows_key`).
-With `row_offset` present, a `row_count` that is omitted or ≤ 0 serves the
-default page (`kSpillRowsDefault`, 100 rows) — omitting *both* keys stays
-in byte mode; `row_offset` past the end yields an empty non-truncated page.
+**Either key alone routes to row mode** — `row_offset` alone, `row_count`
+alone (which starts at row 0), or both; omitting *both* stays in byte mode.
+A `row_count` of `0`, or omitted with `row_offset` present, serves the
+default page (`kSpillRowsDefault`, 100 rows). A **negative** `row_offset`
+or `row_count` never reaches the pager — it is refused `bad_args` first, so
+"≤ 0" is two different answers and not one. `row_offset` past the end
+yields an empty non-truncated page.
 Row mode **wins over byte mode** when a call carries both key sets (the
 byte `offset`/`max_bytes` are ignored).
 
@@ -139,11 +159,13 @@ byte `offset`/`max_bytes` are ignored).
   **before** load so an over-cap body is never parsed into RAM; the `hint`
   says byte-page it via `offset`/`max_bytes` instead. Row mode only.
 - `not_array` — body isn't a JSON object with a dominant row-shaped array
-  to page; the `hint` says byte-page it instead. Row mode only.
+  to page: a scalar-only body, a **bare root array**, or a fully-tabular
+  `{__cols__,__rows__}` body. The `hint` says byte-page it instead. Row
+  mode only.
 
-`raw:true` (the **`raw:true` (ANTS-2218)** bullet under § Read /
-incremental verbs) suppresses offload entirely, so an Edit-from-output
-caller gets true bytes rather than a head+pointer.
+`raw:true` suppresses offload entirely (see its bullet under § Read /
+incremental verbs), so an Edit-from-output caller gets true bytes rather
+than a head+pointer.
 Specs: `docs/specs/ANTS-2094.md` (offload + byte paging). ANTS-3538
 (`head_rows` preview) and ANTS-3545 (row mode) shipped without a spec of
 their own — those bare ids are ROADMAP entries, not missing links.
@@ -171,7 +193,8 @@ Bash grep / Read / Edit are always loaded — a friction gradient that
 nudges long sessions back to raw grep (Vestige Obs #18). The
 `tools/list` builder marks a curated high-frequency set with
 `"anthropic/alwaysLoad": true` in each tool's `_meta` object, which
-Claude Code **v2.1.121+** honours to keep those tools always-loaded
+Claude Code **v2.1.121+** honours (as of 2026-08) to keep those tools
+always-loaded
 (older clients ignore the field — graceful). The set
 (`kEagerVerbs` in `claudeintegration.cpp`) is deliberately small — each
 always-loaded tool costs context — and covers the verbs that most
@@ -325,8 +348,8 @@ server-controllable beyond this per-tool hint.
 
 ## Write / edit verbs
 
-**A verb family is documented in one place, so a few read verbs live in
-this section** — `feedback_query` shares a bullet with `feedback_log`,
+**A verb family is documented in one section, so a few read verbs live in
+this one** — `feedback_query` shares a bullet with `feedback_log`,
 `spec_query`'s list mode sits beside `spec_log` because half its contract
 is what `spec_log` refuses, and `project_query` follows `project_settings`
 as the other half of the project surface. Look a verb up by name, not by
@@ -429,9 +452,9 @@ which heading you expect it under.
   other three ops each answer differently, and only one of them refuses
   `format_mismatch` (ANTS-3837): `op:"create_section"` refuses
   `format_mismatch` (`rcPassHeadingsWriteRefusal`); `op:"amend_body"`
-  refuses `unsupported_format`, because a pass body is sub-bullets under a
-  heading rather than the indented continuation lines it patches
-  (ANTS-3406); and `op:"bundle_row"` **writes normally** — it appends to a
+  refuses `unsupported_format` (ANTS-3406 — the distinction between the two
+  codes is [`mcp-error-codes.md`](mcp-error-codes.md)'s to state, and is
+  not restated here); and `op:"bundle_row"` **writes normally** — it appends to a
   Markdown table under a named section and never parses bullets, so the
   roadmap's bullet format never reaches it (ANTS-1691).
 - **`roadmap_log` on a store-migrated project (ANTS-3809)** — all eight ops
@@ -571,3 +594,4 @@ deliberate, not an inconsistency.
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-08-06 | 2 (same doc, independent, cold) | 0 / 3 / 6 / 8 / 1 | First gate on this document, triggered by ANTS-3837's edit. Both lanes independently led on the same three defects, all in the dispatch-wide nudges section and all pre-existing: the >4 KiB gate was stated for **both** nudges when only `leaner_call_hint` carries it (ANTS-2180), `workspace_search`'s tip still named `max_match_bytes` after ANTS-3548 retired it, and the once-per-process `claimHint` latch (ANTS-3550) was absent from an otherwise-exhaustive skip list. Blast radius: `unsupported_format` and `claude.mcp_hint_latch` were each named here but missing from the standard that owns them, so a row was added to `mcp-error-codes.md` and to `mcp-config-keys.md`. Dimension tally: dim 2×6, dim 12×4, dim 5×3, dim 4×3, dim 7×2, dim 6×2, dim 11×2, dim 1×1, dim 8×1. Dismissed on evidence: the `mode:"bundles"` envelope really does carry `total_bundle_count`/`bundles_omitted` (`remotecontrol.cpp:4545-4546`), so this doc was the correct side; and the read verbs filed under § Write are deliberately co-located with their write siblings — the organising rule was stated rather than the bullets moved. Surfaced as code-side: ANTS-3839 (`file_outline`'s `filter` tip names an argument the schema has no property for). |
+| 2 | 2026-08-06 | 2 (same doc, independent, cold) | 0 / 4 / 6 / 8 / 1 | **None of loop 1's three defects resurfaced** — the cold re-read is what proves those fixes held. Both lanes again led on the same defect: `read_spill`'s row-mode paragraph said a `row_count` "≤ 0" serves the default page while the refusal list said a negative row arg is `bad_args`, and both are in the document — a caller cannot write the call correctly from it. Negative is refused before the pager (`remotecontrol.cpp`), `0` and omitted serve the default (`mcpspill.cpp`), so the two answers were collapsed into one clause. Second shared find: `encoding:"tabular"` was documented as composing freely with `offload`, but `dominantArrayKey` never selects a tabular member, so a tabularised spill loses `head_rows` **and** `read_spill` row mode refuses `not_array` — a caller combining two documented token-savers hit that with nothing to explain it. Third: `changelog_query` was missing from the closed list of tabular-capable verbs while the same document treats it as one 150 lines later. Dimension tally: dim 5×5, dim 1×4, dim 4×4, dim 7×3, dim 2×2, dim 12×1, dim 6×1, dim 11×1, dim 8×1, dim 14×1. **Seven of nineteen were collateral from loop 1's own edits** — two restated a default the catalogue owns (the exact policy this doc states elsewhere), one referred to "the table" in a document with no table, and one over-claimed an organising rule the `read_region` split contradicts; all fixed. Dismissed on evidence: the row-paging `hint` is gated on the parse cap after all, so it cannot advertise a mode that would refuse (lane misread "preview budget" as the 1 MiB cap). **Stopped at loop 2, not converged** — see the deferred tail on ANTS-3837's bullet. Lane B independently observed what the stop rests on: by shape this is a **reference/table doc**, which `/cold-eyes`' own scope table routes to `/doc-lint`, not to a judgement gate. |

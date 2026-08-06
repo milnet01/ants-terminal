@@ -8022,11 +8022,22 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             w.headline  = rcSanitizeBulletField(headline, 500);
             w.sectionId = *sectionId;
             w.position  = maxPos + 1;
-            // INV-10 — provenance is per field. Everything this op writes came
-            // from the caller or from the body the caller shipped; the five
-            // trailer keys and `body` are added by the fill below.
+            // INV-10 — provenance is per field. `status` and `headline` came
+            // from the caller; the five trailer keys and `body` are added by
+            // the fill below.
+            // ANTS-3838 — `id` is the one field here the caller may not have
+            // supplied, so it is the one that branches. roadmap-data-model.md
+            // § 7.7 reserves `store-generated` for "the `write
+            // (store-populated)` fields of § 4.1", and § 4.1 marks `id`
+            // exactly that: a counter / high-water allocation is the store's
+            // value, not an author's. Only an `id_strategy:"stable_prefix"`
+            // id was genuinely asserted by the caller. Distinct from
+            // `idOrigin`, which is `synthesised` on BOTH branches — that
+            // records how the id was FORMED, this records who SUPPLIED it.
             w.provenance = QJsonObject{
-                {QStringLiteral("id"),       QStringLiteral("asserted")},
+                {QStringLiteral("id"),
+                 useStablePrefix ? QStringLiteral("asserted")
+                                 : QStringLiteral("store-generated")},
                 {QStringLiteral("status"),   QStringLiteral("asserted")},
                 {QStringLiteral("headline"), QStringLiteral("asserted")},
             };
@@ -12206,8 +12217,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 a.bulletReq.value(QStringLiteral("headline")).toString(), 500);
             w.sectionId = storeSectionId;
             w.position  = pos++;
+            // ANTS-3838 — same branch as the single-append path: an allocated
+            // id is `store-generated` (roadmap-data-model.md § 7.7 over
+            // § 4.1's `write (store-populated)` marking), a caller's
+            // `stable_id` is `asserted`. `idOrigin` stays `synthesised` for
+            // both — it records how the id was formed, not who supplied it.
             QJsonObject provenance = w.provenance;
-            provenance.insert(QStringLiteral("id"), QStringLiteral("asserted"));
+            provenance.insert(QStringLiteral("id"),
+                              useStablePrefix
+                                  ? QStringLiteral("asserted")
+                                  : QStringLiteral("store-generated"));
             provenance.insert(QStringLiteral("status"), QStringLiteral("asserted"));
             provenance.insert(QStringLiteral("headline"), QStringLiteral("asserted"));
             w.provenance = provenance;

@@ -547,3 +547,121 @@ TEST(RoadmapWriteHalf, Inv8BundleRow) {
     EXPECT_EQ(rows.at(1).toArray().at(1).toString(), QStringLiteral("done"));
     EXPECT_EQ(payload.value(QStringLiteral("header")).toArray().size(), 2);
 }
+
+// --------------------------------------------------------------- ANTS-3838 --
+
+// `provenance.id` records who SUPPLIED the id, and the two append branches did
+// not supply it the same way. roadmap-data-model.md § 7.7 reserves
+// `store-generated` for § 4.1's `write (store-populated)` fields, and § 4.1
+// marks `id` exactly that — so a counter/high-water allocation is the store's
+// value and only an `id_strategy:"stable_prefix"` id is the author's.
+//
+// Both legs are asserted in one case on purpose: a single-branch assertion
+// would pass against a writer that hardcodes either value, which is the defect
+// this locks. `id_origin` is checked alongside to pin that the two fields are
+// NOT the same question — it stays `synthesised` however the id arrived.
+TEST(RoadmapWriteHalf, Ants3838ProvenanceIdPerBranch) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    const auto provenanceIdOf = [&](const QString &id) {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        if (!store) return QString();
+        QString err;
+        const auto pk = store->findItem(projectId, id, &err);
+        if (!pk) return QString();
+        const auto item = store->readItem(*pk, &err);
+        if (!item) return QString();
+        return item->provenance.value(QStringLiteral("id")).toString();
+    };
+    const auto idOriginOf = [&](const QString &id) {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        if (!store) return QString();
+        QString err;
+        const auto pk = store->findItem(projectId, id, &err);
+        if (!pk) return QString();
+        const auto item = store->readItem(*pk, &err);
+        return item ? item->idOrigin : QString();
+    };
+
+    // Leg 1 — the store allocated the id. Nobody asserted it.
+    QString allocatedId;
+    {
+        RemoteControl rc(nullptr);
+        const QJsonObject resp =
+            rc.cmdRoadmapLogAppendForTest(
+                  appendReq(root, QStringLiteral("Allocated id.")))
+                .object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << resp.value(QStringLiteral("error")).toString().toStdString();
+        allocatedId = resp.value(QStringLiteral("id")).toString();
+    }
+    ASSERT_FALSE(allocatedId.isEmpty());
+    EXPECT_EQ(provenanceIdOf(allocatedId), QStringLiteral("store-generated"))
+        << "an id the store allocated was not supplied by the author — "
+           "roadmap-data-model.md § 7.7 over § 4.1's `write "
+           "(store-populated)` marking";
+
+    // Leg 2 — the caller pinned the id. That one really is asserted.
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req = appendReq(root, QStringLiteral("Pinned id."));
+        req[QStringLiteral("id_strategy")] = QStringLiteral("stable_prefix");
+        req[QStringLiteral("stable_id")]   = QStringLiteral("Demo-SP1");
+        const QJsonObject resp =
+            rc.cmdRoadmapLogAppendForTest(req).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << resp.value(QStringLiteral("error")).toString().toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("id")).toString(),
+                  QStringLiteral("Demo-SP1"));
+    }
+    EXPECT_EQ(provenanceIdOf(QStringLiteral("Demo-SP1")),
+              QStringLiteral("asserted"))
+        << "a caller-pinned stable_id WAS supplied by the author";
+
+    // Leg 3 — `append_batch` is a second, separately-written store path with
+    // the same choice to make. Covering only `append` would let the batch path
+    // revert unnoticed, which is how the two diverged in the first place.
+    QString batchId;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject bullet;
+        bullet[QStringLiteral("status")]   = QStringLiteral("planned");
+        bullet[QStringLiteral("headline")] = QStringLiteral("Batched item.");
+        bullet[QStringLiteral("kind")]     = QStringLiteral("implement");
+        bullet[QStringLiteral("source")]   = QStringLiteral("test");
+        bullet[QStringLiteral("layman")]   = QStringLiteral("A batched thing.");
+
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+        req[QStringLiteral("section")]    = QStringLiteral("work");
+        req[QStringLiteral("bullets")]    = QJsonArray{ bullet };
+        const QJsonObject resp =
+            rc.cmdRoadmapLogAppendBatchForTest(req).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << resp.value(QStringLiteral("error")).toString().toStdString();
+        // The store path's batch envelope carries a flat `ids` array (and
+        // `applied_count`), not the markdown path's per-bullet objects.
+        EXPECT_EQ(resp.value(QStringLiteral("applied_count")).toInt(), 1);
+        const QJsonArray ids = resp.value(QStringLiteral("ids")).toArray();
+        ASSERT_EQ(ids.size(), 1);
+        batchId = ids.at(0).toString();
+    }
+    ASSERT_FALSE(batchId.isEmpty());
+    EXPECT_EQ(provenanceIdOf(batchId), QStringLiteral("store-generated"))
+        << "append_batch allocates ids the same way append does, so it must "
+           "record them the same way";
+
+    // The two fields answer different questions, so they must not move
+    // together: `id_origin` is `synthesised` on all branches (ANTS-3809's
+    // already-settled ruling), whatever `provenance.id` says.
+    EXPECT_EQ(idOriginOf(allocatedId), QStringLiteral("synthesised"));
+    EXPECT_EQ(idOriginOf(QStringLiteral("Demo-SP1")),
+              QStringLiteral("synthesised"));
+    EXPECT_EQ(idOriginOf(batchId), QStringLiteral("synthesised"));
+}
