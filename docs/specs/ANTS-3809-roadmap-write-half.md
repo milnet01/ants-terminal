@@ -373,6 +373,15 @@ escaping has to be invertible or ANTS-3758 INV-1's round-trip fails, and `<br>`
 is not — a re-load reads it as literal text. Folding at the write boundary is
 what keeps the store holding only what a GFM row can carry (ANTS-3832).
 
+**Surrounding whitespace is the third case, and it is neither kept nor
+escaped: each cell is trimmed here.** So "the store holds the author's text"
+is exact for pipes and means *the author's trimmed text* for the edges. That
+matches the reader — the migration's `tableCells()` trims every cell it parses
+— which is why ANTS-3758 § 2.2 states the render's inverse relationship as
+exact for pipes and as agreement about what a cell's value is for whitespace.
+Leading and trailing spaces are not part of a cell anywhere in the system, so
+nothing round-trips them and nothing has to.
+
 ### 2.3 Id allocation
 
 On the markdown path `append` reads its high-water from `.roadmap-counter`.

@@ -26567,7 +26567,7 @@ against current source before filing.
   mutation, which is the blindness this item reported. Suite
   3259/3259.
 
-- 📋 [ANTS-3834] **Three specs amended post-acceptance under ANTS-3832 without a rule-14 gate run.**
+- ✅ [ANTS-3834] **Three specs amended post-acceptance under ANTS-3832 without a rule-14 gate run.**
   All three landed in e579f114. None is a new contract; each records
   what ANTS-3832 built. But all three were ACCEPTED documents that had
   already converged through /cold-eyes, and global CLAUDE.md rule 14
@@ -26593,6 +26593,100 @@ against current source before filing.
   **Layman:** Three design documents were edited after they had already been reviewed and signed off; the review has not been re-run over the edits.
   Kind: doc.
   Source: in-session-2026-08-05 (self-reported while closing ANTS-3832).
+  Resolved (2026-08-06): the gate ran on ANTS-3758, and the bullet's
+  "cheapest close" was right — the other two edits rode its findings
+  rather than needing runs of their own.
+
+  **It found exactly what an unrun gate is for.** ANTS-3832's edit added
+  a whole normative contract to § 2.2 — table serialisation, `\|`
+  escaping, a synthesised separator, three refusals — to a document
+  whose entire verification scheme is INV-N ↔ test case, and left it
+  *outside* that scheme, carried by prose. Both lanes led on it
+  independently. The two tests (`Inv1TableRendersAsGfm`,
+  `TableRefusesShapelessPayload`) had shipped and were listed in the test
+  bundle's own spec.md, but appeared in neither § 6 nor any invariant.
+  Now **INV-15**, both cases named, and INV-1's *Breaks when* gains the
+  table leg with the note that `Inv1ExportsMatch` stayed green through
+  the original defect.
+
+  Also fixed in ANTS-3758: § 2.2 presented pipe and newline as a closed
+  hazard list, but `tableCells()` trims every cell it reads — settled by
+  checking the write side, where `bundle_row` trims too, so surrounding
+  whitespace is not part of a cell's value anywhere and the spec now says
+  that instead of claiming an invertibility it does not have. § 2.5 and
+  INV-5 reserved `std::nullopt` for "I/O and SQL failures" while § 2.7
+  reserves it for failures *before the commit phase* and makes a
+  commit-phase I/O failure return an engaged outcome — an implementer
+  following § 2.5 would have returned `nullopt` and thrown away the
+  `filesWritten` list INV-6 needs. Plus: the refusal set omitted a
+  non-object payload; "the one exception" was residue of the rule the
+  edit removed; INV-11 named one project reader where § 2.1 requires two;
+  two absence claims still read as live against a shipped
+  `roadmaprender.cpp`; § 3.11 was attributed to the wrong standard; an
+  uncommitted scratchpad path was cited as evidence.
+
+  **The other two rode it, as predicted.** ANTS-3809 § 2.2 said the store
+  "holds the author's text" for cells — exact for pipes, not for edges,
+  since `bundle_row` trims; it now states the third case and points at
+  ANTS-3758's rule. ANTS-3810 § 2.1.2's fixture row now says why the pipe
+  is the leg that matters and why whitespace deliberately is not one (no
+  supported write path can store it). Neither needed its own gate run.
+
+  Collateral caught by the post-fix check rather than by a lane: renaming
+  § 2.1's heading ("the reader that does not exist" → "did not exist")
+  stranded the Contents anchor pointing at it. Fixed before commit;
+  `doc_integrity` clean across all 226 specs afterwards.
+
+  NOT CONVERGED — one loop, stopped on budget rather than on a clean
+  pass. The verified tail follows in the next note.
+  DEFERRED TAIL (2026-08-06) — verified, unfixed. Do NOT re-review to
+  rediscover these: a fresh loop costs a full multi-agent dispatch to
+  regenerate what is written here. Fold them in directly. All are in
+  `docs/specs/ANTS-3758-roadmap-render.md`.
+
+  1. **INV-8 omits a whole branch of § 2.8's marker rule.** § 2.8 says
+     replay the marker where a root intro carries it, **emit the constant
+     where no root section routes to this file**, never both. INV-8
+     states replay-only, and its *Breaks when* names only the
+     double-marker and unchecked-replay directions. An implementer
+     building from INV-8 ships a root-less archive with no format marker.
+     Fix: add the constant branch to the statement and a third *Breaks
+     when*. HIGH.
+  2. **The legend's status EMOJI has no named source.** § 2.8 says the
+     render emits `- <emoji> <wording>` per entry, but the stored legend
+     is status → *wording* only (roadmap-data-model.md § 5.1), and the
+     project's only status-emoji table is compile-time constants in
+     `roadmapdialog.cpp` — a Widgets TU § 2 forbids this lib to link.
+     INV-7's idempotence rests on the mapping. Fix: name and pin the
+     source. HIGH — check the shipped `renderLegend()` first; it may
+     already answer it, in which case this is doc-only.
+  3. **`committed` is undefined for a successful dry run.** § 2.7
+     documents `committed=false` + non-empty `filesWritten` as the
+     partial-commit signature, and a dry run deliberately produces
+     exactly that shape, so the two are indistinguishable as written.
+     INV-14 is silent on the field. Fix: state it and add it to INV-14.
+     HIGH.
+  4. **§ 2.2 is titled "Ordering"** and now carries the whitespace
+     contract, the entire table serialisation contract and the
+     heading-level/`parent_id` rule — the one payload-format contract an
+     implementer must build sits under a heading that does not advertise
+     it. Fix: split the table contract into its own § 2.x and update the
+     Contents list. MEDIUM — structural, which is why it was not taken
+     here.
+  5. **§ 2.1 vs § 2.8 on `legendText`.** § 2.1 says the column is raw
+     stored text and that parsing it would put a needless round-trip
+     through INV-1; § 2.8 says it is stored structured and rendering it
+     is the inverse of that parse. Read alone, § 2.1 tells the
+     implementer to replay opaque text — the exact mistake § 2.8 was
+     amended to prevent. Fix: note in § 2.1 that the render parses it
+     itself. MEDIUM.
+  6. Smaller: INV-4's and INV-9's refusals still do not name their return
+     channel (the table's now does); the § 5 / § 7 ANTS-3794 guard is
+     stated in full twice; "~3 MB over 33,542 lines" pairs a one-sig-fig
+     byte figure with an exact line count that stales identically; the
+     entry point is written unqualified where every sibling is
+     namespace-qualified; a stray blank line inside the invariant list
+     and a missing one before `## 4`. LOW.
 
 - ✅ [ANTS-3835] **OBS Fedora 44 + Mageia 10 are red on v0.7.102 — the Lua-include fix ships in 0.7.103.**
   Both fail identically at

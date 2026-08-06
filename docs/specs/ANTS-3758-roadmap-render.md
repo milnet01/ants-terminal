@@ -13,7 +13,7 @@ checks).
 equality oracle).
 
 **Contents:** [1. Problem](#1-problem) · [2. Surface](#2-surface)
-([2.1 `listElements()`](#21-roadmapstorelistelements--the-reader-that-does-not-exist) ·
+([2.1 `listElements()`](#21-roadmapstorelistelements--the-reader-that-did-not-exist) ·
 [2.2 Ordering](#22-ordering) · [2.3 File routing](#23-file-routing--where-each-section-is-written) ·
 [2.4 Membership](#24-membership) · [2.5 The publish gate](#25-the-publish-gate) ·
 [2.6 The equality oracle](#26-the-equality-oracle--how-lossless-is-proved) ·
@@ -46,8 +46,10 @@ that makes this a blocker rather than a nicety:
    spec by id: *"without it ANTS-3758 re-emits a rotated archive back into
    ROADMAP.md"*.
 
-There is no renderer today — `grep -rl "RoadmapRender\|renderRoadmap" src/
-tests/` returns nothing.
+There was no renderer when this was drafted — `grep -rl
+"RoadmapRender\|renderRoadmap" src/ tests/` returned nothing. It ships now
+(`src/roadmaprender.{h,cpp}`); the absence is recorded as the starting state,
+not as a live claim.
 
 ## 2. Surface
 
@@ -61,10 +63,11 @@ That lib does **not** link `src/projectsettings.cpp`, so the render cannot read
 live roadmap's path as a parameter and resolving `project.json` is the caller's
 job (ANTS-3794's).
 
-### 2.1 `RoadmapStore::listElements()` — the reader that does not exist
+### 2.1 `RoadmapStore::listElements()` — the reader that did not exist
 
-The store has **no element enumerator**: `grep -n "listElements\|ElementRow"
-src/roadmapstore.h src/roadmapstore.cpp` returns nothing. `RoadmapExport`
+The store had **no element enumerator** when this was drafted: `grep -n
+"listElements\|ElementRow" src/roadmapstore.h src/roadmapstore.cpp` returned
+nothing. It ships now; what follows is the contract it was built to. `RoadmapExport`
 consequently reaches past its own reader with raw SQL — `writeElements()`, a
 free function in `src/roadmapexport.cpp`'s anonymous namespace, runs `SELECT
 e.position, e.kind, e.payload, i.id_fold FROM element e …` directly, precisely
@@ -148,29 +151,47 @@ file ends with exactly one newline. Without a stated policy two conforming
 implementations would differ on every blank line, and INV-7 would be asserting
 nothing but agreement with its own predecessor.
 
-**A `table` element is the one exception, and it is not a wrinkle in the
-verbatim rule but its opposite: the payload is not markdown at all.**
-`roadmap-data-model.md` § 5.2 stores a table as canonical
+**A `table` element is not covered by that rule at all: its payload is not
+markdown.** `roadmap-data-model.md` § 5.2 stores a table as canonical
 `{"header": […], "rows": [[…]]}` JSON, so a render that replayed it would write
 that JSON into the file where the rows belong — and the JSON is not
 `isTableRow()`, so a re-load files it as `narration` and INV-1 fails. A table
-is therefore **serialised**, by the exact inverse of the migration's reader
-(ANTS-3832):
+is therefore **serialised** (ANTS-3832), by the inverse of the migration's
+reader:
 
 - the header cells, then a separator row of `---` per column — the migration
   drops the separator as delimiter rather than content, so it has none to
   replay and one is synthesised;
 - each row's cells, in stored order;
+- **each row is spelled `| a | b |`** — leading `"| "`, `" | "` between cells,
+  trailing `" |"`. The row syntax is part of the contract because the
+  migration's reader is what has to invert it;
 - every cell with a literal `|` spelled `\|`, which the migration's
   `tableCells()` inverts. **The escaping must be invertible or INV-1 fails on
   the first pipe-bearing cell**, which is also why a newline is *not* escaped
   here: `<br>` is not invertible (a re-load reads it as literal text), so a
   newline is folded at the write boundary — `roadmap_log`'s `bundle_row`,
-  ANTS-3809 § 2.2 — and never reaches the render;
-- a payload that parses but carries no `header`, or a row whose cell count
-  disagrees with the header's, is **refused**. INV-9's posture applies: a store
-  that disagrees with itself is corrupt, and a render that quietly resolved it
-  would emit a broken table.
+  ANTS-3809 § 2.2 — and never reaches the render.
+
+**Invertibility is exact for pipes and deliberately not claimed for surrounding
+whitespace, which is a third hazard and not a gap.** `tableCells()` trims every
+cell it reads, and `bundle_row` trims every cell it writes, so leading and
+trailing whitespace is **not part of a cell's value** anywhere in the system:
+it cannot be stored through a supported write path, and a hand-inserted one is
+normalised on the next load rather than round-tripping. The render therefore
+emits cells as stored and does not pad or strip them. Read "inverse of the
+migration's reader" as exact for the pipe escaping and as *agreement about what
+a cell's value is* for whitespace — a render that tried to preserve surrounding
+whitespace would break INV-1 against a reader that discards it.
+
+**Three payload faults are refused, not rendered malformed:** a payload that is
+not a JSON object at all (including one that fails to parse), a payload whose
+`header` is absent *or empty*, and a row whose cell count disagrees with the
+header's. A refusal here is a **render error** in § 2.7's sense — `std::nullopt`
+with `*error` set, raised before anything is staged, so no partial file exists.
+The posture is § 2.2's own, stated once below for the level/`parent_id` check
+and applying identically here: a store that disagrees with itself is corrupt,
+and a render that quietly resolved it would emit a broken table.
 
 Nesting is **not** re-derived from `parent_id`. `position` is project-wide
 document order (ANTS-3796), so emitting sections in that order already places a
@@ -255,8 +276,12 @@ why a project with published history can satisfy the gate at all.
 
 **A gate failure is a result, not an error.** The call returns a populated
 `RenderOutcome` with `filesWritten` empty and `gateFailures` naming every
-offending id; `std::nullopt` is reserved for I/O and SQL failures, where there
-is nothing to report. If a refusal returned `nullopt`, the ids this gate exists
+offending id; `std::nullopt` is reserved for failures **before the commit
+phase** — SQL errors, a render error, a path refusal — where there is nothing
+to report. **A commit-phase I/O failure is the exception and does *not* return
+`nullopt`** (§ 2.7): it returns an engaged outcome naming exactly what landed,
+because that list is the one thing the caller needs and `nullopt` throws it
+away. If a refusal returned `nullopt`, the ids this gate exists
 to name would be unreachable through the declared API. Turning either into a
 process exit code is ANTS-3794's job, not this library's.
 
@@ -428,7 +453,7 @@ So the preamble is **stored data replayed**, with one exception:
 | Emitted | Source |
 |---|---|
 | format marker, H1, and any prose above the first heading | the synthetic root's `SectionRow::intro`, emitted **verbatim** |
-| `roadmap-data-model.md` § 5.1's status legend | `project.legendText` — the **exception**, because the migration lifts the legend *out* of the intro into its own record (`looksLikeLegendLine()` closes the intro at the first legend run in source 0), so replaying the intro alone would lose it. **It is stored STRUCTURED, so rendering it is the inverse of that parse and not a verbatim replay** (amended at implementation): the column holds a JSON object of status → wording, and emitting its text would publish JSON into the roadmap. The render emits one `- <emoji> <wording>` line per entry, in the export's `kStatusOrder`, skipping `dropped` because § 3.11 gives it no glyph |
+| `roadmap-data-model.md` § 5.1's status legend | `project.legendText` — the **exception**, because the migration lifts the legend *out* of the intro into its own record (`looksLikeLegendLine()` closes the intro at the first legend run in source 0), so replaying the intro alone would lose it. **It is stored STRUCTURED, so rendering it is the inverse of that parse and not a verbatim replay** (amended at implementation): the column holds a JSON object of status → wording, and emitting its text would publish JSON into the roadmap. The render emits one `- <emoji> <wording>` line per entry, in the same order as the export's `kStatusOrder`, skipping `dropped` because `roadmap-format.md` § 3.11 gives it no glyph |
 | a non-root section's intro prose | that `SectionRow::intro`, between its heading and its first element |
 
 **Emission order for the live roadmap**, which is load-bearing because the
@@ -477,8 +502,13 @@ project's vocabulary, and substituting a default would quietly undo that.
   scratch store and exporting both produces byte-identical exports **once § 2.6's
   three excluded families are projected out of each**. *Breaks when:* a
   non-defaultable field — `layman`, `body`, `resolution`, `lanes`, `evidence`,
-  an `extras` key — is dropped from the bullet, or an element is emitted out of
-  order. *Test:* `roadmap_render/` case `Inv1ExportsMatch`.
+  an `extras` key — is dropped from the bullet, an element is emitted out of
+  order, or a `table` element is emitted verbatim instead of serialised so its
+  payload re-loads as `narration` (INV-15 owns that contract; it is named here
+  because it is an INV-1 loss). *Test:* `roadmap_render/` case
+  `Inv1ExportsMatch`, plus `Inv1TableRendersAsGfm` for the table leg —
+  `Inv1ExportsMatch` alone stayed green through the ANTS-3832 defect, which is
+  the blindness that made a second case necessary.
 - **INV-2** — **Sections are emitted in `sectionOrderLess()` order**, i.e.
   `(position, slug)`. *Breaks when:* the renderer sorts by `slug`, by
   `section_id`, or walks `parent_id` recursively. *Test:* `Inv2SectionOrder`,
@@ -499,8 +529,8 @@ project's vocabulary, and substituting a default would quietly undo that.
 - **INV-5** — **A public open item with an empty `layman` makes the whole
   project render nothing.** No file is written, and the call returns an
   **engaged** `RenderOutcome` whose non-empty `gateFailures` names every
-  offending id — never `std::nullopt`, which § 2.5 reserves for I/O and SQL
-  errors. *Breaks when:* the gate is applied per item (skipping the offender)
+  offending id — never `std::nullopt`, which § 2.5 reserves for failures before
+  the commit phase. *Breaks when:* the gate is applied per item (skipping the offender)
   rather than per project, or a refusal is signalled by returning `nullopt`,
   which makes the ids unreachable. *Test:* `Inv5PublishGate`.
 - **INV-6** — **No failure in rendering, gating or serialising leaves a partial
@@ -534,7 +564,8 @@ project's vocabulary, and substituting a default would quietly undo that.
   position**, interleaved with items. *Breaks when:* the renderer emits all
   items and then all other elements. *Test:* `Inv10ElementInterleaving`.
 - **INV-11** — **`listElements()` is the only element reader in production
-  code**, and `readProject()` the only project reader. No `FROM element` or
+  code**, and `readProject()` / `readProjectBySlug()` (§ 2.1 requires both) the
+  only project readers. No `FROM element` or
   `FROM project` SQL exists under `src/` outside `src/roadmapstore.cpp`. **Tests are out of scope and that is not a
   loophole**: such queries already exist under `tests/features/` for both
   patterns, and they
@@ -564,6 +595,22 @@ project's vocabulary, and substituting a default would quietly undo that.
   `filesWritten` names the files a real pass would have written and no file on
   disk changes, including mtime. *Breaks when:* dry-run is implemented as
   write-then-delete. *Test:* `Inv14DryRunWritesNothing`.
+- **INV-15** — **A `table` element is serialised to GFM, never replayed, and a
+  shapeless payload is refused rather than emitted.** § 2.2's contract in full:
+  the header row, a synthesised `---` separator, each stored row in order, rows
+  spelled `| a | b |`, a literal `|` in a cell spelled `\|`; and a refusal
+  (`std::nullopt` + `*error`, nothing staged) for a non-object payload, an
+  absent-or-empty `header`, or a row whose cell count disagrees with the
+  header's. **This invariant exists because the contract it states was added to
+  § 2.2 after acceptance and initially sat outside the INV ↔ case scheme every
+  other rule in this document is verified by** — prose alone is what let the
+  original defect ship. *Breaks when:* a `table` payload is emitted verbatim
+  (the ANTS-3832 defect: the canonical JSON lands where the rows belong and
+  re-loads as `narration`), the separator row is omitted, a pipe-bearing cell
+  is left unescaped, or a malformed payload renders a broken table instead of
+  refusing. *Test:* `Inv1TableRendersAsGfm` (serialisation + escaping) and
+  `TableRefusesShapelessPayload` (the refusal), both in `roadmap_render/`.
+
 ## 4. RAM / build cost
 
 The live roadmap is **~3 MB over 33,542 lines** (`wc -c -l < ROADMAP.md`), with
@@ -602,7 +649,7 @@ No new dependency; one new TU in an existing lib, so build cost is one
 - **Rendering the GFM task-list and pass-heading formats.** The render emits
   `roadmap-format.md` § 3.5's emoji-bullet form. **Two of the thirteen corpus
   projects use another format** — 3D_Engine GFM task lists, RetroDB pass
-  headings (`scratchpad/cold-eyes-3795/gate2.py`, 2026-08-03) — and emitting
+  headings (measured 2026-08-03) — and emitting
   § 3.5 for them would silently convert their roadmap's format at cutover, a
   user-visible change nobody asked for. (Committed tool:
   `tools/roadmap-corpus-survey.py`, which reports the pass-headings count
@@ -657,6 +704,8 @@ existing bundle per `tests/features/README.md` (no `add_executable`).
 | `Inv12RequiredPiecesPresent` | INV-12 |
 | `Inv13PathContainment` | INV-13 |
 | `Inv14DryRunWritesNothing` | INV-14 |
+| `Inv1TableRendersAsGfm` | INV-15 (with INV-1) |
+| `TableRefusesShapelessPayload` | INV-15 |
 
 Per this project's convention, **every case is verified RED against its
 *Breaks when* mutation before the implementation is restored.** Where that is
@@ -691,6 +740,7 @@ accumulates silently in a binary that still links green.
 
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
+| 3 | 2026-08-06 | 2 (single doc, cold; genre pinned `spec`) | 0 / 5 / 6 / 9 / 1 | **The rule-14 gate ANTS-3832's post-acceptance edit skipped (ANTS-3834).** It found what an unrun gate is supposed to: the edit added a whole normative contract — table serialisation, `\|` escaping, a synthesised separator, three refusals — to a document whose entire verification scheme is INV-N ↔ test case, and left it **outside that scheme**, guarded by prose. Both lanes led on it independently. `Inv1TableRendersAsGfm` and `TableRefusesShapelessPayload` had shipped and were listed in the test bundle's own spec.md, but appeared in neither § 6 nor any invariant here. Now **INV-15**, with both cases named, and INV-1's *Breaks when* gains the table leg plus the note that `Inv1ExportsMatch` stayed green through the original defect. Second shared find: § 2.2 presented pipe and newline as a closed hazard list, but `tableCells()` trims every cell it reads — settled by checking the write side, where `bundle_row` trims too, so surrounding whitespace is not part of a cell's value anywhere and the spec now says so rather than claiming an invertibility it does not have. Third: § 2.5 and INV-5 reserved `std::nullopt` for "I/O and SQL failures" while § 2.7 reserves it for failures *before the commit phase* and makes a commit-phase I/O failure return an **engaged** outcome — an implementer following § 2.5 returns `nullopt` on a commit failure and throws away the `filesWritten` list INV-6 needs. Also fixed: the refusal set omitted a non-object payload; "the one exception" was residue of the rule the edit removed; INV-11 named one project reader where § 2.1 requires two (`readProjectBySlug` ships); two absence claims ("there is no renderer today") still read as live against a shipped `roadmap_render.cpp`; § 3.11 was attributed to the wrong standard; an uncommitted scratchpad path was cited as evidence. Dimension tally: dim 5×5, dim 4×4, dim 7×3, dim 2×3, dim 12×2, dim 8×2, dim 15×1, dim 10×1, dim 1×1. **Not converged — stopped after one loop by budget**, with a verified tail (INV-8's constant-emission branch, the legend emoji's unnamed source, `committed` under a successful dry run, and § 2.2's title no longer covering its contents) filed on ANTS-3834 rather than carried in a head. |
 | 5-correct | 2026-08-03 | none — a verification, not a review | — | **Correction row, written by the implementer.** Row 4-impl's clause (1) is **wrong on its second half**, and § 2.8 carried the error until now: the synthetic root is not one row per project. `walkSource()` gives each source's root `ctx.prefix` as its slug (ANTS-3766 § 2.3 — `""` for the live roadmap, `"<M>-<N>"` for an archive), so an archive with pre-heading content **does** store its own root row, with its own `source_path`, and this render already replays it into that file. The constant marker is for a file with **no preamble** — one that opens directly on a heading, whose empty root `walkSource()` drops — not for every archive. Established by **running** a two-source fixture end to end (`findRoadmaps()` → `planFrom()` → `load()` → `render()`) under **ANTS-3806**, which was filed on the same misreading and is closed by this row; the standing proof is `tests/features/roadmap_migrate_archive_root/`, two cases, each shown red against its own defect. The mutation that reproduces the reported shape (`root.slug = QString()`) does not lose data either — `planFrom()` raises `archive_slug_collision` and `load()` refuses. Surfaced by the same fixture and **not** fixed here: **ANTS-3808**, the migration and the render disagreeing about what `item.body` holds, so a rendered bullet repeats its own headline and fields. |
 | 4-impl | 2026-08-03 | none — implementation, not a review | — | **Implementation row, written by the implementer** (`/cold-eyes` writes review rows only). `src/roadmaprender.{h,cpp}` in `ants_roadmapstore_lib`, plus `RoadmapStore::listElements()` / `readProject()` / `readProjectBySlug()` and the `roadmapexport.cpp` refit off its own SQL. 14 cases in `tests/features/roadmap_render/`, **every one shown RED against a mutation of its own *Breaks when* before the implementation was restored** — two batches of seven, since the mutations sit in distinct code paths. **Three clauses implementation disproved, each amended above.** (1) § 2.8's marker rule was still half wrong: the synthetic root has an EMPTY slug under `UNIQUE (project_id, slug)`, so there is one per PROJECT and an archive has no root section at all — the marker is replayed where a root intro carries it and emitted as a constant where none routes to the file, never both. (**The "one per PROJECT" half is wrong — see row 5-correct.** The marker rule itself survives.) (2) § 2.8 called the legend a source to replay; it is stored **structured** (a JSON object of status → wording), so rendering it is the inverse of the migration's parse and emitting its text would publish JSON into the roadmap. (3) INV-1's full oracle needs the migration loader, a second store and its `Options`, so the shipped case asserts the half that stands alone — every field survives into the text — and the render → load → export comparison moves to ANTS-3793, which has the loader in hand. Two test-side defects caught by running rather than reading: the fixture default-constructed `RoadmapStore`, which resolves `defaultPath()` — the developer's REAL store — and would have had every case writing into it; and INV-11's scrape was case-insensitive over raw text, so it matched **English prose** in three unrelated files ("re-walking from project root") and failed on day one exactly as loop 3 predicted. It now strips comments and matches case-sensitively. Filed separately: **ANTS-3806**, the migration limitation this surfaced — one root row per project means an archive's own preamble has nowhere to live. (**Not a limitation — see row 5-correct**, which ran it.) |
 | 3 | 2026-08-03 | 2 (same partition, cold; no prior-loop briefing) | 5 / 4 / 11 / 12 / 0 | **Converged by cap.** 32 verified, all fixed. Both lanes again led on the same three, and the sharpest was loop 2's own fix turned inside out: § 2.8 had just been rewritten to say the preamble IS the synthetic root section — correct — and then emitted the format marker and H1 as renderer **constants** on top of it. `RoadmapMigrate` builds a section's intro verbatim from its source lines and applies no marker or H1 filter anywhere, so the root's stored intro already carries both: the render would have emitted each **twice** and failed INV-1 on the first live render of any real project. The preamble is now stored data replayed, with the legend the single exception (the migration lifts it out of the intro into its own record), and an ordered emission list, because the migration only recognises a legend as the first legend-like run after the intro. Second: `readProject(projectId)` could not serve the call site it was added to replace — `writeMeta()` resolves `WHERE export_slug = ?` and *obtains* the id — so INV-11's `FROM project` clause was unsatisfiable; there are now two lookups, and `ProjectRow` carries the legend as raw text because the export reads it as a string inside a byte-identity contract. Third: a commit-phase failure returned `std::nullopt`, discarding the `filesWritten` list that names what landed — the identical defect § 2.5 explicitly forbids for the gate; `RenderOutcome` gains `committed`. Also fixed: the projection was one-sided (families 2 and 3 are in export B too, so the compare could never pass); `liveRoadmapPath` was uncontained while INV-13 promised no file outside the root; path refusals had no signalling channel; `milestone` has no markdown carrier and belonged in family 3; INV-11's own grep did not exempt the file the invariant exempts, so its test failed on day one; the whitespace and payload policy INV-1 and INV-7 both rest on was never stated; an unfiled item was rendered nowhere and counted nowhere. Invariants reordered ascending; drafting narration removed from the contract body. |
