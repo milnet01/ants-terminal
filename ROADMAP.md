@@ -3181,6 +3181,34 @@ minor tag (next: pre-0.8.0).
   **Layman:** The file holding every MCP command is now so big that changing one command makes the computer recompile all of them; split it into a few files so edits are quick.
   Kind: refactor.
   Source: user-question-2026-08-05.
+  Groundwork (2026-08-06) — measured, not started. ANTS-3809 has now
+  shipped, so the sequencing gate this item names is clear.
+
+  **Trap 1 is bigger than the bullet implies: 72 test files under
+  `tests/features/` read `remotecontrol.cpp` as TEXT**, not the three
+  the bullet names. Counted with `grep -rl "remotecontrol.cpp"
+  tests/features/*/test_*.cpp | wc -l` → 72. Not all use fixed byte
+  windows, but every one of them is a file whose assertions are coupled
+  to this file's *contents or layout*, so the blast radius of moving a
+  verb body is a 72-file set to triage, not a 3-file one. That triage is
+  the first slice of work, and it is what decides whether the move is a
+  week or an afternoon.
+
+  Suggested first step, before any code moves: partition those 72 into
+  (a) scrape a literal that would move with its verb, (b) scrape a fixed
+  byte window anchored on a symbol, (c) merely mention the path in a
+  comment or message. Only (a) and (b) constrain the split; (c) is
+  noise. The count above is the honest denominator either way.
+
+  Second: the bullet's "keep the class and its header exactly as they
+  are, move verb BODIES into remotecontrol_<family>.cpp TUs" shape still
+  looks right and is the lowest-risk framing — no API change, no header
+  churn, no new class, only translation units.
+
+  Not started deliberately: this is a multi-file refactor with a
+  72-file verification surface, and a half-done split leaves the tree in
+  a state no session can safely resume. It wants its own session, a
+  spec via /write-spec, and a worktree.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
