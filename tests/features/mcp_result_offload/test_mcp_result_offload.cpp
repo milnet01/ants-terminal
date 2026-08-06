@@ -24,6 +24,7 @@
 #include <QString>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
+#include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
 namespace {
 
@@ -227,7 +228,7 @@ TEST_F(McpResultOffload, Inv6ReadSpillMaxBytesDefaultsToPage) {
 // INV-6 — the negative-arg → bad_args refusal lives at the dispatch
 // (cmdReadSpill byte mode), which validates before calling readSpill.
 TEST_F(McpResultOffload, Inv6ReadSpillNegativeArgGateAtDispatch) {
-    const QString rc = readSource(SRC_RC_CPP);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     EXPECT_TRUE(rc.contains(
         QStringLiteral("offset < 0 || (mbV.isDouble() && maxBytes < 0)")))
@@ -360,7 +361,7 @@ TEST_F(McpResultOffload, Inv10ReadSpillWiring) {
     EXPECT_TRUE(after.contains(QStringLiteral("CallerCwdContract::Optional")));
     EXPECT_TRUE(after.contains(QStringLiteral("cmdReadSpill")));
 
-    const QString rc = readSource(SRC_RC_CPP);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     EXPECT_TRUE(rc.contains(QStringLiteral("RemoteControl::cmdReadSpill")));
     EXPECT_TRUE(rc.contains(QStringLiteral("^[0-9a-f]{64}$")));
@@ -660,7 +661,7 @@ TEST_F(McpResultOffload, Inv14ReadSpillRowPaging) {
 // readSpillRows and emits mode:"rows"; the read_spill schema declares the two
 // row props. The mode:"rows" literal is absent from pre-feature code (RED).
 TEST_F(McpResultOffload, Inv14RowModeWiring) {
-    const QString rc = readSource(SRC_RC_CPP);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     EXPECT_TRUE(rc.contains(QStringLiteral("readSpillRows")));
     EXPECT_TRUE(rc.contains(QStringLiteral("\"row_offset\"")));

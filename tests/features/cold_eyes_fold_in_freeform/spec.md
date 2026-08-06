@@ -24,7 +24,7 @@ follow-up roadmap entries.
   <DATE>` heading + one `- **Cold-eyes finding:** <file:line> — cited
   across [<lanes>]` bullet per finding + a single trailing `Source:
   cold-eyes-<DATE>` provenance line.
-- `src/remotecontrol.cpp` `cmdColdEyesFoldIn` — accepts
+- the remotecontrol TUs `cmdColdEyesFoldIn` — accepts
   `id_allocation: "auto" | "skip"` (default `auto`). On `"skip"`,
   `RoadmapFoldIn::allocateIds` is not called, the freeform template
   is used, and the response carries `id_allocation:"skip"` plus an
@@ -42,7 +42,7 @@ follow-up roadmap entries.
 - **INV-2** `src/coldeyesengine.cpp` defines the freeform template — its body
   emits `### 📝 Cold-eyes <DATE>` and `- **Cold-eyes finding:**`
   bullets WITHOUT a `[ANTS-` prefix.
-- **INV-3** `src/remotecontrol.cpp` `cmdColdEyesFoldIn` recognises the
+- **INV-3** the remotecontrol TUs `cmdColdEyesFoldIn` recognises the
   `id_allocation` parameter, accepts `"auto"` and `"skip"`, and
   refuses any other value with `code:"bad_args"`.
 - **INV-4** When `id_allocation:"skip"` is passed, the handler skips

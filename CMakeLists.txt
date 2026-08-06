@@ -309,12 +309,47 @@ target_link_libraries(ants_roadmapparse_lib
 target_include_directories(ants_roadmapparse_lib PUBLIC src)
 set_target_properties(ants_roadmapparse_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# ANTS-3833 — split order. The concatenation of these files, in this order,
+# preserves the pre-split relative order of every RemoteControl member, which
+# is what two-anchor scrape windows (find(A), then find(B, posA)) depend on.
+# Append a new TU at its SLICE position, never at the end.
+set(ANTS_RC_SOURCES_REL
+    src/remotecontrol.cpp
+    src/remotecontrol_terminal.cpp
+    src/remotecontrol_roadmap_query.cpp
+    src/remotecontrol_changelog.cpp
+    src/remotecontrol_roadmap_log.cpp
+    src/remotecontrol_workspace.cpp
+    src/remotecontrol_docs.cpp
+    src/remotecontrol_feedback.cpp
+    src/remotecontrol_state.cpp
+    src/remotecontrol_review.cpp
+    src/remotecontrol_coldeyes.cpp
+)
+list(TRANSFORM ANTS_RC_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
+     OUTPUT_VARIABLE _ants_rc_abs)
+list(JOIN _ants_rc_abs ";" _ants_rc_joined)
+# The separator has to be ESCAPED, and getting this wrong is silent. CMake
+# stores COMPILE_DEFINITIONS as a ";"-separated list of its own, so a bare ";"
+# inside the value is read as an item boundary no matter how the argument is
+# quoted: measured 2026-08-06, the generated compile line carried
+# -DANTS_RC_SOURCES="…/remotecontrol.cpp and the other ten paths vanished —
+# a definition that still compiles, still looks present, and names exactly
+# the one TU this whole item exists to stop the tests reading alone.
+string(REPLACE ";" "\\;" _ants_rc_joined "${_ants_rc_joined}")
+
 add_library(ants_core_lib STATIC
     src/config.cpp
     src/debuglog.cpp
     src/clipboardguard.cpp
     src/pathvalidation.cpp
-    src/remotecontrol.cpp
+    # ANTS-3833 INV-11 — the library CONSUMES the list above rather than
+    # restating it. Naming a TU separately here would let a twelfth source
+    # exist in the build and be invisible to every scrape: it links, every
+    # other invariant passes, and the test tree silently reads 11/12 of the
+    # class. That is the exact failure INV-4 abolishes, arriving by a route
+    # INV-4 cannot see.
+    ${ANTS_RC_SOURCES_REL}
     src/remotecontrolgate.cpp
     src/fileoutline.cpp
     # ANTS-1993 — Claude permission-prompt structural gate (Qt6::Core-only).
@@ -1830,7 +1865,16 @@ if(ANTS_TESTS)
         SRC_BGDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
-        SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
+        # single-file path macros are retired: a scrape reading one TU sees a
+        # fraction of the class, in which a verb that moved to a sibling TU is
+        # indistinguishable from a verb that was deleted. Deleting the macros
+        # turns every missed call site into a compile error, so there is no
+        # partial-scrape state to reach. Quoted as ONE argument: the value
+        # contains ";" separators, which an unquoted argument would split on.
+        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
+        ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
         # ANTS-3665 — parseSpecBody was hoisted out of remotecontrol.cpp into
         # ants_core_lib; the spec_query wiring scrape follows it here.
         SRC_SPECPARSE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/specparse.cpp"
@@ -2038,7 +2082,16 @@ if(ANTS_TESTS)
         SRC_AUDITDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         # ANTS-1372 source-grep tests: roadmap_fold_in needs visibility
         # into remotecontrol.cpp + roadmapfoldin.cpp for S1-S5.
-        SRC_REMOTECONTROL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
+        # single-file path macros are retired: a scrape reading one TU sees a
+        # fraction of the class, in which a verb that moved to a sibling TU is
+        # indistinguishable from a verb that was deleted. Deleting the macros
+        # turns every missed call site into a compile error, so there is no
+        # partial-scrape state to reach. Quoted as ONE argument: the value
+        # contains ";" separators, which an unquoted argument would split on.
+        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
+        ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
         SRC_ROADMAPFOLDIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapfoldin.cpp"
         # ANTS-1457 — false-positive ledger source-scrape paths.
         SRC_FALSEPOS_H_PATH="${CMAKE_SOURCE_DIR}/src/falseposledger.h"
@@ -2157,7 +2210,16 @@ if(ANTS_TESTS)
         MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
-        SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
+        # single-file path macros are retired: a scrape reading one TU sees a
+        # fraction of the class, in which a verb that moved to a sibling TU is
+        # indistinguishable from a verb that was deleted. Deleting the macros
+        # turns every missed call site into a compile error, so there is no
+        # partial-scrape state to reach. Quoted as ONE argument: the value
+        # contains ";" separators, which an unquoted argument would split on.
+        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
+        ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
         ROADMAPSHORTCUTSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.cpp"
         ROADMAPSHORTCUTSDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.h")
     # ANTS-1236 — Qt6::Test for QTest::keyClick used by
@@ -2290,7 +2352,7 @@ if(ANTS_TESTS)
                 # at 0700 + ConfigWriteLock around ledger read-modify-write).
                 tests/features/ledger_write_safety/test_ledger_write_safety.cpp
                 # ANTS-1735 — model_switch_stats verb: behavioural aggregation +
-                # source-grep wiring contract (uses SRC_RC_HEADER / SRC_RC_CPP /
+                # source-grep wiring contract (uses SRC_RC_HEADER / ANTS_RC_SOURCES /
                 # SRC_MAINWINDOW_CPP / SRC_CLAUDE_INTEGRATION_CPP_PATH defs below).
                 tests/features/mcp_model_switch_stats/test_mcp_model_switch_stats.cpp
                 # ANTS-1891 — trust-signal v2: inconclusive bucket, regret-folds-
@@ -2334,8 +2396,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_ignored_args/test_mcp_ignored_args.cpp
                 # ANTS-3391 — roadmap_query `query` keyword filter.
                 # mcp::bulletMatchesQuery is in ants_core_lib (linked); the
-                # handler + schema wiring INVs source-scrape remotecontrol.cpp
-                # (SRC_RC_CPP) + claudeintegration.cpp.
+                # handler + schema wiring INVs source-scrape the remotecontrol
+                # TUs (ANTS_RC_SOURCES) + claudeintegration.cpp.
                 tests/features/roadmap_query_keyword_filter/test_roadmap_query_keyword_filter.cpp
                 # ANTS-1727 — ai_review_concurrency config clamp (INV-14).
                 tests/features/config_ai_review_concurrency/test_config_ai_review_concurrency.cpp
@@ -2460,7 +2522,16 @@ if(ANTS_TESTS)
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_DEBUGLOG_PATH="${CMAKE_SOURCE_DIR}/src/debuglog.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
-        SRC_RC_CPP="${CMAKE_SOURCE_DIR}/src/remotecontrol.cpp"
+        # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
+        # single-file path macros are retired: a scrape reading one TU sees a
+        # fraction of the class, in which a verb that moved to a sibling TU is
+        # indistinguishable from a verb that was deleted. Deleting the macros
+        # turns every missed call site into a compile error, so there is no
+        # partial-scrape state to reach. Quoted as ONE argument: the value
+        # contains ";" separators, which an unquoted argument would split on.
+        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
+        ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
         # ANTS-3562 — mcporientation split-tree guard source-grep.
         SRC_MCPORIENTATION_CPP="${CMAKE_SOURCE_DIR}/src/mcporientation.cpp"
         SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"

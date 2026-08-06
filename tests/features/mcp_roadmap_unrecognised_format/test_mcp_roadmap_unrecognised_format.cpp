@@ -47,7 +47,7 @@ std::string boundedBetween(const std::string &cpp,
 // INV-1 — cmdRoadmapQuery gate.
 TEST(mcp_roadmap_unrecognised_format, Inv1QueryGate) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty()) << "INV-1: remotecontrol.cpp not readable";
 
     const std::string body = boundedBetween(
@@ -88,7 +88,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv2Threshold) {
 // INV-3 — cmdRoadmapLog gate + envelope shape parity.
 TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty()) << "INV-3: remotecontrol.cpp not readable";
 
     // The `unrecognised_format` WRITE gate lives in cmdRoadmapLogAppend
@@ -124,7 +124,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv3LogGateAndShape) {
 // ##/### headings. Source-grep on the bounded bullets-mode slice.
 TEST(mcp_roadmap_unrecognised_format, Inv4HeaderInventoryFallback) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty())
         << "INV-4: remotecontrol.cpp not readable";
 
@@ -156,7 +156,7 @@ TEST(mcp_roadmap_unrecognised_format, Inv4HeaderInventoryFallback) {
 // 📋 emoji byte sequence) so a rewording drops the right tests.
 TEST(mcp_roadmap_unrecognised_format, Inv5ExpectedFormatField) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty())
         << "INV-5: remotecontrol.cpp not readable";
 

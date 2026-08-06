@@ -16,7 +16,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(SRC_REMOTECONTROL_CPP_PATH) || \
+#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH) || !defined(SRC_SPECLINT_CPP_PATH)
 #error "spec_lint_verb test needs the test_claude source-path compile defs"
 #endif
@@ -112,7 +112,7 @@ TEST(SpecLintVerb, Inv7RefusalMinimums) {
     EXPECT_TRUE(ci.contains(QStringLiteral("specLint[\"name\"] = \"spec_lint\"")));
 
     // (2) a supplied path is validated BEFORE any enumeration → bad_path.
-    const QString rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     const int h = rc.indexOf(QStringLiteral("RemoteControl::cmdSpecLint"));
     ASSERT_GE(h, 0);

@@ -43,7 +43,7 @@ TEST(mcp_roadmap_status_filter, Inv1BackCompatSignatureDefaulted) {
 
 TEST(mcp_roadmap_status_filter, Inv2ActiveFilterSwitch) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // ANTS-1247-INV-2: planned + in-progress emoji compare.
     expect(contains(cpp, "ANTS-1247-INV-2"),
            "INV-2 anchor comment present in remotecontrol.cpp");
@@ -58,7 +58,7 @@ TEST(mcp_roadmap_status_filter, Inv2ActiveFilterSwitch) {
 
 TEST(mcp_roadmap_status_filter, Inv3ShippedFilterSwitch) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "doneEmoji"),
            "INV-3: doneEmoji constant present");
     expect(contains(cpp, "QLatin1String(\"shipped\")"),
@@ -68,7 +68,7 @@ TEST(mcp_roadmap_status_filter, Inv3ShippedFilterSwitch) {
 
 TEST(mcp_roadmap_status_filter, Inv4CaseInsensitive) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // ANTS-1247-INV-4: status parsed with .toLower() canonicalisation.
     expect(contains(cpp, "ANTS-1247-INV-4"),
            "INV-4 anchor comment present");
@@ -79,7 +79,7 @@ TEST(mcp_roadmap_status_filter, Inv4CaseInsensitive) {
 
 TEST(mcp_roadmap_status_filter, Inv5BadStatusError) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // ANTS-1247-INV-5: unknown status yields bad_status code.
     expect(contains(cpp, "ANTS-1247-INV-5"),
            "INV-5 anchor comment present");
@@ -92,7 +92,7 @@ TEST(mcp_roadmap_status_filter, Inv5BadStatusError) {
 
 TEST(mcp_roadmap_status_filter, Inv6CacheInvariantPreserved) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // ANTS-1247-INV-6: fresh check preserved; filter doesn't invalidate.
     expect(contains(cpp, "ANTS-1247-INV-6"),
            "INV-6 anchor comment present");
@@ -105,7 +105,7 @@ TEST(mcp_roadmap_status_filter, Inv6CacheInvariantPreserved) {
 
 TEST(mcp_roadmap_status_filter, Inv7FilterEcho) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1247-INV-7"),
            "INV-7 anchor comment present");
     expect(contains(cpp, "out[\"filter\"] = filter"),
@@ -133,7 +133,7 @@ TEST(mcp_roadmap_status_filter, Inv8McpInputSchema) {
 // echoes the accepted set on refusal.
 TEST(mcp_roadmap_status_filter, Ants3400GranularLifecycleFilters) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-3400"),
            "ANTS-3400 anchor comment present");
     expect(contains(cpp, "kAcceptedStatusFilters"),
@@ -164,7 +164,7 @@ TEST(mcp_roadmap_status_filter, Ants3400GranularLifecycleFilters) {
 // planned arm literal must appear at least twice.
 TEST(mcp_roadmap_status_filter, Ants3408GranularFiltersInBothBranches) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // Both the section= and full-file predicates must carry the planned arm.
     expect(countOccurrences(
                cpp, "QLatin1String(\"planned\")     && (s == plannedEmoji)") >= 2,
@@ -184,7 +184,7 @@ TEST(mcp_roadmap_status_filter, Ants3408GranularFiltersInBothBranches) {
 // max_body_bytes; list emission stays at the 2000 cap.
 TEST(mcp_roadmap_status_filter, Ants3402TargetedBodyCap) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "kRoadmapQueryBodyStoreCap"),
            "ANTS-3402: enlarged cache store cap present");
     expect(contains(cpp, "rcCapBodyFields"),
@@ -215,7 +215,7 @@ TEST(mcp_roadmap_status_filter, Inv9McpDispatchExtractsStatus) {
 
 TEST(mcp_roadmap_status_filter, Inv10CountPostFilter) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1247-INV-10"),
            "INV-10 anchor comment present");
     // ANTS-1436 — count is now post-PAGINATION (page.slice.size()),
@@ -231,7 +231,7 @@ TEST(mcp_roadmap_status_filter, Inv10CountPostFilter) {
 
 TEST(mcp_roadmap_status_filter, Inv11ErrorMessageHygiene) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1247-INV-11"),
            "INV-11 anchor comment present");
     expect(contains(cpp, "verbatim.truncate(64)"),

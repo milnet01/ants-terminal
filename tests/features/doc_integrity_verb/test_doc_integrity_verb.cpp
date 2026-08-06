@@ -17,9 +17,10 @@
 #include <QTemporaryDir>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
 #if !defined(ANTS_SOURCE_DIR) || !defined(SRC_MAINWINDOW_CPP_PATH) || \
-    !defined(SRC_REMOTECONTROL_CPP_PATH) || !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
+    !defined(ANTS_RC_SOURCES) || !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
 #error "doc_integrity_verb test needs the test_claude source-path compile defs"
 #endif
 
@@ -134,7 +135,7 @@ TEST(DocIntegrityVerb, WiringRegistered) {
     ASSERT_GE(cc, 0);
     EXPECT_TRUE(ci.mid(cc, 100).contains("C::Required"));
 
-    const QString rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     const int h = rc.indexOf("RemoteControl::cmdDocIntegrity");
     ASSERT_GE(h, 0);

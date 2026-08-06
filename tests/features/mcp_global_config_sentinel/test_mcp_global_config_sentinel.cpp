@@ -18,8 +18,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef ANTS_SOURCE_DIR
 #error "ANTS_SOURCE_DIR compile definition required"
@@ -41,7 +41,7 @@ TEST(McpGlobalConfigSentinel, WiringContract) {
 
     const std::string ciCpp =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpRemoteControl();
 
     const std::string rrHdrPath =
         std::string(ANTS_SOURCE_DIR) + "/src/resolvedroot.h";
@@ -62,7 +62,7 @@ TEST(McpGlobalConfigSentinel, WiringContract) {
     std::regex defRe(R"(QString\s+expandGlobalConfigSentinel\s*\()");
     expect(std::regex_search(rcCpp, defRe),
            "INV-2",
-           "src/remotecontrol.cpp missing expandGlobalConfigSentinel "
+           "remotecontrol TUs missing expandGlobalConfigSentinel "
            "definition");
 
     // INV-3 — both sentinel values recognised.

@@ -12,8 +12,8 @@
 #include <QTemporaryDir>
 #include "remotecontrol.h"
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -93,7 +93,7 @@ void setupProject(QTemporaryDir &dir, qint64 counter = 9100) {
 
 // INV-1 — dispatch wired.
 TEST(McpRoadmapLogAppendBatch, Inv1DispatchWired) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     EXPECT_NE(src.find("\"append_batch\""), std::string::npos);
     EXPECT_NE(src.find("cmdRoadmapLogAppendBatch("), std::string::npos);
 }
@@ -302,7 +302,7 @@ TEST(McpRoadmapLogAppendBatch, BadSectionShortCircuits) {
 
 // INV-10 — formatRoadmapBullet is shared between append and append_batch.
 TEST(McpRoadmapLogAppendBatch, Inv10FormatHelperShared) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     // Definition + at least 2 call sites total.
     const auto defPos =
         src.find("QString RemoteControl::formatRoadmapBullet(");

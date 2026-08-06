@@ -8,8 +8,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -29,7 +29,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — envelope carries the three composed-verb keys.
 TEST(session_orient_bundle, Inv1EnvelopeShape) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "cmdSessionOrient"),
            "INV-1: cmdSessionOrient symbol present");
     expect(contains(cpp, "\"current_state\"") &&
@@ -42,7 +42,7 @@ TEST(session_orient_bundle, Inv1EnvelopeShape) {
 // INV-2 — upstream roadmap_query uses mode:section_index + status:active.
 TEST(session_orient_bundle, Inv2SectionsIndexModeAndStatus) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const auto pos = cpp.find("cmdSessionOrient");
     if (pos == std::string::npos) {
         expect(false, "INV-2: cmdSessionOrient body not found");
@@ -108,7 +108,7 @@ TEST(session_orient_bundle, Inv5ToolsListDescribesBundle) {
 // INV-6 — top-level ok reflects all-three success.
 TEST(session_orient_bundle, Inv6PartialUpstreamFailure) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const auto pos = cpp.find("cmdSessionOrient");
     if (pos == std::string::npos) {
         expect(false, "INV-6: cmdSessionOrient body not found");
@@ -130,7 +130,7 @@ TEST(session_orient_bundle, Inv6PartialUpstreamFailure) {
 // no_roadmap_loaded / no_roadmap refusal as a notice rather than a failure.
 TEST(session_orient_bundle, Ants3587AbsentRoadmapKeepsOkAddsNotice) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const std::string body =
         ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
     expect(contains(body, "no_roadmap_loaded"),
@@ -167,7 +167,7 @@ TEST(session_orient_bundle, Inv7TokenCostBucketRegistered) {
 // session_orient dispatch-layer ETag stays stable across calls.
 TEST(session_orient_bundle, Inv8CodebaseIndexRefreshTrimmed) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const auto pos = cpp.find("cmdSessionOrient");
     if (pos == std::string::npos) {
         expect(false, "INV-8: cmdSessionOrient body not found");
@@ -192,7 +192,7 @@ TEST(session_orient_bundle, Inv8CodebaseIndexRefreshTrimmed) {
 // cmdCodebaseIndex. Deterministic digest → the dispatch-layer ETag stays stable.
 TEST(session_orient_bundle, Inv10CodebaseIndexLaneDigest) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const auto pos = cpp.find("cmdSessionOrient");
     if (pos == std::string::npos) {
         expect(false, "INV-10: cmdSessionOrient body not found");
@@ -213,7 +213,7 @@ TEST(session_orient_bundle, Inv10CodebaseIndexLaneDigest) {
 // only files whose delta is present (un-triaged input).
 TEST(session_orient_bundle, Inv9FeedbackPendingScan) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const auto pos = cpp.find("cmdSessionOrient");
     if (pos == std::string::npos) {
         expect(false, "INV-9: cmdSessionOrient body not found");
@@ -240,7 +240,7 @@ TEST(session_orient_bundle, Inv9FeedbackPendingScan) {
 // bundle.
 TEST(session_orient_bundle, Inv11ServerBuildStaleFlag) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const auto pos = cpp.find("cmdSessionOrient");
     if (pos == std::string::npos) {
         expect(false, "INV-11: cmdSessionOrient body not found");

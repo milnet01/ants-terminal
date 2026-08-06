@@ -11,7 +11,7 @@ tripping a full bullet payload.
 - **INV-1 / default mode is unchanged.** Default (no `mode` arg)
   and explicit `mode:"bullets"` produce envelopes with byte-identical
   shape modulo the `mode` echo (only present when caller passed
-  arg). Anchor: `ANTS-1437-INV-1` in `src/remotecontrol.cpp`.
+  arg). Anchor: `ANTS-1437-INV-1` in the remotecontrol TUs.
 - **INV-2 / unknown mode rejected with hygiene.** `mode:"foo"`
   returns `{ok:false, code:"bad_mode"}` with the 64-byte + control-
   char-`?` verbatim hygiene already used by `bad_status` /
@@ -112,7 +112,7 @@ tripping a full bullet payload.
 
 ## Test scope
 
-Source-scrape against `src/remotecontrol.cpp` and
+Source-scrape against the remotecontrol TUs and
 `src/claudeintegration.cpp` for anchor strings and critical helper
 calls. Mirrors ANTS-1398 / ANTS-1287 test pattern. INV-10 also
 exercises the pure `RoadmapIndex::rollupCounts` helper with a

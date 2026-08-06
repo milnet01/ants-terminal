@@ -17,6 +17,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QRegularExpression>
 #include <QString>
@@ -26,6 +27,19 @@
 #include <memory>
 
 namespace {
+
+// ANTS-3833 — the basenames of the eleven RemoteControl TUs, DERIVED from the
+// declared list rather than hard-coded, so a twelfth TU needs no edit here and
+// cannot be exempted by accident: a file absent from ANTS_RC_SOURCES is not on
+// this list however it is named.
+QStringList rcTranslationUnits() {
+    QStringList out;
+    const QStringList paths = QString::fromUtf8(ANTS_RC_SOURCES)
+                                  .split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    for (const QString &p : paths)
+        out.append(QFileInfo(p).fileName());
+    return out;
+}
 
 // A store plus the project root its render writes into.
 //
@@ -283,13 +297,22 @@ TEST(RoadmapItemBody, Inv2SingleGrammar) {
         << "the scrape matched nothing in the grammar itself — it is broken, "
            "not the tree";
 
-    // The two exempt sites in remotecontrol.cpp, which cannot be otherwise:
-    // both rxBoldLayman constructions capture the Layman sentence INCLUDING its
-    // trailing period (rec.layman is period-stripped by ANTS-1154 INV-4, and a
-    // period-less CHANGELOG body was the bug ANTS-1933 fixed), and rxCommitSha
-    // embeds `\bSource:` as a lead-in it skips past rather than a value it
-    // extracts.
-    EXPECT_EQ(hitsPerFile.value(QStringLiteral("remotecontrol.cpp")), 3);
+    // The exempt sites in the RemoteControl implementation, which cannot be
+    // otherwise: both rxBoldLayman constructions capture the Layman sentence
+    // INCLUDING its trailing period (rec.layman is period-stripped by
+    // ANTS-1154 INV-4, and a period-less CHANGELOG body was the bug ANTS-1933
+    // fixed), and rxCommitSha embeds `\bSource:` as a lead-in it skips past
+    // rather than a value it extracts.
+    //
+    // ANTS-3833 — counted across the ELEVEN TUs rather than against one
+    // filename. The split moved these three bodies to sibling TUs without
+    // touching a byte of them, and a per-file exemption reads that as three new
+    // offenders. The number is what this asserts; which TU holds each site is
+    // the thing the split is free to change.
+    int rcHits = 0;
+    for (const QString &tu : rcTranslationUnits())
+        rcHits += hitsPerFile.value(tu);
+    EXPECT_EQ(rcHits, 3);
 
     // The site this spec REMOVES. Asserting zero here rather than treating the
     // inventory as the allowlist is the whole point: an allowlist that included
@@ -301,7 +324,7 @@ TEST(RoadmapItemBody, Inv2SingleGrammar) {
     QStringList offenders;
     for (auto it = hitsPerFile.constBegin(); it != hitsPerFile.constEnd(); ++it) {
         if (it.key() == QStringLiteral("roadmapparse.cpp")
-            || it.key() == QStringLiteral("remotecontrol.cpp"))
+            || rcTranslationUnits().contains(it.key()))
             continue;
         if (it.value() > 0)
             offenders.append(it.key() + QStringLiteral(" (") + QString::number(it.value())

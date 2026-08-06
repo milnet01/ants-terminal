@@ -357,7 +357,7 @@ TEST(roadmap_log_flip_batch, Inv8DryRunWritesNothing) {
 // INV (source) — dispatch routes flip_batch + schema advertises it.
 TEST(roadmap_log_flip_batch, SourceSurface) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     expect(contains(rc, "cmdRoadmapLogFlipBatch(req)"),

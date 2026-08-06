@@ -14,7 +14,7 @@ The end-to-end MCP wiring for `mcp__ants__plan_template`:
   RemoteControl).
 - **REG-3** — `cmdPlanTemplate` is declared in `src/remotecontrol.h`.
 - **REG-4** — `RemoteControl::cmdPlanTemplate` is defined in
-  `src/remotecontrol.cpp`.
+  the remotecontrol TUs.
 - **REG-5** — region-scoped check: the `// ANTS-1290` registration
   block in `claudeintegration.cpp` declares
   `additionalProperties: false`.

@@ -6,8 +6,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
@@ -49,7 +49,7 @@ TEST(RoadmapSectionCacheLru, LruMemberDeclared) {
 // less meaningful (the original 200 covered three clears; we now
 // have four siblings sitting together).
 TEST(RoadmapSectionCacheLru, StaleWipeClearsAllThree) {
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty());
     const auto idxPos = cpp.find("m_roadmapIndex.clear();");
     ASSERT_NE(idxPos, std::string::npos)
@@ -70,7 +70,7 @@ TEST(RoadmapSectionCacheLru, StaleWipeClearsAllThree) {
 // between the contains() check and the MRU bump; window widened
 // to 500 chars to accommodate it.
 TEST(RoadmapSectionCacheLru, HitPathBumpsToMru) {
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty());
     const auto hitPos = cpp.find(
         "m_roadmapSectionCache.contains(sec->slug)");
@@ -87,7 +87,7 @@ TEST(RoadmapSectionCacheLru, HitPathBumpsToMru) {
 // Insert-path eviction: after the insert, push slug to MRU and
 // evict tail while over cap.
 TEST(RoadmapSectionCacheLru, InsertPathEvictsTail) {
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty());
     const auto insPos = cpp.find(
         "m_roadmapSectionCache.insert(sec->slug, sectionBullets)");

@@ -29,8 +29,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -361,7 +361,7 @@ TEST(McpLastAuditSummary, Inv2CacheMembersDeclared) {
 
 TEST(McpLastAuditSummary, Inv8FloorValidatedBeforeDiskScan) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     // Within cmdLastAuditSummary, the bad_severity_floor return must
     // come BEFORE the .audit_cache directory scan.
     const auto fnPos = rcc.find("cmdLastAuditSummary(const QJsonObject");
@@ -410,7 +410,7 @@ TEST(McpLastAuditSummary, Ants1459CppcheckXmlParsesCounts) {
 // (defaulting to "sarif" when blank for back-compat).
 TEST(McpLastAuditSummary, Ants1459SourceFormatInEnvelope) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     expect(rc.find("ok[\"source_format\"]") != std::string::npos,
            "LAS-3",
            "buildLasEnvelope must emit a source_format field");
@@ -427,7 +427,7 @@ TEST(McpLastAuditSummary, Ants1459SourceFormatInEnvelope) {
 // returns empty on an empty canonical root.
 TEST(McpLastAuditSummary, Ants1459FindRoadmapUnderWidens) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     expect(rc.find("findRoadmapUnder") != std::string::npos,
            "RQ-3",
            "remotecontrol.cpp must declare findRoadmapUnder helper");
@@ -578,7 +578,7 @@ TEST(Ants1576, ReaderFallbackWired) {
     // two branchSource literals.
     // Window grown to 12 KiB after ANTS-1625 added the pickForeign
     // lambda + pick_basis emission (~25 extra lines in the handler).
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     const auto fnPos = rcc.find("cmdLastAuditSummary(const QJsonObject");
     if (fnPos == std::string::npos) FAIL();
     const std::string body = rcc.substr(fnPos, 12000);
@@ -599,7 +599,7 @@ TEST(Ants1576, ReaderFallbackBeforeCacheStore) {
     // to m_auditSummaryCache, so cache hits inherit the populated
     // data for free. 12 KiB window covers the cache-miss block in
     // cmdLastAuditSummary (~250 lines).
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     const auto fnPos = rcc.find("cmdLastAuditSummary(const QJsonObject");
     if (fnPos == std::string::npos) FAIL();
     const std::string body = rcc.substr(fnPos, 12000);
@@ -704,7 +704,7 @@ TEST(Ants1576, NullOrOmitRunAtAndHtmlPath) {
     // INV-11 — buildLasEnvelope guards on isEmpty() before emitting
     // run_at + html_path. Source-grep tripwire (the source-level
     // guard is the regression contract).
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(rcc.find("if (!s.runAtIso.isEmpty())") != std::string::npos,
            "INV-11",
            "buildLasEnvelope must guard run_at emission with !isEmpty()");
@@ -719,7 +719,7 @@ TEST(Ants1576, ScopeClassifierWiredInHandler) {
     // Defensive: ensure the handler actually emits "scope" and
     // "narrow_run_warning" — guards against a future revert that
     // adds the helper but forgets the call site.
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(rcc.find("classifyAuditScope(") != std::string::npos,
            "INV-8/9/10",
            "cmdLastAuditSummary must call classifyAuditScope");
@@ -739,7 +739,7 @@ TEST(Ants3512, RequestedScopeFromSidecarWiredInHandler) {
     // distinct-file heuristic, so a full-tree sweep that surfaces findings
     // in one file isn't mislabelled a single_file rerun. Source-grep
     // tripwire (matches the ScopeClassifierWiredInHandler pattern above).
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(rcc.find("env[\"requested_scope\"]") != std::string::npos,
            "ANTS-3512 INV-1",
            "handler must emit requested_scope from the findings sidecar");
@@ -765,7 +765,7 @@ TEST(Ants3517, ChangesetScopesSuppressNarrowWarning) {
     // tripwire (matches the Ants3512 handler-wiring pattern above); these
     // tokens did not exist in remotecontrol.cpp before the fix, so a revert to
     // the full-only form fails this test.
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(rcc.find("startsWith(QLatin1String(\"since-tag:\"))") != std::string::npos,
            "ANTS-3517",
            "confirmedBroad gate must recognise since-tag: scopes");
@@ -794,7 +794,7 @@ TEST(Ants1576, RuleIdsFilterBehavioural) {
     }
     EXPECT_EQ(1, kept);
     // Source-grep that the live handler still echoes rule_ids_filter.
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(rcc.find("\"rule_ids_filter\"") != std::string::npos,
            "INV-12",
            "envelope must echo rule_ids_filter when filter is active");
@@ -812,7 +812,7 @@ TEST(McpLastAuditSummary, Inv5And6WiringRegistered) {
                std::string::npos,
            "INV-5",
            "mainwindow.cpp missing registerToolProvider(\"last_audit_summary\", …)");
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(rcc.find("QDir::Name | QDir::Reversed") != std::string::npos,
            "INV-6",
            "cmdLastAuditSummary must scan with QDir::Name | QDir::Reversed "
@@ -914,7 +914,7 @@ void writeFile(const QDir &dir, const QString &name,
 TEST(Ants1625, HelperDeclaredInRemoteControl) {
     expect_reset();
     // INV-1 — pickForeignReport exists in remotecontrol.cpp.
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(rcc.find("pickForeignReport") != std::string::npos,
            "INV-1",
            "remotecontrol.cpp must declare pickForeignReport helper");
@@ -928,7 +928,7 @@ TEST(Ants1625, HelperDeclaredInRemoteControl) {
 TEST(Ants1625, PickBasisWiredInHandler) {
     expect_reset();
     // INV-2 — `pick_basis` envelope wiring.
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(rcc.find("env[\"pick_basis\"]") != std::string::npos,
            "INV-2",
            "cmdLastAuditSummary must emit env[\"pick_basis\"]");
@@ -940,7 +940,7 @@ TEST(Ants1625, NarrowSuffixLiteralsConsistent) {
     // INV-8 — narrow-suffix set mirrors ANTS-1576's classifyAuditScope:
     // both helpers in remotecontrol.cpp must agree on `-postfix`,
     // `-single`, `-narrow`. Source-grep tripwire prevents drift.
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     auto countOf = [&](const char *needle) {
         size_t n = 0, pos = 0;
         while ((pos = rcc.find(needle, pos)) != std::string::npos) {
@@ -1025,7 +1025,7 @@ TEST(Ants1625, SarifPathUnchanged) {
     // the audit-*.sarif glob and lex-max-reversed ordering, and sets
     // pickBasis directly.
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     // Locate the cmdLastAuditSummary handler and assert the SARIF branch
     // is still a direct entryList call, not pickForeignReport.
     const auto handlerStart = rcc.find("cmdLastAuditSummary(");
@@ -1053,7 +1053,7 @@ TEST(Ants1625, SarifPathUnchanged) {
 // behavioural path needs a live window + git repo, as with pick_basis).
 TEST(Ants2056, StalenessSignalWiredInHandler) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     const auto handlerStart = rcc.find("cmdLastAuditSummary(");
     ASSERT_NE(handlerStart, std::string::npos);
     expect(rcc.find("env[\"stale\"]") != std::string::npos,

@@ -8,8 +8,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -38,7 +38,7 @@ size_t countOccurrences(const std::string &hay, const std::string &needle) {
 // INV-1 — mode allow-set extended to three values.
 TEST(roadmap_query_headline_only, Inv1ModeAcceptedAndRejected) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "mode != QLatin1String(\"bullets\")") ||
            contains(cpp, "mode != QLatin1String(\"headline_only\")"),
            "INV-1: mode allow-set guard present in cmdRoadmapQuery");
@@ -54,7 +54,7 @@ TEST(roadmap_query_headline_only, Inv1ModeAcceptedAndRejected) {
 // INV-2 — exactly four keys per projected bullet.
 TEST(roadmap_query_headline_only, Inv2KeySetExactlyFour) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The projection helper must explicitly write the four key set
     // and only the four key set; the easiest anchor is a named
     // helper whose body contains all four fields.
@@ -68,7 +68,7 @@ TEST(roadmap_query_headline_only, Inv2KeySetExactlyFour) {
 // INV-2 — rollup case (empty id + empty headline_oneline).
 TEST(roadmap_query_headline_only, Inv2RollupEmpty) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The projection helper reads bullets from the cache where
     // `id` is empty for rollups; the projection preserves that
     // empty value rather than skipping the bullet. (The drop is
@@ -83,7 +83,7 @@ TEST(roadmap_query_headline_only, Inv2RollupEmpty) {
 // INV-2 — narrator case (non-empty headline_oneline).
 TEST(roadmap_query_headline_only, Inv2NarratorHeadlineNonEmpty) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The projection reads `headline_oneline` from the cached
     // object; narrator bullets have non-empty `headline` →
     // rcHeadlineOneline yields non-empty headline_oneline. The
@@ -103,7 +103,7 @@ TEST(roadmap_query_headline_only, Inv2NarratorHeadlineNonEmpty) {
 // branch.
 TEST(roadmap_query_headline_only, Inv2FieldsDoesNotNarrowBullets) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The mode allow-set check happens BEFORE any fields= handling,
     // so the projection is mode-driven not fields-driven. Anchor:
     // mode validation precedes the bullet emit loops.
@@ -116,7 +116,7 @@ TEST(roadmap_query_headline_only, Inv2FieldsDoesNotNarrowBullets) {
 // INV-3 — combinator equivalence: same iteration order as bullets-mode.
 TEST(roadmap_query_headline_only, Inv3CombinatorIdParity) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The headline_only emit path must iterate m_roadmapCacheBullets
     // (the same array bullets-mode walks), so the positional id
     // parity is grounded in the shared cache.
@@ -159,7 +159,7 @@ TEST(roadmap_query_headline_only, Inv4CrossModeNoShortCircuit) {
 // INV-5 — combinator coverage at BOTH emission surfaces.
 TEST(roadmap_query_headline_only, Inv5CombinatorCoverageSourceGrep) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // Every arg cmdRoadmapQuery validates today has its handling
     // in the bullets-mode / id-branch paths; the projection
     // applies at the emit points, so passing existing combinator
@@ -174,7 +174,7 @@ TEST(roadmap_query_headline_only, Inv5CombinatorCoverageSourceGrep) {
 // INV-5 — id selector projects too (NOT bullets-mode-only).
 TEST(roadmap_query_headline_only, Inv5IdSelectorProjected) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The id-branch (matches.append) builds its own envelope; the
     // projection must be applied to that matches array too.
     // Anchor: a helper invocation on `matches` inside the
@@ -204,7 +204,7 @@ TEST(roadmap_query_headline_only, Inv5IdSelectorProjected) {
 // INV-6 — pagination on the projected set.
 TEST(roadmap_query_headline_only, Inv6PaginationOnProjectedSet) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The PaginationEngine call site must operate on the same
     // `filtered` array that the projection produces. The existing
     // bullets-mode pagination already does this (one call site per
@@ -247,7 +247,7 @@ TEST(roadmap_query_headline_only, Inv7ToolsListEnumerates) {
 // INV-8 — duplicate_ids[] retained (mode-agnostic top-level diagnostic).
 TEST(roadmap_query_headline_only, Inv8DuplicateIdsParity) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // duplicate_ids emission in the bullets path (full-file +
     // section + id-branch) is shared across modes — the cache is
     // m_roadmapCacheDuplicateIds and the gate is non-emptiness.

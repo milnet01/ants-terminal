@@ -162,7 +162,7 @@ TEST(DocCitationsVerb, Inv19RegisteredAtSevenSites) {
     expect_reset();
     const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
     const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const QString rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(mw.isEmpty());
     ASSERT_FALSE(ci.isEmpty());
     ASSERT_FALSE(rc.isEmpty());

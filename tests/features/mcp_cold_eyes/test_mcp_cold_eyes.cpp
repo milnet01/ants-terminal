@@ -9,8 +9,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
@@ -115,7 +115,7 @@ TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
 
 // REG-3
 TEST(McpColdEyes, CmdColdEyesExtractsAllArgs) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("req.value(QStringLiteral(\"scope\")).toString()"),
               std::string::npos)
@@ -136,7 +136,7 @@ TEST(McpColdEyes, CmdColdEyesExtractsAllArgs) {
 
 // REG-4
 TEST(McpColdEyes, BadScopeErrorCodePresent) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("\"bad_scope\""), std::string::npos)
         << "bad_scope error code not emitted on unknown scope arg";
@@ -144,7 +144,7 @@ TEST(McpColdEyes, BadScopeErrorCodePresent) {
 
 // REG-5
 TEST(McpColdEyes, EchoHygieneMatchesInv11) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     // ANTS-1319 cold-eyes section uses a shared helper `ceSanitiseEcho`
     // that internally applies `verbatim.truncate(64)` + `< 0x20` substitution.
@@ -205,7 +205,7 @@ TEST(McpColdEyes, ProviderLambdasForwardArgs) {
 // near-empty; surfacing both workarounds inline prevents the
 // "give up and skip the verb" pattern observed in cross-session reports.
 TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     // ANTS-3567 added a second sparse_partition_hint in cmdIndieReviewPartition
     // (earlier in the file), so scope the lookup to cmdColdEyesPartition's body
@@ -232,7 +232,7 @@ TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
 
 // REG-8
 TEST(McpColdEyes, FoldInUsesRoadmapFoldInAllocateAndInsert) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     // Find the cmdColdEyesFoldIn body and assert both calls appear
     // within it.
@@ -284,7 +284,7 @@ TEST(McpColdEyes, Ants1634PriorLoopFixesSchemaDeclared) {
 // only — the wiring's behavioural correctness is covered by the
 // engine tests under `cold_eyes_engine`.
 TEST(McpColdEyes, Ants1634PriorLoopFixesExtractedInHandler) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdColdEyesBrief");

@@ -109,4 +109,4 @@ so it lives only here (no `docs/specs/ANTS-1691.md`).
 `QTemporaryDir` holds a synthetic `ROADMAP.md` per test; the test calls
 `cmdRoadmapLogBundleRowForTest(req)` directly, asserts the envelope and
 the resulting file bytes. Source-grep tests check dispatch + atomic-write
-wiring against `src/remotecontrol.cpp`.
+wiring against the remotecontrol TUs.

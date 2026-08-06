@@ -15,7 +15,7 @@ bool has(const std::string &h, const char *n) {
 }  // namespace
 
 TEST(WorkspaceSearchPhraseHint, Inv1ZeroMatchPhraseHint) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     ASSERT_FALSE(src.empty());
     // The hint fires only on an empty result set with a whitespace query.
     EXPECT_TRUE(has(src, "matches.isEmpty() && pattern.trimmed().contains"))
@@ -32,7 +32,7 @@ TEST(WorkspaceSearchPhraseHint, Inv1ZeroMatchPhraseHint) {
 // builder is GUI-bound, so the contract is pinned structurally (mirrors the
 // ANTS-2045 phrase-hint scrape above).
 TEST(WorkspaceSearchPhraseHint, Ants2181RegexShortBareTermAdvisory) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     ASSERT_FALSE(src.empty());
     // The detector helper exists.
     EXPECT_TRUE(has(src, "rcShortBareAltTerms"))
@@ -53,7 +53,7 @@ TEST(WorkspaceSearchPhraseHint, Ants2181RegexShortBareTermAdvisory) {
 // returns zero matches gets a "did you mean regex:true?" hint. Source-scrape
 // (envelope builder is GUI-bound), mirroring the ANTS-2045 scrape above.
 TEST(WorkspaceSearchPhraseHint, Ants3466MetacharRegexFalseHint) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     ASSERT_FALSE(src.empty());
     // The high-precision metachar detector helper exists.
     EXPECT_TRUE(has(src, "rcLooksLikeRegexButLiteral"))

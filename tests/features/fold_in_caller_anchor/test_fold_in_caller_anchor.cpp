@@ -41,7 +41,7 @@ std::string handlerBody(const std::string &rc, const char *fn) {
 
 // INV-1 / INV-2 — cold_eyes_fold_in anchors root to caller_cwd, not focused.
 TEST(FoldInCallerAnchor, ColdEyesAnchorsToCallerCwd) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const std::string body = handlerBody(rc, "cmdColdEyesFoldIn");
     ASSERT_FALSE(body.empty()) << "could not locate cmdColdEyesFoldIn body";
@@ -61,7 +61,7 @@ TEST(FoldInCallerAnchor, ColdEyesAnchorsToCallerCwd) {
 
 // INV-1 / INV-2 / INV-3 — same contract for indie_review_fold_in.
 TEST(FoldInCallerAnchor, IndieReviewAnchorsToCallerCwd) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const std::string body = handlerBody(rc, "cmdIndieReviewFoldIn");
     ASSERT_FALSE(body.empty()) << "could not locate cmdIndieReviewFoldIn body";

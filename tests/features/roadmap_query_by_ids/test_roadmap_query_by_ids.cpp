@@ -11,8 +11,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -39,7 +39,7 @@ size_t at(const std::string &hay, const std::string &needle) {
 // INV-1 — ids read from req as a JSON array with per-element hygiene.
 TEST(roadmap_query_by_ids, Inv1IdsReadAndHygiene) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1726"),
            "INV-1: ANTS-1726 anchor present in cmdRoadmapQuery");
     expect(contains(cpp, "req.value(QStringLiteral(\"ids\"))"),
@@ -53,7 +53,7 @@ TEST(roadmap_query_by_ids, Inv1IdsReadAndHygiene) {
 // ids fetch bypasses both, returning bullets in document order.
 TEST(roadmap_query_by_ids, Inv2BypassesStatusAndPagination) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const size_t idsBranch    = at(cpp, "if (!idsArg.isEmpty())");
     const size_t statusFilter = at(cpp, "ANTS-1247-INV-2/3");
     expect(idsBranch != std::string::npos,
@@ -71,7 +71,7 @@ TEST(roadmap_query_by_ids, Inv2BypassesStatusAndPagination) {
 // can spot unknown / stale ids without diffing.
 TEST(roadmap_query_by_ids, Inv3MatchedAndMissingAccounting) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "out[\"matched_ids\"]"),
            "INV-3: matched_ids emitted in ids branch");
     expect(contains(cpp, "out[\"missing_ids\"]"),
@@ -82,7 +82,7 @@ TEST(roadmap_query_by_ids, Inv3MatchedAndMissingAccounting) {
 // INV-4 — ids + id, ids + section, ids + section_index all rejected.
 TEST(roadmap_query_by_ids, Inv4CombosRejected) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp,
                     "ids selector does not combine with id"),
            "INV-4: ids + id → bad_mode_combo");
@@ -100,7 +100,7 @@ TEST(roadmap_query_by_ids, Inv4CombosRejected) {
 // explicit include_body:false.
 TEST(roadmap_query_by_ids, Inv5BodyDefaultOn) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // Same lambda phrasing as singular id branch (ANTS-1856 INV-6);
     // grep is shape-tolerant.
     expect(contains(cpp,
@@ -139,7 +139,7 @@ TEST(roadmap_query_by_ids, Inv7DispatchForwardsIds) {
 // INV-10 — input list capped at 100 elements; oversize → bad_args.
 TEST(roadmap_query_by_ids, Inv10ArrayCap) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ids array must contain at most 100"),
            "INV-10: oversize ids array refuses bad_args");
     EXPECT_EQ(0, expect_failures());
@@ -151,7 +151,7 @@ TEST(roadmap_query_by_ids, Inv10ArrayCap) {
 // coercion branch + the [,\s]+ split in cmdRoadmapQuery.
 TEST(roadmap_query_by_ids, Inv11StringIdsCoerced) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-3541"),
            "INV-11: ANTS-3541 anchor present in cmdRoadmapQuery");
     expect(contains(cpp, "idsVal.isString()"),
@@ -169,7 +169,7 @@ TEST(roadmap_query_by_ids, Inv11StringIdsCoerced) {
 // absent fall-through (INV-1).
 TEST(roadmap_query_by_ids, Inv12PresentButInvalidRefuses) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "got a non-string scalar"),
            "INV-12: non-array/non-string ids refuses bad_args");
     expect(contains(cpp, "ids contained no valid id after hygiene"),

@@ -25,7 +25,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — default budget constant raised from 2000 to 5000.
 TEST(mcp_workspace_search_timeout_sec, Inv1DefaultBudgetIs5s) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     std::regex defaultRe(
         R"(constexpr\s+int\s+kWorkspaceSearchHardKillMs\s*=\s*5000\b)");
     expect(std::regex_search(rc, defaultRe),
@@ -38,7 +38,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv1DefaultBudgetIs5s) {
 // parses `timeout_sec` against them.
 TEST(mcp_workspace_search_timeout_sec, Inv2TimeoutSecClampConstants) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     expect(contains(rc, "kWorkspaceSearchMinBudgetMs"),
            "INV-2a: kWorkspaceSearchMinBudgetMs constant is missing");
     expect(contains(rc, "kWorkspaceSearchMaxBudgetMs"),
@@ -66,7 +66,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv2TimeoutSecClampConstants) {
 // and references the effective budget (not the hard-coded 2 s string).
 TEST(mcp_workspace_search_timeout_sec, Inv3HardKillEnvelopeHasHint) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     // The hint is appended on the hard-kill path. Two literals must
     // co-occur in the body — the hint key and the fallback advice.
     expect(contains(rc, "\"hint\""),
@@ -85,7 +85,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv3HardKillEnvelopeHasHint) {
 // timeout_sec value.
 TEST(mcp_workspace_search_timeout_sec, Inv4ResponseEchoesTimeoutSec) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     // ok:true path: out["timeout_sec"] = budgetSec;
     expect(contains(rc, "out[\"timeout_sec\"]"),
            "INV-4a: ok:true envelope does not set out[\"timeout_sec\"] "

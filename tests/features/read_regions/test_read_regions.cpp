@@ -18,8 +18,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -191,7 +191,7 @@ TEST(ReadRegions, SharedBudgetTruncates) {
 // RR-6 — wiring contract (handler + schema + provider).
 TEST(ReadRegions, WiringContract) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
@@ -213,7 +213,7 @@ TEST(ReadRegions, WiringContract) {
 // so dropping the fallback fails here.
 TEST(ReadRegions, ItemsKeyAliases) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const auto p = rc.find("RemoteControl::cmdReadRegions");
     ASSERT_NE(p, std::string::npos);
     const std::string body = rc.substr(p, 1500);
@@ -297,7 +297,7 @@ TEST(ReadRegions, TopLevelPathWiring) {
     expect_reset();
     const std::string ci =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const auto p = ci.find("rrsTool[\"name\"] = \"read_regions\"");
     ASSERT_NE(p, std::string::npos);
     const auto end = ci.find("tools.append(rrsTool)", p);

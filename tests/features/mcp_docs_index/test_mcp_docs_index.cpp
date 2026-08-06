@@ -295,7 +295,7 @@ TEST(DocsIndex, WiringRegistered) {
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
     const std::string mw = ants_test::slurpFile(srcPath("src/mainwindow.cpp"));
     const std::string mp = ants_test::slurpFile(srcPath("src/mcpprojection.cpp"));
-    const std::string rc = ants_test::slurpFile(srcPath("src/remotecontrol.cpp"));
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string di = ants_test::slurpFile(srcPath("src/docsindex.cpp"));
 
     // caller_cwd Required (INV-9).

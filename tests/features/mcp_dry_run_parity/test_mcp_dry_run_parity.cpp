@@ -98,7 +98,7 @@ TEST(McpDryRunParity, FalseposDryRunValidationStillFires) {
 
 // INV-4 — per-handler dry_run gates (source-scrape).
 TEST(McpDryRunParity, HandlerGatesWired) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
 
     // apply_edits — reads dry_run and has a would-write branch before QSaveFile.

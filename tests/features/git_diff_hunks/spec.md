@@ -42,7 +42,7 @@ by this pure parser (reuse-over-rewrite).
 
 ## MCP layer (not asserted here — behavioural, manual)
 
-`runDiffOp` (src/remotecontrol.cpp) maps the parsed structs to the
+`runDiffOp` (the remotecontrol TUs) maps the parsed structs to the
 `op:diff` envelope when `hunks=true`:
 `{files:[{path, hunks:[{header, old_start, old_count, new_start,
 new_count, lines?}]}], totals:{files}}`, with `lines` present only when

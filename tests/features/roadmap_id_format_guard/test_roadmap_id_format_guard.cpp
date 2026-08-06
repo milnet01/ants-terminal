@@ -31,8 +31,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -202,7 +202,7 @@ TEST(roadmap_id_format_guard, Inv7DigitLedLetterContainingFlips) {
 // canonical regexes (a shape-only, non-letter-lead divergence).
 TEST(roadmap_id_format_guard, Inv1ClassifierPresent) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "rcIsNonconformingIdToken"),
            "INV-1: classifier helper defined");
     expect(contains(cpp, "^[A-Za-z0-9][A-Za-z0-9_-]*-"),
@@ -217,7 +217,7 @@ TEST(roadmap_id_format_guard, Inv1ClassifierPresent) {
 // bad_id_format (no behavioural seam; source-anchored).
 TEST(roadmap_id_format_guard, Inv6ReadPathBranchesGuarded) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "\"bad_id_format\""),
            "INV-6: bad_id_format code emitted");
     expect(contains(cpp, "rcIsNonconformingIdToken(idArg)"),

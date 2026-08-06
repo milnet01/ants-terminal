@@ -93,7 +93,7 @@ TEST(gfm_adapter_bold_id_multitoken, Inv5NoSeparatorFallsBack) {
 // INV-6 — envelope emission anchors present in remotecontrol.cpp.
 TEST(gfm_adapter_bold_id_multitoken, Inv6EnvelopeEmitsBoldId) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // All three envelope emission sites carry the bold_id field
     // when set. Count occurrences as a proxy — should be ≥ 3
     // (full-file, section-mode, section_index lazy-fill, plus the

@@ -14,8 +14,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -47,7 +47,7 @@ TEST(McpLastAuditSummarySinceCommit, WiringContract) {
 
     const std::string ciCpp =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string lasBody = lasSummaryBody(rcCpp);
 
     // Use a single large window so the schema-builder block and

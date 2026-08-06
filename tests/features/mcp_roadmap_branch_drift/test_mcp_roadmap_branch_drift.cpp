@@ -24,8 +24,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
@@ -122,7 +122,7 @@ TEST(mcp_roadmap_branch_drift, Inv2EtagAllowlisted) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv3RegexAnchored) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     expect(contains(rcc, "// ANTS-1583 — anchored SHA detector"),
         "INV-3: regex literal must carry the ANTS-1583 anchor comment");
     expect(contains(rcc, "(?=[0-9a-f]*[a-f])"),
@@ -135,7 +135,7 @@ TEST(mcp_roadmap_branch_drift, Inv3RegexAnchored) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv6MaxDriftClamp) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     // Anchor on the function definition; the brace-balanced extractor
     // (ANTS-1474) captures the whole ~160-line body regardless of size,
     // so there's no magic byte-window to outgrow.
@@ -157,7 +157,7 @@ TEST(mcp_roadmap_branch_drift, Inv6MaxDriftClamp) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv8NoBranchContains) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     // Anchor on the function definition. The "no --contains" guard is
     // about the executable code; comments referencing the anti-pattern
     // are intentional and don't violate the invariant. So we test the
@@ -185,7 +185,7 @@ TEST(mcp_roadmap_branch_drift, Inv8NoBranchContains) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv9CountFieldsInteger) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     const std::string body = ants_test::slurpFunctionBody(
         rcc, "RemoteControl::cmdRoadmapBranchDrift");
     ASSERT_FALSE(body.empty())
@@ -207,7 +207,7 @@ TEST(mcp_roadmap_branch_drift, Inv9CountFieldsInteger) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv10ReusesCollectGitSnapshot) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     const auto fnPos = rcc.find("cmdRoadmapBranchDrift");
     ASSERT_NE(fnPos, std::string::npos);
     const std::string body = rcc.substr(fnPos, 6000);
@@ -236,7 +236,7 @@ TEST(mcp_roadmap_branch_drift, Inv11ErrorCodeTaxonomy) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv12MisBranchedSurface) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     const std::string body = ants_test::slurpFunctionBody(
         rcc, "RemoteControl::cmdRoadmapBranchDrift");
     ASSERT_FALSE(body.empty())
@@ -464,7 +464,7 @@ TEST(mcp_roadmap_branch_drift, Inv4ReachabilityRuntime) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, Inv14LegacyNoIdEnumerated) {
     expect_reset();
-    const std::string rcc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcc = ants_test::slurpRemoteControl();
     const std::string body = ants_test::slurpFunctionBody(
         rcc, "RemoteControl::cmdRoadmapBranchDrift");
     ASSERT_FALSE(body.empty())

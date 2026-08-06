@@ -16,8 +16,8 @@
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -51,7 +51,7 @@ TEST(McpSpecQuery, WiringContract) {
     expect_reset();
 
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
-    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
 
@@ -66,7 +66,7 @@ TEST(McpSpecQuery, WiringContract) {
             "QJsonDocument RemoteControl::cmdSpecQuery(");
     expect(!body.empty(),
            "INV-2a",
-           "cmdSpecQuery body missing from src/remotecontrol.cpp");
+           "cmdSpecQuery body missing from the remotecontrol TUs");
     // The anchor lives in the section banner above the function;
     // grep over the whole file rather than just the body.
     expect(contains(rcCpp, "ANTS-1309"),

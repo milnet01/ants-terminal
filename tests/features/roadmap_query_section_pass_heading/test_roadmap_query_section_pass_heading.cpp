@@ -17,8 +17,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_RC_CPP
-#error "SRC_RC_CPP compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -105,7 +105,7 @@ TEST(RoadmapQuerySectionPassHeading, WholeFileFilterRecovers) {
 // filters by sec->slug on an empty slice, before the shape classification.
 TEST(RoadmapQuerySectionPassHeading, FallbackWired) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string rc = ants_test::slurpRemoteControl();
     expect(contains(rc, "ANTS-2225"),
            "INV-4a", "remotecontrol.cpp missing the ANTS-2225 marker");
     expect(contains(rc, "RoadmapDialog::parseBullets(markdown)"),

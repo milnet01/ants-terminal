@@ -38,7 +38,7 @@ int count(const std::string &hay, const std::string &needle) {
 // INV-1 — helper exists and skips empty-id entries.
 TEST(roadmap_query_duplicate_ids, Inv1HelperComputesOccurrences) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "rcComputeDuplicateIds"),
            "INV-1: rcComputeDuplicateIds helper present");
     expect(contains(cpp, "occurrences"),
@@ -52,7 +52,7 @@ TEST(roadmap_query_duplicate_ids, Inv1HelperComputesOccurrences) {
 // assign m_roadmapCacheBullets; each must call the detector.
 TEST(roadmap_query_duplicate_ids, Inv2RecomputeOnCacheFill) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The recompute callsite signature is the helper invocation
     // immediately under each `m_roadmapCacheBullets = arr;` assignment.
     // ANTS-2067 — normalise whitespace so the single needle matches at
@@ -74,7 +74,7 @@ TEST(roadmap_query_duplicate_ids, Inv2RecomputeOnCacheFill) {
 // other cache members.
 TEST(roadmap_query_duplicate_ids, Inv3CacheWipeClearsDescriptors) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "m_roadmapCacheDuplicateIds = QJsonArray();"),
            "INV-3: stale-cache wipe also clears the duplicate-id "
            "cache");
@@ -85,7 +85,7 @@ TEST(roadmap_query_duplicate_ids, Inv3CacheWipeClearsDescriptors) {
 // reachable from all three response-assembly paths.
 TEST(roadmap_query_duplicate_ids, Inv45EmissionGatedAndThreePaths) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The emission idiom appears once per response shape (section_
     // index, section, full-file). Each writes the cached array under
     // the `duplicate_ids` key when non-empty.
@@ -136,7 +136,7 @@ TEST(roadmap_query_duplicate_ids, Inv7CanonicalIdPredicate) {
 // size budget.
 TEST(roadmap_query_duplicate_ids, Inv8DetectorFiltersAndCaps) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "RoadmapIndex::isCanonicalId"),
            "INV-8: rcComputeDuplicateIds keys on the canonical-ID "
            "predicate so anchors/hashes don't masquerade as IDs");

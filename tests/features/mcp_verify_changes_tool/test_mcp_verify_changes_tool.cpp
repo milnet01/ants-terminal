@@ -16,8 +16,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -53,7 +53,7 @@ TEST(McpVerifyChangesTool, CmdMethodDeclaredInHeader) {
 
 // REG-4
 TEST(McpVerifyChangesTool, CmdMethodDefinedInCpp) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("RemoteControl::cmdVerifyChanges"), std::string::npos)
         << "RemoteControl::cmdVerifyChanges definition missing from "

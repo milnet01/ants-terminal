@@ -152,7 +152,7 @@ TEST(ReadRegionCallSequence, CommentAndTypeCtorSuppressed) {
 // INV-3 — wiring: cmdReadRegion threads call_sequence into Options and the
 // schema advertises it.
 TEST(ReadRegionCallSequence, Wiring) {
-    const std::string rc = ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/remotecontrol.cpp");
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci = ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/claudeintegration.cpp");
     EXPECT_TRUE(has(rc, "call_sequence"));
     EXPECT_TRUE(has(rc, "opts.callSequence"));

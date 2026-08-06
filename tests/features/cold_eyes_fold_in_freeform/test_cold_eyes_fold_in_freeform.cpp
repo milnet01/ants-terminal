@@ -7,7 +7,7 @@
 //
 // Pure source-grep — no engine link needed; runs under test_claude
 // (which already exposes SRC_CLAUDE_INTEGRATION_CPP_PATH +
-// SRC_REMOTECONTROL_CPP_PATH).
+// ANTS_RC_SOURCES).
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
@@ -52,7 +52,7 @@ TEST(ColdEyesFoldInFreeform, EngineDeclaresAndImplementsFreeformTemplate) {
 }
 
 TEST(ColdEyesFoldInFreeform, HandlerRecognisesIdAllocation) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
 
     // Locate the cmdColdEyesFoldIn function body.

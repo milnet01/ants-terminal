@@ -12,7 +12,7 @@ please relaunch") never reached the contributor session.
 
 ## Surface
 
-- `RemoteControl::cmdFeedbackLog` assign_id branch (`src/remotecontrol.cpp`).
+- `RemoteControl::cmdFeedbackLog` assign_id branch (the remotecontrol TUs).
 - `FeedbackFile::assignId` engine (`src/feedbackfile.cpp`) + `AssignTarget`
   / `AssignResult` (`src/feedbackfile.h`).
 - `feedback_log` `note` schema description (`src/claudeintegration.cpp`).

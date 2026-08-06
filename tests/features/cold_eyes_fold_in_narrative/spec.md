@@ -5,7 +5,7 @@ Source-grep feature test for the narrative-mode port from ANTS-1635
 
 ## Surface
 
-- `src/remotecontrol.cpp` `cmdColdEyesFoldIn` — narrative-mode
+- the remotecontrol TUs `cmdColdEyesFoldIn` — narrative-mode
   short-circuit lives after the `RcGate::checkCallerCwd` gate and
   before the `actionable.isEmpty()` validation.
 - `src/claudeintegration.cpp` cold_eyes_fold_in descriptor —
@@ -33,6 +33,6 @@ Source-grep feature test for the narrative-mode port from ANTS-1635
 ## Rationale
 
 Pure source-grep — no engine link needed. Runs under `test_claude`
-which already exposes `SRC_REMOTECONTROL_CPP_PATH` and
+which already exposes `ANTS_RC_SOURCES` and
 `SRC_CLAUDE_INTEGRATION_CPP_PATH`. Mirrors the
 `cold_eyes_fold_in_freeform` pattern (ANTS-1510).

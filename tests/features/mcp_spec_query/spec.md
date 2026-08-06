@@ -14,7 +14,7 @@ behaviour is exercised indirectly through `invariant_check`
 | # | Statement |
 |---|-----------|
 | 1 | `cmdSpecQuery(const QJsonObject &req)` declared public on `RemoteControl` in `src/remotecontrol.h`. |
-| 2 | `cmdSpecQuery` defined in `src/remotecontrol.cpp` and carries an `ANTS-1309` anchor comment in or above the function body. |
+| 2 | `cmdSpecQuery` defined in the remotecontrol TUs and carries an `ANTS-1309` anchor comment in or above the function body. |
 | 3 | The body validates a passed `id` argument (rejects malformed ids with `code:"bad_id"`). |
 | 4 | The body refuses with `code:"not_found"` when the resolved spec file does not exist. |
 | 5 | The body returns an `invariants` array (parsed via the shared `parseSpecBody` helper). |
@@ -42,7 +42,7 @@ INVs counted but unasserted).
 Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. Uses the existing
 `SRC_CLAUDE_INTEGRATION_CPP_PATH`, `SRC_RC_HEADER`,
-`SRC_REMOTECONTROL_CPP_PATH`, `SRC_MAINWINDOW_CPP_PATH` compile
+`ANTS_RC_SOURCES`, `SRC_MAINWINDOW_CPP_PATH` compile
 defs already declared on `test_claude`, plus `SRC_SPECPARSE_CPP_PATH`
 (ANTS-3665) for the hoisted parser.
 

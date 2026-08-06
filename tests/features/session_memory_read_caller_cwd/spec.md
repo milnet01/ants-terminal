@@ -13,7 +13,7 @@ gate by op: reads honour `caller_cwd` directly; writes keep RcGate.
   read branch (`isReadOp`) takes caller_cwd → canonicalise → isDir
   → tenant cwd. No RcGate call on this path. Source anchor:
   `ANTS-1435 — gate routing is now ASYMMETRIC` in
-  `src/remotecontrol.cpp::cmdSessionMemory`.
+  `the remotecontrol TUs::cmdSessionMemory`.
 - **INV-2 / Write ops keep RcGate.** The `else` branch (op == Set
   or Delete) still calls `RcGate::checkCallerCwd`. Confirms by
   source-grep: `RcGate::checkCallerCwd` appears AFTER the
@@ -30,7 +30,7 @@ gate by op: reads honour `caller_cwd` directly; writes keep RcGate.
 - **INV-5 / project_layout follows same pattern.** `cmdProjectLayout`
   also canonicalises + isDir-checks caller_cwd directly; no RcGate
   body call. Source anchor: `ANTS-1404 + ANTS-1435 — caller_cwd
-  anchoring` in `src/remotecontrol.cpp::cmdProjectLayout`.
+  anchoring` in `the remotecontrol TUs::cmdProjectLayout`.
 - **INV-6 / Contract registry includes session_memory as Required.**
   `callerCwdContractFor("session_memory")` returns `Required` so
   dispatcher refuses empty `caller_cwd` upstream. Source anchor:

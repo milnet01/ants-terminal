@@ -2,6 +2,7 @@
 // See tests/features/mcp_session_brief/spec.md.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include <QFile>
 
 // INV-9: isEtagSupportedTool must list "session_brief"
@@ -23,9 +24,11 @@ TEST(McpSessionBrief, Inv7Inv11CallerCwdRequired) {
             << "callerCwdContractFor must return Required for session_brief";
     }
     {
-        QFile rc(QString::fromUtf8(SRC_REMOTECONTROL_CPP_PATH));
-        ASSERT_TRUE(rc.open(QIODevice::ReadOnly));
-        const QByteArray txt = rc.readAll();
+        // ANTS-3833 — the class is eleven TUs; read all of them.
+        const QByteArray rcSrc =
+            QByteArray::fromStdString(ants_test::slurpRemoteControl());
+        ASSERT_FALSE(rcSrc.isEmpty());
+        const QByteArray txt = rcSrc;
         EXPECT_TRUE(txt.contains("\"no_project\""))
             << "cmdSessionBrief refusal must carry code:\"no_project\"";
     }
@@ -33,9 +36,11 @@ TEST(McpSessionBrief, Inv7Inv11CallerCwdRequired) {
 
 // INV-1: all envelope fields emitted in cmdSessionBrief
 TEST(McpSessionBrief, Inv1AllEnvelopeFieldsPresent) {
-    QFile f(QString::fromUtf8(SRC_REMOTECONTROL_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray txt = f.readAll();
+    // ANTS-3833 — the class is eleven TUs; read all of them.
+    const QByteArray fSrc =
+        QByteArray::fromStdString(ants_test::slurpRemoteControl());
+    ASSERT_FALSE(fSrc.isEmpty());
+    const QByteArray txt = fSrc;
     for (const char *field : {"\"git\"", "\"build\"", "\"test\"",
                                "\"audit\"", "\"roadmap\""}) {
         EXPECT_TRUE(txt.contains(field))
@@ -45,9 +50,11 @@ TEST(McpSessionBrief, Inv1AllEnvelopeFieldsPresent) {
 
 // INV-3/INV-4: result enum values present
 TEST(McpSessionBrief, Inv3Inv4ResultEnumValues) {
-    QFile f(QString::fromUtf8(SRC_REMOTECONTROL_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray txt = f.readAll();
+    // ANTS-3833 — the class is eleven TUs; read all of them.
+    const QByteArray fSrc =
+        QByteArray::fromStdString(ants_test::slurpRemoteControl());
+    ASSERT_FALSE(fSrc.isEmpty());
+    const QByteArray txt = fSrc;
     EXPECT_TRUE(txt.contains("\"pass\""));
     EXPECT_TRUE(txt.contains("\"fail\""));
     EXPECT_TRUE(txt.contains("\"unknown\""));

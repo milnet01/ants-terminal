@@ -54,7 +54,7 @@ std::string descriptorBlock(const std::string &ci) {
 // INV-2 + INV-5 + INV-6 — handler shorts to narrative mode after the
 // gate, before actionable validation, and does NOT allocate IDs.
 TEST(IndieReviewFoldInNarrative, HandlerShortCircuitsOnNarrativeMode) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const std::string body = foldInBody(rc);
     ASSERT_FALSE(body.empty());
@@ -98,7 +98,7 @@ TEST(IndieReviewFoldInNarrative, HandlerShortCircuitsOnNarrativeMode) {
 // INV-3 — empty/whitespace narrative_md refuses with the dedicated
 // `narrative_md_required` code.
 TEST(IndieReviewFoldInNarrative, HandlerRefusesEmptyNarrativeMd) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const std::string body = foldInBody(rc);
     ASSERT_FALSE(body.empty());
@@ -111,7 +111,7 @@ TEST(IndieReviewFoldInNarrative, HandlerRefusesEmptyNarrativeMd) {
 // INV-4 — actionable[] refusal message names the narrative escape
 // hatch so callers discover it without re-reading the descriptor.
 TEST(IndieReviewFoldInNarrative, HandlerNamesEscapeHatchOnActionableMissing) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const std::string body = foldInBody(rc);
     ASSERT_FALSE(body.empty());

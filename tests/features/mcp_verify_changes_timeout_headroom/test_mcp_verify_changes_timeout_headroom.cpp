@@ -133,7 +133,7 @@ TEST(Ants1579TimeoutHeadroom, Inv4DescriptionNamesBothSidesInProximity) {
 // runVerify).
 TEST(Ants1628PhaseTiming, ImplEmitsThreeTimingFields) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     expect(rc.find("ANTS-1628 — phase timing") != std::string::npos,
            "INV-A: phase-timing block anchor present in impl");
     expect(rc.find("env[QStringLiteral(\"wall_clock_ms\")]") != std::string::npos,

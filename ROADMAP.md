@@ -35387,6 +35387,38 @@ contributors don't duplicate research.
   Kind: chore.
   Source: user-request-2026-06-25.
 
+- 📋 [ANTS-3844] **Status-bar "File Map" button opening a per-project file map with line numbers.**
+  User request 2026-08-06. A button on the status bar labelled "File Map";
+  clicking it opens a dialog showing the file map of the project the focused
+  tab is in, with line numbers.
+
+  Reuse before building (global rule 3): the data already exists and needs no
+  new scanner. `codebase_index` builds the project map that `session_orient`
+  refreshes at session start, and `file_outline` returns per-file
+  `{line, kind, name, signature}` symbol lists — which IS a file map with
+  line numbers. The dialog should render those rather than walk the tree
+  itself; a second scanner would drift from the one the MCP verbs serve.
+
+  Conventions this has to meet, both already written down:
+  - docs/standards/status-bar.md for the button itself.
+  - docs/standards/dialogs.md D1-D4 for the dialog: DialogChrome theming,
+    resizable, persists its size, re-centers on open.
+
+  Which project it maps is the resolved root of the focused tab's cwd — the
+  same resolution every caller_cwd-taking verb uses, not applicationDirPath.
+
+  Open question for the spec, not a blocker: "status bar title" could mean
+  the status bar itself or the window/tab title area. Read as the status bar
+  here, since that is where the comparable surfaces live (the background-
+  tasks chip, the model chip).
+
+  Sizing note for design time: a file map is unbounded in a large repo, so
+  state the memory budget and the lazy-load/eviction policy up front rather
+  than materialising every outline at open.
+  **Layman:** A button on the status bar that pops open a list of the current project's files and what is in them, with line numbers, so you can see the shape of a codebase without opening anything.
+  Kind: feature.
+  Source: user-request-2026-08-06.
+
 ### 🔒 Security
 
 - 💭 [ANTS-1095] **Confidential computing**: run the PTY in an SGX/SEV enclave,
@@ -35536,6 +35568,51 @@ contributors don't duplicate research.
   Lanes: hooks, tests.
   Source: in-session-2026-06-17 (surfaced during ANTS-2143/2131).
   Resolved (2026-06-17): shellcheck on hooks/_common.sh now exits 0. (1) SC2034 — verified false positive: ANTS_NUDGE_TOOL is a sourced-lib output read cross-file by hooks/ants-bash-veto.sh:41,58 (${ANTS_NUDGE_TOOL:-…}); suppressed with a file-level `# shellcheck disable=SC2034` + reason. Actual count was 1 (not 2 as the bullet estimated). (2) SC2209 (actual 2, not 3) — quoted the two bareword string literals shellcheck mistakes for command substitutions (ANTS_NUDGE_TOOL="grep"/"find"); left rg/ag/ack/git-grep unquoted since those aren't recognised command names so don't trip SC2209 — quoting exactly the ambiguous cases is the surgical, intent-clarifying fix. (3) Removed unused <fstream>/<sstream> from tests/features/mcp_call_site_contract/test_mcp_call_site_contract.cpp (verified no f/stringstream symbols used). Verified: shellcheck exit 0; test_claude rebuilt; 7 call-site/pagination tests green; hook_pack test_hooks.sh all assertions pass.
+
+- 📋 [ANTS-3845] **Audit sweep auto-detects only 6 of the 11 tools the skills use — add the missing 5.**
+  User request 2026-08-06. The audit engine auto-detects and runs cppcheck,
+  clazy, ruff, bandit, semgrep, gitleaks and shellcheck. Measured across
+  src/*.cpp and src/*.h on 2026-08-06, these have ZERO references and so are
+  never detected or run:
+
+    zizmor      0 files    actionlint  0 files
+    vulture     0 files    yamllint    0 files
+    deptry      0 files
+    typos       1 file     pip-audit   1 file
+
+  (typos and pip-audit each appear once; check whether that is a real runner
+  or only a mention before counting them as wired.)
+
+  Why it matters beyond coverage: an absent tool prints nothing, and nothing
+  is indistinguishable from clean. A sweep that reports green having never
+  looked is the same false-pass shape the global rules call out — so each
+  added tool must SKIP LOUDLY when its binary is missing, and the envelope
+  must say which checkers actually ran, never just the findings.
+
+  What each adds, and why the list is these five:
+  - zizmor      — GitHub Actions security: ${{ }} template injection into a
+                  run: block, over-broad permissions:, pull_request_target
+                  misuse. Nothing else here covers workflow security.
+  - actionlint  — workflow correctness, and it pipes every run: block through
+                  shellcheck, catching shell bugs inside YAML that plain
+                  shellcheck never sees because it is not reading .yml.
+  - vulture     — dead Python: the module-level function or method an edit
+                  orphaned, which ruff cannot see (F401/F841 stop at unused
+                  imports and unused locals). Needs --min-confidence 80 and a
+                  diff against what the file already had, or it reports
+                  pre-existing dead code as if it were new.
+  - deptry      — declared-but-unused / used-but-undeclared Python deps.
+  - pip-audit   — known CVEs in the Python dependency set.
+  - typos       — a misspelled config key or log string, which every checker
+                  above is blind to.
+
+  Fits the existing shape: these are grep/exec-style external tools like the
+  seven already wired, so this is a runner + parser + availability probe per
+  tool, not new analysis. Route findings through the existing confidence
+  score and SARIF export rather than a parallel path.
+  **Layman:** The built-in code-checking sweep silently skips five checkers it could be running, so a clean result looks more thorough than it is.
+  Kind: enhancement.
+  Source: user-request-2026-08-06.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

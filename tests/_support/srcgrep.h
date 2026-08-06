@@ -35,6 +35,36 @@ inline std::string slurpFile(const std::string &path) {
     return slurpFile(path.c_str());
 }
 
+// ANTS-3833 — the RemoteControl implementation is eleven translation units.
+// A scrape that reads one of them reads a fraction of the class: a verb that
+// moved to a sibling TU is indistinguishable from a verb that was deleted.
+// Reads every path in ANTS_RC_SOURCES, in that order — the order they were
+// cut from the original file — joined with a newline, so a two-anchor window
+// (find(A), then find(B, posA)) still sees A before B. A path that cannot be
+// opened contributes "", matching slurpFile's behaviour rather than aborting
+// the shared bundle.
+//
+// THE GUARD IS REQUIRED, NOT DEFENSIVE. This header is included by 278 test
+// sources across every bundle, while ANTS_RC_SOURCES is defined for the four
+// that carry a source-path definition. An unguarded body referencing the
+// macro fails to compile every bundle that does not have it.
+#if defined(ANTS_RC_SOURCES)
+inline std::string slurpRemoteControl() {
+    const std::string list = ANTS_RC_SOURCES;
+    std::string out;
+    std::size_t start = 0;
+    while (start <= list.size()) {
+        const std::size_t sep = list.find(';', start);
+        const std::size_t end = (sep == std::string::npos) ? list.size() : sep;
+        if (!out.empty()) out += '\n';
+        out += slurpFile(list.substr(start, end - start));
+        if (sep == std::string::npos) break;
+        start = sep + 1;
+    }
+    return out;
+}
+#endif
+
 // Return the body of the function whose signature starts with the
 // `signatureAnchor` substring (e.g. "RemoteControl::cmdGetText"). The
 // scan finds the first '{' at or after the anchor, then walks forward

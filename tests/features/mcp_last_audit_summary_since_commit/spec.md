@@ -33,7 +33,7 @@ When `since_commit` is set:
 | 1 | `last_audit_summary` inputSchema in `src/claudeintegration.cpp` declares a `since_commit` property of `type:"string"`. |
 | 2 | The property description mentions ANTS-1406 and the `fresh` response field. |
 | 3 | The tool top-level description mentions `since_commit:<sha>` and `fresh:false` so the assistant can discover the contract without inspecting the schema. |
-| 4 | `cmdLastAuditSummary` in `src/remotecontrol.cpp` declares a `kSinceCommitFreshnessMs` constant equal to `5 * 60 * 1000` (5-minute window). |
+| 4 | `cmdLastAuditSummary` in the remotecontrol TUs declares a `kSinceCommitFreshnessMs` constant equal to `5 * 60 * 1000` (5-minute window). |
 | 5 | The implementation branches on three distinct reason codes — `commit_drift`, `stale_mtime`, `no_provenance` — at least one literal match per code. |
 | 6 | The short envelope includes the `last_run_age_ms` field name (callers depend on it for staleness telemetry). |
 | 7 | The fresh-path response carries a `fresh:true` flag when `since_commit` was passed (callers depend on its presence to confirm the gate landed). |

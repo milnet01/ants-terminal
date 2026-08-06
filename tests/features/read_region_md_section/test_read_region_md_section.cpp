@@ -18,8 +18,8 @@
 
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -298,7 +298,7 @@ TEST(ReadRegionMdSection, FullParentheticalTextStillResolves) {
 TEST(ReadRegionMdSection, WiringContract) {
     expect_reset();
     const std::string rc =
-        ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+        ants_test::slurpRemoteControl();
     const std::string ci =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(rc, "opts.section") &&

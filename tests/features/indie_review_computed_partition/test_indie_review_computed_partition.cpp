@@ -18,8 +18,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -130,7 +130,7 @@ TEST(IndieReviewComputedPartition, Inv4SingleDirectoryYieldsEmpty) {
 
 // INV-5 — the handler labels the computed partition and keeps the hint.
 TEST(IndieReviewComputedPartition, Inv5HandlerLabelsDerivedAndKeepsHint) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto fn = rc.find("RemoteControl::cmdIndieReviewPartition");
     ASSERT_NE(fn, std::string::npos);

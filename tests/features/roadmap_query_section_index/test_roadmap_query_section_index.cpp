@@ -52,7 +52,7 @@ int countOccurrences(const std::string &hay, const std::string &needle) {
 // INV-1 — default mode is unchanged; the `mode` arg is opt-in.
 TEST(roadmap_query_section_index, Inv1ModeOptIn) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1437-INV-1"),
            "INV-1: mode arg parse anchor present");
     expect(contains(cpp, "hasModeArg"),
@@ -67,7 +67,7 @@ TEST(roadmap_query_section_index, Inv1ModeOptIn) {
 // INV-2 — unknown mode rejected with bad_mode + verbatim hygiene.
 TEST(roadmap_query_section_index, Inv2UnknownModeRejected) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "bad_mode"),
            "INV-2: bad_mode error code present");
     expect(contains(cpp, "unknown mode:"),
@@ -84,7 +84,7 @@ TEST(roadmap_query_section_index, Inv2UnknownModeRejected) {
 // INV-3 — mode:"section_index" + section= is bad_mode_combo.
 TEST(roadmap_query_section_index, Inv3SectionPlusModeRejected) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1437-INV-3"),
            "INV-3: bad_mode_combo guard anchor present");
     expect(contains(cpp, "bad_mode_combo"),
@@ -95,7 +95,7 @@ TEST(roadmap_query_section_index, Inv3SectionPlusModeRejected) {
 // INV-4 — every indexed section emitted, including empties.
 TEST(roadmap_query_section_index, Inv4EmitEverySection) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "INV-4 — emit EVERY indexed section"),
            "INV-4: emission anchor present (loops m_roadmapIndex, "
            "not bullets tally)");
@@ -111,7 +111,7 @@ TEST(roadmap_query_section_index, Inv4EmitEverySection) {
 // every section. Source-scrape style, matching the sibling emission INVs.
 TEST(roadmap_query_section_index, Inv7Ants1848StatusFiltersEmission) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1848 — status filter drops zero-id-count"),
            "ANTS-1848: filter guard anchor present in the section_index "
            "emission loop");
@@ -137,7 +137,7 @@ TEST(roadmap_query_section_index, Inv7Ants1848StatusFiltersEmission) {
 // INV-5 — counts use the same emoji predicates as bullet-mode filter.
 TEST(roadmap_query_section_index, Inv5CountsUseSamePredicate) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The tally block uses the same plannedEmoji/progressEmoji/
     // doneEmoji constants as the bullet-mode filter. UTF-8 bytes:
     //   \xF0\x9F\x93\x8B = 📋 (planned)
@@ -157,7 +157,7 @@ TEST(roadmap_query_section_index, Inv5CountsUseSamePredicate) {
 // INV-6 — rollup bullets excluded from counts.
 TEST(roadmap_query_section_index, Inv6RollupExcluded) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "INV-6 rollup"),
            "INV-6: rollup-exclude anchor present in tally loop");
     expect(contains(cpp, "if (id.isEmpty() && hl.isEmpty()) continue"),
@@ -168,7 +168,7 @@ TEST(roadmap_query_section_index, Inv6RollupExcluded) {
 // INV-8 — unrecognised_format gate also fires in section_index mode.
 TEST(roadmap_query_section_index, Inv8UnrecognisedFormatGate) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1437-INV-8"),
            "INV-8: unrecognised_format gate anchor present in "
            "section_index branch");
@@ -205,7 +205,7 @@ TEST(roadmap_query_section_index, SchemaModePropAdvertised) {
 // every bullet.
 TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // ANTS-2036 — count within cmdRoadmapQuery's body only. The pre-fix
     // global count broke when ANTS-2031 added an unrelated helper using
     // the same `for (const auto &b : bullets)` idiom elsewhere in the TU;
@@ -246,7 +246,7 @@ TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
 // root cause). Source-scrape that the helper call is wired in.
 TEST(roadmap_query_section_index, Inv10RollupCountsWired) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "RoadmapIndex::rollupCounts("),
            "INV-10: section_index branch calls "
            "RoadmapIndex::rollupCounts to fold descendant tallies "
@@ -410,7 +410,7 @@ TEST(roadmap_query_section_index, Inv11IdOnlyParallelsRollUp) {
 // Source-scrape style (matches the sibling INVs).
 TEST(roadmap_query_section_index, Inv12EmitsIdOnlyAndLegacyHint) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "active_count_id_only"),
            "INV-12: active_count_id_only emitted on each section");
     expect(contains(cpp, "shipped_count_id_only"),
@@ -433,7 +433,7 @@ TEST(roadmap_query_section_index, Inv12EmitsIdOnlyAndLegacyHint) {
 // self.totalWithId==0 predicate that feeds the array.
 TEST(roadmap_query_section_index, Inv13PerSectionLegacyFlag) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "obj[\"legacy_format\"] = true;"),
            "INV-13: per-section legacy_format flag set on the section "
            "object");
@@ -490,7 +490,7 @@ TEST(roadmap_query_section_index, DispatchForwardsIncludeBody) {
 // level in the INV-10/INV-11 tests above).
 TEST(roadmap_query_section_index, Inv15Ants2052LegacyFallback) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const std::string fn = functionSlice(
         cpp, "QJsonDocument RemoteControl::cmdRoadmapQuery(");
     expect(!fn.empty(),
@@ -527,7 +527,7 @@ TEST(roadmap_query_section_index, Inv15Ants2052LegacyFallback) {
 // the envelope carries the pagination fields when they apply.
 TEST(roadmap_query_section_index, Inv14SectionIndexPaginates) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1729"),
            "INV-14: ANTS-1729 anchor present in the section_index branch");
     expect(!contains(cpp, "section_index mode does not accept offset/limit"),

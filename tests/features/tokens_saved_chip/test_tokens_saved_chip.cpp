@@ -21,8 +21,8 @@
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES required"
 #endif
 
 namespace {
@@ -126,7 +126,7 @@ TEST(TokensSavedChip, NoPersistenceInDispatchLayer) {
 
 // TSC-5 (INV-10) — verb fields live in the response, not the input schema.
 TEST(TokensSavedChip, VerbFieldsInResponseNotSchema) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     EXPECT_TRUE(has(rc, "env[\"month_saved\"]"));
     EXPECT_TRUE(has(rc, "env[\"ytd_saved\"]"));

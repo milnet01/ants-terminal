@@ -171,6 +171,11 @@ bool rcLooksLikeRegexButLiteral(const QString &pattern);
 
 // ---- functions (definitions stay in the .cpp) ----
 QString resolveRootCanonical(MainWindow *main);
+// The two-arg overload. Declared separately and deliberately: the first
+// promotion pass derived this header by SYMBOL NAME, so an overload set with
+// one member already declared read as complete. 45 of the 85 residual errors
+// from the first cut attempt were this one function.
+QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
 QString findRoadmapUnder(const QString &canonicalRoot);
 QString findChangelogUnder(const QString &canonicalRoot);
 QString findYamlChangelogUnder(const QString &canonicalRoot);

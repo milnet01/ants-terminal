@@ -14,7 +14,7 @@ in-tree `auditdialog.cpp` (INV-3 floor check).
 | # | Statement |
 |---|-----------|
 | 1 | `cmdFileOutline(const QJsonObject &req)` is declared public on `RemoteControl` in `src/remotecontrol.h`. |
-| 2 | `cmdFileOutline` body in `src/remotecontrol.cpp` carries `// ANTS-1249-INV-` anchors for INV-1, INV-2, INV-10. (The remaining INV-3 to INV-9 anchors live in `fileoutline.cpp` because that is where the regex set + header-doc cap + line cap actually fire.) |
+| 2 | `cmdFileOutline` body in the remotecontrol TUs carries `// ANTS-1249-INV-` anchors for INV-1, INV-2, INV-10. (The remaining INV-3 to INV-9 anchors live in `fileoutline.cpp` because that is where the regex set + header-doc cap + line cap actually fire.) |
 | 3 | `src/fileoutline.cpp` contains the six regex builders — `rxCppMember`, `rxCppType`, `rxCppFunc`, `rxCppQt`, `rxPy`, `rxMdHeading` — each a `static const QRegularExpression` with `.optimize()` called once. The per-line byte cap (`kMaxLineBytes`) and header-doc cap (`kHeaderDocByteCap`) are present. |
 | 4 | The IPC dispatcher in `RemoteControl::dispatch` routes `"file-outline"` to `cmdFileOutline`. |
 | 5 | The MCP `tools/list` block in `src/claudeintegration.cpp` registers a `"file_outline"` entry with an `inputSchema` declaring `path` + `mode`, `include_doc_comment`, `max_symbols`, and the ANTS-2223 multi-path props `paths` + `etags`. `path` is no longer in `required` (the `paths` form satisfies the verb without it). |
@@ -25,7 +25,7 @@ in-tree `auditdialog.cpp` (INV-3 floor check).
 | 10 | Calling `FileOutline::compute` on a non-existent path returns `{ok:false, code:"not_found"}` and does not crash. |
 | 11 | (ANTS-2028) `FileOutline::compute` captures free functions with a single-token return type — `int alpha()`, `static QByteArray slurpBody(...)`, and the declaration `const std::string &makeName(int);` all surface — while the qualified member `Widget::method` still resolves via `rxCppMember`. Guards against `rxCppFunc` folding the return type and the name into one possessive class (which left nothing for the name capture, so free functions never matched). |
 | 12 | (ANTS-2147) `FileOutline::compute` does not emit a statement-position call as a function symbol — `return gamma(7);` surfaces no `gamma` symbol — while the enclosing free function `int beta()` still surfaces. `rxCppFunc` rejects an expression-introducing reserved keyword (`return`/`co_return`/`co_await`/`co_yield`/`throw`/`else`) as the leading return-type token. |
-| 13 | (ANTS-2223) `cmdFileOutline` in `src/remotecontrol.cpp` supports the multi-path form: the single-path and multi-path bodies share the extracted `outlineOneFile()` helper; the handler branches on a `paths` array (`pathsVal.isArray()`); each entry carries a per-file etag via `outlineFileEtag()`; an optional `etags` map 304s an unchanged entry to an `unchanged` stub; and the batch envelope emits `files[]` + `count`. (Locked at source level — the handler needs a live `MainWindow` to invoke, as with INV-2/INV-4.) |
+| 13 | (ANTS-2223) `cmdFileOutline` in the remotecontrol TUs supports the multi-path form: the single-path and multi-path bodies share the extracted `outlineOneFile()` helper; the handler branches on a `paths` array (`pathsVal.isArray()`); each entry carries a per-file etag via `outlineFileEtag()`; an optional `etags` map 304s an unchanged entry to an `unchanged` stub; and the batch envelope emits `files[]` + `count`. (Locked at source level — the handler needs a live `MainWindow` to invoke, as with INV-2/INV-4.) |
 
 ## Acceptance
 

@@ -22,7 +22,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — opt-in arg read from req with default false.
 TEST(roadmap_query_narrator_filter, Inv1OptInArgReadFromReq) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "include_narrator_bullets"),
            "INV-1: cmdRoadmapQuery reads include_narrator_bullets "
            "from req");
@@ -38,7 +38,7 @@ TEST(roadmap_query_narrator_filter, Inv1OptInArgReadFromReq) {
 // complement of the rollup predicate.
 TEST(roadmap_query_narrator_filter, Inv2NarratorPredicate) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "isNarratorBullet"),
            "INV-2: isNarratorBullet predicate present");
     // The predicate must check `id.isEmpty() && !headline.isEmpty()`
@@ -52,7 +52,7 @@ TEST(roadmap_query_narrator_filter, Inv2NarratorPredicate) {
 // INV-3 — single drop helper composes both opt-ins.
 TEST(roadmap_query_narrator_filter, Inv3SingleDropHelper) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "shouldDropUnnumbered"),
            "INV-3: shouldDropUnnumbered helper unifies the two "
            "predicates so the filter loops have one call site");
@@ -89,7 +89,7 @@ TEST(roadmap_query_narrator_filter, Inv5DispatchForwards) {
 // INV-6 — echo only when caller set it.
 TEST(roadmap_query_narrator_filter, Inv6EchoOnlyWhenSet) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // Two echo sites (section-mode + full-file) must both guard on
     // hasIncludeNarratorsArg. ANTS-2067 — normalise whitespace so one
     // needle matches both indent depths; assert the count is >= 2 rather

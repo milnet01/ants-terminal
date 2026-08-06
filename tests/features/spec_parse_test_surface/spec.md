@@ -52,7 +52,7 @@ the fixture covers "some have clauses, some do not" in one pass.
 
 ## The hoist
 
-The same change moves `parseSpecBody` out of `src/remotecontrol.cpp`'s anonymous
+The same change moves `parseSpecBody` out of the remotecontrol TUs's anonymous
 namespace into `src/specparse.{h,cpp}` in `ants_core_lib`. ANTS-3662's engine
 lives in that library and cannot link an anonymous-namespace function; without
 the hoist it would have to grow a second spec parser beside this one — the

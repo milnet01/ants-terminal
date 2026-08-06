@@ -47,7 +47,7 @@ Locked against `src/remotecontrol.{h,cpp}`, `src/mainwindow.{h,cpp}`,
   delegates to `RemoteControl::runClient` when set; the branch runs
   *before* `MainWindow` construction so the client never boots a
   second GUI on top of the running instance.
-- **INV-7** `CMakeLists.txt` lists `src/remotecontrol.cpp` in the
+- **INV-7** `CMakeLists.txt` lists the remotecontrol TUs in the
   `ants-terminal` executable sources — drift here would link-fail at
   `RemoteControl::runClient` but this invariant catches it at
   source-grep time for cleaner diagnostics.

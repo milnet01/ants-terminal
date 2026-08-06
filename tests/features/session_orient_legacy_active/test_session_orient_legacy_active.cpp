@@ -15,7 +15,7 @@ bool has(const std::string &h, const char *n) {
 }  // namespace
 
 TEST(SessionOrientLegacyActive, Inv1FallbackReissuesWithNarrators) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     ASSERT_FALSE(src.empty());
     // section_index's raw_active_count is captured for the orient bundle.
     EXPECT_TRUE(has(src, "legacyRawActive"))

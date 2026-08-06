@@ -214,7 +214,7 @@ TEST(McpModelSwitchStats, ProjectScoped) {
 // Wiring contract — the MCP dispatch must be registered end to end.
 TEST(McpModelSwitchStats, WiringContract) {
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
-    const std::string rcCpp = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
     const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 

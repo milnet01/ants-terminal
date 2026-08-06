@@ -18,8 +18,8 @@
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -29,7 +29,7 @@ namespace {
 // rather than re-slurping per case.
 const std::string &rcSource() {
     static const std::string s =
-        ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+        ants_test::slurpRemoteControl();
     return s;
 }
 const std::string &mwSource() {

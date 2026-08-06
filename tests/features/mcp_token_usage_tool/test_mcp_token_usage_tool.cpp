@@ -16,8 +16,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -64,7 +64,7 @@ TEST(McpTokenUsageTool, CmdMethodDeclaredInHeader) {
 
 // REG-4
 TEST(McpTokenUsageTool, CmdMethodDefinedInCpp) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("RemoteControl::cmdTokenUsage"), std::string::npos)
         << "RemoteControl::cmdTokenUsage definition missing from "
@@ -95,7 +95,7 @@ TEST(McpTokenUsageTool, SchemaSetsAdditionalPropertiesFalse) {
 
 // ANTS-1355 REG-V2-1 — response builder emits envelope total_wrap_bytes.
 TEST(McpTokenUsageTool, V2EnvelopeIncludesTotalWrapBytes) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("env[\"total_wrap_bytes\"]"), std::string::npos)
         << "cmdTokenUsage must surface total_wrap_bytes on the envelope";
@@ -103,7 +103,7 @@ TEST(McpTokenUsageTool, V2EnvelopeIncludesTotalWrapBytes) {
 
 // ANTS-1355 REG-V2-2 — per-tool entry emits wrap_bytes + duration fields.
 TEST(McpTokenUsageTool, V2PerCallEntryIncludesWrapAndLatency) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     for (const char *key : {
             "c[\"wrap_bytes\"]",

@@ -392,7 +392,7 @@ TEST(roadmap_log_annotate, GfmAnnotateByHeadline) {
 // descriptor/schema surface (source-grep).
 TEST(roadmap_log_annotate, Inv1Inv8Inv9SourceSurface) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     expect(contains(rc, "int appendBodyNote("),

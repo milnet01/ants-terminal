@@ -52,7 +52,7 @@ It is a list-path filter, not a targeted selector.
 `tests/features/roadmap_query_keyword_filter/` (label `features`), in the
 `test_core` bundle. INV-1..4 drive the pure `mcp::bulletMatchesQuery`
 (Qt6::Core, in `ants_core_lib`); INV-5/INV-6 source-scrape
-`remotecontrol.cpp` (`SRC_RC_CPP`) and `claudeintegration.cpp`
+`remotecontrol.cpp` (`ANTS_RC_SOURCES`) and `claudeintegration.cpp`
 (`SRC_CLAUDE_INTEGRATION_CPP_PATH`) for the wiring; INV-7 source-scrapes
 `mainwindow.cpp` (`SRC_MAINWINDOW_CPP`) for the dispatch forward. Verify
 INV-1..4 fail against pre-ANTS-3391 source (the matcher did not exist) and

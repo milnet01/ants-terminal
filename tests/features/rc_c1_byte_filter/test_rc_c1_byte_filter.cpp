@@ -20,8 +20,8 @@
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
-#ifndef SRC_RC_CPP
-#error "SRC_RC_CPP compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -192,7 +192,7 @@ void testEngine() {
 
 void testWiring() {
     const std::string hdr = ants_test::slurpFile(SRC_RC_HEADER);
-    const std::string cpp = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string cpp = ants_test::slurpRemoteControl();
 
     // WI-1 — the new 0xC2-guarded block is present exactly once.
     // We match the literal token sequence the patch introduces:

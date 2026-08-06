@@ -89,7 +89,7 @@ TEST(mcp_roadmap_log_verb, Inv2ContractIsRequired) {
 // INV-3 — cmdRoadmapLog reads counter + writes back.
 TEST(mcp_roadmap_log_verb, Inv3CounterAllocation) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1424-INV-3"),
            "INV-3 anchor comment present at counter-allocation site");
     expect(contains(cpp, ".roadmap-counter"),
@@ -103,7 +103,7 @@ TEST(mcp_roadmap_log_verb, Inv3CounterAllocation) {
 // INV-4 — insertion point via RoadmapIndex.
 TEST(mcp_roadmap_log_verb, Inv4SectionInsertionViaIndex) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1424-INV-4"),
            "INV-4 anchor comment present at section-insertion site");
     expect(contains(cpp, "RoadmapIndex::buildIndex") ||
@@ -115,7 +115,7 @@ TEST(mcp_roadmap_log_verb, Inv4SectionInsertionViaIndex) {
 // INV-5 — status → emoji map.
 TEST(mcp_roadmap_log_verb, Inv5StatusEmojiMap) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1424-INV-5"),
            "INV-5 anchor comment present at status-emoji-map site");
     // All four status words must be in the cmdRoadmapLog body
@@ -135,7 +135,7 @@ TEST(mcp_roadmap_log_verb, Inv5StatusEmojiMap) {
 // INV-6 — error paths return early.
 TEST(mcp_roadmap_log_verb, Inv6ErrorEarlyReturn) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1424-INV-6"),
            "INV-6 anchor comment present");
     // Error codes the spec mandates.
@@ -163,7 +163,7 @@ TEST(mcp_roadmap_log_verb, Inv7RegisteredInMainwindow) {
 // INV-8 — success envelope carries the four response fields.
 TEST(mcp_roadmap_log_verb, Inv8SuccessEnvelopeFields) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1424-INV-8"),
            "INV-8 anchor comment present at success-envelope site");
     expect(contains(cpp, "\"bytes_written\""),

@@ -351,7 +351,7 @@ TEST(mcp_roadmap_bundles, Inv13MixedCaseLaneLabel) {
 // INV-6 — combo refusals (source-grep on the three guards).
 TEST(mcp_roadmap_bundles, Inv6ComboGuards) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "bundles mode does not accept section= filter"),
            "INV-6: bundles+section guard present");
     expect(contains(cpp, "id selector does not combine with mode:bundles"),
@@ -372,7 +372,7 @@ TEST(mcp_roadmap_bundles, Inv6ComboGuards) {
 // parse. INV-12 seam — setBundleSoftCapOverride wired into the branch.
 TEST(mcp_roadmap_bundles, Inv7Inv8BranchWiring) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "if (mode == QLatin1String(\"bundles\"))"),
            "INV-7/8: bundles branch present");
     expect(contains(cpp, "buildRoadmapBundlesEnvelope(m_roadmapCacheBullets"),

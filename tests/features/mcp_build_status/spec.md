@@ -15,7 +15,7 @@ its existence is asserted as a wiring contract).
 |---|-----------|
 | 1 | `BuildCache::cachePath`, `BuildCache::parseBuildOutput`, `BuildCache::recordBuild`, `BuildCache::loadBuild`, `BuildCache::checkStale` declared in `src/buildcache.h`. |
 | 2 | `cmdBuildStatus(const QJsonObject &req)` declared public on `RemoteControl` in `src/remotecontrol.h`. |
-| 3 | `cmdBuildStatus` defined in `src/remotecontrol.cpp` and carries an `ANTS-1299` anchor comment in or above the function body. |
+| 3 | `cmdBuildStatus` defined in the remotecontrol TUs and carries an `ANTS-1299` anchor comment in or above the function body. |
 | 4 | The body dispatches on `op` ∈ `{record, read}` and surfaces `bad_args` for unknown ops, missing `exit_code` / missing `output` on record, or empty `output`. |
 | 5 | The body refuses with `code:"not_cached"` when `op=read` and no cache exists, and with `code:"write_failed"` when `op=record` cannot persist the cache. |
 | 6 | `MainWindow::setupClaudeMcpProviders` (`src/mainwindow.cpp`) registers `"build_status"` via `registerToolProvider` and delegates to `m_remoteControl->cmdBuildStatus`. Falls back to `kRcUnavailable` when `m_remoteControl` is null. |
@@ -32,7 +32,7 @@ Exit 0 = all 11 invariants hold.
 Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. Re-uses the existing
 `SRC_CLAUDE_INTEGRATION_CPP_PATH`, `SRC_RC_HEADER`,
-`SRC_REMOTECONTROL_CPP_PATH`, `SRC_MAINWINDOW_CPP_PATH` compile
+`ANTS_RC_SOURCES`, `SRC_MAINWINDOW_CPP_PATH` compile
 defs; needs a new `SRC_BUILDCACHE_H_PATH` compile def added in the
 same block.
 

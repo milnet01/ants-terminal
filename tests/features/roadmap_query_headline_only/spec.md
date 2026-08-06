@@ -1,7 +1,7 @@
 # `roadmap_query` `mode:"headline_only"` — feature-conformance test
 
 Locks the invariants in `docs/specs/ANTS-1881.md` against the
-implementation in `src/remotecontrol.cpp` + `src/claudeintegration.cpp`.
+implementation in the remotecontrol TUs + `src/claudeintegration.cpp`.
 
 ## Invariants tested
 
@@ -18,8 +18,8 @@ implementation in `src/remotecontrol.cpp` + `src/claudeintegration.cpp`.
 
 ## Test style
 
-Source-grep against `src/remotecontrol.cpp` + `src/claudeintegration.cpp`
-via the `SRC_REMOTECONTROL_CPP_PATH` / `SRC_CLAUDEINTEGRATION_CPP_PATH`
+Source-grep against the remotecontrol TUs + `src/claudeintegration.cpp`
+via the `ANTS_RC_SOURCES` / `SRC_CLAUDEINTEGRATION_CPP_PATH`
 compile-time anchors (same pattern as
 `tests/features/roadmap_query_section_index/`). The pure projection
 helper introduced by the implementation is exercised directly via its

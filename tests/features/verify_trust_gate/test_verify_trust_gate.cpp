@@ -298,8 +298,8 @@ void testTrustFile() {
 // ---- MCP envelope wiring (Phase 2) --------------------------------
 
 void testMcpWiring() {
-#ifdef SRC_RC_CPP
-    const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+#ifdef ANTS_RC_SOURCES
+    const std::string rc = ants_test::slurpRemoteControl();
     // ANTS-1359 refactored cmdVerifyChanges into a thin RcGate wrapper
     // + a cmdVerifyChangesImpl that holds the trust-client wiring and
     // the new build-cache. Slurp both bodies and search the combined

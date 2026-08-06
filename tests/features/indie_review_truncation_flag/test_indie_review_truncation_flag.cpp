@@ -36,7 +36,7 @@ TEST(IndieReviewTruncationFlag, Inv1KMaxScanBytesExposed) {
 // INV-2 — cmdIndieReviewCorroborate envelope carries truncation
 // surface.
 TEST(IndieReviewTruncationFlag, Inv2CorroborateEnvelope) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty()) << "remotecontrol.cpp not readable";
     const std::string body =
         fnWindow(rc, "RemoteControl::cmdIndieReviewCorroborate", 8192);
@@ -54,7 +54,7 @@ TEST(IndieReviewTruncationFlag, Inv2CorroborateEnvelope) {
 
 // INV-3 — cmdCrossDocDiff parity.
 TEST(IndieReviewTruncationFlag, Inv3CrossDocDiffEnvelope) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const std::string body =
         fnWindow(rc, "RemoteControl::cmdCrossDocDiff", 8192);
@@ -70,7 +70,7 @@ TEST(IndieReviewTruncationFlag, Inv3CrossDocDiffEnvelope) {
 // INV-4 — envelope emission is gated on !truncatedLanes.isEmpty(), so
 // the v1 happy-path shape is preserved.
 TEST(IndieReviewTruncationFlag, Inv4GatedEmission) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     // Two distinct gates — one per command. Both must hold.
     size_t hits = 0;

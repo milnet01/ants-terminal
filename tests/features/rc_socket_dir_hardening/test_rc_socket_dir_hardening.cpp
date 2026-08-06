@@ -22,8 +22,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_RC_CPP
-#error "SRC_RC_CPP compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_SECUREIO_H_PATH
 #error "SRC_SECUREIO_H_PATH compile definition required"
@@ -124,7 +124,7 @@ void testEngine() {
 // ---- Wiring tests (source-grep) -----------------------------------
 
 void testWiring() {
-    const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string secio = ants_test::slurpFile(SRC_SECUREIO_H_PATH);
 
     // WI-1 — ensureSocketDir defined in secureio.h.

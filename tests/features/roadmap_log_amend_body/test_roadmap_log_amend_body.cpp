@@ -432,7 +432,7 @@ TEST(roadmap_log_amend_body, Ants3467FoundOutsideBodyHint) {
 // the harder-to-seed refusal codes exist in the handler.
 TEST(roadmap_log_amend_body, Inv8Inv9SourceSurface) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     expect(contains(rc, "int amendBodyExact("),

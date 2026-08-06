@@ -203,10 +203,10 @@ TEST(McpFocusedTest, ShippedCoverageMapValid) {
 
 // INV-10..12 — source-grep wiring contract.
 TEST(McpFocusedTest, WiringContract) {
-#if defined(SRC_RC_HEADER) && defined(SRC_REMOTECONTROL_CPP_PATH) && \
+#if defined(SRC_RC_HEADER) && defined(ANTS_RC_SOURCES) && \
     defined(SRC_MAINWINDOW_CPP_PATH) && defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
-    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const std::string ci    = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 

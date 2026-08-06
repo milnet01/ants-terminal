@@ -43,8 +43,8 @@
 #ifndef SRC_TESTAUDITDIALOG_CPP_PATH
 #error "SRC_TESTAUDITDIALOG_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_RC_CPP
-#error "SRC_RC_CPP compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -176,7 +176,7 @@ void testWiring() {
     const std::string fp    = ants_test::slurpFile(SRC_AUDITFPLEDGER_CPP_PATH);
     const std::string af    = ants_test::slurpFile(SRC_AUDITAUTOFIX_CPP_PATH);
     const std::string ta    = ants_test::slurpFile(SRC_TESTAUDITDIALOG_CPP_PATH);
-    const std::string rc    = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string rc    = ants_test::slurpRemoteControl();
 
     // ANTS-1821 — helper defined; sessionDir + saveStore use it; the
     // mkpath-then-chmod idiom is gone from sessionDir.

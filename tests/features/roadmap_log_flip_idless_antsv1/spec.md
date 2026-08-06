@@ -18,7 +18,7 @@ leaving the fully id-less case (RetroArch HIGH + Album Builder,
 
 ## Surface
 
-- `src/remotecontrol.cpp` — `walkAntsV1Bullets`.
+- the remotecontrol TUs — `walkAntsV1Bullets`.
 
 ## Invariants
 

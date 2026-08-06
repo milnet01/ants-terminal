@@ -18,18 +18,18 @@ mirrors the v1 `include_section_headers` design.
   When false (or absent), narrator bullets (empty id, non-empty
   headline) are dropped from `bullets[]` server-side. When true, the
   legacy shape is preserved for back-compat callers. Anchor:
-  `ANTS-1425` in `src/remotecontrol.cpp`.
+  `ANTS-1425` in the remotecontrol TUs.
 - **INV-2 / narrator predicate is the complement of rollup.** Both
   share `id.isEmpty()`; rollups have `headline.isEmpty()` while
   narrators have non-empty headline. The two predicates are
   disjoint by construction. Anchor: `isNarratorBullet` lambda in
-  `src/remotecontrol.cpp`.
+  the remotecontrol TUs.
 - **INV-3 / single drop helper composes both opt-ins.** A
   `shouldDropUnnumbered` lambda combines the two predicates with
   their respective opt-in flags so the two filter loops (section-
   mode emission + full-file emission) call one helper instead of
   re-deriving the logic. Anchor: `shouldDropUnnumbered` in
-  `src/remotecontrol.cpp`.
+  the remotecontrol TUs.
 - **INV-4 / schema advertises `include_narrator_bullets`.** The
   `roadmap_query` `tools/list` descriptor in
   `src/claudeintegration.cpp` declares the new boolean property
@@ -54,7 +54,7 @@ mirrors the v1 `include_section_headers` design.
 
 ## Test scope
 
-Source-scrape against `src/remotecontrol.cpp`,
+Source-scrape against the remotecontrol TUs,
 `src/claudeintegration.cpp`, and `src/mainwindow.cpp` for the
 anchor strings + key code patterns. INV-7 orthogonality is implicit
 in the `shouldDropUnnumbered` shape (two-flag conjunction); a

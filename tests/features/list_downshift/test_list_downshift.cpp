@@ -274,7 +274,7 @@ TEST(list_downshift, BytesCapClampedPreserved) {
 // ─── Source-scrape INV-5/6/7/11 — cmdRoadmapQuery wiring ─────────────────────
 TEST(list_downshift, Inv5And6And11RoadmapWiring) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // INV-5 — gated projector at BOTH bullet sites (section + full-file).
     expect(countOccurrences(cpp, "RowProjector(&rcProjectHeadlineOnly)") == 2,
            "INV-5: rcProjectHeadlineOnly wired as the projector at exactly the "
@@ -300,7 +300,7 @@ TEST(list_downshift, Inv5And6And11RoadmapWiring) {
 // limitArg through unchanged; the engine, not the verb, gates the downshift).
 TEST(list_downshift, Inv7ForwardsExplicitLimit) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(countOccurrences(cpp, "filtered, offsetArg, limitArg,") == 2,
            "INV-7: both bullet sites pass offsetArg/limitArg verbatim into "
            "pageBullets (explicit limit respected; downshift is the 4th arg)");
@@ -312,7 +312,7 @@ TEST(list_downshift, Inv7ForwardsExplicitLimit) {
 // projector would blank every row and no other test would catch it).
 TEST(list_downshift, WorkspaceSearchRoutingAndProjectorIdentity) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const std::string body = ants_test::slurpFunctionBody(
         cpp, "RemoteControl::cmdWorkspaceSearch");
     expect(!body.empty(), "cmdWorkspaceSearch body located");
@@ -341,7 +341,7 @@ TEST(list_downshift, WorkspaceSearchRoutingAndProjectorIdentity) {
 // headline_only / include_body mode, and emits downshifted only when it fires.
 TEST(list_downshift, ChangelogQueryDownshiftWiring) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The changelog-shaped projector must exist and differ from the roadmap
     // one (a copy-paste of rcProjectHeadlineOnly would blank version/ids).
     expect(contains(cpp, "void rcProjectChangelogHeadlineOnly(QJsonArray"),

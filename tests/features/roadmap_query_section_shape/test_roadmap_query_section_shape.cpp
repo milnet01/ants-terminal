@@ -12,8 +12,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
@@ -36,7 +36,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // INV-1 — table detection: `|`-leading content line → "table".
 TEST(roadmap_query_section_shape, Inv1TableDetection) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "rcSectionShape"),
            "INV-1: rcSectionShape helper present");
     expect(contains(cpp, "ANTS-1696"),
@@ -49,7 +49,7 @@ TEST(roadmap_query_section_shape, Inv1TableDetection) {
 // INV-2 — prose fallback for content lines that don't start with `|`.
 TEST(roadmap_query_section_shape, Inv2ProseFallback) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "QLatin1String(\"prose\")"),
            "INV-2: prose shape literal emitted");
     EXPECT_EQ(0, expect_failures());
@@ -58,7 +58,7 @@ TEST(roadmap_query_section_shape, Inv2ProseFallback) {
 // INV-3 — empty slice classifies as "empty" and the hint is suppressed.
 TEST(roadmap_query_section_shape, Inv3EmptySuppressesHint) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "QLatin1String(\"empty\")"),
            "INV-3: empty shape literal emitted");
     // The emit-time check skips when shape == empty.
@@ -71,7 +71,7 @@ TEST(roadmap_query_section_shape, Inv3EmptySuppressesHint) {
 // (sectionBullets.isEmpty() AT PARSE TIME, not after status filter).
 TEST(roadmap_query_section_shape, Inv4HintConditionalOnParseEmpty) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "sectionBullets.isEmpty()"),
            "INV-4: hint gated on parseBullets-empty result");
     expect(contains(cpp, "out[\"section_shape\"]"),
@@ -85,7 +85,7 @@ TEST(roadmap_query_section_shape, Inv4HintConditionalOnParseEmpty) {
 TEST(roadmap_query_section_shape, Inv5ShapeCachedBySlug) {
     expect_reset();
     const std::string cppHeader = ants_test::slurpFile(SRC_REMOTECONTROL_H_PATH);
-    const std::string cpp       = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp       = ants_test::slurpRemoteControl();
     expect(contains(cppHeader, "m_roadmapSectionShape"),
            "INV-5: m_roadmapSectionShape member declared");
     expect(contains(cpp, "m_roadmapSectionShape.clear()"),

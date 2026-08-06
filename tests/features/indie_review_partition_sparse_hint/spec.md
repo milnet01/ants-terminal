@@ -17,7 +17,7 @@ verb" (cross-session reports). This is a symmetry follow-up to ANTS-3375.
 
 ## Surface
 
-`RemoteControl::cmdIndieReviewPartition` (`src/remotecontrol.cpp`).
+`RemoteControl::cmdIndieReviewPartition` (the remotecontrol TUs).
 
 ## Invariants
 
@@ -35,7 +35,7 @@ verb" (cross-session reports). This is a symmetry follow-up to ANTS-3375.
 
 ## Test scope
 
-Source-scrape against `src/remotecontrol.cpp`, scoped to the
+Source-scrape against the remotecontrol TUs, scoped to the
 `cmdIndieReviewPartition` function body (the wrapper needs a MainWindow, so
 a runtime drive is out of scope — this mirrors how the sibling
 `mcp_cold_eyes` sparse-hint test greps `cmdColdEyesPartition`). The

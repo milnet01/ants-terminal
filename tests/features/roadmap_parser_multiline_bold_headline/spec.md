@@ -31,7 +31,7 @@ Add `QRegularExpression::DotMatchesEverythingOption` to `rxBold` in
 terminates at the *first* `**` after the opening pair, so behaviour
 for single-line bold spans is unchanged. `headline_oneline`'s
 existing whitespace-collapse pass (`rcHeadlineOneline` in
-`src/remotecontrol.cpp:181`) already handles the `\n` inside the
+`the remotecontrol TUs:181`) already handles the `\n` inside the
 captured text.
 
 ## Invariants

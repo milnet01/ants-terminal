@@ -18,8 +18,8 @@
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -54,7 +54,7 @@ TEST(McpCurrentState, WiringContract) {
     expect_reset();
 
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
-    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
 
@@ -70,7 +70,7 @@ TEST(McpCurrentState, WiringContract) {
             "QJsonDocument RemoteControl::cmdCurrentState(");
     expect(!body.empty(),
            "INV-2a",
-           "cmdCurrentState body missing from src/remotecontrol.cpp");
+           "cmdCurrentState body missing from the remotecontrol TUs");
     expect(contains(body, "ANTS-1569"),
            "INV-2b",
            "cmdCurrentState body must carry an ANTS-1569 anchor "
@@ -226,7 +226,7 @@ TEST(McpCurrentState, WiringContract) {
 // test in the last_audit_summary bundle).
 TEST(McpCurrentState, Ants3370StalenessFlagPropagated) {
     expect_reset();
-    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string body =
         extractFunctionBody(rcCpp,
             "QJsonDocument RemoteControl::cmdCurrentState(");

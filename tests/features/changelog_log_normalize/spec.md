@@ -17,7 +17,7 @@ follow-up because "the prose's intended home" is under-specified.
 
 `ChangelogLog::normalizeUnreleased(markdown) -> NormalizeResult`
 (`src/changeloglog.{h,cpp}`), driven by `op:"normalize"` in
-`RemoteControl::cmdChangelogLog` (`src/remotecontrol.cpp`). Descriptor +
+`RemoteControl::cmdChangelogLog` (the remotecontrol TUs). Descriptor +
 op-enum in `src/claudeintegration.cpp`.
 
 Response: `{ok, op, file, changed, order_before[], order_after[],

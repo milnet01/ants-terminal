@@ -14,7 +14,7 @@ against the source files.
 ## Invariants
 
 - **INV-1**: `cmdTaskPriors(const QJsonObject &req)` is declared in
-  `src/remotecontrol.h` and defined in `src/remotecontrol.cpp` with an
+  `src/remotecontrol.h` and defined in the remotecontrol TUs with an
   `ANTS-1306` anchor comment. Source: docs/specs/ANTS-1306.md INV-1.
 - **INV-2**: term extraction uses the three documented regexes — id
   `ANTS-[0-9]+`, the known-extension path set, and

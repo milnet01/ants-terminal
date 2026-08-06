@@ -15,7 +15,7 @@ runtime test).
 | # | Statement |
 |---|-----------|
 | 1 | `cmdCurrentState(const QJsonObject &req)` declared public on `RemoteControl` in `src/remotecontrol.h`. |
-| 2 | `cmdCurrentState` defined in `src/remotecontrol.cpp` and carries an `ANTS-1569` anchor comment in or above the function body. |
+| 2 | `cmdCurrentState` defined in the remotecontrol TUs and carries an `ANTS-1569` anchor comment in or above the function body. |
 | 3 | The body delegates to `cmdRoadmapQuery`, `cmdGitState`, and `cmdLastAuditSummary` — all three names appear in the body of `cmdCurrentState`. |
 | 4 | MCP-only: no `cmd == "current-state"` branch in `RemoteControl::dispatch`. Mirror of `last_audit_summary`. |
 | 5 | `MainWindow::setupClaudeMcpProviders` (`src/mainwindow.cpp`) registers `"current_state"` via `registerToolProvider` and delegates to `m_remoteControl->cmdCurrentState`. Falls back to `kRcUnavailable` when `m_remoteControl` is null. |
@@ -32,7 +32,7 @@ Exit 0 = all 10 invariants hold.
 Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. No per-feature `CMakeLists.txt`. Uses
 the existing `SRC_CLAUDE_INTEGRATION_CPP_PATH`,
-`SRC_RC_HEADER`, `SRC_REMOTECONTROL_CPP_PATH`,
+`SRC_RC_HEADER`, `ANTS_RC_SOURCES`,
 `SRC_MAINWINDOW_CPP_PATH` compile defs already declared on
 `test_claude`.
 

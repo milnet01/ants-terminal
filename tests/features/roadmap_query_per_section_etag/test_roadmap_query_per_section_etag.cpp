@@ -8,8 +8,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -27,7 +27,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // helper lives in remotecontrol.cpp's anonymous namespace).
 TEST(roadmap_query_per_section_etag, Inv1FilterContract) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // Helper definition with the expected signature.
     expect(contains(cpp,
         "QJsonArray rcFilterDuplicateIdsForSection(const QJsonArray "
@@ -48,7 +48,7 @@ TEST(roadmap_query_per_section_etag, Inv1FilterContract) {
 // INV-2 — section path uses the filter.
 TEST(roadmap_query_per_section_etag, Inv2SectionPathFilters) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "rcFilterDuplicateIdsForSection("),
            "INV-2: filter helper called somewhere in remotecontrol.cpp");
     // Anchor: section path's call site references sec->slug.
@@ -63,7 +63,7 @@ TEST(roadmap_query_per_section_etag, Inv2SectionPathFilters) {
 // INV-3 — guard on the non-empty gate at the section-path call site.
 TEST(roadmap_query_per_section_etag, Inv3SectionResponseInvariantUnderUnrelatedEdit) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // The new code emits duplicate_ids only when the scoped array is
     // non-empty (matches the existing emptiness-gate for the bare
     // cache field). This keeps the envelope absent on the common
@@ -77,7 +77,7 @@ TEST(roadmap_query_per_section_etag, Inv3SectionResponseInvariantUnderUnrelatedE
 // INV-4 — full-file + id-branch still emit unscoped duplicate_ids.
 TEST(roadmap_query_per_section_etag, Inv4FullFilePathUnchanged) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // Count the bare-cache assignments:
     //   out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
     // Should be at least 3 (full-file, id-branch, section_index

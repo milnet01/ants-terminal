@@ -20,12 +20,13 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -387,7 +388,7 @@ TEST(FeedbackV2Delta, SchemaDeclaresOutputs) {
 
 // Dispatch — cmdFeedbackQuery emits the new fields.
 TEST(FeedbackV2Delta, DispatchWired) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("out[\"format_version\"]"), std::string::npos);
     EXPECT_NE(rc.find("out[\"suspected_untagged\"]"), std::string::npos);

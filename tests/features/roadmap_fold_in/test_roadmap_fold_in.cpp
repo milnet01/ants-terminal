@@ -4,6 +4,7 @@
 // gate tests (R/G/S series, see docs/specs/ANTS-1372.md § 5).
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -515,9 +516,9 @@ int countOccurrences(const QByteArray &hay, const QByteArray &needle) {
 // dropping the count from 8 to 6 (verify_changes, plan_template,
 // session_memory, workflow_state, debt_sweep_apply_fix, debt_sweep_defer).
 TEST(Ants1372SourceGrep, S1CheckCallerCwdCallSitesPresent) {
-    const QByteArray src = slurpAbsolute(
-        QStringLiteral(SRC_REMOTECONTROL_CPP_PATH));
-    ASSERT_FALSE(src.isEmpty()) << "could not read remotecontrol.cpp";
+    const QByteArray src =
+        QByteArray::fromStdString(ants_test::slurpRemoteControl());
+    ASSERT_FALSE(src.isEmpty()) << "could not read the remotecontrol TUs";
     const int n = countOccurrences(src, "RcGate::checkCallerCwd");
     EXPECT_GE(n, 6) << "expected ≥6 gate call sites (one per remaining "
                        "gated verb); got " << n;
@@ -525,8 +526,8 @@ TEST(Ants1372SourceGrep, S1CheckCallerCwdCallSitesPresent) {
 
 // S2: the helper module emits the cwd_mismatch literal.
 TEST(Ants1372SourceGrep, S2CwdMismatchCodeEmitted) {
-    const QString rc = QStringLiteral(SRC_REMOTECONTROL_CPP_PATH);
-    const QString gate = QFileInfo(rc).absolutePath()
+    // ANTS-3833 — a sibling-file anchor, not a read of remotecontrol itself.
+    const QString gate = QStringLiteral(ANTS_RC_SRC_DIR)
         + QStringLiteral("/remotecontrolgate.cpp");
     const QByteArray src = slurpAbsolute(gate);
     ASSERT_FALSE(src.isEmpty()) << "could not read " << gate.toStdString();
@@ -559,9 +560,8 @@ TEST(Ants1372SourceGrep, S4RoadmapStaysInProject) {
 // remotecontrolgate.cpp via the sibling-file convention (same dir as
 // remotecontrol.cpp).
 TEST(Ants1372SourceGrep, S5AuditLogLineWired) {
-    const QString rc = QStringLiteral(SRC_REMOTECONTROL_CPP_PATH);
-    // Compute the gate cpp path from remotecontrol.cpp's dirname.
-    const QString gate = QFileInfo(rc).absolutePath()
+    // ANTS-3833 — src/ directly, rather than via remotecontrol.cpp's dirname.
+    const QString gate = QStringLiteral(ANTS_RC_SRC_DIR)
         + QStringLiteral("/remotecontrolgate.cpp");
     const QByteArray src = slurpAbsolute(gate);
     ASSERT_FALSE(src.isEmpty()) << "could not read " << gate.toStdString();

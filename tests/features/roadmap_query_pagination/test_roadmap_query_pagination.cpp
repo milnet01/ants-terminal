@@ -145,7 +145,7 @@ TEST(roadmap_query_pagination, EmptyArrayNoTruncation) {
 // Source-scrape — INV-8 bad_args + dispatch + helper call sites.
 TEST(roadmap_query_pagination, Inv8BadArgsAnchors) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1436-INV-8"),
            "INV-8: bad_args anchor present in cmdRoadmapQuery");
     expect(contains(cpp, "offset must be a non-negative integer"),
@@ -161,7 +161,7 @@ TEST(roadmap_query_pagination, Inv8BadArgsAnchors) {
 // branch must route through the pagination helper.
 TEST(roadmap_query_pagination, Inv6SectionIndexPaginates) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(!contains(cpp, "section_index mode does not accept offset/limit"),
            "INV-6: the old section_index+offset/limit refusal is removed "
            "(ANTS-1729 enables pagination)");
@@ -177,7 +177,7 @@ TEST(roadmap_query_pagination, Inv6SectionIndexPaginates) {
 // and two in cmdChangelogQuery (entries + version_index, ANTS-3533).
 TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     size_t count = 0;
     size_t pos = 0;
     const std::string needle = "PaginationEngine::pageBullets(";

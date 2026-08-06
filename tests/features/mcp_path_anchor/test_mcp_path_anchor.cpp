@@ -22,8 +22,8 @@
 #include <sstream>
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef CMAKELISTS_PATH
 #error "CMAKELISTS_PATH compile definition required"
@@ -33,13 +33,15 @@ namespace {
 
 
 QString pathvalidationHeaderPath() {
-    // The header lives next to remotecontrol.cpp.
-    return QFileInfo(SRC_REMOTECONTROL_CPP_PATH).absoluteDir()
+    // ANTS-3833 — these two never read remotecontrol; they were using its path
+    // macro as a handle on src/. That is what ANTS_RC_SRC_DIR says directly,
+    // and it no longer depends on which TU happens to be listed first.
+    return QDir(QStringLiteral(ANTS_RC_SRC_DIR))
         .filePath(QStringLiteral("pathvalidation.h"));
 }
 
 QString pathvalidationCppPath() {
-    return QFileInfo(SRC_REMOTECONTROL_CPP_PATH).absoluteDir()
+    return QDir(QStringLiteral(ANTS_RC_SRC_DIR))
         .filePath(QStringLiteral("pathvalidation.cpp"));
 }
 
@@ -363,7 +365,7 @@ TEST(McpPathAnchorWiring, ImplDefinesValidator) {
 // and require that no `startsWith(rootCanonical` line is within 5
 // lines after a `canonicalFilePath()` assignment.
 TEST(McpPathAnchorWiring, RemoteControlNoInlineAnchor) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
 
     // Split into lines.
@@ -397,7 +399,7 @@ TEST(McpPathAnchorWiring, RemoteControlNoInlineAnchor) {
 
 // WI-4: count of PathValidation::validatePath( calls.
 TEST(McpPathAnchorWiring, EightValidatePathCallsites) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     size_t count = 0;
     size_t pos = 0;
@@ -419,7 +421,7 @@ TEST(McpPathAnchorWiring, EightValidatePathCallsites) {
 // error codes, but the slice between the function header and the
 // next function definition must contain zero `bad_lane`s.
 TEST(McpPathAnchorWiring, WorkspaceSearchNoBadLane) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
 
     auto wsStart = rc.find("QJsonDocument RemoteControl::cmdWorkspaceSearch(");

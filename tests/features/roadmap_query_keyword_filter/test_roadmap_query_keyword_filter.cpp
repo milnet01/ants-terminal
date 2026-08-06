@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QJsonObject>
 #include <QString>
+#include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
 namespace {
 
@@ -79,7 +80,7 @@ TEST(RoadmapQueryKeywordFilter, Inv4NoMatch) {
 // INV-5 — cmdRoadmapQuery wires the filter on both branches, guards the
 // incompatible combos, and echoes the applied query.
 TEST(RoadmapQueryKeywordFilter, Inv5HandlerWiring) {
-    const QString rc = readSource(SRC_RC_CPP);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     EXPECT_TRUE(rc.contains(QStringLiteral("applyQueryFilter")))
         << "query filter helper must be applied in cmdRoadmapQuery";
@@ -99,7 +100,7 @@ TEST(RoadmapQueryKeywordFilter, Inv5HandlerWiring) {
 // include_narrator_bullets). The gate splits on the post-ID-prune count
 // captured before the query filter runs.
 TEST(RoadmapQueryKeywordFilter, Inv8QueryEmptyWarningIsQueryAware) {
-    const QString rc = readSource(SRC_RC_CPP);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     EXPECT_TRUE(rc.contains(QStringLiteral("postIdPruneCountFull")))
         << "warning gate must measure the id-bearing count before the "

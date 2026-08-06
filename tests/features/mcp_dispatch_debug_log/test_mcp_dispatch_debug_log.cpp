@@ -86,7 +86,7 @@ TEST(mcp_dispatch_debug_log, Inv2RecordDispatchEnd) {
 // variable changes.
 TEST(mcp_dispatch_debug_log, Inv3MiddleCheckpointCmdTokenUsage) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const auto pos = rc.find(
         "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
     ASSERT_NE(pos, std::string::npos)

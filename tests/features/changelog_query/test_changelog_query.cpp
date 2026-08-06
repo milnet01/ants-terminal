@@ -190,7 +190,7 @@ TEST(ChangelogQueryWiring, RegisteredAndAllowlisted) {
               std::string::npos);
 
     // Handler exists.
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("RemoteControl::cmdChangelogQuery"), std::string::npos);
 

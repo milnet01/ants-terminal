@@ -9,8 +9,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
@@ -69,7 +69,7 @@ TEST(McpRoadmapSectionSlice, SchemaSectionPropertyOptional) {
 
 // REG-3
 TEST(McpRoadmapSectionSlice, CmdRoadmapQueryExtractsSection) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("req.value(QStringLiteral(\"section\")).toString()"),
               std::string::npos)
@@ -84,7 +84,7 @@ TEST(McpRoadmapSectionSlice, CmdRoadmapQueryExtractsSection) {
 
 // REG-4
 TEST(McpRoadmapSectionSlice, BadSectionErrorCodePresent) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("\"bad_section\""), std::string::npos)
         << "bad_section error code not emitted on unknown slug";
@@ -92,7 +92,7 @@ TEST(McpRoadmapSectionSlice, BadSectionErrorCodePresent) {
 
 // REG-5
 TEST(McpRoadmapSectionSlice, SectionEchoHygieneMatchesInv11) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find("\"bad_section\"");
     ASSERT_NE(pos, std::string::npos);

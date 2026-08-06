@@ -339,7 +339,7 @@ TEST(ProjectSettings, DetectDiscountsPythonVirtualenv) {
 TEST(ProjectSettings, ConsumerWiring) {
     const std::string ci = ants_test::slurpFile(srcPath("src/codebaseindex.cpp"));
     const std::string di = ants_test::slurpFile(srcPath("src/docsindex.cpp"));
-    const std::string rc = ants_test::slurpFile(srcPath("src/remotecontrol.cpp"));
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string pl = ants_test::slurpFile(srcPath("src/projectlayoutengine.cpp"));
     EXPECT_TRUE(has(ci, "ProjectSettings::load"));   // candidates()
     EXPECT_TRUE(has(di, "ProjectSettings::load"));   // walkDocs()

@@ -20,8 +20,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_MCPPROJECTION_CPP_PATH
 #error "SRC_MCPPROJECTION_CPP_PATH compile definition required"
@@ -81,7 +81,7 @@ TEST(McpDebtSweepTools, Inv12cAllCmdMethodsDeclaredInHeader) {
 }
 
 TEST(McpDebtSweepTools, Inv12dAllCmdMethodsDefinedInCpp) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     for (const char *m : kCmdMethods) {
         const std::string defn = std::string("RemoteControl::") + m;
@@ -142,7 +142,7 @@ TEST(McpDebtSweepTools, Ants3345ScanPaginationSchema) {
 }
 
 TEST(McpDebtSweepTools, Ants3345ScanEmitsPaginationEnvelope) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     // The cmdDebtSweepScan envelope now carries the pagination fields.
     EXPECT_NE(rc.find("has_more"), std::string::npos);
@@ -158,7 +158,7 @@ TEST(McpDebtSweepTools, Ants3345ScanIsOffloadEligible) {
 
 TEST(McpDebtSweepTools, Ants3346DeferTriageGate) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(ci.empty());
     ASSERT_FALSE(rc.empty());
     const std::string defer = schemaBlock(ci, "debt_sweep_defer");

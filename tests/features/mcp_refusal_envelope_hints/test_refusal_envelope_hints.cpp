@@ -134,7 +134,7 @@ TEST(mcp_refusal_envelope_hints,
 TEST(mcp_refusal_envelope_hints,
      Inv6ProjectLayoutCwdBadHasExample) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     // The cwd_bad block lives near the project_layout handler; check
     // that an ANTS-1566 anchor sits next to an example assignment.
     expect(contains(rc, "ANTS-1566"),
@@ -151,7 +151,7 @@ TEST(mcp_refusal_envelope_hints,
 TEST(mcp_refusal_envelope_hints,
      Inv7RoadmapLogCwdRefusalsHaveExample) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     // Check the cmdRoadmapLog's rlErr lambda branches on the code and
     // attaches example for missing_field / no_roadmap.
     expect(contains(rc, "missing_field") &&

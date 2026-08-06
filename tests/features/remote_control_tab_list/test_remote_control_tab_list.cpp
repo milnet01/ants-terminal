@@ -16,8 +16,8 @@
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
-#ifndef SRC_RC_CPP
-#error "SRC_RC_CPP compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_H
 #error "SRC_MAINWINDOW_H compile definition required"
@@ -42,7 +42,7 @@ int fail(const char *label, const char *why) {
 
 static int runMain() {
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
-    const std::string rcSrc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string rcSrc = ants_test::slurpRemoteControl();
     const std::string mwHdr = ants_test::slurpFile(SRC_MAINWINDOW_H);
     const std::string mwSrc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
 

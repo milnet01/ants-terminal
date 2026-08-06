@@ -30,10 +30,10 @@ frontmatter-parses + cross-references-resolve check.
 | # | Statement |
 |---|-----------|
 | 1 | `ants::expandGlobalConfigSentinel(const QString&)` is declared in `src/resolvedroot.h` inside `namespace ants`. |
-| 2 | `ants::expandGlobalConfigSentinel` is defined in `src/remotecontrol.cpp` inside `namespace ants` (alongside `resolveCallerCwdRoot`). |
+| 2 | `ants::expandGlobalConfigSentinel` is defined in the remotecontrol TUs inside `namespace ants` (alongside `resolveCallerCwdRoot`). |
 | 3 | The definition checks for both literal sentinel values `~global` and `~claude-config` — neither value is left out. |
-| 4 | `cmdWorkspaceSearch` (in `src/remotecontrol.cpp`) calls `ants::expandGlobalConfigSentinel` BEFORE the existing caller_cwd / focused-tab resolution. |
-| 5 | `cmdFileOutline` (in `src/remotecontrol.cpp`) calls `ants::expandGlobalConfigSentinel` BEFORE the existing `resolveRootCanonical(m_main, req)` call. |
+| 4 | `cmdWorkspaceSearch` (in the remotecontrol TUs) calls `ants::expandGlobalConfigSentinel` BEFORE the existing caller_cwd / focused-tab resolution. |
+| 5 | `cmdFileOutline` (in the remotecontrol TUs) calls `ants::expandGlobalConfigSentinel` BEFORE the existing `resolveRootCanonical(m_main, req)` call. |
 | 6 | The `workspace_search` tool description in `src/claudeintegration.cpp` documents the sentinel (mentions `~global` and `~/.claude/`). |
 | 7 | The `file_outline` tool description in `src/claudeintegration.cpp` documents the sentinel (mentions `~global` and `~/.claude/`). |
 | 8 | Runtime: `expandGlobalConfigSentinel("~global")` returns a non-empty path that ends in `/.claude`. |
@@ -47,7 +47,7 @@ frontmatter-parses + cross-references-resolve check.
 Exit 0 = all 12 invariants hold.
 
 Wired as a source file in the `test_claude` bundle (shares
-`SRC_CLAUDE_INTEGRATION_CPP_PATH` + `SRC_REMOTECONTROL_CPP_PATH`
+`SRC_CLAUDE_INTEGRATION_CPP_PATH` + `ANTS_RC_SOURCES`
 compile definitions with the existing MCP path-tool tests).
 
 ## Out of scope

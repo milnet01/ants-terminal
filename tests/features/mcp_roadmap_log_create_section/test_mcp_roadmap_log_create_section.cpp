@@ -13,8 +13,8 @@
 #include <cstdio>
 #include "remotecontrol.h"
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -67,7 +67,7 @@ QJsonObject baseReq(const QString &dir) {
 
 // INV-1 — dispatch source-grep.
 TEST(McpRoadmapLogCreateSection, Inv1DispatchWiredInCmdRoadmapLog) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     EXPECT_NE(src.find("\"create_section\""), std::string::npos)
         << "cmdRoadmapLog must dispatch op:create_section";
     EXPECT_NE(src.find("cmdRoadmapLogCreateSection("), std::string::npos)
@@ -210,7 +210,7 @@ TEST(McpRoadmapLogCreateSection, Inv7HeadingInsertedAtSectionEnd) {
 
 // INV-8 — source-grep: handler uses QSaveFile::commit().
 TEST(McpRoadmapLogCreateSection, Inv8AtomicWriteViaQSaveFile) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     // Find the handler block and confirm QSaveFile … commit() pair appears.
     const auto handlerPos = src.find("cmdRoadmapLogCreateSection(");
     ASSERT_NE(handlerPos, std::string::npos);

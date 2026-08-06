@@ -12,7 +12,7 @@ every `source` path baked into the curated table must exist on disk
 ## Invariants
 
 - **INV-1**: `cmdProjectConventions(const QJsonObject &req)` declared
-  in `src/remotecontrol.h`, defined in `src/remotecontrol.cpp` with an
+  in `src/remotecontrol.h`, defined in the remotecontrol TUs with an
   `ANTS-1307` anchor. Source: ANTS-1307 INV-1.
 - **INV-2**: `task_type` validated against exactly
   `{feature, bugfix, refactor, docs, test}`; otherwise `bad_args`.

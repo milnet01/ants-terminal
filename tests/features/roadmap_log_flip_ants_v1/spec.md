@@ -48,7 +48,7 @@ project's own roadmap.
 
 ## Test scope
 
-Source-scrape against `src/remotecontrol.cpp` for the walker,
+Source-scrape against the remotecontrol TUs for the walker,
 applier, and the cmdRoadmapLogFlip integration anchors. Behaviour
 parity with ANTS-1428 (GFM path) is preserved by ordering: GFM
 runs first and only falls through on zero matches.

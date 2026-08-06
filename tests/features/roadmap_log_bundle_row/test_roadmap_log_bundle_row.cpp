@@ -12,8 +12,8 @@
 #include <QTemporaryDir>
 #include "remotecontrol.h"
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -86,7 +86,7 @@ QJsonObject baseReq(const QString &dir, const QStringList &cells) {
 
 // INV-1 — dispatch source-grep, routed before the m_main guard.
 TEST(RoadmapLogBundleRow, Inv1DispatchWired) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     EXPECT_NE(src.find("\"bundle_row\""), std::string::npos);
     EXPECT_NE(src.find("cmdRoadmapLogBundleRow("), std::string::npos);
     // Route appears before the `if (!m_main)` guard in cmdRoadmapLog.
@@ -269,7 +269,7 @@ TEST(RoadmapLogBundleRow, Inv10SortedInsert) {
 
 // INV-11 — atomic write via QSaveFile::commit() in the handler body.
 TEST(RoadmapLogBundleRow, Inv11AtomicWrite) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     const auto defPos = src.find(
         "QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(");
     ASSERT_NE(defPos, std::string::npos);

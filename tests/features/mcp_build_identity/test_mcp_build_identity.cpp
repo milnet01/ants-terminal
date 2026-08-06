@@ -18,8 +18,8 @@ ANTS_TEST_SCOPE();
 #ifndef SRC_CMAKELISTS_PATH
 #error "SRC_CMAKELISTS_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_BUILD_INFO_H_PATH
 #error "SRC_BUILD_INFO_H_PATH compile definition required"
@@ -128,7 +128,7 @@ TEST(mcp_build_identity, Inv4CMakeRefreshesValuesFileLevel) {
 // cmdSessionOrient stamps a server_build block from the macros.
 TEST(mcp_build_identity, Inv5SessionOrientStampsServerBuild) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     expect(contains(rc, "#include \"build_info.h\""),
            "INV-5: remotecontrol.cpp must #include build_info.h");
     const std::string region =

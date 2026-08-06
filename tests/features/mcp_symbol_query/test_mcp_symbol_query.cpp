@@ -20,8 +20,8 @@
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #error "SRC_MAINWINDOW_CPP_PATH compile definition required"
@@ -502,7 +502,7 @@ TEST(McpSymbolQuery, WiringContract) {
     expect_reset();
 
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
-    const std::string rcCpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
     const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
@@ -551,7 +551,7 @@ TEST(McpSymbolQuery, WiringContract) {
 // test seam, so this mirrors the INV-9/10/11 source-scrape contract).
 TEST(McpSymbolQuery, Ants2087IncludeBodyWired) {
     const std::string rcCpp =
-        ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+        ants_test::slurpRemoteControl();
     const std::string ciCpp =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
@@ -607,7 +607,7 @@ TEST(McpSymbolQuery, Ants2087IncludeBodyWired) {
 // same source-scrape contract INV-9/10/11 use.
 TEST(McpSymbolQuery, Ants3555FilesOnlyManifest) {
     const std::string rcCpp =
-        ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+        ants_test::slurpRemoteControl();
     const std::string ciCpp =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 

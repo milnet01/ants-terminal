@@ -16,8 +16,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -64,7 +64,7 @@ TEST(McpPlanTemplateTool, CmdMethodDeclaredInHeader) {
 
 // REG-4
 TEST(McpPlanTemplateTool, CmdMethodDefinedInCpp) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("RemoteControl::cmdPlanTemplate"), std::string::npos)
         << "RemoteControl::cmdPlanTemplate definition missing from "

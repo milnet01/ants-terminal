@@ -23,8 +23,8 @@
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
-#ifndef SRC_RC_CPP
-#error "SRC_RC_CPP compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -145,7 +145,7 @@ TEST(RcReadToolByteCap, HelperContract) {
     // multi-path (`paths:[…]`) loop reuses it; assert the cap in the helper
     // body where it now lives.
     {
-        const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+        const std::string rc = ants_test::slurpRemoteControl();
         const auto p = rc.find("outlineOneFile");
         expect(p != std::string::npos, "WI-1",
                "outlineOneFile helper not found");
@@ -163,7 +163,7 @@ TEST(RcReadToolByteCap, HelperContract) {
     // assert the routing here and the cap in the helper so the ANTS-1293
     // invariant stays pinned across the refactor.
     {
-        const std::string rc = ants_test::slurpFile(SRC_RC_CPP);
+        const std::string rc = ants_test::slurpRemoteControl();
         const auto p = rc.find("RemoteControl::cmdWorkspaceSearch");
         expect(p != std::string::npos, "WI-2",
                "cmdWorkspaceSearch not found");

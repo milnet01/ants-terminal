@@ -24,7 +24,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // bullet set (file-level, filter-independent) for any id-bearing bullet.
 TEST(roadmap_query_prose_no_id_warning, Inv1FileLevelIdBearingScan) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-3583"),
            "INV-1: ANTS-3583 anchor present in remotecontrol.cpp");
     expect(contains(cpp, "fileHasIdBearingBullet"),
@@ -42,7 +42,7 @@ TEST(roadmap_query_prose_no_id_warning, Inv1FileLevelIdBearingScan) {
 // recognised" warning, on every status filter.
 TEST(roadmap_query_prose_no_id_warning, Inv2ParseableBulletsSignalAndWarning) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "out[\"parseable_bullets\"] = 0"),
            "INV-2: machine-detectable parseable_bullets:0 emitted");
     expect(contains(cpp, "no [PROJ-NNNN]-tagged bullets that "),
@@ -58,7 +58,7 @@ TEST(roadmap_query_prose_no_id_warning, Inv2ParseableBulletsSignalAndWarning) {
 // ANTS-1538 preIdPruneCountFull branch.
 TEST(roadmap_query_prose_no_id_warning, Inv3GatedOnFileScanNotPostStatusCount) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "if (!fileHasIdBearingBullet &&"),
            "INV-3: branch gated on the file-level scan (not the post-status "
            "count)");

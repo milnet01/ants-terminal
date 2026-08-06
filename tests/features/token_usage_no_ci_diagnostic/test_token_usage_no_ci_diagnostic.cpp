@@ -54,7 +54,7 @@ TEST(token_usage_no_ci_diagnostic, Inv1SimplifiedSignature) {
 // no `m_main_ptr` / `this_rc_ptr` / `ci_via_getter_null` fields.
 TEST(token_usage_no_ci_diagnostic, Inv2DiagnosticEnvelopesRetired) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     // Find cmdTokenUsage body bounds.
     const auto start = cpp.find(
         "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
@@ -77,7 +77,7 @@ TEST(token_usage_no_ci_diagnostic, Inv2DiagnosticEnvelopesRetired) {
 // only caller supplying explicitCi, the fallback is dead code.
 TEST(token_usage_no_ci_diagnostic, Inv3FallbackRetired) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const auto start = cpp.find(
         "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
     ASSERT_NE(start, std::string::npos)
@@ -97,7 +97,7 @@ TEST(token_usage_no_ci_diagnostic, Inv3FallbackRetired) {
 // unchanged from the pre-1422 shape.
 TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const auto pos = cpp.find("env[\"ok\"] = true;");
     ASSERT_NE(pos, std::string::npos)
         << "INV-4 precondition: cmdTokenUsage success path "

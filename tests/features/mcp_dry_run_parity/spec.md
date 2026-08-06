@@ -34,7 +34,7 @@ would change" pre-flight. This feature adds a uniform `dry_run`:
   `applied=false`). The source-mutation dry_run primitive.
 - `TestAuditEngine::FoldInRequest::dryRun` — threads the flag into the engine,
   which uses `peekIds` (not allocateIds) and skips both insert paths.
-- Per-handler `dry_run` gate in `src/remotecontrol.cpp` (cmdApplyEdits,
+- Per-handler `dry_run` gate in the remotecontrol TUs (cmdApplyEdits,
   cmdProjectSettings, cmdFeedbackLog, cmdAuditFalseposLog, cmdIndieReviewFoldIn,
   cmdColdEyesFoldIn, cmdDebtSweepDefer, cmdDebtSweepApplyFix) plus the
   test_audit_fold_in provider lambda in `src/mainwindow.cpp`.

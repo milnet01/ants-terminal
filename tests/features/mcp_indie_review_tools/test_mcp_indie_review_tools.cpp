@@ -16,8 +16,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -75,7 +75,7 @@ TEST(McpIndieReviewTools, AllCmdMethodsDeclaredInHeader) {
 }
 
 TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     for (const char *m : kCmdMethods) {
         const std::string defn = std::string("RemoteControl::") + m;
@@ -88,7 +88,7 @@ TEST(McpIndieReviewTools, AllCmdMethodsDefinedInCpp) {
 // ANTS-1279 — the orchestrate handler composes the dispatch manifest from
 // the existing engine functions and emits the report-collection contract.
 TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto p = rc.find("RemoteControl::cmdIndieReviewOrchestrate");
     ASSERT_NE(p, std::string::npos);
@@ -114,7 +114,7 @@ TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
 // ANTS-1288 — the partition handler emits suggested_merges, computed via
 // the engine helper (locks the wiring against accidental removal).
 TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto p = rc.find("RemoteControl::cmdIndieReviewPartition");
     ASSERT_NE(p, std::string::npos);
@@ -135,7 +135,7 @@ TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
 // absent from the derived partition (mirrors cold_eyes_brief's ANTS-1508
 // doc_paths[] fallback). Source-grep over the handler body.
 TEST(McpIndieReviewTools, Ants3375SourcePathsAdHocLaneInHandler) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find("RemoteControl::cmdIndieReviewBrief");
     ASSERT_NE(pos, std::string::npos);
@@ -157,7 +157,7 @@ TEST(McpIndieReviewTools, Ants3375SourcePathsAdHocLaneInHandler) {
 // source_paths[] override and carries known_lanes + source_paths_rejected
 // so the caller recovers without a second partition round-trip.
 TEST(McpIndieReviewTools, Ants3375NotFoundNamesSourcePathsOverride) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find("RemoteControl::cmdIndieReviewBrief");
     ASSERT_NE(pos, std::string::npos);
@@ -209,7 +209,7 @@ TEST(McpIndieReviewTools, Ants3713CorroborateAllowsOutsideProject) {
     // Handler side: the flag relaxes the anchor AND routes to the
     // already-anchored engine entry point, so ANTS-1282 INV-3 still guards
     // the default path.
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     EXPECT_NE(rc.find("/*allowOutsideRoot=*/allowOutside"), std::string::npos);
     EXPECT_NE(rc.find("corroboratedFindingsFromCanonicalDir"),
               std::string::npos);

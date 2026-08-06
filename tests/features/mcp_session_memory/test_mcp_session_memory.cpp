@@ -9,8 +9,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
@@ -73,7 +73,7 @@ TEST(McpSessionMemory, SchemaRequiredArrayMatchesInv9) {
 // extracted; flipping the assertion is the regression-lock that the
 // cross-project tenancy bypass stays closed.
 TEST(McpSessionMemory, CmdExtractsAllArgs) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdSessionMemory");
@@ -118,7 +118,7 @@ TEST(McpSessionMemory, CmdExtractsAllArgs) {
 // RcGate::checkCallerCwd call (i.e. the gate is INSIDE an else
 // branch keyed off the read-op condition).
 TEST(McpSessionMemory, RcGateOnWriteOpsOnly) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdSessionMemory");
@@ -154,7 +154,7 @@ TEST(McpSessionMemory, RcGateOnWriteOpsOnly) {
 
 // REG-4
 TEST(McpSessionMemory, ErrorCodesComplete) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdSessionMemory");
@@ -193,7 +193,7 @@ TEST(McpSessionMemory, ProviderLambdaRegisteredInMainWindow) {
 
 // REG-6
 TEST(McpSessionMemory, HandlerDelegatesToEngine) {
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const auto pos = rc.find(
         "QJsonDocument RemoteControl::cmdSessionMemory");

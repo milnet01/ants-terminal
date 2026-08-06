@@ -22,12 +22,13 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -409,7 +410,7 @@ TEST(FeedbackCompactResolved, SchemaDeclaresOp) {
 
 // Dispatch — cmdFeedbackLog routes the op to FeedbackFile::compactResolved.
 TEST(FeedbackCompactResolved, DispatchWired) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("op == QStringLiteral(\"compact_resolved\")"),
               std::string::npos);
@@ -562,7 +563,7 @@ TEST(FeedbackShipDate, LiveQueryEmitsShippedDate) {
 // Wiring — both surfaces populate the ship-date via the shared extractor, and
 // the feedback_query description documents shipped_date.
 TEST(FeedbackShipDate, WiringSharedExtractor) {
-    const std::string rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("FeedbackFile::shipDateFromRoadmapBody"), std::string::npos);
     EXPECT_NE(rc.find("shipped_date"), std::string::npos);

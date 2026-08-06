@@ -90,7 +90,7 @@ TEST(SimilarCodeBodies, FindThenExtractFullBody) {
 // INV-2 — verb + schema wiring: cmdSimilarCode honours include_bodies and
 // reuses ReadRegion; the schema advertises the option.
 TEST(SimilarCodeBodies, VerbAndSchemaWiring) {
-    const std::string rc = ants_test::slurpFile(srcPath("src/remotecontrol.cpp"));
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
     EXPECT_TRUE(has(rc, "include_bodies"));
     EXPECT_TRUE(has(rc, "ReadRegion::extract"));

@@ -38,4 +38,4 @@ Part of **ANTS-1878**. Full design + invariants live in
 `QTemporaryDir` holds a synthetic `ROADMAP.md` per test. The test
 calls `cmdRoadmapLogCreateSectionForTest(req)` directly, asserts the
 envelope + the resulting file content. Source-grep tests check
-dispatch wiring against `src/remotecontrol.cpp`.
+dispatch wiring against the remotecontrol TUs.

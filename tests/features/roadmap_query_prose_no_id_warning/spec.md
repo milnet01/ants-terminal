@@ -29,7 +29,7 @@ filter-independent.
 ## Surface
 
 `RemoteControl::cmdRoadmapQuery` full-file (no `section` arg) emission
-path in `src/remotecontrol.cpp`.
+path in the remotecontrol TUs.
 
 ## Invariants
 
@@ -39,14 +39,14 @@ path in `src/remotecontrol.cpp`.
   **any** `[PROJ-NNNN]`-tagged bullet exists in the file, independent of
   the status filter. Early-exit on the first id-bearing bullet keeps it
   O(1) on a normal roadmap. Anchor: `ANTS-3583` +
-  `fileHasIdBearingBullet` in `src/remotecontrol.cpp`.
+  `fileHasIdBearingBullet` in the remotecontrol TUs.
 - **INV-2 — machine-detectable `parseable_bullets:0` + warning on every
   filter.** When the file has zero id-bearing bullets (and neither
   opt-in is set), the response carries `parseable_bullets` set to 0 and
   a `warning` stating the format is unrecognised, *not* that there is no
   work. This branch precedes the ANTS-1538 / ANTS-3560 branches, so it
   fires identically for `status:'all'` and every granular filter.
-  Anchor: `out["parseable_bullets"] = 0` in `src/remotecontrol.cpp`.
+  Anchor: `out["parseable_bullets"] = 0` in the remotecontrol TUs.
 - **INV-3 — filter-independence.** The `parseable_bullets:0` branch is
   gated only on the file-level scan + the two opt-in flags
   (`!includeNarratorBullets && !includeSectionHeaders`); it does **not**
@@ -59,7 +59,7 @@ path in `src/remotecontrol.cpp`.
 
 ## Test scope
 
-Source-scrape against `src/remotecontrol.cpp` for the anchor strings and
+Source-scrape against the remotecontrol TUs for the anchor strings and
 key code patterns. A runtime test would require a RemoteControl +
 Roadmap fixture (out of scope here, matching the sibling
 `roadmap_query_narrator_filter` / `mcp_roadmap_status_filter` tests).

@@ -11,8 +11,8 @@
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
 #endif
-#ifndef SRC_RC_CPP
-#error "SRC_RC_CPP compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_CPP
 #error "SRC_MAINWINDOW_CPP compile definition required"
@@ -30,7 +30,7 @@
 
 static int runMain() {
     const std::string h   = ants_test::slurpFile(SRC_RC_HEADER);
-    const std::string rc  = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string rc  = ants_test::slurpRemoteControl();
     const std::string mwc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
     const std::string mwh = ants_test::slurpFile(SRC_MAINWINDOW_H);
     const std::string mc  = ants_test::slurpFile(SRC_MAIN_CPP);
@@ -115,10 +115,15 @@ static int runMain() {
              "otherwise the client would boot a second GUI");
     }
 
-    // INV-7: CMakeLists.txt lists remotecontrol.cpp in the executable.
-    if (cm.find("src/remotecontrol.cpp") == std::string::npos) {
-        fail("INV-7: CMakeLists.txt must list src/remotecontrol.cpp "
-             "under the ants-terminal executable sources");
+    // INV-7: CMakeLists.txt wires the RemoteControl sources into the build.
+    // ANTS-3833 — the implementation is eleven TUs, named once by the
+    // ANTS_RC_SOURCES_REL list that ants_core_lib consumes. Asserting on the
+    // list rather than on one filename is what the split made this mean, and
+    // it is the stronger check: a TU added to add_library() but omitted from
+    // the list would still satisfy a search for any single path.
+    if (cm.find("ANTS_RC_SOURCES_REL") == std::string::npos) {
+        fail("INV-7: CMakeLists.txt must declare ANTS_RC_SOURCES_REL and feed "
+             "it to ants_core_lib");
     }
 
     // INV-8 (negative): remotecontrol.cpp must not import Widgets UI headers.

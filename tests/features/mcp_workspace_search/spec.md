@@ -18,7 +18,7 @@ can grep for).
 | # | Statement |
 |---|-----------|
 | 1 | `cmdWorkspaceSearch(const QJsonObject &req)` is declared public on `RemoteControl` in `src/remotecontrol.h`, alongside the ANTS-1244 trio (`cmdRoadmapQuery`/`cmdTabList`/`cmdGetText`). |
-| 2 | `cmdWorkspaceSearch` is defined in `src/remotecontrol.cpp` and carries the 10 invariant anchors `// ANTS-1248-INV-1` through `// ANTS-1248-INV-10` (one per spec invariant). Each anchor sits next to the code that enforces it. |
+| 2 | `cmdWorkspaceSearch` is defined in the remotecontrol TUs and carries the 10 invariant anchors `// ANTS-1248-INV-1` through `// ANTS-1248-INV-10` (one per spec invariant). Each anchor sits next to the code that enforces it. |
 | 3 | `rg` is invoked with shell-less argv — `QProcess::start(\"rg\", QStringList...)` (the two-argument form), **not** `QProcess::start(\"bash -c ...\")`, **not** the single-string `start(\"...\")` overload, **not** `system(`, **not** `popen(`. Source-grep negative check. |
 | 4 | The IPC dispatcher in `RemoteControl::dispatch` routes `\"workspace-search\"` to `cmdWorkspaceSearch`. |
 | 5 | The MCP `tools/list` block in `src/claudeintegration.cpp` registers a `\"workspace_search\"` entry with an `inputSchema` that declares `properties.pattern` (required) plus `regex`, `lane`, `glob`, `max_results`, `context`, `case`. ANTS-1256 parity: the schema is not the shared `emptySchema`. |
@@ -45,7 +45,7 @@ Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. No per-feature `CMakeLists.txt`. Uses
 the existing `SRC_CLAUDE_INTEGRATION_CPP_PATH`,
 `SRC_CLAUDE_INTEGRATION_H_PATH`, `SRC_RC_HEADER`,
-`SRC_REMOTECONTROL_CPP_PATH`, `SRC_MAINWINDOW_CPP_PATH` compile
+`ANTS_RC_SOURCES`, `SRC_MAINWINDOW_CPP_PATH` compile
 defs already declared on `test_claude`.
 
 ## Out of scope

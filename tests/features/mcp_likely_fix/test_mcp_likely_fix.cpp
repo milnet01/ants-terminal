@@ -17,8 +17,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -129,7 +129,7 @@ TEST(McpLikelyFix, ResolveHeader) {
 // INV-5 — both diagnostics verbs wire the enrichment onto their errors array.
 TEST(McpLikelyFix, VerbWiring) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     expect(!rc.empty(), "remotecontrol.cpp readable");
 
     const std::string recent =

@@ -31,7 +31,7 @@ std::string bodyOf(const std::string &src, const std::string &fnMarker) {
 // source_paths[] ad-hoc escape hatch (ANTS-3375) and the override file.
 TEST(indie_review_partition_sparse_hint, HintMentionsAdhocAndOverride) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string body =
         bodyOf(rc, "RemoteControl::cmdIndieReviewPartition");
     expect(!body.empty(),
@@ -53,7 +53,7 @@ TEST(indie_review_partition_sparse_hint, HintMentionsAdhocAndOverride) {
 // cmdColdEyesPartition's `lanes.size() <= 1` gate, not emitted unconditionally.
 TEST(indie_review_partition_sparse_hint, GatedOnSparsePartition) {
     expect_reset();
-    const std::string rc = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string body =
         bodyOf(rc, "RemoteControl::cmdIndieReviewPartition");
     expect(!body.empty(),

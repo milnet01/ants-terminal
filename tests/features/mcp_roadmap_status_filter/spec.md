@@ -29,7 +29,7 @@ tool + `cmdRoadmapQuery` IPC verb (per `docs/specs/ANTS-1247.md`):
 
 Source-grep, no GUI, no QTemporaryDir. Slurps:
 - `src/remotecontrol.h` (signature, default param)
-- `src/remotecontrol.cpp` (filter parse, switch, response shape, INV anchors)
+- the remotecontrol TUs (filter parse, switch, response shape, INV anchors)
 - `src/claudeintegration.h` (provider signature widened)
 - `src/claudeintegration.cpp` (inputSchema, dispatch extract)
 - `src/mainwindow.cpp` (provider lambda)

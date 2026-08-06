@@ -34,7 +34,7 @@ int fail(const char *label, const char *why) {
 static int runMain() {
     // QCoreApplication app(argc, argv);  // ANTS-1217: bundle_main creates the app
 
-    const std::string rcSrc = ants_test::slurpFile(SRC_RC_CPP);
+    const std::string rcSrc = ants_test::slurpRemoteControl();
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string ciSrc =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);   // ANTS-3698

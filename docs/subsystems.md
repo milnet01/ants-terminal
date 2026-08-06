@@ -162,6 +162,18 @@ Listed only where behavior isn't obvious from the name.
   `file-outline`, `find-definition`, `find-caller`, `similar-code`,
   `git-state`, `subsystem`, `roadmap-branch-drift`. Trust model:
   UID-scoped + 0700 perms + `lstat`-checked `S_ISSOCK`.
+  **Eleven translation units (ANTS-3833).** The class and
+  `src/remotecontrol.h` are unchanged; only the bodies were cut, each TU one
+  contiguous slice of the old file: `remotecontrol.cpp` (the dispatcher and
+  the shared `rcdetail` helper pool), then `_terminal`, `_roadmap_query`,
+  `_changelog`, `_roadmap_log`, `_workspace`, `_docs`, `_feedback`, `_state`,
+  `_review`, `_coldeyes`. `CMakeLists.txt`'s `ANTS_RC_SOURCES_REL` names them
+  in slice order and `ants_core_lib` consumes that list; the
+  `ANTS_RC_SOURCES` compile definition carries the same order to the test
+  tree, where `ants_test::slurpRemoteControl()` reads all eleven. A new verb's
+  body goes in its family's TU, its `dispatch` routing entry in
+  `remotecontrol.cpp`. Cross-TU helpers are declared in
+  `src/remotecontrol_internal.h`, which nothing outside the list may include.
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local
   subagent for Claude Code; v1 surface is `drift-check`. ANTS-1116.
 - `luaengine` / `pluginmanager` — sandboxed Lua 5.4; plugins in

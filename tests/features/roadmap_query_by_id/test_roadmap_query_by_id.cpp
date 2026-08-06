@@ -12,8 +12,8 @@
 
 #include <string>
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -42,7 +42,7 @@ size_t at(const std::string &hay, const std::string &needle) {
 // INV-1 — id read from req with 64-byte + control-char hygiene.
 TEST(roadmap_query_by_id, Inv1IdReadAndHygiene) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "ANTS-1856"),
            "INV-1: ANTS-1856 anchor present in cmdRoadmapQuery");
     expect(contains(cpp, "req.value(QStringLiteral(\"id\"))"),
@@ -56,7 +56,7 @@ TEST(roadmap_query_by_id, Inv1IdReadAndHygiene) {
 // fetch bypasses both.
 TEST(roadmap_query_by_id, Inv2BypassesStatusAndPagination) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     const size_t idBranch = at(cpp, "if (!idArg.isEmpty()) {");
     const size_t statusFilter = at(cpp, "ANTS-1247-INV-2/3");
     expect(idBranch != std::string::npos,
@@ -75,7 +75,7 @@ TEST(roadmap_query_by_id, Inv2BypassesStatusAndPagination) {
 // INV-3 — case-only mismatch surfaces bad_case + canonical_id.
 TEST(roadmap_query_by_id, Inv3CaseMismatchBadCase) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "Qt::CaseInsensitive"),
            "INV-3: case-insensitive fallback scan present");
     expect(contains(cpp, "out[\"canonical_id\"]"),
@@ -88,7 +88,7 @@ TEST(roadmap_query_by_id, Inv3CaseMismatchBadCase) {
 // INV-4 — unknown id is ok:true with found:false, not an error.
 TEST(roadmap_query_by_id, Inv4UnknownIdFoundFalse) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "out[\"found\"]   = !matches.isEmpty()") ||
                contains(cpp, "out[\"found\"] = !matches.isEmpty()"),
            "INV-4: found reflects whether the id matched");
@@ -98,7 +98,7 @@ TEST(roadmap_query_by_id, Inv4UnknownIdFoundFalse) {
 // INV-5 — id + section and id + section_index both rejected.
 TEST(roadmap_query_by_id, Inv5CombosRejected) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp,
                     "id selector does not combine with "
                     "mode:section_index"),
@@ -111,7 +111,7 @@ TEST(roadmap_query_by_id, Inv5CombosRejected) {
 // INV-6 — body kept by default; stripped only on explicit opt-out.
 TEST(roadmap_query_by_id, Inv6BodyDefaultOn) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp,
                     "if (hasIncludeBodyArg && !includeBody) "
                     "rcStripBodyFields(matches)"),

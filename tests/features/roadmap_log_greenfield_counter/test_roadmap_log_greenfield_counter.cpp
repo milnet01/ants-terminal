@@ -13,8 +13,8 @@
 #include <QTemporaryDir>
 #include "remotecontrol.h"
 
-#ifndef SRC_REMOTECONTROL_CPP_PATH
-#error "SRC_REMOTECONTROL_CPP_PATH compile definition required"
+#ifndef ANTS_RC_SOURCES
+#error "ANTS_RC_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -196,7 +196,7 @@ TEST(RoadmapLogGreenfieldCounter, Inv3bExistingIdsNoCounterRecoversBatch) {
 
 // INV-4 — the greenfield discriminator helper is present in source.
 TEST(RoadmapLogGreenfieldCounter, Inv4HelperPresent) {
-    const std::string src = ants_test::slurpFile(SRC_REMOTECONTROL_CPP_PATH);
+    const std::string src = ants_test::slurpRemoteControl();
     EXPECT_NE(src.find("rlRoadmapHasAnyBulletId"), std::string::npos)
         << "the greenfield-vs-desync discriminator must exist";
 }

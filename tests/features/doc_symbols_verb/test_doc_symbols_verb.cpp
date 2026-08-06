@@ -12,8 +12,9 @@
 #include <QString>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
-#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(SRC_REMOTECONTROL_CPP_PATH) || \
+#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH) || !defined(SRC_DOCSYMBOLS_CPP_PATH)
 #error "doc_symbols_verb test needs the test_claude source-path compile defs"
 #endif
@@ -42,7 +43,7 @@ TEST(DocSymbolsVerb, Inv4NoSeverityVocabulary) {
         EXPECT_FALSE(eng.contains(QString::fromUtf8(banned), Qt::CaseInsensitive))
             << "docsymbols.cpp must not carry defect vocabulary: " << banned;
 
-    const QString rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     const int b = rc.indexOf(QStringLiteral("RemoteControl::docSymbolsBuildResponse"));
     ASSERT_GE(b, 0);
@@ -71,7 +72,7 @@ TEST(DocSymbolsVerb, Inv6RefusalMinimums) {
     EXPECT_TRUE(ci.contains(QStringLiteral("docSym[\"name\"] = \"doc_symbols\"")));
 
     // (2) a supplied path is validated before any enumeration → bad_path.
-    const QString rc = slurp(SRC_REMOTECONTROL_CPP_PATH);
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
     const int h = rc.indexOf(QStringLiteral("RemoteControl::cmdDocSymbols"));
     ASSERT_GE(h, 0);

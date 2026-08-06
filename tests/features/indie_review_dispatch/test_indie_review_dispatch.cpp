@@ -14,7 +14,6 @@
 namespace {
 
 const char *kEnginePath  = SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH;
-const char *kHandlerPath = SRC_REMOTECONTROL_CPP_PATH;
 const char *kMainPath    = SRC_MAINWINDOW_CPP_PATH;
 const char *kCiPath      = SRC_CLAUDE_INTEGRATION_CPP_PATH;
 const char *kEngineHdr   = SRC_INDIE_REVIEW_DISPATCHER_H_PATH;
@@ -86,7 +85,7 @@ TEST(IndieReviewDispatch, G5_InFlightGate) {
 TEST(IndieReviewDispatch, G6_PathValidation) {
     const std::string handler =
         ants_test::slurpFunctionBody(
-            ants_test::slurpFile(kHandlerPath),
+            ants_test::slurpRemoteControl(),
             "RemoteControl::cmdIndieReviewDispatch");
     ASSERT_FALSE(handler.empty());
     EXPECT_NE(handler.find("PathValidation::validatePath"),
@@ -136,7 +135,7 @@ TEST(IndieReviewDispatch, G9_PerLaneTimeout) {
 TEST(IndieReviewDispatch, G10_RefusalEnvelopeShape) {
     const std::string handler =
         ants_test::slurpFunctionBody(
-            ants_test::slurpFile(kHandlerPath),
+            ants_test::slurpRemoteControl(),
             "RemoteControl::cmdIndieReviewDispatch");
     ASSERT_FALSE(handler.empty());
     // Every irErr call in this handler must pair (code, message).

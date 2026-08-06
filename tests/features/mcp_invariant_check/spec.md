@@ -10,7 +10,7 @@ substring mentions of the input `files[]`.
 | # | Statement |
 |---|-----------|
 | 1 | `cmdInvariantCheck(const QJsonObject &req)` declared public on `RemoteControl` in `src/remotecontrol.h`. |
-| 2 | `cmdInvariantCheck` defined in `src/remotecontrol.cpp` and carries an `ANTS-1308` anchor comment in or above the function body. |
+| 2 | `cmdInvariantCheck` defined in the remotecontrol TUs and carries an `ANTS-1308` anchor comment in or above the function body. |
 | 3 | The body refuses with `code:"bad_files"` when the `files` argument is missing, empty, or normalises to an empty list. |
 | 4 | The body iterates `docs/specs/ANTS-*.md` via `QDir` (the directory listing surface, not a hardcoded file list). |
 | 5 | The body delegates parsing to the shared `parseSpecBody` helper (same helper that backs `cmdSpecQuery`, so the parser is single-sourced). |
@@ -34,7 +34,7 @@ Exit 0 = all 11 invariants hold.
 Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. Uses the existing
 `SRC_CLAUDE_INTEGRATION_CPP_PATH`, `SRC_RC_HEADER`,
-`SRC_REMOTECONTROL_CPP_PATH`, `SRC_MAINWINDOW_CPP_PATH` compile
+`ANTS_RC_SOURCES`, `SRC_MAINWINDOW_CPP_PATH` compile
 defs already declared on `test_claude`.
 
 ## Out of scope
