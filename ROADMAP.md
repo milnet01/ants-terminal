@@ -27514,6 +27514,23 @@ against current source before filing.
   **Layman:** The roadmap database is fully built but there is no button, command or tool that actually imports a project into it.
   Kind: implement.
   Source: in-session-2026-08-06 — measured while starting ANTS-3853/ANTS-3815..
+  Spec accepted (2026-08-06): docs/specs/ANTS-3855-roadmap-migrate-verb.md.
+  Cold-eyes loops 1-3, 3 cold lanes each, 71 verified findings fixed
+  across the three loops (10 dismissed). Converged by cap with NO
+  deferred tail — nothing is owed to a later pass.
+
+  Design, in one line: a `roadmap_migrate` MCP verb whose handler resolves
+  only `RoadmapStore::defaultPath()`, delegating to a free
+  `RoadmapMigrateVerb::run(storePath, req)` — the seam exists so the
+  feature test can drive the verb against a QTemporaryDir store instead of
+  the user's real one (which is how ANTS-3856's leaked row got there).
+  10 invariants; `dry_run` present, with its one bounded deviation from
+  mcp-tools.md stated in § 2.3.1 (a preview must open the store, because
+  its counts are a diff against existing rows).
+
+  Filed while speccing: ANTS-3857 (re-rooting a moved project).
+
+  Next: implement, per § 6's staged must-fail-first proof.
 
 - 📋 [ANTS-3856] **A test wrote a fixture project into the REAL roadmap store; nothing stops it happening again.**
   Measured 2026-08-06. `~/.local/share/ants-terminal/roadmap.sqlite`
