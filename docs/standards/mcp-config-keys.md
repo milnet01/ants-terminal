@@ -87,6 +87,20 @@ it changes a field's shape, so the caller must decode it); never costs bytes.
 Decode recipe + invariants in
 [`mcp-behavioural-notes.md`](mcp-behavioural-notes.md).
 
+## Advisory-hint latch (ANTS-3550)
+
+- `claude.mcp_hint_latch` (bool, default **true**) — the "already-taught"
+  latch on the two dispatch-wide read nudges (`next_call_hint` /
+  `leaner_call_hint`). While true each nudge is emitted at most once per
+  process per tool, then suppressed — token-saving out of the box, and the
+  reason a hint a caller saw once never reappears. **Config-file-only, with
+  no Settings toggle** (an advanced escape hatch): set it false to have the
+  tips emitted on every qualifying response. Published to the
+  `mcp::setHintLatchEnabled` module flag at config load and on external
+  reload, so an edit takes effect live. Emission rules — including the
+  gates the latch sits behind — are in
+  [`mcp-behavioural-notes.md`](mcp-behavioural-notes.md).
+
 ## `project_query` (ANTS-2093, the code-execution token-saver)
 
 The `project_query` MCP verb runs an agent-supplied **read-only** Lua snippet

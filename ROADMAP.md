@@ -26783,6 +26783,39 @@ against current source before filing.
   Kind: investigate.
   Source: in-session-2026-08-05 (ANTS-3809 § 7 cold-eyes gate, loop 3).
 
+- 📋 [ANTS-3839] **`leaner_call_hint` advertises a `filter` arg `file_outline` does not accept.**
+  `leanerModeHintFor` (src/mcpprojection.cpp) emits `pass filter=<substr>
+  to scan only matching symbols` for `file_outline`, gated on
+  `!args.contains("filter")` — so it fires on every call, since no caller
+  can ever satisfy that gate.
+
+  `file_outline`'s published inputSchema exposes no `filter` property. Its
+  args are caller_cwd, compact, encoding, etag_match, etags, fields,
+  include_doc_comment, max_bytes, max_symbols, mode, path, paths.
+
+  So the nudge is unactionable: a caller who follows it passes an argument
+  the verb ignores, and the hint keeps firing because the latch
+  (ANTS-3550) only suppresses the SECOND emission per process, not the
+  wrongness of the first.
+
+  Two candidate fixes, and which is right is a product call:
+  (a) implement `filter=<substr>` on `file_outline` (a symbol-name
+  substring filter is a real token-saver on a large file, and the hint
+  already describes the semantics);
+  (b) retire the hint and let `file_outline` fall through to the generic
+  `fields=` tip.
+
+  (a) is the likelier answer — the hint was presumably written against an
+  intended arg — but it is new surface, so it needs the usual gate.
+
+  Found while gating `docs/standards/mcp-behavioural-notes.md`: two
+  independent cold-review lanes each flagged the doc for recording the
+  `filter` tip, and both correctly identified the doc as the faithful
+  side. The doc now carries the caveat and points here.
+  **Layman:** One of the money-saving tips the tools print tells you to use a setting that does not exist, so following it does nothing.
+  Kind: fix.
+  Source: in-session-2026-08-06 (mcp-behavioural-notes cold-eyes gate, loop 1).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

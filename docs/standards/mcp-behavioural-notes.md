@@ -12,21 +12,48 @@ Keep this file in sync with the code as you would any spec.
 
 ## Dispatch-wide read-response nudges (ANTS-2081 / ANTS-2086)
 
-Applied by `mcp::appendReadHints` after the etag/`fields=` steps, to any
-**large** (>4 KiB) successful read response — independent of which verb
-produced it, so they appear in no single tool schema:
+Applied by `mcp::appendReadHints` after the etag/`fields=` steps to a
+successful read response — independent of which verb produced it, so they
+appear in no single tool schema. **The two nudges do not share a size
+gate**, which is the part callers get wrong:
 
 - **`next_call_hint`** — when the response carries a fresh `etag` and the
   caller didn't send `etag_match`, nudges reusing it
   (`pass etag_match="<etag>" next call to skip an unchanged re-read`).
+  **Fires at any body size** (ANTS-2180): a 304 on the *next* call saves
+  the full body however small *this* slice was, and the highest-churn
+  re-read targets — `read_region` / `file_outline` symbol slices across an
+  edit loop — are usually under 4 KiB.
 - **`leaner_call_hint`** — names the cheaper mode on that verb
-  (`roadmap_query`→`headline_only`/`section_index`/`status:active`,
-  `workspace_search`→`max_match_bytes`, `file_outline`→`filter`, else the
-  generic `fields=`), only when the caller isn't already on the lean path.
+  (`roadmap_query`→`headline_only`/`section_index`/`status:active`;
+  `workspace_search`→ a narrower `lane=`/`glob=`, or
+  `headline_only=`/`count_only=`/`files_only=` for a leaner row shape;
+  `file_outline`→`filter`; else the generic `fields=`). **Gated on a body
+  of ≥ 4 KiB** (`kLeanerThresholdBytes`) — a lean-mode tip only pays on a
+  worthwhile body. The `roadmap_query`, `file_outline` and `fields=`
+  branches additionally fire only when the caller isn't already on that
+  lean path; the `workspace_search` branch has no such check.
 
-Both are presentation-only (added after the etag is computed, so they
-never perturb the hash) and are skipped on 304s, refusals (`ok:false`),
-`fields=`-narrowed calls, and bodies under the threshold.
+Two traps in that second list, both live:
+
+- **`workspace_search`'s tip no longer names `max_match_bytes`**, and a
+  maintainer re-deriving the table from an older copy of this doc will
+  put it back. ANTS-3548 made that clip default-ON (512 B), so nudging it
+  buys nothing; the remaining levers are the narrower search and the
+  leaner row shape above.
+- **`file_outline`'s tip names a `filter` argument its published schema
+  does not expose** (`leanerModeHintFor` emits `pass filter=<substr>`;
+  the verb's inputSchema has no such property). A caller cannot act on
+  it. Tracked as ANTS-3839 — the defect is code-side, not here.
+
+Both nudges are presentation-only (added after the etag is computed, so
+they never perturb the hash) and are skipped on 304s, refusals
+(`ok:false`) and `fields=`-narrowed calls. **Each is also emitted at most
+once per process per tool** — `claimHint`'s test-and-set latch
+(ANTS-3550, config key `claude.mcp_hint_latch`, default true, no Settings
+toggle). So a hint that appears once and never again is working as
+designed, not a bug; a test or retry path written against "every
+qualifying response" will be wrong on the second call.
 
 ## Tabular (columnar) array encoding (ANTS-2090)
 
@@ -97,8 +124,9 @@ spill regardless of size or shape.
 routes to the parsed row-pager and returns
 `{ok, mode:"rows", key, rows, row_offset, total_rows, truncated}` — clean
 element boundaries over the dominant array (same key as `head_rows_key`).
-`row_count ≤ 0` (or omitted) serves the default page (`kSpillRowsDefault`,
-100 rows); `row_offset` past the end yields an empty non-truncated page.
+With `row_offset` present, a `row_count` that is omitted or ≤ 0 serves the
+default page (`kSpillRowsDefault`, 100 rows) — omitting *both* keys stays
+in byte mode; `row_offset` past the end yields an empty non-truncated page.
 Row mode **wins over byte mode** when a call carries both key sets (the
 byte `offset`/`max_bytes` are ignored).
 
@@ -113,10 +141,12 @@ byte `offset`/`max_bytes` are ignored).
 - `not_array` — body isn't a JSON object with a dominant row-shaped array
   to page; the `hint` says byte-page it instead. Row mode only.
 
-`raw:true` (see the read-verbs note below) suppresses offload entirely, so
-an Edit-from-output caller gets true bytes rather than a head+pointer.
-Specs: `docs/specs/ANTS-2094.md` (offload + byte paging), ANTS-3538
-(`head_rows` preview), ANTS-3545 (row mode).
+`raw:true` (the **`raw:true` (ANTS-2218)** bullet under § Read /
+incremental verbs) suppresses offload entirely, so an Edit-from-output
+caller gets true bytes rather than a head+pointer.
+Specs: `docs/specs/ANTS-2094.md` (offload + byte paging). ANTS-3538
+(`head_rows` preview) and ANTS-3545 (row mode) shipped without a spec of
+their own — those bare ids are ROADMAP entries, not missing links.
 
 ## Trimmed descriptions + `tool_info` `detail` (ANTS-2079)
 
@@ -186,8 +216,7 @@ server-controllable beyond this per-tool hint.
   (warm-cache, no re-parse). Spec `docs/specs/ANTS-1922.md`.
 - **`downshifted` (ANTS-3543 `roadmap_query` + `workspace_search`;
   ANTS-3576 `changelog_query`)** —
-  on the **auto-truncate path** (caller passed no explicit `limit`, and
-  not `include_body` / `mode:headline_only`), if a large list would drop
+  on the **auto-truncate path**, if a large list would drop
   its tail the server first projects the WHOLE list to its lean shape
   (`roadmap_query` → `{id, status, headline_oneline, section_slug}`;
   `workspace_search` → `{file, line, headline}` + `also_at`;
@@ -200,9 +229,15 @@ server-controllable beyond this per-tool hint.
   response the caller did **not** request (meaning widens from "you asked
   for lean rows" to "rows were leaned to fit"). Pure helpers:
   `PaginationEngine::pageBullets`'s `RowProjector` arg and
-  `RemoteControl::downshiftMatches` (both socket-free unit-tested). An
-  explicit `limit` opts out (fat paging respected). Spec
-  `docs/specs/ANTS-3543.md`.
+  `RemoteControl::downshiftMatches` (both socket-free unit-tested).
+  **The opt-out is per verb and the argument names are not shared** — one
+  sentence in this verb's vocabulary would be wrong for the other two:
+  `roadmap_query` turns the projector off under `mode:"headline_only"` or
+  `include_body`, and an explicit `limit` selects fat paging;
+  `changelog_query` likewise under `headline_only` or `include_body`;
+  `workspace_search` only under `headline_only:true` — it has no `limit`,
+  `include_body` or `mode` argument at all, so its lean-row flag is the
+  whole opt-out. Spec `docs/specs/ANTS-3543.md`.
 - **`read_log`** — filters a log file (the Ants debug log or a
   `caller_cwd` path) to matching lines via the pure `ReadLog::filter`
   helper; streaming drop-oldest byte cap + `since_cursor` incremental
@@ -211,7 +246,9 @@ server-controllable beyond this per-tool hint.
   body (resolved via the flat `file_outline` scanner — class /
   `Class::method` forms) from a project file via the pure
   `ReadRegion::extract` helper; ETag-304 free re-read + head-anchored
-  incremental byte cap; caller_cwd-Required (ANTS-2021).
+  incremental byte cap; caller_cwd-Required (ANTS-2021). Its
+  `call_sequence:true` facet has its own bullet further down this section
+  (ANTS-2157) — this bullet is not the whole `read_region` entry.
 - **`raw:true` (ANTS-2218)** — opt-in verbatim framing, honoured by
   `read_region` / `read_regions` / `workspace_search`
   (`mcp::isRawEligible`). The default frame neutralises any literal
@@ -288,6 +325,13 @@ server-controllable beyond this per-tool hint.
 
 ## Write / edit verbs
 
+**A verb family is documented in one place, so a few read verbs live in
+this section** — `feedback_query` shares a bullet with `feedback_log`,
+`spec_query`'s list mode sits beside `spec_log` because half its contract
+is what `spec_log` refuses, and `project_query` follows `project_settings`
+as the other half of the project surface. Look a verb up by name, not by
+which heading you expect it under.
+
 - **`apply_edits`** — applies N `{path, old, new}` edits across M project
   files in one atomic-per-file call (pure `ApplyEdits::applyToContent` +
   `QSaveFile` + `fsyncParentDir`); per-edit `skipped[]` (not_found /
@@ -334,10 +378,11 @@ server-controllable beyond this per-tool hint.
   unloaded. Confinement: every `project.*` path runs through
   `PathValidation::validatePath` against the canonical `caller_cwd`
   (canonical anchor — a `..`/absolute/symlink escape raises). Caps: VM
-  10 MiB + 100k-instruction hook (inherited), wall-clock
-  `claude.mcp_project_query_timeout_ms` (default 1500, clamp [100,5000]),
-  output `claude.mcp_project_query_result_cap_bytes` (default 64 KiB,
-  clamp [1 KiB,1 MiB]). Threading: each call runs on a **fresh ephemeral
+  10 MiB + 100k-instruction hook (inherited), plus a wall-clock and an
+  output cap — `claude.mcp_project_query_timeout_ms` and
+  `claude.mcp_project_query_result_cap_bytes`, whose defaults and clamps
+  are owned by [`mcp-config-keys.md`](mcp-config-keys.md) and deliberately
+  not restated here. Threading: each call runs on a **fresh ephemeral
   worker thread** with a bounded join (timeout + 250 ms grace); a snippet
   stuck in an uninterruptible C call is **detached** (returns
   `query_timeout`, worker held as a zombie until process exit) so the GUI
@@ -346,8 +391,9 @@ server-controllable beyond this per-tool hint.
   (invalid UTF-8 → `query_error`), array-like table → array, string-keyed
   table → object (both recursive, ≤ 32 levels — the bound also catches a
   circular table); function/userdata/thread/non-string-key → `query_error`.
-  Feature-gated by `claude.mcp_project_query_enabled` (**default ON**;
-  off → `query_disabled`, checked before arg validation); under the master
+  Feature-gated by `claude.mcp_project_query_enabled` (off →
+  `query_disabled`, checked before arg validation; the default is in
+  [`mcp-config-keys.md`](mcp-config-keys.md)); under the master
   `claude.mcp_enabled` gate (off → `mcp_disabled`, takes precedence).
   A large result spills via the ANTS-2094 offload path (in
   `isOffloadEligible`). Refusal codes: `query_error` / `query_timeout` /
@@ -398,8 +444,9 @@ server-controllable beyond this per-tool hint.
   ([`roadmap-data-model.md`](roadmap-data-model.md),
   [`roadmap-format.md`](roadmap-format.md) § 3.5.1). A project with a store
   row but a GFM roadmap keeps the GFM splice path, one with a pass-headings
-  roadmap keeps that format's own path (the bullet above, for the ops it
-  covers), and a project with no store row is unaffected. Differences a
+  roadmap keeps that format's own path — the bullet above, which now
+  accounts for all eight ops — and a project with no store row is
+  unaffected. Differences a
   caller sees:
   - **Envelope**: `line`, `lines`, `bytes` and `bytes_written` are all
     dropped, and `files_written` / `items_rendered` come from the render.
@@ -468,7 +515,13 @@ server-controllable beyond this per-tool hint.
 (ANTS-1735, extended by ANTS-1889, sharpened by ANTS-1891.) Required
 `caller_cwd`; ETag + `fields` opt-in. Aggregates the model-switch ledger
 into avoided/regret ratios and pending-record counts (the trust signal
-that gates §8 OQ-3 default-ON flip; never writes ledger/config).
+that gates the default-ON flip of
+[`docs/specs/ANTS-1735.md`](../specs/ANTS-1735.md) § 8 OQ-3; never writes
+ledger/config).
+
+This verb gets its own H2 rather than a bullet under § Read verbs because
+its envelope has accreted six revisions' worth of contract; the shape is
+deliberate, not an inconsistency.
 
 - Envelope surfaces the live switcher config
   (`auto_model_switch_enabled`, `floor_tier`, `min_dwell_sec`) + `scope`
@@ -512,3 +565,9 @@ that gates §8 OQ-3 default-ON flip; never writes ledger/config).
   now measure only the current switcher behaviour. `statsForProject` /
   `statsEnvelope` and any `minEpoch=0` caller remain unaffected (all-time
   forensic view).
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | C / H / M / L / I | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-06 | 2 (same doc, independent, cold) | 0 / 3 / 6 / 8 / 1 | First gate on this document, triggered by ANTS-3837's edit. Both lanes independently led on the same three defects, all in the dispatch-wide nudges section and all pre-existing: the >4 KiB gate was stated for **both** nudges when only `leaner_call_hint` carries it (ANTS-2180), `workspace_search`'s tip still named `max_match_bytes` after ANTS-3548 retired it, and the once-per-process `claimHint` latch (ANTS-3550) was absent from an otherwise-exhaustive skip list. Blast radius: `unsupported_format` and `claude.mcp_hint_latch` were each named here but missing from the standard that owns them, so a row was added to `mcp-error-codes.md` and to `mcp-config-keys.md`. Dimension tally: dim 2×6, dim 12×4, dim 5×3, dim 4×3, dim 7×2, dim 6×2, dim 11×2, dim 1×1, dim 8×1. Dismissed on evidence: the `mode:"bundles"` envelope really does carry `total_bundle_count`/`bundles_omitted` (`remotecontrol.cpp:4545-4546`), so this doc was the correct side; and the read verbs filed under § Write are deliberately co-located with their write siblings — the organising rule was stated rather than the bullets moved. Surfaced as code-side: ANTS-3839 (`file_outline`'s `filter` tip names an argument the schema has no property for). |
