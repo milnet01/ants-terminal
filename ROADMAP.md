@@ -25803,7 +25803,7 @@ against current source before filing.
   Also amended: ANTS-3757 § 2.1.1's `body` row + a paragraph recording
   BulletRecord::headlineEnd (§ 7's stated obligation).
 
-- 📋 [ANTS-3809] **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.**
+- ✅ [ANTS-3809] **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03), which stopped
   on both stop-and-consolidate triggers: 934 lines, seven contracts, and
   collateral outnumbering draft defects two loops running.
@@ -26044,6 +26044,10 @@ against current source before filing.
 
   ANTS-3809 is now DONE end to end: seam, eight ops, eight tests, docs.
   Nothing in § 7 remains.
+  Resolved (2026-08-06): status flipped to shipped — the body had recorded
+  completion since the § 7 doc rows landed, but the emoji was never flipped.
+  Seam, eight ops, eight tests and the three doc rows are all in; CHANGELOG
+  entry recorded at 7bbe0cc0.
 
 - 📋 [ANTS-3810] **Roadmap round-trip oracle and whole-store relationship acyclicity.**
   Split out of ANTS-3793 at its cold-eyes cap (2026-08-03). Owns §§ 2.6-2.7
