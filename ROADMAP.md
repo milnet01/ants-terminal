@@ -35692,6 +35692,55 @@ contributors don't duplicate research.
   Kind: fix.
   Source: audit-2026-08-06.
 
+- 📋 [ANTS-3847] **Four audit/project-query tests leak under LeakSanitizer; `ctest --preset=debug` is not green.**
+  Measured 2026-08-06 while running the ASan leg for ANTS-3833 commit 2.
+  `ctest --preset=debug` reports 4 failures out of 3273, all LeakSanitizer:
+
+    ProjectQuery.ConfinementAndList                          (test_claude)
+    mcp_audit_run.Ants3605InProcessLanesDispatchedHeadless   (test_claude)
+    AuditRunAllowlist.Inv4bRecognisedModesAccepted           (test_audit)
+    AuditRunAllowlist.Inv7bAcceptedFormatsNotRefused         (test_audit)
+
+  PRE-EXISTING, not from the decomposition. Verified by building each of
+  the two bundles at 66c1b59a (ANTS-3833 commit 1) and at HEAD and running
+  the same four filters against the same binaries: all four leak at BOTH
+  points. Note that a prior session recorded commit 1's sanitized suite as
+  3269/3269 — that figure must have been taken with detect_leaks off.
+
+  Leak shapes are Qt-internal with no frames in our code: QProcess,
+  QProcessEnvironment::insert, QArrayData::allocate. 1.3 KB to 96 KB per
+  test, 9-201 allocations. All four are audit/project paths that spawn
+  external tools via QProcess, so the likely cause is a QProcess (or its
+  environment) not being reaped on some failure path — plausibly the one
+  ANTS-3846 describes, where clang-tidy exits with "no checks enabled".
+
+  WHY IT WENT UNNOTICED, which is the part worth fixing regardless of the
+  leaks themselves: every gate that actually runs sets `detect_leaks=0` —
+  tools/hooks/pre-push:142 and tools/ci-parity.sh:158,164. Only the `debug`
+  test preset turns it on. So the suppression file at
+  tests/lsan-suppressions.txt and its "progressive leaks from our code must
+  never be suppressed — they have to be fixed" rule are being enforced by
+  nothing on the normal path.
+
+  Two pieces of work, and the second matters more:
+  - Find and fix the four leaks (start at the QProcess spawn/reap paths in
+    auditrunner.cpp and the project_query verb).
+  - Decide what leak detection is FOR here. Either the pre-push/CI gates
+    turn it on once the tree is clean, or the debug preset stops claiming
+    a check nothing enforces. A detector that only runs where no one looks
+    is the same false-comfort shape as ANTS-3845/3846.
+
+  Trap for whoever picks this up: the ctest test names do NOT match the
+  gtest suite names (ctest #1391 is `mcp_audit_run.Ants3605...`, and
+  AuditRunAllowlist lives in test_audit, not test_claude). A
+  `--gtest_filter` built from the ctest name against the wrong binary
+  matches nothing and still prints `[  PASSED  ] 0 tests` — which reads
+  exactly like a clean run. Get the real command from
+  `ctest -R <name> -V -N`.
+  **Layman:** Four tests quietly lose memory when run with the leak checker on; the everyday checks have that detector switched off, so nobody has been seeing it.
+  Kind: fix.
+  Source: in-session-2026-08-06.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
