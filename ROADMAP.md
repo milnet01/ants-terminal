@@ -3387,6 +3387,38 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Source: in-session-2026-08-06.
 
+- 📋 [ANTS-3843] **Make `layman` a mandatory roadmap-item field, at the verb and in the store.**
+  User-decided 2026-08-06, after being shown that the seven other item
+  fields (id, id_origin, status, headline, kind, source, project_id) are
+  already mandatory at BOTH layers and layman is the only one that is not.
+
+  Two layers to change, and they are not symmetric:
+
+  - The verb: `cmdRoadmapLogAppend` validates caller_cwd / section /
+    status / kind / source with `missing_field` and headline with
+    `headline_empty`. `layman` is read but never checked. Same for
+    `append_batch`'s per-bullet path.
+  - The store: `item.layman` is `TEXT` (nullable). Making it NOT NULL is a
+    schema change, and roadmapstore.cpp's DDL comments state the
+    "change at user_version 1 without a bump" freedom expires at
+    ANTS-3758's cutover — so this needs a real migration if it lands after
+    that, and a backfill either way.
+
+  The backfill is the part with a decision in it: existing bullets with no
+  Layman line cannot satisfy NOT NULL. Options are a synthesised
+  placeholder, or NOT NULL DEFAULT '' (which enforces presence at the verb
+  while keeping the column total). Recommend the latter plus a verb-level
+  `missing_field` — it gets the enforcement the user asked for without a
+  data-loss-shaped migration.
+
+  Also update: the roadmap_log tool schema (mark layman required), any
+  `/write-spec` or skill guidance that treats it as optional, and
+  docs/standards/roadmap-format.md, which describes Layman as a field but
+  does not say it is required.
+  **Layman:** Every roadmap entry will have to carry its plain-English one-liner; right now that line is optional and often missing.
+  Kind: implement.
+  Source: user-request-2026-08-06.
+
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
 - ✅ [ANTS-1050] **Auto-return focus to terminal when any dialog closes.**
