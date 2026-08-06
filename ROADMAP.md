@@ -24940,7 +24940,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-02 (noticed while implementing ANTS-3786).
 
-- 📋 [ANTS-3793] **Roadmap consumer cutover — roadmap_query, roadmap_log and RoadmapDialog read and write the store.**
+- ✅ [ANTS-3793] **Roadmap consumer cutover — roadmap_query, roadmap_log and RoadmapDialog read and write the store.**
   Split out of ANTS-3758 so the render and the consumer cutover are
   separate contracts. ANTS-3758 fixes what the render contains; this id
   moves the consumers onto the store.
@@ -25288,6 +25288,28 @@ against current source before filing.
   one only because `line` is a field the write path actually emitted.
   Verified from the response shape, as the annotation required, not from
   the store-side comment alone.
+  Status corrected (2026-08-06) — the bullet was still 📋 while its own
+  body recorded the work as done. Nothing new was built to close it; this
+  is a status flip against evidence already on the bullet.
+
+  Three facts settle it, in the bullet's own words:
+  - "Progress (2026-08-04): the CONSUMER CUTOVER is implemented.
+    Everything the prior annotation listed under 'STILL OWED BY THIS ID'
+    is done; what is left under this bullet's headline is roadmap_log's
+    WRITE half, which is ANTS-3809's." ANTS-3809 is ✅.
+  - "Progress (2026-08-06): the read-side line-number open question is
+    CLOSED with no doc change owed." That was the last open item.
+  - Code: `git log --grep=ANTS-3793` carries 6f78990f ("the consumer
+    cutover — the roadmap readers read the store") and 2e7af7b5 ("read
+    the roadmap store through one seam, two backends"); 12 files under
+    src/ and 7 under tests/ cite the id.
+
+  What remains in the roadmap-store programme is NOT this id: ANTS-3810
+  (round-trip oracle + acyclicity, spec accepted, zero code) and
+  ANTS-3794 (publish + health checks, no spec yet). Separately, no real
+  project has been cut over — `~/.local/share/ants-terminal/roadmap.sqlite`
+  holds one leftover fixture row (root `/tmp/test_core-ZnzBrv`, 0 sections,
+  0 items), so every live read and write is still the markdown path.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
