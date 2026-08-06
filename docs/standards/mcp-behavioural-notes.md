@@ -379,8 +379,15 @@ server-controllable beyond this per-tool hint.
   before the GFM counter/field guards. `op:"append"` needs a `pass` arg
   (`"43.5"`/`"43.5.B"`); status required, kind/source ignored,
   `.roadmap-counter` untouched. Flip/annotate locate by the synthesised
-  `PASS-N-M` id or `headline`; a missing required arg is `bad_args`. Only
-  `op:"create_section"` still refuses `format_mismatch`.
+  `PASS-N-M` id or `headline`; a missing required arg is `bad_args`. The
+  other three ops each answer differently, and only one of them refuses
+  `format_mismatch` (ANTS-3837): `op:"create_section"` refuses
+  `format_mismatch` (`rcPassHeadingsWriteRefusal`); `op:"amend_body"`
+  refuses `unsupported_format`, because a pass body is sub-bullets under a
+  heading rather than the indented continuation lines it patches
+  (ANTS-3406); and `op:"bundle_row"` **writes normally** — it appends to a
+  Markdown table under a named section and never parses bullets, so the
+  roadmap's bullet format never reaches it (ANTS-1691).
 - **`roadmap_log` on a store-migrated project (ANTS-3809)** — all eight ops
   (`append`, `append_batch`, `flip`, `flip_batch`, `annotate`,
   `amend_body`, `create_section`, `bundle_row`) **mutate the store and

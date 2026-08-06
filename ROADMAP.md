@@ -25243,6 +25243,23 @@ against current source before filing.
 
   Verify before writing anything: this was noted from the store-side
   comment, NOT from reading roadmap_query's response shape.
+  Progress (2026-08-06): the read-side line-number open question is
+  CLOSED with no doc change owed. `roadmap_query` never surfaces
+  `firstLine` / `lastLine` to a caller in any mode — an exhaustive scan
+  of every `["line"|"first_line"|"last_line"|"line_start"] =` assignment
+  in `src/remotecontrol.cpp` puts all of them under `roadmap_log`
+  (append / flip / flip_batch / amend_body / create_section, plus the
+  pass writers), `changelog_log`, `workspace_search`, the audit / find /
+  similar_code emitters and `recent_errors` — none under
+  `cmdRoadmapQuery`. Confirmed live against two projects: the response
+  carries `{body, headline, headline_oneline, id, kind, section_slug,
+  status}` and no line field. So the store's zeroed
+  `firstLine`/`lastLine` (src/roadmapsource.cpp `appendRecord`) is
+  unobservable on the read side, and `mcp-behavioural-notes.md`'s
+  `roadmap_query` entry owes no caveat — its write-side sibling carries
+  one only because `line` is a field the write path actually emitted.
+  Verified from the response shape, as the annotation required, not from
+  the store-side comment alone.
 
 - 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
