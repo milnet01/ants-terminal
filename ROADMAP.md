@@ -26491,6 +26491,32 @@ against current source before filing.
   **Layman:** Save which roadmap dialect a project uses in the database, so we stop opening the big text file just to check.
   Kind: implement.
   Source: ANTS-3793 spec § 7 (2026-08-04) — filed while resolving cold-eyes finding H4..
+  Corrected (2026-08-06) — two measured facts change what this item is.
+
+  1. The column ALONE cannot remove the 3.0 MiB read. The seam's shape is
+  `roadmapBullets(projectRoot, markdown, ...)`: the caller must already
+  hold the text, so every call site reads the file BEFORE the dispatch
+  runs. Verified at src/remotecontrol_roadmap_query.cpp — `f.readAll()`
+  is unconditional and precedes the roadmapBullets() call. A store column
+  removes the detectRoadmapFormat() scan over text that is already in
+  memory; it does not remove the read. Removing the read means moving the
+  dispatch ahead of the read — a change to the seam's signature and its
+  call sites, which this bullet does not currently own. Either widen the
+  scope to include that, or stop claiming the saving in the headline.
+
+  2. Blocked by ANTS-3781, not unblocked. This is a schema change:
+  kSchemaVersion is 1, the DDL in createSchema() is deliberately written
+  WITHOUT `IF NOT EXISTS` (ANTS-3756 INV-15's discriminator), and a
+  version-1 store meeting a version-2 build falls through to that DDL and
+  fails on "table already exists". ANTS-3781's own progress note names
+  this exact trigger: "build the upgrade path before the first schema
+  change that lands AFTER the cutover makes the store reachable." A
+  version-1 store file exists on this machine now, so the case is live
+  rather than unreachable.
+
+  3. The payoff is unobservable until ANTS-3855 (nothing can run the
+  migration). On an unmigrated project migratedProject() returns nullopt
+  at the readProjectByRoot() miss and the format gate never runs at all.
 
 - 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —
@@ -27393,6 +27419,35 @@ against current source before filing.
   **Layman:** Finish moving roadmaps into the database so every project follows one format, which is what the new Roadmap dialog needs.
   Kind: implement.
   Source: user-request-2026-08-06.
+  Ordering revised (2026-08-06) — the code said otherwise, as this
+  bullet's own caveat invited.
+
+  Correction to the MEASURED block above: this project is NOT migrated.
+  The live store holds one leaked fixture row (root /tmp/test_core-ZnzBrv,
+  0 sections, 0 items) and no row for Ants Terminal — a fact ANTS-3793's
+  bullet already records but this one did not carry forward. So the 3.0
+  MiB read is not the missing format column's doing: migratedProject()
+  returns nullopt at the readProjectByRoot() miss and the format gate
+  never runs. The read persists because every caller reads ROADMAP.md
+  before calling the seam, which takes `markdown` as an argument.
+
+  ANTS-3815 is therefore NOT the right first item, and is not unblocked:
+  it is a schema change with no upgrade path (ANTS-3781), and its stated
+  payoff needs a seam-shape change it does not own. Detail on its bullet.
+
+  Revised order:
+  1. ANTS-3855 — nothing in production can run the migration
+     (RoadmapMigrateLoad::load() has zero non-test callers). Filed
+     2026-08-06. Until it exists the store cannot hold a real project,
+     the cross-project rollout cannot start, and no item below it can be
+     measured rather than reasoned about.
+  2. ANTS-3856 — evict the leaked fixture row and stop tests writing to
+     the real store, before a trigger exists that a stray test could
+     overwrite a migrated project through.
+  3. ANTS-3781 — the schema-upgrade path, before any schema change.
+  4. ANTS-3815 / ANTS-3816 — then the payoff work, measured against a
+     store that actually holds this project.
+  The correctness, rollout and housekeeping groups are unchanged.
 
 - 📋 [ANTS-3854] **roadmap_log op:create_section silently reparents a target section's subsections.**
   Hit 2026-08-06. `op:create_section` with `after_section: <slug>` and
@@ -27424,6 +27479,68 @@ against current source before filing.
   **Layman:** Adding a new roadmap heading after a section that has sub-headings quietly steals all of them.
   Kind: fix.
   Source: in-session-2026-08-06.
+
+- 📋 [ANTS-3855] **Nothing in production can run the migration — RoadmapMigrateLoad::load() has zero non-test callers.**
+  Measured 2026-08-06, not inferred. In `src/`, `RoadmapMigrate` and
+  `RoadmapMigrateLoad` are referenced ONLY by their own four files
+  (roadmapmigrate.{h,cpp}, roadmapmigrateload.{h,cpp}) plus one comment in
+  roadmapstore.h. `RoadmapMigrateLoad::load()` has zero production call
+  sites: every invoker is a test under tests/features/. There is no MCP
+  verb, no menu action, no CLI flag — a `roadmap_migrate|migrateRoadmap`
+  sweep over src/ returns 0 files.
+
+  So the read half, the load half, the archives, the render, the export,
+  the section provenance, the consumer cutover and the write half are all
+  shipped and all unreachable: no project can be migrated, which is why
+  `~/.local/share/ants-terminal/roadmap.sqlite` still holds only a leaked
+  fixture row and every live read/write is the markdown path.
+
+  This is the actual blocker for the "one roadmap standard" goal, and
+  nothing owns it. ANTS-3807 assumes a user hands a brief to each
+  project's CC session, but names no thing that session would invoke, and
+  attributes the gap to ANTS-3793 (now ✅) and ANTS-3794 (backup/publish
+  and health checks — a different concern). ANTS-3815's payoff is also
+  unobservable until this exists: on an unmigrated project
+  migratedProject() returns nullopt at the readProjectByRoot() miss and
+  the format gate never runs.
+
+  Owns: deciding the trigger's shape (MCP verb vs dialog action vs both),
+  the dry-run/refusal surface the corpus work already needs
+  (ANTS-3772's collisions, ANTS-3771's id formats), and idempotency on a
+  second run.
+
+  Spec first — it is the entry point every other project meets this
+  subsystem through.
+  **Layman:** The roadmap database is fully built but there is no button, command or tool that actually imports a project into it.
+  Kind: implement.
+  Source: in-session-2026-08-06 — measured while starting ANTS-3853/ANTS-3815..
+
+- 📋 [ANTS-3856] **A test wrote a fixture project into the REAL roadmap store; nothing stops it happening again.**
+  Measured 2026-08-06. `~/.local/share/ants-terminal/roadmap.sqlite`
+  (PRAGMA user_version = 1) holds exactly one `project` row: root
+  `/tmp/test_core-ZnzBrv`, name `Demo`, export_slug `demo`, with 0
+  sections and 0 items. `/tmp/test_core-ZnzBrv` no longer exists, so the
+  row is a leaked fixture from a test run, in the user's live data
+  directory.
+
+  Cause: `RoadmapStore::defaultPath()` resolves under XDG_DATA_HOME, and a
+  default-constructed store in a test therefore opens the REAL store
+  rather than a temp one. There is no env override to redirect it.
+
+  Two halves, both this item's:
+  - Delete the leaked row (or the whole store — it holds nothing else, and
+    the export is the documented rebuild path per ANTS-3761).
+  - Stop it recurring. Either a test-mode path override honoured by
+    defaultPath(), or a bundle-level guard that refuses a store opened at
+    defaultPath() under the test harness. A convention ("always pass an
+    explicit path") is what already failed.
+
+  Worth doing before ANTS-3855's migration trigger lands: once a real
+  trigger exists, a test that hits the default path stops leaking an
+  empty row and starts overwriting a migrated project.
+  **Layman:** A test accidentally saved its pretend project into the real roadmap database on this machine; clean it out and make that impossible.
+  Kind: test.
+  Source: in-session-2026-08-06 — found while probing the live store..
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
