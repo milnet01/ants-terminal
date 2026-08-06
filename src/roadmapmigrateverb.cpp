@@ -1,0 +1,301 @@
+// ANTS-3855 — the `roadmap_migrate` seam: everything that happens to a store.
+// Contract: docs/specs/ANTS-3855-roadmap-migrate-verb.md
+//
+// This is the ONLY production caller of the migration engine. Schema
+// (ANTS-3756), read half (ANTS-3757), load half (ANTS-3765), archives
+// (ANTS-3766), render (ANTS-3758), export (ANTS-3761), section provenance
+// (ANTS-3782), consumer cutover (ANTS-3793) and write half (ANTS-3809) all
+// shipped before it and none of them could be reached: every invoker was a test
+// under tests/features/, so no project could be migrated at all. INV-1 pins
+// that this file — and only this file — closes that gap.
+//
+// Qt6::Core + Qt6::Sql only. It names no RemoteControl and no MainWindow, which
+// is what lets test_core link it: that bundle links ants_core_lib ALONE, and a
+// static archive is pulled in at OBJECT granularity, so the handler sharing
+// this object would drag the whole chrome stack in behind it (see
+// roadmapmigrateverb.h).
+
+#include "roadmapmigrateverb.h"
+
+#include "roadmapmigrate.h"
+#include "roadmapmigrateload.h"
+#include "roadmapstore.h"
+
+#include <QDir>
+#include <QJsonArray>
+
+#include <algorithm>
+
+namespace {
+
+QJsonObject rmErr(const QString &code, const QString &message) {
+    QJsonObject e;
+    e[QStringLiteral("ok")]    = false;
+    e[QStringLiteral("code")]  = code;
+    e[QStringLiteral("error")] = message;
+    return e;
+}
+
+// § 2.4 — notes[] is bounded on BOTH axes, because capping the element count
+// alone bounds no bytes: RoadmapMigrate::Note::detail is a QString with no
+// length rule of its own, and one note is emitted per offending source line.
+// The detail bound is in characters, which is the unit the rest of this
+// project's note handling uses (rcdetail::kRcMaxNoteChars).
+constexpr int kMaxNoteEntries     = 200;
+constexpr int kMaxNoteDetailChars = 2048;
+
+QJsonObject noteToJson(const RoadmapMigrate::Note &n) {
+    QJsonObject o;
+    o[QStringLiteral("code")] = n.code;
+    QString detail = n.detail;
+    if (detail.size() > kMaxNoteDetailChars)
+        detail = detail.left(kMaxNoteDetailChars - 1) + QStringLiteral("…");
+    o[QStringLiteral("detail")] = detail;
+    o[QStringLiteral("line")]   = n.line;
+    // Verbatim, including the -1 sentinel (ANTS-3766 § 2.4): a note about a
+    // file that is NOT a source indexes nothing, and defaulting it to 0 would
+    // have it claim to be about the live roadmap.
+    o[QStringLiteral("source_index")] = n.sourceIndex;
+    return o;
+}
+
+// Carried by the success envelope and by `migrate_failed`, under one set of
+// bounds. `notes_count` stays the TRUE total so a truncated array cannot read
+// as a complete one.
+void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes) {
+    QJsonArray arr;
+    const int shown = std::min<int>(notes.size(), kMaxNoteEntries);
+    for (int i = 0; i < shown; ++i)
+        arr.append(noteToJson(notes.at(i)));
+    env[QStringLiteral("notes")]           = arr;
+    env[QStringLiteral("notes_count")]     = notes.size();
+    env[QStringLiteral("notes_truncated")] = notes.size() > kMaxNoteEntries;
+}
+
+// § 2.1 — the DDL's own CHECK, transcribed rather than paraphrased, because a
+// second spelling of a charset is a second charset:
+//
+//   export_slug TEXT NOT NULL UNIQUE
+//     CHECK (export_slug GLOB '[a-z0-9]*'
+//        AND export_slug NOT GLOB '*[^a-z0-9-]*')
+bool isLowerAlnum(QChar c) {
+    return (c >= QLatin1Char('a') && c <= QLatin1Char('z'))
+        || (c >= QLatin1Char('0') && c <= QLatin1Char('9'));
+}
+
+bool isValidExportSlug(const QString &slug) {
+    if (slug.isEmpty())
+        return false;
+    if (!isLowerAlnum(slug.at(0)))
+        return false;
+    for (const QChar c : slug) {
+        if (!isLowerAlnum(c) && c != QLatin1Char('-'))
+            return false;
+    }
+    return true;
+}
+
+// § 2.5's mapping rule: a findRoadmaps() code maps onto a canonical code when
+// one already means the same thing, and is added to the taxonomy when none
+// does. `not_found` and `archive_format_mismatch` are the first case; minting
+// synonyms would split one meaning across two codes.
+QString discoveryRefusalCode(const QString &findRoadmapsCode) {
+    if (findRoadmapsCode == QLatin1String("not_found"))
+        return QStringLiteral("no_roadmap");
+    if (findRoadmapsCode == QLatin1String("archive_format_mismatch"))
+        return QStringLiteral("format_mismatch");
+    return findRoadmapsCode;   // case_ambiguous, not_utf8 — no canonical twin
+}
+
+}  // namespace
+
+QString RoadmapMigrateVerb::defaultExportSlug(const QString &leafDirName) {
+    QString out;
+    out.reserve(leafDirName.size());
+    bool pendingDash = false;
+    for (const QChar c : leafDirName) {
+        const QChar lower = c.toLower();
+        if (isLowerAlnum(lower)) {
+            if (pendingDash && !out.isEmpty())
+                out.append(QLatin1Char('-'));
+            pendingDash = false;
+            out.append(lower);
+        } else {
+            pendingDash = true;
+        }
+    }
+    return out;
+}
+
+QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req) {
+    // 1 — project_name. `project.name` is TEXT NOT NULL, and an all-whitespace
+    // name would satisfy the column and identify nothing.
+    const QString name = req.projectName.trimmed();
+    if (name.isEmpty()) {
+        return rmErr(QStringLiteral("bad_args"),
+                     QStringLiteral("roadmap_migrate: project_name must not be "
+                                    "empty after trimming"));
+    }
+
+    // 2 — export_slug, verbatim. Steps 1-2 precede the store open deliberately:
+    // an invalid slug that reached registerProject() would fail the DDL CHECK
+    // *inside* the transaction and roll back a whole migration, reporting a
+    // store error for what is an argument error. NOTHING is opened yet, which
+    // is what INV-6 asserts by checking no file appeared.
+    const QString slug = req.exportSlug;
+    if (!isValidExportSlug(slug)) {
+        return rmErr(QStringLiteral("bad_args"),
+                     QStringLiteral("roadmap_migrate: export_slug \"%1\" must be "
+                                    "non-empty, start with [a-z0-9] and contain "
+                                    "only [a-z0-9-]").arg(slug));
+    }
+
+    // 3 — discovery. Reads only under the resolved root and <root>/docs/roadmap/
+    // (ANTS-3757 § 2.2); this verb passes the root and reads nothing itself.
+    QString discErr;
+    const auto disc = RoadmapMigrate::findRoadmaps(req.projectRoot, &discErr);
+    if (!disc) {
+        const QString code = discoveryRefusalCode(discErr);
+        return rmErr(code, QStringLiteral("roadmap_migrate: no usable roadmap "
+                                          "under \"%1\" (%2)")
+                               .arg(req.projectRoot, discErr));
+    }
+
+    // 4 — the plan. Pure: no filesystem, no clock, no id counter. Cannot fail.
+    const auto plan = RoadmapMigrate::planFrom(*disc, name, slug);
+
+    // 5 — the verb's OWN connection, on Access::Bulk, for the duration of one
+    // call (§ 2.2). NOT RemoteControl's process-owned Interactive connection,
+    // which load() refuses outright (ANTS-3765 INV-12) — and which this
+    // function's signature makes unreachable. Two live connections in one
+    // process are safe by construction: RoadmapStore allocates a per-instance
+    // connection name from an atomic counter, and the store runs in WAL.
+    //
+    // A stack local, so ~RoadmapStore() runs PRAGMA optimize, close() and
+    // removeDatabase() before this function returns — the connection names do
+    // not accumulate across calls and the WAL sidecars are checkpointed away,
+    // which INV-9 depends on.
+    RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    if (!store.open(&err)) {
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: could not open the roadmap "
+                                    "store at \"%1\": %2").arg(storePath, err));
+    }
+
+    // 6 — collision and re-run-identity guards, ahead of the transaction.
+    //
+    // Both lookups check their ERROR out-param and not just their optional:
+    // readProjectBySlug() / readProjectByRoot() return nullopt for BOTH "no such
+    // row" and "the query failed", and conflating them would read an SQL failure
+    // as "not registered" — the guard below would be skipped and the failure
+    // would resurface at step 8 as a UNIQUE violation wearing `migrate_failed`.
+    // Same split RoadmapSource::migratedProject() already makes.
+    QString sqlErr;
+    const auto other = store.readProjectBySlug(slug, &sqlErr);
+    if (!sqlErr.isEmpty()) {
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: export_slug lookup failed: %1")
+                         .arg(sqlErr));
+    }
+    // `export_slug` is UNIQUE and the default is DERIVED, so two roots whose
+    // leaf directories slugify alike (…/foo and …/Foo!) would otherwise collide
+    // inside registerProject() and surface as the catch-all `migrate_failed`.
+    // A matching ROOT is the re-run case (INV-7), not a collision — which is
+    // why this compares the row's root rather than merely finding a row.
+    if (other && other->root != req.projectRoot) {
+        return rmErr(QStringLiteral("slug_collision"),
+                     QStringLiteral("roadmap_migrate: export_slug \"%1\" already "
+                                    "belongs to \"%2\" — pass a different "
+                                    "export_slug").arg(slug, other->root));
+    }
+
+    sqlErr.clear();
+    const auto owner = store.readProjectByRoot(req.projectRoot, &sqlErr);
+    if (!sqlErr.isEmpty()) {
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: project lookup failed: %1")
+                         .arg(sqlErr));
+    }
+    // A re-run may not silently change a registered project's identity, and
+    // identity is BOTH fields — each is defaulted from the leaf directory, so
+    // an argument omitted on the second run recomputes its default and a
+    // project migrated under an explicit value would be quietly re-slugged or
+    // renamed. Different codes because the consequences differ: an export path
+    // hangs off the slug; the name is a display change nobody asked for.
+    if (owner && owner->exportSlug != slug) {
+        return rmErr(QStringLiteral("slug_collision"),
+                     QStringLiteral("roadmap_migrate: \"%1\" is already migrated "
+                                    "under export_slug \"%2\"; re-running with "
+                                    "\"%3\" would re-slug it")
+                         .arg(req.projectRoot, owner->exportSlug, slug));
+    }
+    if (owner && owner->name != name) {
+        return rmErr(QStringLiteral("bad_args"),
+                     QStringLiteral("roadmap_migrate: \"%1\" is already migrated "
+                                    "as project_name \"%2\"; re-running with "
+                                    "\"%3\" would rename it")
+                         .arg(req.projectRoot, owner->name, name));
+    }
+
+    // 7-8 — one plan, one project, one transaction. `changedAt` is the caller's
+    // single stamp, forwarded rather than re-derived (§ 2.3.2).
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = req.changedAt;
+    opts.projectRoot = req.projectRoot;
+    opts.dryRun      = req.dryRun;
+    const auto out = RoadmapMigrateLoad::load(store, plan, opts);
+
+    // 9 — the envelope. Every count is Outcome's corresponding field renamed to
+    // snake_case and NOT recomputed: the Outcome is "a value, not a log", and a
+    // second tally would be a second answer.
+    QJsonObject env;
+    env[QStringLiteral("dry_run")] = req.dryRun;
+    if (!out.ok) {
+        // Including a lock timeout: Access::Bulk carries a 30 s busy deadline
+        // and the write lock is held for a whole project, so a concurrent
+        // migrate or export can outlast it. SQLite reports that to load(),
+        // whose message reaches the caller intact. No code of its own — the
+        // operator's next step is the one `migrate_failed` already implies.
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = QStringLiteral("migrate_failed");
+        env[QStringLiteral("error")] = out.error;
+        setNotes(env, out.notes);
+        return env;
+    }
+
+    env[QStringLiteral("ok")] = true;
+    // Under dry_run the rowid registerProject() allocated is inside a
+    // transaction that is about to roll back, and a provisional id a later real
+    // run need not reuse is worse than no id, because it looks durable.
+    env[QStringLiteral("project_id")]   = req.dryRun ? 0 : out.projectId;
+    env[QStringLiteral("project_name")] = name;
+    env[QStringLiteral("export_slug")]  = slug;
+    env[QStringLiteral("store_path")]   = storePath;
+    env[QStringLiteral("changed_at")]   = req.changedAt;
+
+    // `markdown` is deliberately dropped — it is the multi-megabyte input the
+    // caller already has — and the path is relative to the root the caller
+    // supplied, because echoing that root back on every entry is noise.
+    QJsonArray sources;
+    const QDir rootDir(req.projectRoot);
+    for (const RoadmapMigrate::Source &s : plan.sources) {
+        QJsonObject o;
+        o[QStringLiteral("path")]   = rootDir.relativeFilePath(s.path);
+        o[QStringLiteral("format")] = s.format;
+        sources.append(o);
+    }
+    env[QStringLiteral("sources")] = sources;
+
+    env[QStringLiteral("items_inserted")]   = out.itemsInserted;
+    env[QStringLiteral("items_updated")]    = out.itemsUpdated;
+    env[QStringLiteral("items_unchanged")]  = out.itemsUnchanged;
+    env[QStringLiteral("items_orphaned")]   = out.itemsOrphaned;
+    env[QStringLiteral("ids_allocated")]    = out.idsAllocated;
+    env[QStringLiteral("sections_written")] = out.sectionsWritten;
+    env[QStringLiteral("elements_written")] = out.elementsWritten;
+    env[QStringLiteral("history_rows")]     = out.historyRows;
+    setNotes(env, out.notes);
+    return env;
+}

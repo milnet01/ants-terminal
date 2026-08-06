@@ -1,4 +1,4 @@
-// ANTS-3833 TU 2/11 — Terminal and window verbs.
+// ANTS-3833 TU 2/12 — Terminal and window verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "findsources.h"

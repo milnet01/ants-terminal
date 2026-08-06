@@ -325,6 +325,14 @@ set(ANTS_RC_SOURCES_REL
     src/remotecontrol_state.cpp
     src/remotecontrol_review.cpp
     src/remotecontrol_coldeyes.cpp
+    # ANTS-3855 — roadmap_migrate's HANDLER (the seam itself is
+    # src/roadmapmigrateverb.cpp, outside this list). Appended LAST, and that is
+    # the one position the "never at the end" rule above does not govern: it is
+    # not a slice of the pre-split file but a member that never existed there,
+    # so no pre-split relative order can be violated by it — and appending keeps
+    # every existing TU's `TU N/12` ordinal, and every two-anchor scrape window
+    # between them, exactly where it was.
+    src/remotecontrol_roadmap_migrate.cpp
 )
 list(TRANSFORM ANTS_RC_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_rc_abs)
@@ -366,6 +374,11 @@ add_library(ants_core_lib STATIC
     src/docsindex.cpp
     # ANTS-2160 — per-project .ants/project.json settings loader (Qt6::Core-only).
     src/projectsettings.cpp
+    # ANTS-3855 — the roadmap_migrate seam. Its own TU, NOT folded into the
+    # handler's: a static archive is pulled in at object granularity, so a seam
+    # sharing an object with RemoteControl::cmdRoadmapMigrate would drag
+    # MainWindow into test_core, which links ants_core_lib alone.
+    src/roadmapmigrateverb.cpp
     # ANTS-3603 — shared CommonMark fence primitives (Qt6::Core-only), hoisted
     # from the verbatim copies in feedbackfile.cpp + speclog.cpp.
     src/markdownscan.cpp
@@ -2466,6 +2479,11 @@ if(ANTS_TESTS)
                 # parse the file that lands) because that file IS what the
                 # markdown backend is handed after cutover.
                 tests/features/roadmap_read_seam/test_roadmap_read_seam.cpp
+                # ANTS-3855 — the roadmap_migrate verb: the one production entry
+                # point into the migration engine. Behavioural against a real
+                # store in a QTemporaryDir, never RoadmapStore::defaultPath();
+                # INV-1 and INV-2(b) are source scrapes over ANTS_SRC_DIR.
+                tests/features/roadmap_migrate_verb/test_roadmap_migrate_verb.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the

@@ -837,6 +837,15 @@ public:
     // byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
     QJsonDocument cmdRoadmapLog(const QJsonObject &req);
 
+    // ANTS-3855 — roadmap_migrate: load one project's markdown roadmap into
+    // the roadmap store. The ONLY production entry point into the migration
+    // engine. This handler resolves the caller's root, stamps the clock once
+    // and names RoadmapStore::defaultPath(); everything that happens to a
+    // store is RoadmapMigrateVerb::run(), which takes the path as a parameter
+    // so a test can drive it against a QTemporaryDir instead of the user's
+    // real store. See docs/specs/ANTS-3855-roadmap-migrate-verb.md § 2.1.1.
+    QJsonDocument cmdRoadmapMigrate(const QJsonObject &req);
+
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by

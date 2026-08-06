@@ -4474,6 +4474,12 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("roadmap_log",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdRoadmapLog));
+    // ANTS-3855 — roadmap_migrate: the only production entry point into the
+    // migration engine. Write op → Required contract (refuses absent
+    // caller_cwd upstream, before the handler runs).
+    m_claudeIntegration->registerToolProvider("roadmap_migrate",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdRoadmapMigrate));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     m_claudeIntegration->registerToolProvider("changelog_log",

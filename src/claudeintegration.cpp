@@ -9740,6 +9740,79 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-3855 — roadmap_migrate: load one project's markdown
+                // roadmap into the roadmap store. The only production entry
+                // point into the migration engine (read half ANTS-3757, load
+                // half ANTS-3765), so Required-contract gated like the other
+                // whole-project write verbs.
+                {
+                    QJsonObject t;
+                    t["name"] = "roadmap_migrate";
+                    t["description"] = QStringLiteral(
+                        "Load ONE project's markdown roadmap (ROADMAP.md + any "
+                        "rotated archives under docs/roadmap/) into the roadmap "
+                        "store, resolved from caller_cwd. One project per call. "
+                        "`dry_run:true` plans every write, reports the counts and "
+                        "rolls back — note it still OPENS the store, and creates "
+                        "an EMPTY schema if none exists, because its counts are a "
+                        "diff against existing rows. Optional project_name / "
+                        "export_slug default from caller_cwd's leaf directory "
+                        "(export_slug slugified); a supplied export_slug is "
+                        "validated verbatim, never rewritten, and must match "
+                        "[a-z0-9][a-z0-9-]*. Re-running over an unchanged project "
+                        "is idempotent; re-running with a different name or slug "
+                        "is refused rather than silently applied. Refusals: "
+                        "no_project, no_roadmap, case_ambiguous, not_utf8, "
+                        "format_mismatch, bad_args, slug_collision, store_failed, "
+                        "migrate_failed. caller_cwd Required.");
+                    // ANTS-1453 — selection_hint: one sentence on WHEN to
+                    // reach for this verb rather than what it does.
+                    t["selection_hint"] = QStringLiteral(
+                        "Use ONCE per project to move it off hand-edited "
+                        "markdown onto the roadmap store — roadmap_query / "
+                        "roadmap_log then serve it from the store, no restart. "
+                        "Run dry_run:true first for the counts and notes.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD. REQUIRED — the project root to migrate.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Optional display name stored as project.name. "
+                            "Defaults to caller_cwd's leaf directory verbatim. "
+                            "Must be non-empty after trimming.");
+                        props["project_name"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Optional export key stored as project.export_slug "
+                            "(UNIQUE across the store). Defaults to the "
+                            "slugified leaf directory (Ants_Terminal → "
+                            "ants-terminal). A SUPPLIED value is validated "
+                            "verbatim and never slugified for you: it must start "
+                            "with [a-z0-9] and contain only [a-z0-9-], else "
+                            "bad_args.");
+                        props["export_slug"] = p;
+                    }
+                    props["dry_run"] = makeDryRunProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
                 {
                     QJsonObject t;
@@ -10473,6 +10546,11 @@ void ClaudeIntegration::onMcpConnection() {
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
+                        // ANTS-3855 — roadmap_migrate: counts + a bounded
+                        // notes[] (200 entries max), no roadmap text echoed
+                        // back. The upper end is a corpus project whose source
+                        // raises the note cap.
+                        {QStringLiteral("roadmap_migrate"),   {300,  4000}},
                         {QStringLiteral("project_layout"),    {600,  2000}},
                         // ANTS-2161 — project_settings: small detect/write envelope.
                         {QStringLiteral("project_settings"),  {300,  1500}},
@@ -12086,6 +12164,10 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // an absent caller_cwd refuses at the dispatcher rather than
     // falling back to the focused tab's roadmap.
     if (toolName == QStringLiteral("roadmap_log"))        return C::Required;
+    // ANTS-3855 — roadmap_migrate loads ONE project into the roadmap store,
+    // resolved from caller_cwd. A migration is a whole-project operation and
+    // has nothing to fall back to when no project is named.
+    if (toolName == QStringLiteral("roadmap_migrate"))    return C::Required;
     // ANTS-1548 — changelog_log mutates CHANGELOG.md under the caller's
     // project root. Required for the same reason as roadmap_log.
     if (toolName == QStringLiteral("changelog_log"))      return C::Required;
