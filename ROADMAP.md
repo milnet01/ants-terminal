@@ -3155,7 +3155,7 @@ minor tag (next: pre-0.8.0).
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 
-- 📋 [ANTS-3833] **`remotecontrol.cpp` decomposition (23,849 LoC / 1.1 MB).**
+- 🚧 [ANTS-3833] **`remotecontrol.cpp` decomposition (23,849 LoC / 1.1 MB).**
   Same shape as ANTS-1043 (mainwindow.cpp), one order of magnitude
   worse: the largest source in the tree by 2x, and every MCP verb
   lives in it. C++ has no runtime cost here — the costs are build
@@ -3252,6 +3252,52 @@ minor tag (next: pre-0.8.0).
 
   No plan document: § 2.5 carries the commit order and § 6 the test order,
   so the spec is implementation-grade on its own.
+  Progress (2026-08-06): commit 1 of § 2.5's three has LANDED — 7ca193f1,
+  pushed. Commits 2 (the cut) and 3 (tests/features/rc_tu_split/) remain.
+
+  Commit 1 = the rcdetail promotion, done while remotecontrol.cpp is still
+  one TU. Precondition re-run first: all ten seams re-derived from § 2.2's
+  MEMBER NAMES landed on the recorded lines, and tools/rc-namespace-scan.py
+  reported 24 anonymous namespaces with 0 of 10 seams inside one.
+
+  Two spec figures were re-measured and BOTH differ — the spec says to
+  re-derive rather than trust either, so this is expected, not a defect:
+    - promotion set is 91 of 165 block-scope symbols, not "≈74". The
+      derivation still independently reproduces all seven symbols § 2.3
+      names as staying internal, and every non-head helper it names.
+    - all 24 anonymous namespaces were renamed to `namespace rcdetail`,
+      not a selected subset. In ONE file they are already one namespace,
+      so no name can collide — renaming wholesale cannot miss a symbol,
+      whereas selecting a subset fails silently until commit 2's link.
+
+  THE FINDING THAT SHOULD NOT BE REDISCOVERED. § 2.3's pre-promotion grep
+  caught three tests that pin the KEYWORD, not just the name:
+      R"(constexpr\s+int\s+kWorkspaceSearchHardKillMs\s*=\s*5000\b)"
+  (+ Min/MaxBudgetMs, in tests/features/mcp_workspace_search_timeout_sec).
+  Promoting those constants either into the header or as `extern const int`
+  with a rewritten definition reddens all three, and INV-9 forbids editing
+  an assertion to accommodate the refactor. Resolution: the header declares
+  `extern const T X;` and the definitions keep their `constexpr` spelling
+  byte-for-byte — an extern declaration seen first confers external linkage
+  without touching the definition. Verified by compile-and-link.
+
+  Three hazards § 2.3 does not name, all fixed in commit 1:
+    - 5 promoted symbols carried an explicit `static`, which survives a
+      namespace rename and silently defeats the promotion.
+    - 6 functions carry default arguments and two are called cross-TU
+      relying on the default, so defaults moved to the declaration.
+    - the rename orphaned six comments describing anonymous-namespace
+      linkage / the three moved structs; fixed with the change.
+
+  Verified: Release build green + ctest --preset=default 3269/3269; ASan
+  build 736/736 + sanitized suite 3269/3269. INV-1 (remotecontrol.h
+  untouched), INV-2 (127 member definitions, set AND order identical) and
+  INV-8 (dispatch() byte-identical) hold. nm over remotecontrol.cpp.o: all
+  88 declared non-struct symbols have external linkage and none internal —
+  the class INV-7's linker check is blind to for the 14 constants.
+
+  BEFORE COMMIT 2: do NOT work this in a git worktree until ANTS-3841
+  lands — ANTS-3842 explains why the pre-push gate can never pass there.
 
 - 📋 [ANTS-3840] **Stale anonymous-namespace comment in remotecontrol.cpp misled two independent readers.**
   `src/remotecontrol.cpp`'s closing brace at line 16959 is annotated
