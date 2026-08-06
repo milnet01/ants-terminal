@@ -71,7 +71,17 @@ checklist below walks the full procedure; this is the at-a-glance map
   / changelog_log / spec_log keep tailored copies). Supported:
   roadmap_log, changelog_log, spec_log, apply_edits, project_settings,
   feedback_log, audit_falsepos_log, indie_review_fold_in, cold_eyes_fold_in,
-  debt_sweep_defer. The ROADMAP-fold-in verbs peek the would-be IDs via
+  debt_sweep_defer, roadmap_migrate. **`roadmap_migrate` is a stated
+  deviation from the "before any disk write" rule** (ANTS-3855 § 2.3.1): its
+  preview opens the store, and on a machine with no store yet that *creates an
+  empty schema-initialised one*. Required for the preview to be correct rather
+  than merely convenient — `load()`'s counts are a diff against existing rows,
+  so a throwaway store would report every item as an insert on a project that
+  is already migrated, which is a confident wrong answer. The deviation is
+  bounded: what a dry run may create is an empty schema (zero `project` /
+  `section` / `item` / `element` / `history` rows), it writes no roadmap data,
+  and it modifies an existing store no more than a rolled-back transaction
+  does. The ROADMAP-fold-in verbs peek the would-be IDs via
   `RoadmapFoldIn::peekIds` (no `.roadmap-counter` bump) and skip `insertBlock`.
   Not yet (ANTS-2227 tail): test_audit_fold_in (struct-based, inline provider
   lambda) and debt_sweep_apply_fix (shell-exec — needs the fix script's own

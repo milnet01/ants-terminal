@@ -56,7 +56,23 @@ item rather than a convenience:
 Handler `RemoteControl::cmdRoadmapMigrate` in a new translation unit (TU)
 `src/remotecontrol_roadmap_migrate.cpp`, joining `ants_core_lib`'s `SOURCES`
 beside its two siblings (`remotecontrol_roadmap_query.cpp`,
-`remotecontrol_roadmap_log.cpp`). **No new link edge**: `ants_core_lib`
+`remotecontrol_roadmap_log.cpp`).
+
+**TWO TUs, not one — corrected at implementation (2026-08-06) against a link
+failure, not a preference.** § 2.1.1's seam lives in its own
+`src/roadmapmigrateverb.{h,cpp}`, outside `ANTS_RC_SOURCES`. A static archive
+is pulled in at OBJECT granularity, so a seam sharing an object file with the
+handler drags `RemoteControl` → `ants::resolveCallerCwdRoot` → `MainWindow`
+into every bundle that links it — and `test_core` links `ants_core_lib`
+**alone**, with no `ants_chrome_lib` (`CMakeLists.txt`'s
+`_ants_subset_linked_libs`, the same reason those libs are held out of unity
+builds). The one-TU draft failed `test_core`'s link with ~20 undefined
+`MainWindow` / `ClaudeIntegration` / `AuditEngine` symbols. A seam that cannot
+be linked apart from the thing it exists to be tested apart from is not a seam,
+so the split is what § 2.1.1's own argument requires rather than a departure
+from it.
+
+**No new link edge**: `ants_core_lib`
 already links `ants_roadmapstore_lib` PRIVATE (`CMakeLists.txt`, the
 ANTS-3793 § 4 comment at the `PRIVATE ants_roadmapstore_lib` line), so both
 migration namespaces are reachable from core today.
@@ -104,10 +120,10 @@ error.
 #### 2.1.1 The seam the handler composes, and why it is a free function
 
 `cmdRoadmapMigrate` resolves `RoadmapStore::defaultPath()` and nothing else
-of substance. The work is a free function in the same TU:
+of substance. The work is a free function in its own TU (§ 2.1's correction):
 
 ```cpp
-// src/remotecontrol_roadmap_migrate.h — the testable seam.
+// src/roadmapmigrateverb.h — the testable seam.
 namespace RoadmapMigrateVerb {
 
 struct Request {
@@ -362,9 +378,18 @@ bounds no bytes — `Note::detail` is a `QString` with no length rule of its own
 | Bound | Value | On breach |
 |---|---|---|
 | entries | 200 | `notes_truncated: true`; `notes_count` stays the TRUE total |
-| `detail` | 2 KiB each | that entry's `detail` is clipped, ellipsis appended |
+| `detail` | 2048 characters each | that entry's `detail` is clipped to exactly 2048 with an ellipsis as the last character |
 
-So the array is ≤ ~400 KiB in the worst case and typically a few KiB. The cap
+**The detail bound is in CHARACTERS, not bytes** — corrected at implementation
+(2026-08-06) from an earlier "2 KiB", because a byte bound is not assertable
+against a `QString` without a re-encode on every note, and characters is the
+unit the rest of this project's note handling already uses
+(`rcdetail::kRcMaxNoteChars`). For the ASCII-dominant details these notes carry
+the two are the same number; for a note quoting non-Latin source text the array
+can reach ~1.6 MiB rather than ~400 KiB in the pathological worst case, which
+is still bounded and still ~200× smaller than the roadmap it came from.
+
+So the array is ≤ ~400 KiB for ASCII input and typically a few KiB. The cap
 exists because one note is emitted per offending line — ANTS-3772's 3D_Engine
 produced 17 id collisions on its own — and this project ships no unbounded
 growth without a named cap. A project exceeding 200 has a systemic problem the
@@ -475,7 +500,8 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   The contract is the three call-shape patterns
   (`RoadmapMigrateLoad::load(`, `RoadmapMigrate::findRoadmaps(`,
   `RoadmapMigrate::planFrom(`): each must match
-  `src/remotecontrol_roadmap_migrate.cpp` and no other file under `src/`.
+  `src/roadmapmigrateverb.cpp` — the SEAM's TU per § 2.1's correction, not the
+  handler's — and no other file under `src/`.
   The test scans the tree in-process with `QFile` + `QRegularExpression`,
   skipping lines whose first **non-whitespace** characters are `//` — the two
   surviving mentions are indented member comments (`src/roadmapstore.h`,
@@ -498,7 +524,8 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   process-owned connection. (a) The feature test calls `run()` against a fresh
   temp store and asserts `ok:true` — an `Interactive` connection is refused by
   `load()`'s INV-12 check, so the two outcomes differ. (b) A source-grep over
-  `src/remotecontrol_roadmap_migrate.{h,cpp}` — INV-1's comment-skipping rule,
+  all three files of the verb — `src/roadmapmigrateverb.{h,cpp}` and
+  `src/remotecontrol_roadmap_migrate.cpp` — under INV-1's comment-skipping rule,
   because § 2.2's prose ("It must **not** reuse
   `RemoteControl::roadmapStoreOrNull()`") is exactly the kind of rationale the
   TU would carry as a comment — asserting that no *code* line names
@@ -587,8 +614,8 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
 - **INV-10** — `notes[]` honours both bounds in § 2.4. *Test:* feature test —
   a fixture roadmap carrying >200 note-raising lines yields exactly 200
   entries, `notes_truncated: true`, and a `notes_count` equal to the true
-  total (>200); a fixture whose note `detail` would exceed 2 KiB yields a
-  `detail` of exactly 2 KiB ending in the ellipsis. Both legs are needed
+  total (>200); a fixture whose note `detail` would exceed 2048 characters
+  yields a `detail` of exactly 2048 ending in the ellipsis. Both legs are needed
   because the two bounds are independent — capping entries bounds no bytes.
 
 ## 4. RAM / build cost
@@ -639,8 +666,9 @@ the ceiling, a latency invariant is added with it, on ANTS-3793's
 `Inv3Latency` model. Until then the ceiling is the design target and the
 129 ms is its provenance.
 
-**Build.** One new `.cpp` and its header in an existing library. No new target, no new
-dependency, no new link edge (§ 2.1). The feature test joins `test_core`'s
+**Build.** Two new `.cpp` files and one header in an existing library — the
+seam and the handler, split for the link-time reason § 2.1 records. No new
+target, no new dependency, no new link edge (§ 2.1). The feature test joins `test_core`'s
 `SOURCES` per `tests/features/README.md`.
 
 ## 5. Out of scope

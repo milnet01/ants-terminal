@@ -25929,6 +25929,15 @@ against current source before filing.
   **Layman:** When the roadmap database is ready, I get a ready-made instruction to paste into each of my other projects so their session migrates its own roadmap correctly, instead of me explaining it thirteen times.
   Kind: doc.
   Source: user-request-2026-08-03.
+  Amended (2026-08-06, ANTS-3855): the "blocked by ANTS-3793 and ANTS-3794"
+  attribution above was wrong about what actually blocked this. Both of those
+  shipped and a project still could not cut over, because nothing in production
+  called the migration engine at all — every invoker was a test. The real
+  blocker was ANTS-3855, now shipped: `roadmap_migrate` is the thing each
+  project's CC session invokes, so the brief this item writes finally has a
+  command to name. Its `dry_run:true` mode is also what the brief should tell a
+  session to run first — it reports the real run's counts and notes (allocated
+  ids included, which is this item's second bullet) and rolls back.
 
 - ✅ [ANTS-3808] **The migration and the render disagree about what `item.body` holds, so a rendered bullet repeats its own headline and every field.**
   Observed, not inferred — rendered out of a real store in the
@@ -27491,7 +27500,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-06.
 
-- 📋 [ANTS-3855] **Nothing in production can run the migration — RoadmapMigrateLoad::load() has zero non-test callers.**
+- ✅ [ANTS-3855] **Nothing in production can run the migration — RoadmapMigrateLoad::load() has zero non-test callers.**
   Measured 2026-08-06, not inferred. In `src/`, `RoadmapMigrate` and
   `RoadmapMigrateLoad` are referenced ONLY by their own four files
   (roadmapmigrate.{h,cpp}, roadmapmigrateload.{h,cpp}) plus one comment in
@@ -27542,6 +27551,40 @@ against current source before filing.
   Filed while speccing: ANTS-3857 (re-rooting a moved project).
 
   Next: implement, per § 6's staged must-fail-first proof.
+  Progress (2026-08-06): implementation started against the accepted spec, following § 6's staged must-fail-first proof (header + the two source-grep legs first, then the behavioural legs against the declared seam).
+  Resolved (2026-08-07): `roadmap_migrate` shipped — the migration engine has a
+  production caller for the first time. Handler
+  `RemoteControl::cmdRoadmapMigrate` (TU 12/12) resolves the root, stamps the
+  clock once and names `RoadmapStore::defaultPath()`; the free
+  `RoadmapMigrateVerb::run(storePath, req)` seam does everything else.
+  11 feature tests (INV-1..INV-10) in tests/features/roadmap_migrate_verb, all
+  driving `run()` against a QTemporaryDir store; the staged must-fail-first proof
+  was observed (INV-1 + INV-2(b) RED against a tree with no handler TU).
+  Full suite 3286/3286.
+
+  Two corrections to the accepted spec, both made against evidence and folded
+  back into it:
+  (1) TWO TUs, not one. A static archive is pulled in at OBJECT granularity, so
+  a seam sharing an object with the handler drags RemoteControl ->
+  resolveCallerCwdRoot -> MainWindow into anything linking it — and test_core
+  links ants_core_lib ALONE. The one-TU shape failed test_core's link with ~20
+  undefined MainWindow/ClaudeIntegration/AuditEngine symbols. The seam is now
+  src/roadmapmigrateverb.{h,cpp}, outside ANTS_RC_SOURCES; INV-1 names it.
+  (2) The notes[] detail cap is 2048 CHARACTERS, not "2 KiB" — a byte bound is
+  not assertable against a QString without re-encoding every note.
+
+  Also caught by the suite rather than by inspection: every tool needs a
+  `selection_hint` under 240 chars (ANTS-1453), and the `TU N/M` head markers
+  are derived — adding a twelfth TU required bumping all eleven denominators.
+  The handler is appended LAST in ANTS_RC_SOURCES_REL, which is the one position
+  "never at the end" does not govern: it is not a slice of the pre-split file,
+  so appending preserves every existing ordinal and every two-anchor scrape
+  window between them.
+
+  NOT done, and stated rather than implied: the verb's own end-to-end latency is
+  still unmeasured. § 4 keeps ANTS-3765's inherited 1 s/project ceiling with its
+  129 ms provenance, and no invariant asserts a latency surface. Filed as
+  ANTS-3859.
 
 - 📋 [ANTS-3856] **A test wrote a fixture project into the REAL roadmap store; nothing stops it happening again.**
   Measured 2026-08-06. `~/.local/share/ants-terminal/roadmap.sqlite`
@@ -27590,6 +27633,32 @@ against current source before filing.
   **Layman:** If you move a project's folder, the roadmap database still thinks it lives at the old path; there is no command to tell it otherwise.
   Kind: feature.
   Source: ANTS-3855 spec § 5 (2026-08-06) — filed while resolving a cold-eyes loop-3 finding..
+
+- 📋 [ANTS-3859] **Measure roadmap_migrate's own end-to-end latency; add a budget invariant only if it warrants one.**
+  ANTS-3855 § 4 states a 1 s/project ceiling INHERITED from ANTS-3765 § 4,
+  whose 129 ms worst case (Ants_Terminal, 1,794 items) measured `load()`
+  alone, through ONE Bulk connection shared across ten projects. The verb
+  pays more than that and the extra is unmeasured: a per-call `mkpath` +
+  `addDatabase` + `applyPragmas` + `createSchema` + three
+  `setOwnerOnlyPerms`, plus `findRoadmaps()`' own read of the source files
+  (~3 MB here). So 129 ms is the load's cost, not the verb's, and § 4 says
+  so rather than implying a contract — no invariant carries a latency
+  surface today.
+
+  What this item is: run the verb end to end against the real corpus roots
+  on a quiet machine and record the figure. Then decide, on evidence,
+  whether a latency invariant is warranted; if it is, ANTS-3793's
+  `Inv3Latency` is the model — a `perf`-labelled case excluded from the
+  default presets, plus the guard test asserting the label still names a
+  live case (a renamed case is silently unlabelled and puts a timing
+  assertion back into the pre-push gate).
+
+  Not urgent: nothing reds today and the ceiling is a design target, not
+  an assertion. It matters before ANTS-3807 hands thirteen projects a
+  brief that tells each session to run this.
+  **Layman:** We know how long the roadmap import takes once it's started, but not how long the whole command takes. Measure it properly before promising a number.
+  Kind: perf.
+  Source: in-session-2026-08-07, ANTS-3855 § 4.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

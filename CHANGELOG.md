@@ -14,6 +14,27 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_migrate` — the MCP verb that loads a project into the roadmap store** (ANTS-3855)
+  The migration engine has been complete and unreachable since ANTS-3756:
+  schema, read half, load half, archives, render, export, section
+  provenance, consumer cutover and write half all shipped, and every
+  invoker was a test. This is the production entry point. One project per
+  call, resolved from `caller_cwd`; optional `project_name` /
+  `export_slug` default from the leaf directory (slug derived, a supplied
+  one validated verbatim and never rewritten). `dry_run:true` reports the
+  real run's counts and rolls back — it does open the store, and creates an
+  empty schema if none exists, because those counts are a diff against
+  existing rows. Re-running an unchanged project is idempotent; re-running
+  with a different name or slug is refused rather than silently applied.
+  Refusals: `no_project`, `no_roadmap`, `case_ambiguous`, `not_utf8`,
+  `format_mismatch`, `bad_args`, `slug_collision`, `store_failed`,
+  `migrate_failed` (the last three codes are new to the taxonomy). The
+  handler is deliberately thin — it resolves the root, stamps the clock
+  once and names `RoadmapStore::defaultPath()` — with all store work in a
+  free `RoadmapMigrateVerb::run(storePath, req)` seam in its own
+  translation unit, so the feature test drives it against a temp store
+  instead of the developer's real one. 11 feature tests, INV-1..INV-10.
+
 - **Roadmap write half — roadmap_log's eight ops mutate the store, then re-render.** (ANTS-3809)
   On a project migrated to the roadmap store, all eight `roadmap_log`
   ops now mutate the store and re-render, instead of splicing markdown.

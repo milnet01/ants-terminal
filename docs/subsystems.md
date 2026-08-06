@@ -162,15 +162,19 @@ Listed only where behavior isn't obvious from the name.
   `file-outline`, `find-definition`, `find-caller`, `similar-code`,
   `git-state`, `subsystem`, `roadmap-branch-drift`. Trust model:
   UID-scoped + 0700 perms + `lstat`-checked `S_ISSOCK`.
-  **Eleven translation units (ANTS-3833).** The class and
+  **Twelve translation units (ANTS-3833, ANTS-3855).** The class and
   `src/remotecontrol.h` are unchanged; only the bodies were cut, each TU one
   contiguous slice of the old file: `remotecontrol.cpp` (the dispatcher and
   the shared `rcdetail` helper pool), then `_terminal`, `_roadmap_query`,
   `_changelog`, `_roadmap_log`, `_workspace`, `_docs`, `_feedback`, `_state`,
-  `_review`, `_coldeyes`. `CMakeLists.txt`'s `ANTS_RC_SOURCES_REL` names them
+  `_review`, `_coldeyes` — plus `_roadmap_migrate` (ANTS-3855), appended LAST
+  because it is NOT a slice of the old file but a member that never existed
+  there: appending keeps every existing TU's `TU N/12` ordinal and every
+  two-anchor scrape window between them exactly where they were.
+  `CMakeLists.txt`'s `ANTS_RC_SOURCES_REL` names them
   in slice order and `ants_core_lib` consumes that list; the
   `ANTS_RC_SOURCES` compile definition carries the same order to the test
-  tree, where `ants_test::slurpRemoteControl()` reads all eleven. A new verb's
+  tree, where `ants_test::slurpRemoteControl()` reads all twelve. A new verb's
   body goes in its family's TU, its `dispatch` routing entry in
   `remotecontrol.cpp`. Cross-TU helpers are declared in
   `src/remotecontrol_internal.h`, which nothing outside the list may include.
@@ -331,6 +335,17 @@ Listed only where behavior isn't obvious from the name.
   item absent from source; allocates ids inside the transaction so a
   rolled-back load burns none. Refuses an `Access::Interactive` store.
   Spec ANTS-3765.
+- `remotecontrol_roadmap_migrate` (`ants_core_lib`) — the `roadmap_migrate`
+  verb, and the ONLY production entry point into the three subsystems above:
+  before it, the whole migration engine was shipped and reachable from tests
+  only. `RemoteControl::cmdRoadmapMigrate` resolves the caller's root, stamps
+  the clock once and names `RoadmapStore::defaultPath()`; the free
+  `RoadmapMigrateVerb::run(storePath, req)` does everything else, taking the
+  path as a parameter so a test can drive it against a `QTemporaryDir` instead
+  of the developer's real store. Opens its OWN `Access::Bulk` connection for
+  the call and releases it before returning — never the process-owned
+  `Interactive` one, which `load()` refuses. `dry_run` previews the counts and
+  rolls back, but does open (and may create) the store. Spec ANTS-3855.
 - `claudetasklist` / `claudebgtasks` — per-tab JSONL trackers;
   `QFileSystemWatcher` + `poll()` mtime rescue for tmpfile+rename
   rewrites (which drop the watch). `sweepLiveness()` is bg-only. Parser:
