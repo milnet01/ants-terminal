@@ -177,8 +177,17 @@ cut on.** This is by the document's own argument the project's most-edited
 file, so the slice boundaries, the namespace extents and the seam lines will
 all have moved by the time anyone implements this — and two of the seams clear
 their nearest anonymous namespace by two lines. **Precondition on the cut:**
-re-derive every seam from the *member names* in the table above, re-run the
-brace-aware scan, and re-confirm the containment check before any code moves.
+re-derive every seam from the *member names* in the table above, then re-run
+the scan and the containment check before any code moves — with
+**`tools/rc-namespace-scan.py`**, which is that scanner, shipped rather than
+described precisely so nobody re-derives it by hand:
+
+```bash
+tools/rc-namespace-scan.py src/remotecontrol.cpp \
+  --seams 2262,3666,6556,7713,12598,14387,15347,17681,21017,22992
+# → 24 anonymous namespaces; seams inside an anonymous namespace: 0 of 10
+# → exits non-zero if any seam is not in open code
+```
 If a seam no longer falls in open code, move it to the next member boundary
 that does and record the change.
 
