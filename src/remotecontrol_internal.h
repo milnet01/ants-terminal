@@ -40,11 +40,22 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <optional>
 
 #include "coldeyesengine.h"
 #include "indiereviewengine.h"
 #include "roadmapdialog.h"
 #include "roadmapindex.h"
+// ANTS-3833 commit 1b — the promoted roadmap helpers below take nested types
+// (RoadmapWrite::Result, RoadmapRender::Outcome, RoadmapStore::ItemWrite,
+// RoadmapParse::BulletRecord), and a nested type cannot be forward-declared
+// without its enclosing definition. remotecontrol.cpp already included all
+// four, so TU 1 pays nothing new; the other TUs pay for the shared header.
+#include "roadmapparse.h"
+#include "roadmaprender.h"
+#include "roadmapsource.h"
+#include "roadmapstore.h"
+#include "roadmapwrite.h"
 
 class MainWindow;
 namespace rcdetail {
@@ -123,6 +134,40 @@ extern const int kWorkspaceSearchStderrCapBytes;
 extern const int kWorkspaceSearchGlobBytesCap;
 extern const int kDefaultMaxMatchBytes;
 extern const char kFeedbackSuffix[];
+
+// ---- file-scope statics promoted by the cut (ANTS-3833 § 2.5 commit 1b) ----
+//
+// These were never in an anonymous namespace, so the first promotion pass —
+// which walked the 24 anonymous blocks — did not see them. A file-scope
+// `static` has internal linkage just the same, which is invisible while the
+// implementation is ONE translation unit and an undefined reference the
+// moment it is eleven. Found by cutting and reading the linker, which is what
+// INV-7 says the arbiter is.
+//
+// Nineteen of the file's 36 file-scope statics are referenced from a slice
+// other than the one defining them; only those are promoted. The definitions
+// keep every byte except the `static` keyword, which becomes an `rcdetail::`
+// qualification — so the cut that follows stays pure motion.
+extern bool g_forceCounterCommitFail;
+
+QString rlCanonicalToStatus(const QString &toStatus);
+QJsonDocument cmdRoadmapLogPassAppend(const QJsonObject &req, const QString &roadmapPath, const QString &markdown);
+QJsonDocument cmdRoadmapLogPassAppendBatch(const QJsonObject &req, const QString &roadmapPath, const QString &markdown);
+QJsonDocument cmdRoadmapLogPassFlip(const QJsonObject &req, const QString &roadmapPath, const QString &markdown);
+QJsonDocument cmdRoadmapLogPassFlipBatch(const QJsonObject &req, const QString &roadmapPath, const QString &markdown);
+bool rcRoadmapIdLess(const QString &a, const QString &b);
+QString rcExtractGateNote(const QString &body);
+bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, const QString &err);
+bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QString &err, const RoadmapRender::Outcome &outcome);
+bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, QString *error);
+QString rlAppendBodyNote(const QString &body, const QString &note);
+std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
+qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &projectRoot, const QString &prefix);
+QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId, const QString &idPrefixArg, const QString &markdown, const QString &callerCanonical);
+bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error);
+QString changelogMalformedAdvisory(int line, bool plural, bool applied);
+QStringList rcShortBareAltTerms(const QString &pattern);
+bool rcLooksLikeRegexButLiteral(const QString &pattern);
 
 // ---- functions (definitions stay in the .cpp) ----
 QString resolveRootCanonical(MainWindow *main);

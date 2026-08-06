@@ -3048,7 +3048,7 @@ QJsonDocument RemoteControl::cmdGrabImage(const QJsonObject &req) {
 // a caller reaches for first (done/wip/todo/maybe …) onto the canonical
 // roadmap_log status. Extracted (ANTS-2126) so the GFM flip path and the
 // pass-headings flip path share one map instead of duplicating it.
-static QString rlCanonicalToStatus(const QString &toStatus) {
+QString rcdetail::rlCanonicalToStatus(const QString &toStatus) {
     const QString lo = toStatus.toLower();
     if (lo == QLatin1String("done")     || lo == QLatin1String("complete") ||
         lo == QLatin1String("completed"))
@@ -3199,7 +3199,7 @@ static QString rcSplicePassBlock(const QString &markdown,
     return lines.join(QChar('\n'));
 }
 
-static QJsonDocument cmdRoadmapLogPassAppend(
+QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
         const QJsonObject &req, const QString &roadmapPath,
         const QString &markdown) {
     auto err = [](const QString &code, const QString &message) {
@@ -3249,7 +3249,7 @@ static QJsonDocument cmdRoadmapLogPassAppend(
     return QJsonDocument(out);
 }
 
-static QJsonDocument cmdRoadmapLogPassAppendBatch(
+QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
         const QJsonObject &req, const QString &roadmapPath,
         const QString &markdown) {
     const QString section = req.value(QStringLiteral("section")).toString();
@@ -3320,7 +3320,7 @@ static QJsonDocument cmdRoadmapLogPassAppendBatch(
 
 // Serves op:"flip" AND op:"annotate" (the member gate routes both here,
 // reading op from req — mirrors cmdRoadmapLogFlip).
-static QJsonDocument cmdRoadmapLogPassFlip(
+QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
         const QJsonObject &req, const QString &roadmapPath,
         const QString &markdown) {
     const bool annotateMode =
@@ -3421,7 +3421,7 @@ static QJsonDocument cmdRoadmapLogPassFlip(
     return QJsonDocument(out);
 }
 
-static QJsonDocument cmdRoadmapLogPassFlipBatch(
+QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
         const QJsonObject &req, const QString &roadmapPath,
         const QString &markdown) {
     const QString canon =
@@ -3508,7 +3508,7 @@ static QJsonDocument cmdRoadmapLogPassFlipBatch(
 // compare on the full id for any non-conforming id or an equal suffix.
 // One rule, three call-sites (items[] sort, bundle size-tie-break,
 // bundle_label lowest-id fallback) so the envelope is byte-stable.
-static bool rcRoadmapIdLess(const QString &a, const QString &b) {
+bool rcdetail::rcRoadmapIdLess(const QString &a, const QString &b) {
     auto suffix = [](const QString &id, bool *ok) -> qlonglong {
         const int dash = id.lastIndexOf(QLatin1Char('-'));
         if (dash < 0 || dash + 1 >= id.size()) { *ok = false; return 0; }
@@ -3536,7 +3536,7 @@ static bool rcRoadmapIdLess(const QString &a, const QString &b) {
 // are best-effort. The 2000-char cap is a hard character cut, so a
 // marker past it — or on the line straddling it — is missed (acceptable
 // for v1: gate notes sit near the bullet head by convention).
-static QString rcExtractGateNote(const QString &body) {
+QString rcdetail::rcExtractGateNote(const QString &body) {
     static const QStringList markers = {
         QStringLiteral("blocked by"), QStringLiteral("gated"),
         QStringLiteral("depends on"), QStringLiteral("waiting on"),
@@ -3711,7 +3711,7 @@ RemoteControl::roadmapWriteTarget(const QString &projectRoot,
 // stay distinct because they send the user to different files: StoreFailed is
 // the STORE not opening, SourceUnrecognised is the store being fine and the
 // ROADMAP.md being absent, empty or mangled.
-static bool rcRoadmapSourceRefused(QJsonObject &out,
+bool rcdetail::rcRoadmapSourceRefused(QJsonObject &out,
                                    RoadmapSource::ReadError why,
                                    const QString &err) {
     switch (why) {
@@ -3755,7 +3755,7 @@ static bool rcRoadmapSourceRefused(QJsonObject &out,
 // All five values carry genuinely different remedies — fill in the missing
 // Layman lines, fix the store's contents, fix the store file, re-run the
 // render — which is why they are five codes and not one.
-static bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
+bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
                                   const QString &err,
                                   const RoadmapRender::Outcome &outcome) {
     const auto fail = [&out, &err](const char *code, const char *fallback) {
@@ -3908,7 +3908,7 @@ static bool rlBodyShadows(const RoadmapParse::TrailerValues &tv,
 // carrying no `Layman:` line has that column cleared by the very next annotate.
 // Every single-op test passes; the two-op sequence is where it shows. So a
 // column is cleared ONLY when the body it replaced also yielded that key.
-static bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
+bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
                                    const RoadmapStore::ItemWrite &before,
                                    const QString &newBody,
                                    const QSet<QString> &supplied, QString *error) {
@@ -3957,7 +3957,7 @@ static bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
 // render's appendIndented() puts the two spaces back on the way out.
 //
 // The caller scrubs and caps the note first, exactly as the markdown path does.
-static QString rlAppendBodyNote(const QString &body, const QString &note) {
+QString rcdetail::rlAppendBodyNote(const QString &body, const QString &note) {
     QString out = body;
     while (out.endsWith(QLatin1Char('\n')) || out.endsWith(QLatin1Char(' ')))
         out.chop(1);
@@ -3982,7 +3982,7 @@ static QString rlAppendBodyNote(const QString &body, const QString &note) {
 //
 // Fills *code with the same two refusals the markdown path's `headline` locator
 // already makes.
-static std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId,
+std::optional<qint64> rcdetail::rlStoreItemPk(RoadmapStore &store, qint64 projectId,
                                            const RoadmapParse::BulletRecord &rec,
                                            QString *code, QString *error) {
     if (!rec.id.isEmpty()) {
@@ -4030,7 +4030,7 @@ static std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId
 // idHighWater() returning nullopt is NOT an error — its own comment says so,
 // and it is the state of every project until its first store-side allocation.
 // Treated as 0, exactly as the markdown path treats an absent counter file.
-static qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
+qint64 rcdetail::rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
                                  const QString &projectRoot, const QString &prefix) {
     qint64 floor = RoadmapFoldIn::corpusHighWater(projectRoot, prefix);
     QString ignored;
@@ -4051,7 +4051,7 @@ static qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
 // argument is documented to do ("overrides BOTH the prefix sniffed from
 // existing IDs and the project-dir default"); on nullopt the whole markdown
 // resolution applies unchanged.
-static QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
+QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
                                     const QString &idPrefixArg,
                                     const QString &markdown,
                                     const QString &callerCanonical) {
@@ -4080,7 +4080,7 @@ static QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
 // line lives in the body without repeating it as an argument.
 //
 // Returns false with *error set on a body_shadowed refusal.
-static bool rlFillItemBody(const QJsonObject &bulletReq,
+bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
                            RoadmapStore::ItemWrite &w,
                            QStringList &scrubbedNames, QString *error) {
     // Scrubbed exactly as formatRoadmapBullet() scrubs it on the markdown path.
@@ -6428,7 +6428,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
 // (setVerifyInFlightForTest / cmdVerifyChangesWithRoot) rather than an
 // #ifdef build flag, because remotecontrol.cpp ships inside the shared
 // ants_core_lib — a build define would leak into the main binary.
-static bool g_forceCounterCommitFail = false;
+bool rcdetail::g_forceCounterCommitFail = false;
 
 void RemoteControl::setForceCounterCommitFailForTest(bool on) {
     g_forceCounterCommitFail = on;
@@ -6485,7 +6485,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatchForTest(
 // uses feature-grouped `### ` subsections instead of flat categories, the
 // canonical flat-category insert reads inconsistently — name the
 // alternative insert paths so the caller can choose before committing.
-static QString changelogMalformedAdvisory(int line, bool plural,
+QString rcdetail::changelogMalformedAdvisory(int line, bool plural,
                                           bool applied) {
     const QString subject = plural ? QStringLiteral("entries")
                                     : QStringLiteral("the entry");
@@ -12516,7 +12516,7 @@ QJsonObject wsErr(const char *code, const QString &message) {
 // wrapping group syntax that are purely [A-Za-z]{1,3} qualify — any piece
 // carrying an anchor (\b, ^, $) or other metacharacter is exempt (that's the
 // user already being specific). Caps at 5 distinct terms.
-static QStringList rcShortBareAltTerms(const QString &pattern) {
+QStringList rcdetail::rcShortBareAltTerms(const QString &pattern) {
     if (!pattern.contains(QChar('|'))) return {};
     static const QRegularExpression bareShort(
         QStringLiteral("^[A-Za-z]{1,3}$"));
@@ -12542,7 +12542,7 @@ static QStringList rcShortBareAltTerms(const QString &pattern) {
 // a `[...]` character class, and `\d \w \s \b` escape-classes. A lone `.`,
 // `(`, `+` or `?` is EXCLUDED (ubiquitous in literal code searches like
 // `cfg.get(` — flagging them would cry wolf and dilute the hint).
-static bool rcLooksLikeRegexButLiteral(const QString &pattern) {
+bool rcdetail::rcLooksLikeRegexButLiteral(const QString &pattern) {
     if (pattern.contains(QChar('|'))) return true;              // alternation
     if (pattern.contains(QStringLiteral(".*")) ||
         pattern.contains(QStringLiteral(".+"))) return true;    // wildcard
