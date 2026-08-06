@@ -81,6 +81,12 @@ precedent of deriving from `caller_cwd`'s leaf directory rather than asking.
 **Slugification** lowercases, replaces every run of non-`[a-z0-9]` with a
 single `-`, and strips leading/trailing `-`. `Ants_Terminal` → `ants-terminal`.
 
+**Slugification applies to the DERIVED DEFAULT only. A caller-supplied
+`export_slug` is validated verbatim and never rewritten** — silently reshaping
+an argument the caller chose would make the value in the store differ from the
+value they passed, and they have an export path keyed on it. So a supplied
+`Ants_Terminal` is `bad_args` (INV-6), not a quietly-accepted `ants-terminal`.
+
 **The validation rule is the DDL's own `CHECK`, quoted rather than
 paraphrased** — a second spelling of a charset is a second charset:
 
@@ -162,10 +168,10 @@ in the same session. INV-8 locks it.
 
 ```
 HANDLER — RemoteControl::cmdRoadmapMigrate
- 0a. caller_cwd absent or empty                       -> caller_cwd_required
- 0b. root = ants::resolveCallerCwdRoot(caller_cwd)
-     root empty (present but does not resolve)        -> no_project
- 0c. RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), {root, ...})
+ 0a. rr = ants::resolveCallerCwdRoot(m_main, caller_cwd)
+     rr.source == Unresolvable                        -> no_project
+ 0b. RoadmapMigrateVerb::run(RoadmapStore::defaultPath(),
+                             {rr.cwd, name, slug, stamp, dryRun})
 
 SEAM — RoadmapMigrateVerb::run(storePath, req)
  1. name = req.projectName, trimmed                   // empty -> bad_args
@@ -173,24 +179,42 @@ SEAM — RoadmapMigrateVerb::run(storePath, req)
                                                       //   NOTHING opened yet
  3. disc = RoadmapMigrate::findRoadmaps(root, &code)  // nullopt -> refuse on `code`
  4. plan = RoadmapMigrate::planFrom(*disc, name, slug)  // pure; cannot fail
- 5. store(storePath, kDefaultHistoryCapBytes, Access::Bulk)
+ 5. store(storePath, RoadmapStore::kDefaultHistoryCapBytes, Access::Bulk)
     store.open()                                      // fails -> store_failed
- 6. owner = store.readProjectByRoot(root)             // the re-run case
-    other = store.readProjectBySlug(slug)
+ 6. other = store.readProjectBySlug(slug)
     other set AND other->root != root                 -> slug_collision
+    owner = store.readProjectByRoot(root)             // the re-run case
+    owner set AND owner->exportSlug != slug           -> slug_collision
+    owner set AND owner->name != name                 -> bad_args
  7. opts = { changedAt: <one stamp>, projectRoot: root, dryRun: req.dryRun }
  8. out  = RoadmapMigrateLoad::load(store, plan, opts)
- 9. envelope from `out`                               // out.ok false -> migrate_failed
+                                                      // out.ok false -> migrate_failed
+ 9. envelope from `out`
 ```
 
 The block is prose, not compilable C++ — an unlabelled fence, because a `cpp`
 tag on numbered steps invites a reader to paste it.
 
-**Steps 0a and 0b are two refusals, not one.** An absent or empty `caller_cwd`
-is `caller_cwd_required` — the caller named no project. A `caller_cwd` that is
-present but does not canonicalise is `no_project` — the caller named one that
-is not there. `ants::resolveCallerCwdRoot` returns empty for both, so the
-discriminator is the **argument**, checked before the call, not its result.
+**`caller_cwd` absent is not this verb's refusal to make.** `CallerCwdContract`
+`Required` (§ 2.1) means the dispatcher refuses an empty `caller_cwd` with
+`caller_cwd_required` before the handler is entered (`mcp-tools.md`,
+ANTS-1404), so step 0a sees only a non-empty argument and has exactly one case
+of its own: `ResolvedRoot::Source::Unresolvable`, which
+`src/resolvedroot.h` defines as "`caller_cwd` present but
+`QFileInfo::canonicalFilePath()` returned empty (path doesn't exist)" →
+`no_project`. `NoMatch` (resolves, but no open tab sits there) is **not** a
+refusal: migrating a project you do not have a terminal open in is legitimate.
+
+**`rr.cwd` is canonical, and that is a precondition three later steps rest
+on.** `src/resolvedroot.h` documents the field as "Canonical FS path" and
+derives `Unresolvable` from `QFileInfo::canonicalFilePath()` returning empty —
+the *same* call `RoadmapSource::migratedProject()` makes and the same one
+`registerProject()` applies internally (ANTS-3756 INV-8). So the string step 6
+looks up by, the string `load()` stores, and the string the read seam later
+resolves are one form. Were they to diverge — a trailing separator, a symlink
+policy — step 6's re-run detection would miss, every re-run would attempt a new
+project row, and INV-7's idempotency would fail. `run()` therefore takes an
+already-canonical root and does not re-canonicalise: one canonicaliser, named.
 
 **Steps 1–2 precede step 5 deliberately.** An invalid slug that reached
 `registerProject()` would fail the DDL's `export_slug` CHECK *inside* the
@@ -207,13 +231,16 @@ canonical `slug_collision`. `root` is `UNIQUE` too, but a matching root is the
 **re-run** case (INV-7) and not a collision — which is why step 6 compares
 `other->root` rather than merely finding a row.
 
-**A re-run may not silently change a registered project's identity.** When
-step 6's `owner` exists and its `exportSlug` differs from `slug`, the call
-refuses `slug_collision` as well: an omitted `export_slug` on the second run
-recomputes the default, and a project that had been migrated under an explicit
-slug would otherwise be quietly re-slugged. Changing a project's slug is a
-deliberate act with an export path hanging off it, not a side effect of
-leaving an argument out.
+**A re-run may not silently change a registered project's identity, and
+identity is both fields.** `project_name` and `export_slug` are each defaulted
+from the leaf directory, so an argument omitted on the second run recomputes
+its default — and a project migrated under an explicit value would otherwise be
+quietly re-slugged or renamed. Step 6 refuses both, with different codes
+because the consequences differ: a changed `export_slug` is `slug_collision`
+(an export path hangs off it), a changed `project_name` is `bad_args` (a
+display-name change nobody asked for). Either is a deliberate act, not a side
+effect of leaving an argument out. Re-running with the *same* values is the
+idempotent path INV-7 covers.
 
 #### 2.3.1 `dry_run` opens the store, and may create it
 
@@ -278,33 +305,40 @@ that from the outside.
   "items_inserted": 0, "items_updated": 0, "items_unchanged": 0,
   "items_orphaned": 0, "ids_allocated": 0,
   "sections_written": 0, "elements_written": 0, "history_rows": 0,
-  "notes": [{"code": "…", "detail": "…", "line": 0, "source_index": 0}],
-  "notes_count": 0, "notes_truncated": false
+  "notes": [], "notes_count": 0, "notes_truncated": false
 }
 ```
 
 The example is the **shape**, not a measurement — every numeric field is
-zeroed so no figure here can be read as this project's, `project_id` included.
-§ 4 carries the measured ones, with the run that produced them.
+zeroed and `notes[]` is empty, so no figure here can be read as this project's,
+`project_id` included. § 4 carries the measured ones.
 
-`sources[].path` is **project-relative** (`ROADMAP.md`,
-`docs/roadmap/0.6.md`), not the absolute path `findRoadmaps()` resolved. The
-caller supplied the root; echoing it back on every entry is noise, and a
-relative path is what the operator would type.
+`sources[].path` is **relative to `req.projectRoot`** — the canonical root of
+§ 2.3 — so `ROADMAP.md` and `docs/roadmap/0.6.md`, not the absolute paths
+`findRoadmaps()` resolved. The caller supplied that root; echoing it back on
+every entry is noise.
 
 `project_id` is the store's `project_id` after a committed run. **Under
 `dry_run` it is `0`** — `registerProject()`'s rowid is allocated inside a
 transaction that is about to roll back, and a provisional id that a later real
 run need not reuse is worse than no id, because it looks durable.
 
-`notes[]` is capped at **200 entries**, with `notes_truncated: true` when the
-cap bites; `notes_count` is always the **true** total, so a truncated report
-still says how much it dropped. The cap exists because the array is otherwise
-unbounded — one note per offending line, and ANTS-3772's 3D_Engine produced 17
-id collisions on its own — and this project ships no unbounded growth without a
-named cap. 200 is chosen to sit well above the worst observed real project
-while keeping the envelope small enough not to need the offload path; a project
-that exceeds it has a systemic problem the first 200 notes already describe.
+`notes[]` is bounded on **both axes**, because capping the element count alone
+bounds no bytes — `Note::detail` is a `QString` with no length rule of its own:
+
+| Bound | Value | On breach |
+|---|---|---|
+| entries | 200 | `notes_truncated: true`; `notes_count` stays the TRUE total |
+| `detail` | 2 KiB each | that entry's `detail` is clipped, ellipsis appended |
+
+So the array is ≤ ~400 KiB in the worst case and typically a few KiB. The cap
+exists because one note is emitted per offending line — ANTS-3772's 3D_Engine
+produced 17 id collisions on its own — and this project ships no unbounded
+growth without a named cap. A project exceeding 200 has a systemic problem the
+first 200 notes already describe.
+
+A refusal envelope that carries `notes` (only `migrate_failed` does) carries
+all three fields, under the same bounds.
 
 Every count is `RoadmapMigrateLoad::Outcome`'s corresponding field, renamed to
 the envelope's snake_case and **not** recomputed — the `Outcome` is "a value,
@@ -323,9 +357,9 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 
 | Step | Condition | `code` |
 |---|---|---|
-| 0a | `caller_cwd` absent or empty | `caller_cwd_required` |
-| 0b | `caller_cwd` present but does not resolve | `no_project` |
-| 1 | `project_name` empty after trimming | `bad_args` |
+| — | `caller_cwd` absent or empty — refused by the `Required` contract, before the handler | `caller_cwd_required` |
+| 0a | `caller_cwd` present but does not canonicalise | `no_project` |
+| 1 | `project_name` empty after trimming, or a re-run changes this root's name | `bad_args` |
 | 2 | `export_slug` fails the DDL `CHECK` in § 2.1 | `bad_args` |
 | 3 | `findRoadmaps()` → `not_found` | `no_roadmap` |
 | 3 | `findRoadmaps()` → `case_ambiguous` | `case_ambiguous` |
@@ -333,9 +367,20 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 | 3 | `findRoadmaps()` → `archive_format_mismatch` | `format_mismatch` |
 | 5 | `store.open()` fails | `store_failed` |
 | 6 | the slug belongs to a different root, or a re-run changes this root's slug | `slug_collision` |
-| 8 | `load()` returns `ok == false` | `migrate_failed`, `error` = `Outcome::error`, `notes` carried |
+| 8 | `load()` returns `ok == false` — including a lock timeout | `migrate_failed`, `error` = `Outcome::error`, `notes` carried |
 
 Every refusal carries `ok:false`, a `code`, and a human-readable `error`.
+
+**A concurrent writer surfaces as `migrate_failed`, deliberately and not by
+omission.** `Access::Bulk` carries a 30 s busy deadline (ANTS-3756 § 2.5) and
+the write lock is held for a whole project, so a second `roadmap_migrate` or a
+concurrent export can outlast it. SQLite reports that to `load()`, which
+returns `ok == false` with the driver's message in `Outcome::error`, and it
+reaches the caller intact. It gets no code of its own because the operator's
+next step is the same one `migrate_failed` already implies — read `error`, then
+retry — and a `store_busy` code would suggest a different one. The 30 s
+deadline sits inside the bridge's 60 s call timeout (§ 4), so the deadline
+fires first and the caller gets this refusal rather than a dead socket.
 
 **The mapping rule, stated once so the table does not read as ad-hoc:** a
 `findRoadmaps()` code maps onto a canonical code when one already means the
@@ -384,16 +429,33 @@ naming them is that a change here must not weaken one.
 
 Every `*Test:*` clause below drives `RoadmapMigrateVerb::run(storePath, req)`
 against a `QTemporaryDir` store, never `RoadmapStore::defaultPath()` — § 2.1.1
-is what makes that possible and § 6 states the one exception (INV-1, a
-source-grep).
+is what makes that possible, and § 6's table states the two exceptions (INV-1
+and INV-2(b), both source-greps).
+
+`run()` owns its store for the duration of the call and hands back only a
+`QJsonObject`, so a clause that inspects rows says so explicitly: **the test
+opens its own `Access::Interactive` `RoadmapStore` at the same `storePath`
+after `run()` returns**, and queries through the public
+`RoadmapStore::db()`.
 
 - **INV-1** — A non-test translation unit calls all three migration entry
-  points, and only the verb's TU does. *Test:* source-grep in the feature test,
-  running § 1's two commands unchanged: each names
-  `src/remotecontrol_roadmap_migrate.cpp` and no other `src/` file. The
-  `grep -v ': *//'` filter drops only comment-*leading* lines, so a future
-  block-comment mention of the call would red it spuriously — the grep is
-  written to match `Name(` and the filter is a convenience, not the contract.
+  points, and only the verb's TU does. *Test:* source-grep in the feature test.
+  The contract is the three call-shape patterns
+  (`RoadmapMigrateLoad::load(`, `RoadmapMigrate::findRoadmaps(`,
+  `RoadmapMigrate::planFrom(`): each must match
+  `src/remotecontrol_roadmap_migrate.cpp` and no other file under `src/`.
+  The test scans the tree in-process with `QFile` + `QRegularExpression`,
+  skipping `//`-leading lines — it does **not** shell out to `rg`, which is not
+  a declared build or test dependency and would make the leg pass vacuously
+  where it is absent. The source root comes from a compile-time
+  `ANTS_SRC_DIR` define, as the existing source-scrape tests do, because a
+  bundle binary runs from the build tree and cannot assume its cwd. § 1's `rg`
+  commands are the human-runnable form of the same check, not the test's
+  mechanism.
+  <br>The define already exists and needs no CMake change: `test_core` is
+  given `ANTS_SRC_DIR="${CMAKE_SOURCE_DIR}/src"` for exactly this — "the source
+  tree the refit scrape walks" (ANTS-3758 INV-11) — and this test joins that
+  bundle.
 - **INV-2** — `run()` migrates on an `Access::Bulk` connection it opened
   itself, and cannot reach the process-owned `Access::Interactive` one.
   *Test:* two legs, because `ok:true` alone would also pass for a *Bulk*
@@ -408,19 +470,20 @@ source-grep).
   `SELECT COUNT(*)` is 0 on each of `project`, `section`, `item`, `element` and
   `history` (via `store.db()`); then the real run, and assert every count field
   in the envelope equals the dry run's (ANTS-3765 INV-13's comparison, driven
-  through the verb).
+  through the verb). Also asserts § 2.4's two dry-run envelope rules:
+  `project_id` is `0` on the dry run and non-zero on the real one, and
+  `sources[].path` is relative on both (`ROADMAP.md`, never an absolute path).
 - **INV-4** — No refusal in § 2.5 leaves a committed row: after any of them,
   the store holds no `project` row for this root and no `section` / `item` /
   `element` / `history` row referencing one. *Test:* feature test — drive each
   refusal in turn against a temp store, asserting the five counts are 0 after
-  each. Stated at row level, not as a byte hash: `store.open()` legitimately
-  creates the file and a rollback legitimately moves the WAL (§ 2.5).
+  each. Row level rather than a byte hash, for § 2.5's reason.
 - **INV-5** — One stamp per call, in the shape `history.changed_at` CHECKs.
   *Test:* the envelope's `changed_at` matches
-  `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`, and
-  `SELECT COUNT(DISTINCT changed_at) FROM history` is ≤ 1 after a single run
-  that wrote history rows. `RoadmapStore` exposes no history *reader*, so the
-  test queries through the public `store.db()`.
+  `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`; then, on a run whose envelope
+  reports `history_rows > 0` (asserted first, so the next leg cannot pass
+  vacuously against an implementation that writes no history at all),
+  `SELECT COUNT(DISTINCT changed_at) FROM history` is exactly 1.
 - **INV-6** — An invalid `export_slug` or empty `project_name` refuses
   `bad_args` with no store connection opened. *Test:* feature test —
   `export_slug: "Ants_Terminal"` against a temp-dir path that does not yet
@@ -432,19 +495,29 @@ source-grep).
   and the project still has exactly one row. *Test:* feature test runs `run()`
   twice over one fixture root. (`elements_written` is deliberately excluded —
   `roadmapmigrateload.h` states it "is non-zero even on an unchanged re-run".)
-- **INV-8** — After a successful run the consumer path serves that project from
-  the store in the same process, with no restart. *Test:* feature test —
+- **INV-8** — After a successful run, the project resolves through the read
+  seam's dispatch against the same store. *Test:* feature test —
   `RoadmapSource::migratedProject(store, root, markdown)` is `nullopt` before
-  the run and returns the project id after, against the same temp store. Driven
-  at the seam rather than through `RemoteControl::roadmapStoreServes()`, which
-  resolves `defaultPath()` and so cannot be aimed at a fixture; § 2.2's
-  "absence is NOT remembered" is the property under test, and
-  `migratedProject()` is what that member calls.
-- **INV-9** — A store this verb creates is mode 0600, and so are its `-wal` and
-  `-shm` sidecars. *Test:* feature test — `run()` against a temp path with no
-  store, then `QFile::permissions()` on all three is owner-read/write only.
-  Locks § 2.6's third boundary: creation goes through `RoadmapStore::open()`,
-  which applies ANTS-3756 INV-17, and never through a bespoke path.
+  the run and returns the project id after. (The three-argument call compiles:
+  `error` and `why` both default to `nullptr` in `src/roadmapsource.h`.)
+  <br>**Scoped to what this fixture can falsify.** The stronger property — that
+  a *running session's* consumers pick the migration up with no restart — lives
+  in `RemoteControl::roadmapStoreOrNull()`'s "absence is NOT remembered"
+  caching (§ 2.2), which `migratedProject()` never touches and which this test
+  would pass without. That property is ANTS-3793's and is already shipped; this
+  spec relies on it and does not re-assert it.
+- **INV-9** — A store this verb creates is mode 0600. *Test:* feature test —
+  `run()` against a temp path with no store, then `QFile::permissions()` on the
+  store file is owner-read/write only, against a default umask that would
+  otherwise yield `0644`. <br>**The store file only.** SQLite removes `-wal` and
+  `-shm` when the last connection closes cleanly, and `run()` closes its
+  connection before returning — verified 2026-08-06: a WAL database written and
+  closed leaves `t.db` alone on disk, no sidecars — so a post-call
+  `QFile::permissions()` on them would stat files that no longer exist and pass
+  or red for a reason unrelated to the rule. The sidecars *are* chmodded, by
+  `RoadmapStore::open()`, and ANTS-3756 INV-17 is where that is asserted;
+  re-asserting it here would duplicate another spec's invariant with a fixture
+  that cannot see it.
 
 ## 4. RAM / build cost
 
@@ -473,9 +546,17 @@ projects, so the per-call `mkpath` + `addDatabase` + `applyPragmas` +
 unmeasured; so is `findRoadmaps()`' own read of the source files. Both are
 bounded by a handful of syscalls and one 3 MB read, which is why the 1 s
 ceiling is kept rather than loosened — but the honest statement is that
-129 ms is the load's cost, not the verb's. **The verb's own end-to-end figure
-is measured at implementation and folded back here** (`/write-spec` Step 8);
-until then the ceiling is the contract and the 129 ms is its provenance.
+129 ms is the load's cost, not the verb's.
+
+**So the 1 s figure is a budget this spec does not assert, and says so rather
+than implying a contract.** No invariant carries a latency surface: asserting a
+wall-clock bound needs the verb's own measurement, which does not exist yet,
+and an invariant whose number was borrowed from a different call shape is one
+that reds for the wrong reason. **The verb's end-to-end figure is measured at
+implementation and folded back here** (`/write-spec` Step 8); if it lands near
+the ceiling, a latency invariant is added with it, on ANTS-3793's
+`Inv3Latency` model. Until then the ceiling is the design target and the
+129 ms is its provenance.
 
 **Build.** One new `.cpp` in an existing library. No new target, no new
 dependency, no new link edge (§ 2.1). The feature test joins `test_core`'s
@@ -511,14 +592,9 @@ Label `features;fast`. Source added to `test_core`'s `SOURCES` list — not
 **One testing route, and § 2.1.1 is what provides it: every behavioural
 invariant drives `RoadmapMigrateVerb::run(storePath, req)` directly**, with
 `storePath` inside a `QTemporaryDir`. The registered handler
-(`cmdRoadmapMigrate`) is *not* driven by any test, because its whole remaining
-job is to resolve `RoadmapStore::defaultPath()` — the user's real store, which
-no test may write to. That one line is covered by INV-2's source-grep leg
-instead.
-
-That split is the reason the seam takes a path at all. A test that drove the
-handler would migrate into `~/.local/share/ants-terminal/roadmap.sqlite` and
-reproduce ANTS-3856's leaked fixture row exactly.
+(`cmdRoadmapMigrate`) is *not* driven by any test — its whole remaining job is
+to resolve `RoadmapStore::defaultPath()`, for the reason § 2.1.1 gives — and
+that one line is covered by INV-2's source-grep leg instead.
 
 | Invariant | Route |
 |---|---|
@@ -573,4 +649,5 @@ creation does.
 
 | Loop | Date | Lanes | Findings (C/H/M/L/I) | Resolution |
 |---|---|---|---|---|
+| 2 | 2026-08-06 | 3 cold `general-purpose`, same packet rebuilt against the edited doc, no prior-loop briefing | C 0 · H 4 · M 7 · L 13 — **24 verified, 3 dismissed** | All 24 fixed. Dimension tally: dim 15×7, dim 5×6, dim 4×5, dim 6×3, dim 1×2, dim 9×2, dim 10×1, dim 13×1, dim 2×1. **Zero CRITICAL — loop 1's structural defects did not resurface.** **Origin split: ~14 fix collateral vs ~5 draft defects**, which is Phase 5's collateral-dominance trigger; answered with a consolidation sweep rather than only reconciliation — § 6's restatement of § 2.1.1's ANTS-3856 rationale cut to a pointer, INV-4's restatement of § 2.5's WAL wording cut, and an unbacked "small enough not to need the offload path" claim deleted rather than given a number it did not have. Two fixtures could not have run: **INV-9** checked `-wal`/`-shm` permissions *after* `run()` returns, but SQLite removes both on a clean last-connection close (verified by writing and closing a WAL db — only `t.db` survives), so it is narrowed to the store file, the sidecar half left to ANTS-3756 INV-17 which already owns it; **INV-8** claimed the no-restart property but tested `migratedProject()`, which never touches the `roadmapStoreOrNull()` cache where that property lives — narrowed to what the fixture falsifies, with the stronger claim attributed to ANTS-3793. Loop 1's own step 0a/0b was **wrong**: `CallerCwdContract::Required` already refuses an empty `caller_cwd` before the handler runs, and `ResolvedRoot::Source` supplies the discriminator loop 1 said had to be checked by hand — rewritten against `src/resolvedroot.h`, which also supplied the unstated canonical-root precondition three later steps rest on (it uses the same `QFileInfo::canonicalFilePath()` as `migratedProject()` and `registerProject()`, so the forms agree — but silently). Also closed: step 6 was missing the re-run slug-change condition its own prose required; the symmetric `project_name` re-run case was undecided; whether a caller-supplied `export_slug` is slugified or validated verbatim was ambiguous, and INV-6 tested nothing under one reading; the `notes[]` cap bounded entries but not bytes (`Note::detail` is an unbounded `QString`) — now 200 entries × 2 KiB; concurrent lock contention had no stated outcome. **Dismissed on verification:** INV-8's three-argument `migratedProject()` call "would not compile" (both trailing params default to `nullptr` in `src/roadmapsource.h`); the `**Layman:**` line's placement (blank-line separated from the header block, matching ANTS-3766, and `spec_query` parses); no-TOC, dismissed a second time on the same evidence — 0 of 4 sibling specs carry one. **Corrected mid-fix by verification, not by a lane:** this loop's own fix first named a `ANTS_SOURCE_DIR` define for INV-1's source scan; the define that exists on `test_core` is `ANTS_SRC_DIR` (`CMakeLists.txt:2485`), and INV-1 now names that one. Doc 576 → 650 lines despite the consolidation — the growth is contract, but § 5.3's yardstick is now the live concern and loop 3 is the last. |
 | 1 | 2026-08-06 | 3 cold `general-purpose`, one shared byte-identical packet | C 3 · H 4 · M 6 · L 10 · I 1 — **23 verified, 3 dismissed** | All 23 fixed. Dimension tally: dim 15×5, dim 5×5, dim 4×3, dim 7×3, dim 10×3, dim 1×2, dim 6×2, dim 9×2, dim 12×2, dim 8×1, dim 13×1. **All three lanes independently led on the same defect**, which is what makes the tail credible: § 6 said INV-2..INV-8 were "driven through the registered handler" and then that the handler resolves `defaultPath()` internally, so six invariants had no runnable test surface and an implementer following ¶1 would have migrated into the user's real store — reproducing ANTS-3856. Fixed by § 2.1.1's `RoadmapMigrateVerb::run(storePath, req)` seam, on the precedent ANTS-3793 § 2.2 set for `storeFor()`. Two more the draft got flatly wrong: INV-4 claimed the store is "byte-unchanged" after *every* refusal, false for the two that follow `store.open()` (which creates the file and both WAL sidecars) — restated at row level; and `dry_run` was never reconciled with `mcp-tools.md`'s "returns before any disk write", which it violates by opening the store — now § 2.3.1, stated as a bounded deviation with the argument for why a throwaway store would make the preview *wrong* rather than merely different. Also added: a `slug_collision` pre-check (`export_slug` is `UNIQUE` and the default is derived, so two roots slugifying alike collided into the catch-all), § 2.6's trust boundary + INV-9 (`specs.md` § 5.4 requires it and the draft had none), a 200-entry `notes[]` cap, and the 1 s/project ceiling ANTS-3765 § 4 sets — the draft had quoted only the 60 s bridge timeout, 60× looser. **Dismissed on verification:** no-TOC (no sibling spec carries one and `specs.md` § 3's required order omits it); a claimed-stale "4 MiB" comment in `roadmapstore.cpp` (lane misread — the 4 MiB is ANTS-3761 INV-12's export RSS budget, not the cache size); `features;fast` not being a real label (it is — `CMakeLists.txt:1001`). **Found during packet construction, before a lane was spent:** nothing. **Found by 4b's sweep, not by a lane:** the `**Layman:**` line still promised a preview that writes nothing, contradicting the § 2.3.1 just added, and two sub-subsections used `###` where siblings use `####`. **Executed rather than read** (4a step 2): the `export_slug` `CHECK` against real SQLite (`Ants_Terminal` fails both clauses, `ants-terminal` passes both, empty fails — so INV-6's fixture is valid), and `QDateTime::currentDateTimeUtc().toString(Qt::ISODate)` compiled against Qt 6, returning `2026-08-06T20:22:28Z`, which `isIsoZStamp()`'s regex accepts. Doc grew 318 → 575 lines; watch it, and split at § 2's seams if loop 2 is still finding structural defects. |
