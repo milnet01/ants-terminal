@@ -24,6 +24,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap database now records an auto-numbered item ID as store-generated rather than author-supplied.** (ANTS-3838)
+  Every item carries a note saying where each of its values came from.
+  Both places that add items were labelling the ID as "the author chose
+  this" even when the system had just picked the next number — so an
+  item nobody named looked identical to one somebody did. Only an ID you
+  supply yourself is now labelled as yours.
+
 - **doc_integrity truncated a Contents list at its first WRAPPED entry.** (ANTS-3836)
   The documentation checker reported table-of-contents entries as
   missing when they were in fact listed, whenever an entry ran onto a

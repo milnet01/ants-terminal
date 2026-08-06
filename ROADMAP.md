@@ -26716,7 +26716,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-05 (doc-integrity sweep).
 
-- 📋 [ANTS-3837] **Pass-headings roadmap_log note names five ops; amend_body and bundle_row post-date it.**
+- ✅ [ANTS-3837] **Pass-headings roadmap_log note names five ops; amend_body and bundle_row post-date it.**
   `docs/standards/mcp-behavioural-notes.md`'s "`roadmap_log` on
   pass-headings (`#### Pass N.M`) roadmaps" bullet says
   append/append_batch/flip/flip_batch/annotate WRITE the format and that
@@ -26744,8 +26744,69 @@ against current source before filing.
   **Layman:** A help note about roadmaps written as headings lists only the older editing commands, so two newer ones are undocumented for that format.
   Kind: doc-fix.
   Source: in-session-2026-08-05 (ANTS-3809 § 7 cold-eyes gate, loop 2).
+  Resolved (2026-08-06): both ops run against a real pass-headings
+  fixture rather than inferred from the absence of a writer, which is
+  what the bullet asked for.
 
-- 📋 [ANTS-3838] **Store append stamps provenance id=asserted where the data model says store-generated.**
+  - `amend_body` → `unsupported_format` (gate in
+    `cmdRoadmapLogAmendBody`, predicate `rcBulletsArePassHeadings`).
+  - `bundle_row` → **writes normally**. It has no pass-headings gate at
+    all, because it resolves a section slug and edits a Markdown table
+    and never parses bullets — the roadmap's bullet format never reaches
+    it. Verified live: dry-run rendered the row, the real call wrote it
+    (`ok:true, row_index:2, columns:3`) and left the `#### Pass` blocks
+    untouched.
+
+  So the sentence under repair was right about `format_mismatch` and
+  wrong to imply it covered every remaining op: `create_section` really
+  is the only op emitting that code, and `mcp-error-codes.md`'s
+  `bullet_not_found` row needed no change. The note now accounts for all
+  eight ops.
+
+  Blast radius, from the rule-14 gate on the edited document (2 loops,
+  2 independent lanes each): `unsupported_format` was named here but
+  absent from `mcp-error-codes.md` — added, with the per-op distinction
+  from `format_mismatch`. The gate also found three pre-existing defects
+  in the dispatch-wide nudges section and three more around
+  `read_spill` / `encoding:"tabular"`; those are in the document's own
+  cold-eyes loop log and commits 9334e708 / ba73dd1d / afa5e139.
+
+  DEFERRED TAIL — verified, unfixed, do NOT re-review to rediscover
+  these. A fresh loop costs a full multi-agent dispatch to regenerate
+  what is written here; fold them in directly.
+
+  1. `get_scrollback`'s entry (§ Read verbs) is `— since-cursor
+     incremental mode (ANTS-1500).` and nothing else. Both lanes on both
+     loops flagged it: every sibling bullet carries a contract, this one
+     names a mode and says nothing about it. Fix needs research this run
+     did not do — name the cursor field, say what invalidates a cursor
+     and what a first call returns, or drop the line and let `tool_info`
+     serve it. LOW.
+  2. `project_settings`' `detect` op (§ Write verbs) is one parenthetical
+     spanning ~15 lines with three nested levels, closing clauses opened
+     many lines earlier. An implementer cannot extract the `suggestion`
+     field contract without re-reading. Fix: break the return shape into
+     a one-line-per-field sub-list. MEDIUM (dim 11).
+  3. `raw:true` × `encoding:"tabular"` is a legal, reachable combination
+     on `workspace_search` and the document defines neither side of it.
+     `tabularize` runs before `offloadBody`, which `raw:true` suppresses;
+     whether `raw:true` also bypasses tabularize was not verified.
+     Settle it against the dispatcher, then state it. MEDIUM.
+  4. A blank line between the `docs_index` and `similar_code` bullets
+     splits one list into two in most renderers. LOW, cosmetic.
+  5. `(Vestige Obs #18)` cites a cross-session feedback finding with no
+     path; name the `*_Ants_MCP_Feedback.md` file. LOW.
+
+  STOPPED AT LOOP 2, NOT CONVERGED — and deliberately. Lane B
+  independently observed the ground: by shape this is a **reference /
+  per-verb table doc**, not a normative standard, and `/cold-eyes`' own
+  scope table routes reference docs to `/doc-lint`. It was gated here
+  because it lives in `docs/standards/`, which that same rule says is
+  the wrong test ("genre decides, never the directory"). The tail above
+  is the right size for a `/doc-lint` pass plus a targeted edit, not for
+  a third multi-agent loop.
+
+- ✅ [ANTS-3838] **Store append stamps provenance id=asserted where the data model says store-generated.**
   ANTS-3809's store `append` path stamps
   (src/remotecontrol.cpp:8028-8032):
 
@@ -26782,6 +26843,44 @@ against current source before filing.
   **Layman:** When the roadmap database creates an item, it labels who supplied the ID in a way the design document disagrees with — worth settling which is right before more code relies on it.
   Kind: investigate.
   Source: in-session-2026-08-05 (ANTS-3809 § 7 cold-eyes gate, loop 3).
+  Resolved (2026-08-06): **option (b)** — the code was wrong, the model
+  was right. User decision, taken on the evidence below rather than on
+  the doc's wording alone.
+
+  What settled it: `roadmapmigrate.cpp`'s `makeItem` already draws
+  exactly this distinction on the migration side — an id the author
+  wrote in source gets `provenance.id = "asserted"`, an id migration
+  allocated gets `"migrated"`. Stamping `asserted` for a
+  counter-allocated id on the store path would have said the author
+  supplied a value nobody chose, in a field § 7.7 calls "the model's
+  honesty mechanism".
+
+  Both append paths now branch on `useStablePrefix`:
+  - allocated from the counter / store high-water → `store-generated`
+  - caller's `id_strategy:"stable_prefix"` id → `asserted`
+
+  `idOrigin` is untouched and stays `synthesised` on both branches —
+  ANTS-3809's already-settled ruling. The two fields answer different
+  questions (how the id was FORMED vs who SUPPLIED it) and the test
+  pins that they do not move together.
+
+  **The bullet under-reported the surface: `append_batch` had the same
+  unconditional stamp** (`cmdRoadmapLogAppendBatch`), not just the
+  single `append` this item named. Both fixed.
+
+  Safe to change: `provenance` is a JSON TEXT column with no CHECK (only
+  `id_origin` has one), `store-generated` had no existing writer
+  anywhere in `src/`, no test pinned the old value, and no consumer
+  switches on it — `roadmapexport` round-trips the JSON and
+  `provenanceFor` reads a key. ANTS-3809's spec mentions provenance
+  `asserted` only for body-derived trailer columns, so no INV moved.
+
+  Test: `RoadmapWriteHalf.Ants3838ProvenanceIdPerBranch` — all three
+  legs (counter append, stable_prefix append, append_batch) in one case,
+  because a single-branch assertion would pass against a writer that
+  hardcodes either value. Must-fail-first proven by mutating both sites
+  back to the unconditional stamp: RED on both allocated legs, green on
+  restore. Suite: 9/9 in the bundle.
 
 - 📋 [ANTS-3839] **`leaner_call_hint` advertises a `filter` arg `file_outline` does not accept.**
   `leanerModeHintFor` (src/mcpprojection.cpp) emits `pass filter=<substr>
