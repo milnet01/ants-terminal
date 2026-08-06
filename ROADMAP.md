@@ -27345,6 +27345,55 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-06 (mcp-behavioural-notes cold-eyes gate, loop 1).
 
+- 📋 [ANTS-3853] **Finish the roadmap store migration — the driver bullet for the remaining tail.**
+  User request 2026-08-06: finish this. The goal is ONE roadmap standard
+  every project adheres to. ANTS-1160's dialog redesign is built against the
+  store's model and cannot be finalised while each project's roadmap is still
+  its own markdown dialect — so this is the enabler for closing that item,
+  which is why the user asked for it now.
+
+  Exists because the tail is scattered across this 43-item triage section,
+  where "what is left before the migration is finished?" could not be
+  answered from the file.
+
+  SHIPPED — do not redo: ANTS-3756 schema, ANTS-3757 migration read,
+  ANTS-3765 load, ANTS-3766 archives, ANTS-3758 render, ANTS-3761 export
+  format, ANTS-3782 section provenance, ANTS-3793 consumer cutover,
+  ANTS-3796, ANTS-3808, ANTS-3809 write half.
+
+  MEASURED 2026-08-06, not inferred: the store is in place ALONGSIDE
+  ROADMAP.md rather than instead of it. Every roadmap_log write in that
+  session returned `file: ROADMAP.md` / `format: ants-v1`, and every consumer
+  call on this already-migrated project still reads the whole 3.0 MiB file,
+  because no column records a project's source format and ANTS-3793 § 2.2's
+  gate therefore runs detectRoadmapFormat() over the live file. The migration
+  has not yet bought the saving it exists for.
+
+  ORDER — ANTS-3815 first, and it is unblocked (its stated blocker ANTS-3793
+  is ✅). It is the difference between the store being real and being a second
+  copy of the data, and it makes the rest cheaper: once the migrated path
+  stops touching the filesystem, bulletsFor()'s `markdown` argument is needed
+  only on the UNMIGRATED path. Then:
+
+  - Make it pay off: ANTS-3815, ANTS-3816.
+  - Correctness gaps: ANTS-3781 (no schema-upgrade path), ANTS-3822 (writes
+    change a column but append no history row), ANTS-3827 (migration converts
+    no relationships though the model says two), ANTS-3810, ANTS-3817,
+    ANTS-3818, ANTS-3819, ANTS-3820, ANTS-3824.
+  - Cross-project rollout — where the "one standard" goal is actually
+    delivered: ANTS-3807 (per-project migration briefs), ANTS-3772
+    (3D_Engine and RetroDB carry colliding ids, so neither can migrate),
+    ANTS-3771 (declare each project's id format).
+  - Housekeeping: ANTS-3821 (backfill Layman: lines so the render gate
+    passes), ANTS-3825, ANTS-3794, ANTS-3749 / ANTS-3751 (rotation).
+
+  The grouping and ordering are one session's analysis, not a prior decision
+  — revisit if the code says otherwise. The measured facts above were
+  observed, not reasoned.
+  **Layman:** Finish moving roadmaps into the database so every project follows one format, which is what the new Roadmap dialog needs.
+  Kind: implement.
+  Source: user-request-2026-08-06.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
@@ -31464,6 +31513,14 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Lanes: roadmapdialog, roadmapstatuswidgets, remotecontrol,
   docs/standards/roadmap-format.md.
   Status review (2026-07-04): kept 🚧 — NOT ✅. Real remaining work: P3 (parser carve-out + roadmap IPC verbs) is 📋 unshipped; P1 partial (TASK-NNNN ids, 3 new Kinds, v2 format-pragma deferred); P5/P6 are unstarted sketches; P4's scroll-anchor capture sub-piece unwired. Shipped: P2 (0.7.78) + P4 card dialog (ANTS-1154, the live dialog). The remaining phases are DEFERRED pending a consumer, so this reads as 'actively in progress' when it's really 'core shipped, remainder parked'. Recommend: split P3/P5/P6 into their own 📋 bullets and close this ✅ — surfaced for the maintainer's call.
+  Dependency recorded (2026-08-06, user): the roadmap STORE migration is this
+  item's enabler, not a parallel track. P5/P6's cross-project rollout is
+  exactly what "one roadmap standard every project adheres to" means, and the
+  dialog is being redesigned against the store's data model — so this cannot
+  be finalised while each project's roadmap is still its own markdown dialect.
+  Driver bullet for the remaining store work: ANTS-3853. Revisit the
+  2026-07-04 "split P3/P5/P6 and close this ✅" recommendation only after that
+  lands — the rollout it proposed splitting out now has an owner.
 
 ### 🔢 Tasks chip — progress semantics (user feedback 2026-05-12)
 
