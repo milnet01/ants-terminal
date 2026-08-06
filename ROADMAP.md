@@ -35741,6 +35741,95 @@ contributors don't duplicate research.
   Kind: fix.
   Source: in-session-2026-08-06.
 
+- 📋 [ANTS-3848] **`tools/rc-namespace-scan.py` is a load-bearing precondition with no test.**
+  Found 2026-08-06 during ANTS-3833 commit 2. The scanner is the gate the
+  spec makes mandatory before any code moves, and it has ALREADY failed
+  silently once: commit 1 renamed the file's 24 anonymous namespaces to
+  `namespace rcdetail`, after which the scanner found zero blocks and
+  reported every seam as open code. Green, and blind to the exact hazard it
+  exists to catch — a seam inside a namespace block splits that block
+  across two TUs and the tree does not compile.
+
+  It was caught by eye, not by a test, and only because the 0-blocks output
+  looked wrong. There is no test anywhere: `grep -rl rc-namespace-scan
+  tests/ CMakeLists.txt` returns nothing.
+
+  What a test needs to pin, all cheap against small fixtures:
+  - an anonymous block, a named block, and a nested one are each found with
+    the right extents;
+  - `using namespace X;` and `namespace alias = X;` open NO block (both
+    reach the namespace branch, and leaving the pending block set would tag
+    the next function body as a namespace);
+  - braces inside string literals, char literals and both comment forms do
+    not shift the depth;
+  - a seam inside a block exits non-zero, a seam in open code exits zero;
+  - the `--ns` filter selects what it says.
+
+  The regression that motivated this is the one worth encoding first: a
+  scan whose selected namespace kind matches nothing must not report every
+  seam as safe.
+  **Layman:** The tool that checks it is safe to split a file has no test of its own, and it has already silently stopped working once.
+  Kind: test.
+  Source: in-session-2026-08-06.
+
+- 📋 [ANTS-3849] **Contract-Doc drift check emits 2,325 findings in one category — unusable as a signal.**
+  Measured in the 2026-08-06 audit report: `[MINOR] Contract-Doc <-> Code
+  Drift (smell / General) [grep]` returns **2,325 findings** — over 80% of
+  the report's 2,766 non-INFO findings, and roughly 800 lines of the file.
+  The next-largest check returns 92 (and those are fake — ANTS-3846).
+
+  The distribution shows the shape: 20 hits in mcp-feedback-files.md, 18 in
+  roadmap-data-model.md, 9 each in roadmap-format.md and commits.md. These
+  are standards documents that legitimately quote symbol and file names in
+  prose; the check appears to flag each mention that it cannot resolve to
+  current code.
+
+  Why it matters more than its MINOR severity suggests: a category this
+  large is not read, so anything genuine inside it is invisible. That is
+  the same failure mode as ANTS-3845/3846 arriving from the opposite
+  direction — there, silence read as clean; here, noise reads as coverage.
+  The existing memory that debt_sweep_scan runs ~94% false positive is the
+  same detector family.
+
+  Work: sample ~30 findings and measure the true-positive rate before
+  touching the detector. If it is as low as it looks, either narrow it to
+  resolvable citations (path:line, symbol-in-backticks) or drop it below
+  the reporting threshold. A check nobody can read is costing report
+  surface and nothing else.
+  **Layman:** One check in the audit produces over two thousand results, which buries anything real underneath it.
+  Kind: fix.
+  Source: audit-2026-08-06.
+
+- 📋 [ANTS-3850] **cppcheck: 24 structs with uninitialised POD members, plus 8 by-value/by-reference nits.**
+  From the 2026-08-06 audit. cppcheck reports, on the post-split tree:
+    24  uninitMemberVarNoCtor   (struct POD member with no initialiser)
+     6  returnByReference       (returning by value what could be a ref)
+     2  passedByValue           (parameter that could be const&)
+
+  NO LIVE BUG FOUND IN THE SAMPLE, and the sample is small: three were
+  checked by hand. `RunOut` (remotecontrol_state.cpp) has one construction
+  site and it aggregate-initialises every member. `Accepted`
+  (remotecontrol_roadmap_log.cpp) is default-constructed but every member
+  is assigned on the next five lines. `Cand` at remotecontrol_state.cpp:547
+  already HAS default member initialisers — cppcheck's `Cand::score` hit is
+  a different struct in TU 1. The other 21 are unverified.
+
+  Five of the flagged structs ARE default-constructed somewhere (`Cand`,
+  `TocEntry`, `Heading`, `Accepted`, and one more), which is where a real
+  uninitialised read would come from if a future edit adds a path that
+  reads before assigning. That is the risk being carried, not a defect
+  being reported.
+
+  Fix is mechanical and near-zero risk: give every flagged POD member a
+  default member initialiser (`= 0`, `= false`). Do it as its own commit,
+  not folded into feature work — it touches ~12 files and every hunk should
+  be a one-token addition, so the diff stays readable. Verify the two
+  remaining classes case by case rather than in bulk; returnByReference in
+  particular can change lifetime semantics and is not a blind sweep.
+  **Layman:** Some small data structures do not give their number and true/false fields a starting value; nothing is broken today, but it is the kind of gap that becomes a bug later.
+  Kind: refactor.
+  Source: audit-2026-08-06.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
