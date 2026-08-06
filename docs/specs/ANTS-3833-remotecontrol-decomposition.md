@@ -183,11 +183,21 @@ the scan and the containment check before any code moves — with
 described precisely so nobody re-derives it by hand:
 
 ```bash
-tools/rc-namespace-scan.py src/remotecontrol.cpp \
+tools/rc-namespace-scan.py src/remotecontrol.cpp --ns anon,rcdetail \
   --seams 2262,3666,6556,7713,12598,14387,15347,17681,21017,22992
-# → 24 anonymous namespaces; seams inside an anonymous namespace: 0 of 10
+# → 24 anon / rcdetail namespaces; seams inside a … namespace: 0 of 10
 # → exits non-zero if any seam is not in open code
 ```
+
+**`--ns anon,rcdetail` is mandatory from § 2.5's commit 1 onward, and omitting
+it is a silent pass.** That commit renames all 24 anonymous namespaces to
+`namespace rcdetail`, so the scanner's default (`--ns anon`) then finds zero
+blocks and reports every seam as open code — green, and blind to the hazard it
+exists to catch, which never changed: a seam inside a `rcdetail { … }` block
+splits that block across two TUs and the tree does not compile. Measured
+2026-08-06 against the post-commit-1 file: the 24 blocks are all still there,
+all ten seams still clear, and the clearance figures are unchanged from the
+pre-split run above — including the two 2-line margins.
 If a seam no longer falls in open code, move it to the next member boundary
 that does and record the change.
 
