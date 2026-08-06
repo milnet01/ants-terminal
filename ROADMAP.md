@@ -27448,6 +27448,17 @@ against current source before filing.
   4. ANTS-3815 / ANTS-3816 — then the payoff work, measured against a
      store that actually holds this project.
   The correctness, rollout and housekeeping groups are unchanged.
+  Ordering CONFIRMED BY THE USER (2026-08-06), not merely proposed. The
+  revised order above was put to them with the measured evidence and they
+  chose it explicitly: build the migration trigger (ANTS-3855) first,
+  ahead of ANTS-3815. Do not reopen this — the reasoning is on ANTS-3855
+  and ANTS-3815's own bullets.
+
+  They also chose the trigger's SHAPE explicitly: an MCP verb a project's
+  CC session calls, NOT a Roadmap-dialog button and not both. That matches
+  ANTS-3807's per-project-brief plan and gives a dry-run report before
+  anything is written. ANTS-3855 § 5 records the dialog action as a
+  permanent exclusion on that basis.
 
 - 📋 [ANTS-3854] **roadmap_log op:create_section silently reparents a target section's subsections.**
   Hit 2026-08-06. `op:create_section` with `after_section: <slug>` and
