@@ -3282,6 +3282,64 @@ minor tag (next: pre-0.8.0).
   **Layman:** A note in the code gives the wrong line number, and two reviewers drew a wrong conclusion from it.
   Kind: doc-fix.
   Source: in-session-2026-08-06 (ANTS-3833 rule-14 gate, loop 1).
+  Progress (2026-08-06): ANTS-3833's promotion commit retired the stale
+  citation as a side effect rather than as a fix. Renaming the block to
+  `namespace rcdetail` made the closer's word "anonymous" false, so the
+  phrase had to go; dropping "from line 1320" with it removed the wrong
+  line number without asserting a new one. The closer now reads
+  `}  // namespace rcdetail (opened above — closed early so the …`.
+  Re-check whether anything remains here beyond that one comment before
+  closing — this item was filed about the citation, and the citation is
+  gone, but the ANTS-3840 write-up may cover other stale annotations in
+  the same region.
+
+- 📋 [ANTS-3841] **Git-fixture tests inherit an ambient GIT_DIR and write to the REAL repository.**
+  Measured 2026-08-06 during ANTS-3833. Running the suite with GIT_DIR
+  exported makes every git-fixture test operate on whatever repo that
+  variable names rather than its temp fixture: `git init`, `git commit`,
+  `git checkout` and `git branch` all land on the real repo. In this
+  session that rewrote local `main` onto fixture commits ("init", "old",
+  "base"), created four stray branches (_hotfix / release / scratch /
+  side), and left 2109 staged deletions in a worktree. origin was
+  untouched and everything was recoverable from reflog, but nothing in
+  the suite warned.
+
+  This is a SAFETY bug, not a tidiness one: a test run must not be able
+  to destroy the developer's history. Affected at minimum
+  VerifyChangesBuildCache.* (10 cases), mcp_roadmap_branch_drift,
+  AuditScopeSinceLastRun, DebtSweepEngine.ShippedWithoutCommit...,
+  claude_git_context_script and cut_rc_behaviour.
+
+  Fix: neutralise the inherited git environment at fixture setup —
+  unset GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / GIT_COMMON_DIR (or
+  pass an explicit `git -C <fixture>` with a cleared env) — and add a
+  guard case that runs one fixture with GIT_DIR set and asserts the
+  fixture, not the ambient repo, was mutated. Closing this also closes
+  the next bullet.
+  **Layman:** If a certain git setting is present in the environment, the tests scribble on your actual project history instead of their own throwaway copies.
+  Kind: fix.
+  Source: in-session-2026-08-06.
+
+- 📋 [ANTS-3842] **Pre-push gate cannot pass from a git worktree.**
+  Consequence of the bullet above; filed separately because it is the
+  symptom a developer actually hits. Git runs hooks with GIT_DIR
+  exported. In the primary checkout that value is the relative `.git`,
+  which a fixture test escapes as soon as it chdirs into its temp dir,
+  so the gate passes. In a worktree it is an ABSOLUTE path
+  (`…/.git/worktrees/<name>`), which no chdir escapes — so the
+  git-fixture tests fail and `tools/hooks/pre-push` blocks the push.
+
+  Reproduced 2026-08-06 on an UNMODIFIED tree at a clean HEAD: identical
+  failures with GIT_DIR set, all green without it. So the gate reports a
+  false failure whose cause is invisible in the diff, and the obvious
+  reading is that your change broke the suite.
+
+  Until the parent bullet lands, the workaround is to push from the
+  primary checkout. Worth a one-line note in CLAUDE.md's worktree
+  guidance, since global rule 17 actively recommends worktrees.
+  **Layman:** The safety check that runs before a push always fails if you are working in a second checkout of the project, for a reason unrelated to your changes.
+  Kind: fix.
+  Source: in-session-2026-08-06.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
