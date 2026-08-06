@@ -1,6 +1,6 @@
-# ANTS-3855 — `roadmap_migrate`: the production entry point that loads a project into the store
+# ANTS-3855 — Add `roadmap_migrate`, the verb that loads a project into the store
 
-**Status:** spec draft (2026-08-06).
+**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3855 (in-session-2026-08-06, measured while starting ANTS-3853's first item).
 **Blocker for:** ANTS-3807 (per-project migration briefs), ANTS-3772, ANTS-3815.
@@ -96,9 +96,10 @@ export_slug TEXT NOT NULL UNIQUE
      AND export_slug NOT GLOB '*[^a-z0-9-]*')
 ```
 
-So: first character alphanumeric, every character in `[a-z0-9-]`, non-empty.
-A slug that survives slugification but fails this (a leaf directory of only
-punctuation slugifies to the empty string) is `bad_args`, not a store error.
+So: first character lowercase-alphanumeric, every character in `[a-z0-9-]`,
+non-empty. A slug that survives slugification but fails this — a leaf directory
+of only punctuation slugifies to the empty string — is `bad_args`, not a store
+error.
 
 #### 2.1.1 The seam the handler composes, and why it is a free function
 
@@ -146,9 +147,10 @@ It must **not** reuse `RemoteControl::roadmapStoreOrNull()`, which is the
 process-owned `Access::Interactive` connection ANTS-3793 § 2.2 opened for the
 consumers: `RoadmapMigrateLoad::load()` refuses a non-`Bulk` store outright
 (`src/roadmapmigrateload.cpp` — "a migration load needs an `Access::Bulk`
-store", ANTS-3765 INV-12). Being a free function that takes a path,
-`run()` *cannot* reach the process-owned connection — the rule is enforced by
-the signature rather than by discipline, which is what INV-2 asserts.
+store", ANTS-3765 INV-12). `run()` *cannot* reach the process-owned
+connection: it is a free function taking a path, so its signature enforces the
+rule. The handler in the same TU does hold `this`, which is why INV-2(b) greps
+the TU as well rather than resting on the signature alone.
 
 Two live connections in one process are safe by construction, not by luck:
 `RoadmapStore`'s constructor allocates a per-instance connection name from an
@@ -162,7 +164,16 @@ guaranteed rather than added here.** `roadmapStoreOrNull()` states that
 call to re-check, and remembering it would serve markdown for the rest of the
 session to a project migrated in between." So a first-ever migration —
 which *creates* the store file — is visible to the very next `roadmap_query`
-in the same session. INV-8 locks it.
+in the same session. **ANTS-3793 already guarantees that and this spec relies
+on it; INV-8 asserts only the store-side half** (the project resolves through
+the dispatch afterwards), because no fixture here can observe another object's
+cache.
+
+**`run()` releases its connection before it returns.** The `RoadmapStore` is a
+stack local, and `~RoadmapStore()` runs `PRAGMA optimize`, `m_db.close()` and
+`QSqlDatabase::removeDatabase(m_connName)` — so the per-instance connection
+names do not accumulate across calls, and the WAL sidecars are checkpointed
+away. INV-9 depends on that ordering.
 
 ### 2.3 The sequence, and where each refusal falls
 
@@ -170,7 +181,8 @@ in the same session. INV-8 locks it.
 HANDLER — RemoteControl::cmdRoadmapMigrate
  0a. rr = ants::resolveCallerCwdRoot(m_main, caller_cwd)
      rr.source == Unresolvable                        -> no_project
- 0b. RoadmapMigrateVerb::run(RoadmapStore::defaultPath(),
+ 0b. stamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate)  // ONE clock read
+     RoadmapMigrateVerb::run(RoadmapStore::defaultPath(),
                              {rr.cwd, name, slug, stamp, dryRun})
 
 SEAM — RoadmapMigrateVerb::run(storePath, req)
@@ -181,9 +193,9 @@ SEAM — RoadmapMigrateVerb::run(storePath, req)
  4. plan = RoadmapMigrate::planFrom(*disc, name, slug)  // pure; cannot fail
  5. store(storePath, RoadmapStore::kDefaultHistoryCapBytes, Access::Bulk)
     store.open()                                      // fails -> store_failed
- 6. other = store.readProjectBySlug(slug)
+ 6. other = store.readProjectBySlug(slug, &sqlErr)    // sqlErr set -> store_failed
     other set AND other->root != root                 -> slug_collision
-    owner = store.readProjectByRoot(root)             // the re-run case
+    owner = store.readProjectByRoot(root, &sqlErr)    // sqlErr set -> store_failed
     owner set AND owner->exportSlug != slug           -> slug_collision
     owner set AND owner->name != name                 -> bad_args
  7. opts = { changedAt: <one stamp>, projectRoot: root, dryRun: req.dryRun }
@@ -220,6 +232,15 @@ already-canonical root and does not re-canonicalise: one canonicaliser, named.
 `registerProject()` would fail the DDL's `export_slug` CHECK *inside* the
 transaction and roll back a whole migration, reporting a store error for what
 is an argument error. Validating first refuses in microseconds (INV-6).
+
+**Both step-6 lookups check their error out-param, not just their `optional`.**
+`readProjectBySlug()` / `readProjectByRoot()` return `nullopt` for *both* "no
+such row" and "the query failed", and conflating them would read an SQL failure
+as "not registered" — the collision guard would then be skipped and the failure
+would resurface at step 8 as a UNIQUE violation wearing `migrate_failed`. This
+is the same split `RoadmapSource::migratedProject()` already makes
+(`if (!sqlError.isEmpty()) { *why = StoreFailed; … }`), and it is made the same
+way here.
 
 **Step 6 exists because `export_slug` is `UNIQUE` and the default is derived.**
 Two project roots whose leaf directories slugify alike — `…/foo` and
@@ -269,12 +290,24 @@ The deviation is bounded, and the bound is what makes it acceptable:
   transaction leaves (the WAL and SQLite's change counter).
 - The next real run would create exactly the same schema.
 
-INV-3 asserts the row-level half of this, and INV-6 is stated against *rows*
-rather than against the file's existence for the same reason.
+INV-3 asserts the row-level half of this, and INV-4 is stated against *rows*
+rather than against the file's bytes for the same reason. INV-6 is the
+deliberate exception: it fires at step 2, before anything opens the store at
+all, so there file existence *is* the observable and asserting it is what
+proves nothing was opened.
 
-**The stamp is taken once, at step 7** —
+#### 2.3.2 The stamp
+
+**The clock is read exactly once, by the HANDLER at step 0b** —
 `QDateTime::currentDateTimeUtc().toString(Qt::ISODate)`, the same expression
-`src/auditautofix.cpp` already ships. It yields the exact shape
+`src/auditautofix.cpp` already ships. `run()` never reads a clock: it receives
+the value as `Request::changedAt` and forwards it to `Options::changedAt` at
+step 7. That is what makes `run()` reproducible — a test pins `changed_at` by
+passing it — and it is ANTS-3765 § 2.1's rule ("the clock is a PARAMETER, not
+a call") held one layer further out. A `run()` that stamped itself would put
+the non-determinism back exactly where that spec removed it.
+
+The expression yields the exact shape
 `history.changed_at` CHECKs and `isIsoZStamp()` validates
 (`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`, `src/roadmapmigrateload.cpp`) —
 run against Qt 6 on 2026-08-06 rather than assumed, because `Qt::ISODate`
@@ -286,9 +319,9 @@ stamp   = 2026-08-06T20:22:28Z
 matches = YES
 ```
 
-`Options::changedAt` is a parameter and not a clock read precisely so a run is
-reproducible (ANTS-3765 § 2.1); a handler that stamped per row would defeat
-that from the outside.
+A handler that stamped per row rather than per call would defeat the same
+property from the outside, which is why step 0b builds one value and nothing
+downstream re-derives it.
 
 ### 2.4 Response
 
@@ -296,7 +329,7 @@ that from the outside.
 {
   "ok": true,
   "dry_run": false,
-  "project_id": 2,
+  "project_id": 0,
   "project_name": "Ants_Terminal",
   "export_slug": "ants-terminal",
   "store_path": "/home/…/.local/share/ants-terminal/roadmap.sqlite",
@@ -359,14 +392,16 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 |---|---|---|
 | — | `caller_cwd` absent or empty — refused by the `Required` contract, before the handler | `caller_cwd_required` |
 | 0a | `caller_cwd` present but does not canonicalise | `no_project` |
-| 1 | `project_name` empty after trimming, or a re-run changes this root's name | `bad_args` |
+| 1 | `project_name` empty after trimming | `bad_args` |
 | 2 | `export_slug` fails the DDL `CHECK` in § 2.1 | `bad_args` |
 | 3 | `findRoadmaps()` → `not_found` | `no_roadmap` |
 | 3 | `findRoadmaps()` → `case_ambiguous` | `case_ambiguous` |
 | 3 | `findRoadmaps()` → `not_utf8` | `not_utf8` |
 | 3 | `findRoadmaps()` → `archive_format_mismatch` | `format_mismatch` |
 | 5 | `store.open()` fails | `store_failed` |
+| 6 | either lookup fails with an SQL error (distinct from "no row") | `store_failed` |
 | 6 | the slug belongs to a different root, or a re-run changes this root's slug | `slug_collision` |
+| 6 | a re-run changes this root's `project_name` | `bad_args` |
 | 8 | `load()` returns `ok == false` — including a lock timeout | `migrate_failed`, `error` = `Outcome::error`, `notes` carried |
 
 Every refusal carries `ok:false`, a `code`, and a human-readable `error`.
@@ -417,7 +452,7 @@ naming them is that a change here must not weaken one.
   (§ 2.1) and every store write is a bound `QSqlQuery` parameter, so the slug
   is never string-built into a statement.
 - **Filesystem read.** `findRoadmaps()` reads only under the resolved root and
-  the `docs/roadmap/` beside it (ANTS-3757 § 2.2). The verb passes the root and
+  `<root>/docs/roadmap/` (ANTS-3757 § 2.2). The verb passes the root and
   reads nothing itself.
 - **Store write.** `RoadmapStore::open()` applies `setOwnerOnlyPerms()` (0600)
   to the store and both WAL sidecars — ANTS-3756 INV-17, on the ground that the
@@ -427,16 +462,13 @@ naming them is that a change here must not weaken one.
 
 ## 3. Invariants
 
-Every `*Test:*` clause below drives `RoadmapMigrateVerb::run(storePath, req)`
-against a `QTemporaryDir` store, never `RoadmapStore::defaultPath()` — § 2.1.1
-is what makes that possible, and § 6's table states the two exceptions (INV-1
-and INV-2(b), both source-greps).
-
-`run()` owns its store for the duration of the call and hands back only a
-`QJsonObject`, so a clause that inspects rows says so explicitly: **the test
-opens its own `Access::Interactive` `RoadmapStore` at the same `storePath`
-after `run()` returns**, and queries through the public
-`RoadmapStore::db()`.
+§ 6 owns the test routing; two facts it fixes are needed to read the clauses
+below. Every behavioural clause drives `RoadmapMigrateVerb::run(storePath,
+req)` with `storePath` inside a `QTemporaryDir` (INV-1 and INV-2(b) are
+source-greps). And because `run()` owns its store for the duration of the call
+and hands back only a `QJsonObject`, **a clause that inspects rows opens the
+test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
+`run()` returns**, querying through the public `RoadmapStore::db()`.
 
 - **INV-1** — A non-test translation unit calls all three migration entry
   points, and only the verb's TU does. *Test:* source-grep in the feature test.
@@ -445,7 +477,11 @@ after `run()` returns**, and queries through the public
   `RoadmapMigrate::planFrom(`): each must match
   `src/remotecontrol_roadmap_migrate.cpp` and no other file under `src/`.
   The test scans the tree in-process with `QFile` + `QRegularExpression`,
-  skipping `//`-leading lines — it does **not** shell out to `rg`, which is not
+  skipping lines whose first **non-whitespace** characters are `//` — the two
+  surviving mentions are indented member comments (`src/roadmapstore.h`,
+  `src/roadmapmigrate.h`), so a literal "line begins with `//`" rule would red
+  against correct code; § 1's `grep -v ': *//'` tolerates the indent for the
+  same reason. It does **not** shell out to `rg`, which is not
   a declared build or test dependency and would make the leg pass vacuously
   where it is absent. The source root comes from a compile-time
   `ANTS_SRC_DIR` define, as the existing source-scrape tests do, because a
@@ -461,10 +497,13 @@ after `run()` returns**, and queries through the public
   *Test:* two legs, because `ok:true` alone would also pass for a *Bulk*
   process-owned connection. (a) The feature test calls `run()` against a fresh
   temp store and asserts `ok:true` — an `Interactive` connection is refused by
-  `load()`'s INV-12 check, so the two outcomes differ. (b) A source-grep
-  asserts `src/remotecontrol_roadmap_migrate.cpp` never names
-  `roadmapStoreOrNull`, and that `run()`'s signature takes a `storePath`
-  rather than a `RoadmapStore &`.
+  `load()`'s INV-12 check, so the two outcomes differ. (b) A source-grep over
+  `src/remotecontrol_roadmap_migrate.{h,cpp}` — INV-1's comment-skipping rule,
+  because § 2.2's prose ("It must **not** reuse
+  `RemoteControl::roadmapStoreOrNull()`") is exactly the kind of rationale the
+  TU would carry as a comment — asserting that no *code* line names
+  `roadmapStoreOrNull`, and that `run()`'s declared signature takes a
+  `storePath` rather than a `RoadmapStore &`.
 - **INV-3** — `dry_run:true` commits no row and reports the counts the real run
   produces. *Test:* feature test — dry run against a temp store, then assert
   `SELECT COUNT(*)` is 0 on each of `project`, `section`, `item`, `element` and
@@ -473,32 +512,53 @@ after `run()` returns**, and queries through the public
   through the verb). Also asserts § 2.4's two dry-run envelope rules:
   `project_id` is `0` on the dry run and non-zero on the real one, and
   `sources[].path` is relative on both (`ROADMAP.md`, never an absolute path).
-- **INV-4** — No refusal in § 2.5 leaves a committed row: after any of them,
-  the store holds no `project` row for this root and no `section` / `item` /
-  `element` / `history` row referencing one. *Test:* feature test — drive each
-  refusal in turn against a temp store, asserting the five counts are 0 after
-  each. Row level rather than a byte hash, for § 2.5's reason.
+- **INV-4** — No refusal in § 2.5 **adds or changes** a row. *Test:* feature
+  test — snapshot `SELECT COUNT(*)` on `project`, `section`, `item`, `element`
+  and `history`, drive each refusal `run()` can reach (steps 1–8), re-snapshot,
+  and assert all five are unchanged.
+  <br>**Stated as "unchanged", not "zero", because two of § 2.5's refusals
+  require rows to already exist**: a re-run that changes this root's slug or
+  name, and a slug owned by a *different* root, all presuppose a `project` row —
+  against those, a zero-count assertion is false for a correct implementation.
+  Row level rather than a byte hash, for § 2.5's reason.
+  <br>**Two rows are out of the fixture's reach and are covered by inspection,
+  not by this test:** `caller_cwd_required` is the dispatcher's, before the
+  handler; `no_project` is step 0a's, inside `cmdRoadmapMigrate`, which § 6
+  drives no test against. Both refuse before `run()` is entered, so neither can
+  touch a store — the property holds by construction rather than by fixture.
 - **INV-5** — One stamp per call, in the shape `history.changed_at` CHECKs.
   *Test:* the envelope's `changed_at` matches
-  `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`; then, on a run whose envelope
-  reports `history_rows > 0` (asserted first, so the next leg cannot pass
-  vacuously against an implementation that writes no history at all),
-  `SELECT COUNT(DISTINCT changed_at) FROM history` is exactly 1.
+  `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`; then, on a store this test alone
+  created, `SELECT COUNT(DISTINCT changed_at) FROM history` is exactly 1 after
+  one committed run that wrote history.
+  <br>**The fixture must be a re-run over an EDITED source, not a first load.**
+  `Loader::recordHistory()` is reached only from the field-update path in
+  `src/roadmapmigrateload.cpp`, so a first-ever migration into an empty store
+  inserts items and appends no `history` row at all — against which
+  `history_rows > 0` is unreachable and a `COUNT(DISTINCT …)` guard would pass
+  or red for a reason unrelated to the one-stamp rule. So: migrate, edit one
+  item's headline in the fixture roadmap, migrate again with a *distinct*
+  stamp, and assert on that second run.
 - **INV-6** — An invalid `export_slug` or empty `project_name` refuses
   `bad_args` with no store connection opened. *Test:* feature test —
-  `export_slug: "Ants_Terminal"` against a temp-dir path that does not yet
-  exist; assert `bad_args` **and that no file appeared at that path**. Stated
-  against a path the test controls, so it is satisfiable on a machine whose
-  real store already exists.
+  two legs, each against a temp-dir store path that does not yet exist, each
+  asserting `bad_args` **and that no file appeared at that path** — (a)
+  `export_slug: "Ants_Terminal"`, (b) `project_name: "   "`. Stated against a
+  path the test controls, so it is satisfiable on a machine whose real store
+  already exists; and file existence is the right observable here precisely
+  because these two refuse before anything opens a store (§ 2.3.1).
 - **INV-7** — A second run over an unchanged project is idempotent:
-  `items_inserted == items_updated == items_orphaned == ids_allocated == 0`,
-  and the project still has exactly one row. *Test:* feature test runs `run()`
-  twice over one fixture root. (`elements_written` is deliberately excluded —
-  `roadmapmigrateload.h` states it "is non-zero even on an unchanged re-run".)
-- **INV-8** — After a successful run, the project resolves through the read
-  seam's dispatch against the same store. *Test:* feature test —
-  `RoadmapSource::migratedProject(store, root, markdown)` is `nullopt` before
-  the run and returns the project id after. (The three-argument call compiles:
+  `items_inserted == items_updated == items_orphaned == ids_allocated ==
+  sections_written == history_rows == 0`, and the project still has exactly
+  one row. *Test:* feature test runs `run()`
+  twice over one fixture root. (`elements_written` is the ONE count deliberately
+  excluded — `roadmapmigrateload.h` states it "is non-zero even on an unchanged
+  re-run" because § 2.6 rebuilds element rows wholesale.)
+- **INV-8** — After a successful run, the project resolves through ANTS-3793's
+  consumer dispatch against the same store. *Test:* feature test —
+  the test opens its own `RoadmapStore` at `storePath` (creating it), asserts
+  `RoadmapSource::migratedProject(store, root, markdown)` is `nullopt`, closes
+  it, calls `run()`, then re-opens and asserts it returns the project id. (The three-argument call compiles:
   `error` and `why` both default to `nullptr` in `src/roadmapsource.h`.)
   <br>**Scoped to what this fixture can falsify.** The stronger property — that
   a *running session's* consumers pick the migration up with no restart — lives
@@ -508,8 +568,14 @@ after `run()` returns**, and queries through the public
   spec relies on it and does not re-assert it.
 - **INV-9** — A store this verb creates is mode 0600. *Test:* feature test —
   `run()` against a temp path with no store, then `QFile::permissions()` on the
-  store file is owner-read/write only, against a default umask that would
-  otherwise yield `0644`. <br>**The store file only.** SQLite removes `-wal` and
+  store file is owner-read/write only.
+  <br>**The test sets `umask(022)` for the duration of the call and restores it
+  after** (RAII, per the project's test-env convention). Without that the leg
+  passes vacuously on any machine or CI runner already running `umask 077` —
+  the file would be 0600 whether or not `setOwnerOnlyPerms()` ran, and the rule
+  under test would not be the rule making the fixture pass. Under `022` the
+  file would be 0644 by default, so 0600 can only come from the call.
+  <br>**The store file only.** SQLite removes `-wal` and
   `-shm` when the last connection closes cleanly, and `run()` closes its
   connection before returning — verified 2026-08-06: a WAL database written and
   closed leaves `t.db` alone on disk, no sidecars — so a post-call
@@ -518,12 +584,27 @@ after `run()` returns**, and queries through the public
   `RoadmapStore::open()`, and ANTS-3756 INV-17 is where that is asserted;
   re-asserting it here would duplicate another spec's invariant with a fixture
   that cannot see it.
+- **INV-10** — `notes[]` honours both bounds in § 2.4. *Test:* feature test —
+  a fixture roadmap carrying >200 note-raising lines yields exactly 200
+  entries, `notes_truncated: true`, and a `notes_count` equal to the true
+  total (>200); a fixture whose note `detail` would exceed 2 KiB yields a
+  `detail` of exactly 2 KiB ending in the ellipsis. Both legs are needed
+  because the two bounds are independent — capping entries bounds no bytes.
 
 ## 4. RAM / build cost
 
 **Memory.** One `Access::Bulk` connection's **16 MiB** page cache
 (`kBulkCacheKiB`, ANTS-3756 § 2.5) plus one plan, for the duration of one
-call, then released (§ 2.2 owns why the connection is per-call). ANTS-3757 § 4
+call, then released (§ 2.2 owns why the connection is per-call).
+
+**This is a deliberate deviation from ANTS-3765 § 4's shape, and peak cost is
+unchanged by it.** That spec takes an *open* store precisely so "ten projects
+migrated through one connection cost one 16 MiB cache, not ten" — advice aimed
+at a batch driver looping over a corpus. This verb migrates **one project per
+call**, and its connections are strictly sequential rather than concurrent, so
+peak residency is still one cache; what a per-call open costs is time (below),
+not memory. Named here so nobody "fixes" the verb to take an open store and
+hands it a lifetime problem instead. ANTS-3757 § 4
 budgets the plan itself; nothing here holds state between calls. The one
 bounded accumulation in the response is `notes[]`, capped at 200 (§ 2.4).
 
@@ -558,7 +639,7 @@ the ceiling, a latency invariant is added with it, on ANTS-3793's
 `Inv3Latency` model. Until then the ceiling is the design target and the
 129 ms is its provenance.
 
-**Build.** One new `.cpp` in an existing library. No new target, no new
+**Build.** One new `.cpp` and its header in an existing library. No new target, no new
 dependency, no new link edge (§ 2.1). The feature test joins `test_core`'s
 `SOURCES` per `tests/features/README.md`.
 
@@ -582,10 +663,16 @@ dependency, no new link edge (§ 2.1). The feature test joins `test_core`'s
 - **Fixing the corpus's id collisions** — ANTS-3772. This verb reports them as
   a refusal with the plan's notes; it does not repair source files.
 - **Evicting the leaked fixture row** — ANTS-3856.
+- **Re-rooting a migrated project.** A project whose directory moves presents a
+  new canonical root, so step 6 sees its slug owned by a different root and
+  refuses `slug_collision` with no remedy this verb offers. Deferred rather
+  than excluded — it will be wanted the first time someone moves a repo — and
+  filed as **ANTS-3857**. The workaround until then is to pass a fresh
+  `export_slug`, which migrates the moved tree as a new project.
 
 ## 6. Tests
 
-Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-9.
+Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-10.
 Label `features;fast`. Source added to `test_core`'s `SOURCES` list — not
 `add_executable` (`tests/features/README.md`).
 
@@ -600,18 +687,27 @@ that one line is covered by INV-2's source-grep leg instead.
 |---|---|
 | INV-1 | source-grep only |
 | INV-2 | (a) `run()` against a temp store · (b) source-grep |
-| INV-3..INV-9 | `run()` against a temp store |
+| INV-3..INV-10 | `run()` against a temp store |
 
 Each invariant is verified to FAIL against pre-change source before the code
 is restored, per the project test convention. INV-1 and INV-2(b) fail
-trivially (no such TU); INV-2(a) and INV-3..INV-9 fail to compile against a
+trivially (no such TU); INV-2(a) and INV-3..INV-10 fail to compile against a
 tree with no `RoadmapMigrateVerb::run()`, which is the must-fail-first proof
 for a new surface.
 
 Fixture: a `QTemporaryDir` project root carrying a small hand-written
-`ants-v1` `ROADMAP.md`, plus a store path inside that same temp dir — created
-by the verb, not by the fixture, so INV-6 and INV-9 can assert on what
-creation does.
+`ants-v1` `ROADMAP.md`, canonicalised before it is passed (§ 2.3's precondition,
+which INV-7 and INV-8 both rest on), plus a store path inside that same temp
+dir — created by the verb, not by the fixture, so INV-6 and INV-9 can assert on
+what creation does.
+
+**Staging the must-fail-first proof.** INV-2(a) and INV-3..INV-10 do not
+compile against a tree with no `RoadmapMigrateVerb::run()`, and a compile
+failure takes the whole `test_core` bundle down — so INV-1 and INV-2(b) could
+not be observed failing independently in that same tree. The proof is therefore
+staged: first add the header with a declaration only and the two source-grep
+legs, and watch them red against a tree with no handler TU; then add the
+remaining legs against the declared-but-unimplemented seam.
 
 ## 7. Cross-doc impact
 
@@ -649,5 +745,6 @@ creation does.
 
 | Loop | Date | Lanes | Findings (C/H/M/L/I) | Resolution |
 |---|---|---|---|---|
+| 3 (cap) | 2026-08-06 | 3 cold `general-purpose`, same packet rebuilt, no prior-loop briefing | C 1 · H 4 · M 8 · L 11 — **24 verified, 4 dismissed** | All 24 fixed; **converged by cap, nothing deferred**. Dimension tally: dim 15×8, dim 4×5, dim 7×5, dim 6×3, dim 5×2, dim 1×1, dim 9×1, dim 10×1, dim 12×1, dim 13×1. **Origin: almost entirely loop 2's own collateral** — the second consecutive collateral-dominant loop, which is why the run stops at the cap rather than asking for a fourth. The CRITICAL is the clearest case: loop 2 added two refusals that *presuppose existing rows* (a re-run changing this root's slug or name), which made INV-4's "the store holds no `project` row" false for a correct implementation — restated as "no refusal **adds or changes** a row", with the two handler-level refusals `run()` cannot reach named as covered by inspection. Three cross-references pointed at invariants saying the opposite of what cited them: § 2.3.1 said "INV-6 is stated against rows" when INV-6 is deliberately about file existence and INV-4 is the row one; § 2.2 said "INV-8 locks it" of a property loop 2 had just removed from INV-8; § 2.5's table filed the re-run name check under step 1 when the sequence performs it at step 6, where the row it reads exists. All three lanes independently found the **stamp origin** contradiction — § 2.3 said "taken once, at step 7" while step 0b passes a stamp *into* `run()` — which would have put the clock read back inside `run()` and destroyed the reproducibility the seam exists for; the stamp now has its own § 2.3.2 and the handler owns the read. Two more fixtures could not have run as written: **INV-5**'s `history_rows > 0` guard is unreachable on a first-ever load, because `Loader::recordHistory()` is reached only from the field-update path (`src/roadmapmigrateload.cpp`) — the fixture is now a re-run over an edited source; and **INV-9** asserted 0600 without controlling the umask, so it passed vacuously under `umask 077` — it now sets `umask(022)` for the call. Also closed: step 6's two lookups conflated "no row" with an SQL error (now `store_failed`, the split `migratedProject()` already makes); INV-1's "`//`-leading" skip would have redded against the two *indented* member comments that actually carry the mentions; the `notes[]` caps shipped with no invariant (now INV-10); `run()`'s connection teardown was load-bearing for INV-9 and unstated (`~RoadmapStore()` does `removeDatabase()`); and § 4 never named its deliberate departure from ANTS-3765 § 4's one-connection-for-ten-projects shape. **Dismissed on verification:** the "4 MiB" comment in `roadmapstore.cpp` for the **third** time (it is ANTS-3761 INV-12's export RSS budget, not the cache size — recorded here so a fourth run does not spend on it); `kDefaultHistoryCapBytes` unconfirmed (`250LL * 1024 * 1024`, `src/roadmapstore.h:23`); `auditautofix.cpp` unverified (opened, it ships the expression); whether `mcp-tools.md` carries a `dry_run` support list (it does, and § 7's edit has a target). **New id filed rather than left as a promise:** ANTS-3857, re-rooting a moved project. Doc 653 → 740 lines. **Recommendation on exit: split at § 2's seams before implementation if this spec is revisited** — three loops of lanes have flagged its length, and roughly a third of the body is why-this-shape justification rather than contract. |
 | 2 | 2026-08-06 | 3 cold `general-purpose`, same packet rebuilt against the edited doc, no prior-loop briefing | C 0 · H 4 · M 7 · L 13 — **24 verified, 3 dismissed** | All 24 fixed. Dimension tally: dim 15×7, dim 5×6, dim 4×5, dim 6×3, dim 1×2, dim 9×2, dim 10×1, dim 13×1, dim 2×1. **Zero CRITICAL — loop 1's structural defects did not resurface.** **Origin split: ~14 fix collateral vs ~5 draft defects**, which is Phase 5's collateral-dominance trigger; answered with a consolidation sweep rather than only reconciliation — § 6's restatement of § 2.1.1's ANTS-3856 rationale cut to a pointer, INV-4's restatement of § 2.5's WAL wording cut, and an unbacked "small enough not to need the offload path" claim deleted rather than given a number it did not have. Two fixtures could not have run: **INV-9** checked `-wal`/`-shm` permissions *after* `run()` returns, but SQLite removes both on a clean last-connection close (verified by writing and closing a WAL db — only `t.db` survives), so it is narrowed to the store file, the sidecar half left to ANTS-3756 INV-17 which already owns it; **INV-8** claimed the no-restart property but tested `migratedProject()`, which never touches the `roadmapStoreOrNull()` cache where that property lives — narrowed to what the fixture falsifies, with the stronger claim attributed to ANTS-3793. Loop 1's own step 0a/0b was **wrong**: `CallerCwdContract::Required` already refuses an empty `caller_cwd` before the handler runs, and `ResolvedRoot::Source` supplies the discriminator loop 1 said had to be checked by hand — rewritten against `src/resolvedroot.h`, which also supplied the unstated canonical-root precondition three later steps rest on (it uses the same `QFileInfo::canonicalFilePath()` as `migratedProject()` and `registerProject()`, so the forms agree — but silently). Also closed: step 6 was missing the re-run slug-change condition its own prose required; the symmetric `project_name` re-run case was undecided; whether a caller-supplied `export_slug` is slugified or validated verbatim was ambiguous, and INV-6 tested nothing under one reading; the `notes[]` cap bounded entries but not bytes (`Note::detail` is an unbounded `QString`) — now 200 entries × 2 KiB; concurrent lock contention had no stated outcome. **Dismissed on verification:** INV-8's three-argument `migratedProject()` call "would not compile" (both trailing params default to `nullptr` in `src/roadmapsource.h`); the `**Layman:**` line's placement (blank-line separated from the header block, matching ANTS-3766, and `spec_query` parses); no-TOC, dismissed a second time on the same evidence — 0 of 4 sibling specs carry one. **Corrected mid-fix by verification, not by a lane:** this loop's own fix first named a `ANTS_SOURCE_DIR` define for INV-1's source scan; the define that exists on `test_core` is `ANTS_SRC_DIR` (`CMakeLists.txt:2485`), and INV-1 now names that one. Doc 576 → 650 lines despite the consolidation — the growth is contract, but § 5.3's yardstick is now the live concern and loop 3 is the last. |
 | 1 | 2026-08-06 | 3 cold `general-purpose`, one shared byte-identical packet | C 3 · H 4 · M 6 · L 10 · I 1 — **23 verified, 3 dismissed** | All 23 fixed. Dimension tally: dim 15×5, dim 5×5, dim 4×3, dim 7×3, dim 10×3, dim 1×2, dim 6×2, dim 9×2, dim 12×2, dim 8×1, dim 13×1. **All three lanes independently led on the same defect**, which is what makes the tail credible: § 6 said INV-2..INV-8 were "driven through the registered handler" and then that the handler resolves `defaultPath()` internally, so six invariants had no runnable test surface and an implementer following ¶1 would have migrated into the user's real store — reproducing ANTS-3856. Fixed by § 2.1.1's `RoadmapMigrateVerb::run(storePath, req)` seam, on the precedent ANTS-3793 § 2.2 set for `storeFor()`. Two more the draft got flatly wrong: INV-4 claimed the store is "byte-unchanged" after *every* refusal, false for the two that follow `store.open()` (which creates the file and both WAL sidecars) — restated at row level; and `dry_run` was never reconciled with `mcp-tools.md`'s "returns before any disk write", which it violates by opening the store — now § 2.3.1, stated as a bounded deviation with the argument for why a throwaway store would make the preview *wrong* rather than merely different. Also added: a `slug_collision` pre-check (`export_slug` is `UNIQUE` and the default is derived, so two roots slugifying alike collided into the catch-all), § 2.6's trust boundary + INV-9 (`specs.md` § 5.4 requires it and the draft had none), a 200-entry `notes[]` cap, and the 1 s/project ceiling ANTS-3765 § 4 sets — the draft had quoted only the 60 s bridge timeout, 60× looser. **Dismissed on verification:** no-TOC (no sibling spec carries one and `specs.md` § 3's required order omits it); a claimed-stale "4 MiB" comment in `roadmapstore.cpp` (lane misread — the 4 MiB is ANTS-3761 INV-12's export RSS budget, not the cache size); `features;fast` not being a real label (it is — `CMakeLists.txt:1001`). **Found during packet construction, before a lane was spent:** nothing. **Found by 4b's sweep, not by a lane:** the `**Layman:**` line still promised a preview that writes nothing, contradicting the § 2.3.1 just added, and two sub-subsections used `###` where siblings use `####`. **Executed rather than read** (4a step 2): the `export_slug` `CHECK` against real SQLite (`Ants_Terminal` fails both clauses, `ants-terminal` passes both, empty fails — so INV-6's fixture is valid), and `QDateTime::currentDateTimeUtc().toString(Qt::ISODate)` compiled against Qt 6, returning `2026-08-06T20:22:28Z`, which `isIsoZStamp()`'s regex accepts. Doc grew 318 → 575 lines; watch it, and split at § 2's seams if loop 2 is still finding structural defects. |
