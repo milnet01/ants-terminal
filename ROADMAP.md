@@ -27394,6 +27394,37 @@ against current source before filing.
   Kind: implement.
   Source: user-request-2026-08-06.
 
+- 📋 [ANTS-3854] **roadmap_log op:create_section silently reparents a target section's subsections.**
+  Hit 2026-08-06. `op:create_section` with `after_section: <slug>` and
+  `level: 2` inserts the new `##` heading at the end of the target's OWN
+  prose — before the target's `###` child headings, not after them. Every
+  child then falls under the new heading.
+
+  Reproduced against `roadmap-dialog-redesign-format-spec-v2-user-request-
+  2026-05-07`: the new `##` landed between ANTS-1160's bullet and the
+  following `### 🔢 Tasks chip …`, reparenting 13 subsections. Reverted with
+  `git checkout -- ROADMAP.md`.
+
+  The damage is silent at write time — the envelope returns
+  `ok:true` with a slug and a byte count, and nothing indicates the target
+  had children. It surfaced only because the NEXT call
+  (`op:append` to the new slug) refused with `section_has_subsections` and
+  listed all 13 — so the verb clearly can detect the condition, and the
+  detection is on the wrong verb.
+
+  Fix, in preference order: (1) `create_section` refuses with the same
+  `section_has_subsections` code when `after_section` has child headings of
+  a deeper level than the requested `level`, naming them as `append` already
+  does; or (2) it inserts after the target's whole subtree. (1) is safer —
+  the caller's intent between "sibling after the subtree" and "first child"
+  is not recoverable from the arguments.
+
+  Until then: check for `###` children before calling `create_section` with
+  `level: 2`, and re-read the insertion point afterwards.
+  **Layman:** Adding a new roadmap heading after a section that has sub-headings quietly steals all of them.
+  Kind: fix.
+  Source: in-session-2026-08-06.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
