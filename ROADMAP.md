@@ -3155,7 +3155,7 @@ minor tag (next: pre-0.8.0).
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 
-- 🚧 [ANTS-3833] **`remotecontrol.cpp` decomposition (23,849 LoC / 1.1 MB).**
+- ✅ [ANTS-3833] **`remotecontrol.cpp` decomposition (23,849 LoC / 1.1 MB).**
   Same shape as ANTS-1043 (mainwindow.cpp), one order of magnitude
   worse: the largest source in the tree by 2x, and every MCP verb
   lives in it. C++ has no runtime cost here — the costs are build
@@ -3332,6 +3332,49 @@ minor tag (next: pre-0.8.0).
 
   Remaining: commit 3 — tests/features/rc_tu_split/ (INV-3/4/5/6/10/11) and
   the § 7 CHANGELOG entry.
+  Resolved (2026-08-06) — commit 3 of 3: the standing conformance case.
+
+  `tests/features/rc_tu_split/` (Suite `RcTuSplit`, in `test_core`'s SOURCES,
+  label `features;fast`) covers INV-3/4/5/6/10/11. Suite 3275/3275 green
+  (3269 + the six new cases). INV-7 needs no case — its surface is that an
+  EXECUTABLE links, which every build runs. INV-1/2/8/9 are migration-time
+  comparisons of the pre- and post-split trees and were run against § 2.5's
+  commits 1 and 2; a standing test for them could never fail again.
+
+  Nothing hard-codes eleven. Every case derives N from the `ANTS_RC_SOURCES`
+  entry count, so § 2.2's expected twelfth TU needs no edit here.
+
+  INV-10 derives its work-list rather than embedding one, as its body
+  requires: it scans `tests/` for `<subj>.substr(<ident>, <N>)` whose subject
+  holds `slurpRemoteControl()` text, recovers the anchor from the
+  `<subj>.find("…")` that produced `<ident>`, resolves it in the
+  concatenation, and rejects any TU head in `[A, A+N)`. Two details were
+  needed and are not obvious: the anchor is a literal AS WRITTEN IN TEST
+  SOURCE and must be unescaped (`env[\"ok\"]` → `env["ok"]`), and a two-arg
+  `find(x, base)` must be resolved FROM `base` — ignoring it moved the
+  `sparse_partition_hint` anchor 90 KB and into the wrong TU. Measured
+  2026-08-06: 20 sites, 15 distinct anchors, 0 unresolved, 0 violations.
+  § 2.4's "seven" is an undercount — filed as ANTS-3851, prose only.
+
+  Must-fail-first, all six, per tests/features/README.md step 6:
+  - INV-3 — two list entries transposed, rebuilt: `TU 3/11` at 102273 behind
+    the previous marker at 251144.
+  - INV-4 — a scratch `tests/` file naming `SRC_RC_CPP` (arm 1); a scratch
+    `SRC_REMOTECONTROL_CPP_PATH` line in CMakeLists.txt (arm 2).
+  - INV-5 — a scratch `src/*.cpp` including `remotecontrol_internal.h`.
+  - INV-6 — `remotecontrol_docs.cpp` padded to 6,164 lines.
+  - INV-10 — `remotecontrol_workspace.cpp` truncated 500 B after the
+    `cmdReadRegions` anchor: both real windows (1500 and 2000) reported, with
+    the TU 7 head at 662935 inside `[662434, +1500)`.
+  - INV-11 — a scratch `add_library()` naming `src/remotecontrol_scratch.cpp`.
+
+  Five needed no rebuild — the case reads the TU sources, `tests/` and
+  `CMakeLists.txt` at RUN time. Only INV-3 needed one, the list reaching the
+  test as a compile definition.
+
+  Both INV-4 and INV-5 skip `tests/features/rc_tu_split/`: the assertions
+  cannot search for a literal without naming it, and spec.md quotes them too.
+  Without the filter each case matches itself and can never pass.
 
 - 📋 [ANTS-3840] **Stale anonymous-namespace comment in remotecontrol.cpp misled two independent readers.**
   `src/remotecontrol.cpp`'s closing brace at line 16959 is annotated
@@ -35829,6 +35872,39 @@ contributors don't duplicate research.
   **Layman:** Some small data structures do not give their number and true/false fields a starting value; nothing is broken today, but it is the kind of gap that becomes a bug later.
   Kind: refactor.
   Source: audit-2026-08-06.
+
+- 📋 [ANTS-3851] **ANTS-3833 § 2.4 undercounts the scrape anchors — seven named, fifteen real.**
+  § 2.4 enumerates seven anchors, and § 6's NoSeamInsideAScrapeWindow row
+  says "for each of § 2.4's seven anchors". Implementing INV-10's
+  derivation measured 20 sites over 15 distinct anchors (2026-08-06).
+  The eight § 2.4 misses: cmdIndieReviewPartition, cmdSelectWindow,
+  cmdSendText, cmdTokenUsage, `env["ok"] = true;`, `m_roadmapIndex.clear();`
+  and the two m_roadmapSectionCache anchors.
+
+  No code consequence, and the shipped test is correct: INV-10's own body
+  mandates DERIVING the work-list and says hard-coding it would leave a
+  window added tomorrow silently uncovered — which is the trap § 6's row
+  wording walks straight into. Only the prose is wrong.
+
+  Fix: reword § 6's row to "each derived anchor", and replace § 2.4's
+  enumeration with the derivation command plus its measured counts, so the
+  figure cannot rot again.
+  **Layman:** A design note undercounts how many places read the remote-control source through a fixed-size window; the real number is now measured.
+  Kind: doc-fix.
+  Source: in-session-2026-08-06 (ANTS-3833 commit 3).
+
+- 📋 [ANTS-3852] **test_core's CMake block comment still claims 28 tests.**
+  CMakeLists.txt ~line 2258 describes the test_core bundle as "28 tests";
+  its SOURCES list is roughly double that and grows every time a core
+  feature test lands. Nothing reads the number, so it has drifted in
+  silence.
+
+  Either restate it as a live count or drop the figure and keep the subject
+  description. Surfaced rather than fixed in place: pre-existing, and
+  unrelated to the change that passed it.
+  **Layman:** A comment in the build file names a test count that stopped being true a long time ago.
+  Kind: doc-fix.
+  Source: in-session-2026-08-06 (ANTS-3833 commit 3).
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

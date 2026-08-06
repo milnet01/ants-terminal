@@ -22,6 +22,16 @@ for security-relevant changes.
   `render_failed`, `store_failed`, `locator_unsupported` and
   `body_shadowed` refusals.
 
+### Changed
+
+- **Split the remote-control implementation into eleven source files** (ANTS-3833)
+  The MCP verb implementation was one 24,752-line file — slow to
+  rebuild, and awkward for anything that reads it. It is now eleven
+  files, one per verb family, with no change to what any verb does.
+  A new conformance test keeps the split honest: it checks the files
+  stay in cut order, none grows back past 6,000 lines, and nothing
+  goes back to reading just one of them.
+
 ### Fixed
 
 - **The roadmap database now records an auto-numbered item ID as store-generated rather than author-supplied.** (ANTS-3838)

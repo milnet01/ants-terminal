@@ -2284,6 +2284,11 @@ if(ANTS_TESTS)
                 tests/features/rc_read_tool_byte_cap/test_rc_read_tool_byte_cap.cpp
                 tests/features/rc_socket_dir_hardening/test_rc_socket_dir_hardening.cpp
                 tests/features/rc_launch_cwd_anchor/test_rc_launch_cwd_anchor.cpp
+                # ANTS-3833 INV-3/4/5/6/10/11 — the eleven-TU cut holds. Every
+                # case derives from ANTS_RC_SOURCES; none hard-codes eleven, so
+                # a twelfth TU needs no edit here. Reads files at run time, so
+                # it needs Qt6::Core only.
+                tests/features/rc_tu_split/test_rc_tu_split.cpp
                 tests/features/verify_trust_gate/test_verify_trust_gate.cpp
                 tests/features/claude_dot_restored_tabs/test_claude_dot_restored_tabs.cpp
                 tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp
