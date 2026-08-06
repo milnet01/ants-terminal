@@ -1,6 +1,6 @@
 # ANTS-3833 — Split remotecontrol.cpp into per-family translation units
 
-**Status:** spec draft (2026-08-06).
+**Status:** accepted (2026-08-06) — rule-14 gate run to its 3-loop cap, 3 independent cold lanes per loop, 85 findings verified and all 85 fixed; deferred tail empty.
 **Kind:** refactor.
 **Source:** ROADMAP.md ANTS-3833 (user-question-2026-08-05; groundwork
 measured 2026-08-06).

@@ -3209,6 +3209,79 @@ minor tag (next: pre-0.8.0).
   72-file verification surface, and a half-done split leaves the tree in
   a state no session can safely resume. It wants its own session, a
   spec via /write-spec, and a worktree.
+  Spec accepted (2026-08-06) at
+  docs/specs/ANTS-3833-remotecontrol-decomposition.md. Rule-14 gate run to
+  its 3-loop cap, 3 independent cold lanes per loop: 85 findings verified,
+  all 85 fixed, deferred tail EMPTY. Not started — this bullet stays 📋.
+
+  THREE STATEMENTS ON THIS BULLET WERE MEASURED WRONG. The spec supersedes
+  them; they are corrected here so the bullet does not keep misleading:
+
+  1. Size: "23,849 LoC / 1.1 MB" → **24,803 lines / 1,174,447 bytes**
+     (`wc -l -c`, 2026-08-06). The old figure was a day stale.
+  2. Blast radius: "72 test files" → **130 files / 337 sites**. The 72
+     counted files carrying the literal string; most tests reach the file
+     through a CMake `-D` path macro. The 337 splits across **eight** use
+     forms, not one, and nine of them want a directory or a `#if defined`
+     guard rather than the file's text.
+  3. Trap 2: "verbs registered by dispatch table must keep registration
+     order and kindForName bucketing" — **not at risk**. `kindForName` and
+     the tools/list block are in `src/claudeintegration.cpp` (4 hits, all
+     there); `dispatch()` is 103 lines and does not move.
+
+  Trap 1 (fixed byte windows) is real but narrower than feared: ANTS-3681
+  replaced most windows with structural bounds, and 25 of the 47 surviving
+  window tests read remotecontrol text. Concatenating the TUs in slice order
+  makes their content byte-identical except where an insertion point lands
+  inside a window — one enumerable check (INV-10), not an audit of 25 tests.
+
+  MOTIVATION, MEASURED (ccache bypassed): the TU costs **54.66 s wall /
+  1,642,524 KB peak RSS** to compile, against 11.19 s / 743,140 KB for a
+  3,547-line reference file. Projected post-split: incremental edits ≈3.9×
+  faster, full-build wall ≈1.7× faster, total CPU ≈1.7× worse, and the
+  single-process RSS spike halves.
+
+  Shape: eleven contiguous slices into `remotecontrol_<family>.cpp`, class
+  and header untouched, three commits (promotion → cut → test), 11
+  invariants, a new `tests/features/rc_tu_split/` bundle case. Two facts the
+  spec had to measure rather than assume, both of which changed the design:
+  **52 of 59 head-block symbols and 22 of 73 non-head anonymous-namespace
+  symbols cross a TU boundary** (promotion set ≈74, not "a minority"), and
+  `ants_core_lib` must *consume* the TU list rather than restate it, or a
+  twelfth TU can be invisible to every scrape while passing every invariant.
+
+  No plan document: § 2.5 carries the commit order and § 6 the test order,
+  so the spec is implementation-grade on its own.
+
+- 📋 [ANTS-3840] **Stale anonymous-namespace comment in remotecontrol.cpp misled two independent readers.**
+  `src/remotecontrol.cpp`'s closing brace at line 16959 is annotated
+  "`}  // namespace (anonymous from line 1320 — closed early so the
+  ants::resolveCallerCwdRoot definition below has external linkage…)`".
+
+  A brace-aware scan — nesting depth tracked, string/char literals and both
+  comment forms skipped — puts that block's opening at **16875**, not 1320.
+  The rest of the comment is correct and useful: the block really is closed
+  early so `ants::resolveCallerCwdRoot` gets external linkage, and the
+  anonymous namespace really is reopened at 17046. Only the line number is
+  wrong.
+
+  Cost, measured: during ANTS-3833's rule-14 gate, **two of three
+  independent reviewers graded it CRITICAL** that seven of the ten proposed
+  TU seams sat inside an anonymous namespace spanning 1320–16959, which
+  would have made the split uncompilable. The real answer is zero of ten.
+  Both reads were reasonable — a column-anchored grep cannot pair namespace
+  braces, so the comment was the best evidence available to them.
+
+  Fix: correct 1320 → 16875, or drop the line number and say "closed early".
+  One-line change; filed rather than done because it is code and it surfaced
+  inside a docs-review gate.
+
+  Related: ANTS-3833 § 2.2 now records the brace-aware scan and all 24
+  anonymous-namespace extents, so a future reader has the map rather than
+  the comment.
+  **Layman:** A note in the code gives the wrong line number, and two reviewers drew a wrong conclusion from it.
+  Kind: doc-fix.
+  Source: in-session-2026-08-06 (ANTS-3833 rule-14 gate, loop 1).
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
