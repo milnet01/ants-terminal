@@ -12,7 +12,7 @@ touch).
 ([2.1 What moves](#21-what-moves-and-what-does-not) ·
 [2.2 The eleven TUs](#22-the-eleven-translation-units) ·
 [2.3 Shared helpers](#23-shared-helpers-srcremotecontrol_internalh) ·
-[2.4 The scrape seam](#24-the-scrape-seam--the-real-blast-radius) ·
+[2.4 The scrape coupling](#24-the-scrape-coupling--the-real-blast-radius) ·
 [2.5 Git history](#25-git-history)) ·
 [3. Invariants](#3-invariants) · [4. RAM / build cost](#4-ram--build-cost) ·
 [5. Out of scope](#5-out-of-scope) · [6. Tests](#6-tests) ·
@@ -21,7 +21,8 @@ touch).
 ## 1. Problem
 
 `src/remotecontrol.cpp` is one translation unit holding every MCP verb body.
-It is the largest source in the tree by a factor of two, and its size is now
+It is the largest source in the tree by nearly a factor of two (24,803 lines
+against `claudeintegration.cpp`'s 12,822), and its size is now
 the dominant cost of the project's most common edit.
 
 **Layman:** every Claude command lives in one enormous file, so changing one
@@ -64,7 +65,8 @@ The class itself is not the problem. `RemoteControl::dispatch()` is 103
 lines routing an op string to a member. The file defines 97 distinct `cmd*`
 members (`grep -oE 'RemoteControl::cmd[A-Za-z0-9_]+' src/remotecontrol.cpp |
 sort -u | wc -l`) — **not all of them op-routed**. At least nine are called from other members
-rather than from `dispatch`: the seven `cmdRoadmapLog*ForTest` seams and
+rather than reached through `dispatch`: the seven `cmdRoadmapLog*ForTest`
+test hooks and
 `cmdVerifyChangesImpl` / `cmdVerifyChangesWithRoot`. The verbs behind an inner
 op router (`cmdRoadmapLog`'s eight write bodies, `cmdGitState`'s ops) are not
 `dispatch`-routed either. Routed or not, they are independent of one
@@ -112,29 +114,38 @@ Sums to 24,803 — the whole file, no residue. Line counts are the pre-split
 slice sizes; each TU gains a preamble on top.
 
 **The preamble is a contract, because its size feeds § 4's per-TU projection
-and every INV-10 insertion point.** In order: the ordinal marker (below),
-`#include "remotecontrol.h"`, `#include "remotecontrol_internal.h"`, then the
-**minimum** set of further includes that slice needs — never a copy of the
+and every INV-10 insertion point.** For TUs 2–11, in order: the ordinal marker
+(below), `#include "remotecontrol.h"`, `#include "remotecontrol_internal.h"`
+where the slice uses a promoted symbol (INV-5 makes it optional), one
+`using namespace rcdetail;`, then the **minimum** set of further includes that
+slice needs — never a copy of the
 file head's current include block (lines 1–111), which would put ~110 lines of
 unused includes into all eleven TUs and spend the compile-time win this item
 exists to collect.
+
+**TU 1 is carved out**: it *is* the file head, so it keeps its existing include
+block untouched and gains only the ordinal marker. Its insertion at offset 0 is
+still one of INV-10's eleven — a marker line is a marker line — but it is one
+line, not a preamble.
 
 Three boundaries are named for what they contain rather than what the family
 label suggests, because contiguity wins over tidiness:
 
 - TU 3 carries `cmdRoadmapLog`'s op router and **six** of the seven
-  `cmdRoadmapLog*ForTest` seams (each under 40 lines, all thin routers) ahead
+  `cmdRoadmapLog*ForTest` test hooks (each under 40 lines, all thin routers) ahead
   of the write bodies in TU 5. The seventh, `cmdRoadmapLogBundleRowForTest`,
   sits in TU 5 immediately before `cmdRoadmapLogBundleRow`.
 - TU 1 is not a family. It is the file head — includes, **the shared helper
   block (§ 2.3)**, the constructor and destructor (lines 1928 and 1936),
-  `start`, `onNewConnection`, `dispatch`. It is therefore also the TU that
+  `setVerifyTrustClient`, `defaultSocketPath`, `start`, `onNewConnection`,
+  `dispatch`. It is therefore also the TU that
   owns most promoted helpers' definitions.
 - TU 9 carries `runClient` — the client-side loop, a sibling of `start` and
   `onNewConnection` which TU 1 holds. It sits at 17713, inside TU 9's slice,
   and contiguity keeps it there.
 
-**Every seam lands outside an anonymous-namespace block.** This is the one
+**Every seam lands outside an anonymous-namespace block.** ("Seam" means a TU
+boundary throughout this document, and nothing else.) This is the one
 empirical claim the whole cut rests on, so it is established by a
 **brace-aware scan** — one that tracks nesting depth and skips string
 literals, character literals and both comment forms — and **not** by matching
@@ -171,6 +182,12 @@ brace-aware scan, and re-confirm the containment check before any code moves.
 If a seam no longer falls in open code, move it to the next member boundary
 that does and record the change.
 
+**The same applies to every count this document asserts** — 127 in INV-2, 328
+and the five categories in INV-9, 165 in INV-4, 337 / 330 in § 2.4, 74 in
+§ 2.3. Each was measured on 2026-08-06 and each drifts the moment a verb is
+added. Re-run their commands at cut time; the numbers here are evidence that
+the design fits the tree, not constants to assert against blindly.
+
 **A source comment misreads this same region and must not be trusted as
 evidence.** `src/remotecontrol.cpp`'s closing brace at line 16959 is annotated
 "*anonymous from line 1320*"; the scan puts that block's opening at 16875. The
@@ -187,14 +204,13 @@ the list must agree or INV-3 fails.
 // ANTS-3833 TU 5/11 — Roadmap write ops.
 ```
 
-The marker carries **no snake_case identifier** — not `roadmap_log`, not a
-refusal code, not a config key. § 2.4 explains why: the marker text joins the
-concatenation every scrape reads, so a verb name inside it would inflate that
-verb's occurrence count.
+The marker carries **no snake_case identifier**; § 2.4(c) owns the rule and
+the reason.
 
-**Where a new verb goes.** Into the TU owning its family, at the end of that
-TU's slice — never into `remotecontrol.cpp`, which is the dispatcher and the
-helper pool. When a family TU would pass INV-6's 6,000-line cap, split it and
+**Where a new verb goes.** Its *body* goes into the TU owning its family, at
+the end of that TU's slice — never into `remotecontrol.cpp`, which is the
+dispatcher and the helper pool. Its `dispatch` routing entry always goes into
+`remotecontrol.cpp`, because that is where `dispatch` lives (§ 2.1). When a family TU would pass INV-6's 6,000-line cap, split it and
 renumber every marker. This rule is what keeps INV-6 from being the only thing
 standing between the tree and a second 24,803-line file.
 
@@ -243,8 +259,16 @@ not all functions:
 | Kind | Declaration in the header | Definition |
 |---|---|---|
 | function | `QString rcNormaliseHeadline(QStringView);` | stays in a `.cpp` |
-| constant | `inline constexpr` only where a call site needs a constant expression; otherwise a plain declaration | in the header for the `inline constexpr` case, else in the defining `.cpp` |
+| constant | `inline constexpr` where a call site needs a constant expression; otherwise **`extern const T X;`** — never a bare `const T X;` | in the header for `inline constexpr`; else `const T X = …;` in one `.cpp` |
 | struct / type | the whole definition moves into `namespace rcdetail` in the header | in the header — forced, and there is no alternative |
+
+**The `extern` is load-bearing and INV-7 cannot catch its absence.** A
+namespace-scope `const` object has **internal linkage** in C++ unless declared
+`extern`, so a bare `const T X;` in the internal header gives every TU its own
+private copy — and *links clean*. INV-7 relies on the linker, which sees
+nothing wrong here, so the 12 head-block constants are the one promotion class
+with no automatic backstop. Write `extern`, and note it when reviewing the
+promotion commit.
 
 **Two kinds break the "definitions stay in a `.cpp`" rule, and both are
 forced.** A type used by value across TUs *must* have one definition visible
@@ -302,14 +326,21 @@ tidiness, not correctness, and is not a contract. The linker enforces the
 direction that matters: a cross-TU reference to a symbol still holding
 internal linkage fails to link (INV-7).
 
+**Call sites are not qualified one by one.** Each TU's preamble carries a
+single `using namespace rcdetail;`, so the ~74 promotions change the
+*definitions* and leave every call site's text alone. That is the minimum-diff
+option and it is what keeps commit 1's blast radius reviewable; explicit
+`rcdetail::` at ~hundreds of call sites would be a far larger edit for no
+benefit the linker cares about.
+
 **This promotion edits text in place, which INV-10 depends on knowing.** Every
 promoted definition loses its anonymous-namespace enclosure and gains
-`rcdetail` qualification, so the post-split concatenation is *not* the
+`rcdetail` enclosure, so the post-split concatenation is *not* the
 pre-split bytes plus seam preambles. § 2.5 keeps the promotion in its own
 commit for exactly this reason, and INV-10 is evaluated against the
 pure-motion commit alone.
 
-### 2.4 The scrape seam — the real blast radius
+### 2.4 The scrape coupling — the real blast radius
 
 **130 test files and 337 sites reach this file** — 330 through a macro and 7
 through a hard-coded literal path — not the 72 the ROADMAP bullet names. The
@@ -327,9 +358,8 @@ grep -rhoE '[A-Za-z_]+\((SRC_REMOTECONTROL_CPP_PATH|SRC_RC_CPP)\b' \
   tests/ --include='*.cpp' | sort | uniq -c
 ```
 
-**Seven forms, and they do not all want the same thing** — which is the fact
-that shapes the rest of this section. Three routes, decided by what the site
-is actually asking for:
+**Eight forms, and they do not all want the same thing** — which is the fact
+that shapes the rest of this section. Four routes, decided by what the site is actually asking for:
 
 | Use form | Count | What it wants | Route |
 |---|---|---|---|
@@ -347,7 +377,11 @@ is actually asking for:
 **The literal-path row is the one that breaks the "no partial-scrape state"
 claim below**, because deleting a macro cannot fail a site that never used
 one: those seven reads would silently keep scraping TU 1 alone. They are
-re-routed by hand, and INV-4's pattern covers the literal too.
+re-routed by hand, and INV-4's `tests/` arm covers the literal too. All six
+files are in **`test_claude`** — one of the four bundles in (a) — so the
+re-route compiles against a defined `ANTS_RC_SOURCES`. That was checked rather
+than assumed: a file that never used a path macro had no particular reason to
+sit in a macro-carrying bundle.
 
 The `QStringLiteral` / `QFileInfo` / `#if defined` rows are why "substitute one
 call for another" is not the whole change. `tests/features/mcp_path_anchor/` computes
@@ -405,7 +439,7 @@ Beyond that, the coupling that survives is a single question: *which file is
 
 **(a) Three new definitions replace the two path macros, at each of their
 four bundle definition sites.** `CMakeLists.txt`
-builds the TU list once and passes both definitions to each of the four
+builds the TU list once and passes all three definitions to each of the four
 bundles that carry a path macro today — `test_claude` (≈ line 1833),
 `test_audit` (≈ 2041), `test_dialogs` (≈ 2160) and `test_core` (≈ 2463):
 
@@ -522,13 +556,14 @@ external linkage produces a tree that does not link.
 | # | Contents | State after |
 |---|---|---|
 | 1 | The `rcdetail` promotion, **while the file is still one TU**: symbols leave the anonymous namespaces, `remotecontrol_internal.h` appears, `remotecontrol.cpp` includes it. Plus the pre-promotion grep of § 2.3 for any symbol whose text would leave `ANTS_RC_SOURCES`. | builds, suite green |
-| 2 | **The cut.** Under `src/`: pure motion — the moved lines are byte-identical, no reformatting, no renames — plus each TU's preamble. Under `CMakeLists.txt`: the `ANTS_RC_SOURCES_REL` list, the library binding, the three new definitions, and the deletion of the two old path macros. Under `tests/`: all 337 site migrations. | builds, suite green |
+| 2 | **The cut.** Under `src/`: pure motion — the moved lines are byte-identical, no reformatting, no renames — plus each TU's preamble. Under `CMakeLists.txt`: the `ANTS_RC_SOURCES_REL` list, the library binding, the three new definitions, and the deletion of the two old path macros. Under `tests/`: the `slurpRemoteControl()` helper in `_support/srcgrep.h`, then all 337 site migrations. | builds, suite green |
 | 3 | `tests/features/rc_tu_split/` and its `SOURCES` wiring. | builds, suite green |
 
 **INV-10 measures commit 1 against commit 2** — that pairing is what "the
 pure-motion commit" means everywhere in this document. The identity it asserts
-is: the concatenation at 2 equals the file at 1, plus eleven preambles. It
-does not span commit 1, which edits definitions in place.
+is: the concatenation at 2 equals the file at 1, plus eleven preambles and the
+ten newlines `slurpRemoteControl()` joins on. It does not span commit 1, which
+edits definitions in place.
 
 The `src/` half of commit 2 being pure motion is what lets `git log -M -C`
 follow a verb across the split. Bundling the test migration into the same
@@ -559,8 +594,16 @@ reading TU 1 alone through macros the cut has deleted.
   site removed. **The optional prefix and the `~`**: a required return-type
   prefix cannot match `RemoteControl::RemoteControl(` (line 1928) or
   `RemoteControl::~RemoteControl()` (1936), both of which are defined in this
-  file and land in TU 1. Making the prefix optional and admitting `~` takes the
-  set from 123 to the true **127**.
+  file and land in TU 1. **Run it twice: once piped through `sort` for the set
+  comparison above, and once *without* `sort` for the ordered sequence.** The
+  sorted run is INV-2's own claim; the unsorted run is the only check anywhere
+  that INV-3's ordering property actually held, since INV-3's standing case
+  asserts marker order and not member order, and a slice whose contents were
+  reordered would pass it. Making the prefix optional and admitting `~` takes
+  the set from 123 to the true **127** — the four it adds are
+  `RemoteControl::RemoteControl`, `RemoteControl::~RemoteControl`,
+  `RemoteControl::roadmapBullets` and `RemoteControl::roadmapWriteTarget`,
+  all four real definitions the stricter form could not reach.
 - **INV-3** — `ANTS_RC_SOURCES` lists the TUs in slice order, so the
   concatenation preserves every member's pre-split relative position.
   *Breaks when* a TU is appended to the list rather than inserted at its
@@ -570,24 +613,38 @@ reading TU 1 alone through macros the cut has deleted.
   offsets in `slurpRemoteControl()`. `N` is never the literal 11 in the test —
   a twelfth TU is an expected event (§ 2.2) and must not require editing the
   case.
-- **INV-4** — Nothing under `tests/` or in `CMakeLists.txt` names a single
-  remotecontrol TU as the RemoteControl source: neither retired macro, and no
-  hard-coded `src/remotecontrol.cpp` path. *Breaks when* a bundle keeps
-  `SRC_REMOTECONTROL_CPP_PATH` or `SRC_RC_CPP`, or a test opens the literal
-  path — either lets a scrape read a fraction of the class and read a moved
-  verb as a deleted one. *Test:* rooted at `ANTS_RC_ROOT_DIR`, the command
-  below **returns 0** post-split; against the current tree it returns **166**:
+- **INV-4** — Nothing under `tests/` names a single remotecontrol TU as the
+  RemoteControl source: neither retired macro, and no hard-coded
+  `src/remotecontrol.cpp` path. In `CMakeLists.txt`, neither retired macro
+  survives. *Breaks when* a bundle keeps `SRC_REMOTECONTROL_CPP_PATH` or
+  `SRC_RC_CPP`, or a test opens the literal path — either lets a scrape read a
+  fraction of the class and read a moved verb as a deleted one. *Test:* rooted
+  at `ANTS_RC_ROOT_DIR`, **both** commands **return 0** post-split; against the
+  current tree they return **165** (files) and **6** (lines):
 
   ```bash
+  # tests/ — macros AND the literal path
   grep -rl 'SRC_REMOTECONTROL_CPP_PATH\|SRC_RC_CPP\|src/remotecontrol\.cpp' \
-       CMakeLists.txt tests/ | grep -v '^tests/features/rc_tu_split/' | wc -l
+       tests/ | grep -v '^tests/features/rc_tu_split/' | wc -l
+  # CMakeLists.txt — the two macro names only
+  grep -c 'SRC_REMOTECONTROL_CPP_PATH\|SRC_RC_CPP' CMakeLists.txt
   ```
 
-  The literal alternative is what closes the seventh route in § 2.4's table:
-  deleting a macro cannot fail a site that never used one, so without it those
-  seven reads keep scraping TU 1 in silence. The 166 exceeds § 2.4's 130
-  because this pattern also matches `CMakeLists.txt` and the `spec.md` files
-  that quote the path in prose — those are cleared by rewording, not by code.
+  **The split into two commands is required, not stylistic.** `CMakeLists.txt`
+  must carry the literal `src/remotecontrol.cpp` forever — it is TU 1, and
+  § 2.4(a)'s `ANTS_RC_SOURCES_REL` list names it, which INV-11 in turn
+  *requires* to exist. A single command matching the literal across both trees
+  can never return 0, so it would be an invariant whose test reddens on the
+  very block another invariant mandates.
+
+  The literal arm over `tests/` is what closes the eighth route in § 2.4's
+  table: deleting a macro cannot fail a site that never used one, so without it
+  those seven reads keep scraping TU 1 in silence.
+
+  The 165 decomposes as 130 `.cpp` + 35 `.md` (feature `spec.md` files quoting
+  the path in prose, cleared by rewording rather than by code). The 6 is
+  `CMakeLists.txt`'s macro-definition lines, counted by line rather than by
+  file because there is only ever one file.
 
   The `rc_tu_split` exclusion is required, not cosmetic: the test that asserts
   this must contain the literals in order to search for them, and its own
@@ -602,23 +659,30 @@ reading TU 1 alone through macros the cut has deleted.
   wording: a TU that happens to need none of the promoted helpers is entitled
   not to include it. The set is the declared list, never a glob — § 2.3 says
   why.
-- **INV-6** — No TU in `ANTS_RC_SOURCES` exceeds 6,000 lines. *Breaks when*
+- **INV-6** — No TU in `ANTS_RC_SOURCES` exceeds 6,000 lines — the cap is set
+  from § 4's fit, at which point a TU costs ≈ 16 s to compile, still under a
+  third of today's 54.66 s. *Breaks when*
   verbs accrete into one TU until it is the old file again — the regression
   this whole item exists to prevent, and the only one that returns silently.
   *Test:* `tests/features/rc_tu_split/` counts lines per listed source.
-- **INV-7** — No helper retains internal linkage while being referenced from
-  another TU. *Breaks when* a promoted helper is left `static` or inside an
-  anonymous namespace. *Test:* `ants_core_lib` links (the linker is the
-  check; an unresolved `rcdetail::` reference fails the build).
+- **INV-7** — No **function or type** retains internal linkage while being
+  referenced from another TU. *Breaks when* a promoted helper is left `static`
+  or inside an anonymous namespace. *Test:* `ants-terminal` and the test
+  bundles link — **not** `ants_core_lib`, which is a `STATIC` archive whose
+  build only archives objects and never resolves symbols, so
+  `--target ants_core_lib` is green with unresolved `rcdetail::` references.
+  **Constants are excluded by construction**: a bare namespace-scope `const`
+  has internal linkage and links clean per TU, so § 2.3's `extern` rule is the
+  only thing standing behind them.
 - **INV-8** — `RemoteControl::dispatch()` stays in `src/remotecontrol.cpp`
   and its op→member routing chain is byte-identical across the migration.
   *Breaks when* a slice takes routing with it, changing which op reaches
   which verb. *Test:* `slurpFunctionBody(rc, "RemoteControl::dispatch")`
   compares equal pre- and post-split.
 - **INV-9** — The suite is green, and the only changes under `tests/` are the
-  five mechanical ones this spec authorises: (1) the substitution of all 321
-  text-read sites to `ants_test::slurpRemoteControl()`, literal-path reads
-  included; (2) the `ANTS_RC_SRC_DIR` re-route of the four dirname anchors;
+  five mechanical ones this spec authorises: (1) the substitution of all **328**
+  text-read sites to `ants_test::slurpRemoteControl()` — 321 macro-routed plus
+  the 7 literal-path reads; (2) the `ANTS_RC_SRC_DIR` re-route of the four dirname anchors;
   (3) the `defined(ANTS_RC_SOURCES)` re-point of the five `#if defined`
   guards; (4) the `slurpRemoteControl()` helper added to
   `tests/_support/srcgrep.h`; (5) the new `tests/features/rc_tu_split/`
@@ -633,17 +697,23 @@ reading TU 1 alone through macros the cut has deleted.
   exactly when none of the eleven TU-head preambles is inserted within it.
   *Breaks when* a seam is placed mid-window, so the window reads an include
   preamble instead of code — silently, for a negative or count-based
-  assertion. *Test:* a standing case in `tests/features/rc_tu_split/`. For each
-  of the **seven anchors** § 2.4 lists (not all windows in the 25 files — only
-  those taken over remotecontrol text), resolve the anchor offset `A` in
-  `slurpRemoteControl()`, take `N` from the window's `substr` length, and
-  assert no TU-head offset lies in `[A, A+N)`. **Standing rather than
-  migration-time**, because § 2.2 mandates splitting a TU that reaches INV-6's
-  cap, and every such split adds an insertion point that can land mid-window.
+  assertion. *Test:* a standing case in `tests/features/rc_tu_split/` that
+  **derives** its work-list rather than embedding one. It scans `tests/` for
+  `.substr(<ident>, <N>)` sites in files that also read remotecontrol text,
+  recovers each site's anchor from the `find(...)` that produced `<ident>`,
+  resolves that anchor's offset `A` in `slurpRemoteControl()`, and asserts no
+  TU-head offset lies in `[A, A+N)`. § 2.4's seven anchors are what that scan
+  returns *today*; hard-coding them would leave a window added tomorrow
+  silently uncovered — the exact class this invariant exists for.
+  **Standing rather than migration-time** for two reasons: § 2.2 mandates
+  splitting a TU that reaches INV-6's cap, and every split adds an insertion
+  point; and ANTS-3681's sweep did not reach every existing window, so new ones
+  still appear. **Remedy when it fires:** move the seam to the next member
+  boundary that clears every window, or convert the offending window to a
+  structural bound (`slurpFunctionBody`) — the fix ANTS-3681 was already making.
   Scoped to commit 2 of § 2.5: commit 1's promotion edits definitions in place,
   so the byte-identity does not span it — that commit's silent-scrape risk is
-  handled by § 2.3's pre-promotion grep instead, which is the check INV-9's
-  suite cannot perform.
+  handled by § 2.3's pre-promotion grep instead.
 - **INV-11** — `ants_core_lib`'s remotecontrol sources are exactly the
   `ANTS_RC_SOURCES_REL` list; the library consumes the list rather than
   restating it. *Breaks when* a TU is added to `add_library()` and not to the
@@ -688,7 +758,7 @@ fit above, not a measurement:
 | One-verb incremental edit | 54.66 s | ≈ 14 s (the edited TU alone) | **≈ 3.9× better** — the win this item is for |
 | Serial pole in a full build | 54.66 s | ≈ 14 s | ≈ 3.9× shorter |
 | Total CPU for this source | 54.66 s | ≈ 94 s (11 × 3.94 s intercept + 0.002045 × 24,803) | **≈ 1.7× worse** |
-| Full-build wall for this source over 3 slots | 54.66 s | ≈ 31 s | ≈ 1.8× better |
+| Full-build wall for this source over 3 slots | 54.66 s | ≈ 31 s at perfect packing; ≈ 33 s under longest-processing-time scheduling of the eleven | ≈ 1.7× better |
 
 **Concurrent memory, which § 1 raises and a per-TU figure does not answer.**
 The single-process peak is what earlyoom reaps, and it falls from a measured
@@ -742,7 +812,7 @@ table, and this case only reads files, so it needs Qt6::Core only. Never an
 | Case | Invariant | Asserts |
 |---|---|---|
 | `TuOrdinalMarkersAscend` | INV-3 | `N` = the `ANTS_RC_SOURCES` entry count; one `TU k/N` marker per entry, k = 1…N, at ascending offsets in `slurpRemoteControl()` |
-| `NoSingleTuPathMacro` | INV-4 | neither retired macro name nor a literal `src/remotecontrol.cpp` path appears in `CMakeLists.txt` or under `tests/`, **excluding `tests/features/rc_tu_split/`** (see INV-4 for why the exclusion is mandatory) |
+| `NoSingleTuPathMacro` | INV-4 | two assertions, not one: under `tests/`, neither retired macro name nor a literal `src/remotecontrol.cpp` path, **excluding `tests/features/rc_tu_split/`**; in `CMakeLists.txt`, neither macro name — the literal is **not** asserted there, because § 2.4(a)'s `ANTS_RC_SOURCES_REL` list must carry it and INV-11 requires that list to exist (see INV-4) |
 | `InternalHeaderStaysInternal` | INV-5 | no file outside the `ANTS_RC_SOURCES` list includes `remotecontrol_internal.h`, scanning `src/` and `tests/` from `ANTS_RC_ROOT_DIR` |
 | `NoTuExceedsLineCap` | INV-6 | every source in `ANTS_RC_SOURCES` is ≤ 6,000 lines |
 | `NoSeamInsideAScrapeWindow` | INV-10 | for each of § 2.4's seven anchors, no TU-head offset lies inside that window's `[A, A+N)` |
@@ -753,13 +823,15 @@ before the corresponding fix is in place:
 
 - `TuOrdinalMarkersAscend` — against an `ANTS_RC_SOURCES` with two
   entries transposed.
-- `NoSingleTuPathMacro` — against the pre-split `CMakeLists.txt`.
+- `NoSingleTuPathMacro` — against the pre-split `CMakeLists.txt` (macro arm),
+  and against the pre-split `tests/` tree (literal arm).
 - `InternalHeaderStaysInternal` — against a scratch `#include
   "remotecontrol_internal.h"` added to an unrelated `src/*.cpp`.
 - `NoTuExceedsLineCap` — against the pre-split `remotecontrol.cpp` (24,803
   lines) in the list.
-- `NoSeamInsideAScrapeWindow` — against a scratch TU list whose seam is moved
-  to sit a few hundred bytes after the `cmdReadRegions` anchor.
+- `NoSeamInsideAScrapeWindow` — against scratch TU *files* re-cut so a seam
+  lands a few hundred bytes after the `cmdReadRegions` anchor. A list alone
+  cannot relocate a seam; only the cut can.
 - `LibraryConsumesTheList` — against a `CMakeLists.txt` naming one TU directly
   in `add_library()`.
 
@@ -782,7 +854,7 @@ insertion point and another chance to bypass the list.
 | Doc | Change |
 |---|---|
 | `docs/subsystems.md` | the `remotecontrol` lane entry gains the eleven TUs **alongside** its existing verb list, which it keeps — the lane catalogue `subsystem` and `indie_review_partition` derive from |
-| `ROADMAP.md` (ANTS-3833) | three statements on the bullet are measured wrong and are corrected by this spec: the size (`23,849 LoC / 1.1 MB` → 24,803 / 1,174,447 B), the blast radius (`72` test files → 130 files / 330 macro uses), and the named trap (`kindForName` bucketing is in `claudeintegration.cpp` and does not move). Annotate the bullet rather than silently superseding it |
+| `ROADMAP.md` (ANTS-3833) | three statements on the bullet are measured wrong and are corrected by this spec: the size (`23,849 LoC / 1.1 MB` → 24,803 / 1,174,447 B), the blast radius (`72` test files → 130 files / 337 sites), and the named trap (`kindForName` bucketing is in `claudeintegration.cpp` and does not move). Annotate the bullet rather than silently superseding it |
 | `src/remotecontrol.cpp` (code, filed not fixed) | the closing brace at line 16959 is annotated "*anonymous from line 1320*"; a brace-aware scan puts that block's opening at 16875. The stale comment is what made two independent readers conclude seven seams were unsafe. Out of scope for a docs change — filed as its own item |
 | `CHANGELOG.md` | one `Changed` entry |
 | `CLAUDE.md` | none — the module map moved to `docs/subsystems.md` under ANTS-1292 |
@@ -793,5 +865,6 @@ insertion point and another chance to bypass the list.
 
 | Loop | Reviewer | Findings (C/H/M/L/I) | Outcome |
 |---|---|---|---|
+| 3 (2026-08-06) — cap | 3 independent lanes, cold | 1/5/8/14/0 verified, 0 dismissed. Origin split: 19 fix collateral, 9 draft defects — the first loop where collateral led. Dimensions: 5×8, 4×7, 15×4, 6×4, 7×3, 2×2, 1×2, 9×2, 10×2 | All 28 fixed; deferred tail empty. **All three lanes led on the same CRITICAL, and it was loop 2's own collateral**: INV-4 gained a literal-`src/remotecontrol.cpp` arm in the same loop that INV-11 mandated a `CMakeLists.txt` block containing that literal, so its test could never return 0. Now two commands — the literal is asserted over `tests/` only. Also: INV-9 said "all 321 sites, literal-path reads included" when 321 provably excludes them (**328**); the constant-promotion row said "a plain declaration", which at namespace scope has internal linkage and **links clean**, so INV-7's linker check is blind to it (now `extern const`, stated as the one class with no automatic backstop); INV-7's surface was `ants_core_lib`, a `STATIC` archive that never resolves symbols; and INV-10's standing case hard-coded seven anchors measured on one date, so it now derives them. Resolved by measurement rather than assumption: all six literal-path files are in `test_claude` (a macro-carrying bundle, so the re-route compiles); INV-2's 127 is 123 + ctor + dtor + `roadmapBullets` + `roadmapWriteTarget`; INV-4's 165 is 130 `.cpp` + 35 `.md` |
 | 2 (2026-08-06) | 3 independent lanes, cold | 1/6/10/12/0 verified, 0 dismissed. Origin split: 13 fix collateral, 16 draft defects. Dimensions: 5×7, 4×4, 6×4, 7×3, 15×3, 10×3, 1×1, 9×1, 13×1 | All 29 fixed; INV-11 added. Four structural draft defects, each measured rather than argued: the promotion analysis covered 1 of 24 anonymous namespaces, and **22 of 73 non-head symbols cross a TU boundary** (set is ~74, not 52); **seven literal-path reads** bypass the macro route entirely, so "no partial-scrape state to reach" was false and INV-4 now matches the literal; `ANTS_RC_SOURCES_REL` was not bound to `ants_core_lib`, letting a twelfth TU be invisible to every scrape while passing every invariant (INV-11); and `slurpRemoteControl()` sat unguarded in a header **278** test sources include while the macro reaches 4 bundles. The CRITICAL was collateral: § 2.5 put the preambles outside the pure-motion commit while § 2.4 and INV-10 measured them inside it — § 2.5 is now three named commits, each green. Also corrected: INV-2's anchor could not match the ctor (1928) or dtor (1936), so its 123 was really **127** |
 | 1 (2026-08-06) | 3 independent lanes, cold | 2/7/10/9/0 verified, 5 dismissed. Dimensions: 2×5, 4×4, 5×4, 7×4, 6×3, 15×3, 13×2, 9×1, 10×1, 11×1 | All 28 fixed. Two CRITICALs: § 2.3 had helpers "moving with TU 3–5", which § 2.2's contiguity rule makes impossible — they stay in TU 1, and 52 of 59 need promotion, not "a minority"; and § 2.4's macro retirement covered one use form when there are **seven** (330 uses), including nine that want a directory or a `#if defined` guard and cannot be substituted by a text reader. Dismissed: the two lanes concluding seven seams sit inside an anonymous namespace — a brace-aware scan puts 0 of 10 inside, and the source comment that misled them (`remotecontrol.cpp:16959`, "anonymous from line 1320") is itself stale, now filed; and three lanes reporting `test_core` absent from the bundle table, which was a truncation in the orchestrator's packet, not a defect. § 2.2's seam claim survived but its *evidence* did not: a column-anchored grep cannot pair namespace braces, and the real extents are now listed |
