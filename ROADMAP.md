@@ -3298,6 +3298,40 @@ minor tag (next: pre-0.8.0).
 
   BEFORE COMMIT 2: do NOT work this in a git worktree until ANTS-3841
   lands — ANTS-3842 explains why the pre-push gate can never pass there.
+  Progress (2026-08-06): commit 2 of 3 has landed — THE CUT. Eleven TUs,
+  largest 4,900 lines (INV-6 cap 6,000). Release 3269/3269.
+
+  Three things the spec could not have known, each found by doing the cut:
+
+  1. The seam scanner had gone BLIND. Commit 1 renamed all 24 anonymous
+     namespaces to `rcdetail`, so tools/rc-namespace-scan.py found zero
+     blocks and passed every seam as open code. A `--ns` flag now names the
+     namespaces that matter; the default still reproduces the original 24
+     extents exactly. Fixed before any code moved.
+
+  2. 19 file-scope `static`s cross a TU boundary. Commit 1 walked only
+     ANONYMOUS namespaces; a bare `static` was never in one and has
+     internal linkage all the same. Promoted as its own commit (1b), since
+     commit 2's src/ half must stay pure motion for INV-10. Also found:
+     commit 1's header derivation matched by symbol NAME, so
+     resolveRootCanonical's two-arg overload read as already-declared —
+     45 of the 85 residual compile errors were that one function.
+
+  3. ANTS_RC_SOURCES nearly shipped naming only TU 1. CMake stores
+     COMPILE_DEFINITIONS as its own `;`-list, so the joined path string was
+     split at the first separator no matter how the argument was quoted.
+     It compiled, it looked present, and it pointed at exactly the one file
+     this item exists to stop the test tree reading alone. Escaped and
+     verified against the generated compile line.
+
+  Two test edits outside INV-9's five categories, both named in the commit:
+  remote_control_ls's INV-7 now asserts ANTS_RC_SOURCES_REL rather than one
+  filename, and roadmap_item_body's Inv2SingleGrammar sums its three
+  exempt regex sites across the TU list instead of keying them to
+  remotecontrol.cpp — the split moved those bodies without touching a byte.
+
+  Remaining: commit 3 — tests/features/rc_tu_split/ (INV-3/4/5/6/10/11) and
+  the § 7 CHANGELOG entry.
 
 - 📋 [ANTS-3840] **Stale anonymous-namespace comment in remotecontrol.cpp misled two independent readers.**
   `src/remotecontrol.cpp`'s closing brace at line 16959 is annotated
@@ -35613,6 +35647,50 @@ contributors don't duplicate research.
   **Layman:** The built-in code-checking sweep silently skips five checkers it could be running, so a clean result looks more thorough than it is.
   Kind: enhancement.
   Source: user-request-2026-08-06.
+
+- 📋 [ANTS-3846] **clang-tidy contributes zero analysis and its usage text is ingested as 92 findings.**
+  Found in the audit report of 2026-08-06 (ants-audit v0.7.104), and it is
+  two bugs stacked, the second worse than the first.
+
+  MECHANISM. auditrunner.cpp:517-534 builds clang-tidy's argv as
+  `-p <builddir>` plus the scoped files, and appends `--checks=` ONLY when
+  `scopedChecks` is non-empty. This repo ships no `.clang-tidy` file, so an
+  unscoped run passes no check selection at all; clang-tidy's default set is
+  empty, and it exits with "Error: no checks enabled." after printing its
+  full --help to stdout.
+
+  HARM 1 — the tool has been contributing nothing. Every unscoped audit has
+  been reporting a clang-tidy section that analysed zero code.
+
+  HARM 2 — and this is the one that matters — the runner then parses that
+  usage text as tool output, so the report carries "clang-tidy Analysis
+  (smell / C/C++) [clang-tidy] - 92 finding(s)" whose contents are lines
+  like "--help  Display available options" at conf 35. A tool that produced
+  nothing is indistinguishable in the report from a tool that found 92
+  things, which is strictly worse than the tool being absent: absent reads
+  as absent, this reads as coverage.
+
+  Note the existing comment at auditrunner.cpp:514-516 anticipates the
+  sibling case — "Default argv when no paths given is a no-op ... surface a
+  graceful failure via empty argv" — but that guards no PATHS, not no
+  CHECKS.
+
+  Fix has two halves and both are needed:
+  - Correctness: detect the "no checks enabled" failure (and any non-zero
+    exit whose stdout is usage text) and mark the tool SKIPPED with a
+    reason, never parse it as findings. Same rule ANTS-3845 asks for on the
+    tools not yet wired: an unavailable checker must skip loudly.
+  - Coverage: give clang-tidy a check set so it actually runs — either ship
+    a `.clang-tidy` at repo root or default `--checks=` in the runner when
+    none is configured. Choosing the set is the real work; start narrow
+    (bugprone-*, clang-analyzer-*) since cppcheck and clazy already cover
+    much of the ground and a wide set on a Qt codebase is mostly noise.
+
+  Related: ANTS-3845 (five checkers never auto-detected at all). Same
+  underlying principle — silence must not read as clean.
+  **Layman:** One of the code checkers has silently not been checking anything, and its help text was being listed as if it were 92 problems found.
+  Kind: fix.
+  Source: audit-2026-08-06.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
