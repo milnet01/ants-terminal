@@ -26597,6 +26597,41 @@ against current source before filing.
      goldens. Note the goldens now track kExportSchemaVersion, which this
      bump does NOT move — so if the format column is not carried in the
      export record, the goldens may not need regenerating at all.
+  Progress (2026-08-07): ANTS-3781 is SHIPPED, not merely specced — the
+  ladder exists (RoadmapStore::applyUpgrades / upgradeLadder, 12 tests in
+  tests/features/roadmap_store_upgrade/). A fourth thing it hands this
+  item, beyond the three above:
+
+    4. A DEFERRED COLD READ, owed by this item's own /cold-eyes gate.
+       ANTS-3781's § 7 edit table required corrections to ANTS-3756 § 2.3
+       and ANTS-3796 § 2.4 (plus ANTS-3782 INV-27 and this project's
+       Inv27SchemaVersionStillOne message). Those corrections were written
+       by the implementer and have NOT had an independent read. They were
+       deliberately not given their own /cold-eyes loop, on the grounds
+       that (a) no enforcement mechanism changed — both *Breaks when*
+       trigger conditions and the EXPECT_EQ are byte-identical, only the
+       justifications were rewritten — and (b) this item's gate must read
+       both sections as cross-references regardless, with the bump in
+       front of it, which is a better read than a cold lane in isolation.
+       So: when this item's spec goes through /cold-eyes, treat ANTS-3756
+       § 2.3 and ANTS-3796 § 2.4 as in-scope cross-references rather than
+       assumed-good background. The residual risk being closed is an
+       internal contradiction elsewhere in those documents (973 and 675
+       lines) that the new paragraphs conflict with.
+
+       IF THIS ITEM SLIPS rather than being next, that deferral expires:
+       run /cold-eyes on ANTS-3756 and ANTS-3796 directly instead. A
+       stale contradiction nobody reads for a month is worth catching on
+       its own.
+
+       Known and accepted while reading them: ANTS-3782 INV-27's and
+       ANTS-3796 INV-6's correction paragraphs are near-identical by
+       design (parallel invariants, each document must stand alone). That
+       is not a duplication finding to re-raise.
+
+  Also filed today: ANTS-3862 (spec_lint reports 11 false invariant_id_gaps
+  on ANTS-3782, which continues ANTS-3756's numbering because it amends
+  it — noise, not a document defect; do not "fix" ANTS-3782 for it).
 
 - 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —
