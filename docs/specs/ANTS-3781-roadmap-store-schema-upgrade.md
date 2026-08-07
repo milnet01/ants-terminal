@@ -16,6 +16,13 @@ open, with an error that never says why. This adds the missing "bring it up to
 date" step, and stops a database change from spoiling the backup files at the
 same time.
 
+**Sections.** [1 Problem](#1-problem) · [2 Surface](#2-surface) — [2.1 the
+ladder](#21-the-ladder), [2.2 where it is called](#22-where-it-is-called),
+[2.3 unwelding the two version numbers](#23-unwelding-the-two-version-numbers)
+· [3 Invariants](#3-invariants) · [4 RAM / build cost](#4-ram--build-cost) ·
+[5 Out of scope](#5-out-of-scope) · [6 Tests](#6-tests) ·
+[7 Cross-doc impact](#7-cross-doc-impact)
+
 ## 1. Problem
 
 `RoadmapStore::createSchema()` (`src/roadmapstore.cpp`) branches on the version
@@ -32,14 +39,14 @@ DDL is written **without** `IF NOT EXISTS`, and the reason is one step removed
 from where that fact is usually quoted:
 [ANTS-3756](ANTS-3756-roadmap-store-schema.md) INV-15's discriminator is the
 `user_version` read inside `BEGIN IMMEDIATE`, **not** the absent
-`IF NOT EXISTS`. Its loop log row `8-impl` says so directly — "`user_version`
-already guarantees the loser never reaches the DDL, so a `CREATE TABLE` that
-runs against an existing table means the discriminator has regressed and must
-fail loudly" — and INV-15's own *Breaks when* clause names gating on
-`IF NOT EXISTS` as the failure, not the mechanism. The absent `IF NOT EXISTS`
-is what makes that regression **loud**. The effect on an older store is the
-same either way, and it is the wrong one: it is not re-created, it dies on
-`table already exists`. Three consequences:
+`IF NOT EXISTS`: INV-15's own *Breaks when* clause names gating on
+`IF NOT EXISTS` as the **failure** ("succeeds for both and reports nothing"),
+not the mechanism. The absent `IF NOT EXISTS` is what makes a regression of
+that mechanism **loud**. (ANTS-3756's loop log row `8-impl` records the same
+reasoning from the implementation side; INV-15 is the contract and is cited
+here on its own.) The effect on an older store is the same either way, and it
+is the wrong one: it is not re-created, it dies on `table already exists`.
+Three consequences:
 
 1. There is no route from an older store to a current one at all. Its only
    other recovery route is the export, and ANTS-3756's own header comment
@@ -52,9 +59,18 @@ same either way, and it is the wrong one: it is not re-created, it dies on
    edit nobody is holding.
 
 Still unreachable **today**, and that is measured rather than assumed:
-`kSchemaVersion` is 1, so no store below it can exist. It stops being
-unreachable at ANTS-3815, which is the first change that bumps it, and a
-version-1 store file exists on this machine now.
+`kSchemaVersion` is 1, so no store *strictly between 0 and* `kSchemaVersion`
+can exist (a store at 0 exists and is the creation case).
+
+**Two different milestones are involved and ANTS-3756 § 2.3 conflates them**,
+which is why this spec names a different one than that document does. A store
+becomes **reachable** at ANTS-3758's cutover — real stores in real hands, which
+is the deadline ANTS-3756 records. A store *below* the running binary's version
+becomes **possible** only once `kSchemaVersion` moves, which is ANTS-3815.
+Reachability is what makes the gap matter; the bump is what makes it
+occur. § 7 lists that sentence for correction rather than working around it. A
+version-1 store file exists on this machine now, so the first half has already
+happened.
 
 **A fourth problem, handed here by a sibling spec.**
 [ANTS-3796](ANTS-3796-section-record-completeness.md) § 2.4 records that the
@@ -97,18 +113,35 @@ struct Upgrade {
 // version order. A single pass that looked each rung up as it reached it would
 // run rung 2's statements before discovering rung 3 was missing.
 //
-// Runs INSIDE a transaction the caller has already opened, and neither begins
-// nor commits one: a half-applied upgrade to a store whose only rebuild path
-// is the export is the worst outcome available, so the atomicity has to belong
-// to one owner and that owner is createSchema(). The stamp is durable only
-// when the caller commits.
+// PRECONDITION: the caller has an open transaction. This function neither
+// begins nor commits one — a half-applied upgrade to a store whose only
+// rebuild path is the export is the worst outcome available, so the atomicity
+// belongs to one owner and that owner is createSchema(). The stamp is durable
+// only when the caller commits. There is no runtime guard for the
+// precondition, and § 5 records why: QSqlDatabase does not surface
+// sqlite3_get_autocommit() (the same limitation m_inTransaction exists for),
+// so the check cannot be made without inventing a second one.
 //
-// Degenerate ranges, stated because this is public and test-injectable:
-// `from >= to` is an empty climb — nothing validated, nothing run, nothing
-// stamped, returns true. `from < 1` is REFUSED: version 0 is a store with no
-// schema at all, and creating one is the DDL's job, not a rung's. `from` is
-// trusted rather than re-read; the caller has already read `user_version`
-// inside its own transaction and a second authoritative read would race it.
+// Degenerate arguments, IN THIS ORDER, because two of the rules overlap and
+// the order is what makes the result single-valued:
+//   1. `from < 1` REFUSES, whatever `to` is. Version 0 is a store with no
+//      schema at all and creating one is the DDL's job, not a rung's; a
+//      negative version is a corrupt pragma. This arm is why createSchema()
+//      can route every non-zero version here and still fail legibly (§ 2.2).
+//   2. otherwise `from >= to` is an empty climb — nothing validated, nothing
+//      run, nothing stamped, returns true. Note this makes a DOWNGRADE range
+//      a silent no-op rather than a refusal; refusing a downgrade is
+//      createSchema()'s `version > kSchemaVersion` arm and stays there (§ 5).
+//   3. otherwise the two passes above run over `(from, to]`.
+// `to` is NOT compared to kSchemaVersion — a test climbs past it by design
+// (INV-1), and this function's job is the climb, not the policy.
+// Rungs whose `to` falls outside `(from, to]` are ignored; a rung with an
+// empty `statements` list is legal and advances the version by itself.
+//
+// `from` is trusted rather than re-read. Not because a re-read would race —
+// inside the caller's write lock it could not — but because the version is an
+// argument for the same reason the ladder is: a function that read its own
+// starting point could only ever be tested against a store already at it.
 //
 // Public, and taking its ladder as an argument, for the reason
 // kDefaultHistoryCapBytes is a constructor parameter (INV-14): at
@@ -124,7 +157,9 @@ static bool applyUpgrades(QSqlDatabase &db, int from, int to,
 //
 // A public static and not a file-scope object in the .cpp: INV-4's
 // completeness check compiles into another translation unit, and a ladder that
-// check cannot reach is exactly the failure this section opens by refusing.
+// check cannot reach leaves the missing-rung case — the one INV-2 refuses at
+// runtime — with nothing checking for it at build time, which is the whole
+// point of having INV-4.
 // Defined as a function-local static, so it is built once on first call.
 static const QVector<Upgrade> &upgradeLadder();
 ```
@@ -143,7 +178,11 @@ exist.
 return and the DDL:
 
 ```cpp
-    if (version > 0) {
+    // Everything that is not 0 comes here, negatives included: a corrupt
+    // pragma must not reach the DDL, which would answer it with `table
+    // already exists` — the illegible failure § 1 exists to close. The
+    // `from < 1` arm above refuses it naming the value instead.
+    if (version != 0) {
         if (!applyUpgrades(m_db, version, kSchemaVersion, upgradeLadder(), error)) {
             exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
             return false;
@@ -152,8 +191,13 @@ return and the DDL:
     }
 ```
 
-Two properties fall out of where it sits rather than needing rules of their
-own, which is why neither is an invariant below:
+The guard is `!= 0` rather than `> 0` deliberately. `user_version` is a signed
+32-bit pragma, so a negative value is representable; under `> 0` it would fall
+through to the DDL and reproduce the exact failure this spec is closing, one
+input away from the case everyone thinks about.
+
+Two properties fall out of where the arm sits rather than needing rules of
+their own:
 
 - **Concurrency is already settled.** The version this arm reads is the one
   read inside `BEGIN IMMEDIATE` — ANTS-3756 INV-15's authoritative read. Two
@@ -161,8 +205,10 @@ own, which is why neither is an invariant below:
   winner climbs and commits, and the loser's own read returns
   `kSchemaVersion`, so it takes arm 2 and climbs nothing.
 - **`createdSchema()` is untouched.** The flag means "this open made the
-  tables"; an upgraded store's tables were made by an earlier binary. INV-5
-  pins the flag's single assignment site rather than restating the meaning.
+  tables"; an upgraded store's tables were made by an earlier binary. This one
+  *does* have an invariant — INV-5 pins the flag's single assignment site
+  rather than restating the meaning; only the concurrency property above is
+  left to ANTS-3756 INV-15.
 
 The fast path at the top of `createSchema()` — the unlocked `user_version` read
 that returns early on an already-current store — is unchanged and still
@@ -243,7 +289,10 @@ by manufacturing a field to keep it true.
   offending version, and `user_version` still 1. **Leg (c) is the one that
   earns the invariant:** legs (a) and (b) are single-step, so a lazy per-rung
   lookup that validates as it goes passes both while breaking the "before any
-  statement runs" clause — the property this invariant exists for. *Breaks
+  statement runs" clause — the property this invariant exists for. **What the
+  error must *say* is INV-7's, not this one's** — this invariant asserts only
+  that the offending version appears, so that an implementation satisfying it
+  cannot fail INV-7's stronger contract. *Breaks
   when:* validation is folded into the run loop (fails (c)); or the walk skips
   a missing version and stamps the target anyway, producing a store
   **labelled** current whose tables are a version behind — undetectable
@@ -251,16 +300,23 @@ by manufacturing a field to keep it true.
   are in.
 - **INV-3** — `applyUpgrades()` neither begins nor commits a transaction: it
   runs entirely inside the caller's, so a failed rung leaves the caller free to
-  roll back and nothing partial survives. *Test:* `roadmap_store_upgrade` —
-  inside a `BEGIN IMMEDIATE`, run a two-statement rung whose second statement
-  is invalid SQL; assert false, `ROLLBACK`, then assert the first statement's
-  effect is absent and `user_version` is still 1. *Breaks when:* it opens its
-  own transaction, which SQLite refuses to nest — so the call fails against a
-  store that is fine — or commits per rung, which makes a mid-ladder failure
-  durable.
+  roll back and nothing partial survives. *Test:* `roadmap_store_upgrade`, two
+  legs. (a) Behavioural — inside a `BEGIN IMMEDIATE`, run a two-statement rung
+  whose second statement is invalid SQL; assert false, `ROLLBACK`, then assert
+  the first statement's effect is absent and `user_version` is still 1.
+  (b) Source-grep — `applyUpgrades()`'s body in `src/roadmapstore.cpp` contains
+  no `BEGIN`, `COMMIT`, `ROLLBACK` or `SAVEPOINT`. Leg (b) is not redundant:
+  leg (a) runs with a transaction already open, which is precisely the
+  condition under which a stray `BEGIN` fails harmlessly and invisibly, so the
+  behavioural leg cannot see the defect that matters when the precondition is
+  broken. *Breaks when:* it opens its own transaction, which SQLite refuses to
+  nest — so the call fails against a store that is fine — or commits per rung,
+  which makes a mid-ladder failure durable.
 - **INV-4** — The production ladder is **complete**: for every version `v` in
-  `[1, kSchemaVersion)` there is exactly one rung landing on `v + 1`. *Test:*
-  `roadmap_store_upgrade` walks that range against
+  `[1, kSchemaVersion)` there is exactly one rung landing on `v + 1`, **and no
+  rung lands outside that range** — a stray rung is a rung nothing will ever
+  climb, which is an authoring error the same table can catch for free.
+  *Test:* `roadmap_store_upgrade` walks that range against
   `RoadmapStore::upgradeLadder()` — reachable from the test's translation unit
   because § 2.1 declares it in the header, which is that decision's whole
   purpose. **Green and vacuous at `kSchemaVersion` 1, by construction: the
@@ -271,7 +327,11 @@ by manufacturing a field to keep it true.
 - **INV-5** — An open that upgrades does not report `createdSchema()`:
   `m_createdSchema` is assigned in exactly one place, on `createSchema()`'s
   creation path. *Test:* `roadmap_store_upgrade` greps `src/roadmapstore.cpp`
-  for assignments to `m_createdSchema` and asserts exactly one. **Green against
+  for assignments to `m_createdSchema` and asserts exactly one **and that it
+  falls on the creation path** — after the `PRAGMA user_version = %1` stamp,
+  inside `createSchema()`. **Both legs, because a count alone is green against
+  the very regression this invariant names:** *moving* the single assignment
+  onto the upgrade arm leaves the count at one. **Green against
   today's source by construction — a regression fence, not a red-first test**
   (today's source already has exactly one; § 6 says what this costs and what
   replaces the red). Behavioural coverage arrives with the first real rung
@@ -280,25 +340,35 @@ by manufacturing a field to keep it true.
   when:* the new arm sets the flag, telling a caller that this open made tables
   an earlier binary made.
 - **INV-6** — The export's record version and the store's table version are
-  **separate constants**: `src/roadmapexport.cpp` no longer names the store's
+  **separate constants**: neither export translation unit names the store's
   constant at all, and the three goldens still import unchanged. *Test:*
-  `roadmap_store_upgrade` greps `src/roadmapexport.cpp` for the **bare token**
-  `kSchemaVersion` — not the qualified spelling — and asserts **zero** matches,
-  comments included. The bare token is deliberate and the qualification is not
-  enough: the file's fourth mention today is a comment, § 2.3 rewords it in the
-  same change, and a grep that skips comments would let a stale one describing
-  the welded gate survive. `roadmap_export_roundtrip` unchanged and still green
+  `roadmap_store_upgrade` greps **both `src/roadmapexport.cpp` and
+  `src/roadmapexport.h`** for the substring `kSchemaVersion` — which also
+  matches the qualified `RoadmapStore::kSchemaVersion`, and does **not** match
+  the new `kExportSchemaVersion`, whose preceding character is `t` — and
+  asserts **zero** matches, comments included. Three choices, each load-bearing:
+  the header is in scope because § 2.3 puts the new constant there and a
+  re-weld through it would otherwise be invisible; comments are in scope
+  because the file's fourth mention today *is* a comment that § 2.3 rewords;
+  and the scope stops at these two files rather than `src/` + `tests/`, because
+  `src/roadmapstore.{h,cpp}` and the tripwire test legitimately keep naming the
+  store's own constant. `roadmap_export_roundtrip` unchanged and still green
   is the byte-neutrality leg. *Breaks when:* a later edit reaches for the
   store's constant in the export because both read 1 — re-welding them
   silently, and invisibly until the first bump refuses every export on disk.
-- **INV-7** — Every refusal on the upgrade path names **both versions and the
-  offending rung**, so § 1's consequence 2 is closed for the failure modes this
-  spec introduces rather than only for the one it inherited. A missing or
-  duplicated rung names the store's version, the target, and the version whose
-  rung was wrong; a rung whose SQL fails names those three plus the SQL error.
+- **INV-7** — Every refusal on the upgrade path names **the store's version and
+  the target version**, so § 1's consequence 2 is closed for the failure modes
+  this spec introduces rather than only for the one it inherited. Four
+  refusals, enumerated because an unenumerated one is the one that ships with
+  `exec()`'s message: a **missing or duplicated rung** adds the version whose
+  rung was wrong; a **rung whose SQL fails** adds that rung's version and the
+  SQL error; a **failed `user_version` stamp** adds the SQL error; and a
+  **`from < 1` refusal** adds the offending value and says version 0 is the
+  DDL's case — it has no rung to name, which is why "the offending rung" is not
+  part of the invariant's common clause.
   *Test:* `roadmap_store_upgrade` asserts each error string contains the source
-  version, the target version and the failing rung's version, across the INV-2
-  legs and one leg whose rung holds invalid SQL. *Breaks when:* the failure is
+  and target versions, across the three INV-2 legs, one leg whose rung holds
+  invalid SQL, and one `from = 0` leg. *Breaks when:* the failure is
   reported through the file-scope `exec()` helper alone, whose message is the
   SQL error plus the first 120 characters of the statement — naming neither
   version, which is exactly the illegibility § 1 complains of, reproduced one
@@ -322,7 +392,12 @@ case § 2.2 calls already settled and would stop being so. Today's cost is zero
 (no rungs). The constraint this spec fixes is on whoever adds one: **a rung's
 statements must complete well inside `kBusyTimeoutMs` on a full-sized store**,
 and a migration that cannot is a migration that must move out of `open()`
-rather than one that raises the deadline. No new external libraries.
+rather than one that raises the deadline. **The figure is 1000 ms**, a fifth of
+`kBusyTimeoutMs`, measured on this project's own roadmap as the largest store
+available (~1,839 items); "well inside" without a number is not a budget.
+**Enforced by review at ANTS-3815, not by a test** — there is no rung to time
+today, and a timing assertion with no subject is a flaky test waiting for one.
+No new external libraries.
 
 No new build target and no new binary: one test TU joins `test_core`'s
 `SOURCES` list (`ants_add_core_bundle`, which already links
@@ -340,20 +415,35 @@ source-grep invariants locate their files through `ANTS_SRC_DIR`, which
   `tests/features/roadmap_store_schema/test_roadmap_store_schema.cpp`: that
   assertion is the tripwire ANTS-3782 and ANTS-3796 both leaned on, and it is
   correct until the bump it was built to catch is the intended one. **This spec
-  is not the change that comment governs.** Its "LAST change entitled to hold
-  at 1" wording is about changes that alter the *record shape* and could have
-  been expressed as a bump; this one adds no column and touches no table, so it
-  holds at 1 without spending that entitlement.
-- **The export-side upgrade path** — ANTS-3860. § 2.3 removes the *coupling*,
-  so a table-only bump no longer invalidates exports; it does not give
-  `rebuildProject()` a way to import a record shape older than the one it
-  knows. That case becomes live once ANTS-3855's verb starts producing real
-  exports, and ANTS-3860 records the two shapes it could take.
+  does not spend that entitlement, on the cited grounds rather than a
+  reinterpretation of them.** ANTS-3796 INV-6 grants a *change that would
+  otherwise have bumped* `kSchemaVersion` the right not to; this change never
+  reaches that question, because it alters no table and so has nothing a bump
+  could express.
+- **The export-side upgrade path** — ANTS-3860, whose scope and the limits of
+  § 2.3's unwelding are stated there and in § 2.3; not restated here. It
+  becomes live when a real export first exists on disk — ANTS-3855's verb has
+  shipped, so that is a matter of someone running it, not of further work.
 - **Downgrade — a store whose `user_version` is *higher* than the binary's.**
   Permanent exclusion, not deferred work: ANTS-3756 § 2.3 settled it (refused
   outright, not opened read-only, because a newer schema can move meaning
   rather than only add to it) and this spec does not revisit a decision it is
-  completing the other half of.
+  completing the other half of. **The refusal stays in `createSchema()`'s
+  `version > kSchemaVersion` arm, and `applyUpgrades()` must not grow one:**
+  its degenerate rule 2 makes a `from > to` range a silent empty climb, which
+  reads like a gap and is not one — by the time the arm below runs, the
+  downgrade case has already been refused two branches above. Adding a second
+  refusal inside `applyUpgrades()` would break the empty-climb contract INV-1's
+  own test relies on.
+- **A runtime guard for `applyUpgrades()`'s open-transaction precondition.**
+  Permanent exclusion. SQLite exposes autocommit state through
+  `sqlite3_get_autocommit()`, which `QSqlDatabase` does not surface — the same
+  limitation `src/roadmapstore.h` records as the reason `m_inTransaction`
+  exists as a member at all — and the store's own flag is not visible to a
+  static function taking a bare `QSqlDatabase`. So the precondition is a caller
+  obligation, held by the one production caller two lines above the call, and
+  INV-3's leg (b) is what keeps the function from quietly acquiring a
+  transaction of its own instead.
 - **A `PRAGMA integrity_check` or any verification of the upgraded store.**
   Permanent exclusion. An upgrade runs inside one transaction against a store
   SQLite already opened; a checker here would be asserting SQLite's own
@@ -384,7 +474,7 @@ such a stub:
 | INV-2 | green for the wrong reason — a stub refuses every case | mutation: fold validation into the run loop, leg (c) reddens |
 | INV-3 | green for the wrong reason — nothing ran, so nothing survives rollback | mutation: wrap the body in its own `BEGIN`/`COMMIT` |
 | INV-4 | green, **vacuously** — the range is empty at version 1 | none available until `kSchemaVersion` moves; standing guard |
-| INV-5 | green — today's source already has exactly one assignment | mutation: add a second assignment on the upgrade arm |
+| INV-5 | green — today's source already has exactly one assignment | mutation: **move** the assignment onto the upgrade arm (not *add* a second — a second is caught by the count leg, and moving it is the regression the invariant actually names) |
 | INV-6 | **RED** — `kSchemaVersion` appears in `src/roadmapexport.cpp` four times today | today's source |
 | INV-7 | green for the wrong reason — a stub's empty error contains nothing to check | mutation: report through `exec()`'s message alone |
 
@@ -404,60 +494,33 @@ is the manufactured-upgrade move ANTS-3782 and ANTS-3796 both refused.
 
 ## 7. Cross-doc impact
 
-Two lists, because they are different questions. **Files this change edits**
-comes first; **files that merely mention the id** comes second, and the two
-overlap only partly — which is why an earlier draft of this section, scoped to
-the id, missed three of the four edits below.
+**One table, and it is the complete edit set** — every file this change touches
+for any reason, with what changes and why. It replaces the two overlapping
+lists an earlier draft carried (one keyed on "files this edits", one on "files
+mentioning ANTS-3781"): those partly overlapped, so each had to restate the
+other's rows, and both went out of date on the first fix. A row's absence here
+means the file is untouched.
 
-**Edited by this change, beyond the two source files § 2.1–2.3 name:**
-
-- `src/roadmapstore.h` — the comment on `kSchemaVersion` reads "Schema version
-  carried in PRAGMA user_version; the export's `meta` record carries the same
-  number." § 2.3 makes the second clause false. Reworded in the same commit.
-- `src/roadmapexport.cpp` — the comment in the `section` record handler reading
-  "the `meta` gate (kSchemaVersion does not move, § 2.4)" describes a gate that
-  no longer reads that constant. INV-6's bare-token grep is what keeps this
-  from being forgotten.
-- `tests/features/roadmap_store_schema/test_roadmap_store_schema.cpp` —
-  `Inv27SchemaVersionStillOne`'s failure message rots in **two** clauses, not
-  one: it says the upgrade path "does not exist" (corrected — it exists; the
-  constant is still held at 1 until ANTS-3815), and it says a bump "invalidates
-  three export goldens carrying `\"schema\":1`" (corrected — § 2.3 makes that
-  false immediately, since a store bump no longer moves the export's number).
-  The `EXPECT_EQ` itself is untouched; only the message.
-- [`ANTS-3756`](ANTS-3756-roadmap-store-schema.md) § 2.3 — **two** sentences go
-  stale, both to be fixed rather than linked around: "the export's `meta`
-  record carries the same number" (§ 2.3 above unwelds them) and "no store
-  exists outside a test's temp directory" (§ 1 records a version-1 store on
-  this machine).
-
-**Mentions of the id** — six files, this spec excluded
-(`grep -rln 'ANTS-3781' src/ docs/ tests/`; the count is within that scope, and
-`ROADMAP.md` mentions it too):
-
-- [`ANTS-3756`](ANTS-3756-roadmap-store-schema.md) — § 2.3's ownership sentence
-  and the Status line's "two known gaps" both gain a link to this spec; the
-  gap is closed, not merely reassigned. (Also in the edit list above.)
-- [`ANTS-3782`](ANTS-3782-roadmap-section-provenance.md),
-  [`ANTS-3796`](ANTS-3796-section-record-completeness.md),
-  [`ANTS-3855`](ANTS-3855-roadmap-migrate-verb.md) — each defers "the schema
-  upgrade path" to ANTS-3781 with no link; each gains one. ANTS-3796 § 2.4's
-  hand-off of the constant split is answered by § 2.3 above.
-- `src/roadmapstore.cpp` — the `source_path` and `position` DDL comments say
-  "ANTS-3781 owns what follows"; they now name the path that exists.
-- `tests/features/roadmap_store_schema/test_roadmap_store_schema.cpp` — see the
-  edit list above; both stale clauses of the same message.
-- ROADMAP.md — ANTS-3781 flipped; ANTS-3815's "blocked by ANTS-3781" note
-  resolved; ANTS-3860 already filed. **ANTS-3781's own bullet carries the same
-  `IF NOT EXISTS` misattribution § 1 corrects** ("that choice is recorded in
-  ANTS-3756's loop log, row 8-impl, as the discriminator for INV-15"); annotate
-  it rather than leave the roadmap asserting what the spec now denies.
-- CHANGELOG.md — one entry under **`Fixed`**, not `Added`: the category is
-  derived from `Kind:`, and this spec's kind is `fix`.
-- CLAUDE.md — no change. No new file, no new lane, no new build target.
+| File | Change | Why |
+|---|---|---|
+| `src/roadmapstore.h` | Add `Upgrade`, `applyUpgrades()`, `upgradeLadder()` (§ 2.1). Reword the `kSchemaVersion` comment: "the export's `meta` record carries the same number" is false after § 2.3. | The three new symbols, plus a comment asserting the welding § 2.3 removes. |
+| `src/roadmapstore.cpp` | Implement the two passes and the ladder; add `createSchema()`'s `version != 0` arm (§ 2.2). Update the `source_path` / `position` DDL comments, which say "ANTS-3781 owns what follows". | The change itself, and two comments naming this item as unbuilt. |
+| `src/roadmapexport.h` | Add `inline constexpr int kExportSchemaVersion = 1` (§ 2.3). | The unweld's other half. |
+| `src/roadmapexport.cpp` | Three live references → `kExportSchemaVersion`; reword the `section`-handler comment "the `meta` gate (kSchemaVersion does not move, § 2.4)" **without using the token**. | INV-6 asserts zero matches across both export TUs, comments included. |
+| `CMakeLists.txt` | One line: the new test TU into `test_core`'s `SOURCES`. | No new target, no new define (§ 4). |
+| `tests/features/roadmap_store_upgrade/` | New — `spec.md` + `test_roadmap_store_upgrade.cpp`. | § 6. |
+| `tests/features/roadmap_store_schema/test_roadmap_store_schema.cpp` | `Inv27SchemaVersionStillOne`'s failure message rots in **three** clauses: the upgrade path "does not exist" (it now does); a bump "invalidates three export goldens" (§ 2.3 makes that false immediately); and "against ZERO stores that would need one" (§ 1 records a version-1 store on this machine, which a bump *would* strand). The `EXPECT_EQ` itself is untouched. | The message is this item's own obituary and all three clauses outlive it. |
+| [`ANTS-3756`](ANTS-3756-roadmap-store-schema.md) | § 2.3: **three** stale sentences corrected — "the export's `meta` record carries the same number" (unwelded), "no store exists outside a test's temp directory" (one does), and "It stops being unreachable at ANTS-3758's cutover" (§ 1 separates reachable from below-version). Ownership sentence and the Status line's "two known gaps" gain a link here. | This spec completes that document's version contract; leaving it contradicted is the most expensive residue available. |
+| [`ANTS-3796`](ANTS-3796-section-record-completeness.md) | § 2.4: "`rebuildProject()` aborts on `schema != RoadmapStore::kSchemaVersion`" and "the two are one constant, and separating them is ANTS-3781's problem" — both false once § 2.3 lands; the hand-off is answered rather than pending. INV-6's *Breaks when* likewise. | A correction, not a link. It is the document that assigned § 2.3's work here. |
+| [`ANTS-3782`](ANTS-3782-roadmap-section-provenance.md) | "ANTS-3781 owns the upgrade path that is **still missing**" — no longer missing. | Same class. |
+| [`ANTS-3855`](ANTS-3855-roadmap-migrate-verb.md) | Defers "the schema upgrade path" to ANTS-3781; gains a link. | Link only — its sentence stays true. |
+| `ROADMAP.md` | ANTS-3781 flipped; ANTS-3815's "blocked by ANTS-3781" note resolved; ANTS-3860 already filed. **ANTS-3781's own bullet repeats the `IF NOT EXISTS` misattribution § 1 corrects** and is annotated. | The roadmap otherwise asserts what the spec now denies. |
+| `CHANGELOG.md` | One entry under **`Fixed`**. | Category derives from `Kind:`, which is `fix` — not `Added`. |
+| `CLAUDE.md` | No change. | No new file, no new lane, no new build target. |
 
 ## Cold-eyes loop log
 
 | Loop | Date | Lanes | Severities | Dimensions | Resolution |
 |---|---|---|---|---|---|
+| 2 | 2026-08-07 | 3, cold — same shared brief, no mention of loop 1 | C 0 · H 4 · M 9 · L 12 · I 0 — verified 25, unverified 1 | dim 5×6, dim 7×5, dim 10×4, dim 4×4, dim 2×3, dim 15×3, dim 1×2, dim 6×2, dim 9×2, dim 11×2 | **No CRITICAL, and roughly half the batch was collateral from loop 1's own edits — so the answer was to consolidate rather than patch again.** § 7, rewritten in loop 1 as two lists (edits / id-mentions), drew three lanes' HIGHs: the lists partly overlapped so each restated the other, the preamble miscounted its own scope, and it still missed ANTS-3796 § 2.4 — the very document that assigned § 2.3's work here, whose prose § 2.3 makes false. Replaced with **one table that is the complete edit set**, which removes the permanent finding source rather than correcting this instance of it. Also collateral: loop 1's degenerate-range rules (`from < 1` and `from >= to`) overlapped with opposite outcomes and no precedence — now ordered and numbered, with the downgrade case explicitly left to `createSchema()`'s existing arm so nobody "fixes" the empty climb INV-1 depends on; and loop 1's INV-7 was unsatisfiable for the one refusal that has no rung to name, now enumerated over all four refusals. **Draft defects, present since the first draft:** `createSchema()`'s new arm guarded `version > 0`, so a negative `user_version` — representable, the pragma is signed — still fell through to the DDL and reproduced the illegible failure this spec exists to close (now `!= 0`, routed to a legible refusal); INV-5 asserted the flag's *location* but tested only its *count*, so **moving** the single assignment onto the upgrade arm — the exact regression its own *Breaks when* names — left it green (location leg added, § 6's mutation corrected from "add a second" to "move the existing one"); § 1 named ANTS-3815 as the deadline where ANTS-3756 § 2.3 names ANTS-3758's cutover, which are two different events (a store becomes *reachable* at the cutover, *below-version* only at a bump) — both now stated and ANTS-3756's sentence added to the edit table. § 4's "well inside `kBusyTimeoutMs`" gained a figure (1000 ms) and an honest enforcement note (review at ANTS-3815, not a test). A 525-line spec gained a section index. **Unverified (1):** a lane read the Layman line's "refuses to open" as contradicting § 1 — it does not; `createSchema()` returns false and `open()` propagates it, so a refusal is exactly what happens. **Found while verifying, filed not fixed:** ANTS-3861, a doubled `src/src/` path in an unrelated test's `ANTS_SRC_DIR` fallback. |
 | 1 | 2026-08-07 | 3 (general-purpose, strong model, identical shared brief) | C 1 · H 3 · M 8 · L 11 · I 0 — verified 23, unverified 1 | dim 5×7, dim 2×5, dim 4×5, dim 7×3, dim 15×3, dim 10×2, dim 9×2, dim 6×2 | **All 23 verified findings fixed; the run's centre of gravity was § 6's must-fail-first recipe, which was wrong for four of the (then) six invariants.** (1) CRITICAL, all three lanes: § 6 told the implementer to watch INV-3, INV-4 and INV-5 go RED against a stub, and none of them can — a `return false` stub *satisfies* INV-3's legs, INV-4 walks an empty range at `kSchemaVersion` 1, and INV-5's "exactly one assignment" is already true of today's source. § 6 is now a per-invariant table: only INV-1 and INV-6 have a genuine pre-fix RED, the rest are proved by mutation against the finished implementation (ANTS-3756 row `8-impl`'s own method), and INV-4 is recorded as having no proof available at all rather than being strengthened into one. (2) HIGH, lane 1 alone, and the finding that most changed the document: § 1 called the absent `IF NOT EXISTS` "INV-15's discriminator". It is not — verified against ANTS-3756 row `8-impl` and INV-15's own *Breaks when* clause, the discriminator is the `user_version` read inside `BEGIN IMMEDIATE`, and the absent `IF NOT EXISTS` is what makes a regression of it loud. The ROADMAP bullet carries the same misattribution and is annotated. (3) HIGH ×2: `upgradeLadder()` was specified file-scope in the `.cpp` while INV-4's test calls it from another TU — it is now a public static, which is the same argument § 2.1 already made for `applyUpgrades()`; and "refused before any statement runs" was unobservable because both INV-2 legs were single-step, so a lazy per-rung lookup passed them — § 2.1 now specifies a validate-everything pre-pass and INV-2 gains a multi-step leg (c). (4) MEDIUM: stamping lived only in prose and is now in the declaration comment; degenerate ranges (`from >= to`, `from < 1`) pinned; a time budget added against `kBusyTimeoutMs`, the deadline the climb blocks other openers against; the "every export stays importable" claim qualified (unwelding removes a *version* refusal, not a `NOT NULL` column's missing default); INV-6's grep spelling pinned to the bare token; § 7 rebuilt as two lists after it missed three of the four files this change actually edits. New **INV-7** closes § 1's consequence 2, which no invariant had covered for a failing rung. **Unverified (1):** lane 3's "no other member of this header uses `QVector`" — false, `listItems()`/`listSections()`/`listElements()` all return one, so `QVector<Upgrade>` matches the header and stays; the `QStringList` half of that finding was correct and applied. |

@@ -27729,6 +27729,33 @@ against current source before filing.
   Kind: implement.
   Source: ANTS-3781 spec § 5 (2026-08-07) — filed while scoping the store-side upgrade path..
 
+- 📋 [ANTS-3861] **test_blocker_taxonomy's ANTS_SRC_DIR fallback builds a doubled src/src/ path that can never exist.**
+  `tests/features/model_near_miss_ledger/test_blocker_taxonomy.cpp`'s
+  findSourceFile() walks up from the working directory looking for
+  `src/modelautoswitch.cpp`, then falls back to
+  `QStringLiteral(ANTS_SRC_DIR) + "/src/modelautoswitch.cpp"`.
+
+  `ANTS_SRC_DIR` is defined exactly once in the tree —
+  `ANTS_SRC_DIR="${CMAKE_SOURCE_DIR}/src"` in `target_compile_definitions(
+  test_core PRIVATE …)` — and this TU is in `test_core`'s SOURCES, so the
+  fallback composes `<root>/src/src/modelautoswitch.cpp`. That path cannot
+  exist. The other three consumers (roadmap_item_body, roadmap_migrate_verb,
+  roadmap_render) all treat it correctly as the src dir itself.
+
+  Latent rather than live: the upward walk finds the file in every normal
+  run, so the fallback never fires and the suite is green. It fires only
+  when the test runs from a working directory outside the source tree —
+  which is precisely the case the fallback was added for, so the safety net
+  has a hole exactly where it is needed.
+
+  One-line fix: drop the extra `/src` segment. Not fixed in the ANTS-3781
+  change that found it, because that change touches no test in this bundle
+  and a drive-by edit to an unrelated test file is the kind of scope creep
+  that makes a diff unreviewable.
+  **Layman:** A test has a backup way of finding a source file, and the backup builds a wrong path — so if it ever has to use it, it fails confusingly instead of working.
+  Kind: fix.
+  Source: in-session-2026-08-07 — noticed while verifying ANTS-3781 § 4's claim about test_core's compile definitions..
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
