@@ -27657,6 +27657,35 @@ against current source before filing.
   ANTS-3807's per-project-brief plan and gives a dry-run report before
   anything is written. ANTS-3855 § 5 records the dialog action as a
   permanent exclusion on that basis.
+  Measured 2026-08-07, against the live store, not reasoned: **no project has
+  been migrated yet.** `~/.local/share/ants-terminal/roadmap.sqlite` holds
+  ZERO rows in `project`, and `PRAGMA user_version` is 1 while
+  `RoadmapStore::kSchemaVersion` is 2 — its `project` table still has columns
+  `project_id, root, name, export_slug, legend` and no `source_format`. The
+  ladder climbs on open, and the running instance predates today's ANTS-3815
+  build, so the store will reach version 2 on the next relaunch. Neither fact
+  is a defect; both are the state.
+
+  Consequence for ordering. ANTS-3855 (the migration trigger verb) and
+  ANTS-3856 (fixture-row eviction) are ✅, ANTS-3781 (ladder) is ✅ and
+  ANTS-3815 (source_format column) is ✅ — so all four gates this bullet's
+  revised order put ahead of the payoff work are cleared. But the payoff items
+  themselves (ANTS-3863, ANTS-3816) currently optimise a path nothing takes,
+  and this bullet's own principle — "no item below it can be measured rather
+  than reasoned about" — applies to them until a real project is in the store.
+
+  So the next action after ANTS-3863's spec gate is to RUN the migration on
+  this project via ANTS-3855's verb, before continuing down the correctness
+  and rollout groups. It converts every remaining item from reasoned to
+  measured, and it is the first end-to-end exercise the chain has had.
+
+  Tally at this date: 15 shipped, 19 open. Shipped — ANTS-3756, 3757, 3765,
+  3766, 3758, 3761, 3782, 3793, 3796, 3808, 3809, 3855, 3856, 3781, 3815.
+  Open — payoff ANTS-3863 (spec in review) + 3816; correctness 3822, 3827,
+  3810, 3817, 3818, 3819, 3820, 3824; rollout 3807, 3772, 3771; housekeeping
+  3821, 3825, 3794, 3749, 3751; docs 3864.
+
+  User escalated this bullet to standing top priority (2026-08-07).
 
 - 📋 [ANTS-3854] **roadmap_log op:create_section silently reparents a target section's subsections.**
   Hit 2026-08-06. `op:create_section` with `after_section: <slug>` and

@@ -55,7 +55,12 @@ Three consequences, and only the first is a cost:
 `migratedProject()` has **four** callers, not three:
 `RoadmapSource::bulletsFor()`, `RemoteControl::roadmapStoreServes()`,
 `RemoteControl::roadmapWriteTarget()` (ANTS-3809, added after the bullet's
-inventory was taken) and `RoadmapDialog::storeProjectRoot()`.
+inventory was taken) and `RoadmapDialog::storeLegend()`. **The bullet names
+`RoadmapDialog::storeProjectRoot()` for that last one and it is the wrong
+function** — `storeProjectRoot()` (`src/roadmapdialog.cpp`) walks up from
+`m_roadmapPath` to the nearest `.git` and returns a string; it holds no
+dispatch. The dialog's two dispatch sites are `storeLegend()` and
+`RoadmapDialog::roadmapBullets()`.
 `grep -rn 'migratedProject(' src/ --include=*.cpp --include=*.h | grep -vE
 '^[^:]+:[0-9]+: *(//|\*)'` returns six lines: one declaration
 (`src/roadmapsource.h`), one definition (`src/roadmapsource.cpp`) and those four
@@ -186,7 +191,7 @@ to 25:
 else.** `RoadmapDialog::roadmapBullets()` is handed
 `loadRoadmapMarkdown(includeArchive)`, which concatenates the live roadmap with
 its archives — not a single file, and not what the dispatch classifies. The
-dialog's own dispatch (`storeProjectRoot()`) already passes
+dialog's own dispatch (`storeLegend()`) already passes
 `loadRoadmapMarkdown(/*includeArchive=*/false)`, i.e. the live file alone, so it
 becomes `fromFile(m_roadmapPath)` and the concatenating call stays `fromMemory`.
 
