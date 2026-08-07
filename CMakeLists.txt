@@ -2479,6 +2479,11 @@ if(ANTS_TESTS)
                 # parse the file that lands) because that file IS what the
                 # markdown backend is handed after cutover.
                 tests/features/roadmap_read_seam/test_roadmap_read_seam.cpp
+                # ANTS-3856 — the harness cannot open the live roadmap store.
+                # Behavioural against the real defaultPath() (it refuses, so
+                # nothing is written); INV-5 scrapes the bundle mains, which is
+                # the only reach this bundle has into the GUI bundles' arming.
+                tests/features/roadmap_store_sandbox/test_roadmap_store_sandbox.cpp
                 # ANTS-3855 — the roadmap_migrate verb: the one production entry
                 # point into the migration engine. Behavioural against a real
                 # store in a QTemporaryDir, never RoadmapStore::defaultPath();
@@ -2501,6 +2506,10 @@ if(ANTS_TESTS)
         ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden"
         # ANTS-3758 INV-11 — the source tree the refit scrape walks.
         ANTS_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
+        # ANTS-3856 INV-5 — the bundle mains, scraped for the sandbox arming.
+        # A directory and not two file paths: a third bundle main must be
+        # covered by being written, not by being remembered here.
+        ANTS_TESTS_DIR="${CMAKE_SOURCE_DIR}/tests"
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h"
         SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
