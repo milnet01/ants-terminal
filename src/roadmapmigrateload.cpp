@@ -190,6 +190,21 @@ bool Loader::run() {
     // refusing rather than reading past the end has to be in the code that runs.
     if (plan.sources.isEmpty())
         return fail(QStringLiteral("migration plan has no sources"));
+    // An EMPTY format is refused here and not by the column, whose CHECK admits
+    // '' on purpose: '' is what a version-1 row takes when the rung runs, and it
+    // means "not recorded". A MIGRATION that recorded it would manufacture a row
+    // indistinguishable from a pre-bump one, which § 2.4 dispatches as version 1
+    // — so INV-6's drift refusal would be permanently unreachable for that
+    // project, silently and with no error anywhere.
+    //
+    // findRoadmaps() cannot produce it (detectRoadmapFormat() answers a dialect
+    // on every path, "ants-v1" even for empty input), but load() takes any
+    // caller-built MigrationPlan and cannot tell which producer built it — the
+    // same reasoning ANTS-3782 § 2.7 applies to a store this half did not write.
+    if (plan.sources.at(0).format.isEmpty())
+        return fail(QStringLiteral(
+            "migration plan's live source carries no format; '' means \"not "
+            "recorded\" and a migration may not record it"));
     if (!store.setProjectSourceFormat(projectId, plan.sources.at(0).format, &err))
         return fail(err);
 

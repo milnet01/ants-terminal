@@ -881,6 +881,31 @@ TEST(roadmap_migrate_load, Ants3815Inv7SourceFormatWriteRefusals) {
     EXPECT_EQ(f.scalar(QStringLiteral(
                   "SELECT COUNT(*) FROM item WHERE id = 'B-1'")).toStdString(),
               std::string("0"));
+
+    // (4) A plan whose LIVE source carries an empty format. § 2.1's CHECK admits
+    // '' on purpose — it is what a version-1 row takes when the rung runs — so
+    // nothing below Loader::run() would stop this, and it is the one input that
+    // manufactures a freshly-migrated row indistinguishable from a pre-bump one.
+    // § 2.4 then dispatches that project as version 1 forever, leaving INV-6's
+    // drift refusal unreachable for it with no error anywhere.
+    //
+    // findRoadmaps() cannot produce this; a caller-built plan can, and load()
+    // cannot tell the two apart. That is precisely why the guard is in the
+    // loader and not left to the column.
+    MigrationPlan blank = planOf({item(QStringLiteral("C-1"), QStringLiteral("three"),
+                                       QStringLiteral("s"), 0)});
+    blank.sources[0].format = QString::fromUtf8("");
+    const auto blankOut = RoadmapMigrateLoad::load(f.store, blank, f.opts());
+    EXPECT_FALSE(blankOut.ok)
+        << "a migration may not record '' — it means \"not recorded\"";
+    EXPECT_FALSE(blankOut.error.isEmpty()) << "a refusal must carry its reason";
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                  "SELECT COUNT(*) FROM item WHERE id = 'C-1'")).toStdString(),
+              std::string("0"));
+    // The seeded project's recorded format is untouched by the refused load.
+    const auto seededRow = f.store.readProject(seeded.projectId, &err);
+    ASSERT_TRUE(seededRow.has_value()) << err.toStdString();
+    EXPECT_EQ(seededRow->sourceFormat.toStdString(), std::string("ants-v1"));
 }
 
 // -------------------------------------------------------- ANTS-3796 INV-4 --

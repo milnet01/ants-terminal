@@ -28009,6 +28009,29 @@ Verified 2026-08-07: `RoadmapSource::bulletsFor()` takes `markdown` by value
   Kind: refactor.
   Source: ANTS-3815 spec § 5 (2026-08-07) — user scope decision: ANTS-3815 is the column only..
 
+- 📋 [ANTS-3864] **Give `specs.md` § 5.6 a status for a spec that is built but not yet released.**
+  `docs/standards/specs.md` § 5.6 fixes the lifecycle as `spec draft` →
+  `accepted` (design signed off, ready to implement) → `shipped X.Y.Z`.
+  There is no state for the gap both ends of which are real: the code is
+  written, merged and green, but the release carrying it has not been cut,
+  so `shipped X.Y.Z` has no version to name and `accepted` understates by
+  a whole implementation.
+
+  Two specs already improvise past it. ANTS-3781 uses `implemented
+  (DATE)`, which is outside the vocabulary; ANTS-3815 first copied that
+  and now reads `accepted (DATE) — built and green; becomes shipped X.Y.Z
+  at the release that carries it`, which conforms but is a sentence where
+  a state should be.
+
+  Both ANTS-3815 cold-eyes lanes flagged the status line independently,
+  which is the signal: the vocabulary is missing a value its own corpus
+  needs. Either add one (`implemented (DATE)`, then `shipped X.Y.Z` at
+  release) or state in § 5.6 that `accepted` covers built-but-unreleased
+  and that the prose carries the detail.
+  **Layman:** Our spec documents have no way to say "this is finished and working, but hasn't gone out in a release yet" — so they end up saying something slightly wrong.
+  Kind: doc.
+  Source: in-session-2026-08-07 — ANTS-3815 cold-eyes loop 5, both lanes independently.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

@@ -429,10 +429,15 @@ bool RoadmapStore::createSchema(QString *error) {
     //      afford at version 1. Such a comment would exist in a DDL-built store
     //      and not in a climbed one, and the two could never compare equal under
     //      any normalisation.
-    //   2. The CREATE TABLE text of a table that already shipped can NEVER
-    //      change again — not even its comments. A climbed store replays the
-    //      frozen text of the version that created it, so editing a word here
-    //      forks the two stores permanently for no schema benefit.
+    //   2. No EXISTING character of a shipped CREATE TABLE may change — comments
+    //      included. The ONLY permitted edit is appending a new column
+    //      definition last, which is exactly what a rung reproduces and
+    //      therefore the one edit the two stores can agree on. Stated that way
+    //      round deliberately: read as a blanket "this text can never change",
+    //      the rule would forbid the very append a bump is here to make. A
+    //      climbed store replays the frozen text of the version that created it,
+    //      so editing a word *inside* one forks the two stores permanently for
+    //      no schema benefit.
     //
     // Rule 2 has one live consequence. `section.source_path`'s comment below says
     // a later column is "an ALTER in a rung RATHER THAN an edit here". That is

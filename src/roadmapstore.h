@@ -512,8 +512,12 @@ public:
         // re-serialised it would put a round-trip through the middle of INV-1.
         QString legendText;
         // ANTS-3793 § 2.2 — the canonical root INV-8 keys the project on. No
-        // consumer of readProjectByRoot() reads it back (that reader returns
-        // only the id), so this field is justified by the TEST: ANTS-3793's
+        // consumer of readProjectByRoot() reads THIS FIELD back, so it is
+        // justified by the TEST. (The reader returns the whole ProjectRow and
+        // always has; ANTS-3815's gate reads `sourceFormat` off exactly that
+        // return, so the old parenthetical here — "that reader returns only the
+        // id" — described migratedProject()'s use, not the signature, and read
+        // as a claim about the signature it was false.) ANTS-3793's
         // Inv1DispatchMarker asserts that a symlinked or non-normalised path
         // resolves to the same row as its canonical form, and it cannot make
         // that assertion against a struct that does not carry the value being
