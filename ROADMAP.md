@@ -24960,6 +24960,31 @@ against current source before filing.
   before the first schema change that lands AFTER ANTS-3758's cutover
   makes the store reachable, and ANTS-3756 section 2.3 has been
   corrected to name this item rather than ANTS-3757 as the owner.
+  Spec accepted (2026-08-07): docs/specs/ANTS-3781-roadmap-store-schema-upgrade.md.
+  Three cold-eyes loops, 3 lanes each; 76 verified findings fixed, 3
+  dismissed; converged by cap with no deferred tail.
+
+  CORRECTION to this bullet's own text. It says the missing "IF NOT
+  EXISTS" is "the discriminator for INV-15". It is not. ANTS-3756 INV-15's
+  discriminator is the user_version read inside BEGIN IMMEDIATE; INV-15's
+  own Breaks-when clause names gating on IF NOT EXISTS as the FAILURE
+  ("succeeds for both and reports nothing"). The absent IF NOT EXISTS is
+  what makes a regression of that mechanism loud. The consequence for this
+  item is unchanged — an older store still dies on "table already exists"
+  — but the reasoning above is wrong and the spec's § 1 carries the
+  corrected version.
+
+  Scope grew by one thing the bullet did not anticipate: ANTS-3796 § 2.4
+  had parked "separating the export's schema number from the store's
+  user_version" here, and the spec takes it. The two become
+  RoadmapStore::kSchemaVersion (tables) and
+  RoadmapExport::kExportSchemaVersion (JSONL records), so a table-only
+  bump no longer invalidates every export on disk — which is most of
+  ANTS-3860's mitigation.
+
+  Filed while specced: ANTS-3860 (export-side upgrade path, the half this
+  does not take) and ANTS-3861 (unrelated doubled src/src/ path in a test
+  fallback, found while verifying a build claim).
 
 - ✅ [ANTS-3782] **Roadmap section provenance — the source_path column, its reader, and what the render re-splits on.**
   Split out of ANTS-3766 on 2026-08-01 at that spec's cold-eyes loop 4,
@@ -26526,6 +26551,30 @@ against current source before filing.
   3. The payoff is unobservable until ANTS-3855 (nothing can run the
   migration). On an unmigrated project migratedProject() returns nullopt
   at the readProjectByRoot() miss and the format gate never runs at all.
+  Correction (2026-08-07), same error as ANTS-3781's bullet carried. This
+  bullet's point 2 says the DDL is "written WITHOUT `IF NOT EXISTS`
+  (ANTS-3756 INV-15's discriminator)". The discriminator is the
+  user_version read inside BEGIN IMMEDIATE, not the absent IF NOT EXISTS —
+  INV-15's Breaks-when clause names gating on IF NOT EXISTS as the failure
+  mode. The blocking relationship is unaffected: a version-1 store meeting
+  a version-2 build still falls through to that DDL and still fails on
+  "table already exists".
+
+  Unblocked as of ANTS-3781's accepted spec
+  (docs/specs/ANTS-3781-roadmap-store-schema-upgrade.md). Three things
+  that spec hands this item, so they are not rediscovered here:
+
+  1. The ladder exists but has no rungs. This item adds the first, and
+     INV-4 turns "remember to add a rung when you bump" into a red test.
+  2. INV-8 is unrunnable until this item bumps kSchemaVersion, and then
+     becomes runnable: a DDL-built store and a climbed store must have
+     identical sqlite_master. Write the rung from the diff the CREATE
+     TABLE edit actually made, not from the shape intended.
+  3. This item owns retiring the EXPECT_EQ(kSchemaVersion, 1) leg of
+     Inv27SchemaVersionStillOne, and regenerating the three export
+     goldens. Note the goldens now track kExportSchemaVersion, which this
+     bump does NOT move — so if the format column is not carried in the
+     export record, the goldens may not need regenerating at all.
 
 - 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —

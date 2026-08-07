@@ -1,6 +1,6 @@
 # ANTS-3781 — Give `RoadmapStore` a schema-upgrade path
 
-**Status:** spec draft (2026-08-07).
+**Status:** accepted (2026-08-07) — three cold-eyes loops, converged by cap.
 **Kind:** fix.
 **Source:** ROADMAP.md ANTS-3781 (in-session-2026-08-01; the gap
 [ANTS-3756](ANTS-3756-roadmap-store-schema.md)'s own Status line names as
