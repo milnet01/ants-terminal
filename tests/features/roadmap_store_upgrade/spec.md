@@ -13,10 +13,12 @@ only rebuild path is the export.
 
 `applyUpgrades()` is the missing arm's engine. A **rung** is one version step
 and the statements that reach it; the **ladder** is the rungs. The production
-ladder is empty at `kSchemaVersion` 1 — there is no version below it to climb
+ladder was empty at `kSchemaVersion` 1 — there was no version below it to climb
 from — which is why the function takes its ladder as an argument: a ladder
-reachable only from production is a ladder nothing can exercise until the first
-bump (ANTS-3815).
+reachable only from production was one nothing could exercise until the first
+bump. **ANTS-3815 made that bump** (`kSchemaVersion` 2, `project.source_format`)
+and supplied the first rung; the argument still earns its keep, because INV-1's
+test climbs past `kSchemaVersion` with a ladder of its own.
 
 ## What each test holds
 
@@ -28,7 +30,7 @@ bump (ANTS-3815).
 | `Inv2LaterMissingRungStopsTheEarlierOne` | INV-2 leg (c), **the leg that earns the invariant** — 1 → 3 with rung 2 present and rung 3 absent, asserting rung 2's effect is *not* present. Legs (a) and (b) are single-step, so a lazy per-rung lookup that validates as it goes passes both while breaking the "before any statement runs" clause. |
 | `Inv3RungFailureLeavesNothingBehind` | INV-3 leg (a) — inside the caller's `BEGIN IMMEDIATE`, a two-statement rung whose second statement is invalid SQL; after the caller's `ROLLBACK` the first statement's effect is gone and the version is unmoved. |
 | `Inv3bNoTransactionControlInApplyUpgrades` | INV-3 leg (b) — source scrape: no `BEGIN` / `COMMIT` / `ROLLBACK` / `SAVEPOINT` in `applyUpgrades()`'s executable statements. Not redundant with leg (a): leg (a) runs with a transaction already open, which is precisely when a stray `BEGIN` fails harmlessly and invisibly. |
-| `Inv4ProductionLadderIsComplete` | INV-4 — every version in `[1, kSchemaVersion)` has exactly one rung landing one above it, and no rung's `to` falls outside `[2, kSchemaVersion]`. **Green and vacuous at `kSchemaVersion` 1 by construction — a standing guard, not a red-first test.** It fires on the first bump, which is the only moment it can. |
+| `Inv4ProductionLadderIsComplete` | INV-4 — every version in `[1, kSchemaVersion)` has exactly one rung landing one above it, and no rung's `to` falls outside `[2, kSchemaVersion]`. Was green and vacuous at `kSchemaVersion` 1 by construction; **ANTS-3815's bump made its loop range non-empty**, which is what it was written for, and it now checks a real rung with no edit of its own. |
 | `Inv5CreatedSchemaStaysOnTheCreationPath` | INV-5 — `m_createdSchema` is assigned in exactly one place **and that place is on the creation path**. Both legs, because a count alone is green against the regression the invariant names: *moving* the single assignment onto the upgrade arm leaves the count at one. |
 | `Inv6ExportNeverNamesTheStoresConstant` | INV-6 — zero occurrences of the store's table-version constant in either export source file, **comments included**. |
 | `Inv7FromBelowOneRefusesLegibly`, `Inv7FailedStampRefusesLegibly` | INV-7's two refusals that no other test reaches. The other four are asserted in place, by the INV-2 and INV-3 tests. |

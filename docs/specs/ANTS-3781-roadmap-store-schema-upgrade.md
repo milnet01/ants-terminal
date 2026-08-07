@@ -189,6 +189,8 @@ of one change, written in different languages, and nothing but care keeps them
 equal — which is why INV-8 exists and why it compares the two resulting stores
 rather than trusting either. Write the rung **from the diff the DDL edit made**,
 not from the shape you intended; the two differ exactly when it matters.
+[ANTS-3815](ANTS-3815-store-source-format-column.md) is the first discharge of
+this obligation — its § 2.2 carries the rung and its § 2.1 the DDL edit.
 
 A rung is SQL and nothing else. A future change needing C++ in a rung (reading
 rows out and rewriting them) widens `Upgrade` then, by whoever needs it;
@@ -428,10 +430,17 @@ by manufacturing a field to keep it true.
   SQL error plus the first 120 characters of the statement — naming neither
   version, which is exactly the illegibility § 1 complains of, reproduced one
   layer up.
-- **INV-8** — **A store built by the DDL and a store climbed to the same
+- **INV-8** *(amended by [ANTS-3815](ANTS-3815-store-source-format-column.md) —
+  the normalisation rule, which was measurably too weak as first written)* —
+  **A store built by the DDL and a store climbed to the same
   version have the same shape.** For any version `v`, creating a store fresh at
   `v` and creating one at `v - 1` then climbing it must yield identical
-  `sqlite_master` contents (normalised for whitespace). This is what actually
+  `sqlite_master` contents, normalised by
+  [ANTS-3815 § 2.5](ANTS-3815-store-source-format-column.md#25-comparing-a-climbed-store-with-a-ddl-built-one)'s
+  rule and no weaker one — SQLite does not re-render a table's stored SQL after
+  an `ALTER`, so collapsing whitespace runs alone leaves the two unequal. The
+  rule lives there and is not copied here; two homes for one rule is how they
+  come to differ. This is what actually
   closes § 1's consequence 3: INV-4 checks that a rung *exists*, and a bump
   author who edits the `CREATE TABLE` text and writes a rung that disagrees
   passes INV-4 while producing two different databases both labelled `v` —

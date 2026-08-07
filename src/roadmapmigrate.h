@@ -165,6 +165,12 @@ struct MigrationPlan {
     // ANTS-3766 § 2.1 — REPLACES `QString sourcePath` AND `QString format`.
     // Ordered and index-stable within a run: a carrier's `sourceIndex` is only
     // meaningful against the plan that produced it.
+    //
+    // Element 0 is always the live roadmap — planFrom() preserves Discovery's
+    // order, on which the same guarantee is stated. Recorded HERE too because it
+    // is the sole precondition ANTS-3815 INV-2 rests on: the store's
+    // project.source_format is index 0's format, and "the live roadmap's
+    // dialect" follows from reading index 0 only if this holds.
     QVector<Source>         sources;
     QVector<PlannedSection> sections;
     QVector<PlannedItem>    items;

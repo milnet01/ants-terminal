@@ -184,6 +184,15 @@ bool Loader::run() {
     projectId = *pid;
     out.projectId = projectId;
 
+    // ANTS-3815 § 2.4 — record the LIVE roadmap's dialect. The guard is here and
+    // not stated in prose because QVector::at() is unchecked in a release build
+    // (it asserts under QT_DEBUG and is undefined otherwise), so a rule about
+    // refusing rather than reading past the end has to be in the code that runs.
+    if (plan.sources.isEmpty())
+        return fail(QStringLiteral("migration plan has no sources"));
+    if (!store.setProjectSourceFormat(projectId, plan.sources.at(0).format, &err))
+        return fail(err);
+
     if (!resolveSections() || !matchItems() || !updateMatched() ||
         !rebuildElements() || !writeTail())
         return false;

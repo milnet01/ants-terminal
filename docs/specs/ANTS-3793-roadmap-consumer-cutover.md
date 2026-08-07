@@ -474,8 +474,11 @@ Seven rules follow, and each exists because the obvious reading is wrong:
   `detectRoadmapFormat(lines, &sawSignal)` must return `"ants-v1"` **and** set
   `sawSignal`, because that function answers `ants-v1` for input it does not
   recognise and `sawSignal` is what separates the two. It is read off the live
-  file because no store column records a source format — `format` lives on
-  `RoadmapMigrate::Source` and nowhere in `roadmapstore.h`.
+  file; since
+  [ANTS-3815](ANTS-3815-store-source-format-column.md) the store *also* records
+  the dialect the migration read (`project.source_format`), and that item's
+  § 2.4 is where the two witnesses are compared. Removing the file read
+  altogether is ANTS-3863's.
 - **On a project that HAS a store row, an UNRECOGNISABLE roadmap is an error,
   not a fallback — which is a different case from a recognisably foreign
   dialect.** `detectRoadmapFormat()` returns `"ants-v1"` with
@@ -491,6 +494,14 @@ Seven rules follow, and each exists because the obvious reading is wrong:
   | yes | `"github-task-list"` / `"pass-headings"` (`sawSignal` set) | **markdown**, `nullopt`, no error — legitimately markdown-served (rule above) |
   | yes | any dialect, `sawSignal` **false** | **refuse** — `ReadError::SourceUnrecognised`, never markdown. Not `StoreFailed`: the store is fine and the *file* is not, and the two send the user to different places |
   | no | — | **markdown**, `nullopt`, no error |
+
+  **[ANTS-3815 § 2.4](ANTS-3815-store-source-format-column.md#24-the-migration-writes-it-the-gate-consults-it)
+  refines the first three rows for a project whose `source_format` is set**: the
+  stored dialect becomes a second witness, and one that disagrees with the live
+  file is refused (`SourceUnrecognised`) where this table alone would serve it
+  markdown. A row still at `''` — every project migrated before that bump —
+  takes this table unchanged. The fourth row, "no store row", never reaches the
+  format check and is untouched.
 
   **The detector reads at most the first 300 non-blank lines**
   (`if (++seen >= 300) break;`), which is safe here for a reason worth stating

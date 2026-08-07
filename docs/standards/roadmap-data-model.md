@@ -279,6 +279,16 @@ something happened and nothing about what. Specs do not substitute — this
 project holds a couple of hundred spec documents against nearly two thousand
 items, so for the large majority the item is the only technical record.
 
+### 4.1.1 Project fields
+
+Almost everything above is per *item*. One field is per **project** and worth
+naming here because a reader looking for it would otherwise only find it in the
+schema:
+
+| Field | Obligation | Notes |
+|---|---|---|
+| `source_format` | write (migration-populated) | ANTS-3815. Which roadmap dialect the migration read this project's **live** roadmap in — one of `roadmap-format.md`'s three (`ants-v1`, `github-task-list`, `pass-headings`). Per project and not per source file: an archive is parsed under its own grammar, but this records index 0 only, because the live file is the one a consumer's dispatch asks about. **`''` means "not recorded" and is not a format** — it is what a project migrated before the column existed carries, and such a project is served exactly as it was before rather than treated as an error. A project whose live file later changes dialect behind the store's back is **refused**, not silently re-classified; re-running the migration is the route back. |
+
 ### 4.2 Dates have a known limitation
 
 `created`, `last_modified` and `shipped` backfilled from git history are marked

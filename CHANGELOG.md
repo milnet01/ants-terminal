@@ -14,6 +14,20 @@ for security-relevant changes.
 
 ### Added
 
+- **The roadmap store records which roadmap dialect each project was migrated from, and reports it when the file later disagrees** (ANTS-3815)
+  The database now remembers whether a project's roadmap was written in
+  Ants' own format, a GitHub task list, or pass headings, instead of
+  working it out from the file every time. If the file is later rewritten
+  in a different dialect behind the database's back, Ants says so plainly
+  and points you at re-running the migration, rather than quietly guessing
+  which of the two to believe. Projects migrated before this release
+  carry no recorded dialect and behave exactly as they did.
+
+  This is also the store's first schema-version bump (1 → 2), so an
+  existing store is upgraded in place on first open, keeping all its data.
+  An older Ants will refuse to open a store this version has upgraded —
+  relaunch the newer one.
+
 - **`roadmap_migrate` — the MCP verb that loads a project into the roadmap store** (ANTS-3855)
   The migration engine has been complete and unreachable since ANTS-3756:
   schema, read half, load half, archives, render, export, section

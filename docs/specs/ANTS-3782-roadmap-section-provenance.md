@@ -369,7 +369,12 @@ id that means one thing everywhere it appears.
   cannot distinguish a stored value from a default, which is the ANTS-3767 failure one column along: `item`'s `lanes`, `evidence`
   and `extras` each had a column and no way to write it, so every call reported
   success while the columns held their DDL defaults.
-- **INV-27** — this change does not move the schema version: a store created
+- **INV-27** *(amended by [ANTS-3815](ANTS-3815-store-source-format-column.md) —
+  the bump this clause's *Breaks when* predicted has now happened, deliberately
+  and with its rung, so the version-1 claim is historical and the test's
+  `EXPECT_EQ(kSchemaVersion, 1)` leg is retired; the `PRAGMA user_version ==
+  kSchemaVersion` leg stands)* — this change does not move the schema version:
+  a store created
   by this build reports `PRAGMA user_version` = 1, and the three export goldens
   still import.
   *Test:* `tests/features/roadmap_store_schema/` asserts the pragma;

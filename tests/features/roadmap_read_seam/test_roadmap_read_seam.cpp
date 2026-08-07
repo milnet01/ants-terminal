@@ -288,6 +288,184 @@ TEST(RoadmapReadSeam, Inv1DispatchMarker) {
     }
 }
 
+// ------------------------------------------------------- ANTS-3815 INV-5 ----
+// A project whose source_format is '' dispatches EXACTLY as it did at version 1:
+// ANTS-3793 § 2.2's table decides on the live file's format alone, and no new
+// refusal is reachable.
+//
+// The stored value is forced back to '' after migration, because the migration
+// now writes one — '' is what a project migrated BEFORE the column existed
+// carries, and that population is exactly the one this invariant protects.
+TEST(RoadmapReadSeam, Ants3815Inv5UnrecordedFormatDispatchesAsBefore) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
+                           RoadmapStore::Access::Bulk);
+    ASSERT_NE(store, nullptr);
+    QString err;
+
+    // (a) an ants-v1 project → the store backend.
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    const QByteArray live =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An open item.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n";
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), live));
+    const QString markdown = readAll(root + QStringLiteral("/ROADMAP.md"));
+
+    qint64 projectId = 0;
+    ASSERT_TRUE(migrateInto(*store, root, &projectId));
+    ASSERT_TRUE(store->setProjectSourceFormat(projectId, QString::fromUtf8(""), &err))
+        << err.toStdString();
+
+    {
+        ReadError why = ReadError::TooLarge;
+        err.clear();
+        const auto served = RoadmapSource::migratedProject(*store, root, markdown,
+                                                           &err, &why);
+        ASSERT_TRUE(served.has_value()) << err.toStdString();
+        EXPECT_EQ(*served, projectId);
+        EXPECT_EQ(why, ReadError::None);
+    }
+
+    // (b) the sawSignal == false refusal still fires, and still as
+    // SourceUnrecognised rather than as the new disagreement message.
+    {
+        ReadError why = ReadError::None;
+        err.clear();
+        const auto refused = RoadmapSource::migratedProject(*store, root, QString(),
+                                                            &err, &why);
+        EXPECT_FALSE(refused.has_value());
+        EXPECT_EQ(why, ReadError::SourceUnrecognised);
+        EXPECT_TRUE(err.contains(QStringLiteral("unrecognisable")))
+            << "an unrecorded format must not produce the drift message: "
+            << err.toStdString();
+    }
+
+    // (c) a pass-headings project is still markdown-served, not refused. This is
+    // the case the invariant exists for: '' matches no dialect a file can
+    // produce, so treating the stored value as authoritative before it is known
+    // to be SET turns every pre-bump project into a refusal.
+    {
+        const QString passRoot = dir.filePath(QStringLiteral("passproj"));
+        const QByteArray passHeadings =
+            "# Pass Roadmap\n"
+            "\n"
+            "#### Pass 1.1 First pass\n"
+            "- **Status**: done\n"
+            "  Some prose.\n"
+            "\n"
+            "#### Pass 1.2 Second pass\n"
+            "- **Status**: planned\n"
+            "  More prose.\n";
+        ASSERT_TRUE(writeFile(passRoot + QStringLiteral("/ROADMAP.md"), passHeadings));
+        const QString passMarkdown = readAll(passRoot + QStringLiteral("/ROADMAP.md"));
+
+        qint64 passId = 0;
+        ASSERT_TRUE(migrateInto(*store, passRoot, &passId, QStringLiteral("passdemo")));
+        ASSERT_TRUE(store->setProjectSourceFormat(passId, QString::fromUtf8(""), &err))
+            << err.toStdString();
+
+        ReadError why = ReadError::TooLarge;
+        err.clear();
+        const auto served = RoadmapSource::migratedProject(*store, passRoot,
+                                                           passMarkdown, &err, &why);
+        EXPECT_FALSE(served.has_value()) << "a foreign dialect is markdown-served";
+        EXPECT_EQ(why, ReadError::None) << "recognisably foreign is not a refusal";
+        EXPECT_TRUE(err.isEmpty()) << err.toStdString();
+    }
+}
+
+// ------------------------------------------------------- ANTS-3815 INV-6 ----
+// A SET source_format that disagrees with the live file's detected format
+// refuses, and serves NEITHER backend.
+//
+// This is the outcome one witness could not reach. ANTS-3793 already refused "a
+// file that no longer looks like what the store says it is", but at version 1
+// the only disagreement a lone witness could have with itself was an
+// UNRECOGNISABLE file; a roadmap rewritten from ants-v1 into valid GFM is the
+// same class of drift and took the markdown branch silently.
+TEST(RoadmapReadSeam, Ants3815Inv6StoredFormatDisagreeingWithTheFileRefuses) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
+                           RoadmapStore::Access::Bulk);
+    ASSERT_NE(store, nullptr);
+    QString err;
+
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    const QByteArray live =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An open item.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n";
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), live));
+
+    qint64 projectId = 0;
+    ASSERT_TRUE(migrateInto(*store, root, &projectId));
+
+    // The migration recorded the dialect it read — the precondition this case
+    // rests on, asserted rather than assumed.
+    {
+        const auto row = store->readProject(projectId, &err);
+        ASSERT_TRUE(row.has_value()) << err.toStdString();
+        ASSERT_EQ(row->sourceFormat.toStdString(), std::string("ants-v1"));
+    }
+
+    // The roadmap is rewritten into a valid GFM task list — recognisable, so
+    // sawSignal is set and the version-1 gate would have served it markdown.
+    const QByteArray gfm =
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- [ ] An open item\n"
+        "- [x] A closed one\n";
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), gfm));
+    const QString rewritten = readAll(root + QStringLiteral("/ROADMAP.md"));
+    {
+        bool sawSignal = false;
+        ASSERT_EQ(RoadmapParse::detectRoadmapFormat(rewritten.split('\n'), &sawSignal),
+                  QStringLiteral("github-task-list"));
+        ASSERT_TRUE(sawSignal) << "the fixture must be RECOGNISABLY foreign, or this "
+                                  "case collapses into the sawSignal refusal";
+    }
+
+    ReadError why = ReadError::None;
+    err.clear();
+    const auto served = RoadmapSource::migratedProject(*store, root, rewritten,
+                                                       &err, &why);
+    EXPECT_FALSE(served.has_value())
+        << "INV-6: breaks when the disagreement falls through to the markdown "
+           "backend — ANTS-3793 INV-1's silent fallback arriving through the one "
+           "door that spec could not close with a single witness";
+    EXPECT_EQ(why, ReadError::SourceUnrecognised);
+    ASSERT_FALSE(err.isEmpty()) << "a refusal must carry its reason";
+    EXPECT_TRUE(err.contains(QStringLiteral("ants-v1")) &&
+                err.contains(QStringLiteral("github-task-list")))
+        << "the message must name BOTH formats — SourceUnrecognised now carries "
+           "two causes with different remedies: " << err.toStdString();
+
+    // And no records come back through the seam either.
+    why = ReadError::None;
+    err.clear();
+    const auto records = RoadmapSource::bulletsFor(*store, root, rewritten,
+                                                   /*includeArchive=*/false, &why, &err);
+    EXPECT_FALSE(records.has_value()) << "neither backend may serve a drifted project";
+    EXPECT_EQ(why, ReadError::SourceUnrecognised);
+}
+
 // ---------------------------------------------------------------- INV-2 -----
 
 TEST(RoadmapReadSeam, Inv2BackendsAgree) {

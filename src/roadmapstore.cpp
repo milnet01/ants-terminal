@@ -232,14 +232,25 @@ bool RoadmapStore::open(QString *error) {
     return true;
 }
 
-// ANTS-3781 § 2.1 — the production ladder. Empty at kSchemaVersion 1: there is
-// no version below it to climb from. The first rung lands with the first bump
-// (ANTS-3815), and INV-4 is what makes a bump without one a red test rather
-// than a thing to remember.
+// ANTS-3781 § 2.1 — the production ladder. INV-4 is what makes a bump without a
+// rung a red test rather than a thing to remember.
 //
 // A function-local static, so it is built once on first call.
 const QVector<RoadmapStore::Upgrade> &RoadmapStore::upgradeLadder() {
-    static const QVector<Upgrade> ladder;
+    static const QVector<Upgrade> ladder = {
+        // ANTS-3815 § 2.2 — the first rung. Written FROM the diff createSchema()'s
+        // DDL took, not from the shape intended (ANTS-3781 § 2.1's obligation on
+        // whoever bumps); ANTS-3815 INV-3 is what proves the two agree.
+        //
+        // DEFAULT '' is load-bearing, not decoration: SQLite refuses
+        // `ADD COLUMN … NOT NULL` with no default on a table that HAS ROWS and
+        // accepts it on an empty one (measured, 3.53.2). A defaultless rung
+        // would therefore pass against every empty test store and fail against
+        // every real one — the worst available shape for a migration.
+        Upgrade{2, {QStringLiteral(
+            "ALTER TABLE project ADD COLUMN source_format TEXT NOT NULL DEFAULT '' "
+            "CHECK (source_format IN ('', 'ants-v1', 'github-task-list', 'pass-headings'))")}},
+    };
     return ladder;
 }
 
@@ -395,6 +406,41 @@ bool RoadmapStore::createSchema(QString *error) {
         return exec(m_db, QStringLiteral("COMMIT"), error);
     }
 
+    // ANTS-3815 § 2.1 — `project.source_format` records which roadmap dialect the
+    // migration read this project's LIVE roadmap (source index 0) in. '' means
+    // "not recorded" and is not a format: it is what a version-1 row takes when
+    // the rung runs, because a rung is SQL and cannot open a roadmap to classify
+    // it. § 2.4 makes that the "behave exactly as version 1 did" path.
+    //
+    // APPENDED LAST in the CREATE TABLE, and that is a rule rather than a layout
+    // preference: ALTER TABLE ADD COLUMN can only append, so the climbed store's
+    // column order is fixed for it and a DDL grouping this beside `root` would
+    // build a different table. INV-3 is what reds it. Every future column
+    // inherits the constraint.
+    //
+    // THE TEXT BELOW IS PART OF THE SCHEMA. SQLite stores a CREATE TABLE
+    // verbatim, comments included, and an ALTER splices in only the column
+    // definition it is handed. So two rules follow, both discovered by INV-3
+    // reddening on the first run of this bump, which is exactly the disagreement
+    // it exists to find:
+    //
+    //   1. A new column's rationale goes HERE, above the array — not as a `--`
+    //      comment beside it, the way `section.source_path` below could still
+    //      afford at version 1. Such a comment would exist in a DDL-built store
+    //      and not in a climbed one, and the two could never compare equal under
+    //      any normalisation.
+    //   2. The CREATE TABLE text of a table that already shipped can NEVER
+    //      change again — not even its comments. A climbed store replays the
+    //      frozen text of the version that created it, so editing a word here
+    //      forks the two stores permanently for no schema benefit.
+    //
+    // Rule 2 has one live consequence. `section.source_path`'s comment below says
+    // a later column is "an ALTER in a rung RATHER THAN an edit here". That is
+    // wrong — ANTS-3781 § 2.1 requires a bump to be BOTH, as two expressions of
+    // one change, and ANTS-3815 is the first to make them. ANTS-3815 § 8
+    // scheduled that sentence for correction in place; it cannot be corrected in
+    // place, because it lives inside SQL that shipped at version 1. This
+    // paragraph is the correction.
     const QString ddl[] = {
         QStringLiteral(R"(CREATE TABLE project (
   project_id   INTEGER PRIMARY KEY,
@@ -403,7 +449,9 @@ bool RoadmapStore::createSchema(QString *error) {
   export_slug  TEXT NOT NULL UNIQUE
                  CHECK (export_slug GLOB '[a-z0-9]*'
                     AND export_slug NOT GLOB '*[^a-z0-9-]*'),
-  legend       TEXT NOT NULL DEFAULT '{}'
+  legend       TEXT NOT NULL DEFAULT '{}',
+  source_format TEXT NOT NULL DEFAULT ''
+                 CHECK (source_format IN ('', 'ants-v1', 'github-task-list', 'pass-headings'))
 ))"),
         QStringLiteral(R"(CREATE TABLE id_prefix (
   project_id   INTEGER NOT NULL REFERENCES project(project_id),
@@ -1310,6 +1358,32 @@ bool RoadmapStore::setLegend(qint64 projectId, const QJsonObject &legend,
     return true;
 }
 
+// ANTS-3815 § 2.4 / INV-7. Two refusals, and the first is why this does not
+// simply return exec()'s result: an UPDATE matching no row SUCCEEDS in SQLite,
+// so a bare exec() reports having written a project that does not exist. That is
+// the ANTS-3767 failure mode one column along — a column with a writer that
+// always claims to have written. The second refusal is the DDL's CHECK, which
+// SQLite raises for a format outside § 2.1's set.
+bool RoadmapStore::setProjectSourceFormat(qint64 projectId, const QString &format,
+                                          QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE project SET source_format = ? WHERE project_id = ?"));
+    q.addBindValue(format);
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    if (q.numRowsAffected() != 1) {
+        if (error)
+            *error = QStringLiteral("no project row %1 to record a source format on")
+                         .arg(projectId);
+        return false;
+    }
+    return true;
+}
+
 bool RoadmapStore::raiseIdHighWater(qint64 projectId, const QString &prefix,
                                     qint64 highWater, QString *error) {
     // Upward only, expressed in the UPSERT rather than in a read-then-write:
@@ -1639,8 +1713,8 @@ std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
                                                          const QVariant &key,
                                                          QString *error) {
     QSqlQuery q(const_cast<QSqlDatabase &>(db));
-    q.prepare(QStringLiteral("SELECT project_id, name, export_slug, legend, root "
-                             "FROM project WHERE %1 = ?")
+    q.prepare(QStringLiteral("SELECT project_id, name, export_slug, legend, root, "
+                             "source_format FROM project WHERE %1 = ?")
                   .arg(column));
     q.addBindValue(key);
     if (!q.exec()) {
@@ -1657,6 +1731,7 @@ std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
     p.exportSlug = q.value(2).toString();
     p.legendText = q.value(3).toString();
     p.root = q.value(4).toString();
+    p.sourceFormat = q.value(5).toString();
     return p;
 }
 } // namespace

@@ -882,9 +882,16 @@ TEST(RoadmapStoreSchema, Inv26EmptySourcePathIsNotFoldedToNull) {
 //
 // ANTS-3796's INV-6 deliberately drops the leg ANTS-3782's carried, that the
 // three export goldens still import: that cannot hold across ANTS-3796,
-// because the record shape is what changed and § 4 regenerates them. This is
-// the LAST change entitled to hold at 1 — the freedom expires at ANTS-3758's
-// cutover.
+// because the record shape is what changed and § 4 regenerates them.
+//
+// **The `kSchemaVersion == 1` leg is RETIRED (ANTS-3815).** That bump is the one
+// this test's old message named as entitled to move the constant, and it was made
+// deliberately, together with the rung that climbs to it. The name stays: it is a
+// handle cited from two specs' invariants (ANTS-3782 INV-27, ANTS-3796 INV-6) and
+// renaming it strands both, so it becomes historical exactly as
+// `Inv8DdlBuiltAndClimbedStoresMatch` already is. What survives is the leg that
+// was always the load-bearing one — a store this build CREATES is stamped with
+// this build's version, whatever that version is.
 TEST(RoadmapStoreSchema, Inv27SchemaVersionStillOne) {
     Fixture f;
     QString err;
@@ -892,18 +899,64 @@ TEST(RoadmapStoreSchema, Inv27SchemaVersionStillOne) {
     QSqlQuery q(f.store.db());
     ASSERT_TRUE(q.exec(QStringLiteral("PRAGMA user_version")));
     ASSERT_TRUE(q.next());
-    EXPECT_EQ(q.value(0).toInt(), RoadmapStore::kSchemaVersion);
-    EXPECT_EQ(RoadmapStore::kSchemaVersion, 1)
-        << "INV-27: breaks when kSchemaVersion is bumped for this column — the "
-           "tempting move. All three of this message's original reasons have "
-           "since expired, and ANTS-3781 retired them rather than this "
-           "assertion: the upgrade path EXISTS now "
-           "(RoadmapStore::applyUpgrades), a version-1 store DOES exist outside "
-           "a test's temp directory and a bump would strand it, and the three "
-           "export goldens no longer track this constant at all — they carry "
-           "the export's own kExportSchemaVersion. What remains, and is why "
-           "this assertion stands: a bump is ANTS-3815's to make deliberately, "
-           "together with the rung that climbs to it (ANTS-3781 INV-4). This "
-           "invariant is what makes § 2.1's argument a contract rather than a "
-           "comment in a commit message";
+    EXPECT_EQ(q.value(0).toInt(), RoadmapStore::kSchemaVersion)
+        << "a store this build creates must be stamped with this build's version";
+}
+
+// ------------------------------------------- ANTS-3815 INV-1 ---------------
+// project.source_format exists as TEXT NOT NULL DEFAULT '' with a CHECK admitting
+// exactly '' and detectRoadmapFormat()'s three dialects.
+//
+// This test builds through the DDL and NEVER climbs, which is why a defective
+// RUNG leaves it green — that mutation is ANTS-3815 INV-4's to catch, in
+// roadmap_store_upgrade.
+TEST(RoadmapStoreSchema, Ants3815Inv1SourceFormatColumn) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    // (a) declared shape. `dflt_value` holds the default EXPRESSION, not an empty
+    // string: for DEFAULT '' it is the two-character SQL text '' — measured,
+    // quote(dflt_value) returns ''''''. Asserting an empty string here would be
+    // unsatisfiable against a correct column.
+    bool found = false;
+    {
+        QSqlQuery q(f.store.db());
+        ASSERT_TRUE(q.exec(QStringLiteral("PRAGMA table_info(project)")));
+        while (q.next()) {
+            if (q.value(1).toString() != QStringLiteral("source_format"))
+                continue;
+            found = true;
+            EXPECT_EQ(q.value(2).toString().toStdString(), std::string("TEXT"));
+            EXPECT_EQ(q.value(3).toInt(), 1) << "the column must be NOT NULL";
+            EXPECT_EQ(q.value(4).toString().toStdString(), std::string("''"))
+                << "dflt_value is the default expression, so DEFAULT '' reads as "
+                   "the two-character text ''";
+        }
+    }
+    ASSERT_TRUE(found) << "project has no source_format column";
+
+    // (b) the CHECK. The row is INSERTED FIRST, and that is not incidental: an
+    // UPDATE matching no row SUCCEEDS in SQLite — the very behaviour
+    // setProjectSourceFormat() checks numRowsAffected() for — so against the empty
+    // project table a fresh store starts with, this leg would be vacuously green.
+    const qint64 pid = f.project(QStringLiteral("p"));
+    ASSERT_GT(pid, 0);
+
+    for (const QString &ok : {QStringLiteral(""), QStringLiteral("ants-v1"),
+                              QStringLiteral("github-task-list"),
+                              QStringLiteral("pass-headings")}) {
+        EXPECT_TRUE(f.store.setProjectSourceFormat(pid, ok, &err))
+            << ok.toStdString() << ": " << err.toStdString();
+    }
+
+    err.clear();
+    EXPECT_FALSE(f.store.setProjectSourceFormat(pid, QStringLiteral("klingon"), &err))
+        << "the CHECK must refuse a format outside detectRoadmapFormat()'s range";
+    EXPECT_FALSE(err.isEmpty()) << "a refusal must carry its reason";
+
+    // The refused write left the last accepted value in place.
+    const auto row = f.store.readProject(pid, &err);
+    ASSERT_TRUE(row.has_value()) << err.toStdString();
+    EXPECT_EQ(row->sourceFormat.toStdString(), std::string("pass-headings"));
 }

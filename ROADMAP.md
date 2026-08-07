@@ -26527,7 +26527,7 @@ against current source before filing.
   Kind: investigate.
   Source: cold-eyes ANTS-3808 loop 1, 2026-08-04 — the spec's own §5 recorded this as "owed and not yet filed".
 
-- 📋 [ANTS-3815] **Record each project's source roadmap format in the store, and have the read seam's gate consult it instead of re-detecting.**
+- 🚧 [ANTS-3815] **Record each project's source roadmap format in the store, and have the read seam's gate consult it instead of re-detecting.**
   No store column records a source format: `format` lives on the migration's
   `RoadmapMigrate::Source` struct and nowhere in `roadmapstore.h`. So
   ANTS-3793 § 2.2's ants-v1 gate has to run `detectRoadmapFormat()` over the
@@ -26673,6 +26673,10 @@ against current source before filing.
       amended by this spec's § 2.5. Collapsing whitespace runs still compares
       unequal, because SQLite splices an ALTER'd column in ahead of the closing
       paren and moves the comma.
+  Progress (2026-08-07): implementation started against the gated spec
+  docs/specs/ANTS-3815-store-source-format-column.md (3 cold-eyes loops,
+  CRITICAL 1 → 1 → 0). Scope is the COLUMN only by user decision; removing
+  the 3.0 MiB ROADMAP.md read is ANTS-3863.
 
 - 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —

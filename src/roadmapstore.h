@@ -27,7 +27,13 @@ public:
     // (RoadmapExport::kExportSchemaVersion): it describes the JSONL record
     // shape, and ANTS-3781 § 2.3 held the two apart so a table-shape bump does
     // not invalidate every export ever written.
-    static constexpr int kSchemaVersion = 1;
+    //
+    // 1 → 2 by ANTS-3815, which adds project.source_format and the first rung of
+    // upgradeLadder() below. A store at a version ABOVE this one is refused
+    // outright rather than opened read-only (ANTS-3756 § 2.3) — reachable for
+    // the first time at this bump, because launch.sh can leave an older binary
+    // on disk.
+    static constexpr int kSchemaVersion = 2;
 
     // INV-16 — the write deadline, in ms, matching ConfigWriteLock's rather
     // than introducing a second timeout constant. One number covers both the
@@ -160,16 +166,18 @@ public:
     //
     // Public, and taking its ladder as an argument, for the reason
     // kDefaultHistoryCapBytes is a constructor parameter (INV-14): at
-    // kSchemaVersion 1 the production ladder is EMPTY, so a ladder reachable
-    // only from production is a ladder nothing can exercise until the first
-    // bump.
+    // kSchemaVersion 1 the production ladder WAS empty, so a ladder reachable
+    // only from production was one nothing could exercise until the first bump.
+    // The argument survives the bump — a test still climbs past kSchemaVersion
+    // with a ladder of its own (INV-1).
     static bool applyUpgrades(QSqlDatabase &db, int from, int to,
                               const QVector<Upgrade> &ladder, QString *error = nullptr);
 
-    // The production ladder — empty at kSchemaVersion 1, because there is no
-    // version below it to climb from. The first rung lands with the first bump
-    // (ANTS-3815); INV-4 is what makes that a red test rather than a thing to
-    // remember.
+    // The production ladder — one rung per version step, landing on the version
+    // it climbs TO. ANTS-3815 supplied the first, and every rung is written FROM
+    // the DDL diff its bump made rather than from the shape intended (ANTS-3781
+    // § 2.1's obligation on whoever bumps); ANTS-3815 INV-3 is what proves the
+    // two agree.
     //
     // A public static and not a file-scope object in the .cpp: INV-4's
     // completeness check compiles into another translation unit, and a ladder
@@ -363,6 +371,24 @@ public:
     // § 5.1). CANONICALISED.
     bool setLegend(qint64 projectId, const QJsonObject &legend, QString *error = nullptr);
 
+    // ANTS-3815 § 2.3 — project.source_format, the dialect the migration read
+    // this project's LIVE roadmap in.
+    //
+    // A setter rather than a wider registerProject(), and the reason is not the
+    // one ANTS-3796 § 2.3 gives for `position` being a parameter. That rule
+    // turns on whether an insert OMITTING the column can succeed: `position` is
+    // NOT NULL with no default, so it cannot, and a setter would be
+    // unreachable. This column is NOT NULL *with* a default, so it can — and ''
+    // is a value a row is entitled to keep (§ 2.4). Widening registerProject()
+    // would additionally force a dialect on every existing call site, including
+    // the ones in tests/features/roadmap_store_schema/ that have no roadmap.
+    //
+    // Refuses an unknown projectId — an UPDATE matching no row SUCCEEDS in
+    // SQLite, so this checks numRowsAffected() rather than the exec result —
+    // and a `format` outside the DDL's CHECK set, which SQLite refuses.
+    bool setProjectSourceFormat(qint64 projectId, const QString &format,
+                                QString *error = nullptr);
+
     // id_prefix high-water. Advances only UPWARD: an id this migration
     // allocated must never be reissued by a later run (§ 2.8). A value at or
     // below the stored one is a no-op, not an error.
@@ -493,6 +519,13 @@ public:
         // that assertion against a struct that does not carry the value being
         // canonicalised.
         QString root;
+        // ANTS-3815 § 2.1 — which roadmap dialect this project's LIVE roadmap
+        // (source index 0) was migrated from. The empty string means "not
+        // recorded"; it is not a format, and no format is ever empty —
+        // detectRoadmapFormat() answers "ants-v1" even for empty input, which is
+        // what keeps '' an unambiguous pre-bump sentinel rather than a value the
+        // drift check in migratedProject() would have to guess about.
+        QString sourceFormat;
     };
     // Two lookups because the two callers key differently, and one of them is
     // the refit: the render holds a projectId; the export does NOT — writeMeta()

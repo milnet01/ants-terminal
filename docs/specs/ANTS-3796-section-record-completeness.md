@@ -482,7 +482,11 @@ the second instance of it in this lane.
   order reversed and assert the same result. *Breaks when:* the sort is on
   `position` alone, which is stable only by accident of the underlying
   container and reorders when the query plan changes.
-- **INV-6** — This change does not move the schema version: a store created by
+- **INV-6** *(amended by [ANTS-3815](ANTS-3815-store-source-format-column.md),
+  identically to ANTS-3782 INV-27 and for the same reason — that item made the
+  deliberate bump this clause was waiting for, so the version-1 claim is
+  historical and the shared test's constant leg is retired)* — This change does
+  not move the schema version: a store created by
   this build reports `PRAGMA user_version` = 1. *Test:*
   `tests/features/roadmap_store_schema/` asserts the pragma. *Breaks when:*
   `kSchemaVersion` is bumped for these columns, which at the time of writing

@@ -172,6 +172,27 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
                          "unrecognisable").arg(canonical);
         return std::nullopt;
     }
+    // ANTS-3815 § 2.4 — the stored dialect is the second witness, and it costs
+    // no extra query: readProjectByRoot() above already returned it. '' is a
+    // pre-bump row and means "not recorded", so it takes the version-1 path
+    // unchanged; treating it as authoritative would turn every project migrated
+    // before the bump into a refusal, the empty string matching no dialect a
+    // file can produce.
+    if (!row->sourceFormat.isEmpty() && row->sourceFormat != format) {
+        // Same code as the unrecognisable-file case above, so the MESSAGE has to
+        // separate them — ANTS-3793 chose a distinct code precisely so the store
+        // and the file send the user to different places, and a second cause
+        // under one code loses that. This one has a remedy and says so.
+        if (why)
+            *why = ReadError::SourceUnrecognised;
+        if (error)
+            *error = QStringLiteral(
+                         "project %1: store records format '%2' but its roadmap now reads "
+                         "as '%3'; re-run the migration to record the new format")
+                         .arg(canonical, row->sourceFormat, format);
+        return std::nullopt;
+    }
+
     if (format != QStringLiteral("ants-v1"))
         return std::nullopt;   // legitimately markdown-served (§ 5)
 

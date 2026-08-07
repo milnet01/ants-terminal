@@ -780,6 +780,109 @@ TEST(roadmap_migrate_load, Ants3782Inv14SourcePathIsRootRelative) {
               QStringLiteral("docs/roadmap/0.6.md"));
 }
 
+// --------------------------------------------------------- ANTS-3815 INV-2 --
+// The migration records SOURCE INDEX 0's format and no other.
+//
+// Leg (a). The plan is BUILT, with two sources whose formats DIFFER, so the
+// assertion can distinguish index 0 from a plan-level or last-source read. It
+// proves the write reads index 0 and nothing more — the test wrote the plan, so
+// it cannot also prove index 0 is the live roadmap. That is leg (b)'s job.
+TEST(roadmap_migrate_load, Ants3815Inv2aRecordsSourceZerosFormat) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    MigrationPlan p = planOf({item(QStringLiteral("A-1"), QStringLiteral("one"),
+                                   QStringLiteral("s"), 0)});
+    ASSERT_EQ(p.sources.size(), 1);
+    ASSERT_EQ(p.sources.at(0).format.toStdString(), std::string("ants-v1"));
+    // The archive must be a REAL file under the fixture's root: ANTS-3782 § 2.4
+    // resolves each source through canonicalFilePath(), which is empty for a path
+    // that does not exist, and refuses one it cannot place — so an invented path
+    // aborts the load before this invariant is reached.
+    const QString archivePath = f.root + QStringLiteral("/docs/roadmap/0.6.md");
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(archivePath).absolutePath()));
+    {
+        QFile a(archivePath);
+        ASSERT_TRUE(a.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        a.write("# 0.6\n\n- [x] An archived item\n");
+    }
+    RoadmapMigrate::Source archive;
+    archive.path = archivePath;
+    archive.format = QStringLiteral("github-task-list");
+    p.sources.append(archive);
+
+    const auto out = RoadmapMigrateLoad::load(f.store, p, f.opts());
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+
+    const auto row = f.store.readProject(out.projectId, &err);
+    ASSERT_TRUE(row.has_value()) << err.toStdString();
+    EXPECT_EQ(row->sourceFormat.toStdString(), std::string("ants-v1"))
+        << "INV-2: breaks when the write is keyed off a plan-level or last-source "
+           "format, which silently records an ARCHIVE's grammar for the whole "
+           "project";
+}
+
+// Leg (b). The other half of the precondition: source index 0 really is the live
+// roadmap in a plan built from real discovery. The assertion is on the PLAN, not
+// on Discovery — Discovery already documents the guarantee, so a leg stopping
+// there would test the type that was never in doubt; what is untested is the
+// plan builder's order preservation, which is what leg (a) rests on.
+TEST(roadmap_migrate_load, Ants3815Inv2bPlanSourceZeroIsTheLiveRoadmap) {
+    const CopiedRoot src("baseline");
+    const MigrationPlan plan = src.plan();
+    ASSERT_GT(plan.sources.size(), 1) << "the fixture must carry archives too";
+    EXPECT_EQ(QFileInfo(plan.sources.at(0).path).canonicalFilePath().toStdString(),
+              QFileInfo(src.root + QStringLiteral("/ROADMAP.md"))
+                  .canonicalFilePath().toStdString())
+        << "INV-2: breaks when planFrom() reorders sources — leg (a) stays green "
+           "and the stored value becomes an archive's";
+}
+
+// --------------------------------------------------------- ANTS-3815 INV-7 --
+// Every refusal on the write path aborts the load and names its cause.
+TEST(roadmap_migrate_load, Ants3815Inv7SourceFormatWriteRefusals) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    // A committed project to aim the valid cases at.
+    const auto seeded = RoadmapMigrateLoad::load(
+        f.store, planOf({item(QStringLiteral("A-1"), QStringLiteral("one"),
+                              QStringLiteral("s"), 0)}), f.opts());
+    ASSERT_TRUE(seeded.ok) << seeded.error.toStdString();
+
+    // (1) An unknown projectId. THE case that earns numRowsAffected(): an UPDATE
+    // matching no row SUCCEEDS in SQLite, so a setter returning the bare exec()
+    // result reports having written a project that does not exist — ANTS-3767's
+    // failure mode one column along.
+    err.clear();
+    EXPECT_FALSE(f.store.setProjectSourceFormat(999999, QStringLiteral("ants-v1"), &err));
+    EXPECT_FALSE(err.isEmpty()) << "a refusal must carry its reason";
+
+    // (2) A format outside § 2.1's CHECK set.
+    err.clear();
+    EXPECT_FALSE(f.store.setProjectSourceFormat(seeded.projectId,
+                                                QStringLiteral("klingon"), &err));
+    EXPECT_FALSE(err.isEmpty());
+
+    // (3) A plan with no sources — refused BEFORE the loader indexes them.
+    // QVector::at() is unchecked in a release build, so this guard is what stands
+    // between an empty plan and undefined behaviour.
+    MigrationPlan empty = planOf({item(QStringLiteral("B-1"), QStringLiteral("two"),
+                                       QStringLiteral("s"), 0)});
+    empty.sources.clear();
+    const auto out = RoadmapMigrateLoad::load(f.store, empty, f.opts());
+    EXPECT_FALSE(out.ok);
+    EXPECT_FALSE(out.error.isEmpty());
+    // And it did not commit: the only project row is the seeded one.
+    EXPECT_EQ(f.count(QStringLiteral("project")), 1)
+        << "a refused load must leave no project row behind";
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                  "SELECT COUNT(*) FROM item WHERE id = 'B-1'")).toStdString(),
+              std::string("0"));
+}
+
 // -------------------------------------------------------- ANTS-3796 INV-4 --
 // The migration assigns positions that are a permutation of 0 … n-1 over the
 // sections a run's plan names, in document order across all its sources.

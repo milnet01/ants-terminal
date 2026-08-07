@@ -92,9 +92,25 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId,
 //   nullopt, *error set   → REFUSE; never fall back (INV-1)
 //
 // `markdown` is REQUIRED and is the project's live roadmap text: § 2.2's
-// ants-v1 gate runs detectRoadmapFormat() over it, and no store column records
-// a source format. § 4 prices that retained read; ANTS-3815 is the column that
-// would remove it.
+// ants-v1 gate runs detectRoadmapFormat() over it. ANTS-3815 § 2.4 added
+// project.source_format as a SECOND witness — the store's record of the dialect
+// the migration read — and the file's testimony is still needed to compare
+// against it. Four outcomes for a project that has a store row:
+//
+//   source_format   live detect          outcome
+//   ''              any                  exactly as version 1 (§ 2.2's table)
+//   set             sawSignal false      refuse, SourceUnrecognised
+//   set, == live    sawSignal set        § 2.2's table: store if ants-v1, else markdown
+//   set, != live    sawSignal set        refuse, SourceUnrecognised — the drift case
+//
+// The last row is new at ANTS-3815 and is a BEHAVIOUR CHANGE at all three
+// callers on exactly one input class: a migrated project whose live file changed
+// dialect is now refused where it was previously served markdown. § 2.2 already
+// refuses "a file that no longer looks like what the store says it is"; with one
+// witness that could only reach the UNRECOGNISABLE case, because an
+// unrecognisable file is the only disagreement a lone witness can have with
+// itself. ANTS-3863 owns removing the file read, and owes this comparison a
+// second witness if it does.
 //
 // `why` is defaulted here and required on the two functions above, and the
 // asymmetry is deliberate rather than an oversight. This function's refusals
