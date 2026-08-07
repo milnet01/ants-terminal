@@ -26647,6 +26647,31 @@ against current source before filing.
   Both blockers named above are now shipped: ANTS-3793 (the consuming gate) and
   ANTS-3855 (nothing could run the migration). Spec:
   docs/specs/ANTS-3815-store-source-format-column.md.
+  Spec written and gated (2026-08-07):
+  docs/specs/ANTS-3815-store-source-format-column.md, 664 lines, 7 invariants.
+  /cold-eyes ran 3 loops, 2 cold lanes each — CRITICAL 1 → 1 → 0, 57 verified
+  findings, all fixed, none deferred. Awaiting sign-off, not yet accepted.
+
+  The DEFERRED COLD READ this item owed is DISCHARGED. ANTS-3756 § 2.3 and
+  ANTS-3796 § 2.4 were read cold as in-scope cross-references across all three
+  loops and three real contradictions came out: § 2.3 credited ANTS-3782's and
+  ANTS-3796's within-version-1 columns to the wrong ground (its own § 2.3 DDL
+  comment and § 7 bullet give the other one); that DDL comment still claimed no
+  upgrade path existed, false since applyUpgrades() shipped; and ANTS-3796 § 2.4
+  told a reader "every committed golden stands" of the three goldens the same
+  section regenerates. All fixed. A fourth was found by the blast-radius sweep
+  rather than a lane: ANTS-3781 § 1 flagged an ANTS-3756 correction as still
+  pending that had already landed.
+
+  Two design decisions a reader should know before implementing:
+    - The gate CROSS-CHECKS rather than replaces. The stored format and the live
+      file are two witnesses; a disagreement is a new SourceUnrecognised refusal
+      (INV-6). That is a behaviour change — a migrated project whose roadmap was
+      rewritten into another dialect is now refused where it was served markdown.
+    - ANTS-3781 INV-8's "normalised for whitespace" is measurably too weak and is
+      amended by this spec's § 2.5. Collapsing whitespace runs still compares
+      unequal, because SQLite splices an ALTER'd column in ahead of the closing
+      paren and moves the comma.
 
 - 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —
