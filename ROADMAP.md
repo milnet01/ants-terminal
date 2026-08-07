@@ -27586,7 +27586,7 @@ against current source before filing.
   129 ms provenance, and no invariant asserts a latency surface. Filed as
   ANTS-3859.
 
-- 📋 [ANTS-3856] **A test wrote a fixture project into the REAL roadmap store; nothing stops it happening again.**
+- ✅ [ANTS-3856] **A test wrote a fixture project into the REAL roadmap store; nothing stops it happening again.**
   Measured 2026-08-06. `~/.local/share/ants-terminal/roadmap.sqlite`
   (PRAGMA user_version = 1) holds exactly one `project` row: root
   `/tmp/test_core-ZnzBrv`, name `Demo`, export_slug `demo`, with 0
@@ -27612,6 +27612,39 @@ against current source before filing.
   **Layman:** A test accidentally saved its pretend project into the real roadmap database on this machine; clean it out and make that impossible.
   Kind: test.
   Source: in-session-2026-08-06 — found while probing the live store..
+  Resolved (2026-08-07). Both halves.
+
+  Half 1 — the leaked row is gone: the live store now holds 0 projects,
+  0 sections, 0 items (backup taken before the delete).
+
+  Half 2 — every test bundle main points XDG_DATA_HOME at a per-process
+  QTemporaryDir and exits 1 if it cannot be created. No production code
+  changed. Contract + 5 invariants at
+  tests/features/roadmap_store_sandbox/spec.md; suite 3291/3291.
+
+  Two designs were implemented and measured before this one, and both
+  looked right until the suite ran:
+  (a) refusing open() at defaultPath() failed 14 tests — roadmap_log and
+  changelog_log resolve defaultPath() INSIDE their handlers, so those
+  tests have no path to pass and nothing their author could fix;
+  (b) substituting the path in RoadmapStore's constructor failed the 9
+  RoadmapWriteHalf tests, because RoadmapSource::storeFor() STATS
+  defaultPath() and returns nullptr without ever constructing a store —
+  the stat and the open then pointed at different files. Generalised:
+  a path redirect belongs where the path is RESOLVED, not where it is
+  opened.
+
+  Two findings the work surfaced, neither in the original diagnosis:
+  - 14 tests (roadmap_log_prefix, roadmap_log_possible_duplicates,
+  changelog_log_writer, changelog_log_add_batch) were reaching the live
+  store on EVERY suite run, and branched differently on a dev box (store
+  file present) than in CI (absent). Both fixed by the sandbox.
+  - The first version of this item's own INV-3 compared against
+  $XDG_DATA_HOME — the variable the sandbox sets — so with the arming
+  removed but the variable inherited from the shell it was vacuous AND
+  wrote a fixture row into the live store. Caught by the red-proof run,
+  which leaked exactly the row this item exists to prevent. INV-3's write
+  is now gated on an ASSERT against the HOME-derived path.
 
 - 📋 [ANTS-3857] **Re-rooting a migrated project — a moved repo currently refuses slug_collision with no remedy.**
   `project.root` is UNIQUE and keys a project on its canonical path

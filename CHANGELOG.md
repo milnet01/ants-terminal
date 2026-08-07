@@ -55,6 +55,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Tests can no longer reach the user's real data directory** (ANTS-3856)
+  Every test bundle now runs with `XDG_DATA_HOME` pointed at a
+  per-process temporary directory, so a test that omits its roadmap-store
+  path opens a throwaway store instead of the live one under
+  `~/.local/share`. A fixture project had leaked into the real store that
+  way; it has been removed. No production code changed.
+
 - **The roadmap database now records an auto-numbered item ID as store-generated rather than author-supplied.** (ANTS-3838)
   Every item carries a note saying where each of its values came from.
   Both places that add items were labelling the ID as "the author chose
