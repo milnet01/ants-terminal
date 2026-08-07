@@ -27827,6 +27827,41 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-07 — noticed while verifying ANTS-3781 § 4's claim about test_core's compile definitions..
 
+- 📋 [ANTS-3862] **spec_lint reports 11 false invariant_id_gaps on ANTS-3782, which continues ANTS-3756's numbering rather than its own.**
+  `spec_lint` on docs/specs/ANTS-3782-roadmap-section-provenance.md
+  reports invariant_id_gap for INV-15 through INV-25 "missing from the id
+  sequence with no tombstone". Verified: the document carries INV-14,
+  INV-26, INV-27, INV-28 and nothing else, and that is deliberate — it
+  AMENDS ANTS-3756 (see that spec's "amends this document rather than
+  merely citing it" bullet), so INV-14 is ANTS-3756's INV-14 restated and
+  26-28 continue ANTS-3756's sequence. INV-15..25 live in ANTS-3756 and
+  were never ANTS-3782's to carry.
+
+  spec_lint's check assumes a per-document sequence, which is right for
+  a standalone spec and wrong for an amending one. Three ways out, and
+  the choice is the work:
+
+    1. Teach spec_lint the amending case — e.g. skip the gap check on a
+       doc whose header declares it amends another, or seed the expected
+       sequence from the amended doc. Cheapest for authors, and the only
+       option that scales to the next amending spec.
+    2. Require amending specs to tombstone the ids they do not carry
+       (*moved to ANTS-3756*), which spec_lint already exempts. Eleven
+       tombstone lines here, and N per future amending spec.
+    3. Document the false positive and leave it. Costs a re-verification
+       every time anyone lints this file.
+
+  Recommend 1. Not urgent: the finding is noise, not a defect, and it is
+  in a CANDIDATES-shaped check whose caller is expected to triage. Filed
+  so the next /doc-lint run does not re-derive it.
+
+  Note this is NOT the same class as ANTS-3861 (a genuine doubled path in
+  a test fallback); this one is a checker limitation, not a bug in the
+  document.
+  **Layman:** A documentation checker complains that a design document is missing eleven numbered rules. It isn't — the document deliberately carries on the numbering of the document it amends, and the checker doesn't know that.
+  Kind: doc-fix.
+  Source: in-session-2026-08-07 (found by /doc-lint during ANTS-3781 implementation).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
