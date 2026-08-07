@@ -26527,7 +26527,7 @@ against current source before filing.
   Kind: investigate.
   Source: cold-eyes ANTS-3808 loop 1, 2026-08-04 — the spec's own §5 recorded this as "owed and not yet filed".
 
-- 📋 [ANTS-3815] **Record each project's source roadmap format in the store, so the read seam stops re-reading ROADMAP.md.**
+- 📋 [ANTS-3815] **Record each project's source roadmap format in the store, and have the read seam's gate consult it instead of re-detecting.**
   No store column records a source format: `format` lives on the migration's
   `RoadmapMigrate::Source` struct and nowhere in `roadmapstore.h`. So
   ANTS-3793 § 2.2's ants-v1 gate has to run `detectRoadmapFormat()` over the
@@ -26632,6 +26632,21 @@ against current source before filing.
   Also filed today: ANTS-3862 (spec_lint reports 11 false invariant_id_gaps
   on ANTS-3782, which continues ANTS-3756's numbering because it amends
   it — noise, not a document defect; do not "fix" ANTS-3782 for it).
+  Scope settled (2026-08-07, user decision) — this item is the COLUMN ONLY.
+  The headline's old second clause ("so the read seam stops re-reading
+  ROADMAP.md") is retracted and the headline reworded, resolving the fork
+  point 1 above left open. Removing the 3.0 MiB read is now ANTS-3863.
+
+  Two measurements behind the split, both taken today: the seam's `markdown`
+  argument makes the read unconditional and EARLIER than the dispatch
+  (src/remotecontrol_roadmap_query.cpp:1464), and the scan the column removes
+  was already bounded — RoadmapSource::detectionPrefix() caps the detector at
+  300 non-blank lines. So the column's payoff is correctness and unblocking,
+  not speed, and this bullet no longer claims otherwise.
+
+  Both blockers named above are now shipped: ANTS-3793 (the consuming gate) and
+  ANTS-3855 (nothing could run the migration). Spec:
+  docs/specs/ANTS-3815-store-source-format-column.md.
 
 - 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —
@@ -27896,6 +27911,47 @@ against current source before filing.
   **Layman:** A documentation checker complains that a design document is missing eleven numbered rules. It isn't — the document deliberately carries on the numbering of the document it amends, and the checker doesn't know that.
   Kind: doc-fix.
   Source: in-session-2026-08-07 (found by /doc-lint during ANTS-3781 implementation).
+
+- 📋 [ANTS-3863] **Move the roadmap read seam's dispatch ahead of the file read, so a migrated project stops loading ROADMAP.md at all.**
+  Split out of ANTS-3815 by user decision (2026-08-07). ANTS-3815 stores the
+  format on `project` and has the gate read it; it does NOT remove the read,
+  because the seam's shape makes the read unconditional and earlier than the
+  dispatch.
+
+  Corrected 2026-08-07 (same day, before implementation): the MCP verbs do NOT
+go through `bulletsFor()`. `RoadmapSource::migratedProject()` is the one place
+a dialect is classified, and it has three callers —
+`RoadmapSource::bulletsFor()`, `RemoteControl::roadmapStoreServes()` (the
+verbs' gate) and `RoadmapDialog::storeProjectRoot()`. `bulletsFor()` itself
+has only TWO call sites (`RoadmapDialog::storeProjectRoot`,
+`rcdetail::rcExtractGateNote`), and `src/remotecontrol_roadmap_query.cpp` is
+not one of them. Its `readAll()` still precedes the verbs' dispatch, so the
+saving stands; the seam inventory below was wrong.
+
+Verified 2026-08-07: `RoadmapSource::bulletsFor()` takes `markdown` by value
+  (src/roadmapsource.h), so every caller must already hold the text. At
+  src/remotecontrol_roadmap_query.cpp:1464 `QString::fromUtf8(f.readAll())`
+  runs unconditionally before the dispatch — 3.0 MiB on this project. The
+  other two call sites are `RoadmapDialog::storeProjectRoot` and
+  `rcdetail::rcExtractGateNote`.
+
+  Also verified: the format SCAN was already cheap and is not the cost.
+  `RoadmapSource::detectionPrefix()` caps the detector at 300 non-blank lines,
+  so ANTS-3815's column removes a bounded scan, not the read. This item is
+  where the measured saving actually lives.
+
+  Owns: the signature change (a lazy text provider, or callers querying
+  `migratedProject()` first and reading the file only on the unmigrated path),
+  its three call sites, and a decision on the `sawSignal` guard — today a
+  migrated project whose ROADMAP.md is absent or mangled refuses with
+  SourceUnrecognised, and that check reads the text. A cheap existence/size
+  stat is the obvious replacement; dropping the guard outright is not, because
+  it is the one thing standing between a stale store and a silent wrong answer.
+
+  Blocked by ANTS-3815 (the column the pre-read dispatch reads).
+  **Layman:** Check which roadmap dialect a project uses BEFORE opening the big text file, not after, so migrated projects never open it.
+  Kind: refactor.
+  Source: ANTS-3815 spec § 5 (2026-08-07) — user scope decision: ANTS-3815 is the column only..
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
