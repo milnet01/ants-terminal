@@ -172,8 +172,8 @@ temp directory. A store *below* the running binary's version becomes
 **possible** only once `kSchemaVersion` moves, which is ANTS-3815. ANTS-3782
 § 2.1 and ANTS-3796 § 2.1 each add a column *within* version 1, and **the ground
 they actually recorded is the first one** — "no store is reachable from
-user-facing code yet", as § 4's `source_path` comment and § 7's ANTS-3796 bullet
-both state it. The second ground held as well, and is the more durable of the
+user-facing code yet", as § 2.3's own `source_path` DDL comment and § 7's
+ANTS-3796 bullet both state it. The second ground held as well, and is the more durable of the
 two: with `kSchemaVersion` never having moved, no below-version store was
 possible for a rung to meet. Both are named here rather than reassigning theirs,
 because an earlier revision of this paragraph credited them to the second ground
@@ -442,7 +442,8 @@ CREATE TABLE section (
   -- nothing to migrate and a bump would have manufactured an upgrade case
   -- nothing implemented. Both halves of that argument have since expired --
   -- ANTS-3781 built applyUpgrades(), so a later column is an ALTER in a rung
-  -- rather than an edit here, and ANTS-3815 makes the first bump. See § 2.3.
+  -- AS WELL AS an edit here -- ANTS-3781 § 2.1 requires both, as two
+  -- expressions of one change -- and ANTS-3815 makes the first bump. See § 2.3.
   source_path TEXT,
   UNIQUE (project_id, slug)
 );
