@@ -1,6 +1,6 @@
 # ANTS-3815 — record the source roadmap format on `project`, and make the first schema bump
 
-**Status:** spec draft (2026-08-07).
+**Status:** spec draft, cold-eyes loops 1–3 folded; awaiting sign-off (2026-08-07).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3815 (ANTS-3793 spec § 7, 2026-08-04 — filed while
 resolving cold-eyes finding H4; scope narrowed to the column by user decision,
@@ -99,11 +99,11 @@ shape, and it is not built here because nothing reads it; the ladder this item
 lands makes it an `ALTER` in a later rung rather than a schema decision that has
 to be got right now. Recorded as an alternative in § 6.
 
-**One term, nominated once.** This spec says **format** for the stored value and
-the column, matching `RoadmapMigrate::Source::format` and
-`detectRoadmapFormat()`. "Dialect" appears only as its plain-English gloss (the
-Layman line, and prose where "format" would read ambiguously against file
-format); the two are the same thing and the column name is the canonical term.
+**One term, nominated once.** **Format** is the normative term — the column, the
+stored value, and every invariant in § 3 use it, matching
+`RoadmapMigrate::Source::format` and `detectRoadmapFormat()`. "Dialect" is a
+free synonym in prose and carries no separate meaning; where it would be
+ambiguous, or inside an invariant, use "format".
 
 **Not a collision.** `source_format` already appears as a JSON envelope key in
 the audit lane (`src/remotecontrol_state.cpp`, specified by ANTS-1459 § LAS-3).
@@ -120,7 +120,7 @@ const QVector<Upgrade> &RoadmapStore::upgradeLadder() {
     static const QVector<Upgrade> ladder = {
         // ANTS-3815 — the first rung. Written FROM the diff § 2.1's DDL edit
         // made, not from the shape intended (ANTS-3781 § 2.1's obligation on
-        // whoever bumps); INV-3 below is what proves the two agree.
+        // whoever bumps); ANTS-3815 § 3 INV-3 is what proves the two agree.
         Upgrade{2, {QStringLiteral(
             "ALTER TABLE project ADD COLUMN source_format TEXT NOT NULL DEFAULT '' "
             "CHECK (source_format IN ('', 'ants-v1', 'github-task-list', 'pass-headings'))")}},
@@ -223,7 +223,8 @@ relies on; this spec states no atomicity rule of its own.
 both abort the load: an unknown `projectId` — an `UPDATE` matching no row
 *succeeds* in SQLite, so the method checks `numRowsAffected()` rather than the
 exec result — and a `format` outside § 2.1's `CHECK` set, which SQLite refuses.
-INV-7 covers all three refusals.
+With the empty-`sources` guard in the block above, that is three refusals on
+this path, and INV-7 covers all three.
 
 **A migrated project never records `''`.** `RoadmapParse::detectRoadmapFormat()`
 returns one of the three dialect names on every path, including for empty input
@@ -270,6 +271,11 @@ project <root>: store records format '<stored>' but its roadmap now reads as
 ```
 
 against the existing "has a store row but its roadmap text is unrecognisable".
+**The message names the remedy, because this refusal has one and § 5's does
+not:** re-running the migration rewrites `source_format` through § 2.4's setter,
+which is the documented route back for a project whose roadmap was legitimately
+rewritten into another dialect. A refusal that names a disagreement and no
+destination is the shape ANTS-3793 chose distinct codes to avoid.
 **This is a behaviour change at all three callers**, on exactly one input class:
 a migrated project whose live file changed dialect is now refused where it was
 previously served markdown. Their code is untouched; what a user sees is not.
@@ -334,24 +340,33 @@ quietly.
 
 This amends ANTS-3781 INV-8 in place — see § 8. **Its normalisation
 parenthetical sits inside the claim sentence, so the claim text does change**:
-`(normalised for whitespace)` is replaced by a pointer to this section. The
-invariant's **id** and its *Breaks when* clause are untouched, and a
-`specs.md` § 5.5 annotation records the amendment — which is the distinction
-that rule protects (a contract corrected in place and traceable, never
-renumbered or silently reworded).
+`(normalised for whitespace)` is replaced by a pointer to this section.
+
+**What `specs.md` § 5.5 does and does not cover, stated because this spec is the
+precedent.** That rule protects *ids*: they "never change meaning", and the list
+is "never reflowed". Both hold here — INV-8 keeps its number, its position and
+its subject. What § 5.5 offers for an amendment is "adding a new invariant or
+annotating the old one", and this is the second, with the annotation
+`INV-8 amended by ANTS-3815`. A new invariant was considered and rejected: INV-8
+is not being *narrowed* or *superseded*, it is measurably **wrong** on one
+parenthetical — loop-collapsed whitespace does not make the two stores compare
+equal — and leaving a false clause standing beside a corrected sibling is how
+two invariants come to disagree. Correcting a false claim in place is a
+different act from renumbering, which is what § 5.5 forbids.
 
 ### 2.6 The frozen version-1 schema
 
-INV-8's test needs a store *at version 1*, and a version-2 build cannot make
-one: `createSchema()` carries exactly one DDL and it is the current one. So the
+ANTS-3781 INV-8's test — this spec's INV-3 — needs a store *at version 1*, and a
+version-2 build cannot make one: `createSchema()` carries exactly one DDL and it is the current one. So the
 test carries a frozen copy — the version-1 `CREATE TABLE` / `CREATE INDEX`
-statements as a `constexpr` raw-string array in
+statements as a `constexpr const char *kSchemaV1[]` raw-string array in
 `tests/features/roadmap_store_upgrade/test_roadmap_store_upgrade.cpp`, executed
 against a raw `QSqlDatabase` with `PRAGMA user_version = 1`. **The prohibition
 is on the seeding only:** the frozen statements never run through
 `RoadmapStore::open()`, because a version-2 build's `open()` would create the
 version-2 shape. Reopening the seeded file through `open()` afterwards is not
-an exception to that — it *is* the climb under test (INV-4).
+an exception to that — it *is* the climb under test (this spec's INV-4; note
+ANTS-3781 also has an INV-4, which is the unrelated ladder-completeness one).
 
 Embedded rather than a committed `.sql` fixture: the bundle would need a new
 compile definition to locate the file, and the frozen text is never edited again
@@ -367,10 +382,11 @@ intended" discipline the rung itself is under. Each future bump freezes one more
 SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid;
 ```
 
-- `WHERE sql IS NOT NULL` drops the `sqlite_autoindex_project_1` / `_2` rows
-  that `root TEXT UNIQUE` and `export_slug … UNIQUE` create. Their `sql` is
-  `NULL`, so without the filter the frozen array carries empty statements. They
-  need no replaying — the `UNIQUE` constraints recreate them.
+- `WHERE sql IS NOT NULL` drops every `sqlite_autoindex_*` row — one per
+  `UNIQUE` constraint in the schema, so `project`'s `root` and `export_slug`,
+  `section`'s `(project_id, slug)`, and the rest. Their `sql` is `NULL`, so
+  without the filter the frozen array carries empty statements. They need no
+  replaying — the `UNIQUE` constraints recreate them.
 - `ORDER BY rowid` is creation order, which puts every table ahead of the
   indexes on it. `ORDER BY name` interleaves the two alphabetically and the
   replay fails: measured, `idx_element_item` sorts before `item`, and seeding a
@@ -384,7 +400,10 @@ SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid;
   names the column with `notnull = 1` and `dflt_value` holding the
   **two-character SQL text** `''`, which is the default *expression* and not an
   empty string (`quote(dflt_value)` returns `''''''`); and an `UPDATE` to a
-  value outside the set is refused. *Breaks when:* the column is added nullable,
+  value outside the set is refused — the test **inserts a project row first**,
+  because an `UPDATE` matching no row succeeds in SQLite (measured), so against
+  the empty `project` table a fresh store starts with, this leg would be
+  vacuously green. *Breaks when:* the column is added nullable,
   which reds the `notnull` leg, or the `CHECK` is dropped, which reds the
   `UPDATE` leg. This test builds through the DDL and never climbs, so a
   defective *rung* is INV-4's to catch and not this one's.
@@ -394,9 +413,12 @@ SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid;
   plan whose `sources[0].format` and `sources[1].format` differ, then assert
   `readProject()`'s `ProjectRow::sourceFormat` equals `sources[0].format`. That
   proves the write reads index 0 and *nothing more*, because the test builds the
-  plan itself. **(b)** Run discovery over a real live-roadmap-plus-archive pair
-  and assert `plan.sources.at(0).path` is the live roadmap — the half that ties
-  index 0 to the live file, which leg (a) assumes and cannot check. *Breaks
+  plan itself. **(b)** Run discovery over a real live-roadmap-plus-archive pair,
+  **build the `MigrationPlan` from it**, and assert `plan.sources.at(0).path` is
+  the live roadmap. The assertion is on the **plan**, not on `Discovery` —
+  `Discovery` already documents the guarantee, so a leg stopping there would
+  test the type that was never in doubt; what is untested is the plan builder's
+  order preservation, which is the precondition § 2.4 names. *Breaks
   when:* the write is keyed off a plan-level or last-source format, which
   silently records an archive's grammar for the whole project (leg a); or the
   loader reorders `sources`, which leaves leg (a) green and makes the stored
@@ -541,6 +563,22 @@ column, which discards data to satisfy a binary the user is about to replace.
   lands is exactly what makes that a rung rather than a schema migration crisis.
   No id is filed, because nothing needs it yet and filing one would book work
   nobody intends to do.
+- **A store rebuilt from its export returns every project to `''`** — accepted,
+  with the remedy named. The export record does not carry `source_format` (§ 8),
+  and the export is the store's only rebuild route (§ 5), so after that one
+  recovery INV-6's drift refusal is unreachable for every project until each is
+  re-migrated — exactly as it is for any pre-bump row, and restored the same
+  way. Carrying the field in the export record is the alternative and is
+  rejected here: it moves `RoadmapExport::kExportSchemaVersion` and regenerates
+  all three goldens, to persist a value that one re-migration recomputes from
+  the file it describes. Stated rather than left implicit because "the goldens
+  are not touched" reads as having no consequence, and this is the consequence.
+- **ANTS-3863 owes INV-6 a second witness.** That item removes the live read on
+  a migrated project; § 2.4's rows 2 and 4, and INV-6 with them, exist *because*
+  two witnesses disagree. So ANTS-3863 must either keep a bounded detection read
+  (its bullet already names a cheap existence/size stat as the candidate) or
+  supersede INV-6 explicitly with its own spec. It may not simply drop the
+  comparison and leave the invariant standing.
 - **Back-filling `''` rows** — permanent exclusion. A rung is SQL and cannot
   classify a roadmap (ANTS-3781 § 2.1); re-running the migration is the existing
   route and § 2.4 makes `''` a first-class value rather than a defect to sweep.
@@ -606,15 +644,15 @@ that the existing `roadmap_read_seam` cases stay green.
 | `src/roadmapstore.h` | `kSchemaVersion` 1 → 2; `upgradeLadder()`'s comment stops saying the ladder is empty; `ProjectRow` gains `sourceFormat`. |
 | `src/roadmapsource.h` | `migratedProject()`'s comment stops saying "no store column records a source format" and states § 2.4's four-row table instead. |
 | `src/roadmapmigrate.h` | `MigrationPlan::sources` gains `Discovery`'s "element 0 is always the live roadmap" comment. § 2.4 records why: it is the sole precondition INV-2 rests on, and it is currently documented only on the type the plan is built *from*. |
-| `docs/specs/ANTS-3756-roadmap-store-schema.md` | § 2.3's `source_path` DDL comment says a later column is "an ALTER in a rung **rather than** an edit here". This bump does **both** — ANTS-3781 § 2.1 requires the `CREATE TABLE` edit *and* the rung as two expressions of one change — so the comment becomes false when this lands and is corrected to "as well as". ANTS-3781 § 2.1 is canonical. |
-| `src/roadmapstore.cpp` | The same sentence is in the live `section.source_path` DDL comment ("an ALTER in a rung rather than an edit here") and is wrong for the same reason. **A code comment, so it is surfaced rather than edited by the spec** — it lands with the implementation. |
+| `src/roadmapstore.cpp` | The live `section.source_path` DDL comment says a later column is "an ALTER in a rung **rather than** an edit here". This bump does **both** — ANTS-3781 § 2.1 requires the `CREATE TABLE` edit *and* the rung, as two expressions of one change — so the comment is wrong and reads "as well as". **A code comment, so it lands with the implementation rather than being edited by this spec.** ANTS-3756 § 2.3 carried the same sentence and was corrected while this spec was drafted; no change is owed there. |
 | `CHANGELOG.md` | One `Added` entry under `[Unreleased]`. |
 | `ROADMAP.md` | ANTS-3815 flipped to in-progress at implementation start; ANTS-3863 already filed. |
 
 **Not touched:** the three export goldens. They track
 `RoadmapExport::kExportSchemaVersion`, which this bump does not move
-(ANTS-3781 INV-6 is the invariant that separated the two constants), and the
-format column does not enter the export record.
+— ANTS-3781 § 2.3 performed that split and its INV-6 is what keeps the two
+constants apart — and the format column does not enter the export record. § 6
+records what that costs on a rebuild.
 
 ## Cold-eyes loop log
 
@@ -622,5 +660,6 @@ format column does not enter the export record.
 
 | Loop | Date | Lanes | C/H/M/L/I | Dimensions | Outcome |
 |---|---|---|---|---|---|
+| 3 | 2026-08-07 | 2, cold — same shared brief, no mention of loops 1–2 | C 0 · H 1 · M 7 · L 6 · I 0 — verified 14, dismissed 0 | dim 4×3, dim 10×3, dim 7×3, dim 15×2, dim 2×2, dim 6×2, dim 5×1 | **Converged by cap, and the trend is the evidence: CRITICAL 1 → 1 → 0, both lanes opening with "Critical (0) — nothing found". No finding is left unfixed, so nothing is filed.** (1) HIGH, both lanes: § 8's ANTS-3756 row prescribed an edit loop 2 had already made in the same pass — it quoted "rather than an edit here" against a document that now reads "AS WELL AS", so an implementer would grep for a string that is gone and might reverse the correction. The row is deleted; only `src/roadmapstore.cpp`, where that wording genuinely survives (line 431), keeps one. Pure fix collateral, and the cheapest possible class: loop 2 wrote the fix and its own to-do note. (2) MEDIUM, lane B, and the best draft defect of the run: INV-1's `UPDATE`-is-refused leg is **vacuously green on a fresh store** — the `project` table is empty and an `UPDATE` matching no row succeeds, which is the very SQLite behaviour § 2.4 relies on two sections earlier. Measured and confirmed; the test now inserts a row first. (3) MEDIUM, lane A: nothing said that a store rebuilt from its export returns every project to `''`, silently disabling INV-6's drift refusal after the one recovery § 5 leans on — § 8's "the goldens are not touched" read as consequence-free. Now stated in § 6, accepted, with re-migration as the remedy and the carry-it-in-the-export alternative rejected on its cost. (4) MEDIUM, lane B: ANTS-3863 removes the live read, which is INV-6's second witness — § 6 now records what that item owes this invariant rather than letting the two specs quietly contradict. (5) MEDIUM, lane B: loop 2's § 2.5 claimed `specs.md` § 5.5 sanctions correcting a cited invariant's claim text; § 5.5 actually governs **ids and list order** and offers add-or-annotate. Reworded to say what § 5.5 covers, why a new invariant was rejected (INV-8 is measurably wrong, not superseded), and that the annotation is the amendment form used. (6) MEDIUM: INV-2 leg (b) said "run discovery" then asserted on a `MigrationPlan` — different types, and `Discovery` already carries the guarantee, so the leg tested what was never in doubt; § 2.6 used bare `INV-8` / `INV-4` where both ids also exist in ANTS-3781 meaning something else; the new refusal named a disagreement and no remedy. **Deferred cold read closed:** ANTS-3796 § 2.4's correction paragraph said "every committed golden stands" of the three goldens the same section regenerates — both true on close reading, contradictory to a reader arriving at the correction first. **A finding against this run's own method, not the document:** lane B noticed the packet's deterministic-check block still read "416 lines, 6 invariants" at loop 3, when the doc was 664 lines with seven. The checks *were* re-run every loop (all clean), but the packet asserted a stale fact to both lanes — the cost of holding the brief byte-stable across loops while the document moves. Worth carrying to the next run of this skill. Doc 625 → 664 lines. |
 | 2 | 2026-08-07 | 2, cold — same shared brief, no mention of loop 1 | C 1 · H 5 · M 6 · L 8 · I 2 — verified 22, dismissed 1 | dim 4×6, dim 5×3, dim 10×3, dim 2×3, dim 15×2, dim 6×2, dim 11×2, dim 1×1, dim 7×1, dim 13×1 | **Half the batch was collateral from loop 1's own edits, including both lanes' CRITICAL — and it is the class 4a step 2 exists for: a prescription written but never executed.** (1) CRITICAL, both lanes: loop 1 added a normative code block calling `plan.sources.at(0)` directly above a paragraph promising the write "refuses with a named error rather than reading past the end". `QVector::at()` is unchecked in a release build, so the block ships exactly the UB its own next sentence forbids. The guard is now *in* the block. (2) HIGH, lane A: `MigrationPlan::sources` carries no element-0-is-the-live-roadmap guarantee — it is documented only on `Discovery` — and that guarantee is the **sole** precondition INV-2 rests on. § 8 now schedules the comment onto `MigrationPlan`. (3) HIGH, both lanes: loop 1 wrote "the invariant's id, claim and *Breaks when* clause are untouched" of ANTS-3781 INV-8 while § 8 instructed replacing its normalisation parenthetical — which sits *inside* the claim sentence. A bump author could not execute both sentences; now stated as claim-text-changes-plus-annotation. (4) HIGH, lane A: loop 1's own ANTS-3756 correction cited "§ 4's `source_path` comment"; § 4 is RAM / build cost and the comment is in § 2.3 (line 446, against § 4 starting at 760). Its other half — "§ 7's ANTS-3796 bullet" — was verified **correct** and is the run's one dismissal. (5) HIGH, lane B: INV-4's *Breaks when* named a table-rebuild rung, which satisfies all four of INV-4's assertions while dropping `root`'s `UNIQUE` and every FK — invisible to its own test. Moved to INV-3, which is the `sqlite_master` leg that actually sees it; INV-4 given a *Breaks when* its assertions can catch. (6) HIGH, lane B: § 8 omitted ANTS-3756, whose DDL comment (corrected by loop 1) says a later column is "an ALTER in a rung **rather than** an edit here" — false for a bump, which ANTS-3781 § 2.1 requires to be both. Corrected there, and the identical wording in `src/roadmapstore.cpp` surfaced as a code-side edit rather than made by this spec. (7) MEDIUM: § 2.3 paraphrased ANTS-3796's rule as "have a usable default" where it says "nullable" — this column is a third case, now argued rather than borrowed; the new refusal had no error text and no statement that it changes what three callers surface; INV-2's test could not fail if index 0 were not the live roadmap, so it is now two legs; § 2.6's "never through `open()`" contradicted INV-4's "reopen through `open()`", now scoped to seeding; and nothing said `detectRoadmapFormat()` never returns empty, which is what keeps `''` an unambiguous sentinel. New **INV-7** covers the setter's two refusals and the empty-plan guard, none of which had a test surface. **Dismissed (1):** lane A doubted § 7 of ANTS-3756 carries an ANTS-3796 bullet; it does, at line 944. Doc 517 → 625 lines; `doc_dedup` clean at 67 passages, so the growth is new contract, not restatement. |
 | 1 | 2026-08-07 | 2 (general-purpose, strong model, identical byte-stable shared packet, cold) | C 1 · H 5 · M 9 · L 6 · I 1 — verified 22, dismissed 3 | dim 2×5, dim 7×5, dim 10×4, dim 6×3, dim 15×2, dim 4×2, dim 5×1, dim 11×1 | **All 21 actionable findings fixed; the run's centre of gravity was that three of this spec's own prescriptions had never been executed.** (1) CRITICAL, lane B alone: § 2.6's frozen-schema recipe, `SELECT sql FROM sqlite_master ORDER BY name`, cannot produce a runnable fixture. Verified by replaying it — `sqlite_autoindex_project_1/2` carry `sql IS NULL` so the array gains empty statements, and alphabetical order puts `idx_element_item` before `item`, so the seed aborts with `no such table: main.item`. Two of six invariants depend on that fixture. Now `WHERE sql IS NOT NULL ORDER BY rowid`, with both clauses justified. (2) HIGH ×2, both lanes independently: § 8 scheduled edits to ANTS-3781 but not to the three sibling specs this bump falsifies — ANTS-3793 § 2.2's "no store column records a source format", and **ANTS-3782 INV-27 / ANTS-3796 INV-6**, whose only stated test surface is the `EXPECT_EQ(kSchemaVersion, 1)` leg § 7 retires. Rows added with `specs.md` § 5.5 annotations. (3) HIGH, both lanes: INV-1 asserted `dflt_value = ''`; `table_info.dflt_value` holds the default *expression*, so for `DEFAULT ''` it is the two-character text `''` — measured, `quote()` returns `''''''`. As written the assertion was unsatisfiable. (4) HIGH, lane B: § 7's must-fail-first aimed the no-`DEFAULT` rung mutation at INV-1, whose test builds through the DDL and never climbs — the mutation leaves it green. Reassigned to INV-4 and the recipe rebuilt as a per-invariant table, with INV-2 and INV-5 recorded as having no single-mutation proof rather than being given a fake one. (5) HIGH, lane A: no migration/compatibility statement for the direction this bump makes reachable for the first time — a version-2 store meeting a pre-bump binary is refused outright (ANTS-3756 § 2.3), and the launcher can leave an older binary on disk. New § 5. (6) MEDIUM: § 2.1 never said the column must be appended **last**, though `ALTER` can only append and INV-3 reds otherwise; "§ 1's atomicity marker" named a marker § 1 does not contain (it is ANTS-3765 § 2.10's, via ANTS-3793 § 2.2); `setProjectSourceFormat()` had no failure contract and `plan.sources.at(0)` leaned on an element-0 guarantee stated on `Discovery` and not on `MigrationPlan`; and § 2.5's rule was presented as clean where it still false-equals `DEFAULT 'a, b'` against `'a,b'` — measured, and now stated as the residual limitation. **Deferred cold read discharged** (ANTS-3781 handed it here): ANTS-3756 § 2.3's correction paragraph credited ANTS-3782/ANTS-3796's within-version-1 columns to the "second ground" while that document's own § 4 DDL comment and § 7 bullet both give the first — corrected to name both; and that DDL comment still asserted "a bump would manufacture an upgrade case nothing implements", false since `applyUpgrades()` shipped and already updated in `src/roadmapstore.cpp`'s own copy. **Found by the blast-radius sweep, not by a lane:** ANTS-3781 § 1 still said ANTS-3756 § 2.3 "conflates" the milestones in the present tense and that § 7 "lists that sentence for correction" — the correction had already been applied, so the flag was stale in the direction of claiming a live disagreement that no longer existed. **Dismissed (3),** all lane open questions that resolved on inspection: `RoadmapStore::createdSchema()` does exist (`roadmapstore.h:104`), `roadmap-data-model.md` does have a `## 4. Fields`, and ANTS-3816 is a real bullet carrying the 1,839 figure. Doc 416 → 517 lines. |
