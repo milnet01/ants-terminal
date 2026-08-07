@@ -26649,8 +26649,9 @@ against current source before filing.
   docs/specs/ANTS-3815-store-source-format-column.md.
   Spec written and gated (2026-08-07):
   docs/specs/ANTS-3815-store-source-format-column.md, 664 lines, 7 invariants.
-  /cold-eyes ran 3 loops, 2 cold lanes each — CRITICAL 1 → 1 → 0, 57 verified
-  findings, all fixed, none deferred. Awaiting sign-off, not yet accepted.
+  /cold-eyes ran 3 loops, 2 cold lanes each — CRITICAL 1 → 1 → 0. 58 findings
+  verified (22 / 22 / 14) and 4 dismissed; 57 fixed, 1 INFO carried, none
+  deferred. Awaiting sign-off, not yet accepted.
 
   The DEFERRED COLD READ this item owed is DISCHARGED. ANTS-3756 § 2.3 and
   ANTS-3796 § 2.4 were read cold as in-scope cross-references across all three
