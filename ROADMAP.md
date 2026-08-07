@@ -27987,16 +27987,16 @@ against current source before filing.
   dispatch.
 
   Corrected 2026-08-07 (same day, before implementation): the MCP verbs do NOT
-go through `bulletsFor()`. `RoadmapSource::migratedProject()` is the one place
-a dialect is classified, and it has three callers —
-`RoadmapSource::bulletsFor()`, `RemoteControl::roadmapStoreServes()` (the
-verbs' gate) and `RoadmapDialog::storeProjectRoot()`. `bulletsFor()` itself
-has only TWO call sites (`RoadmapDialog::storeProjectRoot`,
-`rcdetail::rcExtractGateNote`), and `src/remotecontrol_roadmap_query.cpp` is
-not one of them. Its `readAll()` still precedes the verbs' dispatch, so the
-saving stands; the seam inventory below was wrong.
+  go through `bulletsFor()`. `RoadmapSource::migratedProject()` is the one
+  place a dialect is classified, and it has three callers —
+  `RoadmapSource::bulletsFor()`, `RemoteControl::roadmapStoreServes()` (the
+  verbs' gate) and `RoadmapDialog::storeProjectRoot()`. `bulletsFor()` itself
+  has only TWO call sites (`RoadmapDialog::storeProjectRoot`,
+  `rcdetail::rcExtractGateNote`), and `src/remotecontrol_roadmap_query.cpp` is
+  not one of them. Its `readAll()` still precedes the verbs' dispatch, so the
+  saving stands; the seam inventory below was wrong.
 
-Verified 2026-08-07: `RoadmapSource::bulletsFor()` takes `markdown` by value
+  Verified 2026-08-07: `RoadmapSource::bulletsFor()` takes `markdown` by value
   (src/roadmapsource.h), so every caller must already hold the text. At
   src/remotecontrol_roadmap_query.cpp:1464 `QString::fromUtf8(f.readAll())`
   runs unconditionally before the dispatch — 3.0 MiB on this project. The
