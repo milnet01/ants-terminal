@@ -26527,7 +26527,7 @@ against current source before filing.
   Kind: investigate.
   Source: cold-eyes ANTS-3808 loop 1, 2026-08-04 — the spec's own §5 recorded this as "owed and not yet filed".
 
-- 🚧 [ANTS-3815] **Record each project's source roadmap format in the store, and have the read seam's gate consult it instead of re-detecting.**
+- ✅ [ANTS-3815] **Record each project's source roadmap format in the store, and have the read seam's gate consult it instead of re-detecting.**
   No store column records a source format: `format` lives on the migration's
   `RoadmapMigrate::Source` struct and nowhere in `roadmapstore.h`. So
   ANTS-3793 § 2.2's ants-v1 gate has to run `detectRoadmapFormat()` over the
@@ -26677,6 +26677,32 @@ against current source before filing.
   docs/specs/ANTS-3815-store-source-format-column.md (3 cold-eyes loops,
   CRITICAL 1 → 1 → 0). Scope is the COLUMN only by user decision; removing
   the 3.0 MiB ROADMAP.md read is ANTS-3863.
+  Resolved (2026-08-07): shipped. project.source_format lands on the
+  project table, kSchemaVersion moves 1 -> 2, and upgradeLadder() gains
+  its first rung -- so ANTS-3781's ladder runs in production for the
+  first time. The migration writes source index 0's format through a new
+  setProjectSourceFormat(); migratedProject() reads it as a second
+  witness at no extra query and refuses a stored format that disagrees
+  with the live file (SourceUnrecognised, naming both formats and the
+  remedy). A row at '' -- every project migrated before the bump --
+  dispatches exactly as version 1 did.
+
+  Spec docs/specs/ANTS-3815-store-source-format-column.md, 4 cold-eyes
+  loops (CRITICAL 1 -> 1 -> 0 -> 0); loop 4 ran against the shipped code
+  and found 18, all fixed. All five of the spec's per-invariant mutations
+  verified RED and reverted. Full suite green, 3310/3310.
+
+  Two constraints discovered at implementation and now written into the
+  spec's new § 2.1.1, because they bind every future bump: a SQLite
+  CREATE TABLE stores its `--` comments as part of the schema, so a new
+  column's rationale goes in a C++ comment above the DDL array; and no
+  existing character of a shipped CREATE TABLE may change, the only
+  permitted edit being a new column appended last. INV-3 found both by
+  reddening on its first run.
+
+  Scope was the column only; removing the live ROADMAP.md read on a
+  migrated project remains ANTS-3863, which also owes INV-6 a second
+  witness if it drops the file read.
 
 - 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —

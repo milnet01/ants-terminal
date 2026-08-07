@@ -464,6 +464,28 @@ TEST(RoadmapReadSeam, Ants3815Inv6StoredFormatDisagreeingWithTheFileRefuses) {
                                                    /*includeArchive=*/false, &why, &err);
     EXPECT_FALSE(records.has_value()) << "neither backend may serve a drifted project";
     EXPECT_EQ(why, ReadError::SourceUnrecognised);
+
+    // The remedy the refusal message names, exercised. Without this leg the
+    // message advertises a route back that nothing tests — and a
+    // registerProject() that refused an already-registered canonical root would
+    // break it silently, since it is get-or-create and nothing here asserts so.
+    qint64 again = 0;
+    ASSERT_TRUE(migrateInto(*store, root, &again));
+    EXPECT_EQ(again, projectId) << "a re-migration must reuse the project row";
+    {
+        const auto row = store->readProject(projectId, &err);
+        ASSERT_TRUE(row.has_value()) << err.toStdString();
+        EXPECT_EQ(row->sourceFormat.toStdString(), std::string("github-task-list"))
+            << "re-running the migration must rewrite source_format";
+    }
+    why = ReadError::TooLarge;
+    err.clear();
+    const auto after = RoadmapSource::migratedProject(*store, root, rewritten,
+                                                      &err, &why);
+    EXPECT_FALSE(after.has_value())
+        << "a GFM project is markdown-served, not store-served";
+    EXPECT_EQ(why, ReadError::None) << "the refusal must be gone after re-migration";
+    EXPECT_TRUE(err.isEmpty()) << err.toStdString();
 }
 
 // ---------------------------------------------------------------- INV-2 -----
