@@ -28020,6 +28020,33 @@ against current source before filing.
   **Layman:** Check which roadmap dialect a project uses BEFORE opening the big text file, not after, so migrated projects never open it.
   Kind: refactor.
   Source: ANTS-3815 spec § 5 (2026-08-07) — user scope decision: ANTS-3815 is the column only..
+  Inventory corrected 2026-08-07 (second correction, at spec time). The
+  bullet above says `migratedProject()` "has three callers" and names
+  `bulletsFor()`, `roadmapStoreServes()` and `RoadmapDialog::storeProjectRoot()`.
+  There are FOUR: `RemoteControl::roadmapWriteTarget()`
+  (src/remotecontrol_roadmap_query.cpp, ANTS-3809 § 2.1's write-side dispatch)
+  was added after the inventory was taken and is missing from it.
+  `grep -rn 'migratedProject(' src/ --include=*.cpp --include=*.h` returns six
+  lines: one declaration (roadmapsource.h), one definition (roadmapsource.cpp)
+  and those four calls.
+
+  The wider count matters more. Counting every site that hands roadmap TEXT to
+  a dispatch-taking entry point — `roadmapBullets` / `roadmapWriteTarget` /
+  `roadmapStoreServes` / `bulletsFor` / `migratedProject` — gives 25, across
+  roadmapdialog.cpp (5), remotecontrol_roadmap_query.cpp (6),
+  remotecontrol_roadmap_log.cpp (7), remotecontrol_feedback.cpp (3),
+  remotecontrol_changelog.cpp (2), remotecontrol_coldeyes.cpp (1) and
+  remotecontrol_terminal.cpp (1). Each holds the text because its own caller
+  read the file first, so "move the dispatch ahead of the read" reaches all 25,
+  not three. There is no shared read helper today — each site opens its own
+  QFile — so the change introduces one rather than editing one.
+
+  Measured the same day: the live file is 3,274,975 bytes, and a read bounded
+  to the detector's 300 non-blank lines reaches byte 21,046 (line 346) — 0.64%
+  of the file. So the bounded prefix read is the cheap second witness ANTS-3815
+  § 6 requires, and no existence/size stat is needed: an absent or empty file
+  yields an empty prefix, `sawSignal` false, and the existing SourceUnrecognised
+  refusal is preserved unchanged.
 
 - 📋 [ANTS-3864] **Give `specs.md` § 5.6 a status for a spec that is built but not yet released.**
   `docs/standards/specs.md` § 5.6 fixes the lifecycle as `spec draft` →
