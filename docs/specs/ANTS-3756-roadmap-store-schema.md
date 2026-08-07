@@ -170,9 +170,15 @@ stores in real hands — at ANTS-3758's cutover, which is the deadline recorded
 here, and one version-1 store already exists on this machine outside any test's
 temp directory. A store *below* the running binary's version becomes
 **possible** only once `kSchemaVersion` moves, which is ANTS-3815. ANTS-3782
-§ 2.1 and ANTS-3796 § 2.1 each add a column *within* version 1 on the second
-ground; reachability is what makes the gap matter, the bump is what makes it
-occur.
+§ 2.1 and ANTS-3796 § 2.1 each add a column *within* version 1, and **the ground
+they actually recorded is the first one** — "no store is reachable from
+user-facing code yet", as § 4's `source_path` comment and § 7's ANTS-3796 bullet
+both state it. The second ground held as well, and is the more durable of the
+two: with `kSchemaVersion` never having moved, no below-version store was
+possible for a rung to meet. Both are named here rather than reassigning theirs,
+because an earlier revision of this paragraph credited them to the second ground
+alone and contradicted its own § 4 and § 7. Reachability is what makes the gap
+matter; the bump is what makes it occur.
 This matters here because the launcher can leave an older binary on disk
 (`CLAUDE.md`) and this store is primary — the one file with no source to rebuild
 from except its own export.
@@ -432,9 +438,11 @@ CREATE TABLE section (
   -- that fact -- the migration plan holds a source index and is discarded at
   -- commit -- so without it ANTS-3758 re-emits a rotated archive back into
   -- ROADMAP.md. In this DDL rather than an ALTER, and at user_version 1: no
-  -- store is reachable from user-facing code yet, so there is nothing to
-  -- migrate and a bump would manufacture an upgrade case nothing implements.
-  -- That argument expires at ANTS-3758's cutover; ANTS-3781 owns what follows.
+  -- store was reachable from user-facing code when this landed, so there was
+  -- nothing to migrate and a bump would have manufactured an upgrade case
+  -- nothing implemented. Both halves of that argument have since expired --
+  -- ANTS-3781 built applyUpgrades(), so a later column is an ALTER in a rung
+  -- rather than an edit here, and ANTS-3815 makes the first bump. See § 2.3.
   source_path TEXT,
   UNIQUE (project_id, slug)
 );

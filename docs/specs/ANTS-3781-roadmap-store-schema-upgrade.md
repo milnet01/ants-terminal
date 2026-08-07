@@ -70,15 +70,16 @@ is a signed pragma, so a negative value is representable and falls through arm
 3 today, which is why § 2.2's guard is `!= 0` rather than `> 0`. Consequence 1
 below is about the version-behind case; consequences 2 and 3 apply to both.
 
-**Two different milestones are involved and ANTS-3756 § 2.3 conflates them**,
-which is why this spec names a different one than that document does. A store
-becomes **reachable** at ANTS-3758's cutover — real stores in real hands, which
-is the deadline ANTS-3756 records. A store *below* the running binary's version
-becomes **possible** only once `kSchemaVersion` moves, which is ANTS-3815.
-Reachability is what makes the gap matter; the bump is what makes it
-occur. § 7 lists that sentence for correction rather than working around it. A
-version-1 store file exists on this machine now, so the first half has already
-happened.
+**Two different milestones are involved, and an earlier revision of ANTS-3756
+§ 2.3 conflated them** — which is why this spec named a different one than that
+document did. A store becomes **reachable** at ANTS-3758's cutover — real stores
+in real hands, which is the deadline ANTS-3756 records. A store *below* the
+running binary's version becomes **possible** only once `kSchemaVersion` moves,
+which is ANTS-3815. Reachability is what makes the gap matter; the bump is what
+makes it occur. **§ 7's correction has since been applied**, so the two documents
+now separate the milestones the same way and this paragraph records why rather
+than flagging a live disagreement. A version-1 store file exists on this machine
+now, so the first half has already happened.
 
 **A further problem, handed here by a sibling spec.**
 [ANTS-3796](ANTS-3796-section-record-completeness.md) § 2.4 records that the
