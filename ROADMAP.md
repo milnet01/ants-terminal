@@ -26703,6 +26703,18 @@ against current source before filing.
   Scope was the column only; removing the live ROADMAP.md read on a
   migrated project remains ANTS-3863, which also owes INV-6 a second
   witness if it drops the file read.
+  Owed at release (2026-08-07): the spec's Status reads `accepted` and
+  must become `shipped X.Y.Z` in the release that carries this — the code
+  is merged and green but sits in CHANGELOG `[Unreleased]`, and
+  `specs.md` § 5.6 has no state for built-but-unreleased (ANTS-3864).
+  Flip docs/specs/ANTS-3815-store-source-format-column.md's Status line
+  in the release cycle's doc-drift sweep; it is the only line that goes
+  stale on release.
+
+  Cold-eyes converged at loop 5 (C 1 → 1 → 0 → 0 → 0). Loop 5's two HIGHs
+  were loop-4 fix collateral rather than draft defects, so a further loop
+  would answer collateral with a cold dispatch — do NOT re-run the gate
+  on this spec unless a contract clause is amended.
 
 - 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —
