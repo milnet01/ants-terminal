@@ -24924,7 +24924,7 @@ against current source before filing.
   15 of 3D_Engine's 17 collisions clear. The other two need ANTS-3771 or a
   reworded line in that file (ANTS-3772).
 
-- 📋 [ANTS-3781] **RoadmapStore has no schema-upgrade path, and ANTS-3756 attributes one to a spec that already shipped without it.**
+- 🚧 [ANTS-3781] **RoadmapStore has no schema-upgrade path, and ANTS-3756 attributes one to a spec that already shipped without it.**
   ANTS-3756 states: "A lower user_version is an upgrade, which ANTS-3757
   owns; until it ships there is only version 1, so the case is unreachable
   rather than unhandled." ANTS-3757 has shipped and no upgrade path
@@ -24985,6 +24985,7 @@ against current source before filing.
   Filed while specced: ANTS-3860 (export-side upgrade path, the half this
   does not take) and ANTS-3861 (unrelated doubled src/src/ path in a test
   fallback, found while verifying a build claim).
+  Implementation started (2026-08-07) against the accepted spec.
 
 - ✅ [ANTS-3782] **Roadmap section provenance — the source_path column, its reader, and what the render re-splits on.**
   Split out of ANTS-3766 on 2026-08-01 at that spec's cold-eyes loop 4,
