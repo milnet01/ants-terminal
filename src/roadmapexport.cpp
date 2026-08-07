@@ -306,7 +306,7 @@ bool writeMeta(RoadmapStore &store, const QString &slug, QIODevice *out, qint64 
 
     QJsonObject o;
     o.insert(QStringLiteral("t"), QStringLiteral("meta"));
-    o.insert(QStringLiteral("schema"), RoadmapStore::kSchemaVersion);
+    o.insert(QStringLiteral("schema"), RoadmapExport::kExportSchemaVersion);
     o.insert(QStringLiteral("project"), slug);
     o.insert(QStringLiteral("name"), p->name);
     // § 2.3 — no export timestamp. A date inside a byte-identity contract
@@ -829,11 +829,11 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
 
         QSqlQuery q(db);
         if (t == QLatin1String("meta")) {
-            if (o.value(QStringLiteral("schema")).toInt() != RoadmapStore::kSchemaVersion)
+            if (o.value(QStringLiteral("schema")).toInt() != RoadmapExport::kExportSchemaVersion)
                 return abort(QStringLiteral("line %1: export schema %2, this binary knows %3")
                                  .arg(lineNo)
                                  .arg(o.value(QStringLiteral("schema")).toInt())
-                                 .arg(RoadmapStore::kSchemaVersion));
+                                 .arg(RoadmapExport::kExportSchemaVersion));
             // root is NULL: it is store-local and deliberately unexported
             // (§ 2.3), which is why ANTS-3756 makes the column nullable.
             q.prepare(QStringLiteral(
@@ -863,9 +863,10 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
             // of every project restored from an older export — the precise
             // failure this column exists to stop, arriving through the door
             // built to tolerate it. An export written before this change clears
-            // the `meta` gate (kSchemaVersion does not move, § 2.4) and is
-            // refused here instead, which names the actual problem where a
-            // version mismatch would only say the binary is too new.
+            // the `meta` gate — that gate keys on the export's own record
+            // version, which this change did not move (§ 2.4) — and is refused
+            // here instead, which names the actual problem where a version
+            // mismatch would only say the binary is too new.
             if (!o.value(QStringLiteral("position")).isDouble())
                 return abort(QStringLiteral("line %1: section record's position is missing "
                                             "or not a number").arg(lineNo));

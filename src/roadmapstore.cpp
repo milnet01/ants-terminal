@@ -232,6 +232,101 @@ bool RoadmapStore::open(QString *error) {
     return true;
 }
 
+// ANTS-3781 § 2.1 — the production ladder. Empty at kSchemaVersion 1: there is
+// no version below it to climb from. The first rung lands with the first bump
+// (ANTS-3815), and INV-4 is what makes a bump without one a red test rather
+// than a thing to remember.
+//
+// A function-local static, so it is built once on first call.
+const QVector<RoadmapStore::Upgrade> &RoadmapStore::upgradeLadder() {
+    static const QVector<Upgrade> ladder;
+    return ladder;
+}
+
+// ANTS-3781 § 2.1 / INV-1..INV-3, INV-7. Runs entirely inside the CALLER's
+// transaction (see the header's precondition), so this function opens none of
+// its own and the stamp below is durable only once the caller commits.
+bool RoadmapStore::applyUpgrades(QSqlDatabase &db, int from, int to,
+                                 const QVector<Upgrade> &ladder, QString *error) {
+    // Degenerate rule 1, and it is FIRST because rule 2 overlaps it: version 0
+    // is a store with no schema, which the DDL creates rather than a rung, and
+    // a negative value is a corrupt pragma. createSchema() routes every
+    // non-zero version here precisely so this arm can refuse legibly instead of
+    // the DDL answering with `table already exists`.
+    if (from < 1) {
+        if (error)
+            *error = QStringLiteral(
+                         "cannot upgrade roadmap store schema %1 to %2: version 0 is a "
+                         "store with no schema, which is the DDL's case, and a negative "
+                         "version is a corrupt user_version pragma")
+                         .arg(from)
+                         .arg(to);
+        return false;
+    }
+    // Degenerate rule 2 — an empty climb. A downgrade range lands here as a
+    // silent no-op by design; refusing a downgrade is createSchema()'s
+    // `version > kSchemaVersion` arm, two branches above this call.
+    if (from >= to)
+        return true;
+
+    // PASS ONE — validate the WHOLE range and execute nothing (INV-2). A single
+    // pass that looked each rung up as it reached it would run rung 2's
+    // statements before discovering rung 3 was missing, leaving a half-climbed
+    // store for the caller to roll back.
+    for (int v = from + 1; v <= to; ++v) {
+        int rungs = 0;
+        for (const Upgrade &u : ladder)
+            if (u.to == v)
+                ++rungs;
+        if (rungs != 1) {
+            if (error)
+                *error = QStringLiteral(
+                             "cannot upgrade roadmap store schema %1 to %2: version %3 has "
+                             "%4 upgrade rungs, expected exactly one")
+                             .arg(from)
+                             .arg(to)
+                             .arg(v)
+                             .arg(rungs);
+            return false;
+        }
+    }
+
+    // PASS TWO — ascending VERSION order, not declaration order (INV-1).
+    for (int v = from + 1; v <= to; ++v) {
+        for (const Upgrade &u : ladder) {
+            if (u.to != v)
+                continue;
+            for (const QString &stmt : u.statements) {
+                QString why;
+                if (!exec(db, stmt, &why)) {
+                    if (error)
+                        *error = QStringLiteral("cannot upgrade roadmap store schema %1 to "
+                                                "%2: the rung to version %3 failed: %4")
+                                     .arg(from)
+                                     .arg(to)
+                                     .arg(v)
+                                     .arg(why);
+                    return false;
+                }
+            }
+        }
+    }
+
+    // One stamp, after the last rung — never per rung, so the version moves
+    // only once and only if every rung landed (INV-1).
+    QString why;
+    if (!exec(db, QStringLiteral("PRAGMA user_version = %1").arg(to), &why)) {
+        if (error)
+            *error = QStringLiteral("cannot upgrade roadmap store schema %1 to %2: "
+                                    "stamping user_version failed: %3")
+                         .arg(from)
+                         .arg(to)
+                         .arg(why);
+        return false;
+    }
+    return true;
+}
+
 bool RoadmapStore::createSchema(QString *error) {
     // Fast path, and it is about CONTENTION rather than speed: on an existing
     // store there is nothing to create, so taking a write lock to discover
@@ -278,6 +373,28 @@ bool RoadmapStore::createSchema(QString *error) {
         return exec(m_db, QStringLiteral("COMMIT"), error);
     }
 
+    // ANTS-3781 § 2.2 — everything below kSchemaVersion and not 0 comes here,
+    // negatives included (the two arms above already returned). The guard is
+    // `!= 0` and not `> 0` deliberately: user_version is a SIGNED 32-bit
+    // pragma, so a negative value is representable, and under `> 0` it would
+    // fall through to the DDL and be answered with `table already exists` — the
+    // illegible failure this item exists to close, one input away from the case
+    // everyone thinks about. applyUpgrades()'s `from < 1` arm refuses it naming
+    // the value instead.
+    //
+    // The version read here is the one read inside BEGIN IMMEDIATE, so two
+    // binaries opening the same behind-version store serialise: the winner
+    // climbs and commits, and the loser's own read returns kSchemaVersion and
+    // takes the arm above. m_createdSchema is deliberately NOT set — an
+    // upgraded store's tables were made by an earlier binary (INV-5).
+    if (version != 0) {
+        if (!applyUpgrades(m_db, version, kSchemaVersion, upgradeLadder(), error)) {
+            exec(m_db, QStringLiteral("ROLLBACK"), nullptr);
+            return false;
+        }
+        return exec(m_db, QStringLiteral("COMMIT"), error);
+    }
+
     const QString ddl[] = {
         QStringLiteral(R"(CREATE TABLE project (
   project_id   INTEGER PRIMARY KEY,
@@ -308,9 +425,11 @@ bool RoadmapStore::createSchema(QString *error) {
   -- commit -- so without it ANTS-3758 re-emits a rotated archive back into
   -- ROADMAP.md. In this DDL rather than an ALTER, and at user_version 1: no
   -- store is reachable from user-facing code yet, so there is nothing to
-  -- migrate and a bump would manufacture an upgrade case nothing implements
-  -- (and regenerate three export goldens) in order to migrate zero stores.
-  -- That freedom expires at ANTS-3758's cutover; ANTS-3781 owns what follows.
+  -- migrate and a bump would manufacture an upgrade case in order to migrate
+  -- zero stores. That freedom expires at ANTS-3758's cutover. ANTS-3781 has
+  -- since built what follows -- applyUpgrades() above -- so a later column is
+  -- an ALTER in a rung rather than an edit here, and it no longer touches the
+  -- export goldens: the export carries its own record-version constant now.
   source_path TEXT,
   -- ANTS-3796 § 2.1. Document order among THIS PROJECT's sections -- one
   -- sequence over every section, not one per parent -- and the only record of

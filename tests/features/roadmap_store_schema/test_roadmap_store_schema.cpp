@@ -895,9 +895,15 @@ TEST(RoadmapStoreSchema, Inv27SchemaVersionStillOne) {
     EXPECT_EQ(q.value(0).toInt(), RoadmapStore::kSchemaVersion);
     EXPECT_EQ(RoadmapStore::kSchemaVersion, 1)
         << "INV-27: breaks when kSchemaVersion is bumped for this column — the "
-           "tempting move, which requires an upgrade path that does not exist "
-           "(ANTS-3781) against ZERO stores that would need one, and which "
-           "invalidates three export goldens carrying \"schema\":1. This "
+           "tempting move. All three of this message's original reasons have "
+           "since expired, and ANTS-3781 retired them rather than this "
+           "assertion: the upgrade path EXISTS now "
+           "(RoadmapStore::applyUpgrades), a version-1 store DOES exist outside "
+           "a test's temp directory and a bump would strand it, and the three "
+           "export goldens no longer track this constant at all — they carry "
+           "the export's own kExportSchemaVersion. What remains, and is why "
+           "this assertion stands: a bump is ANTS-3815's to make deliberately, "
+           "together with the rung that climbs to it (ANTS-3781 INV-4). This "
            "invariant is what makes § 2.1's argument a contract rather than a "
            "comment in a commit message";
 }

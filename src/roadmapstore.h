@@ -22,8 +22,11 @@ public:
     // production is a cap nothing exercises.
     static constexpr qint64 kDefaultHistoryCapBytes = 250LL * 1024 * 1024;
 
-    // Schema version carried in PRAGMA user_version; the export's `meta`
-    // record carries the same number.
+    // Schema version carried in PRAGMA user_version — the shape of THESE
+    // TABLES. The export's `meta` record carries its own, independent number
+    // (RoadmapExport::kExportSchemaVersion): it describes the JSONL record
+    // shape, and ANTS-3781 § 2.3 held the two apart so a table-shape bump does
+    // not invalidate every export ever written.
     static constexpr int kSchemaVersion = 1;
 
     // INV-16 — the write deadline, in ms, matching ConfigWriteLock's rather
@@ -101,6 +104,79 @@ public:
     bool createdSchema() const { return m_createdSchema; }
     QString path() const { return m_path; }
     QSqlDatabase &db() { return m_db; }
+
+    // ANTS-3781 § 2.1 — the upgrade ladder. One rung of it: the statements that
+    // take a store from version `to - 1` to version `to`, in the order given.
+    struct Upgrade {
+        int to;
+        QStringList statements;
+    };
+
+    // Climbs `from` to `to`, applying exactly one rung per version step, and
+    // stamps `PRAGMA user_version = to` once after the last rung.
+    //
+    // TWO PASSES, and the split is the contract rather than an implementation
+    // detail (INV-2). Pass one validates the WHOLE range and executes nothing:
+    // every version in (from, to] must have exactly one rung, and any other
+    // count refuses naming that version. Pass two then runs the rungs in
+    // ascending version order. A single pass that looked each rung up as it
+    // reached it would run rung 2's statements before discovering rung 3 was
+    // missing.
+    //
+    // PRECONDITION: the caller has an open transaction. This function neither
+    // begins nor commits one — a half-applied upgrade to a store whose only
+    // rebuild path is the export is the worst outcome available, so the
+    // atomicity belongs to one owner and that owner is createSchema(). The
+    // stamp is durable only when the caller commits. There is no runtime guard
+    // for the precondition: QSqlDatabase does not surface
+    // sqlite3_get_autocommit() (the same limitation m_inTransaction exists
+    // for), so the check cannot be made without inventing a second one.
+    //
+    // Degenerate arguments, IN THIS ORDER, because two of the rules overlap and
+    // the order is what makes the result single-valued:
+    //   1. `from < 1` REFUSES, whatever `to` is. Version 0 is a store with no
+    //      schema at all and creating one is the DDL's job, not a rung's; a
+    //      negative version is a corrupt pragma. This arm is why createSchema()
+    //      can route every non-zero version here and still fail legibly.
+    //   2. otherwise `from >= to` is an empty climb — nothing validated,
+    //      nothing run, nothing stamped, returns true. Note this makes a
+    //      DOWNGRADE range a silent no-op rather than a refusal; refusing a
+    //      downgrade is createSchema()'s `version > kSchemaVersion` arm and
+    //      stays there.
+    //   3. otherwise the two passes above run over `(from, to]`.
+    // `to` is NOT compared to kSchemaVersion — a test climbs past it by design
+    // (INV-1), and this function's job is the climb, not the policy.
+    // Rungs whose TARGET VERSION (Upgrade::to) falls outside the climbed range
+    // are ignored. A rung with an empty `statements` list is legal — it
+    // satisfies the exactly-one-rung requirement for its version without
+    // running SQL; the version still moves only at the final stamp, never per
+    // rung.
+    //
+    // `from` is trusted rather than re-read. Not because a re-read would race —
+    // inside the caller's write lock it could not — but because the version is
+    // an argument for the same reason the ladder is: a function that read its
+    // own starting point could only ever be tested against a store already at
+    // it.
+    //
+    // Public, and taking its ladder as an argument, for the reason
+    // kDefaultHistoryCapBytes is a constructor parameter (INV-14): at
+    // kSchemaVersion 1 the production ladder is EMPTY, so a ladder reachable
+    // only from production is a ladder nothing can exercise until the first
+    // bump.
+    static bool applyUpgrades(QSqlDatabase &db, int from, int to,
+                              const QVector<Upgrade> &ladder, QString *error = nullptr);
+
+    // The production ladder — empty at kSchemaVersion 1, because there is no
+    // version below it to climb from. The first rung lands with the first bump
+    // (ANTS-3815); INV-4 is what makes that a red test rather than a thing to
+    // remember.
+    //
+    // A public static and not a file-scope object in the .cpp: INV-4's
+    // completeness check compiles into another translation unit, and a ladder
+    // that check cannot reach leaves the missing-rung case — the one INV-2
+    // refuses at runtime — with nothing checking for it at build time, which is
+    // the whole point of having INV-4.
+    static const QVector<Upgrade> &upgradeLadder();
 
     // INV-8 — a project is keyed on its CANONICAL root. A path that cannot be
     // canonicalised is REFUSED, never stored: QFileInfo::canonicalFilePath()

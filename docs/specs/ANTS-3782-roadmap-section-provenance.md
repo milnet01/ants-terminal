@@ -116,8 +116,10 @@ So a bump would manufacture the upgrade case nothing implements, and regenerate
 three goldens, in order to migrate zero stores.
 
 **That freedom expires at ANTS-3758's cutover**, which is what first makes the
-store reachable. **ANTS-3781** owns the upgrade path that is still missing; a
-schema change landing after the cutover gets no such shortcut.
+store reachable. **[ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md)** owns
+the upgrade path, which was missing when this was written and has since been
+built (`RoadmapStore::applyUpgrades()`); a schema change landing after the
+cutover gets no such shortcut, and now has a ladder to climb instead.
 
 ### 2.2 The writer
 
@@ -374,8 +376,12 @@ id that means one thing everywhere it appears.
   `tests/features/roadmap_export_roundtrip/` already imports the goldens and
   fails on a `meta` schema mismatch, so it is the second leg unchanged.
   *Breaks when:* `kSchemaVersion` is bumped for this column — which is the
-  tempting move, and which requires an upgrade path that does not exist
-  (ANTS-3781), against zero stores that would need one. This invariant is what
+  tempting move, and which at the time of writing required an upgrade path that
+  did not exist, against zero stores that would need one. Both halves have since
+  expired: [ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md) built the path,
+  and a version-1 store now exists outside a test's temp directory. The
+  invariant stands on what is left — a bump is ANTS-3815's to make
+  deliberately, with its rung. This invariant is what
   makes § 2.1's argument a contract rather than a comment in a commit message.
 
 - **INV-28** — a source whose stored value would be unplaceable refuses the

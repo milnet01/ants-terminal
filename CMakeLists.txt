@@ -2438,6 +2438,11 @@ if(ANTS_TESTS)
                 # INV-15 forks two openers; the fork lives INSIDE the bundle,
                 # so no separate target is needed for process isolation.
                 tests/features/roadmap_store_concurrency/test_roadmap_store_concurrency.cpp
+                # ANTS-3781 — the schema-upgrade ladder. Behavioural against a
+                # real store, plus three source scrapes (INV-3(b), INV-5, INV-6)
+                # over ANTS_SRC_DIR: each asserts a property of the SOURCE that
+                # no behaviour of a version-1 store can observe.
+                tests/features/roadmap_store_upgrade/test_roadmap_store_upgrade.cpp
                 # ANTS-3761 — the export. INV-19 measures the canonicaliser
                 # against the RFC's own committed vectors; INV-18 measures the
                 # writer against committed golden files, which is what makes

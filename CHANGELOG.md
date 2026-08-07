@@ -55,6 +55,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap database can now be brought up to date instead of refusing to open** (ANTS-3781)
+  A roadmap database written by an older build had no route forward: it
+  fell through to the create-tables step and died on "table already
+  exists", a message naming neither its version nor the one the running
+  build expects. There is now an upgrade ladder — one step per version,
+  validated end to end before a single statement runs, applied inside one
+  transaction so a failure leaves nothing half-done, and every refusal
+  names both versions. The database's layout number and the backup
+  file's record-format number were also one and the same, so any change
+  to the database would have spoiled every backup ever written; they are
+  now separate numbers that move independently. No file on disk changes.
+
 - **Tests can no longer reach the user's real data directory** (ANTS-3856)
   Every test bundle now runs with `XDG_DATA_HOME` pointed at a
   per-process temporary directory, so a test that omits its roadmap-store

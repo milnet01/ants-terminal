@@ -4,7 +4,9 @@
 `ants_roadmapstore_lib`, behind `tests/features/roadmap_store_schema/`,
 `roadmap_store_identity/` and `roadmap_store_concurrency/`. Two known gaps are
 tracked rather than closed: ANTS-3760 (the deferred tail this spec left at its
-cold-eyes cap) and ANTS-3781 (no schema-upgrade path).
+cold-eyes cap) and
+[ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md) (the schema-upgrade path,
+now specified and built — it completes this document's § 2.3 version contract).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3756 (ANTS-3753 split, spec seam 1 of 3).
 **Blocker for:** ANTS-3761 (export format), ANTS-3757 (migration), ANTS-3758 (publish + consumer cutover).
@@ -141,23 +143,36 @@ the reconciliation is recorded in that bullet (nine-way stitches and nine-way
 migrations fight the stated goal of maintaining the whole thing from any
 project).
 
-`PRAGMA user_version` carries the schema version, starting at `1`; the export's
-`meta` record carries the same number. Without it a future reader cannot tell
-which schema wrote a given file, and ANTS-3757 and ANTS-3758 both build on this
-one.
+`PRAGMA user_version` carries the schema version, starting at `1` — the shape of
+**these tables**. The export's `meta` record carries its own, independent
+version of the **record** shape
+([ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md) § 2.3 held the two
+apart; they started equal and move separately now, so a table-shape bump no
+longer invalidates every export ever written). Without a version a future reader
+cannot tell which record shape wrote a given file, and ANTS-3757 and ANTS-3758
+both build on this one.
 
 **A version this binary does not know is refused, and the two directions differ.**
 A store whose `user_version` is **higher** than the binary's is opened
 **not at all** — not read-only, refused with a message naming both numbers.
 Read-only sounds like the safe option and is not: a newer schema can move
 meaning rather than only add to it, so a confident partial read is worse than no
-read. A **lower** `user_version` is an upgrade, and **ANTS-3781** owns it —
-this document first assigned it to ANTS-3757, which shipped without
-building one, so the sentence is corrected rather than left pointing at a closed
-spec. The case remains unreachable rather than unhandled: there is only version
-1, and no store exists outside a test's temp directory. ANTS-3782 § 2.1 adds a
-column *within* version 1 on exactly that ground. It stops being unreachable at
-ANTS-3758's cutover, which is that item's deadline.
+read. A **lower** `user_version` is an upgrade, and
+**[ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md)** owns it — this
+document first assigned it to ANTS-3757, which shipped without building one, so
+the sentence is corrected rather than left pointing at a closed spec. It is now
+built: `createSchema()` routes every non-zero version below this build's to
+`applyUpgrades()`.
+
+**Two milestones are involved and an earlier draft of this paragraph conflated
+them** (ANTS-3781 § 1 separates them). A store becomes **reachable** — real
+stores in real hands — at ANTS-3758's cutover, which is the deadline recorded
+here, and one version-1 store already exists on this machine outside any test's
+temp directory. A store *below* the running binary's version becomes
+**possible** only once `kSchemaVersion` moves, which is ANTS-3815. ANTS-3782
+§ 2.1 and ANTS-3796 § 2.1 each add a column *within* version 1 on the second
+ground; reachability is what makes the gap matter, the bump is what makes it
+occur.
 This matters here because the launcher can leave an older binary on disk
 (`CLAUDE.md`) and this store is primary — the one file with no source to rebuild
 from except its own export.

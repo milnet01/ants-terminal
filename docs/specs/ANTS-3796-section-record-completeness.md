@@ -339,16 +339,24 @@ distinction matters in a spec whose first CRITICAL was a missing reader:
 
 **The export's `meta` schema value does not move, and that is a decision rather
 than an oversight.** Each export opens with `{"name":…,"project":…,"schema":1,
-"t":"meta"}`, and `rebuildProject()` aborts on `schema != RoadmapStore::
-kSchemaVersion` — the *same* constant INV-6 holds at 1. So this change widens
-the record shape without moving the discriminator, and an export written before
-it would clear the `meta` gate and then be refused a few lines later for the
-missing fields. That is the correct outcome and the reason no compatibility
-path is owed: the refusal is specific ("line N: section record missing
-position") where a version mismatch would say only that the binary is too new.
-Bumping `kSchemaVersion` to express the record change would also bump the
-store's `user_version`, which is exactly what INV-6 forbids — the two are one
-constant, and separating them is ANTS-3781's problem, not this spec's.
+"t":"meta"}`, and `rebuildProject()` aborts when that value disagrees with the
+export's own record-version constant. So this change widens the record shape
+without moving the discriminator, and an export written before it would clear
+the `meta` gate and then be refused a few lines later for the missing fields.
+That is the correct outcome and the reason no compatibility path is owed: the
+refusal is specific ("line N: section record missing position") where a version
+mismatch would say only that the binary is too new.
+
+**The hand-off this paragraph made has since been answered.** When it was
+written, the export's `meta` value and the store's `user_version` were **one**
+constant, so bumping either to express a record change bumped both — which is
+what INV-6 forbids, and why separating them was deferred to ANTS-3781.
+[ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md) § 2.3 did the split:
+`RoadmapExport::kExportSchemaVersion` describes the JSONL record shape, the
+store's own constant describes the table shape, and they move independently. No
+*value* changed, so this section's conclusion and every committed golden stand —
+but the "the two are one constant" premise no longer holds, and a future
+record-shape change may now move the export's number alone.
 
 **Emission order is unchanged.** Both of `loadSections()`'s orders — its
 `(depth, slug)` `emitOrder` and its plain-slug `slugOrder` — are untouched;
@@ -475,8 +483,12 @@ the second instance of it in this lane.
 - **INV-6** — This change does not move the schema version: a store created by
   this build reports `PRAGMA user_version` = 1. *Test:*
   `tests/features/roadmap_store_schema/` asserts the pragma. *Breaks when:*
-  `kSchemaVersion` is bumped for these columns, which requires the upgrade path
-  ANTS-3781 records as absent, against zero stores that would need one. Mirrors
+  `kSchemaVersion` is bumped for these columns, which at the time of writing
+  required an upgrade path that did not exist, against zero stores that would
+  need one. Both halves have since expired —
+  [ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md) built the path and a
+  version-1 store now exists on disk — leaving the invariant standing on what
+  remains: a bump is ANTS-3815's to make deliberately, with its rung. Mirrors
   ANTS-3782 INV-27 with **one leg deliberately dropped**: that invariant also
   asserted the three goldens still import, which cannot hold here because § 4
   regenerates them — the record shape is what changed. The argument for holding
@@ -560,8 +572,9 @@ diff unreadable in the same pass that changes the record shape.
 - **`roadmap_log op:create_section` choosing a position** — tracked by
   ANTS-3793. § 1.1's second failure is
   named here as motivation; the verb's surface is that spec's.
-- **A schema-upgrade path** — tracked by ANTS-3781. INV-6 is the reason this
-  change does not need one, not a claim that none is needed later.
+- **A schema-upgrade path** — [ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md),
+  which has since built one. INV-6 is the reason this change did not need it,
+  not a claim that none was needed later.
 - **User-initiated reordering — dragging a section, or a verb whose purpose is
   to move one.** A permanent exclusion rather than deferred work: nothing in
   this lane has asked for it, so there is no follow-up id. It does **not**

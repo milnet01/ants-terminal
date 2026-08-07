@@ -16,6 +16,23 @@ class RoadmapStore;
 
 namespace RoadmapExport {
 
+// ANTS-3781 § 2.3 — the JSONL RECORD shape, which is not the store's table
+// shape. Held apart from the store's own table-version constant (ANTS-3796
+// § 2.4 handed the split here) so a store-side bump does not invalidate every
+// export ever written — an export is the store's only rebuild path, and
+// refusing one leaves no recovery route. Equal to 1 today because both started
+// there; they move independently now.
+//
+// This comment names the store's constant DESCRIPTIVELY rather than by spelling
+// it: ANTS-3781 INV-6 asserts zero occurrences of that token anywhere in either
+// export translation unit, comments included, and a comment is exactly where a
+// re-weld would hide.
+//
+// `inline` because a namespace-scope `constexpr` in a header has internal
+// linkage, giving every TU its own object; `inline constexpr` is the C++17
+// idiom for a header constant with one identity.
+inline constexpr int kExportSchemaVersion = 1;
+
 // Stream one project's records into `out`, in the order § 2.4 pins. Streaming
 // is INV-12: the peak RSS delta across this call stays under 4 MiB however
 // large the export, so the two unbounded tables — `item.body` and `history` —

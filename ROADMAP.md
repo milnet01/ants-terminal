@@ -24924,7 +24924,7 @@ against current source before filing.
   15 of 3D_Engine's 17 collisions clear. The other two need ANTS-3771 or a
   reworded line in that file (ANTS-3772).
 
-- 🚧 [ANTS-3781] **RoadmapStore has no schema-upgrade path, and ANTS-3756 attributes one to a spec that already shipped without it.**
+- ✅ [ANTS-3781] **RoadmapStore has no schema-upgrade path, and ANTS-3756 attributes one to a spec that already shipped without it.**
   ANTS-3756 states: "A lower user_version is an upgrade, which ANTS-3757
   owns; until it ships there is only version 1, so the case is unreachable
   rather than unhandled." ANTS-3757 has shipped and no upgrade path
@@ -24986,6 +24986,27 @@ against current source before filing.
   does not take) and ANTS-3861 (unrelated doubled src/src/ path in a test
   fallback, found while verifying a build claim).
   Implementation started (2026-08-07) against the accepted spec.
+  Resolved (2026-08-07): shipped against the accepted spec
+  (docs/specs/ANTS-3781-roadmap-store-schema-upgrade.md).
+  RoadmapStore::Upgrade + applyUpgrades() + upgradeLadder() are public on
+  the store; createSchema() gained its fourth arm, guarded `version != 0`
+  (NOT `> 0` — user_version is signed, so a negative pragma would
+  otherwise still reach the DDL and reproduce the illegible failure).
+  The ladder is empty at kSchemaVersion 1, which does not move here.
+  RoadmapExport::kExportSchemaVersion unwelds the JSONL record version
+  from the store's table version; no value changed, so the three export
+  goldens still import byte-for-byte.
+
+  Tests: tests/features/roadmap_store_upgrade/ (12 tests) in test_core.
+  INV-1 and INV-6 verified RED against pre-fix source; INV-2, INV-3(a),
+  INV-3(b), INV-5 and INV-7 each verified RED against the mutation their
+  own *Breaks when* clause names, then reverted. INV-3's own-transaction
+  mutation reddened ONLY the source-grep leg (b), leaving the behavioural
+  leg (a) green — which is the result leg (b) exists to catch and is
+  recorded rather than treated as a formality. INV-4 is green and vacuous
+  at version 1 (standing guard); INV-8 skips with a message and becomes a
+  FAIL the moment kSchemaVersion moves, so ANTS-3815 cannot ship its rung
+  without writing that leg.
 
 - ✅ [ANTS-3782] **Roadmap section provenance — the source_path column, its reader, and what the render re-splits on.**
   Split out of ANTS-3766 on 2026-08-01 at that spec's cold-eyes loop 4,

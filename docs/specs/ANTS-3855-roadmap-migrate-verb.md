@@ -686,8 +686,9 @@ target, no new dependency, no new link edge (§ 2.1). The feature test joins `te
   (ANTS-3765 § 2.5), and a multi-project verb would either break that
   atomicity or hold one write lock across every project.
 - **The source-format column** — ANTS-3815. **The batched item reader** —
-  ANTS-3816. **The schema-upgrade path** — ANTS-3781, which this spec does not
-  need because it adds no column.
+  ANTS-3816. **The schema-upgrade path** —
+  [ANTS-3781](ANTS-3781-roadmap-store-schema-upgrade.md), which this spec does
+  not need because it adds no column.
 - **Fixing the corpus's id collisions** — ANTS-3772. This verb reports them as
   a refusal with the plan's notes; it does not repair source files.
 - **Evicting the leaked fixture row** — ANTS-3856.
