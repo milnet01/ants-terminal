@@ -266,6 +266,22 @@ MCP feature tests use (e.g.
 Prefer driving the pure logic (resolver, projection, validation)
 directly where a helper exists, so the test doesn't need a live tab.
 
+**A seam a test drives must be its own translation unit, not a helper
+sharing a `.cpp` with the handler** (measured ANTS-3855, 2026-08-06). A
+static archive is pulled in at *object* granularity, so a seam co-located
+with its `RemoteControl::cmd*` handler drags `RemoteControl` →
+`ants::resolveCallerCwdRoot` → `MainWindow` into everything that links
+it — and `test_core` links `ants_core_lib` **alone**, with no
+`ants_chrome_lib`. The one-TU shape failed `test_core`'s link with ~20
+undefined `MainWindow` / `ClaudeIntegration` / `AuditEngine` symbols. So
+the seam goes in its own `src/<verb>verb.{h,cpp}` under `ants_core_lib`
+SOURCES (outside `ANTS_RC_SOURCES`), and the handler stays a thin TU in
+`ANTS_RC_SOURCES_REL` — which also bumps the derived `TU N/M` head
+markers in every sibling `remotecontrol*.cpp`, asserted by
+`RcTuSplit.TuOrdinalMarkersAscend`. Appending the new TU **last** is the
+cheap position: it renumbers no existing ordinal and moves no two-anchor
+scrape window.
+
 ## Project overrides
 
 The dispatch order is load-bearing: idempotent-read cache →
