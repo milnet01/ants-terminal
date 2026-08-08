@@ -29899,6 +29899,50 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
+- 📋 [ANTS-4065] **Define the markdown-to-store import mapping contract, so a roadmap can be imported without losing or inventing data.**
+  The first real migration proved the import is not yet trustworthy, in
+  three distinct ways measured on this project and across the corpus.
+
+  **It loses data silently.** 123 items had their `Kind` rewritten by the
+  import. 75 were unrecognised values being normalised, which is
+  defensible; 48 were VALID taxonomy values replaced with the default
+  `implement` — `fix` 21 times, `security` 6, `doc-fix` 6, `perf` 3. Root
+  cause found: all 48 carry the field trailing a prose sentence rather
+  than on its own continuation line, which the § 3.5 form does not
+  describe, so the parser correctly fails to see it and then silently
+  substitutes a default WITHOUT emitting a note. The migrator notes an
+  unrecognised VALUE and says nothing about an unparseable FIELD.
+
+  **It invents data.** The render writes `Source: planned.` onto bullets
+  whose column is empty — 36 such lines before the first render, 399
+  after. Filed separately as ANTS-4063; the mapping contract is where the
+  rule against it belongs.
+
+  **It does not round-trip.** Re-importing the file the store itself
+  rendered reports 714 items updated and ~200 `field_conflict` notes on
+  headline, layman, lanes and extras. Until that is identity, "the file is
+  regenerated on every release" means "the file drifts on every release",
+  which is the assumption the whole cutover rests on.
+
+  Corpus figures from `tools/roadmap-corpus-survey.py` over all 14
+  projects, 4,377 items: 32 distinct `Kind` values (21 canonical + 11 to
+  map); 142 pass-headings status values outside the five-status enum; 448
+  distinct field keys against the 6 the standard defines, the systematic
+  ones being Fix 121, Dependencies 98, Priority 88, Acceptance 44, Scope
+  42; 1,467 items with no id; 1,613 with no `Kind`.
+
+  Also in scope, from the same review: a field naming a file (20+ items
+  name `.md` / `.cpp` / `.h` / `.log` paths) must be validated to exist at
+  import, and the standard's designated path field is used exactly once
+  across the whole corpus, so part of the fix is routing those references
+  into it.
+
+  Spec at `docs/specs/ANTS-4065-import-mapping-contract.md`; build order
+  at `docs/plans/ANTS-4065-import-mapping-contract.md`.
+  **Layman:** Write down exactly how every field in the text roadmap turns into a database field, so importing stops quietly changing things.
+  Kind: implement.
+  Source: user-request-2026-08-08.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
