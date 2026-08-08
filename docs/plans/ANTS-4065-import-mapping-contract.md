@@ -95,7 +95,9 @@ case-sensitive, last match), adds `+` to the value class for the three
 compound values, and bounds a match at four words / 30 characters — reporting
 prose matches rather than dropping them silently.
 
-> **Verified:** the inventory lists `bug` at 29; non-canonical values 11 → 19,
+> **Verified** (measured against the pre-Phase-B2 source; the post-B2 figures
+> are in the ANTS-4067 note below): the inventory lists `bug` at 29;
+> non-canonical values 11 → 19,
 > against the spec's seven additions; items with no `Kind:` 2,050 → 1,817. All
 > seven newly-visible values occur in this project only. One spec figure was
 > wrong and is corrected: `feature/fix` is 2, not 1.
@@ -286,6 +288,6 @@ round-trip check.
   generated output; corrections go into the store.
 - **It does not fix the pass-headings status vocabulary** (142 values outside
   the enum). That is a second dialect and a separate item.
-- **It does not back-fill `Kind:`** onto the 1,613 corpus items that carry none.
+- **It does not back-fill `Kind:`** onto the 1,814 corpus items that carry none.
   They default legitimately; Phase C's note makes the default visible, which is
   all this work owes them.

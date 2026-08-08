@@ -88,7 +88,7 @@ changing the data.
 
 Every enumerated field gets one table, and the tables are the contract. Corpus
 figures throughout are from `tools/roadmap-corpus-survey.py` over all 14
-projects (4,377 items).
+projects (4,378 items, re-measured 2026-08-08 after Phase B2).
 
 **`kind` — the mapping already exists and is normative; this spec extends it,
 it does not restate it.** `roadmap-data-model.md` § 7.4 carries the table
@@ -169,14 +169,28 @@ document before the first one is proven.
 internal}; `priority` is `INTEGER 1..5 OR NULL`; the three date columns are
 `GLOB 'YYYY-MM-DD'`; `element.kind` ∈ {item, narration, table}.
 
-**`priority` is a type conflict, not a value map — and it is deferred to § 5
-rather than half-specified here.** The corpus writes `Priority:` 88 times as
-prose (`CRITICAL`, `HIGH`); the column is `INTEGER 1..5`. A mapping needs a
-severity vocabulary this project has never written down — no doc defines the
+**`priority` is governed by `roadmap-data-model.md` § 7.5, which this spec
+points at rather than restating.** The corpus declares `Priority:` 88 times and
+**86 of those are already integers 1–5** (re-measured 2026-08-08); the only two
+prose values are `medium` and `LOW`. Import parses an integer straight through,
+maps a severity word by § 7.5's `CRITICAL → 1, HIGH → 2, MEDIUM → 3, LOW → 4`,
+and **leaves the column NULL where the field is absent** — § 3.3's rule for a
+field with no source-side counterpart, and the only safe behaviour when 4,290 of
+4,378 corpus items declare none: defaulting them would invent 4,290 values and
+label a standing top-priority item as least urgent. The source string is
+preserved in `extras` either way.
+
+**An earlier draft of this spec deferred that scale to § 5** on the grounds that
+"a severity vocabulary this project has never written down — no doc defines the
 set, and the direction (is `CRITICAL` 1 or 5?) is a convention, not a
-derivation. Import therefore **leaves `priority` NULL and preserves the string
-in `extras`**, which loses nothing and invents nothing; choosing the scale is
-its own item.
+derivation". **Every clause of that was false when written**: § 7.5 is normative
+and states the range, the direction, the four-word mapping, band 5's reservation
+for someday-maybe work, and `INFO` having no band. The deferral is deleted, and
+the sentence is kept here because this is the *second* place the same defect
+appeared — the `Kind` table was the first (above), caught by loop 1 of this
+spec's own cold-eyes gate, while the identical defect in this paragraph survived
+all three loops. *Does this document re-open something a standard already
+settles?* is the check that would have caught both, and ANTS-4067 carries it.
 
 ### 2.2 Un-anchor `rxKind()`, with the guard its sibling already has
 
@@ -309,9 +323,12 @@ distinct path tokens across 150 occurrences** in this project's pre-render
 roadmap and archives, applying the predicate below
 (`*_Ants_MCP_Feedback.md`, `remotecontrol.cpp`, `terminalwidget.h`,
 `rpmlint.log`). Meanwhile `Evidence:` — the field `roadmap-format.md` § 3.5
-designates for paths — is used **once** across all 4,377 corpus items. The
-convention the standard describes and the one the corpus practises are not the
-same convention.
+designates for paths — is used **22 times** across all 4,378 corpus items, in
+three projects. (An earlier draft said "once"; that came from a line-anchored
+count, which sees only the 4 own-line declarations and none of the inline
+trailers — the same blind spot § 2.2 fixes in the parser.) The convention the
+standard describes and the one the corpus practises are still not the same
+convention.
 
 **"Looks like a path" is a predicate, not a judgement**, because § 3.5.3's own
 `Source:` vocabulary is full of hyphenated tokens (`upstream-<dep>`,
@@ -492,24 +509,26 @@ the corpus, not by usage over time.
   mechanical, validity belongs to `/doc-lint` and to the verb that consumes the
   reference.
 - **The non-standard field keys** beyond mapping them into `extras` verbatim.
-  The survey counts **448 distinct keys**, which includes the five trailer keys
+  The survey counts **446 distinct keys**, which includes the five trailer keys
   § 3.5 defines (`Kind`, `Lanes`, `Source`, `Layman`, `Evidence`) — so roughly
-  443 are extensions. Deciding which deserve real columns
+  441 are extensions. Deciding which deserve real columns
   (`Dependencies` 98, `Acceptance` 44, `Scope` 42) is a data-model change, not
   an import mapping.
-- **The `priority` severity scale** (§ 2.1) — import leaves the column NULL and
-  keeps the string. Choosing the vocabulary and its direction is its own item.
-- **The three compound `Kind:` values** (§ 2.1) — `feature/fix`,
-  `design + implement`, `design + fix`. They keep today's unmapped behaviour
-  (`implement` + `extras.source_kind` + a note) until someone rules on which
-  half of a two-part intent the single-valued column should keep.
+- **A compound-`Kind:` rule** — **closed in Phase B3, not deferred.** The three
+  compounds § 2.1 raised (`feature/fix`, `design + implement`, `design + fix`)
+  occurred in this project only, and reading them says no rule should exist: the
+  two `feature/fix` items are a bug (ANTS-1219) and a feature (ANTS-1160), so
+  any single mapping is wrong half the time, and `design` is not one of § 3.5.3's
+  21 values so `design + X` has only one legal half. The four bullets were
+  corrected instead; the values are gone from the corpus and no rule was added.
 - **`headline`, `layman` and `lanes` round-trip drift** (§ 2.6) — named,
   measured and undiagnosed. INV-6's fixture is the instrument; whoever runs it
   owns the follow-up.
-- **Back-filling `Kind:` onto the corpus items that carry none** — **1,817** of
-  4,376, re-measured with the corrected survey. Earlier drafts said 1,613 and
-  the pre-fix survey said 2,050; both were taken with the anchored matcher, so
-  neither counted the inline declarations. They default legitimately under
+- **Back-filling `Kind:` onto the corpus items that carry none** — **1,814** of
+  4,378, re-measured 2026-08-08 after Phase B2. Three earlier figures are all
+  superseded: 1,613 and 2,050 were taken with the anchored matcher and so missed
+  every inline declaration, and 1,817 was the corrected survey run against the
+  pre-Phase-B2 source. They default legitimately under
   § 3.5.3's own rule; INV-1 makes the default visible, which is all this item
   owes them.
 - **Re-migrating the other 13 projects.** ANTS-3853 owns the rollout; this is
@@ -553,14 +572,18 @@ construct `RoadmapStore` with an **explicit path**; the default resolves under
   "11 others" looked complete. Un-anchored with the same three guards § 2.2
   gives the parser, plus `+` in the value class (three corpus values are
   `+`-joined compounds) and a stated four-word / 30-character bound that reports
-  prose matches rather than dropping them. Non-canonical values 11 → 19; items
-  with no `Kind:` 2,050 → 1,817. **Any figure quoted from a survey run before
-  this fix is an undercount**, corpus-wide, not only for this project.
-- **`docs/standards/roadmap-data-model.md` § 7.4** — **already the normative home
-  of the kind mapping**, so this spec adds to it rather than giving it one: the
-  seven values of § 2.1 that its eleven miss, and a note that its "11 others"
-  figure came from a post-render survey and therefore cannot see `bug`. § 2.3's
-  defaults-are-noted rule lands here too.
+  prose matches rather than dropping them. Measured against the pre-Phase-B2
+  source: non-canonical values 11 → 19; items with no `Kind:` 2,050 → 1,817.
+  **Any figure quoted from a survey run before this fix is an undercount**,
+  corpus-wide, not only for this project.
+- **`docs/standards/roadmap-data-model.md` § 7.4** — **done, ANTS-4067.**
+  It is already the normative home of the kind mapping, so this spec added to it
+  rather than giving it one: the four values of § 2.1 that its eleven missed
+  (`bug`, `performance`, `process + tooling`, `audit` — the other three of the
+  seven were compounds, closed in Phase B3 by correcting the bullets). Its "32
+  distinct values / 11 others" is now 21, all canonical, zero others, and its
+  per-value counts are marked historical. § 2.3's defaults-are-noted rule lands
+  here too, and is still owed.
 - **`ROADMAP.md`** — ANTS-4063 (fabricated `Source:`) is discharged by INV-5,
   and ANTS-4062 (off-taxonomy `Kind:`) by § 2.1; both flip when this ships.
 - **`CHANGELOG.md`** — one `Fixed` entry; the import losing declared fields is

@@ -615,21 +615,54 @@ would be a separate decision, and § 7.5 states the exclusion unconditionally.
 ### 7.4 Kind
 
 The canonical set is `roadmap-format.md` § 3.5.3's 21-value enum. **Writes
-accept canonical values only.** The corpus holds 32 distinct values — all 21
-canonical ones plus 11 others — and the migration-scoped mapping is normative:
+accept canonical values only.**
+
+**The live corpus is already canonical.** `tools/roadmap-corpus-survey.py` over
+all 14 projects reports **21 distinct values — 21 canonical, zero others**
+(2026-08-08, after ANTS-4065 Phase B2 normalised every off-taxonomy value at
+source). This section previously read "32 distinct values — all 21 canonical
+ones plus 11 others"; both halves of that figure are now historical.
+
+**The mapping below stays normative regardless, because import does not only
+read the live corpus** — an older git revision, a `docs/roadmap/` archive, a
+fork, or a project joining later can still carry an off-taxonomy value, and a
+mapping is only useful if it is fixed before it is needed. The counts are the
+pre-Phase-B2 measurement, retained as the evidence each row was derived from and
+**not** as a current figure:
 
 | Corpus value | Canonical | Corpus value | Canonical |
 |---|---|---|---|
+| `bug` (29) | `fix` | `enhance` (3) | `enhancement` |
 | `improve` (7) | `enhancement` | `docs` (2) | `doc` |
-| `bugfix` (6) | `fix` | `testing` (1) | `test` |
-| `spike` (5) | `research` | `feat` (1) | `feature` |
-| `enhance` (3) | `enhancement` | `perf / fix` (1) | `perf` |
-| `perf / optimize` (2) | `perf` | `tooling` (1) | `chore` |
-| `behaviour-change` (1) | `enhancement` | | |
+| `bugfix` (6) | `fix` | `performance` (2) | `perf` |
+| `spike` (5) | `research` | `perf / optimize` (2) | `perf` |
+| `testing` (1) | `test` | `feat` (1) | `feature` |
+| `perf / fix` (1) | `perf` | `tooling` (1) | `chore` |
+| `behaviour-change` (1) | `enhancement` | `process + tooling` (1) | `chore` |
+| `audit` (1) | `audit-fix` | | |
 
-Two entries are compound — a project wrote `perf / optimize` and `perf / fix`
-where one value was required. Both map to their **first** term; a rule that
-picked the second would silently reclassify performance work.
+The counts have two different scopes, because the rows were added by two
+different measurements: the eleven rows this section carried first were counted
+over all 14 projects' `ROADMAP.md`, and the four ANTS-4065 § 2.1 added — `bug`,
+`performance`, `process + tooling`, `audit` — over this project's `ROADMAP.md`
+plus its two archives, that being the only project they occurred in.
+
+Three entries are compound. `perf / optimize` and `perf / fix` map to their
+**first** term; a rule that picked the second would silently reclassify
+performance work. `process + tooling` is not an exception to that: its first
+term is not canonical, and both terms independently mean § 3.5.3's housekeeping,
+so the row is settled by the value's meaning rather than by position. **There is
+no general compound rule** beyond these three named rows — ANTS-4065 Phase B3
+met three further compounds (`feature/fix`, `design + implement`, `design + fix`)
+and resolved them by correcting the four bullets that carried them, deliberately
+adding no rule.
+
+**`mappedKind()` (`src/roadmapmigrate.cpp:120`) implements eleven of these
+fifteen rows.** The four ANTS-4065 § 2.1 added are owed by that spec's Phase C
+and are not in the code yet; until they land, an un-normalised source carrying
+one of them falls through the unmapped branch (`implement`, with
+`extras.source_kind` preserved and a `kind_unmapped` note emitted), which is
+visible rather than silent.
 
 The table is generated, not recalled: `tools/roadmap-corpus-survey.py` prints
 every non-canonical value with its count. A project joining later re-runs it

@@ -28299,12 +28299,13 @@ against current source before filing.
   regenerated on every release" means "the file drifts on every release",
   which is the assumption the whole cutover rests on.
 
-  Corpus figures from `tools/roadmap-corpus-survey.py` over all 14
-  projects, 4,377 items: 32 distinct `Kind` values (21 canonical + 11 to
-  map); 142 pass-headings status values outside the five-status enum; 448
-  distinct field keys against the 6 the standard defines, the systematic
-  ones being Fix 121, Dependencies 98, Priority 88, Acceptance 44, Scope
-  42; 1,467 items with no id; 1,613 with no `Kind`.
+  Corpus figures from `tools/roadmap-corpus-survey.py`, re-measured
+  2026-08-08 after Phase B2 over all 14 projects, 4,378 items: 21 distinct
+  `Kind` values, all canonical, none left to map (at filing this read 32,
+  with 11 to map); 142 pass-headings status values outside the five-status
+  enum; 446 distinct field keys against the 6 the standard defines, the
+  systematic ones being Fix 122, Dependencies 98, Priority 88, Acceptance
+  44, Scope 42; 1,644 items with no id; 1,814 with no `Kind`.
 
   Also in scope, from the same review: a field naming a file (20+ items
   name `.md` / `.cpp` / `.h` / `.log` paths) must be validated to exist at
