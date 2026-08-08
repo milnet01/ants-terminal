@@ -221,7 +221,9 @@ high-water lives in more than one place. **"Store-migrated" below means a
 project has a store row *and* a roadmap this format's detector classifies as
 `ants-v1`** — the pair `RoadmapSource::migratedProject()` tests. `ants-v1` is
 the detector's name for a file conforming to this standard; its siblings are
-`gfm` for a task list (§ 3.10.3) and `pass-headings` for § 3.10.5's shape. The
+`github-task-list` for a task list (§ 3.10.3) and `pass-headings` for § 3.10.5's
+shape — the three format literals the store's `source_format` CHECK admits
+beside `''` ("not recorded"), spelled as the detector emits them. The
 detector answers on the § 3.1 marker where one is present and on a best-effort
 parse where it is not, so a roadmap **SHOULD** carry that marker: without it
 the classification — and therefore the carrier — is best-effort rather than

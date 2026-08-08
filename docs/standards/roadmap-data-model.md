@@ -153,7 +153,11 @@ requirement: `write (open)`, `write (closed)` and `write (status shipped)` are
 be present on every item and the store is what puts it there, so a write path
 that rejects a call for omitting one has misread the row. One field carries a
 slash form, `write (open) / publish (open)` — `layman` is owed at both tiers and
-only for open items. The list is
+only for open items. **`write (migration-populated)`** is § 4.1.1's project-level
+analogue of `store-populated`: migration is what supplies it, no author ever
+does, and a project that has never been migrated — created in the store after
+cutover — carries `''`, which § 4.1.1 defines as "not recorded" rather than as a
+breach. The list is
 not repeated here: one field→tier mapping in two encodings is what
 `documentation.md` § 1.5 forbids, and a field added to one and not the other is
 the drift it predicts. What the table cannot express follows.
@@ -165,9 +169,13 @@ element list, which is where the order lives.
 `shipped` is required only for `shipped`, not for every closed item — a
 `dropped` item has no ship date, and demanding one would be a nonsense state.
 
-A status flip on a migrated item is **not** a curating write. Requiring the full
-set there would reject the commonest operation on legacy data, for fields the
-item was never obliged to carry.
+**On a migrated item, this tier requires only the fields the item already
+carries.** Requiring the full set on legacy data would reject the commonest
+operations there — a status flip, a headline correction, a body edit — for
+fields the item was never obliged to have. A status flip is the clearest case
+and is **not** a curating write at all; the rule above covers the rest, so an
+editor need not back-fill `priority` or `layman` in order to fix a typo. An item
+*created* after cutover is at the full tier from its first write.
 
 ### 3.2 Required before publish
 
@@ -195,7 +203,7 @@ history. This is the **only** publish-gating field; `priority` and `resolution`
 gate neither publishing nor migration.
 
 **Open, and it blocks the first render rather than a later one:** § 3.3 leaves
-`layman` empty on every migrated item, and over half the corpus has none — so
+`layman` empty on every migrated item, and close to half the corpus has none — so
 read literally, no project can publish until every one of its open items is
 hand-curated. § 7.5 gives `priority` an explicit "written after cutover"
 exemption for exactly this; `layman` has none, and whether it should is a
@@ -216,9 +224,18 @@ unrelated to the `planned` **status** of § 7.3) and records that the value was
 defaulted. Where no default exists — `layman`, `priority`, `resolution`, and any
 date not derivable from history — the field is left empty.
 
+**"No default" is not "never harvested", and `priority` is where the two get
+confused.** Leaving a field empty is what migration does when the *source* holds
+nothing for it; it is not licence to discard a value the source declares. Where
+an item carries a `Priority:` line — 88 items do — migration harvests it by
+§ 7.5's mapping, and only an item carrying none is left empty. The same applies
+to any field this tier says has no default: no default means nothing is
+*invented*, never that a declared value is dropped.
+
 This is the only arrangement the corpus permits. Across the surveyed corpus,
-**half** the items carry no `Kind:`, **half** carry no `Source:`, and **over
-half** carry no `Layman:`. A write-time-only reading would refuse every project.
+**two in five** items carry no `Kind:` (41%), and close to half carry no
+`Source:` (46%) or `Layman:` (49%). A write-time-only reading would refuse every
+project.
 
 Figures here and below come from `tools/roadmap-corpus-survey.py`, which finds
 every project under the shared root; it reported 13 of them on 2026-08-03, up
@@ -234,7 +251,7 @@ rather than trusting a number in this file: per § 2 these measurements only evi
 **The survey finds roadmaps case-insensitively, and that is load-bearing.** One
 project names its file `roadmap.md`; an uppercase-only glob excluded it, and
 this document consequently asserted that no project used the § 8 pass-headings
-format when one tracks 144 items in it. A measurement that cannot see a
+format when one tracks 154 items in it. A measurement that cannot see a
 non-conforming project cannot be evidence about the corpus.
 
 ### 3.4 Open and closed
@@ -287,7 +304,7 @@ schema:
 
 | Field | Obligation | Notes |
 |---|---|---|
-| `source_format` | write (migration-populated) | ANTS-3815. Which roadmap dialect the migration read this project's **live** roadmap in — one of `roadmap-format.md`'s three (`ants-v1`, `github-task-list`, `pass-headings`). Per project and not per source file: an archive is parsed under its own grammar, but this records index 0 only, because the live file is the one a consumer's dispatch asks about. **`''` means "not recorded" and is not a format** — it is what a project migrated before the column existed carries, and such a project is served exactly as it was before rather than treated as an error. A project whose live file later changes dialect behind the store's back is **refused**, not silently re-classified; re-running the migration is the route back. |
+| `source_format` | write (migration-populated) | ANTS-3815. Which roadmap dialect the migration read this project's **live** roadmap in — one of `roadmap-format.md`'s three (`ants-v1`, `github-task-list`, `pass-headings`). Per project and not per source file: an archive is parsed under its own grammar, but this records index 0 only, because the live file is the one a consumer's dispatch asks about. **`''` means "not recorded" and is not a format** — it is what a project carries when no migration ever wrote the column, whether because the project was migrated before the column existed or because it was created in the store after cutover and has no source dialect to record. Neither is an error: such a project is served exactly as it was before. A project whose live file later changes dialect behind the store's back is **refused**, not silently re-classified; re-running the migration is the route back. |
 
 ### 4.2 Dates have a known limitation
 
@@ -382,13 +399,16 @@ such a block (§ 5.2's table row counts the lines), and they are the document's
 
 They are therefore their own per-project structure: status value → that
 project's wording, which is what would let one renderer serve every project.
-Today `RoadmapDialog` cannot do that: `src/roadmapdialog.cpp` holds the four status
-emojis and their labels as compile-time constants, guarded by a
-`static_assert` on the count, and nothing reads a project's legend at all. A
-project whose legend words differ is rendered in the dialog's words, not its
-own. Holding the legend as data is what would let one renderer speak each
-project's vocabulary; whether the dialog should then do so is § 9's call, not
-this document's.
+`RoadmapDialog` does that only for a project it read from the store:
+`src/roadmapdialog.cpp` still holds the four status emojis and their labels as
+compile-time constants, guarded by a `static_assert` on the count, and those are
+the words a project parsed from markdown is rendered in whatever its own legend
+says. ANTS-3793 built the other path — `RoadmapDialog::storeLegend()` reads the
+stored `legend` and hands it to the renderer, but only when the render came from
+the store. So holding the legend as data has already let one renderer speak a
+cut-over project's vocabulary; what is left to § 9 is whether the markdown path
+should reach the same legend, which the compile-time constants currently
+prevent.
 
 ### 5.2 Structures the model must survive
 
@@ -399,7 +419,7 @@ standing number in this file is the wrong thing to trust:
 
 | Approx. count | Structure | Home |
 |---|---|---|
-| ~1,500 | sub-bullets | item `body` |
+| ~1,800 | sub-bullets | item `body` |
 | ~170 | markdown table **data** rows | `table` element |
 | ~80 | status-marked detail lines | item `body` |
 | ~20 | fenced code blocks | `body` or `intro` |
@@ -426,7 +446,7 @@ forward** means the relationship replaces a practice, with nothing harvested.
 | `blocked-by` | Cannot start until the target closes. | **authored** | Prose block markers, which are *not* harvested — see below. |
 | `duplicate-of` | Same work as the target. | authored | Manual dedup. |
 | `supersedes` | Replaces an earlier decision. | authored | Nothing — currently unrecorded. |
-| `relates-to` | Untyped association. | converted from `Dependencies:` (~21 occurrences; see the conversion rule below) | — |
+| `relates-to` | Untyped association. | converted from `Dependencies:` (98 occurrences; see the conversion rule below) | — |
 | `specified-by` | Target is a spec **document**, addressed by path. | converted from `Spec:` (~20 occurrences) | — |
 
 **`blocked-by` is authored-only, and migration harvests nothing for it.** Prose
@@ -786,14 +806,14 @@ overridden:
   so `dropped` has no markdown form and is excluded from the render. Adding one
   is that standard's decision, not this one's.
 - **Pass headings.** Its § 3.10.5 documents `#### Pass N.M` as a supported read
-  *and* write format, and one surveyed project tracks **144 items** in it —
+  *and* write format, and one surveyed project tracks **154 items** in it —
   counted as `#### Pass N.M` headings; its `- **Status**:` lines are counted
   separately and are more numerous, so the two figures below are not two
   measurements of one population. It
   is therefore squarely **in** migration scope. Two consequences the model must
   carry: its items are identified by synthesised `PASS-N-M` ids (§ 7.1), and
   its status is a free-text `- **Status**:` line rather than an emoji —
-  **136 of that project's 154 status values fall outside § 7.3's five-value
+  **142 of that project's 164 status values fall outside § 7.3's five-value
   enum** (`deferred`, `partial`, `un-gated`, `shipped in v3.6.15`, and a long
   tail carrying prose). Normalising them is a per-value mapping decision of the
   same kind as § 7.4's, and it is **not made here**: § 9 owns it, because
@@ -851,8 +871,9 @@ implementation gate rather than in a standard:
 - The fate of `roadmap_query` and `RoadmapDialog`, both of which parse and write
   `ROADMAP.md` today. A full-fidelity render keeps them able to *parse* it, so
   what INV-3 ends is their **writing** — which is why they still
-  need a cutover rather than none. This includes whether `RoadmapDialog` should
-  render each project's legend (§ 5.1 makes it *possible*, not mandatory).
+  need a cutover rather than none. This includes whether `RoadmapDialog`'s
+  **markdown** path should reach each project's legend; its store path already
+  does (§ 5.1, ANTS-3793).
   **`roadmap_log` is no longer among them**: ANTS-3809 landed its write half, so
   on a cut-over project in the emoji-bullet shape its eight ops mutate the store
   and re-render (*What checks this*). Its splice paths remain for every other
@@ -868,7 +889,7 @@ The prohibitions above, collected — a conformer arrives holding a defect rathe
 than a question.
 
 - ❌ **Rejecting a migrated item for a field its source format never required**
-  (§ 3.3). Half the corpus has no `Kind:`; a write-time reading refuses every
+  (§ 3.3). Two in five corpus items have no `Kind:`; a write-time reading refuses every
   project.
 - ❌ **Demanding `layman` on closed items before publish** (§ 3.2). Migration
   leaves it empty, so the gate becomes unsatisfiable for any project with
@@ -928,6 +949,7 @@ than a question.
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 3 (model coherence, corpus drift, failure modes) | 6 / 12 / 14 / 18 / 1 | Structural rewrite: obligations split into tiers, export scope defined, INV-1 given its missing leg, identity grammar corrected after the survey regex was found wrong about two projects, migration source shapes corrected. |
 | 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split.** ~8 of the 13 CRITICALs were collateral from loop 1's own fixes; the findings were overwhelmingly schema-level, i.e. this document was a standard carrying an implementation spec. Split per ANTS-3754: the model stays here, the schema goes to a spec. Backup relocated to the private config repo, closing a leak the draft shipped. ID allocation for the corpus's ID-less items decided (user, 2026-07-30). |
+| 10 | 2026-08-08 | 2, cold — identical byte-stable shared packet (~13k tok) carrying the live `roadmap-corpus-survey.py` output, the `item`/`element`/`relationship` DDL, `mappedKind()`, three `src/roadmap*.cpp` outlines and every cited section of `roadmap-format.md` / `documentation.md`; genre pinned `standard` | **Q1 5 · Q2 2 · Q3 2** — verified 9, dismissed 0 | **First loop under the four questions** (the C/H/M/L/I column above is the retired scale; these are Q-counts). ANTS-4067's re-sync was the trigger, and the cold read found six defects it had not gone looking for. The one an implementer would have built wrong: **§ 3.3 said migration leaves `priority` empty while § 7.5 gives a full harvest mapping** (`CRITICAL → 1` … plus a tie-break) that has no purpose unless migration reads `Priority:` lines — 88 items declare one, 86 already as integers. One builder leaves the column NULL corpus-wide; another populates it; both cite this document. § 3.3 now distinguishes *no default* (nothing is invented) from *never harvested* (a declared value is dropped), which is the confusion underneath it. **Two claims had simply gone stale under shipped code:** § 5.1's "nothing reads a project's legend at all" — ANTS-3793's `RoadmapDialog::storeLegend()` reads it on the store path (`roadmapdialog.cpp:589`, wired at `:3046`), so § 9's open question narrows to the markdown path; and § 3.1's curating-write carve-out covered only a status flip, leaving a headline edit on a migrated item demanding fields § 7.5 exempts. **`write (migration-populated)` was used in § 4.1.1 and defined nowhere**, and `''` was defined only for pre-column projects, so a project created in the store after cutover had no stated value — both closed. Four figures were stale against the corrected survey: pass-headings 144 → 154 items and 136-of-154 → 142-of-164 status values, `Dependencies:` ~21 → 98, sub-bullets ~1,500 → ~1,800, and "over half carry no `Layman:`" was false in direction (49%). **One fix landed outside this document:** `roadmap-format.md` § 3.5.1 named the detector's task-list literal `gfm` where the shipped detector (`roadmapparse.cpp:1033`), the `source_format` CHECK and every consumer use `github-task-list` — this document was right and its neighbour wrong, so the neighbour was corrected and now owes its own gate. |
 | 9 | 2026-08-05 | 3 (one per host doc, cold; no prior-loop briefing) | 3 / 6 / 10 / 15 / 0 | **Converged by cap (3 loops this run).** 34 raised, 32 verified and fixed, 1 dismissed on evidence, 1 re-found already-filed. Dimension tally: dim 7×5, dim 5×5, dim 6×5, dim 4×5, dim 2×4, dim 1×4, dim 8×3, dim 12×2, dim 11×2. **Two lanes independently converged on one root cause**, which is the finding of the run: "cut over" and "store-migrated" are different sets — the second is the first *plus* an `ants-v1` roadmap — and loop 8 had qualified § 3.2, § 9 and the *What checks this* row while leaving INV-3, § 8's allocation bullet and § 10's anti-pattern speaking of cutover alone. An implementer reaching INV-3 first would have built a store-only writer for every cut-over project, including the GFM and pass-headings ones that still splice. INV-3 now carries the definition and every dependent passage points at it. Also fixed, and pre-existing rather than collateral: § 7.1 claimed a shared store makes the wiped-counter failure mode "disappear, along with the per-prefix bookkeeping" — the shipped allocator keeps both (`rlStoreIdHighWater()` `max()`es the store row over `corpusHighWater()`, keyed per `(project, prefix)`), so that sentence is the one that would have talked an implementer out of the floor it exists to protect. `Inv3Allocation` gained the *What checks this* row it never had. **Dismissed on evidence:** a lane read "a refusal lands in `skipped[]`" as over-broad because `bad_op_combo` runs ahead of the store dispatch; `src/remotecontrol.cpp:10269` shows it too is `skip(li, …)`, per locator. **Filed, not fixed:** ANTS-3838 — the store `append` path stamps `provenance.id = "asserted"` on every branch while § 7.7 reserves `store-generated` for exactly that write. Verified as a divergence; which side is canonical is a design call, so neither doc was bent to match the other. |
 | 8 | 2026-08-05 | 3 (one per host doc, cold; no prior-loop briefing) | 1 / 7 / 9 / 9 / 1 | 27 raised, 25 verified and fixed, **1 dismissed on evidence**, 1 INFO. Dimension tally: dim 4×5, dim 6×4, dim 8×4, dim 7×3, dim 2×3, dim 1×3, dim 5×2, dim 12×1, dim 13×1. Roughly half were collateral from loop 7's own fixes, which is what the loop is for: the pass-headings case had been folded into loop 7's carrier table as a prose caveat that flatly contradicted the row above it ("read and written" vs "left untouched") — now its own row; the framing sentence loop 7 added keyed on "has no store row" while the table it introduces includes store-row projects; and § 3.2's new paragraph said "after cutover" where the trigger is cutover **and** the emoji-bullet shape, which this document already scoped correctly in two other places. Genuine draft defects loop 7 missed: `dry_run` was documented as always previewing, but `commitAndRender()` checks the gate *before* the dry-run return, so on a gate-failing project — this project, today — a preview refuses `render_gate_unmet` instead; § 7.1's `stable_prefix` carve-out claimed to be "the one post-cutover write that carries an id in from outside" while `id_hint` also does; and INV-3's "the export's check has shipped" is leg (a) only, contradicted by the table's own "leg (b) — nothing yet". **The dismissal is the reason findings are verified rather than applied:** a lane argued that if every store bullet's `firstLine` is 0 then a range from line 1 matches *nothing*, so the stated reason for refusing `line_range` was backwards. The envelope reports `line` as `firstLine + 1` (`src/remotecontrol.cpp:8944`), so every store bullet reports line 1 and `[1,10]` matches all of them — the original wording was right. **Filed, not fixed:** ANTS-3837, the neighbouring pass-headings bullet's op list predating `amend_body` and `bundle_row`. |
 | 7 | 2026-08-05 | 3 (one per host doc, cold; genre pinned `standard`) | 2 / 6 / 11 / 14 / 0 | **ANTS-3809 § 7 gate**, run on the three cross-doc rows the write half owes. 33 verified, 0 dismissed, all fixed; 1 collateral self-caught by the sweep, 1 surfaced. Dimension tally: dim 2×7, dim 4×9, dim 5×7, dim 8×5, dim 6×3, dim 7×2, dim 1×1. This document's own two led: § 4.1 said "**the store owns allocation**, so a post-cutover author never supplies one" while `id_strategy: "stable_prefix"` — a live argument the shipped schema accepts — has the caller supply one, and `id_origin` had no value for it (now `synthesised`, with § 7.1 stating why `parsed` and `quarantined` are both wrong). The Status header still said the published render "**ha[s] not**" shipped while three rows of the *What checks this* table it sits above cite ANTS-3758 as shipped. Also fixed: § 3.2 stated the publish gate's whole consequence as publication not happening, when after cutover it refuses **every** write op project-wide; § 9 still listed `roadmap_log` among the consumers that write markdown; and the new row's own "migrated project" / "`ants-v1`" were this document's only uses of either term against 30 uses of "cut over". The added row and § 8's bullet stated the same three facts twice — the § 8-reconciliation row is now a pointer, per the delete-N−1 rule rather than a reconcile. The self-caught collateral is the shape the sweep exists for: a fix citing the emoji-bullet row as "§ 5" when it is in § 7.1. **Surfaced, not fixed:** the store fills `firstLine`/`lastLine` with 0 on the read side too, so `mcp-behavioural-notes.md`'s `roadmap_query` entry may owe the same caveat — ANTS-3793's, not this run's. |
