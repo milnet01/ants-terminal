@@ -28351,7 +28351,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-08 (ANTS-4065 Phase B2 headline audit).
 
-- 📋 [ANTS-4067] **Re-sync the roadmap standards with what the migration measured, and check for specs that re-open a settled standard.**
+- ✅ [ANTS-4067] **Re-sync the roadmap standards with what the migration measured, and check for specs that re-open a settled standard.**
   Documentation only; no code. Three things drifted while ANTS-4065 Phase B was
   being done, and one of them is a review-process finding rather than a doc fix.
 
@@ -28383,9 +28383,103 @@ against current source before filing.
   § 7.4 is a standard, so rule 14 gates the edit: run `/cold-eyes` on
   `roadmap-data-model.md`. Nobody has cold-read it since the migration produced
   real evidence, so expect it to surface more than these three.
+
+  Resolved (2026-08-08): all three drifts fixed, and the prediction held — the
+  gate surfaced 21 verified findings across 3 loops, of which 17 were fixed and
+  4 filed as ANTS-4068. § 7.4 now reads 21-all-canonical with its counts marked
+  historical and the four ANTS-4065 mappings added; the priority deferral is
+  deleted in favour of § 7.5; figures refreshed against a live survey run
+  (no `Kind:` 1,814 not 1,613; corpus 4,378; 446 field keys; `Evidence:` 22
+  not 1; `Dependencies:` 98 not ~21). The two the gate found that nothing had
+  gone looking for: § 3.3 said migration leaves `priority` empty while § 7.5
+  gave a harvest mapping that only makes sense if it reads `Priority:` lines
+  (86 of 88 declared values are already integers), and § 5.1's "nothing reads
+  a project's legend at all" plus § 1's "`RoadmapDialog` has not cut over" were
+  both false against shipped ANTS-3793 code. One fix landed in
+  `roadmap-format.md` and is tracked with the rest of that file's debt in
+  ANTS-4069.
+
+  On the review-process question this item also raised: *does this document
+  re-open something a standard already settles?* is worth a named check. It is
+  not currently one of `/cold-eyes`' four questions and adding a fifth is
+  explicitly gated on deleting one, so this is recorded rather than acted on.
   **Layman:** The roadmap rulebook still quotes numbers that were true before we cleaned the roadmap up, and one design note claims a rule was never written down when it was — worth a careful re-read of the rulebook.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (ANTS-4065 Phase B3 closeout).
+
+- 📋 [ANTS-4068] **Four rules roadmap-data-model.md has never stated, filed at its cold-eyes cap rather than guessed at.**
+  ANTS-4067's `/cold-eyes` run exited at the 3-loop cap having verified 21
+  findings and fixed 17. These four survived verification but each needs a
+  decision rather than a wording fix, so none was applied.
+
+  **1. The two standards define "store-migrated" differently.**
+  `roadmap-data-model.md` § 7.1's INV-3 says it is "cutting over *plus* a
+  roadmap the format detector classifies `ants-v1`"; `roadmap-format.md`
+  § 3.5.1 says it is "a store row *and* a roadmap this format's detector
+  classifies as `ants-v1`". Both cite the same function,
+  `RoadmapSource::migratedProject()`, which tests a store row — cutover is not
+  a code concept. It decides which id carrier a store-rowed but not-cut-over
+  project uses: the store's `id_high_water` under one reading, `.roadmap-counter`
+  under the other. Two carriers for one project. Settling it means deciding
+  what "cut over" means document-wide, which is why it is not a word swap.
+
+  **2. `relates-to` is declared symmetric with no canonical stored direction.**
+  § 6: "A relates-to B implies B relates-to A, stored once and rendered both
+  ways" — but nothing says which direction is stored, and
+  `UNIQUE (type, src_pk, dst_pk)` does not collide with the reverse pair, so
+  nothing detects a writer that stores both. § 6 converts these from
+  `Dependencies:`, and two items routinely list each other. Both cold lanes
+  raised this independently. Proposal to rule on: the case-folded
+  `(project, id)` that sorts first is `src`, and the reverse edge is a no-op.
+
+  **3. The itemhood test excludes GFM task-list bullets.** § 7.1: "a bullet is
+  an item when it carries **both** a status marker and the bold headline
+  `roadmap-format.md` § 3.5 requires" — but § 3.10.1 imposes no bold headline
+  on a task-list bullet (its own example is `- [ ] (WIP) Build login screen`),
+  and § 7.1's own table admits GFM as one of three source shapes. § 7.1's
+  residual clause offers a headline-less marker-bearing bullet only two homes,
+  parent `body` prose or a legend line, so migrating a plain-checkbox project
+  either files every top-level bullet as body prose of no parent or invents a
+  third disposition — and those items get no id, silently.
+
+  **4. § 8's render-conformance claim has no answer for a quarantined ID.**
+  § 8 says the render is a conforming `ROADMAP.md` and that § 3.5 makes the
+  `[PROJ-NNNN]` id a required piece of every bullet; § 7.1 requires a
+  quarantined item to be imported with its id verbatim and MUST NOT invent a
+  dash. A verbatim `[Cl9]` is not a `[PROJ-NNNN]`. Three behaviours are
+  available and the document picks none. Possibly latent rather than live —
+  the three off-grammar ids are 3D_Engine's, and whether its roadmap
+  classifies `ants-v1` was not checked.
+
+  All four verified against current source during the run; none is a
+  documentation-only fix. Spec at `docs/standards/roadmap-data-model.md`
+  (loop 12 of its cold-eyes log carries the same list).
+  **Layman:** Four rules the roadmap rulebook never actually wrote down. Each needs a decision from us rather than a tidy-up, so they were written down instead of guessed at.
+  Kind: doc.
+  Source: in-session-2026-08-08 (ANTS-4067 cold-eyes cap).
+
+- 📋 [ANTS-4069] **roadmap-format.md's archive rotation and release flow have no answer for a generated roadmap, and it now owes a fresh gate.**
+  Raised by the CC session bringing the shared `/start-app` roadmap standard up
+  to standard, and it applies to this project's copy too. § 3.9 tells a project
+  to snip closed minors out of `ROADMAP.md` into `docs/roadmap/<minor>.md` at
+  `/bump` time, and § 4.3's release flow migrates completed items into
+  `CHANGELOG.md`. **After ANTS-3758's cutover the file is regenerated whole from
+  the store**, so both are work that vanishes at the next render — the snipped
+  bullets come back and the hand-edit is discarded, which § 10 of
+  `roadmap-data-model.md` already forbids for exactly this reason. Neither
+  section says so. What replaces them (does the store hold the archive
+  boundary? does the render emit per-minor files?) is `roadmap-data-model.md`
+  § 9's open question about archive rotation, still unassigned.
+
+  Also owed here: `roadmap-format.md` § 3.5.1 named the detector's task-list
+  literal `gfm` where the shipped detector (`src/roadmapparse.cpp:1033`), the
+  `source_format` CHECK and every consumer use `github-task-list`. Corrected
+  in-session during ANTS-4067's run, on the evidence — but that is an authoring
+  edit to a gated standard, so **`roadmap-format.md` is owed a `/cold-eyes` run
+  it has not had**. Do the § 3.9 / § 4.3 work first and gate once.
+  **Layman:** The rulebook still tells you to hand-trim the roadmap file at release time, but after the database switch that file gets rewritten from scratch — so the trimming would just be undone. It needs a new answer.
+  Kind: doc-fix.
+  Source: cross-session-2026-08-08 (start-app roadmap-standard pass) + in-session ANTS-4067.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
