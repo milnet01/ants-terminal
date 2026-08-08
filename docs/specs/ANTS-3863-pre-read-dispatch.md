@@ -39,12 +39,17 @@ Three consequences, and only the first is a cost:
    on the exact value; what it turns on is the ratio, and the ratio only worsens
    as the file grows.
 
-2. **Two sites read it for nothing else at all.**
-   `src/remotecontrol_roadmap_log.cpp` opens the file, `readAll()`s it into a
-   block-scoped `storeMarkdown` (the `op:append` path) and into a block-scoped
-   `probe` (the `op:append_batch` path), passes each to
-   `RemoteControl::roadmapWriteTarget()`, and lets it fall out of scope at the
-   closing brace. On a migrated project those two reads have no consumer.
+2. **One site reads it for nothing else at all, and a second reads it for
+   almost nothing.** `src/remotecontrol_roadmap_log.cpp` opens the file and
+   `readAll()`s it into a block-scoped `probe` (the `op:append_batch` path),
+   passes it to `RemoteControl::roadmapWriteTarget()`, and lets it fall out of
+   scope at the closing brace — on a migrated project that read has no consumer
+   at all. The `op:append` path's `storeMarkdown` is the near-miss: it reaches
+   `rlStoreCounterPrefix()` further down the same block, but that helper
+   consults the text only after an explicit `id_prefix` argument and the store's
+   own `idPrefixFor()` have both come up empty. A migrated project normally has
+   a stored prefix, so the 3 MiB is read for a fallback that normally does not
+   run. § 2.4 keeps that fallback working without paying for it up front.
 
 3. **There is no shared reader to fix.** Each consumer opens its own `QFile`.
    `grep -c 'readAll()'` returns 9 in `src/remotecontrol_roadmap_query.cpp`, 18
@@ -59,8 +64,9 @@ inventory was taken) and `RoadmapDialog::storeLegend()`. **The bullet names
 `RoadmapDialog::storeProjectRoot()` for that last one and it is the wrong
 function** — `storeProjectRoot()` (`src/roadmapdialog.cpp`) walks up from
 `m_roadmapPath` to the nearest `.git` and returns a string; it holds no
-dispatch. The dialog's two dispatch sites are `storeLegend()` and
-`RoadmapDialog::roadmapBullets()`.
+dispatch. `storeLegend()` is the dialog's only caller of `migratedProject()`;
+`RoadmapDialog::roadmapBullets()` reaches the same decision one level up,
+through `bulletsFor()`.
 `grep -rn 'migratedProject(' src/ --include=*.cpp --include=*.h | grep -vE
 '^[^:]+:[0-9]+: *(//|\*)'` returns six lines: one declaration
 (`src/roadmapsource.h`), one definition (`src/roadmapsource.cpp`) and those four
@@ -69,8 +75,9 @@ comments, which is why the filter is part of the command rather than a detail
 left to the reader. Counting every site
 that hands roadmap text to a dispatch-taking entry point — `roadmapBullets` /
 `roadmapWriteTarget` / `roadmapStoreServes` / `bulletsFor` / `migratedProject` —
-gives **27** — 23 consumer sites plus four wrapper-internal pass-throughs —
-listed in § 2.4. The ROADMAP bullet carries the correction.
+gives **28** — 23 consumer sites plus five wrapper-internal pass-throughs — of
+which the command returns 27 and § 2.4 names the one it structurally cannot see.
+The ROADMAP bullet carries the correction.
 
 **Layman:** Every time a tool asks "is this project's roadmap in the database
 yet?", it opens the 3 MB text file to find out — even though the answer is
@@ -81,9 +88,11 @@ used afterwards. This makes it read only what it needs.
 
 ### 2.1 `RoadmapText` — the seam's text parameter becomes a provider
 
-**Six functions change signature**, not four: § 2.2's four dispatch-taking
-functions and § 2.3's two owner wrappers. They stop taking `const QString
-&markdown` and take `RoadmapText &` instead. `RoadmapText` is declared in
+**Six functions change signature.** § 2.2's table has five rows; the four that
+take roadmap text change here, and `RoadmapDialog::storeLegend()` — the fifth —
+takes none, so it changes only in how it *builds* the text it passes on (§ 2.4).
+Those four plus § 2.3's two owner wrappers make six. They stop taking `const
+QString &markdown` and take `RoadmapText &` instead. `RoadmapText` is declared in
 `src/roadmapsource.h` beside the seam it serves, and lives in
 `ants_roadmapstore_lib` with the rest of it. INV-7 names five *symbols* for the
 same six functions — `roadmapBullets` covers both wrappers.
@@ -95,6 +104,8 @@ same six functions — `roadmapBullets` covers both wrappers.
 // needs the whole text. Splitting them behind one object is what lets the
 // dispatch run BEFORE any body read, without the call sites in § 2.4 each
 // having to know which of the two they will end up needing.
+// Move-only: it owns an open file handle (the read contract below), so a copy
+// would either read the file twice — breaking INV-6 — or double-close it.
 class RoadmapText {
 public:
     // Nothing is read at construction. `path` is the project's LIVE roadmap.
@@ -105,16 +116,20 @@ public:
     // Costs nothing and reads nothing — full() hands back what it was given.
     static RoadmapText fromMemory(QString text);
 
-    // At most kDetectorLineCap non-blank lines, in the detector's own shape.
-    // File-backed: a bounded read that stops at the cap and never touches the
-    // tail. Memoised — INV-6 forbids a second read.
+    // At most kDetectorLineCap non-blank lines OR kDetectorByteCap bytes,
+    // whichever comes first, in the detector's own shape. Memoised — INV-6
+    // forbids a second read. The BYTE cap is not belt-and-braces; see below.
     const QStringList &detectionPrefix();
 
     // The whole text, memoised. Only the unmigrated path calls it.
+    // On a text whose open failed, returns an empty QString — which is what
+    // today's sites already hand the seam when their QFile::open() fails.
     const QString &full();
 
     // True when a file-backed text's file would not open, OR when a read that
-    // did open failed part-way. Each consumer keeps its OWN answer to that
+    // did open failed part-way. FORCES the open if it has not happened yet
+    // (see below — the whole point is that consumers branch on this BEFORE
+    // any accessor). Each consumer keeps its OWN answer to an unopenable file
     // (§ 2.4) — the two roadmap_log sites already disagree today, and this
     // spec preserves both.
     //
@@ -125,10 +140,52 @@ public:
 
     // Bytes actually read from disk so far — DISK bytes, not the QString's
     // in-memory size (§ 4 prices that separately, and in different units).
+    // ALWAYS 0 for a fromMemory() text, which reads no disk at all, so INV-1's
+    // assertion is trivially satisfied there rather than undefined.
     // Exists so INV-1 is assertable rather than argued.
     qint64 bytesRead() const;
 };
 ```
+
+**`kDetectorByteCap` exists because the line cap does not bound the read.**
+`kDetectorLineCap` counts
+**non-blank** lines, and the helper keeps blank lines in the list without
+counting them (`src/roadmapsource.cpp`) — so a file of a million blank lines,
+or one whose first 300 non-blank lines sit behind a long blank run, or one with
+no `\n` at all, is read to EOF with `nonBlank` never reaching the cap. That is
+harmless today, where the caller had already read the whole file anyway; it is
+the entire claim once the read is the thing being bounded. **INV-2's own fixture
+list names a file that is entirely blank lines**, so the unbounded case is one
+this item's tests are required to exercise.
+
+The reader therefore stops at whichever bound it reaches first. **Set
+`kDetectorByteCap` to 1 MiB**, beside `kDetectorLineCap` in
+`src/roadmapsource.cpp`: two orders of magnitude above § 1's measured prefix, so
+no real roadmap can reach it, and small enough that the pathological input costs
+a bounded read rather than the file. A prefix truncated by the byte cap is not
+an error — it is handed to the detector as-is, which classifies whatever it got,
+exactly as it does for a short file.
+
+**It also preserves a cap that already existed.** `storeLegend()` reads today
+through `loadMarkdown()`, which is capped at 8 MiB per file (§ 2.4); converting
+it to an uncapped `fromFile` would have removed a bound rather than tightened
+one. `kDetectorByteCap` is stricter than the cap it replaces on that path.
+
+**`openFailed()` forces the open, and that is load-bearing rather than
+incidental.** § 2.4 converts sites that branch on `QFile::open()` *before* the
+dispatch, so they call `openFailed()` at the same point — before any accessor
+has run. An implementation where it merely reports a flag some earlier accessor
+set returns `false` on first call, and the `op:append` path silently loses the
+`roadmap_read_failed` refusal INV-4 says is preserved. The open it forces is
+**the same open** `detectionPrefix()` would have performed, not an extra one, so
+it consumes no bytes of its own and INV-6 is unaffected.
+
+**Accessor order is free, in both directions.** `detectionPrefix()` then
+`full()` continues from where the prefix stopped. `full()` then
+`detectionPrefix()` derives the prefix from the memoised body through the
+existing in-memory helper — no disk read at all, since the bytes are already in
+hand. Either order reads the file exactly once, which is what makes INV-6
+order-independent rather than order-specific.
 
 **The read contract, stated because three invariants rest on it and none of
 them can hold without it.** A file-backed `RoadmapText` opens its file **once**,
@@ -136,8 +193,9 @@ with `QIODevice::ReadOnly | QIODevice::Text` — the mode every one of today's
 call sites uses, and the one that decides CRLF handling, so INV-5's
 byte-identity claim is meaningless without pinning it. It **retains the open
 handle** until `full()` has run or the object is destroyed. `detectionPrefix()`
-reads forward to the cap and stops; `full()` continues from where the prefix
-stopped and appends, rather than seeking back and re-reading. Hence:
+reads forward to whichever of the two caps it reaches first and stops; `full()`
+continues from where the prefix stopped and appends, rather than seeking back
+and re-reading. Hence:
 
 - **Every byte is read at most once** (INV-6), so `bytesRead()` after both
   accessors equals the file size exactly and not the file size plus the prefix.
@@ -173,10 +231,10 @@ refusal, `readProjectByRoot()`, the `sawSignal` refusal, ANTS-3815's drift
 comparison, the `ants-v1` gate — is untouched.
 
 **It must never call `full()`, and that is the whole of this item's saving.**
-The three functions that wrap it — `bulletsFor()`, `roadmapStoreServes()`,
-`roadmapWriteTarget()` — must not call it either: each either returns the
-store's records or reports "not migrated", and in neither case does the seam
-itself parse markdown.
+Its four callers must not call it either — `bulletsFor()`,
+`roadmapStoreServes()`, `roadmapWriteTarget()` and `storeLegend()`: each either
+returns the store's records or reports "not migrated", and in neither case does
+the seam itself parse markdown.
 
 | Function | File | Body read? |
 |---|---|---|
@@ -220,16 +278,27 @@ confirms as 3. All
 three are the same "not migrated, parse the text" outcome and all three convert
 identically. `RemoteControl::roadmapBullets()` has one.
 
-### 2.4 The 27 sites
+### 2.4 The 28 sites
 
-Every site that hands roadmap text to one of the entry points above. Enumerated
-by `grep -rnE '(^|[^:[:alnum:]_])(roadmapBullets|roadmapWriteTarget|roadmapStoreServes|RoadmapSource::bulletsFor|RoadmapSource::migratedProject)\(' src/ --include=*.cpp`,
-piped through `grep -vE '^[^:]+:[0-9]+: *//'` to drop comment mentions. The
+Every site **outside `src/roadmapsource.cpp`** that hands roadmap text to one of
+the entry points above. Enumerated by
+`grep -rnE '(^|[^:[:alnum:]_])(roadmapBullets|roadmapWriteTarget|roadmapStoreServes|RoadmapSource::bulletsFor|RoadmapSource::migratedProject)\(' src/ --include=*.cpp`,
+piped through `grep -vE '^[^:]+:[0-9]+: *(//|\*)'` — the same comment filter § 1
+uses, which drops ` * ` continuation lines a bare `//` filter leaves in. The
 per-file counts below are `… | cut -d: -f1 | sort | uniq -c`, and they sum to
 **27** (re-derived 2026-08-08).
 
-**No definitions have to be removed by hand, and an earlier draft of this
-section said five and then named six.** The command's leading
+**The "outside `src/roadmapsource.cpp`" qualifier is a real exclusion, not
+tidiness.** The two `RoadmapSource::`-qualified alternatives cannot match that
+file's own in-namespace calls, which are written unqualified — so
+`bulletsFor()`'s `migratedProject(store, projectRoot, markdown, …)` is a genuine
+28th site that the command does not return — **the 28th**, and the reason this
+section's heading and the command's own total differ by one. It is a
+wrapper-internal pass-through like the four below, it changes with the
+signature, and it is named here because a command whose output is presented as
+"every site" must say what it cannot see.
+
+**No definitions have to be removed by hand.** The command's leading
 `(^|[^:[:alnum:]_])` already excludes every qualified definition — `:` is inside
 the negated class, so `RemoteControl::roadmapBullets(` and its four siblings do
 not match — and `RoadmapSource`'s own two definitions are written unqualified in
@@ -237,7 +306,7 @@ not match — and `RoadmapSource`'s own two definitions are written unqualified 
 not reach either. The output is 27 call sites and nothing else, so the count is
 reproducible by running the command and reading `wc -l`.
 
-Four of the 27 are **wrapper-internal pass-throughs** — a seam function handing
+Four of the command's 27 are **wrapper-internal pass-throughs** — a seam function handing
 its own parameter to the next one down — and they change with the signature
 rather than as consumer edits: the `bulletsFor()` call inside each owner
 wrapper (`RemoteControl::roadmapBullets()` in `src/remotecontrol_terminal.cpp`
@@ -249,7 +318,7 @@ sites that construct the text.
 
 | File | Sites | of which internal | Change |
 |---|---|---|---|
-| `src/remotecontrol_roadmap_log.cpp` | 7 | 0 | `RoadmapText::fromFile(roadmapPath)`; the `QFile` + `readAll()` block above each is deleted |
+| `src/remotecontrol_roadmap_log.cpp` | 7 | 0 | `RoadmapText::fromFile(roadmapPath)`. At `op:append_batch`'s `probe` the `QFile` + `readAll()` block is **deleted** outright. At `op:append`'s `storeMarkdown` it is replaced rather than deleted, because that text has a second consumer (below). The other five take their text as a function parameter and own no read block to delete — the caller's conversion is what reaches them |
 | `src/remotecontrol_roadmap_query.cpp` | 8 | 2 | `fromFile` at all six consumer sites; the two that share one read with a section path call `full()` on that branch (below) |
 | `src/roadmapdialog.cpp` | 5 | 1 | `fromFile` for the dispatch, `fromMemory` for the archive-concatenated text |
 | `src/remotecontrol_feedback.cpp` | 3 | 0 | `fromFile` |
@@ -272,7 +341,29 @@ the cache's *keying and TTL* are what stay untouched.
 **Sites whose text is not a file on disk pass `fromMemory` and change nothing
 else.** `RoadmapDialog::roadmapBullets()` is handed
 `loadRoadmapMarkdown(includeArchive)`, which concatenates the live roadmap with
-its archives — not a single file, and not what the dispatch classifies. The
+its archives — not a single file, and not what the dispatch classifies.
+
+**`includeArchive` is a runtime value, so those sites branch rather than pick.**
+Its three call sites pass `wantsHistoryLoad()` (`src/roadmapdialog.cpp`), which
+is `false` whenever history is not loaded — the common case. On that branch the
+text *is* the live file alone, so the dialog would otherwise read 3 MiB and hand
+it over as `fromMemory`, forgoing the whole saving on its busiest path. Each
+site therefore reads:
+
+```cpp
+    auto text = includeArchive
+        ? RoadmapText::fromMemory(loadRoadmapMarkdown(true))
+        : RoadmapText::fromFile(m_roadmapPath);
+    const auto recs = roadmapBullets(text, includeArchive);
+```
+
+The `true` branch keeps today's cost because it genuinely needs every archive
+byte concatenated before anything can parse them; the `false` branch is the one
+this item exists for. **INV-1 is scoped to file-backed texts for exactly this
+reason** — a `fromMemory` text reads no disk, so asserting a disk-byte bound on
+it is vacuous rather than false.
+
+The
 dialog's own dispatch (`storeLegend()`) already passes
 `loadRoadmapMarkdown(/*includeArchive=*/false)`, i.e. the live file alone, so it
 becomes `fromFile(m_roadmapPath)` and the concatenating call stays `fromMemory`.
@@ -282,14 +373,25 @@ stated rather than assumed.** It delegates to `loadMarkdown()`, which opens
 `ReadOnly | Text` and calls `f.read(kPerFileCap)` with an **8 MiB per-file cap**
 (`src/roadmapdialog.cpp`), returning an empty string if the open fails. For
 `storeLegend()` the substitution is exact in every way that matters: the
-dispatch reads inside the first 300 non-blank lines, three orders of magnitude
-inside the cap, and an unopenable file yields an empty prefix on both shapes,
+dispatch reads inside the first 300 non-blank lines, ~400× inside the cap, and
+an unopenable file yields an empty prefix on both shapes,
 so § 2.5's classification outcome is unchanged. It is **not** exact for a
 hypothetical roadmap past 8 MiB, where `full()` would return more text than
 `loadMarkdown()` does today — and that difference is a *widening*, not a
 regression, since the cap silently truncated the dialog's parse. The dialog's
 8 MiB cap is not adopted into `RoadmapText`; ANTS-1125 INV-5a owns it for the
 archive-concatenation path, which stays on `fromMemory` and keeps it.
+
+**`rlStoreCounterPrefix()` takes the `RoadmapText &` too, and that is the one
+helper below the seam this item touches.** Its signature
+(`src/remotecontrol_roadmap_query.cpp`) ends in `const QString &markdown`, used
+only on its last fallback — after `idPrefixArg` and `store.idPrefixFor()` have
+both failed. Passing the provider instead of the text moves the `full()` onto
+that fallback, so the common migrated `op:append` reads no body while the rare
+prefix-sniff still gets the whole file. Converting it is what makes § 1
+consequence 2's "near-miss" site pay; leaving it on `const QString &` would
+force `storeMarkdown`'s read back to the top of the block and cost the saving
+on the second-busiest write path.
 
 **Each site keeps its existing answer to an unopenable file.** The two
 `roadmap_log` sites already differ — the `op:append` path refuses
@@ -315,8 +417,12 @@ the empty text reach the seam — and both are preserved by branching on
 
 ## 3. Invariants
 
-- **INV-1** — A dispatch against a **migrated** project reads at most
-  `kDetectorLineCap` non-blank lines from the live roadmap, never its body.
+- **INV-1** — A dispatch against a **migrated** project, through a
+  **file-backed** `RoadmapText`, reads at most `kDetectorLineCap` non-blank
+  lines **or `kDetectorByteCap` bytes** from the live roadmap, never its body.
+  (A `fromMemory` text reads no disk at all — `bytesRead()` is 0 — so the bound
+  holds trivially there rather than being claimed of a path that cannot meet it;
+  § 2.4 says which dialog branch is which.)
   *Test:* `RoadmapReadSeam` — migrate a project, append a multi-megabyte tail of
   valid `ants-v1` bullets to its rendered `ROADMAP.md`, dispatch, and assert the
   dispatch still returns the project id while `bytesRead()` stays inside the
@@ -326,10 +432,11 @@ the empty text reach the seam — and both are preserved by branching on
   one line (the reader may overshoot to finish the line it is on, and may not
   overshoot further). A second assertion — `bytesRead() < fileSize / 100` —
   states the same thing as a ratio and is what fails loudly if the cap is lost.
-  Neither figure is 64 KiB; an earlier draft asserted that constant with no
-  derivation, and it collided with § 4's unrelated RAM ceiling.
-  *Breaks when:* any function in § 2.2's table calls `full()`, or the bounded
-  reader loses its cap and drains the file.
+  **A third leg covers the byte cap:** a fixture of one million blank lines,
+  where the non-blank cap is never reached, must still stop — assert
+  `bytesRead() <= kDetectorByteCap` and that the dispatch returns.
+  *Breaks when:* any function in § 2.2's table calls `full()`, or the reader
+  loses either cap and drains the file.
 - **INV-2** — The **bounded file reader and the in-memory helper produce the
   same `QStringList`**, so swapping one for the other cannot change a
   classification: for each fixture,
@@ -364,8 +471,11 @@ the empty text reach the seam — and both are preserved by branching on
   seam. *Breaks when:* `openFailed()` is folded into the seam's own refusal, which
   would collapse two consumer behaviours that differ today into one.
 - **INV-5** — On an **unmigrated** project the text parsed is byte-identical to
-  what the site reads today. *Test:* `RoadmapReadSeam.Inv2BackendsAgree` extended
-  to assert `full()` equals a `QFile::readAll()` of the same path **opened
+  what the site reads today. *Test:* a **new** case,
+  `RoadmapReadSeam.Ants3863Inv5FullMatchesReadAll` — not an extension of
+  `Inv2BackendsAgree`, which § 7 requires to stay unedited but for its argument
+  type, and one case cannot be both. It asserts `full()` equals a
+  `QFile::readAll()` of the same path **opened
   `QIODevice::ReadOnly | QIODevice::Text`** — the mode § 2.1 pins and the one
   every current site uses — including for a file with no trailing newline and
   one with CRLF line endings. The mode is named in the assertion rather than
@@ -374,9 +484,13 @@ the empty text reach the seam — and both are preserved by branching on
   *Breaks when:* the bounded reader's line splitting leaks into `full()`, or
   `full()` returns only the bytes after the prefix rather than the whole text.
 - **INV-6** — No `RoadmapText` reads any byte of its file more than once,
-  whichever order its accessors are called in. *Test:* `RoadmapReadSeam` — call
-  `detectionPrefix()`, then `full()`, then both again, and assert `bytesRead()`
-  equals the file size exactly and never grows on the repeat calls.
+  whichever order its accessors are called in. *Test:* `RoadmapReadSeam`, **two
+  legs, one per order** — `detectionPrefix()` then `full()`, and `full()` then
+  `detectionPrefix()` — each followed by calling both again, asserting
+  `bytesRead()` equals the file size exactly and never grows on the repeats.
+  Two legs because § 2.1 satisfies the orders by different mechanisms (continue
+  the handle; derive the prefix from the memoised body), and a single-order test
+  leaves one of them unexercised.
   **This and INV-5 are jointly satisfiable only under § 2.1's retained-handle
   rule** — `full()` continuing from where the prefix stopped is what lets it
   return the whole text (INV-5) without re-reading the head (INV-6). An
@@ -385,17 +499,20 @@ the empty text reach the seam — and both are preserved by branching on
   *Breaks when:* memoisation is added to one accessor and not the other, or the
   handle is closed after `detectionPrefix()` and `full()` re-opens.
 - **INV-7** — **No dispatch-taking entry point keeps a `const QString &`
-  overload.** *Test:* source-grep — the matcher must be **multiline**, because a
-  C++ parameter list wraps and four of the six signatures put `const QString
-  &markdown,` on a line of its own, where a line-based `grep` cannot see it:
+  overload.** *Test:* source-grep — the matcher must be **multiline**, because
+  C++ parameter lists wrap: **seven of the twelve occurrences** put `const
+  QString &markdown,` on a line of its own, where a line-based `grep` cannot see
+  it. Sum the per-file counts, because `rg --count-matches` prints one line per
+  file and prints nothing at all when there are no matches — so the after-figure
+  is only a number if something adds it up:
 
   ```
   rg -U --count-matches \
     '(roadmapBullets|roadmapWriteTarget|roadmapStoreServes|bulletsFor|migratedProject)\s*\([^)]*QString\s*&\s*markdown' \
-    src/
+    src/ | awk -F: '{s+=$2} END{print s+0}'
   ```
 
-  **Expected 12 before the change and 0 after** (`rg -U`, measured 2026-08-08).
+  **Expected 12 before the change and 0 after** (measured 2026-08-08).
   Twelve is not a figure to take on sight — it is six functions × two
   occurrences each, a declaration in the header and a definition in the `.cpp`,
   the same six § 2.1 names. A run reporting any other pre-change figure means
@@ -412,7 +529,11 @@ the empty text reach the seam — and both are preserved by branching on
 
 **Peak RAM falls; nothing new is held.** A `RoadmapText` holds at most one
 memoised `QString` (the body, only on the unmigrated path — exactly what the
-site holds today) plus a `QStringList` of at most 300 non-blank lines.
+site holds today) plus a `QStringList` bounded by § 2.1's two caps — 300
+non-blank lines, or `kDetectorByteCap` of text, whichever comes first. **The
+byte cap is what makes this a ceiling rather than an estimate:** the line cap
+alone bounds neither the element count nor the bytes, since blank lines are kept
+without being counted, so a pathological file would otherwise blow both.
 
 **`QString` is UTF-16, so the RAM figure is not the byte figure**, and the two
 must not be compared as if they were. Taking § 1's prefix measurement: that many
@@ -420,12 +541,13 @@ UTF-8 bytes of near-ASCII markdown becomes twice as many bytes in memory, and
 the `QStringList`'s per-element overhead (a `QArrayData` header plus a pointer,
 ~32 bytes across ~350 elements) adds roughly 11 KiB on top. The object's ceiling
 on the migrated path is therefore about **2.5× the prefix's on-disk size**,
-which is the number to reason with — and it is still three orders of magnitude
-below the whole file the same call holds today, which is the point.
+which is the number to reason with — and it is still **~120× below** the whole
+file the same call holds today (both sides in UTF-16, so the doubling cancels),
+which is the point.
 
 That ceiling is a **RAM** quantity and has nothing to do with INV-1's threshold,
-which bounds **bytes read from disk**. An earlier draft put 64 KiB in both
-places, which made two unrelated budgets look like one.
+which bounds **bytes read from disk**. Keep the two apart: a single figure
+quoted in both sections would read as one budget.
 
 The saving is per dispatch, not per session — one file read per
 `roadmap_query` / `roadmap_log` cache miss, cut to § 1's ratio. **The
@@ -459,8 +581,8 @@ not delivered. A latency number here would be a softer restatement of it.
 - **Streaming the detector so it stops at the format marker** — a permanent
   exclusion, not deferred. `detectRoadmapFormat()` returns at
   `<!-- ants-roadmap-format: 1 -->` on line 1 of a rendered roadmap, so a
-  streaming reader would cut § 1's prefix to that one line — a further three
-  orders of magnitude, on top of the three the bounded read already delivers.
+  streaming reader would cut § 1's prefix to that one line — a further ~660×,
+  on top of the ~156× the bounded read already delivers.
   It is not worth a reader that must interleave with the detector's own loop:
   the bound is what makes the cost safe, and the residue it leaves is already
   small enough that halving it again buys nothing measurable. (§ 1 holds the
@@ -474,10 +596,15 @@ not delivered. A latency number here would be a softer restatement of it.
 - **The parsed-bullet cache's TTL and keying** — untouched (§ 2.5), tracked by
   nothing, because nothing is wrong with it. This item changes the cost of a
   miss, not the miss rate.
-- **The 18 `readAll()` sites in `src/remotecontrol_roadmap_log.cpp` that are not
-  dispatch inputs** — out of scope by definition. They read the file to splice
-  text into it, which is the markdown write path and needs the whole file.
-  § 2.4's seven are the subset that feed a dispatch.
+- **The `readAll()` sites in `src/remotecontrol_roadmap_log.cpp` that are not
+  dispatch inputs** — out of scope by definition. § 1 measures **18** `readAll()`
+  calls in that file; **two** of them are the reads § 2.4 converts
+  (`op:append`'s `storeMarkdown` and `op:append_batch`'s `probe`), leaving 16.
+  Those 16 read the file to splice text into it, which is the markdown write
+  path and needs the whole file. **The 18 and § 2.4's 7 are different things
+  being counted** — `readAll()` calls versus call sites of a dispatch-taking
+  entry point — and the five call sites that are neither take their text as a
+  function parameter, so they own no `readAll()` at all.
 - **Auditing whether any of the 23 consumer sites should not be reading a roadmap at
   all** — a separate question this item deliberately does not open. It changes
   how each site reads, not whether it should.
@@ -496,6 +623,14 @@ source first** — for INV-1 that means asserting `bytesRead()` before the bound
 reader exists, so the case must be written against a stub that returns the file
 size and seen to fail.
 
+**The existing case names carry ANTS-3793's invariant numbering, not this
+document's, and the two collide.** `Inv2BackendsAgree`, `Inv2Membership`,
+`Inv3Ceiling` and `Inv3Latency` are ANTS-3793's INV-2 and INV-3 — nothing to do
+with the INV-2 and INV-3 above. So **every case this item adds is prefixed
+`Ants3863`** (`Ants3863Inv5FullMatchesReadAll` and its siblings), which is the
+convention the suite already uses for ANTS-3815's additions and the only thing
+keeping "INV-2's test" unambiguous in a file serving three specs.
+
 Existing cases that must stay green unedited but for the new argument type:
 `RoadmapReadSeam.Inv1DispatchMarker`,
 `Ants3815Inv5UnrecordedFormatDispatchesAsBefore`,
@@ -506,7 +641,14 @@ Existing cases that must stay green unedited but for the new argument type:
 
 - **`docs/specs/ANTS-3815-store-source-format-column.md` § 6** — its
   "ANTS-3863 owes INV-6 a second witness" line is discharged by INV-3 here, and
-  gains a pointer saying so.
+  gains a pointer saying so. **Two further corrections are owed in the same
+  bullet, and both are inventory this spec supersedes.** It describes this item
+  as "a signature change across `bulletsFor()`'s two call sites plus
+  `RemoteControl::roadmapStoreServes()`" — § 2.1 makes it six functions and
+  § 2.4 counts 28 sites. And it offers "a cheap existence/size stat as the
+  candidate" for keeping a second witness; § 6 here **rejects** that outright as
+  strictly weaker than the bounded read for the same cost class, so it is not a
+  live option to leave standing in another spec's prose.
 - **`docs/specs/ANTS-3815-store-source-format-column.md` § 2.4 — already
   amended, 2026-08-08.** Its closing paragraph now scopes its "the live read is
   not removed and no signature changes" claim to that item and points here for
@@ -516,7 +658,13 @@ Existing cases that must stay green unedited but for the new argument type:
   them — the identical error § 1 corrects in the ROADMAP bullet, and it had
   propagated into a spec before anyone caught it. Nothing further is owed there.
 - **`docs/specs/ANTS-3793-roadmap-consumer-cutover.md`** — its seam signatures
-  are quoted in the header comment of `src/roadmapsource.h`; both move together.
+  are quoted in the header comment of `src/roadmapsource.h`, and that comment
+  additionally says `markdown` "is never re-read from disk here" and that
+  ANTS-3863 "owns removing the file read". Both become false at this item: the
+  read is bounded rather than removed (§ 6), and `RoadmapText` reads from disk
+  by design. **This item owns both edits** — the spec's § 2.2 signature block
+  and the header comment — and they land in the implementation commit, not
+  here, because the comment is code.
 - **`ROADMAP.md`** — the ANTS-3863 bullet's corrected inventory (already
   annotated 2026-08-07) matches § 1; flip to 🚧 when implementation starts.
 - **`CHANGELOG.md`** — one `Changed` entry in the release that carries it.
@@ -529,4 +677,5 @@ Existing cases that must stay green unedited but for the new argument type:
 
 | Loop | Date | Lanes | C/H/M/L/I | Dimensions | Outcome |
 |---|---|---|---|---|---|
+| 2 | 2026-08-08 | 2, cold — identical byte-stable shared packet (~16k tok), no mention of loop 1's findings or fixes; packet carried bounded windows of all nine cited source files plus quoted ANTS-3815 / ANTS-3793 passages | C 1 · H 4 · M 6 · L 8 · I 0 — verified 19, dismissed 0 | dim 5×5, dim 4×4, dim 2×3, dim 7×3, dim 10×2, dim 6×2, dim 11×1, dim 12×1, dim 15×1 | **Draft defects outnumbered fix collateral 12:7, so no stop trigger fired — but the CRITICAL was a claim this document had been making since its first draft and neither loop had checked. (1) CRITICAL, lane A (lane B graded the same defect MEDIUM from the RAM side): § 2.1 called the file-backed prefix read "a bounded read that stops at the cap and never touches the tail". `kDetectorLineCap` counts **non-blank** lines and the helper keeps blank lines without counting them, so a file of blank lines — or one with no `\n` — is read to EOF and the bound is fiction. **INV-2's own fixture list names an all-blank file**, so the unbounded case was one the tests were required to hit. Compounding it, § 2.4 had just declined to carry the dialog's existing 8 MiB `kPerFileCap` into `RoadmapText`, which would have *removed* a cap rather than tightened one. New `kDetectorByteCap` (1 MiB), a third INV-1 leg on a million-blank-line fixture, and § 4's ceiling re-derived from both caps. (2) HIGH, both lanes independently: `openFailed()`'s open timing was undefined against § 2.1's "nothing is read at construction", while § 2.4 tells sites to branch on it exactly where they branch on `QFile::open()` today — before any accessor. The natural implementation returns `false` on first call and `op:append` silently loses the `roadmap_read_failed` refusal INV-4 claims is preserved. It now forces the open, and it is the same open `detectionPrefix()` would do. (3) HIGH, lane B: INV-5 said to extend `RoadmapReadSeam.Inv2BackendsAgree` while § 7 listed that case as one that must stay unedited — opposite instructions for one case, so an implementer following § 7 never writes INV-5's check. Now a new `Ants3863Inv5FullMatchesReadAll`, and § 7 gained the naming rule: the existing `Inv2…`/`Inv3…` cases are **ANTS-3793's** numbering, which collides with this document's INV-2/INV-3 in a file serving three specs. (4) HIGH, lane A: INV-1 was falsifiable on a live path — `RoadmapDialog::roadmapBullets()` takes `fromMemory`, having already read the file. Verified the branch: `includeArchive` is `wantsHistoryLoad()`, so it is **false on the common path**, and the dialog was forgoing the whole saving on its busiest call. Now a runtime branch — `fromFile` when false, `fromMemory` when true — and INV-1 is scoped to file-backed texts. (5) HIGH, lane B: `RoadmapText` owns a retained handle (loop 1's own contract) yet is returned by value with no copy/move rule — a copyable handle-owner reads twice or double-closes. Now move-only. **Found by verification rather than by either lane, and it corrected § 1:** consequence 2 claimed *two* sites read the file for nothing else. Only one does. `op:append`'s `storeMarkdown` reaches `rlStoreCounterPrefix()` further down the same block, on the **migrated** path — so the claim was false, and § 2.4's "the block above each is deleted" was false with it. Read the helper: it consults the text only after an explicit `id_prefix` and the store's own `idPrefixFor()` both come up empty, so § 2.4 now passes the provider down to it and the `full()` lands on that rare fallback instead of at the top of the block. **MEDIUM ×6:** the enumeration command cannot match `roadmapsource.cpp`'s own unqualified `migratedProject()` call, a genuine **28th** site the "every site" framing had to name (and the reason § 2.4's heading and its command's total differ by one); § 6's "the 18 `readAll()` sites that are not dispatch inputs" plus § 2.4's seven made 25 in an 18-call file, conflating `readAll()` calls with entry-point call sites; INV-6 defined only the prefix→body order, leaving body→prefix unspecified and untested; "§ 2.2's four dispatch-taking functions" against a five-row table, and "the three functions that wrap it" against four callers — both loop-1 collateral from adding `storeLegend()` to that table; and § 8 owed ANTS-3815 § 6 two corrections it had missed, since that bullet still describes this item as "`bulletsFor()`'s two call sites plus `roadmapStoreServes()`" and still offers the existence/size stat § 6 here **rejects**. **LOW ×8**, all fixed: three "orders of magnitude" claims that arithmetic puts at ~120×, ~156× and ~400× — two orders, not three, now stated as ratios; § 2.4's comment filter differed from § 1's and missed ` * ` continuation lines; `rg --count-matches` prints per-file counts and nothing at all on zero, so INV-7's before/after figures needed the `awk` sum (**executed as written: 12, and 0 on a no-match pattern**); "four of the six signatures wrap" is seven of the twelve occurrences; `bytesRead()` was undefined for `fromMemory` and `full()` for a failed open; § 8's ANTS-3793 row was agentless about an edit this item owns; and "dispatch site" carried two senses two sentences apart. **Consolidation pass:** four "an earlier draft said X" asides removed — drafting history is context tax on the implementer and this table is its home. Doc 532 → 680 lines. |
 | 1 | 2026-08-08 | 1 (general-purpose, strong model, cold); packet was `references/review-brief.md` plus bounded windows of `roadmapsource.{h,cpp}`, `roadmapparse.cpp`, `remotecontrol_roadmap_{query,log}.cpp`, `remotecontrol_terminal.cpp`, `roadmapdialog.{h,cpp}` and quoted ANTS-3815 / ANTS-3793 passages | C 1 · H 5 · M 5 · L 5 · I 0 — verified 16 (one in part), dismissed 0 | dim 5×4, dim 4×3, dim 15×3, dim 9×2, dim 1×1, dim 2×1, dim 7×1, dim 10×1 | **Every finding verified against current source before any edit, and the run's centre of gravity was that this document's own arithmetic did not reproduce. (1) CRITICAL: § 2.4's table excepted "the cached-parse path" while § 2.5 said the cache is untouched — read as written, the saving never reached the largest consumer. Re-derived from `remotecontrol_roadmap_query.cpp`: the cache-miss block spends one `readAll()` on *either* the dispatch (`section.isEmpty()`) *or* `RoadmapIndex::buildIndex()` on the `else`, so no site is excepted — the index branch simply calls `full()`. § 2.4 now names the branch and § 2.5 is scoped to the cache's keying and TTL. (2) MEDIUM, and the worst reproducibility defect: § 2.4 claimed the enumeration summed to **25** after "five definitions removed by hand", then listed six names. Re-running it returns **27**, and *no* definitions are removable — the command's leading `(^\|[^:[:alnum:]_])` already excludes every qualified definition, and `RoadmapSource`'s two are written unqualified where the `RoadmapSource::`-prefixed alternatives cannot reach them. The true split is 23 consumer sites plus 4 wrapper-internal pass-throughs; `roadmap_query` is 8, not 6. All six other mentions of "25" swept in the same pass. (3) HIGH ×2, resolved together by a read contract § 2.1 never had: INV-6 (read each byte once) and INV-5 (`full()` is byte-identical to today's read) were jointly unsatisfiable, and INV-5's byte-identity was undefined without an open mode — every current site uses `ReadOnly \| Text`, which is exactly what decides its CRLF fixture. § 2.1 now pins the mode, a retained handle, `full()` continuing from where the prefix stopped, and — closing the MEDIUM TOCTOU finding — states that prefix and body therefore come from one file description. (4) HIGH: § 2.3's "exactly one use of the body" is three in `RoadmapDialog::roadmapBullets()` — an empty root, a null store, and the fall-through past `bulletsFor()`; an implementer converting "the one site" leaves two that do not compile. (5) HIGH: § 2.2's "three wrappers" omitted `storeLegend()`, the fourth `migratedProject()` caller, which INV-1's "any *seam* function" clause does not reach — it is dialog code. Added to the table with the reason it belongs there. (6) HIGH **verified only in part, and the correction matters more than the finding**: the lane said INV-7's grep "returns zero before any change, so the invariant is unfalsifiable". It returns **5**. The real hole is narrower and worse-hidden — line-based `grep` cannot see the four signatures that wrap `const QString &markdown,` onto its own line, which includes `migratedProject()` and `bulletsFor()`, the two functions the item is about. INV-7 is now `rg -U` with a derived before-figure of **12** (six functions × declaration + definition) and 0 after. (7) MEDIUM ×2 on § 4: the RAM ceiling ignored that `QString` is UTF-16, so the prefix costs ~2× its byte count plus ~11 KiB of `QStringList` headers; and its "well under 64 KiB" collided with INV-1's *unrelated* 64 KiB, which bounds **disk bytes** and was asserted with no derivation. INV-1's threshold now derives from the fixture the test builds, and § 4 states the two budgets are different quantities. (8) MEDIUM: § 4 and § 6 restated figures § 4 itself declares live only in § 1 — three times. Both now derive by reference. (9) LOW ×5: § 2.1's "four dispatch-taking functions" read as the whole change set (it is six functions / five symbols); `openFailed()` was undefined for `fromMemory` and for a mid-read error; § 5's "latency, downward" carried no target (now INV-1's byte assertion, stated as *why* a millisecond figure would be worse); INV-2's claim said "the bounded prefix and the whole file classify identically" while its test caps **both** sides — on the after-300-lines fixture both correctly miss the signal, so the claim was false by construction and is now reader-equivalence, with the prefix-vs-whole-file property left where it lives, at `detectionPrefix()`'s definition. **Found by verification rather than by the lane, and the run's best catch:** § 2.4 assumed `storeLegend()`'s `loadRoadmapMarkdown(false)` is `m_roadmapPath`'s bytes. It is not — `loadMarkdown()` reads under an **8 MiB per-file cap** — immaterial for a dispatch that stops inside 300 lines, but a widening for any roadmap past the cap, and now stated instead of assumed. **Cross-doc, and it is where the same error had already spread:** ANTS-3815 § 2.4's closing paragraph named three callers including `RoadmapDialog::storeProjectRoot()` — the identical wrong function this spec's § 1 corrects in the ROADMAP bullet — and claimed "no signature changes" unscoped. Both amended there; § 8 records it. **Nothing deferred, nothing dismissed.** Doc 359 → 532 lines. |
