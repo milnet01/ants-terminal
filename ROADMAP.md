@@ -29831,6 +29831,74 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
+- 📋 [ANTS-4063] **RoadmapRender materialises "Source: planned." onto bullets that have no recorded provenance.**
+  The first store-backed render of this project took bullets whose
+  `source` column is genuinely empty and emitted `Source: planned.`
+  for them. Measured on the same file across that one render: 36 such
+  lines before, 399 after, so 363 bullets now assert a provenance nobody
+  supplied.
+
+  The defect is materialising a DEFAULT as though it were DATA. "planned"
+  is not a source — it is the absence of one — and once written it is
+  indistinguishable from a real provenance on the next read, including to
+  the migrator that reads the file back. It is also self-amplifying: every
+  subsequent render preserves what the previous one invented.
+
+  The same shape may apply to `Kind:`, which the render also defaults;
+  that one is more defensible because the taxonomy has no null member,
+  but it is worth checking whether an absent kind is being written out as
+  `implement` for the same reason.
+
+  Fix: render the key only when the column is non-empty. A bullet with no
+  recorded source should render with no `Source:` line, exactly as it
+  parsed. Add a round-trip invariant — parse a bullet with no `Source:`,
+  render it, and assert the output still has none.
+
+  Found while reviewing the render diff rather than by a test, which is
+  the gap: nothing currently asserts that render(parse(x)) does not gain
+  fields x never had.
+  **Layman:** When the roadmap is rewritten from the database, hundreds of entries gain a made-up "where this came from" line that nobody ever wrote.
+  Kind: fix.
+  Source: in-session-2026-08-08 (found reviewing the first store-backed render).
+
+- 💭 [ANTS-4064] **Reconcile the 62 roadmap bullets whose Kind: is outside the taxonomy.**
+  The first real migration emitted 433 notes, of which the
+  `kind_unmapped` class is genuine doc-drift rather than migration noise.
+
+  Measured across the live roadmap plus docs/roadmap/0.6.md and 0.5.md,
+  normalising away the trailing period and any same-line `Source:` /
+  `Lanes:` keys: 62 bullets carry a `Kind:` outside roadmap-format.md's
+  21-value taxonomy.
+
+  By frequency: bug 29, bugfix 6, spike 5, enhance 3, docs 3,
+  performance 2, "perf / optimize" 2, "feature/fix" 2, and one each of
+  tooling, testing, "process + tooling", "perf / fix", feat,
+  "design + implement", "design + fix", behaviour-change, audit, plus one
+  malformed value that ran onto the next line.
+
+  Most are obvious synonyms (bug/bugfix to fix, performance to perf, docs
+  to doc, feat to feature, enhance to enhancement, testing to test).
+  Three are genuinely compound and need a decision rather than a mapping,
+  since the taxonomy is single-valued.
+
+  Prefer normalising the markdown over teaching the migrator a synonym
+  table: a synonym table would let the drift keep growing silently.
+
+  Not blocking. All 62 migrated with items_orphaned 0 and the kind column
+  carries the unmapped string verbatim, so nothing is lost.
+  Closed as a duplicate (2026-08-08), no work owed: this is the same finding as
+  ANTS-4062, filed twice in one session because the first append went in before
+  the second batch was assembled. ANTS-4062 is the live item; work the taxonomy
+  reconciliation there.
+
+  Caught by roadmap_log's own possible_duplicates check, which scored the pair at
+  100 on append — the verb reported it in the same envelope that created it.
+  Retained rather than deleted per roadmap-format.md § 3.5.1 (stable-ID
+  immutability).
+  **Layman:** Some roadmap entries are filed under labels that are not on the official list, so the database has to guess what they mean.
+  Kind: doc-fix.
+  Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
