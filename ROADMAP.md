@@ -32422,7 +32422,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   carve-out + new IPC verbs (P3) for future Claude integration,
   and the cross-project rollout (P5, P6) once we want other
   projects on the same shape.
-  Kind: feature/fix. Source: user-2026-05-07.
+  Kind: feature. Source: user-2026-05-07.
   Lanes: roadmapdialog, roadmapstatuswidgets, remotecontrol,
   docs/standards/roadmap-format.md.
   Status review (2026-07-04): kept 🚧 — NOT ✅. Real remaining work: P3 (parser carve-out + roadmap IPC verbs) is 📋 unshipped; P1 partial (TASK-NNNN ids, 3 new Kinds, v2 format-pragma deferred); P5/P6 are unstarted sketches; P4's scroll-anchor capture sub-piece unwired. Shipped: P2 (0.7.78) + P4 card dialog (ANTS-1154, the live dialog). The remaining phases are DEFERRED pending a consumer, so this reads as 'actively in progress' when it's really 'core shipped, remainder parked'. Recommend: split P3/P5/P6 into their own 📋 bullets and close this ✅ — surfaced for the maintainer's call.
@@ -33559,7 +33559,7 @@ protocol.
   current Claude Code keeps the same session ID through it).
   When the bug reappears we will know exactly which layer to
   fix because the diagnostic log will name it.
-  Kind: feature/fix. Source: user-2026-05-10.
+  Kind: fix. Source: user-2026-05-10.
 - 📋 [ANTS-1220] **Scrollback duplication while terminal was idle / user away — content re-rendered without input.** User report
   2026-05-10 (screenshot: a Claude Code response with a horizontal
   underscore band partway down, beneath which an *earlier* portion
@@ -36035,7 +36035,7 @@ contributors don't duplicate research.
   — even though work is happening. Decide whether to bring it
   back, with a different look so it doesn't pretend to be
   something *you* need to do.
-  Kind: design + fix. Source: user-2026-05-10.
+  Kind: fix. Source: user-2026-05-10.
 - ✅ [ANTS-1226] **Automatic Claude Code model switcher driven by observed work complexity — Shape A: recommender chip shipped.**
   *Shipped 2026-05-21 in 0.7.92 (Shape A: passive recommender chip).*
   User request 2026-05-11; re-prioritised
@@ -36094,7 +36094,7 @@ contributors don't duplicate research.
   happening and either suggest or automatically pick the right
   model — saving you money on small jobs and giving you the big
   brain when you need it.
-  Kind: design + implement. Source: user-2026-05-11; re-prioritised user-2026-05-21.
+  Kind: implement. Source: user-2026-05-11; re-prioritised user-2026-05-21.
 - 📋 [ANTS-1735] **Automatic model selection — opt-in auto-switch (Shape B of ANTS-1226).** ANTS-1226 shipped the passive recommender
   chip (Shape A). This item ships the active tier: when the user opts
   in, Ants Terminal auto-switches Claude Code to the recommended model
