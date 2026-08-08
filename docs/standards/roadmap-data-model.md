@@ -8,8 +8,10 @@
 > ([ANTS-3756](../specs/ANTS-3756-roadmap-store-schema.md),
 > 3757, 3758, 3761, 3764, 3765, 3766, 3767, 3782, 3796, 3797), as has
 > `roadmap_log`'s write half (ANTS-3809). The consumer cutover (ANTS-3793)
-> is partly built — its read seam ships, `roadmap_query` and `RoadmapDialog`
-> do not — and the publish + health checks (ANTS-3794) have not started. Defines *what a roadmap item is*. The schema, export
+> is partly built — its read seam ships, and `RoadmapDialog` reads the store on
+> one path (§ 5.1's legend); what has not cut over is `roadmap_query` and the
+> dialog's markdown read/write path — and the publish + health checks
+> (ANTS-3794) have not started. Defines *what a roadmap item is*. The schema, export
 > serialisation, migration algorithm and check implementations live in the
 > implementation specs (§ 9), not here.
 >
@@ -104,9 +106,16 @@ succeeds is not yet proved faithful. Before cutover the
 markdown remains authoritative and neither check applies (§ 9).
 
 **A failed publish leaves the store ahead of the file, and that is the
-sanctioned direction.** A write whose store commit succeeded but whose render
-did not land refuses `write_failed` (`mcp-behavioural-notes.md`) with the store
-committed and the file stale-behind. The recovery is to re-run the render —
+sanctioned direction — but only a *publish* does.** A write runs the render
+twice: a **validating** dry render before the store commit, whose failure (a
+render error, or a success carrying gate failures) rolls the store write back
+and commits nothing; and the **publishing** render after the commit, which is
+the one this paragraph is about. So "the store is left ahead" is never the
+answer to a validation failure — *What checks this*' `Inv1RenderFailureRollsBack`
+row is the rollback leg, and the two rows are not in tension. A write whose
+store commit succeeded but whose publishing render did not land refuses
+`write_failed` (`mcp-behavioural-notes.md`) with the store committed and the
+file stale-behind. The recovery is to re-run the render —
 never a hand-edit to close the gap, which § 10 forbids for exactly the reason
 the next generation would discard it. `mcp-behavioural-notes.md` owns the
 mechanics, being the caller-facing home for a refusal code.
@@ -227,8 +236,9 @@ date not derivable from history — the field is left empty.
 **"No default" is not "never harvested", and `priority` is where the two get
 confused.** Leaving a field empty is what migration does when the *source* holds
 nothing for it; it is not licence to discard a value the source declares. Where
-an item carries a `Priority:` line — 88 items do — migration harvests it by
-§ 7.5's mapping, and only an item carrying none is left empty. The same applies
+an item carries a `Priority:` line, migration harvests it by § 7.5's rule — which
+is total, and states what an unreadable value does — and only an item carrying
+none is left empty. The same applies
 to any field this tier says has no default: no default means nothing is
 *invented*, never that a declared value is dropped.
 
@@ -707,6 +717,21 @@ CRITICAL → 1, HIGH → 2, MEDIUM → 3, LOW → 4. Where an item carries both,
 headline word is inherited from whichever review raised it. Band 5 is reserved
 for someday-maybe work that no severity word expresses.
 
+**The harvest rule is total, because most of the corpus does not write a
+severity word at all.** Of the 88 `Priority:` lines in the corpus, **86 already
+hold an integer**; the two that do not are `medium` and `LOW`, and `CRITICAL`
+and `HIGH` never appear in the field. So a rule matching only the four bare
+uppercase words would leave almost every declared priority empty. Reading a
+`Priority:` value:
+
+1. An integer 1–5 is taken as itself.
+2. Otherwise the **leading token** is matched **case-insensitively** against the
+   four severity words — `roadmap-format.md` § 3.5.2's own shape is
+   `Priority: CRITICAL — security blocker`, so whatever follows the word is a
+   comment and not part of the value.
+3. Anything else — an integer outside 1–5, an unrecognised word — leaves
+   `priority` empty and the raw string in `extras`. Nothing is guessed.
+
 `visibility` is `public` or `internal`. The published render includes only
 `public` items, and excludes `dropped` items regardless. Today everything is
 published because the file *is* the record — including security findings that
@@ -741,7 +766,7 @@ honesty mechanism: without it a defaulted `kind` and an author's considered
 | Value | Meaning |
 |---|---|
 | `asserted` | An author supplied it. |
-| `defaulted` | Absent at migration; § 3.3 applied `roadmap-format.md` § 3.5.3's default. |
+| `defaulted` | **No usable source value at migration** — either absent, or present and outside both § 7.4's canonical set and its mapping — so § 3.3 applied `roadmap-format.md` § 3.5.3's default. The two cases are told apart by `extras.source_kind`, which only the second carries (`src/roadmapmigrate.cpp` stamps it beside a `kind_unmapped` note). A conformer counting "items that declared no kind" must exclude the rows carrying it. |
 | `git-derived` | Recovered from commit history, subject to § 4.2's limitation. |
 | `migrated` | Generated by migration itself, with no source-side counterpart — every ID migration allocates (§ 7.2, **both** rows: neither was chosen by an author). |
 | `store-generated` | Stamped by the store on a post-cutover write — the `write (store-populated)` fields of § 4.1. Distinct from `asserted`, which is what the *author's* fields on that same write carry. |
@@ -929,7 +954,7 @@ than a question.
 | **Every** corpus figure in this document | `tools/roadmap-corpus-survey.py` — re-run it rather than trusting a standing number (§ 3.3) |
 | INV-1 leg (a), round-trip byte-identity | `tests/features/roadmap_export_roundtrip` — `Inv1RoundTripIsByteIdentical`, `Inv2EveryRowAndColumnSurvives`. Those `InvN` names are ANTS-3761's spec invariants, not this document's. |
 | INV-1 leg (b), committed export == live store | **nothing yet** — it needs the publish cadence, so it is ANTS-3794's |
-| INV-2 render fidelity | `tests/features/roadmap_render`, since ANTS-3758 shipped. `tests/features/roadmap_read_seam`'s `Inv2BackendsAgree` is the stronger check of the same property: it renders a migrated store back to markdown, parses that file, and compares record-for-record against the store read. |
+| INV-2 render fidelity | `tests/features/roadmap_render`, since ANTS-3758 shipped. `tests/features/roadmap_read_seam`'s `Inv2BackendsAgree` goes further on the shape half: it renders a migrated store back to markdown, parses that file, and compares record-for-record against the store read. **It is not the losslessness oracle § 1 says is still owed** — its equality is over the 20 fields of the *bullet* record, so a store column that record does not carry (`extras` and `provenance` among them) is never compared. ANTS-3810's oracle is the whole-row one. |
 | Read budgets — a whole-project store read stays under its item ceiling and its p95 | `tests/features/roadmap_read_seam` — `Inv3Ceiling` (default suite) and `Inv3Latency` (`perf` label). ANTS-3793's INV-3, not this document's numbering. A budget nothing measures is a comment: the p95 case is what forced the batched `RoadmapStore::readItems()`, the N+1 having been 83 of 101 ms. |
 | INV-3, the store-is-the-only-writer leg, over `roadmap_log`'s eight ops (`mcp-behavioural-notes.md` lists them) on a store-migrated project | `tests/features/roadmap_write_half` — ANTS-3809's `Inv1RenderFailureRollsBack` (a validating render that does not succeed, including one succeeding *with* gate failures, rolls the store write back) and `Inv2RenderIsTheOnlyWriter` (every op writes markdown only through `RoadmapRender::render()`). `InvN` here is ANTS-3809's numbering, not this document's. |
 | § 7.1's `stable_prefix` allocates nothing, and § 8's interim carrier rule | `tests/features/roadmap_write_half` — `Inv3Allocation`, which pins both the store-row floor and the committed-corpus floor under it |
@@ -949,6 +974,7 @@ than a question.
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 3 (model coherence, corpus drift, failure modes) | 6 / 12 / 14 / 18 / 1 | Structural rewrite: obligations split into tiers, export scope defined, INV-1 given its missing leg, identity grammar corrected after the survey regex was found wrong about two projects, migration source shapes corrected. |
 | 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split.** ~8 of the 13 CRITICALs were collateral from loop 1's own fixes; the findings were overwhelmingly schema-level, i.e. this document was a standard carrying an implementation spec. Split per ANTS-3754: the model stays here, the schema goes to a spec. Backup relocated to the private config repo, closing a leak the draft shipped. ID allocation for the corpus's ID-less items decided (user, 2026-07-30). |
+| 11 | 2026-08-08 | 2, cold — same shared-packet shape, no mention of loop 10; packet repaired first (it had claimed to carry "every section this doc cites" while omitting `roadmap-format.md` §§ 3.6.2/3.6.3/3.10.4/3.11, and its DDL window cut before `feedback_ref` and `citation`, which both lanes then asked about) | **Q1 1 · Q2 3 · Q3 1** — verified 5, dismissed 1 | **Two of the five were loop 10's own collateral**, which is what the loop is for: § 1's header still listed `RoadmapDialog` wholesale as not cut over after § 5.1 was corrected to say its store path ships, and § 3.3's new "migration harvests it by § 7.5's mapping" pointed at a mapping that is total only over four bare uppercase words — while 86 of the corpus's 88 `Priority:` values are already integers and the other two are `medium` and `LOW`, so the rule as written would have left almost every declared priority empty. § 7.5 now states a total rule (integer taken as itself; leading token matched case-insensitively; anything else left empty with the raw string in `extras`). **Three were pre-existing and older than this run.** § 7.7 defined `defaulted` as "absent at migration", but `roadmapmigrate.cpp` stamps it on the *unmapped* branch too, where the source did declare a `Kind:` — so any "how much of the corpus declared a kind" count taken from provenance is wrong by the unmapped population; the row now names both cases and the `extras.source_kind` that separates them. § 1 said the render's losslessness oracle "does not exist yet" while *What checks this* called `Inv2BackendsAgree` "the stronger check of the same property" — its equality is over the 20 fields of the **bullet** record, so `extras` and `provenance` are never compared, and the row now says so. And § 1's "a failed publish leaves the store ahead of the file" read as flatly contradicting `Inv1RenderFailureRollsBack` until you know a write renders **twice** — a validating dry render before the commit (failure rolls back) and a publishing render after it (failure leaves the store ahead); neither passage said so, and § 1 now does. **Dismissed:** a lane asked what provenance a caller-supplied `stable_prefix` id carries — real, but it is ANTS-3838, filed at loop 9 and deliberately left open as a design call. |
 | 10 | 2026-08-08 | 2, cold — identical byte-stable shared packet (~13k tok) carrying the live `roadmap-corpus-survey.py` output, the `item`/`element`/`relationship` DDL, `mappedKind()`, three `src/roadmap*.cpp` outlines and every cited section of `roadmap-format.md` / `documentation.md`; genre pinned `standard` | **Q1 5 · Q2 2 · Q3 2** — verified 9, dismissed 0 | **First loop under the four questions** (the C/H/M/L/I column above is the retired scale; these are Q-counts). ANTS-4067's re-sync was the trigger, and the cold read found six defects it had not gone looking for. The one an implementer would have built wrong: **§ 3.3 said migration leaves `priority` empty while § 7.5 gives a full harvest mapping** (`CRITICAL → 1` … plus a tie-break) that has no purpose unless migration reads `Priority:` lines — 88 items declare one, 86 already as integers. One builder leaves the column NULL corpus-wide; another populates it; both cite this document. § 3.3 now distinguishes *no default* (nothing is invented) from *never harvested* (a declared value is dropped), which is the confusion underneath it. **Two claims had simply gone stale under shipped code:** § 5.1's "nothing reads a project's legend at all" — ANTS-3793's `RoadmapDialog::storeLegend()` reads it on the store path (`roadmapdialog.cpp:589`, wired at `:3046`), so § 9's open question narrows to the markdown path; and § 3.1's curating-write carve-out covered only a status flip, leaving a headline edit on a migrated item demanding fields § 7.5 exempts. **`write (migration-populated)` was used in § 4.1.1 and defined nowhere**, and `''` was defined only for pre-column projects, so a project created in the store after cutover had no stated value — both closed. Four figures were stale against the corrected survey: pass-headings 144 → 154 items and 136-of-154 → 142-of-164 status values, `Dependencies:` ~21 → 98, sub-bullets ~1,500 → ~1,800, and "over half carry no `Layman:`" was false in direction (49%). **One fix landed outside this document:** `roadmap-format.md` § 3.5.1 named the detector's task-list literal `gfm` where the shipped detector (`roadmapparse.cpp:1033`), the `source_format` CHECK and every consumer use `github-task-list` — this document was right and its neighbour wrong, so the neighbour was corrected and now owes its own gate. |
 | 9 | 2026-08-05 | 3 (one per host doc, cold; no prior-loop briefing) | 3 / 6 / 10 / 15 / 0 | **Converged by cap (3 loops this run).** 34 raised, 32 verified and fixed, 1 dismissed on evidence, 1 re-found already-filed. Dimension tally: dim 7×5, dim 5×5, dim 6×5, dim 4×5, dim 2×4, dim 1×4, dim 8×3, dim 12×2, dim 11×2. **Two lanes independently converged on one root cause**, which is the finding of the run: "cut over" and "store-migrated" are different sets — the second is the first *plus* an `ants-v1` roadmap — and loop 8 had qualified § 3.2, § 9 and the *What checks this* row while leaving INV-3, § 8's allocation bullet and § 10's anti-pattern speaking of cutover alone. An implementer reaching INV-3 first would have built a store-only writer for every cut-over project, including the GFM and pass-headings ones that still splice. INV-3 now carries the definition and every dependent passage points at it. Also fixed, and pre-existing rather than collateral: § 7.1 claimed a shared store makes the wiped-counter failure mode "disappear, along with the per-prefix bookkeeping" — the shipped allocator keeps both (`rlStoreIdHighWater()` `max()`es the store row over `corpusHighWater()`, keyed per `(project, prefix)`), so that sentence is the one that would have talked an implementer out of the floor it exists to protect. `Inv3Allocation` gained the *What checks this* row it never had. **Dismissed on evidence:** a lane read "a refusal lands in `skipped[]`" as over-broad because `bad_op_combo` runs ahead of the store dispatch; `src/remotecontrol.cpp:10269` shows it too is `skip(li, …)`, per locator. **Filed, not fixed:** ANTS-3838 — the store `append` path stamps `provenance.id = "asserted"` on every branch while § 7.7 reserves `store-generated` for exactly that write. Verified as a divergence; which side is canonical is a design call, so neither doc was bent to match the other. |
 | 8 | 2026-08-05 | 3 (one per host doc, cold; no prior-loop briefing) | 1 / 7 / 9 / 9 / 1 | 27 raised, 25 verified and fixed, **1 dismissed on evidence**, 1 INFO. Dimension tally: dim 4×5, dim 6×4, dim 8×4, dim 7×3, dim 2×3, dim 1×3, dim 5×2, dim 12×1, dim 13×1. Roughly half were collateral from loop 7's own fixes, which is what the loop is for: the pass-headings case had been folded into loop 7's carrier table as a prose caveat that flatly contradicted the row above it ("read and written" vs "left untouched") — now its own row; the framing sentence loop 7 added keyed on "has no store row" while the table it introduces includes store-row projects; and § 3.2's new paragraph said "after cutover" where the trigger is cutover **and** the emoji-bullet shape, which this document already scoped correctly in two other places. Genuine draft defects loop 7 missed: `dry_run` was documented as always previewing, but `commitAndRender()` checks the gate *before* the dry-run return, so on a gate-failing project — this project, today — a preview refuses `render_gate_unmet` instead; § 7.1's `stable_prefix` carve-out claimed to be "the one post-cutover write that carries an id in from outside" while `id_hint` also does; and INV-3's "the export's check has shipped" is leg (a) only, contradicted by the table's own "leg (b) — nothing yet". **The dismissal is the reason findings are verified rather than applied:** a lane argued that if every store bullet's `firstLine` is 0 then a range from line 1 matches *nothing*, so the stated reason for refusing `line_range` was backwards. The envelope reports `line` as `firstLine + 1` (`src/remotecontrol.cpp:8944`), so every store bullet reports line 1 and `[1,10]` matches all of them — the original wording was right. **Filed, not fixed:** ANTS-3837, the neighbouring pass-headings bullet's op list predating `amend_body` and `bundle_row`. |
