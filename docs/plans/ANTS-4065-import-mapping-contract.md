@@ -145,13 +145,50 @@ round-trip covers every one of them.
 > An odd backtick is worth a look under § 2.2, whose guard is a backtick
 > lookbehind.
 
-**B3. Settle the three open rulings.** They are decisions, not code:
-`feature/fix`, `design + implement`, `design + fix` (spec § 2.1), and the
-`priority` severity scale (§ 5). Until ruled, each has stated interim behaviour,
-so this step can land after Phase C without blocking it.
+**B3. Settle the open rulings. DONE (2026-08-08) — and one of them was never
+open.**
 
-> **Verify:** each ruling is written into `roadmap-data-model.md` § 7.4, not
-> into the spec — § 7.4 is the mapping's only home.
+**The compounds are resolved by correcting four bullets, not by a rule.**
+Reading them says no rule should exist: the two `feature/fix` items are a bug
+(ANTS-1219) and a feature (ANTS-1160), so any single mapping is wrong half the
+time. `design + X` needs no judgement at all — `design` is not one of § 3.5.3's
+21 values, so the other half is the only legal one. All four values occurred in
+this project only; correcting the bullets removes them from the corpus, so no
+compound mapping is added.
+
+**`priority` was already decided, and the spec is wrong to have deferred it.**
+`roadmap-data-model.md` **§ 7.5** is normative and states every part the spec
+claims is missing: `priority` is "1 (highest) to 5 (lowest)"; `CRITICAL → 1,
+HIGH → 2, MEDIUM → 3, LOW → 4`; band 5 reserved for someday-maybe; and § 3.3
+already leaves it empty on migrated items. The spec's § 2.1 and § 5 say "a
+severity vocabulary this project has never written down — no doc defines the
+set, and the direction (is `CRITICAL` 1 or 5?) is a convention, not a
+derivation." **Every clause of that is false against § 7.5.**
+
+> **This is the same defect twice, and that is the finding worth keeping.** The
+> spec's own cold-eyes loop 1 caught it on the `Kind` table — "§ 2.1 restated a
+> mapping that already exists and is normative … and re-opened three of those as
+> 'ruling needed'". The fix was applied to `Kind`; the identical defect sitting
+> in the priority paragraph survived all three loops. A spec that re-opens a
+> settled standard is a shape worth checking for directly, not once per lucky
+> read.
+
+**Corpus behaviour confirms § 7.5 rather than establishing it:** 86 of ~90
+`Priority:` declarations are already integers 1–5, `Priority: 1` is an
+in-progress security fix and `Priority: 5` a speculative idea. An absent
+priority stays NULL — 3,304 of 3,392 bullets declare none, and defaulting them
+would invent 3,304 values and mislabel ANTS-3853 (in-progress, standing top
+priority) as least urgent.
+
+> **Still owed, and it is documentation only — tracked as ANTS-4067:**
+> § 7.4's "32 distinct values — 21 canonical plus 11 others" is now **21, all
+> canonical, zero others** after this session's normalisation, and it never
+> received the spec's four additions; the spec's priority deferral (§ 2.1, § 5)
+> must be deleted in favour of a pointer to § 7.5; and figures measured with the
+> pre-fix survey need refreshing (items with no `Kind:` is **1,814**, not the
+> spec's 1,613). § 7.4 is a standard, so rule 14 gates the edit — run
+> `/cold-eyes` on `roadmap-data-model.md`, which nobody has cold-read since the
+> migration produced real evidence.
 
 ---
 

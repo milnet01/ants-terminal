@@ -28350,6 +28350,42 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-08 (ANTS-4065 Phase B2 headline audit).
 
+- 📋 [ANTS-4067] **Re-sync the roadmap standards with what the migration measured, and check for specs that re-open a settled standard.**
+  Documentation only; no code. Three things drifted while ANTS-4065 Phase B was
+  being done, and one of them is a review-process finding rather than a doc fix.
+
+  `roadmap-data-model.md` § 7.4 says "the corpus holds 32 distinct values — all
+  21 canonical ones plus 11 others". After Phase B2 normalised every
+  off-taxonomy value at source it is **21, all canonical, zero others**. Its
+  mapping table's per-value counts are now historical, and it never received the
+  four additions ANTS-4065 § 2.1 owes it (`bug`, `performance`,
+  `process + tooling`, `audit`).
+
+  ANTS-4065 § 2.1 and § 5 defer the `priority` scale on the stated grounds that
+  "no doc defines the set, and the direction is a convention, not a derivation".
+  **§ 7.5 of the data model defines all of it** — 1 (highest) to 5 (lowest),
+  CRITICAL/HIGH/MEDIUM/LOW to 1/2/3/4, band 5 for someday-maybe — and § 3.3
+  already leaves it empty on migrated items. The deferral must be deleted in
+  favour of a pointer to § 7.5.
+
+  The review finding: this is the SECOND time this spec re-opened a decision its
+  own normative standard had already made. Loop 1 of its cold-eyes gate caught
+  exactly this on the `Kind` mapping and fixed it there; the identical defect in
+  the priority paragraph survived all three loops. Worth asking whether
+  "does this document re-open something a standard already settles?" should be a
+  named check rather than something a lucky read catches.
+
+  Also refresh figures taken with the pre-fix corpus survey — items with no
+  `Kind:` is 1,814, not 1,613 — and the `Priority:` / `Evidence:` counts the
+  ANTS-4065 cold-eyes cap already filed as needing re-measurement.
+
+  § 7.4 is a standard, so rule 14 gates the edit: run `/cold-eyes` on
+  `roadmap-data-model.md`. Nobody has cold-read it since the migration produced
+  real evidence, so expect it to surface more than these three.
+  **Layman:** The roadmap rulebook still quotes numbers that were true before we cleaned the roadmap up, and one design note claims a rule was never written down when it was — worth a careful re-read of the rulebook.
+  Kind: doc-fix.
+  Source: in-session-2026-08-08 (ANTS-4065 Phase B3 closeout).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
