@@ -2730,19 +2730,23 @@ interpretation. Closes the self-graded-homework loop.
   program. Highest signal-per-effort for VT conformance drift.
   Runs a canonical xterm-compliance corpus against our parser; any
   divergence is a finding anchored to a published spec.
+  Layman: Run the standard terminal-compatibility test suite automatically, so we find out straight away if our behaviour drifts from what terminals are supposed to do.
   Kind: implement.
 - 📋 [ANTS-1004] **Differential screen-dump harness vs xterm/kitty.** Send a
   canonical byte-stream corpus to each, capture final screen state,
   diff. Divergences are findings regardless of what our unit tests
   say.
+  Layman: Feed identical input to us and to other terminals and compare the results, to catch differences our own tests would miss.
   Kind: implement.
 - 📋 [ANTS-1005] **libFuzzer target against `VtParser`.** Feed random bytes,
   assert invariants (no crash, cursor bounded, scrollback bounded,
   combining side-table aligned). Mechanical — surfaces cases the
   author can't imagine.
+  Layman: Throw random junk at the part that interprets terminal output, to find crashes nobody would think to test for.
   Kind: implement.
 - 📋 [ANTS-1006] **Real-TUI smoke lane.** `vim`, `tmux`, `htop`, `neovim` in a
   headless session, snapshot screen, compare across releases.
+  Layman: Automatically check that real programs like vim and htop still display correctly in every release.
   Kind: implement.
 
 ---
@@ -3075,6 +3079,7 @@ in each named file carry the original indie-review citation.
   (carve-out + test rewires + audit re-baseline), low user-visible
   value. Re-evaluate when the file crosses 7000 LoC or when a
   feature touches three of the four extraction lanes at once.
+  Layman: Split the largest source file into smaller ones so it is easier to work on.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 - 📋 [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).** `populateChecks`
@@ -3085,6 +3090,7 @@ in each named file carry the original indie-review citation.
   **Deferred to post-1.0** alongside ANTS-1043 — same rationale.
   Subsumes ANTS-1049 (audit-pipeline `populateChecks`-as-data-table)
   per the structural-tier note above.
+  Layman: Split the code-checking screen's oversized source file into smaller pieces.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
 - ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp-
@@ -3146,14 +3152,15 @@ in each named file carry the original indie-review citation.
   `packaging/check-*.sh` shell-fragment extraction. Entry preserved
   per `docs/standards/roadmap-format.md` § 3.5.1 (stable-ID
   immutability); tracked under ANTS-1044's structural lane.
+  Layman: Turn a long hand-written list of audit checks into a simple data table.
+  Kind: review-fix.
+  Source: indie-review-2026-04-27.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
 file:line, every cross-cutting theme has ≥2 lanes flagging it.
 Folded as standing practice: re-run `/indie-review` before each
 minor tag (next: pre-0.8.0).
-  Kind: review-fix.
-  Source: indie-review-2026-04-27.
 
 - ✅ [ANTS-3833] **`remotecontrol.cpp` decomposition (23,849 LoC / 1.1 MB).**
   Same shape as ANTS-1043 (mainwindow.cpp), one order of magnitude
@@ -4135,6 +4142,7 @@ minor tag (next: pre-0.8.0).
   needs to settle (the user is still iterating); revisit once
   they've shared the laid-out template. Lanes: MainWindow,
   SettingsDialog, new `ProjectTemplateWizard` class, docs.
+  Layman: Let the terminal do more of the setup work when starting a new project, so Claude spends fewer tokens doing it.
   Kind: implement.
   Source: user-2026-04-28.
 
@@ -4195,6 +4203,7 @@ minor tag (next: pre-0.8.0).
   (tabs, themes, panes — each its own LIFO) rather than one
   global stack so `Ctrl+Z` doesn't ambiguously cross domains.
   Lanes: TBD.
+  Layman: A general undo for interface actions. Currently not recommended, since the settings screen already has Cancel.
   Kind: implement.
   Source: user-2026-04-30.
 
@@ -4296,6 +4305,7 @@ minor tag (next: pre-0.8.0).
   `RULES.md` (per ANTS-1105) — their content was already
   duplicated by `docs/standards/coding.md`. Each new file gets
   one commit. Kind: doc. Source: user-2026-04-30. Lanes: docs.
+  Layman: Add the standard set of project documentation files used by the App-Build workflow.
 
 - 📋 [ANTS-1108] **Native App-Build runner inside Ants Terminal
   — the strategic token-saver.** **Deferred — needs design pass
@@ -4404,6 +4414,7 @@ minor tag (next: pre-0.8.0).
   existing `/debt-sweep` skill's triage table). Kind: implement.
   Source: user-2026-04-30. Lanes: MainWindow, new
   `WorkflowDialog`, AuditDialog, Config, build/CMake.
+  Layman: Build the multi-step project workflow into the terminal itself, which is the big token saver.
 
 - 📋 [ANTS-1887] **First-run wizard: detect a fresh install and offer to install Claude Code hooks + MCP integration.**
   **Layman:** On the very first launch (or first launch after a fresh user account), Ants Terminal should notice it has never been set up and ask the user whether to wire up the bits that make the Ants × Claude Code experience work: the hook scripts under `~/.claude/hooks/`, the MCP server registration in `~/.claude.json` (or whichever Claude Code config the runtime version uses), the `.claude/settings.json` template, etc. A single "Set up Claude Code integration" dialog with a checkbox per feature beats today's "read the README and copy these files by hand" path.</layman> <parameter name="body">First-run detection should probably key on `~/.config/ants-terminal/config.json` absence (or an explicit `first_run_completed` flag inside it). The wizard then offers (defaults all ON, each individually opt-out): (1) install/refresh the hook pack into `~/.claude/hooks/` (matches `tests/hook_pack/`); (2) register the Ants MCP server in `~/.claude.json` so the `mcp__ants__*` tools light up in fresh Claude Code…
@@ -4470,6 +4481,7 @@ minor tag (next: pre-0.8.0).
   results. `verification-before-completion`, `brainstorming`,
   `frontend-design`, and the other judgment-heavy rows stay 💭
   unless / until the user explicitly pulls them in.
+  Layman: A retired plan, kept on the record so the reasoning behind reversing it is not lost.
   Kind: research. Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-skill bullet.
 
@@ -4849,6 +4861,7 @@ minor tag (next: pre-0.8.0).
   mode, Auto-commit on safe changes, `.claude/projects/*/memory/`
   editor, `.claude/skills/` library browser) only land if the user
   explicitly asks for them; this bullet is not auto-promoted.
+  Layman: A retired wishlist, kept on the record so the reasoning behind reversing it is not lost.
   Kind: research. Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-surface bullet.
 
@@ -5210,6 +5223,7 @@ minor tag (next: pre-0.8.0).
   `bench_*.cpp` regression test. Nothing in this bullet is
   one big refactor; it's ten small, measurable, individually
   shippable wins.
+  Layman: Spend a whole release cycle making the ten slowest areas faster, measured properly rather than guessed at.
   Kind: refactor.
   Source: user-2026-04-30.
   Lanes: VtParser, TerminalGrid, TerminalWidget,
@@ -5822,6 +5836,7 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   rules in the spec. Bullet doesn't ship code; deliverable is a
   journal artifact + measured ROADMAP edits. Spec:
   `docs/specs/ANTS-1120.md`.
+  Layman: Measure whether the token-saving features actually save tokens, before building any more of them.
   Kind: research. Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
 
@@ -6771,6 +6786,7 @@ larger than a one-loop fix. Tiered: 🔒 security/data-loss · ⚡ hardening
 - ✅ [ANTS-1775] **`focused_test` ignore/map globs use unanchored prefix/suffix matching.** `focusedtest.cpp:28` — `ignore:["build"]` also swallows `build_config.cpp`. Require a path-segment prefix or true glob; document the limited glob support.
 - 📋 [ANTS-1776] **`TerminalGrid` RIS does `*this = TerminalGrid(...)` mid-dispatch (reentrancy hazard).** `terminalgrid.cpp:943` — self-reassign tears down state a callback's frame may still alias. Factor a `resetState()` that zeroes fields explicitly.
   Deferred (verified 2026-05-22): structural. The current `*this = TerminalGrid(...)` GUARANTEES a complete reset (every member + in-class default). A hand-written `resetState()` for this large class risks member-drift (a missed field → stale state leaks across RIS — a real bug), and the reentrancy is theoretical (RIS `ESC c` doesn't run inside a member-aliasing callback frame; callbacks are signal-emit / flag-set / grid-mutate per the ANTS-1208 audit). If pursued: needs a member-by-member audit + a stale-state regression test.
+  Layman: The terminal-reset path replaces its own state while other code may still be using it.
 - ✅ [ANTS-1777] **VtParser DCS/APC `*Esc` discards the byte after `ESC` on back-to-back sequences.** `vtparser.cpp:519`/`:544` — `ESC P … ESC P` loses the second intro byte (Sixel/Kitty data loss). Re-arm via `transition(Escape)` (xterm-faithful) or document the limitation. (Sibling to the OSC security trade.)
   Documented + deferred (verified 2026-05-22): the `*Esc`-consume design is DELIBERATE security hardening (`tests/features/vt_osc_esc_discard/spec.md`, a 0.7.53 indie-review HIGH) — it discards the post-`ESC` byte so a hostile OSC/DCS/APC payload ending in `ESC c` can't trigger RIS (terminal reset). The suggested `transition(Escape)` re-arm would REOPEN that hole. Added explicit `DcsStringEsc`/`ApcStringEsc` comments noting the back-to-back data-loss tradeoff. A safe partial re-arm (DCS/APC intro bytes only) needs its own security-reviewed spec.
   Spec written 2026-06-01: docs/specs/ANTS-1777.md (cold-eyes loops 1-5, clean pass). NOTE — the headline's "Re-arm via transition(Escape) (xterm-faithful)" proposal is SUPERSEDED: a blanket transition(Escape) re-opens the ESC c -> RIS hole the 0.7.53 hardening closed. The spec's safe design is an introducer-allowlist re-arm: from the *StringEsc peek-states, re-enter a string-collecting state ONLY when the next byte is a string introducer (] P _ X ^); every dangerous ESC-final (c/D/M/7/8/=/>) and CSI ([) stays discarded. Fixes back-to-back Sixel/Kitty/OSC data loss without weakening the RIS-injection guard. Stale code cites in this headline (:519/:544) are refreshed at implementation (current peek-state transition sites: :511/:545/:581/:599).
@@ -6787,6 +6803,7 @@ larger than a one-loop fix. Tiered: 🔒 security/data-loss · ⚡ hardening
   Deferred (verified 2026-05-22): both confirmed present — wholesale `m_urlSpanCache.clear()` + `m_hlSpanCache.clear()` on any `scrollbackPushed()` advance (`terminalwidget.cpp:3540`), and the `Qt::BlockingQueuedConnection` resize hops to `m_vtStream` (`:555`/`:568`/`:2903`). NOT a bounded fix: the wholesale-clear is currently CORRECT (a scrollback push re-keys every cached `globalLine`); shift-reindexing it risks stale URL/highlight spans landing on the wrong line (a visible correctness bug) and needs the eviction/shift direction proven against the ring-buffer indexing. The `BlockingQueuedConnection` is load-bearing (resize must complete on the VT worker before the next paint reads the resized grid). Coalescing resize + a correct shift-reindex is its own perf spec with a regression test.
   Progress (2026-07-09): folded into the freeze-focused hot-path sweep (user-request-2026-07-09). Span-cache half being implemented as ANTS-3452 (band-erase instead of wholesale clear on scrollback push). Resize BlockingQueuedConnection half stays here; the reflow-cost sibling is ANTS-3456.
   Update (2026-07-09): span-cache half SHIPPED as ANTS-3452 (band-erase instead of wholesale wipe on every scrollback push; commit 69ec5885). This item stays OPEN for the remaining half — the resize BlockingQueuedConnection to the parse worker (terminalwidget.cpp:576,:3027) — whose reflow-cost sibling is ANTS-3456.
+  Layman: Link detection re-scans every visible line on every frame, and resizing the window blocks the interface while it works.
 - ✅ [ANTS-1782] **`setupClaudeMcpProviders()` is a 1000-line method registering ~45 byte-identical RC-delegate shims.** `mainwindow.cpp:3751` — add `registerRcDelegate(name, contract, &RemoteControl::cmdX)` to collapse them.
   Deferred (verified 2026-05-22): confirmed the method spans `mainwindow.cpp:3689`–`4775` (1087 lines) with 58 `registerToolProvider` calls. A `registerRcDelegate` helper would collapse the RC-delegate subset cleanly, but the method also holds many non-delegate inline lambdas (e.g. `get_git_status`, `get_environment`, `roadmap_query`'s arg-forwarding) that don't fit the shim shape — so the refactor is a careful per-call triage, not a mechanical sweep. Structural; touches a high-traffic registration site that every MCP tool depends on (regression surface = all ~58 tools), so it warrants its own focused change + a tools/call smoke pass.
   Resolved (2026-05-22): collapsed the 40 pure RC-delegate shims via a local `rcDelegate(&RemoteControl::cmd*)` factory that builds the `ToolHandler` (the `if (!m_remoteControl)` guard + `cmd(args).toJson()` body now lives once). Method shrank 1087→944 lines. Chose the handler-builder shape over the note's literal `registerRcDelegate(name, contract, &cmd)` deliberately: ~30 feature tests source-grep the `registerToolProvider("<name>", …Contract…)` call shape, so keeping that shape intact (only the handler arg changes to `rcDelegate(...)`) preserved them. The 18 non-shim tools (terminal-state reads, `audit_run`/`indie_review_dispatch` in-flight gates, `roadmap_query`/`get_text` selective forwarding, the no-arg `tab_list`, multi-arg `token_usage`, non-RC `mcp_trace`/`caller_cwd_info`) keep their inline lambdas. Test updates: `mcp_call_site_contract` (regex + count guard accept both handler forms), `mcp_dispatch_forward_completeness` (`rcDelegate(` is pass-through), `mcp_session_memory` + `mcp_cold_eyes` (assert verb reference, not the old `cmd(args)` shape). Full suite 1386/1386 green; verified via the comprehensive MCP dispatch test set rather than a live tools/call (behavior-neutral: same name/contract/verb/args).
@@ -6798,6 +6815,7 @@ larger than a one-loop fix. Tiered: 🔒 security/data-loss · ⚡ hardening
 - ✅ [ANTS-1788] **Lua non-dev hot-reload teardown footgun.** `pluginmanager.cpp:29` — the debounce timer fires `reloadAll` regardless of `devMode()` (inert today only because no paths are watched outside dev mode). Early-`return` when `!devMode()`.
 - 📋 [ANTS-1789] **Clazy style sweep.** `range-loop-detach` ×169 (add `qAsConst`/`std::as_const`), `non-pod-global-static` ×22 (Q_GLOBAL_STATIC / function-local statics), `qstring-arg` ×13 (multi-arg form), `qcolor-from-literal` ×10. Mechanical, batch with adjacent touches.
   Deferred (verified 2026-05-22): bulk mechanical (~214 sites across the four checks). Per the multi-loop methodology, bulk style sweeps stay deferred — each `range-loop-detach` needs a per-site judgment (is the container actually const-iterable, or is detach intended?), so a blind `std::as_const` wrap risks behaviour change on the few that mutate. Best done as a dedicated sweep batched with adjacent touches, not folded into a fix loop. Static-analysis residue, no runtime correctness impact.
+  Layman: A batch of mechanical code-style fixes flagged by the analysis tool.
 - ✅ [ANTS-1790] **`Pty::childUnreapedAtEof()` signal has zero `connect()` consumers.** `ptyhandler.h:45` — the ANTS-1175 "tell crashed-reaped from alive-at-EOF apart" rationale has no subscriber. Wire a consumer or remove the dead signal.
 
 - ✅ [ANTS-1792] **`DBGLOG` macro uses the GNU `, ##__VA_ARGS__` comma-elision extension.**
@@ -12431,6 +12449,7 @@ under one guard). The deferrals below.
   Kind: bug. Lanes: terminalgrid. Source: indie-review-2026-06-04.
   Resolved (2026-06-04): pushScrollbackLine (terminalgrid.h) now pushes a matching empty m_scrollbackHyperlinks entry per restored line and pops both fronts together; setMaxScrollback (terminalgrid.cpp) trims both deques in one lockstep loop (kept a defensive bound on the span deque for legacy desyncs). Verified the normal scroll path is already 1:1 (m_screenHyperlinks is always sized to m_rows so its hlInRange guard is always true). Reproduce-first feature test tests/features/scrollback_hyperlink_restore_sync (INV-1 restore alignment + INV-2 setMaxScrollback eviction alignment — both failed pre-fix); full test_vt suite green (111 tests), main app builds.
 - 📋 [ANTS-2000] **terminalwidget: `performSearch()` scans up to 50 000 scrollback lines synchronously on every keystroke (multi-second GUI freeze); `loadHistory()` does blocking I/O + an O(N²) `QStringList::prepend` loop on the first autocomplete keystroke.** Move off the GUI thread / index. Plus 4 mediums: stale search highlights after scrollback growth, asciicast raw-byte loss via `QString::fromUtf8`, re-run bypassing the paste safety guard, span cache without LRU eviction.
+  Layman: Searching scrollback checks up to 50,000 lines on every keypress, which freezes the window for seconds.
   Kind: performance. Lanes: terminalwidget. Source: indie-review-2026-06-04.
 - ✅ [ANTS-2001] **luaengine: `ants.get_output()` / `ants.get_cwd()` always return empty — `setRecentOutput()` / `setCwd()` have zero callers (zombie API documented as live in PLUGINS.md).** Also: `PluginEvent::KeyPress` is never dispatched (ANTS-1736 dormant); `warn()` writes to host `stderr` instead of `ants.log` contrary to the sandbox doc. Wire the producers or mark the APIs unimplemented.
   Kind: bug. Lanes: luaengine, pluginmanager. Source: indie-review-2026-06-04.
@@ -12466,6 +12485,7 @@ under one guard). The deferrals below.
   Kind: bug. Lanes: modelrecommender. Source: indie-review-2026-06-04.
   Resolved (2026-06-04): hasPlanKeyword now matches each stem at word boundaries (planKeywordPatterns, the hasCommitIntent idiom) allowing -s/-ed/-ing inflections, so 'plan' in 'explanation', 'spec' in 'especially/respect', 'design' in 'designated' no longer inflate the Opus score.
 - 📋 [ANTS-2011] **Review-dialog family polish.** `m_foldInBtn` is never disabled after a fold-in → a double-click inserts two identical blocks (wasted IDs); `testauditdialog` resume (`loadResume`/`unreviewedChunkIds`, ANTS-1722 §2.5) and `coldeyesdialog` `markFindingFixed` / loop-log (ANTS-1721 §2.4) are zombie — fully implemented but no button wires them, so every re-dispatch re-raises fixed findings; `QTextEdit` leak on re-partition (`QTabWidget::clear()` doesn't delete pages); status-label hardcoded `"color: gray"` violates dialogs.md D1.
+  Layman: Fixes for the review screens: a button that can be double-clicked into doing the work twice, plus two half-finished features.
   Kind: bug. Lanes: reviewdialogbase, testauditdialog, coldeyesdialog, indiereviewdialog. Source: indie-review-2026-06-04.
   Progress (2026-06-05): 3 of 4 sub-issues fixed — (a) m_foldInBtn is disabled after a successful fold-in (re-enabled on a fresh partition) so a double-click can't insert two identical blocks; (b) the QTextEdit lane pages are deleted before the tab rebuild (was a leak on every re-partition — QTabWidget::clear() leaves pages parented); (c) the status label drops its hard-coded "color: gray" for the theme-derived PlaceholderText role (dialogs.md D1). STILL OPEN: wiring the zombie resume / markFindingFixed / loop-log buttons (testauditdialog loadResume/unreviewedChunkIds ANTS-1722 §2.5; coldeyesdialog markFindingFixed + loop-log ANTS-1721 §2.4) — fully-implemented logic with no button, so re-dispatch re-raises fixed findings. That is feature-wiring, deferred to a focused pass.
 - ✅ [ANTS-2012] **roadmapdialog: `restoreGeometry` persists window position (violates dialogs.md D4 — migrate to `DialogChrome` sizeKey); `readRecentCommitSubjects` and `parseLastTouchDates` spawn blocking `git log` / `git blame` on every `rebuild()` (up to ~1.5–5 s GUI jank per search keystroke).** Cache or move async.
@@ -12494,6 +12514,7 @@ under one guard). The deferrals below.
 #### 🧹 Idiom-modernization debt (batched — mechanical but large)
 
 - 📋 [ANTS-2018] **Qt/STL idiom sweep: cppcheck `useStlAlgorithm` (×156) + `constVariablePointer` (×43) + `returnByReference`/`passedByValue`; clazy `range-loop-detach` (use `std::as_const` on range-for over Qt containers) + `qstring-arg` (multi-arg `.arg(a, b)`).** Opinion-/perf-level, no bugs found, but a real modernization backlog. Do as one tracked mechanical pass with a build+test gate — not piecemeal mid-feature (mass rewrite in hot terminal paths is riskier than the latent micro-inefficiency).
+  Layman: A large batch of code-modernisation fixes, to run as one tracked pass rather than piecemeal during other work.
   Kind: chore. Lanes: all. Source: audit-2026-06-04.
 
 #### 🔁 Loop-2 cold re-review (2026-06-04)
@@ -13855,6 +13876,7 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   - Severity: MEDIUM
   - Fix: Consolidate the duplicated helpers into tests/_support/ (extend srcgrep.h; add expect/roadmap/xdg helper headers) and include them, instead of re-declaring per file. Pairs with the std::exit migration above (same call sites).
   Progress (2026-06-11): the dominant duplication — the per-file `slurp` helper (213 copies) — is consolidated to ants_test::slurpFile as part of ANTS-2060. srcgrep.h extended (std::string slurpFile overload + squashWhitespace) and tests/_support/xdg_guard.h added (ANTS-2062); expect.h already shared. Remaining: contains/has, writeFile/readFile, between, and the roadmap writeRoadmap/writeCounter helpers are still per-file. NOTE for the follow-up: a blind `contains(`->`ants_test::contains(` rename is UNSAFE — it collides with Qt's member `obj.contains(...)`; the free-function consolidation needs a guarded rename (only definitions + unqualified call sites), so it was deliberately deferred rather than mechanised here.
+  Layman: The same small test helpers are copy-pasted across dozens of files; move them somewhere shared.
 - ✅ [ANTS-2062] **Env-var mutations (XDG_CONFIG_HOME/XDG_CACHE_HOME/TMPDIR/KDE_FULL_SESSION) and setTestModeEnabled(true) not restored — l ….**
   - File: tests/features/roadmap_density/test_roadmap_density.cpp:215
   - Dimension: isolation
@@ -13885,6 +13907,7 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   - Dimension: flakiness
   - Severity: HIGH
   - Fix: Replace wall-clock bounds and fixed sleeps with VerifyEngine test-doubles, readiness polling (lua_threading:101), and write-count/mock-clock side-channels (config_reload_loop_safety:146 mtime idempotency, token_usage_engine:50). Keep semantic checks; drop timing-dependent assertions or gate them behind a clock abstraction.
+  Layman: Tests that rely on real pauses and stopwatch timings fail at random on a busy machine.
 - ✅ [ANTS-2067] **Too-loose / whitespace-fragile source-grep assertions: whole-file contains("A")&&contains("B") without proximity; hardco ….**
   - File: tests/features/mcp_workflow_state/test_mcp_workflow_state.cpp:1
   - Dimension: accuracy
@@ -14113,8 +14136,10 @@ gets one CHANGELOG section + one drift cycle + one push.
 
 - ✅ [ANTS-1647] **Hot-path regex compilation — hoist per-call `QRegularExpression` literals to `static const`.** Shipped 2026-05-20. **Methodology note:** clazy-standalone writes its diagnostics to **stderr**; the first sweep here piped `2>/dev/null` and so saw a false 0 — the authoritative sweep (`2>&1`) reports **8** `use-static-qregularexpression` + **154** `range-loop-detach` (the latter tracked separately under [[ANTS-1650]], confirming the 2026-05-19 "145" estimate). Many obvious named-literal locals were already hoisted via the project's pervasive ANTS-1249 `static const QRegularExpression rx = []{ … }()` lambda-init pattern (fileoutline, scrollbackerrors, the debt-sweep idiom table). **16 genuine sites hoisted to `static const`** across two passes: first the inline-literal-temporary recompiles a `QRegularExpression(R"(…)")` built fresh as a `.replace()`/`.split()`/`.section()`/`.match()` argument every call — auditdialog 4× (lead-comment strip, inline-suppress id split, two `.audit_suppress` legacy-key splits), testauditengine 1× (pre-pass set now compiled once into a `static const QVector`), remotecontrol 2× (transcript close-tag + blank-run collapse), audithygiene 2× (react/vue dep probes), claudeallowlist 1×; then the 6 clazy-confirmed sites the stderr fix surfaced — remotecontrol `pairRx` + 3 orphan-tag removes + the timeout `rx` parser. Post-fix clazy reports **2 residual** flags, both at `audithygiene.cpp:135` — a **false positive**: that pattern embeds a runtime-`QRegularExpression::escape(needle)` and so genuinely cannot be static. Behaviour-preserving (1289/1289 ctest, 0 failures). The terminalwidget/settingsdialog/symbolquery search-regex sites the review cited build patterns from runtime strings, so they correctly aren't static-able — covered separately by the `hardenUserRegex` routing items. Kind: perf. Lanes: auditdialog, testauditengine, remotecontrol, audithygiene, claudeallowlist.
 - 📋 [ANTS-1648] **Body-size caps missing on JSON/text ingress paths — 4 distinct sites.** Hook server's 10 MiB JSON parse cap (claudeintegration H2), MCP socket 10 MiB cap (same), transcript-parse 4 MiB per-debounce (claudeintegration M4), `indiereviewdispatcher` upstream reply `readAll()` with no cap (mcp-review-engines H2), `assembleBriefForDispatch` per-source unbounded slurp (mcp-review-engines H3). All same shape: drop to ≤256 KiB for the hook/MCP paths (real events are <8 KiB), cap dispatcher response at `max_tokens × 6 bytes`, cap each source body at 1 MiB. Kind: security. Lanes: claudeintegration, mcp-engines.
+  Layman: Four places accept incoming data with no size limit, so a huge payload could exhaust memory.
 - ✅ [ANTS-1649] **Substring/prefix path checks across 3+ sites.** terminalwidget H2 (`canonHome startsWith`, fixed inline), ipc-trust M1 (`antshelper '..' substring`), claudeintegration H1 (raw caller_cwd in rate-limit, fixed inline). Audit every `startsWith(somePath)` against the rule "either equal OR equal + '/'" and route path-anchor checks through `PathValidation::validatePath`. Kind: security. Lanes: antshelper, ipc, claudeintegration.
 - 📋 [ANTS-1650] **Range-loop-detach sweep — 154 clazy sites.** Real perf class (Qt's COW container detach when range-for over a non-const lvalue container selects the non-const `begin()`). **Authoritative count confirmed 2026-05-20: 154** (corrects the 2026-05-19 "145" estimate). Get the exact list with `cd build && clazy-standalone -p . --checks=range-loop-detach ../src/*.cpp 2>&1 | grep range-loop-detach` — **clazy writes to stderr, so `2>&1` is mandatory** (a `2>/dev/null` pipe silently yields a false 0; this bit the ANTS-1647 pass). The fix is `for (const auto &x : c)` → `for (const auto &x : std::as_const(c))` (NOT the `for (auto &x …)` mutation loops — those legitimately need the non-const ref and must be left alone). Per-file distribution: mainwindow 37, remotecontrol 21, claudeintegration 18, settingsdialog 9, testauditengine 7, diffviewer 5, terminalwidget/roadmapdialog/pluginmanager/indiereviewengine/coldeyesengine 4 each, then a long tail of 1-3. Bulk + mechanical but high-churn across 32 files — best done file-by-file with a `clazy … 2>&1 | grep range-loop-detach` re-verify per file (target: 0) and a full `ctest` at the end. Consider clazy's `-export-fixes` + `clang-apply-replacements` for a tooling-assisted pass rather than 154 hand edits. Kind: perf. Lanes: cross-cutting.
+  Layman: 154 places where a loop accidentally copies a large list instead of just reading it.
 
 ### 🔒 Tier 1 — ship next (security / data-loss / contract-broken)
 
@@ -14169,13 +14194,18 @@ gets one CHANGELOG section + one drift cycle + one push.
 ### 🏗 Tier 3 — structural
 
 - 📋 [ANTS-1676] **remotecontrol.cpp is 7656 LoC in one TU.** Extract verb registry pattern; consolidate 12 refusal-envelope lambdas (`rlErr`, `wsErr`, `gitErr`, `rbdErr`, …) into one chokepoint enforcing the mcp-error-codes taxonomy. Lane: remotecontrol.
+  Layman: Split a 7,656-line source file, and replace its dozen near-identical error helpers with one.
 - 📋 [ANTS-1677] **mainwindow.cpp + claudeintegration.cpp + auditdialog.cpp all >5000 LoC; the trio holds 60% of the codebase's churn.** Defer to 0.8.x. Cross-cutting.
+  Layman: Three oversized source files account for most of the project's changes; split them up.
 - 📋 [ANTS-1678] **claude-statusbar refresh asymmetry (`refreshTasksButton` vs `refreshBgTasksButton`).** Extract shared helper. Lane: claude-statusbar.
+  Layman: Two nearly identical status-bar refresh functions should share one helper.
 - 📋 [ANTS-1679] **Non-POD global static cleanup (clazy 25 sites).** Wrap each in a `static const&` accessor function. Style smell; defer. Cross-cutting.
+  Layman: 25 global variables are created in a way that can cause start-up ordering problems.
 
 ### 🔬 /audit static-analysis residue (deferred from 2026-05-19 run)
 
 - 📋 [ANTS-1680] **Cppcheck `useStlAlgorithm` style suggestions (~40 sites).** Mostly `for (...) { if (...) break; }` patterns that cppcheck wants as `std::find_if` / `std::any_of`. Refactor-class noise; cluster sweep. Lane: cross-cutting.
+  Layman: About 40 hand-written loops could be shorter, clearer standard library calls.
 - ✅ [ANTS-1681] **Cppcheck `functionStatic` (auditdialog::toolExists, consolidateMypyStubHints).** Either mark static or split into free helpers. Lane: audit.
 - ✅ [ANTS-1682] **Cppcheck missing-include `aboutdialogs.cpp:4 "build_info.h"`.** False positive — file is generated at build time. Add `// cppcheck-suppress missingInclude` annotation. Lane: build.
 
@@ -14225,6 +14255,7 @@ gets one CHANGELOG section + one drift cycle + one push.
 - ✅ [ANTS-1684] **/indie-review shared brief file pattern — write brief once to disk, reference path in each agent prompt.** This session wrote the 170-line dimension list to `/tmp/audit-20260519-audit/indie-review-brief.md` and pointed all 11 agents at it; saves ~37k tokens vs inlining the brief 11 times (11 × ~3.4k). Pattern: orchestrator writes the brief; per-lane prompts say "STEP 1: read this brief in full". Easy to fold into `~/.claude/skills/indie-review/SKILL.md` Phase 2 — token-vetted. Lane: skill.
 - ✅ [ANTS-1685] **Ants MCP `indie_review_partition` returns duplicate lanes when CLAUDE.md groups multiple subsystems under one paragraph (e.g. `claudetasklist`/`claudebgtasks` and `luaengine`/`pluginmanager` both produce sibling entries with identical summary text, and `ants_core_lib` returns empty sourcePaths).** Deduplicate by sourcePaths union + drop empty-paths entries server-side. Lane: mcp-ants.
 - 📋 [ANTS-1686] **Ants MCP `indie_review_brief` could accept a `lanes:[]` array and return all briefs in one call instead of 1 per lane.** With 11 lanes the round-trip cost is meaningful (~1.5 MCP turns per lane). Server-side change; same caller_cwd. Lane: mcp-ants.
+  Layman: Let one request fetch all the review briefs at once, instead of one request per lane.
 - ✅ [ANTS-1687] **/audit skill should document the false-positive ledger read+write workflow inline.** Currently the standards file is referenced but the recipe isn't surfaced at the triage step. After triage, orchestrator should append confirmed FPs via the documented `printf '\n%s\n' "$record" >>` recipe. Add a step 10.5 between triage and roadmap fold-in. Lane: skill.
 
 - 📋 [ANTS-2206] **Make `/indie-review` cheaper: lane-digest cache + since-last-run scope — skip lanes whose source is unchanged since their last clean review.**
@@ -14280,6 +14311,7 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Severity: medium
   - Fix: Migrate the inline extractors to ants_test::slurpFunctionBody() (or its QString twin if one is added). Add a QString overload to srcgrep.h for the Qt-typed test sites.
   Progress (2026-06-11): the brace-balanced function-body extractor consolidation is the same work tracked under ANTS-1468 — 14 local brace-walkers now delegate to ants_test::slurpFunctionBody (string/comment-aware). See ANTS-1468 for the migrated set, the out-of-scope delimiter-scanners, the ~14-file residue, and the `= {}` default-arg-signature limitation. No QString twin added — the QString call-sites (allowlist_add, scrollback_frozen_view, review_changes_clickable, confirm_close_with_processes) wrap via QString::fromStdString(slurpFunctionBody(...)), which is sufficient.
+  Layman: Merge the duplicated text-scanning helpers into one shared version.
 - ✅ [ANTS-1589] **Convert `fail()` helper functions to call-site macros (status_bar_branch_chip, sync_output_snapshot, sixel_raster_header_prebudget).**
   - File: tests/features/status_bar_branch_chip/test_status_bar_branch_chip.cpp,sync_output_snapshot/test_sync_output_snapshot.cpp,sixel_raster_header_prebudget/test_sixel_raster_header_prebudget.cpp:0
   - Dimension: assertions
@@ -14301,12 +14333,14 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: splitting
   - Severity: medium
   - Fix: Migrate to one TEST() per invariant + ANTS_TEST_SCOPE() (the pattern ANTS-1217 / ANTS-1382 established). Mechanical per file.
+  Layman: Split about 14 large tests into one test per thing being checked, so a failure points somewhere specific.
 - 📋 [ANTS-1593] **Move classifyAuditScope() into AuditEngine namespace so mcp_last_audit_summary tests call production, not a replica.**
   - File: tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp:496
   - Dimension: accuracy
   - Severity: medium
   - Fix: Move classifyAuditScope() into the AuditEngine namespace (or a new ant_remote helper) so it can be called directly in the test.
   Deferred (2026-06-10, test-audit surgical bundle): `classifyAuditScope` + `ScopeClassification` are free symbols in the ~9k-line remotecontrol.cpp with no header declaration. Making mcp_last_audit_summary call production (not its replica) means either (a) declaring them in a header + linking remotecontrol's heavy closure into the test bundle, or (b) extracting them into a small standalone TU (e.g. src/auditscope.{h,cpp}) that both remotecontrol.cpp and the test link. Both are real refactors touching production + CMakeLists, not a surgical test edit — and (a) cuts against the project's established reference-reimplementation pattern (cf. audit_path_traversal's resolveProjectPathRef). Better as its own focused item with an audit-scope-classifier extraction; left open.
+  Layman: A test re-implements its own copy of production logic instead of calling it, so the two can quietly drift apart.
 - ✅ [ANTS-1594] **Add internal timeout to flathub_manifest_transform popen() — currently can hang the test indefinitely.**
   - File: tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp:60
   - Dimension: flakiness
@@ -14370,6 +14404,7 @@ Framework: ctest · Files scanned: 284 · Dimensions: performance, flakiness, du
   - Dimension: coverage_gaps
   - Severity: medium
   - Fix: Add runtime-coverage stubs that drive the actual code-path (one EXPECT per test asserting a real call returns expected output); keep the source-grep checks as a defence-in-depth.
+  Layman: Four tests only read the source code rather than running it; make them actually run it.
 - ✅ [ANTS-1605] **ssh_control_master file-scope `static int failures = 0` — migrate to ANTS_TEST_SCOPE / move counter into TEST body.**
   - File: tests/features/ssh_control_master/test_ssh_control_master.cpp:12
   - Dimension: isolation
@@ -14449,6 +14484,7 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Fix: Extract: include srcgrep.h, replace local slurp() with ants_test::slurpFile(); delete the duplicates. Batch in lane order so review diffs stay coherent.
   Progress (2026-06-11): the per-file `slurp()` duplication is gone (0 `static std::string slurp` defs; closed under ANTS-1465). But near-identical local file-readers under OTHER names remain and are NOT yet consolidated: e.g. a global `slurpFile` in model_recommender, `readFile` in crash_safe_session_persist / config_reload_loop_safety / ui_state_persistence, etc. These should include srcgrep.h and call ants_test::slurpFile instead. Folds into the broader helper-dedup tracked by ANTS-2061 (contains/writeFile/readFile/between). Kept open.
   Note 2026-07-01: NOT a safe blanket sed. Audited the 20 files with local readFile/slurp/readAll helpers — they are NOT uniform. Most (cold_eyes_dialog, debt_sweep_engine, origin_mode, review_dialog_base, …) are plain QFile/ifstream reads that CAN reduce to a one-line delegate (std::string: `return ants_test::slurpFile(path);`; QString: `return QString::fromStdString(ants_test::slurpFile(path.toStdString()));`). BUT some carry extra behaviour ants_test::slurpFile lacks — e.g. claude_task_list::readFile prefixes ANTS_SOURCE_DIR for relative paths; slurpFile opens the raw path only, so a blind delegate would break relative-path resolution. Correct dedup keeps the prefix logic and delegates only the read. Do this per-file (13 QString + 7 std::string), verifying each helper is a plain read before full-delegating; build + run each owning bundle after.
+  Layman: About 30 test files each carry their own copy of the same small helper; use the shared one instead.
 - ✅ [ANTS-1467] **~30 files use TEST(..., Main) bundling that funnels N invariants through runMain() with early-return on first failure — masks downstream invariants..**
   - File: tests/features/*:0
   - Dimension: splitting
@@ -14462,6 +14498,7 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Severity: MED
   - Fix: Migrate every local brace-extractor to ants_test::slurpFunctionBody(); delete the duplicates.
   Progress (2026-06-11): 14 local brace-walkers migrated to ants_test::slurpFunctionBody — 7 extractFunctionBody/extractBody (crash_safe_session_persist, config_reload_loop_safety, ui_state_persistence, command_mark_gutter, allowlist_add, scrollback_frozen_view, review_changes_clickable) + 7 functionBody-named (model_switch_deferred_chip, sync_output_snapshot, terminalgrid_image_budget_hardening, model_recommender, terminal_for_caller_isolation, claude_pid_replacement, claude_task_list_session_isolation). github_status_bar already delegated. NOT migrated (different pattern, not brace-walkers): claude_bg_tasks_button + scroll_snapshot_intent (delimiter-scanners); the 5 mcp_* RemoteControl cmd-family delimiter-scans; settings_dialog_config_reload (column-0 "\n}" scan). Residue remains: ~14 more files still inline ad-hoc brace-depth walks under other forms (styled_font_kerning_off, focus_redirect_menu_guard, plugin_manifest_safety, portal_session_close, audit_regex_dos_watchdog, tab_rename_pin, mcp_tool_prefix_tags, paste_dialog_custom, settings_restore_defaults, pty_dtor_off_main_thread, settings_profile_cancel_rollback, et al). LIMITATION discovered: slurpFunctionBody cannot extract a function whose signature carries `= {}` default-argument braces (it latches onto the first `{}` default) — keep a fixed window for those (cf. toolArgv in audit_run_scoped_check).
+  Layman: Ten test files each hand-roll the same fragile text-scanning helper; use the shared one instead.
 - ✅ [ANTS-1469] **A3b/A4b benign-fast assertions use bare hardcoded wall-clock thresholds (goodElapsed <= 200, elapsed <= 100) with no CI-slack pad — diverges from the documented kBudgetMs + kSlackMs pattern used elsewhere in the file..**
   - File: tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp:186
   - Dimension: flakiness
@@ -14485,12 +14522,14 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Dimension: flakiness
   - Severity: HIGH
   - Fix: 
+  Layman: Two tests depend on the real clock and a tight time limit, so they can fail on a slow machine for no real reason.
 - 📋 [ANTS-1473] **Multiple tests mutate process-global env (XDG_CONFIG_HOME, HOME, PATH) without RAII restore — leaks state to subsequent TESTs in the same binary..**
   - File: tests/features/*:0
   - Dimension: isolation
   - Severity: MED
   - Fix: Wrap env-mutation in a Sandbox struct whose dtor restores the original value; or use the existing env-guard helper if one exists in _support.
   Status re-verified 2026-06-28: duplicate-theme of ANTS-1379 (env-pollution RAII). The shared guard ants_test::XdgGuard (tests/_support/xdg_guard.h, ANTS-2062) exists and the named unrestored leaks are migrated. Audited the current qputenv/qunsetenv/setTestModeEnabled surface across tests/: the remaining sites (XDG_CONFIG_HOME / HOME / PATH mutations in the config_* tests, shell_command_wiring, debuglog_perms, claude_session_freshness, tool_detection_engine PathScope, etc.) all DO restore manually — no active leak found. Residual work is the same incremental XdgGuard convergence tracked under ANTS-1379; this item is effectively a co-dependent duplicate. Resolve together when the convergence chore is scheduled.
+  Layman: Some tests change global settings and never put them back, which can make later tests fail for the wrong reason.
 - ✅ [ANTS-1474] **Several files use fixed-byte-window substr(pos, N) (sizes 800/2000/4000/12000) for source-region searches — silently truncate as source grows..**
   - File: tests/features/*:0
   - Dimension: accuracy
@@ -14532,21 +14571,25 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Dimension: naming
   - Severity: LOW
   - Fix: 
+  Layman: Many tests are named so generically that a failure does not tell you what actually broke.
 - 📋 [ANTS-1481] **Various per-file coverage gaps noted in chunk reports (cmd_injection exec-variants, IndieReviewEngine::corroboratedFindings minLanes boundary, plan-mode signal arg, additionalProperties value check, etc.) — see chunk JSON in /tmp/test-audit-c7ee2911 for the per-file detail..**
   - File: tests/features/*:0
   - Dimension: coverage_gaps
   - Severity: LOW
   - Fix: 
+  Layman: A list of specific things the tests do not currently cover.
 - 📋 [ANTS-1482] **Several tests use a 29-test boilerplate pattern, dead PASS-on-success stderr prints, hardcoded machine paths in encode tests, and comments that have drifted from the asserted counts (e.g. "six connects" but asserts 7)..**
   - File: tests/features/*:0
   - Dimension: verbosity
   - Severity: LOW
   - Fix: 
+  Layman: Tidy up repetitive boilerplate, leftover print statements and hardcoded machine paths in the tests.
 - 📋 [ANTS-1483] **Several fixture good.cpp files have misleading or incomplete comments about which regex blind-spots they cover..**
   - File: tests/audit_fixtures:0
   - Dimension: doc_strings
   - Severity: LOW
   - Fix: 
+  Layman: Some test fixture comments describe the wrong thing, which misleads whoever reads them next.
 
 
 ### 🔍 Indie-review fold-in (2026-05-13)
@@ -16350,6 +16393,7 @@ template / mutate this state atomically" → movable. If it's
   Considered, not planned — only matters for projects with branch-role
   conventions, which is rare; the workaround (read git output once) is
   cheap.
+  Layman: Report extra git working folders and what each branch is for, so an assistant does not have to work it out again every session.
   Kind: enhancement.
   Lanes: mcp-git-state.
   Source: RetroArch cross-session report 2026-05-17.
@@ -18911,6 +18955,7 @@ template / mutate this state atomically" → movable. If it's
   remaining doc-tree edits (ROADMAP header, README, CLAUDE.md
   prefix-agnostic phrasing) still need to land. Bundle as one
   doc-fix commit when the next format change ships.
+  Layman: Seven documentation files still describe the old ID format and need bringing up to date.
   Kind: doc-fix.
   Lanes: roadmap-format, claude-md, readme.
   Source: Cold-eyes 2026-05-18 (spec/ANTS-1160 lane).
@@ -22712,14 +22757,14 @@ requesting no action and are closed in place rather than filed.
   was really this one line.
 
   Two frames, one guard. The same short-circuit also DISCARDED an explicit
-`caller_cwd` — the one input that tells the resolver the answer outright —
-because `!main` returned `EmptyFallback` before ever reading it. A null window
-costs the tab walk and nothing else, so the guard moved to the two statements
-that need `main`; an explicit `caller_cwd` now resolves via Case 3 (no open tab
-matches), which is what it would have done anyway. Behaviour with a live
-MainWindow is unchanged in all four cases.
+  `caller_cwd` — the one input that tells the resolver the answer outright —
+  because `!main` returned `EmptyFallback` before ever reading it. A null window
+  costs the tab walk and nothing else, so the guard moved to the two statements
+  that need `main`; an explicit `caller_cwd` now resolves via Case 3 (no open tab
+  matches), which is what it would have done anyway. Behaviour with a live
+  MainWindow is unchanged in all four cases.
 
-Fixed by falling through to the process cwd when `main` is null — the same
+  Fixed by falling through to the process cwd when `main` is null — the same
   answer the function already gives when there is no focused terminal. ANTS-3699's
   three behavioural invariants drive `cmdInvariantCheck` directly as a result.
   **Layman:** A safety check for "no window" handed control to code that assumed there was one, so tests that drive these tools directly crashed instead of answering.
@@ -31430,6 +31475,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   match`. The comment overstates what the code does; either the
   comment shrinks to "UID-scoped + 0700 perms" or the code grows
   to match. Bundled into ANTS-1132 below.
+  Layman: The channels the terminal uses to talk to its helper programs do not check strictly enough who is connecting.
 - 📋 **Doc/code drift across four lanes.** Audit pipeline
   (CLAUDE.md says one pipeline order, code does another;
   Confidence formula in CLAUDE.md is missing the +10 floor and
@@ -31442,6 +31488,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   (`claudeEnv()` function name promises sanitisation that the
   body doesn't perform). Bundled by lane into ANTS-1136 / 1143
   below.
+  Layman: Four areas where the documentation describes behaviour the code no longer has.
 - 📋 **Per-poll work without caching.** MainWindow chrome runs
   `QDir::entryInfoList` on the active CWD every 2 s
   (refreshRoadmapButton); refreshRepoVisibility has no in-flight
@@ -31451,6 +31498,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   full archived markdown on every History-mode render;
   `featurecoverage` slurps the entire project tree into one
   sourceBlob on every spec-drift run. ANTS-1137 + ANTS-1140 below.
+  Layman: Several background checks redo the same expensive work every couple of seconds instead of remembering the answer.
 - 📋 **Resource-lifecycle leaks across long sessions.**
   `m_planModeByPid` (claudeintegration) never pruned on tab
   close — Linux PID reuse poisons the cache. `m_repoVisibilityCache`
@@ -31458,6 +31506,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   swept. `m_pending` queue in `GlobalShortcutsPortal` wedged
   after `sessionFailed` from BindShortcuts. ANTS-1131 + ANTS-1141
   + ANTS-1142 below.
+  Layman: Several internal caches and leftover temporary files are never cleaned up, so a long session slowly accumulates junk.
 - 📋 **Async-signal-safety violations.** Post-fork `setenv`
   ×5 in `Pty::start` (ptyhandler.cpp:197-202) is not on POSIX's
   async-signal-safe list; CLAUDE.md and the flatpak path comment
@@ -31466,6 +31515,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   log file create perms applied AFTER `s_file.open()` —
   same-UID race window between create and chmod. ANTS-1135 +
   ANTS-1142 below.
+  Layman: Code that runs immediately after starting a child process does things that are not guaranteed to be safe there.
 - 📋 **VT alt-screen + scroll-region invariants drift.**
   DECSET 47 / 1047 / 1049 are silently coalesced into one
   branch (different specs per xterm ctlseqs); `resize()`
@@ -31476,6 +31526,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   (latent UB → crash); `CSI 3J` / `RIS` clears scrollback even
   when the user is scrolled-up viewing it. Bundled into
   ANTS-1130 below.
+  Layman: Three bugs in how full-screen programs are handled, including losing a program's scroll region every time you resize the window.
 
 ### 🐛 Tier 1 — ship-this-week fixes (0.7.65)
 
@@ -32757,6 +32808,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Spec location (when written): `docs/specs/ANTS-1162.md`.
   Note from user: do not start now — user needs to reboot;
   this is a road-map placeholder for later prioritisation.
+  Layman: Have the terminal create the Claude Code hooks, skills and helpers the two need in order to work together.
   Kind: implement. Source: user-2026-05-07.
   Lanes: new (claudeintegrationwizard), settingsdialog,
   mcp_server (new binary).
@@ -32953,6 +33005,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   newline_stream cost — any fix here that reduces scroll
   pushes will also help throughput.
 
+  Layman: Claude Code's progress spinner repeats down the screen instead of updating in place.
   Kind: fix. Source: user-2026-05-08.
   Lanes: terminalgrid (`scrollUp` / scrollback push,
   suppression window), terminalwidget.
@@ -33709,24 +33762,29 @@ screen mode. Comments survive but their truth conditions don't.
   implementation), Lane C info × 2 + Lane D HIGH (FBO/QOpenGLWidget
   comments post-0.7.44). Bundled into ANTS-1206 (doc-rot sweep on
   terminalwidget.cpp + targeted comment fixes).
+  Layman: Comments in four areas describe how the code used to work rather than how it works now.
 - 📋 **Default-state asymmetry foot-guns (2 lanes).** Lane A M3
   (`m_altScrollBottom = 0` not `m_rows-1` at construction; symptom-
   free today but reads as 0 if any future caller consults outside an
   active alt-session); Lane B Critical (comment claims defense not
   implemented). Initialize defensively at construction.
+  Layman: Two places start out holding a default value that would read as wrong if anything consulted it early.
 - 📋 **Per-frame allocator pressure (Lane D, multi-finding).** Four
   separate per-paint `QFont` constructions (badge × 4pt-bold,
   command-mark labels, quick-select, perf-overlay); `QString::fromUcs4`
   per text run UTF-32→UTF-16 transcoding ASCII content; span-cache
   full-clear on every scrollback push. Bundled into ANTS-1207.
+  Layman: The drawing code rebuilds several objects on every single frame instead of reusing them.
 - 📋 **Unicode/i18n holes (3 lanes).** Lane A M2 (rewrap splits
   wide-char on resize), Lane C M3 (IME cursor desync during BSU
   sync-output blocks), Lane D Low × 2 (block-cursor bypasses ligature/
   fallback path; no RTL handling). The Unicode story is incomplete.
+  Layman: Several gaps in handling wide characters, input methods and right-to-left text.
 - 📋 **Resource-exhaustion gaps in input handlers (Lane B).** OSC
   133 unbounded HMAC verification per attacker payload (CPU DOS);
   REP `m_cols * m_rows` cap (16k handlePrint calls per CSI byte).
   Both parse-thread-only — GUI unaffected — but pin the worker.
+  Layman: Two places where a hostile stream of input could pin a background thread at full CPU.
 
 ### 🔒 Tier 1 — ship-this-week fixes (CRITICAL after calibration)
 
@@ -34489,6 +34547,7 @@ a modern terminal" release.
     watcher fire). The detector fingerprints which one on the
     next reproduction — log line shape is `STALL: main-thread
     blocked for Nms (gap=..., interval=..., count=..., worst=...)`.
+  Layman: Track down the occasional stutter that happens when a lot of text is printing at once.
   Kind: refactor.
   Source: user-2026-04-20.
 - 📋 [ANTS-1060] **Dynamic grid storage** (Alacritty
@@ -34496,15 +34555,18 @@ a modern terminal" release.
   Don't pre-allocate the full `Vec<Vec<Cell>>` scrollback; lazily
   allocate row buffers; intern empty rows to a single shared sentinel.
   Alacritty's own data: 191 MB → 34 MB (20k-line scrollback).
+  Layman: Use far less memory for scrollback by not reserving space for lines that are empty.
   Kind: refactor.
   Source: planned.
 - 📋 [ANTS-1061] **Async image decoding**. Hand sixel/Kitty/iTerm2 payloads to
   `QtConcurrent::run`; render a placeholder cell until `QImage`
   future resolves. Big sixel frames stop blocking the prompt.
+  Layman: Decode images in the background so a large image no longer freezes the prompt while it loads.
   Kind: refactor.
   Source: planned.
 - 💭 [ANTS-1062] **BTree scrollback** — O(log n) scroll-to-line instead of O(n)
   for jump-to-timestamp features.
+  Layman: Change how scrollback is stored so jumping to a point in history stays fast even in very long histories.
   Kind: refactor.
   Source: planned.
 
@@ -34576,6 +34638,7 @@ a modern terminal" release.
   over a Unix socket; `ants-terminal --attach <socket>` reconnects.
   Panes survive window close. Sparse scrollback fetched on demand via
   `GetLines` RPC.
+  Layman: Run the terminal as a background service you can disconnect from and reconnect to, so your sessions survive closing the window.
   Kind: implement. Source: prior-art-WezTerm.
 - ✅ **SSH ControlMaster** auto-integration from the SSH bookmark
   dialog. Shipped in 0.7.1. Connects opened from the SSH Manager
@@ -34592,10 +34655,12 @@ a modern terminal" release.
 - 💭 [ANTS-1066] **Domain abstraction** à la WezTerm: `DockerDomain` lists
   `docker ps`, opens a tab via `docker exec -it`; `KubeDomain` lists
   pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.
+  Layman: Open tabs straight inside Docker containers or Kubernetes pods, picked from a list.
   Kind: implement.
   Source: planned.
 - 💭 [ANTS-1067] **Persistent workspaces**: save/restore entire tab+split layout +
   scrollback to disk; one-click "resume yesterday's dev session."
+  Layman: Save your whole layout of tabs and splits, scrollback included, and reopen it later.
   Kind: implement.
   Source: planned.
 
@@ -34654,6 +34719,7 @@ zero-click, purely suggestive. Proposed in two scopes:
   (new OSC dispatch if shell plugin ships), new config keys
   (`ghost_completion_enabled`, `ghost_completion_source`). Defer to
   beyond 1.0 unless users ask.
+  Layman: As you type, show a greyed-out suggestion from your command history that you can accept with one key.
   Kind: implement.
   Source: planned.
 - 💭 [ANTS-1069] **Frequency-ranked completion source.** Either form benefits
@@ -34661,6 +34727,7 @@ zero-click, purely suggestive. Proposed in two scopes:
   first match." The Command Palette could track selection counts;
   the terminal form can lean on shell history ordering. Worth a
   mention but not a blocker for the initial implementation.
+  Layman: Put the commands you use most at the top of the suggestion list, instead of sorting them alphabetically.
   Kind: implement.
   Source: planned.
 
@@ -34775,6 +34842,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   distro packages anywhere" entry in the
   [Distribution-adoption overview](#distribution-adoption-overview)
   from "H5 + H6 unblock this" to "unblocked".
+  Layman: Publish the app on Flathub so Linux users can install it in one click.
   Kind: chore.
   Source: planned.
 - 📋 [ANTS-1071] **H7 — project website + docs site**. Static GitHub Pages site
@@ -34784,6 +34852,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   quickstart, architecture overview, video/asciicast demos.
   Content-as-code (markdown → static site generator) so the docs
   ship from the same repo.
+  Layman: Build a website with screenshots, installation instructions and a guide for plugin authors.
   Kind: chore.
   Source: planned.
 - 📋 [ANTS-1155] **True in-app self-update for the AppImage —
@@ -34867,6 +34936,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
 
   Lanes: mainwindow, networking (new module), sessionmanager,
   CMake build flags, packaging recipes.
+  Layman: Update the app from inside the app, without needing a separate updater program installed.
   Kind: implement.
   Source: user-2026-05-02.
 - 📋 [ANTS-1072] **H13 — distro-outreach launch**. Once H1–H7 are shipped:
@@ -34877,6 +34947,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   built-in capability-audited Lua plugin system + AI triage +
   first-class shell-integration blocks**. Measure via watching
   the GitHub stars + install metrics, not vanity.
+  Layman: Ask the big Linux distributions to package the app, and write the posts announcing it.
   Kind: chore.
   Source: planned.
 
@@ -34948,15 +35019,18 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
 - 📋 [ANTS-1073] **Signed plugin packaging**: Ed25519 sig over a tarball containing
   `init.lua`, `manifest.json`, and optional assets. Loader verifies
   against a project-maintained keyring + (optionally) user-added keys.
+  Layman: Digitally sign plugins so you can tell a genuine one from a tampered one.
   Kind: implement.
   Source: planned.
 - 📋 [ANTS-1074] **Public marketplace index**: static JSON hosted on GitHub Pages
   listing name, version, author, signature-status, permission summary.
   Settings → Plugins → Browse lists them with an install button.
+  Layman: A browsable list of available plugins with an install button.
   Kind: implement.
   Source: planned.
 - 📋 [ANTS-1075] **Plugin dependency resolution**: `manifest.json` `requires: [...]`
   field; install flow resolves transitively.
+  Layman: Let a plugin say which other plugins it needs, and install those automatically.
   Kind: implement.
   Source: planned.
 
@@ -35118,6 +35192,7 @@ here.)
   Lanes: auditdialog, auditengine, mainwindow (Project Audit
   menu wiring), claudeintegration (sidecar-JSON consumption),
   remotecontrol (audit-history-query IPC verb), docs/standards/.
+  Layman: Show the history of code-quality checks over time and across projects, instead of only the most recent run.
   Kind: implement.
   Source: user-2026-05-02.
 
@@ -35280,6 +35355,7 @@ here.)
   Lanes: docs (standards), mainwindow (RoadmapDialog),
   remotecontrol (roadmap-query/-status verbs),
   claudeintegration (MCP capability), tooling.
+  Layman: Decide how the roadmap itself should work: numbering, splitting, tagging and how it is displayed.
   Kind: research.
   Source: user-2026-05-02.
 
@@ -35686,6 +35762,7 @@ here.)
   addressable audience — a terminal that only runs on Linux is not
   a "Linux terminal project", it's a "Linux-only terminal" —
   distinction matters for cross-platform press coverage.
+  Layman: Make the app run on macOS as well as Linux.
   Kind: implement.
   Source: planned.
 - 💭 [ANTS-1077] **H12 — Windows port**. ConPTY via `CreatePseudoConsole`
@@ -35693,6 +35770,7 @@ here.)
   Windows platform plugin handles the rest. Sign + ship MSI /
   MSIX. Moved to Beyond 1.0 in practice — gating on macOS port
   completing first.
+  Layman: Make the app run on Windows.
   Kind: implement.
   Source: planned.
 
@@ -35713,6 +35791,7 @@ here.)
 - 💭 [ANTS-1079] **Screen-magnifier-friendly rendering**: honor
   `QGuiApplication::styleHints()->mousePressAndHoldInterval()` and
   provide high-contrast theme variants.
+  Layman: Make the display work properly with screen magnifiers and high-contrast colour schemes.
   Kind: implement.
   Source: planned.
 
@@ -35735,12 +35814,14 @@ here.)
   `assets/i18n/`. Today we have zero `tr()` usage. Start with
   English → Spanish, French, German as a proof of concept. Some
   distros gate review on this.
+  Layman: Set the app up so it can be translated into other languages.
   Kind: implement.
   Source: planned.
   User-requested again 2026-06-12 ("support for multiple languages") — confirms appetite for UI localisation. Scope stands: wrap UI strings in tr(), wire lupdate/lrelease, ship .qm under assets/i18n/, seed ES/FR/DE. (RTL text is the separate [[ANTS-1081]].)
   Status correction (2026-06-17): the "zero tr() usage" line is stale — src/ already has ~222 tr() call-sites (partial groundwork). What is genuinely absent is the RUNTIME machinery: no QTranslator / installTranslator wiring, no lupdate/lrelease step, and no shipped .qm files (assets/i18n/ does not exist), so the app still only renders English. Remaining scope: complete tr() coverage, wire QTranslator + a language setting, add lupdate/lrelease to the build, ship .qm for the ES/FR/DE seed. User re-confirmed appetite 2026-06-17 ("make Ants Terminal usable to as wide a base as possible").
 - 💭 [ANTS-1081] **Right-to-left text support** — bidirectional text in the grid.
   Non-trivial; defer until demand is concrete.
+  Layman: Display right-to-left languages such as Arabic and Hebrew correctly.
   Kind: implement.
   Source: planned.
 
@@ -35753,6 +35834,7 @@ here.)
   signal; the SBOM gives downstream security teams (Debian,
   NixOS) a machine-readable dep inventory without having to scrape
   our build system.
+  Layman: Make builds byte-for-byte repeatable and publish a parts list, so anyone can verify what they installed.
   Kind: chore.
   Source: planned.
 
@@ -35761,6 +35843,7 @@ here.)
 - 📋 [ANTS-1083] **Plugin development SDK**: `ants-terminal --plugin-test <dir>`
   runs a plugin against a mock PTY with scripted events. Enables
   unit-testing plugins.
+  Layman: A test harness that lets plugin authors check their plugin without running the whole terminal.
   Kind: implement.
   Source: planned.
 
@@ -35772,10 +35855,12 @@ here.)
 
 - 📋 [ANTS-1084] **`ants.*` API stability pledge**: the 1.0 surface won't break in
   `1.x` minor releases. Breaking changes queue for 2.0.
+  Layman: Promise that plugins written for version 1.0 keep working across every 1.x update.
   Kind: implement.
   Source: planned.
 - 📋 [ANTS-1085] **Performance regression suite**: CI benchmarks (grid throughput,
   scrollback allocation, paint-loop time) with commit-level deltas.
+  Layman: Measure speed automatically on every change, so a slowdown is caught the day it lands.
   Kind: implement.
   Source: regression.
 - 📋 [ANTS-1153] **Fresh-eyes audit of the feature-test corpus.**
@@ -35795,9 +35880,11 @@ here.)
   behavioural test." Pairs naturally with ANTS-1085's perf-
   regression suite as the "what does CI actually catch?"
   audit.
+  Layman: Re-check the roughly 190 automated tests, to be sure they test the behaviour that was promised rather than just the code as it happens to be written.
   Kind: audit. Source: user-2026-05-02.
 - 📋 [ANTS-1086] **Documentation pass**: every user-facing feature has at least one
   screenshot + one animated demo. Rolls up into H7 (docs site).
+  Layman: Give every feature at least one screenshot and one short demo.
   Kind: implement.
   Source: planned.
 - 📋 [ANTS-1087] **External security audit**. `SECURITY.md` disclosure policy
@@ -35805,6 +35892,7 @@ here.)
   **external** audit — budget a third-party review of the VT
   parser, plugin sandbox, and OSC-8/OSC-52 surfaces before
   stamping 1.0.
+  Layman: Pay outside security experts to review the riskiest parts of the code before 1.0.
   Kind: implement.
   Source: planned.
 - 📋 [ANTS-1088] **H14 — bus factor ≥ 2 + governance doc**. Second maintainer
@@ -35812,10 +35900,12 @@ here.)
   decision-making, release process, conflict resolution. Distros
   treat single-maintainer projects as a risk — a documented
   second maintainer clears the bar.
+  Layman: Add a second maintainer and write down how decisions get made, so the project does not depend on one person.
   Kind: implement.
   Source: planned.
 - 📋 [ANTS-1089] **Plugin migration guide** for any manifest/API changes between
   0.9 and 1.0.
+  Layman: Explain to plugin authors what changed between versions and how to update their plugins.
   Kind: implement.
   Source: planned.
 
@@ -35833,11 +35923,13 @@ contributors don't duplicate research.
   additive for authors who want Rust/Go/AssemblyScript. Stronger
   sandbox than Lua's removed-globals model; language-agnostic. Ghostty
   is experimenting with a WASM-targeting VT library today.
+  Layman: Let people write plugins in languages other than Lua, inside a stronger safety sandbox.
   Kind: implement.
   Source: planned.
 - 💭 [ANTS-1091] **Inter-plugin pub/sub**: `ants.bus.publish(topic, data)` /
   `ants.bus.subscribe(topic, handler)`. Needs careful permission
   modeling — a "read_bus: <topic>" capability.
+  Layman: Let plugins send messages to each other through a channel you control with permissions.
   Kind: implement.
   Source: planned.
 
@@ -35846,15 +35938,18 @@ contributors don't duplicate research.
 - 💭 [ANTS-1092] **AI command composer** (Warp-style). Dialog over the prompt
   accepts natural language, returns a shell command + explanation.
   Uses the existing OpenAI-compatible config; opt-in per invocation.
+  Layman: Describe what you want in plain English and get a shell command back, with an explanation.
   Kind: implement.
   Source: planned.
 - 💭 [ANTS-1093] **Collaborative sessions**: real-time shared terminal with a
   second user via an end-to-end encrypted relay. The "share
   terminal with a colleague" feature tmate popularized.
+  Layman: Share a live terminal session with someone else, encrypted end to end.
   Kind: implement.
   Source: planned.
 - 💭 [ANTS-1094] **Workspace sync**: mirror `config.json`, plugins, and SSH
   bookmarks across devices via a user-configurable git remote.
+  Layman: Keep your settings, plugins and saved connections in sync across your machines.
   Kind: implement.
   Source: planned.
 - 💭 [ANTS-1223] **Tasks-chip semantics during in-progress-only work
@@ -36288,6 +36383,7 @@ contributors don't duplicate research.
   type secrets into the terminal — every keystroke lives only in
   enclave memory until it's shown on-screen. Heavy lift; benefit
   concentrated in a small user set.
+  Layman: Keep secrets you type inside a protected area of the processor, hidden from the rest of the system.
   Kind: fix.
   Source: planned.
 
@@ -36297,6 +36393,7 @@ contributors don't duplicate research.
   render ligatures (HarfBuzz shaping is on the CPU path). Port the
   shaping step to a compute shader; keep the atlas path we already
   have.
+  Layman: Make decorative font ligatures work on the faster graphics-card drawing path, not just the slower one.
   Kind: refactor.
   Source: planned.
 
@@ -36308,6 +36405,7 @@ contributors don't duplicate research.
   Everything Open, SCaLE. One talk reaches more maintainers than
   a hundred issues. Submit in the CFP window for whatever
   conference the project is scope-ready for at the time.
+  Layman: Give a talk at a Linux conference, where the people who package software for distributions gather.
   Kind: chore.
   Source: planned.
 - 💭 [ANTS-1098] **H16 — sponsorship / funding model**. GitHub Sponsors + Open
@@ -36316,6 +36414,7 @@ contributors don't duplicate research.
   for the 30-day CVE response?"). Tiered: individual ($5/mo),
   plugin-author ($20/mo with logo on docs site), corporate
   ($250/mo with logo + priority issue triage).
+  Layman: Set up recurring funding, so the project can credibly promise ongoing security response.
   Kind: chore.
   Source: planned.
 
