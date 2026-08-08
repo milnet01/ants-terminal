@@ -26,9 +26,23 @@ That commit is the last state before the first store render: it **keeps** the
 materialised ids, the 363 rendered `Source: planned.` lines and the 123 rewritten
 `Kind` values.
 
-> **Verify:** `grep -c 'Kind: bug' ROADMAP.md` returns **35** (0 before the
-> revert). `grep -c '^  Layman:' ROADMAP.md` returns **114**, so the Layman work
-> survived. `git diff --stat` shows the three roadmap files and nothing else.
+> **Verify** — and note which checks actually discriminate, because the obvious
+> one does not:
+>
+> | Check | Before revert | After revert |
+> |---|---|---|
+> | `grep -c '^  Source: planned\.'` | 399 | **36** |
+> | `grep -oE '\[ANTS-[0-9]+\]' \| sort -u \| wc -l` | 1,888 | **1,705** |
+> | `grep -c '^  Layman:'` | 114 | **114** (unchanged — the work survives) |
+>
+> `git diff --stat` shows the three roadmap files and nothing else.
+>
+> **Do not use `grep -c 'Kind: bug'` as the check** — it returns 35 at both
+> revisions. The render writes `it.body` verbatim and appends the trailer after
+> it, so a bullet whose body carries an inline `Kind: bug.` keeps that text *and*
+> gains a `Kind: implement.` trailer. Counting the string finds the surviving
+> body prose, not the coerced field. (That same duplication is one of the shapes
+> feeding the round-trip drift Phase D4 diagnoses.)
 
 **A2. Wipe the store.**
 `rm ~/.local/share/ants-terminal/roadmap.sqlite`
