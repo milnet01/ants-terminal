@@ -98,20 +98,33 @@ written. They are deliberately not reproduced here: a second copy would be free
 to diverge from the first, which is the failure this whole spec exists to stop.
 
 **§ 7.4's table is incomplete, and the reason it looks complete is a measurement
-artefact this spec has to correct.** Its "11 others" was derived from a corpus
-survey run *after* this project's first store render — by which point the render
-had already rewritten `Kind: bug` to `Kind: implement` in the file the survey
-read. Re-running the inventory against the pre-render source
-(`git show 6d9e743d:ROADMAP.md`, plus both archives) surfaces seven values the
-table and `mappedKind()` both miss:
+artefact this spec has to correct.** Its "11 others" was derived from
+`tools/roadmap-corpus-survey.py`, **whose `KIND_VALUE` pattern was anchored
+`^\s+…$` — the same blind spot as `rxKind()`, in the same shape, for the same
+reason.** The instrument could not see an inline trailer either, so every value
+written inline was invisible to the evidence base § 7.4 rests on.
+
+An earlier draft of this spec booked the gap against render contamination
+instead — the survey having been run after the first store render, which had
+rewritten `Kind: bug` to `Kind: implement` in the file it read. **That
+explanation was tested during Phase A and does not hold:** re-running the survey
+against the reverted pre-render source still reported no `bug` at all. Only
+un-anchoring the survey's own matcher surfaced it. The render damage was real
+and is reverted; it was not what hid these values.
+
+With the survey corrected (un-anchored, backtick-guarded, case-sensitive,
+last-match — the same three guards § 2.2 gives the parser), the inventory
+surfaces seven values the table and `mappedKind()` both miss. All seven occur in
+this project only; measured over `ROADMAP.md` plus both archives at the reverted
+source:
 
 | Corpus value | Count | → | Rationale |
 |---|---|---|---|
-| `bug` | 29 | `fix` | the single largest unmapped value in the corpus, and invisible to the contaminated survey |
+| `bug` | 29 | `fix` | the single largest unmapped value in the corpus, and invisible to the anchored survey |
 | `performance` | 2 | `perf` | long form of a canonical value |
 | `process + tooling` | 1 | `chore` | § 3.5.3's "housekeeping"; `tooling` already maps there |
 | `audit` | 1 | `audit-fix` | the canonical name for the same work |
-| `feature/fix` | 1 | **ruling needed** | compound; the column is single-valued |
+| `feature/fix` | 2 | **ruling needed** | compound; the column is single-valued |
 | `design + implement` | 1 | **ruling needed** | compound |
 | `design + fix` | 1 | **ruling needed** | compound |
 
@@ -493,9 +506,12 @@ the corpus, not by usage over time.
 - **`headline`, `layman` and `lanes` round-trip drift** (§ 2.6) — named,
   measured and undiagnosed. INV-6's fixture is the instrument; whoever runs it
   owns the follow-up.
-- **Back-filling `Kind:` onto the 1,613 corpus items that carry none.** They
-  default legitimately under § 3.5.3's own rule; INV-1 makes the default
-  visible, which is all this item owes them.
+- **Back-filling `Kind:` onto the corpus items that carry none** — **1,817** of
+  4,376, re-measured with the corrected survey. Earlier drafts said 1,613 and
+  the pre-fix survey said 2,050; both were taken with the anchored matcher, so
+  neither counted the inline declarations. They default legitimately under
+  § 3.5.3's own rule; INV-1 makes the default visible, which is all this item
+  owes them.
 - **Re-migrating the other 13 projects.** ANTS-3853 owns the rollout; this is
   the gate it waits on.
 
@@ -532,6 +548,14 @@ construct `RoadmapStore` with an **explicit path**; the default resolves under
   write that shape (1,435 own-line against 99 inline, counted per bullet over the
   pre-render file and both archives). And § 3.5 must record that `Kind:` is now
   **case-sensitive**, reversing ANTS-3407 for that one label (§ 2.2).
+- **`tools/roadmap-corpus-survey.py`** — **done, Phase B1.** Its `KIND_VALUE` was
+  anchored `^\s+…$` and so shared `rxKind()`'s blind spot, which is why § 7.4's
+  "11 others" looked complete. Un-anchored with the same three guards § 2.2
+  gives the parser, plus `+` in the value class (three corpus values are
+  `+`-joined compounds) and a stated four-word / 30-character bound that reports
+  prose matches rather than dropping them. Non-canonical values 11 → 19; items
+  with no `Kind:` 2,050 → 1,817. **Any figure quoted from a survey run before
+  this fix is an undercount**, corpus-wide, not only for this project.
 - **`docs/standards/roadmap-data-model.md` § 7.4** — **already the normative home
   of the kind mapping**, so this spec adds to it rather than giving it one: the
   seven values of § 2.1 that its eleven miss, and a note that its "11 others"

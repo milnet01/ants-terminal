@@ -44,14 +44,34 @@ materialised ids, the 363 rendered `Source: planned.` lines and the 123 rewritte
 > body prose, not the coerced field. (That same duplication is one of the shapes
 > feeding the round-trip drift Phase D4 diagnoses.)
 
+> **A1 also drops four bullets that are not render damage** — ANTS-4062, 4063,
+> 4064 and 4065 were appended *after* `6d9e743d`, along with the status audit's
+> two flips (ANTS-3754, ANTS-3853) and its two body notes. Replay them, taken
+> from their own commit diffs rather than retyped. Final id count is 1,709, not
+> 1,705. Done 2026-08-08 in `2143afed`.
+
 **A2. Wipe the store.**
-`rm ~/.local/share/ants-terminal/roadmap.sqlite`
+`rm ~/.local/share/ants-terminal/roadmap.sqlite` — **and its `-wal` and `-shm`
+siblings**, which the first draft of this step omitted. The WAL alone was 5 MB
+and would have restored the store on the next open.
 
 Safe and reversible: it is derived, gitignored and machine-local, and Phase D
-rebuilds it. Doing it now rather than later stops a stale row surviving into a
-verification run.
+rebuilds it.
 
-> **Verify:** `roadmap_query` still answers (markdown path), and
+> **A running Ants instance keeps the deleted store alive, and this is the trap
+> to plan around.** SQLite holds the inode open, so `rm` unlinks the name and
+> nothing more: `ls -l /proc/$(pgrep -x ants-terminal)/fd | grep roadmap`
+> showed five fds on `roadmap.sqlite (deleted)` after the wipe. In that state
+> `roadmap_query` still answers from the ghost store — it reported ANTS-3853 as
+> in-progress while the reverted file said planned — and **any `roadmap_log`
+> write re-renders all three files from the ghost, undoing Phase A.**
+>
+> **So: relaunch Ants before the first MCP write, and do any pre-relaunch
+> roadmap edit directly rather than through `roadmap_log`.** The same applies at
+> E2 to every project whose store is wiped or rebuilt while Ants is open.
+
+> **Verify (after the relaunch):** no `roadmap.sqlite` fd in
+> `/proc/<pid>/fd`; `roadmap_query` agrees with the file; and
 > `roadmap_log op:"annotate"` succeeds without a `render_gate_unmet` refusal —
 > proving the project is back on the markdown backend.
 
@@ -61,13 +81,28 @@ verification run.
 
 Order matters within the phase: B1 makes B2's numbers trustworthy.
 
-**B1. Re-run the corpus survey against pre-render inputs.**
-Every figure in circulation — including `roadmap-data-model.md` § 7.4's "11
-others" — came from a survey run *after* the render, which is why `bug` (29
-items) is invisible in all of them.
+**B1. Re-run the corpus survey — and fix it first. DONE (2026-08-08).**
 
-> **Verify:** the survey's `Kind:` inventory now lists `bug`, and its
-> non-canonical count is ≥ the spec's seven additions.
+The step as first written assumed the survey's figures were wrong only because
+it had been run *after* the render. **Tested and false:** re-running it against
+the reverted pre-render source still reported no `bug` at all. The actual cause
+is that `tools/roadmap-corpus-survey.py`'s `KIND_VALUE` was anchored
+`^\s+…$` — `rxKind()`'s blind spot, in the measuring instrument. Both defects
+had to be fixed to see the data; reverting alone was not enough.
+
+The survey now un-anchors with § 2.2's three guards (backtick lookbehind,
+case-sensitive, last match), adds `+` to the value class for the three
+compound values, and bounds a match at four words / 30 characters — reporting
+prose matches rather than dropping them silently.
+
+> **Verified:** the inventory lists `bug` at 29; non-canonical values 11 → 19,
+> against the spec's seven additions; items with no `Kind:` 2,050 → 1,817. All
+> seven newly-visible values occur in this project only. One spec figure was
+> wrong and is corrected: `feature/fix` is 2, not 1.
+>
+> **Every `Kind:` figure taken before this fix is an undercount, corpus-wide** —
+> including any quoted in `roadmap-data-model.md` § 7.4, and including the
+> "1,613 with no Kind" in ANTS-4065's own roadmap bullet.
 
 **B2. Fix the format defects the audit already found.**
 - 44 open-item headlines with no terminating period (`roadmap-format.md` § 3.5
