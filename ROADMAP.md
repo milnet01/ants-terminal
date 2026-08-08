@@ -25051,7 +25051,7 @@ against current source before filing.
   `visibility: internal` item, including open security findings, would have been
   published in full technical detail beside the render that carefully excluded it.
 
-- 📋 [ANTS-3754] **Split roadmap-data-model.md — the standard is carrying an implementation spec, and loop 2's findings are almost all schema-level.**
+- ✅ [ANTS-3754] **Split roadmap-data-model.md — the standard is carrying an implementation spec, and loop 2's findings are almost all schema-level.**
   STOP-AND-SPLIT taken at loop 2 rather than running to the cap, on the
   skill's own collateral rule. Loop 1: C6 H12 M14 L18 I1. Loop 2: C13 H19
   M17 — findings went UP, and tracing each CRITICAL to its origin says
@@ -25153,6 +25153,7 @@ against current source before filing.
   missed RetroDB's lowercase roadmap.md entirely, so every count in the
   draft was measured over 9 of 10 projects. tools/roadmap-corpus-survey.py
   now finds them case-insensitively and is the source for every figure.
+  Resolved (2026-08-08, status audit): verified shipped. The schema left the standard for docs/specs/ANTS-3756-roadmap-store-schema.md (and its upgrade half, ANTS-3781); docs/standards/roadmap-data-model.md now carries 0 DDL blocks, and its own cold-eyes loop log records the split — "the model stays here, the schema goes to a spec". Flipped by the first roadmap status audit after the store migration; it was the only one of 355 open items whose stated completion held up on verification.
 
 - 📋 [ANTS-3755] **Documentation-layout standard — folder + filename declare a doc's genre, so /cold-eyes and friends stop guessing.**
   User's intent: standards live in docs/standards/ under a naming
@@ -29229,7 +29230,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-06 (mcp-behavioural-notes cold-eyes gate, loop 1).
 
-- 📋 [ANTS-3853] **Finish the roadmap store migration — the driver bullet for the remaining tail.**
+- 🚧 [ANTS-3853] **Finish the roadmap store migration — the driver bullet for the remaining tail.**
   User request 2026-08-06: finish this. The goal is ONE roadmap standard
   every project adheres to. ANTS-1160's dialog redesign is built against the
   store's model and cannot be finalised while each project's roadmap is still
@@ -29346,6 +29347,24 @@ against current source before filing.
   3821, 3825, 3794, 3749, 3751; docs 3864.
 
   User escalated this bullet to standing top priority (2026-08-07).
+  Progress (2026-08-08): flipped 📋 → 🚧 because the migration is now genuinely
+  under way rather than merely specced. This project became the first ever
+  migrated: roadmap_migrate committed project_id 1 with 1,897 items, 214 sections
+  and 1,991 elements across the live roadmap and both version archives, all three
+  detected ants-v1, items_orphaned 0.
+
+  Two things the run converted from reasoned to measured. First, the render gate
+  (ANTS-3758 INV-5) is real and it blocks every store write, not just publication:
+  101 of 354 open items had no Layman: line, so all eight roadmap_log ops refused
+  render_gate_unmet until those lines were written. Second, the first store-backed
+  render rewrites the whole document into canonical form — ~4,100 lines restated,
+  180 store-allocated ids materialised into the text — which is lossless (0 of
+  1,705 ids dropped) but a visible one-time reformat that a migrating project
+  should expect rather than discover.
+
+  One defect filed from the render: it writes "Source: planned." onto bullets with
+  no recorded provenance (36 such lines before, 399 after), materialising a default
+  as though it were data.
 
 - 📋 [ANTS-3854] **roadmap_log op:create_section silently reparents a target section's subsections.**
   Hit 2026-08-06. `op:create_section` with `after_section: <slug>` and
