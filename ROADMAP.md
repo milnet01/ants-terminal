@@ -28314,6 +28314,38 @@ against current source before filing.
   Kind: implement.
   Source: user-request-2026-08-08.
 
+- 📋 [ANTS-4066] **rxBold truncates a headline that quotes a bold marker inside backticks, losing the rest of it at import.**
+  The bold-headline matcher at `src/roadmapparse.cpp:681` is a non-greedy
+  match for a bold run, with no notion of Markdown code spans. A headline that
+  legitimately quotes a bold marker inside backticks therefore ends at the
+  FIRST marker inside that code span, and every character after it is dropped
+  from the stored headline. Nothing is reported: the truncation is silent.
+
+  Measured across all 14 projects — 12 bullets, 11 here and 1 in
+  Music_Production. The clearest is ANTS-1702, whose headline quotes the C
+  signature for `runMain` taking `char` pointer-to-pointer: the two asterisks
+  are C syntax, not emphasis, and the parser stops dead on them. ANTS-3672,
+  ANTS-1615 and ANTS-3569 each quote a literal bold marker because the bullet
+  is ABOUT that Markdown shape.
+
+  The source is correct in all 12. A bold marker inside backticks is a literal
+  code span, and these bullets have to quote it. The defect is in the reader,
+  so the fix belongs in the parser and NOT in the text — rewriting the markdown
+  would mean corrupting a C signature to suit a regex.
+
+  Fix: mask backtick spans before matching, so the bold run is located outside
+  code. Verified contained: a code-span-aware extractor agrees with the current
+  one on every other bullet in the corpus, so only these 12 change.
+
+  Found during ANTS-4065 Phase B2 while auditing headline format, by a check
+  that made the same mistake the parser does. Same failure class as
+  ANTS-4065 § 1 — the import losing declared text silently — reached through a
+  different matcher. A candidate contributor to that spec's § 2.6 undiagnosed
+  headline round-trip drift, though 12 bullets cannot account for it alone.
+  **Layman:** Some roadmap entries quote snippets of code or formatting that contain two stars; the reader mistakes those stars for styling and throws away the rest of that entry's title.
+  Kind: fix.
+  Source: in-session-2026-08-08 (ANTS-4065 Phase B2 headline audit).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
