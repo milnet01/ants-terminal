@@ -90,12 +90,9 @@ projects (4,377 items).
 **`kind` — the mapping already exists and is normative; this spec extends it,
 it does not restate it.** `roadmap-data-model.md` § 7.4 carries the table
 ("the migration-scoped mapping is normative") and `mappedKind()`
-(`src/roadmapmigrate.cpp`) implements exactly its eleven entries: `improve` and
-`enhance` → `enhancement`, `docs` → `doc`, `bugfix` → `fix`, `testing` → `test`,
-`spike` → `research`, `feat` → `feature`, `perf / fix` and `perf / optimize` →
-`perf`, `tooling` → `chore`, `behaviour-change` → `enhancement`. **Restating
-those eleven here would create a second mapping free to diverge from the first,
-so § 7.4 stays their only home.**
+(`src/roadmapmigrate.cpp`) implements exactly its **eleven** entries, applied as
+written. They are deliberately not reproduced here: a second copy would be free
+to diverge from the first, which is the failure this whole spec exists to stop.
 
 **§ 7.4's table is incomplete, and the reason it looks complete is a measurement
 artefact this spec has to correct.** Its "11 others" was derived from a corpus
@@ -115,15 +112,28 @@ table and `mappedKind()` both miss:
 | `design + implement` | 1 | **ruling needed** | compound |
 | `design + fix` | 1 | **ruling needed** | compound |
 
-The four with a rationale are mechanical and this spec adopts them. The three
-compounds need a ruling because the column admits one value and discarding half
-a declared intent is exactly the loss § 1 exists to stop — **`extras.source_kind`
-is what makes that ruling safe rather than lossy**, since the original string
-survives whichever half is chosen.
+The four with a rationale are mechanical and this spec adopts them. **The three
+compounds are deferred, with stated interim behaviour** rather than left blank:
+until a ruling exists they fall through `makeItem()`'s unmapped branch —
+`implement`, `extras.source_kind` preserved, `kind_unmapped` note emitted — which
+is today's behaviour and is visible rather than silent. § 5 carries the ruling.
 
-**A mapped value keeps its original.** `makeItem()` already writes
-`extras.source_kind` on the mapping branch; this contract makes that mandatory
-for every non-identity mapping, so no map is lossy and a bad map is reversible.
+**A mapped value keeps its original at import — and loses it at the first
+regeneration.** `makeItem()` writes `extras.source_kind` on the mapping branch,
+and this contract makes that mandatory for every non-identity mapping. But
+`bulletText()` renders **no `extras` at all** (verified: no `extras` reference in
+`src/roadmaprender.cpp`), so on a migrated project the next render→import cycle
+drops it: the file says `Kind: fix.`, the re-import takes the canonical branch,
+and `bugfix` is gone.
+
+**So the reversibility this contract can honestly promise is one-shot, not
+durable**, and § 2.6 says which of the two it governs. Making it durable means
+either rendering the original back into the file — putting a machine artefact
+into a human-facing document — or governing `extras.source_kind` under INV-6.
+**This spec takes neither and says so**: the mapping's audit trail is the import
+note (§ 2.3), which is emitted at the run that did the mapping and is where a
+reader looks for it. Claiming a durable `extras` guarantee the render cannot
+keep would be worse than claiming none.
 
 **`status` — the store admits five, the markdown legend documents four.**
 `planned`, `in-progress`, `shipped`, `considered` carry emoji (📋 🚧 ✅ 💭);
@@ -162,7 +172,8 @@ read as declaring it:
 // was: "^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"
 //      MultilineOption | CaseInsensitiveOption
 QStringLiteral("(?<!`)Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]")
-//      MultilineOption      — retained: the capture still stops at \n
+//      MultilineOption      — retained for parity with rxLanes(); inert
+//                              once ^ is gone (the \n stop comes from the class)
 //      CaseInsensitiveOption — DROPPED, see below
 ```
 
@@ -181,9 +192,12 @@ and § 7 records it against the standard.
 
 **`rxKind()` is shared with the render, so this is not a parse-only change.**
 `bulletText()` reads the same matchers through `trailerValuesIn(it.body)` to
-compute ANTS-3808's `shadows()` suppression. Un-anchoring therefore widens what
-the render considers "already in the body" — a body mentioning `Kind:` mid-prose
-now shadows the trailer where before it did not. INV-10 covers it.
+compute ANTS-3808's `shadows()` suppression, which is **value equality**, not
+presence — `m.offset >= 0 && m.value == v`, and its own comment says so. So
+un-anchoring does *not* make a body that merely discusses the label shadow the
+trailer; it changes behaviour only where a mid-prose `Kind:` carries a value
+**equal to** the column's, which previously went unseen and now suppresses the
+trailer line. INV-10 covers exactly that case.
 
 ### 2.3 A defaulted field is always noted
 
@@ -194,11 +208,15 @@ already emits. The rule generalises to every field the import may default:
 
 Each default emits a note naming the field and the bullet's line, so a migration
 report shows what the import supplied rather than what the document said. This
-is the check that would have surfaced all **476** defaulted kinds on the first
-run — not merely the 438 that preserve no original, since the note fires on the
-default itself rather than on whether anything survived it.
+is the check that would have surfaced the defaulted-kind population on the
+first run — all **476**, not merely the 438 that preserve no original, since the
+note fires on the default itself rather than on whether anything survived it.
+**The per-field COUNT is what must be complete, not the notes array**: § 4's
+`notes_truncated` cap means the list is a sample, so the migration reports a
+defaulted-field tally alongside it. A truncated list that silently under-reports
+the count would reproduce this spec's own failure mode one level up.
 
-### 2.4 A defaulted field is not rendered
+### 2.4 A defaulted `source` is not rendered
 
 **Scoped to the two fields import can default — `kind` and `source` — and to
 those only.** `makeItem()` writes `provenance` for `id`, `kind` and `source` and
@@ -225,7 +243,8 @@ Two ways out, and this spec takes the second:
 
 - Render a defaulted `Kind:` with a marker the parser reads back as defaulted.
   Rejected: it puts a machine artefact into a file § 3.5 governs for humans.
-- **Exclude `provenance` from INV-6's governed set** (§ 2.6 enumerates it), and
+- **Exclude `provenance` from INV-6's governed set** (§ 2.6 lists it among the
+  exclusions), and
   accept that a defaulted kind becomes asserted once rendered. The information
   is not lost — `extras.source_kind` is absent for a defaulted kind and present
   for a mapped one, so the two stay distinguishable — and § 2.3's note is
@@ -245,12 +264,23 @@ same convention.
 
 **"Looks like a path" is a predicate, not a judgement**, because § 3.5.3's own
 `Source:` vocabulary is full of hyphenated tokens (`upstream-<dep>`,
-`external-CVE-NNNN-NNNN`) that must not be mistaken for filenames. A value is a
-path reference when it contains `/`, **or** its final segment matches
-`\.[A-Za-z0-9]{1,5}$` — an extension — **and** it is not one of § 3.5.3's
-recognised source forms. `user-2026-08-08` has no slash and no extension;
+`external-CVE-NNNN-NNNN`) that must not be mistaken for filenames. A `Source:`
+value is a path reference when:
+
+> **(it contains `/` OR its final segment matches `\.[A-Za-z0-9]{1,5}$`)
+> AND it is not one of § 3.5.3's recognised source forms.**
+
+The parentheses are load-bearing: unbracketed, `A or B and C` also parses as
+`A or (B and C)`, under which any recognised source form containing a slash
+would be treated as a path. `user-2026-08-08` has no slash and no extension;
 `rpmlint.log` has an extension; `docs/specs/ANTS-3863-pre-read-dispatch.md` has
 both.
+
+**`Evidence:` needs no predicate — every element is a path by definition**
+(`roadmap-format.md` § 3.5 defines the field as file paths), and it is
+comma-separated, so each element is validated independently.
+**`extras.unresolved_path` is therefore an array, not a scalar**, since one item
+can cite several paths and lose more than one.
 
 A path that does not resolve against the project root is **not** a refusal: it
 is a note plus `extras.unresolved_path`, because a roadmap legitimately cites
@@ -274,20 +304,28 @@ no pass condition.** `id`, `status`, `headline`, `kind`, `source`, `layman`,
 **Excluded, each for a stated reason:** `provenance` (§ 2.4 — a rendered
 `Kind:` re-imports as asserted by construction); `id_origin` (a synthesised id
 becomes parsed once written into the file, which is the allocation working, not
-drifting); `extras` (§ 2.1's `source_kind` is written on the mapping branch and
-a canonical value re-imports without it).
+drifting); `extras` (the render emits none, so § 2.1's `source_kind` is
+one-shot by construction — governing it would make INV-6 permanently red).
 
-**§ 1's four drifting fields are not all addressed by this contract, and saying
-so is the difference between a gate and a wish.** The measured drift named
-`headline`, `layman`, `lanes` and `extras`. `lanes` and `extras` are explained
-above — un-anchoring `rxKind()` (§ 2.2) is expected to fix a share of the
-`lanes` conflicts for the same reason ANTS-2058 fixed the rest. **`headline`
-drift has no diagnosis in this spec**, and INV-6 cannot pass while it stands, so
-it is called out here rather than discovered at the gate: whoever implements
-this measures it first (§ 6's INV-6 fixture is the instrument) and either folds
-the cause in as a § 2.x or splits it out. Naming it as unfinished is the point —
-the alternative is an implementer building § 2.2 through § 2.5 in full and
-finding the acceptance test still red with nothing to work from.
+**`items_updated` counts an item whose *governed* columns changed**, not any row
+the importer rewrote. Without that definition INV-6's assertion cannot pass for
+reasons unrelated to the contract — an excluded column moving still bumps a
+row-level counter. The migration reports both figures; INV-6 reads the governed
+one.
+
+**§ 1's four drifting fields, each accounted for — a gate with an unexplained
+column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
+`extras`.
+
+- **`lanes`** — un-anchoring `rxKind()` (§ 2.2) is expected to fix a share, for
+  the reason ANTS-2058 fixed the rest.
+- **`extras`** — excluded above; the render emits none.
+- **`headline` and `layman`** — **undiagnosed, and deferred together in § 5.**
+  INV-6 cannot pass while either stands. Whoever implements this measures them
+  first (§ 6's INV-6 fixture is the instrument) and either folds the cause in as
+  a § 2.x or splits it out. Naming them as unfinished is the point — the
+  alternative is an implementer building § 2.2 through § 2.5 in full and finding
+  the acceptance test still red with nothing to work from.
 
 ## 3. Invariants
 
@@ -322,20 +360,24 @@ finding the acceptance test still red with nothing to work from.
   columns. *Test:* migrate a fixture project, render, re-import, assert
   `items_updated == 0` and no `field_conflict` note naming a governed column.
   *Breaks when:* any render emits a form the parser reads back differently —
-  the 714-item drift § 1 measures. **Expected to fail on `headline` until that
-  drift is diagnosed** (§ 2.6); the fixture is the instrument for diagnosing it,
-  so the invariant is written now and lands red on purpose.
+  the 714-item drift § 1 measures. **Expected to fail on `headline` and `layman`
+  until that drift is diagnosed** (§ 2.6, deferred in § 5); the fixture is the
+  instrument for diagnosing it, so the invariant is written now and lands red on
+  purpose. `items_updated` here means § 2.6's governed-column counter, not the
+  row-level one.
 - **INV-7** — A `Source:`/`Evidence:` value naming a path that does not exist
   imports successfully, with a note and `extras.unresolved_path`. *Test:*
   fixture citing `docs/gone.md`; assert `ok`, the note, and the extras key.
   *Breaks when:* validation is written as a refusal, which would make a
   historical roadmap unimportable.
-- **INV-8** — Import never writes `status='dropped'`. *Test:* behavioural, not
-  a grep — import a fixture carrying every status emoji plus a bullet with a
-  malformed marker, then assert `SELECT COUNT(*) FROM item WHERE
-  status='dropped'` is 0. A source-grep was the first draft of this clause and
-  is unusable: it cannot tell an assignment from a comment, and a status
-  reaching the row through a variable passes it. *Breaks when:* the fifth status
+- **INV-8** — The emoji→status mapping is **total and closed over the four
+  documented markers**, so no input can reach the fifth. *Test:* import a
+  fixture carrying all four emoji plus a bullet with a malformed marker; assert
+  each of the four maps to its documented status, the malformed one refuses or
+  defaults per § 2.3 with a note, and `SELECT COUNT(*) … status='dropped'` is 0.
+  Asserting only the last clause would be a tautology — § 2.1 says `dropped` has
+  no emoji, so no fixture can request it — which is why the totality of the
+  mapping is what is actually tested. *Breaks when:* the fifth status
   is wired in before the render can express it, producing a row that cannot
   survive its own regeneration.
 - **INV-9** — A lowercase `kind:` label does not parse as a declaration.
@@ -345,13 +387,15 @@ finding the acceptance test still red with nothing to work from.
   `CaseInsensitiveOption` is restored alongside the un-anchored pattern, which
   re-admits the prose match ("…changed the kind: of work…") that dropping the
   anchor exposes.
-- **INV-10** — Un-anchoring does not change what the render suppresses for an
-  item whose body does **not** mention the label. *Test:* render an item whose
-  body has no `Kind:` text; assert the `Kind:` trailer is still emitted, before
-  and after the pattern change. `rxKind()` is shared with `bulletText()` via
-  `trailerValuesIn()` (§ 2.2), so a parser change reaches the render.
-  *Breaks when:* the widened match makes `shadows()` fire on a body that merely
-  discusses the label, silently dropping a required trailer.
+- **INV-10** — Un-anchoring changes render suppression **only** where a
+  mid-prose `Kind:` value equals the column's. *Test:* three fixtures rendered —
+  body with no `Kind:` text (trailer emitted), body whose mid-prose `Kind:`
+  value **differs** from the column (trailer emitted, since `shadows()` is value
+  equality), body whose mid-prose `Kind:` value **equals** it (trailer
+  suppressed). `rxKind()` is shared with `bulletText()` via `trailerValuesIn()`
+  (§ 2.2), so the parser change reaches the render. *Breaks when:* the widened
+  match is treated as presence rather than equality, which would drop a required
+  trailer from any bullet whose body happens to discuss the label.
 
 ## 4. RAM / build cost
 
@@ -363,7 +407,9 @@ struct gains a member and no query changes.
 
 **The notes are the one thing that grows, and they are bounded per run, not
 cumulative.** INV-1 emits a note per defaulted field: for this project's first
-import that is 476 + 383 = **859** notes. They live in the migration's response
+import that is 476 + 383 = **859** notes — an upper bound measured on the
+pre-fix run, since § 2.2's un-anchoring removes at least 48 by parsing the field
+instead of defaulting it. They live in the migration's response
 envelope, not in the store, so they are bounded by one import's item count and
 discarded when it returns — and `roadmap_migrate` already truncates its `notes[]`
 (`notes_truncated`) rather than emitting unboundedly. The count is a reporting
@@ -383,14 +429,20 @@ the corpus, not by usage over time.
   mechanical, validity belongs to `/doc-lint` and to the verb that consumes the
   reference.
 - **The non-standard field keys** beyond mapping them into `extras` verbatim.
-  The survey counts **448 distinct keys**, which includes the six the standard
-  defines — so roughly 442 are extensions. Deciding which deserve real columns
+  The survey counts **448 distinct keys**, which includes the five trailer keys
+  § 3.5 defines (`Kind`, `Lanes`, `Source`, `Layman`, `Evidence`) — so roughly
+  443 are extensions. Deciding which deserve real columns
   (`Dependencies` 98, `Acceptance` 44, `Scope` 42) is a data-model change, not
   an import mapping.
 - **The `priority` severity scale** (§ 2.1) — import leaves the column NULL and
   keeps the string. Choosing the vocabulary and its direction is its own item.
-- **`headline` round-trip drift** (§ 2.6) — named, measured and undiagnosed.
-  INV-6's fixture is the instrument; whoever runs it owns the follow-up.
+- **The three compound `Kind:` values** (§ 2.1) — `feature/fix`,
+  `design + implement`, `design + fix`. They keep today's unmapped behaviour
+  (`implement` + `extras.source_kind` + a note) until someone rules on which
+  half of a two-part intent the single-valued column should keep.
+- **`headline` and `layman` round-trip drift** (§ 2.6) — named, measured and
+  undiagnosed. INV-6's fixture is the instrument; whoever runs it owns the
+  follow-up.
 - **Back-filling `Kind:` onto the 1,613 corpus items that carry none.** They
   default legitimately under § 3.5.3's own rule; INV-1 makes the default
   visible, which is all this item owes them.
@@ -406,11 +458,12 @@ unable to fail. Label `features;fast` — every fixture is a few-line roadmap, s
 nothing here needs the `perf` label.
 
 Per the project test convention, **verify each case fails against pre-change
-source first**. Four must red on today's code, and they are why this spec is
+source first**. Five must red on today's code, and they are why this spec is
 written before the fix rather than after: **INV-2** (`rxKind()` is anchored),
 **INV-5** (`bulletText()` renders from the value, not the provenance),
-**INV-9** (`CaseInsensitiveOption` is still set) and **INV-1** (the empty-kind
-branch emits no note). **INV-6 is expected to red and stay red** on `headline`
+**INV-9** (`CaseInsensitiveOption` is still set), **INV-1** (the empty-kind
+branch emits no note) and **INV-7** (§ 2.5's path validation does not exist in
+current source at all). **INV-6 is expected to red and stay red** on `headline`
 until § 2.6's undiagnosed drift is resolved — it is the measurement, not a
 regression.
 
@@ -445,4 +498,5 @@ construct `RoadmapStore` with an **explicit path**; the default resolves under
 
 | Loop | Date | Lanes | C/H/M/L/I | Dimensions | Outcome |
 |---|---|---|---|---|---|
+| 2 | 2026-08-08 | 2, cold — same shared-packet shape, no mention of loop 1; packet's verified-facts block extended with the six source facts loop 1's verification established | C 2 · H 5 · M 8 · L 9 · I 0 — verified 24, dismissed 0 | dim 5×7, dim 2×5, dim 6×5, dim 15×4, dim 7×3, dim 1×2, dim 10×2, dim 4×1, dim 8×1, dim 11×1 | **Origin split: 10 of 13 distinct defects were collateral from loop 1's own fixes, 3 were draft defects — a decisive margin, so the loop-economics trigger fired and this pass ends with a consolidation sweep rather than a reflex dispatch. (1) CRITICAL, lane A, and it falsifies a guarantee loop 1 introduced: excluding `extras` from § 2.6's governed set means the first render→import cycle **destroys** `extras.source_kind`. Verified directly — `src/roadmaprender.cpp` contains no `extras` reference at all, so the original value cannot survive a regeneration. That makes loop 1's "no map is lossy and a bad map is reversible" false on any migrated project. Rewritten to promise **one-shot, not durable** reversibility, with both ways of making it durable named and both declined, because claiming a guarantee the render cannot keep is worse than claiming none. (2) CRITICAL, lane A: § 2.4 proved `items_updated == 0` unsatisfiable and then "resolved" it by excluding `provenance` from the governed set — but `items_updated` is a **row** counter, so excluding a column does not stop the row counting. The remedy did not reach the assertion it was written for. § 2.6 now defines `items_updated` over governed columns and INV-6 says which counter it means. (3) HIGH, lane B, and the sharpest read of the run: loop 1's § 2.2 claimed un-anchoring makes "a body mentioning `Kind:` mid-prose shadow the trailer". `shadows()` is `m.offset >= 0 && m.value == v` — **value equality**, as its own comment states — so a body that merely mentions the label never shadows. INV-10 inherited the error and tested an unreachable state. Both restated to value equality, and INV-10 grew to three fixtures (no mention / differing value / equal value). (4) HIGH, lane B: § 2.6 named four drifting fields, accounted for three, and **silently dropped `layman`** — in the paragraph whose stated purpose is that no governed column goes unexplained. Now deferred alongside `headline`, in § 2.6, § 5 and INV-6. (5) HIGH, both lanes: § 2.1 enumerated all eleven § 7.4 mappings and then said in the next sentence that restating them "would create a second mapping free to diverge". The spec did the thing it forbade, in the paragraph forbidding it. Enumeration deleted; the count and the pointer remain. (6) HIGH, lane A: the three compound `Kind:` values carried "**ruling needed**" with no interim behaviour and no § 5 entry, leaving an implementer with no contract at all for them. They now fall through the unmapped branch explicitly and § 5 owns the ruling. **MEDIUM ×8:** the path predicate's `A or B and C` needed parentheses (both lanes, independently); `Evidence:` is multi-valued so `extras.unresolved_path` must be an array and every element is a path by definition; § 2.3's "surfaces all 476" contradicted § 4's `notes_truncated`, resolved by making the per-field **count** complete while the list stays a sample; INV-8 as written was a tautology — § 2.1 says `dropped` has no emoji, so no fixture can request it — and now tests that the emoji→status mapping is total and closed; INV-7 was missing from § 6's must-red list though § 2.5's validation does not exist in source; § 2.4's heading said "a defaulted field is not rendered" against its own `Kind:` conclusion; the `MultilineOption` rationale was wrong (it only affects `^`/`$` and is inert once the anchor goes); and "the six the standard defines" is five trailer keys. **LOW ×9**, all fixed, including 859 notes relabelled as a pre-fix upper bound. **Consolidation sweep (trigger response):** the eleven-mapping restatement deleted outright rather than reconciled — the anti-pattern the collateral margin exists to catch. Doc 448 → 502 lines. |
 | 1 | 2026-08-08 | 2, cold — identical byte-stable shared packet (~12k tok) carrying bounded windows of `roadmapparse.cpp` / `roadmapmigrate.cpp` / `roadmaprender.cpp`, the store's CHECK constraints, `roadmap-format.md` §§ 3.5/3.5.3, and the five cited ANTS ids resolved via `roadmap_query` | C 3 · H 6 · M 6 · L 6 · I 0 — verified 20, dismissed 1 | dim 7×5, dim 2×5, dim 4×4, dim 5×4, dim 6×4, dim 15×2, dim 11×2, dim 9×1, dim 10×1, dim 1×1 | **Both lanes led on the same two contradictions, and verification found a third defect in the spec's own evidence. (1) CRITICAL, both lanes: § 2.4's render rule — "emits a key only when `provenance` marks that field `asserted`" — would have suppressed `Layman:`, `Lanes:` and `Evidence:` on **every** bullet, because `makeItem()` writes provenance for `id`/`kind`/`source` and nothing else, so those three never carry one. An implementer following it ships a larger data loss than the one the spec exists to stop. Now scoped to the two defaultable fields, with "absent provenance means not-a-defaultable-field, never defaulted" stated outright. (2) CRITICAL, both lanes: the `Kind:`-always-renders exception makes INV-6 unsatisfiable by construction — a defaulted kind renders `Kind: implement.`, re-imports through the canonical branch as `asserted`, and provenance flips on all 476 rows at the first round trip. Resolved by excluding `provenance` from the governed set and saying why, rather than by inventing a machine marker in a human-facing file. (3) CRITICAL: § 2.1 restated a mapping that **already exists and is normative** — `roadmap-data-model.md` § 7.4 carries it and `mappedKind()` implements exactly its eleven entries — and re-opened three of those as "ruling needed" (`behaviour-change`, `perf / fix`, `perf / optimize`), which would have had an implementer either stall or overwrite a shipped decision. The duplicate table is deleted; § 2.1 now points at § 7.4 and contributes only what it misses. **Found by verification, not by either lane, and it corrects the spec's own evidence:** § 7.4's "11 others" and this spec's corpus figures both came from `tools/roadmap-corpus-survey.py` run *after* the first store render — by which point the render had already rewritten `Kind: bug` to `Kind: implement` in the file being surveyed. Re-running the inventory against the pre-render source surfaces **seven** unmapped values the table misses, led by `bug` at 29 items, the single largest unmapped value in the corpus and invisible to the contaminated run. **HIGH ×6:** § 1 described `bulletText()` as emitting `Source:` "unconditionally" when it is doubly conditional (`!isEmpty() && !shadows(...)`, ANTS-3808) — the symptom was right and the mechanism wrong; the header said 363 where the store measures 383; the kind table claimed "11 others" above 17 rows; `rxKind()` is **shared with the render** via `trailerValuesIn()`, so un-anchoring reaches `shadows()` and the spec called it "one regex literal" (new INV-10); dropping `CaseInsensitiveOption` silently reverses shipped ANTS-3407 (new INV-9, and § 7 now records it); and § 1's four drifting round-trip fields were diagnosed and then never addressed, leaving INV-6 unreachable — `headline` is now named as undiagnosed rather than left for an implementer to discover at the gate. **MEDIUM ×6:** `priority` had no table despite § 2.1's own rule and is now deferred to § 5 with the column left NULL; "looks like a path" was undefined and is now a stated predicate; the governed column set is enumerated (nine columns, three exclusions with reasons); the note budget (859 on the first run) is priced; INV-8's source-grep could not fail and is behavioural; and "448 non-standard keys" is 448 distinct *including* the six standard ones. **LOW ×6**, all fixed, including the "20+ path references" estimate — measured at **93 distinct tokens across 150 occurrences**, an eyeballed undercount from a truncated list. **Dismissed (1):** both lanes suspected `ItemWrite` carries no `provenance` member, which would have made § 2.4 unimplementable. It does — `QJsonObject provenance` at `src/roadmapstore.h`, and `bulletText()` already takes an `ItemWrite &`, so the render holds it. § 4's "no new state" is correct as written. Doc 301 → 448 lines; invariants 8 → 10. |
