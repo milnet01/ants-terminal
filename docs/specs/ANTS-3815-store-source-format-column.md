@@ -349,15 +349,26 @@ All three already have a `SourceUnrecognised` path, so none needs new handling �
 `rcdetail::rcRoadmapSourceRefused()`, and the dialog and the seam through their
 existing `ReadError` branches.
 
-**The live read is not removed and no signature changes.** The gate still needs
-the file's testimony for both refusal rows, and every consumer already holds the
-text before the dispatch runs. The change lands in `migratedProject()` alone —
-the single place the READ SEAM classifies a roadmap's format (the migration
-classifies too, in `findRoadmaps()`) — so the *code* of its three
-callers is untouched: `RoadmapSource::bulletsFor()`, `RemoteControl::roadmapStoreServes()`
-(the gate the MCP verbs go through, which does not use the seam) and
-`RoadmapDialog::storeProjectRoot()`. ANTS-3863 owns moving the dispatch ahead of
-the read; § 6 records the split.
+**The live read is not removed at this item, and no signature changes here.**
+The gate still needs the file's testimony for both refusal rows, and every
+consumer already holds the text before the dispatch runs. The change lands in
+`migratedProject()` alone — the single place the READ SEAM classifies a
+roadmap's format (the migration classifies too, in `findRoadmaps()`) — so the
+*code* of its callers is untouched: `RoadmapSource::bulletsFor()`,
+`RemoteControl::roadmapStoreServes()` (the gate the MCP verbs go through, which
+does not use the seam), `RemoteControl::roadmapWriteTarget()` and
+`RoadmapDialog::storeLegend()`.
+
+**That list read "three callers … `RoadmapDialog::storeProjectRoot()`" until
+2026-08-08 and was wrong twice.** `storeProjectRoot()` walks up from
+`m_roadmapPath` to the nearest `.git` and returns a string; it holds no
+dispatch, and the dialog's dispatch site is `storeLegend()`. The count moved to
+four separately, when ANTS-3809 added `roadmapWriteTarget()` after this spec was
+drafted. ANTS-3863 § 1 carries the re-derivation and the command that produces
+it.
+
+ANTS-3863 owns moving the dispatch ahead of the read, at which point the live
+read becomes bounded and these signatures do change; § 6 records the split.
 
 ### 2.5 Comparing a climbed store with a DDL-built one
 
