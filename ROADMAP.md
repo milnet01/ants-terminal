@@ -34628,7 +34628,7 @@ a modern terminal" release.
 
 ### ⚡ Performance
 
-- 📋 [ANTS-1059] **Terminal throughput slowdowns** (user report 2026-04-20).
+- 📋 [ANTS-1059] **Terminal throughput slowdowns.** (user report 2026-04-20).
   Intermittent stalls observed during normal use. Investigation items:
   (a) profile `onVtBatch()` under heavy-output workloads — `yes`,
   `dd`, `find /`, build logs — and identify hotspots;
@@ -34712,7 +34712,7 @@ a modern terminal" release.
   Layman: Track down the occasional stutter that happens when a lot of text is printing at once.
   Kind: refactor.
   Source: user-2026-04-20.
-- 📋 [ANTS-1060] **Dynamic grid storage** (Alacritty
+- 📋 [ANTS-1060] **Dynamic grid storage.** (Alacritty
   [PR #1584](https://github.com/alacritty/alacritty/pull/1584/files)).
   Don't pre-allocate the full `Vec<Vec<Cell>>` scrollback; lazily
   allocate row buffers; intern empty rows to a single shared sentinel.
@@ -34720,13 +34720,13 @@ a modern terminal" release.
   Layman: Use far less memory for scrollback by not reserving space for lines that are empty.
   Kind: refactor.
   Source: planned.
-- 📋 [ANTS-1061] **Async image decoding**. Hand sixel/Kitty/iTerm2 payloads to
+- 📋 [ANTS-1061] **Async image decoding.** Hand sixel/Kitty/iTerm2 payloads to
   `QtConcurrent::run`; render a placeholder cell until `QImage`
   future resolves. Big sixel frames stop blocking the prompt.
   Layman: Decode images in the background so a large image no longer freezes the prompt while it loads.
   Kind: refactor.
   Source: planned.
-- 💭 [ANTS-1062] **BTree scrollback** — O(log n) scroll-to-line instead of O(n)
+- 💭 [ANTS-1062] **BTree scrollback.** O(log n) scroll-to-line instead of O(n)
   for jump-to-timestamp features.
   Layman: Change how scrollback is stored so jumping to a point in history stays fast even in very long histories.
   Kind: refactor.
@@ -34794,7 +34794,7 @@ a modern terminal" release.
     use case driving it.
   Kind: implement.
   Source: planned.
-- 📋 [ANTS-1065] **Headless mux server with codec RPC**. WezTerm's architecture
+- 📋 [ANTS-1065] **Headless mux server with codec RPC.** WezTerm's architecture
   ([DeepWiki](https://deepwiki.com/wezterm/wezterm/2.2-multiplexer-architecture)):
   `ants-terminal --server` runs without a GUI and accepts attachments
   over a Unix socket; `ants-terminal --attach <socket>` reconnects.
@@ -34814,13 +34814,13 @@ a modern terminal" release.
   seconds. See
   [CHANGELOG.md §0.7.1](CHANGELOG.md#071--2026-04-19).
   Kind: implement.
-- 💭 [ANTS-1066] **Domain abstraction** à la WezTerm: `DockerDomain` lists
+- 💭 [ANTS-1066] **Domain abstraction.** à la WezTerm: `DockerDomain` lists
   `docker ps`, opens a tab via `docker exec -it`; `KubeDomain` lists
   pods, opens via `kubectl exec`. Reuses the SSH bookmark UI shell.
   Layman: Open tabs straight inside Docker containers or Kubernetes pods, picked from a list.
   Kind: implement.
   Source: planned.
-- 💭 [ANTS-1067] **Persistent workspaces**: save/restore entire tab+split layout +
+- 💭 [ANTS-1067] **Persistent workspaces.** Save/restore entire tab+split layout +
   scrollback to disk; one-click "resume yesterday's dev session."
   Layman: Save your whole layout of tabs and splits, scrollback included, and reopen it later.
   Kind: implement.
@@ -34981,7 +34981,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   with a shared-modules reference; `x-checker-data` would
   continue to fire. See
   [CHANGELOG.md §0.7.3](CHANGELOG.md#073--2026-04-20).
-- 📋 [ANTS-1070] **H6.2 — Flathub submission**. PR a new repo against
+- 📋 [ANTS-1070] **H6.2 — Flathub submission.** PR a new repo against
   [flathub/flathub](https://github.com/flathub/flathub) named
   `org.ants.Terminal`. In-tree prep is complete: the
   `<screenshots>` block in
@@ -35007,7 +35007,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Layman: Publish the app on Flathub so Linux users can install it in one click.
   Kind: chore.
   Source: planned.
-- 📋 [ANTS-1071] **H7 — project website + docs site**. Static GitHub Pages site
+- 📋 [ANTS-1071] **H7 — project website + docs site.** Static GitHub Pages site
   at `ants-terminal.github.io` (or equivalent) with: screenshots,
   installation instructions (once H5/H6 land), plugin authoring
   guide (move `PLUGINS.md` body here, keep the file as a pointer),
@@ -35101,7 +35101,7 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Layman: Update the app from inside the app, without needing a separate updater program installed.
   Kind: implement.
   Source: user-2026-05-02.
-- 📋 [ANTS-1072] **H13 — distro-outreach launch**. Once H1–H7 are shipped:
+- 📋 [ANTS-1072] **H13 — distro-outreach launch.** Once H1–H7 are shipped:
   file **intent-to-package** bugs / RFPs in Debian / Fedora /
   NixOS / openSUSE / Arch (as applicable); write a
   **"Why Ants Terminal"** post for r/linux, Hacker News, Phoronix
@@ -35178,19 +35178,19 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
 
 ### 🔌 Plugins — marketplace
 
-- 📋 [ANTS-1073] **Signed plugin packaging**: Ed25519 sig over a tarball containing
+- 📋 [ANTS-1073] **Signed plugin packaging.** Ed25519 sig over a tarball containing
   `init.lua`, `manifest.json`, and optional assets. Loader verifies
   against a project-maintained keyring + (optionally) user-added keys.
   Layman: Digitally sign plugins so you can tell a genuine one from a tampered one.
   Kind: implement.
   Source: planned.
-- 📋 [ANTS-1074] **Public marketplace index**: static JSON hosted on GitHub Pages
+- 📋 [ANTS-1074] **Public marketplace index.** Static JSON hosted on GitHub Pages
   listing name, version, author, signature-status, permission summary.
   Settings → Plugins → Browse lists them with an install button.
   Layman: A browsable list of available plugins with an install button.
   Kind: implement.
   Source: planned.
-- 📋 [ANTS-1075] **Plugin dependency resolution**: `manifest.json` `requires: [...]`
+- 📋 [ANTS-1075] **Plugin dependency resolution.** `manifest.json` `requires: [...]`
   field; install flow resolves transitively.
   Layman: Let a plugin say which other plugins it needs, and install those automatically.
   Kind: implement.
@@ -35918,7 +35918,7 @@ here.)
 
 ### 🖥 Platform
 
-- 📋 [ANTS-1076] **H8 — macOS port**. Qt6 ports cleanly; replace `forkpty` with
+- 📋 [ANTS-1076] **H8 — macOS port.** Qt6 ports cleanly; replace `forkpty` with
   `posix_spawn` + `openpty`, swap `xcbpositiontracker` for
   `NSWindow` KVO observers, sign+notarize the `.app`. Expands the
   addressable audience — a terminal that only runs on Linux is not
@@ -35927,7 +35927,7 @@ here.)
   Layman: Make the app run on macOS as well as Linux.
   Kind: implement.
   Source: planned.
-- 💭 [ANTS-1077] **H12 — Windows port**. ConPTY via `CreatePseudoConsole`
+- 💭 [ANTS-1077] **H12 — Windows port.** ConPTY via `CreatePseudoConsole`
   replaces PTY; `xcbpositiontracker` becomes a no-op. Qt6's
   Windows platform plugin handles the rest. Sign + ship MSI /
   MSIX. Moved to Beyond 1.0 in practice — gating on macOS port
@@ -35950,7 +35950,7 @@ here.)
   Source: planned.
   In progress 2026-06-29: implementing the core H9 slice — QAccessibleInterface + QAccessibleTextInterface adapter for TerminalWidget (role Terminal, visible-viewport text, caret = cursor, debounced text-changed events gated on QAccessible::isActive()). Spec at docs/specs/ANTS-1078.md. Also closes ANTS-2205 (4). Remaining H9 refinements (per-character a11y text attributes, OSC-133-D-gated batch boundaries beyond the existing output debounce) tracked as follow-up.
   Shipped 2026-06-29 (core H9 slice): QAccessibleInterface + QAccessibleTextInterface adapter (src/terminalaccessible.{h,cpp}) registered via installTerminalAccessibilityFactory() in main.cpp; TerminalWidget gained accessibleText()/accessibleCaretOffset()/accessibleRectForOffset()/accessibleOffsetAt()/firstVisibleGlobalLine() + a throttled notifyAccessibilityChanged() slot gated on QAccessible::isActive(). Role Terminal, visible-viewport text, caret via effectiveCursorRow/Col, one QAccessibleTextCursorEvent per output throttle tick. Spec docs/specs/ANTS-1078.md (cold-eyes loops 1-5). Feature test tests/features/terminal_a11y/ (9 TEST blocks, INV-1..9) in test_chrome; suite 2349/2349. Remaining H9 refinements (rich text attributes, OSC-133-D-gated text-inserted batching, selection write-back, wide-cell exact rects) tracked by ANTS-3363.
-- 💭 [ANTS-1079] **Screen-magnifier-friendly rendering**: honor
+- 💭 [ANTS-1079] **Screen-magnifier-friendly rendering.** Honor
   `QGuiApplication::styleHints()->mousePressAndHoldInterval()` and
   provide high-contrast theme variants.
   Layman: Make the display work properly with screen magnifiers and high-contrast colour schemes.
@@ -35971,7 +35971,7 @@ here.)
 
 ### 🌍 Internationalization
 
-- 📋 [ANTS-1080] **H10 — i18n scaffolding**. Qt's `lupdate` / `linguist` flow;
+- 📋 [ANTS-1080] **H10 — i18n scaffolding.** Qt's `lupdate` / `linguist` flow;
   wrap all UI strings with `tr()`; ship `.qm` files in
   `assets/i18n/`. Today we have zero `tr()` usage. Start with
   English → Spanish, French, German as a proof of concept. Some
@@ -35981,7 +35981,7 @@ here.)
   Source: planned.
   User-requested again 2026-06-12 ("support for multiple languages") — confirms appetite for UI localisation. Scope stands: wrap UI strings in tr(), wire lupdate/lrelease, ship .qm under assets/i18n/, seed ES/FR/DE. (RTL text is the separate [[ANTS-1081]].)
   Status correction (2026-06-17): the "zero tr() usage" line is stale — src/ already has ~222 tr() call-sites (partial groundwork). What is genuinely absent is the RUNTIME machinery: no QTranslator / installTranslator wiring, no lupdate/lrelease step, and no shipped .qm files (assets/i18n/ does not exist), so the app still only renders English. Remaining scope: complete tr() coverage, wire QTranslator + a language setting, add lupdate/lrelease to the build, ship .qm for the ES/FR/DE seed. User re-confirmed appetite 2026-06-17 ("make Ants Terminal usable to as wide a base as possible").
-- 💭 [ANTS-1081] **Right-to-left text support** — bidirectional text in the grid.
+- 💭 [ANTS-1081] **Right-to-left text support.** Bidirectional text in the grid.
   Non-trivial; defer until demand is concrete.
   Layman: Display right-to-left languages such as Arabic and Hebrew correctly.
   Kind: implement.
@@ -35989,7 +35989,7 @@ here.)
 
 ### 📦 Distribution readiness (H11)
 
-- 💭 [ANTS-1082] **H11 — reproducible builds + SBOM**. Build under
+- 💭 [ANTS-1082] **H11 — reproducible builds + SBOM.** Build under
   `SOURCE_DATE_EPOCH` so binary hashes are deterministic; generate
   an SPDX SBOM (`spdx-tools` or `syft`) alongside release
   artifacts. Reproducibility is a distro / supply-chain trust
@@ -36002,7 +36002,7 @@ here.)
 
 ### 🧰 Dev experience
 
-- 📋 [ANTS-1083] **Plugin development SDK**: `ants-terminal --plugin-test <dir>`
+- 📋 [ANTS-1083] **Plugin development SDK.** `ants-terminal --plugin-test <dir>`
   runs a plugin against a mock PTY with scripted events. Enables
   unit-testing plugins.
   Layman: A test harness that lets plugin authors check their plugin without running the whole terminal.
@@ -36015,12 +36015,12 @@ here.)
 
 **Theme:** API freeze. No new features; quality, docs, migration guide.
 
-- 📋 [ANTS-1084] **`ants.*` API stability pledge**: the 1.0 surface won't break in
+- 📋 [ANTS-1084] **`ants.*` API stability pledge.** The 1.0 surface won't break in
   `1.x` minor releases. Breaking changes queue for 2.0.
   Layman: Promise that plugins written for version 1.0 keep working across every 1.x update.
   Kind: implement.
   Source: planned.
-- 📋 [ANTS-1085] **Performance regression suite**: CI benchmarks (grid throughput,
+- 📋 [ANTS-1085] **Performance regression suite.** CI benchmarks (grid throughput,
   scrollback allocation, paint-loop time) with commit-level deltas.
   Layman: Measure speed automatically on every change, so a slowdown is caught the day it lands.
   Kind: implement.
@@ -36044,12 +36044,12 @@ here.)
   audit.
   Layman: Re-check the roughly 190 automated tests, to be sure they test the behaviour that was promised rather than just the code as it happens to be written.
   Kind: audit. Source: user-2026-05-02.
-- 📋 [ANTS-1086] **Documentation pass**: every user-facing feature has at least one
+- 📋 [ANTS-1086] **Documentation pass.** Every user-facing feature has at least one
   screenshot + one animated demo. Rolls up into H7 (docs site).
   Layman: Give every feature at least one screenshot and one short demo.
   Kind: implement.
   Source: planned.
-- 📋 [ANTS-1087] **External security audit**. `SECURITY.md` disclosure policy
+- 📋 [ANTS-1087] **External security audit.** `SECURITY.md` disclosure policy
   itself ships early under H1 (0.7.0); the 1.0 item is the
   **external** audit — budget a third-party review of the VT
   parser, plugin sandbox, and OSC-8/OSC-52 surfaces before
@@ -36057,7 +36057,7 @@ here.)
   Layman: Pay outside security experts to review the riskiest parts of the code before 1.0.
   Kind: implement.
   Source: planned.
-- 📋 [ANTS-1088] **H14 — bus factor ≥ 2 + governance doc**. Second maintainer
+- 📋 [ANTS-1088] **H14 — bus factor ≥ 2 + governance doc.** Second maintainer
   with commit rights; a short `GOVERNANCE.md` describing
   decision-making, release process, conflict resolution. Distros
   treat single-maintainer projects as a risk — a documented
@@ -36065,7 +36065,7 @@ here.)
   Layman: Add a second maintainer and write down how decisions get made, so the project does not depend on one person.
   Kind: implement.
   Source: planned.
-- 📋 [ANTS-1089] **Plugin migration guide** for any manifest/API changes between
+- 📋 [ANTS-1089] **Plugin migration guide.** for any manifest/API changes between
   0.9 and 1.0.
   Layman: Explain to plugin authors what changed between versions and how to update their plugins.
   Kind: implement.
@@ -36080,7 +36080,7 @@ contributors don't duplicate research.
 
 ### 🔌 Plugins
 
-- 💭 [ANTS-1090] **WebAssembly plugins** via `wasmtime` or `wasmer`. Same `ants.*`
+- 💭 [ANTS-1090] **WebAssembly plugins.** via `wasmtime` or `wasmer`. Same `ants.*`
   API exposed as WASI imports. Lua plugins continue to work — WASM is
   additive for authors who want Rust/Go/AssemblyScript. Stronger
   sandbox than Lua's removed-globals model; language-agnostic. Ghostty
@@ -36088,7 +36088,7 @@ contributors don't duplicate research.
   Layman: Let people write plugins in languages other than Lua, inside a stronger safety sandbox.
   Kind: implement.
   Source: planned.
-- 💭 [ANTS-1091] **Inter-plugin pub/sub**: `ants.bus.publish(topic, data)` /
+- 💭 [ANTS-1091] **Inter-plugin pub/sub.** `ants.bus.publish(topic, data)` /
   `ants.bus.subscribe(topic, handler)`. Needs careful permission
   modeling — a "read_bus: <topic>" capability.
   Layman: Let plugins send messages to each other through a channel you control with permissions.
@@ -36097,19 +36097,19 @@ contributors don't duplicate research.
 
 ### 🎨 Features
 
-- 💭 [ANTS-1092] **AI command composer** (Warp-style). Dialog over the prompt
+- 💭 [ANTS-1092] **AI command composer.** (Warp-style). Dialog over the prompt
   accepts natural language, returns a shell command + explanation.
   Uses the existing OpenAI-compatible config; opt-in per invocation.
   Layman: Describe what you want in plain English and get a shell command back, with an explanation.
   Kind: implement.
   Source: planned.
-- 💭 [ANTS-1093] **Collaborative sessions**: real-time shared terminal with a
+- 💭 [ANTS-1093] **Collaborative sessions.** Real-time shared terminal with a
   second user via an end-to-end encrypted relay. The "share
   terminal with a colleague" feature tmate popularized.
   Layman: Share a live terminal session with someone else, encrypted end to end.
   Kind: implement.
   Source: planned.
-- 💭 [ANTS-1094] **Workspace sync**: mirror `config.json`, plugins, and SSH
+- 💭 [ANTS-1094] **Workspace sync.** Mirror `config.json`, plugins, and SSH
   bookmarks across devices via a user-configurable git remote.
   Layman: Keep your settings, plugins and saved connections in sync across your machines.
   Kind: implement.
@@ -36540,7 +36540,7 @@ contributors don't duplicate research.
 
 ### 🔒 Security
 
-- 💭 [ANTS-1095] **Confidential computing**: run the PTY in an SGX/SEV enclave,
+- 💭 [ANTS-1095] **Confidential computing.** Run the PTY in an SGX/SEV enclave,
   with the renderer as the untrusted host. Meaningful for people who
   type secrets into the terminal — every keystroke lives only in
   enclave memory until it's shown on-screen. Heavy lift; benefit
@@ -36551,7 +36551,7 @@ contributors don't duplicate research.
 
 ### ⚡ Performance
 
-- 💭 [ANTS-1096] **GPU text rendering with ligatures**. Today GPU path can't
+- 💭 [ANTS-1096] **GPU text rendering with ligatures.** Today GPU path can't
   render ligatures (HarfBuzz shaping is on the CPU path). Port the
   shaping step to a compute shader; keep the atlas path we already
   have.
@@ -36561,7 +36561,7 @@ contributors don't duplicate research.
 
 ### 📦 Distribution & community (H15–H16)
 
-- 💭 [ANTS-1097] **H15 — conference presence**. FOSDEM lightning talk or a
+- 💭 [ANTS-1097] **H15 — conference presence.** FOSDEM lightning talk or a
   devroom slot (the Linux desktop devroom is where distro
   maintainers converge). Other options: LinuxFest Northwest,
   Everything Open, SCaLE. One talk reaches more maintainers than
@@ -36570,7 +36570,7 @@ contributors don't duplicate research.
   Layman: Give a talk at a Linux conference, where the people who package software for distributions gather.
   Kind: chore.
   Source: planned.
-- 💭 [ANTS-1098] **H16 — sponsorship / funding model**. GitHub Sponsors + Open
+- 💭 [ANTS-1098] **H16 — sponsorship / funding model.** GitHub Sponsors + Open
   Collective. Even small recurring funding signals project
   longevity to distro security teams (they care about "who pays
   for the 30-day CVE response?"). Tiered: individual ($5/mo),
@@ -36582,7 +36582,7 @@ contributors don't duplicate research.
 
 ### 🧹 Code quality & maintenance (rolling)
 
-- 💭 [ANTS-1227] **Performance scan**. Survey `src/` for hot paths
+- 💭 [ANTS-1227] **Performance scan.** Survey `src/` for hot paths
   with measurable wins: paint-cycle cost in `terminalwidget`,
   scrollback reflow on resize in `terminalgrid`, VT-parser state
   transitions in `vtparser`, audit pipeline stages in
@@ -36597,7 +36597,7 @@ contributors don't duplicate research.
   them one by one as separate roadmap items.
   Kind: spike.
   Source: user-2026-05-11.
-- 💭 [ANTS-1228] **Refactoring scan**. Survey `src/` for places
+- 💭 [ANTS-1228] **Refactoring scan.** Survey `src/` for places
   where structure is fighting the code: oversized files
   (`terminalgrid.cpp`, `terminalwidget.cpp`, `mainwindow.cpp`),
   duplicated logic between renderers (`renderHtml` vs
@@ -36611,7 +36611,7 @@ contributors don't duplicate research.
   read and change, list them — then decide which to do.
   Kind: spike.
   Source: user-2026-05-11.
-- 💭 [ANTS-1229] **Optimisation scan**. Distinct from ANTS-1227
+- 💭 [ANTS-1229] **Optimisation scan.** Distinct from ANTS-1227
   (which finds hot paths). This one looks for *wasted work*
   independent of profiler hotness: per-frame allocations that
   could be pooled, `QString` copies that could be
@@ -36623,7 +36623,7 @@ contributors don't duplicate research.
   things it already knows, that kind of thing.
   Kind: spike.
   Source: user-2026-05-11.
-- 💭 [ANTS-1230] **Code cleanup scan**. Dead helpers, unused
+- 💭 [ANTS-1230] **Code cleanup scan.** Dead helpers, unused
   includes, stale `// TODO` / `// FIXME` markers older than 6
   months, unused config keys, retired feature flags still
   carrying default values, header-only declarations with no
@@ -36635,7 +36635,7 @@ contributors don't duplicate research.
   anything — and delete it.
   Kind: chore.
   Source: user-2026-05-11.
-- 💭 [ANTS-1231] **Accessibility audit**. Cross-cuts ANTS-1227–1230
+- 💭 [ANTS-1231] **Accessibility audit.** Cross-cuts ANTS-1227–1230
   but warrants its own scan. Survey the UI for: font-size
   scaling (some chrome already uses 11–13px; under high DPI or
   large system font, does it remain readable?), keyboard-only
@@ -36649,7 +36649,7 @@ contributors don't duplicate research.
   screen reader.
   Kind: spike.
   Source: user-2026-05-11.
-- 💭 [ANTS-1232] **Test coverage gap analysis**. List every
+- 💭 [ANTS-1232] **Test coverage gap analysis.** List every
   user-visible invariant (cross-reference `tests/features/*/spec.md`
   + the audit-rule fixtures + the `INV-N` anchors across all
   specs) and grade each: ✅ has feature test / 🟡 partial / ❌
