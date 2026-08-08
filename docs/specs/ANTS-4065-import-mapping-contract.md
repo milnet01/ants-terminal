@@ -1,6 +1,9 @@
 # ANTS-4065 — define the markdown→store import mapping, so importing neither loses nor invents a field
 
-**Status:** spec draft (2026-08-08).
+**Status:** accepted (2026-08-08) — rule-14 gate run to its 3-loop cap, 2 cold
+lanes per loop, 66 findings verified and 63 fixed; 3 filed as non-build-changing
+in the loop-3 row. Build order at
+[`docs/plans/ANTS-4065-import-mapping-contract.md`](../plans/ANTS-4065-import-mapping-contract.md).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-4065 (user-request-2026-08-08, after the first real
 migration was found to rewrite 123 items' `Kind` and to render a `Source:` line
