@@ -28076,6 +28076,28 @@ against current source before filing.
   § 6 requires, and no existence/size stat is needed: an absent or empty file
   yields an empty prefix, `sawSignal` false, and the existing SourceUnrecognised
   refusal is preserved unchanged.
+  Progress (2026-08-08): spec at docs/specs/ANTS-3863-pre-read-dispatch.md
+  converged through the /cold-eyes gate at the 3-loop cap. 54 findings verified
+  across three loops (C 3 / H 13 / M 18 / L 20), 53 fixed, 1 dismissed, none
+  deferred — no tail to pick up. Doc 359 -> 767 lines.
+
+  The spec supersedes this bullet's inventory in three ways, all re-measured:
+  migratedProject() has FOUR callers not three, and the fourth is
+  RoadmapDialog::storeLegend(), not storeProjectRoot() (which holds no dispatch);
+  the call-site count is 28, not three; and seven functions change signature (six
+  seam functions plus rlStoreCounterPrefix() below the seam), not the three the
+  bullet implies.
+
+  Two contract additions the loops forced, both build-changing: kDetectorByteCap
+  (1 MiB) applied to BOTH prefix producers, because kDetectorLineCap counts
+  NON-BLANK lines and so bounds nothing on a blank-line file; and a read contract
+  pinning ReadOnly|Text, one retained handle, and openFailed() forcing the open —
+  without which op:append silently loses its roadmap_read_failed refusal.
+
+  Cross-doc: ANTS-3815 § 2.4 carried the same wrong-caller error and is corrected;
+  its § 6 is owed a corrected inventory, recorded in this spec's § 8.
+
+  Status stays `spec draft` until implementation; ready for an implementer.
 
 - 📋 [ANTS-3864] **Give `specs.md` § 5.6 a status for a spec that is built but not yet released.**
   `docs/standards/specs.md` § 5.6 fixes the lifecycle as `spec draft` →
