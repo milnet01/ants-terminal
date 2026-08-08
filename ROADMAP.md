@@ -6845,12 +6845,29 @@ the same ~98-file pattern is a scheduling signal: this is mechanical,
 slipping a fourth cycle. No new IDs minted for these — they are
 already on the roadmap above.
 
-- ✅ [ANTS-1697] **mcp_git_state INV-12a/b used `|| contains(gwCpp, "5000")` / `|| contains(gwCpp, "200")` as a fallback to the kill-timer constant checks — the bare `"200"` literal matches anywhere in `gitwrap.cpp`, so the assertion could pass even if `kKillGraceMs` were removed.** Tightened to the named constants (`kHardKillMs` / `kKillGraceMs`) only; both verified present in `src/gitwrap.cpp`, so the check is strictly stronger. `tests/features/mcp_git_state/test_mcp_git_state.cpp:208`. Shipped 2026-05-20. Kind: test. Source: test-audit-2026-05-20.
-- ✅ [ANTS-1698] **audit_incremental_output_drain silently skipped INV-4 / INV-5 when `extractFnBody()` returned empty (`if (!body.empty()) { … }`) — a signature change that broke the extraction regex would drop coverage of the audit OOM-guard with no test failure.** Inverted to fail loudly on an empty extraction. `tests/features/audit_incremental_output_drain/test_audit_incremental_output_drain.cpp:110`. Shipped 2026-05-20. Kind: test. Source: test-audit-2026-05-20.
+- ✅ [ANTS-1697] **mcp_git_state INV-12a/b used `|| contains(gwCpp, "5000")` / `|| contains(gwCpp, "200")` as a fallback to the kill-timer constant checks.**
+  The bare `"200"` literal matches anywhere in `gitwrap.cpp`, so the
+  assertion could pass even if `kKillGraceMs` were removed. Tightened to
+  the named constants (`kHardKillMs` / `kKillGraceMs`) only; both
+  verified present in `src/gitwrap.cpp`, so the check is strictly
+  stronger. `tests/features/mcp_git_state/test_mcp_git_state.cpp:208`.
+  Shipped 2026-05-20. Kind: test. Source: test-audit-2026-05-20.
+- ✅ [ANTS-1698] **audit_incremental_output_drain silently skipped INV-4 / INV-5 when `extractFnBody()` returned empty (`if (!body.empty()) { … }`).**
+  A signature change that broke the extraction regex would drop coverage
+  of the audit OOM-guard with no test failure. Inverted to fail loudly
+  on an empty extraction.
+  `tests/features/audit_incremental_output_drain/test_audit_incremental_output_drain.cpp:110`.
+  Shipped 2026-05-20. Kind: test. Source: test-audit-2026-05-20.
 - ✅ [ANTS-1699] **roadmap_fold_in regression-test name typo `R3FirstAllocationStillFalsThroughExistingPath`.** Renamed to `…StillFalls…`. `tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp:337`. Shipped 2026-05-20. Kind: test.
 - ✅ [ANTS-1700] **`find_definition` MCP surfaces and mis-classifies namespace-qualified call sites as `definition` / `declaration`.** A `find_definition` for `slurpFunctionBody` returned 17 call sites (e.g. `ants_test::slurpFunctionBody(`) alongside the 2 real definitions — multi-line calls labelled `definition`, `;`-terminated calls `declaration`. The C++ classifier should require a return-type token before the qualified name (or exclude `Ns::sym(` qualified-call context) so call sites are not reported as definitions. `src/symbolquery.cpp`. Kind: fix. Source: test-audit-2026-05-20 (observed self-hosting the audit through Ants MCP). Priority: LOW — precision/convenience, not correctness.
   Resolved (2026-06-06): the C++ def anchor now requires a return-type token before the (optionally qualified) name, so namespace-qualified call sites (`ns::sym(`) are no longer mis-classified as definitions; bare calls excluded too. A second anchor matches out-of-line ctor/dtor defs (`Foo::Foo(`) so class queries still resolve. In-class ctor decls remain ambiguous with calls and are intentionally not matched. Regression test: tests/features/mcp_symbol_query INV-8a.
-- ✅ [ANTS-1701] **`.ants_review_falsepos.jsonl` carried a pre-existing malformed line (a 2026-05-17 entry with an unescaped `"` inside `rationale`) that the MCP reader silently skips — so that user-confirmed false positive is re-raised on every sweep, defeating the ledger.** Add writer-side validation (the standard already mandates a JSON encoder for appends) and/or the `audit_falsepos_verify` tool the standard's §Pruning anticipates, to flag malformed or stale ledger lines. `.ants_review_falsepos.jsonl`. Kind: fix. Source: test-audit-2026-05-20.
+- ✅ [ANTS-1701] **`.ants_review_falsepos.jsonl` carried a pre-existing malformed line (a 2026-05-17 entry with an unescaped `"` inside `rationale`) that the MCP reader silently skips.**
+  So that user-confirmed false positive is re-raised on every sweep,
+  defeating the ledger. Add writer-side validation (the standard already
+  mandates a JSON encoder for appends) and/or the
+  `audit_falsepos_verify` tool the standard's §Pruning anticipates, to
+  flag malformed or stale ledger lines. `.ants_review_falsepos.jsonl`.
+  Kind: fix. Source: test-audit-2026-05-20.
   Verified 2026-05-29: `.ants_review_falsepos.jsonl` is currently all valid JSON. The malformed entry appears to have been resolved in a prior session. No action needed.
 
 - ✅ [ANTS-1702] **`-Wunused-parameter` on `runMain(int argc, char **argv)` in feature-test bundles whose `QApplication` line is commented out.**
@@ -7406,7 +7423,9 @@ class; the deferrals below cover the rest.
   Source: indie-review-2026-06-11 (reviewdialogbase H1+H2).
   Resolved (2026-06-12): dialog tracks its own LlmClients in m_activeClients (runner append + completion remove); ~ReviewDialogBase disconnects + aborts them before m_dispatcher->cancelAll(), closing the close-mid-review UAF on both the batch and dispatchOne paths. Regression: review_dialog_base INV-19 (source-scrape: order of own-client abort vs cancelAll).
 
-- ✅ [ANTS-2112] **Indie-review 2026-06-11: mcpprojection projectFields strips refusal envelopes to {} — a fields=-narrowed read hitting a rate-limit/validation refusal returns empty, so the model never sees the error or retry_after_ms.**
+- ✅ [ANTS-2112] **Indie-review 2026-06-11: mcpprojection projectFields strips refusal envelopes to {}.**
+  A fields=-narrowed read hitting a rate-limit/validation refusal
+  returns empty, so the model never sees the error or retry_after_ms.
   projectFields (mcpprojection.cpp:42-61) has no protected-key floor and the dispatcher runs it on refusal envelopes with no ok-guard (claudeintegration.cpp:8491-8498). Sibling compactEnvelope protects ok/code/error at every level; projectFields (ANTS-1720) never got the floor, though appendReadHints already bails on !ok. Add an ok/code/error/retry_after_ms floor. Detail: .indie-review/reports-2026-06-11/mcpprojection.md.
   **Layman:** When an MCP tool refuses (e.g. rate-limited) and the caller asked for specific fields, the error gets silently blanked out.
   Kind: fix.
@@ -7441,7 +7460,9 @@ class; the deferrals below cover the rest.
   Source: indie-review-2026-06-11 (claudestatuswidgets H1).
   Resolved (2026-06-12): the three 2s-tick status-bar refreshers + homeTierFromConfig() now read an mtime+size-guarded cached Config (cachedConfig()) instead of constructing a fresh Config (open+readAll+JSON parse) 5-7x per tick. Config::configPath() promoted to public so the cache can stat the file.
 
-- ✅ [ANTS-2117] **Indie-review 2026-06-11: luaengine ants.settings.get (BlockingQueuedConnection) deadlocks teardown thread->wait() — a plugin calling it from its Unload handler stalls 2s then spuriously zombie-detaches a healthy plugin.**
+- ✅ [ANTS-2117] **Indie-review 2026-06-11: luaengine ants.settings.get (BlockingQueuedConnection) deadlocks teardown thread->wait().**
+  A plugin calling it from its Unload handler stalls 2s then spuriously
+  zombie-detaches a healthy plugin.
   pluginmanager.cpp:113 (settings.get BlockingQueuedConnection to GUI) vs :164-166 (GUI parked in wait()): the worker blocks on a GUI thread that never services it. Either drop the blocking read during teardown or service it before wait(). Detail: .indie-review/reports-2026-06-11/luaengine.md.
   **Layman:** A plugin that reads a setting while shutting down can hang itself and get wrongly killed as a zombie.
   Kind: fix.
@@ -9616,14 +9637,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-06-25 (compiler warning surfaced during fast-preset build).
   Resolved (2026-06-28): the report named line 589, but a fresh full build surfaced six -Wshadow=compatible-local sites in this file (lines 422, 424, 472, 488, 506, 543) — all INV-14 inner blocks re-declaring `tmp`/`root` over the outer pair at lines 69/71. Rather than rename six blocks, renamed the OUTER pair to `baseTmp`/`baseRoot` (used only lines 69-127); every inner block keeps its natural `tmp` with zero shadow. File now builds warning-clean; full suite green.
 
-- ✅ [ANTS-2182] **`audit_run` cppcheck/clazy don't pass the project's `compile_commands.json` — cppcheck floods with `missingInclude`/namespace-as-C noise and clazy returns 0 findings, so the MCP audit path gives materially worse signal than the in-app AuditDialog / ants-audit CLI.**
+- ✅ [ANTS-2182] **`audit_run` cppcheck/clazy don't pass the project's `compile_commands.json`.**
+  Cppcheck floods with `missingInclude`/namespace-as-C noise and clazy
+  returns 0 findings, so the MCP audit path gives materially worse
+  signal than the in-app AuditDialog / ants-audit CLI.
   2026-06-26 /audit: audit_run({scope:"full"}) returned cppcheck=2330 raw (≈all missingIncludeSystem + `namespaceX{` is-invalid-C-code syntaxErrors) and clazy=0. The SAME tree re-run with `cppcheck --project=build/compile_commands.json --library=qt --suppress=missingIncludeSystem` gave 522 findings with zero include-noise; the ants-audit CLI report (which uses compile_commands) had clazy=49 (real range-loop-detach/qstring-arg). Sibling of ANTS-2105 (stderr-channel) and the ANTS-1119 shared-engine intent. Fix: default the cppcheck/clazy invocation to `--project=<build>/compile_commands.json` when present (ANTS-1446 already validates the arg path), with the skill's `--suppress=missingIncludeSystem --suppress=missingInclude` as the no-DB fallback. Without it every MCP audit is unusably noisy + clazy-blind.
   **Layman:** When Claude asks Ants to run the code audit, the C++ checkers can't find Qt's headers, so they emit thousands of bogus 'missing include' warnings and the Qt-aware checker finds nothing at all — much worse than the audit inside the app. Fix: point them at the build's compile database.
   Kind: fix.
   Source: in-session-2026-06-26 /audit run.
   Resolved (2026-06-30): the MCP audit path (auditrunner.cpp::toolArgv) now resolves the compile DB via the new shared AuditEngine::resolveCompileCommands(projectRoot) helper, which probes build/, build-fast/, build-asan/, build-workstation/, build-release/, build-debug/, build-test/ for compile_commands.json. cppcheck full runs drive off --project=<db> when present (kills the missingIncludeSystem flood + the namespace-as-C syntaxErrors) and carry the missingInclude/missingIncludeSystem suppress set as the no-DB fallback; clazy and clang-tidy resolve their -p target through the same helper instead of a hardcoded build/ path (clazy was returning 0 when the DB lived in build-fast/). Tests: mcp_audit_run INV-19 (behavioural resolveCompileCommands probe + source-scrape wiring) + widened audit_run_scoped_check toolArgv window 5000->6500. 52/52 audit tests green.
 
-- ✅ [ANTS-2183] **`audit_run` full-tree (`scope:"full"`) sweep exceeds the MCP transport timeout — the run completes server-side and writes SARIF, but the synchronous call times out, forcing the caller to scrape the result via `last_audit_summary` disk read.**
+- ✅ [ANTS-2183] **`audit_run` full-tree (`scope:"full"`) sweep exceeds the MCP transport timeout.**
+  The run completes server-side and writes SARIF, but the synchronous
+  call times out, forcing the caller to scrape the result via
+  `last_audit_summary` disk read.
   2026-06-26: audit_run({scope:"full", top_findings_count:60, cap_per_tool_seconds:60}) AND an immediate last_audit_summary both returned `MCP error -32000: Ants MCP transport: timed out` while the 9-tool sweep ran for minutes; .audit_cache then showed findings JSON + 2.3 MB SARIF written at HEAD. Options: (a) return a job handle immediately + a poll/complete verb (async); (b) honor result-offload (ANTS-2094) so the envelope is a small {cache_path} handle; (c) raise the transport timeout for the audit verb class. Today the caller must know to fall back to a last_audit_summary scrape.
   **Layman:** A full audit takes minutes, but the link between Claude and Ants gives up sooner — so Claude never gets the 'done' reply even though the audit finished and saved its results. Claude has to dig them off disk. Fix: hand back a ticket Claude can check on instead of making it wait on the line.
   Kind: fix.
@@ -12229,7 +12256,10 @@ clips input text), and the auto-switcher interrupting active work.
   Source: user-request-2026-06-05.
   Resolved (2026-06-05): added the "Discovering the full toolkit" pointer at the top of CLAUDE.md's "MCP tool authoring" section — points at tool_info {catalog:true} + the ToolSearch schema-load step. Docs-only, no rebuild. Verified the pointer is the always-loaded channel independent of the hook state.
 
-- ✅ [ANTS-2038] **Orientation hook goes stale within a version: prelude overwrite is gated on ANTS_VERSION only, so in-version template edits (e.g. ANTS-1985's catalog repoint) never reach the installed mcp-orientation.sh.**
+- ✅ [ANTS-2038] **Orientation hook goes stale within a version.**
+  Prelude overwrite is gated on ANTS_VERSION only, so in-version
+  template edits (e.g. ANTS-1985's catalog repoint) never reach the
+  installed mcp-orientation.sh.
   INV-1/INV-12 (ANTS-1897) rewrite the installed hook only when the marker version differs from ANTS_VERSION. ANTS-1985 repointed the prelude's "Full catalog" line at `tool_info {catalog:true}`, but the edit shipped within 0.7.95, so the installed file still tells every session to use ToolSearch (names only, no selection_hints) until the 0.7.96 bump. Fix: also overwrite when the installed Ants-owned body (marker present) differs from the rendered template, keeping INV-2's user-owned (no-marker) guard. Spec-amending — needs a /cold-eyes pass on the INV-1/INV-12 changes. Immediate remediation: delete the installed hook to force regen, or wait for the next bump.
   **Layman:** The startup tip file only refreshes when the app version number changes, so a wording fix made without a version bump never reaches sessions. Make it refresh whenever the official content changes, not just on a version bump.
   Kind: fix.
@@ -12286,7 +12316,13 @@ under one guard). The deferrals below.
 - ✅ [ANTS-1990] **`bool` write/fold-in return values silently discarded — a disk-full / lock-contention / empty-heading failure becomes a no-op that looks successful.** `reviewdialogbase` insertFoldInBlock (×4 callsites), `coldeyesdialog`, `indiereviewdialog`, `testauditdialog.cpp:285` writeReport, `auditcache.cpp:248` reaper remove. Surface failures to the user.
   Kind: bug. Lanes: reviewdialogbase, coldeyesdialog, indiereviewdialog, testauditdialog, auditcache. Source: indie-review-2026-06-04.
   Resolved (2026-06-05): ReviewDialogBase::insertFoldInBlock now surfaces a write failure (heading-not-found / disk-full / lock) via QMessageBox at the single choke point — covers all four performFoldIn callsites (coldeyes + indiereview, narrative + findings) that previously discarded the bool. TestAuditDialog collects + warns on failed report writes before synthesis reads them back. The auditcache reaper remove was already surfaced by ANTS-2004 (qWarning). All 259 review-dialog tests pass.
-- ✅ [ANTS-1991] **Brief/prompt truncation cuts at a raw byte boundary without closing an open 4-backtick fence, and caps count `QChar` not bytes — a >cap multi-byte doc leaves the downstream LLM in a "fenced data" parse state, swallowing the instructions after the cut.** `indiereviewdialog` assembleCappedPrompt, `coldeyesdialog` inlineBodies (char-vs-byte), `testauditdialog`, `briefdispatch.cpp:79` (relPath emitted verbatim above the fence — a filename with backticks injects an opener). Close fences on truncate; measure bytes.
+- ✅ [ANTS-1991] **Brief/prompt truncation cuts at a raw byte boundary without closing an open 4-backtick fence, and caps count `QChar` not bytes.**
+  A >cap multi-byte doc leaves the downstream LLM in a "fenced data"
+  parse state, swallowing the instructions after the cut.
+  `indiereviewdialog` assembleCappedPrompt, `coldeyesdialog`
+  inlineBodies (char-vs-byte), `testauditdialog`, `briefdispatch.cpp:79`
+  (relPath emitted verbatim above the fence — a filename with backticks
+  injects an opener). Close fences on truncate; measure bytes.
   Kind: bug. Lanes: indiereviewdialog, coldeyesdialog, briefdispatch, testauditdialog. Source: indie-review-2026-06-04.
   Resolved (2026-06-05): (1) BriefDispatch::inlineBodies + inlineRelevantSections cap by UTF-8 byte length, not QChar count (a multi-byte doc was let through at up to ~3-4× the byte budget). (2) New BriefDispatch::withClosedFence appends a closing fence when truncation left one open; the three assembleCappedPrompt paths (indiereview/coldeyes/testaudit) call it before the truncation marker (with 6 bytes reserved in the room budget so the cap still holds) so a clipped prompt never leaves the LLM in a fenced-data state. (3) fenceBody neutralises backticks in relPath/label too, so a filename can't inject an opener in the header line. 3 new feature tests + spec invariants (INV-1991a/b/c); all 244 pass.
 - ✅ [ANTS-1992] **Spec/doc drift — design docs describe behaviour the code no longer has.** `falseposledger` ANTS-1457 INV-23 claims "no per-process cache / 1 MiB cap" but ANTS-1672 added a `static QHash` and there is no such cap; `mcpprojection.h` + `claudeintegration.cpp:1607` say "7 projection tools, subset of etag set" — actually 9, and `read_log` is projection-but-not-etag (subset invariant broken); `modelnearmissledger` header + ANTS-1894 INV-9 say "7 blocker tokens" — runtime has 9; `modelswitchledger` statsForProject doc says "all-time forensic view" but applies the 30-day default window. Reconcile each spec to code.
@@ -12322,13 +12358,22 @@ under one guard). The deferrals below.
 - ✅ [ANTS-1999] **terminalgrid: `pushScrollbackLine` (session-restore path) never pushes a matching entry to `m_scrollbackHyperlinks` → permanent index desync; OSC 8 spans map to the wrong rows after any restore.** `setMaxScrollback` compounds it by trimming the two deques with independent loops. Keep the deques in lockstep.
   Kind: bug. Lanes: terminalgrid. Source: indie-review-2026-06-04.
   Resolved (2026-06-04): pushScrollbackLine (terminalgrid.h) now pushes a matching empty m_scrollbackHyperlinks entry per restored line and pops both fronts together; setMaxScrollback (terminalgrid.cpp) trims both deques in one lockstep loop (kept a defensive bound on the span deque for legacy desyncs). Verified the normal scroll path is already 1:1 (m_screenHyperlinks is always sized to m_rows so its hlInRange guard is always true). Reproduce-first feature test tests/features/scrollback_hyperlink_restore_sync (INV-1 restore alignment + INV-2 setMaxScrollback eviction alignment — both failed pre-fix); full test_vt suite green (111 tests), main app builds.
-- 📋 [ANTS-2000] **terminalwidget: `performSearch()` scans up to 50 000 scrollback lines synchronously on every keystroke (multi-second GUI freeze); `loadHistory()` does blocking I/O + an O(N²) `QStringList::prepend` loop on the first autocomplete keystroke.** Move off the GUI thread / index. Plus 4 mediums: stale search highlights after scrollback growth, asciicast raw-byte loss via `QString::fromUtf8`, re-run bypassing the paste safety guard, span cache without LRU eviction.
+- 📋 [ANTS-2000] **terminalwidget: `performSearch()` scans up to 50 000 scrollback lines synchronously on every keystroke (multi-second GUI freeze).**
+  `loadHistory()` does blocking I/O + an O(N²) `QStringList::prepend`
+  loop on the first autocomplete keystroke. Move off the GUI thread /
+  index. Plus 4 mediums: stale search highlights after scrollback
+  growth, asciicast raw-byte loss via `QString::fromUtf8`, re-run
+  bypassing the paste safety guard, span cache without LRU eviction.
   Layman: Searching scrollback checks up to 50,000 lines on every keypress, which freezes the window for seconds.
   Kind: performance. Lanes: terminalwidget. Source: indie-review-2026-06-04.
 - ✅ [ANTS-2001] **luaengine: `ants.get_output()` / `ants.get_cwd()` always return empty — `setRecentOutput()` / `setCwd()` have zero callers (zombie API documented as live in PLUGINS.md).** Also: `PluginEvent::KeyPress` is never dispatched (ANTS-1736 dormant); `warn()` writes to host `stderr` instead of `ants.log` contrary to the sandbox doc. Wire the producers or mark the APIs unimplemented.
   Kind: bug. Lanes: luaengine, pluginmanager. Source: indie-review-2026-06-04.
   Resolved (2026-06-06) via the roadmap's "wire OR mark unimplemented" path. (1) warn (real fix): the Lua 5.4 base-lib warn writes to host stderr, escaping the sandbox (same disclosure shape the existing print→ants.log redirect closes). Added lua_ants_warn (concatenates string args, swallows @on/@off control messages) and override it with lua_setglobal after the print override. Grep-lock added to lua_sandbox_hardening; test_lua 4/4 green. (2) get_output/get_cwd unfed: confirmed PluginManager::setRecentOutput/setCwd have ZERO callers, so both lua getters always return empty — yet PLUGINS.md described them as fed ("currently the visible scrollback window", "best-effort recent snapshot the terminal pushed across"). Marked honestly: both function sections + the threading note now carry a "Not yet wired (0.7.95) — returns empty, reserved" warning; producer methods carry ANTS-2001 no-caller comments. (3) KeyPress: PLUGINS.md already marked "keypress" † not-yet-wired; added a matching "NOT dispatched (ANTS-1736 dormant)" comment on the PluginEvent::KeyPress enum. Chose honest-docs over wiring for (2)/(3) because feeding output on every chunk + dispatching every keystroke cross-thread are perf-sensitive design decisions, not surgical fixes — out of scope for a doc-honesty pass.
-- ✅ [ANTS-2002] **claudetasklist/bgtasks: `tool_result.content` `.toString()` returns empty when `content` is a JSON array (the CC JSONL schema allows it) → bg tasks stuck "running" forever, tasklist ignores all later `TaskUpdate` flips.** Handle the array form. Also: `ClaudeTaskListTracker::poll()` lacks the watcher re-add guard `ClaudeBgTaskTracker::poll()` has (inotify-exhaustion watch-loss gap).
+- ✅ [ANTS-2002] **claudetasklist/bgtasks: `tool_result.content` `.toString()` returns empty when `content` is a JSON array (the CC JSONL schema allows it).**
+  Bg tasks stuck "running" forever, tasklist ignores all later
+  `TaskUpdate` flips. Handle the array form. Also:
+  `ClaudeTaskListTracker::poll()` lacks the watcher re-add guard
+  `ClaudeBgTaskTracker::poll()` has (inotify-exhaustion watch-loss gap).
   Kind: bug. Lanes: claudetasklist, claudebgtasks. Source: indie-review-2026-06-04.
   Resolved (2026-06-06): (1) content-as-array: a tool_result `content` field is EITHER a string OR an array of typed blocks per the CC JSONL schema; three sites read it via bare .toString() (claudebgtasks.cpp output-path extraction + completion-id scan; claudetasklist.cpp result-body id extraction), which yields "" on the array form — stranding bg tasks "running" forever and making the tasklist ignore later updates. Root-cause fix: new pure header-only helper ClaudeContent::toText (src/claudecontent.h) handling string + array (text blocks newline-joined, non-text skipped); all three call sites now route through it (Rule of Three). (2) watcher parity: ClaudeTaskListTracker::poll() now mirrors ClaudeBgTaskTracker::poll()'s lost-watch re-add guard (re-add + rescan when m_watcher.files() no longer contains the path) so a dropped inotify watch can't strand the list until the next differing mtime tick. Regression coverage: 2 new tests in claude_task_list (direct toText unit test + array-form tool_result id-extraction integration test); test_claude full bundle 1016/1016 green. The array integration test fails against pre-fix code (.toString() → "" → empty id).
 - ✅ [ANTS-2003] **Audit-engine correctness batch.** `auditengine` parseFindings stores the full raw line (with `file:line:col:` prefix) as `f.message` → SARIF noise + dedup key collisions when findings differ only by column; `summariseSemgrepJson` treats a tool-error run (errors[] set, results[] empty) as a clean zero-finding; ROADMAP fold-in markdown not escaped (a `**`/backtick in a finding corrupts ROADMAP.md); gitleaks/secrets_scan misclassified as `grep` source (loses the +10 external-tool confidence). `auditdialog` enrichWithBlame passes scanner-supplied `f.file` to `git blame` argv without the `resolveProjectPath` traversal guard / `--` separator; loadUserRules builds a fresh `Config` instead of reusing `m_config` (can deny trusted rules mid-session).
@@ -12343,10 +12388,18 @@ under one guard). The deferrals below.
 - ✅ [ANTS-2006] **auditautofix: `unusedInclude` auto-removal trusts cppcheck on Qt code — the known Qt false-positive rate means the "behaviour-neutral" contract can be violated, deleting a needed header.** Gate the include-removal repair behind `--library=qt` corroboration or drop it from the safe-list. Also: missing `fsyncParentDir` after committing a *source*-file edit (the ANTS-1141 pattern).
   Kind: bug. Lanes: auditautofix. Source: indie-review-2026-06-04.
   Resolved (2026-06-05): cppcheck unusedInclude is no longer auto-removed (the known Qt false-positive rate makes deletion non-behaviour-neutral; left for manual review) — planRepair declines it. applyRepair now fsyncParentDir()s after the QSaveFile commit (ANTS-1141 durability pattern). Test + spec updated to the new contract; all pass.
-- ✅ [ANTS-2007] **featurecoverage: `runChangelogCoverageCheck` treats `[Unreleased]` as the latest version → false coverage-gap warnings on every in-progress item; `runSpecDriftCheck` searches the whole tree, not `src/`, so a stale symbol surviving in CHANGELOG/ROADMAP/`.indie-review/` masks real drift; `walk()` has no symlink-loop guard (unbounded-recursion crash on a cyclic symlink).**
+- ✅ [ANTS-2007] **featurecoverage: `runChangelogCoverageCheck` treats `[Unreleased]` as the latest version → false coverage-gap warnings on every in-progress item.**
+  `runSpecDriftCheck` searches the whole tree, not `src/`, so a stale
+  symbol surviving in CHANGELOG/ROADMAP/`.indie-review/` masks real
+  drift; `walk()` has no symlink-loop guard (unbounded-recursion crash
+  on a cyclic symlink).
   Kind: bug. Lanes: featurecoverage. Source: indie-review-2026-06-04.
   Resolved (2026-06-05): runChangelogCoverageCheck passes skipUnreleased=true so [Unreleased] WIP items aren't flagged as missing a test (extractTopVersionBullets gained an opt-in param; default behaviour unchanged). The spec-drift source blob now excludes ROADMAP.md/CHANGELOG.md + the .indie-review/ dir so a stale symbol lingering there can't mask real drift. The walk skips directory symlinks (no unbounded-recursion crash on a cyclic link). Added a skip-Unreleased regression test.
-- ✅ [ANTS-2008] **focusedtest: coverage-map ERE patterns are never validated (a typo silently turns every `focused_test` for that file into `ctest_failed`); non-source files (e.g. `CMakeLists.txt`) land in `ignoredFiles` instead of forcing the Full fallback (asymmetric conservatism — a build-system change runs only the heuristic subset); a map-file open failure is reported as `bad_json`.**
+- ✅ [ANTS-2008] **focusedtest: coverage-map ERE patterns are never validated (a typo silently turns every `focused_test` for that file into `ctest_failed`).**
+  Non-source files (e.g. `CMakeLists.txt`) land in `ignoredFiles`
+  instead of forcing the Full fallback (asymmetric conservatism — a
+  build-system change runs only the heuristic subset); a map-file open
+  failure is reported as `bad_json`.
   Kind: bug. Lanes: focusedtest. Source: indie-review-2026-06-04.
   Resolved (2026-06-05): coverage-map patterns are regex-validated at load (an invalid pattern → bad_pattern, falling back to the escaped/always-valid heuristic instead of feeding ctest a broken -R regex that fails every run); a build-system change (CMakeLists.txt / *.cmake / CMakePresets.json) forces Selection::Full before map/heuristic resolution so it can't be demoted to a subset via ignoredFiles; a coverage-map open failure now reports read_failed, distinct from bad_json.
 
@@ -12355,39 +12408,66 @@ under one guard). The deferrals below.
 - ✅ [ANTS-2009] **Model-switcher actuator follow-ups.** `claudestatuswidgets`: double-ENTER race between the armed handshake and the unarmed confirm path (spurious PTY write); `fillPendingLedgerOutcomes` resolves transcripts with no session-start anchor → can attach the wrong session's turns to a ledger record (corrupts the trust signal); auto-switch fires during `Compacting` where the chip-click path explicitly defers. `claudestateresolver`: add a `default: Q_UNREACHABLE()` to the `display()` switch so a future `ClaudeState` can't silently fall through.
   Kind: bug. Lanes: claudestatuswidgets, claudestateresolver. Source: indie-review-2026-06-04.
   Resolved (2026-06-04): (1) double-ENTER race — pollModelSwitchConfirm now sets m_unarmedSwitchConfirmed=true when the armed handshake confirms, so the unarmed auto-confirm path stands down until the dialog clears. (2) wrong-session ledger attach — fillPendingLedgerOutcomes re-points to <project>/<r.sessionId>.jsonl when the project's newest transcript is a different session (stays pending if that file is gone). (3) Compacting — refreshAutoModelSwitch early-returns on ClaudeState::Compacting, matching the chip-click defer. (4) claudestateresolver display() — kept defaultless (NOT default:Q_UNREACHABLE, which would suppress the -Wswitch exhaustiveness check); added a comment documenting why.
-- ✅ [ANTS-2010] **modelrecommender: `hasPlanKeyword()` uses bare `contains()` with no word-boundary guard — "review"/"plan"/"spec" match inside "reviewed"/"explanation", inflating the Opus score; all sibling matchers already use `(?:^|\W)…(?:\W|$)`.** Also: `readLine()` per-line cap (defensive — memory is already bounded by the 512 KB tail seek, so low-severity).
+- ✅ [ANTS-2010] **modelrecommender: `hasPlanKeyword()` uses bare `contains()` with no word-boundary guard — "review"/"plan"/"spec" match inside "reviewed"/"explanation", inflating the Opus score.**
+  All sibling matchers already use `(?:^|\W)…(?:\W|$)`. Also:
+  `readLine()` per-line cap (defensive — memory is already bounded by
+  the 512 KB tail seek, so low-severity).
   Kind: bug. Lanes: modelrecommender. Source: indie-review-2026-06-04.
   Resolved (2026-06-04): hasPlanKeyword now matches each stem at word boundaries (planKeywordPatterns, the hasCommitIntent idiom) allowing -s/-ed/-ing inflections, so 'plan' in 'explanation', 'spec' in 'especially/respect', 'design' in 'designated' no longer inflate the Opus score.
 - 📋 [ANTS-2011] **Review-dialog family polish.** `m_foldInBtn` is never disabled after a fold-in → a double-click inserts two identical blocks (wasted IDs); `testauditdialog` resume (`loadResume`/`unreviewedChunkIds`, ANTS-1722 §2.5) and `coldeyesdialog` `markFindingFixed` / loop-log (ANTS-1721 §2.4) are zombie — fully implemented but no button wires them, so every re-dispatch re-raises fixed findings; `QTextEdit` leak on re-partition (`QTabWidget::clear()` doesn't delete pages); status-label hardcoded `"color: gray"` violates dialogs.md D1.
   Layman: Fixes for the review screens: a button that can be double-clicked into doing the work twice, plus two half-finished features.
   Kind: bug. Lanes: reviewdialogbase, testauditdialog, coldeyesdialog, indiereviewdialog. Source: indie-review-2026-06-04.
   Progress (2026-06-05): 3 of 4 sub-issues fixed — (a) m_foldInBtn is disabled after a successful fold-in (re-enabled on a fresh partition) so a double-click can't insert two identical blocks; (b) the QTextEdit lane pages are deleted before the tab rebuild (was a leak on every re-partition — QTabWidget::clear() leaves pages parented); (c) the status label drops its hard-coded "color: gray" for the theme-derived PlaceholderText role (dialogs.md D1). STILL OPEN: wiring the zombie resume / markFindingFixed / loop-log buttons (testauditdialog loadResume/unreviewedChunkIds ANTS-1722 §2.5; coldeyesdialog markFindingFixed + loop-log ANTS-1721 §2.4) — fully-implemented logic with no button, so re-dispatch re-raises fixed findings. That is feature-wiring, deferred to a focused pass.
-- ✅ [ANTS-2012] **roadmapdialog: `restoreGeometry` persists window position (violates dialogs.md D4 — migrate to `DialogChrome` sizeKey); `readRecentCommitSubjects` and `parseLastTouchDates` spawn blocking `git log` / `git blame` on every `rebuild()` (up to ~1.5–5 s GUI jank per search keystroke).** Cache or move async.
+- ✅ [ANTS-2012] **roadmapdialog: `restoreGeometry` persists window position (violates dialogs.md D4 — migrate to `DialogChrome` sizeKey).**
+  `readRecentCommitSubjects` and `parseLastTouchDates` spawn blocking
+  `git log` / `git blame` on every `rebuild()` (up to ~1.5–5 s GUI jank
+  per search keystroke). Cache or move async.
   Kind: bug. Lanes: roadmapdialog. Source: indie-review-2026-06-04.
   Progress (2026-06-06) — git-jank part DONE; DialogChrome part remains. (b) FIXED: rebuild() runs on every search keystroke and called collectCurrentBullets() → readRecentCommitSubjects() (blocking `git log`, up to 1.5 s) uncached, so each keystroke spawned git. Added a 5 s TTL cache (m_externalSignalsCache/m_externalSignalsCacheMs) so a typing burst reuses one result while newly-landed commits still surface within seconds; source-grep lock added to roadmap_dialog_cards (kExternalSignalsTtlMs); test_dialogs roadmap suite 12/12 green. NOTE: the bullet's parseLastTouchDates sub-claim is STALE — that path is already mtime-cached via refreshLastTouchDatesIfStale() (only re-blames when ROADMAP mtime changes), so it does NOT run per keystroke. (a) STILL OPEN — DialogChrome D4 migration: roadmapdialog still hand-rolls saveGeometry/restoreGeometry persisting window POSITION (ctor ~:2762, closeEvent ~:2862) via Config::roadmapDialogGeometry, violating dialogs.md D4. Recipe: switch DialogChrome::install(this, m_themeName) → install(this, m_themeName, /*resizable=*/true, QStringLiteral("roadmap")) (D3 size-only + D4 re-center; DialogChrome::setConfig already wired at startup, 10 sibling dialogs precedent) and delete the manual geometry blocks. CONFLICT to reconcile in the same change: tests/features/roadmap_viewer_tabs INV-12 + its spec.md (§ lines 30-32, 63) currently HARDCODE-require saveGeometry/restoreGeometry/roadmapDialogGeometry — they contradict dialogs.md D4 and must be rewritten to assert the sizeKey/no-position-persist behavior. Config::roadmapDialogGeometry get/set become orphaned (leave or remove). Left part (a) open rather than rush a user-visible geometry-semantics change + multi-file spec/test rewrite.
   Resolved (2026-06-06) — part (a) DONE, both halves now complete. RoadmapDialog migrated onto DialogChrome::install(this, themeName, resizable=true, "RoadmapDialog"): the hand-rolled saveGeometry/restoreGeometry blob (which persisted absolute window POSITION, violating dialogs.md D4) is deleted; size-only persistence (D3) + re-center-on-open (D4) + QSizeGrip (D2) now come from the shared chrome. Orphaned Config::roadmapDialogGeometry get/set + the config.h decls removed (sole caller was RoadmapDialog). One-time effect: a user's previously-persisted geometry resets to the 1200x800 default on first open after upgrade, then their new SIZE persists under the dialog_sizes map. roadmap_viewer_tabs INV-12 + spec.md rewritten to assert the sizeKey/no-position-persist behaviour (and the absence of the legacy round-trip) instead of hardcode-requiring it; dialogs.md updated to drop RoadmapDialog from the non-conformer list (now zero non-conformers). Full suite 1992/1992 green. NOTE: docs/specs/ANTS-1160.md and ANTS-1238.md still reference Config::roadmapDialogGeometry as live — they are separate unimplemented future specs; left untouched (out of lane for this fix).
-- ✅ [ANTS-2013] **antshelper: `QTextStream(stdout/stderr)` uses the system locale encoding, not UTF-8 — corrupts JSON output on a non-UTF-8 locale (INV-7); the `list` subcommand response omits the documented `{"ok":true,"data":{…}}` envelope wrapper and has no spec INV.**
+- ✅ [ANTS-2013] **antshelper: `QTextStream(stdout/stderr)` uses the system locale encoding, not UTF-8 — corrupts JSON output on a non-UTF-8 locale (INV-7).**
+  The `list` subcommand response omits the documented
+  `{"ok":true,"data":{…}}` envelope wrapper and has no spec INV.
   Kind: bug. Lanes: antshelper. Source: indie-review-2026-06-04.
   Resolved (2026-06-06): (1) list-envelope: listSubcommands() hand-rolled {ok, subcommands} at top level, diverging from the documented {ok, data:{...}} shape. Root-cause fix — moved it into the AntsHelper library (antshelper.{h,cpp}) so it reuses the shared okObj wrapper; the shape can no longer drift from drift-check's. antshelpermain.cpp now calls AntsHelper::listSubcommands() (local copy + now-orphaned QJsonArray include removed). New spec INV-11 in ANTS-1116.md + a feature-test block (local_subagent_framework now 9/9) asserting subcommands is nested under data, never top-level. (2) UTF-8/INV-7: writeStdout/writeStderr now set QStringConverter::Utf8 explicitly. Note: under Qt6 QTextStream already defaults to UTF-8 (only Qt5 used the locale codec), so this is defensive hardening that locks the INV-7 pipe contract at the output boundary, not a live bug fix — flagged honestly rather than overstated. test_core rebuilt, LocalSubagentFramework 9/9 green; antshelpermain.cpp (helper-CLI gated OFF) syntax-checked clean via g++ -fsyntax-only.
-- ✅ [ANTS-2014] **falseposledger / briefdispatch perf: `formatForBrief` re-encodes the growing buffer via `toUtf8()` every iteration (O(N²)); the 1-second `mtime_s` cache key risks stale data on a same-second append; `briefdispatch` duplicates `slurpUtf8` + its static cache (ANTS-1727 extracted `fenceBody` but not the reader); `static_cast<int>(perFileCapBytes)` zeroes the body for caps > 2 GB.**
+- ✅ [ANTS-2014] **falseposledger / briefdispatch perf: `formatForBrief` re-encodes the growing buffer via `toUtf8()` every iteration (O(N²)); the 1-second `mtime_s` cache key risks stale data on a same-second append.**
+  `briefdispatch` duplicates `slurpUtf8` + its static cache (ANTS-1727
+  extracted `fenceBody` but not the reader);
+  `static_cast<int>(perFileCapBytes)` zeroes the body for caps > 2 GB.
   Kind: performance. Lanes: falseposledger, briefdispatch. Source: indie-review-2026-06-04.
   Resolved (2026-06-05): (1) formatForBrief tracks the running UTF-8 byte size incrementally instead of re-encoding the whole growing buffer via toUtf8() each iteration (was O(N²) over entry count). (2) loadEntries cache keys on (mtime_s, mtime_ns, st_size), not second-granularity mtime alone, so a same-second append to the append-only ledger invalidates the cache. (4) inlineBodies/inlineRelevantSections clip with qsizetype, not static_cast<int>, so a >2 GB cap no longer overflows. Deferred minor (3): the duplicate slurpUtf8 + its static cache in briefdispatch vs falseposledger is a DRY cleanup (not a defect) — left for a focused reuse pass. 149 tests pass.
 
 #### 🤖 Ants MCP gaps (found while running this sweep)
 
-- ✅ [ANTS-2015] **`audit_run`: every narrowing scope returns `no_changes:true` / `changed_files_count:0` on a clean `main` checkout even when `git diff <tag>..HEAD` shows 1196 changed files — so a full-tree clazy sweep can't be offloaded to MCP.** `scope:"auto"` degrades to the fork-point diff (0 on clean main); `since-tag:<earliest>` returned `no_changes` despite real diffs. Add a true full-tree scope (or fix the tag-diff resolution).
+- ✅ [ANTS-2015] **`audit_run`: every narrowing scope returns `no_changes:true` / `changed_files_count:0` on a clean `main` checkout even when `git diff <tag>..HEAD` shows 1196 changed files.**
+  So a full-tree clazy sweep can't be offloaded to MCP. `scope:"auto"`
+  degrades to the fork-point diff (0 on clean main);
+  `since-tag:<earliest>` returned `no_changes` despite real diffs. Add a
+  true full-tree scope (or fix the tag-diff resolution).
   Kind: bug. Lanes: mcp, audit. Source: in-session-2026-06-04.
   Resolved (2026-06-05): added scope:"full" — enumerates the tracked src/ tree (git ls-files, .gitignore-respecting, diff-independent) and hands clazy/clang-tidy real source positionals, so a full-tree sweep no longer reads as 0 on a clean main. Verified since-tag:<earliest> resolution already works (changed_files_count:1196 on this repo via the live audit_run); the "since-tag returned no_changes" symptom was not reproducible (stale). No tool is skipped under "full".
 - ✅ [ANTS-2016] **`audit_run` gitleaks scans `build/` + `.audit_cache/` — 10.8 GB walked in 68 s on this repo, all hits self-matches in archived audit-report JSON.** Add `build/`, `build-*/`, `.audit_cache/` to the server-side gitleaks exclusion set.
   Kind: bug. Lanes: mcp, audit. Source: in-session-2026-06-04.
   Resolved (2026-06-05): generate a throwaway gitleaks config ([extend] useDefault + [allowlist] paths for build/, build-*/, .audit_cache/) and pass --config; gitleaks 8.30 prunes those from the --no-git walk. Verified 68 s → 2.85 s on this repo with 0 findings from the excluded dirs. Config write failure falls back to an unfiltered run (degraded, never broken).
-- 📋 [ANTS-2017] **`indie_review_corroborate` only clusters findings at an *identical* `(file, line)` — so a 32-lane sweep where each lane reads different files yields near-zero corroboration (it matched only shared doc-file references like CLAUDE.md/ROADMAP.md).** The real cross-cutting signal is thematic (same bug-*kind* in different files). Add a kind/signature-based clustering mode so "mkpath-not-ensurePrivateDir in 4 lanes" surfaces as one corroborated theme.
+- 📋 [ANTS-2017] **`indie_review_corroborate` only clusters findings at an *identical* `(file, line)`.**
+  So a 32-lane sweep where each lane reads different files yields
+  near-zero corroboration (it matched only shared doc-file references
+  like CLAUDE.md/ROADMAP.md). The real cross-cutting signal is thematic
+  (same bug-*kind* in different files). Add a kind/signature-based
+  clustering mode so "mkpath-not-ensurePrivateDir in 4 lanes" surfaces
+  as one corroborated theme.
   **Layman:** The tool that spots "the same problem flagged by multiple reviewers" only counts it when it's the exact same file and line. Since each reviewer looks at different files, it almost never matches. Teach it to group by the *type* of problem.
   Kind: feature. Lanes: mcp, indie-review. Source: in-session-2026-06-04.
 
 #### 🧹 Idiom-modernization debt (batched — mechanical but large)
 
-- 📋 [ANTS-2018] **Qt/STL idiom sweep: cppcheck `useStlAlgorithm` (×156) + `constVariablePointer` (×43) + `returnByReference`/`passedByValue`; clazy `range-loop-detach` (use `std::as_const` on range-for over Qt containers) + `qstring-arg` (multi-arg `.arg(a, b)`).** Opinion-/perf-level, no bugs found, but a real modernization backlog. Do as one tracked mechanical pass with a build+test gate — not piecemeal mid-feature (mass rewrite in hot terminal paths is riskier than the latent micro-inefficiency).
+- 📋 [ANTS-2018] **Qt/STL idiom sweep: cppcheck `useStlAlgorithm` (×156) + `constVariablePointer` (×43) + `returnByReference`/`passedByValue`.**
+  Clazy `range-loop-detach` (use `std::as_const` on range-for over Qt
+  containers) + `qstring-arg` (multi-arg `.arg(a, b)`).
+  Opinion-/perf-level, no bugs found, but a real modernization backlog.
+  Do as one tracked mechanical pass with a build+test gate — not
+  piecemeal mid-feature (mass rewrite in hot terminal paths is riskier
+  than the latent micro-inefficiency).
   Layman: A large batch of code-modernisation fixes, to run as one tracked pass rather than piecemeal during other work.
   Kind: chore. Lanes: all. Source: audit-2026-06-04.
 
@@ -12405,10 +12485,23 @@ new minor item:
   on `awaitingInput` (claudestatuswidgets.cpp chip-click, maybeFireDeferred
   ChipSwitch, onUndoSwitchClicked). The cold loop is exactly what surfaced
   this — the loop-1 lane saw the auto path, not the user paths.
-- ✅ [ANTS-2019] **llmclient: `emitDeferredError`'s `QTimer::singleShot(0)` is not cancelled when `send()` is called again before the event loop runs — a rapid second `send()` can deliver a spurious `finished(error)` from the previous rejected endpoint (busy() reads false in that window).** Track the pending timer with a QTimer member / QPointer and stop it on re-send.
+- ✅ [ANTS-2019] **llmclient: `emitDeferredError`'s `QTimer::singleShot(0)` is not cancelled when `send()` is called again before the event loop runs.**
+  A rapid second `send()` can deliver a spurious `finished(error)` from
+  the previous rejected endpoint (busy() reads false in that window).
+  Track the pending timer with a QTimer member / QPointer and stop it on
+  re-send.
   Kind: bug. Lanes: llmclient. Source: indie-review-2026-06-04.
   Resolved (2026-06-04): added an m_sendGeneration counter to LlmClient — bumped at the top of send(), captured by emitDeferredError's QTimer::singleShot(0) lambda, which no-ops when a newer send() superseded it. A rapid second send() (e.g. after a rejected endpoint) can no longer deliver a spurious finished(error) from the previous request. Chose the generation counter over a QTimer member (no new member wiring, the stale timer fires harmlessly). Reproduce-first test added to tests/features/llm_client (Ants2019_ReSendCancelsStaleDeferredError — failed pre-fix with count 2, passes post-fix with count 1); full LlmClient suite green (10 tests), main app builds. Note: the related ANTS-2019 mediums (stale search highlights, asciicast raw-byte loss, re-run paste guard, span-cache LRU) are TERMINALWIDGET items tracked under ANTS-2000, not llmclient — out of scope here.
-- ✅ [ANTS-2020] **Auto-switcher robustness: `directModelSwitchVisible` (modelautoswitch.cpp:275) matches the bare phrase `"Set model to"` with no structural anchor — build output, a log line, or a transcript quoting the phrase can false-positive and trigger an unwanted continuation via `shouldContinueAfterDirectSwitch` when auto-mode is on.** Anchor it like `switchConfirmVisible` does (title + an option line), e.g. require `"Set model to Claude"`. (No effect while the master gate is OFF, but a robustness hole before any default-ON flip.) Session trust-signal context: 4 measured downgrades, regret_rate 50% (calibrating, n<10), under_route_count 2, dominant near-miss blocker composer_not_empty (33/24h).
+- ✅ [ANTS-2020] **Auto-switcher robustness: `directModelSwitchVisible` (modelautoswitch.cpp:275) matches the bare phrase `"Set model to"` with no structural anchor.**
+  Build output, a log line, or a transcript quoting the phrase can
+  false-positive and trigger an unwanted continuation via
+  `shouldContinueAfterDirectSwitch` when auto-mode is on. Anchor it like
+  `switchConfirmVisible` does (title + an option line), e.g. require
+  `"Set model to Claude"`. (No effect while the master gate is OFF, but
+  a robustness hole before any default-ON flip.) Session trust-signal
+  context: 4 measured downgrades, regret_rate 50% (calibrating, n<10),
+  under_route_count 2, dominant near-miss blocker composer_not_empty
+  (33/24h).
   Kind: bug. Lanes: modelautoswitch, claudestatuswidgets. Source: indie-review-2026-06-04.
   Resolved (2026-06-04): directModelSwitchVisible now requires a tier token immediately after the title ('Set model to Sonnet/Opus/Haiku/Default') instead of the bare 'Set model to' substring. Note: the roadmap's suggested 'Set model to Claude' anchor was wrong — CC's banner is 'Set model to Sonnet 4.6…', verified against the model_switch_confirm feature test. Negative regression test added.
 
@@ -12546,14 +12639,17 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Source: indie-review-8 2026-06-26 roadmap-system M1.
   Resolved 2026-06-26: the three fold-in verbs (indie_review_fold_in, debt_sweep_defer, cold_eyes_fold_in) now resolve+verify the release heading BEFORE allocateIds and refuse with no_release_heading when none exists, so a no-op insert can't burn .roadmap-counter IDs into a gap. cold_eyes skip/freeform mode still returns its block with no heading (it allocates nothing). New code registered in mcp-error-codes.md. Full suite green (2262).
 
-- ✅ [ANTS-2202] **RC-socket `readyRead` lacks the `_handled` re-entrancy latch its MCP sibling has and never clears the consumed line from `_buf` — latent double-execution if any future RC verb pumps a nested event loop.**
+- ✅ [ANTS-2202] **RC-socket `readyRead` lacks the `_handled` re-entrancy latch its MCP sibling has and never clears the consumed line from `_buf`.**
+  Latent double-execution if any future RC verb pumps a nested event
+  loop.
   remotecontrol.cpp:1583 sets only `_buf` (never `_handled`) and leaves the consumed line in `_buf` after dispatch; the MCP twin (claudeintegration.cpp:1510) guards via `_handled`. The comment at :1602 wrongly cites audit_run as a nested-loop verb reachable via RemoteControl::dispatch (it isn't). Fix: mirror the MCP latch + clear `_buf` to buf.mid(nlIdx+1) before dispatch; delete the stale comment. Latent (no current nested-loop RC verb).
   **Layman:** The remote-control socket handler is missing a guard that its twin (the MCP socket) has. Today no command triggers the problem, but if one is added later, a command could run twice. Cheap to close now and delete a misleading comment.
   Kind: fix.
   Source: indie-review-8 2026-06-26 remotecontrol M1.
   Resolved 2026-06-26: RC-socket readyRead now sets _handled=false at setup, early-returns when _handled is latched, sets _handled=true + drops the consumed line (buf.mid(nlIdx+1)) before dispatch — mirroring the MCP twin. Corrected the stale comment that wrongly cited audit_run as a nested-loop RC verb.
 
-- ✅ [ANTS-2203] **`project_query` `project.list` reports symlinked files whose target escapes the project root (read re-validates, so it is name/existence disclosure only) — a 'FS-confined' surface leaks a name `read` will refuse.**
+- ✅ [ANTS-2203] **`project_query` `project.list` reports symlinked files whose target escapes the project root (read re-validates, so it is name/existence disclosure only).**
+  A 'FS-confined' surface leaks a name `read` will refuse.
   lua_project_list (luaengine.cpp:949-961) enumerates with QDirIterator::Subdirectories and emits rel names without re-validating per entry; a symlink to a file outside the root is listed (its rel may contain no `..`). project.read re-runs validatePath so contents stay confined. Fix: skip entries whose QFileInfo(abs).isSymLink() canonicalises outside m_queryRoot, or run each abs through validatePath before appending.
   **Layman:** The read-only project-query tool can list the NAME of a symlinked file that points outside the project, even though it would refuse to read its contents. Minor info leak vs the 'confined to the project' promise.
   Kind: fix.
@@ -14008,9 +14104,18 @@ gets one CHANGELOG section + one drift cycle + one push.
 - ✅ [ANTS-1667] **terminalgrid M1/M2 — Window-title + OSC 9/777 notification bodies pass C1 control bytes.** Strip `< 0xA0 && >= 0x80` from titles and notification bodies. Lane: terminalgrid.
 - ✅ [ANTS-1668] **terminalgrid M5 — `scrollDown` doesn't shift hyperlinks; clickable spans orphan on reverse-index / IL / RI.** Mirror `scrollUp`'s `std::rotate` block. Lane: terminalgrid.
 - ✅ [ANTS-1669] **claude-statusbar H2 — Bg-task completion uses `contains()` substring match; can false-flip a task whose id is a substring of another running task's id.** Switch to word-boundary regex or drop the fallback. Lane: claude-statusbar.
-- ✅ [ANTS-1670] **claudeintegration M1-M4 — Cold-start gate ordering, `wrapMcpData` open/close-tag tolerance asymmetry, `extractCwdFromTranscript` untrusted-cwd consumption, and per-tick transcript re-parse of up to 4 MiB.** All four are quality-of-implementation tightenings; details in indie-review lane report. Lane: claudeintegration.
+- ✅ [ANTS-1670] **claudeintegration M1-M4 — four indie-review tightenings.**
+  Cold-start gate ordering, `wrapMcpData` open/close-tag tolerance
+  asymmetry, `extractCwdFromTranscript` untrusted-cwd consumption, and
+  per-tick transcript re-parse of up to 4 MiB. All four are
+  quality-of-implementation tightenings; details in indie-review lane
+  report. Lane: claudeintegration.
   Resolved (2026-06-27): verified all four against current source. M2 (wrapMcpData open/close tolerance asymmetry) fixed — added a symmetric open-tag scrub mirroring the close-tag regex (claudeintegration.cpp ~9417), with INV-6/INV-7 added to the mcp_wrap_comment_escape feature test (14/14 green). M3 (extractCwdFromTranscript untrusted cwd) fixed — gate the transcript cwd through new isSafeAbsolutePath() (absolute + no `..` traversal + no NUL) before it becomes a process working directory; bad values fall through to decodeProjectPath(). M1 (cold-start gate ordering) and M4 (per-tick 4 MiB re-parse) verified ALREADY-ADDRESSED in current code — M1 by ANTS-1225-INV-2 ordering, M4 mischaracterised (steady state is a 32 KB tail read; 4 MiB is a rare worst-case ceiling).
-- ✅ [ANTS-1671] **ipc-trust H1/H2/M1-M5 — XDG_RUNTIME_DIR client/server-side resolution divergence; JSON nesting cap + value-size cap on `session_memory`; antshelper `..` substring check; remotecontrol.cpp refusal-envelope drift across 30+ sites; QVariant `_buf` round-trip O(N²); `SO_PEERCRED` skipped on `fd < 0`; slow-loris on client wait-loop.** Each item is a small fix; cluster them in one sweep. Lane: remotecontrol / antshelper.
+- ✅ [ANTS-1671] **ipc-trust H1/H2/M1-M5 — XDG_RUNTIME_DIR client/server-side resolution divergence; JSON nesting cap + value-size cap on `session_memory`; antshelper `..` substring check.**
+  Remotecontrol.cpp refusal-envelope drift across 30+ sites; QVariant
+  `_buf` round-trip O(N²); `SO_PEERCRED` skipped on `fd < 0`; slow-loris
+  on client wait-loop. Each item is a small fix; cluster them in one
+  sweep. Lane: remotecontrol / antshelper.
   Resolved (2026-06-27): verified all seven. M5 (client slow-loris) fixed — added a 10 s cumulative read deadline to the --remote wait loop (remotecontrol.cpp ~10645) so a slow-drip peer under the 1 MiB cap can no longer hang the client. H1 (XDG resolution divergence), M1 (antshelper `..` substring), M4 (SO_PEERCRED on fd<0) verified ALREADY-FIXED in current source (unified defaultSocketPath; per-component check ANTS-1649; fail-closed ANTS-1797). H2 — per-value 16 KiB cap present; nesting-depth bounded by Qt's QJsonDocument::fromJson DeepNesting guard + the byte cap, no separate engine guard warranted. Residual M2 (refusal-envelope drift, ~40 sites) + M3 (`_buf` O(N²) round-trip) folded out to ANTS-2216.
 - ✅ [ANTS-1672] **mcp-review-engines H1 — Ledger load per brief assembly is re-parsed N times for N lanes.** Cache by `(projectPath, mtime)` inside `falseposledger.cpp`, or hoist load to the dispatch handler. Lane: mcp-engines.
   Shipped 2026-05-29. Added function-static QHash<path, {mtime_s, entries}> cache to loadEntries() in falseposledger.cpp. Eliminates 2 extra disk reads on each indie-review dispatch (3 call sites → 1 parse per session).
@@ -14059,7 +14164,10 @@ gets one CHANGELOG section + one drift cycle + one push.
   Source: in-session-2026-05-22 build warning.
   Resolved (2026-06-06): the two CHECK_EQ sites comparing grid.cellAt().codepoint (uint32_t, terminalgrid.h:50) against char literals 'A'/'B' (lines 113-114) now cast the expected to static_cast<uint32_t>(...), so the macro's `_a != _e` is unsigned-vs-unsigned, killing -Wsign-compare. The other CHECK_EQ sites are int-vs-int and untouched. Rebuilt test_vt TU: no sign-compare warning; RisPreservesCallbacks green. Test-only, no runtime/CHANGELOG impact. NOTE (separate, not fixed — out of lane): clangd flags a pre-existing unused <cstdio> include at line 11 of the same test; surfaced, not drive-by removed.
 
-- ✅ [ANTS-2184] **cppcheck `uninitMemberVarNoCtor` brace-init hygiene sweep — ~52 helper-struct members in src/ lack a default-member-initializer (e.g. `Hit::score`, `InlineImage::row/col`, `UrlSpan`/`PaintTextRun` fields, `RunOut::started/timedOut/crashed`).**
+- ✅ [ANTS-2184] **cppcheck `uninitMemberVarNoCtor` brace-init hygiene sweep.**
+  ~52 helper-struct members in src/ lack a default-member-initializer
+  (e.g. `Hit::score`, `InlineImage::row/col`, `UrlSpan`/`PaintTextRun`
+  fields, `RunOut::started/timedOut/crashed`).
   2026-06-26 Qt-aware cppcheck (`--project=build/compile_commands.json --check-level=exhaustive`) flagged 52 warning-severity `uninitMemberVarNoCtor` across helper POD structs. All are aggregate-initialised at their current use sites (no live bug found this run), but adding `{}` default-member-initialisers removes the warning class and forecloses a future partially-initialised read. Bulk/mechanical → one sweep, not inline. NOTE: the 6 clazy `range-loop-detach` findings from the same run were fixed in-session (aidialog/antshelper/auditdelta/auditdialog, `std::as_const` + hoisted-local); the remaining clazy style (qstring-arg ×2, container-inside-loop ×1) and the cppcheck style bulk (useStlAlgorithm ×182, constVariablePointer, funcArgNamesDifferent) stay under ANTS-1789 (clazy style sweep).
   **Layman:** About 50 small data-holder structs don't set their number/flag fields to a starting value. Nothing is broken today (they're always filled in before use), but giving them a default of 0/false is tidy and forecloses a future bug. Best done as one tidy-up pass.
   Kind: audit-fix.
@@ -14096,7 +14204,11 @@ gets one CHANGELOG section + one drift cycle + one push.
 
 - ✅ [ANTS-1683] **/audit step 5 `semgrep` invocation should drop `p/cpp` from the recommended pack list.** `p/cpp` returns HTTP 404 from the semgrep registry as of 2026-05-19; the C/C++ coverage path is `p/security-audit` alone (which does the right thing). `p/c` errors out on every `.h` file because the tree-sitter-c grammar doesn't parse C++. Update `~/.claude/skills/audit/SKILL.md` step 5 semgrep invocation. Token-saving: prevents the 0-findings + 14-errors result on every C++ project /audit run. Lane: skill.
 - ✅ [ANTS-1684] **/indie-review shared brief file pattern — write brief once to disk, reference path in each agent prompt.** This session wrote the 170-line dimension list to `/tmp/audit-20260519-audit/indie-review-brief.md` and pointed all 11 agents at it; saves ~37k tokens vs inlining the brief 11 times (11 × ~3.4k). Pattern: orchestrator writes the brief; per-lane prompts say "STEP 1: read this brief in full". Easy to fold into `~/.claude/skills/indie-review/SKILL.md` Phase 2 — token-vetted. Lane: skill.
-- ✅ [ANTS-1685] **Ants MCP `indie_review_partition` returns duplicate lanes when CLAUDE.md groups multiple subsystems under one paragraph (e.g. `claudetasklist`/`claudebgtasks` and `luaengine`/`pluginmanager` both produce sibling entries with identical summary text, and `ants_core_lib` returns empty sourcePaths).** Deduplicate by sourcePaths union + drop empty-paths entries server-side. Lane: mcp-ants.
+- ✅ [ANTS-1685] **Ants MCP `indie_review_partition` returns duplicate lanes when CLAUDE.md groups multiple subsystems under one paragraph.**
+  E.g. `claudetasklist`/`claudebgtasks` and `luaengine`/`pluginmanager`
+  both produce sibling entries with identical summary text, and
+  `ants_core_lib` returns empty sourcePaths. Deduplicate by sourcePaths
+  union + drop empty-paths entries server-side. Lane: mcp-ants.
 - 📋 [ANTS-1686] **Ants MCP `indie_review_brief` could accept a `lanes:[]` array and return all briefs in one call instead of 1 per lane.** With 11 lanes the round-trip cost is meaningful (~1.5 MCP turns per lane). Server-side change; same caller_cwd. Lane: mcp-ants.
   Layman: Let one request fetch all the review briefs at once, instead of one request per lane.
 - ✅ [ANTS-1687] **/audit skill should document the false-positive ledger read+write workflow inline.** Currently the standards file is referenced but the recipe isn't surfaced at the triage step. After triage, orchestrator should append confirmed FPs via the documented `printf '\n%s\n' "$record" >>` recipe. Add a step 10.5 between triage and roadmap fold-in. Lane: skill.
@@ -14342,7 +14454,9 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Fix: Migrate every local brace-extractor to ants_test::slurpFunctionBody(); delete the duplicates.
   Progress (2026-06-11): 14 local brace-walkers migrated to ants_test::slurpFunctionBody — 7 extractFunctionBody/extractBody (crash_safe_session_persist, config_reload_loop_safety, ui_state_persistence, command_mark_gutter, allowlist_add, scrollback_frozen_view, review_changes_clickable) + 7 functionBody-named (model_switch_deferred_chip, sync_output_snapshot, terminalgrid_image_budget_hardening, model_recommender, terminal_for_caller_isolation, claude_pid_replacement, claude_task_list_session_isolation). github_status_bar already delegated. NOT migrated (different pattern, not brace-walkers): claude_bg_tasks_button + scroll_snapshot_intent (delimiter-scanners); the 5 mcp_* RemoteControl cmd-family delimiter-scans; settings_dialog_config_reload (column-0 "\n}" scan). Residue remains: ~14 more files still inline ad-hoc brace-depth walks under other forms (styled_font_kerning_off, focus_redirect_menu_guard, plugin_manifest_safety, portal_session_close, audit_regex_dos_watchdog, tab_rename_pin, mcp_tool_prefix_tags, paste_dialog_custom, settings_restore_defaults, pty_dtor_off_main_thread, settings_profile_cancel_rollback, et al). LIMITATION discovered: slurpFunctionBody cannot extract a function whose signature carries `= {}` default-argument braces (it latches onto the first `{}` default) — keep a fixed window for those (cf. toolArgv in audit_run_scoped_check).
   Layman: Ten test files each hand-roll the same fragile text-scanning helper; use the shared one instead.
-- ✅ [ANTS-1469] **A3b/A4b benign-fast assertions use bare hardcoded wall-clock thresholds (goodElapsed <= 200, elapsed <= 100) with no CI-slack pad — diverges from the documented kBudgetMs + kSlackMs pattern used elsewhere in the file..**
+- ✅ [ANTS-1469] **A3b/A4b benign-fast assertions use bare hardcoded wall-clock thresholds (goodElapsed <= 200, elapsed <= 100) with no CI-slack pad.**
+  Diverges from the documented kBudgetMs + kSlackMs pattern used
+  elsewhere in the file..
   - File: tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp:186
   - Dimension: flakiness
   - Severity: HIGH
@@ -14397,7 +14511,10 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Severity: MED
   - Fix: Return bool from writeFile and ASSERT_TRUE at the call site, or convert helper to a fixture/SetUp.
   Resolved (2026-06-06): debt_sweep_engine writeFile — ASSERT_TRUE in a void helper only returned from the helper, leaving the calling TEST running on an unwritten file. Replaced with ADD_FAILURE() (attributed to the current TEST → it definitively fails with a clear message) + early return; zero call-site churn across the 15 callers. DebtSweepEngine green.
-- ✅ [ANTS-1478] **Multiple audit_fixtures bad.cpp files cover only a subset of the variants their regex matches — a regex tightening that drops a variant would go undetected. Examples: cmd_injection (3/7 exec variants), qnetworkreply_no_abort (sslErrors missing), memory_patterns (new T(nullptr)/new T(NULL) missing)..**
+- ✅ [ANTS-1478] **Multiple audit_fixtures bad.cpp files cover only a subset of the variants their regex matches — a regex tightening that drops a variant would go undetected.**
+  Examples: cmd_injection (3/7 exec variants), qnetworkreply_no_abort
+  (sslErrors missing), memory_patterns (new T(nullptr)/new T(NULL)
+  missing)..
   - File: tests/audit_fixtures:0
   - Dimension: coverage_gaps
   - Severity: MED
@@ -14415,13 +14532,19 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   - Severity: LOW
   - Fix: 
   Layman: Many tests are named so generically that a failure does not tell you what actually broke.
-- 📋 [ANTS-1481] **Various per-file coverage gaps noted in chunk reports (cmd_injection exec-variants, IndieReviewEngine::corroboratedFindings minLanes boundary, plan-mode signal arg, additionalProperties value check, etc.) — see chunk JSON in /tmp/test-audit-c7ee2911 for the per-file detail..**
+- 📋 [ANTS-1481] **Various per-file coverage gaps noted in chunk reports.**
+  cmd_injection exec-variants, IndieReviewEngine::corroboratedFindings
+  minLanes boundary, plan-mode signal arg, additionalProperties value
+  check, etc. — see chunk JSON in /tmp/test-audit-c7ee2911 for the
+  per-file detail.
   - File: tests/features/*:0
   - Dimension: coverage_gaps
   - Severity: LOW
   - Fix: 
   Layman: A list of specific things the tests do not currently cover.
-- 📋 [ANTS-1482] **Several tests use a 29-test boilerplate pattern, dead PASS-on-success stderr prints, hardcoded machine paths in encode tests, and comments that have drifted from the asserted counts (e.g. "six connects" but asserts 7)..**
+- 📋 [ANTS-1482] **Several tests use a 29-test boilerplate pattern, dead PASS-on-success stderr prints, hardcoded machine paths in encode tests.**
+  And comments that have drifted from the asserted counts (e.g. "six
+  connects" but asserts 7).
   - File: tests/features/*:0
   - Dimension: verbosity
   - Severity: LOW
@@ -17997,7 +18120,9 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp.
   Source: in-session-2026-05-18 test-audit partition pre-pass.
 
-- ✅ [ANTS-1617] **test_audit_synthesis_prompt summary parser fails to recognise `### [SEVERITY] dimension:` and `## Findings (JSON)` chunk-report shapes — chunks_returned:0 + severity_histograms:{} despite real per-chunk findings.**
+- ✅ [ANTS-1617] **test_audit_synthesis_prompt summary parser fails to recognise `### [SEVERITY] dimension:` and `## Findings (JSON)` chunk-report shapes.**
+  Chunks_returned:0 + severity_histograms:{} despite real per-chunk
+  findings.
   Reported by three cross-session test-audit runs on 2026-05-18 (Vestige 3D Engine Issue #11, Music_Production / Album Builder Issue 1, RetroDB Issue 4). All three saw the same symptom: chunk reports landed on disk with 10–22 findings each, the synthesis tool's `top_dimensions` extraction worked (the parser DID read the body text), but `severity_histograms:{}` came back empty and the chunk inventory said "c-NNN.md (0 findings)" for every chunk.
   
   Root cause hypothesis: the parser is counting findings via *dimension-keyword hits in the chunk text* (which is why `dimension_summaries.accuracy.count = 13` works — that's a count of chunks that mention the word "accuracy"), but the actual JSON inside `## Findings (JSON)` blocks (3D Engine convention) or the `### [SEVERITY] dimension: <name> — `<file>:<line>`` heading shape (RetroDB convention) isn't being parsed for severity tags. So `severity_histograms` stays empty and chunk-count rolls up wrong.
@@ -18144,7 +18269,27 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp.
   Source: cross-session-2026-05-18 (RetroArch Bundle 67/68).
 
-- ✅ [ANTS-1623] **test_audit_partition: polyglot framework detection — currently first-match-wins on `pyproject.toml` so a pytest+vitest tree returns pytest-only chunks; ignore frontend `package.json`+`vitest.config.ts` entirely.** (Pull 26, 2026-05-19. Shipped a smaller-surface v1 of the suggested fix — scope-aware framework probe + envelope-level `additional_frameworks[]` echo. When `scope` is `path:<sub>`, `detectFramework` now probes inside `<sub>` first and falls back to root only if the subdir has no signal file — fixes the MAME_Curator case where `scope: "path:frontend/src"` returned `no_tests_found` because the root pytest signal had already won the first-match race. The envelope also carries `additional_frameworks: [{name, root_rel}]` listing every other framework whose signal file was detected at the project root OR a top-level subdir but was not picked as the primary, so a polyglot caller sees the parallel trees in one call and can fan out `scope: "path:<root_rel>"` partitions to cover them. Subdir scan honours the build-tree exclusion list (`build*`, `node_modules`, `.venv`, `_deps`, etc.). The full `frameworks[]` array restructure proposed in the suggested-fix block is deferred — the smaller v1 unblocks the MAME_Curator case and the polyglot signal is already actionable. Tests `tests/features/test_audit_polyglot_and_strip/` (6 INVs: scoped-subdir wins, fallback to root, root-peer echo, subdir-peer echo, primary excluded, build-tree skipped). Full suite 1181/1181.)
+- ✅ [ANTS-1623] **test_audit_partition: polyglot framework detection — currently first-match-wins on `pyproject.toml` so a pytest+vitest tree returns pytest-only chunks.**
+  Ignore frontend `package.json`+`vitest.config.ts` entirely. (Pull 26,
+  2026-05-19. Shipped a smaller-surface v1 of the suggested fix —
+  scope-aware framework probe + envelope-level `additional_frameworks[]`
+  echo. When `scope` is `path:<sub>`, `detectFramework` now probes
+  inside `<sub>` first and falls back to root only if the subdir has no
+  signal file — fixes the MAME_Curator case where `scope:
+  "path:frontend/src"` returned `no_tests_found` because the root pytest
+  signal had already won the first-match race. The envelope also carries
+  `additional_frameworks: [{name, root_rel}]` listing every other
+  framework whose signal file was detected at the project root OR a
+  top-level subdir but was not picked as the primary, so a polyglot
+  caller sees the parallel trees in one call and can fan out `scope:
+  "path:<root_rel>"` partitions to cover them. Subdir scan honours the
+  build-tree exclusion list (`build*`, `node_modules`, `.venv`, `_deps`,
+  etc.). The full `frameworks[]` array restructure proposed in the
+  suggested-fix block is deferred — the smaller v1 unblocks the
+  MAME_Curator case and the polyglot signal is already actionable. Tests
+  `tests/features/test_audit_polyglot_and_strip/` (6 INVs: scoped-subdir
+  wins, fallback to root, root-peer echo, subdir-peer echo, primary
+  excluded, build-tree skipped). Full suite 1181/1181.)
   MAME_Curator FP31 (2026-05-18 overnight) session reported: a project with backend (pytest, 113 files) + frontend (vitest, 50 files) test suites gets partition response only for backend. `scope: "path:frontend/src"` returns `code: "no_tests_found"` because the framework was already locked to pytest at the repo-root probe stage.
   
   Suggested fix: detect frameworks per-tree, not per-repo. Response shape:
@@ -18229,7 +18374,31 @@ template / mutate this state atomically" → movable. If it's
   Lanes: mcp, cold-eyes.
   Source: cross-session-2026-05-17/18 (RetroDB, Music_Production).
 
-- ✅ [ANTS-1627] **test_audit_partition pre-pass: AST-walk for `sleep_call` / `hardcoded_password` so matches inside docstrings, comments, and negative-grep test bodies (`test_no_bare_time_sleep_in_jobs`) aren't flagged.** (Pull 26, 2026-05-19. Shipped the suggested-fix #2 variant for Python — a `stripPythonLiteralsAndComments` state machine that mirrors the existing [[ANTS-1491]] `stripCxxLiteralsAndComments` strip. Handles single-quoted `'...'`, double-quoted `"..."`, triple-quoted `"""..."""`/`'''...'''`, `#` line comments, and the full set of string prefixes (`r`, `b`, `u`, `f`, `rb`, `br`, `fr`, `rf` plus case variants). Content inside strings + comments is replaced with spaces so columns stay exact; newlines are preserved verbatim so line numbers in the resulting `pre_pass_findings` still point at the real call site. `prePassFile` routes `.py` paths through the new strip, `.c/.cpp/.h/.hpp/.cc/.cxx/.tcc/.ipp/.hh/.hxx` through the existing C/C++ strip, and other extensions through raw. Doesn't ship the full AST-walk (#1) or negative-grep heuristic (#3) — both would need a Python tokeniser; the literal/comment strip collapses three of the four cited false-positive shapes (string-literal needles, docstring narration, `#` comment narration) without that cost. Real `time.sleep(0.1)` calls and `password = "real"` assignments outside strings still fire. Tests `tests/features/test_audit_polyglot_and_strip/` (7 INVs: single-quoted strip, triple-quoted strip, `#` comment strip, password-in-string strip, real-call still fires, line-number preservation, prefixed-string strip). Full suite 1181/1181.)
+- ✅ [ANTS-1627] **test_audit_partition pre-pass: AST-walk for `sleep_call` / `hardcoded_password`.**
+  So matches inside docstrings, comments, and negative-grep test bodies
+  (`test_no_bare_time_sleep_in_jobs`) aren't flagged. (Pull 26,
+  2026-05-19. Shipped the suggested-fix #2 variant for Python — a
+  `stripPythonLiteralsAndComments` state machine that mirrors the
+  existing [[ANTS-1491]] `stripCxxLiteralsAndComments` strip. Handles
+  single-quoted `'...'`, double-quoted `"..."`, triple-quoted
+  `"""..."""`/`'''...'''`, `#` line comments, and the full set of string
+  prefixes (`r`, `b`, `u`, `f`, `rb`, `br`, `fr`, `rf` plus case
+  variants). Content inside strings + comments is replaced with spaces
+  so columns stay exact; newlines are preserved verbatim so line numbers
+  in the resulting `pre_pass_findings` still point at the real call
+  site. `prePassFile` routes `.py` paths through the new strip,
+  `.c/.cpp/.h/.hpp/.cc/.cxx/.tcc/.ipp/.hh/.hxx` through the existing
+  C/C++ strip, and other extensions through raw. Doesn't ship the full
+  AST-walk (#1) or negative-grep heuristic (#3) — both would need a
+  Python tokeniser; the literal/comment strip collapses three of the
+  four cited false-positive shapes (string-literal needles, docstring
+  narration, `#` comment narration) without that cost. Real
+  `time.sleep(0.1)` calls and `password = "real"` assignments outside
+  strings still fire. Tests
+  `tests/features/test_audit_polyglot_and_strip/` (7 INVs: single-quoted
+  strip, triple-quoted strip, `#` comment strip, password-in-string
+  strip, real-call still fires, line-number preservation,
+  prefixed-string strip). Full suite 1181/1181.)
   RetroDB Issue 5 (2026-05-18) and Vestige 3D Engine Issue #6 (2026-05-17 + 2026-05-18) both reported: pre-pass grep matches inside C/C++ string literals + Python docstrings + comments + negative-grep test assertions ("this string should NOT be present in production"). All flagged as false positives that chunk subagents had to triage out.
   
   Concrete RetroDB cases:
@@ -20666,21 +20835,26 @@ Fin Break, Contact List). Verified-shipped items from prior sessions
 (ANTS-3420/3412/2054/3415/3416/3417/3397) were already ✅ in this roadmap; only
 their feedback-file tracking tables needed stamping.
 
-- ✅ [ANTS-3432] **roadmap_log op:bundle_row advertises cells/header/position/sort_col but never declares them as schema properties — args stripped before the handler, so every call refuses missing_field (ANTS-1691 wiring gap).**
+- ✅ [ANTS-3432] **roadmap_log op:bundle_row advertises cells/header/position/sort_col but never declares them as schema properties.**
+  Args stripped before the handler, so every call refuses missing_field
+  (ANTS-1691 wiring gap).
   ANTS-1691 was marked shipped but the handler (cmdRoadmapLogBundleRow, remotecontrol.cpp:8173) is unreachable: claudeintegration.cpp builds the roadmap_log inputSchema with bundle_row in the op enum + a prose description of cells/header/position/sort_col, but those four keys are never added to the schema `properties` object, so the MCP client drops them and cells arrives empty -> missing_field. Fix: declare the four properties. Handler + tests/features/roadmap_log_bundle_row already exist. Implementing this session.
   **Layman:** The 'add a row to the progress table' command was switched on but its inputs were never actually connected, so it always fails.
   Kind: fix.
   Source: RetroArch-feedback-2026-07-03 (Bundle 88).
   Resolved (2026-07-04): declared cells/header/position/sort_col in the roadmap_log inputSchema (claudeintegration.cpp) so additionalProperties:false no longer strips the bundle_row args before the handler. Added regression INV-13 (source-grep the schema declares all four props — the handler test-seam bypassed the schema, which is why the ANTS-1691 gap shipped invisibly) + widened the mcp_roadmap_log_verb scrape window 40→44 KiB. test_claude 1381/1381 green. Live server needs a relaunch to expose the new schema.
 
-- ✅ [ANTS-3433] **file_outline (.cpp) silently drops every member function whose return type is the two-word builtin `unsigned int` (also long long / unsigned char / const T&), breaking read_region symbol-mode for them.**
+- ✅ [ANTS-3433] **file_outline (.cpp) silently drops every member function whose return type is the two-word builtin `unsigned int`.**
+  Also long long / unsigned char / const T& — breaking read_region
+  symbol-mode for them.
   Repro (build cb468d5): file_outline engine/audio/audio_engine.cpp omits loadBuffer/acquireSource/all playSound* overloads/playSynth/loadReverbIr (all `unsigned int AudioEngine::X(...)`), while void/bool/float/std::string siblings on the same class are present. Same declarator-parser class as ANTS-3412/3399 but triggered by the space inside a multi-token builtin return type. Fix: treat multi-token builtin/cv/ref return types like a single-token return type when locating the declarator. Regression corpus: `unsigned int Foo::bar(...)`, `long long Foo::baz(...)`, `unsigned int Foo::qux() const`.
   **Layman:** The file-outline tool skips methods that return certain multi-word types, so you can't look them up by name.
   Kind: fix.
   Source: Vestige-feedback-2026-07-03 (AX2-R2).
   Resolved (2026-07-04): rxCppMember now accepts a multi-token return type (mirrors rxCppFunc's ANTS-2028 group) + a leading keyword lookahead; extraction strips a leading &/* on the name. Two-word builtin return types (unsigned int / long long / unsigned char / const T&) on out-of-line members are outlined again. Test: FileOutlineCppScanner.TwoWordReturnTypeMemberDetected.
 
-- ✅ [ANTS-3434] **read_region symbol-mode requires the qualified outline name (Class::method); a bare method name returns symbol_not_found for a non-dropped method — verify ANTS-3399 suffix-fallback covers the qualified-only case.**
+- ✅ [ANTS-3434] **read_region symbol-mode requires the qualified outline name (Class::method); a bare method name returns symbol_not_found for a non-dropped method.**
+  Verify ANTS-3399 suffix-fallback covers the qualified-only case.
   ANTS-3399 shipped a bare-name suffix fallback (bare createStaticBody -> PhysicsWorld::createStaticBody). Vestige on build cb468d5 reports bare `setReverbWetGain` still returns symbol_not_found for a present (void-returning) method. Confirm whether the suffix fallback reaches this case or has a gap; if a gap, extend it (unambiguous ::<name> suffix match; on ambiguity return candidate qualified names, not bare not-found). LOW/UX.
   **Layman:** You have to type the full ClassName::method to look a method up; the short name should work too.
   Kind: investigate.
@@ -20715,7 +20889,9 @@ their feedback-file tracking tables needed stamping.
   Source: Fin-Break-feedback-2026-07-02/03 (FIBR-0006/0007).
   Resolved (2026-07-09): Option A shipped on the top-level codebase_index verb — symbol/lane/file_path selectors. Verified live this session: codebase_index symbol=ShapedRunCache -> {kind:class, line:39, path:src/shapedruncache.h}; lane/file_path selectors likewise. The remaining half — session_orient's BUNDLED codebase_index sub-object still returns counts-only — is split out as ANTS-3468 (first-call orientation surface).
 
-- ✅ [ANTS-3439] **feedback_query/feedback_log path derivation misses a checkout-dir-leaf<->package-name mismatch (Fin_Break vs finbreak) and sets all_other_projects:true even when a normalized-equal sibling is in candidates[].**
+- ✅ [ANTS-3439] **feedback_query/feedback_log path derivation misses a checkout-dir-leaf<->package-name mismatch (Fin_Break vs finbreak).**
+  And sets all_other_projects:true even when a normalized-equal sibling
+  is in candidates[].
   Repro: from /mnt/Games/Scripts/Linux/Fin_Break, feedback_query with no path -> not_found, all_other_projects:true, candidates includes finbreak_Ants_MCP_Feedback.md, hint 'none matches leaf Fin_Break'. Complements ANTS-3426 (trailing _Ants) and ANTS-3366 (candidates). Fix: compare a NORMALIZED leaf (casefold + fold [-_ ]) against candidate basenames; if a normalized-equal candidate exists, do NOT set all_other_projects:true and float it as the primary hint ('did you mean finbreak_...?'). Auto-resolve optional (risk of wrong-file write) — maintainer's call. LOW.
   **Layman:** When a project folder and its package name differ only by capitals or dashes, the tool wrongly says 'no feedback file for you'.
   Kind: fix.
@@ -20737,7 +20913,8 @@ their feedback-file tracking tables needed stamping.
   Source: user-request-2026-07-04.
   Resolved (2026-07-04): practice established + first pass executed. Compacted 3 confirmed-shipped single-finding blocks via feedback_log op:compact_shipped (RetroArch Bundle 88/ANTS-3432, MAME 1082/ANTS-2054, Contact List fix-verify/ANTS-3397) — 5,620 bytes reclaimed, provenance kept as one-line stubs. Re-run each triage pass on newly-confirmed blocks. Bulk historical multi-finding-block compaction stays future work (ANTS-3421 §5).
 
-- ✅ [ANTS-3442] **feedback_log: bulk-cleanup ops — collapse a fully-shipped MULTI-finding block (all findings ✅) + prune duplicate/superseded maintainer tracking rows — the ANTS-3421 §5 scope-out that blocks a real 'compact all' pass.**
+- ✅ [ANTS-3442] **feedback_log: bulk-cleanup ops — collapse a fully-shipped MULTI-finding block (all findings ✅) + prune duplicate/superseded maintainer tracking rows.**
+  The ANTS-3421 §5 scope-out that blocks a real 'compact all' pass.
   ANTS-3421's compact_shipped only handles single-finding, ✅-tracked, above-watermark blocks; it is atomic + safe but narrow. A real 'compact all + remove duplicate references' pass needs: (1) op:compact_shipped extended (or a new op) to collapse a MULTI-finding ## session block when EVERY ### finding maps to a ✅ tracking row — to one stub keeping the heading + a per-id shipped line; gate each finding independently, skip the whole block if any finding is still open. (2) op:prune_tracking — within a file, collapse duplicate/superseded maintainer tracking rows for the same id to the last (document-order) row per ANTS-3371's supersedes rule, keeping one consolidated table; never drop a row whose id has no later duplicate. (3) optional: drop pure-prose sections ('What worked well' / 'Suggested prompt' / 'Case sensitivity — no hit') on already-triaged blocks. All atomic (QSaveFile), dry_run byte report, provenance-preserving stubs. Motivation: the files are 1000-3700 lines and >90% is shipped/triaged; hand-editing 10 concurrently-appended shared files is unsafe (clobbers live appends) and not repeatable — this is the tool that makes the recurring ANTS-3441 chore actually effective. Spec-first + cold-eyes per project rules before implementing.
   **Layman:** The cross-session feedback files are mostly big multi-part write-ups and repeated tracking tables that the current one-line-collapse tool can't touch; add ops that shrink a fully-done write-up and drop repeated table rows so the files can actually be cleaned in bulk safely.
   Kind: enhancement.
@@ -20745,7 +20922,9 @@ their feedback-file tracking tables needed stamping.
   Progress (2026-07-04): the row-dedup half SHIPPED as feedback_log op:prune_tracking — FeedbackFile::pruneTracking (two-stage pass: Stage-1 marks ID-column-superseded rows, Stage-2 removes only when every ANTS-NNNN token also survives elsewhere, preserving mappedIds) + cmdFeedbackLog wrapper (scope_ids/dry_run/atomic; empty scope_ids→bad_args, absent→not_found) + schema (op enum + scope_ids prop) + TrackingRow.line. Spec docs/specs/ANTS-3442.md cold-eyes converged (6 loops). 13-INV feature test green; test_claude 1394/1394. Live after Ants relaunch. Remaining: multi-finding-block collapse half → ANTS-3443.
   Shipped 2026-07-04 (commit 8b40477): feedback_log op:prune_tracking — row-dedup half of the bulk-cleanup gap. The sibling multi-finding-block-collapse half is tracked separately as ANTS-3443 (compact_resolved), so this bullet's own scope is complete.
 
-- ✅ [ANTS-3443] **feedback_log op:compact_resolved — collapse a shipped v2 finding's write-up to a stub, gated on its inline Proposed-ID being ✅ in the live ROADMAP (the deferred sibling half of ANTS-3442; the v1 "tracking row" phrasing is superseded — v2 has no tables).**
+- ✅ [ANTS-3443] **feedback_log op:compact_resolved — collapse a shipped v2 finding's write-up to a stub, gated on its inline Proposed-ID being ✅ in the live ROADMAP.**
+  The deferred sibling half of ANTS-3442; the v1 "tracking row" phrasing
+  is superseded — v2 has no tables.
   ANTS-3421 compact_shipped refuses multi_finding blocks (§5); ANTS-3442 shipped the row-dedup half. This is the remaining half: collapse a ## block with ≥2 ### findings when EVERY finding's id is ✅ in a tracking row, to a stub keeping the heading + one per-id shipped line; gate each finding independently and skip the whole block if any is still open. Spec-first + cold-eyes.
   **Layman:** Extend the write-up shrinker so it can also collapse a session block that reported several findings once all of them have shipped, not just single-finding blocks.
   Kind: enhancement.
@@ -20801,7 +20980,10 @@ their feedback-file tracking tables needed stamping.
   Source: cold-eyes-2026-07-04 (ANTS-3443 review).
   Resolved ✅ (2026-07-04): root-caused in FeedbackFile::parse() — only anchored ANTS-NNNN tokens (^ANTS-[0-9]+$, new idCellRe) now populate TrackingRow::ids; a closure/counter id-column token (`(schema fix)` / `(self-resolved)` / `n/a`) no longer becomes a pseudo-id that drives pruneTracking's supersede dedup. Reproducer test Ants3445ClosureTokenNotDeduped (fails pre-fix). Full suite 2499/2499 green. Live on next relaunch.
 
-- ✅ [ANTS-3446] **feedback_log op:migrate_v2 — one-shot lazy v1→v2 feedback-file migration (bump the marker + stamp blank inline Proposed-ID placeholders on finding-shaped blocks, leaving the v1 tables in place; surfaces orphan channels for hand-triage).**
+- ✅ [ANTS-3446] **feedback_log op:migrate_v2 — one-shot lazy v1→v2 feedback-file migration.**
+  Bump the marker + stamp blank inline Proposed-ID placeholders on
+  finding-shaped blocks, leaving the v1 tables in place; surfaces orphan
+  channels for hand-triage.
   **Layman:** The one-time converter that upgrades each shared feedback file to the new inline-ID format so the write-up shrinker can actually run on it.
   Kind: enhancement.
   Source: in-session-2026-07-05 (v2 feedback-file redesign; the verb that unlocks compact_resolved on the all-v1 corpus).

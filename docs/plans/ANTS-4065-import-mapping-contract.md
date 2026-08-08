@@ -104,15 +104,46 @@ prose matches rather than dropping them silently.
 > including any quoted in `roadmap-data-model.md` § 7.4, and including the
 > "1,613 with no Kind" in ANTS-4065's own roadmap bullet.
 
-**B2. Fix the format defects the audit already found.**
-- 44 open-item headlines with no terminating period (`roadmap-format.md` § 3.5
-  requires one).
-- 35 headlines containing newlines; 5 over 200 characters.
+**B2. Fix the format defects the audit already found. DONE (2026-08-08).**
+
+Counts here were originally scoped to open items; the file is conformed
+throughout, because shipped bullets import under the same contract and INV-6's
+round-trip covers every one of them.
+
+- **41 headlines with no terminating period** (`roadmap-format.md` § 3.5
+  requires one). Three different defects wearing one label: 20 had the period
+  *outside* the bold, 15 used a `**Headline**:` label form where a period is
+  wrong, and 6 genuinely lacked one.
+- **297 headlines wrapped across lines** — § 3.5 requires the headline to
+  "stand alone as a one-line summary". Not malformed prose, just hard-wrapped
+  like the body. Unwrapped; the edit asserts the file's whitespace-normalised
+  text is unchanged, so nothing moved but line breaks.
+- **42 headlines over 200 characters**, split so the first clause stays as the
+  headline and the remainder becomes body text. 41 are pure splits; ANTS-1670's
+  headline was a four-item list, so it became a summary and the list moved into
+  the body intact.
 - The 99 bullets writing `Kind:` inline stay as they are — § 2.2 makes that
   shape supported rather than accidental.
 
-> **Verify:** re-run the field auditor; `headline_no_period` and
-> `headline_multiline` both report 0 for open items.
+> **What the 200-character limit actually is, since this plan implied
+> otherwise.** It is `headlineProp["maxLength"] = 200` in the MCP tool's input
+> schema (`src/claudeintegration.cpp:9111`) and nowhere else. The store column is
+> `headline TEXT NOT NULL` with no length constraint, and neither the import nor
+> the render checks length. **So none of the 42 was a migration defect** — they
+> would all have imported, stored and rendered correctly. The limit binds only
+> when a caller *passes* a headline to `roadmap_log`. They were conformed anyway,
+> on the user's call, so the source is uniformly clean before the code changes.
+
+> **Verified:** 0 headlines over 200 chars, 0 multiline headlines, 0 open
+> headlines missing a terminator, 0 double-period artefacts, 1,709 distinct ids
+> unchanged, `tools/check-roadmap.sh` clean.
+
+> **Left alone, and flagged rather than fixed:** 11 headlines carry unbalanced
+> parentheses or an odd number of backticks (ANTS-1530, 1615, 1702, 1987, 2039,
+> 2046, 2048, 3423, 3569, 3672, 3803). Pre-existing — the count is identical
+> before and after this work — and a different defect class from B2's three.
+> An odd backtick is worth a look under § 2.2, whose guard is a backtick
+> lookbehind.
 
 **B3. Settle the three open rulings.** They are decisions, not code:
 `feature/fix`, `design + implement`, `design + fix` (spec § 2.1), and the
