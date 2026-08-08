@@ -179,7 +179,12 @@ def survey(path):
                 pass
         if kv:
             val = kv.group(1).strip().lower()
-            if len(val) > KIND_MAX_CHARS or len(val.split()) > KIND_MAX_WORDS:
+            if not val:
+                # Prose quoting the label -- `the "Kind: ..." line` -- matches
+                # with an empty capture, since the value class excludes `.` and
+                # stops before the ellipsis. Not a declaration; not malformed.
+                c["kind_rejected_as_prose"] += 1
+            elif len(val) > KIND_MAX_CHARS or len(val.split()) > KIND_MAX_WORDS:
                 c["kind_rejected_as_prose"] += 1
             else:
                 kinds[val] += 1
