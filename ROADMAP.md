@@ -28580,6 +28580,21 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-09 (ANTS-4069 cold-eyes loop 3, at the cap).
 
+- 📋 [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
+  `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
+  roadmap-format.md § 3.9's, adopted as they stand; the name regex is
+  deliberately tighter (see `archiveNameRx()`)." That was true while § 3.9
+  published `^[0-9]+\.[0-9]+\.md$`, which accepts `00.07.md`. The ANTS-4069
+  gate corrected the standard to `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`,
+  which is `archiveNameRx()`'s own shape — so the two now agree and the
+  comment describes a divergence that no longer exists.
+  A cold reviewer read that comment and concluded `roadmap-data-model.md`
+  § 8's "migration reads every `docs/roadmap/<M>.<N>.md`" was false. It is
+  not; the comment is. Comment-only change, no behaviour.
+  **Layman:** A code comment says the code is stricter than the rulebook. The rulebook was fixed to match, so the comment now misleads anyone who reads it.
+  Kind: doc-fix.
+  Source: in-session-2026-08-09 (ANTS-4069 cold-eyes loop 3, dismissed finding).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
