@@ -28708,6 +28708,45 @@ against current source before filing.
   `tests/features/roadmap_import_mapping/`, two red against pre-change
   source. Full suite green (3339); conformance 0 findings.
 
+- 📋 [ANTS-4078] **Two sections hold 2.6 MB of the roadmap's 3.2 MB and are both still labelled `(target: …)` — rotation cannot help either.**
+  Split from ANTS-4070 after measuring, so that item can stay the
+  mechanism it is: § 3.9 rotation moves closed MINORS, and 92% of this
+  file sits under the open minor 0.7, so rotation as specified would move
+  zero bytes today. The size problem and the rotation mechanism are two
+  items, and conflating them would have produced a spec that claimed to
+  fix a number it cannot move.
+
+  Measured 2026-08-09 over `ROADMAP.md` (3,300,473 bytes under `##`
+  headings):
+
+  | Population | Bytes | Share |
+  |---|---|---|
+  | Minor 0.7 — OPEN, not eligible | 3,029,307 | 92% |
+  | Future minors 0.8 / 0.9 / 1.0 | 91,657 | 3% |
+  | Topic sections carrying no version | 179,206 | 5% |
+
+  Two sections are 2.6 MB of it: `## 0.7.65 — Bundle G indie-review sweep
+  + ANTS-1118 fix-pass (target: 2026-05)` at 1,892,926 bytes and
+  `## 0.7.92 — indie-review #4 + Ants MCP roadmap pass (target:
+  2026-05-21)` at 728,767. Both still carry `(target: …)` rather than
+  `shipped (YYYY-MM-DD)` although their dates are long past, and 0.7.65
+  has become the de-facto home for unrelated later work — the
+  2026-07-30 MCP-feedback triage is a `###` nested inside it, which is
+  why one release section holds a fifth of the corpus.
+
+  So the question is not rotation. It is whether these are release
+  sections at all any more, and what the file should look like if they
+  are not: retitled and closed, split by topic, or left and superseded
+  when 0.7 closes and the whole minor rotates in one step. Worth
+  answering before that bump, because rotating 3 MB in a single move is
+  the alternative.
+
+  Depends on ANTS-4070 for the two operations any answer needs — no store
+  op changes a section title or moves a section today.
+  **Layman:** Nearly all of the oversized roadmap file is two sections that were never marked finished, so the tidy-up mechanism will never touch them.
+  Kind: investigate.
+  Source: in-session-2026-08-09.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
