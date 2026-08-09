@@ -28653,7 +28653,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-09.
 
-- 📋 [ANTS-4077] **`rxKind()` does not accept the bold-label form its `Layman:` sibling does, losing 20 real declarations — and ANTS-4065 turns that loss into junk in the store.**
+- ✅ [ANTS-4077] **`rxKind()` does not accept the bold-label form its `Layman:` sibling does, losing 20 real declarations — and ANTS-4065 turns that loss into junk in the store.**
   Found by ANTS-4065 Phase C's false-positive sweep over the real
   corpus, and it should land BEFORE Phase D's re-import: whatever the
   import writes then is permanent in the store.
@@ -28687,6 +28687,26 @@ against current source before filing.
   **Layman:** Twenty roadmap items write their work-type in bold; the importer does not recognise that spelling and will file a scrap of the sentence instead.
   Kind: fix.
   Source: in-session-2026-08-09.
+  Resolved (2026-08-09), before Phase D as the bullet asked. `rxKind()` and
+  `rxLanes()` gained the optional `**` pair and a three-lookbehind backtick
+  guard; `rxSource()` already had the pair and gained the guard.
+  PCRE2 requires each lookbehind to be fixed-length, so the guard is
+  spelled once per offset the label can sit at — a single `` (?<!`) ``
+  cannot see past the asterisks, which is why the backticked-bold
+  quotation parsed as a declaration.
+  Corpus effect (measured 2026-08-09): 25 bold declarations now parse
+  where 0 did, and the junk `** value` captures are gone. 12 values remain
+  unrecognised — prose the un-anchoring admits — and each raises
+  `kind_unmapped` + `field_defaulted` with the original preserved, so they
+  are visible rather than silent.
+  Scope grew by one sibling during the work: the test's bonus assertion on
+  a bold `**Lanes:**` written beside the bold `**Kind:**` caught
+  `rxLanes()` returning a lane named `** core`. Same defect, same line of
+  the same bullets, fixed together.
+  ANTS-4065 § 2.2 amended with the measured pattern and INV-3's guard case
+  extended to the bold form. Three new cases in
+  `tests/features/roadmap_import_mapping/`, two red against pre-change
+  source. Full suite green (3339); conformance 0 findings.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

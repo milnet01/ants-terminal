@@ -69,6 +69,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap entries writing their work-type or owners in bold are read correctly** (ANTS-4077)
+  An entry writing `**Kind:** fix.` or `**Lanes:** core.` in bold — a style
+  the summary line has always accepted — was read as declaring nothing, so
+  its work-type or owners were lost. Twenty-eight entries were affected.
+  An entry that merely quotes one of those labels while writing about the
+  roadmap format is still correctly ignored.
+
 - **Roadmap items marked `partial` import as in-progress rather than not-started** (ANTS-4071)
   A pass-headings project marking a block `partial` means the work has
   begun. The importer had no entry for the word and filed it as planned,
