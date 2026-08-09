@@ -195,8 +195,16 @@ carries.** Requiring the full set on legacy data would reject the commonest
 operations there — a status flip, a headline correction, a body edit — for
 fields the item was never obliged to have. A status flip is the clearest case
 and is **not** a curating write at all; the rule above covers the rest, so an
-editor need not back-fill `priority` or `layman` in order to fix a typo. An item
-*created* after cutover is at the full tier from its first write.
+editor need not back-fill `priority` or `layman` **on the item being edited** in
+order to fix a typo. An item *created* after cutover is at the full tier from
+its first write.
+
+**This is a rule about the item, and § 3.2's publish gate is a rule about the
+project — the second still applies to the write.** On a store-migrated project
+every write validates by rendering, so a typo fix is refused `render_gate_unmet`
+while *any* public open item in that project lacks a `layman`, including items
+the editor never touched. Nothing above exempts a write from that gate; § 3.2
+owns it and names the remedy.
 
 ### 3.2 Required before publish
 
@@ -602,8 +610,10 @@ it, which is the one place this model's identity is not append-only. That
 tension is real and belongs to § 9 along with the rest of migration.
 
 The store owns allocation. Each project currently keeps a gitignored per-machine
-counter — one per prefix, for the multi-prefix projects `roadmap-format.md`
-§ 3.10.4 permits — that
+counter — **one file, holding one integer, with no per-prefix form and no
+per-prefix filename defined anywhere**, so on the multi-prefix projects
+`roadmap-format.md` § 3.10.4 permits it carries the first prefix and the rest
+fall through to the corpus floor alone. It
 is explicitly not the source of truth, with a floor recomputed by scanning the
 corpus so a wiped counter cannot reissue a live ID. A shared store moves the
 carrier but **not** the floor: its `id_high_water` row is still keyed per
@@ -674,11 +684,14 @@ unmappable.
 **The mapping is total, and the fallback is a default rather than a rejection.**
 Refusing an unrecognised word would halt a whole project on its author's private
 vocabulary, which is the § 10 anti-pattern that rejects a migrated item for a
-field its source format never required. Every mapped item keeps its **raw line**
-in `extras.source_status`, so nothing is lost and the write-back stays a right
-inverse; a word outside the table additionally records `defaulted` provenance and
-a `status_defaulted` note, which is what makes the guesses countable rather than
-invisible.
+field its source format never required. An item whose block declared a status
+keeps that line's **value** — the text after the colon, qualifier tail included,
+but not the `- **Status**:` label itself — in `extras.source_status`, so nothing
+is lost and the write-back stays a right inverse. A word outside the table
+additionally records `defaulted` provenance and a `status_defaulted` note, which
+is what makes the guesses countable rather than invisible. A block carrying **no**
+`- **Status**:` line at all is the third case: it is `defaulted` with no
+`extras` key, because there was no value to keep.
 
 **`deferred` → `considered` is not an invention.** `considered` is the status for
 work that is recorded and not committed to, which is what a deferral is; the
@@ -763,11 +776,20 @@ the one `roadmap-format.md` § 3.8 puts in a finding's headline (its
 doing, not that one's, and `INFO` has no band — an INFO finding is an
 observation rather than work, so it becomes an item only once someone gives it a
 priority;
-its § 3.5.2 is the carrier that puts one in a `Priority:` body line. Both map
-CRITICAL → 1, HIGH → 2, MEDIUM → 3, LOW → 4. Where an item carries both, the
-`Priority:` line wins: it is the field an author set deliberately, where the
-headline word is inherited from whichever review raised it. Band 5 is reserved
+its § 3.5.2 is the carrier that puts one in a `Priority:` body line. The
+vocabulary maps CRITICAL → 1, HIGH → 2, MEDIUM → 3, LOW → 4. Band 5 is reserved
 for someday-maybe work that no severity word expresses.
+
+**The `Priority:` line is the only carrier migration reads. A severity word in
+the headline does not set `priority`.** § 3.8 requires that word on every
+fold-in finding, so harvesting it would assign a priority to a large class of
+items from a value *inherited* from whichever review raised them — where the
+`Priority:` line is one an author set deliberately. It would also be an
+inference from prose, which INV-5 refuses for relationships and this model
+refuses here for the same reason: the mapping above is what the four words
+*mean* when an author writes one into the field, not a second place to look for
+them. § 3.3 is therefore exact — an item with no `Priority:` line is left empty,
+however its headline reads.
 
 **The harvest rule is total, because most of the corpus does not write a
 severity word at all.** Of the 88 `Priority:` lines in the corpus, **86 already
@@ -827,7 +849,7 @@ honesty mechanism: without it a defaulted `kind` and an author's considered
 | Value | Meaning |
 |---|---|
 | `asserted` | An author supplied it. |
-| `defaulted` | **No usable source value at migration** — either absent, or present and outside both § 7.4's canonical set and its mapping — so § 3.3 applied `roadmap-format.md` § 3.5.3's default. The two cases are told apart by `extras.source_kind`, which only the second carries (`src/roadmapmigrate.cpp` stamps it beside a `kind_unmapped` note). A conformer counting "items that declared no kind" must exclude the rows carrying it. |
+| `defaulted` | **No usable source value at migration** — either absent, or present and outside the field's recognised set — so the default this model or `roadmap-format.md` § 3.5.3 defines was applied. **The discriminator is per field, and it is the `extras` key that field writes**: `extras.source_kind` for `kind` (§ 7.4), `extras.source_status` for `status` (§ 7.3.1). Only the *unrecognised-value* case carries one; the *absent* case carries none. A conformer counting "items that declared no value" must exclude the rows carrying that field's key. |
 | `git-derived` | Recovered from commit history, subject to § 4.2's limitation. |
 | `migrated` | Generated by migration itself, with no source-side counterpart — every ID migration allocates (§ 7.2, **both** rows: neither was chosen by an author). |
 | `store-generated` | Stamped by the store on a post-cutover write — the `write (store-populated)` fields of § 4.1. Distinct from `asserted`, which is what the *author's* fields on that same write carry. |
@@ -1048,6 +1070,7 @@ than a question.
 |---|---|---|---|---|
 | 1 | 2026-07-30 | 3 (model coherence, corpus drift, failure modes) | 6 / 12 / 14 / 18 / 1 | Structural rewrite: obligations split into tiers, export scope defined, INV-1 given its missing leg, identity grammar corrected after the survey regex was found wrong about two projects, migration source shapes corrected. |
 | 2 | 2026-07-30 | 3 (same partition, cold) | 13 / 19 / 17 / — / — | **Stopped and split.** ~8 of the 13 CRITICALs were collateral from loop 1's own fixes; the findings were overwhelmingly schema-level, i.e. this document was a standard carrying an implementation spec. Split per ANTS-3754: the model stays here, the schema goes to a spec. Backup relocated to the private config repo, closing a leak the draft shipped. ID allocation for the corpus's ID-less items decided (user, 2026-07-30). |
+| 13 | 2026-08-09 | 3, cold — first run gating this document **paired with `roadmap-format.md`**, one shared byte-stable packet (~10.6k tok) carrying the live survey, the RetroDB status tally, the pass-headings status reader, archive discovery, render routing and the `section`/`project` DDL; ANTS-3838, ANTS-4068, ANTS-4070 and ANTS-4071 listed as already-surfaced | **Q1 1 · Q2 7 · Q3 3** — verified 11, dismissed 1 | **The pairing is what earned the loop: 8 of the 11 were cross-document, and none was reachable from either file alone.** The § 9 decision pass that preceded this run closed four open items, and the cold read found that two of its answers contradicted the neighbouring standard. `roadmap-format.md` § 3's preamble said released work "moves out of the roadmap into the CHANGELOG" while the new § 7.5 rule publishes closed items — a renderer author reading the format standard would have omitted every ✅ item and broken §§ 3.6.2–3.6.3 headline matching; the preamble now scopes itself to CHANGELOG authoring and points at § 3.9 rotation as the size mechanism. And § 4.3's new post-cutover paragraph claimed "steps 3–4 edit roadmap bullets", but **step 4 rewrites a release-block `##` heading** — a section title, for which no store op exists — so a cut-over project cannot perform it at all; filed onto ANTS-4070, which moves sections for the same reason. **Three more were this run's own collateral**, all from § 7.3.1: "keeps its **raw line** in `extras.source_status`" is wrong twice over (`roadmapparse.cpp` stores `peek.mid(valueStart)`, the value *after* the colon, and only where a Status line existed at all); and § 7.7's `defaulted` row defined itself purely in `kind` terms while the new table assigns `defaulted` to `status`, so a conformer counting defaulted rows by `extras.source_kind` mis-counts every status row — the row is now per-field. **Five were pre-existing and older than the migration.** `Kind:` is "**Required as of v1.1**" in § 3.5 and "two optional metadata fields … the format stays terse for it" in § 3.5.3 — found independently by two lanes, and it decides whether a conformance checker rejects a `Kind:`-less bullet; the default is now stated as a reader-side legacy fallback. § 3.10.3's conversion recipe adds the format marker at **step 0**, which on a project that already has a store row makes it store-migrated before steps 1–4 run, so those four steps become hand edits to a generated file that the next render discards — while the store path refuses them too, its publish gate being unmet until step 4 fills the `Layman:` lines; the marker now goes last. § 3.9's ~150 KiB threshold and its minor-bump-only rotation event cannot both be breached-or-not at 0.7.104 with a 3.2 MB file and no closed minor — the size is now stated as a review trigger. § 3.10.4 told multi-prefix repos to keep "one counter per prefix — one file each" while **no per-prefix filename exists in this standard or in any source file**; rather than invent one (two tools inventing different names each read zero for the other's prefix, reissuing live IDs) both documents now say such a project has no counter carrier and allocates from the corpus floor. And § 3.3 vs § 7.5 disagreed on whether a headline severity word sets `priority`: § 7.5's tie-break ("where an item carries both, the `Priority:` line wins") only means anything if it does, while § 3.3 says only a `Priority:` line is harvested — since § 3.8 mandates that word on every fold-in finding, the difference decides `priority` for a large class of items. Resolved toward § 3.3: the headline word is inherited from whichever review raised the finding, so reading it would be an inference from prose. **Dismissed:** § 3.5.1's "a roadmap **SHOULD** carry that marker" against § 8's "its § 3.1 requires the format marker" — § 3.1 governs *conforming* files and § 3.5.1 addresses arbitrary files the detector meets, and INV-2 already entails the render emits one. |
 | 12 | 2026-08-08 | 2, cold — same shared-packet shape, no mention of loops 10–11; ANTS-3838 listed as already-surfaced so it would not be re-raised | **Q1 1 · Q2 4 · Q3 2** — verified 7, dismissed 1, **3 fixed and 4 filed** | **Exited at the 3-loop cap.** Two fixed items were loop 11's own collateral, and one of them is the run's sharpest lesson: loop 11 corrected § 1's header to say `RoadmapDialog` "reads the store on one path (§ 5.1's legend)", which is *still false* — `roadmapdialog.cpp:575` reads its **bullets** through `RoadmapSource::bulletsFor()` and falls back to a markdown parse only where there is no store row, and `ROADMAP.md:25311` carries ANTS-3793 as ✅ shipped. A fix aimed at one sentence inherited the stale premise beside it. § 1 and § 9 now say the consumer **read** cutover shipped and what INV-3 ends is the markdown **writing**. Also fixed: § 7.5 ¶1 still opened "§ 3.3 leaves it empty on migrated ones, like every other field with no source-side counterpart" after loop 11 gave § 3.3 the opposite rule — a migration implementer reading that first sentence discards 86 declared integers; and § 3.2 gated publish on "any **public** open item" while § 4.1's canonical obligation cell and § 3.1's gloss both said "open items" with no such qualifier. **Dismissed on evidence:** a lane read `roadmapdialog.cpp`'s "legendText is the RAW stored text" as raw markdown and called § 5.1's status-value→wording claim false; `RoadmapStore::setLegend()` takes a `QJsonObject` and stores `canonicalJson()`, and `legendByEmoji()` parses that JSON keyed by status word — § 5.1 is right, and "raw" means un-reparsed JSON. **Filed, not fixed — four, each a design call rather than a wording defect**, listed in ANTS-4068. The cap binding here is evidence about the document: at ~960 lines two cold reads are still reaching parts of it for the first time, and every one of the four is a rule this standard has never actually stated. |
 | 11 | 2026-08-08 | 2, cold — same shared-packet shape, no mention of loop 10; packet repaired first (it had claimed to carry "every section this doc cites" while omitting `roadmap-format.md` §§ 3.6.2/3.6.3/3.10.4/3.11, and its DDL window cut before `feedback_ref` and `citation`, which both lanes then asked about) | **Q1 1 · Q2 3 · Q3 1** — verified 5, dismissed 1 | **Two of the five were loop 10's own collateral**, which is what the loop is for: § 1's header still listed `RoadmapDialog` wholesale as not cut over after § 5.1 was corrected to say its store path ships, and § 3.3's new "migration harvests it by § 7.5's mapping" pointed at a mapping that is total only over four bare uppercase words — while 86 of the corpus's 88 `Priority:` values are already integers and the other two are `medium` and `LOW`, so the rule as written would have left almost every declared priority empty. § 7.5 now states a total rule (integer taken as itself; leading token matched case-insensitively; anything else left empty with the raw string in `extras`). **Three were pre-existing and older than this run.** § 7.7 defined `defaulted` as "absent at migration", but `roadmapmigrate.cpp` stamps it on the *unmapped* branch too, where the source did declare a `Kind:` — so any "how much of the corpus declared a kind" count taken from provenance is wrong by the unmapped population; the row now names both cases and the `extras.source_kind` that separates them. § 1 said the render's losslessness oracle "does not exist yet" while *What checks this* called `Inv2BackendsAgree` "the stronger check of the same property" — its equality is over the 20 fields of the **bullet** record, so `extras` and `provenance` are never compared, and the row now says so. And § 1's "a failed publish leaves the store ahead of the file" read as flatly contradicting `Inv1RenderFailureRollsBack` until you know a write renders **twice** — a validating dry render before the commit (failure rolls back) and a publishing render after it (failure leaves the store ahead); neither passage said so, and § 1 now does. **Dismissed:** a lane asked what provenance a caller-supplied `stable_prefix` id carries — real, but it is ANTS-3838, filed at loop 9 and deliberately left open as a design call. |
 | 10 | 2026-08-08 | 2, cold — identical byte-stable shared packet (~13k tok) carrying the live `roadmap-corpus-survey.py` output, the `item`/`element`/`relationship` DDL, `mappedKind()`, three `src/roadmap*.cpp` outlines and every cited section of `roadmap-format.md` / `documentation.md`; genre pinned `standard` | **Q1 5 · Q2 2 · Q3 2** — verified 9, dismissed 0 | **First loop under the four questions** (the C/H/M/L/I column above is the retired scale; these are Q-counts). ANTS-4067's re-sync was the trigger, and the cold read found six defects it had not gone looking for. The one an implementer would have built wrong: **§ 3.3 said migration leaves `priority` empty while § 7.5 gives a full harvest mapping** (`CRITICAL → 1` … plus a tie-break) that has no purpose unless migration reads `Priority:` lines — 88 items declare one, 86 already as integers. One builder leaves the column NULL corpus-wide; another populates it; both cite this document. § 3.3 now distinguishes *no default* (nothing is invented) from *never harvested* (a declared value is dropped), which is the confusion underneath it. **Two claims had simply gone stale under shipped code:** § 5.1's "nothing reads a project's legend at all" — ANTS-3793's `RoadmapDialog::storeLegend()` reads it on the store path (`roadmapdialog.cpp:589`, wired at `:3046`), so § 9's open question narrows to the markdown path; and § 3.1's curating-write carve-out covered only a status flip, leaving a headline edit on a migrated item demanding fields § 7.5 exempts. **`write (migration-populated)` was used in § 4.1.1 and defined nowhere**, and `''` was defined only for pre-column projects, so a project created in the store after cutover had no stated value — both closed. Four figures were stale against the corrected survey: pass-headings 144 → 154 items and 136-of-154 → 142-of-164 status values, `Dependencies:` ~21 → 98, sub-bullets ~1,500 → ~1,800, and "over half carry no `Layman:`" was false in direction (49%). **One fix landed outside this document:** `roadmap-format.md` § 3.5.1 named the detector's task-list literal `gfm` where the shipped detector (`roadmapparse.cpp:1033`), the `source_format` CHECK and every consumer use `github-task-list` — this document was right and its neighbour wrong, so the neighbour was corrected and now owes its own gate. |

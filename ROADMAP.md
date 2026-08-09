@@ -28500,6 +28500,13 @@ against current source before filing.
   archives are `0.5.md` (651 B) and `0.6.md` (4.2 KB), so rotation has
   effectively never run and the cutover inherits a 3.2 MB live file.
   Policy is settled in `roadmap-data-model.md` § 8; this is the execution.
+
+  **Second, smaller gap in the same place, found by the ANTS-4069 gate:**
+  `roadmap-format.md` § 4.3 step 4 rewrites a release-block `##` heading from
+  `(target: YYYY-MM)` to `shipped (YYYY-MM-DD)`. That is a *section title*, and
+  no store op changes one — `roadmap_log`'s ops are per-bullet. So a cut-over
+  project cannot perform step 4 at all today. Same shape as rotation (both move
+  or mutate whole sections rather than bullets), so build them together.
   **Layman:** The roadmap file is meant to be trimmed each release by moving finished work into per-version archive files. After the database switch nothing does that any more, and the file is already twenty times bigger than the size that was supposed to trigger a trim.
   Kind: implement.
   Source: in-session-2026-08-09 (§ 9 decision pass, user-requested).

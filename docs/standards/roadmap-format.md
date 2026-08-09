@@ -35,8 +35,18 @@ sub-spec is **required** for any roadmap intended to render
 correctly in the Ants Terminal Roadmap dialog or be parsed
 deterministically by LLM agents.
 
-The roadmap is the single place to track unshipped work. Released
-work moves out of the roadmap into the CHANGELOG.
+The roadmap is the single place to track unshipped work, and a
+release writes its own account of what shipped into the CHANGELOG.
+
+**That does not mean a closed bullet leaves the roadmap when it
+ships.** Closed items stay in `ROADMAP.md` — carrying their IDs,
+which is what § 3.6.2's CHANGELOG matching and § 3.6.3's commit
+matching resolve against — until § 3.9 rotates a *closed minor* out
+into an archive. Rotation is the size-management mechanism, not the
+CHANGELOG. On a store-backed project `roadmap-data-model.md` § 7.5
+makes this binding on the render: its only membership exclusions are
+`internal` and `dropped` items, so a generated `ROADMAP.md` that
+omitted shipped work would not conform.
 
 ### 3.1 File header
 
@@ -316,8 +326,9 @@ represents. But different kinds of work have different
 follow-through (a documentation fix doesn't need a regression
 test; an audit-fix does), and different sources need
 traceability (a finding from a user report should remain
-attributable years later). Two optional metadata fields cover
-this without adding complexity to the bullet's surface form.
+attributable years later). Two metadata fields cover this without
+adding complexity to the bullet's surface form — `Kind:` required
+as of v1.1 (§ 3.5), `Source:` optional.
 
 **Recognised `Kind:` values:**
 
@@ -377,10 +388,15 @@ bucket) or items deferred as out-of-scope land here. Use
 `🧹 Debt-sweep fold-in (YYYY-MM-DD)` as the section heading and
 `Source: debt-sweep-YYYY-MM-DD` if declared explicitly.
 
-A bullet with no `Kind:` / `Source:` is implementation work for
-the planned roadmap (`Kind: implement`, `Source: planned`).
-That's the overwhelming majority case, so the format stays terse
-for it.
+**A bullet with no `Kind:` / `Source:` reads as implementation work
+for the planned roadmap (`Kind: implement`, `Source: planned`) — and
+that is a reader-side fallback for pre-v1.1 bullets, not permission
+to omit the field.** § 3.5 makes `Kind:` a required piece as of
+v1.1; a newly authored bullet without one does not conform, even
+though every reader will still classify it. The fallback exists
+because the field was introduced against a corpus that predates it —
+two in five items carry no `Kind:` — and dropping those items or
+refusing to read them was never an option.
 
 #### 3.5.4 LLM-agent execution contract
 
@@ -539,7 +555,20 @@ Conventions for any findings fold-in:
 ### 3.9 Archive rotation
 
 When a `ROADMAP.md` grows past ~150 KiB, split closed minors out
-into per-minor archive files. The convention:
+into per-minor archive files.
+
+**The size figure is a review trigger, not a rotation event.** The
+only rotation event is a minor or major bump (below), so a file
+that crosses 150 KiB part-way through a minor has nothing eligible
+to rotate — every section under the open minor stays put — and it
+stays over the threshold until that minor closes. Crossing it is
+therefore a signal to check that rotation is still happening at
+all, not a breach on its own. There is deliberately no within-minor
+rotation: splitting an open minor would move bullets that are still
+being edited, and § 3.6's ID stability is worth more than the
+bytes.
+
+The convention:
 
 - Archives live at `<dir(ROADMAP.md)>/docs/roadmap/<MAJOR>.<MINOR>.md`
   — one file per closed minor version, named verbatim
@@ -564,6 +593,13 @@ into per-minor archive files. The convention:
   the search box. Default render stays cheap.
 - The `roadmap-query` IPC verb (Ants ANTS-1117) reads only the
   current `ROADMAP.md`. Archives are dialog-only by contract.
+  **The contract survives cutover, carried differently.** On a
+  store-migrated project there is no "current file" to read, so
+  archive scope stops being a consequence of which file is parsed
+  and becomes an explicit choice by the caller: the read seam takes
+  an include-archive flag and, when it is not set, returns only
+  sections with no archive path. Same result set, chosen rather
+  than implied.
 
 Spec for the viewer's archive-load path:
 [`tests/features/roadmap_viewer_archive/spec.md`](../../tests/features/roadmap_viewer_archive/spec.md)
@@ -650,6 +686,19 @@ GFM-task-list starting point converts in five passes:
 3. Add `Kind:` and `Source:` lines under each bullet (§ 3.5.3).
 4. Add `Layman:` summaries (§ 3.5 Bullet structure).
 
+**On a project that already has a store row, do step 0 LAST.** The
+marker is what makes the file classify `ants-v1`, and store row plus
+`ants-v1` is the definition of store-migrated (§ 3.5.1) — so adding
+it first hands the file to the store before steps 1–4 have run. From
+that moment those steps are hand edits to a generated file:
+`roadmap-data-model.md` § 10 forbids them and the next render
+discards them silently, while the store path cannot be used either,
+because its publish gate is unmet until step 4 fills the `Layman:`
+lines in. Running 1–4 as text edits and adding the marker at the end
+converts the file first and hands over once, which is the order that
+works. A project with no store row is unaffected and may keep step 0
+first.
+
 The migration is reversible — write `[x]` / `[ ]` back, drop
 the metadata, and the file is GFM again.
 
@@ -686,12 +735,20 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
   constrains id allocation.
 
 The single-prefix rule is convention because it keeps
-`.roadmap-counter` unambiguous; multi-prefix repos need one
-counter per prefix — one file each, since a `.roadmap-counter` holds a
-single integer and has no per-prefix form. That limitation is the counter
-carrier's alone: a store-migrated project's `id_high_water` row is keyed
-per `(project, prefix)` (§ 3.5.1), so multi-prefix is native there and
-needs no second file.
+`.roadmap-counter` unambiguous: the file holds a single integer and
+has no per-prefix form. **No per-prefix counter filename is defined,
+by this standard or by any tool** — so a multi-prefix project that
+is *not* store-migrated has no working counter carrier for its
+second and later prefixes, and allocates them from the
+committed-corpus high-water mark alone (§ 3.5.1). Do not invent a
+name for one: two tools inventing different names each read zero for
+the other's prefix, which reissues live IDs, and that is a worse
+failure than the slower corpus scan.
+
+That limitation is the counter carrier's alone: a store-migrated
+project's `id_high_water` row is keyed per `(project, prefix)`
+(§ 3.5.1), so multi-prefix is native there and needs no second file.
+**A multi-prefix project is the strongest reason to cut over.**
 
 #### 3.10.5 Heading-format roadmaps (`#### Pass N.M`)
 
@@ -805,12 +862,27 @@ When a release ships:
 
 The `/release` skill (if used) automates steps 1–4.
 
-On a store-migrated project (§ 3.5.1), steps 1–2 are unchanged —
-`CHANGELOG.md` is not generated from the store, so it stays authored as
-it is today. Steps 3–4 edit roadmap bullets and therefore go through
-the store's write path rather than a text edit; a hand edit to the
-rendered `ROADMAP.md` is discarded at the next render. Nothing
-automatically moves shipped items into the CHANGELOG on either side of
-cutover, and nothing did before.
+On a store-migrated project (§ 3.5.1), the four steps split three
+ways. Steps 1–2 are unchanged: `CHANGELOG.md` is not generated from
+the store, so it stays authored exactly as it is today. Step 3 is a
+per-bullet status flip and goes through the store's write path rather
+than a text edit. **Step 4 is neither** — it rewrites a release-block
+`##` heading (§ 3.7), which is a *section title*, and no store
+operation for changing one is defined yet; it is owed alongside
+rotation (Ants ANTS-4070), which moves whole sections for the same
+reason. Until it exists, a cut-over project cannot perform step 4 at
+all: editing the rendered heading by hand is discarded at the next
+render, silently.
+
+Nothing automatically moves shipped items into the CHANGELOG on
+either side of cutover, and nothing did before.
+
+---
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q-count | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-09 | 3, cold — gated as a pair with [`roadmap-data-model.md`](roadmap-data-model.md), one shared byte-stable packet carrying the live corpus survey, the pass-headings status reader, archive discovery, render routing and the store DDL; genre pinned `standard` | **Q1 0 · Q2 5 · Q3 3** (this file's share of a joint 11) | **This standard's first gate.** It had never had one; the run was triggered by ANTS-4069 after an authoring edit corrected § 3.5.1's detector literal `gfm` → `github-task-list`, and by the § 9 decision pass that added the post-cutover paragraphs to §§ 3.9 and 4.3. **Two findings were against that new text**: § 4.3 claimed steps 3–4 both edit *bullets*, but step 4 rewrites a release-block `##` heading — a section title with no store operation, so a cut-over project cannot perform it (filed onto ANTS-4070); and § 3's preamble still said released work "moves out of the roadmap into the CHANGELOG", which contradicts `roadmap-data-model.md` § 7.5's rule that closed items are published and would have had a renderer author drop every ✅ item. **Five were pre-existing.** `Kind:` was simultaneously "Required as of v1.1" (§ 3.5) and "two optional metadata fields" whose absence "stays terse" (§ 3.5.3) — two lanes found it independently, and it decides whether a conformance checker rejects a bullet. § 3.10.3 put the format marker at step 0, which hands a store-row project to the store before its four hand-edit steps run, so all four are discarded at the next render while the store path refuses them for an unmet publish gate — the marker now goes last. § 3.9's ~150 KiB threshold reads as a breach at 0.7.104's 3.2 MB although no closed minor exists to rotate; it is now stated as a review trigger, with no within-minor rotation by design. § 3.10.4 required "one counter per prefix — one file each" while no per-prefix filename exists here or in any source file; inventing one would have two tools reading zero for each other's prefix and reissuing live IDs, so both standards now say such a project allocates from the committed-corpus floor alone. And § 3.9's `roadmap-query` bullet ("archives are dialog-only by contract") had no post-cutover answer — the contract survives, carried by the read seam's include-archive flag rather than by which file is parsed. |
 
 
