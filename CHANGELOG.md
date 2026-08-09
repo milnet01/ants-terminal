@@ -69,6 +69,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap items marked `partial` import as in-progress rather than not-started** (ANTS-4071)
+  A pass-headings project marking a block `partial` means the work has
+  begun. The importer had no entry for the word and filed it as planned,
+  which says the opposite about work a reader would act on.
+
+- **A roadmap headline quoting code no longer loses everything after the quote** (ANTS-4066)
+  A headline that quotes a bold marker inside backticks — a C signature like
+  `runMain(int argc, char **argv)`, or a bullet discussing the roadmap
+  format itself — was cut short at those two asterisks, and the rest of the
+  title was dropped without a word. Twelve entries across all projects were
+  affected. The reader now recognises backticked code as literal text.
+
 - **Roadmap import no longer loses a declared `Kind:`, invents a `Source:`, or defaults a field in silence** (ANTS-4065)
   The markdown→store import read `Kind:` only at the start of a line, so
   the 99 bullets in this project that write the trailer inline were read

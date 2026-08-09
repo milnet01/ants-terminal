@@ -28319,7 +28319,7 @@ against current source before filing.
   Kind: implement.
   Source: user-request-2026-08-08.
 
-- 📋 [ANTS-4066] **rxBold truncates a headline that quotes a bold marker inside backticks, losing the rest of it at import.**
+- ✅ [ANTS-4066] **rxBold truncates a headline that quotes a bold marker inside backticks, losing the rest of it at import.**
   The bold-headline matcher at `src/roadmapparse.cpp:681` is a non-greedy
   match for a bold run, with no notion of Markdown code spans. A headline that
   legitimately quotes a bold marker inside backticks therefore ends at the
@@ -28350,6 +28350,22 @@ against current source before filing.
   **Layman:** Some roadmap entries quote snippets of code or formatting that contain two stars; the reader mistakes those stars for styling and throws away the rest of that entry's title.
   Kind: fix.
   Source: in-session-2026-08-08 (ANTS-4065 Phase B2 headline audit).
+  Resolved (2026-08-09): `fillBulletRecord()` masks Markdown code spans
+  before matching `rxBold`. The mask is length-preserving (only `*` inside
+  a span becomes `x`), so match offsets still index the original and every
+  capture is sliced from `body` — the stored headline is the author's
+  bytes. An unterminated backtick masks nothing, since swallowing the tail
+  would hide the headline's own closing `**` and lose the headline
+  entirely.
+  Also retired `tools/roadmap-conformance.py`'s `parser_truncates`
+  finding: it compared two Python regexes and never tested the parser, so
+  with the bug fixed it would have reported the same 12 bullets forever.
+  That was the last thing this project's conformance run reported — it is
+  now 1911 bullets, 0 findings.
+  New test `tests/features/roadmap_headline_code_span/` (5 cases): the two
+  quoting cases red against pre-change source, the three containment cases
+  green throughout, which is what makes "only these 12 change" tested
+  rather than asserted. Full suite green.
 
 - ✅ [ANTS-4067] **Re-sync the roadmap standards with what the migration measured, and check for specs that re-open a settled standard.**
   Documentation only; no code. Three things drifted while ANTS-4065 Phase B was
@@ -28526,7 +28542,7 @@ against current source before filing.
   Kind: implement.
   Source: in-session-2026-08-09 (§ 9 decision pass, user-requested).
 
-- 📋 [ANTS-4071] **`partial` migrates as `planned`, so half-finished pass items import as not-started.**
+- ✅ [ANTS-4071] **`partial` migrates as `planned`, so half-finished pass items import as not-started.**
   The pass-headings status reader maps a leading word to a status
   (`src/roadmapparse.cpp:544-560`). `partial` is in none of its three named
   branches, so it falls to the `else` and becomes 📋 `planned` with `defaulted`
@@ -28544,6 +28560,16 @@ against current source before filing.
   **Layman:** A project that marks work "partial" means it has started. The importer currently files it as not started.
   Kind: fix.
   Source: in-session-2026-08-09 (§ 9 decision pass, measured against RetroDB's 164 status values).
+  Resolved (2026-08-09): `partial` added to the reader's in-progress branch
+  (`src/roadmapparse.cpp`) and to `keywordIsNamed()`
+  (`src/roadmapmigrate.cpp`), so it imports as 🚧 with `asserted`
+  provenance. roadmap-data-model.md § 7.3.1 already listed it in the
+  in-progress row — the standard was ahead of the code, so no doc change
+  was owed. Test-first: the `passes` fixture already carried the case, so
+  the two INV-10 assertions were flipped to the intended values and
+  watched red first; INV-6 moved `partial` from its unnamed-word group to
+  its named one, leaving `un-gated` as the only corpus word that still
+  takes the default. Full suite green.
 
 - 📋 [ANTS-4072] **A bullet-form item inside a pass-headings project has no ID carrier.**
   Filed from the ANTS-4069 gate's loop-3 tail — a decision, not a wording fix.
