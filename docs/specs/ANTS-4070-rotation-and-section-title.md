@@ -95,10 +95,20 @@ no second markdown writer — which is ANTS-3809 INV-2's rule.
   "dry_run": true }          // optional; previews without writing
 ```
 
-**The archive path is derived, never passed.** `docs/roadmap/<minor>.md`,
-relative to the project root, and it is validated against § 3.9's own
-case-sensitive regex `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$` before anything
-is written. Deriving it is what keeps the naming rule in one place; accepting a
+**The archive path is derived, never passed.** It is
+**`<dir(liveRoadmapPath)>/docs/roadmap/<minor>.md`**, expressed relative to the
+project root because that is the form `section.source_path` stores and
+`resolveUnderRoot(projectRoot, …)` resolves. § 3.9 anchors archives at
+`<dir(ROADMAP.md)>/docs/roadmap/…`, and the two coincide only when the roadmap
+sits at the project root — which is not guaranteed, since `liveRoadmapPath` comes
+from `.ants/project.json`'s `roadmap` override and `commitAndRender()` takes it
+as a parameter for exactly that reason. Anchoring on the project root instead
+would write `docs/roadmap/0.7.md` for a project whose roadmap is at
+`sub/ROADMAP.md`, and the migration's archive discovery — which looks beside the
+live file — would never find it again.
+
+**§ 3.9's case-sensitive regex `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$` validates
+the FILENAME**, not the whole path, and is applied before anything is written. Deriving it is what keeps the naming rule in one place; accepting a
 path would let a caller write `docs/roadmap/v0.7.md`, which § 3.9 forbids and
 which the migration's own archive discovery would then refuse to read back.
 
@@ -143,9 +153,23 @@ which returns **nine** headings and the expression selects all nine:
 `## 0.7.92 — …`. It rejects `## 0.8.0 — …`, `## 0.9.0 — …`, `## 1.0.0 — …` and
 the `0.5.x` signpost.
 
-**Sections already carrying an archive path are skipped, not re-written.** A
-re-run is therefore a no-op, which is what makes the operation safe to put in
-`/bump` where a retry is ordinary.
+**A section whose `sourcePath` already EQUALS the derived archive path is
+skipped; one matching the minor but filed under a *different* path is
+reassigned.** The equality is the rule, not "already archived" — under the looser
+reading a `0.7` section mistakenly sitting in `0.6.md` would be left there, so
+the parent heading would render into `0.7.md` while a child stayed in `0.6.md`,
+which is INV-5's failure mode arriving from the other side. Equality is also all
+the idempotency argument needs: a re-run finds every section already at the
+derived path and moves none.
+
+**A rotation must not empty the live file.** The render assembles content only
+for paths that still have sections — a file with none never enters `byFile` and
+is never written, so it would be left on disk with its old content while the
+store said otherwise. `rotate_minor` therefore refuses with `bad_args` when the
+move set would leave `liveRoadmapPath` with zero sections. Reachable only on a
+project whose every section is one closed minor, which is not this one, but
+INV-1 asserts bullets end up *out of* `ROADMAP.md` and that assertion would
+otherwise be false in exactly that case.
 
 ### 2.3 `roadmap_log op:"retitle_section"`
 
@@ -168,6 +192,21 @@ address: `roadmap_log` ops, `roadmap_query` and every cross-reference key on it,
 and re-slugging on a retitle would break all of them at once for a cosmetic
 gain. § 4.3 step 4 is a heading edit, not a re-identification.
 
+> **OPEN — surfaced to the user 2026-08-09, not decided here.** Keeping the
+> stored slug does not keep it *stable*, because a section's slug is **derived,
+> not stored round-trip**: the render emits `## <title>` and never the slug, and
+> the import re-derives it with `RoadmapIndex::slugifyHeading()` /
+> `uniqueSlug()`. ANTS-4065 § 2.6's governed set carries no section slug either.
+> So after a retitle the store holds the old slug while any re-import derives a
+> new one — and `RoadmapMigrateLoad` § 2.6 resolves sections by
+> `findSection(projectId, slug)`, so the re-import would miss and add a second
+> section rather than update the first. The three candidate answers — re-slug on
+> retitle and accept the re-addressing, keep the slug and give the render a way
+> to carry it, or refuse a retitle that would change the derived slug — differ in
+> what they cost elsewhere, so this is the user's call and not the reviewer's.
+> **Until it is answered, `retitle_section` is not safe to run on a project that
+> will be re-imported**, which includes ANTS-4065 Phase D.
+
 ### 2.4 Guards, and what a dry run shows
 
 **Five CALLER-SIDE refusals, checked before the mutation**, each returning the
@@ -176,7 +215,7 @@ the seam refuses — see the inherited set below.
 
 | Condition | Code | Status in the taxonomy |
 |---|---|---|
-| `minor` is not `<MAJOR>.<MINOR>`, or the derived filename fails § 3.9's regex; or `retitle_section`'s `title` is empty, whitespace-only or contains a newline | `bad_args` | existing |
+| `minor` is not `<MAJOR>.<MINOR>`; the derived filename fails § 3.9's regex; the move set would leave `liveRoadmapPath` with zero sections; or `retitle_section`'s `title` is empty, whitespace-only or contains a newline | `bad_args` | existing |
 | **No section's TITLE matches the minor** per § 2.2 (`rotate_minor`), or `retitle_section`'s `section` slug does not resolve through `findSection()` | `section_not_found` | existing; already what `roadmap_log` emits for an unresolvable `section` slug, though `mcp-error-codes.md`'s entry documents only `read_region`'s use (§ 7) |
 | A required argument is wholly absent — `minor`, or `retitle_section`'s `section` / `title` | `missing_field` | existing; `mcp-error-codes.md` makes it the absent-arg specialisation of `bad_args`, and the pervasive `roadmap_log` field-guard code |
 | **Any section in the move set** — a matched section *or a descendant* — still holds an **open** item | `minor_not_closed` | **new** (§ 7) |
@@ -223,12 +262,32 @@ project whose read failed, so none of them fits; `locator_unsupported` is the
 nearest precedent in spirit — valid request, this backend cannot serve it — and
 is per-locator by definition, which these are not.
 
-**`minor_not_closed` is the guard that matters, and it is derived from the data
-rather than from a version string.** The store does not know the project's
-version, and asking it to read `CMakeLists.txt` would give a migration engine an
-opinion about a build file. "Closed" is instead exactly what it means on the
-roadmap: nothing under that minor is still open. That also makes the guard
-testable without a fixture version file.
+**`minor_not_closed` is derived from the data rather than from a version
+string.** The store does not know the project's version, and asking it to read
+`CMakeLists.txt` would give a migration engine an opinion about a build file. The
+guard tests exactly one thing: nothing in the move set is still open. That makes
+it testable without a fixture version file.
+
+**It is NOT § 3.9's rotation-event rule, and this op deliberately does not
+enforce that rule.** § 3.9 says rotation happens "at `/bump` time on a minor or
+major bump only", and that "every section under the open minor stays put". A
+minor can hold zero open bullets while still being the current one — routinely,
+just after a patch release and before the next item is filed — so this guard
+would let `rotate_minor 0.7` succeed today on a project at `VERSION 0.7.104` and
+archive the minor it is still shipping from.
+
+**`/bump` owns that check, because `/bump` is the only caller that knows a minor
+just closed.** It is the release step; the version transition is its input, not
+something a store operation can infer. Stating the split rather than silently
+leaving the hole is the point — an implementer reading only § 2.4 would
+otherwise believe the op is safe to call with any minor. § 5's deferred `/bump`
+wiring is therefore not merely plumbing: **until it lands, nothing enforces
+§ 3.9's rotation event**, and the operation must not be exposed as a routine
+verb before it does.
+
+This is also what § 1's "nothing eligible to move today" rests on: it holds
+because 0.7 is open *and* holds open bullets. The first clause is the one that
+matters, and it is `/bump`'s to check.
 
 **The dry-run envelope, with its fields named.** `dry_run: true` writes nothing
 and returns what the real run would, plus — for `rotate_minor` — three fields:
@@ -303,11 +362,19 @@ it would write, and nothing else — there is no set to preview.
   archive path afterwards. *Breaks when:* selection filters on `level == 2` and
   stops there, leaving children pointing at the live file — which renders the
   parent heading into the archive and its content into `ROADMAP.md`.
-- **INV-6** — The archive filename is derived and § 3.9-conforming. *Test:*
+- **INV-6** — The archive path is derived, anchored beside the live roadmap, and
+  § 3.9-conforming; and a rotation never empties the live file. *Test:*
   `rotate_minor` with `minor: "v0.7"`, `"0.7.0"` and `"00.7"` each return
-  `bad_args`; the accepted `"0.7"` produces `docs/roadmap/0.7.md`. *Breaks
-  when:* the path is taken from the caller, or built by string concatenation
-  without re-validating against the regex.
+  `bad_args`; on a fixture whose roadmap is at the project root the accepted
+  `"0.7"` produces `docs/roadmap/0.7.md`, and on one whose `liveRoadmapPath` is
+  `sub/ROADMAP.md` it produces `sub/docs/roadmap/0.7.md`; and a fixture whose
+  every section belongs to the rotated minor returns `bad_args` with both files
+  unchanged. *Breaks when:* the path is taken from the caller, built by string
+  concatenation without re-validating the filename, anchored on the project root
+  instead of on the roadmap's own directory — which writes an archive the
+  migration's discovery will never find — or allowed to leave the live file with
+  no sections, which the render then never rewrites, stranding its old content
+  on disk.
 - **INV-7** — `retitle_section` changes the title and nothing else. *Test:*
   retitle a section, then assert its slug, level, position, parent and every
   item filed under it are unchanged, and that the rendered heading carries the
@@ -362,7 +429,10 @@ the same one the project pays on each roadmap write today.
 - **Wiring rotation into `/bump`** — this spec builds the operation and its
   guards; which release step calls it is `.claude/bump.json`'s recipe, and
   changing that is a separate edit with its own verification. Deferred; no id
-  yet, because it is one line in a recipe once this ships.
+  yet, because it is one line in a recipe once this ships. **It is not optional
+  plumbing:** § 2.4 puts § 3.9's rotation-event rule — rotate only on a minor or
+  major bump — on the caller, so until this lands nothing enforces it and the op
+  should not be exposed as a routine verb.
 - **A markdown fallback path.** On a non-migrated project rotation stays
   `/bump`'s snip-and-create, and these ops refuse with `op_unsupported` (§ 2.4)
   rather than growing a second implementation. Permanent exclusion: a markdown
@@ -451,14 +521,20 @@ comparison meaningful.
 | § 2.4 the five caller-side refusals | INV-3 (`minor_not_closed`), INV-6 (`bad_args`), INV-9 (`bad_args`, `section_not_found`, `missing_field`), INV-2 (`section_not_found` on a title that matches nothing); `op_unsupported` **nothing** — it needs a non-migrated fixture, which this suite has no harness for |
 | § 2.4 the four inherited seam codes | INV-10 covers `render_gate_unmet`; `render_failed` / `store_failed` / `write_failed` **nothing** — they are ANTS-3809's to test and it does |
 | § 2.1 no second markdown writer is added | **nothing here** — ANTS-3809's no-second-writer rule owns it, and its source scrape already covers `src/` |
+| § 2.2 the live file is never emptied | INV-6's `bad_args` set, extended with the zero-sections case |
+| § 2.4 § 3.9's rotation-event rule (rotate only on a minor/major bump) | **nothing** — deliberately delegated to `/bump` (§ 5), and nothing in this spec's code can observe a version transition |
+| § 2.3 slug stability across a re-import | **nothing** — OPEN, surfaced to the user; see § 2.3's note |
 | § 5's `/bump` wiring landing at all | **nothing** — no test can assert a recipe step exists until it does; tracked by the deferred line in § 5 |
 
-Eight rows, **four** carrying a bolded `nothing` (two of them partial, naming
-what *is* covered beside what is not).
+Eleven rows, **six** carrying a bolded `nothing` (two of them partial, naming
+what *is* covered beside what is not). The budget grew by two during review, and
+both additions are honest rather than regressions: § 3.9's rotation-event rule is
+delegated to `/bump` by design, and the slug question is open pending the user.
 
 ## Cold-eyes loop log
 
 | Loop | Date | Lanes | Findings | Outcome |
 |------|------|-------|----------|---------|
+| 3 | 2026-08-09 | 2, cold — same shared packet, rebuilt from disk; no mention of loops 1–2 | Q2 2 · Q3 2 — verified 4, fixed 4; **1 surfaced, not fixed** | **Exited at the `--max-loops` cap with the tail empty but one open decision.** Both lanes again led on the same defect, the third loop running: § 2.4 defined a closed minor as "nothing under it is still open", which contradicts § 3.9's "rotation happens at `/bump` time on a minor or major bump only". A minor holds zero open bullets routinely — just after a patch release — so the guard would have let `rotate_minor 0.7` archive the minor this project is still shipping from, and § 8 had already rejected the version check that would distinguish them. Resolved by stating that the op deliberately does not enforce the rotation-event rule and `/bump` owns it, which also promotes § 5's deferred wiring from plumbing to a precondition. Three more: the archive path was anchored on the project root while § 3.9 anchors it beside `ROADMAP.md` (they differ whenever `.ants/project.json` moves the roadmap, and the migration would never rediscover the file); "already carrying an archive path" was ambiguous between *any* path and *the derived* one; and the render never rewrites a file left with zero sections, so a rotation that emptied the live file would strand its old content while INV-1 claimed otherwise. **Surfaced, not fixed:** a section's slug is derived from its heading, not round-tripped, so `retitle_section` diverges the stored slug from any re-import's — three candidate answers with different costs, so it is the user's call, and until it is answered the op is unsafe on a project facing ANTS-4065 Phase D. 463 → 537 lines. |
 | 2 | 2026-08-09 | 2, cold — same shared packet, rebuilt from disk after loop 1's edits; no mention of loop 1's findings or fixes | Q1 1 · Q2 1 · Q3 3 — verified 5, dismissed 0 | **Both lanes again led on the same two, and the worst of them was loop 1's own collateral.** § 2.2's three-case rule, added by loop 1 to fix the `0.5.x` signpost, made case 2 "a non-alphanumeric character" — and `.` is non-alphanumeric, so case 2 swallowed case 3 and the rule re-admitted exactly what it was written to reject. Adding a disjunct cannot exclude anything. Restated as one expression, `^v?<major>\.<minor>(?:$\|[^0-9.]\|\.[0-9])`, with the three cases disjoint. Loop 1's corpus enumeration also omitted `## 0.7.7` of nine headings — re-derived from `grep -nE '^## 0\.7'` and the command recorded beside it. Three draft defects loop 1 had not reached: the openness guard was scoped to matched sections while § 2.2 moves descendants too (an in-progress item one level down would have been archived silently), `sections` / `sections_moved` left three readings open, and `retitle_section` had no refusal for an unresolvable slug or an absent argument. Both lanes' Open questions resolved as no-defect: the three seam codes are all in the taxonomy, `ANTS-3765 § 2.6` is "Re-run matching", and both ctest labels exist. 424 → 463 lines. |
 | 1 | 2026-08-09 | 2, cold — one shared byte-stable packet: the scrubbed doc, bounded windows of `roadmapstore.h` / `roadmapwrite.h` / `roadmaprender.cpp`, the quoted passages of `roadmap-format.md` §§ 3.9/4.3, `roadmap-data-model.md` § 8, `ANTS-4065` § 2.6 and four `mcp-error-codes.md` entries, plus eleven verified source facts | Q1 1 · Q2 3 · Q3 4 — verified 8, dismissed 0. Plus **3 found while BUILDING the packet**, before a lane ran | **Both lanes independently led on the same two defects** — § 2.4's `section_not_found` row contradicting INV-2's idempotent re-run, and a bare "§ 2.4" in § 2.1 that resolves to this document instead of ANTS-3809. All 8 fixed. Two of the three packet-phase findings were mine minting error codes: `not_migrated` does not exist (the seam maps only `too_large` / `read_failed` / `unrecognised_format`, and on a non-migrated project does not refuse at all), and `minor_not_closed` was used without being filed. Both lanes also routed the same two items to Open questions rather than guessing, and both were real: `isOpen()` counts 💭 as open, so § 2.4's "📋 or 🚧" invented a narrower closed than the codebase's; and `## 0.5.x and 0.6.x — archived` — a 303-byte signpost — would have been claimed by `rotate_minor 0.5` and filed inside the archive it points at, which also falsified § 1's "moves zero bytes today". § 2.2's match became three explicit cases; INV-9 and INV-10 added. 308 → 424 lines. |
