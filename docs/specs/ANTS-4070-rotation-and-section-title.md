@@ -107,8 +107,19 @@ the minor when its title, after an optional leading `v`, begins with
 `<major>.<minor>` and what follows that prefix is one of exactly three things:
 
 1. **end of title** — `## 0.7`;
-2. a **non-alphanumeric** character — `## 0.7 — …`, `## 0.7: …`;
+2. a character that is neither a digit **nor a `.`** — `## 0.7 — …`, `## 0.7: …`;
 3. a **`.` followed by a digit** — `## 0.7.0 — …`, `## 0.7.50–0.7.59 — …`.
+
+**Case 2 excludes `.` on purpose, and the three cases are disjoint.** Written as
+one expression against the title, which is the contract:
+
+```
+^v?<major>\.<minor>(?:$|[^0-9.]|\.[0-9])
+```
+
+An earlier draft said case 2 was any "non-alphanumeric" character. A `.` is
+non-alphanumeric, so case 2 swallowed case 3 and the rule claimed everything the
+third case exists to reject — adding a disjunct cannot exclude anything.
 
 Every descendant section moves with its parent, resolved through `parentId`,
 because § 3.9 rotates "the closed minor's heading **and its sub-headings**".
@@ -125,10 +136,12 @@ non-digit, so the rule excludes it without a special case. Case 1 exists because
 a title that *is* the minor has no following character at all, and a rule
 phrased only over "the next character" is undefined for it.
 
-Verified against the corpus 2026-08-09: cases 2–3 select `## 0.7.0 — …`,
-`## 0.7.12 — …`, `## 0.7.50–0.7.59 — …`, `## 0.7.65 — …`, `## 0.7.78 — …`,
-`## 0.7.79 — …`, `## 0.7.80–0.7.84 — …` and `## 0.7.92 — …` for minor 0.7, and
-reject `## 0.8.0 — …`, `## 0.9.0 — …`, `## 1.0.0 — …` and the `0.5.x` signpost.
+Verified against the corpus 2026-08-09 by `grep -nE '^## 0\.7' ROADMAP.md`,
+which returns **nine** headings and the expression selects all nine:
+`## 0.7.0 — …`, `## 0.7.7 — …`, `## 0.7.12 — …`, `## 0.7.50–0.7.59 — …`,
+`## 0.7.65 — …`, `## 0.7.78 — …`, `## 0.7.79 — …`, `## 0.7.80–0.7.84 — …` and
+`## 0.7.92 — …`. It rejects `## 0.8.0 — …`, `## 0.9.0 — …`, `## 1.0.0 — …` and
+the `0.5.x` signpost.
 
 **Sections already carrying an archive path are skipped, not re-written.** A
 re-run is therefore a no-op, which is what makes the operation safe to put in
@@ -157,16 +170,23 @@ gain. § 4.3 step 4 is a heading edit, not a re-identification.
 
 ### 2.4 Guards, and what a dry run shows
 
-**Four CALLER-SIDE refusals, checked before the mutation**, each returning the
+**Five CALLER-SIDE refusals, checked before the mutation**, each returning the
 canonical envelope shape (`mcp-error-codes.md`). They are additional to whatever
 the seam refuses — see the inherited set below.
 
 | Condition | Code | Status in the taxonomy |
 |---|---|---|
 | `minor` is not `<MAJOR>.<MINOR>`, or the derived filename fails § 3.9's regex; or `retitle_section`'s `title` is empty, whitespace-only or contains a newline | `bad_args` | existing |
-| **No section's TITLE matches the minor** per § 2.2 | `section_not_found` | existing; already what `roadmap_log` emits for an unresolvable `section` slug, though `mcp-error-codes.md`'s entry documents only `read_region`'s use (§ 7) |
-| A matched section still holds an **open** item | `minor_not_closed` | **new** (§ 7) |
+| **No section's TITLE matches the minor** per § 2.2 (`rotate_minor`), or `retitle_section`'s `section` slug does not resolve through `findSection()` | `section_not_found` | existing; already what `roadmap_log` emits for an unresolvable `section` slug, though `mcp-error-codes.md`'s entry documents only `read_region`'s use (§ 7) |
+| A required argument is wholly absent — `minor`, or `retitle_section`'s `section` / `title` | `missing_field` | existing; `mcp-error-codes.md` makes it the absent-arg specialisation of `bad_args`, and the pervasive `roadmap_log` field-guard code |
+| **Any section in the move set** — a matched section *or a descendant* — still holds an **open** item | `minor_not_closed` | **new** (§ 7) |
 | The project is not store-migrated | `op_unsupported` | **new** (§ 7) |
+
+**The openness guard is scoped to the whole MOVE SET, not to the matched
+sections.** § 2.2 moves every descendant with its parent, so a guard reading only
+the `level == 2` matches would archive an in-progress item living under a `###`
+child while reporting success. The set the guard tests and the set the mutation
+writes are the same set, by construction.
 
 **`section_not_found` is keyed on the TITLE match, not on the set that survives
 filtering**, and the distinction is the whole reason the row says so. § 2.2 skips
@@ -182,7 +202,7 @@ notion of closed than the codebase's own; a minor holding only 💭 items would
 have passed the guard and archived work nobody has committed to.
 
 **Four further codes are inherited from the seam and are reachable here**, so the
-four above are not the whole refusal set. `RoadmapWrite::Result` maps them
+five above are not the whole refusal set. `RoadmapWrite::Result` maps them
 (`src/roadmapwrite.h`): `GateUnmet → render_gate_unmet`,
 `RenderFailed → render_failed`, `StoreFailed → store_failed`,
 `PublishFailed → write_failed`. **`render_gate_unmet` is the one to design
@@ -211,13 +231,24 @@ roadmap: nothing under that minor is still open. That also makes the guard
 testable without a fixture version file.
 
 **The dry-run envelope, with its fields named.** `dry_run: true` writes nothing
-and returns what the real run would, plus — for `rotate_minor` —
-`archive_path` (string, the derived relative path) and `sections_moved`
-(integer) alongside `sections` (an **ordered array of section slug strings**, in
-the order § 2.2 selects them). The real run returns the same three fields, so a
-caller can compare them directly; INV-8 does exactly that. Naming them here is
-not pedantry — the selection in § 2.2 is an inference over titles, and a caller
-must be able to see what it inferred before committing to it.
+and returns what the real run would, plus — for `rotate_minor` — three fields:
+
+- **`archive_path`** — string, the derived path relative to the project root.
+- **`sections`** — an array of section slug strings listing **exactly the
+  sections that are (or would be) reassigned**: matched sections *and* their
+  descendants, minus any already carrying an archive path. Ordered by the
+  render's own document order, `sectionOrderLess()`'s `(position, slug)`, so two
+  builds cannot disagree about the sequence.
+- **`sections_moved`** — integer, and **always `sections.length`**. It is stated
+  rather than left implied because the two obvious readings differ: a count of
+  matched `##` sections would exclude descendants, and on the idempotent re-run
+  a count of *matched* sections would be non-zero while nothing moved.
+
+On a re-run, therefore, `sections` is `[]` and `sections_moved` is `0`. The real
+run returns the same three fields, so a caller can compare them directly; INV-8
+does exactly that. Naming them is not pedantry — § 2.2's selection is an
+inference over titles, and a caller must be able to see what it inferred before
+committing to it.
 
 `retitle_section`'s dry run returns the resolved `section` slug and the `title`
 it would write, and nothing else — there is no set to preview.
@@ -244,18 +275,22 @@ it would write, and nothing else — there is no set to preview.
   correct and both files stale — the exact failure mode a hand edit has today,
   reintroduced from the other side.
 - **INV-2** — Rotation is idempotent, and the second run **succeeds**. *Test:*
-  rotate twice; assert the second run returns `ok` with `sections_moved: 0` —
-  **not** `section_not_found` — and that the two renders are byte-identical.
-  *Breaks when:* the emptiness check runs over the set that survives the
-  already-archived skip rather than over the title match, which turns every
-  retry into a refusal.
+  rotate twice; assert the second run returns `ok` with `sections_moved: 0` and
+  `sections: []` — **not** `section_not_found` — and that the two renders are
+  byte-identical. Then rotate a minor no title matches at all and assert that
+  **does** return `section_not_found`, so the two empty cases are shown to be
+  distinguishable rather than assumed to be. *Breaks when:* the emptiness check
+  runs over the set that survives the already-archived skip rather than over the
+  title match, which turns every retry into a refusal.
 - **INV-3** — A minor holding an open item is refused, and nothing is written.
-  *Test:* three fixtures, one per open status — a closed-minor section carrying
-  one 📋, one 🚧, one 💭 bullet; each asserts `code == "minor_not_closed"` and
+  *Test:* four fixtures — a closed-minor section carrying one 📋, one 🚧 and one
+  💭 bullet respectively, plus a fourth whose `##` is entirely shipped and whose
+  `###` **child** carries a 🚧; each asserts `code == "minor_not_closed"` and
   that both files are byte-identical to before the call. *Breaks when:* the
   guard is written as a warning, runs after the mutation rather than before it,
-  or omits 💭 — which `RoadmapRender::isOpen()` counts as open and an earlier
-  draft of § 2.4 did not.
+  omits 💭 — which `RoadmapRender::isOpen()` counts as open and an earlier draft
+  of § 2.4 did not — or tests only the matched `level == 2` sections, which
+  archives an in-progress item that lives one level down.
 - **INV-4** — The § 2.2 match admits only a release designator. *Test:* one
   fixture carrying `## 0.7.0 — …`, `## 0.70.0 — …`, `## 0.7 — …` and
   `## 0.5.x and 0.6.x — archived`; rotate `0.7` and assert the first and third
@@ -286,10 +321,12 @@ it would write, and nothing else — there is no set to preview.
   but the render has already published the files — the render is outside the
   transaction, which is why `commitAndRender` takes `dryRun` rather than the
   caller wrapping it.
-- **INV-9** — A `title` that would render an unaddressable heading is refused.
-  *Test:* `retitle_section` with `""`, `"   "` and a value containing a newline
-  each return `bad_args`, and the section's stored title is unchanged after all
-  three. *Breaks when:* the title is passed straight through to
+- **INV-9** — `retitle_section`'s arguments are validated, and each failure has
+  one code a caller can branch on. *Test:* `""`, `"   "` and a value containing
+  a newline each return `bad_args`; a `section` slug that does not resolve
+  returns `section_not_found`; a wholly absent `section` or `title` returns
+  `missing_field`; and the section's stored title is unchanged after every one.
+  *Breaks when:* the title is passed straight through to
   `updateSection()`, so the next render emits a bare `##` — a heading with no
   text to slug, which the migration cannot read back and no later op can
   address.
@@ -411,7 +448,7 @@ comparison meaningful.
 | § 2.2 derived path conforms to § 3.9's regex | INV-6 |
 | § 2.2 the three-case title match | INV-4 |
 | § 2.3 slug is not recomputed | INV-7 |
-| § 2.4 the four caller-side refusals | INV-3 (`minor_not_closed`), INV-6 (`bad_args`), INV-9 (`bad_args`); `op_unsupported` **nothing** — it needs a non-migrated fixture, which this suite has no harness for |
+| § 2.4 the five caller-side refusals | INV-3 (`minor_not_closed`), INV-6 (`bad_args`), INV-9 (`bad_args`, `section_not_found`, `missing_field`), INV-2 (`section_not_found` on a title that matches nothing); `op_unsupported` **nothing** — it needs a non-migrated fixture, which this suite has no harness for |
 | § 2.4 the four inherited seam codes | INV-10 covers `render_gate_unmet`; `render_failed` / `store_failed` / `write_failed` **nothing** — they are ANTS-3809's to test and it does |
 | § 2.1 no second markdown writer is added | **nothing here** — ANTS-3809's no-second-writer rule owns it, and its source scrape already covers `src/` |
 | § 5's `/bump` wiring landing at all | **nothing** — no test can assert a recipe step exists until it does; tracked by the deferred line in § 5 |
@@ -423,4 +460,5 @@ what *is* covered beside what is not).
 
 | Loop | Date | Lanes | Findings | Outcome |
 |------|------|-------|----------|---------|
+| 2 | 2026-08-09 | 2, cold — same shared packet, rebuilt from disk after loop 1's edits; no mention of loop 1's findings or fixes | Q1 1 · Q2 1 · Q3 3 — verified 5, dismissed 0 | **Both lanes again led on the same two, and the worst of them was loop 1's own collateral.** § 2.2's three-case rule, added by loop 1 to fix the `0.5.x` signpost, made case 2 "a non-alphanumeric character" — and `.` is non-alphanumeric, so case 2 swallowed case 3 and the rule re-admitted exactly what it was written to reject. Adding a disjunct cannot exclude anything. Restated as one expression, `^v?<major>\.<minor>(?:$\|[^0-9.]\|\.[0-9])`, with the three cases disjoint. Loop 1's corpus enumeration also omitted `## 0.7.7` of nine headings — re-derived from `grep -nE '^## 0\.7'` and the command recorded beside it. Three draft defects loop 1 had not reached: the openness guard was scoped to matched sections while § 2.2 moves descendants too (an in-progress item one level down would have been archived silently), `sections` / `sections_moved` left three readings open, and `retitle_section` had no refusal for an unresolvable slug or an absent argument. Both lanes' Open questions resolved as no-defect: the three seam codes are all in the taxonomy, `ANTS-3765 § 2.6` is "Re-run matching", and both ctest labels exist. 424 → 463 lines. |
 | 1 | 2026-08-09 | 2, cold — one shared byte-stable packet: the scrubbed doc, bounded windows of `roadmapstore.h` / `roadmapwrite.h` / `roadmaprender.cpp`, the quoted passages of `roadmap-format.md` §§ 3.9/4.3, `roadmap-data-model.md` § 8, `ANTS-4065` § 2.6 and four `mcp-error-codes.md` entries, plus eleven verified source facts | Q1 1 · Q2 3 · Q3 4 — verified 8, dismissed 0. Plus **3 found while BUILDING the packet**, before a lane ran | **Both lanes independently led on the same two defects** — § 2.4's `section_not_found` row contradicting INV-2's idempotent re-run, and a bare "§ 2.4" in § 2.1 that resolves to this document instead of ANTS-3809. All 8 fixed. Two of the three packet-phase findings were mine minting error codes: `not_migrated` does not exist (the seam maps only `too_large` / `read_failed` / `unrecognised_format`, and on a non-migrated project does not refuse at all), and `minor_not_closed` was used without being filed. Both lanes also routed the same two items to Open questions rather than guessing, and both were real: `isOpen()` counts 💭 as open, so § 2.4's "📋 or 🚧" invented a narrower closed than the codebase's; and `## 0.5.x and 0.6.x — archived` — a 303-byte signpost — would have been claimed by `rotate_minor 0.5` and filed inside the archive it points at, which also falsified § 1's "moves zero bytes today". § 2.2's match became three explicit cases; INV-9 and INV-10 added. 308 → 424 lines. |
