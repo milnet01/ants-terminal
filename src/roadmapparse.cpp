@@ -723,6 +723,43 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     static const QRegularExpression rxBold(
         QStringLiteral("\\*\\*(.+?)\\*\\*"),
         QRegularExpression::DotMatchesEverythingOption);
+    // ANTS-4066 — rxBold has no notion of Markdown code spans, so a headline
+    // that legitimately QUOTES a bold marker inside backticks used to end at
+    // the first marker inside that span and lose every character after it,
+    // silently. ANTS-1702's headline quotes the C signature
+    // `runMain(int argc, char **argv)`: those asterisks are pointer syntax, and
+    // the parser stopped dead on them. 12 bullets corpus-wide, and the source is
+    // correct in all 12 — rewriting the markdown would mean corrupting a C
+    // signature to suit a regex, so the fix is here.
+    //
+    // The mask is LENGTH-PRESERVING (only `*` inside a span becomes `x`), which
+    // is what lets every match offset index the original string. Captures are
+    // sliced from `body`, never taken from the mask, so the stored headline is
+    // the author's bytes.
+    //
+    // An UNTERMINATED backtick masks nothing: swallowing the tail would hide the
+    // headline's own closing `**` and lose the headline entirely, which is worse
+    // than the truncation this removes. A ``double-backtick`` span is likewise
+    // left alone — the pairing is per backtick — which is a miss, not a
+    // corruption, and no corpus bullet writes one.
+    const QString maskedBody = [&body] {
+        QString out = body;
+        qsizetype i = 0;
+        while (true) {
+            const qsizetype open = out.indexOf(QLatin1Char('`'), i);
+            if (open < 0) break;
+            const qsizetype close = out.indexOf(QLatin1Char('`'), open + 1);
+            if (close < 0) break;
+            for (qsizetype k = open + 1; k < close; ++k)
+                if (out.at(k) == QLatin1Char('*')) out[k] = QLatin1Char('x');
+            i = close + 1;
+        }
+        return out;
+    }();
+    // The capture, taken from the ORIGINAL at the mask's offsets.
+    const auto boldText = [&body](const QRegularExpressionMatch &m) {
+        return body.mid(m.capturedStart(1), m.capturedLength(1)).trimmed();
+    };
 
     QString boldId;      // multi-prefix bold-ID token, e.g. "Sh4"
     QString bracketId;   // ANTS-1987 — head-anchored bare-bracket id, e.g. "Cl9"
@@ -876,7 +913,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
             assignHeadline(rec, h, headLineEnd(body));  // ANTS-2075 / ANTS-1811
         }
     }
-    const auto boldMatch = rxBold.match(body);
+    const auto boldMatch = rxBold.match(maskedBody);   // ANTS-4066
     // ANTS-2046 — a bold span only stands in as the headline when it is
     // HEAD-ANCHORED (the bullet text *starts* with it). A GFM task item
     // like `Ambient soundscapes (…) — **deferred to Phase 10.**` carries
@@ -898,7 +935,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         // skip the bold-or-prose fallback for this row.
     } else if (boldMatch.hasMatch() &&
                (!gfmHere || boldIsHeadAnchored)) {
-        QString h = boldMatch.captured(1).trimmed();
+        QString h = boldText(boldMatch);   // ANTS-4066 — sliced from `body`
         // ANTS-3808 — one past the text this branch consumes for the head
         // line, tracked alongside `h` because each sub-case below ends
         // somewhere different.
@@ -911,9 +948,9 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         if (!boldId.isEmpty() && h == boldId + QLatin1Char('.')) {
             // Find the next bold token after the bold-ID.
             const int after = boldMatch.capturedEnd();
-            const auto m2 = rxBold.match(body, after);
+            const auto m2 = rxBold.match(maskedBody, after);   // ANTS-4066
             if (m2.hasMatch()) {
-                h = m2.captured(1).trimmed();
+                h = boldText(m2);
                 consumedEnd = m2.capturedEnd();
             } else {
                 // Use the prose immediately following the

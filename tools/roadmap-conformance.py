@@ -61,9 +61,11 @@ def bold_headline(line):
 
     A naive first-`**`-to-next-`**` match truncates any headline that quotes a
     bold marker inside backticks -- including one quoting the C signature
-    `char **argv`, where the asterisks are pointer syntax. The parser has that
-    bug (ANTS-4066); this checker must not, or it reports the parser's damage
-    as a defect in the text and someone "fixes" correct markdown.
+    `char **argv`, where the asterisks are pointer syntax. The parser had that
+    bug until ANTS-4066 shipped (2026-08-09); this checker never did, which is
+    why it could measure the damage. Both now mask code spans before matching,
+    so the two agree and the `parser_truncates` finding this fed has been
+    retired -- see its note in check_file().
     """
     masked = list(line)
     for m in re.finditer(r"`[^`]*`", line):
@@ -101,7 +103,7 @@ def check_file(path):
     text = path.read_text(encoding="utf-8", errors="replace")
     dialect = detect_dialect(text)
     findings = {k: [] for k in ("no_period", "multiline", "too_long",
-                                "off_taxonomy", "no_layman", "parser_truncates")}
+                                "off_taxonomy", "no_layman")}
     if dialect != "ants-v1":
         return dialect, findings, 0
 
@@ -123,9 +125,13 @@ def check_file(path):
             continue
         if "**" not in rest:
             findings["multiline"].append(label)
-        naive = re.search(r"\*\*(.+?)\*\*", line, re.S)
-        if naive and naive.group(1) != head:
-            findings["parser_truncates"].append(label)
+        # A `parser_truncates` finding lived here: it compared a naive match
+        # against `head` and listed every bullet whose headline the PARSER would
+        # cut short at a bold marker inside a code span. Retired with ANTS-4066
+        # (2026-08-09), which fixed the parser. It never tested the parser --
+        # both sides were Python regexes -- so it would have gone on reporting
+        # the same 12 bullets forever, describing a bug that no longer exists.
+        # The behaviour is owned by tests/features/roadmap_headline_code_span/.
         if status in OPEN and head.strip() and not head.rstrip().endswith(TERM):
             findings["no_period"].append(label)
         if len(head) > HEADLINE_MAX:
@@ -181,11 +187,6 @@ ORDER = [
      "cosmetic for import (no length limit exists in the store, importer or "
      "render) -- it only stops roadmap_log rewriting that entry. Split at a "
      "clause boundary, moving the remainder into the body so no text is lost"),
-    ("parser_truncates",
-     "headlines the CURRENT parser truncates (ANTS-4066)",
-     "DO NOT EDIT THESE. The markdown is correct -- a bold marker inside "
-     "backticks is a literal code span. The reader is wrong and Ants will fix "
-     "it; editing the text would corrupt correct content"),
 ]
 
 

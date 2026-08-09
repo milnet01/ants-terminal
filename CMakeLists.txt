@@ -2499,6 +2499,10 @@ if(ANTS_TESTS)
                 # real store in a QTemporaryDir; the documents are inline
                 # because every case is a few-line roadmap.
                 tests/features/roadmap_import_mapping/test_roadmap_import_mapping.cpp
+                # ANTS-4066 — a bold marker inside backticks is a code span,
+                # not emphasis. Drives parseBullets() on hand-written markdown,
+                # which is the level the truncation happens at.
+                tests/features/roadmap_headline_code_span/test_roadmap_headline_code_span.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the
