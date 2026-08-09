@@ -40,10 +40,10 @@ The roadmap is the single place to track unshipped work, and a
 release writes its own account of what shipped into the CHANGELOG.
 
 **That does not mean a closed bullet leaves the roadmap when it
-ships.** Closed items stay in `ROADMAP.md` — carrying their IDs,
-which is what § 3.6.2's CHANGELOG matching and § 3.6.3's commit
-matching resolve against — until § 3.9 rotates a *closed minor* out
-into an archive. Rotation is the size-management mechanism, not the
+ships.** Closed items stay in `ROADMAP.md` — carrying the
+**headlines** §§ 3.6.2 and 3.6.3 fuzzy-match CHANGELOG entries and
+commit subjects against, and the IDs § 4.2's CHANGELOG citations
+resolve — until § 3.9 rotates a *closed minor* out into an archive. Rotation is the size-management mechanism, not the
 CHANGELOG. On a store-backed project `roadmap-data-model.md` § 7.5
 makes this binding on the render: its only membership exclusions are
 `internal` and `dropped` items, so a generated `ROADMAP.md` that
@@ -220,7 +220,8 @@ It is `.gitignore`d, not committed. Its true value is the highest
 `CHANGELOG.md` + `docs/roadmap/*.md` (the archives that shipped/rotated
 bullets migrate into). Every allocation *floors* to that committed
 high-water mark (`RoadmapFoldIn::corpusHighWater`), so a stale, wiped, or
-fresh-clone-absent counter can never reissue a live or migrated id — it is
+fresh-clone-absent counter can never reissue a live or migrated id **that the
+corpus carries** — see the caveat below for the ids it does not — it is
 recovered from committed content on first use. This removes a whole class
 of "the counter bump got left out of the commit" drift: git can't drift a
 file it doesn't track.
@@ -282,6 +283,15 @@ once the store's export is published on a cadence (ANTS-3794), the export —
 not the committed corpus — becomes the authoritative floor for a
 store-migrated project. Until then the committed corpus above is that floor
 for every project, store-migrated or not.
+
+**And on a store-migrated project that floor has a hole, which is why the
+interim is an interim.** `roadmap-data-model.md` § 7.5 keeps `internal` and
+`dropped` items off the render by policy, so their ids appear in **no**
+committed file — not `ROADMAP.md`, not an archive, not the CHANGELOG. A corpus
+scan cannot see them, so on such a project the corpus is not a sufficient floor
+on its own and an absent `id_high_water` row must **not** be treated as a safe
+0. Only the store row covers those ids today; the export (ANTS-3794) is subject
+to neither exclusion, which is the whole reason it supersedes both.
 
 ```bash
 # Allocate the next ID — illustrative, and for the counter carrier only.
@@ -692,6 +702,13 @@ GFM-task-list starting point converts in five passes:
    the counter goes unread from then on.
 3. Add `Kind:` and `Source:` lines under each bullet (§ 3.5.3).
 4. Add `Layman:` summaries (§ 3.5 Bullet structure).
+5. **On a project with a store row, re-run the store migration**, so
+   its recorded `source_format` becomes `ants-v1`. Without this the
+   store still records `github-task-list` while the live file
+   classifies `ants-v1`, and `roadmap-data-model.md` § 4.1.1 refuses
+   every subsequent store write on that mismatch. This step is what
+   makes the conversion *sanctioned* rather than a dialect change
+   behind the store's back.
 
 **On a project that already has a store row, do the whole conversion
 in one uncommitted working-tree edit and add the marker last.** Store
@@ -767,7 +784,9 @@ project's `id_high_water` row is keyed per `(project, prefix)`
 
 Some projects (RetroDB-style) track work as `#### Pass N.M
 <title>` level-4 headings with a `- **Status**: <word>` sub-bullet
-instead of `- **headline** [ID]` bullets. The reader classifies
+instead of `- <emoji> [ID] **headline**` bullets (§ 3.5's order —
+the ID sits immediately after the status emoji, never after the
+headline). The reader classifies
 these as `pass-headings` and synthesises a `PASS-<major>-<minor>
 [-<sub>]` id per heading (**ANTS-1530**). Since **ANTS-2126**
 `roadmap_log` also **writes** this format: `op:"append"` (needs a
@@ -896,6 +915,7 @@ either side of cutover, and nothing did before.
 
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
+| 3 | 2026-08-09 | 3, cold — identical packet rebuilt from disk; dispatched only after the blast-radius sweep was re-run over loop 2's rows | **Q1 0 · Q2 5 · Q3 1** (this file's share of a joint 8) | **Exited at the 3-loop cap.** § 3.10.3 gained a **step 5**: its five passes never re-ran the store migration, so a project with a store row finished the conversion recording `github-task-list` against a file now classifying `ants-v1` — the exact mismatch `roadmap-data-model.md` § 4.1.1 refuses every later write on, with the procedure offering no remedy. § 3.5.1 still promised a committed-corpus floor that "can never reissue a live or migrated id", although § 7.5 keeps `internal` and `dropped` items off the render entirely, so their ids reach no committed file and an absent `id_high_water` row is not a safe 0 on a store-migrated project; the caveat now sits on both sides of the pair rather than only in the data model. § 3.10.5 glossed the emoji format as `- **headline** [ID]`, with the ID *after* the headline, where § 3.5 pins it immediately after the status emoji — a parser author following the gloss would scan mid-text for ids, which the data model's § 10 names an anti-pattern. And § 3's preamble — rewritten in loop 1 — said closed bullets carry "their IDs, which is what § 3.6.2's CHANGELOG matching and § 3.6.3's commit matching resolve against"; both of those sections **fuzzy-match headlines** (lowercase, hyphens as spaces, punctuation stripped), and it is § 4.2's CHANGELOG citations that resolve ids. **Filed rather than fixed:** ANTS-4073, because § 3.2 tells a pre-1.0 project to use `## P01 —` phase blocks while § 3.9 rotates only under a `## <minor>.0 —` heading and § 3.5.4 step 2 selects "the lowest version `##`" — so such a roadmap can never rotate, and choosing between scoping § 3.2 and defining phase-block rotation is a decision. |
 | 2 | 2026-08-09 | 3, cold — identical packet rebuilt from disk after loop 1's edits | **Q1 1 · Q2 4** (this file's share of a joint 10) | **Three findings were against loop 1's own repairs.** The § 3.10.3 ordering rule was justified by "the marker is what makes the file classify `ants-v1`", which § 3.5.1 contradicts four hundred lines earlier: the detector falls back to a **best-effort parse**, and step 1 alone — replacing `- [x]` / `- [ ]` with emoji bullets — can be enough for it to classify. Marker-last therefore narrows the hand-over window without closing it; the rule now says so and adds what actually makes it safe (no commit, no store write, between step 1 and step 0). Step 2 four lines above still told a store-row project the counter goes unread, which under marker-last is exactly backwards — it is the carrier until the marker lands. **One pre-existing defect was a regex that does not do what the sentence beside it says**: § 3.9 published `^[0-9]+\.[0-9]+\.md$` while forbidding zero-padding, and `[0-9]+` accepts `00.07.md`. The shipped `archiveNameRx()` is `\A(0\|[1-9][0-9]*)\.(0\|[1-9][0-9]*)\.md\z`, which rejects it — so the code implemented the prose and the standard's own regex was wrong. Corrected, then executed against twelve names (`0.10.md`, `10.0.md`, `00.07.md`, `01.7.md`, `0.7.0.md`, `0.7.MD`, a trailing space and others) before it landed. Also recorded: § 3.5.1's carrier table has no comparison against the stored `source_format`, so a project whose dialect changes falls through to the counter row instead of refusing — the counterpart rule now lives in `roadmap-data-model.md` § 4.1.1. **Collateral caught by the post-fix structural check, not by a lane:** loop 1's new loop-log section was missing from § Contents. |
 | 1 | 2026-08-09 | 3, cold — gated as a pair with [`roadmap-data-model.md`](roadmap-data-model.md), one shared byte-stable packet carrying the live corpus survey, the pass-headings status reader, archive discovery, render routing and the store DDL; genre pinned `standard` | **Q1 0 · Q2 5 · Q3 3** (this file's share of a joint 11) | **This standard's first gate.** It had never had one; the run was triggered by ANTS-4069 after an authoring edit corrected § 3.5.1's detector literal `gfm` → `github-task-list`, and by the § 9 decision pass that added the post-cutover paragraphs to §§ 3.9 and 4.3. **Two findings were against that new text**: § 4.3 claimed steps 3–4 both edit *bullets*, but step 4 rewrites a release-block `##` heading — a section title with no store operation, so a cut-over project cannot perform it (filed onto ANTS-4070); and § 3's preamble still said released work "moves out of the roadmap into the CHANGELOG", which contradicts `roadmap-data-model.md` § 7.5's rule that closed items are published and would have had a renderer author drop every ✅ item. **Five were pre-existing.** `Kind:` was simultaneously "Required as of v1.1" (§ 3.5) and "two optional metadata fields" whose absence "stays terse" (§ 3.5.3) — two lanes found it independently, and it decides whether a conformance checker rejects a bullet. § 3.10.3 put the format marker at step 0, which hands a store-row project to the store before its four hand-edit steps run, so all four are discarded at the next render while the store path refuses them for an unmet publish gate — the marker now goes last. § 3.9's ~150 KiB threshold reads as a breach at 0.7.104's 3.2 MB although no closed minor exists to rotate; it is now stated as a review trigger, with no within-minor rotation by design. § 3.10.4 required "one counter per prefix — one file each" while no per-prefix filename exists here or in any source file; inventing one would have two tools reading zero for each other's prefix and reissuing live IDs, so both standards now say such a project allocates from the committed-corpus floor alone. And § 3.9's `roadmap-query` bullet ("archives are dialog-only by contract") had no post-cutover answer — the contract survives, carried by the read seam's include-archive flag rather than by which file is parsed. |
 

@@ -28530,6 +28530,41 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-09 (§ 9 decision pass, measured against RetroDB's 164 status values).
 
+- 📋 [ANTS-4072] **A bullet-form item inside a pass-headings project has no ID carrier.**
+  Filed from the ANTS-4069 gate's loop-3 tail — a decision, not a wording fix.
+  `roadmap-format.md` § 3.5.1 keys the carrier on the **project**: a
+  pass-headings project derives ids from headings and reads no counter.
+  `roadmap-data-model.md` § 7.1 resolves per **source shape**. The surveyed
+  pass-headings project also carries **73 ordinary bullets, none with an ID**,
+  and nothing says which rule wins for them. A migration implementer must
+  invent one of two behaviours: allocate from a carrier that project never
+  reads (bumping a counter § 3.10.5 says is left untouched), or import them
+  ID-less and breach § 3.1's `id` obligation.
+  Three candidate answers, all defensible: allocate from the corpus floor;
+  synthesise a distinct non-`PASS-` id; or leave them ID-less and record it.
+  Pick one before the re-import — the choice is visible in the store forever.
+  **Layman:** One project mixes two roadmap styles. The rules cover each style alone but not the mix, so 73 of its items have no defined way to get an ID.
+  Kind: investigate.
+  Source: in-session-2026-08-09 (ANTS-4069 cold-eyes loop 3, at the cap).
+
+- 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
+  Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
+  project to head its blocks `## P01 — Bootstrap` "since there's no real
+  version to anchor to yet", but § 3.9 rotates only what sits under a
+  `## <closed-minor>.0 — …` heading, and § 3.5.4 step 2 selects the active
+  release as "the lowest version `##`". Under phase blocks neither has a
+  referent, so rotation matches nothing and the file grows without bound —
+  the § 3.9 failure ANTS-4070 already describes, reached by a second route.
+  Note this project is itself pre-1.0 (0.7.104) and uses *version* blocks, so
+  the two rules have never been exercised together here; the conflict is live
+  for any project that took § 3.2 at its word.
+  Decide: scope § 3.2's advice to projects with no version anchor at all, or
+  define what rotation and active-release selection do on a phase-block
+  roadmap.
+  **Layman:** Projects before version 1.0 are told to label sections "Phase 1, Phase 2". The trimming rule only recognises version numbers, so those roadmaps can never be trimmed.
+  Kind: doc-fix.
+  Source: in-session-2026-08-09 (ANTS-4069 cold-eyes loop 3, at the cap).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
