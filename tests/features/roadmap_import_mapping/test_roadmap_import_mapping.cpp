@@ -179,6 +179,84 @@ TEST(RoadmapImportMapping, BacktickedLabelIsNotADeclaration) {
         << extraOf(*it, "source_kind").toStdString();
 }
 
+// --------------------------------------------------- INV-2 (bold form) ---
+// ANTS-4077 — the label may be written bold, exactly as `Layman:` may be
+// (ANTS-1861, because roadmap_log writes that version). 20 bullets in this
+// project declare `**Kind:**` and every one of them was read as declaring
+// nothing; § 2.2's un-anchoring alone made it worse, capturing the closing `**`
+// and the prose after it into extras.source_kind.
+
+TEST(RoadmapImportMapping, BoldKindLabelIsADeclaration) {
+    const auto plan = planText(doc(QStringLiteral(
+        "- 📋 [DEMO-0090] **A bold-label declaration.**\n"
+        "  Layman: A thing.\n"
+        "  **Kind:** refactor.\n")));
+
+    const PlannedItem *it = itemById(plan, "DEMO-0090");
+    ASSERT_NE(it, nullptr);
+    EXPECT_EQ(it->kind, QStringLiteral("refactor"));
+    EXPECT_EQ(provOf(*it, "kind"), QStringLiteral("asserted"));
+    EXPECT_TRUE(extraOf(*it, "source_kind").isEmpty())
+        << "a canonical value needs no source_kind: "
+        << extraOf(*it, "source_kind").toStdString();
+}
+
+// The bold form inline, which is how the corpus actually writes it — beside a
+// bold `**Lanes:**` on the same line.
+TEST(RoadmapImportMapping, BoldKindLabelInlineIsADeclaration) {
+    const auto plan = planText(doc(QStringLiteral(
+        "- 📋 [DEMO-0091] **A bold trailer written inline.**\n"
+        "  Layman: A thing.\n"
+        "  **Kind:** refactor. **Lanes:** core.\n")));
+
+    const PlannedItem *it = itemById(plan, "DEMO-0091");
+    ASSERT_NE(it, nullptr);
+    EXPECT_EQ(it->kind, QStringLiteral("refactor"));
+    EXPECT_EQ(it->lanes, (QStringList{QStringLiteral("core")}))
+        << "the bold Lanes: on the same line must still parse";
+}
+
+// The contract is PARITY with the plain spelling, not a new rule for the bold
+// one. A qualifier-bearing value runs to the first period in both — so
+// `refactor (no behaviour change)` is one unrecognised value, defaulted with the
+// original preserved, exactly as the plain form has always behaved. Asserting
+// `refactor` here instead would be inventing a qualifier-stripping rule that
+// exists for no other label; the qualifier is § 2.1's problem, not this one's.
+TEST(RoadmapImportMapping, BoldAndPlainKindLabelsAgree) {
+    const auto bold = planText(doc(QStringLiteral(
+        "- 📋 [DEMO-0093] **Bold spelling.**\n"
+        "  Layman: A thing.\n"
+        "  **Kind:** refactor (no behaviour change).\n")));
+    const auto plain = planText(doc(QStringLiteral(
+        "- 📋 [DEMO-0093] **Plain spelling.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: refactor (no behaviour change).\n")));
+
+    const PlannedItem *b = itemById(bold, "DEMO-0093");
+    const PlannedItem *p = itemById(plain, "DEMO-0093");
+    ASSERT_NE(b, nullptr);
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(b->kind, p->kind);
+    EXPECT_EQ(extraOf(*b, "source_kind"), extraOf(*p, "source_kind"));
+    EXPECT_EQ(extraOf(*b, "source_kind"),
+              QStringLiteral("refactor (no behaviour change)"))
+        << "the declared text must survive verbatim whichever spelling wrote it";
+}
+
+// INV-3's guard has to cover the bold form too: `` `**Kind:**` `` is a
+// quotation, and the plain backtick lookbehind cannot see past the asterisks.
+TEST(RoadmapImportMapping, BacktickedBoldLabelIsNotADeclaration) {
+    const auto plan = planText(doc(QStringLiteral(
+        "- 📋 [DEMO-0092] **A bullet about the format.**\n"
+        "  The writer emits `**Kind:** implement.` on every bullet.\n"
+        "  Layman: A thing.\n")));
+
+    const PlannedItem *it = itemById(plan, "DEMO-0092");
+    ASSERT_NE(it, nullptr);
+    EXPECT_EQ(provOf(*it, "kind"), QStringLiteral("defaulted"))
+        << "a quoted bold label was read as a declaration";
+}
+
 // ---------------------------------------------------------------- INV-4 ---
 // Every non-identity `kind` mapping preserves the original in
 // extras.source_kind. The four rows below the divider are § 2.1's additions.

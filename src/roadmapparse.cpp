@@ -277,9 +277,24 @@ bool stripInlineEmoji(QString &head, QString &status) {
 //
 // MultilineOption is retained for parity with rxLanes() and is inert now that
 // `^` is gone — the `\\n` stop comes from the character class.
+//
+// ANTS-4077 — the BOLD spelling is accepted too, exactly as rxLayman() has
+// accepted it since ANTS-1861. 20 bullets in this project declare
+// `**Kind:** fix.` and every one was read as declaring nothing; un-anchoring
+// alone made that worse, matching inside the label and capturing the closing
+// `**` plus the prose after it into extras.source_kind. The contract is PARITY
+// with the plain spelling — a qualifier-bearing value still runs to the first
+// period in both, so no qualifier-stripping rule is introduced here.
+//
+// THREE lookbehinds, because one cannot see past the asterisks. PCRE2 requires
+// each to be fixed-length, so the backtick guard is spelled once per offset the
+// label can sit at: `` `Kind: ``, `` `*Kind: `` and `` `**Kind: ``. Without the
+// last two, ``  `**Kind:** implement.` `` — a bullet QUOTING the trailer, which
+// the bullets documenting this format do constantly — parses as a declaration.
 const QRegularExpression &rxKind() {
     static const QRegularExpression rx(
-        QStringLiteral("(?<!`)Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
+        QStringLiteral("(?<!`)(?<!`\\*)(?<!`\\*\\*)"
+                       "(?:\\*\\*)?Kind:(?:\\*\\*)?\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
     return rx;
 }
@@ -303,9 +318,17 @@ const QRegularExpression &rxKind() {
 // of the sentence "the `Layman:`/`Kind:`/`Lanes:`/`Source:` trailer" — and
 // the corpus most likely to write that sentence is the one documenting the
 // roadmap format, i.e. exactly the bullets a lane filter should trust.
+// ANTS-4077 — the bold spelling, and the widened backtick guard, both for the
+// same reasons rxKind() gained them; the two keys are written side by side on
+// one line and only one of them parsing is the shape this fixes. Measured over
+// the corpus 2026-08-09: 3 lines write `**Lanes:**` (which used to land the
+// closing `**` in the first lane, so a bullet declaring `**Lanes:** core`
+// reported a lane named `** core`), and 2 quote `` `**Lanes:**` `` while
+// writing about the format.
 const QRegularExpression &rxLanes() {
     static const QRegularExpression rx(
-        QStringLiteral("(?<!`)Lanes:\\s*(.+?)\\s*[\\.\\n]"),
+        QStringLiteral("(?<!`)(?<!`\\*)(?<!`\\*\\*)"
+                       "(?:\\*\\*)?Lanes:(?:\\*\\*)?\\s*(.+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
     return rx;
 }
@@ -355,9 +378,14 @@ const QRegularExpression &rxEvidence() {
 //  - The label may be bold. 24 lines in the corpus write `**Source:**`,
 //    and rxLayman already tolerates the same shape for its own key;
 //    without the optional pair the closing `**` lands in the value.
+// ANTS-4077 — the backtick guard widened to three fixed-length lookbehinds.
+// The single `(?<!`)` could not see past the optional `**` this key had
+// accepted since ANTS-3764, so a backticked `` `**Source:**` `` — 1 line in the
+// corpus — matched at the label and was read as a declaration.
 const QRegularExpression &rxSource() {
     static const QRegularExpression rx(
-        QStringLiteral("(?<!`)(?:\\*\\*)?Source:(?:\\*\\*)?\\s*([^\\n]+)"));
+        QStringLiteral("(?<!`)(?<!`\\*)(?<!`\\*\\*)"
+                       "(?:\\*\\*)?Source:(?:\\*\\*)?\\s*([^\\n]+)"));
     return rx;
 }
 //  - The value stops at a following trailer key: 10 lines write two keys

@@ -201,11 +201,38 @@ read as declaring it:
 ```cpp
 // was: "^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"
 //      MultilineOption | CaseInsensitiveOption
-QStringLiteral("(?<!`)Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]")
+QStringLiteral("(?<!`)(?<!`\\*)(?<!`\\*\\*)"
+               "(?:\\*\\*)?Kind:(?:\\*\\*)?\\s*([^\\.\\n]+?)\\s*[\\.\\n]")
 //      MultilineOption      — retained for parity with rxLanes(); inert
 //                              once ^ is gone (the \n stop comes from the class)
 //      CaseInsensitiveOption — DROPPED, see below
 ```
+
+**Amended 2026-08-09 (ANTS-4077), after implementation measured the corpus.**
+The pattern above carried a single `(?<!`)` and no `(?:\*\*)?`, which this spec
+stated literally; both were wrong, and the second made the first insufficient.
+
+- **The label may be written BOLD**, exactly as `rxLayman()` has accepted since
+  ANTS-1861 and `rxSource()` since ANTS-3764. 29 corpus lines write
+  `**Kind:**` and 3 write `**Lanes:**`; every one of them had always parsed as
+  declaring nothing, and un-anchoring alone made that worse rather than better —
+  the match landed inside the label and captured the closing `**` plus the prose
+  after it into `extras.source_kind`. The contract is **parity with the plain
+  spelling**, not a new rule: a qualifier-bearing value still runs to the first
+  period in both, so `refactor (no behaviour change)` remains one unrecognised
+  value rather than gaining a stripping rule no other label has.
+- **The backtick guard needs three fixed-length lookbehinds, not one.** PCRE2
+  requires each to be fixed-length, and a single `(?<!`)` cannot see past the
+  optional `**` — so `` `**Kind:**` ``, which the bullets *documenting this
+  format* write constantly (4 corpus lines, plus 2 for `Lanes:` and 1 for
+  `Source:`), matched at the label and was read as a declaration. INV-3's guard
+  case is extended to cover the bold form for this reason.
+
+`rxLanes()` and `rxSource()` take the same two corrections, because the keys are
+written side by side on one line and only one of them parsing is the defect this
+fixes, not a fix for it. `rxSource()` already had the optional pair; it gained
+only the widened guard. `rxEvidence()` is untouched — it is still anchored, and
+the corpus writes no bold form of it.
 
 **`CaseInsensitiveOption` is dropped with the anchor, and that is a deliberate
 reversal of ANTS-3407 for this one label.** `rxLanes()` records the reason: an
@@ -410,10 +437,14 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   as `kind='security'` with `provenance.kind='asserted'`. *Breaks when:* the
   pattern is re-anchored, which is the state this spec is written against —
   the test fails on today's source and that is the must-fail-first proof.
-- **INV-3** — A bullet *quoting* the label does not declare it. *Test:* fixture
-  body containing ``the `Kind:` trailer`` imports with a defaulted kind, not
-  `kind='trailer'`. *Breaks when:* the lookbehind is dropped while un-anchoring
-  — the regression ANTS-3722 already paid for once on `rxLanes()`.
+- **INV-3** — A bullet *quoting* the label does not declare it, **in either
+  spelling**. *Test:* fixture bodies containing ``the `Kind:` trailer`` and
+  ``the `**Kind:** implement.` line`` both import with a defaulted kind, not
+  `kind='trailer'` and not `kind='implement'`. *Breaks when:* the lookbehind is
+  dropped while un-anchoring — the regression ANTS-3722 already paid for once on
+  `rxLanes()` — or when only the plain form is guarded, which is the state
+  ANTS-4077 found: one `(?<!`)` cannot see past the optional `**`, so the bold
+  quotation parsed as a declaration while the plain one did not.
 - **INV-4** — Every non-identity `kind` mapping preserves the original in
   `extras.source_kind`. *Test:* import `Kind: bugfix.`; assert `kind='fix'` and
   `extras.source_kind='bugfix'`. *Breaks when:* a map is added to
