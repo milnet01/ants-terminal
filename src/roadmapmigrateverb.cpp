@@ -22,6 +22,7 @@
 #include "roadmapstore.h"
 
 #include <QDir>
+#include <QHash>
 #include <QJsonArray>
 
 #include <algorithm>
@@ -70,6 +71,27 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes) {
     env[QStringLiteral("notes")]           = arr;
     env[QStringLiteral("notes_count")]     = notes.size();
     env[QStringLiteral("notes_truncated")] = notes.size() > kMaxNoteEntries;
+}
+
+// ANTS-4065 § 2.3 — the run-level tally, beside `notes_count`. A per-FIELD
+// count, and it must be complete: `notes[]` is capped at kMaxNoteEntries, so a
+// reader counting `field_defaulted` entries in the array would under-report
+// exactly the run that needed reporting most.
+//
+// Counted off the PLAN's provenance rather than off the notes, because that is
+// where the decision was made — one `defaulted` value per field per item, with
+// no dependence on a note code being emitted or surviving the cap.
+QJsonObject defaultedFieldTally(const RoadmapMigrate::MigrationPlan &plan) {
+    QHash<QString, int> counts;
+    for (const RoadmapMigrate::PlannedItem &it : plan.items) {
+        for (auto f = it.provenance.constBegin(); f != it.provenance.constEnd(); ++f)
+            if (f.value().toString() == QLatin1String("defaulted"))
+                ++counts[f.key()];
+    }
+    QJsonObject out;
+    for (auto i = counts.constBegin(); i != counts.constEnd(); ++i)
+        out[i.key()] = i.value();
+    return out;
 }
 
 // § 2.1 — the DDL's own CHECK, transcribed rather than paraphrased, because a
@@ -162,7 +184,13 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     }
 
     // 4 — the plan. Pure: no filesystem, no clock, no id counter. Cannot fail.
-    const auto plan = RoadmapMigrate::planFrom(*disc, name, slug);
+    auto plan = RoadmapMigrate::planFrom(*disc, name, slug);
+
+    // 4a — ANTS-4065 § 2.5. Separate from planFrom() because resolving a cited
+    // path reads the filesystem and planFrom() is pure (ANTS-3757 INV-9). Never
+    // a refusal: a roadmap legitimately cites files that have since moved,
+    // shipped or been archived, so this annotates and moves on.
+    RoadmapMigrate::validatePaths(plan, req.projectRoot);
 
     // 5 — the verb's OWN connection, on Access::Bulk, for the duration of one
     // call (§ 2.2). NOT RemoteControl's process-owned Interactive connection,
@@ -290,6 +318,9 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
 
     env[QStringLiteral("items_inserted")]   = out.itemsInserted;
     env[QStringLiteral("items_updated")]    = out.itemsUpdated;
+    // ANTS-4065 § 2.6 — both figures, because INV-6 reads the governed one and
+    // the row-level one moves for reasons the contract excludes.
+    env[QStringLiteral("items_updated_governed")] = out.itemsUpdatedGoverned;
     env[QStringLiteral("items_unchanged")]  = out.itemsUnchanged;
     env[QStringLiteral("items_orphaned")]   = out.itemsOrphaned;
     env[QStringLiteral("ids_allocated")]    = out.idsAllocated;
@@ -297,5 +328,6 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     env[QStringLiteral("elements_written")] = out.elementsWritten;
     env[QStringLiteral("history_rows")]     = out.historyRows;
     setNotes(env, out.notes);
+    env[QStringLiteral("defaulted_fields")] = defaultedFieldTally(plan);
     return env;
 }

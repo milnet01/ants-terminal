@@ -99,7 +99,26 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     // carry this exact value.
     if (!shadows(tv.kind, it.kind))
         appendIndented(&lines, QStringLiteral("Kind: ") + it.kind + QLatin1Char('.'));
-    if (!it.source.isEmpty() && !shadows(tv.source, it.source))
+    // ANTS-4065 § 2.4 — a `source` the IMPORT supplied is not written back into
+    // the file. `roadmap-format.md` § 3.5.3 makes `planned` the default, so
+    // rendering it turns "this bullet said nothing" into "this bullet says
+    // planned", and the next import reads it as asserted: 363 lines the first
+    // real migration invented.
+    //
+    // The test is `!= "defaulted"`, NOT `== "asserted"`, and the direction is
+    // the whole finding. `provenance` is NOT NULL DEFAULT '{}', so a row written
+    // by anything other than makeItem() — roadmap_log op:append, for one —
+    // carries no `source` key at all; tested for equality with "asserted" every
+    // such row would silently lose its Source: line. ABSENT provenance means
+    // "not a defaultable field", never "defaulted".
+    //
+    // Scoped to `source` alone. `layman`, `lanes` and `evidence` never carry a
+    // provenance entry, so a rule phrased over "not asserted" would suppress
+    // three fields § 3.5 defines — a larger loss than the one this prevents.
+    const bool assertedSource =
+        it.provenance.value(QStringLiteral("source")).toString()
+            != QLatin1String("defaulted");
+    if (!it.source.isEmpty() && !shadows(tv.source, it.source) && assertedSource)
         appendIndented(&lines, QStringLiteral("Source: ") + it.source + QLatin1Char('.'));
     // The two list-valued keys compare ELEMENT BY ELEMENT, never as a join:
     // comparing a pre-split string against a joined column diverges on

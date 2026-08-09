@@ -130,6 +130,14 @@ QString mappedKind(const QString &lower) {
         {QStringLiteral("perf / optimize"),  QStringLiteral("perf")},
         {QStringLiteral("tooling"),          QStringLiteral("chore")},
         {QStringLiteral("behaviour-change"), QStringLiteral("enhancement")},
+        // ANTS-4065 § 2.1's four additions. They were missing because the
+        // survey § 7.4's table was derived from had rxKind()'s own anchor, so
+        // every value written inline was invisible to it — `bug` is the single
+        // largest unmapped value in the corpus (29) and all 29 write it inline.
+        {QStringLiteral("bug"),              QStringLiteral("fix")},
+        {QStringLiteral("performance"),      QStringLiteral("perf")},
+        {QStringLiteral("process + tooling"), QStringLiteral("chore")},
+        {QStringLiteral("audit"),            QStringLiteral("audit-fix")},
     };
     return m.value(lower);
 }
@@ -276,9 +284,14 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
         it.provenance.insert(QStringLiteral("status"), QStringLiteral("asserted"));
     } else if (rec.sourceStatus.isEmpty()) {
         it.provenance.insert(QStringLiteral("status"), QStringLiteral("defaulted"));
+        // Every note below passes `sourceIndex`. It used to default to 0 —
+        // ANTS-3766 § 2.4's sentinel for "the live roadmap" — so a note about an
+        // archive bullet pointed its line number at the wrong file. Corrected
+        // alongside ANTS-4065's own notes rather than left inconsistent beside
+        // them; tracked as ANTS-4075.
         addNote(notes, "status_defaulted",
                 QStringLiteral("no `- **Status**:` line in the block"),
-                rec.firstLine);
+                rec.firstLine, sourceIndex);
     } else {
         // Held for both word rows, not only the lossy one: storing the matched
         // word would discard the qualifier tail, and storing the normalised
@@ -290,7 +303,8 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
                              named ? QStringLiteral("asserted")
                                    : QStringLiteral("defaulted"));
         if (!named)
-            addNote(notes, "status_defaulted", rec.sourceStatus, rec.firstLine);
+            addNote(notes, "status_defaulted", rec.sourceStatus, rec.firstLine,
+                    sourceIndex);
     }
 
     // Identity (§ 2.5 / § 2.6 / § 2.9).
@@ -307,7 +321,7 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
                                                    : QStringLiteral("quarantined");
         it.provenance.insert(QStringLiteral("id"), QStringLiteral("asserted"));
         if (it.idOrigin == QLatin1String("quarantined"))
-            addNote(notes, "quarantined_id", rec.idToken, rec.firstLine);
+            addNote(notes, "quarantined_id", rec.idToken, rec.firstLine, sourceIndex);
     } else {
         // A reader-`synthetic` GFM content-hash id is an identity the dialog
         // invented so it could address a bullet; filing it would silently
@@ -318,7 +332,7 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
         it.provenance.insert(QStringLiteral("id"), QStringLiteral("migrated"));
         addNote(notes, "id_allocation_owed",
                 it.closed ? QStringLiteral("closed") : QStringLiteral("open"),
-                rec.firstLine);
+                rec.firstLine, sourceIndex);
     }
 
     // Kind (§ 2.8). Never a refusal: roughly half the corpus carries no
@@ -328,6 +342,12 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
     if (rawKind.isEmpty()) {
         it.kind = QStringLiteral("implement");
         it.provenance.insert(QStringLiteral("kind"), QStringLiteral("defaulted"));
+        // ANTS-4065 § 2.3 — import may default a field; it may not default one
+        // silently. This branch is the one the rule was written for: it assigned
+        // `implement` to 476 items on the first real migration and said nothing,
+        // while its unmapped-value sibling below had emitted a note all along.
+        addNote(notes, "field_defaulted", QStringLiteral("kind"), rec.firstLine,
+                sourceIndex);
     } else if (canonicalKinds().contains(rawKind.toLower())) {
         it.kind = rawKind.toLower();
         it.provenance.insert(QStringLiteral("kind"), QStringLiteral("asserted"));
@@ -340,13 +360,22 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
         it.kind = QStringLiteral("implement");
         it.provenance.insert(QStringLiteral("kind"), QStringLiteral("defaulted"));
         it.extras.insert(QStringLiteral("source_kind"), rawKind);
-        addNote(notes, "kind_unmapped", rawKind, rec.firstLine);
+        // BOTH notes, and the second is not redundant: `kind_unmapped` reports
+        // the value that was not recognised, `field_defaulted` reports that a
+        // default was applied. § 2.3 counts the defaulted population as all 476
+        // — "the note fires on the default itself rather than on whether
+        // anything survived it" — so this branch's 38 belong in that tally too.
+        addNote(notes, "kind_unmapped", rawKind, rec.firstLine, sourceIndex);
+        addNote(notes, "field_defaulted", QStringLiteral("kind"), rec.firstLine,
+                sourceIndex);
     }
 
     // Source (§ 2.8) — roadmap-format.md § 3.5.3's own default.
     if (rec.source.isEmpty()) {
         it.source = QStringLiteral("planned");
         it.provenance.insert(QStringLiteral("source"), QStringLiteral("defaulted"));
+        addNote(notes, "field_defaulted", QStringLiteral("source"), rec.firstLine,
+                sourceIndex);
     } else {
         it.source = rec.source;
         it.provenance.insert(QStringLiteral("source"), QStringLiteral("asserted"));
@@ -942,6 +971,98 @@ MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
     }
 
     return plan;
+}
+
+namespace {
+
+// ANTS-4065 § 2.5 — roadmap-format.md § 3.5.3's `Source:` vocabulary. Needed
+// because that vocabulary is full of hyphenated tokens that must not be
+// mistaken for filenames: `external-CVE-2026-1234` has no slash and no
+// extension, but `upstream-qt6.7` ends in one and would otherwise be looked up
+// on disk.
+bool isRecognisedSourceForm(const QString &v) {
+    static const QSet<QString> exact = {
+        QStringLiteral("planned"), QStringLiteral("static-analysis"),
+        QStringLiteral("regression"),
+    };
+    if (exact.contains(v))
+        return true;
+    static const char *const kPrefixes[] = {
+        "user-", "audit-", "indie-review-", "debt-sweep-", "doc-review-",
+        "external-CVE-", "upstream-",
+    };
+    for (const char *p : kPrefixes)
+        if (v.startsWith(QLatin1String(p)))
+            return true;
+    return false;
+}
+
+// § 2.5's predicate, and the parentheses in it are load-bearing: unbracketed,
+// `A or B and C` also parses as `A or (B and C)`, under which any recognised
+// source form containing a slash would be treated as a path.
+//
+//   (contains `/` OR its final segment matches \.[A-Za-z0-9]{1,5}$)
+//   AND it is not one of § 3.5.3's recognised source forms.
+//
+// Applied to the WHOLE value, which is what "its final segment" means — the
+// segment after the last `/`. A path mentioned inside a prose value
+// (`in-session-2026-07-29 (rpmlint.log, first successful build)`) is therefore
+// NOT validated. That is the literal contract and the safe direction: a missed
+// note costs nothing, a note invented against a word that merely contains a dot
+// would be noise on real prose.
+bool looksLikePath(const QString &value) {
+    if (value.isEmpty() || isRecognisedSourceForm(value))
+        return false;
+    if (value.contains(QLatin1Char('/')))
+        return true;
+    static const QRegularExpression ext(QStringLiteral("\\.[A-Za-z0-9]{1,5}$"));
+    return ext.match(value).hasMatch();
+}
+
+// Resolves under the project root only. A value escaping the root — absolute,
+// or climbing out with `..` — is reported unresolved rather than probed, which
+// keeps a roadmap from turning the importer into a filesystem oracle.
+bool resolvesUnderRoot(const QString &root, const QString &rel) {
+    if (QDir::isAbsolutePath(rel))
+        return false;
+    const QString base = QDir(root).absolutePath();
+    const QString abs  = QDir::cleanPath(base + QLatin1Char('/') + rel);
+    if (abs != base && !abs.startsWith(base + QLatin1Char('/')))
+        return false;
+    return QFileInfo::exists(abs);
+}
+
+}  // namespace
+
+void validatePaths(MigrationPlan &plan, const QString &projectRoot) {
+    for (PlannedItem &it : plan.items) {
+        QStringList cited;
+        // `Evidence:` needs no predicate — roadmap-format.md § 3.5 defines the
+        // field AS file paths — and it is comma-separated, so each element is
+        // validated independently.
+        cited += it.evidence;
+        if (looksLikePath(it.source))
+            cited.append(it.source);
+
+        QJsonArray unresolved;
+        for (const QString &p : std::as_const(cited)) {
+            if (resolvesUnderRoot(projectRoot, p))
+                continue;
+            unresolved.append(p);
+            addNote(plan.notes, "unresolved_path",
+                    QStringLiteral("%1: %2").arg(it.id.isEmpty()
+                                                     ? QStringLiteral("<no id>")
+                                                     : it.id,
+                                                 p),
+                    it.firstLine, it.sourceIndex);
+        }
+        // An ARRAY, not a scalar: one item can cite several paths and lose more
+        // than one. Written only when something is actually unresolved, so an
+        // item that cites nothing missing gains no extras key and its `extras`
+        // column does not move under § 2.6's comparison.
+        if (!unresolved.isEmpty())
+            it.extras.insert(QStringLiteral("unresolved_path"), unresolved);
+    }
 }
 
 }  // namespace RoadmapMigrate

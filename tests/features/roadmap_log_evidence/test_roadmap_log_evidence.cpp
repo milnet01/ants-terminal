@@ -149,11 +149,21 @@ TEST(roadmap_log_evidence, Inv4CommaInPathFolded) {
     EXPECT_EQ(b.evidence.at(0), QStringLiteral("a/x y.png"));
 }
 
-// INV-5 (ANTS-3407) — hand-edited lowercase `kind:` / `evidence:` labels
-// parse case-insensitively (parity with the long-standing `Layman:`
-// tolerance), while the un-anchored `Lanes:` stays case-SENSITIVE so it
-// can't mis-capture a lowercase "lanes:" occurring mid-prose. Drives
-// parseBullets directly on hand-typed markdown (no writer round-trip).
+// INV-5 (ANTS-3407) — a hand-edited lowercase `evidence:` label parses
+// case-insensitively (parity with the long-standing `Layman:` tolerance),
+// while the UN-ANCHORED labels stay case-SENSITIVE so they can't mis-capture a
+// lowercase "lanes:" / "kind:" occurring mid-prose. Drives parseBullets
+// directly on hand-typed markdown (no writer round-trip).
+//
+// ANTS-4065 § 2.2 moved `kind:` from the first group to the second, and this
+// test moved with it. That spec un-anchors rxKind() — 99 bullets in this
+// project write the trailer inline, and the anchor lost every one of them — and
+// case tolerance is only safe while the anchor holds it to a label position:
+// un-anchored, "…changed the kind: of work we do…" parses as a declaration.
+// rxLanes() has never had the option for exactly this reason. The cost is that
+// a hand-typed `kind:` stops parsing, which § 2.2 accepts because once a project
+// is migrated the render is the sole writer. ANTS-4065 INV-9
+// (tests/features/roadmap_import_mapping/) pins the new behaviour directly.
 TEST(roadmap_log_evidence, Inv5HandEditedLabelCase) {
     const QString md = QString::fromUtf8(
         "# Hand-edited Roadmap\n"
@@ -167,13 +177,14 @@ TEST(roadmap_log_evidence, Inv5HandEditedLabelCase) {
         "\n");
     const auto b = findBullet(md, QStringLiteral("hand-typed bullet"));
 
-    // Anchored labels tolerate any case (ANTS-3407).
-    EXPECT_EQ(b.kind, QStringLiteral("fix"));
+    // The still-anchored `Evidence:` tolerates any case (ANTS-3407).
     ASSERT_EQ(b.evidence.size(), 2);
     EXPECT_EQ(b.evidence.at(0), QStringLiteral("photos/IMG_7.jpg"));
     EXPECT_EQ(b.evidence.at(1), QStringLiteral("logs/out.txt"));
 
-    // Un-anchored `Lanes:` deliberately stays case-sensitive, so the
-    // lowercase form is left unparsed (guards the ANTS-3407 divergence).
+    // The two un-anchored labels deliberately stay case-sensitive, so the
+    // lowercase forms are left unparsed. `Lanes:` has been here since
+    // ANTS-3407; `Kind:` joined it at ANTS-4065 § 2.2 when it lost its anchor.
     EXPECT_TRUE(b.lanes.isEmpty());
+    EXPECT_TRUE(b.kind.isEmpty());
 }

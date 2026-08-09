@@ -256,19 +256,31 @@ bool stripInlineEmoji(QString &head, QString &status) {
 //
 // Every comment below is the pattern's own, moved verbatim with it.
 
-// MultilineOption so `^` anchors at the start of any line within
-// the bullet body — Kind: / Lanes: / Layman: live as continuation
-// lines, not at the start of the string.
-// ANTS-3407 — CaseInsensitiveOption: the `^`-anchored metadata labels
-// (Kind:/Layman:/Evidence:) all tolerate any case, so a hand-edited
-// ROADMAP.md parses `kind:`/`KIND:` identically to the canonical
-// capital form the MCP writer emits. (Lanes: is the deliberate
-// exception — see its note below.)
+// ANTS-4065 § 2.2 — UN-ANCHORED, exactly as rxLanes() was by ANTS-2058 and for
+// the same measured reason: 99 bullets in this project alone write the field
+// inline (`… not in this fold. Kind: doc-fix.`), and the old `^\\s*` anchor read
+// every one of them as declaring nothing. `makeItem()` then defaulted the kind
+// to `implement` — silently, which is the loss that spec exists to stop.
+//
+// ANTS-3722's negative lookbehind comes with the un-anchoring, because the two
+// are one change: a bullet that QUOTES the trailer key is talking ABOUT it,
+// never declaring it, and without the guard "the `Kind:` trailer" parses as
+// `kind = "trailer"`. rxLanes() already paid for that regression once.
+//
+// CaseInsensitiveOption is DROPPED, reversing ANTS-3407 for this one label.
+// That option and the anchor were safe together; un-anchored, case tolerance
+// matches prose ("…changed the kind: of work we do…") as a declaration, which
+// is why rxLanes() has never had it. The cost is that a hand-typed `kind:` stops
+// parsing, and § 2.2 accepts it: once a project is migrated the render is the
+// sole writer, so only pre-migration files carry a hand-typed label. INV-9 pins
+// the behaviour so the reversal is tested rather than assumed.
+//
+// MultilineOption is retained for parity with rxLanes() and is inert now that
+// `^` is gone — the `\\n` stop comes from the character class.
 const QRegularExpression &rxKind() {
     static const QRegularExpression rx(
-        QStringLiteral("^\\s*Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
-        QRegularExpression::MultilineOption |
-        QRegularExpression::CaseInsensitiveOption);
+        QStringLiteral("(?<!`)Kind:\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
+        QRegularExpression::MultilineOption);
     return rx;
 }
 // ANTS-2058 — no `^` anchor. Bullets routinely write their metadata
@@ -371,6 +383,31 @@ TrailerMatch matchIn(const QRegularExpression &rx, const QString &body) {
     out.offset   = m.capturedStart(1);
     const int at = m.capturedStart(0);
     out.anchored = (at == 0) || (at > 0 && body.at(at - 1) == QLatin1Char('\n'));
+    return out;
+}
+
+// ANTS-4065 § 2.2 / INV-11 — the same fill, taking the LAST occurrence.
+//
+// Match precedence became load-bearing the moment rxKind() lost its anchor.
+// bulletText() appends `it.body` BEFORE the trailer lines, so in a rendered
+// bullet a mid-prose `Kind:` always sits ahead of the canonical one; a
+// first-match read would adopt the stale prose value on every re-import and
+// break § 2.6's round trip on `kind`, a governed column. The trailer wins
+// because it is the occurrence the render authored.
+//
+// Only `kind` uses this. The other four keys stay on matchIn(): none of them is
+// re-emitted by the render into a body that may already discuss it, so changing
+// their precedence would be a behaviour change with no defect behind it.
+TrailerMatch matchLastIn(const QRegularExpression &rx, const QString &body) {
+    TrailerMatch out;
+    auto i = rx.globalMatch(body);
+    while (i.hasNext()) {
+        const QRegularExpressionMatch m = i.next();
+        out.value    = m.captured(1);
+        out.offset   = m.capturedStart(1);
+        const int at = m.capturedStart(0);
+        out.anchored = (at == 0) || (at > 0 && body.at(at - 1) == QLatin1Char('\n'));
+    }
     return out;
 }
 
@@ -1042,7 +1079,8 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
 TrailerValues trailerValuesIn(const QString &body) {
     TrailerValues out;
 
-    out.kind   = matchIn(rxKind(), body);
+    // ANTS-4065 INV-11 — LAST match, not first. See matchLastIn().
+    out.kind   = matchLastIn(rxKind(), body);
     out.kind.value = out.kind.value.trimmed();
 
     out.layman = matchIn(rxLayman(), body);

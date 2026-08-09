@@ -169,7 +169,8 @@ struct Loader {
     bool writeTail();
 
     bool allocateId(QString *allocated);
-    bool applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed);
+    bool applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed,
+                         bool *changedGoverned);
     bool recordHistory(qint64 itemPk, const QString &field, const QString &oldValue,
                        const QString &newValue, int *seq);
     RoadmapStore::ItemWrite itemWriteFor(const PlannedItem &it, const QString &id,
@@ -417,7 +418,8 @@ bool Loader::matchItems() {
     return true;
 }
 
-bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed) {
+bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed,
+                             bool *changedGoverned) {
     const auto cur = store.readItem(itemPk, &err);
     if (!cur)
         return fail(err.isEmpty() ? QStringLiteral("no such item %1").arg(itemPk) : err);
@@ -425,6 +427,7 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed
     int seq = 0;
     bool seqPrimed = false;
     *changed = false;
+    *changedGoverned = false;
 
     for (const Field &f : fieldsOf(it, *cur)) {
         if (f.planText == f.storedText)
@@ -466,6 +469,13 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed
         if (!recordHistory(itemPk, f.column, f.storedText, f.planText, &seq))
             return false;
         *changed = true;
+        // ANTS-4065 § 2.6 — `extras` is the one field here outside the governed
+        // set. Phrased as an exclusion rather than a list of the eight, so a
+        // column added to fieldsOf() is governed by default: a new source-backed
+        // column that silently escaped the round-trip gate would be the exact
+        // failure this counter exists to catch.
+        if (f.column != QLatin1String("extras"))
+            *changedGoverned = true;
     }
     return true;
 }
@@ -614,10 +624,11 @@ bool Loader::updateMatched() {
     for (qsizetype i = 0; i < plan.items.size(); ++i) {
         if (!matchPk.at(i))
             continue;
-        bool changed = false;
-        if (!applyPlanFields(plan.items.at(i), matchPk.at(i), &changed))
+        bool changed = false, changedGoverned = false;
+        if (!applyPlanFields(plan.items.at(i), matchPk.at(i), &changed, &changedGoverned))
             return false;
         changed ? ++out.itemsUpdated : ++out.itemsUnchanged;
+        if (changedGoverned) ++out.itemsUpdatedGoverned;
     }
     return true;
 }

@@ -28595,6 +28595,73 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-09 (ANTS-4069 cold-eyes loop 3, dismissed finding).
 
+- ✅ [ANTS-4075] **Four migration notes claimed the live roadmap when they were about an archive.**
+  Found while implementing ANTS-4065 Phase C. `makeItem()`
+  (`src/roadmapmigrate.cpp`) emitted `status_defaulted` (twice),
+  `quarantined_id` and `id_allocation_owed` without passing its
+  `sourceIndex` argument, so all four took `Note::sourceIndex`'s default
+  of 0 — ANTS-3766 § 2.4's sentinel for "the live roadmap". A note about
+  an archive bullet therefore carried a line number and the wrong file to
+  read it in. Fixed in the same commit as ANTS-4065's own notes rather
+  than left inconsistent beside them; a one-argument change per call, no
+  behaviour beyond the note's own provenance.
+  **Layman:** Warnings raised while importing an old roadmap file pointed at the wrong file.
+  Kind: fix.
+  Source: in-session-2026-08-09.
+
+- 📋 [ANTS-4076] **ANTS-4065's INV-8 test clause is wrong about what the parser does with an undocumented status marker.**
+  The spec says a bullet with a malformed marker "defaults to `planned`
+  with a note". Measured 2026-08-09 while writing the conformance test:
+  it becomes no item at all. `RoadmapParse::stripInlineEmoji()`
+  recognises exactly the four documented markers and returns false for
+  anything else, so the line is not classified as a bullet and never
+  reaches `makeItem()`. Nothing is lost — § 2.11's partition carries it
+  as narration — and admitting it as an item instead would mean every
+  unmarked `- ` line in an ants-v1 document became one, which is a change
+  to ANTS-3757's bullet grammar and a far larger loss than INV-8 guards
+  against. `tests/features/roadmap_import_mapping/` asserts the verified
+  behaviour (no item, line carried as narration, no `dropped` row); the
+  spec's INV-8 *Test:* clause needs the same correction, which is an
+  authoring edit and so re-arms rule 14's gate on that spec.
+  **Layman:** A spec says an odd status emoji becomes a planned item; it actually becomes plain text.
+  Kind: doc-fix.
+  Source: in-session-2026-08-09.
+
+- 📋 [ANTS-4077] **`rxKind()` does not accept the bold-label form its `Layman:` sibling does, losing 20 real declarations — and ANTS-4065 turns that loss into junk in the store.**
+  Found by ANTS-4065 Phase C's false-positive sweep over the real
+  corpus, and it should land BEFORE Phase D's re-import: whatever the
+  import writes then is permanent in the store.
+
+  Measured 2026-08-09 over this project's `ROADMAP.md` (the only project
+  in the corpus using the form): 25 occurrences of `**Kind:**`, of which
+  20 are own-line declarations (`  **Kind:** fix.`) and 1 is a backticked
+  mention. `rxLayman()` accepts both spellings — `^\s*(?:\*\*)?Layman:
+  (?:\*\*)?` — because ANTS-1861 found `roadmap_log` writes the bold
+  version; `rxKind()` never gained the same tolerance, so all 20 have
+  always parsed as no declaration at all and defaulted to `implement`.
+
+  ANTS-4065 § 2.2's un-anchoring does not fix it and makes the failure
+  noisier: `(?<!`)Kind:` now matches inside `**Kind:**` (the character
+  before the label is `*`, not a backtick), so the capture starts at the
+  closing `**` and yields values like `** refactor (no behaviour
+  change)`. The stored `kind` is unchanged — still `implement`, since
+  the capture is unmapped — but the item now gains a junk
+  `extras.source_kind` plus `kind_unmapped` and `field_defaulted` notes.
+  Visible rather than silent, which is § 2.3 working, but the value it
+  makes visible is wrong.
+
+  The backtick guard has the same blind spot: `` `**Kind:**` `` is a
+  quotation and the lookbehind cannot see past the `**`.
+
+  Fix is one token in each of two places, mirroring `rxLayman()`:
+  `(?<!`)(?:\*\*)?Kind:(?:\*\*)?` with the lookbehind widened to reject a
+  preceding backtick-then-asterisks. It changes the pattern ANTS-4065
+  § 2.2 states literally, so it is a spec amendment rather than an
+  implementation detail, and INV-3's guard case needs a bold variant.
+  **Layman:** Twenty roadmap items write their work-type in bold; the importer does not recognise that spelling and will file a scrap of the sentence instead.
+  Kind: fix.
+  Source: in-session-2026-08-09.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

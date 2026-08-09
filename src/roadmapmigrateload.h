@@ -32,6 +32,14 @@ struct Outcome {
 
     int     itemsInserted = 0;
     int     itemsUpdated = 0;    // matched an existing row, at least one field changed
+    // ANTS-4065 § 2.6 — the same count restricted to that spec's GOVERNED
+    // columns (status, headline, kind, source, layman, body, lanes, evidence).
+    // Both figures are reported because INV-6 reads this one and `itemsUpdated`
+    // cannot serve: `extras` is deliberately excluded from the governed set
+    // (the render emits none, so `source_kind` is one-shot by construction), and
+    // an excluded column moving still bumps the row-level counter — which would
+    // make the acceptance test fail for reasons unrelated to the contract.
+    int     itemsUpdatedGoverned = 0;
     int     itemsUnchanged = 0;  // matched, nothing to write (§ 2.6)
     int     itemsOrphaned = 0;   // in the store, absent from source (§ 2.7)
     int     idsAllocated = 0;    // § 2.8

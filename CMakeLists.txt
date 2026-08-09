@@ -2494,6 +2494,11 @@ if(ANTS_TESTS)
                 # store in a QTemporaryDir, never RoadmapStore::defaultPath();
                 # INV-1 and INV-2(b) are source scrapes over ANTS_SRC_DIR.
                 tests/features/roadmap_migrate_verb/test_roadmap_migrate_verb.cpp
+                # ANTS-4065 — the markdown→store import mapping. Behavioural
+                # across all three halves (parse, render, round trip) against a
+                # real store in a QTemporaryDir; the documents are inline
+                # because every case is a few-line roadmap.
+                tests/features/roadmap_import_mapping/test_roadmap_import_mapping.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the

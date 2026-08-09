@@ -214,4 +214,17 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
 MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
                        const QString &exportSlug);
 
+// ANTS-4065 § 2.5 — resolve every `Source:` / `Evidence:` value that names a
+// file, against `projectRoot`. A path that does not resolve is NOT a refusal:
+// the item gains `extras.unresolved_path` (an ARRAY — one item can cite several
+// paths and lose more than one) and the plan gains an `unresolved_path` note.
+// Refusing would make a historical roadmap unimportable, which no reading of
+// the problem asks for.
+//
+// A THIRD function rather than an argument to planFrom(), because resolving a
+// path reads the filesystem and ANTS-3757 INV-9 makes planFrom() pure. The
+// impure half of this namespace is where a filesystem touch belongs, and the
+// seam is what lets the plan be inspected before anything is written.
+void validatePaths(MigrationPlan &plan, const QString &projectRoot);
+
 }  // namespace RoadmapMigrate

@@ -772,11 +772,11 @@ met three further compounds (`feature/fix`, `design + implement`, `design + fix`
 and resolved them by correcting the four bullets that carried them, deliberately
 adding no rule.
 
-**`mappedKind()` (`src/roadmapmigrate.cpp:120`) implements eleven of these
-fifteen rows.** The four ANTS-4065 § 2.1 added are owed by that spec's Phase C
-and are not in the code yet; until they land, an un-normalised source carrying
-one of them falls through the unmapped branch (`implement`, with
-`extras.source_kind` preserved and a `kind_unmapped` note emitted), which is
+**`mappedKind()` (`src/roadmapmigrate.cpp`) implements all fifteen rows** — the
+four ANTS-4065 § 2.1 added landed with that spec's Phase C on 2026-08-09. A
+value in neither the canonical enum nor this table still falls through the
+unmapped branch (`implement`, with `extras.source_kind` preserved and a
+`kind_unmapped` note emitted, alongside § 2.3's `field_defaulted`), which is
 visible rather than silent.
 
 The table is generated, not recalled: `tools/roadmap-corpus-survey.py` prints

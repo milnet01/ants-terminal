@@ -157,6 +157,30 @@ Required pieces:
   but the canonical bullet form carries the field explicitly
   to make every bullet self-describing.
 
+  Two properties of the label, both settled by ANTS-4065 § 2.2:
+
+  - **The trailer may be written INLINE**, trailing a prose sentence
+    rather than on a continuation line of its own (`… not in this
+    fold. Kind: doc-fix.`). Supported, not merely tolerated — 99
+    bullets in this project write that shape against 1,435 own-line.
+    The parser was anchored to a line start until 2026-08-09 and
+    defaulted every one of them to `implement` in silence, which is
+    the loss that spec exists to stop.
+  - **The label is CASE-SENSITIVE**, reversing ANTS-3407 for this one
+    field. Case tolerance was safe only while the anchor held the
+    label to a line start; un-anchored, `… changed the kind: of work
+    we do …` would parse as a declaration. `Lanes:` has never had the
+    tolerance for the same reason. So a hand-typed `kind:` / `KIND:`
+    no longer parses — accepted because once a project is on the
+    roadmap store the render is the sole writer of this file.
+
+  Two guards limit what un-anchoring admits. A label inside
+  backticks does not declare anything (a bullet *quoting* `Kind:` is
+  writing about the format), and where a bullet carries more than
+  one match the **last** wins — that is the one the render authored,
+  and taking the first would let stale prose overwrite the canonical
+  value on every regeneration.
+
 Optional pieces:
 
 - **Body prose** — free-form, after the bold headline.

@@ -69,6 +69,20 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap import no longer loses a declared `Kind:`, invents a `Source:`, or defaults a field in silence** (ANTS-4065)
+  The markdown→store import read `Kind:` only at the start of a line, so
+  the 99 bullets in this project that write the trailer inline were read
+  as declaring nothing and quietly filed as `implement`. It also wrote
+  `Source: planned.` back into the file for every bullet that had never
+  declared one, turning "this said nothing" into a statement the next
+  import believed. Both are fixed: the label is matched anywhere in the
+  bullet (guarded against quoted mentions, case-sensitive now, last match
+  wins), a source the import supplied is no longer rendered, four
+  further `Kind:` spellings map to their canonical value, a path cited by
+  `Source:`/`Evidence:` that no longer exists is reported rather than
+  ignored, and every defaulted field raises a note with a per-field tally
+  on the migration report.
+
 - **The roadmap database can now be brought up to date instead of refusing to open** (ANTS-3781)
   A roadmap database written by an older build had no route forward: it
   fell through to the create-tables step and died on "table already
