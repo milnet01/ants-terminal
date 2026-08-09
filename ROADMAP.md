@@ -28458,7 +28458,7 @@ against current source before filing.
   Kind: doc.
   Source: in-session-2026-08-08 (ANTS-4067 cold-eyes cap).
 
-- 📋 [ANTS-4069] **roadmap-format.md's archive rotation and release flow have no answer for a generated roadmap, and it now owes a fresh gate.**
+- ✅ [ANTS-4069] **roadmap-format.md's archive rotation and release flow have no answer for a generated roadmap, and it now owes a fresh gate.**
   Raised by the CC session bringing the shared `/start-app` roadmap standard up
   to standard, and it applies to this project's copy too. § 3.9 tells a project
   to snip closed minors out of `ROADMAP.md` into `docs/roadmap/<minor>.md` at
@@ -28480,6 +28480,21 @@ against current source before filing.
   **Layman:** The rulebook still tells you to hand-trim the roadmap file at release time, but after the database switch that file gets rewritten from scratch — so the trimming would just be undone. It needs a new answer.
   Kind: doc-fix.
   Source: cross-session-2026-08-08 (start-app roadmap-standard pass) + in-session ANTS-4067.
+
+  Resolved (2026-08-09). Both halves done in one pass, as this bullet asked.
+  **§ 3.9 / § 4.3:** the premise was inverted — archives are *not* lost at
+  cutover. Migration ingests every `docs/roadmap/<M>.<N>.md`, each section
+  records its `source_path`, and the render buckets by it, so archives are
+  regenerated outputs. What is lost is only the rotation *trigger* (`/bump`'s
+  snip-and-create), so rotation becomes a store write — ANTS-4070. § 4.3's
+  steps 1–2 are unaffected (CHANGELOG is not generated), step 3 is a store
+  write, and step 4 turned out to have no store op at all (folded into
+  ANTS-4070). **The gate:** run, and it was this file's first ever —
+  3 loops, 29 verified findings, 26 fixed, 3 dismissed, 4 filed
+  (ANTS-4072/4073 plus the two above). Loop rows in both standards' logs.
+  Gated as a *pair* with `roadmap-data-model.md`, which is what earned it:
+  8 of loop 1's 11 findings were cross-document and unreachable from either
+  file alone.
 
 - 📋 [ANTS-4070] **Archive rotation has no owner after cutover, and this roadmap is 3.2 MB against a 150 KiB trigger.**
   `roadmap-format.md` § 3.9 puts rotation in `/bump` as a snip-and-create on the
