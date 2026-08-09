@@ -87,6 +87,11 @@ bool keywordIsNamed(const QString &kw) {
         QStringLiteral("completed"),   QStringLiteral("in-progress"),
         QStringLiteral("in_progress"), QStringLiteral("inprogress"),
         QStringLiteral("doing"),       QStringLiteral("wip"),
+        // ANTS-4071 — named, so the status is recorded `asserted` rather than
+        // as migration's guess. This set and the reader's own branches are two
+        // halves of one table; a word in the reader that is missing here
+        // classifies correctly and is then reported as defaulted.
+        QStringLiteral("partial"),
         QStringLiteral("deferred"),    QStringLiteral("considered"),
         QStringLiteral("parked"),      QStringLiteral("todo"),
         QStringLiteral("planned"),

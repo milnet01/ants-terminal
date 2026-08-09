@@ -586,7 +586,12 @@ parsePassHeadingBullets(const QStringList &lines) {
                    statusWord == QStringLiteral("in_progress") ||
                    statusWord == QStringLiteral("inprogress") ||
                    statusWord == QStringLiteral("doing") ||
-                   statusWord == QStringLiteral("wip")) {
+                   statusWord == QStringLiteral("wip") ||
+                   // ANTS-4071 — `partial` means begun, not not-started. It
+                   // used to reach the else-branch and import as 📋, which says
+                   // "nothing has happened here" about a block whose own Status
+                   // line reads `partial (v3.6.20). Phase A landed`.
+                   statusWord == QStringLiteral("partial")) {
             rec.status = QStringLiteral("🚧");
         } else if (statusWord == QStringLiteral("deferred") ||
                    statusWord == QStringLiteral("considered") ||

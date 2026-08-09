@@ -567,8 +567,12 @@ TEST(roadmap_migrate_read, Inv5StatusPerSourceShape) {
 // A named word is a transcription (`asserted`); an unnamed word or an absent
 // Status line is a guess (`defaulted`) and is reported.
 TEST(roadmap_migrate_read, Inv6StatusProvenance) {
-    for (const QString &word :
-         {QStringLiteral("partial"), QStringLiteral("un-gated")}) {
+    // ANTS-4071 moved `partial` out of this group and into the named one
+    // below. `un-gated` is now the only word in the surveyed corpus that takes
+    // the default — correctly, per roadmap-data-model.md § 7.3.1's own
+    // measurement: that item's blocking gate had been met and the work had not
+    // begun. One word is enough to hold the invariant, and it is the real one.
+    for (const QString &word : {QStringLiteral("un-gated")}) {
         const MigrationPlan p = planText(passDoc(word));
         ASSERT_EQ(p.items.size(), 2);
         EXPECT_EQ(p.items[0].status, QStringLiteral("planned"));
@@ -589,13 +593,19 @@ TEST(roadmap_migrate_read, Inv6StatusProvenance) {
            "reported";
 
     for (const QString &word : {QStringLiteral("done"), QStringLiteral("todo"),
-                                QStringLiteral("deferred")}) {
+                                QStringLiteral("deferred"),
+                                // ANTS-4071 — named as of 2026-08-09.
+                                QStringLiteral("partial")}) {
         const MigrationPlan p = planText(passDoc(word));
         EXPECT_EQ(prov(p.items[0], "status"), QStringLiteral("asserted"))
             << "INV-6: '" << word.toStdString()
             << "' — only the notation differs from an author writing an emoji";
         EXPECT_EQ(noteCount(p, "status_defaulted"), 0);
     }
+    EXPECT_EQ(planText(passDoc(QStringLiteral("partial"))).items[0].status,
+              QStringLiteral("in-progress"))
+        << "ANTS-4071: `partial` means begun; importing it as planned says the "
+           "opposite about work a reader would act on";
 
     const MigrationPlan v1 = planText(
         v1Doc(QStringLiteral("- ✅ [X-0001] **Emoji.**\n")));
@@ -744,7 +754,13 @@ TEST(roadmap_migrate_read, Inv10PassBlocks) {
 
     // Block 43.5 carries a content-free Status line, then `partial`, then
     // `done`. The reader takes the first that CLASSIFIES.
-    EXPECT_EQ(plan.items[0].status, QStringLiteral("planned"))
+    //
+    // ANTS-4071 — `partial` is in-progress, not planned. It used to fall to the
+    // reader's else-branch and import as 📋, which says "not started" about work
+    // whose own Status line says a phase of it landed; a reader would act on
+    // that. Named rather than guessed, so provenance is `asserted` and the
+    // block raises no `status_defaulted` note.
+    EXPECT_EQ(plan.items[0].status, QStringLiteral("in-progress"))
         << "INV-10: the first classifying line wins; the last would make this "
            "shipped";
     EXPECT_EQ(extra(plan.items[0], "source_status"),
@@ -754,7 +770,9 @@ TEST(roadmap_migrate_read, Inv10PassBlocks) {
     EXPECT_EQ(noteLines(plan, "orphan_status_line"), QList<int>({3}))
         << "INV-10: a Status line belonging to no pass block is reported, not "
            "imported and not dropped";
-    EXPECT_EQ(noteCount(plan, "status_defaulted"), 2);
+    // Only Pass 44.1, which carries no Status line at all. Was 2 before
+    // ANTS-4071 named `partial`.
+    EXPECT_EQ(noteCount(plan, "status_defaulted"), 1);
 }
 
 // --------------------------------------------------------------- INV-11 ----
