@@ -28481,6 +28481,48 @@ against current source before filing.
   Kind: doc-fix.
   Source: cross-session-2026-08-08 (start-app roadmap-standard pass) + in-session ANTS-4067.
 
+- 📋 [ANTS-4070] **Archive rotation has no owner after cutover, and this roadmap is 3.2 MB against a 150 KiB trigger.**
+  `roadmap-format.md` § 3.9 puts rotation in `/bump` as a snip-and-create on the
+  markdown. On a cut-over project that hand edit is discarded at the next
+  render, so rotation silently stops happening. The archives themselves are
+  safe — migration reads every `docs/roadmap/<M>.<N>.md` alongside the live file
+  (`src/roadmapmigrate.cpp:753-826`), each section records its `source_path`,
+  and the renderer buckets by that path and re-emits each archive
+  (`src/roadmaprender.cpp:311-320`). The store's own DDL comment names the
+  reason the column exists: without it the render re-emits a rotated archive
+  back into `ROADMAP.md` (`src/roadmapstore.cpp:475-486`). **What is missing is
+  the move**: the renderer never reassigns an item from the live file to an
+  archive, so nothing rotates.
+  Build it as a store write — reassign the closed minor's sections to
+  `docs/roadmap/<M>.<N>.md`, re-render, both files land with content preserved.
+  Decide as part of it what happens to a minor closed *before* cutover that was
+  never rotated, since this project has several: version is 0.7.104 and the
+  archives are `0.5.md` (651 B) and `0.6.md` (4.2 KB), so rotation has
+  effectively never run and the cutover inherits a 3.2 MB live file.
+  Policy is settled in `roadmap-data-model.md` § 8; this is the execution.
+  **Layman:** The roadmap file is meant to be trimmed each release by moving finished work into per-version archive files. After the database switch nothing does that any more, and the file is already twenty times bigger than the size that was supposed to trigger a trim.
+  Kind: implement.
+  Source: in-session-2026-08-09 (§ 9 decision pass, user-requested).
+
+- 📋 [ANTS-4071] **`partial` migrates as `planned`, so half-finished pass items import as not-started.**
+  The pass-headings status reader maps a leading word to a status
+  (`src/roadmapparse.cpp:544-560`). `partial` is in none of its three named
+  branches, so it falls to the `else` and becomes 📋 `planned` with `defaulted`
+  provenance. Both occurrences in the surveyed corpus are plainly begun — one
+  reads `partial (v3.6.20). Phase A landed — every inline <script> block carries
+  nonce=` — so importing them as not-started is wrong in a way a reader would
+  act on.
+  Add `partial` to the in-progress branch beside `doing` / `wip`, and to
+  `keywordIsNamed()`'s set (`src/roadmapmigrate.cpp:86-96`) so it records
+  `asserted` rather than a guess. Fixture-first: the `passes` fixture under
+  `tests/features/roadmap_migrate_read/fixtures/` should carry a `partial` item
+  that imports as 📋 before the change and 🚧 after.
+  Contract is `roadmap-data-model.md` § 7.3.1. **Must land before the
+  re-import** or those items migrate wrong and only a re-migration fixes them.
+  **Layman:** A project that marks work "partial" means it has started. The importer currently files it as not started.
+  Kind: fix.
+  Source: in-session-2026-08-09 (§ 9 decision pass, measured against RetroDB's 164 status values).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

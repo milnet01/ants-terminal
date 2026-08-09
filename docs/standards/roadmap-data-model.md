@@ -68,6 +68,16 @@ what the visibility flag exists to withhold. One private home also means
 cross-project relationships resolve from a single checkout, and a project that is not a git repository at all can still be
 backed up.
 
+**The file's name and shape are ANTS-3761 § 2.1's, not this document's**:
+`roadmap-export/<export_slug>.jsonl`, one RFC 8785-canonical JSON object per
+line. `export_slug` is the project's slug column, carrying a `UNIQUE` constraint
+precisely so two projects cannot overwrite one another's backup. The one rule
+that belongs to neither document is that the backup repo's `.gitignore` is an
+**allowlist**: a `roadmap-export/` directory it does not name is written and
+never committed, and `git status` stays clean while that happens. Naming it is
+part of publishing, so ANTS-3794 owns it, and the first export is verified with
+`git log -- roadmap-export/` rather than by looking at the working tree.
+
 **INV-1 — The export is a complete copy of the store.** Exporting the live
 store, rebuilding from that export, and re-exporting produces byte-identical
 files — **per project**, and for the corpus as a whole, since the export is one
@@ -644,6 +654,45 @@ store and the export, which is where it has value. So adding a fifth emoji to
 `roadmap-format.md` would not by itself put dropped items on the render — that
 would be a separate decision, and § 7.5 states the exclusion unconditionally.
 
+#### 7.3.1 Normalising a pass-headings status
+
+A pass-headings project writes status as a free-text `- **Status**:` line rather
+than an emoji, so its values must be mapped onto the five above. **The unit
+classified is the leading token, not the whole line** — the same shape § 7.5
+harvests `Priority:` with, for the same reason: the value is a word followed by a
+qualifying tail, and matching whole strings makes an ordinary vocabulary look
+unmappable.
+
+| Source word | Status | Provenance |
+|---|---|---|
+| `done` · `shipped` · `completed` | `shipped` | `asserted` |
+| `in-progress` · `in_progress` · `inprogress` · `doing` · `wip` · `partial` | `in-progress` | `asserted` |
+| `deferred` · `considered` · `parked` | `considered` | `asserted` |
+| `todo` · `planned` | `planned` | `asserted` |
+| anything else | `planned` | `defaulted` |
+
+**The mapping is total, and the fallback is a default rather than a rejection.**
+Refusing an unrecognised word would halt a whole project on its author's private
+vocabulary, which is the § 10 anti-pattern that rejects a migrated item for a
+field its source format never required. Every mapped item keeps its **raw line**
+in `extras.source_status`, so nothing is lost and the write-back stays a right
+inverse; a word outside the table additionally records `defaulted` provenance and
+a `status_defaulted` note, which is what makes the guesses countable rather than
+invisible.
+
+**`deferred` → `considered` is not an invention.** `considered` is the status for
+work that is recorded and not committed to, which is what a deferral is; the
+"not now" that distinguishes it from `planned` is a **priority**, and § 7.5 owns
+that. Nothing here needs a sixth status, so `roadmap-format.md` § 3.11's
+four-emoji anti-pattern stands unamended.
+
+Measured against the surveyed pass-headings project (2026-08-09): its 164 status
+values reduce to eight leading tokens with no remainder — `done` 128, `planned`
+18, `deferred` 11, `shipped` 2, `partial` 2, `un-gated` 1, `in-progress` 1,
+`considered` 1 — so **163 map as `asserted` and one (`un-gated`) takes the
+default**, correctly, since that item's blocking gate had been met and the work
+had not begun.
+
 ### 7.4 Kind
 
 The canonical set is `roadmap-format.md` § 3.5.3's 21-value enum. **Writes
@@ -740,6 +789,15 @@ uppercase words would leave almost every declared priority empty. Reading a
 published because the file *is* the record — including security findings that
 are still open.
 
+**Those two exclusions are the whole of the render's membership rule: a closed
+item is published.** Size is managed by rotating closed minors into
+`docs/roadmap/*.md` (§ 8), never by hiding them, so "open work only" is not a
+curation this model offers. Omitting them would break two things at once —
+`roadmap-format.md` §§ 3.6.2–3.6.3 match CHANGELOG entries and commit subjects
+against bullet **headlines**, and a released item whose bullet left the corpus
+can no longer be matched; and § 8's committed-corpus ID floor would narrow while
+it is still the floor under the store's `id_high_water` row.
+
 ### 7.6 Dates
 
 `created`, `last_modified`, `shipped`, ISO 8601 (`documentation.md` § 1.3).
@@ -820,11 +878,11 @@ overridden:
   neither. § 3.5.1's carrier table is the authority on all three.
   The render keeps carrying IDs
   (INV-2), so `ROADMAP.md` does not stop being a floor input merely by becoming
-  generated. Whether that input **narrows** is still open on two counts: § 9 has
-  yet to decide whether the render lists closed items at all (a render of open
-  work alone carries no closed item's ID), and the bullet below leaves the
-  archives' and the CHANGELOG's futures unsettled. The export is subject to
-  neither and supersedes all three as the authoritative floor, which is what
+  generated. **That input does not narrow either**: § 7.5 publishes closed
+  items, so every closed ID stays on the render, and the bullet below has the
+  archives re-rendered from the store rather than frozen, so their IDs stay in
+  the committed corpus too. The export supersedes all of them as the
+  authoritative floor, which is what
   § 3.5.1's definition needs amending to say for cut-over projects. **The
   interim half of that amendment has landed** (ANTS-3809): § 3.5.1 now names the
   store's `id_high_water` row as a cut-over project's carrier and keeps the
@@ -842,19 +900,38 @@ overridden:
   carry: its items are identified by synthesised `PASS-N-M` ids (§ 7.1), and
   its status is a free-text `- **Status**:` line rather than an emoji —
   **142 of that project's 164 status values fall outside § 7.3's five-value
-  enum** (`deferred`, `partial`, `un-gated`, `shipped in v3.6.15`, and a long
-  tail carrying prose). Normalising them is a per-value mapping decision of the
-  same kind as § 7.4's, and it is **not made here**: § 9 owns it, because
-  unlike `Kind:` the corpus offers no canonical target for `deferred` or
-  `partial` and inventing one is design work.
+  enum** as whole strings (`deferred`, `partial`, `un-gated`, `shipped in
+  v3.6.15`, and a long tail carrying prose). That figure measures whole lines,
+  which is why it reads as a large gap; classified on the **leading token** —
+  the unit § 7.3.1 actually maps — the same 164 values reduce to eight words
+  with no remainder. § 7.3.1 owns the mapping and this is no longer an open
+  question.
 
 - **Archive rotation and the release flow.** Its § 3.9 rotates closed bullets
-  byte-identically into `docs/roadmap/*.md`, and its preamble moves released
-  work into the CHANGELOG. Both are **hand edits to a file that becomes
-  generated**, so under INV-3 both are lost at the next render. Whether the
-  archives freeze at cutover or the store takes over rotation is § 9's call;
-  what matters here is that the two size-management rules stop working and
-  neither standard currently says so.
+  byte-identically into `docs/roadmap/*.md`, and its § 4.3 moves released work
+  into the CHANGELOG. **Neither the archives nor the CHANGELOG is lost at
+  cutover, and only one narrow thing is.**
+
+  The archives are **in the store**: migration reads every
+  `docs/roadmap/<M>.<N>.md` alongside the live file, and each section records
+  the file it came from, so the render buckets sections by that path and
+  re-emits each archive to its own file. The store's own schema comment gives
+  the reason the column exists — without it the render re-emits a rotated
+  archive back into `ROADMAP.md`. So archives are generated outputs after
+  cutover, not frozen ones, and hand-editing one is lost exactly as § 10 says.
+
+  The CHANGELOG is unaffected: § 4.3's first two steps touch `CHANGELOG.md`,
+  which no render generates, and its status-flip steps are store writes on a
+  cut-over project (ANTS-3809).
+
+  **What is genuinely lost is the rotation *trigger*.** The renderer never moves
+  an item from the live file to an archive; § 3.9 puts that step in `/bump` as a
+  snip-and-create on the markdown, and that hand edit is what the next render
+  discards. **Rotation therefore becomes a store operation** — reassign the
+  closed minor's sections to the archive path and re-render, which lands both
+  files with content preserved and nothing snipped. That is a change to
+  `roadmap-format.md` § 3.9 and a piece of unbuilt code (ANTS-4070), not an open
+  question in this model.
 
 ---
 
@@ -873,13 +950,8 @@ implementation gate rather than in a standard:
 - Migration: the algorithm, per-project atomicity, re-run matching, what happens
   to an item deleted from source, and the cutover transition — including the
   interim in which some projects are migrated and others are not. Its **policy**
-  is already fixed by §§ 3.3, 7.1, 7.2 and 7.4; what is open is how to execute
-  it. One policy question is deliberately left here rather than decided above:
-  **how the pass-headings status vocabulary normalises.** § 7.4 could map `Kind:`
-  because every stray value had an obvious canonical target; `deferred` and
-  `partial` have none in § 7.3's enum, so the choice is between adding statuses
-  and losing information, and that is a decision with consequences rather than a
-  lookup table.
+  is already fixed by §§ 3.3, 7.1, 7.2, 7.3.1 and 7.4; what is open is how to
+  execute it.
 - The **remaining** checks — their inputs, pass conditions, scheduling, and
   behaviour on a machine where the store does not yet exist. INV-1 already fixes
   the export round-trip check; § 7.7 already fixes what `provenance` must record.
@@ -887,15 +959,14 @@ implementation gate rather than in a standard:
   the backup repo — including that a push conflict means two stores diverged and
   must surface rather than auto-merge, and that a silent backup failure is worse
   than no backup because it stops anyone checking.
-- Whether the published render lists closed items at all, or only open work plus
-  recent releases. (Which items are *eligible* is already fixed by § 7.5: public,
-  not dropped. This is the curation question inside that set.)
 - How the render **demonstrates** § 8's conformance rather than asserting it. The
   filename and the two-standard amendment question are closed by INV-2; what is
   open is the check that catches a render silently missing a required piece, and
   whether a cut-over project re-reads its own render at all.
-- Whether archive rotation and the CHANGELOG release flow (§ 8) freeze at
-  cutover or move into the store.
+- The rotation **operation** § 8 settles the shape of: which sections move to
+  which archive path, when it runs, and what it does with a minor that was never
+  rotated before cutover. The policy is fixed there (rotation is a store write,
+  archives stay generated); this is its execution, and it is filed as ANTS-4070.
 - The fate of `roadmap_query`'s and `RoadmapDialog`'s remaining **markdown write**
   paths. ANTS-3793 cut over their reading; a full-fidelity render keeps them able
   to *parse* the file, so what INV-3 ends is the writing alone — which is why

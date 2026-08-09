@@ -570,6 +570,19 @@ Spec for the viewer's archive-load path:
 (Ants project; the standard owns the layout, the spec owns the
 viewer behaviour).
 
+**On a store-migrated project (§ 3.5.1), rotation is a store write and the
+snip-and-create step above does not apply.** Everything else here still holds:
+the naming regex, the per-minor rule, the numeric sort, and the archives' place
+in the committed corpus are unchanged, and the archives are still real files at
+the same paths. What changes is who writes them. Both `ROADMAP.md` and
+`docs/roadmap/*.md` are rendered from the store, which records per section the
+file it belongs to — so rotating a closed minor means **reassigning that
+minor's sections to the archive path and re-rendering**, after which both files
+land with their content preserved. Snipping the markdown by hand instead is
+discarded at the next render, silently and with no error, which is the failure
+this paragraph exists to prevent. `roadmap-data-model.md` § 8 owns the
+reasoning.
+
 ### 3.10 Compatibility with GFM task lists
 
 The wider markdown ecosystem has a sibling convention — GitHub
@@ -791,5 +804,13 @@ When a release ships:
    `shipped (YYYY-MM-DD)`.
 
 The `/release` skill (if used) automates steps 1–4.
+
+On a store-migrated project (§ 3.5.1), steps 1–2 are unchanged —
+`CHANGELOG.md` is not generated from the store, so it stays authored as
+it is today. Steps 3–4 edit roadmap bullets and therefore go through
+the store's write path rather than a text edit; a hand edit to the
+rendered `ROADMAP.md` is discarded at the next render. Nothing
+automatically moves shipped items into the CHANGELOG on either side of
+cutover, and nothing did before.
 
 
