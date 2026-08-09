@@ -15,6 +15,7 @@
 
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmapmigrateverb.h"
 #include "roadmapparse.h"
 #include "roadmaprender.h"
 #include "roadmapstore.h"
@@ -23,6 +24,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
@@ -318,6 +320,52 @@ TEST(RoadmapImportMapping, UnresolvedPathsAreNotedNotRefused) {
     ASSERT_NE(plain, nullptr);
     EXPECT_FALSE(plain->extras.contains(QStringLiteral("unresolved_path")))
         << "a recognised source form was treated as a path";
+}
+
+// ------------------------------------------------------ § 2.3's tally ---
+// The run-level `defaulted_fields` report. Not an invariant of its own, but
+// § 2.3 makes it normative and it is the figure a migration is READ from — the
+// notes array is capped (§ 4), so a reader counting `field_defaulted` entries
+// in it would under-report exactly the run that most needed reporting.
+
+TEST(RoadmapImportMapping, DefaultedFieldsTallyIsPerFieldAndComplete) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), doc(QStringLiteral(
+        // Declares neither — one `kind`, one `source`.
+        "- 📋 [DEMO-0080] **Declares neither.**\n"
+        "  Layman: A thing.\n"
+        // Declares a kind nothing recognises — still a defaulted `kind`, per
+        // § 2.3's \"the note fires on the default itself rather than on whether
+        // anything survived it\", and a second defaulted `source`.
+        "- 📋 [DEMO-0081] **Declares a kind nothing recognises.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: wibble.\n"
+        // Declares both — contributes to neither count.
+        "- 📋 [DEMO-0082] **Declares both.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: doc.\n"
+        "  Source: test.\n"))));
+
+    RoadmapMigrateVerb::Request req;
+    req.projectRoot = QFileInfo(root).canonicalFilePath();
+    req.projectName = QStringLiteral("Demo");
+    req.exportSlug  = QStringLiteral("demo");
+    req.changedAt   = QStringLiteral("2026-08-09T10:00:00Z");
+
+    const QJsonObject env =
+        RoadmapMigrateVerb::run(dir.filePath(QStringLiteral("tally.db")), req);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson(QJsonDocument::Compact).toStdString();
+
+    const QJsonObject tally =
+        env.value(QStringLiteral("defaulted_fields")).toObject();
+    EXPECT_EQ(tally.value(QStringLiteral("kind")).toInt(), 2)
+        << "the unmapped-value default was not counted";
+    EXPECT_EQ(tally.value(QStringLiteral("source")).toInt(), 2);
+    EXPECT_FALSE(tally.contains(QStringLiteral("status")))
+        << "no bullet here defaulted its status";
 }
 
 // ---------------------------------------------------------------- INV-8 ---

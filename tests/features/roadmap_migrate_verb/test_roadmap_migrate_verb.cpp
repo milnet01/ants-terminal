@@ -205,6 +205,10 @@ QString describeCounts(const QList<int> &counts) {
 QStringList countFields() {
     return {
         QStringLiteral("items_inserted"),  QStringLiteral("items_updated"),
+        // ANTS-4065 § 2.6's governed-column counter. Listed here so INV-3's
+        // dry-run/real-run parity covers it: a counter that agreed only on the
+        // real run would make the dry run's report a different report.
+        QStringLiteral("items_updated_governed"),
         QStringLiteral("items_unchanged"), QStringLiteral("items_orphaned"),
         QStringLiteral("ids_allocated"),   QStringLiteral("sections_written"),
         QStringLiteral("elements_written"), QStringLiteral("history_rows"),
