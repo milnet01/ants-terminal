@@ -1,6 +1,9 @@
 # ANTS-4070 — move a closed minor's sections to its archive, and let a section be retitled
 
-**Status:** spec draft (2026-08-09).
+**Status:** accepted (2026-08-09) — rule-14 gate run to its 3-loop cap plus a
+Step-8 re-gate of the § 2.5 amendment; 19 findings verified across four passes,
+all fixed. Did not converge; the loop log says why and what to split if it costs
+another round.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-4070 (in-session-2026-08-09, § 9 decision pass,
 user-requested).
@@ -61,11 +64,15 @@ the user settled the split on 2026-08-09 (§ 2.5).
 
 ## 2. Surface
 
-### 2.1 Neither operation needs a new store primitive
+### 2.1 Rotation needs no new store primitive; retitle needs exactly one
 
-The single most useful thing found while sizing this: **both writes already
-exist**, and the roadmap bullet's "build it as a store write" overstates the
-work.
+The single most useful thing found while sizing this: **the writes rotation
+needs already exist**, and the roadmap bullet's "build it as a store write"
+overstates the work.
+
+**`retitle_section` is the one exception**, added by § 2.5's decision after the
+review: it re-slugs, and no slug setter exists. § 2.3 owns the reasoning and
+names the addition. Everything else below holds for both operations.
 
 - `RoadmapStore::setSectionSource(sectionId, std::optional<QString> sourcePath)`
   (ANTS-3782 § 2.2) reassigns a section to a file. `nullopt` means the live
@@ -187,25 +194,53 @@ Locates by slug through `RoadmapStore::findSection()`, exactly as
 and parent — the setter takes the whole tuple and a partial update has no
 meaning, which is its own comment's rule.
 
-**The slug is not recomputed from the new title.** A section's slug is its
-address: `roadmap_log` ops, `roadmap_query` and every cross-reference key on it,
-and re-slugging on a retitle would break all of them at once for a cosmetic
-gain. § 4.3 step 4 is a heading edit, not a re-identification.
+**The slug IS recomputed from the new title, and the store gains a setter for
+it.** Decided 2026-08-09 (§ 2.5) after cold-eyes loop 3 surfaced the question.
 
-> **OPEN — surfaced to the user 2026-08-09, not decided here.** Keeping the
-> stored slug does not keep it *stable*, because a section's slug is **derived,
-> not stored round-trip**: the render emits `## <title>` and never the slug, and
-> the import re-derives it with `RoadmapIndex::slugifyHeading()` /
-> `uniqueSlug()`. ANTS-4065 § 2.6's governed set carries no section slug either.
-> So after a retitle the store holds the old slug while any re-import derives a
-> new one — and `RoadmapMigrateLoad` § 2.6 resolves sections by
-> `findSection(projectId, slug)`, so the re-import would miss and add a second
-> section rather than update the first. The three candidate answers — re-slug on
-> retitle and accept the re-addressing, keep the slug and give the render a way
-> to carry it, or refuse a retitle that would change the derived slug — differ in
-> what they cost elsewhere, so this is the user's call and not the reviewer's.
-> **Until it is answered, `retitle_section` is not safe to run on a project that
-> will be re-imported**, which includes ANTS-4065 Phase D.
+A section's slug is **derived, not round-tripped**: the render emits
+`## <title>` and never the slug, and the import re-derives it with
+`RoadmapIndex::slugifyHeading()` / `uniqueSlug()`. ANTS-4065 § 2.6's governed
+set carries no section slug either. So *keeping* the stored slug does not keep
+it stable — it makes the store disagree with what any re-import derives, and
+because `RoadmapMigrateLoad` § 2.6 resolves sections through
+`findSection(projectId, slug)`, that re-import would miss and **add a second
+section rather than update the first**. Re-slugging is what keeps the store
+equal to its own regeneration.
+
+The cost is re-addressing, and it is smaller than it looks: the slug has always
+been a function of the heading, so every heading edit has always moved it. What
+was stable was that nothing edited headings.
+
+Three consequences, each load-bearing:
+
+- **`RoadmapStore` gains one primitive** — `setSectionSlug(sectionId, slug)`, or
+  `slug` added to `updateSection()`'s tuple. There is no slug setter today:
+  `addSection()` takes one at INSERT and `updateSection()`'s tuple is
+  `(title, level, position, parentId)`. **This is the one place § 2.1's
+  "neither operation needs a new store primitive" does not hold**, and § 2.1
+  now says so; rotation still needs none.
+- **A collision is refused, never auto-suffixed, and the check runs in BOTH
+  directions.** `section` is `UNIQUE (project_id, slug)`, and `uniqueSlug()`
+  disambiguates in *document order* — so a suffix invented here could differ from
+  the one a re-import assigns, which is the divergence this decision exists to
+  remove. Two conditions, each returning `bad_args` naming the slugs involved and
+  writing nothing:
+  - **Forward** — `slugifyHeading(title)` already belongs to another section.
+  - **Backward** — the retitled section, or any other section, currently holds a
+    slug that `uniqueSlug()` had to disambiguate: that is, some section's stored
+    slug differs from `slugifyHeading(its own title)`. Retitling out of such a
+    family **frees** the un-suffixed slug, so a re-import re-derives a different
+    slug for a section this operation never touched — and INV-11 then fails on
+    that untouched sibling rather than on the retitled one. The backward check is
+    the non-obvious half and the reason INV-12 tests it.
+- **The rendered section order can change.** `sectionOrderLess()` sorts on
+  `(position, slug)` with the slug as tiebreak, so retitling a section that
+  shares a position with a sibling can reorder the two in the output file. That
+  is the render's existing rule applied to a new input, not a new rule.
+
+The envelope reports `slug` (the new one) and `previous_slug`, so a caller
+holding the old address learns it moved rather than discovering it at the next
+call that fails.
 
 ### 2.4 Guards, and what a dry run shows
 
@@ -229,8 +264,9 @@ writes are the same set, by construction.
 
 **`section_not_found` is keyed on the TITLE match, not on the set that survives
 filtering**, and the distinction is the whole reason the row says so. § 2.2 skips
-sections already carrying an archive path, so on a re-run every matched section
-is skipped and the move set is empty — which is a **success envelope with
+sections whose `sourcePath` already equals the derived archive path, so on a
+re-run every matched section is skipped and the move set is empty — which is a
+**success envelope with
 `sections_moved: 0`**, never a refusal. Reading it the other way makes the second
 of two identical calls fail, and `/bump` retrying a step is ordinary.
 
@@ -295,7 +331,8 @@ and returns what the real run would, plus — for `rotate_minor` — three field
 - **`archive_path`** — string, the derived path relative to the project root.
 - **`sections`** — an array of section slug strings listing **exactly the
   sections that are (or would be) reassigned**: matched sections *and* their
-  descendants, minus any already carrying an archive path. Ordered by the
+  descendants, minus any whose `sourcePath` already **equals the derived archive
+  path**. Equality, not "already archived" — § 2.2 owns why. Ordered by the
   render's own document order, `sectionOrderLess()`'s `(position, slug)`, so two
   builds cannot disagree about the sequence.
 - **`sections_moved`** — integer, and **always `sections.length`**. It is stated
@@ -321,6 +358,14 @@ it would write, and nothing else — there is no set to preview.
 - **Both operations in one spec**, because § 4.3 already names this item as the
   owner of the section-title write and both are section-scoped callers over the
   same seam.
+- **A retitle re-slugs** (§ 2.3). Surfaced by cold-eyes loop 3 as an open
+  decision and returned to me to make; the user delegated it rather than picking
+  an option. The two rejected alternatives are in § 8, and the reason this one
+  wins is that the other two fail on their own terms — refusing a slug-changing
+  retitle would refuse `roadmap-format.md` § 4.3 step 4, which is the operation's
+  whole purpose, and rendering the slug into the file would put a machine
+  artefact into a document § 3.5 governs for humans, which ANTS-4065 § 2.4
+  already rejected for the defaulted-`Kind:` marker.
 
 ## 3. Invariants
 
@@ -357,11 +402,15 @@ it would write, and nothing else — there is no set to preview.
   not. *Breaks when:* the title match is a plain `startsWith("0.7")` — which
   claims `0.70.0` — or accepts any non-digit after the prefix, which claims the
   `0.5.x` signpost and files a pointer inside the archive it points at.
-- **INV-5** — Every descendant of a rotated section moves with it. *Test:*
-  fixture with a `###` under the closed minor's `##`; assert both carry the
-  archive path afterwards. *Breaks when:* selection filters on `level == 2` and
-  stops there, leaving children pointing at the live file — which renders the
-  parent heading into the archive and its content into `ROADMAP.md`.
+- **INV-5** — Every descendant of a rotated section moves with it, **including
+  one misfiled under a different archive**. *Test:* fixture with a `###` under
+  the closed minor's `##`, plus a second `###` whose `sourcePath` is
+  `docs/roadmap/0.6.md`; rotate `0.7` and assert **all three** sections carry
+  `docs/roadmap/0.7.md` afterwards. *Breaks when:* selection filters on
+  `level == 2` and stops there, leaving children pointing at the live file — or
+  skips on *any* non-null `sourcePath` rather than on equality with the derived
+  path, which strands the misfiled child in `0.6.md` while its parent renders
+  into `0.7.md`.
 - **INV-6** — The archive path is derived, anchored beside the live roadmap, and
   § 3.9-conforming; and a rotation never empties the live file. *Test:*
   `rotate_minor` with `minor: "v0.7"`, `"0.7.0"` and `"00.7"` each return
@@ -375,11 +424,14 @@ it would write, and nothing else — there is no set to preview.
   migration's discovery will never find — or allowed to leave the live file with
   no sections, which the render then never rewrites, stranding its old content
   on disk.
-- **INV-7** — `retitle_section` changes the title and nothing else. *Test:*
-  retitle a section, then assert its slug, level, position, parent and every
-  item filed under it are unchanged, and that the rendered heading carries the
-  new text. *Breaks when:* the slug is recomputed from the new title, which
-  silently re-addresses every reference to that section.
+- **INV-7** — `retitle_section` changes the title and the slug, and nothing
+  else. *Test:* retitle a section, then assert its level, position, parent and
+  every item filed under it are unchanged; that the rendered heading carries the
+  new text; that the stored slug now equals `slugifyHeading(newTitle)`; and that
+  the envelope reports both `slug` and `previous_slug`. *Breaks when:* the
+  section's items are re-filed or its parent link is dropped — `updateSection()`
+  takes the whole tuple, so a caller passing a default for a field it did not
+  mean to change silently rewrites it.
 - **INV-8** — A dry run writes nothing and reports what a real run would do.
   *Test:* `dry_run: true`; assert both files are byte-identical afterwards and
   that the envelope's `sections`, `sections_moved` and `archive_path` equal the
@@ -404,6 +456,26 @@ it would write, and nothing else — there is no set to preview.
   minor. *Breaks when:* the op reports success off its own mutation without
   consulting the render's outcome — the store then says rotated while both
   files say otherwise.
+- **INV-11** — A retitle leaves the store equal to its own regeneration. *Test:*
+  retitle, render, re-import, and assert the project has the **same number of
+  sections** as before and that the retitled section's stored `section_id` is
+  unchanged. *Breaks when:* the slug is left at its old value — the re-import
+  derives a new one from the rendered heading, `findSection()` misses, and a
+  **second** section appears beside the first. This is the invariant the whole
+  § 2.3 decision exists to satisfy, and the only one that fails silently: both
+  sections render, so the file merely grows a duplicate heading.
+- **INV-12** — A retitle is refused when either direction of the slug-collision
+  check fires. *Test:* two cases. **Forward** — two sections; retitle the first
+  to a heading that slugifies to the second's slug; assert `bad_args`, both
+  slugs unchanged, both files byte-identical. **Backward** — two sections whose
+  headings slugify alike, so one holds `foo` and the other `foo-2`; retitle the
+  `foo` one to something unrelated and assert `bad_args`, because succeeding
+  would free `foo` and a re-import would then hand it to the `foo-2` section,
+  changing the slug of a section this call never touched. *Breaks when:* the
+  implementation auto-suffixes with `uniqueSlug()` — which disambiguates in
+  document order, so the suffix chosen here can differ from the one a re-import
+  assigns — or checks only the forward direction, which leaves INV-11 failing on
+  an untouched sibling.
 
 ## 4. RAM / build cost
 
@@ -442,7 +514,7 @@ the same one the project pays on each roadmap write today.
 ## 6. Tests
 
 `tests/features/roadmap_rotate_minor/`, label `features;fast`, covering
-INV-1 … INV-10. Behavioural against a real store in a `QTemporaryDir` — and per
+INV-1 … INV-12. Behavioural against a real store in a `QTemporaryDir` — and per
 the standing trap, `RoadmapStore` is constructed with an **explicit path**,
 since the default resolves under `XDG_DATA_HOME` and would run the suite against
 the live store.
@@ -508,33 +580,66 @@ comparison meaningful.
   file the migration's own discovery then refuses to read.
 - **Derive "closed" from `CMakeLists.txt`'s version.** Rejected: it gives the
   migration engine an opinion about a build file, and the roadmap already
-  carries the answer in a form the guard can test (§ 2.4).
+  carries the answer in a form the guard can test (§ 2.4). Note this leaves
+  § 3.9's rotation-event rule to `/bump` — § 2.4 says so explicitly rather than
+  letting the gap stand unremarked.
+- **Keep the stored slug on a retitle, and render it so it survives the round
+  trip.** Rejected: the render is `roadmap-format.md` § 3.5's human-facing file,
+  and ANTS-4065 § 2.4 rejected the same shape when it considered marking a
+  defaulted `Kind:` for the parser. One machine artefact admitted here makes the
+  next one an argument about degree.
+- **Refuse any retitle that would change the derived slug.** Rejected: it
+  refuses `roadmap-format.md` § 4.3 step 4 — `(target: YYYY-MM)` →
+  `shipped (YYYY-MM-DD)` — which is the reason the operation exists. An
+  operation that cannot perform its own motivating use case is not a
+  conservative choice; it is a broken one.
 
 ## 9. What checks this
 
 | Rule | What catches a breach |
 |------|----------------------|
-| INV-1 … INV-10 | `tests/features/roadmap_rotate_minor/` |
+| INV-1 … INV-12 | `tests/features/roadmap_rotate_minor/` |
 | § 2.2 derived path conforms to § 3.9's regex | INV-6 |
 | § 2.2 the three-case title match | INV-4 |
-| § 2.3 slug is not recomputed | INV-7 |
+| § 2.3 the slug is recomputed, and only the title and slug change | INV-7 |
+| § 2.3 the store equals its own regeneration after a retitle | INV-11 |
+| § 2.3 a colliding slug is refused, never auto-suffixed | INV-12 |
 | § 2.4 the five caller-side refusals | INV-3 (`minor_not_closed`), INV-6 (`bad_args`), INV-9 (`bad_args`, `section_not_found`, `missing_field`), INV-2 (`section_not_found` on a title that matches nothing); `op_unsupported` **nothing** — it needs a non-migrated fixture, which this suite has no harness for |
 | § 2.4 the four inherited seam codes | INV-10 covers `render_gate_unmet`; `render_failed` / `store_failed` / `write_failed` **nothing** — they are ANTS-3809's to test and it does |
 | § 2.1 no second markdown writer is added | **nothing here** — ANTS-3809's no-second-writer rule owns it, and its source scrape already covers `src/` |
 | § 2.2 the live file is never emptied | INV-6's `bad_args` set, extended with the zero-sections case |
 | § 2.4 § 3.9's rotation-event rule (rotate only on a minor/major bump) | **nothing** — deliberately delegated to `/bump` (§ 5), and nothing in this spec's code can observe a version transition |
-| § 2.3 slug stability across a re-import | **nothing** — OPEN, surfaced to the user; see § 2.3's note |
+| § 2.1 / § 2.3 the new `setSectionSlug` primitive existing | **nothing** — a compile failure, not a test; it is the one store addition this spec makes |
 | § 5's `/bump` wiring landing at all | **nothing** — no test can assert a recipe step exists until it does; tracked by the deferred line in § 5 |
 
-Eleven rows, **six** carrying a bolded `nothing` (two of them partial, naming
-what *is* covered beside what is not). The budget grew by two during review, and
-both additions are honest rather than regressions: § 3.9's rotation-event rule is
-delegated to `/bump` by design, and the slug question is open pending the user.
+Thirteen rows, **six** carrying a bolded `nothing` (two of them partial, naming
+what *is* covered beside what is not). The budget did not move when § 2.5's slug
+decision landed: it closed the row that said "OPEN, surfaced to the user" and
+opened one for the new store primitive, whose absence is a compile failure
+rather than something a test could catch.
 
 ## Cold-eyes loop log
 
+**This document did not converge, and the reason is a finding about the
+document rather than about the review.** Four passes returned 8 → 5 → 4 → 2
+verified findings; every pass found real, build-changing defects, and a large
+share of each was collateral from the previous pass's own fixes. Global rule 14's
+answer at the cap is *split rather than loop*, and the evidence points at one
+seam: **rotation settled by loop 2 and has produced nothing since, while every
+finding from loop 3 onward has been about `retitle_section`** — the slug
+identity, the collision directions, the new store primitive. The two operations
+share a seam (§ 2.1) but not a risk profile.
+
+They were combined because `roadmap-format.md` § 4.3 names this item as the
+owner of both (§ 2.5). That still holds, and the document is accepted as one.
+**But if `retitle_section` costs another round during implementation, split it
+out rather than loop again** — rotation is ready to build and should not wait
+behind it. The size trend says the same thing: 308 → 624 lines, most of the
+growth on the retitle side.
+
 | Loop | Date | Lanes | Findings | Outcome |
 |------|------|-------|----------|---------|
+| 3-impl | 2026-08-09 | 1, cold — **re-gate of the § 2.5 slug amendment**, per `/write-spec` Step 8, after the user delegated loop 3's surfaced decision back to me. Not a review loop of the original run, which had already exited at its cap | Q2 1 · Q3 1 — verified 2, fixed 2 | **Both were collateral from the amendment and from loop 3's own fixes**, which is the pattern this run never escaped. Loop 3 changed § 2.2's skip rule to *equality with the derived archive path*, and left two restatements in § 2.4 at the old "already carrying an archive path" — under which a `0.7` section misfiled in `0.6.md` is stranded rather than reassigned; INV-5 gained that case. The amendment's collision check was one-directional: retitling *out of* a `uniqueSlug()`-disambiguated family **frees** the un-suffixed slug, so a re-import re-derives a different slug for a section the call never touched, and INV-11 then fails on the untouched sibling. Both directions now checked, INV-12 tests both. Three Open questions resolved as no-defect: `RoadmapMigrateLoad` does resolve by `findSection(projectId, slug)` and *retains* a section the plan stopped carrying — confirming INV-11's duplicate rather than a merge; INV-10's fixture is buildable because `load()` does not render; and `RoadmapWrite::Result` is a distinct enum from the seam's. **Not converged, and stopping here on purpose** — see the note below. 537 → 624 lines. |
 | 3 | 2026-08-09 | 2, cold — same shared packet, rebuilt from disk; no mention of loops 1–2 | Q2 2 · Q3 2 — verified 4, fixed 4; **1 surfaced, not fixed** | **Exited at the `--max-loops` cap with the tail empty but one open decision.** Both lanes again led on the same defect, the third loop running: § 2.4 defined a closed minor as "nothing under it is still open", which contradicts § 3.9's "rotation happens at `/bump` time on a minor or major bump only". A minor holds zero open bullets routinely — just after a patch release — so the guard would have let `rotate_minor 0.7` archive the minor this project is still shipping from, and § 8 had already rejected the version check that would distinguish them. Resolved by stating that the op deliberately does not enforce the rotation-event rule and `/bump` owns it, which also promotes § 5's deferred wiring from plumbing to a precondition. Three more: the archive path was anchored on the project root while § 3.9 anchors it beside `ROADMAP.md` (they differ whenever `.ants/project.json` moves the roadmap, and the migration would never rediscover the file); "already carrying an archive path" was ambiguous between *any* path and *the derived* one; and the render never rewrites a file left with zero sections, so a rotation that emptied the live file would strand its old content while INV-1 claimed otherwise. **Surfaced, not fixed:** a section's slug is derived from its heading, not round-tripped, so `retitle_section` diverges the stored slug from any re-import's — three candidate answers with different costs, so it is the user's call, and until it is answered the op is unsafe on a project facing ANTS-4065 Phase D. 463 → 537 lines. |
 | 2 | 2026-08-09 | 2, cold — same shared packet, rebuilt from disk after loop 1's edits; no mention of loop 1's findings or fixes | Q1 1 · Q2 1 · Q3 3 — verified 5, dismissed 0 | **Both lanes again led on the same two, and the worst of them was loop 1's own collateral.** § 2.2's three-case rule, added by loop 1 to fix the `0.5.x` signpost, made case 2 "a non-alphanumeric character" — and `.` is non-alphanumeric, so case 2 swallowed case 3 and the rule re-admitted exactly what it was written to reject. Adding a disjunct cannot exclude anything. Restated as one expression, `^v?<major>\.<minor>(?:$\|[^0-9.]\|\.[0-9])`, with the three cases disjoint. Loop 1's corpus enumeration also omitted `## 0.7.7` of nine headings — re-derived from `grep -nE '^## 0\.7'` and the command recorded beside it. Three draft defects loop 1 had not reached: the openness guard was scoped to matched sections while § 2.2 moves descendants too (an in-progress item one level down would have been archived silently), `sections` / `sections_moved` left three readings open, and `retitle_section` had no refusal for an unresolvable slug or an absent argument. Both lanes' Open questions resolved as no-defect: the three seam codes are all in the taxonomy, `ANTS-3765 § 2.6` is "Re-run matching", and both ctest labels exist. 424 → 463 lines. |
 | 1 | 2026-08-09 | 2, cold — one shared byte-stable packet: the scrubbed doc, bounded windows of `roadmapstore.h` / `roadmapwrite.h` / `roadmaprender.cpp`, the quoted passages of `roadmap-format.md` §§ 3.9/4.3, `roadmap-data-model.md` § 8, `ANTS-4065` § 2.6 and four `mcp-error-codes.md` entries, plus eleven verified source facts | Q1 1 · Q2 3 · Q3 4 — verified 8, dismissed 0. Plus **3 found while BUILDING the packet**, before a lane ran | **Both lanes independently led on the same two defects** — § 2.4's `section_not_found` row contradicting INV-2's idempotent re-run, and a bare "§ 2.4" in § 2.1 that resolves to this document instead of ANTS-3809. All 8 fixed. Two of the three packet-phase findings were mine minting error codes: `not_migrated` does not exist (the seam maps only `too_large` / `read_failed` / `unrecognised_format`, and on a non-migrated project does not refuse at all), and `minor_not_closed` was used without being filed. Both lanes also routed the same two items to Open questions rather than guessing, and both were real: `isOpen()` counts 💭 as open, so § 2.4's "📋 or 🚧" invented a narrower closed than the codebase's; and `## 0.5.x and 0.6.x — archived` — a 303-byte signpost — would have been claimed by `rotate_minor 0.5` and filed inside the archive it points at, which also falsified § 1's "moves zero bytes today". § 2.2's match became three explicit cases; INV-9 and INV-10 added. 308 → 424 lines. |
