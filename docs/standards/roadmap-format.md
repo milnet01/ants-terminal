@@ -27,6 +27,7 @@
   - [4.1 Structure](#41-structure)
   - [4.2 Conventions](#42-conventions)
   - [4.3 Release flow with ROADMAP integration](#43-release-flow-with-roadmap-integration)
+- [Cold-eyes loop log](#cold-eyes-loop-log)
 
 ## 3. ROADMAP.md format spec
 
@@ -574,9 +575,13 @@ The convention:
   — one file per closed minor version, named verbatim
   (`0.5.md`, `0.6.md`, `0.7.md`).
 - File names follow the **case-sensitive regex**
-  `^[0-9]+\.[0-9]+\.md$`. No leading `v`, no `roadmap-` prefix, no
-  zero-padding (`0.7.md` not `00.07.md`), **no patch suffix**
-  (`0.7.0.md` is rejected — archives are per-minor only).
+  `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`. No leading `v`, no
+  `roadmap-` prefix, no zero-padding (`0.7.md` not `00.07.md`), **no
+  patch suffix** (`0.7.0.md` is rejected — archives are per-minor
+  only). The alternation is what rejects the padding: a plainer
+  `[0-9]+` accepts `00.07.md` and would leave the regex and the
+  sentence beside it disagreeing, with a reader loading an archive the
+  prose forbids.
 - Tooling that reads archives sorts numerically by the
   `(major, minor)` integer tuple, descending — lexical sort breaks
   on minor 10 (`0.10` < `0.9` lexically). Numeric sort is the
@@ -679,25 +684,33 @@ GFM-task-list starting point converts in five passes:
    best-effort parse — which is what selects the id carrier (§ 3.5.1).
 1. Replace `- [x]` with `- ✅`, `- [ ]` with `- 📋`.
 2. Assign stable IDs (`[PROJ-NNNN]`) bottom-up against a fresh
-   `.roadmap-counter` (§ 3.5.1) — unless the project already has a
-   store row, in which case converting to this format makes it
-   store-migrated and § 3.5.1's carrier table applies from that
-   moment, leaving the counter unread.
+   `.roadmap-counter` (§ 3.5.1). **The counter is the carrier for
+   this step even on a project that already has a store row**, because
+   the file does not yet classify `ants-v1` and § 3.5.1's table puts
+   "a store row whose roadmap is not `ants-v1`" on the counter. The
+   carrier table hands over to `id_high_water` once step 0 lands, and
+   the counter goes unread from then on.
 3. Add `Kind:` and `Source:` lines under each bullet (§ 3.5.3).
 4. Add `Layman:` summaries (§ 3.5 Bullet structure).
 
-**On a project that already has a store row, do step 0 LAST.** The
-marker is what makes the file classify `ants-v1`, and store row plus
-`ants-v1` is the definition of store-migrated (§ 3.5.1) — so adding
-it first hands the file to the store before steps 1–4 have run. From
-that moment those steps are hand edits to a generated file:
-`roadmap-data-model.md` § 10 forbids them and the next render
-discards them silently, while the store path cannot be used either,
-because its publish gate is unmet until step 4 fills the `Layman:`
-lines in. Running 1–4 as text edits and adding the marker at the end
-converts the file first and hands over once, which is the order that
-works. A project with no store row is unaffected and may keep step 0
-first.
+**On a project that already has a store row, do the whole conversion
+in one uncommitted working-tree edit and add the marker last.** Store
+row plus `ants-v1` is the definition of store-migrated (§ 3.5.1), so
+the moment the file classifies `ants-v1` the store owns it: from
+there steps 1–4 are hand edits to a generated file, which
+`roadmap-data-model.md` § 10 forbids and the next render discards
+silently — while the store path is unusable too, its publish gate
+being unmet until step 4 fills the `Layman:` lines in.
+
+**Adding the marker last reduces that window but does not close
+it**, because the marker is not the only route to `ants-v1`: the
+detector falls back to a best-effort parse, and step 1 alone —
+replacing `- [x]` / `- [ ]` with emoji bullets — can be enough for
+that parse to classify the file. So the ordering rule is necessary
+and not sufficient; what makes it safe is that no render runs against
+a half-converted tree. Do not commit, and do not invoke a store write
+or any `roadmap_log` op, between step 1 and step 0. A project with no
+store row has no such window and may keep step 0 first.
 
 The migration is reversible — write `[x]` / `[ ]` back, drop
 the metadata, and the file is GFM again.
@@ -883,6 +896,7 @@ either side of cutover, and nothing did before.
 
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
+| 2 | 2026-08-09 | 3, cold — identical packet rebuilt from disk after loop 1's edits | **Q1 1 · Q2 4** (this file's share of a joint 10) | **Three findings were against loop 1's own repairs.** The § 3.10.3 ordering rule was justified by "the marker is what makes the file classify `ants-v1`", which § 3.5.1 contradicts four hundred lines earlier: the detector falls back to a **best-effort parse**, and step 1 alone — replacing `- [x]` / `- [ ]` with emoji bullets — can be enough for it to classify. Marker-last therefore narrows the hand-over window without closing it; the rule now says so and adds what actually makes it safe (no commit, no store write, between step 1 and step 0). Step 2 four lines above still told a store-row project the counter goes unread, which under marker-last is exactly backwards — it is the carrier until the marker lands. **One pre-existing defect was a regex that does not do what the sentence beside it says**: § 3.9 published `^[0-9]+\.[0-9]+\.md$` while forbidding zero-padding, and `[0-9]+` accepts `00.07.md`. The shipped `archiveNameRx()` is `\A(0\|[1-9][0-9]*)\.(0\|[1-9][0-9]*)\.md\z`, which rejects it — so the code implemented the prose and the standard's own regex was wrong. Corrected, then executed against twelve names (`0.10.md`, `10.0.md`, `00.07.md`, `01.7.md`, `0.7.0.md`, `0.7.MD`, a trailing space and others) before it landed. Also recorded: § 3.5.1's carrier table has no comparison against the stored `source_format`, so a project whose dialect changes falls through to the counter row instead of refusing — the counterpart rule now lives in `roadmap-data-model.md` § 4.1.1. **Collateral caught by the post-fix structural check, not by a lane:** loop 1's new loop-log section was missing from § Contents. |
 | 1 | 2026-08-09 | 3, cold — gated as a pair with [`roadmap-data-model.md`](roadmap-data-model.md), one shared byte-stable packet carrying the live corpus survey, the pass-headings status reader, archive discovery, render routing and the store DDL; genre pinned `standard` | **Q1 0 · Q2 5 · Q3 3** (this file's share of a joint 11) | **This standard's first gate.** It had never had one; the run was triggered by ANTS-4069 after an authoring edit corrected § 3.5.1's detector literal `gfm` → `github-task-list`, and by the § 9 decision pass that added the post-cutover paragraphs to §§ 3.9 and 4.3. **Two findings were against that new text**: § 4.3 claimed steps 3–4 both edit *bullets*, but step 4 rewrites a release-block `##` heading — a section title with no store operation, so a cut-over project cannot perform it (filed onto ANTS-4070); and § 3's preamble still said released work "moves out of the roadmap into the CHANGELOG", which contradicts `roadmap-data-model.md` § 7.5's rule that closed items are published and would have had a renderer author drop every ✅ item. **Five were pre-existing.** `Kind:` was simultaneously "Required as of v1.1" (§ 3.5) and "two optional metadata fields" whose absence "stays terse" (§ 3.5.3) — two lanes found it independently, and it decides whether a conformance checker rejects a bullet. § 3.10.3 put the format marker at step 0, which hands a store-row project to the store before its four hand-edit steps run, so all four are discarded at the next render while the store path refuses them for an unmet publish gate — the marker now goes last. § 3.9's ~150 KiB threshold reads as a breach at 0.7.104's 3.2 MB although no closed minor exists to rotate; it is now stated as a review trigger, with no within-minor rotation by design. § 3.10.4 required "one counter per prefix — one file each" while no per-prefix filename exists here or in any source file; inventing one would have two tools reading zero for each other's prefix and reissuing live IDs, so both standards now say such a project allocates from the committed-corpus floor alone. And § 3.9's `roadmap-query` bullet ("archives are dialog-only by contract") had no post-cutover answer — the contract survives, carried by the read seam's include-archive flag rather than by which file is parsed. |
 
 
