@@ -29321,6 +29321,65 @@ against current source before filing.
   **Layman:** The importer picks the last place a line says &quot;Kind:&quot; in an entry. Notes added later often mention that word in passing, so five entries currently have a sentence fragment stored where their category should be.
   Kind: fix.
   Source: in-session-2026-08-10 (pre-Phase-D outstanding-work survey).
+  Measured properly (2026-08-10) and the bullet above
+  UNDER-REPORTS the defect. There are TWO, and the fix this
+  bullet proposed handles only the first. Decision taken by the
+  user: fix the rule AND finish the nested-entry cleanup.
+
+  **Defect 1 — mid-line prose after the trailer.** As filed. 5
+  bullets corrupt today.
+
+  **Defect 2 — nested sub-entries carry their own trailers.**
+  ~20 bullets embed a nested bullet LIST in their body, each
+  sub-entry written as a full roadmap bullet with its own
+  line-initial `**Source:**` / `**Kind:**` block. ANTS-3780 is
+  the extreme: 20 such pairs and **no trailer of its own at
+  all**. Its sub-entry ids were deliberately mangled
+  (`[ANTS-116&]`) so the reader would not take them as items —
+  their trailer labels simply never got the same treatment.
+
+  No positional rule separates a parent's trailer from a
+  child's. Take the FIRST line-initial and a rendered bullet
+  breaks (`bulletText()` writes body before trailer). Take the
+  LAST and ANTS-3573 reports `fix` when its own trailer says
+  `test`, and ANTS-3780 invents `enhancement` from nothing —
+  which is the data invention this whole spec exists to stop.
+
+  **Pair-adjacency is not available as a discriminator.**
+  Keying on a canonical `Kind:` immediately followed by
+  `Source:` would be clean, but **594 bullets carry a
+  line-initial `Kind:` with no adjacent `Source:`** and would
+  all lose their declaration. Counts, whole file:
+
+  | Bullets with … | Count |
+  |---|---|
+  | canonical `Kind:`→`Source:` pair | 862 (only 7 have >1) |
+  | line-initial `Kind:`, no adjacent `Source:` | 594 |
+  | line-initial only | 1414 |
+  | mid-line only | 52 |
+  | both line-initial and mid-line | 42 |
+  | >1 line-initial (the nested-list bullets) | 20 |
+  | no `Kind:` at all | 187 |
+
+  **Fencing is not available either**: `roadmapparse.cpp` has
+  backtick guards but NO fence tracking, and the nested blocks
+  carry no fences (0 in ANTS-3780). The one working suppression
+  mechanism is the backtick guard, which INV-3 already pins.
+
+  **Agreed fix, both halves:**
+  1. § 2.2's rule becomes *line-initial wins; fall back to the
+     last mid-line match only when no line-initial exists*. The
+     fallback is what keeps the 52 inline-only declarations
+     working — restoring the anchor would lose them again,
+     which is the defect § 1 was filed over.
+  2. The ~20 nested-list bullets have their sub-entry trailer
+     labels backticked so they stop reading as the parent's.
+     Afterwards ANTS-3780 correctly has no kind and defaults
+     with a note per INV-1.
+
+  Rejected: teaching the parser about nesting. It is the
+  principled fix and needs its own id — it changes how bullets
+  are recognised, which § 5 puts out of scope.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

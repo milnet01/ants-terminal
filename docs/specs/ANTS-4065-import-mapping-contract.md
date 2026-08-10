@@ -1,8 +1,12 @@
 # ANTS-4065 — define the markdown→store import mapping, so importing neither loses nor invents a field
 
-**Status:** accepted (2026-08-08) — rule-14 gate run to its 3-loop cap, 2 cold
-lanes per loop, 66 findings verified and 63 fixed; 3 filed as non-build-changing
-in the loop-3 row. Build order at
+**Status:** amended 2026-08-10, re-gate pending — accepted 2026-08-08 after a
+rule-14 gate run to its 3-loop cap, 2 cold lanes per loop, 66 findings verified
+and 63 fixed; 3 filed as non-build-changing in the loop-3 row. The amendment
+rewrites § 2.2's match-precedence rule and INV-11 (ANTS-4086, a defect this
+spec's own rule caused in five live bullets) and corrects INV-8's test clause
+(ANTS-4076). Both are authoring edits, so rule 14's gate re-arms and the loop
+log below carries the run. Build order at
 [`docs/plans/ANTS-4065-import-mapping-contract.md`](../plans/ANTS-4065-import-mapping-contract.md).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-4065 (user-request-2026-08-08, after the first real
@@ -265,9 +269,64 @@ re-import would adopt the stale prose value over the trailer — the same
 read-back hazard ANTS-3808 names, arriving from the parse side and breaking
 INV-6 on `kind`, a governed column.
 
-**The trailer wins: the parser takes the LAST `Kind:` match in the bullet, not
-the first.** That is the occurrence the render authored, and it is the only
-choice that keeps `kind` stable across a round trip. INV-11 pins it.
+**The trailer wins, and a LINE-INITIAL match is what "the trailer" means.**
+A `Kind:` at the start of a line — after optional indentation, in either
+spelling — always beats one appearing mid-sentence. Among line-initial matches
+the parser takes the **last**; the mid-line fallback is consulted **only** when
+a bullet has no line-initial match at all, and there too takes the last.
+INV-11 pins both halves.
+
+**Amended 2026-08-10 (ANTS-4086), after the rule was measured against the
+authored file rather than the rendered one.** This section previously said the
+parser takes the last match *anywhere*, reasoning from `bulletText()`, which
+appends `it.body` before the trailer lines — true of a **rendered** bullet,
+where the trailer is therefore always last. It is false of the authored
+`ROADMAP.md`, because `roadmap_log op:annotate` appends notes to the **end** of
+a body, below the trailer. Any later note mentioning the label in running text
+becomes the last match and displaces the real declaration, so this section's
+own closing claim — "a real trailer, when present, always wins" — did not hold
+on the file Phase D imports first. Five bullets carry a sentence fragment in
+`kind` today: ANTS-1278, ANTS-3608, ANTS-3755, ANTS-3808 and ANTS-3810.
+ANTS-3810 is the clean case — its `Kind: test.` is line-initial and the prose
+`Kind:` eight lines below it wins.
+
+Line-initial is the discriminator because it partitions the corpus cleanly, and
+because **the fallback is what keeps § 1's original defect fixed**: 52 bullets
+declare `Kind:` only mid-line, so a rule that simply restored the `^\s*` anchor
+would lose every one of them again.
+
+| Bullets with … | Count | Under this rule |
+|---|---|---|
+| line-initial `Kind:` only | 1,414 | unchanged |
+| mid-line only | 52 | the fallback serves them |
+| both | 42 | the line-initial one wins |
+| no `Kind:` | 187 | defaults, per INV-1 |
+
+**Keying on a canonical `Kind:`→`Source:` pair was considered and is not
+available.** It would be the cleanest discriminator, but **594 bullets carry a
+line-initial `Kind:` with no adjacent `Source:`** and would all lose their
+declaration; only 862 have the pair at all.
+
+**A nested sub-entry's trailer is NOT resolved by this rule, and is fixed in
+the source instead.** Roughly 20 bullets embed a nested bullet *list* in their
+body — each sub-entry written as a full roadmap bullet with its own
+line-initial `**Source:**` / `**Kind:**` block — and no positional rule
+separates a parent's trailer from a child's. Taking the first breaks the
+rendered shape; taking the last makes ANTS-3573 report `fix` where its own
+trailer says `test`, and makes ANTS-3780 — which has **no trailer of its own at
+all** — invent `enhancement` from a child's. That invention is what § 1 exists
+to prevent, so the rule must not be the thing that resolves it.
+
+The source is corrected instead, using the backtick guard INV-3 already pins:
+those sub-entries' labels are backticked so they read as quotations rather than
+declarations. The precedent is in the data — their ids were already
+deliberately mangled (`[ANTS-116&]`) so the reader would not take them as
+items, and only their labels were missed. Afterwards ANTS-3780 correctly
+carries no kind and defaults with a note. Fencing is **not** an option:
+`roadmapparse.cpp` tracks backticks but not fences, and those blocks carry
+none. Teaching the parser about nesting is the principled fix, needs its own
+id, and is out of scope here (§ 5) because it changes how bullets are
+recognised.
 
 **A capitalised `Kind:` in prose still matches, and dropping the case option
 does not save it.** Case-sensitivity removes the lowercase prose match only;
@@ -275,8 +334,13 @@ does not save it.** Case-sensitivity removes the lowercase prose match only;
 format that forgets its backticks, still parses. INV-3 covers the backticked
 form and ANTS-3722's guard handles it; this residue is accepted rather than
 fixed, because narrowing further (requiring a line start or a sentence boundary)
-would re-introduce the anchor this section removes. The last-match rule above is
-what limits the damage: a real trailer, when present, always wins.
+would re-introduce the anchor this section removes. The line-initial precedence
+above is what limits the damage, and it limits it precisely: a real trailer,
+when present, always wins, because a prose `Kind:` is mid-line by construction —
+a sentence that begins with the label at column 0 would be a declaration by any
+reading. The residue is a bullet that has **no** line-initial declaration and a
+capitalised prose mention, which falls through to the mid-line branch; INV-1's
+note is what makes that visible rather than silent.
 
 ### 2.3 A defaulted field is always noted
 
@@ -473,11 +537,21 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   historical roadmap unimportable.
 - **INV-8** — The emoji→status mapping is **total and closed over the four
   documented markers**, so no input can reach the fifth. *Test:* import a
-  fixture carrying all four emoji plus a bullet with a malformed marker; assert
-  each of the four maps to its documented status, the malformed one defaults to
-  `planned` with a note (per § 2.3, and per § 2.5's no-refusal stance — a test
-  cannot assert "refuses **or** defaults", and an implementer told both builds
-  one at random), and `SELECT COUNT(*) … status='dropped'` is 0.
+  fixture carrying all four emoji plus a line with a malformed marker; assert
+  each of the four maps to its documented status, that the malformed line
+  **becomes no item at all** — carried as narration by the structural walk in
+  [`ANTS-3757`](ANTS-3757-roadmap-migration-read.md) § 2.11, with no `dropped`
+  row and no defaulted-status item — and that
+  `SELECT COUNT(*) … status='dropped'` is 0.
+  **Corrected 2026-08-10 (ANTS-4076).** This clause previously said the
+  malformed marker "defaults to `planned` with a note". It does not, and the
+  correction is against source rather than preference:
+  `RoadmapParse::stripInlineEmoji()` recognises exactly the four documented
+  markers and returns false for anything else, so the line is never classified
+  as a bullet and never reaches `makeItem()`. Nothing is lost. Admitting it as
+  an item instead would mean every unmarked `- ` line in an `ants-v1` document
+  became one — a change to ANTS-3757's bullet grammar, and a far larger loss
+  than this invariant guards against.
   Asserting only the last clause would be a tautology — § 2.1 says `dropped` has
   no emoji, so no fixture can request it — which is why the totality of the
   mapping is what is actually tested. *Breaks when:* the fifth status
@@ -499,14 +573,28 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   (§ 2.2), so the parser change reaches the render. *Breaks when:* the widened
   match is treated as presence rather than equality, which would drop a required
   trailer from any bullet whose body happens to discuss the label.
-- **INV-11** — When a bullet contains more than one `Kind:` match, the parser
-  takes the **last**. *Test:* import a fixture whose body reads `… the old
-  Kind: refactor. …` and whose trailer reads `Kind: security.`; assert
-  `kind='security'`. *Breaks when:* the implementation keeps `matchIn()`'s
-  first-match default alongside the un-anchored pattern, at which point every
-  rendered bullet whose body mentions the label re-imports to the stale prose
-  value — and because `bulletText()` writes the body before the trailer, the
-  stale one is always the earlier.
+- **INV-11** — When a bullet contains more than one `Kind:` match, a
+  **line-initial** match beats a mid-line one; the parser takes the last
+  line-initial match, and falls back to the last mid-line match only when there
+  is no line-initial match at all. *Test:* four fixtures. (a) body `… the old
+  Kind: refactor. …` with trailer `Kind: security.` → `kind='security'`
+  (line-initial beats mid-line, trailer first in file order). (b) trailer
+  `Kind: security.` **followed by** a later note reading `… the canonical
+  Kind: while the column …` → still `kind='security'`; this is the ANTS-4086
+  case and it fails under a plain last-match rule. (c) two line-initial
+  matches, `Kind: implement.` then `Kind: fix.` → `kind='fix'`. (d) a bullet
+  whose only match is mid-line → that value, proving the fallback still serves
+  § 1's 52 inline-only declarations. *Breaks when:* the implementation keeps
+  `matchIn()`'s first-match default (every rendered bullet whose body mentions
+  the label re-imports to the stale prose value, since `bulletText()` writes
+  body before trailer), **or** when precedence is dropped back to plain
+  last-match, at which point an appended annotation displaces the declaration —
+  which is not hypothetical, it is the state of five bullets in this project's
+  roadmap at the time this invariant was written.
+  **Not covered by this invariant:** a bullet whose body embeds a nested
+  sub-entry carrying its own line-initial trailer. No positional rule resolves
+  that (§ 2.2); the source is corrected instead, and INV-3's backtick guard is
+  what holds it.
 
 ## 4. RAM / build cost
 
@@ -583,6 +671,23 @@ current source at all) and **INV-10's equal-value fixture** (today's anchor
 leaves `offset == -1`, so `shadows()` is false and the trailer is emitted). **INV-6 is expected to red and stay red** on `headline`, `layman` and `lanes`
 until § 2.6's undiagnosed drift is resolved — it is the measurement, not a
 regression.
+
+**Amended 2026-08-10 (ANTS-4086 / ANTS-4076).** The six above are the must-red
+set against **pre-Phase-C** source and are green now that Phase C has shipped;
+they are left as written because the list records what the first
+implementation had to prove. The amendment adds one further must-red case,
+against **post-Phase-C** source:
+
+- **INV-11 fixture (b)** — a trailer followed by a later note mentioning the
+  label mid-line. Today's implementation takes the last match anywhere, so it
+  reds; that is the ANTS-4086 defect and its must-fail-first proof. Fixtures
+  (a), (c) and (d) are expected green, since plain last-match already satisfies
+  them — which is exactly why (b) is the one that discriminates.
+
+**INV-8 gains no new test.** `tests/features/roadmap_import_mapping/` already
+asserts the verified behaviour (no item, the line carried as narration, no
+`dropped` row); it was the spec's clause that was wrong, not the test, so the
+correction is documentation-only and nothing reds.
 
 INV-6 needs a fixture project rather than a bullet — a small roadmap with one
 item per interesting shape (inline trailer, quoted label, absent kind, mapped
