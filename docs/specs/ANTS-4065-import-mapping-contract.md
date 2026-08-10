@@ -118,9 +118,17 @@ and is reverted; it was not what hid these values.
 
 With the survey corrected (un-anchored, backtick-guarded, case-sensitive,
 last-match — the guards § 2.2 gave the parser **as of Phase B1**), the inventory
-surfaces seven values the table and `mappedKind()` both miss. All seven occur in
-this project only; measured over `ROADMAP.md` plus both archives at the reverted
-source:
+surfaced seven values the table and `mappedKind()` both missed **at the time
+this section was written**. All seven occur in this project only; measured over
+`ROADMAP.md` plus both archives at the reverted source:
+
+**Four of the seven have since shipped — do not re-open them.** Corrected
+2026-08-10: `mappedKind()` now carries **fifteen** rows, the last four being
+`bug → fix`, `performance → perf`, `process + tooling → chore` and
+`audit → audit-fix`, added by this spec's own Phase C on 2026-08-09 and
+recorded in § 7. The table below is kept as the *evidence that justified them*,
+not as outstanding work; the remaining three are the compounds, and § 5 closes
+those with no rule rather than deferring them.
 
 | Corpus value | Count | → | Rationale |
 |---|---|---|---|
@@ -128,15 +136,23 @@ source:
 | `performance` | 2 | `perf` | long form of a canonical value |
 | `process + tooling` | 1 | `chore` | § 3.5.3's "housekeeping"; `tooling` already maps there |
 | `audit` | 1 | `audit-fix` | the canonical name for the same work |
-| `feature/fix` | 2 | **ruling needed** | compound; the column is single-valued |
-| `design + implement` | 1 | **ruling needed** | compound |
-| `design + fix` | 1 | **ruling needed** | compound |
+| `feature/fix` | 2 | **no rule — closed** | compound; § 5 |
+| `design + implement` | 1 | **no rule — closed** | compound; § 5 |
+| `design + fix` | 1 | **no rule — closed** | compound; § 5 |
 
-The four with a rationale are mechanical and this spec adopts them. **The three
-compounds are deferred, with stated interim behaviour** rather than left blank:
-until a ruling exists they fall through `makeItem()`'s unmapped branch —
-`implement`, `extras.source_kind` preserved, `kind_unmapped` note emitted — which
-is today's behaviour and is visible rather than silent. § 5 carries the ruling.
+The four with a rationale are mechanical, this spec adopted them, and **they
+shipped in Phase C** — `mappedKind()` carries all four today.
+
+**The three compounds are CLOSED with no rule, not deferred** — corrected
+2026-08-10, where this paragraph previously said "deferred … § 5 carries the
+ruling" while § 5 said "closed in Phase B3, **not deferred** … no rule was
+added". § 5 is right: the four affected bullets were corrected at source, the
+values are gone from the corpus, and § 7.4 records that no general compound
+rule exists beyond its named rows. Should one reappear it falls through
+`makeItem()`'s unmapped branch — `implement`, `extras.source_kind` preserved,
+`kind_unmapped` note emitted — which is visible rather than silent. **Nothing
+is owed here**; the earlier wording would have had an implementer stall waiting
+for a ruling that was already made.
 
 **A mapped value keeps its original at import — and loses it at the first
 regeneration.** `makeItem()` writes `extras.source_kind` on the mapping branch,
@@ -321,6 +337,26 @@ simply never consults it: today it overwrites its result each iteration and
 returns the last match unconditionally. **The change is which match it keeps,
 not a new predicate.**
 
+> **OPEN — line-initial is not a sufficient test for "is a trailer", and this
+> is not yet resolved.** Found 2026-08-10, after the rule above was written.
+> `collectBulletBody()` trims each continuation line, so **a prose sentence
+> that happens to wrap immediately before the label becomes line-initial.**
+> Live case: `ANTS-3754`'s body line 86 reads `Kind:), § 3.1's format marker,
+> and §§ 3.6.2-3.6.3's headline matching —` because the source wrapped after
+> `(emoji, ID, bold headline,`. Its real trailer, `Kind: doc.`, is 22 body
+> lines earlier, so **last-line-initial returns `), § 3` instead of `doc`.**
+> Source wrapping is arbitrary and re-wraps whenever anyone reflows a
+> paragraph, so this is not a one-off to correct in the source.
+>
+> The rule below is therefore **necessary but not sufficient**: it fixes the
+> five corrupt-`kind` bullets and ANTS-3808's `source`/`layman`, and it does
+> not fix ANTS-3754. A candidate tightening is to require the captured value to
+> begin with a letter (`), § 3` fails; `doc`, `refactor (no behaviour change)`
+> pass), which is minimal and testable — but it is a parser-behaviour decision
+> rather than a wording fix, so it is **surfaced, not applied**. Do not
+> implement the resolver until it is settled: an implementer shipping the rule
+> as written trades one wrong value for another on this bullet.
+
 **Implement it once, in one shared resolver, and route all five keys through
 it.** `matchLastIn()` gains the preference — keep the last match whose
 `anchored` is true, else the last match seen — and `trailerValuesIn()` moves
@@ -348,6 +384,29 @@ anchored** (below), so for that one key every match is line-initial by
 construction and the rule is inert until the anchor comes off; it is included
 here so the resolver is uniform and stays correct when it does.
 
+**`trailerValuesIn()` has FOUR consumers, not two, and one of them writes to
+the store.** Added 2026-08-10; this section previously named only the parse and
+render paths, which understated the blast radius:
+
+| Consumer | What a precedence change reaches |
+|---|---|
+| `roadmaprender.cpp` — `bulletText()` | `shadows()` suppression (INV-10) |
+| `remotecontrol_roadmap_query.cpp` — `rlDeriveTrailerColumns()` | **writes or clears the store's trailer columns** on `roadmap_log` `append` / `annotate` / `amend_body` |
+| `remotecontrol_roadmap_query.cpp` (second site) | trailer values on a query path |
+| `roadmapdialog.cpp` | the kind the dialog displays |
+
+The second is the one that matters and it is **not an import path**:
+`rlDeriveTrailerColumns()` compares `trailerValuesIn(before.body)` against
+`trailerValuesIn(newBody)` and clears a column only when the replaced body also
+yielded that key. Changing which match wins changes both sides of that
+comparison, so a bullet carrying a sample or a prose mention alongside its own
+trailer can have a stored column **rewritten or cleared by the next
+`roadmap_log` write** — a live user-facing write, triggered by annotating a
+bullet. **Whoever implements the resolver owns this seam**: decide explicitly
+whether `rlDeriveTrailerColumns()` follows the new precedence, and cover it.
+§ 4's "no new stored state" is a statement about *this spec's* additions and
+does not price these writes.
+
 **Amended 2026-08-10 (ANTS-4086), after the rule was measured against the
 authored file rather than the rendered one.** This section previously said the
 parser takes the last match *anywhere*, reasoning from `bulletText()`, which
@@ -369,10 +428,20 @@ would lose every one of them again.
 
 | Bullets with … | Count | Under this rule |
 |---|---|---|
-| line-initial `Kind:` only | 1,414 | unchanged |
-| mid-line only | 52 | the fallback serves them |
-| both | 42 | the line-initial one wins |
-| no `Kind:` | 187 | defaults, per INV-1 |
+| line-initial `Kind:` only | 1,453 | unchanged |
+| mid-line only | 55 | the fallback serves them |
+| both | 26 | the line-initial one wins |
+| no `Kind:` | 189 | defaults, per INV-1 |
+| **>1 line-initial** | **16** (all exactly 2) | see the boundary below |
+
+**These figures replace an earlier set (1,414 / 52 / 42 / 187 and "20 bullets"),
+measured 2026-08-10 with a scan that did not reproduce `collectBulletBody()`'s
+boundaries.** That scan ran from each bullet to the next bullet line, while the
+real collector also stops at a **col-0 heading** and at any other col-0 content.
+It therefore attributed trailing sections' trailers to whichever bullet preceded
+them. Any figure about bullet bodies must be taken with the collector's own
+stop conditions or it measures a different object; the corrected numbers come
+from a re-implementation of those conditions.
 
 **Keying on a canonical `Kind:`→`Source:` pair was considered and is not
 available.** It would be the cleanest discriminator, but **594 bullets carry a
@@ -633,12 +702,20 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
 
 - **INV-1** — No import defaults a field without emitting a note naming that
   field. *Test:* `tests/features/roadmap_import_mapping/` — import a fixture
-  whose bullet declares no `Kind:`, assert the result carries a note whose code
-  is exactly `field_defaulted` and **whose detail names the defaulted field** —
-  one code for every defaulted field, not a per-field code. § 2.3 owns the
-  shape; this clause previously said "a note whose **code** names the defaulted
-  field", which reads as `kind_defaulted` / `source_defaulted` and is a
-  different envelope contract for anything filtering on code.
+  whose bullet declares no `Kind:` **but does declare a `Source:`**, assert the
+  result carries a note whose code is exactly `field_defaulted` and **whose
+  detail names `kind` specifically** — one code for every defaulted field, not
+  a per-field code. § 2.3 owns the shape; this clause previously said "a note
+  whose **code** names the defaulted field", which reads as `kind_defaulted` /
+  `source_defaulted` and is a different envelope contract for anything
+  filtering on code.
+  **Both halves of that fixture are load-bearing** (2026-08-10). Without the
+  declared `Source:`, the bullet defaults *two* fields, and the run emits a
+  `field_defaulted` naming `source` — which satisfies "a note whose code is
+  `field_defaulted`" verbatim while the empty-`rawKind` branch stays silent,
+  i.e. the assertion passes in exactly the state *Breaks when* describes. This
+  is the same hole INV-7 carried and had repaired; the reasoning was never
+  applied back to INV-1, where the note code originates.
   *Breaks when:* a branch assigns a default and
   returns without `addNote`, which is the exact shape of today's empty-`rawKind`
   path.
@@ -649,8 +726,17 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   the test fails on today's source and that is the must-fail-first proof.
 - **INV-3** — A bullet *quoting* the label does not declare it, **in either
   spelling**. *Test:* fixture bodies containing ``the `Kind:` trailer`` and
-  ``the `**Kind:** implement.` line`` both import with a defaulted kind, not
-  `kind='trailer'` and not `kind='implement'`. *Breaks when:* the lookbehind is
+  ``the `**Kind:** implement.` line`` both import with a defaulted kind. **The
+  plain fixture asserts `kind != 'trailer'`; the bold one CANNOT assert on the
+  value at all** — a defaulted kind *is* `implement`, so "defaulted" and
+  "`implement`" are the same observation and the two outcomes are
+  indistinguishable by value. Its discriminator is
+  **`provenance.kind == 'defaulted'` and `extras.source_kind` absent**; with
+  the guard broken the same bullet imports `kind='implement'` with
+  `provenance.kind='asserted'`. Corrected 2026-08-10: the clause previously
+  demanded "a defaulted kind" *and* `kind != 'implement'`, which are jointly
+  unsatisfiable, so a literal implementation reds on correct code.
+  *Breaks when:* the lookbehind is
   dropped while un-anchoring — the regression ANTS-3722 already paid for once on
   `rxLanes()` — or when only the plain form is guarded, which is the state
   ANTS-4077 found: one `(?<!`)` cannot see past the optional `**`, so the bold
@@ -764,17 +850,23 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   hypothetical — five bullets in this project's roadmap carry a corrupt `kind`
   and ANTS-3808 carries a wrong `source` and `layman`, at the time this
   invariant was written.
-  **The boundary, since a second line-initial trailer is sometimes resolvable
-  and sometimes not, and it turns on position:** when the second trailer sits
-  **above** the bullet's own — an indented sample or a quoted block placed
-  before it, as in ANTS-3808 — last-line-initial resolves it correctly, and
-  fixture (e) is exactly that case. When it sits **below**, no positional rule
-  works: ANTS-3573's own `Kind: test.` precedes two quoted sub-entries, so last
-  wins and returns `fix`; ANTS-3780 has no trailer of its own at all, so every
-  rule invents one. **Those are what this invariant does not cover** (§ 2.2),
-  and the source is corrected for them instead. Nor does it cover a backtick
-  span crossing a line break, which defeats the guard entirely and is a
-  separate mechanism (§ 5).
+  **The boundary, re-measured 2026-08-10 against `collectBulletBody()`'s real
+  stop conditions.** 16 bullets carry a second line-initial `Kind:`, each
+  exactly two. In **13** the two values are identical, so the choice cannot be
+  observed. In **ANTS-3808** and **ANTS-3787** the bullet's own trailer is the
+  later one, which last-line-initial returns correctly; ANTS-3808 is fixture
+  (e)'s real-world case. **In ANTS-3754 the rule returns garbage** — see the
+  wrapping defect below, which is a different mechanism and is not fixed by
+  ordering.
+  **An earlier draft named ANTS-3573 and ANTS-3780 here as the below-the-trailer
+  cases. Both were wrong**, artefacts of the superseded scan: ANTS-3573 carries
+  exactly one `Kind:` (its body ends at a col-0 heading), and ANTS-3780 is a
+  short bullet with an inline trailer and no nested entries. **So the
+  below-the-trailer case has no demonstrated instance in this corpus**, and an
+  implementer should treat it as a guard against a shape that may not occur
+  rather than as a repair with known targets. Nor does this invariant cover a
+  backtick span crossing a line break, which defeats the guard entirely and is
+  a separate mechanism (§ 5).
 
 ## 4. RAM / build cost
 
@@ -953,6 +1045,7 @@ construct `RoadmapStore` with an **explicit path**; the default resolves under
 
 | Loop | Date | Lanes | C/H/M/L/I | Dimensions | Outcome |
 |---|---|---|---|---|---|
+| 6 | 2026-08-10 | 1, cold — packet rebuilt from disk after loop 5, line count refreshed; no mention of loops 4–5 | **Q1 3 · Q2 0 · Q3 2 · Q4 2** — verified 7, dismissed 0 | (Q-counts) | **Exited at the 3-loop cap for this run. The loop found a defect in the rule loop 4 introduced, and falsified this document's own measurements.** (1) **The population figures were wrong, and so were the two bullets the carve-out rested on.** The scan behind "1,414 / 52 / 42 / 187" and "~20 nested-list bullets" ran bullet-to-bullet and did not reproduce `collectBulletBody()`'s other stop conditions — a col-0 heading, and any other col-0 content — so it attributed later sections' trailers to whichever bullet preceded them. Re-measured against the real conditions: **1,453 / 55 / 26 / 189**, and **16** bullets with a second line-initial `Kind:`, every one carrying exactly two. ANTS-3573 (one `Kind:`, body ends at a col-0 heading) and ANTS-3780 (short bullet, inline trailer, no nested entries) are **not** instances and were named in error; the below-the-trailer case now has **no demonstrated instance in this corpus**. (2) **[Q1, and the run's real finding] Line-initial is not a sufficient test for "is a trailer."** `collectBulletBody()` trims each continuation line, so a prose sentence that happens to **wrap immediately before the label** becomes line-initial. ANTS-3754's body line 86 is `Kind:), § 3.1's format marker…` because the source wrapped after `(emoji, ID, bold headline,`; its real `Kind: doc.` is 22 body lines earlier, so last-line-initial returns `), § 3`. Wrapping is arbitrary and re-wraps on any reflow, so this is not a source fix. **Surfaced, not applied** — a candidate tightening (require the captured value to begin with a letter) is a parser-behaviour decision, and the section now tells an implementer not to build the resolver until it is settled. (3) **[Q1] § 2.1 said four canonical mappings were still missing from `mappedKind()`.** They shipped in this spec's own Phase C: the function carries **fifteen** rows, the last four being `bug`, `performance`, `process + tooling`, `audit`. An implementer following § 2.1 re-opens shipped work. The table is kept as the evidence that justified them. (4) **[Q2, folded] The three compounds** were "deferred, § 5 carries the ruling" in § 2.1 and "closed in Phase B3, **not** deferred" in § 5 — the table's three "ruling needed" cells now read "no rule — closed". (5) **[Q3] `trailerValuesIn()` has four consumers, not two**, and `rlDeriveTrailerColumns()` **writes or clears store trailer columns** on `roadmap_log` append/annotate/amend_body — a live user-facing write path the section had not named. (6) **[Q4] INV-3's bold fixture** demanded "imports with a defaulted kind" **and** `kind != 'implement'` — jointly unsatisfiable, since a defaulted kind *is* `implement`; the discriminator has to be `provenance.kind`. (7) **[Q4] INV-1's fixture passes while the branch it guards stays silent**: a bullet declaring no `Kind:` usually declares no `Source:` either, so a `field_defaulted` note naming `source` satisfies it verbatim — the same hole INV-7 had repaired one loop earlier, never applied back. **Items 6 and 7 were fixed in this loop after all** — both are one-clause corrections with no design question in them. Doc 960 → 1053 lines. |
 | 5 | 2026-08-10 | 1, cold — same shared-context file rebuilt from disk after loop 4's fixes, line count refreshed; no mention of loop 4 | **Q1 2 · Q2 3 · Q3 1 · Q4 0** — verified 5, dismissed 0 | (Q-counts) | **Four of the five were loop 4's own collateral, which is the loop working exactly as intended — and one is the sharpest kind: a fact loop 4 INVENTED.** § 2.2's new paragraph argued against editing `matchIn()` partly because it "is the first-match helper other callers rely on". It has no such callers: its only four call sites are inside `trailerValuesIn()`, so once they move it is unreferenced dead code. Loop 4 asserted a claim about the codebase from plausibility instead of opening the file — the exact failure the verify-before-writing rule exists to stop — and the correction now also tells the implementer to delete it. **Three more were repairs loop 4 made in one place and not the other:** § 6 still carried the inverted "INV-6 is expected to red and stay red … it is the measurement, not a regression" after INV-6 itself was corrected to the opposite, so the two passages were a word-for-word inversion prescribing opposite actions (land a permanently-red ctest case, or don't); INV-11 grew fixture (e) while its own exclusion clause still said the indented-sample shape was not covered, so the invariant tested what it declared out of scope; and § 2.2 called ANTS-3808 "three wrong values" with "its `kind` survives only by accident" while the amendment 40 lines below listed that same bullet among five with a corrupt `kind`. It is four, and the bullet carries **both directions** of the defect — which is what makes it the worked case, so the correction strengthens the argument rather than weakening it. **One genuine draft defect:** `defaulted_fields` was described as a "run-level tally … beside `notes_count`" (scalar) and as a per-field complete count in the next sentence — two different JSON shapes for one key, with no invariant pinning either. Resolved against shipped code rather than by preference: `roadmapmigrateverb.cpp` assigns `defaultedFieldTally(plan)` and the shipped test reads it with `.toObject()`, so the spec was ambiguous where the code was not. **Blast-radius sweep before this dispatch caught three further self-inflicted breaks** loop 4 had left — § 2.5 and § 2.2 both cited § 5 for items § 5 did not contain (the `Evidence:` anchored loss and the line-break guard gap, both now written there), and § 6 accounted for four INV-11 fixtures after it grew to five, missing that (e) is a must-red failing in the OPPOSITE direction to (b). Doc 896 → 959 lines. **Not converged; loop 6 owed, and the collateral share is the reason to expect it to be short.** |
 | 4 | 2026-08-10 | 2, cold — one byte-stable shared-context file, both lanes given the same path; scrubbed doc copy with the loop log withheld; verified-facts block carrying nine source facts read during packet assembly | **Q1 3 · Q2 5 · Q3 4 · Q4 0** — verified 12, dismissed 2 | (Q-counts; the C/H/M/L/I column is the retired scale) | **Re-gate after an authoring amendment (ANTS-4086 + ANTS-4076), not a fresh review.** Both lanes independently led on the same defect, and it is one the amendment itself introduced by inheriting a false premise from loop 3's row: **§ 2.2 said `trailerValuesIn()` resolves `kind` through `matchIn()` (first match). It does not** — it calls `matchLastIn()` for `kind` **only**, while `layman`/`lanes`/`evidence`/`source` use `matchIn()`. Loop 3 verified the wrong half and wrote the wrong function into the spec; loop 4's fix names both and says which function to edit, because an implementer following the old text edits `matchIn()` and changes four fields while leaving the one the section is about untouched. **The run's largest finding, verified empirically rather than by reading:** the amendment fixed precedence for `Kind:` alone, leaving the identical defect live on four other governed columns — and on first-match keys it is worse, since *any* earlier mention wins. Demonstrated on ANTS-3808 in this project's own roadmap, which embeds an illustrative sample bullet above its real trailer and therefore imports `source = "test."` and `layman = "An older thing."` today. The rule now governs all five keys through one shared resolver (user decision, taken on that evidence). A third mechanism surfaced in the same check and is deliberately **out of scope**: ANTS-3808 also imports `lanes = ["packaging"]` while declaring no `Lanes:` at all, harvested from a backticked example spanning a line break — the guard is a fixed-length lookbehind and cannot see across it. Filed, not fixed. **Also fixed:** § 2.5's path predicate, whose "final segment" was still undefined for a value with no slash *despite loop 3 recording it as fixed* — now a whitespace-token predicate, and its unbuildable "not a recognised source form" conjunct deleted after running the predicate over § 3.5.3's forms proved none can reach it; INV-7's note code was unnamed, alone among this spec's five notes, so its clause could not fail — now `path_unresolved`, with an `Evidence:` fixture added since the array half was untested; INV-1 and § 2.3 disagreed on whether the field name lives in the note's code or its detail; § 2.5 claimed § 2.2 repairs `Evidence:`'s inline blind spot when § 2.2 deliberately leaves `rxEvidence()` anchored, losing 18 of 22 corpus occurrences; § 2.6 ruled § 2.2 out of `lanes` drift on the un-anchoring alone while § 2.2 makes two *other* changes to `rxLanes()` that move values; INV-11 fixture (a)'s ordering parenthetical contradicted § 6's must-red list; and INV-6's "expected to red and stay red" was contradicted by its own shipped case being green — the spec conflated the corpus measurement with the ctest fixture, now separated. **Dismissed (2):** § 2.2's closing "a real trailer always wins" reads as contradicted by the amendment but is scoped to prose mentions, which the amended rule does defeat; and § 2.1-vs-§ 5 on whether the compound `Kind:` values were deferred or closed — a real contradiction, but both readings produce identical code, so it changes no line. Doc 749 → 896 lines. **Not converged; loop 5 owed.** |
 | 3 | 2026-08-08 | 2, cold — same shared-packet shape, no mention of loops 1–2; packet's verified-facts block extended with loop 2's four source facts, and its stale "8 invariants" line corrected to 10 | C 3 · H 5 · M 8 · L 9 · I 0 — verified 22, dismissed 0 | dim 5×6, dim 2×5, dim 4×5, dim 15×4, dim 6×4, dim 7×2, dim 1×1, dim 9×1, dim 11×1, dim 12×1 | **Converged by cap. Both lanes independently found the same defect loop 2 introduced, which is the clearest possible signal that the cap is the right stop. (1) CRITICAL, both lanes: § 2.6 booked `lanes` drift as fixed by § 2.2's un-anchoring — a mechanism that cannot touch it, since `rxLanes()` was already un-anchored by ANTS-2058 (verified at `src/roadmapparse.cpp:296`) and the two matchers are independent. One of the four gate columns was accounted for by fiction. Moved to the undiagnosed set with `headline` and `layman`, in § 2.6, § 5 and INV-6. (2) CRITICAL, lane B, and the deepest read of the whole run: un-anchoring makes **match precedence** load-bearing and the spec never stated it. Verified — `trailerValuesIn()` calls `matchIn(rxKind(), body)`, a single `match()` taking the **first** occurrence, and `bulletText()` appends the body *before* the trailer. So on a rendered bullet a stale mid-prose `Kind:` sits ahead of the canonical one and a re-import would adopt it, breaking INV-6 on a governed column the spec believed safe. § 2.2 now fixes the rule — **the trailer wins, the parser takes the last match** — and new **INV-11** pins it. (3) CRITICAL, lane A: `assertedSource` was used in § 2.4's render condition and never defined. The store declares `provenance NOT NULL DEFAULT '{}'`, so a row written by anything but `makeItem()` — `roadmap_log op:append`, for one — carries no `source` key; read as `== "asserted"` every such row silently loses its `Source:` line, which is precisely the loss this spec exists to stop. Now defined as `!= "defaulted"`, with the direction called out as the thing to get right. **HIGH ×5:** § 2.4's claim that `extras.source_kind` distinguishes defaulted from mapped is contradicted by the spec's own § 1 measurement — 438 of 476 lack it, so 38 defaulted kinds *do* carry one, written by the unmapped-value branch; the must-fail-first list said five where INV-10's equal-value fixture also reds on today's anchor, making six; a capitalised `Kind:` in prose survives the case-sensitivity fix and the residual exposure was unstated (now accepted explicitly, with the last-match rule as the limiter); the note code, envelope tally key and `extras.priority` key were all unnamed while two sibling `extras` keys were named, so two implementers would emit incompatible envelopes and neither would fail its test (`field_defaulted` / `defaulted_fields` now named); and § 6 disagreed with § 2.6 about whether `layman` is expected red. **MEDIUM ×8:** INV-8's fixture said the malformed marker "refuses **or** defaults", a disjunction no test can assert — now defaults to `planned` with a note; § 2.1's "corpus figures throughout" mislabelled a table whose counts are this project's pre-render file plus archives, not the 14-project survey; `dropped`'s precondition named the round-trip where the real blocker is the render's inability to express a fifth status; "`Kind:` always renders" contradicted INV-10 and `bulletText()`'s own shadow suppression; § 2.3's completeness rule had no invariant behind it; and the § 2.5 predicate's "final segment" was undefined for a value with no slash. **LOW ×9**, including a dangling sentence fragment my own INV-8 edit created and Phase 4c caught before the commit. **Cap reached with three findings filed rather than fixed** — see the deferred tail in the run report: the `Priority:` and `Evidence:` corpus counts want re-measuring against the pre-render source (both were taken from the contaminated survey), and § 4 budgets no filesystem-stat cost for § 2.5's 150 path checks. None is build-changing; all three are recorded so nothing is lost by stopping. Doc 502 → 551 lines; invariants 10 → 11. |
