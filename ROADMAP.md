@@ -28687,6 +28687,49 @@ against current source before filing.
   high-water" excludes `PASS-N-M` ids from the high-water
   computation, and these 73 are a separate population it does
   not discuss.
+  Verified against source (2026-08-10), and the note above got
+  two things wrong. Corrections first, then the real scope.
+
+  **Correction 1 — `provenance.id` is `"migrated"`, not
+  `"store-generated"`.** `roadmapmigrate.cpp:337` stamps
+  `migrated` on the id-less branch, and that is right:
+  ANTS-3838's branch rule governs the `roadmap_log` store-append
+  path, not the migration path, and its own resolution says an
+  id migration allocated gets `migrated`. `id_origin` is
+  `"synthesised"` (`roadmapmigrateload.cpp:602-608`) as
+  expected.
+
+  **Correction 2 — the `.roadmap-counter` worry was already
+  moot.** Migration never touches that file in ANY format;
+  `roadmapmigrate.h:202` declares the plan half "no filesystem,
+  no clock, no id counter", and the allocator reads the store's
+  `id_prefix` high-water table
+  (`roadmapmigrateload.cpp:514-595` → `roadmapstore.cpp:1803`).
+  `.roadmap-counter` belongs to the older fold-in path
+  (`roadmapfoldin.cpp:24`) alone. So the rejected option this
+  bullet listed was never actually available, and no
+  special-case branch is needed for a pass-headings project.
+
+  **The real scope is larger than allocation.** Those 73
+  bullets are not ID-less items — they are not items at all.
+  `parseBullets()` short-circuits a pass-headings document at
+  `roadmapparse.cpp:1228-1230` and hands it to
+  `parsePassHeadingBullets()`, which emits a record ONLY for a
+  level-4 `#### Pass N.M` heading (`:464-504`). An ordinary `- `
+  bullet produces no `BulletRecord`, so the walk never reaches
+  `isItem`/`makeItem` and the line is absorbed as section intro
+  or `narration` (`roadmapmigrate.cpp:703-719`).
+
+  So this is a third shipped behaviour the bullet did not list,
+  and it is not silent loss — the text survives, attached to
+  its pass, just not addressable. Honouring the decision means
+  extending the pass-headings reader to emit records for
+  ordinary bullets, which is a reader change with its own
+  must-fail-first test, not a rule about which counter to read.
+  Allocation itself then needs nothing: the existing
+  `idAllocationOwed` path (`roadmapmigrate.cpp:330-341`, load
+  trigger at `roadmapmigrateload.cpp:709`) already does exactly
+  what was decided once a record exists.
 
 - 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
   Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
@@ -28992,6 +29035,52 @@ against current source before filing.
   **Layman:** Idea for later: let an item say which other work it absorbs, and ask what is left uncovered.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild), deferred same day..
+
+- 📋 [ANTS-4084] **roadmap-data-model.md § 6's relates-to conversion has no implementation at all.**
+  Found while verifying ANTS-4068's decision 2 (which direction a
+  symmetric `relates-to` edge is stored in). The direction question
+  turned out to be already settled in code — but only in a function
+  nothing calls.
+
+  **What is built.** `RoadmapStore::relateItems()`
+  (`roadmapstore.cpp:908-955`) already does exactly what decision 2
+  chose: it keys each endpoint by `export_slug || 0x1f || id_fold`
+  (stable identity, deliberately not `item_pk`, which moves on rebuild)
+  and swaps so the lower-sorting endpoint is `src_pk` (`:912-935`). One
+  row per relation, with a both-orientations `SELECT` guard at
+  `:936-942` before the insert at `:946-951`.
+
+  **What is not built.** Nothing in `src/` converts a body line into a
+  relationship row. `relateItems()` and `relateCrossProject()` have zero
+  production call sites — only `tests/features/roadmap_store_schema` and
+  `tests/features/roadmap_export_roundtrip` call them. Neither
+  `roadmapmigrate.cpp` nor `roadmapmigrateload.cpp` writes one.
+
+  **And the trailer key does not exist either.** § 6 says the edges are
+  converted from `Dependencies:` lines, but the parser's trailer
+  vocabulary is `Kind|Lanes|Layman|Evidence` (`roadmapparse.cpp:395-399`)
+  plus `Source:` (`:385`). There is no `Dependencies` key; the only such
+  string in `src/` is an unrelated audit-category label
+  (`auditdialog.cpp:1731`). So no roadmap in the corpus can currently
+  express a dependency in a form the migration would read.
+
+  **Decide which side is canonical**, the same shape as ANTS-3838:
+  (a) build it — add the trailer key, parse it, and call `relateItems()`
+  from the load path; or (b) scope § 6 to describe the store surface
+  only, and say plainly that migration populates no edges, so a reader
+  does not expect them in an imported store.
+
+  Note the schema does NOT protect a reverse-duplicate on its own: the
+  `relationship` table declares no UNIQUE (`roadmapstore.cpp:557-569`);
+  `rel_item_uq` is a partial index on `(type, src_pk, dst_pk)` (`:598`)
+  and is orientation-sensitive, so `(A,B)` and `(B,A)` are distinct keys.
+  The normalisation above is the only thing preventing the duplicate —
+  which is fine while `relateItems()` is the sole writer, and is a trap
+  for any future writer that inserts directly. Worth stating wherever
+  (a) or (b) lands.
+  **Layman:** The rulebook says the migration turns each item's &quot;depends on&quot; line into a stored link between items. No code does this — the link feature exists but nothing ever calls it.
+  Kind: investigate.
+  Source: in-session-2026-08-10 (ANTS-4068 decision-2 verification).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
