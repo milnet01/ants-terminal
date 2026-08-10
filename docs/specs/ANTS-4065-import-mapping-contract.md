@@ -801,6 +801,26 @@ the corpus, not by usage over time.
   pre-Phase-B2 source. They default legitimately under
   § 3.5.3's own rule; INV-1 makes the default visible, which is all this item
   owes them.
+- **`Evidence:` stays anchored, and its inline declarations stay unread.**
+  § 2.2 widens `rxKind()`, `rxLanes()` and `rxSource()` and deliberately leaves
+  `rxEvidence()` with its `^\s*` anchor. By § 2.5's own count that leaves
+  **18 of 22** corpus occurrences invisible to the import — a declared value in
+  a governed column, silently dropped, which is § 1's defect class exactly. It
+  is accepted here rather than fixed because widening a fourth matcher is a
+  behaviour change on a field with no provenance entry (§ 2.4), so INV-1's
+  `field_defaulted` note cannot fire for it and the loss would be untracked in
+  a different way. **Whoever fixes it owes `evidence` a provenance entry
+  first.** Recorded so § 2.5's measurement is not read as implying a repair.
+- **A backtick span crossing a line break defeats the guard.** The three
+  lookbehinds in § 2.2 are fixed-length and inspect only the character before
+  the match, so a quoted example broken across two source lines is read as a
+  declaration. Live: ANTS-3808 declares no `Lanes:` and imports
+  `lanes = ["packaging"]`, harvested out of `` `Source: regression. Lanes: `` /
+  `` packaging.` ``. This is a **third** mechanism, independent of both the
+  precedence rule and the second-trailer problem § 2.2 handles by correcting
+  the source, and it is filed rather than fixed because the repair is either a
+  multi-line-aware guard or fence tracking — both changes to how the parser
+  scans, which § 5's next entry already puts out of scope.
 - **Re-migrating the other 13 projects.** ANTS-3853 owns the rollout; this is
   the gate it waits on.
 
@@ -830,10 +850,19 @@ implementation had to prove. The amendment adds one further must-red case,
 against **post-Phase-C** source:
 
 - **INV-11 fixture (b)** — a trailer followed by a later note mentioning the
-  label mid-line. Today's implementation takes the last match anywhere, so it
-  reds; that is the ANTS-4086 defect and its must-fail-first proof. Fixtures
-  (a), (c) and (d) are expected green, since plain last-match already satisfies
-  them — which is exactly why (b) is the one that discriminates.
+  label mid-line. Today's implementation takes the last match anywhere for
+  `kind`, so it reds; that is the ANTS-4086 defect and its must-fail-first
+  proof.
+- **INV-11 fixture (e)** — the same shape for a **first-match** key: a
+  line-initial `Source:` / `Layman:` trailer *preceded* by an indented sample
+  carrying those labels. `matchIn()` takes the earlier one, so it reds, and it
+  is the must-fail-first proof for extending the rule beyond `Kind:`. It fails
+  for the opposite reason to (b), which is why both are needed: a resolver that
+  fixed only one direction would pass one and red the other.
+
+Fixtures (a), (c) and (d) are expected **green**, since plain last-match
+already satisfies them — they are regression guards, not discriminators. (b)
+and (e) are what distinguish the new rule from the old.
 
 **INV-8 gains no new test.** `tests/features/roadmap_import_mapping/` already
 asserts the verified behaviour (no item, the line carried as narration, no
