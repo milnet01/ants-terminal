@@ -28561,6 +28561,17 @@ against current source before filing.
   Shipped UNWIRED on purpose (§ 2.4 / § 5): reachable through the `*ForTest`
   seams only, not in the `op` dispatch, until `/bump` enforces § 3.9's
   rotation-event rule. ANTS-4081 carries both halves of that.
+  Cross-doc note (2026-08-10): shipping this changed three passages in two
+  GATED standards, and neither was re-gated. `roadmap-format.md` § 3.9 and
+  § 4.3 and `roadmap-data-model.md` § 8 all described rotation and the
+  section-title write as unbuilt, which became false, so the edits were
+  mandatory. Global rule 14 would normally re-arm `/cold-eyes` on an
+  authoring edit to a standard; the user's standing instruction for this
+  work was not to re-run it on either file, so the edits stand un-regated
+  deliberately rather than by oversight. A future doc sweep should treat
+  both files as carrying post-gate authoring edits. ANTS-4082 is a
+  separate gap in `roadmap-data-model.md` found the same way and filed
+  rather than fixed, for the same reason.
 
 - ✅ [ANTS-4071] **`partial` migrates as `planned`, so half-finished pass items import as not-started.**
   The pass-headings status reader maps a leading word to a status
@@ -28835,6 +28846,58 @@ against current source before filing.
   **Layman:** Hook archive rotation into the release step, then turn it on as a normal command.
   Kind: implement.
   Source: in-session-2026-08-10 (ANTS-4070 implementation)..
+
+- 📋 [ANTS-4082] **roadmap-data-model.md never mentions the level-0 root section, which every migrated file has.**
+  Content above a file's first `##` becomes a section with **level 0 and
+  slug `""`** — `roadmapmigrateload.cpp` `rebuildElements()` calls it "the
+  synthetic root ... the same row the plan uses for content above the first
+  heading", and an archive's copy carries the file's minor prefix. Every
+  migrated file has one, including each archive.
+
+  The word "preamble" and the concept both appear NOWHERE in
+  `roadmap-data-model.md` (verified 2026-08-10 by a case-insensitive search
+  of the whole file; the only hits are cold-eyes log rows). So a reader
+  reasoning about sections from the standard alone will get counts wrong and
+  will not know a level-0 row exists at all.
+
+  It cost real time: ANTS-4070's INV-13 asserted a stable section count
+  across render + re-import and failed, because rotation CREATES the archive
+  and the first re-import of that new file adds its root section. Correct
+  behaviour, invisible from the standard.
+
+  Filed rather than fixed in place because both roadmap standards already
+  carry post-gate authoring edits from ANTS-4070 (see its annotation) and
+  the user's standing instruction is not to re-run `/cold-eyes` on either.
+  **Layman:** The data-model document is missing one kind of row the importer always creates, so anyone reasoning from it gets section counts wrong.
+  Kind: doc.
+  Source: in-session-2026-08-10 (ANTS-4070 implementation)..
+
+- 💭 [ANTS-4083] **A `Covers:` trailer, so a roadmap item can declare what it subsumes.**
+  SHELVED at the user's request on 2026-08-10 — "please don't build it yet"
+  — after a cost breakdown, not before one. Recorded so the idea is not
+  re-proposed from scratch.
+
+  The ask was: an opaque token per item, a query for unclaimed tokens, and
+  an explicit way to say "covers nothing".
+
+  Three reasons it was deferred, and they are the reasons to check before
+  un-shelving:
+  (1) it depends on an ID scheme that does not exist yet, so the token has
+      no defined shape;
+  (2) pass-headings items cannot carry it without the same trailer work
+      ANTS-4079 does first;
+  (3) the gate it would feed runs rarely, so human judgement is affordable
+      there and the automation earns little.
+
+  If it returns, the shape discussed was two columns rather than one — the
+  token and the thing it covers — since a single opaque string cannot answer
+  "what is still uncovered" without a second list to diff against.
+
+  Blocked in practice by ANTS-4079 (the trailer carrier) and by the ID
+  scheme.
+  **Layman:** Idea for later: let an item say which other work it absorbs, and ask what is left uncovered.
+  Kind: feature.
+  Source: user-request-2026-08-10 (global roadmap-format rebuild), deferred same day..
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
