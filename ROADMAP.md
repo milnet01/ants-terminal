@@ -29380,6 +29380,52 @@ against current source before filing.
   Rejected: teaching the parser about nesting. It is the
   principled fix and needs its own id — it changes how bullets
   are recognised, which § 5 puts out of scope.
+  Cold-eyes loops 4-6 (2026-08-10) ran on the amended spec and
+  **falsified the measurements in the notes above.** Corrected
+  here rather than left to mislead.
+
+  **The counts were taken with the wrong boundary.** The scan
+  ran bullet-to-bullet and did not reproduce
+  `collectBulletBody()`'s other stop conditions — a col-0
+  heading, and any other col-0 content — so it credited later
+  sections' trailers to whichever bullet preceded them.
+  Re-measured against the real conditions:
+
+  | | wrong | correct |
+  |---|---|---|
+  | line-initial only | 1,414 | **1,453** |
+  | mid-line only | 52 | **55** |
+  | both | 42 | **26** |
+  | no `Kind:` | 187 | **189** |
+  | >1 line-initial | 20 | **16**, each exactly 2 |
+
+  **ANTS-3573 and ANTS-3780 are NOT instances** and were named
+  in error. ANTS-3573 carries one `Kind:` (its body ends at a
+  col-0 heading); ANTS-3780 is a short bullet with an inline
+  trailer and no nested entries. So "~20 bullets embedding
+  nested lists, ANTS-3780 alone carrying 40 labels" is wrong,
+  and the planned source cleanup has **no demonstrated
+  targets** — 13 of the 16 carry identical values in both
+  positions, and in ANTS-3808/ANTS-3787 the later one is
+  already correct.
+
+  **A new defect, and it is the important one: line-initial is
+  not a sufficient test for "is a trailer".** Continuation
+  lines are trimmed, so prose that wraps immediately before the
+  label becomes line-initial. ANTS-3754's body line 86 reads
+  `Kind:), § 3.1's format marker, …` because the source wrapped
+  after `(emoji, ID, bold headline,`; its real `Kind: doc.` is
+  22 body lines earlier, so the proposed rule returns `), § 3`.
+  Wrapping is arbitrary and re-wraps on any reflow, so this
+  cannot be fixed in the source.
+
+  **The rule as specified is necessary but NOT sufficient**, and
+  the spec now says so. It fixes the five corrupt-`kind`
+  bullets and ANTS-3808's `source`/`layman`; it does not fix
+  ANTS-3754. Candidate tightening — require the captured value
+  to begin with a letter — is a parser-behaviour decision and
+  is surfaced, not applied. **Do not implement the resolver
+  until it is settled.**
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
