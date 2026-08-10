@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **Archive a released version from the roadmap store, and rename a section** (ANTS-4070)
+  `roadmap_log op:"rotate_minor"` moves a closed minor's headings and
+  everything under them into `docs/roadmap/<M>.<N>.md`, and
+  `op:"retitle_section"` renames a heading. Both re-derive the section's
+  internal address the way a re-read of the file would, so the roadmap
+  still matches itself afterwards. Rotation refuses a minor that still
+  has unfinished work in it, and previews with `dry_run`.
+
 - **The roadmap store records which roadmap dialect each project was migrated from, and reports it when the file later disagrees** (ANTS-3815)
   The database now remembers whether a project's roadmap was written in
   Ants' own format, a GitHub task list, or pass headings, instead of

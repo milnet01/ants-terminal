@@ -658,6 +658,36 @@ discarded at the next render, silently and with no error, which is the failure
 this paragraph exists to prevent. `roadmap-data-model.md` § 8 owns the
 reasoning.
 
+The operation is **`roadmap_log op:"rotate_minor"`** (Ants ANTS-4070), taking
+the closed `<MAJOR>.<MINOR>` and nothing else. Three things about it are part of
+this convention rather than that project's implementation detail:
+
+- **The archive path is derived, never passed** — `docs/roadmap/<M>.<N>.md`,
+  relative to the **project root**, so the naming regex above stays stated in
+  one place. A caller-supplied path could name a file the migration's own
+  archive discovery then refuses to read back.
+- **Sections are selected by TITLE, and only a release designator matches** —
+  `<M>.<N>` optionally preceded by `v`, followed by end-of-title, a character
+  that is neither a digit nor a `.`, or a `.` and a digit. That is what makes
+  `## 0.70.0` not part of minor 0.7, and what keeps a two-minor signpost like
+  `## 0.5.x and 0.6.x — archived` out of the archive it points at.
+- **A moved section is re-slugged**, because the import prefixes every archive
+  slug with its file's minor. Reassigning the path alone would leave the store
+  holding a slug no re-import derives, and the next import would add a second
+  section beside the first.
+
+It refuses rather than guessing: a minor still holding an open item
+(`minor_not_closed`), a move that would leave the live file with no sections or
+free a slug a remaining section was disambiguated out of (`bad_args`), and a
+project that is not store-migrated (`op_unsupported` — there, the snip-and-create
+step above is still the answer).
+
+**It does not enforce the rotation event.** This section says rotation happens on
+a minor or major bump only, and the operation cannot see a version transition —
+a minor holds zero open bullets routinely, just after a patch release. `/bump`
+owns that check, because `/bump` is the only caller that knows a minor just
+closed.
+
 ### 3.10 Compatibility with GFM task lists
 
 The wider markdown ecosystem has a sibling convention — GitHub
@@ -923,12 +953,15 @@ ways. Steps 1–2 are unchanged: `CHANGELOG.md` is not generated from
 the store, so it stays authored exactly as it is today. Step 3 is a
 per-bullet status flip and goes through the store's write path rather
 than a text edit. **Step 4 is neither** — it rewrites a release-block
-`##` heading (§ 3.7), which is a *section title*, and no store
-operation for changing one is defined yet; it is owed alongside
-rotation (Ants ANTS-4070), which moves whole sections for the same
-reason. Until it exists, a cut-over project cannot perform step 4 at
-all: editing the rendered heading by hand is discarded at the next
-render, silently.
+`##` heading (§ 3.7), which is a *section title*, and editing the
+rendered heading by hand is discarded at the next render, silently. It
+has its own store operation, `roadmap_log op:"retitle_section"`
+(Ants ANTS-4070), which takes the section's slug and the new title and
+**recomputes the slug from it**: a slug is derived on import from the
+heading, never round-tripped, so keeping the old one would make the
+store disagree with what the next import derives. The envelope reports
+`previous_slug` beside the new `slug` so a caller holding the old
+address learns it moved.
 
 Nothing automatically moves shipped items into the CHANGELOG on
 either side of cutover, and nothing did before.

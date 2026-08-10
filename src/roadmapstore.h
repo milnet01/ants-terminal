@@ -319,6 +319,25 @@ public:
                        int position, std::optional<qint64> parentId,
                        QString *error = nullptr);
 
+    // ANTS-4070 § 2.1 — the one store addition both section-scoped ops need.
+    // A section's slug is DERIVED on import, from its heading and from which
+    // file it was read from, so an operation that changes either input must
+    // rewrite it: otherwise the next re-import derives a slug the store does
+    // not hold, findSection() misses, and addSection() adds a SECOND section
+    // beside the first while the loader retains the original.
+    //
+    // Separate from updateSection() rather than a seventh element of its tuple
+    // because that tuple is one PlannedSection's worth of fields and the
+    // migration's re-run path passes it whole; a slug argument there would have
+    // every existing caller restating a value it has no opinion about.
+    //
+    // `slug` is UNIQUE (project_id, slug), so a collision fails here rather
+    // than being disambiguated — uniqueSlug() resolves ties in DOCUMENT order,
+    // and a suffix invented at write time can differ from the one the next
+    // import assigns. The callers refuse a collision before reaching this.
+    bool setSectionSlug(qint64 sectionId, const QString &slug,
+                        QString *error = nullptr);
+
     // element rows that are NOT items. Refuses kind='item' outright rather than
     // letting the DDL CHECK decide, so putItem()/fileItem() stay the only ways
     // an item is filed (INV-10, INV-20).

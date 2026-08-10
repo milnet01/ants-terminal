@@ -6,6 +6,9 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QCollator>
+#include <QHash>
+#include <QSet>
+#include <algorithm>   // ANTS-4070 — std::sort over the rotation's move set
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -4790,6 +4793,443 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         out["post_bullets"] = postBullets;
     }
     return QJsonDocument(out);
+}
+
+// ANTS-4070 — test seams for the two section-scoped store ops
+// (m_main-independent: both reach the store through roadmapWriteTarget()).
+QJsonDocument RemoteControl::cmdRoadmapLogRotateMinorForTest(
+        const QJsonObject &req) {
+    return cmdRoadmapLogRotateMinor(req);
+}
+
+QJsonDocument RemoteControl::cmdRoadmapLogRetitleSectionForTest(
+        const QJsonObject &req) {
+    return cmdRoadmapLogRetitleSection(req);
+}
+
+namespace {
+
+QJsonDocument rcSectionOpErr(const QString &code, const QString &message) {
+    QJsonObject env;
+    env[QStringLiteral("ok")]    = false;
+    env[QStringLiteral("code")]  = code;
+    env[QStringLiteral("error")] = message;
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
+std::optional<RemoteControl::RoadmapWriteTarget>
+RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
+                                      QString *projectRoot,
+                                      QString *roadmapPath,
+                                      QJsonDocument *refusal) const {
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    if (callerRaw.isEmpty()) {
+        *refusal = rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: caller_cwd is required"));
+        return std::nullopt;
+    }
+    const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty()) {
+        *refusal = rcSectionOpErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not canonicalise "
+                           "to an existing directory").arg(callerRaw));
+        return std::nullopt;
+    }
+    const QString found = findRoadmapUnder(callerCanonical);
+    if (found.isEmpty()) {
+        *refusal = rcSectionOpErr(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
+                .arg(callerCanonical));
+        return std::nullopt;
+    }
+
+    QFile rf(found);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        *refusal = rcSectionOpErr(QStringLiteral("roadmap_read_failed"),
+            QStringLiteral("roadmap_log: could not read \"%1\"").arg(found));
+        return std::nullopt;
+    }
+    const QString markdown = QString::fromUtf8(rf.readAll());
+    rf.close();
+
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    QString seamErr;
+    const auto target =
+        roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+    QJsonObject seamRefusal;
+    if (rcRoadmapSourceRefused(seamRefusal, why, seamErr)) {
+        *refusal = QJsonDocument(seamRefusal);
+        return std::nullopt;
+    }
+    if (!target) {
+        // Not migrated. Rotation stays /bump's snip-and-create there, and
+        // retitling a heading is a hand edit — growing a markdown writer for
+        // either would be a second writer for one file (ANTS-3809 INV-2).
+        *refusal = rcSectionOpErr(QStringLiteral("op_unsupported"),
+            QStringLiteral("roadmap_log: \"%1\" is not store-migrated — this op "
+                           "has no markdown path").arg(found));
+        return std::nullopt;
+    }
+
+    *projectRoot = callerCanonical;
+    *roadmapPath = found;
+    return target;
+}
+
+// ANTS-4070 § 2.2 — rotate_minor. A caller over the store's own setters:
+// select the closed minor's sections by TITLE, take their descendants, re-slug
+// them the way the next import will, reassign their source_path, and let
+// RoadmapWrite::commitAndRender() do the rest.
+QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
+    if (!req.contains(QStringLiteral("minor")))
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: rotate_minor requires `minor`"));
+
+    // § 3.9's FILENAME rule, and the single place it is stated: the derived
+    // path is `docs/roadmap/<captures>.md`, so validating the argument against
+    // this shape is what makes the path satisfy
+    // RoadmapMigrateLoad::isPlaceableSourcePath() by construction rather than
+    // by a second copy of the same regex.
+    static const QRegularExpression kMinorRx(
+        QStringLiteral("\\A(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\z"));
+    const QString minorArg = req.value(QStringLiteral("minor")).toString();
+    const auto minorMatch = kMinorRx.match(minorArg);
+    if (!minorMatch.hasMatch())
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `minor` must be <MAJOR>.<MINOR> with no "
+                           "leading zeros and no patch component (got \"%1\")")
+                .arg(minorArg));
+    const QString major = minorMatch.captured(1);
+    const QString minor = minorMatch.captured(2);
+
+    // Derived, never passed: a caller-supplied path would move § 3.9's naming
+    // rule out of the one place that states it, and a non-conforming name
+    // renders a file the migration's own discovery then refuses to read.
+    const QString archiveRel =
+        QStringLiteral("docs/roadmap/%1.%2.md").arg(major, minor);
+    const QString slugPrefix = major + QLatin1Char('-') + minor + QLatin1Char('-');
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target =
+        roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store   = *target->store;
+    const qint64 projectId = target->projectId;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    QString err;
+    const auto allOpt = store.listSections(projectId, &err);
+    if (!allOpt)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    const QVector<RoadmapStore::SectionRow> all = *allOpt;
+
+    // SectionRow does not carry its own id, so resolve one per slug — the only
+    // handle setSectionSlug() / setSectionSource() take.
+    QHash<QString, qint64> idBySlug;
+    QHash<qint64, RoadmapStore::SectionRow> rowById;
+    QHash<qint64, QVector<qint64>> childrenOf;
+    for (const auto &s : all) {
+        const auto id = store.findSection(projectId, s.slug, &err);
+        if (!id)
+            return rcSectionOpErr(QStringLiteral("store_failed"),
+                err.isEmpty() ? QStringLiteral("roadmap_log: section \"%1\" "
+                                               "vanished mid-read").arg(s.slug)
+                              : err);
+        idBySlug.insert(s.slug, *id);
+        rowById.insert(*id, s);
+    }
+    for (auto it = rowById.cbegin(); it != rowById.cend(); ++it)
+        if (it.value().parentId)
+            childrenOf[*it.value().parentId].append(it.key());
+
+    // § 2.2's three-case title match. Case 2 excludes `.` on purpose, so the
+    // three are disjoint: `[^0-9.]` rejects `## 0.5.x and 0.6.x — archived`
+    // (a signpost that belongs to neither minor) and `\.[0-9]` rejects
+    // `## 0.70.0`, which a bare startsWith() would claim.
+    const QRegularExpression titleRx(
+        QStringLiteral("\\Av?%1\\.%2(?:\\z|[^0-9.]|\\.[0-9])").arg(major, minor));
+
+    QVector<qint64> frontier;
+    for (auto it = rowById.cbegin(); it != rowById.cend(); ++it) {
+        if (it.value().level != 2) continue;
+        if (titleRx.match(it.value().title).hasMatch())
+            frontier.append(it.key());
+    }
+    if (frontier.isEmpty())
+        return rcSectionOpErr(QStringLiteral("section_not_found"),
+            QStringLiteral("roadmap_log: no top-level section's title names "
+                           "minor %1").arg(minorArg));
+
+    // Every descendant moves with its parent (§ 3.9 rotates the heading "and
+    // its sub-headings").
+    QSet<qint64> candidates;
+    while (!frontier.isEmpty()) {
+        const qint64 id = frontier.takeLast();
+        if (candidates.contains(id)) continue;
+        candidates.insert(id);
+        for (qint64 child : childrenOf.value(id))
+            frontier.append(child);
+    }
+
+    // Skip on EQUALITY with the derived path, not on "already archived": a 0.7
+    // section mistakenly sitting in 0.6.md must be reassigned, or its parent
+    // renders into 0.7.md while it stays in 0.6.md.
+    QVector<RoadmapStore::SectionRow> moveSet;
+    QSet<qint64> moveIds;
+    for (qint64 id : candidates) {
+        const RoadmapStore::SectionRow &row = rowById[id];
+        if (row.sourcePath && *row.sourcePath == archiveRel) continue;
+        moveSet.append(row);
+        moveIds.insert(id);
+    }
+    std::sort(moveSet.begin(), moveSet.end(), sectionOrderLess);
+
+    // The openness guard covers the whole MOVE SET, matched sections and
+    // descendants alike — a guard reading only the level == 2 matches would
+    // archive an in-progress item living under a `###` child while reporting
+    // success. "Open" is RoadmapRender::isOpen()'s: 📋, 🚧 AND 💭.
+    if (!moveIds.isEmpty()) {
+        const auto itemsOpt = store.readItems(projectId, &err);
+        if (!itemsOpt)
+            return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        QStringList openIds;
+        for (const auto &it : *itemsOpt)
+            if (moveIds.contains(it.sectionId) && RoadmapRender::isOpen(it.status))
+                openIds << it.id;
+        if (!openIds.isEmpty()) {
+            openIds.sort();
+            return rcSectionOpErr(QStringLiteral("minor_not_closed"),
+                QStringLiteral("roadmap_log: minor %1 still holds open items: %2")
+                    .arg(minorArg, openIds.join(QStringLiteral(", "))));
+        }
+    }
+
+    // A rotation must not empty the live file: the render assembles content
+    // only for paths that still have sections, so a file with none is never
+    // written and is left on disk with its old content while the store says
+    // otherwise.
+    int liveRemaining = 0;
+    for (auto it = rowById.cbegin(); it != rowById.cend(); ++it)
+        if (!it.value().sourcePath && !moveIds.contains(it.key()))
+            ++liveRemaining;
+    if (!moveIds.isEmpty() && liveRemaining == 0)
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: rotating minor %1 would leave the live "
+                           "roadmap with no sections, and the render never "
+                           "rewrites a file that has none").arg(minorArg));
+
+    // § 2.2's re-slug rule, and it is a WHOLE-SET computation: uniqueSlug()
+    // over the move set alone, seeded empty, in the render's document order —
+    // exactly what the next import's walk of that archive will derive, because
+    // the archive will hold exactly this set in exactly this order.
+    QHash<qint64, QString> newSlugOf;
+    QStringList movedSlugs;
+    {
+        QSet<QString> seen;
+        for (const auto &row : moveSet) {
+            const QString slug =
+                slugPrefix + RoadmapIndex::uniqueSlug(seen, row.title);
+            newSlugOf.insert(idBySlug.value(row.slug), slug);
+            movedSlugs << slug;
+        }
+    }
+
+    // A new slug landing on a section OUTSIDE the move set is refused, never
+    // auto-suffixed — the suffix invented here could differ from the one a
+    // re-import assigns, which is the divergence this whole design removes.
+    for (auto it = newSlugOf.cbegin(); it != newSlugOf.cend(); ++it) {
+        const qint64 holder = idBySlug.value(it.value(), 0);
+        if (holder != 0 && !moveIds.contains(holder))
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: rotating minor %1 would give a moved "
+                               "section the slug \"%2\", which section \"%2\" "
+                               "already holds").arg(minorArg, it.value()));
+    }
+
+    // The live side frees the slugs it gives up. If a REMAINING live section
+    // holds a uniqueSlug()-disambiguated slug whose un-suffixed base the move
+    // frees, the next import re-derives a different slug for a section this
+    // operation never touched.
+    {
+        QSet<QString> freed;
+        for (const auto &row : moveSet) freed.insert(row.slug);
+        QStringList clashes;
+        for (auto it = rowById.cbegin(); it != rowById.cend(); ++it) {
+            const RoadmapStore::SectionRow &row = it.value();
+            if (row.sourcePath || moveIds.contains(it.key())) continue;
+            const QString base = RoadmapIndex::slugifyHeading(row.title);
+            if (row.slug != base && freed.contains(base))
+                clashes << QStringLiteral("%1 (would re-derive \"%2\")")
+                               .arg(row.slug, base);
+        }
+        if (!clashes.isEmpty()) {
+            clashes.sort();
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: rotating minor %1 frees a slug base a "
+                               "remaining live section was disambiguated out of: "
+                               "%2").arg(minorArg, clashes.join(QStringLiteral(", "))));
+        }
+    }
+
+    const auto mutate = [&](QString *mErr) -> bool {
+        for (const auto &row : moveSet) {
+            const qint64 id = idBySlug.value(row.slug);
+            if (!store.setSectionSlug(id, newSlugOf.value(id), mErr))
+                return false;
+            if (!store.setSectionSource(id, archiveRel, mErr))
+                return false;
+        }
+        return true;
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+
+    env[QStringLiteral("ok")]           = true;
+    env[QStringLiteral("op")]           = QStringLiteral("rotate_minor");
+    env[QStringLiteral("archive_path")] = archiveRel;
+    // The slugs the moved sections carry AFTERWARDS — the address a caller
+    // needs next, on the same reasoning retitle_section reports the new `slug`
+    // rather than the old one. `sections_moved` is always sections.length: a
+    // count of matched `##` sections would exclude descendants, and on the
+    // idempotent re-run it would be non-zero while nothing moved.
+    env[QStringLiteral("sections")]       = QJsonArray::fromStringList(movedSlugs);
+    env[QStringLiteral("sections_moved")] = movedSlugs.size();
+    env[QStringLiteral("files_written")] =
+        QJsonArray::fromStringList(outcome.filesWritten);
+    env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+    if (dryRun) env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
+}
+
+// ANTS-4070 § 2.3 — retitle_section. The slug IS recomputed from the new
+// title: a section's slug is derived, not round-tripped, so keeping the stored
+// one does not keep it stable — it makes the store disagree with what any
+// re-import derives.
+QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req) {
+    if (!req.contains(QStringLiteral("section")))
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: retitle_section requires `section`"));
+    if (!req.contains(QStringLiteral("title")))
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: retitle_section requires `title`"));
+    const QString sectionSlug = req.value(QStringLiteral("section")).toString();
+    const QString title       = req.value(QStringLiteral("title")).toString();
+
+    if (title.trimmed().isEmpty())
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `title` must not be empty or "
+                           "whitespace-only"));
+    if (title.contains(QChar('\n')))
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `title` is one heading line and must "
+                           "not contain a newline"));
+    // Emptiness is tested on the SLUG, not only on the title:
+    // slugifyHeading() keeps only letters and digits, so `———` is neither
+    // empty nor whitespace-only and slugifies to "" — an unaddressable
+    // section, in a UNIQUE column where a second one surfaces as store_failed
+    // rather than as a caller-side refusal. uniqueSlug() does not save it: an
+    // empty base is returned WITHOUT being inserted into `seen`.
+    const QString newSlug = RoadmapIndex::slugifyHeading(title);
+    if (newSlug.isEmpty())
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `title` \"%1\" has no letters or digits, "
+                           "so it slugifies to the empty string and the section "
+                           "would be unaddressable").arg(title));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target =
+        roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store    = *target->store;
+    const qint64 projectId = target->projectId;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    QString err;
+    const auto sectionId = store.findSection(projectId, sectionSlug, &err);
+    if (!sectionId)
+        return rcSectionOpErr(QStringLiteral("section_not_found"),
+            QStringLiteral("roadmap_log: section \"%1\" is not in the store")
+                .arg(sectionSlug));
+    const auto row = store.readSection(*sectionId, &err);
+    if (!row)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+
+    const auto allOpt = store.listSections(projectId, &err);
+    if (!allOpt)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+
+    if (newSlug != sectionSlug) {
+        // Forward — the new heading slugifies onto a slug another section holds.
+        for (const auto &s : *allOpt) {
+            if (s.slug == newSlug)
+                return rcSectionOpErr(QStringLiteral("bad_args"),
+                    QStringLiteral("roadmap_log: \"%1\" slugifies to \"%2\", which "
+                                   "section \"%2\" already holds — a collision is "
+                                   "refused, never auto-suffixed")
+                        .arg(title, newSlug));
+        }
+        // Backward — the retitled section is the un-suffixed HEAD of a family
+        // another section was disambiguated out of. Retitling it frees the
+        // base, so the next import hands it to the sibling, changing the slug
+        // of a section this call never touched. Scoped to this section's own
+        // family: a condition phrased over "any section anywhere holds a
+        // disambiguated slug" would refuse every retitle on any project with
+        // one repeated heading.
+        if (sectionSlug == RoadmapIndex::slugifyHeading(row->title)) {
+            for (const auto &s : *allOpt) {
+                if (s.slug == sectionSlug) continue;
+                const QString base = RoadmapIndex::slugifyHeading(s.title);
+                if (s.slug != base && base == sectionSlug)
+                    return rcSectionOpErr(QStringLiteral("bad_args"),
+                        QStringLiteral("roadmap_log: \"%1\" is the un-suffixed head "
+                                       "of a family section \"%2\" was "
+                                       "disambiguated out of — retitling it frees "
+                                       "\"%1\" and the next import would re-derive "
+                                       "it for \"%2\"").arg(sectionSlug, s.slug));
+            }
+        }
+    }
+
+    const auto mutate = [&](QString *mErr) -> bool {
+        // updateSection() takes the whole tuple and a partial update has no
+        // meaning, so every field it does not change is passed back verbatim.
+        if (!store.updateSection(*sectionId, title, row->level, row->position,
+                                 row->parentId, mErr))
+            return false;
+        return newSlug == sectionSlug
+               || store.setSectionSlug(*sectionId, newSlug, mErr);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+
+    env[QStringLiteral("ok")]   = true;
+    env[QStringLiteral("op")]   = QStringLiteral("retitle_section");
+    env[QStringLiteral("slug")] = newSlug;
+    // So a caller holding the old address learns it moved, rather than
+    // discovering it at the next call that fails.
+    env[QStringLiteral("previous_slug")] = sectionSlug;
+    env[QStringLiteral("title")]         = title;
+    env[QStringLiteral("files_written")] =
+        QJsonArray::fromStringList(outcome.filesWritten);
+    env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+    if (dryRun) env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
 }
 
 // ANTS-1248: workspace_search — structured ripgrep wrapper for MCP +

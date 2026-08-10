@@ -65,6 +65,13 @@ QString bulletText(const RoadmapStore::ItemWrite &it);
 // by hand.
 QString emojiFor(const QString &status);
 
+// roadmap-data-model.md § 3.4's open set — planned, in-progress AND considered.
+// Exported for ANTS-4070's `minor_not_closed` guard, which must decide "is any
+// item in this move set still open" using the codebase's own notion of open: a
+// second predicate there would be free to invent a narrower one, and the draft
+// that did (📋 / 🚧 only) would have archived work nobody has committed to.
+bool isOpen(const QString &status);
+
 // nullopt is reserved for failures BEFORE the commit phase — SQL errors, a
 // render error, a path refusal — where there is genuinely nothing to report.
 // A gate failure and a partial commit both return an ENGAGED Outcome, because

@@ -1694,6 +1694,10 @@ if(ANTS_TESTS)
                 # re-renders on a migrated project. Behavioural through the
                 # verbs, against stores the migration actually built.
                 tests/features/roadmap_write_half/test_roadmap_write_half.cpp
+                # ANTS-4070 — rotate a closed minor into its archive, and
+                # retitle a section. Same shape as roadmap_write_half: through
+                # the verbs, against stores the migration actually built.
+                tests/features/roadmap_rotate_minor/test_roadmap_rotate_minor.cpp
                 # ANTS-2059 roadmap_log flip/flip_batch on fully id-less ants-v1 bullets.
                 tests/features/roadmap_log_flip_idless_antsv1/test_roadmap_log_flip_idless_antsv1.cpp
                 # ANTS-3378 roadmap_log flip GFM headline locator (canonical headline match).

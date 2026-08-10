@@ -935,6 +935,11 @@ public:
     // caller_cwd without a MainWindow. m_main-independent (filesystem
     // only). See tests/features/roadmap_log_bundle_row/spec.md.
     QJsonDocument cmdRoadmapLogBundleRowForTest(const QJsonObject &req);
+    // ANTS-4070 — drive rotate_minor / retitle_section against a synthetic
+    // caller_cwd without a MainWindow. Store-only ops, so m_main-independent.
+    // See tests/features/roadmap_rotate_minor/spec.md.
+    QJsonDocument cmdRoadmapLogRotateMinorForTest(const QJsonObject &req);
+    QJsonDocument cmdRoadmapLogRetitleSectionForTest(const QJsonObject &req);
 
 private slots:
     void onNewConnection();
@@ -976,6 +981,14 @@ private:
     // pipe/newline-escaping each cell; find-or-create the table. No
     // counter touch; single atomic write.
     QJsonDocument cmdRoadmapLogBundleRow(const QJsonObject &req);
+    // ANTS-4070 — rotate_minor: move a closed minor's sections (and their
+    // descendants) to docs/roadmap/<M>.<N>.md, re-slugging them the way the
+    // importer will. retitle_section: change a section's heading, recomputing
+    // its slug. Both are store-only — they refuse op_unsupported on a project
+    // the migration has not taken over. See
+    // docs/specs/ANTS-4070-rotation-and-section-title.md.
+    QJsonDocument cmdRoadmapLogRotateMinor(const QJsonObject &req);
+    QJsonDocument cmdRoadmapLogRetitleSection(const QJsonObject &req);
     // ANTS-1879 INV-10 — shared bullet-formatting helper extracted from
     // cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
     // can format each bullet through the same code path. scrubbedNames
@@ -1043,6 +1056,17 @@ private:
     std::optional<RoadmapWriteTarget>
     roadmapWriteTarget(const QString &projectRoot, const QString &markdown,
                        RoadmapSource::ReadError *why, QString *error) const;
+
+    // ANTS-4070 — the prologue rotate_minor and retitle_section share:
+    // canonicalise caller_cwd, find the live roadmap, read it, resolve the
+    // store. Returns nullopt with *refusal set on every failure — including
+    // `op_unsupported` on a project the migration has NOT taken over, which is
+    // the one outcome the seam cannot express: it returns nullopt with
+    // ReadError::None and the existing ops fall through to their markdown
+    // path. These two have none, so the fall-through would reach nothing.
+    std::optional<RoadmapWriteTarget>
+    roadmapSectionOpTarget(const QJsonObject &req, QString *projectRoot,
+                           QString *roadmapPath, QJsonDocument *refusal) const;
 
     // § 2.2 rules 1 and 2 (absent → nullptr, no error; present but unopenable
     // → nullptr with *why set), plus the connection caching the p95 budget

@@ -39,13 +39,13 @@ QString emojiFor(const QString &status) {
     return QString();
 }
 
-namespace {
-
 bool isOpen(const QString &status) {
     // roadmap-data-model.md § 3.4, exactly.
     return status == QLatin1String("planned") || status == QLatin1String("in-progress")
         || status == QLatin1String("considered");
 }
+
+namespace {
 
 bool isRenderable(const RoadmapStore::ItemWrite &it) {
     return it.visibility != QLatin1String("internal") && it.status != QLatin1String("dropped");

@@ -1109,6 +1109,22 @@ bool RoadmapStore::setSectionSource(qint64 sectionId,
     return true;
 }
 
+// ANTS-4070 § 2.1 — see the header for why this is not part of
+// updateSection()'s tuple, and why a collision is a failure here.
+bool RoadmapStore::setSectionSlug(qint64 sectionId, const QString &slug,
+                                  QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE section SET slug = ? WHERE section_id = ?"));
+    q.addBindValue(slug);
+    q.addBindValue(sectionId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    return true;
+}
+
 bool RoadmapStore::setSectionIntro(qint64 sectionId, const QString &intro,
                                    QString *error) {
     QSqlQuery q(m_db);

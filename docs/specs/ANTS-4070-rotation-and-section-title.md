@@ -429,7 +429,11 @@ and returns what the real run would, plus — for `rotate_minor` — three field
   descendants, minus any whose `sourcePath` already **equals the derived archive
   path**. Equality, not "already archived" — § 2.2 owns why. Ordered by the
   render's own document order, `sectionOrderLess()`'s `(position, slug)`, so two
-  builds cannot disagree about the sequence.
+  builds cannot disagree about the sequence. **The slugs are the NEW,
+  prefixed ones** — the address each section carries *after* the move, on the
+  same reasoning `retitle_section` reports the new `slug` rather than the old:
+  once the call returns, every pre-move slug is a dead address. The dry run
+  reports the same strings, which is what lets INV-8 compare the two.
 - **`sections_moved`** — integer, and **always `sections.length`**. It is stated
   rather than left implied because the two obvious readings differ: a count of
   matched `##` sections would exclude descendants, and on the idempotent re-run
@@ -520,7 +524,11 @@ to. INV-8 asserts the dry and real envelopes match for **both** operations.
   `RoadmapMigrateLoad::isPlaceableSourcePath()` applies, so the assertion is
   against the rule that actually gates a re-import rather than against a
   restatement of it; and a fixture whose every section belongs to the rotated
-  minor returns `bad_args` with both files unchanged. *Breaks when:* the path is
+  minor returns `bad_args` with both files unchanged. **That fixture must begin
+  on its `##` line, with no preamble** — content before the first heading
+  becomes a level-0 preamble section which stays on the live path, so a fixture
+  carrying one can never reach zero live sections and the clause would be
+  unreachable (§ 6). *Breaks when:* the path is
   taken from the caller, built by string concatenation without re-validating the
   filename, anchored on `dir(liveRoadmapPath)` rather than the project root —
   which for a roadmap outside the root yields a path the loader refuses
@@ -596,8 +604,8 @@ to. INV-8 asserts the dry and real envelopes match for **both** operations.
 - **INV-13** — A rotation leaves the store equal to its own regeneration. The
   rotation counterpart to INV-11, and the invariant this spec was missing while
   it claimed rotation needed no slug write. *Test:* rotate, render, re-import,
-  and assert the project has the **same number of sections** as before and that
-  every moved section's stored `section_id` is unchanged; then assert each
+  and assert that every moved section's stored `section_id` is unchanged **and
+  that no moved heading is carried by two sections**; then assert each
   moved section's stored slug equals `"<major>-<minor>-" +` the slug
   `RoadmapIndex::uniqueSlug()` derives for its heading within the move set
   alone. A **second leg** covers the live side: a fixture where a remaining
@@ -665,10 +673,20 @@ before reaching anything this spec governs.
 
 **INV-11 and INV-13 need a real round trip, not a store assertion.** Both claim
 the store equals its own regeneration, so both run render → re-import against
-the same store and compare section counts and `section_id`s. A test that
-asserted the expected slug directly would pass against an implementation whose
-slug rule is self-consistent and disagrees with the importer's — which is the
-exact defect INV-13 exists to catch.
+the same store. A test that asserted the expected slug directly would pass
+against an implementation whose slug rule is self-consistent and disagrees with
+the importer's — which is the exact defect INV-13 exists to catch.
+
+**They do NOT compare section counts the same way, and only INV-11 may.** A
+migrated file gains a **level-0 preamble section** for whatever precedes its
+first `##` heading. A retitle creates no file, so INV-11's count is stable and
+a change in it is the duplicate. A rotation creates the archive, whose preamble
+section is therefore added by the **first** re-import of that new file — the
+project legitimately gains one section, and a count cannot tell that from the
+duplicate INV-13 is about. INV-13 asserts the duplicate directly instead: each
+moved slug still resolves to the same `section_id`, and no moved heading is
+carried by two sections. Found at implementation on 2026-08-10; the clause had
+read "the same number of sections" and failed for a reason that was not a bug.
 
 **Every open bullet in every fixture carries a `Layman:` line, except INV-10's,
 which exists to omit one.** The publish gate is per project (§ 2.4), so a single
@@ -794,6 +812,7 @@ the half the split would have shipped first.
 
 | Loop | Date | Lanes | Findings | Outcome |
 |------|------|-------|----------|---------|
+| 4-impl | 2026-08-10 | **None — no reviewer was dispatched.** These are fold-backs from building the thing, per `/write-spec` Step 8 | 3 amended, all found by a test failing for a reason that was not a bug | **A cold reader has no compiler, and all three of these needed one.** (1) INV-13 asserted the project keeps "the **same number of sections**" across rotate → render → re-import. It does not, and correctly so: a migrated file gains a **level-0 preamble section** for whatever precedes its first `##`, and a rotation *creates* the archive, so that file's preamble is added by the first re-import of it. The count is off by one for a reason INV-13 is not about, and it cannot tell that from the duplicate it *is* about — so the clause now asserts the duplicate directly (same `section_id`, no heading carried twice). INV-11 keeps its count: a retitle creates no file. (2) INV-6's zero-live-sections leg was **unreachable as written** — the same preamble section stays on the live path, so a fixture built the ordinary way can never reach zero and the clause tested nothing; the fixture must begin on its `##` line. (3) § 2.4 never said whether `sections` reports the pre- or post-move slugs, and a builder needs one: it reports the **new** ones, matching `retitle_section`'s `slug`. **Not re-gated.** Rule 14 would send an amendment back through `/cold-eyes`; the user closed review on this document at loop 4 on the evidence that cold reading had stopped finding things in it, and every one of these three came from running the code instead. Flagged rather than skipped silently. |
 | 4 | 2026-08-10 | 2, cold — same shared packet, rebuilt from disk; no mention of loops 1–3 | Q1 2 · Q2 2 · Q3 2 — verified 6, dismissed 1 | **Run because loop 3-impl had closed with 2 verified findings, which under the convergence rule cannot be a final pass.** Both lanes again led on the same defect — § 2.3's backward collision check was phrased project-wide ("any other section") while its rationale was family-scoped, so a literal build refuses every retitle on any project holding one repeated heading, which is `roadmap-format.md` § 4.3 step 4, the operation's whole purpose. **The two that mattered came from verifying the lanes' open questions, not from the lanes.** § 2.2's archive path was anchored on `dir(liveRoadmapPath)` — loop 3's own fix — on the stated grounds that "the migration's archive discovery looks beside the live file". It does not: `findRoadmaps()` builds `QDir(projectRoot)` and reads `<projectRoot>/docs/roadmap`, and `isPlaceableSourcePath()` refuses any project-root-relative path outside `docs/roadmap/<M>.<N>.md` with `source_unplaceable`. INV-6 had been written to assert the refused path. And `planFrom()` prefixes every archive slug with its file's minor (`ctx.prefix`), so rotation reassigning `source_path` without re-slugging makes the next re-import miss on `findSection()` and **add a second section** — INV-11's silent duplicate, reached through rotation, which the document claimed needed no slug write at all. § 2.1's headline was false in both halves. Also fixed: the retitle dry run said it returned "nothing else" against INV-8; § 2.4 counted five caller-side refusals and omitted the collision check; a punctuation-only title passed the empty-title guard and slugifies to `""`. **1 dismissed** — a citation naming "`RoadmapMigrateLoad` § 2.6" whose stated behaviour is correct, so it changes nothing built. INV-13 added. 624 → 700 lines. |
 | 3-impl | 2026-08-09 | 1, cold — **re-gate of the § 2.5 slug amendment**, per `/write-spec` Step 8, after the user delegated loop 3's surfaced decision back to me. Not a review loop of the original run, which had already exited at its cap | Q2 1 · Q3 1 — verified 2, fixed 2 | **Both were collateral from the amendment and from loop 3's own fixes**, which is the pattern this run never escaped. Loop 3 changed § 2.2's skip rule to *equality with the derived archive path*, and left two restatements in § 2.4 at the old "already carrying an archive path" — under which a `0.7` section misfiled in `0.6.md` is stranded rather than reassigned; INV-5 gained that case. The amendment's collision check was one-directional: retitling *out of* a `uniqueSlug()`-disambiguated family **frees** the un-suffixed slug, so a re-import re-derives a different slug for a section the call never touched, and INV-11 then fails on the untouched sibling. Both directions now checked, INV-12 tests both. Three Open questions resolved as no-defect: `RoadmapMigrateLoad` does resolve by `findSection(projectId, slug)` and *retains* a section the plan stopped carrying — confirming INV-11's duplicate rather than a merge; INV-10's fixture is buildable because `load()` does not render; and `RoadmapWrite::Result` is a distinct enum from the seam's. **Not converged, and stopping here on purpose** — see the note below. 537 → 624 lines. |
 | 3 | 2026-08-09 | 2, cold — same shared packet, rebuilt from disk; no mention of loops 1–2 | Q2 2 · Q3 2 — verified 4, fixed 4; **1 surfaced, not fixed** | **Exited at the `--max-loops` cap with the tail empty but one open decision.** Both lanes again led on the same defect, the third loop running: § 2.4 defined a closed minor as "nothing under it is still open", which contradicts § 3.9's "rotation happens at `/bump` time on a minor or major bump only". A minor holds zero open bullets routinely — just after a patch release — so the guard would have let `rotate_minor 0.7` archive the minor this project is still shipping from, and § 8 had already rejected the version check that would distinguish them. Resolved by stating that the op deliberately does not enforce the rotation-event rule and `/bump` owns it, which also promotes § 5's deferred wiring from plumbing to a precondition. Three more: the archive path was anchored on the project root while § 3.9 anchors it beside `ROADMAP.md` (they differ whenever `.ants/project.json` moves the roadmap, and the migration would never rediscover the file); "already carrying an archive path" was ambiguous between *any* path and *the derived* one; and the render never rewrites a file left with zero sections, so a rotation that emptied the live file would strand its old content while INV-1 claimed otherwise. **Surfaced, not fixed:** a section's slug is derived from its heading, not round-tripped, so `retitle_section` diverges the stored slug from any re-import's — three candidate answers with different costs, so it is the user's call, and until it is answered the op is unsafe on a project facing ANTS-4065 Phase D. 463 → 537 lines. |

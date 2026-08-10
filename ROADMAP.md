@@ -28512,7 +28512,7 @@ against current source before filing.
   8 of loop 1's 11 findings were cross-document and unreachable from either
   file alone.
 
-- 📋 [ANTS-4070] **Archive rotation has no owner after cutover, and this roadmap is 3.2 MB against a 150 KiB trigger.**
+- ✅ [ANTS-4070] **Archive rotation has no owner after cutover, and this roadmap is 3.2 MB against a 150 KiB trigger.**
   `roadmap-format.md` § 3.9 puts rotation in `/bump` as a snip-and-create on the
   markdown. On a cut-over project that hand edit is discarded at the next
   render, so rotation silently stops happening. The archives themselves are
@@ -28541,6 +28541,26 @@ against current source before filing.
   **Layman:** The roadmap file is meant to be trimmed each release by moving finished work into per-version archive files. After the database switch nothing does that any more, and the file is already twenty times bigger than the size that was supposed to trigger a trim.
   Kind: implement.
   Source: in-session-2026-08-09 (§ 9 decision pass, user-requested).
+  Resolved (2026-08-10): both operations built and tested —
+  `tests/features/roadmap_rotate_minor/`, 15 cases over INV-1…INV-13,
+  verified RED against stub ops first (all 15 failed at the op call, with
+  the fixtures' own slug predictions passing). Full suite 3349/3349.
+  `RoadmapStore::setSectionSlug()` is the one store addition;
+  `RoadmapRender::isOpen()` was promoted out of its anonymous namespace so
+  the `minor_not_closed` guard uses the codebase's own notion of open
+  rather than a second copy of it.
+
+  Implementation falsified three spec clauses, all folded back (loop-log row
+  `4-impl`): a migrated file carries a level-0 PREAMBLE section for whatever
+  precedes its first `##`, which INV-13's section-count assertion could not
+  tell from the duplicate it was written to catch, and which made INV-6's
+  zero-live-sections leg unreachable with an ordinarily-built fixture. § 2.4
+  also never said whether `sections` reports pre- or post-move slugs; it
+  reports the new ones.
+
+  Shipped UNWIRED on purpose (§ 2.4 / § 5): reachable through the `*ForTest`
+  seams only, not in the `op` dispatch, until `/bump` enforces § 3.9's
+  rotation-event rule. ANTS-4081 carries both halves of that.
 
 - ✅ [ANTS-4071] **`partial` migrates as `planned`, so half-finished pass items import as not-started.**
   The pass-headings status reader maps a leading word to a status
@@ -28790,6 +28810,31 @@ against current source before filing.
   **Layman:** Let the spec checker fall back to the shared standard in ~/.claude when a project has no copy of its own, and say which one it used.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild)..
+
+- 📋 [ANTS-4081] **rotate_minor is built but unreachable — nothing calls it, and nothing enforces the rotation event.**
+  ANTS-4070 § 2.4 puts `roadmap-format.md` § 3.9's rotation-event rule —
+  rotate only on a minor or major bump — on the CALLER, because the store
+  cannot see a version transition: a minor holds zero open bullets
+  routinely, just after a patch release, so `rotate_minor 0.7` would
+  happily archive the minor this project is still shipping from.
+
+  So § 2.4 says the op must not be exposed as a routine verb until `/bump`
+  owns that check, and ANTS-4070 shipped it deliberately UNWIRED: both ops
+  are implemented and tested through their `*ForTest` seams, and neither is
+  in `cmdRoadmapLog`'s `op` dispatch or the tool schema.
+
+  Two halves, in this order:
+  (1) a `.claude/bump.json` recipe step that calls rotation on a minor/major
+      bump only;
+  (2) wire `rotate_minor` + `retitle_section` into the `op` dispatch and the
+      schema, so they are callable at all.
+
+  Doing (2) without (1) is the hole § 2.4 describes. Until both land the
+  operations are dead code outside the test suite, which is the reason this
+  has an id rather than a sentence in § 5.
+  **Layman:** Hook archive rotation into the release step, then turn it on as a normal command.
+  Kind: implement.
+  Source: in-session-2026-08-10 (ANTS-4070 implementation)..
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
