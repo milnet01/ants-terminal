@@ -27016,6 +27016,44 @@ against current source before filing.
   **Layman:** The rulebook says two kinds of link between roadmap items get imported automatically; nothing actually imports them.
   Kind: investigate.
   Source: in-session-2026-08-04 (ANTS-3810 cold-eyes loop 1, lane finding verified).
+  Re-verified 2026-08-10 (ANTS-4084 was filed as a duplicate of
+  this and closed; its findings fold in here).
+
+  Still true: `relateItems()` / `relateCrossProject()` have no
+  production call site — tests only — and `PlannedItem` carries
+  no relationship field, so the store's relationship table
+  stays empty after a full migration.
+
+  **Also true, and not stated above: the parser has no
+  `Dependencies` key at all.** The trailer vocabulary is
+  `Kind|Lanes|Layman|Evidence` plus `Source:`
+  (`roadmapparse.cpp`), so even option (a) needs a carrier
+  before it needs a converter. The only `Dependencies` string in
+  `src/` is an unrelated audit-category label. Note ANTS-4079
+  is building exactly such a carrier for `Blocked-by:` and its
+  pass-headings trailer work is the same shape — sequence this
+  behind it rather than duplicating the parser change.
+
+  **Counts have moved.** § 6 says `Dependencies:` ~21; the
+  re-measured corpus figure in ANTS-4065 is **98**, `Spec:` ~20.
+  Whichever option is chosen, § 6's parenthetical needs the new
+  number.
+
+  **Two facts about the store side, now written into
+  `roadmap-data-model.md` § 6** as part of ANTS-4068's
+  decision 2, and load-bearing for option (a) or (c):
+  - the canonical stored direction is the lower-sorting
+    endpoint keyed by `export_slug || 0x1f || id_fold`, so a
+    converter must not store both orientations;
+  - `rel_item_uq` is a partial index on `(type, src_pk,
+    dst_pk)` and is orientation-sensitive, so the SCHEMA does
+    not catch a reverse-duplicate. A converter that inserts
+    directly rather than through `relateItems()` breaks INV-1
+    silently.
+
+  Not a Phase D blocker: ANTS-4065 § 5 puts deciding which
+  extension keys deserve real columns out of scope as a
+  data-model change.
 
 - ✅ [ANTS-3828] **Image paste ignores `text/uri-list`, so copying an image FILE pastes a `file://` URI.**
   User-reported 2026-08-04: "when I paste an image, it doesn't always paste
@@ -29123,7 +29161,7 @@ against current source before filing.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild), deferred same day..
 
-- 📋 [ANTS-4084] **roadmap-data-model.md § 6's relates-to conversion has no implementation at all.**
+- 💭 [ANTS-4084] **roadmap-data-model.md § 6's relates-to conversion has no implementation at all.**
   Found while verifying ANTS-4068's decision 2 (which direction a
   symmetric `relates-to` edge is stored in). The direction question
   turned out to be already settled in code — but only in a function
@@ -29168,6 +29206,32 @@ against current source before filing.
   **Layman:** The rulebook says the migration turns each item's &quot;depends on&quot; line into a stored link between items. No code does this — the link feature exists but nothing ever calls it.
   Kind: investigate.
   Source: in-session-2026-08-10 (ANTS-4068 decision-2 verification).
+  Closed as a DUPLICATE of ANTS-3827 (2026-08-10), which was
+  filed 2026-08-04 and is broader: it covers `specified-by`
+  from `Spec:` as well as `relates-to` from `Dependencies:`,
+  and already lists the three ways out. This bullet was filed
+  without a dedup check — the check is `roadmap_log`'s
+  `possible_duplicates`, not a keyword `roadmap_query`, and
+  skipping it is what produced a second id for a known finding.
+
+  Two details from this investigation are NOT in ANTS-3827 and
+  are folded into it rather than lost:
+  - the canonical stored direction that `relateItems()` already
+    implements (lower-sorting endpoint by `export_slug` +
+    `id_fold`), now written into `roadmap-data-model.md` § 6 as
+    part of ANTS-4068's decision 2;
+  - `rel_item_uq` is orientation-sensitive, so the schema does
+    NOT prevent a reverse-duplicate — the normalisation is the
+    only guard, and any future direct writer breaks INV-1.
+
+  Also worth carrying: ANTS-3827 quotes § 6's "~21
+  occurrences" for `Dependencies:`; the re-measured figure in
+  ANTS-4065 is **98**, and `Spec:` is ~20.
+
+  Not a Phase D blocker either way — ANTS-4065 § 5 puts
+  deciding which extension keys deserve real columns
+  (`Dependencies` 98 among them) out of scope as a data-model
+  change rather than an import mapping.
 
 - 📋 [ANTS-4085] **doc_citations reports a quoted foreign-project path as a stale citation, and cannot be silenced.**
   `roadmap-data-model.md` § 5 quotes two sub-bullets from OTHER projects'
@@ -29205,6 +29269,58 @@ against current source before filing.
   **Layman:** The link-checker flags an example copied from another project's notes as a broken reference. It is not broken — it is a quotation — so every check of that file reports a problem that cannot be fixed.
   Kind: fix.
   Source: in-session-2026-08-10 (ANTS-4068 doc-edit verification).
+
+- 📋 [ANTS-4086] **ANTS-4065 § 2.2's take-the-last-match rule loses to prose appended after the trailer.**
+  Found surveying what still blocks Phase D. **This is a spec defect, not an
+  implementation one** — Phase C built § 2.2 exactly as written and its 19
+  conformance tests are green.
+
+  § 2.2 un-anchors `rxKind()` and takes the **last** match, so an inline
+  declaration trailing a prose sentence is read (the 48 items ANTS-4065 was
+  filed over). The backtick guard excludes a quoted `` `Kind:` ``.
+
+  **What neither handles: un-backticked prose that appears AFTER the trailer.**
+  `roadmap_log op:annotate` appends notes to the END of a body, below the
+  `Kind:`/`Source:` trailer, so any later note mentioning the word in running
+  text becomes the last match and wins.
+
+  Verified live against `roadmap_query` (not inferred — this is what the verb
+  returns today):
+
+  | Item | Stored `kind` |
+  |---|---|
+  | ANTS-1278 | `; when absent it emits a LOUD **TODO: describe this finding …` |
+  | ANTS-3755 | `/Source:/Layman: fields)` |
+  | ANTS-3808 | `the reader parses back differently), INV-4 (anchored` |
+  | ANTS-3608 | `explicit on every actionable bullet; section context is a hint …` |
+  | ANTS-3810 | `while source_kind holds the raw token normalisation discarded` |
+
+  ANTS-3810 is the clean demonstration: its real `Kind: test.` is at
+  `ROADMAP.md:26516`; the prose `Kind:` that beats it is at `:26524`, inside an
+  annotation appended later.
+
+  A scan for bullets whose last `Kind:` occurrence follows a standalone trailer
+  line finds **14** candidates; 5 of the 8 sampled are confirmed corrupt, the
+  other 3 saved by the backtick guard.
+
+  **Why it blocks Phase D.** D2's verify is "no item's `kind` differs from the
+  value its bullet declares" — it would fail on these five and be read as a
+  Phase C defect, sending the diagnosis to the wrong layer.
+
+  **Proposed rule, replacing "take the last match":** a **standalone trailer
+  line** (`^\s*Kind: <value>\.?\s*$`) always wins, and the inline fallback is
+  consulted only when no standalone line exists. That keeps the 48 inline-only
+  items working — the case § 2.2 was written for — while making appended prose
+  unable to displace a real declaration. Optionally guard the inline branch on
+  the value being in § 3.5.3's 21-value taxonomy, which the five strings above
+  all fail.
+
+  Amending § 2.2 is an authoring edit and re-arms rule 14's gate on
+  `docs/specs/ANTS-4065-import-mapping-contract.md`. Pair it with ANTS-4076,
+  which owes the same spec an INV-8 correction, so one gate run covers both.
+  **Layman:** The importer picks the last place a line says &quot;Kind:&quot; in an entry. Notes added later often mention that word in passing, so five entries currently have a sentence fragment stored where their category should be.
+  Kind: fix.
+  Source: in-session-2026-08-10 (pre-Phase-D outstanding-work survey).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
