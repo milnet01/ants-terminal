@@ -28747,6 +28747,50 @@ against current source before filing.
   Kind: investigate.
   Source: in-session-2026-08-09.
 
+- 📋 [ANTS-4079] **A roadmap item cannot declare what blocks it, so ordering lives only in prose.**
+  A `Blocked-by:` trailer taking comma-separated ids, written into the
+  existing `relationships` edge table as type `blocked-by` — the type is
+  already in `roadmap-data-model.md` § 6, so this is a carrier for an edge
+  the store can already hold, not a new column.
+
+  Four parts:
+  (1) parse the trailer on all three dialects. The bullet dialects reuse the
+  `rxKind()` family. Pass-headings already carries a labelled-field
+  convention (`- **Status**:` / `- **Finding**:`, collected as body at
+  `roadmapparse.cpp` `parsePassHeadingBullets`, written by
+  `passheadingwrite.cpp`), so it needs one more alternation accepting the
+  colon-OUTSIDE-bold form `**Blocked-by**:` that the existing trailer regex
+  rejects.
+  (2) `roadmap_log` write support.
+  (3) dangling detection — an id with no bullet.
+  (4) cycle detection, full-store only, not incremental.
+  Plus two queries: what blocks X, and what X blocks.
+
+  Deliberately NOT exempting pass-headings from the gates: the user's call
+  was that a workflow true for two dialects out of three is not a workflow.
+  Growing the trailer form is cheaper than converting a 154-item project.
+  **Layman:** Let an item say which other items must finish first, and warn when that points at nothing or goes in a circle.
+  Kind: feature.
+  Source: user-request-2026-08-10 (global roadmap-format rebuild)..
+
+- 📋 [ANTS-4080] **spec_lint cannot see the global spec-format standard, so a project without a local copy is linted against nothing.**
+  `~/.claude/standards/spec-format.md` became authoritative on 2026-08-08,
+  with projects carrying deltas only. A project with no local copy therefore
+  has no required-sections list for `spec_lint` to check against.
+
+  The read path already exists: ANTS-1390's `caller_cwd: "~global"` alias
+  reads under `~/.claude/`. This is a deliberate, single, well-known,
+  read-only path — an exception to the path-validation invariant, not a
+  relaxation of `bad_path`.
+
+  The response gains `sections_source: project | global | none` so a caller
+  can tell which list was applied. `none` stays a real outcome — absent both
+  copies, the check reports that it did not run rather than passing silently.
+  The skeleton gains no projected block.
+  **Layman:** Let the spec checker fall back to the shared standard in ~/.claude when a project has no copy of its own, and say which one it used.
+  Kind: feature.
+  Source: user-request-2026-08-10 (global roadmap-format rebuild)..
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
