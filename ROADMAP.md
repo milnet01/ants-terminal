@@ -28473,6 +28473,47 @@ against current source before filing.
   **Layman:** Four rules the roadmap rulebook never actually wrote down. Each needs a decision from us rather than a tidy-up, so they were written down instead of guessed at.
   Kind: doc.
   Source: in-session-2026-08-08 (ANTS-4067 cold-eyes cap).
+  Decided (2026-08-10, user): all four ruled on. None was a
+  wording fix; each is recorded here before any doc edit.
+
+  **1. "store-migrated" = a store row exists.** The code is
+  canonical; the doc is wrong. Both standards cite
+  `RoadmapSource::migratedProject()`, which tests a store row,
+  and "cutting over" is a concept no code implements. Fix:
+  delete the cutover step from roadmap-data-model.md § 7.1
+  INV-3 and align it to roadmap-format.md § 3.5.1's wording.
+  One carrier per project, decided by the row.
+
+  **2. relates-to stores ONE edge, alphabetically first.** Of
+  the two endpoints, the case-folded `(project, id)` that sorts
+  first is `src`; writing the reverse pair is a no-op, not a
+  second row. Deterministic, and it closes the gap where
+  `UNIQUE (type, src_pk, dst_pk)` cannot see a duplicate stored
+  backwards.
+
+  **3. A GFM tick-box bullet IS an item without a bold
+  headline.** § 7.1's itemhood test relaxes: a status marker
+  alone suffices on a § 3.10.1 task-list bullet, and the
+  bullet's own text becomes the headline. The rejected reading
+  migrated a whole plain-checkbox project into body prose of no
+  parent, with no id issued — silent loss, which is exactly
+  what § 3.3 forbids.
+
+  **4. Quarantine stays as shipped; the OWNING project repairs
+  itself.** User's call, and it is cheaper than the two options
+  this bullet listed. No rewrite path is added anywhere:
+  ANTS-3756 INV-4 and `tests/features/roadmap_store_identity`
+  are untouched, and migration keeps inventing no dash. § 7.1
+  already ends "the run reports them", and ANTS-3757 § 2.6 is
+  "Quarantine, and when it clears" — so the report is a
+  hand-off to 3D_Engine, which alone knows which of its commits
+  and docs cite `[Cl9]`. It renumbers, fixes its own citations,
+  and a re-import parses them normally.
+  Doc work this leaves: § 7.1's two-option ending gains this
+  third and preferred route, and § 8 needs one sentence saying
+  a render carrying quarantined ids is conforming except for
+  those ids, with the quarantine report as the standing to-do.
+  That sentence is the actual finding; the rest resolves.
 
 - ✅ [ANTS-4069] **roadmap-format.md's archive rotation and release flow have no answer for a generated roadmap, and it now owes a fresh gate.**
   Raised by the CC session bringing the shared `/start-app` roadmap standard up
@@ -28618,6 +28659,34 @@ against current source before filing.
   **Layman:** One project mixes two roadmap styles. The rules cover each style alone but not the mix, so 73 of its items have no defined way to get an ID.
   Kind: investigate.
   Source: in-session-2026-08-09 (ANTS-4069 cold-eyes loop 3, at the cap).
+  Decided (2026-08-10, user): **the store allocates.** The 73
+  ID-less ordinary bullets in a pass-headings project get ids
+  from the store's own numbering, the same allocator any new
+  item uses. `.roadmap-counter` is NOT read and NOT bumped —
+  § 3.10.5 says a pass-headings project never reads it, and
+  that stays true.
+
+  This resolves the § 3.5.1-vs-§ 7.1 conflict by scope rather
+  than precedence: § 3.5.1's per-project carrier rule governs
+  which counter a project reads, and a pass-headings project
+  reads none; the store is the allocator for anything the
+  headings do not name. So both rules stand and neither had to
+  be rewritten to defer to the other.
+
+  Rejected: leaving them ID-less (breaches § 3.1's `id`
+  obligation and makes 73 items permanently unreferenceable),
+  and allocating from the project's counter file (bumps a
+  carrier nothing else in that project maintains).
+
+  Implementation note, to verify not assume: the allocated ids
+  take `id_origin = "synthesised"` and `provenance.id =
+  "store-generated"` per ANTS-3838's shipped branch rule, since
+  they come from the allocator and no caller pinned them. Check
+  the load path actually does this for the pass-headings shape
+  before Phase D's real import — ANTS-3765 § "starting
+  high-water" excludes `PASS-N-M` ids from the high-water
+  computation, and these 73 are a separate population it does
+  not discuss.
 
 - 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
   Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
@@ -28636,6 +28705,31 @@ against current source before filing.
   **Layman:** Projects before version 1.0 are told to label sections "Phase 1, Phase 2". The trimming rule only recognises version numbers, so those roadmaps can never be trimmed.
   Kind: doc-fix.
   Source: in-session-2026-08-09 (ANTS-4069 cold-eyes loop 3, at the cap).
+  Decided (2026-08-10, user): **drop § 3.2's phase-block
+  advice.** Every project heads its release blocks with a
+  version, so § 3.9's rotation and § 3.5.4 step 2's
+  active-release selection both have a referent everywhere and
+  neither needs a second heading shape.
+
+  One paragraph is edited and nothing else moves: ANTS-4070's
+  just-shipped `rotate_minor` / `retitle_section` stay keyed on
+  version headings, and this project (0.7.104, version blocks)
+  is already conformant, so there is no migration for it.
+
+  Rejected: teaching rotation about `## P01 — …`. It costs
+  three changes rather than one — § 3.9, § 3.5.4, and the
+  shipped code — and buys a second heading grammar that has to
+  be carried forever for a shape the corpus survey found no
+  project actually using.
+
+  Follow-up owed: a pre-1.0 project with no version anchor yet
+  still needs somewhere to put work. § 3.2's replacement text
+  should say to open at `## 0.1.0 — …` rather than to invent a
+  phase label, so the first block is rotatable from the start.
+  Verify no corpus project currently uses `## P<NN>` headings
+  before landing the edit — the ANTS-4069 gate stated the
+  conflict as latent, not observed, and that claim is worth
+  re-checking rather than inheriting.
 
 - 📋 [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
