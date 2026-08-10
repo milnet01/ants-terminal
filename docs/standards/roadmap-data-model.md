@@ -101,13 +101,20 @@ but neither is it write-only — carrying ids is what would let ANTS-3765
 its own render is § 9's.
 
 **INV-3 — Once a project is *store-migrated*, the store is its only writer of
-record.** **"Store-migrated" is cutting over *plus* a roadmap the format
+record.** **"Store-migrated" is a store project row *plus* a roadmap the format
 detector classifies `ants-v1`** — the pair `RoadmapSource::migratedProject()`
-tests, defined in `roadmap-format.md` § 3.5.1. The distinction is load-bearing
-and is used in that sense throughout this document: a project that has cut over
-but whose roadmap is a GFM or pass-headings dialect is still written by the
-markdown splice paths, renders nothing, and so is **not** covered by this
-invariant. Retiring those paths is § 9's.
+tests, defined in `roadmap-format.md` § 3.5.1. **"Cut over" names the first
+conjunct and nothing beyond it.** That function's only project-level test is
+`RoadmapStore::readProjectByRoot()` returning a row, and no cutover flag exists
+anywhere in the code — so no project is store-rowed and not-yet-cut-over, and
+this document's phrasing and § 3.5.1's ("a store row *and* a roadmap this
+format's detector classifies as `ants-v1`") are the same test stated twice, not
+two tests that could disagree about which ID carrier a project reads.
+The second conjunct is load-bearing and is used in that sense throughout this
+document: a project with a row whose roadmap is a GFM or pass-headings dialect
+fails that function's closing `ants-v1` test, is still written by the markdown
+splice paths, renders nothing, and so is **not** covered by this invariant.
+Retiring those paths is § 9's.
 The export and the render are generated; a hand-edit to either is lost at the
 next generation, so both must be fidelity-checked. *What checks this* has the
 current state; the one distinction worth making here is that the render's
@@ -508,6 +515,25 @@ declared field whatever shape its value takes.
 A, stored once and rendered both ways. Storing it twice would make INV-1's
 byte-identical round-trip depend on which direction happened to be written first.
 
+**The stored direction is the lower-sorting endpoint, and writing the reverse
+pair is a no-op rather than a second row.** Each endpoint is keyed by
+`export_slug || 0x1f || id_fold` — the stable identity, deliberately not
+`item_pk`, which moves when the store is rebuilt — and the pair is ordered on
+that key, so `src` is fixed by the two items and not by which caller wrote
+first. `RoadmapStore::relateItems()` already implements exactly this. **A
+cross-project edge is never normalised**: there the local item is always `src`,
+because the remote endpoint has no `item_pk` to order against
+(`relateCrossProject()`).
+
+Saying this is not optional bookkeeping, because **the schema does not enforce
+it**. The `relationship` table declares no `UNIQUE`; the constraint is the
+partial index `rel_item_uq` on `(type, src_pk, dst_pk)`, which is
+orientation-sensitive — `(A,B)` and `(B,A)` are distinct keys it will happily
+hold at once. The normalisation above is the only thing preventing the
+duplicate, so **any writer that inserts a relationship row without applying it
+breaks INV-1**, and `relateItems()` being the sole writer today is what makes
+that safe rather than the database.
+
 `splits-from`, `blocked-by`, `duplicate-of` and `supersedes` are acyclic —
 `supersedes` included, because "A replaces an earlier decision B" that also
 holds in reverse names no current decision. Acyclicity is checked over the
@@ -574,10 +600,22 @@ already has one).
 Instead migration **quarantines** them: the item is imported with its ID
 recorded verbatim and `id_origin` set to `quarantined` (§ 4.1), the project's
 migration completes
-rather than blocking, and the run reports them. The project then either amends
-`roadmap-format.md` § 3.5.1 to admit the shape, or accepts the ID as opaque —
-both are decisions with consequences beyond one project, which is why the model
-declines to pick one. Three items in the corpus are affected.
+rather than blocking, and the run reports them. Three items in the corpus are
+affected, all in one project.
+
+**Quarantine is a hand-off, not a resting state, and the owning project is what
+clears it.** Three routes exist and the third is preferred: the project
+**renumbers its own items** to conforming IDs and fixes its own citations in the
+same change, after which a re-import parses them normally and the quarantine
+report empties; or it amends `roadmap-format.md` § 3.5.1 to admit the shape; or
+it accepts the ID as opaque and lives with the report. The first is preferred
+because only that project knows which of its commits, changelog entries and
+sibling items cite the old ID — which is the whole reason **migration** must not
+rewrite one. The two are not in tension: the reader stays faithful to the bytes
+on disk, and standardising is a deliberate edit made by the project that owns
+the references, not a silent rewrite made by a tool that cannot see them.
+Nothing in this model performs the renumber, and ANTS-3757 § 2.6 owns when the
+quarantine clears.
 
 **A caller-supplied `stable_prefix` id is `synthesised`, not `parsed` and not
 `quarantined` (ANTS-3809).** `roadmap_log`'s `id_strategy: "stable_prefix"` is a
@@ -660,15 +698,45 @@ The two rows differ in *obligation*, not in ID shape and not in provenance
 prefix per project to reconcile, and an ID's text should never encode metadata
 that can change.
 
-**Only bullets that are items get an ID**, and a bullet is an item when it
-carries **both** a status marker and the bold headline `roadmap-format.md` § 3.5
-requires. Both halves are needed: `roadmap-format.md` § 3.3 allows plain
-narration bullets with no status marker, which § 5 models as `narration`, so the bold headline alone would
-promote them to items. The status-marked bullets carrying a marker but neither
-an ID nor a bold headline are not items, and they are not one thing either —
-most are detail lines belonging to a parent item's `body`, the rest are
+**Only bullets that are items get an ID, and itemhood resolves per source
+shape** — the same three the recognition table above uses, because what marks a
+bullet differs in each and a single rule would be wrong for two of them.
+
+| Source shape | A line is an item when | Headline comes from |
+|---|---|---|
+| Emoji bullet (`roadmap-format.md` § 3.5) | it carries **both** a status emoji and the bold headline § 3.5 requires | the bold span |
+| GFM task list (§ 3.10.1) | it carries a checkbox — **a bold headline is not required** | the bullet's own first line |
+| Pass heading (§ 3.10.5) | it is a `#### Pass N.M` heading — **never an ordinary bullet** | the heading |
+
+**On the emoji shape both halves are needed.** § 3.3 allows plain narration
+bullets with no status marker, which § 5 models as `narration`, so the bold
+headline alone would promote them to items. A bullet carrying a marker but
+neither an ID nor a bold headline is not an item, and these are not one thing
+either — most are detail lines belonging to a parent item's `body`, the rest are
 status-legend lines (§ 5.1). § 5.2's table carries the live proportions. Neither
 gets an ID.
+
+**On the GFM shape a bold headline is not required, and requiring one would be
+the silent loss § 3.3 forbids.** § 3.10.1's own example is
+`- [ ] (WIP) Build login screen`, so a project written entirely in plain
+checkboxes would file every top-level bullet as body prose of no parent and
+issue no ID for any of them. The checkbox is the marker; the bullet's own text
+is the headline, and such a bullet is ID-less rather than ID-bearing, so § 7.2
+allocates for it like any other. `RoadmapParse`'s GFM branch already does this.
+A checkbox bullet with no text at all remains `narration`, having no headline to
+take.
+
+**On the pass-headings shape only the headings are items, and every other line
+in a pass block is that pass's body — deliberately, not as a gap.** The one such
+project in the corpus is RetroDB (154 passes), and its ordinary bullets are the
+per-file breakdown of what a completed pass did (`- **README.md** — 5 fixes: …`),
+its own table of contents, and a legend. Promoting them would file a
+table-of-contents link as a roadmap item and attach hundreds of identities to
+prose that already belongs to a pass; § 3.1's `id` obligation is not breached,
+because these are not items. So a pass-headings project's ID-less bullets are
+neither allocated for nor an error, and an implementer has nothing to invent
+here. `RoadmapParse::parsePassHeadingBullets()` emits records for the headings
+alone, and the rest is absorbed as section intro or `narration`.
 
 ### 7.3 Status
 
@@ -906,6 +974,19 @@ overridden:
   would break commit and CHANGELOG matching in every cut-over project. The
   choice this once forced — amend both standards, or retire `ROADMAP.md` — is
   closed by INV-2; the conformance check is § 9's.
+
+  **A quarantined ID is the one stated exception, and it is not a defect in the
+  render.** § 7.1 requires an off-grammar ID to be imported verbatim and forbids
+  inventing a dash, so a render of a project holding one emits `[Cl9]` where
+  § 3.5 asks for `[PROJ-NNNN]`. Rendering it any other way would be the silent
+  rewrite § 7.1 forbids, and refusing to render would punish the project for a
+  defect in its own source. So the render carries the ID as stored, the file is
+  conforming **except** at the quarantined items, and the quarantine report — not
+  the render — is what says so. The exception is self-clearing: it exists only
+  while an item is quarantined, and § 7.1's preferred route has the owning
+  project renumber, after which the render conforms with nothing amended here.
+  A conformance check (§ 9's) must therefore read the quarantine set before
+  reporting, or it will fail a render that is behaving exactly as specified.
 
 - **Optional fields.** Its § 3.5 files `Layman:` and `Source:` as optional and
   § 3.5.3 gives defaults for absent `Kind:` / `Source:`. This document does not

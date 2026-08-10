@@ -28730,6 +28730,49 @@ against current source before filing.
   `idAllocationOwed` path (`roadmapmigrate.cpp:330-341`, load
   trigger at `roadmapmigrateload.cpp:709`) already does exactly
   what was decided once a record exists.
+  Reversed (2026-08-10, user), on evidence the earlier decision
+  did not have. **The shipped behaviour is correct. Nothing is
+  allocated, no reader changes, and the fix is one sentence in
+  the standard.**
+
+  The pass-headings project is RetroDB
+  (`/mnt/Games/Scripts/Linux/RetroDB/roadmap.md`, 154 `#### Pass
+  N.M` headings — the only such file in the corpus; note it is
+  `roadmap.md` lowercase, which is why an uppercase-only glob
+  finds nothing). Its ordinary bullets are not to-do items.
+  Sampled from source:
+
+  - `- **CLAUDE.md** — 8 fixes: showConfirm/showModal …`
+  - `- **README.md** — 5 fixes: Python floor 3.8 → 3.10 …`
+  - `- **Source**: cold-eyes-2026-05-18 docs sweep.`
+  - `- [§ Active](#active) — open work, grouped by theme`
+  - `- **Target** — file(s) and approximate line range / LOC`
+
+  The first three are the per-file breakdown of what one
+  completed pass did; the fourth is that file's table of
+  contents; the fifth is a legend row. Allocating ids would
+  file a TOC link and a legend as first-class roadmap items,
+  and would attach ~800 identities (855 bullets in the file) to
+  prose that already has a home.
+
+  So the third disposition the code ships — absorbed as section
+  intro or `narration` under the pass they document
+  (`roadmapmigrate.cpp:703-719`) — is the right one, and this
+  bullet's premise that only two behaviours were available was
+  wrong. § 3.1's `id` obligation is not breached because these
+  are not items.
+
+  **The real defect was never in the code: it is that no
+  standard states this disposition.** Fix: `roadmap-data-model.md`
+  § 7.1 records that in a pass-headings source only the `####
+  Pass N.M` headings are items, and every other line is that
+  pass's body — deliberately, with the reason. That closes the
+  "a migration implementer must invent one of two behaviours"
+  finding by naming the behaviour already built.
+
+  The `73` figure from the ANTS-4069 gate is not re-verified and
+  is not load-bearing here; the file carries 855 bullets in
+  total and the character of the sample is what decided this.
 
 - 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
   Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
@@ -28773,6 +28816,50 @@ against current source before filing.
   before landing the edit — the ANTS-4069 gate stated the
   conflict as latent, not observed, and that claim is worth
   re-checking rather than inheriting.
+  Reversed (2026-08-10, user), on evidence. **Rotation learns
+  phase headings; § 3.2's advice stays.**
+
+  The earlier note said to verify the conflict was latent
+  before landing the edit. It is not latent, and neither this
+  bullet's "no project actually using" nor the ANTS-4069 gate's
+  "latent, not observed" survived the check. Scanned all 14
+  corpus roadmaps (case-insensitive `roadmap.md`, `^## +P\d+`):
+
+  - `finbreak` — 13 blocks, `P01 Bootstrap` … `P13 Packaging &
+    release`, plus `P07.5`. Roadmap is 6099+ lines.
+  - `LocalWebServerManager` — 10 blocks `P01`…`P10`, plus
+    `FP01`/`FP03`/`FP04`/`FP05` (review fold-ins) and `DS01`
+    (debt sweep). 2148+ lines.
+  - `Ants_Projects_Hub_Website` — `P01`, `P02`.
+
+  Two assumptions died. **These are not placeholders waiting
+  for a version**: `P01 Bootstrap → P13 Packaging` is a plan
+  sequence, a different organising axis from releases, so
+  renaming them to `## 0.1.0 — …` would be a large edit that
+  also means something else. And **the real grammar is wider
+  than § 3.2 describes** — `P07.5`, `FP03`, `DS01` are all in
+  live use and none is in the rule.
+
+  Unbounded growth is therefore live, not theoretical: finbreak
+  at 6099 lines is the § 3.9 failure this bullet predicted,
+  already happening.
+
+  Rejected: dropping § 3.2 (three projects rewrite their plans,
+  and into a shape that does not carry the same meaning), and
+  declaring phase roadmaps non-rotatable (signs those three up
+  to grow until 1.0).
+
+  **Work this now needs**, and it is code as well as doc — the
+  earlier "one paragraph edit" estimate is void:
+  - `roadmap-format.md` § 3.9 gains the closed-phase rotation
+    rule; § 3.5.4 step 2 gains phase selection (lowest-numbered
+    phase is active, mirroring lowest version).
+  - The grammar widens to the prefixes in use, not just `P<NN>`.
+  - ANTS-4070's shipped `rotate_minor` / `setSectionSlug` gain
+    the second heading shape. Sequenced with ANTS-4081, which
+    owns wiring those ops at all.
+  No spec needed per spec-format.md § 1: one subsystem, a new
+  case in an existing mechanism.
 
 - 📋 [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -29081,6 +29168,43 @@ against current source before filing.
   **Layman:** The rulebook says the migration turns each item's &quot;depends on&quot; line into a stored link between items. No code does this — the link feature exists but nothing ever calls it.
   Kind: investigate.
   Source: in-session-2026-08-10 (ANTS-4068 decision-2 verification).
+
+- 📋 [ANTS-4085] **doc_citations reports a quoted foreign-project path as a stale citation, and cannot be silenced.**
+  `roadmap-data-model.md` § 5 quotes two sub-bullets from OTHER projects'
+  roadmaps as evidence for its item-detail-vs-section-element distinction.
+  One is MAME Curator's, and it happens to contain a path:line token:
+
+      MAME Curator's `` `tests/api/test_fp09_fixes.py:362` — wrapped the SSE
+      history-replay ``
+
+  `doc_citations` harvests it (its contract says a citation inside an inline
+  code span IS harvested — deliberately, since most real citations are written
+  that way) and reports `missing_file`, because Ants has no `tests/api/`. It
+  never will: the path belongs to a different repository.
+
+  So this is a permanent false positive on a file that is linted often. It is
+  not fixable at the document end without damaging the example — rewording the
+  quote makes it no longer a quote, and the two quoted examples are the
+  evidence the section rests on.
+
+  **Options, in preference order:**
+  (a) Skip a token whose path resolves nowhere AND that sits inside a
+      blockquote or an attributed quotation — narrow, but hard to detect.
+  (b) A `<!-- doc-citations: ignore -->` pragma, matching how the other
+      deterministic checks are suppressed. Costs a marker in the prose.
+  (c) Report a token whose leading path segment matches no directory in the
+      project as a distinct low-signal status (e.g. `foreign_path`) rather
+      than `missing_file`, so `only:"stale"` can exclude it. Cheapest, and it
+      generalises — every project that quotes another's paths hits this.
+
+  Not urgent: the four stale rows on this file are all known non-defects (the
+  other three are frozen cold-eyes loop-log history, where the cited lines
+  rotted when `remotecontrol.cpp` was split and MUST NOT be rewritten — a loop
+  log records what each pass found). But a checker whose output is always
+  non-empty stops being read, which is the actual cost.
+  **Layman:** The link-checker flags an example copied from another project's notes as a broken reference. It is not broken — it is a quotation — so every check of that file reports a problem that cannot be fixed.
+  Kind: fix.
+  Source: in-session-2026-08-10 (ANTS-4068 doc-edit verification).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
