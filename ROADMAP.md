@@ -30301,7 +30301,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 Lotto Tracker.
   Resolved (2026-08-11): spec_lint gained SpecLint::Options::siblingInvNumbers (same injection shape as requiredSections) and Result::idGapsSuppressed; the verb layer decides the project's numbering SCHEME once per run and populates it. Discriminator is OWNERSHIP, not contiguity: project-global numbering means no INV number is shared between specs, whereas per-document numbering has nearly every spec opening at INV-1 — so a corpus sharing even one number keeps every gap finding (fails toward the old behaviour). Suppressions are counted and emitted as `id_gaps_suppressed`, never silent. Regression-locked by SpecLint.Ants4110SiblingNumbersAreNotGaps. Suite 3352/3352.
 
-- 📋 [ANTS-4111] **test_audit_partition's dimensions_active returns 18 dimensions; the /test-audit skill defines 14 and cut the other five deliberately.**
+- ✅ [ANTS-4111] **test_audit_partition's dimensions_active returns 18 dimensions; the /test-audit skill defines 14 and cut the other five deliberately.**
   The verb returns 18 dimensions_active including naming, splitting,
   verbosity, parametrisation and doc_strings. The skill's
   references/dimensions.md defines 14, and SKILL.md says test STYLE is
@@ -30321,8 +30321,9 @@ defect from different angles.
   **Layman:** The tool hands reviewers five extra things to check that the skill removed on purpose because they were expensive noise.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 OneUp.
+  Resolved (2026-08-11): took the report's second option — the five style dimensions are now NON-DEFAULT rather than deleted, so dimensions:"csv:naming" still works and an existing report using them still folds in; only what "auto" means changed. dimensions_active now returns 13, and the omitted five are reported in dimensions_skipped[] + skip_reason_per_dimension (fields that were declared on the Result struct but never populated). NOTE: 13, not the 14 the report expected — /test-audit's 14 are prose headings that do not map 1:1 onto the engine's keys, so I cut exactly the five SKILL.md names and no more rather than guessing at a sixth. This also retires the workaround in SKILL.md telling sessions to intersect the envelope with references/dimensions.md. Drift-guard extended (INV-D6). Suite 3354/3354.
 
-- 📋 [ANTS-4112] **test-audit pre-pass patterns system_shell_out and cpp_exit are not language-gated — they fire on English prose in a shell script and on Python's canonical sys.exit(main()).**
+- ✅ [ANTS-4112] **test-audit pre-pass patterns system_shell_out and cpp_exit are not language-gated — they fire on English prose in a shell script and on Python's canonical sys.exit(main()).**
   Reported as two findings, one root cause.
 
   (a) system_shell_out looks for C's system() and matches the literal
@@ -30347,8 +30348,9 @@ defect from different angles.
   **Layman:** Two scanners meant for C code flag a sentence in a shell script and the standard way every Python script ends.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 OneUp.
+  Resolved (2026-08-11): PrePassPattern gained a `languages` gate (empty = every language, which is what all but two entries want); cpp_exit and system_shell_out are gated to "cpp". The gate resolves once per file rather than per line per pattern. A file whose language is not recognised — a .sh script — matches NO gated pattern, which is deliberate: the literal/comment strip is C/C++- and Python-only, so an unrecognised file is matched raw, and raw is exactly where a C pattern hits English prose inside a quoted string. JSON source-of-truth carries the field and the drift-guard asserts per-pattern parity plus that exactly two patterns are gated — a gate that silently spreads is a coverage loss nobody could see. Suite 3354/3354.
 
-- 📋 [ANTS-4113] **test_audit_partition packs chunks by file count only, so a few very large test files land in one chunk nobody can review.**
+- ✅ [ANTS-4113] **test_audit_partition packs chunks by file count only, so a few very large test files land in one chunk nobody can review.**
   chunk_size is a file count (default 12, clamped [4,30]) with no byte
   budget. A project whose tests live in a few very large files gets one
   chunk no single subagent can review against the full dimension list: 4
@@ -30367,6 +30369,7 @@ defect from different angles.
   **Layman:** The work splitter counts files, not size, so four huge test files become one job too big to do properly.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 OneUp.
+  Resolved (2026-08-11): chunk packing is now bounded by a 48 KiB per-chunk byte budget as well as chunk_size, echoed as chunk_byte_budget so a caller can see why a chunk holds fewer files than it asked for. Did NOT implement the report's second half (splitting an over-budget single file into line ranges): a fragment without its header and helpers is a different and worse kind of shallow review, and Chunk's contract is paths rather than ranges — such a file gets a chunk to itself instead. Existing fixtures are far below the budget, so no partition in the suite changed shape. Suite 3354/3354.
 
 - 📋 [ANTS-4114] **spec_log op:set_status writes a Status value the calling project's own standard rejects, then reports ok:true.**
   The verb wrote `**Status:** accepted (2026-08-07)` — generic spec-format

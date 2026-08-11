@@ -67,6 +67,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **`test_audit_partition`'s `dimensions:"auto"` no longer includes the five test-STYLE dimensions.** (ANTS-4111)
+  They are still accepted explicitly via `csv:`, and now appear in `dimensions_skipped[]` with a reason. `dimensions_active[]` is what /test-audit seeds subagents from, so returning all 18 briefed reviewers on exactly what the skill had removed.
+
 - **Split the remote-control implementation into eleven source files** (ANTS-3833)
   The MCP verb implementation was one 24,752-line file — slow to
   rebuild, and awkward for anything that reads it. It is now eleven
@@ -76,6 +79,12 @@ for security-relevant changes.
   goes back to reading just one of them.
 
 ### Fixed
+
+- **Test chunks are bounded by bytes as well as file count.** (ANTS-4113)
+  A suite whose tests live in a few very large files returned one chunk no reviewer could read against the full dimension list. The applied budget is echoed as `chunk_byte_budget`.
+
+- **The `cpp_exit` and `system_shell_out` pre-pass patterns only fire on C/C++ files.** (ANTS-4112)
+  They were matching English prose inside a quoted string in a shell script, and Python's canonical `sys.exit(main())` — half the pre-pass signal on one project.
 
 - **`doc_citations` says which `counts` keys are overlays, so the status buckets can be summed.** (ANTS-4087)
   `counts` mixes statuses with overlays on the ok subset, so it never summed to `count` and a clean pass read as half-verified. `counts_overlay_keys` names them.

@@ -4894,7 +4894,21 @@ void MainWindow::setupClaudeMcpProviders() {
                 chunks.append(co);
             }
             env["chunks"] = chunks;
+            if (r.chunkByteBudget > 0)   // ANTS-4113
+                env["chunk_byte_budget"] = static_cast<double>(r.chunkByteBudget);
             env["dimensions_active"] = QJsonArray::fromStringList(r.dimensionsActive);
+            // ANTS-4111 — a dimension left out of "auto" is reported, not
+            // silently absent: a caller seeding from dimensions_active[] can see
+            // that the taxonomy is wider than the default and why.
+            if (!r.dimensionsSkipped.isEmpty()) {
+                env["dimensions_skipped"] =
+                    QJsonArray::fromStringList(r.dimensionsSkipped);
+                QJsonObject why;
+                for (auto it = r.skipReasonPerDimension.constBegin();
+                     it != r.skipReasonPerDimension.constEnd(); ++it)
+                    why[it.key()] = it.value();
+                env["skip_reason_per_dimension"] = why;
+            }
             QJsonObject prePass;
             for (auto it = r.prePassFindingsByChunk.constBegin();
                  it != r.prePassFindingsByChunk.constEnd(); ++it) {

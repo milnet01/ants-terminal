@@ -54,6 +54,14 @@ namespace TestAuditEngine {
 // which a drift-guard test asserts this list.
 const QStringList &kDimensions();
 
+// ANTS-4111 — what dimensions:"auto" resolves to: kDimensions() minus
+// kStyleDimensions(). The style five stay ACCEPTED (an explicit
+// dimensions:"csv:naming" still works) and are merely no longer default, which
+// is what makes dimensions_active match /test-audit's own scope. Both mirrored
+// by docs/standards/test-audit-grep-patterns.json; the drift-guard asserts it.
+const QStringList &kDefaultDimensions();
+const QStringList &kStyleDimensions();
+
 // Pre-pass grep pattern set (INV-7). Each entry's `dimension` is one of
 // kDimensions(). Mirrored by docs/standards/test-audit-grep-patterns.json
 // (ANTS-1450) — a drift-guard test asserts this table and the JSON match
@@ -63,6 +71,15 @@ struct PrePassPattern {
     QString id;
     QString dimension;
     QString regex;          // PCRE2
+    // ANTS-4112 — comma-separated language keys this pattern applies to
+    // ("cpp", "py"). EMPTY means every language, which is what almost every
+    // entry wants. Added because two C-only patterns were firing everywhere:
+    // `system_shell_out` matched the literal "system (" inside a quoted English
+    // sentence in a .sh file, and `cpp_exit` — whose name already says C++ —
+    // reported error_handling on Python's canonical `sys.exit(main())`. A file
+    // whose language is not recognised matches no gated pattern at all: a gate
+    // that admits the unknown case is not a gate.
+    QString languages;
 };
 const QVector<PrePassPattern> &prePassPatterns();
 
@@ -109,6 +126,9 @@ struct PartitionResult {
     int                               chunksCount = 0;
     QStringList                       dimensionsActive;
     QStringList                       dimensionsSkipped;
+    // ANTS-4113 — the per-chunk byte budget the packer applied, so a caller can
+    // see why a chunk holds fewer files than chunk_size asked for.
+    qint64                            chunkByteBudget = 0;
     QHash<QString, QString>           skipReasonPerDimension;
     QHash<QString, QJsonArray>        prePassFindingsByChunk;
     bool                              prePassCached = false;

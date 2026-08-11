@@ -56,6 +56,37 @@ const QStringList &g_kDimensions() {
     return v;
 }
 
+// ANTS-4111 — the five TEST-STYLE dimensions. /test-audit cut them on
+// 2026-07-30 ("they generate findings on every run, they crowd out the validity
+// findings in the triage, and this is one of the more expensive reviews to
+// run") and its SKILL.md has said test style is out of scope ever since — but
+// dimensions_active kept returning all 18, and the fast path tells a caller to
+// seed subagents from that field. Following the verb therefore briefed
+// reviewers on exactly what the skill removed, and the skill had grown a
+// workaround telling sessions to intersect the envelope with its own list.
+// They stay in kDimensions(), so an explicit dimensions:"csv:naming" is still
+// accepted — what changes is only what "auto" means.
+const QStringList &g_kStyleDimensions() {
+    static const QStringList v = {
+        QStringLiteral("verbosity"),
+        QStringLiteral("naming"),
+        QStringLiteral("splitting"),
+        QStringLiteral("parametrisation"),
+        QStringLiteral("doc_strings"),
+    };
+    return v;
+}
+
+const QStringList &g_kDefaultDimensions() {
+    static const QStringList v = []{
+        QStringList out;
+        for (const QString &d : g_kDimensions())
+            if (!g_kStyleDimensions().contains(d)) out.append(d);
+        return out;
+    }();
+    return v;
+}
+
 // ────────────────────────── INV-9 (chunk_size clamping) ──
 constexpr int kChunkSizeMin = 4;
 constexpr int kChunkSizeMax = 30;
@@ -164,7 +195,8 @@ const QVector<PrePattern> &g_kPrePatterns() {
             QStringLiteral("\\b(?:usleep|nanosleep|sleep)\\(")},
         // ── C/C++ exit/abort in tests ──
         {QStringLiteral("cpp_exit"),            QStringLiteral("error_handling"),
-            QStringLiteral("\\b(?:std::exit|::exit|exit|abort|std::abort)\\(")},
+            QStringLiteral("\\b(?:std::exit|::exit|exit|abort|std::abort)\\("),
+            QStringLiteral("cpp")},   // ANTS-4112
         // ── stderr noise / FAIL-prints ──
         {QStringLiteral("stderr_fail_print"),   QStringLiteral("verbosity"),
             QStringLiteral("(?:std::fprintf|fprintf)\\s*\\(\\s*stderr\\b")},
@@ -177,7 +209,8 @@ const QVector<PrePattern> &g_kPrePatterns() {
             QStringLiteral("\\b(?:setenv|putenv|_putenv)\\s*\\(")},
         // ── External process / shell-out from tests ──
         {QStringLiteral("system_shell_out"),    QStringLiteral("isolation"),
-            QStringLiteral("\\b(?:std::system|::system|system|popen)\\s*\\(")},
+            QStringLiteral("\\b(?:std::system|::system|system|popen)\\s*\\("),
+            QStringLiteral("cpp")},   // ANTS-4112
         // ── Non-deterministic seed ──
         {QStringLiteral("cpp_rand"),            QStringLiteral("determinism"),
             QStringLiteral("\\b(?:std::rand|qrand|rand)\\s*\\(\\s*\\)")},
@@ -472,7 +505,7 @@ QString computeToken(const QString &callerCwd, const QString &scope,
 
 QStringList resolveDimensions(const QString &arg) {
     if (arg.isEmpty() || arg == QLatin1String("auto"))
-        return g_kDimensions();
+        return g_kDefaultDimensions();   // ANTS-4111 — style dimensions opt-in
     if (arg.startsWith(QLatin1String("csv:"))) {
         return arg.mid(4).split(QLatin1Char(','),
                                 Qt::SkipEmptyParts);
@@ -864,14 +897,32 @@ QJsonArray prePassFile(const QString &path,
     // `'time.sleep('` inside a `not in` assertion). Newlines/columns
     // preserved so line-number reporting stays exact.
     QString text;
-    if      (isCxxPath(path)) text = stripCxxLiteralsAndComments(raw);
-    else if (isPyPath(path))  text = stripPythonLiteralsAndComments(raw);
-    else                      text = raw;
+    QString lang;
+    if      (isCxxPath(path)) { text = stripCxxLiteralsAndComments(raw);
+                                lang = QStringLiteral("cpp"); }
+    else if (isPyPath(path))  { text = stripPythonLiteralsAndComments(raw);
+                                lang = QStringLiteral("py"); }
+    else                      { text = raw; }
+    // ANTS-4112 — resolve the language gate ONCE per file, not per line per
+    // pattern. An ungated pattern (the common case) applies everywhere; a gated
+    // one applies only to a language it names, and a file whose language is not
+    // recognised — a .sh script, say — matches none of them. That is deliberate:
+    // the strip above is C/C++- and Python-only, so an unrecognised file is
+    // matched RAW, which is precisely where a C pattern hits English prose
+    // inside a quoted string.
+    QVector<bool> applies(rxs.size(), true);
+    for (int i = 0; i < rxs.size() && i < g_kPrePatterns().size(); ++i) {
+        const QString &langs = g_kPrePatterns().at(i).languages;
+        if (langs.isEmpty()) continue;
+        applies[i] = !lang.isEmpty()
+                     && langs.split(QLatin1Char(',')).contains(lang);
+    }
     const QStringList lines = text.split(QLatin1Char('\n'));
     for (int idx = 0; idx < lines.size() && out.size() < capRemaining; ++idx) {
         const int lineNo = idx + 1;
         const QString &line = lines.at(idx);
         for (int i = 0; i < rxs.size() && out.size() < capRemaining; ++i) {
+            if (!applies[i]) continue;   // ANTS-4112
             if (rxs[i].match(line).hasMatch()) {
                 QJsonObject o;
                 o["file"]       = path;
@@ -888,6 +939,8 @@ QJsonArray prePassFile(const QString &path,
 }  // namespace
 
 const QStringList &kDimensions() { return g_kDimensions(); }
+const QStringList &kDefaultDimensions() { return g_kDefaultDimensions(); }
+const QStringList &kStyleDimensions() { return g_kStyleDimensions(); }
 
 const QVector<PrePassPattern> &prePassPatterns() { return g_kPrePatterns(); }
 
@@ -1102,18 +1155,45 @@ PartitionResult partition(const PartitionRequest &req) {
     int chunkSize = req.chunkSize;
     if (chunkSize < kChunkSizeMin) chunkSize = kChunkSizeMin;
     if (chunkSize > kChunkSizeMax) chunkSize = kChunkSizeMax;
-    // Pack chunks depth-first.
+    // Pack chunks depth-first, bounded by BOTH a file count and a byte budget.
+    //
+    // ANTS-4113 — chunk_size alone is a file count with no upper bound on size,
+    // so a suite whose tests live in a few very large files returned ONE chunk
+    // that no single reviewer could read against the full dimension list: 4 test
+    // files totalling ~181 KB (one of them 94 KB) came back as chunks_count:1,
+    // and the reporting session threw the partition away and sub-laned by hand.
+    // The inverse case — 30 tiny files in one chunk — is fine, so the defect is
+    // specifically the missing upper bound, and what makes it expensive is that
+    // the result still looks like it covered everything.
+    //
+    // A file over the budget on its own still gets a chunk to itself rather than
+    // being split into line ranges: a fragment without its header and helpers is
+    // a different and worse kind of shallow review, and the Chunk contract is
+    // paths, not ranges.
+    constexpr qint64 kChunkByteBudget = 48 * 1024;
     QVector<Chunk> chunks;
-    for (int i = 0; i < files.size(); i += chunkSize) {
-        Chunk c;
+    const auto flush = [&chunks](Chunk &c) {
+        if (c.paths.isEmpty()) return;
         c.id = QStringLiteral("c-%1")
             .arg(chunks.size() + 1, 3, 10, QLatin1Char('0'));
-        for (int j = i; j < std::min(i + chunkSize,
-                                     static_cast<int>(files.size())); ++j) {
-            c.paths.append(files.at(j));
-        }
         chunks.append(c);
+        c = Chunk();
+    };
+    Chunk cur;
+    qint64 curBytes = 0;
+    for (const QString &p : std::as_const(files)) {
+        const qint64 sz = QFileInfo(p).size();
+        if (!cur.paths.isEmpty()
+            && (cur.paths.size() >= chunkSize
+                || curBytes + sz > kChunkByteBudget)) {
+            flush(cur);
+            curBytes = 0;
+        }
+        cur.paths.append(p);
+        curBytes += sz;
     }
+    flush(cur);
+    r.chunkByteBudget = kChunkByteBudget;
     r.chunksCount = chunks.size();
     r.total       = chunks.size();
     // INV-4 — token from canonical inputs + max mtime.
@@ -1121,6 +1201,19 @@ PartitionResult partition(const PartitionRequest &req) {
     r.partitionToken = computeToken(canon, req.scope, dims, maxMtime);
     r.mtimeWalkComputedAt = QDateTime::currentDateTimeUtc();
     r.dimensionsActive = dims;
+    // ANTS-4111 — say what "auto" left out, rather than leaving a shorter list
+    // to be read as the whole taxonomy. Only on a defaulted resolution: under an
+    // explicit csv: the caller already knows what it asked for, and listing
+    // everything else as "skipped" would be noise.
+    if (req.dimensions.isEmpty() || req.dimensions == QLatin1String("auto")) {
+        for (const QString &d : g_kStyleDimensions()) {
+            r.dimensionsSkipped.append(d);
+            r.skipReasonPerDimension.insert(
+                d, QStringLiteral("test style is out of scope by default "
+                                  "(/test-audit cut it 2026-07-30); request it "
+                                  "explicitly with dimensions:\"csv:%1\"").arg(d));
+        }
+    }
     // Pre-compile patterns. ANTS-1647 — g_kPrePatterns() is a fixed static
     // table, so compile the regexes once for the process rather than on every
     // partition() call.

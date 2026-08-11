@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Source of truth for the test_audit_* MCP trio pre-pass grep patterns and dimension taxonomy (ANTS-1397 engine, ANTS-1450 resource). The TestAuditEngine C++ tables (kDimensions() / prePassPatterns()) must match this file exactly — a drift-guard feature test (tests/features/test_audit_pattern_drift/) asserts id/dimension/regex parity in order. Edit both together. The skill markdown at ~/.claude/skills/test-audit/references/dimensions.md mirrors the dimensions list in human prose.",
+  "description": "Source of truth for the test_audit_* MCP trio pre-pass grep patterns and dimension taxonomy (ANTS-1397 engine, ANTS-1450 resource). The TestAuditEngine C++ tables (kDimensions() / prePassPatterns()) must match this file exactly (dimensions, default_dimensions, style_dimensions, and each pattern's id/dimension/regex/languages) — a drift-guard feature test (tests/features/test_audit_pattern_drift/) asserts id/dimension/regex parity in order. Edit both together. The skill markdown at ~/.claude/skills/test-audit/references/dimensions.md mirrors the dimensions list in human prose.",
   "dimensions": [
     "performance",
     "flakiness",
@@ -22,22 +22,114 @@
     "doc_strings"
   ],
   "patterns": [
-    { "id": "sleep_call",          "dimension": "flakiness",      "regex": "\\btime\\.sleep\\(" },
-    { "id": "datetime_now",        "dimension": "determinism",    "regex": "\\bdatetime\\.now\\(" },
-    { "id": "hardcoded_password",  "dimension": "security",       "regex": "\\bpassword\\s*=\\s*[\"']" },
-    { "id": "hardcoded_api_key",   "dimension": "security",       "regex": "\\bapi_key\\s*=\\s*[\"']" },
-    { "id": "real_network",        "dimension": "isolation",      "regex": "\\b(requests|urlopen|fetch)\\(['\"]?https?://" },
-    { "id": "cpp_sleep_for",       "dimension": "flakiness",      "regex": "\\bstd::this_thread::sleep_for\\b" },
-    { "id": "qt_msleep",           "dimension": "flakiness",      "regex": "\\bQThread::(?:msleep|sleep|usleep)\\(" },
-    { "id": "posix_sleep",         "dimension": "flakiness",      "regex": "\\b(?:usleep|nanosleep|sleep)\\(" },
-    { "id": "cpp_exit",            "dimension": "error_handling", "regex": "\\b(?:std::exit|::exit|exit|abort|std::abort)\\(" },
-    { "id": "stderr_fail_print",   "dimension": "verbosity",      "regex": "(?:std::fprintf|fprintf)\\s*\\(\\s*stderr\\b" },
-    { "id": "cpp_cerr",            "dimension": "verbosity",      "regex": "\\bstd::cerr\\s*<<" },
-    { "id": "qputenv_call",        "dimension": "isolation",      "regex": "\\bqputenv\\s*\\(" },
-    { "id": "setenv_call",         "dimension": "isolation",      "regex": "\\b(?:setenv|putenv|_putenv)\\s*\\(" },
-    { "id": "system_shell_out",    "dimension": "isolation",      "regex": "\\b(?:std::system|::system|system|popen)\\s*\\(" },
-    { "id": "cpp_rand",            "dimension": "determinism",    "regex": "\\b(?:std::rand|qrand|rand)\\s*\\(\\s*\\)" },
-    { "id": "cpp_srand",           "dimension": "determinism",    "regex": "\\b(?:std::srand|srand)\\s*\\(" },
-    { "id": "tautological_expect", "dimension": "assertions",     "regex": "\\b(?:EXPECT_TRUE|ASSERT_TRUE|expect)\\s*\\(\\s*(?:true|1)\\s*\\)" }
+    {
+      "id": "sleep_call",
+      "dimension": "flakiness",
+      "regex": "\\btime\\.sleep\\("
+    },
+    {
+      "id": "datetime_now",
+      "dimension": "determinism",
+      "regex": "\\bdatetime\\.now\\("
+    },
+    {
+      "id": "hardcoded_password",
+      "dimension": "security",
+      "regex": "\\bpassword\\s*=\\s*[\"']"
+    },
+    {
+      "id": "hardcoded_api_key",
+      "dimension": "security",
+      "regex": "\\bapi_key\\s*=\\s*[\"']"
+    },
+    {
+      "id": "real_network",
+      "dimension": "isolation",
+      "regex": "\\b(requests|urlopen|fetch)\\(['\"]?https?://"
+    },
+    {
+      "id": "cpp_sleep_for",
+      "dimension": "flakiness",
+      "regex": "\\bstd::this_thread::sleep_for\\b"
+    },
+    {
+      "id": "qt_msleep",
+      "dimension": "flakiness",
+      "regex": "\\bQThread::(?:msleep|sleep|usleep)\\("
+    },
+    {
+      "id": "posix_sleep",
+      "dimension": "flakiness",
+      "regex": "\\b(?:usleep|nanosleep|sleep)\\("
+    },
+    {
+      "id": "cpp_exit",
+      "dimension": "error_handling",
+      "regex": "\\b(?:std::exit|::exit|exit|abort|std::abort)\\(",
+      "languages": "cpp"
+    },
+    {
+      "id": "stderr_fail_print",
+      "dimension": "verbosity",
+      "regex": "(?:std::fprintf|fprintf)\\s*\\(\\s*stderr\\b"
+    },
+    {
+      "id": "cpp_cerr",
+      "dimension": "verbosity",
+      "regex": "\\bstd::cerr\\s*<<"
+    },
+    {
+      "id": "qputenv_call",
+      "dimension": "isolation",
+      "regex": "\\bqputenv\\s*\\("
+    },
+    {
+      "id": "setenv_call",
+      "dimension": "isolation",
+      "regex": "\\b(?:setenv|putenv|_putenv)\\s*\\("
+    },
+    {
+      "id": "system_shell_out",
+      "dimension": "isolation",
+      "regex": "\\b(?:std::system|::system|system|popen)\\s*\\(",
+      "languages": "cpp"
+    },
+    {
+      "id": "cpp_rand",
+      "dimension": "determinism",
+      "regex": "\\b(?:std::rand|qrand|rand)\\s*\\(\\s*\\)"
+    },
+    {
+      "id": "cpp_srand",
+      "dimension": "determinism",
+      "regex": "\\b(?:std::srand|srand)\\s*\\("
+    },
+    {
+      "id": "tautological_expect",
+      "dimension": "assertions",
+      "regex": "\\b(?:EXPECT_TRUE|ASSERT_TRUE|expect)\\s*\\(\\s*(?:true|1)\\s*\\)"
+    }
+  ],
+  "default_dimensions": [
+    "performance",
+    "flakiness",
+    "duplication",
+    "isolation",
+    "determinism",
+    "accuracy",
+    "security",
+    "coverage_gaps",
+    "fixtures",
+    "assertions",
+    "hardcoded_data",
+    "setup_teardown",
+    "error_handling"
+  ],
+  "style_dimensions": [
+    "verbosity",
+    "naming",
+    "splitting",
+    "parametrisation",
+    "doc_strings"
   ]
 }
