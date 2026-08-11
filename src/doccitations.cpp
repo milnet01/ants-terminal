@@ -892,6 +892,18 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     counts.insert(QStringLiteral("anchor_missing"), anchorMissing);
     counts.insert(QStringLiteral("unchecked"), uncheckedOk);
     counts.insert(QStringLiteral("unparsed"), unparsedRows.size());
+    // ANTS-4087 — name the non-status keys IN THE REPLY. The model above is
+    // right and specified (ANTS-3636 § 4), but nothing in the response said
+    // which keys are statuses, so `counts` read as one map that ought to sum to
+    // `count` and did not: 2 citations answering {ok:2, unchecked:2} looked like
+    // a half-verified pass of a document that had in fact verified cleanly.
+    // Reported by AI Prompts. A list rather than a reshuffle because the overlay
+    // relationship (counts.ok == anchored-and-found + anchor_missing +
+    // unchecked) is itself a specified, tested contract — what was missing was
+    // the means to assert the partition without reading the spec first.
+    static const QStringList kOverlayKeys{QStringLiteral("anchor_missing"),
+                                          QStringLiteral("unchecked"),
+                                          QStringLiteral("unparsed")};
 
     QJsonArray unparsedOut;
     for (int i = 0; i < unparsedRows.size() && i < opts.maxUnparsed; ++i) {
@@ -913,6 +925,8 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         {QStringLiteral("offset"), opts.offset},
         {QStringLiteral("count"), entries.size()},
         {QStringLiteral("counts"), counts},
+        {QStringLiteral("counts_overlay_keys"),
+         QJsonArray::fromStringList(kOverlayKeys)},
         {QStringLiteral("unparsed"), unparsedOut},
         {QStringLiteral("unparsed_total"), unparsedRows.size()},
         {QStringLiteral("basename_index_size"), opts.basenameIndex.size()}};

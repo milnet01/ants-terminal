@@ -77,6 +77,21 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_citations` says which `counts` keys are overlays, so the status buckets can be summed.** (ANTS-4087)
+  `counts` mixes statuses with overlays on the ok subset, so it never summed to `count` and a clean pass read as half-verified. `counts_overlay_keys` names them.
+
+- **`feedback_query` reports "nothing filed here yet" as a result, not an error.** (ANTS-4104)
+  A derived path with no file returns ok:true / found:false with the candidates and hint intact; an explicitly passed path that does not resolve still refuses.
+
+- **`spec_lint` no longer reports an invariant id gap for a number a sibling spec owns.** (ANTS-4110)
+  On a project that numbers invariants once across the corpus this fired on every neighbouring id. The scheme is detected from ownership, and suppressions are counted in `id_gaps_suppressed` rather than being silent.
+
+- **Sub-lettered invariant ids (`INV-3b`) parse as invariants of their own.** (ANTS-4107)
+  Their text used to be absorbed into the preceding invariant's body, and `invariant_no_test` could not see them at all — so an invariant split by a review could ship with no test surface and pass the lint.
+
+- **`spec_query` / `spec_lint` find an Invariants section whose heading does not begin with the word.** (ANTS-4115)
+  `## 5. Correctness invariants` matched nothing, so every invariant under it was invisible — a whole project's specs returned an empty contract. Also picks up four Ants specs (`## 4. Contract — invariants`, `### 2.5 Invariants`).
+
 - **doc_integrity no longer reports template placeholder links as broken** (ANTS-4102)
   A skeleton file's deliberately-unfilled `<ID>-<topic>.md` links are
   placeholders, not paths, so the check reported the same non-problem

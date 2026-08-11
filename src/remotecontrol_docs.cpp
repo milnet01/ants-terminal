@@ -12,6 +12,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QSet>
 #include <QSaveFile>
 #include <QCryptographicHash>
 #include <QDirIterator>
@@ -418,10 +420,49 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     opts.maxFindings      = qBound(1, req.value(QStringLiteral("max_findings"))
                                           .toInt(500), 5000);
 
+    // ANTS-4110 — decide the project's INV NUMBERING SCHEME once per run, then
+    // hand the engine the numbers its siblings own. The discriminator is
+    // ownership, not contiguity: under per-document numbering nearly every spec
+    // opens at INV-1, so numbers are shared; under project-global numbering each
+    // number belongs to exactly one document. Requiring that NO number is shared
+    // (across at least two specs that have any) is therefore the property that
+    // makes a sibling lookup mean anything, and it fails toward the old
+    // behaviour — a corpus that shares even one number keeps every gap finding.
+    // Anchored on the specs dir alone, and independent of `path`, so linting one
+    // file answers the same way linting the tree does.
+    {
+        QStringList corpus =
+            docIntegrityEnumerate(rootCanonical, QString(), specsDir);
+        if (corpus.size() > walk.maxDocsPerRun)
+            corpus = corpus.mid(0, walk.maxDocsPerRun);
+        QHash<int, int> ownersByNumber;
+        int specsWithInvariants = 0;
+        for (const QString &rel : std::as_const(corpus)) {
+            if (!rel.startsWith(specsDir)) continue;
+            QFile sf(QDir(rootCanonical).filePath(rel));
+            if (sf.size() > walk.maxDocBytes) continue;
+            if (!sf.open(QIODevice::ReadOnly)) continue;
+            const QSet<int> ns =
+                SpecLint::invariantNumbers(QString::fromUtf8(sf.readAll()));
+            sf.close();
+            if (ns.isEmpty()) continue;
+            ++specsWithInvariants;
+            for (const int n : ns) ownersByNumber[n]++;
+        }
+        bool projectGlobal = specsWithInvariants >= 2;
+        for (auto it = ownersByNumber.constBegin();
+             projectGlobal && it != ownersByNumber.constEnd(); ++it)
+            if (it.value() > 1) projectGlobal = false;
+        if (projectGlobal)
+            opts.siblingInvNumbers =
+                QSet<int>(ownersByNumber.keyBegin(), ownersByNumber.keyEnd());
+    }
+
     QList<DocFinding::Finding> findings;
     QJsonObject lineCounts;
     QStringList checked;
     bool truncated = false, sectionsChecked = false;
+    int idGapsSuppressed = 0;
     int budget = opts.maxFindings;
     for (const QString &rel : std::as_const(relDocs)) {
         QFile f(QDir(rootCanonical).filePath(rel));
@@ -438,6 +479,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         const SpecLint::Result r = SpecLint::check(text, rel, opts);
         lineCounts[rel] = r.lineCount;
         sectionsChecked = sectionsChecked || r.sectionsChecked;
+        idGapsSuppressed += r.idGapsSuppressed;
         if (budget <= 0) {
             truncated = true;
             continue;
@@ -454,6 +496,11 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     QJsonObject out = specLintBuildResponse(findings, sectionsChecked,
                                             lineCounts, truncated, checked);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    // ANTS-4110 — say that gaps were suppressed and how many. Emitted only when
+    // non-zero: a caller reading a short findings list is entitled to know a
+    // check declined to fire, and a constant 0 on every other project is noise.
+    if (idGapsSuppressed > 0)
+        out[QStringLiteral("id_gaps_suppressed")] = idGapsSuppressed;
     return QJsonDocument(out);
 }
 

@@ -153,6 +153,16 @@ QString collapseWs(const QString &s) {
 
 }  // namespace
 
+QSet<int> invariantNumbers(const QString &text) {
+    static const QRegularExpression anchorRe(
+        QStringLiteral(R"(^ {0,3}(?:-\s+\*\*|\|\s*)INV-([0-9]+)[a-z]?)"),
+        QRegularExpression::MultilineOption);
+    QSet<int> out;
+    auto it = anchorRe.globalMatch(text);
+    while (it.hasNext()) out.insert(it.next().captured(1).toInt());
+    return out;
+}
+
 QStringList parseRequiredSections(const QString &standardText) {
     const QStringList lines = standardText.split(QLatin1Char('\n'));
     int marker = -1;
@@ -215,10 +225,17 @@ Result check(const QString &text, const QString &relPath,
     // boundaries (its heading regex, then the next `## `). The anchor scan below
     // is confined to it: an `- **INV-4**` written in § 7 as an EXAMPLE is prose,
     // and counting it would invent both an invariant and an id gap.
+    //
+    // ANTS-4115 — strict-first, then a heading whose text merely CONTAINS the
+    // word (`## 5. Correctness invariants`). Mirroring parseSpecBody is the whole
+    // point of this block: a lint whose section boundaries disagree with the
+    // parser's reads one document and reports on another.
     static const QRegularExpression invHdrRe(
         QStringLiteral(R"(^ {0,3}#{2,3}\s+(?:\d+\.\s+)?[Ii]nvariants\b)"));
+    static const QRegularExpression invHdrLooseRe(
+        QStringLiteral(R"(^ {0,3}#{2,3}\s+(?:\d+\.\s+)?.*\b[Ii]nvariants\b)"));
     static const QRegularExpression nextH2Re(QStringLiteral(R"(^ {0,3}##\s+\S)"));
-    int invStart = -1, invEnd = lines.size();
+    int invHdrStrict = -1, invHdrLoose = -1;
     QStringList headingLines;   // normalised `## N. Name`
     for (int i = 0; i < lines.size(); ++i) {
         if (i < fence.size() && fence[i]) continue;
@@ -226,11 +243,17 @@ Result check(const QString &text, const QString &relPath,
         if (m.hasMatch())
             headingLines.append(collapseWs(m.captured(1) + QLatin1Char(' ') +
                                            m.captured(2)));
-        if (invStart < 0) {
-            if (invHdrRe.match(lines[i]).hasMatch()) invStart = i + 1;
-        } else if (invEnd == lines.size() && nextH2Re.match(lines[i]).hasMatch()) {
-            invEnd = i;
-        }
+        if (invHdrStrict < 0 && invHdrRe.match(lines[i]).hasMatch())
+            invHdrStrict = i;
+        if (invHdrLoose < 0 && invHdrLooseRe.match(lines[i]).hasMatch())
+            invHdrLoose = i;
+    }
+    const int invHdrLine = invHdrStrict >= 0 ? invHdrStrict : invHdrLoose;
+    int invStart = invHdrLine >= 0 ? invHdrLine + 1 : -1;
+    int invEnd   = lines.size();
+    for (int i = invStart; invStart >= 0 && i < lines.size(); ++i) {
+        if (i < fence.size() && fence[i]) continue;
+        if (nextH2Re.match(lines[i]).hasMatch()) { invEnd = i; break; }
     }
 
     // --- missing_section (gated on an injected list) ----------------------
@@ -251,10 +274,11 @@ Result check(const QString &text, const QString &relPath,
     // --- INV-N anchor lines ----------------------------------------------
     // parseSpecBody supplies neither line numbers nor sections nor loop-log
     // rows, so every `line` on this verb's findings comes from this scan.
+    // ANTS-4107 — `[a-z]?` so a sub-lettered id anchors like any other.
     static const QRegularExpression bulletAnchorRe(
-        QStringLiteral(R"(^ {0,3}-\s+\*\*(INV-\d+)\.?\*\*)"));
+        QStringLiteral(R"(^ {0,3}-\s+\*\*(INV-\d+[a-z]?)\.?\*\*)"));
     static const QRegularExpression rowAnchorRe(
-        QStringLiteral(R"(^ {0,3}\|\s*(INV-\d+)\s*\|)"));
+        QStringLiteral(R"(^ {0,3}\|\s*(INV-\d+[a-z]?)\s*\|)"));
     QHash<QString, int> anchorLine;   // id -> 1-based line, first occurrence
     for (int i = qMax(invStart, 0); invStart >= 0 && i < invEnd; ++i) {
         if (i < fence.size() && fence[i]) continue;
@@ -285,19 +309,33 @@ Result check(const QString &text, const QString &relPath,
     for (auto it = parsedById.constBegin(); it != parsedById.constEnd(); ++it)
         allIds.insert(it.key());
 
-    QVector<int> ids;
+    // ANTS-4107 — the checks below walk the ID STRINGS; only the gap scan
+    // reduces them to numbers. Rebuilding `INV-%1` from an int silently dropped
+    // every sub-lettered invariant from every check, so one could ship with no
+    // test surface at all and pass the lint — and a /cold-eyes split into 3 and
+    // 3b is exactly how a sub-lettered id comes to exist, which put the blind
+    // spot precisely where a contract had just been divided in two.
+    struct InvId {
+        int     n;
+        QString letter;
+        QString id;
+    };
+    static const QRegularExpression invIdRe(
+        QStringLiteral(R"(^INV-([0-9]+)([a-z]?)$)"));
+    QVector<InvId> ids;
     for (const QString &id : allIds) {
-        bool ok = false;
-        const int n = QStringView{id}.mid(4).toInt(&ok);
-        if (ok) ids.append(n);
+        const auto m = invIdRe.match(id);
+        if (!m.hasMatch()) continue;
+        ids.append({m.captured(1).toInt(), m.captured(2), id});
     }
-    std::sort(ids.begin(), ids.end());
+    std::sort(ids.begin(), ids.end(), [](const InvId &a, const InvId &b) {
+        return a.n != b.n ? a.n < b.n : a.letter < b.letter;
+    });
 
-    for (const int n : ids) {
-        const QString id = QStringLiteral("INV-%1").arg(n);
-        if (!allIds.contains(id)) continue;
-        const QJsonObject o = parsedById.value(id);
-        const int line      = anchorLine.value(id, 0);
+    for (const InvId &e : ids) {
+        const QString     id = e.id;
+        const QJsonObject o  = parsedById.value(id);
+        const int         line = anchorLine.value(id, 0);
 
         // A withdrawn or moved invariant has nothing left to test. Without the
         // exemption this check fires against every tombstone in the corpus —
@@ -333,7 +371,8 @@ Result check(const QString &text, const QString &relPath,
     // check guards against: it would report every moved or withdrawn invariant
     // as a gap (INV-3).
     if (!ids.isEmpty()) {
-        const QSet<int> have(ids.begin(), ids.end());
+        QSet<int> have;
+        for (const InvId &e : ids) have.insert(e.n);
         // From the document's OWN MINIMUM, not from 1. A spec whose sequence
         // legitimately starts above 1 — docs/specs/ANTS-1358.md opens at INV-14
         // because it continues an earlier spec's numbering — has an offset
@@ -341,16 +380,27 @@ Result check(const QString &text, const QString &relPath,
         // against the corpus (measured: it was most of the 109 id-gap findings
         // in the first calibration run), and § 1e asks for gaps in "a doc's own
         // numbered ids".
-        int lo = ids.first(), hi = ids.first();
-        for (const int n : ids) { lo = qMin(lo, n); hi = qMax(hi, n); }
+        int lo = ids.first().n, hi = ids.first().n;
+        for (const InvId &e : ids) { lo = qMin(lo, e.n); hi = qMax(hi, e.n); }
         for (int n = lo; n <= hi; ++n) {
             if (have.contains(n)) continue;
+            // ANTS-4110 — a number a SIBLING spec owns is not a gap. On a
+            // project that numbers invariants once across the corpus, every id
+            // living in a neighbouring document reads as one here, and the two
+            // repairs the finding invites are both forbidden by the standard it
+            // is meant to enforce: renumber (ids are permanent) or tombstone ids
+            // that were never in this file. Suppressed rather than filtered
+            // afterwards, so the count below is the whole story.
+            if (opts.siblingInvNumbers.contains(n)) {
+                ++r.idGapsSuppressed;
+                continue;
+            }
             // A missing invariant has no line of its own, so the finding
             // anchors on the bullet FOLLOWING the gap.
             int line = 0;
-            for (int m = n + 1; m <= hi; ++m) {
-                const int cand =
-                    anchorLine.value(QStringLiteral("INV-%1").arg(m), 0);
+            for (const InvId &e : ids) {
+                if (e.n <= n) continue;
+                const int cand = anchorLine.value(e.id, 0);
                 if (cand > 0) { line = cand; break; }
             }
             add(QStringLiteral("invariant_id_gap"), line,

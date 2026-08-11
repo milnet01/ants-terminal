@@ -136,10 +136,35 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         return QJsonDocument(err);
     }
     if (!exists) {
-        return QJsonDocument(fbNotFound(
+        QJsonObject nf = fbNotFound(
             QStringLiteral("feedback_query: \"%1\" does not exist")
                 .arg(resolved),
-            resolved, feedbackCallerLeaf(req)));
+            resolved, feedbackCallerLeaf(req));
+        // ANTS-4104 — "nobody has filed anything here yet" is the state EVERY
+        // project starts in, and reporting it down the failure channel left a
+        // caller — told to read the un-triaged tail before filing — deciding
+        // whether the failure was real, with no way to tell "never filed" from
+        // "the derived path is wrong" short of reading the hint prose. found
+        // says it in a field that can be branched on; the candidates + hint that
+        // made the old refusal useful are carried over unchanged. An EXPLICIT
+        // path that does not resolve stays ok:false — that one is a caller
+        // error, not an empty state. ANTS-3587 made the same call for
+        // session_orient's absent ROADMAP.
+        if (!derived) return QJsonDocument(nf);
+        nf[QStringLiteral("ok")]     = true;
+        nf[QStringLiteral("reason")] = nf.value(QStringLiteral("error")).toString();
+        nf.remove(QStringLiteral("error"));
+        nf.remove(QStringLiteral("code"));
+        nf[QStringLiteral("path")]                   = resolved;
+        nf[QStringLiteral("path_derived")]           = true;
+        nf[QStringLiteral("found")]                  = false;
+        nf[QStringLiteral("delta")]                  = QString();
+        nf[QStringLiteral("delta_present")]          = false;
+        nf[QStringLiteral("delta_line_count")]       = 0;
+        nf[QStringLiteral("mapped_ids")]             = QJsonArray();
+        nf[QStringLiteral("maintainer_block_count")] = 0;
+        nf[QStringLiteral("truncated")]              = false;
+        return QJsonDocument(nf);
     }
     QFile f(resolved);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -180,6 +205,9 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
 
     QJsonObject out;
     out["ok"]                    = true;
+    // ANTS-4104 — the field the never-filed envelope sets to false. Always
+    // present on a success, so one branch covers both.
+    out["found"]                 = true;
     out["path"]                  = resolved;
     if (derived) out["path_derived"] = true;  // ANTS-3376
     out["delta"]                 = delta;

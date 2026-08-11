@@ -31,6 +31,7 @@
 #pragma once
 
 #include <QList>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -48,6 +49,18 @@ struct Options {
     // the check is SKIPPED — not that nothing is required.
     QStringList requiredSections;
 
+    // ANTS-4110 — the INV numbers OTHER specs in the same corpus own. A project
+    // may number invariants once across the corpus rather than restarting per
+    // document, and the shared spec-format standard permits it: ids are stable
+    // handles cited from CHANGELOG and sibling specs, and nothing says they
+    // restart. Without this set every id living in a neighbouring spec reads as
+    // a gap — 26 findings on one three-spec corpus, all false, in a bucket
+    // /cold-eyes records as pre-verified. Injected the same way
+    // `requiredSections` is, and for the same reason: this engine never opens a
+    // second file. Empty means per-document numbering is assumed, which is the
+    // pre-ANTS-4110 behaviour exactly.
+    QSet<int> siblingInvNumbers;
+
     // A directory-scoped checker with no cap is one bad corpus away from an
     // unbounded response. Per call; the verb decrements a run-wide budget.
     int maxFindings = 500;
@@ -60,6 +73,12 @@ struct Result {
     // Those are the two states this verb ships between, so the flag is always
     // reported and never inferred from an empty findings list.
     bool sectionsChecked = false;
+
+    // ANTS-4110 — id gaps NOT reported because a sibling spec owns the number.
+    // Reported rather than left to be inferred, for the same reason
+    // `sectionsChecked` is: a check that quietly declines to fire is what the
+    // defect this field exists for was made of.
+    int idGapsSuppressed = 0;
 
     int  lineCount = 0;   // reported, NEVER emitted as a finding (INV-6)
     bool truncated = false;
@@ -78,5 +97,14 @@ Result check(const QString &text, const QString &relPath,
 // engine's contract: the block's format and the list's meaning are one thing,
 // and splitting them across a library boundary is how the two drift.
 QStringList parseRequiredSections(const QString &standardText);
+
+// ANTS-4110 — the INV numbers a document ANCHORS (bullet or table form), for the
+// verb layer's corpus scan. Deliberately cheaper and looser than `check`'s own
+// scan: it does not locate the Invariants section, because its only consumer is
+// an ownership question ("does any other spec declare this number?") and an
+// example id quoted in prose can only make two documents look like they share a
+// number — which turns the sibling suppression OFF. Failing toward the old
+// behaviour is the right direction for a check that suppresses findings.
+QSet<int> invariantNumbers(const QString &text);
 
 }  // namespace SpecLint

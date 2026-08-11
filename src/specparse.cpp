@@ -95,10 +95,23 @@ QJsonObject parseSpecBody(const QString &body) {
     // Locate the Invariants section. Accept `## N. Invariants`,
     // `## Invariants`, `### Invariants`, case-insensitive.
     QJsonArray invariants;
+    // ANTS-4115 — the heading's TEXT must CONTAIN the word "invariants"; it need
+    // not BEGIN with it. OneUp writes `## 5. Correctness invariants` in all 13 of
+    // its specs and the anchored form matched none of them, so the section was
+    // never located and every bullet under it was invisible — invariants:[]
+    // beside possible_untabled_invariants:9, the parser reporting that it can see
+    // them and will not return them. Strict-first keeps the old choice on a
+    // document carrying both a real Invariants section and a heading that merely
+    // mentions one (`## Why these invariants matter`), where the loose form alone
+    // would take whichever came first.
     static const QRegularExpression hdrRe(
         QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[Ii]nvariants\b.*$)"),
         QRegularExpression::MultilineOption);
-    const auto hdrM = hdrRe.match(body);
+    static const QRegularExpression hdrLooseRe(
+        QStringLiteral(R"(^(#{2,3})\s+(?:\d+\.\s+)?[^\n]*\b[Ii]nvariants\b.*$)"),
+        QRegularExpression::MultilineOption);
+    auto hdrM = hdrRe.match(body);
+    if (!hdrM.hasMatch()) hdrM = hdrLooseRe.match(body);
     if (hdrM.hasMatch()) {
         const int sectionStart = hdrM.capturedEnd();
         // Section ends at the next `## ` heading of equal-or-lower
@@ -124,7 +137,7 @@ QJsonObject parseSpecBody(const QString &body) {
         // Found by ANTS-3662's `invariant_no_test` check, which is exactly the
         // defect it exists to report.
         static const QRegularExpression tableRe(
-            QStringLiteral(R"(^\|[ \t]*(INV-[0-9]+)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*$)"),
+            QStringLiteral(R"(^\|[ \t]*(INV-[0-9]+[a-z]?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*(.+?)[ \t]*\|[ \t]*$)"),
             QRegularExpression::MultilineOption);
         // ANTS-3799 — both forms are parsed and merged by document position,
         // rather than the bullet branch being skipped whenever the table branch
@@ -160,7 +173,7 @@ QJsonObject parseSpecBody(const QString &body) {
             // INV-N marker, then accumulate body lines until the
             // next anchor.
             static const QRegularExpression bulletStartRe(
-                QStringLiteral(R"(^-\s+\*\*(INV-[0-9]+)[\.]?\*\*\s*[—\-:]?\s*)"),
+                QStringLiteral(R"(^-\s+\*\*(INV-[0-9]+[a-z]?)[\.]?\*\*\s*[—\-:]?\s*)"),
                 QRegularExpression::MultilineOption);
             auto bit = bulletStartRe.globalMatch(section);
             QList<QPair<QString, int>> starts;  // id, position-after-marker
@@ -274,7 +287,13 @@ QJsonObject parseSpecBody(const QString &body) {
     QSet<QString> structuredInvIds;
     for (const auto &v : invariants)
         structuredInvIds.insert(v.toObject().value(QStringLiteral("id")).toString());
-    static const QRegularExpression invTokenRe(QStringLiteral("INV-[0-9]+"));
+    // ANTS-4107 — a sub-lettered id (INV-3b) is its own invariant, not text
+    // inside INV-3. It is matched with the plain-numbered form in both structured
+    // branches above, so a /cold-eyes split is returned as an entry of its own
+    // rather than absorbed into the body of the invariant before it. The trailing
+    // lookahead keeps `INV-3` inside a longer word from reading as `INV-3b`.
+    static const QRegularExpression invTokenRe(
+        QStringLiteral(R"(INV-[0-9]+[a-z]?(?![A-Za-z0-9]))"));
     QSet<QString> untabledInvIds;
     auto invTokIt = invTokenRe.globalMatch(body);
     while (invTokIt.hasNext()) {

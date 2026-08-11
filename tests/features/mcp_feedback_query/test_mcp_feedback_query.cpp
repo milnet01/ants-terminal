@@ -317,17 +317,36 @@ TEST(McpFeedbackQuery, DerivesDefaultPathFromCallerCwd) {
     EXPECT_TRUE(e.value("path_derived").toBool());
     EXPECT_TRUE(e.value("delta").toString().contains("new."));
 
-    // Derived default that does not exist → not_found, and because the
-    // caller's own sibling is absent while OTHER projects' files exist, the
-    // envelope flags all_other_projects.
+    // ANTS-4104 — a DERIVED default that does not exist is the empty state, not
+    // a failure: ok:true, found:false, and the candidates + all_other_projects
+    // diagnosis the old refusal carried, kept verbatim. Reported by Local Web
+    // Server Manager, whose first-ever call on a project read as an error.
     QTemporaryDir root2; ASSERT_TRUE(root2.isValid());
     ASSERT_TRUE(QDir(root2.path()).mkdir("BrandNew"));
     writeFeedback(root2, "Other_Ants_MCP_Feedback.md", "# o\n");
     QJsonObject req2; req2["caller_cwd"] = root2.path() + "/BrandNew";
     const QJsonObject e2 = rc.cmdFeedbackQuery(req2).object();
-    EXPECT_EQ(e2.value("code").toString(), "not_found");
+    EXPECT_TRUE(e2.value("ok").toBool());
+    EXPECT_FALSE(e2.value("found").toBool());
+    EXPECT_FALSE(e2.contains("code"));
+    EXPECT_FALSE(e2.value("delta_present").toBool());
+    EXPECT_TRUE(e2.value("mapped_ids").toArray().isEmpty());
+    EXPECT_TRUE(e2.value("path_derived").toBool());
     EXPECT_TRUE(e2.value("all_other_projects").toBool());
     EXPECT_TRUE(e2.contains("candidates"));
+    EXPECT_FALSE(e2.value("reason").toString().isEmpty())
+        << "the old error text survives as a reason, not a verdict";
+
+    // An EXPLICIT path that does not resolve is still a caller error.
+    QJsonObject req3;
+    req3["caller_cwd"] = root2.path() + "/BrandNew";
+    req3["path"]       = root2.path() + "/Gone_Ants_MCP_Feedback.md";
+    const QJsonObject e3 = rc.cmdFeedbackQuery(req3).object();
+    EXPECT_FALSE(e3.value("ok").toBool());
+    EXPECT_EQ(e3.value("code").toString(), "not_found");
+
+    // The success arm carries found:true, so one branch covers both.
+    EXPECT_TRUE(e.value("found").toBool());
 }
 
 // ANTS-3376 — a not_found candidate list floats the caller's OWN file to

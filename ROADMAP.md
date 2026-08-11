@@ -29738,7 +29738,7 @@ was a duplicate of ANTS-3849 (contract_doc_drift noise) and is annotated there
 rather than re-filed; four pairs were merged where two findings named the same
 defect from different angles.
 
-- 📋 [ANTS-4087] **doc_citations: counts.unchecked double-counts resolved citations, so the status buckets sum to more than count.**
+- ✅ [ANTS-4087] **doc_citations: counts.unchecked double-counts resolved citations, so the status buckets sum to more than count.**
   On a doc with 2 citations, both resolving, the reply carries count:2 and
   counts:{ok:2, unchecked:2, rest:0} — the buckets sum to 4 against 2
   citations. Every other key in that map is a resolution status, so
@@ -29753,6 +29753,7 @@ defect from different angles.
   **Layman:** A docs check reports two citations but nine status numbers that add up to four, so a clean run looks half-verified.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 AI Prompts.
+  Resolved (2026-08-11): the overlay model was already correct and specified (ANTS-3636 § 4 — counts.ok == anchored-and-found + anchor_missing + unchecked, with a test pinning it), so the defect was that nothing in the REPLY said which keys are statuses. doc_citations now emits `counts_overlay_keys`, so a caller can assert sum(counts[k] for k not in counts_overlay_keys) == count without reading the spec first; the description also glosses `unchecked` as resolved-but-nothing-to-cross-check rather than unverified. Smaller than the reshuffle the report offered, because moving the keys would break two specs and two tests for a naming problem. Suite 3352/3352.
 
 - 📋 [ANTS-4088] **roadmap_query mode:"bundles" emits token-soup bundle_labels when no cluster is found.**
   With 6 unrelated active items the verb correctly reports
@@ -30112,7 +30113,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
 
-- 📋 [ANTS-4104] **feedback_query returns ok:false for a project that has simply never filed feedback.**
+- ✅ [ANTS-4104] **feedback_query returns ok:false for a project that has simply never filed feedback.**
   The first call for a project with no *_Ants_MCP_Feedback.md returns
   ok:false, code:"not_found". "No findings have ever been filed here" is a
   normal expected state — the state every project starts in — reported
@@ -30131,6 +30132,7 @@ defect from different angles.
   **Layman:** Asking "has anyone reported anything here?" returns an error when the honest answer is "not yet".
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+  Resolved (2026-08-11): a DERIVED default that does not exist now returns ok:true with found:false, delta_present:false, empty mapped_ids and a `reason`, keeping the candidates + hint that made the old refusal useful; every success carries found:true so one branch covers both. An EXPLICITLY passed path that does not resolve still refuses not_found — that one is a caller error, not an empty state. Scoped to feedback_query's read; feedback_log's write ops legitimately create the file. Verb description updated. Regression-locked in McpFeedbackQuery.DerivesDefaultPathFromCallerCwd. Suite 3352/3352.
 
 - 📋 [ANTS-4105] **audit_falsepos_log's ledger suppresses nothing in audit_run — the writing verb and the reading sweep use different files.**
   audit_falsepos_log writes .ants_review_falsepos.jsonl. audit_run's
@@ -30179,7 +30181,7 @@ defect from different angles.
   Kind: enhancement.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
 
-- 📋 [ANTS-4107] **spec_query swallows sub-lettered invariant ids (INV-3b, INV-4b) into the preceding invariant's body, so invariants_count undercounts and spec_lint goes blind.**
+- ✅ [ANTS-4107] **spec_query swallows sub-lettered invariant ids (INV-3b, INV-4b) into the preceding invariant's body, so invariants_count undercounts and spec_lint goes blind.**
   A spec numbering INV-1..INV-3, INV-3b, INV-4, INV-4b ... parses such that
   the sub-lettered ones are not returned as entries — their body, *Test:*
   and *Breaks when:* clauses are appended into the PRECEDING invariant's
@@ -30207,6 +30209,7 @@ defect from different angles.
   **Layman:** Splitting a rule into 3 and 3b makes 3b invisible to every tool, including the one that checks each rule has a test.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+  Resolved (2026-08-11): id pattern widened to INV-N[a-z] in parseSpecBody's table + bullet + prose-token matchers and in spec_lint's two anchor regexes. The consequence that mattered is fixed at the same time: spec_lint's checks used to rebuild `INV-%1` from an int, so every sub-lettered id fell out of invariant_no_test; they now walk the id strings, and the gap scan alone reduces to numbers (a sub-letter occupies its parent's slot, so it can never open a gap). Regression-locked by SpecLint.Ants4107SubLetteredInvariantIds. Suite 3352/3352.
 
 - 📋 [ANTS-4108] **A `spec_conformance` verb — execute a spec's own regexes, bounds and predicates instead of reading them.**
   /doc-lint owns the deterministic half of spec review but has no check for
@@ -30268,7 +30271,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Lotto Tracker.
 
-- 📋 [ANTS-4110] **spec_lint's invariant_id_gap assumes per-spec INV numbering and fires 26 times on a project that numbers invariants project-globally.**
+- ✅ [ANTS-4110] **spec_lint's invariant_id_gap assumes per-spec INV numbering and fires 26 times on a project that numbers invariants project-globally.**
   26 invariant_id_gap findings across three specs — e.g. "INV-7 is missing
   from the id sequence with no tombstone" against a spec owning INV-1..6
   and INV-22/26, while INV-7..11 legitimately live in a sibling spec and
@@ -30296,6 +30299,7 @@ defect from different angles.
   **Layman:** A docs check reports 26 missing rules that are not missing — they live in a neighbouring document.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Lotto Tracker.
+  Resolved (2026-08-11): spec_lint gained SpecLint::Options::siblingInvNumbers (same injection shape as requiredSections) and Result::idGapsSuppressed; the verb layer decides the project's numbering SCHEME once per run and populates it. Discriminator is OWNERSHIP, not contiguity: project-global numbering means no INV number is shared between specs, whereas per-document numbering has nearly every spec opening at INV-1 — so a corpus sharing even one number keeps every gap finding (fails toward the old behaviour). Suppressions are counted and emitted as `id_gaps_suppressed`, never silent. Regression-locked by SpecLint.Ants4110SiblingNumbersAreNotGaps. Suite 3352/3352.
 
 - 📋 [ANTS-4111] **test_audit_partition's dimensions_active returns 18 dimensions; the /test-audit skill defines 14 and cut the other five deliberately.**
   The verb returns 18 dimensions_active including naming, splitting,
@@ -30385,7 +30389,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 OneUp.
 
-- 📋 [ANTS-4115] **spec_query returns invariants:[] for the `- **INV-1** <text>` bullet form while reporting possible_untabled_invariants:9 — it can see them and will not return them.**
+- ✅ [ANTS-4115] **spec_query returns invariants:[] for the `- **INV-1** <text>` bullet form while reporting possible_untabled_invariants:9 — it can see them and will not return them.**
   spec_query returned {invariants:[], invariants_count:0,
   possible_untabled_invariants:9} for a spec whose invariants are written
   exactly as that project's standard requires: `- **INV-1** <statement>`
@@ -30407,6 +30411,7 @@ defect from different angles.
   **Layman:** The one machine-readable thing a spec carries — its list of rules — is invisible to the tool, across every spec in the project.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 OneUp.
+  Resolved (2026-08-11): the root cause was NOT the separator the report suspected (already optional) — parseSpecBody's Invariants-heading regex was anchored, so `## 5. Correctness invariants` matched nothing and the whole section was never located. Widened to strict-first-then-contains in specparse.cpp AND speclint.cpp (the two must agree on the section, or the lint reports on a different document than the parser read). Also fixes four Ants specs whose own headings the anchored form was missing (`## 4. Contract — invariants`, `### 2.5 Invariants`). RED measured against the live pre-fix verb on OneUp docs/specs/ONEUP-0032-i18n.md (invariants:[] / possible_untabled_invariants:9). Regression-locked by SpecLint.Ants4115HeadingNeedNotBeginWithInvariants. Suite 3352/3352.
 
 - ✅ [ANTS-4116] **roadmap_log echoes file:"ROADMAP.md" on a project whose roadmap is lowercase roadmap.md.**
   op:"append" (dry_run) returned {"file":"ROADMAP.md"} on a project whose

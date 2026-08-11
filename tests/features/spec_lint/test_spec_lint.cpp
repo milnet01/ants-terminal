@@ -325,6 +325,138 @@ TEST(SpecLint, Inv6SizeIsNotAFinding) {
     EXPECT_FALSE(c.truncated);
 }
 
+// ANTS-4115 — the Invariants heading need not BEGIN with the word. OneUp writes
+// `## 5. Correctness invariants` in all 13 of its specs; the anchored regex
+// matched none of them, so the section was never located and every bullet under
+// it was invisible. The tell in the reply was invariants:[] sitting beside
+// possible_untabled_invariants:9 — the parser saying it could see them and would
+// not return them. Measured against the live pre-fix verb on
+// docs/specs/ONEUP-0032-i18n.md before this shipped.
+TEST(SpecLint, Ants4115HeadingNeedNotBeginWithInvariants) {
+    const QString doc = QStringLiteral(
+        "# ONEUP-1 — a spec\n"
+        "\n"
+        "## 5. Correctness invariants\n"
+        "\n"
+        "- **INV-1** Nothing under `engine/` imports the GUI. *Test:* a grep → none.\n"
+        "- **INV-2** This one carries no clause.\n"
+        "\n"
+        "## 6. Notes\n");
+
+    const QJsonObject parsed = SpecParse::parseSpecBody(doc);
+    const QJsonArray  invs   = parsed.value(QStringLiteral("invariants")).toArray();
+    ASSERT_EQ(invs.size(), 2) << "the heading contains the word; that is enough";
+    EXPECT_EQ(parsed.value(QStringLiteral("possible_untabled_invariants")).toInt(), 0)
+        << "nothing is untabled once the section is found";
+
+    // And spec_lint agrees about where the section is — the two must not read
+    // different documents.
+    const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("o.md"), {});
+    EXPECT_EQ(countKind(r, "invariant_no_test"), 1);
+    for (const auto &f : r.findings)
+        if (f.kind == QLatin1String("invariant_no_test"))
+            EXPECT_TRUE(f.message.contains(QStringLiteral("INV-2")));
+
+    // Strict-first is what keeps a document with BOTH shapes on its real
+    // section: the prose heading comes first here and must lose.
+    const QString both = QStringLiteral(
+        "# ANTS-1 — both\n"
+        "\n"
+        "## 2. Why these invariants matter\n"
+        "\n"
+        "- **INV-9** an example quoted in prose.\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — the real one. *Test:* t → ok.\n");
+    const QJsonArray picked = SpecParse::parseSpecBody(both)
+                                  .value(QStringLiteral("invariants")).toArray();
+    ASSERT_EQ(picked.size(), 1);
+    EXPECT_EQ(picked.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("INV-1"));
+}
+
+// ANTS-4107 — a sub-lettered id (INV-3b) is its own invariant. It used to match
+// no anchor, so its body was absorbed into INV-3's, invariants_count undercounted
+// and — the consequence that mattered — invariant_no_test could not see it, so a
+// sub-lettered invariant with no test surface passed the lint silently. A
+// /cold-eyes split into 3 and 3b is how one comes to exist, which put the blind
+// spot exactly where a contract had just been divided.
+TEST(SpecLint, Ants4107SubLetteredInvariantIds) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — split\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-3** — the narrowed half. *Test:* t → ok.\n"
+        "- **INV-3b** — the split-off half, with no clause at all.\n"
+        "- **INV-4** — another. *Test:* t → ok.\n"
+        "\n"
+        "## 4. Notes\n");
+
+    const QJsonObject parsed = SpecParse::parseSpecBody(doc);
+    const QJsonArray  invs   = parsed.value(QStringLiteral("invariants")).toArray();
+    ASSERT_EQ(invs.size(), 3);
+    QStringList ids;
+    for (const auto &v : invs) ids << v.toObject().value(QStringLiteral("id")).toString();
+    EXPECT_EQ(ids, (QStringList{QStringLiteral("INV-3"), QStringLiteral("INV-3b"),
+                                QStringLiteral("INV-4")}));
+    EXPECT_FALSE(invs.at(0).toObject().value(QStringLiteral("body")).toString()
+                     .contains(QStringLiteral("split-off half")))
+        << "3b's body must not be swallowed into 3's";
+
+    const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(countKind(r, "invariant_no_test"), 1);
+    for (const auto &f : r.findings)
+        if (f.kind == QLatin1String("invariant_no_test"))
+            EXPECT_TRUE(f.message.contains(QStringLiteral("INV-3b"))) << f.message.toStdString();
+    // A sub-letter occupies its parent's slot, so it can never open a gap.
+    EXPECT_EQ(countKind(r, "invariant_id_gap"), 0);
+}
+
+// ANTS-4110 — on a project that numbers invariants once across the corpus, a
+// number a SIBLING spec owns is not a gap. 26 such findings landed on one
+// three-spec corpus, all false, in a bucket /cold-eyes records as pre-verified —
+// and both repairs they invite are forbidden by the standard the check enforces:
+// renumber (ids are permanent) or tombstone ids that were never in the file.
+TEST(SpecLint, Ants4110SiblingNumbersAreNotGaps) {
+    const QString doc = QStringLiteral(
+        "# LOTTO-1 — a spec\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — a. *Test:* t → ok.\n"
+        "- **INV-2** — b. *Test:* t → ok.\n"
+        "- **INV-7** — g. *Test:* t → ok.\n"
+        "\n"
+        "## 4. Notes\n");
+
+    // Without the set, the pre-ANTS-4110 behaviour exactly: 3, 4, 5, 6 are gaps.
+    const SpecLint::Result plain = SpecLint::check(doc, QStringLiteral("l.md"), {});
+    EXPECT_EQ(countKind(plain, "invariant_id_gap"), 4);
+    EXPECT_EQ(plain.idGapsSuppressed, 0);
+
+    // With the siblings' numbers injected, none of them is a gap — and the count
+    // says so rather than leaving a short list to be read as a clean document.
+    SpecLint::Options opts;
+    opts.siblingInvNumbers = QSet<int>{3, 4, 5, 6};
+    const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("l.md"), opts);
+    EXPECT_EQ(countKind(r, "invariant_id_gap"), 0);
+    EXPECT_EQ(r.idGapsSuppressed, 4);
+
+    // A number nobody owns is still a gap: the suppression is a lookup, not a
+    // blanket off-switch.
+    SpecLint::Options partial;
+    partial.siblingInvNumbers = QSet<int>{3, 4};
+    const SpecLint::Result p = SpecLint::check(doc, QStringLiteral("l.md"), partial);
+    EXPECT_EQ(countKind(p, "invariant_id_gap"), 2);
+    EXPECT_EQ(p.idGapsSuppressed, 2);
+
+    // The corpus scan the verb layer feeds it: ownership, from either form.
+    const QSet<int> owned = SpecLint::invariantNumbers(doc);
+    EXPECT_EQ(owned, (QSet<int>{1, 2, 7}));
+}
+
 // § 2.1's fire-rate measurement, on the ANTS-3661 precedent. `command_test_
 // no_expectation` is a heuristic, and a candidate emitter that fires on most of
 // the corpus is a rule that has been guessed rather than a corpus that is
