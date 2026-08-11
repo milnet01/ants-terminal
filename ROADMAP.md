@@ -29729,6 +29729,703 @@ in each bullet, not just the reporter's symptom.
   Source: vestige-feedback-2026-08-03.
   Resolved (2026-08-03). find_caller gains an optional `lane` scope filter: SymbolQuery::Options::lane restricts the WALK to a project-relative subdirectory, so callers_count and truncated describe the scoped set rather than a filtered view of a wider one, and the applied value is echoed back as `lane` on both the callers[] and files_only paths. Declared in the inputSchema — without that, additionalProperties:false strips the arg, which is the ANTS-3432 trap this verb family has hit before. A lane that does not resolve to a directory under the root is IGNORED rather than refused: a typo returning zero callers is the same silent-empty-reads-as-an-answer failure the finding is about. Took the cheapest of the reporter's three suggested fixes; qualified Class::method matching stays unimplemented because `symbol` is constrained to a bare identifier and cannot express it.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
+
+35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
+Prompts, Ants Projects Hub, Ants Terminal, Claude Code config, DOOM Ants, Fin
+Break, Games Hub, Local Web Server Manager, Lotto Tracker, OneUp, RetroDB). One
+was a duplicate of ANTS-3849 (contract_doc_drift noise) and is annotated there
+rather than re-filed; four pairs were merged where two findings named the same
+defect from different angles.
+
+- 📋 [ANTS-4087] **doc_citations: counts.unchecked double-counts resolved citations, so the status buckets sum to more than count.**
+  On a doc with 2 citations, both resolving, the reply carries count:2 and
+  counts:{ok:2, unchecked:2, rest:0} — the buckets sum to 4 against 2
+  citations. Every other key in that map is a resolution status, so
+  `unchecked` reads as one, and a caller treating counts.unchecked > 0 as
+  "some citations were not verified" concludes a complete pass was partial.
+  Reproduced in AI_Prompts on docs/specs/AIPR-0011-filter-state-in-url.md;
+  also confirmed the counts are whole-doc and not filtered by only=.
+
+  Fix: make the buckets mutually exclusive so sum(buckets) == count, or
+  move `unchecked` out of the status map and document what it counts. A
+  caller should be able to assert that sum.
+  **Layman:** A docs check reports two citations but nine status numbers that add up to four, so a clean run looks half-verified.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 AI Prompts.
+
+- 📋 [ANTS-4088] **roadmap_query mode:"bundles" emits token-soup bundle_labels when no cluster is found.**
+  With 6 unrelated active items the verb correctly reports
+  no_clusters_found:true and 6 size-1 bundles, but each carries a label
+  synthesised from headline tokens — "- be bookmarked", "\"/\" - anywhere",
+  "57 blocks duplication:". Leading punctuation, bare hyphens and stopwords
+  survive, and for a size-1 bundle the label is strictly worse than the
+  item's own id + headline_oneline sitting in items[].
+
+  Fix (any one suffices): for size 1, use the item's id + headline_oneline;
+  strip leading/trailing punctuation and stopwords; or omit bundle_label
+  entirely when no_clusters_found is true, since the labels are then known
+  not to mean anything.
+  **Layman:** The "what should I work on next" view opens with six lines of gibberish labels instead of the item names.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 AI Prompts.
+
+- 📋 [ANTS-4089] **apply_edits takes {old,new} while the native Edit tool takes {old_string,new_string} — accept both.**
+  Every session arrives at apply_edits from the native Edit tool, writes
+  the first call with old_string/new_string, and gets bad_args: "edit 0
+  needs a non-empty \"path\" and a \"new\"" — which names the missing key
+  but not the one that WAS sent, so it reads as a malformed payload rather
+  than a naming mismatch. The natural next move is a tool_info re-read.
+
+  This biases against the verb we are recommending over N native Edits.
+  Fix: accept old_string/new_string as aliases (the pairing is
+  unambiguous). Failing that, have bad_args name the unrecognised key and
+  its canonical equivalent.
+  **Layman:** The batch-edit tool rejects the key names every session already has in hand, costing two wasted calls on first use.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Ants Projects Hub.
+
+- 📋 [ANTS-4090] **file_outline (JavaScript) omits top-level non-function const bindings, hiding a file's largest regions.**
+  The JS outline reports functions and arrow-function consts but not other
+  top-level `const NAME = ...` bindings. In a file storing payloads in
+  template literals (stylesheets, client scripts, SQL, HTML shells) those
+  are the biggest landmarks. On stats.mjs (1006 lines) the outline returns
+  29 symbols and jumps from `sort` (685) to `generate` (933), leaving ~250
+  lines — including a 95-line CSS literal and a 110-line JS literal —
+  unrepresented.
+
+  Fix: emit top-level const/let as its own kind (at least when the
+  initialiser spans multiple lines), truncating the signature at the
+  assignment so a 95-line string does not land in the response. The
+  arrow-function detection already parses these declarations.
+  **Layman:** The cheap file map skips big blocks of code, so a quarter of the file looks empty.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Ants Projects Hub.
+
+- 📋 [ANTS-4091] **roadmap_query include_body's head+tail elision silently drops a bullet's middle, and max_body_bytes cannot rescue a list query.**
+  ANTS-3736 made truncation keep the head plus the final ~1 KiB, tuned for
+  an append-only progress log where the newest text is last. A bullet
+  carrying a RESUME PLAN has the opposite shape — the plan sits in the
+  middle — so the elision drops precisely what the caller opened the bullet
+  to read, and the body reads as complete. max_body_bytes is honoured only
+  on targeted id=/ids= fetches, so a section sweep cannot raise it at all.
+
+  Fix, cheapest first: (1) raise the default on a targeted id=/ids= fetch —
+  a caller naming one bullet has already narrowed the payload; (2) make the
+  marker carry the remedy ("[N chars elided — pass max_body_bytes to
+  read]"); (3) preserve heading/structure lines from the elided span so a
+  dropped "Resume plan" heading is visible as dropped.
+  **Layman:** Opening a long roadmap item can quietly cut out the middle — exactly where a resume plan lives — and the result looks complete.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Ants Terminal.
+
+- 📋 [ANTS-4092] **project_settings op:detect suggests gitignored directories as source_roots, including a 2 GB state directory.**
+  On ~/.claude, detect returned suggestion.source_roots = ["plugins",
+  "projects"] with reason "default src/+tests/ walk indexed 0 of 63 source
+  files". Both are gitignored: `projects/` is ~2 GB of Claude Code session
+  transcripts, `plugins/` a re-downloadable vendored cache. Accepting it
+  with op:init would point codebase_index and find_sources at both. The
+  walk does not consult .gitignore even though workspace_search defaults
+  respect_gitignore:true — two verbs in one server disagreeing about what
+  is project source.
+
+  It bites hardest where detect is most confident: a config or docs repo
+  with no src/ is where the default walk indexes 0 files.
+
+  Fix: exclude ignored paths before ranking (`git check-ignore --stdin`
+  over the candidates is one call, no new dependency; fall back to current
+  behaviour where git is absent). Cheaper hardening if not: a vendored /
+  state denylist (node_modules, vendor, .venv, plugins, projects, cache)
+  plus a per-candidate file count in the suggestion.
+  **Layman:** The tool that is supposed to stop the guessing suggested pointing the code index at 2 GB of session transcripts.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Claude Code config.
+
+- 📋 [ANTS-4093] **project_settings op:detect under-reports itself — it suggests more keys than documented, and says "no override needed" while five keys sit undeclared.**
+  Two reports of the same root: detect's contract and its reply both cover
+  less than detect actually does.
+
+  (a) The description says detect "suggests source_roots"; on ~/.claude it
+  also returned docs_dir:"docs" and specs_dir:"docs/specs", both correct. A
+  field appearing that the contract does not mention reads as a bug until
+  it is checked, and a caller budgets a detect + init + a separate set for
+  keys detect had already resolved.
+
+  (b) On a project with no .ants/project.json at all, detect returned
+  present:false with reason "...no override needed". That is true of
+  source_roots only — docs_dir, roadmap, changelog, specs_dir and
+  test_roots were all undeclared and unmentioned. The path of least
+  resistance after reading it is to skip op:init, leaving the project in
+  the state the verb exists to end.
+
+  Fix: report the full key set — `detected:{...}` plus
+  `undeclared:[...]` from the same conventional-path probing project_layout
+  already does — and scope the "no override needed" wording to
+  source_roots. State in the description which keys detect can suggest, and
+  whether "not suggested" or "no candidate here" is meant when one is
+  absent.
+  **Layman:** The setup tool tells you there's nothing to configure when five settings are still unset.
+  Kind: doc-fix.
+  Source: cross-session-feedback-2026-08-11 Claude Code config + Local Web Server Manager.
+
+- 📋 [ANTS-4094] **audit_run's cppcheck parses C++ translation units as C, so a .cpp file gets zero coverage while reporting one syntax error.**
+  On a mixed C/C++ project, audit_run analysed a 10,386-line r_vulkan.cpp
+  as C: one syntaxError, zero findings. Distinct from the parse-failure
+  REPORTING of ANTS-3585/3706, which worked and is how it was noticed.
+  By hand: `cppcheck --enable=all --std=c++20 <file>` → 0 syntax errors, 58
+  findings; `cppcheck --language=c` reproduces the failure ("Code
+  'std::vector' is invalid C code").
+
+  Silent total loss of coverage on whichever files are C++ in a mixed
+  project, and the opposite of a loud failure — the sweep returned 2489
+  findings and looked complete while the most-changed file contributed
+  none.
+
+  Fix: (a) cheapest — stop passing a project-wide --language; cppcheck
+  infers per-file from the extension correctly. (b) best — support
+  --project=compile_commands.json so each TU gets its real compiler, -std,
+  defines and includes. audit_run currently cannot consume such a database
+  even when the project produces one.
+  **Layman:** The bug scanner reads C++ files as if they were C, finds nothing in them, and the report still looks thorough.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 DOOM Ants.
+
+- 📋 [ANTS-4095] **indie_review_corroborate reads N report files and parses 0 findings from all of them (total_input_bytes:0).**
+  Pointed at 14 lane reports totalling ~86 KB, the verb returned
+  reports_read:14 but total_findings:0, findings:[] and — the tell —
+  total_input_bytes:0. It opened the files and extracted nothing, so the
+  corroboration signal /code-quality-review calls its gold signal was
+  silently unavailable. The failure is indistinguishable from a genuine
+  "nothing was cited by two lanes", which is plausible and reassuring, so a
+  caller accepts it.
+
+  The reports were in the shape the skill's own brief asks for:
+  `- **r_vulkan.cpp:7831** -- quoted line -- dimension 2 -- MEDIUM -- why`,
+  plus heading-grouped variants and a line RANGE (`p_setup.c:423-424`).
+
+  Fix: tolerate those shapes (bold-wrapped file:line, line ranges, leading
+  `- ` bullet) — and, more robustly, refuse with a diagnostic when
+  reports_read > 0 and total_input_bytes == 0, since that pair is always a
+  parse failure and never a real empty result. Document the expected
+  finding-line format in the verb description.
+  **Layman:** The cross-check that confirms two reviewers found the same bug reads every report and extracts nothing, then reports "no agreement".
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 DOOM Ants.
+
+- 📋 [ANTS-4096] **indie_review_partition's computed fallback lists GENERATED headers instead of the real sources, and its suggested_merges are summary-string noise.**
+  Two defects in the sparse_partition:true fallback, on top of the known
+  directory grouping (ANTS-3709).
+
+  (1) For a shaders/ directory it enumerated 22 files, every one a
+  generated *.spv.h byte-array header, and none of the 19 hand-written GLSL
+  sources (*.comp/.frag/.vert/.glsl, 4,437 lines including a 1,834-line
+  megakernel) in the same directory. A lane briefed from that reviews
+  compiled arrays and never sees the shader code.
+
+  (2) suggested_merges is computed from SUMMARY TEXT similarity, but in the
+  fallback every summary comes from one template ("N file(s) under X/
+  (computed partition...)"), so all summaries are near-identical BY
+  CONSTRUCTION. It emitted 38 suggestions including "merge lane 1/6 with
+  lane 2/6" (identical summary, disjoint files) and "merge ipx with
+  sndserv" at 93%.
+
+  Fix: (1) prefer source extensions over generated ones sharing a directory
+  — at minimum skip *.spv.h / *.pb.h / *_generated.* / *.ttf.h, and add the
+  shader extensions currently absent from the source walk. (2) suppress
+  suggested_merges entirely when sparse_partition is true, or compare FILE
+  SETS rather than summary strings.
+  **Layman:** The review planner pointed the reviewers at compiled byte arrays instead of the shader code sitting next to them.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 DOOM Ants.
+
+- 📋 [ANTS-4097] **roadmap_log op:amend_body is single-line by design, so two successful calls can leave a wrapped paragraph incoherent with nothing in the envelope to show it.**
+  The unique-match guard protects the NEIGHBOURING text, not the resulting
+  sentence. Two amendments to two lines of one wrapped paragraph each
+  succeed and each looks correct in isolation; the paragraph they jointly
+  produce can be nonsense. The envelope reports {amended, body_line,
+  bytes_written} and has no view of the paragraph, so there is no signal to
+  act on — and no prompt to re-read, precisely BECAUSE the calls succeeded.
+  It shipped a garbled ROADMAP paragraph in one commit and needed a second
+  commit with a raw Edit.
+
+  The cases spanning more than one wrapped line are common rather than
+  exotic: superseding a recommendation, changing a decision, softening a
+  claim — each is one multi-line edit expressed as N single-line ones.
+
+  Fix, cheapest first: (a) say in the description that N calls compose into
+  a paragraph nobody checked — the current "single-line" note reads as a
+  matching constraint, not a warning; (b) return the rendered paragraph (or
+  the touched line plus its wrapped neighbours) in the success envelope;
+  (c) accept a multi-line old_text matched after unwrapping, and re-wrap
+  the replacement, so a paragraph rewrite is one atomic call.
+  **Layman:** Fixing two lines of the same paragraph one at a time can produce a sentence that contradicts itself, and both edits report success.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 DOOM Ants.
+
+- 📋 [ANTS-4098] **audit_run: spec_code_drift resolves test-file citations against source_roots only, so every citation in a tests/features/*/spec.md is a false positive.**
+  5 of 6 spec_code_drift findings named a file that exists in the SAME
+  directory as the spec citing it (tests/features/dashboard/spec.md →
+  test_min_size.py, and the same for forecast/ and spending_alerts/). The
+  project declares both source_roots and test_roots in .ants/project.json;
+  the resolver appears to search only the former. The 6th finding was
+  genuine (a stale test FUNCTION name), so the rule catches real drift —
+  the file-citation half is what misfires.
+
+  83% false positives on a rule whose true positives are valuable, and a
+  test spec citing its sibling tests is the NORMAL shape of a per-feature
+  contract, so on a project with many feature dirs it fires constantly and
+  trains the reader to skip the rule.
+
+  Fix: resolve relative to the citing file's own directory first, then the
+  declared roots — and include test_roots when the citing document is
+  itself under one. That takes the rule from 1/6 to 6/6 precision here.
+  **Layman:** A check complains that a test contract references files that don't exist — they're sitting in the same folder as the contract.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Fin Break.
+
+- 📋 [ANTS-4099] **audit_run: changelog_test_coverage matches CHANGELOG headline PROSE against feature-directory names, so an id-keyed project fails every entry.**
+  6/6 false positives. The rule fuzzy-matches an entry's headline text
+  against feature-directory names; the project keys coverage by ticket id
+  (the entry ends `(FIBR-NNNN)` and the id appears in the spec/test), so
+  the prose never resembles the directory name. Every flagged entry had
+  real coverage, found by id grep across tests/.
+
+  Prose matching is structurally weak here: a CHANGELOG headline is written
+  for USERS and a test directory is named for developers, so the better the
+  changelog prose, the worse the match. The QUESTION the rule asks is worth
+  asking — it did surface one genuine adjacent gap — the matcher is what
+  needs replacing.
+
+  Fix: when the entry carries a `(PROJ-NNNN)` suffix (which changelog_log
+  itself writes), grep that id across test_roots and treat a hit as
+  coverage; fall back to prose matching only when no id is present. It is
+  the same id the sibling roadmap verbs already use as the join key.
+  **Layman:** A check says six shipped features have no tests; all six have tests, found by their ticket number.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Fin Break.
+
+- 📋 [ANTS-4100] **indie_review_partition returns a directory-shaped partition (one `src` lane for a 21k-LoC app) with no signal that it is too coarse.**
+  The verb derives lanes from CLAUDE.md's module map by grouping on TOP-
+  LEVEL DIRECTORY. For a project whose map is a file list under `src/`,
+  that collapses the whole application into one lane: sourcePaths:
+  ["src/finbreak"] — 96 files, 20,774 LoC covering crypto, the vault, 3
+  importers, 14 services, 12 repositories and 40 UI modules.
+  /code-quality-review's Phase 1b wants 8–20 subsystems by COHESION.
+
+  The skill says a found partition is AUTHORITATIVE and to skip deriving
+  one, and suggested_merges being empty reads as "this partition is fine",
+  so a session gets a shallow review with no signal. A hand-built 16-lane
+  cohesion partition instead produced 3 CRITICAL and 11 HIGH findings,
+  several only visible when a lane sees one subsystem's seams.
+
+  Fix: (a) cheap — flag `too_coarse:true` with the measured size when a
+  single lane exceeds an LoC/file threshold; silence is the real problem,
+  not the coarseness. (b) better — recurse one level into a lane that is a
+  single directory, grouping by the next path segment. Either way document
+  that the verb mirrors the module map's granularity.
+  **Layman:** The review planner put a whole 21,000-line application into one bucket and gave no hint that was wrong.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Fin Break.
+
+- 📋 [ANTS-4101] **file_outline reports a C++ `namespace X {` with kind:"class".**
+  Outlining a header whose contents sit in a namespace emits the namespace
+  itself as {"kind":"class", "name":"chess", "signature":"namespace chess
+  {"}. The signature is correct and unambiguous, so the information is
+  there; it misleads only a caller that branches on `kind` without reading
+  `signature` — which is what "show me the classes in this file" does.
+
+  Fix: emit kind:"namespace". The parser already has the keyword in hand to
+  build the signature string.
+  **Layman:** The file map labels a namespace as a class, so filtering for classes returns the wrong thing.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Games Hub.
+
+- 📋 [ANTS-4102] **doc_integrity reports broken_link on placeholder targets containing <...> brackets.**
+  A skeleton file whose links are deliberately unsubstituted —
+  `[docs/specs/<ID>-<topic>.md](../specs/<ID>-<topic>.md)` — is reported as
+  broken_link. A target containing `<`/`>` is a placeholder by
+  construction: no path will ever match it, so the check can never come
+  back clean on any project keeping a skeleton. The project already
+  documents it as a known false positive, which is the shape of a check
+  that has stopped carrying information.
+
+  Fix: skip a link target whose path component contains an unescaped `<` or
+  `>`, optionally reporting them under a separate `placeholder_link` kind
+  so they stay visible without polluting broken_link. The same rule covers
+  `{{...}}` and `%s` template markers. Needs no project configuration.
+  **Layman:** Every docs check on a project with a template file returns the same one non-problem, forever.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+
+- 📋 [ANTS-4103] **changelog_log's interleaved-prose advisory fires on trailing HTML comments and on the continuation bodies its own `body` parameter writes.**
+  Two false-positive classes in one scan, both reported separately.
+
+  (a) A trailing `<!-- ... -->` sitting AFTER the last category block was
+  reported as prose "interleaved between" category blocks. A comment is not
+  prose — it does not render — and content after the final block is not
+  interleaved by any reading of the word.
+
+  (b) `op:"add"` with a `body` renders 2-space-indented continuation lines
+  under the bullet: the documented, intended shape. A later add then names
+  one of those lines as interleaved prose. So the verb flags its own
+  canonical output, and will do so on every subsequent add for as long as
+  any bullet in [Unreleased] carries a body — the normal state of a
+  changelog maintained through this verb.
+
+  Both arrive attached to a SUCCESSFUL write, so they read as "the write
+  worked but your file is malformed", inviting a restructuring edit to a
+  file that needed none.
+
+  Fix: exclude HTML comment blocks from the scan; restrict it to content
+  falling BETWEEN two `### ` headings; and treat an indented line following
+  a `- ` bullet in the same block as bullet body, not prose. The scanner
+  already parses bullet positions to insert into them.
+  **Layman:** The changelog tool warns that your file is malformed — about text the same tool wrote, in the shape it was designed to write.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+
+- 📋 [ANTS-4104] **feedback_query returns ok:false for a project that has simply never filed feedback.**
+  The first call for a project with no *_Ants_MCP_Feedback.md returns
+  ok:false, code:"not_found". "No findings have ever been filed here" is a
+  normal expected state — the state every project starts in — reported
+  through the failure channel. The reply is otherwise helpful (it lists the
+  sibling files and explains none matches this leaf); only the verdict is
+  wrong.
+
+  A caller told to read the un-triaged tail before filing sees a failure
+  and must decide whether it is real, and cannot distinguish "never filed"
+  from "the derived path is wrong" without reading the hint prose.
+
+  Fix: return ok:true with delta_present:false, found:false and empty
+  mapped_ids/tracking, keeping candidates and hint. Reserve ok:false for an
+  explicitly-passed path that does not resolve. ANTS-3587 made exactly this
+  call for session_orient's absent-ROADMAP case.
+  **Layman:** Asking "has anyone reported anything here?" returns an error when the honest answer is "not yet".
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+
+- 📋 [ANTS-4105] **audit_falsepos_log's ledger suppresses nothing in audit_run — the writing verb and the reading sweep use different files.**
+  audit_falsepos_log writes .ants_review_falsepos.jsonl. audit_run's
+  suppressions:"auto" reads .audit_cache/learned-fp.jsonl plus
+  .audit_allowlist.json — three files, and the one the logging verb writes
+  is not among the two the sweep reads. /audit step 10.5 names
+  audit_falsepos_log as the preferred route, but for TOOL findings it has
+  no effect: the jsonl is brief-assembly material for LLM reviewers, not a
+  tool suppression source, and neither verb's response says so.
+
+  Measured: 187 findings, 187 of them contract_doc_drift; 6 logged as false
+  positives; re-run → 184, the drop attributable to an unrelated doc edit.
+  .ants_review_falsepos.jsonl present with 16 lines,
+  .audit_cache/learned-fp.jsonl absent, .audit_allowlist.json absent.
+
+  Fix: (a) have "auto" also consume .ants_review_falsepos.jsonl, matching
+  on rule id plus file or path glob — adding an optional rule_id/path field
+  to audit_falsepos_log would make that reliable rather than fuzzy; or (b)
+  document .audit_allowlist.json's schema somewhere reachable, since it is
+  currently the only working lever and is undiscoverable. Related:
+  ANTS-3849.
+  **Layman:** You mark a false alarm as dismissed and the next scan reports it again, because the note was filed where nothing reads it.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+
+- 📋 [ANTS-4106] **doc_integrity takes a single `path`, so a post-fix sweep cannot be scoped to the files a run actually edited.**
+  `path` accepts one file or one directory. /apply-fixes step 5 says to
+  pass the files you edited, explicitly to avoid a whole-tree walk that
+  spills to disk. A real pass edits a handful spread across the tree — here
+  CLAUDE.md, CHANGELOG.md and ROADMAP.md at the root plus two under docs/ —
+  and no single `path` covers that set, so the full walk is what happens:
+  28 documents checked when 5 were edited.
+
+  That is how a pre-existing finding in an untouched file gets attributed
+  to the current pass; it cost a verification here to establish the one
+  broken_link reported was a known placeholder in a file the run never
+  opened.
+
+  Fix: accept `paths:[...]` alongside `path`, returning one findings set
+  over the union — the shape file_outline already has for its multi-file
+  form and read_regions for slices. docs_digest and the ETag key off the
+  union as they key off the walked set today. (`paths` currently lands in
+  ignored_args, which is correct for an unknown argument and noted only
+  because the plural is what a caller reaches for.)
+  **Layman:** After fixing five files you can only re-check one folder or the whole tree, so unrelated old problems get blamed on your change.
+  Kind: enhancement.
+  Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+
+- 📋 [ANTS-4107] **spec_query swallows sub-lettered invariant ids (INV-3b, INV-4b) into the preceding invariant's body, so invariants_count undercounts and spec_lint goes blind.**
+  A spec numbering INV-1..INV-3, INV-3b, INV-4, INV-4b ... parses such that
+  the sub-lettered ones are not returned as entries — their body, *Test:*
+  and *Breaks when:* clauses are appended into the PRECEDING invariant's
+  `body`, and invariants_count reports only the plain-numbered ones (16
+  against 19 defined). Each sub-lettered invariant is written in exactly
+  the same bullet form as its siblings.
+
+  Sub-lettering is the natural response to /cold-eyes splitting an
+  invariant that claimed more than its test exercised — the parent id is
+  cited elsewhere, so renumbering is what the "ids are permanent" rule
+  forbids.
+
+  Three consequences; the third matters most. (1) invariants_count is
+  wrong. (2) The swallowed clauses are invisible to callers iterating
+  invariants[]. (3) spec_lint's invariant_no_test check cannot see them, so
+  a sub-lettered invariant shipped with NO test surface passes the lint
+  silently — a deterministic gate with a blind spot exactly where a review
+  has just split a contract in two.
+
+  Fix: widen the id pattern to `INV-\\d+[a-z]?` in both the bullet-form and
+  table-form matchers, and treat INV-3b as belonging to the 3 slot rather
+  than a gap. If sub-lettering is out of contract, REFUSE it loudly from
+  spec_lint instead — silent absorption is indistinguishable from the
+  invariant not existing.
+  **Layman:** Splitting a rule into 3 and 3b makes 3b invisible to every tool, including the one that checks each rule has a test.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+
+- 📋 [ANTS-4108] **A `spec_conformance` verb — execute a spec's own regexes, bounds and predicates instead of reading them.**
+  /doc-lint owns the deterministic half of spec review but has no check for
+  the class that produced almost every serious finding in the reporting
+  session: a spec that PRESCRIBES an executable artefact (a regex, a range
+  check, a size cap, a precedence order, a fixture) and states what it
+  does, where the statement is false.
+
+  Three /cold-eyes loops — 6 strong-model lanes, 75 verified findings —
+  read those patterns and passed them. Running them found four defects in
+  ~2 minutes, including `re.search(r"\\d{1,5}(?![0-9])", " 123456")`
+  returning `23456` (a lookahead does not reject a longer number in a
+  SEARCH — the engine advances), a performance fixture that returned before
+  the regex under test ever ran (green by construction, and green under its
+  own prescribed mutation), and a quoted cost of 0.24us that was timing an
+  early return against a real 77us.
+
+  None is reachable by reading and none needs a language model. This is the
+  convergence lever, not a nice-to-have: a pattern passes its corpus or it
+  does not, where a judgement review always has a fifteenth dimension with
+  something to say.
+
+  Shape: inputs `path` + optional `lang`. Extract every fenced block and
+  the `| input | expected |` table in the same section; exec the block in a
+  restricted namespace (re only, no filesystem/network, wall-clock cap);
+  report rows whose actual differs from expected as FINDINGS, a fenced
+  pattern with NO table beside it as a CANDIDATE (that is what produced two
+  of the four), and per-pattern timing as an OBSERVATION (that is what
+  caught the unreachable fixture).
+
+  Needs a spec before build — the exec sandbox and the extraction contract
+  are both things other sessions would build against.
+  **Layman:** Actually run the patterns a spec prescribes against the examples beside them, instead of asking a reviewer to eyeball whether they match.
+  Kind: feature.
+  Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+
+- 📋 [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
+  roadmap_query {id:"LOTTO-0019"} resolves and returns
+  bold_id:"LOTTO-0019". roadmap_log op:"flip" with the same id refuses
+  bullet_not_found for every bullet in the file; the `headline` locator
+  with the identical string works and dry_run confirms the right line. The
+  tell: step 3's response carries id:"" — the writer resolved the bullet
+  but could not extract an id from it. The file is ants-v1 with bullets
+  like `- 📋 **LOTTO-0019** ...`.
+
+  Worse than the failed batch: flip_batch reports per-locator skipped[] and
+  still returns ok:true, so a caller not reading flipped_count believes it
+  flipped three bullets when it flipped none — a session closing a bundle
+  reports items shipped that are still planned. The natural workflow is
+  query-by-id then flip-by-id, and that exact pair is what fails.
+
+  Fix: make roadmap_log's id locator accept the bold-id form roadmap_query
+  already parses into bold_id — ideally by sharing the parser rather than
+  matching the pattern twice. Plus: (a) when the id locator matches zero
+  bullets but a bullet's bold_id equals the string, say so in the refusal;
+  (b) return ok:false from flip_batch when flipped_count is 0 and
+  skipped_count > 0.
+  **Layman:** Marking items done silently does nothing on some roadmaps, and still reports success.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Lotto Tracker.
+
+- 📋 [ANTS-4110] **spec_lint's invariant_id_gap assumes per-spec INV numbering and fires 26 times on a project that numbers invariants project-globally.**
+  26 invariant_id_gap findings across three specs — e.g. "INV-7 is missing
+  from the id sequence with no tombstone" against a spec owning INV-1..6
+  and INV-22/26, while INV-7..11 legitimately live in a sibling spec and
+  INV-12..21 in three others. The union across the corpus is contiguous
+  INV-1..INV-30.
+
+  The shared spec-format standard permits this — it says ids are stable
+  handles cited from CHANGELOG and sibling specs, and never says they
+  restart per document. 100% false positives here and on every project
+  numbering this way.
+
+  Why it matters more than a normal FP: the findings bucket is defined as
+  deterministic and pre-verified — /cold-eyes records FINDINGS straight
+  into its verified list without re-checking. A session that trusted it
+  would either renumber INV ids (which the standard forbids outright) or
+  add 26 tombstones for ids never in the file. It also drowns a real gap:
+  one row among 26 identical-looking ones.
+
+  Fix: detect the scheme before applying the check — if the union across
+  specs_dir is contiguous while individual files are not, the project
+  numbers globally; skip and say so explicitly, the way sections_checked
+  already gets. Or downgrade a gap to a candidate wherever the id resolves
+  to an INV defined in a sibling spec — that lookup is cheap and turns the
+  check into a useful one.
+  **Layman:** A docs check reports 26 missing rules that are not missing — they live in a neighbouring document.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 Lotto Tracker.
+
+- 📋 [ANTS-4111] **test_audit_partition's dimensions_active returns 18 dimensions; the /test-audit skill defines 14 and cut the other five deliberately.**
+  The verb returns 18 dimensions_active including naming, splitting,
+  verbosity, parametrisation and doc_strings. The skill's
+  references/dimensions.md defines 14, and SKILL.md says test STYLE is
+  "deliberately out of scope", those five having been cut on 2026-07-30
+  because "they generate findings on every run, they crowd out the validity
+  findings in the triage, and this is one of the more expensive reviews to
+  run".
+
+  The fast path tells the caller to seed subagents from envelope-level
+  dimensions_active[], so following it briefs reviewers on exactly the
+  dimensions the skill removed. fold_in also documents "one of the 18
+  kDimensions", so the 18 is baked into the write path too.
+
+  Fix: drop the five style dimensions from kDimensions, or keep them
+  non-default so dimensions_active matches the skill's 14 unless explicitly
+  requested.
+  **Layman:** The tool hands reviewers five extra things to check that the skill removed on purpose because they were expensive noise.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 OneUp.
+
+- 📋 [ANTS-4112] **test-audit pre-pass patterns system_shell_out and cpp_exit are not language-gated — they fire on English prose in a shell script and on Python's canonical sys.exit(main()).**
+  Reported as two findings, one root cause.
+
+  (a) system_shell_out looks for C's system() and matches the literal
+  "system (" anywhere, including inside a quoted string in a .sh file where
+  system() cannot exist: `echo "TEST: a non-English locale still detects an
+  up-to-date system (LC_ALL pinned)"`. Two separate audit lanes
+  independently could not find any isolation issue at that line.
+
+  (b) cpp_exit reports error_handling on `sys.exit(main())` inside the
+  `if __name__ == "__main__":` guard — the correct way to propagate a
+  status code, not a swallowed error — and on a documented skip-code
+  `sys.exit(77)` in an except ImportError handler. All four of the
+  project's Python test entry points were flagged: 4 of 8 pre-pass
+  findings, half the signal.
+
+  Cost compounds: a chunk carrying pre-pass findings skips the cheap
+  breadth pass, so one prose match buys a strong-model read of the entire
+  chunk.
+
+  Fix: gate both patterns on language (C/C++ only, as cpp_exit's name
+  already says), and skip matches inside string literals and comments.
+  **Layman:** Two scanners meant for C code flag a sentence in a shell script and the standard way every Python script ends.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 OneUp.
+
+- 📋 [ANTS-4113] **test_audit_partition packs chunks by file count only, so a few very large test files land in one chunk nobody can review.**
+  chunk_size is a file count (default 12, clamped [4,30]) with no byte
+  budget. A project whose tests live in a few very large files gets one
+  chunk no single subagent can review against the full dimension list: 4
+  test files totalling ~181 KB — run-tests.sh alone 2101 lines / 94 KB,
+  gui-smoke.py 1361 lines / 71 KB — returned chunks_count:1. The reporting
+  session discarded the partition and sub-laned by hand.
+
+  The inverse case (30 tiny files in one chunk) is fine, so the defect is
+  specifically the missing upper bound — and a caller who trusts it gets a
+  shallow review that still looks like it covered everything.
+
+  Fix: add a per-chunk byte budget alongside chunk_size (split when a
+  chunk's files exceed roughly 40–60 KB), and split a single file that
+  exceeds the budget alone into line ranges with the shared header/helpers
+  repeated.
+  **Layman:** The work splitter counts files, not size, so four huge test files become one job too big to do properly.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 OneUp.
+
+- 📋 [ANTS-4114] **spec_log op:set_status writes a Status value the calling project's own standard rejects, then reports ok:true.**
+  The verb wrote `**Status:** accepted (2026-08-07)` — generic spec-format
+  vocabulary — into a spec in a project whose standard defines exactly four
+  permitted values (Draft | Reviewed | Implemented | Superseded by <id>)
+  and explicitly forbids the line carrying history. The project's own push
+  gate then failed the file the verb had just written. The verb reported
+  ok:true, bytes_written:16, no warning.
+
+  The failure surfaces minutes later at local CI rather than at the call,
+  and the obvious workaround — hand-edit the line — silently abandons the
+  verb. Any project with its own Status vocabulary hits this.
+
+  Fix: sniff the permitted values from the project's standard (the same
+  discovery project_layout already does for standards_dir) and refuse with
+  a `status_not_permitted` envelope listing the allowed set, rather than
+  writing a value the project rejects. At minimum echo which vocabulary the
+  verb assumed.
+  **Layman:** The documented way to mark a spec's status wrote a value the project's own checker fails, and said it worked.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 OneUp.
+
+- 📋 [ANTS-4115] **spec_query returns invariants:[] for the `- **INV-1** <text>` bullet form while reporting possible_untabled_invariants:9 — it can see them and will not return them.**
+  spec_query returned {invariants:[], invariants_count:0,
+  possible_untabled_invariants:9} for a spec whose invariants are written
+  exactly as that project's standard requires: `- **INV-1** <statement>`
+  followed by an indented `*Test:*` clause. All 13 specs in the corpus
+  behave the same. The Ants standard (docs/standards/specs.md) prescribes
+  the same bullet form with an em-dash separator, so the likely delta is
+  the separator being required.
+
+  impact: invariant_check and anything else keyed on the contract silently
+  sees no invariants for the project, and a caller reading
+  invariants_count:0 concludes the spec has no contract.
+  possible_untabled_invariants proves the parser can SEE them.
+
+  Fix: parse the `- **INV-N** <text>` + indented `*Test:*` bullet form with
+  or without a separator, alongside the table form. If a separator really
+  is required, say so in the reply rather than returning an empty list
+  beside a non-zero possible_untabled_invariants. Related: ANTS-4107
+  (sub-lettered ids), ANTS-3676 (clause split inside a code span).
+  **Layman:** The one machine-readable thing a spec carries — its list of rules — is invisible to the tool, across every spec in the project.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 OneUp.
+
+- 📋 [ANTS-4116] **roadmap_log echoes file:"ROADMAP.md" on a project whose roadmap is lowercase roadmap.md.**
+  op:"append" (dry_run) returned {"file":"ROADMAP.md"} on a project whose
+  roadmap is `roadmap.md` (declared in .ants/project.json) and where no
+  ROADMAP.md exists on disk. The verb clearly resolved the real file — it
+  reported format:"pass-headings" and a plausible insertion line inside the
+  5000-line roadmap.md — so the echo is a canonicalised display name, not
+  the path operated on.
+
+  On a case-sensitive filesystem this reads as "the verb is about to create
+  a second, wrong roadmap file", and was the reason that session abandoned
+  the verb and hand-edited. It also makes the reply unusable as a citation
+  of what was modified.
+
+  Fix: echo the resolved project-relative path in its real case. If a
+  canonical label is wanted, ship it as a separate field alongside the true
+  path.
+  **Layman:** The tool reports writing to a filename that does not exist in the repo, so you cannot tell where the change landed.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 RetroDB.
+
+- 📋 [ANTS-4117] **roadmap_log op:append renders a non-conforming bullet on a pass-headings roadmap — Status: todo, unindented body, no separator.**
+  On a roadmap the verb itself detects as format:"pass-headings", append
+  renders `#### Pass 57.6 <headline>` / `- **Status**: todo` / body
+  flush-left. The file's house format for all ~200 existing passes is
+  `- **Target**/`**Why**`/`**Plan**`/`**Verify**` bullets, then `-
+  **Status**: planned (YYYY-MM-DD). Lanes: <lanes>.`, then `- **Source**:
+  ...`, then a `---` separator.
+
+  Three concrete mismatches: (1) `todo` is not a value this roadmap uses,
+  and the verb's own status enum accepted "planned" and rendered "todo"
+  anyway; (2) the body is flush-left instead of 2-space-indented
+  continuation, so it does not attach to a bullet; (3) no `---` separator.
+  No `Lanes:` line either, though the schema advertises one.
+
+  Insertion-point detection and pass-format detection both worked; only the
+  rendering is unusable, so the fix looks narrow. That session abandoned
+  the verb and hand-edited three passes.
+
+  Fix: on format:"pass-headings", render the status VALUE passed rather
+  than mapping it to todo, append the date + Lanes the schema already
+  accepts, indent body continuations by 2 spaces, and emit the `---`
+  separator.
+  **Layman:** On one project the roadmap tool writes entries in the wrong shape, so every append needs fixing by hand afterwards.
+  Kind: fix.
+  Source: cross-session-feedback-2026-08-11 RetroDB.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
@@ -37857,6 +38554,28 @@ contributors don't duplicate research.
   **Layman:** One check in the audit produces over two thousand results, which buries anything real underneath it.
   Kind: fix.
   Source: audit-2026-08-06.
+  Corroborated (2026-08-11) from a second project — Fin Break reported the
+  same detector at 947 findings across 61 docs, and classified every one by
+  token shape: 544 paths / path:line citations, 145 prose placeholders
+  (`INV-N`, `PascalCase`, `vMAJOR.MINOR.PATCH`), 34 lowercase prose words,
+  107 dotted tokens. Of the 107 dotted, 81 resolve and 26 do not — and most
+  of those 26 are external APIs a doc legitimately cites (`os.execv`,
+  `QIcon.fromTheme`, `locale.setlocale`). Zero actionable findings survived
+  triage: the measured true-positive rate this bullet asks for is 0/947.
+
+  Also noted: the rule cannot resolve a Python `Class.method` at all, since
+  that literal never appears in source (class and def are on different
+  lines). Their suggested filters, in value order: (1) skip a token
+  containing `/` or a `.md`/`.py`/`.sh` extension or matching
+  `<name>:<digits>` — 57% of the volume and never a symbol; (2) skip
+  ALL-CAPS placeholders and tokens using `N`/`NNNN` metasyntactically;
+  (3) for a dotted `A.b`, resolve `b` as a member of `A` rather than the
+  literal, and skip when `A` is a stdlib/third-party module. Filter (1)
+  alone takes 947 to ~400.
+
+  Related: ANTS-4105 (the false-positive ledger the reporting sessions
+  reached for does not suppress tool findings, so this cannot currently be
+  quieted).
 
 - 📋 [ANTS-3850] **cppcheck: 24 structs with uninitialised POD members, plus 8 by-value/by-reference nits.**
   From the 2026-08-06 audit. cppcheck reports, on the post-split tree:
