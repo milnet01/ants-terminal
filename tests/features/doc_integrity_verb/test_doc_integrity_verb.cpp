@@ -140,9 +140,59 @@ TEST(DocIntegrityVerb, WiringRegistered) {
     const int h = rc.indexOf("RemoteControl::cmdDocIntegrity");
     ASSERT_GE(h, 0);
     // The handler validates a supplied path and refuses bad_path on escape.
-    const QString body = rc.mid(h, 1200);
+    // Window widened for ANTS-4106's `paths[]` block (validation loop +
+    // rationale comment) — the enumerateMany dispatch is the last line of the
+    // handler's scoping section.
+    const QString body = rc.mid(h, 3600);
     EXPECT_TRUE(body.contains("validatePath("));
     EXPECT_TRUE(body.contains("check.err"));
+    // INV-18 (ANTS-4106) — every `paths[]` entry is validated the same way, so
+    // a root-escape in the plural form refuses bad_path exactly as `path` does.
+    EXPECT_TRUE(body.contains("QStringLiteral(\"paths\")"));
+    EXPECT_TRUE(body.contains("docIntegrityEnumerateMany"));
+    // Declared on the schema, else a caller cannot reach it —
+    // additionalProperties:false would refuse the argument outright.
+    EXPECT_TRUE(ci.contains("props[\"paths\"]      = pathsProp;"));
+}
+
+// INV-18 (ANTS-4106) — `paths:[…]` checks the union of several files/dirs in
+// one run. /apply-fixes step 5 says to pass the files a run edited, precisely
+// to avoid a whole-tree walk, and a real pass edits a handful spread across
+// the tree that no single `path` covers — so the whole-tree walk was what
+// happened and a pre-existing finding in an untouched file got attributed to
+// the pass.
+TEST(DocIntegrityVerb, EnumerateManyUnion) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeFile(root + "/docs/a/one.md", "# H\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/a/sub/two.md", "# H\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/b/three.md", "# H\n"));
+    ASSERT_TRUE(writeFile(root + "/README.md", "# H\n"));
+    ASSERT_TRUE(writeFile(root + "/CHANGELOG.md", "# H\n"));
+
+    // The shape a fix pass actually has: two root files + one docs subtree.
+    const QStringList u = RemoteControl::docIntegrityEnumerateMany(
+        root, {"README.md", "CHANGELOG.md", "docs/a"}, "docs");
+    EXPECT_EQ(u, (QStringList{"CHANGELOG.md", "README.md",
+                              "docs/a/one.md", "docs/a/sub/two.md"}))
+        << "sorted union, and docs/b is NOT walked";
+
+    // Overlapping entries collapse — a dir plus a file inside it is one doc,
+    // not two, so no document can be counted into two findings.
+    EXPECT_EQ(RemoteControl::docIntegrityEnumerateMany(
+                  root, {"docs/a", "docs/a/one.md"}, "docs"),
+              (QStringList{"docs/a/one.md", "docs/a/sub/two.md"}));
+
+    // A non-existent in-root entry contributes nothing and does not refuse
+    // (INV-15's rule, per entry).
+    EXPECT_EQ(RemoteControl::docIntegrityEnumerateMany(
+                  root, {"docs/b", "docs/nope"}, "docs"),
+              (QStringList{"docs/b/three.md"}));
+
+    // Empty list → empty, so the handler can tell "no paths given" from
+    // "paths matched nothing" and fall back to the single-path walk.
+    EXPECT_TRUE(RemoteControl::docIntegrityEnumerateMany(root, {}, "docs").isEmpty());
 }
 
 // INV-17 (ANTS-3737) — the checked-doc-set digest is content-sensitive, which

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **doc_integrity takes a single `path`, so a post-fix sweep cannot be scoped to the files a run actually edited.** (ANTS-4106)
+  After fixing five files you can only re-check one folder or the whole tree, so unrelated old problems get blamed on your change.
+
 - **Archive a released version from the roadmap store, and rename a section** (ANTS-4070)
   `roadmap_log op:"rotate_minor"` moves a closed minor's headings and
   everything under them into `docs/roadmap/<M>.<N>.md`, and
@@ -79,6 +82,12 @@ for security-relevant changes.
   goes back to reading just one of them.
 
 ### Fixed
+
+- **project_settings op:detect under-reports itself — it suggests more keys than documented, and says "no override needed" while five keys sit undeclared.** (ANTS-4093)
+  The setup tool tells you there's nothing to configure when five settings are still unset.
+
+- **project_settings op:detect suggests gitignored directories as source_roots, including a 2 GB state directory.** (ANTS-4092)
+  The tool that is supposed to stop the guessing suggested pointing the code index at 2 GB of session transcripts.
 
 - **roadmap_log op:amend_body is single-line by design, so two successful calls can leave a wrapped paragraph incoherent with nothing in the envelope to show it.** (ANTS-4097)
   Fixing two lines of the same paragraph one at a time can produce a sentence that contradicts itself, and both edits report success.

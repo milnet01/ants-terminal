@@ -119,9 +119,35 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
             QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
     }
+    // ANTS-4106 — `paths:[…]`, the multi-file form file_outline already has.
+    // /apply-fixes step 5 says to pass the files a run edited, precisely to
+    // avoid a whole-tree walk; a real pass edits a handful spread across the
+    // tree (CLAUDE.md + CHANGELOG.md + ROADMAP.md at the root, two under
+    // docs/) and no single `path` covers that set, so the full walk was what
+    // happened — 28 documents checked when 5 were edited, and a pre-existing
+    // finding in an untouched file read as one this pass caused. Wins over
+    // `path` when both are sent (file_outline's rule). docs_digest and the
+    // ETag need no change: they already key off the walked set, which is now
+    // the union.
+    QStringList rawPaths;
+    const QJsonArray pathsArr = req.value(QStringLiteral("paths")).toArray();
+    for (const QJsonValue &v : pathsArr) {
+        const QString p = v.toString().trimmed();
+        if (!p.isEmpty()) rawPaths << p;
+    }
+    for (const QString &p : std::as_const(rawPaths)) {
+        const auto check = PathValidation::validatePath(
+            p, rootCanonical, QStringLiteral("doc_integrity"),
+            QStringLiteral("paths"));
+        if (check.bad) return QJsonDocument(check.err);
+    }
+
     const QString docsDir =
         ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
-    QStringList relDocs = docIntegrityEnumerate(rootCanonical, rawPath, docsDir);
+    QStringList relDocs =
+        rawPaths.isEmpty()
+            ? docIntegrityEnumerate(rootCanonical, rawPath, docsDir)
+            : docIntegrityEnumerateMany(rootCanonical, rawPaths, docsDir);
 
     DocIntegrity::Options opts;
     if (relDocs.size() > opts.maxDocsPerRun)
@@ -162,6 +188,25 @@ QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
     if (fi.isDir())  return collectMd(abs);           // dir → recursive *.md
     if (fi.isFile()) return {rootDir.relativeFilePath(abs)};  // file → one doc
     return {};  // non-existent in-root path → INV-15 (empty checked_docs)
+}
+
+// ANTS-4106 — pure: several validated paths → their de-duplicated, sorted
+// union. Overlapping entries (a dir and a file inside it) collapse to one
+// doc, so a caller listing everything a fix pass touched cannot double-count
+// a document into two findings.
+QStringList RemoteControl::docIntegrityEnumerateMany(
+    const QString &rootCanonical, const QStringList &rawPaths,
+    const QString &docsDirDefault) {
+    QSet<QString> seen;
+    QStringList out;
+    for (const QString &p : rawPaths) {
+        const QStringList part =
+            docIntegrityEnumerate(rootCanonical, p, docsDirDefault);
+        for (const QString &d : part)
+            if (!seen.contains(d)) { seen.insert(d); out << d; }
+    }
+    out.sort();
+    return out;
 }
 
 // ANTS-3601 — pure: DocIntegrity findings → the response object, filtered by
@@ -855,12 +900,24 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
                 }
             }
         }
+        // ANTS-4093 — name the keys that are NOT declared, always. `declared`
+        // alone answers "what is set"; the question a caller actually acts on
+        // is "what is still unset", and reading a reply that says only
+        // "no override needed" as "nothing to configure" is how a project
+        // stays unconfigured. Derived from the same kKeys set, so the two
+        // fields can't disagree about what the recognised keys are.
+        QJsonArray undeclared;
+        for (const QString &k : kKeys)
+            if (!declared.contains(k)) undeclared.append(k);
+
         QJsonObject o;
         o[QStringLiteral("ok")]         = true;
         o[QStringLiteral("present")]    = sug.present;
         o[QStringLiteral("suggestion")] = s;
         if (!declared.isEmpty())
             o[QStringLiteral("declared")] = declared;
+        if (!undeclared.isEmpty())
+            o[QStringLiteral("undeclared")] = undeclared;
         if (!declaredMissing.isEmpty())
             o[QStringLiteral("declared_missing")] = declaredMissing;
         return QJsonDocument(o);

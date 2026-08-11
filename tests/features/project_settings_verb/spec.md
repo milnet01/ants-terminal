@@ -45,10 +45,28 @@ the ANTS-2160 suite used for its consumer-wiring check.
   (`.md` not indexable, so `docs/` is NOT a source subdir) →
   `sourceRoots==["engine"]`, `testRoots==["tests"]`, `docsDir=="docs"`,
   `specsDir=="docs/specs"`, `roadmap=="ROADMAP.md"`, `changelog=="CHANGELOG.md"`.
-  Negative: standard `src/`+`tests/` (no suggestion) + `CHANGELOG.md` →
-  `sourceRoots` nullopt AND all five aux fields nullopt (no ride-along without
-  a suggestion). Pre-fix: the `Suggestion` struct has no aux fields → the test
-  does not compile, so the assertions cannot false-green.
+  **Superseded in part by INV-21** — the aux keys are no longer a ride-along
+  on a `source_roots` suggestion. Pre-fix: the `Suggestion` struct has no aux
+  fields → the test does not compile, so the assertions cannot false-green.
+- **INV-21** (ANTS-4093) — the aux keys are proposed on the NO-OVERRIDE path
+  too: standard `src/`+`tests/` + `CHANGELOG.md` → `sourceRoots` nullopt (the
+  default walk covers the code) but `changelog=="CHANGELOG.md"`. Previously
+  every aux field was nullopt here, so a project whose `src/` layout is fine
+  got a reply about `source_roots` and nothing else while five keys sat
+  undeclared and unmentioned — and the cheapest reading of that is "nothing to
+  configure", which leaves the project in the state the verb exists to end.
+  The reason string on that path now scopes its verdict to `no source_roots
+  override needed`, and the verb envelope always carries `undeclared[]`: every
+  recognised key with no declaration, derived from the same `kKeys` set as
+  `declared` so the two cannot disagree.
+- **INV-22** (ANTS-4092) — a gitignored top-level directory is excluded from
+  the detect walk and named in `excluded[]`. `git check-ignore --stdin` is
+  asked ONCE, over the candidate names, BEFORE any counting — the reporting
+  project's ignored `projects/` is ~2 GB, and a tree that will be discarded
+  must not be walked to discard it. This makes detect agree with
+  `workspace_search`, which defaults to `respect_gitignore:true`. A root with
+  no git repo, no git binary, or a timing-out git behaves exactly as before
+  (empty ignore set): the probe narrows a suggestion, it never blocks one.
 - **INV-20** (ANTS-3705) — `op:"detect"` echoes the stored declaration as
   `declared` (the recognised keys, verbatim) plus `declared_missing[]` naming
   every declared path that no longer resolves under the root. Read from the

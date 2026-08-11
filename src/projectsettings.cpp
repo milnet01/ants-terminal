@@ -14,6 +14,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QProcess>
+#include <QSet>
 
 #include <algorithm>
 
@@ -129,6 +131,51 @@ void proposeAuxLayout(Suggestion &s, const QString &root) {
         s.changelog = QStringLiteral("CHANGELOG.md");
 }
 
+// ANTS-4092 — the candidate dirs git itself ignores. workspace_search
+// defaults to respect_gitignore:true (it shells out to rg), while this walk
+// looked at everything — two verbs in one server disagreeing about what is
+// project source. It bites hardest where detect is most confident: on a repo
+// with no src/ the default walk indexes 0 files, so whatever is left ranks.
+// On ~/.claude that was `projects/` (~2 GB of session transcripts) and
+// `plugins/` (a re-downloadable vendored cache), and op:init would have
+// pointed codebase_index at both.
+//
+// Asked ONCE, over the candidate names only, and BEFORE any counting — a
+// 2 GB tree must not be walked just to be discarded. A repo-less root, an
+// absent git, a non-zero-beyond-1 exit or a timeout all yield an empty set,
+// i.e. exactly the pre-4092 behaviour; this narrows a suggestion, it never
+// blocks one.
+QSet<QString> gitIgnoredDirs(const QString &rootCanonical,
+                             const QStringList &names) {
+    QSet<QString> out;
+    if (names.isEmpty()) return out;
+    QProcess git;
+    git.setWorkingDirectory(rootCanonical);
+    git.start(QStringLiteral("git"),
+              {QStringLiteral("check-ignore"), QStringLiteral("--stdin")});
+    if (!git.waitForStarted(2000)) return out;
+    git.write(names.join(QChar('\n')).toUtf8() + '\n');
+    git.closeWriteChannel();
+    if (!git.waitForFinished(5000)) {
+        git.kill();
+        git.waitForFinished(1000);
+        return out;
+    }
+    // check-ignore: 0 = some paths ignored, 1 = none, 128 = not a repo.
+    if (git.exitStatus() != QProcess::NormalExit || git.exitCode() > 1)
+        return out;
+    const QString stdOut = QString::fromUtf8(git.readAllStandardOutput());
+    const auto lines = stdOut.split(QChar('\n'), Qt::SkipEmptyParts);
+    for (const QString &line : lines) {
+        // check-ignore echoes the path as given; strip any trailing slash
+        // git may normalise onto a directory name.
+        QString name = line.trimmed();
+        while (name.endsWith(QLatin1Char('/'))) name.chop(1);
+        if (!name.isEmpty()) out.insert(name);
+    }
+    return out;
+}
+
 }  // namespace
 
 // ANTS-2161 / ANTS-3393 — single source of truth for "is this a top-level
@@ -188,12 +235,22 @@ Suggestion detect(const QString &rootCanonical) {
     QStringList excludedDirs;                    // ANTS-3369: skipped noise dirs (non-dot)
     const QFileInfoList dirs = root.entryInfoList(
         QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks, QDir::Name);
+    // ANTS-4092 — one `git check-ignore` over the surviving candidates, ahead
+    // of the counting loop so an ignored tree is never walked.
+    QStringList gitCandidates;
+    for (const QFileInfo &fi : dirs)
+        if (!isNoiseDir(fi.fileName())) gitCandidates << fi.fileName();
+    const QSet<QString> gitIgnored = gitIgnoredDirs(rootCanonical, gitCandidates);
     for (const QFileInfo &fi : dirs) {
         const QString name = fi.fileName();
         if (isNoiseDir(name)) {
             // Surface the skipped vendored/build dirs (but not dot-dirs) so
             // a caller sees what was discounted — names only, no descent.
             if (!name.startsWith(QLatin1Char('.'))) excludedDirs << name;
+            continue;
+        }
+        if (gitIgnored.contains(name)) {  // ANTS-4092
+            excludedDirs << name;
             continue;
         }
         if (budget <= 0) continue;
@@ -234,9 +291,19 @@ Suggestion detect(const QString &rootCanonical) {
         if (srcCount   > 0) defaults << QStringLiteral("src");
         if (testsCount > 0) defaults << QStringLiteral("tests");
         if (!defaults.isEmpty()) s.wouldUseRoots = defaults;
+        // ANTS-4093 — propose the aux layout HERE too. It used to run only on
+        // the two miss paths, so a project whose src/ layout is fine got a
+        // reply naming source_roots and nothing else, while docs_dir /
+        // specs_dir / roadmap / changelog / test_roots sat undeclared and
+        // unmentioned — and the cheapest read of that is "nothing to
+        // configure", which leaves the project in the state this verb exists
+        // to end. The probe is a handful of stat calls (proposeAuxLayout).
+        proposeAuxLayout(s, rootCanonical);
+        // …and say what the "no override" verdict is ABOUT. It was only ever
+        // true of source_roots.
         s.reason = QStringLiteral(
             "default src/+tests/ walk indexed %1 of %2 source files; "
-            "no override needed").arg(s.defaultSourceCount).arg(total);
+            "no source_roots override needed").arg(s.defaultSourceCount).arg(total);
         return s;
     }
 

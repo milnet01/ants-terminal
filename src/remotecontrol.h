@@ -527,6 +527,13 @@ public:
     static QStringList docIntegrityEnumerate(const QString &rootCanonical,
                                              const QString &rawPath,
                                              const QString &docsDirDefault);
+    // ANTS-4106 — the `paths:[…]` form: the de-duplicated, sorted union of
+    // each entry's enumeration. An empty list yields an empty set (the caller
+    // falls back to the single-`path` walk), so "no paths given" and "paths
+    // matched nothing" stay distinguishable at the call site.
+    static QStringList docIntegrityEnumerateMany(const QString &rootCanonical,
+                                                 const QStringList &rawPaths,
+                                                 const QString &docsDirDefault);
     static QJsonObject docIntegrityBuildResponse(
         const QList<DocIntegrity::Finding> &findings,
         const QSet<QString> &kinds, const QStringList &checkedDocs);

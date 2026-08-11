@@ -4247,7 +4247,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "never flagged, and unnumbered/prose headings are untouched). "
                     "Fence-aware (fenced examples ignored); GitHub-compatible "
                     "heading slugs. path=<file|dir> scopes the run (a dir walks "
-                    "its *.md recursively); omitted → the project docs_dir (else "
+                    "its *.md recursively); paths=[...] scopes it to the UNION "
+                    "of several files/dirs and wins over path (ANTS-4106 — a "
+                    "post-fix sweep over the files a run edited, which no "
+                    "single path covers); omitted → the project docs_dir (else "
                     "docs/). kinds=[...] filters findings + counts. A non-existent "
                     "in-root path is ok:true with empty checked_docs; a "
                     "root-escaping path refuses bad_path. Emits docs_digest — a "
@@ -4285,7 +4288,28 @@ void ClaudeIntegration::onMcpConnection() {
                         kindsProp["description"] = QStringLiteral(
                             "Optional filter; narrows findings AND counts to "
                             "these kinds. Omitted → all four.");
+                    // ANTS-4106 — the multi-file form, matching file_outline's
+                    // `paths` and read_regions' slice list.
+                    QJsonObject pathsProp; pathsProp["type"] = "array";
+                        {
+                            QJsonObject items; items["type"] = "string";
+                            pathsProp["items"] = items;
+                        }
+                        pathsProp["description"] = QStringLiteral(
+                            "Project-relative files and/or directories to check "
+                            "in ONE run, findings reported over their union "
+                            "(ANTS-4106). Wins over `path` when both are sent. "
+                            "Use it to scope a post-fix sweep to the files a "
+                            "run actually edited — a real pass edits a handful "
+                            "spread across the tree, which no single `path` "
+                            "covers, so the whole-tree walk was what happened "
+                            "and a pre-existing finding in an untouched file "
+                            "got attributed to the pass. docs_digest and the "
+                            "ETag key off the union, as they key off the walked "
+                            "set today. A root-escaping entry refuses "
+                            "bad_path.");
                     props["path"]       = pathProp;
+                    props["paths"]      = pathsProp;   // ANTS-4106
                     props["kinds"]      = kindsProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
@@ -4562,6 +4586,18 @@ void ClaudeIntegration::onMcpConnection() {
                     ".ants/project.json by hand is never needed. A missing "
                     "entry is DROPPED by the reader, which is otherwise "
                     "indistinguishable from never having been declared. "
+                    "ANTS-4093 — detect suggests ALL SIX recognised keys, not "
+                    "just source_roots: test_roots / docs_dir / specs_dir / "
+                    "roadmap / changelog are proposed from their conventional "
+                    "paths whenever those resolve, and `undeclared[]` names "
+                    "every recognised key with no declaration. A reason of "
+                    "\"no source_roots override needed\" is about source_roots "
+                    "ALONE — it does not mean there is nothing to configure. "
+                    "ANTS-4092 — gitignored directories are excluded from the "
+                    "walk before it counts them (one `git check-ignore`, "
+                    "matching workspace_search's respect_gitignore default) "
+                    "and are named in `excluded[]` alongside the vendored / "
+                    "build dirs; a repo-less or git-less root walks as before. "
                     "op:\"init\" → write the detected (or explicit) keys; "
                     "refuses settings_exists if the file is present (no "
                     "clobber); writes nothing (written:false) when there's "

@@ -35,9 +35,26 @@ because the pure helpers are the sharper place to pin these two invariants.
   `KindsFilterNarrowsCounts` over
   `RemoteControl::docIntegrityBuildResponse`.
 - **INV-10** — the verb is registered with the `Required` caller_cwd contract,
-  is ETag-supported, and its handler validates `path` (refusing `bad_path` on a
-  root escape). *Test:* `WiringRegistered` (source-scrape of mainwindow.cpp,
+  is ETag-supported, and its handler validates `path` — and every `paths[]`
+  entry (ANTS-4106) — refusing `bad_path` on a root escape. *Test:*
+  `WiringRegistered` (source-scrape of mainwindow.cpp,
   claudeintegration.cpp, remotecontrol.cpp).
+- **INV-19** (ANTS-4106) — `paths:[…]` checks the de-duplicated, sorted UNION
+  of several files and/or directories in one run, and wins over `path` when
+  both are sent. Overlapping entries (a dir and a file inside it) collapse to
+  one doc, so no document is counted into two findings; a non-existent in-root
+  entry contributes nothing without refusing (INV-15's rule, applied per
+  entry); an empty list yields empty, keeping "no paths given" distinguishable
+  from "paths matched nothing" at the call site. `docs_digest` and the ETag
+  need no change — they already key off the walked set, which is now the
+  union. *Test:* `EnumerateManyUnion` over
+  `RemoteControl::docIntegrityEnumerateMany`, plus the `WiringRegistered`
+  scrape. Why it exists: `/apply-fixes` step 5 says to pass the files a run
+  edited, precisely to avoid a whole-tree walk, and a real pass edits a
+  handful spread across the tree (CLAUDE.md + CHANGELOG.md + ROADMAP.md at the
+  root plus two under `docs/`) that no single `path` covers — so 28 documents
+  were checked when 5 were edited, and a pre-existing finding in an untouched
+  file read as one the pass had caused.
 
 ## Known residue — markdown a doc quotes on another file's behalf
 

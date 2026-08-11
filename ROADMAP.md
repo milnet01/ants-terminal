@@ -29846,7 +29846,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Ants Terminal.
 
-- 📋 [ANTS-4092] **project_settings op:detect suggests gitignored directories as source_roots, including a 2 GB state directory.**
+- ✅ [ANTS-4092] **project_settings op:detect suggests gitignored directories as source_roots, including a 2 GB state directory.**
   On ~/.claude, detect returned suggestion.source_roots = ["plugins",
   "projects"] with reason "default src/+tests/ walk indexed 0 of 63 source
   files". Both are gitignored: `projects/` is ~2 GB of Claude Code session
@@ -29867,8 +29867,21 @@ defect from different angles.
   **Layman:** The tool that is supposed to stop the guessing suggested pointing the code index at 2 GB of session transcripts.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Claude Code config.
+  Resolved (2026-08-11): the report's first choice, `git
+  check-ignore --stdin`, is what shipped — one process, over the candidate
+  top-level names only, and asked BEFORE the counting loop so a 2 GB
+  ignored tree is never walked to be discarded. Ignored dirs join the
+  existing `excluded[]` alongside the vendored / build ones. detect now
+  agrees with workspace_search, which has defaulted to
+  respect_gitignore:true all along. A root with no git repo, no git binary,
+  a non-zero-beyond-1 exit or a timeout yields an empty ignore set — i.e.
+  exactly the pre-fix walk, so this narrows a suggestion and can never
+  block one. The denylist alternative was NOT taken: it would need
+  maintaining per project, and `plugins`/`projects` are ordinary names
+  elsewhere. Test: project_settings_verb INV-22 (real `git init`, with the
+  no-repo fallback asserted in the same case).
 
-- 📋 [ANTS-4093] **project_settings op:detect under-reports itself — it suggests more keys than documented, and says "no override needed" while five keys sit undeclared.**
+- ✅ [ANTS-4093] **project_settings op:detect under-reports itself — it suggests more keys than documented, and says "no override needed" while five keys sit undeclared.**
   Two reports of the same root: detect's contract and its reply both cover
   less than detect actually does.
 
@@ -29894,6 +29907,21 @@ defect from different angles.
   **Layman:** The setup tool tells you there's nothing to configure when five settings are still unset.
   Kind: doc-fix.
   Source: cross-session-feedback-2026-08-11 Claude Code config + Local Web Server Manager.
+  Resolved (2026-08-11), both halves. (b) was the real
+  defect: `proposeAuxLayout` ran only on the two miss paths, so a project
+  whose src/ layout is fine got a reply about source_roots and nothing
+  else. It now runs on the no-override path too (a handful of stat calls),
+  the reason string says "no source_roots override needed" rather than "no
+  override needed", and the detect envelope always carries `undeclared[]` —
+  every recognised key with no declaration, derived from the same kKeys set
+  as `declared` so the two cannot disagree. (a) is a description fix: the
+  verb text now states that detect covers all six keys, not just
+  source_roots. The report's `detected:{...}` wrapper was NOT adopted — the
+  aux keys already have named top-level fields and re-nesting them would
+  break the shipped envelope for a rename. Note this SUPERSEDES part of
+  ANTS-3588's INV-19 ("no ride-along without a suggestion"), whose negative
+  case is now the positive one; that test and its spec bullet were updated
+  rather than left to fail. Test: project_settings_verb INV-21.
 
 - 📋 [ANTS-4094] **audit_run's cppcheck parses C++ translation units as C, so a .cpp file gets zero coverage while reporting one syntax error.**
   On a mixed C/C++ project, audit_run analysed a 10,386-line r_vulkan.cpp
@@ -30169,7 +30197,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
 
-- 📋 [ANTS-4106] **doc_integrity takes a single `path`, so a post-fix sweep cannot be scoped to the files a run actually edited.**
+- ✅ [ANTS-4106] **doc_integrity takes a single `path`, so a post-fix sweep cannot be scoped to the files a run actually edited.**
   `path` accepts one file or one directory. /apply-fixes step 5 says to
   pass the files you edited, explicitly to avoid a whole-tree walk that
   spills to disk. A real pass edits a handful spread across the tree — here
@@ -30191,6 +30219,19 @@ defect from different angles.
   **Layman:** After fixing five files you can only re-check one folder or the whole tree, so unrelated old problems get blamed on your change.
   Kind: enhancement.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+  Resolved (2026-08-11): `paths:[...]` shipped as asked
+  — the union of several files and/or directories in one run, winning over
+  `path` when both are sent (file_outline's rule). The union is a new pure
+  helper `docIntegrityEnumerateMany`, so the de-dup and sort are unit-tested
+  rather than only source-scraped: overlapping entries (a dir plus a file
+  inside it) collapse to one doc, a non-existent in-root entry contributes
+  nothing without refusing, and an empty list stays distinguishable from
+  "matched nothing". Every entry is validated exactly as `path` is, so a
+  root escape refuses bad_path. docs_digest and the ETag needed no change —
+  the report was right that they already key off the walked set. The
+  sibling verbs that share docIntegrityEnumerate (doc_symbols, spec_lint,
+  doc_dedup) were deliberately NOT given `paths` in this pass; nobody has
+  reported the same friction there. Test: doc_integrity_verb INV-19.
 
 - ✅ [ANTS-4107] **spec_query swallows sub-lettered invariant ids (INV-3b, INV-4b) into the preceding invariant's body, so invariants_count undercounts and spec_lint goes blind.**
   A spec numbering INV-1..INV-3, INV-3b, INV-4, INV-4b ... parses such that

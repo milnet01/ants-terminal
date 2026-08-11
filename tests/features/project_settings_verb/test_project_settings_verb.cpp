@@ -17,6 +17,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -359,11 +360,58 @@ TEST(ProjectSettingsVerb, StandardLayoutProposesNoAuxKeys) {
 
     const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
     EXPECT_FALSE(s.sourceRoots.has_value());   // default walk covers → no suggestion
-    EXPECT_FALSE(s.testRoots.has_value());
-    EXPECT_FALSE(s.docsDir.has_value());
+    // INV-21 (ANTS-4093) — but the aux keys ARE proposed here now. They used
+    // to ride along on a source_roots suggestion only, so this project got a
+    // reply about source_roots and nothing else while five keys sat
+    // undeclared and unmentioned.
+    EXPECT_TRUE(s.testRoots.has_value());
+    EXPECT_EQ(s.changelog.value_or(QString()), QStringLiteral("CHANGELOG.md"))
+        << "CHANGELOG.md is on disk and undeclared — say so";
+    EXPECT_FALSE(s.docsDir.has_value());       // no docs/ in this fixture
     EXPECT_FALSE(s.specsDir.has_value());
     EXPECT_FALSE(s.roadmap.has_value());
-    EXPECT_FALSE(s.changelog.has_value());     // nullopt DESPITE CHANGELOG.md
+    // …and the verdict names what it is about.
+    EXPECT_TRUE(s.reason.contains(QStringLiteral("no source_roots override needed")))
+        << "\"no override needed\" was only ever true of source_roots";
+}
+
+// INV-22 (ANTS-4092) — a gitignored top-level dir is excluded from the walk
+// rather than ranked as a source_root. Pre-fix, detect ignored .gitignore
+// entirely while workspace_search defaults to respect_gitignore:true, so on a
+// repo with no src/ — where the default walk indexes 0 files and detect is at
+// its most confident — a state directory won.
+TEST(ProjectSettingsVerb, Inv22GitignoredDirsExcluded) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/engine/a.c", cFile("a"));
+    writeFile(root + "/engine/b.c", cFile("b"));
+    writeFile(root + "/state/x.c", cFile("x"));
+    writeFile(root + "/state/y.c", cFile("y"));
+    writeFile(root + "/state/z.c", cFile("z"));
+    writeFile(root + "/.gitignore", QStringLiteral("state/\n"));
+
+    // Without a git repo the probe is a no-op, so `state` still ranks — which
+    // is also the documented fallback when git is unavailable.
+    const ProjectSettings::Suggestion before = ProjectSettings::detect(root);
+    ASSERT_TRUE(before.sourceRoots.has_value());
+    EXPECT_TRUE(before.sourceRoots->contains(QStringLiteral("state")))
+        << "no repo → no ignore data → pre-4092 behaviour";
+
+    QProcess git;
+    git.setWorkingDirectory(root);
+    git.start(QStringLiteral("git"), {QStringLiteral("init"), QStringLiteral("-q")});
+    if (!git.waitForFinished(10000) || git.exitCode() != 0)
+        GTEST_SKIP() << "git unavailable — the fallback leg above still ran";
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    ASSERT_TRUE(s.sourceRoots.has_value());
+    EXPECT_FALSE(s.sourceRoots->contains(QStringLiteral("state")))
+        << "a gitignored dir must not be suggested as a source_root";
+    EXPECT_TRUE(s.sourceRoots->contains(QStringLiteral("engine")));
+    EXPECT_TRUE(s.excluded.contains(QStringLiteral("state")))
+        << "and the caller is told what was discounted";
+    // The ignored files are not counted either — they were never walked.
+    EXPECT_EQ(s.totalSourceCount, 2);
 }
 
 // INV-5 / INV-6 / INV-10 / INV-13 — verb-layer + registration wiring
@@ -384,6 +432,16 @@ TEST(ProjectSettingsVerb, Inv20DetectEchoesDeclaration) {
     EXPECT_TRUE(has(rc, "PathValidation::isInsideProject(rootCanonical, abs)"));
     // Documented on the verb, else a caller never learns the field is there.
     EXPECT_TRUE(has(ci, "declared_missing"));
+
+    // INV-21 (ANTS-4093) — `undeclared[]` names every recognised key with no
+    // declaration, and the description says detect covers all six keys. A
+    // reply that lists only what IS set is what got read as "nothing to do".
+    EXPECT_TRUE(has(rc, "\"undeclared\""));
+    EXPECT_TRUE(has(ci, "detect suggests ALL SIX recognised keys"));
+    // INV-22 (ANTS-4092) — the gitignore probe, and its documentation.
+    EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/projectsettings.cpp")),
+                    "check-ignore"));
+    EXPECT_TRUE(has(ci, "gitignored directories are excluded"));
 }
 
 TEST(ProjectSettingsVerb, VerbAndRegistrationWiring) {
