@@ -5113,16 +5113,31 @@ void ClaudeIntegration::onMcpConnection() {
                         "NOT hand-write with the Write tool). Trims claim/"
                         "rationale to the read caps and refuses a record "
                         "over 3.5 KiB. Creates an absent ledger (mode 0644). "
+                        "ANTS-4105 — this ledger is READ BY THE AI-REVIEW "
+                        "BRIEFS and does NOT suppress anything in audit_run: "
+                        "the engine's suppressions:\"auto\" filters on the "
+                        "FINGERPRINT ledger (.audit_cache/learned-fp.jsonl), "
+                        "which `audit_dismiss` writes. So a static-analysis "
+                        "TOOL finding goes to audit_dismiss; a reviewer's "
+                        "prose claim goes here. The two are deliberately not "
+                        "merged — their keys differ (a prose claim vs a "
+                        "file+rule+message hash). The reply repeats this as "
+                        "`consumed_by` + `hint`. "
                         "Returns {ok, path, bytes_appended, created, "
-                        "timestamp, review_kind}. Refusals: `bad_args` "
+                        "timestamp, review_kind, consumed_by, hint}. "
+                        "Refusals: `bad_args` "
                         "(empty claim/rationale, non-canonical review_kind, "
                         "bad timestamp, or over-size record), `no_project` "
                         "(caller_cwd unresolved), `write_failed` (I/O error "
                         "or non-regular ledger path). caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
+                        // Kept under the ANTS-1453 240-char hint budget; the
+                        // full ANTS-4105 routing lives in the description.
                         "Use after a sweep fold-in classifies a finding "
-                        "FALSE_POSITIVE (user-confirmed) to record it once, "
-                        "instead of the hand-rolled jq+printf recipe.");
+                        "FALSE_POSITIVE (user-confirmed). NOT for a "
+                        "static-analysis tool finding — that goes to "
+                        "audit_dismiss; this ledger feeds reviewer briefs and "
+                        "suppresses nothing in audit_run.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;

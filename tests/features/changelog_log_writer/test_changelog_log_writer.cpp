@@ -415,6 +415,69 @@ TEST(changelog_log_writer, Ants2125MalformedSectionAdvisoryHelper) {
     EXPECT_EQ(clean.malformed_line, -1);
 }
 
+// ANTS-4103 — two shapes the advisory used to call malformed and should not.
+// Both arrived attached to a SUCCESSFUL write, so they read as "the write
+// worked but your file is broken" and invited a restructuring edit to a file
+// that needed none.
+TEST(changelog_log_writer, Ants4103AdvisoryFalsePositives) {
+    // (a) A trailing HTML comment. It does not render, so it is not prose a
+    // reader ever sees wedged between blocks.
+    const char *withComment =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **Existing added entry.** (ANTS-0001)\n\n"
+        "<!-- maintained by changelog_log;\n"
+        "     do not hand-edit above this line -->\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n";
+    const auto cmt = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(withComment), QStringLiteral("Added"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    ASSERT_TRUE(cmt.ok) << cmt.error.toStdString();
+    EXPECT_FALSE(cmt.malformed_section)
+        << "a multi-line HTML comment is not interleaved prose";
+
+    // (b) Prose between a `### ` heading and that block's FIRST bullet — the
+    // heading's own description. This is the general form of the shape the
+    // verb's own op:add_subsection writes (dated topic heading, blank,
+    // flush-left body prose, blank, then bullets); that exact layout reaches
+    // the scanner through op:normalize, since a purely feature-grouped
+    // section refuses a flat add earlier (ANTS-3416, asserted separately).
+    const char *withIntro =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "Three defects reported by other sessions, all in one verb.\n\n"
+        "- **First fix.** (ANTS-1)\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n";
+    const auto intro = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(withIntro), QStringLiteral("Added"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    ASSERT_TRUE(intro.ok) << intro.error.toStdString();
+    EXPECT_FALSE(intro.malformed_section)
+        << "the scanner must not flag add_subsection's own canonical output";
+
+    // …and the stray-footer shape ANTS-2125 exists for still trips, because
+    // it arrives AFTER the block's bullets. Same fixture, one line moved.
+    const char *strayAfterBullet =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **First fix.** (ANTS-1)\n\n"
+        "This project is licensed under the GPL.\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n";
+    const auto stray = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(strayAfterBullet), QStringLiteral("Added"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    ASSERT_TRUE(stray.ok) << stray.error.toStdString();
+    EXPECT_TRUE(stray.malformed_section)
+        << "prose after a block's bullets is still the stray-footer shape";
+    EXPECT_EQ(stray.malformed_line, 9);
+}
+
 // ANTS-2125 — the handler surfaces the advisory string on a successful
 // write into a malformed section, and omits it for a clean one.
 TEST(changelog_log_writer, Ants2125MalformedSectionAdvisoryHandler) {

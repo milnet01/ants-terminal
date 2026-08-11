@@ -33,4 +33,15 @@ Round-trips verified through `ants::falsepos::loadEntries`.
   (single-writer temp dir: also `size_after - size_before`).
 - **INV-12** — round-trip: written record re-parses to a `LedgerEntry` whose
   fields match what was written (control-char-free tags).
+- **INV-13** (ANTS-4105) — the success envelope names its own consumer and
+  routes a mis-aimed call: `consumed_by` says the AI-review briefs read this
+  ledger, and `hint` says it does NOT suppress `audit_run` findings — for a
+  static-analysis TOOL finding, `audit_dismiss` writes the fingerprint ledger
+  that `suppressions:"auto"` filters on. The verb description and
+  `selection_hint` carry the same routing. The two ledgers are deliberately
+  NOT merged: their keys differ (a prose claim vs a file+rule+message hash),
+  so matching one against the other would be fuzzy by construction. A session
+  logged six `audit_run` findings here, re-ran the sweep and watched all six
+  return; both verbs were behaving as designed and nothing on the wire said
+  which was which, while `/audit` step 10.5 names this one as the route.
 - **no_project** — an absent / non-directory `caller_cwd` → `no_project`.

@@ -83,6 +83,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **audit_falsepos_log's ledger suppresses nothing in audit_run — the writing verb and the reading sweep use different files.** (ANTS-4105)
+  You mark a false alarm as dismissed and the next scan reports it again, because the note was filed where nothing reads it.
+
+- **changelog_log's interleaved-prose advisory fires on trailing HTML comments and on the continuation bodies its own `body` parameter writes.** (ANTS-4103)
+  The changelog tool warns that your file is malformed — about text the same tool wrote, in the shape it was designed to write.
+
 - **project_settings op:detect under-reports itself — it suggests more keys than documented, and says "no override needed" while five keys sit undeclared.** (ANTS-4093)
   The setup tool tells you there's nothing to configure when five settings are still unset.
 

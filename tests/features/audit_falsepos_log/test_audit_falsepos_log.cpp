@@ -83,6 +83,18 @@ TEST(AuditFalseposLog, EnvelopeAndByteCount) {
     const qint64 after = readAll(p).size();
     EXPECT_GT(appended, 0);
     EXPECT_EQ(after - before, appended);
+
+    // INV-13 (ANTS-4105) — the reply says which ledger this is and where a
+    // TOOL finding goes instead. A session logged six audit_run findings
+    // here, re-ran the sweep, and watched all six come back: this file is
+    // brief material for the AI reviewers, while suppressions:"auto" filters
+    // on the fingerprint ledger audit_dismiss writes. Both were working as
+    // designed and nothing on the wire said so.
+    EXPECT_TRUE(env.value("consumed_by").toString().contains("brief"));
+    const QString hint = env.value("hint").toString();
+    EXPECT_TRUE(hint.contains("does NOT suppress audit_run"));
+    EXPECT_TRUE(hint.contains("audit_dismiss"))
+        << "the reply must name the verb that DOES suppress a tool finding";
 }
 
 // INV-1 — append preserves prior bytes; new record is a strict suffix.

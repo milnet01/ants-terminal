@@ -95,6 +95,27 @@ a legitimate description paragraph directly under `## [Unreleased]`
 (before any category) is not flagged. Mirrors roadmap_log's
 `possible_duplicates` advisory shape.
 
+**ANTS-4103 — two shapes the scan must NOT flag.** Both used to arrive
+attached to a *successful* write, so they read as "the write worked but
+your file is malformed" and invited a restructuring edit to a file that
+needed none.
+
+- **An HTML comment**, on one line or several. It does not render, so it
+  is never prose a reader sees wedged between blocks. Tracked across
+  lines so a multi-line comment block is skipped whole.
+- **Prose between a `### ` heading and that block's FIRST bullet** — the
+  heading's own description. This is the general form of the shape this
+  verb's `op:"add_subsection"` writes (dated topic heading, blank,
+  flush-left body prose, blank, then bullets), so the scanner was flagging
+  its own canonical output. That exact layout reaches the scan through
+  `op:"normalize"`; a purely feature-grouped section refuses a flat
+  `op:"add"` earlier, at the ANTS-3416 gate.
+
+The stray-footer shape ANTS-2125 exists for arrives **after** a block's
+bullets and still trips — `kMalformedChangelog` puts its `---` two lines
+below `### Added`'s bullet, so INV-9's original assertion is unchanged.
+The bullet-seen flag resets at each `### `.
+
 ### INV-10 — add_from_roadmap reuses the untruncated headline (ANTS-2127)
 
 `op:"add_from_roadmap"` builds the bold summary from the bullet's

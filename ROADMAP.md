@@ -30125,7 +30125,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
   Resolved (2026-08-11): doc_integrity skips a link target containing an unescaped `<` or `>` — a template placeholder by construction, which no filesystem path can ever match. Implemented as a skip rather than the suggested separate placeholder_link kind: a new Kind means a new enum value plus switch updates in two consumers, and the asking project's problem was that every run returned one permanent finding, which the skip solves. Suite green 3355/3355.
 
-- 📋 [ANTS-4103] **changelog_log's interleaved-prose advisory fires on trailing HTML comments and on the continuation bodies its own `body` parameter writes.**
+- ✅ [ANTS-4103] **changelog_log's interleaved-prose advisory fires on trailing HTML comments and on the continuation bodies its own `body` parameter writes.**
   Two false-positive classes in one scan, both reported separately.
 
   (a) A trailing `<!-- ... -->` sitting AFTER the last category block was
@@ -30151,6 +30151,26 @@ defect from different angles.
   **Layman:** The changelog tool warns that your file is malformed — about text the same tool wrote, in the shape it was designed to write.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+  Resolved (2026-08-11), with the diagnosis corrected on
+  the way. (a) HTML comments are now skipped, tracked across lines so a
+  multi-line block goes whole — a comment does not render, so it is never
+  prose a reader sees wedged between blocks. But the report's other half of
+  (a), that content AFTER the final block is not interleaved, was NOT
+  adopted: the trailing stray footer is the exact shape ANTS-2125 exists
+  for, and dropping it would undo that fix. (b)'s stated cause was wrong —
+  op:add's body IS 2-space indented and the scanner already skipped
+  indented continuations. The real cause is prose sitting between a `### `
+  heading and that block's FIRST bullet, which is a heading's own
+  description and precisely what THIS verb's op:add_subsection writes
+  (heading, blank, flush-left prose, blank, bullets). The scan now flags a
+  flush-left non-bullet line only once a bullet has been seen in the
+  current block, resetting at each `### `; ANTS-2125's fixture puts its
+  `---` two lines below the bullet, so its assertion is unchanged. Noted
+  while proving it: op:add on a purely feature-grouped section refuses at
+  the ANTS-3416 gate before the advisory, so that exact layout reaches the
+  scan via op:normalize. Test: changelog_log_writer
+  Ants4103AdvisoryFalsePositives (both classes + the still-flagged
+  control).
 
 - ✅ [ANTS-4104] **feedback_query returns ok:false for a project that has simply never filed feedback.**
   The first call for a project with no *_Ants_MCP_Feedback.md returns
@@ -30173,7 +30193,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
   Resolved (2026-08-11): a DERIVED default that does not exist now returns ok:true with found:false, delta_present:false, empty mapped_ids and a `reason`, keeping the candidates + hint that made the old refusal useful; every success carries found:true so one branch covers both. An EXPLICITLY passed path that does not resolve still refuses not_found — that one is a caller error, not an empty state. Scoped to feedback_query's read; feedback_log's write ops legitimately create the file. Verb description updated. Regression-locked in McpFeedbackQuery.DerivesDefaultPathFromCallerCwd. Suite 3352/3352.
 
-- 📋 [ANTS-4105] **audit_falsepos_log's ledger suppresses nothing in audit_run — the writing verb and the reading sweep use different files.**
+- ✅ [ANTS-4105] **audit_falsepos_log's ledger suppresses nothing in audit_run — the writing verb and the reading sweep use different files.**
   audit_falsepos_log writes .ants_review_falsepos.jsonl. audit_run's
   suppressions:"auto" reads .audit_cache/learned-fp.jsonl plus
   .audit_allowlist.json — three files, and the one the logging verb writes
@@ -30196,6 +30216,24 @@ defect from different angles.
   **Layman:** You mark a false alarm as dismissed and the next scan reports it again, because the note was filed where nothing reads it.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+  Resolved (2026-08-11) as a ROUTING fix, not fix (a).
+  Both verbs were behaving as designed: audit_falsepos_log writes the
+  PROSE ledger the AI-review briefs read, and audit_dismiss writes the
+  FINGERPRINT ledger audit_run's suppressions:"auto" filters on. So the
+  verb for a static-analysis TOOL finding already existed — the reporting
+  session reached for the wrong one because /audit step 10.5 names
+  audit_falsepos_log and nothing on the wire said which ledger was which
+  (the distinction was in source comments only). audit_falsepos_log's
+  success envelope now carries `consumed_by` + a `hint` naming
+  audit_dismiss, and its description and selection_hint say the same;
+  audit_dismiss's description already did. Fix (a) — have "auto" also
+  consume .ants_review_falsepos.jsonl — was NOT taken: the two ledgers are
+  keyed differently on purpose (a prose claim vs a file+rule+message hash),
+  so matching one against the other is fuzzy by construction, which the
+  report itself concedes. Fix (b), documenting .audit_allowlist.json's
+  schema, is left open. Test: audit_falsepos_log INV-13. Note the
+  selection_hint had to stay under the ANTS-1453 240-char budget, so the
+  full routing lives in the description.
 
 - ✅ [ANTS-4106] **doc_integrity takes a single `path`, so a post-fix sweep cannot be scoped to the files a run actually edited.**
   `path` accepts one file or one directory. /apply-fixes step 5 says to

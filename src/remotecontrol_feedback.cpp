@@ -2291,6 +2291,21 @@ QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
     out["created"]        = r.created;
     out["timestamp"]      = r.timestamp;
     out["review_kind"]    = e.reviewKind;
+    // ANTS-4105 — say, on the wire, which ledger this is. A session that
+    // logged six tool findings here and re-ran audit_run watched all six come
+    // back: this file is prose-grain brief material for the AI reviewers, and
+    // the engine's suppressions:"auto" filters on the FINGERPRINT ledger that
+    // audit_dismiss writes. Both are working as designed; nothing said so, and
+    // /audit names this verb as the preferred route. The two are not merged —
+    // their keys differ (a prose claim vs a file+rule+message hash), so
+    // matching one against the other would be fuzzy by construction.
+    out["consumed_by"] = QStringLiteral(
+        "AI-review briefs (cold_eyes_brief / indie_review_brief)");
+    out["hint"] = QStringLiteral(
+        "this ledger does NOT suppress audit_run findings — to dismiss a "
+        "static-analysis TOOL finding so later sweeps drop it, call "
+        "audit_dismiss (it writes .audit_cache/learned-fp.jsonl, which is "
+        "what suppressions:\"auto\" reads)");
     return QJsonDocument(out);
 }
 

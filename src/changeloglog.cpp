@@ -62,15 +62,43 @@ namespace {
 // only legal non-heading content is list items and their indented
 // continuations; anything else (a `---` rule, a flush-left paragraph) is
 // the malformation we warn about.
+//
+// ANTS-4103 — two shapes it used to call malformed and should not, both
+// reported attached to a SUCCESSFUL write, so they read as "the write worked
+// but your file is broken" and invite a restructuring edit to a file that
+// needed none:
+//   • An HTML comment. It does not render, so it is not prose a reader ever
+//     sees wedged between blocks. Tracked across lines so a multi-line
+//     comment block is skipped whole.
+//   • Prose sitting between a `### ` heading and that block's FIRST bullet.
+//     That is the heading's own description — and it is exactly what this
+//     verb's own op:add_subsection writes (a dated topic heading, blank,
+//     flush-left body prose, blank, then the bullets), so the scanner was
+//     flagging its canonical output. The stray-footer shape ANTS-2125 exists
+//     for arrives AFTER a block's bullets, and still trips: its fixture puts
+//     the `---` two lines below `### Added`'s bullet.
 int firstInterleavedProseLine(const QStringList &lines,
                               int sectionStart, int sectionEnd) {
     bool sawCategory = false;
+    bool sawBulletInBlock = false;   // ANTS-4103 — reset at each `### `
+    bool insideComment   = false;    // ANTS-4103
     for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
         const QString &raw = lines.at(i);
         const QString t = raw.trimmed();
+        if (insideComment) {                        // ANTS-4103
+            if (t.contains(QStringLiteral("-->"))) insideComment = false;
+            continue;
+        }
+        if (t.startsWith(QStringLiteral("<!--"))) { // ANTS-4103
+            if (!t.contains(QStringLiteral("-->"))) insideComment = true;
+            continue;
+        }
         if (t.isEmpty()) continue;                  // blank spacer
         if (t.startsWith(QLatin1Char('#'))) {       // any heading line
-            if (t.startsWith(QStringLiteral("### "))) sawCategory = true;
+            if (t.startsWith(QStringLiteral("### "))) {
+                sawCategory      = true;
+                sawBulletInBlock = false;           // ANTS-4103 — new block
+            }
             continue;
         }
         if (!sawCategory) continue;                 // pre-category preamble
@@ -79,9 +107,13 @@ int firstInterleavedProseLine(const QStringList &lines,
         // separator), NOT a bullet, so it must still trip the advisory.
         if (t.size() >= 2 && t.at(1) == QLatin1Char(' ') &&
             (t.at(0) == QLatin1Char('-') || t.at(0) == QLatin1Char('*') ||
-             t.at(0) == QLatin1Char('+'))) continue;
+             t.at(0) == QLatin1Char('+'))) {
+            sawBulletInBlock = true;                // ANTS-4103
+            continue;
+        }
         if (raw.startsWith(QLatin1Char(' ')) ||     // indented continuation
             raw.startsWith(QLatin1Char('\t'))) continue;
+        if (!sawBulletInBlock) continue;            // ANTS-4103 — block intro
         return i + 1;                               // 1-based, for humans
     }
     return -1;
