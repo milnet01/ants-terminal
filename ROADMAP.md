@@ -30494,6 +30494,20 @@ defect from different angles.
   **Layman:** Pushing from an automated session gets cut off part-way through the safety check, which can leave the sanitizer build in a bad state.
   Kind: fix.
   Source: in-session-2026-08-11.
+  State left behind on 2026-08-11, which the general description above does not
+  carry: the interrupted run was an incremental `build-asan` build that took a
+  SIGTERM mid-ninja, so THAT TREE MAY NEED ONE CLEAN FULL BUILD before its next
+  incremental result can be trusted. Commits c13f9e98 (ANTS-4111/4112/4113) and
+  7497271e were pushed with `ANTS_PREPUSH_NO_ASAN=1`, so neither had a local
+  sanitized run; the Release suite was green for both (3354/3354) and CI's
+  `build-asan` job is the cover. Re-check that job's result for those two SHAs
+  before assuming the sanitizer half passed.
+
+  Also measured in the same session, and the reason the timeout is easy to
+  misdiagnose: a backgrounded `cmake --build … | tail -N` writes NOTHING to its
+  output file until the command ends, because `tail` buffers. A killed build and
+  a build that never started are therefore indistinguishable from the task
+  output, which is what sent the first two investigations down the wrong path.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
