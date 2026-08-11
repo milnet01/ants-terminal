@@ -30463,6 +30463,38 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 RetroDB.
 
+- 📋 [ANTS-4118] **The pre-push gate's ASan leg outlives an agent's command timeout, so a push is killed mid-build rather than failing.**
+  Measured 2026-08-11 while shipping the ANTS-4111/4112/4113 batch. `git push`
+  ran the hook's Release suite (green) and then began the incremental
+  `build-asan` build; the harness command cap is 600 s and the push was SIGTERMed
+  at exactly that, with the commit unpushed. Retried with
+  `ANTS_PREPUSH_NO_ASAN=1`, which passed in well under the cap.
+
+  Two consequences, and the second is the one that costs:
+
+  (1) An agent session cannot use the default gate at all on a cold or
+  stale `build-asan`, so the escape hatch becomes the habit rather than the
+  exception — which is how the ASan leg quietly stops running locally.
+
+  (2) A SIGTERM lands mid-`ninja`, and a killed ninja is exactly the case that
+  corrupts `.ninja_deps` (see the standing note about never killing a build).
+  The next `build-asan` may therefore do a full rebuild or, worse, an
+  untrustworthy incremental one. The hook has no trap that heals or marks the
+  tree it just had killed under it.
+
+  Fix, cheapest first: (a) have the hook print its expected wall-clock and the
+  `ANTS_PREPUSH_NO_ASAN=1` hatch BEFORE starting the ASan leg, not after, so a
+  caller can choose; (b) trap SIGTERM/SIGINT in the hook and leave a marker file
+  so the next run knows the sanitizer tree was interrupted and does a clean
+  build; (c) consider gating the ASan leg on whether `build-asan` is already warm
+  — a cold one is a ~10-minute build that the Release leg has largely already
+  covered.
+
+  Not an MCP defect; it is this repo's own push tooling.
+  **Layman:** Pushing from an automated session gets cut off part-way through the safety check, which can leave the sanitizer build in a bad state.
+  Kind: fix.
+  Source: in-session-2026-08-11.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
