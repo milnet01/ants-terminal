@@ -1031,7 +1031,12 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
         out["ok"]      = true;
         out["dry_run"] = true;
         out["id"]      = it.synthId;
-        out["file"]    = QStringLiteral("ROADMAP.md");
+        // ANTS-4116 — echo the roadmap file actually resolved, not a canonical
+        // display name. RetroDB's roadmap is lowercase `roadmap.md`, so
+        // echoing "ROADMAP.md" named a file that does not exist in that repo:
+        // on a case-sensitive filesystem that reads as "the verb is about to
+        // create a second, wrong roadmap", and it cost them the verb.
+        out["file"]    = QFileInfo(roadmapPath).fileName();
         out["line"]    = headingIdx0 + 1;
         out["bullet"]  = it.block;
         out["bytes"]   = static_cast<qint64>(it.block.toUtf8().size());
@@ -1045,7 +1050,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     QJsonObject out;
     out["ok"]            = true;
     out["id"]            = it.synthId;
-    out["file"]          = QStringLiteral("ROADMAP.md");
+    out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
     out["line"]          = headingIdx0 + 1;
     out["format"]        = QStringLiteral("pass-headings");
     out["bytes_written"] = static_cast<qint64>(it.block.toUtf8().size());
@@ -1087,7 +1092,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
         out["ok"]            = true;
         out["op"]            = QStringLiteral("append_batch");
         out["format"]        = QStringLiteral("pass-headings");
-        out["file"]          = QStringLiteral("ROADMAP.md");
+        out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
         out["applied"]       = applied;
         out["applied_count"] = applied.size();
         out["skipped"]       = skipped;
@@ -1189,7 +1194,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
                                        : QStringLiteral("flip");
         out["dry_run"] = true;
         out["id"]      = r.matchedId;
-        out["file"]    = QStringLiteral("ROADMAP.md");
+        out["file"]    = QFileInfo(roadmapPath).fileName();   // ANTS-4116
         out["line"]    = r.headingLine + 1;
         out["format"]  = QStringLiteral("pass-headings");
         out["bytes"]   = static_cast<qint64>(r.markdown.toUtf8().size());
@@ -1210,7 +1215,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
     out["op"]            = annotateMode ? QStringLiteral("annotate")
                                         : QStringLiteral("flip");
     out["id"]            = r.matchedId;
-    out["file"]          = QStringLiteral("ROADMAP.md");
+    out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
     out["line"]          = r.headingLine + 1;
     out["format"]        = QStringLiteral("pass-headings");
     rcSetWriteBytes(out, sizeBefore,
@@ -1280,7 +1285,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
         out["ok"]            = true;
         out["op"]            = QStringLiteral("flip_batch");
         out["format"]        = QStringLiteral("pass-headings");
-        out["file"]          = QStringLiteral("ROADMAP.md");
+        out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
         out["flipped"]       = flipped;
         out["flipped_count"] = flipped.size();
         out["skipped"]       = skipped;

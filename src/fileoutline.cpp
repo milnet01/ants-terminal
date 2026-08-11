@@ -680,7 +680,16 @@ QJsonObject compute(const QString &absPath,
                 // this struct body sits above.
                 pendingTypedefs.append({totalLines, m.captured(1), braceDepth});
             } else if ((m = rxCppType().match(line)).hasMatch()) {
-                offer("class", m.captured(2), line);   // type/namespace body — never code
+                // ANTS-4101 — a namespace is not a class. Games Hub reported
+                // a caller filtering on `kind` ("show me the classes in this
+                // file") getting the enclosing namespace back as one of them.
+                // rxCppType already captures the keyword, so the accurate kind
+                // costs nothing. read_region's aggregate test keys off
+                // kind=="class" AND the signature keyword, so a namespace
+                // still resolves to its declaration only, exactly as before.
+                offer(m.captured(1) == QLatin1String("namespace") ? "namespace"
+                                                                  : "class",
+                      m.captured(2), line);   // type/namespace body — never code
             } else if (!inFuncBody && (m = rxCppMember().match(line)).hasMatch()) {
                 // ANTS-3399 — the qualified member name (`Class::method`,
                 // possibly `NS::Class::method`) is the last whitespace-

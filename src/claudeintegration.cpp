@@ -4023,7 +4023,10 @@ void ClaudeIntegration::onMcpConnection() {
                             "Non-empty list of edits. Each is {path, new} plus "
                             "EITHER {old, replace_all?} OR (ANTS-3711) "
                             "{start_line, end_line, expect_first_line, "
-                            "expect_last_line} — never both.");
+                            "expect_last_line} — never both. ANTS-4089: "
+                            "old_string/new_string are accepted as aliases for "
+                            "old/new, so the native Edit tool's spelling works "
+                            "here unchanged.");
                     QJsonObject items; items["type"] = "object";
                         items["additionalProperties"] = false;
                         QJsonObject ip;
@@ -4067,16 +4070,33 @@ void ClaudeIntegration::onMcpConnection() {
                                 "a range edit; checked together with "
                                 "expect_first_line so a range that shifted at "
                                 "either end is caught.");
+                        // ANTS-4089 — old_string/new_string as aliases for
+                        // old/new, because that is the spelling every session
+                        // arrives holding from the native Edit tool. They have
+                        // to be DECLARED: additionalProperties is false, so an
+                        // undeclared key is refused before the handler sees it.
+                        QJsonObject osP; osP["type"] = "string";
+                            osP["description"] = QStringLiteral(
+                                "Alias for `old` — the native Edit tool's "
+                                "spelling, accepted so this verb is a drop-in "
+                                "for it. `old` wins if both are sent.");
+                        QJsonObject nsP; nsP["type"] = "string";
+                            nsP["description"] = QStringLiteral(
+                                "Alias for `new` — the native Edit tool's "
+                                "spelling. `new` wins if both are sent.");
                         ip["path"] = pP; ip["old"] = oP; ip["new"] = nP;
+                        ip["old_string"] = osP; ip["new_string"] = nsP;
                         ip["replace_all"] = rP;
                         ip["start_line"] = slP; ip["end_line"] = elP;
                         ip["expect_first_line"] = efP;
                         ip["expect_last_line"]  = elnP;
                         items["properties"] = ip;
-                        // `old` is no longer unconditionally required — an
-                        // edit satisfies the handler with either selector, and
-                        // the either/or rule is enforced there (ANTS-3711).
-                        QJsonArray ir; ir.append("path"); ir.append("new");
+                        // Neither `old` nor `new` is unconditionally required:
+                        // an edit satisfies the handler with either selector
+                        // and either spelling, and both rules are enforced
+                        // there (ANTS-3711, ANTS-4089). `new` left in required
+                        // would refuse every new_string call before it landed.
+                        QJsonArray ir; ir.append("path");
                         items["required"] = ir;
                     editsProp["items"] = items;
                     props["edits"]      = editsProp;

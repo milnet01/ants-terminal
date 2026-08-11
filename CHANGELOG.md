@@ -77,6 +77,25 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_integrity no longer reports template placeholder links as broken** (ANTS-4102)
+  A skeleton file's deliberately-unfilled `<ID>-<topic>.md` links are
+  placeholders, not paths, so the check reported the same non-problem
+  on every run of any project that keeps a template.
+
+- **roadmap_log reports the roadmap file it actually wrote, in its real name** (ANTS-4116)
+  On a project whose roadmap is lowercase `roadmap.md`, the reply
+  named "ROADMAP.md" — a file not in the repo — so there was no way
+  to confirm where the change landed.
+
+- **file_outline reports a C++ namespace as a namespace, not as a class** (ANTS-4101)
+  Asking the file map for a file's classes no longer hands back the
+  namespace they live in.
+
+- **apply_edits accepts the native Edit tool's `old_string`/`new_string` spelling** (ANTS-4089)
+  Every session reaches this verb holding the key names the built-in
+  Edit tool uses, so the first call was refused. Both spellings now
+  work; `old`/`new` still win if a call sends both.
+
 - **Roadmap entries writing their work-type or owners in bold are read correctly** (ANTS-4077)
   An entry writing `**Kind:** fix.` or `**Lanes:** core.` in bold — a style
   the summary line has always accepted — was read as declaring nothing, so

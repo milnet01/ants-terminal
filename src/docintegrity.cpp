@@ -390,6 +390,15 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         // Checks 1 (dead anchors) + 2 (broken links) over the doc's links.
         for (const Link &link : d.links) {
             const QString target = link.target;
+            // ANTS-4102 — a target carrying an unescaped `<`/`>` is a template
+            // placeholder by construction (`../specs/<ID>-<topic>.md`), so no
+            // filesystem path will ever match it and this check can never come
+            // back clean on a project that keeps a doc skeleton. Local Web
+            // Server Manager had documented the permanent finding as a known
+            // false positive in its own workflow doc — the shape of a check
+            // that has stopped carrying information. Needs no project config.
+            if (target.contains(QLatin1Char('<')) || target.contains(QLatin1Char('>')))
+                continue;
             const int hashIdx = target.indexOf('#');
             const QString filePart = hashIdx >= 0 ? target.left(hashIdx) : target;
             const QString anchor = hashIdx >= 0 ? target.mid(hashIdx + 1) : QString();

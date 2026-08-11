@@ -1282,12 +1282,21 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     for (int i = 0; i < edits.size(); ++i) {
         const QJsonObject e = edits.at(i).toObject();
         const QString rawPath = e.value(QStringLiteral("path")).toString();
-        const bool hasOld   = e.contains(QStringLiteral("old"));
-        const bool hasNew   = e.contains(QStringLiteral("new"));
+        // ANTS-4089 — every session reaches this verb from the native Edit
+        // tool, whose keys are old_string/new_string, so the first call is
+        // written with those and refused on a message naming the key that is
+        // missing but not the one that was sent. The pairing is unambiguous,
+        // so accept both spellings; canonical `old`/`new` win if both arrive.
+        const bool hasOld   = e.contains(QStringLiteral("old"))
+                           || e.contains(QStringLiteral("old_string"));
+        const bool hasNew   = e.contains(QStringLiteral("new"))
+                           || e.contains(QStringLiteral("new_string"));
         const bool hasStart = e.contains(QStringLiteral("start_line"));
         const bool hasEnd   = e.contains(QStringLiteral("end_line"));
         const bool hasRange = hasStart || hasEnd;
-        const QString oldStr = e.value(QStringLiteral("old")).toString();
+        const QString oldStr = e.contains(QStringLiteral("old"))
+            ? e.value(QStringLiteral("old")).toString()
+            : e.value(QStringLiteral("old_string")).toString();
         if (rawPath.isEmpty() || !hasNew) {
             return argErr(QStringLiteral("apply_edits: edit %1 needs a non-empty "
                                          "\"path\" and a \"new\"").arg(i));
@@ -1305,7 +1314,9 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         E rec;
         rec.index      = i;
         rec.rawPath    = rawPath;
-        rec.newStr     = e.value(QStringLiteral("new")).toString();
+        rec.newStr     = e.contains(QStringLiteral("new"))
+            ? e.value(QStringLiteral("new")).toString()
+            : e.value(QStringLiteral("new_string")).toString();
         rec.replaceAll = e.value(QStringLiteral("replace_all")).toBool(false);
         if (hasOld) {
             if (oldStr.isEmpty())

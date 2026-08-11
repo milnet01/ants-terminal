@@ -213,9 +213,10 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
     // ANTS-2222 — aggregate symbols (struct/class/union) get their FULL body.
     // The flat outline's "next entry" for a struct is its first member, so the
     // outline-derived end stops at the first field. Brace-match to the closing
-    // brace instead. file_outline tags struct/class/namespace all as kind
-    // "class"; the signature keyword distinguishes them — namespace is excluded
-    // (its body can span the whole file, not a quotable unit).
+    // brace instead. file_outline tags struct and class alike as kind "class"
+    // (a namespace has carried its own kind since ANTS-4101); the signature
+    // keyword still separates struct from class, and a namespace is excluded
+    // either way — its body can span the whole file, not a quotable unit.
     const QString kind = symObj.value(QStringLiteral("kind")).toString();
     const QString sig  = symObj.value(QStringLiteral("signature")).toString().trimmed();
     const bool isAggregate = kind == QLatin1String("class") &&

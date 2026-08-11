@@ -29769,8 +29769,33 @@ defect from different angles.
   **Layman:** The "what should I work on next" view opens with six lines of gibberish labels instead of the item names.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 AI Prompts.
+  Attempted and reverted (2026-08-11) — this is a CONTRACT change, not a free
+  fix, and the next session should start from that.
 
-- 📋 [ANTS-4089] **apply_edits takes {old,new} while the native Edit tool takes {old_string,new_string} — accept both.**
+  The report's cheapest suggestion (for a size-1 bundle, use the item's own
+  id + headline_oneline instead of a synthesised label) was implemented and
+  reddened two pinned invariants:
+  mcp_roadmap_bundles.Inv9LabelDeterministicAndFallback and
+  mcp_roadmap_bundles.Inv13MixedCaseLaneLabel. The singleton label's
+  fallback ladder — most-common case-folded lane, else lowest member id —
+  is a documented, tested contract, and a size-1 bundle is exactly the case
+  those two invariants exercise. Reverted rather than changing a contract by
+  side effect.
+
+  So the work is: amend tests/features/mcp_roadmap_bundles/spec.md INV-9 and
+  INV-13 first, then the code. Note that doing so gives up a real property —
+  INV-13 exists so a mixed-case lane tally resolves deterministically, and
+  naming the item instead makes the lane label unreachable on singletons.
+
+  The report's OTHER two suggestions need no contract change and are the
+  better first move: (a) apply the existing `isNoiseToken` denoiser (already
+  a lambda in buildRoadmapBundlesEnvelope, used for the cluster edge but NOT
+  for the label) plus punctuation stripping to the label tokens — that alone
+  kills `"most`, `"/"`, `57` and the bare hyphens; (b) omit bundle_label when
+  no_clusters_found is true. Neither touches the fallback ladder INV-9/INV-13
+  pin, so neither is blocked on a spec amendment.
+
+- ✅ [ANTS-4089] **apply_edits takes {old,new} while the native Edit tool takes {old_string,new_string} — accept both.**
   Every session arrives at apply_edits from the native Edit tool, writes
   the first call with old_string/new_string, and gets bad_args: "edit 0
   needs a non-empty \"path\" and a \"new\"" — which names the missing key
@@ -29784,6 +29809,7 @@ defect from different angles.
   **Layman:** The batch-edit tool rejects the key names every session already has in hand, costing two wasted calls on first use.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Ants Projects Hub.
+  Resolved (2026-08-11): apply_edits accepts old_string/new_string as aliases for old/new. Both the handler (remotecontrol_workspace.cpp cmdApplyEdits) and the declared schema — additionalProperties is false, so the aliases had to be declared or a call carrying them would be refused before the handler saw it, and `new` had to leave items.required for the same reason. Canonical old/new win if both spellings arrive. Suite green 3355/3355.
 
 - 📋 [ANTS-4090] **file_outline (JavaScript) omits top-level non-function const bindings, hiding a file's largest regions.**
   The JS outline reports functions and arrow-function consts but not other
@@ -30027,7 +30053,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Fin Break.
 
-- 📋 [ANTS-4101] **file_outline reports a C++ `namespace X {` with kind:"class".**
+- ✅ [ANTS-4101] **file_outline reports a C++ `namespace X {` with kind:"class".**
   Outlining a header whose contents sit in a namespace emits the namespace
   itself as {"kind":"class", "name":"chess", "signature":"namespace chess
   {"}. The signature is correct and unambiguous, so the information is
@@ -30039,8 +30065,9 @@ defect from different angles.
   **Layman:** The file map labels a namespace as a class, so filtering for classes returns the wrong thing.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Games Hub.
+  Resolved (2026-08-11): file_outline emits kind:"namespace" for a C++ `namespace X {`; rxCppType already captured the keyword. read_region's aggregate test keys off kind=="class" AND the signature keyword, so a namespace still resolves to its declaration only — behaviour unchanged there, and its now-stale comment was updated. The Generic (Rust/Go/PHP…) path was left alone: it already gives namespace its own kind ("type") rather than reporting it as a class, so the defect does not exist there. Suite green 3355/3355.
 
-- 📋 [ANTS-4102] **doc_integrity reports broken_link on placeholder targets containing <...> brackets.**
+- ✅ [ANTS-4102] **doc_integrity reports broken_link on placeholder targets containing <...> brackets.**
   A skeleton file whose links are deliberately unsubstituted —
   `[docs/specs/<ID>-<topic>.md](../specs/<ID>-<topic>.md)` — is reported as
   broken_link. A target containing `<`/`>` is a placeholder by
@@ -30056,6 +30083,7 @@ defect from different angles.
   **Layman:** Every docs check on a project with a template file returns the same one non-problem, forever.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+  Resolved (2026-08-11): doc_integrity skips a link target containing an unescaped `<` or `>` — a template placeholder by construction, which no filesystem path can ever match. Implemented as a skip rather than the suggested separate placeholder_link kind: a new Kind means a new enum value plus switch updates in two consumers, and the asking project's problem was that every run returned one permanent finding, which the skip solves. Suite green 3355/3355.
 
 - 📋 [ANTS-4103] **changelog_log's interleaved-prose advisory fires on trailing HTML comments and on the continuation bodies its own `body` parameter writes.**
   Two false-positive classes in one scan, both reported separately.
@@ -30380,7 +30408,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 OneUp.
 
-- 📋 [ANTS-4116] **roadmap_log echoes file:"ROADMAP.md" on a project whose roadmap is lowercase roadmap.md.**
+- ✅ [ANTS-4116] **roadmap_log echoes file:"ROADMAP.md" on a project whose roadmap is lowercase roadmap.md.**
   op:"append" (dry_run) returned {"file":"ROADMAP.md"} on a project whose
   roadmap is `roadmap.md` (declared in .ants/project.json) and where no
   ROADMAP.md exists on disk. The verb clearly resolved the real file — it
@@ -30399,6 +30427,7 @@ defect from different angles.
   **Layman:** The tool reports writing to a filename that does not exist in the repo, so you cannot tell where the change landed.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 RetroDB.
+  Resolved (2026-08-11): the six pass-headings roadmap_log sites (append, append_batch, flip, flip_batch, and both dry_run branches) echo QFileInfo(roadmapPath).fileName() instead of a hardcoded "ROADMAP.md", so a project whose roadmap is lowercase roadmap.md sees its real filename. Basename rather than a project-relative path, matching the sibling changelog_log echo's existing convention. Suite green 3355/3355.
 
 - 📋 [ANTS-4117] **roadmap_log op:append renders a non-conforming bullet on a pass-headings roadmap — Status: todo, unindented body, no separator.**
   On a roadmap the verb itself detects as format:"pass-headings", append
