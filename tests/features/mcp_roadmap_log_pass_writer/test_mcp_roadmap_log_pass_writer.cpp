@@ -483,6 +483,69 @@ TEST(McpRoadmapLogPassWriter, Inv11StatusKeywordMap) {
     EXPECT_TRUE(PassHeadingWrite::passStatusKeyword(QStringLiteral("frob")).isEmpty());
 }
 
+// ---- INV-17 (ANTS-4117) — a roadmap whose pass blocks are `---`-separated
+// gets an appended block that closes the same way, and every append echoes
+// the block it rendered so the caller can see the shape without re-reading.
+TEST(McpRoadmapLogPassWriter, Inv17SeparatorConformsAndBulletEcho) {
+    // Same shape as kPass, but every block ends in a `---` rule.
+    const char *kPassSeparated =
+        "# Project Passes\n"
+        "\n"
+        "## Active\n"
+        "\n"
+        "#### Pass 1.1 First pass\n"
+        "- **Status**: planned\n"
+        "\n"
+        "---\n"
+        "\n"
+        "#### Pass 1.2 Second pass\n"
+        "- **Status**: planned\n"
+        "\n"
+        "---\n";
+
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp.path(), kPassSeparated));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = baseReq(tmp.path());
+    req[QStringLiteral("section")]  = QStringLiteral("active");
+    req[QStringLiteral("status")]   = QStringLiteral("planned");
+    req[QStringLiteral("headline")] = QStringLiteral("Third pass.");
+    req[QStringLiteral("pass")]     = QStringLiteral("1.3");
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    ASSERT_TRUE(okOf(out)) << "code=" << code(out).toStdString();
+    const QString bullet = out.value(QStringLiteral("bullet")).toString();
+    EXPECT_TRUE(bullet.contains(QStringLiteral("#### Pass 1.3 Third pass.")))
+        << "the write envelope echoes the rendered block, not only its size";
+    EXPECT_TRUE(bullet.endsWith(QStringLiteral("\n\n---")))
+        << "the appended block closes the way this file closes its others";
+
+    const QByteArray after = readFile(rmPath(tmp.path()));
+    EXPECT_EQ(static_cast<int>(after.count("---")), 3)
+        << "one separator per block — the new one included";
+    // The reader still synthesises the id, so the round-trip is unaffected.
+    EXPECT_EQ(recById(tmp.path(), QStringLiteral("PASS-1-3")).status, kTodo);
+
+    // Control: a file that does NOT use separators gets none. The shape
+    // ANTS-2126 § 2.2 renders is unchanged for every roadmap but the ones
+    // whose own blocks show the convention.
+    QTemporaryDir plain;
+    ASSERT_TRUE(plain.isValid());
+    ASSERT_TRUE(seed(plain.path(), kPass));
+    QJsonObject req2 = baseReq(plain.path());
+    req2[QStringLiteral("section")]  = QStringLiteral("active");
+    req2[QStringLiteral("status")]   = QStringLiteral("planned");
+    req2[QStringLiteral("headline")] = QStringLiteral("Third pass.");
+    req2[QStringLiteral("pass")]     = QStringLiteral("1.3");
+    const QJsonObject out2 = rc.cmdRoadmapLogAppendForTest(req2).object();
+    ASSERT_TRUE(okOf(out2));
+    EXPECT_FALSE(out2.value(QStringLiteral("bullet")).toString()
+                     .contains(QStringLiteral("---")));
+    EXPECT_FALSE(readFile(rmPath(plain.path())).contains("---"));
+}
+
 // ---- Pure helper — id synthesis strips leading zeros, keeps sub-pass.
 TEST(McpRoadmapLogPassWriter, IdFromDesignator) {
     EXPECT_EQ(PassHeadingWrite::passIdFromDesignator(QStringLiteral("43.05")),

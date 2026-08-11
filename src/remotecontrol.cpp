@@ -1849,6 +1849,25 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
         // Headline: post-id text (or post-emoji when id-less), strip
         // leading space + bold wrapper.
         QString head = ln.mid(headStart).trimmed();
+        // ANTS-4109 — the bold-ID form (`- 📋 **LOTTO-0019** …`). The
+        // bracket above was the only id shape this walker knew, so on a
+        // roadmap whose ids are bold every bullet came back id-less and
+        // roadmap_log's `id` locator matched zero of them — while
+        // roadmap_query resolved the same id fine, because the READ path
+        // extracts it (roadmapparse.cpp fillBulletRecord's native branch).
+        // Mirror that branch's rule exactly: adopt the leading bold token
+        // only when it is ID-SHAPED (a single whitespace-free token), so a
+        // bold-prose narrator (`- 🚧 **In-progress thing.**`) stays id-less.
+        // Additive — the headline is left as it was, so a caller already
+        // locating these bullets by `headline` keeps working.
+        if (b.id.isEmpty()) {
+            QString boldCand;
+            if (rcExtractBoldId(head, &boldCand)) {
+                static const QRegularExpression rxIdShaped(
+                    QStringLiteral("^[A-Za-z][A-Za-z0-9_.-]*$"));
+                if (rxIdShaped.match(boldCand).hasMatch()) b.id = boldCand;
+            }
+        }
         if (head.startsWith(QStringLiteral("**"))) {
             head.remove(0, 2);
             const int closeIdx = head.indexOf(QStringLiteral("**"));

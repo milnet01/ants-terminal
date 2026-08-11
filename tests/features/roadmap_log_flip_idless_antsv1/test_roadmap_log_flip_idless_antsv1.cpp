@@ -74,6 +74,22 @@ QByteArray seedMixed() {
     return b;
 }
 
+// ANTS-4109 — ids carried as a BOLD token instead of a `[…]` bracket, the
+// shape Lotto Tracker's roadmap uses. The third bullet is bold PROSE, which
+// must stay id-less (a multi-word bold span is a headline, not an id).
+QByteArray seedBoldId() {
+    QByteArray b = "# Test Roadmap\n\n";
+    b += kPad;
+    b += "\n## Work Items\n\n"
+         "- \xF0\x9F\x93\x8B **LOTTO-0019** Persist draw selections.\n"
+         "  Source: seed.\n"
+         "- \xF0\x9F\x93\x8B **LOTTO-0020** Export the history CSV.\n"
+         "  Source: seed.\n"
+         "- \xF0\x9F\x9A\xA7 **In-progress prose headline.**\n"
+         "  Source: seed.\n\n";
+    return b;
+}
+
 bool writeFile(const QString &path, const QByteArray &body) {
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -187,4 +203,87 @@ TEST(roadmap_log_flip_idless_antsv1, Inv3MixedFilePreservesIdfulPath) {
     const QByteArray md = readFile(roadmapPath(tmp.path()));
     EXPECT_TRUE(contains(md, "- \xE2\x9C\x85 [ANTS-0042] **Id-ful bullet.**"));
     EXPECT_TRUE(contains(md, "- \xE2\x9C\x85 **Id-less bullet.**"));
+}
+
+// INV-4 (ANTS-4109) — a bold-ID ants-v1 bullet resolves by the `id` locator.
+// Pre-fix walkAntsV1Bullets only read a `[…]` bracket, so every bullet in a
+// bold-ID roadmap came back id-less and flip refused bullet_not_found while
+// roadmap_query resolved the same id.
+TEST(roadmap_log_flip_idless_antsv1, Inv4FlipBoldIdById) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedBoldId()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("flip");
+    req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    req[QStringLiteral("id")]         = QStringLiteral("LOTTO-0019");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(req).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "a bold-ID ants-v1 bullet must resolve by `id`, not bullet_not_found";
+    EXPECT_EQ(resp.value(QStringLiteral("id")).toString(),
+              QStringLiteral("LOTTO-0019"))
+        << "the envelope reports the id it resolved, not an empty string";
+
+    const QByteArray md = readFile(roadmapPath(tmp.path()));
+    EXPECT_TRUE(contains(md, "- \xE2\x9C\x85 **LOTTO-0019** Persist"));
+    EXPECT_TRUE(contains(md, "- \xF0\x9F\x93\x8B **LOTTO-0020** Export"))
+        << "siblings untouched";
+
+    // The bold-PROSE bullet stays id-less: adopting its span as an id would
+    // make every narrator bullet addressable by its own headline text.
+    QJsonObject prose;
+    prose[QStringLiteral("caller_cwd")] = tmp.path();
+    prose[QStringLiteral("op")]         = QStringLiteral("flip");
+    prose[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    prose[QStringLiteral("id")] =
+        QStringLiteral("In-progress prose headline");
+    EXPECT_FALSE(rc.cmdRoadmapLogFlipForTest(prose)
+                     .object().value(QStringLiteral("ok")).toBool())
+        << "a multi-word bold span is a headline, not an id";
+}
+
+// INV-5 (ANTS-4109) — flip_batch where EVERY locator fails is a refusal.
+// Pre-fix it returned ok:true with flipped_count:0, so a caller that did not
+// also read flipped_count reported a bundle shipped that was still planned.
+TEST(roadmap_log_flip_idless_antsv1, Inv5FlipBatchAllSkippedIsNotOk) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedBoldId()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject a, b;
+    a[QStringLiteral("id")] = QStringLiteral("LOTTO-9998");
+    b[QStringLiteral("id")] = QStringLiteral("LOTTO-9999");
+    QJsonArray locs; locs.append(a); locs.append(b);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+    req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    req[QStringLiteral("locators")]   = locs;
+    const QJsonObject resp = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+        << "nothing resolved is a refusal, not a partial success";
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bullet_not_found"));
+    EXPECT_EQ(resp.value(QStringLiteral("skipped")).toArray().size(), 2)
+        << "skipped[] still carries the per-locator detail";
+
+    // A batch with one resolvable locator stays a partial success.
+    QJsonObject good;
+    good[QStringLiteral("id")] = QStringLiteral("LOTTO-0019");
+    QJsonArray mixed; mixed.append(good); mixed.append(b);
+    QJsonObject req2;
+    req2[QStringLiteral("caller_cwd")] = tmp.path();
+    req2[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+    req2[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    req2[QStringLiteral("locators")]   = mixed;
+    const QJsonObject resp2 = rc.cmdRoadmapLogFlipBatchForTest(req2).object();
+    EXPECT_TRUE(resp2.value(QStringLiteral("ok")).toBool())
+        << "partial success is unchanged";
+    EXPECT_EQ(resp2.value(QStringLiteral("flipped_count")).toInt(), 1);
 }

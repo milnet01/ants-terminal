@@ -975,6 +975,27 @@ static const RoadmapIndex::Section *rcPassFindSection(
     return nullptr;
 }
 
+// ANTS-4117 — does this roadmap separate its pass blocks with a `---` rule?
+// RetroDB's ~200 passes each end in one, so a block appended without it does
+// not close and the next append reads as part of it; that session abandoned
+// the verb and hand-edited three passes. Detect rather than assume: a `---`
+// whose next non-blank line is a `#### Pass` heading is a block separator and
+// nothing else, so a file that does not use them (Ants' own fixtures, and the
+// shape ANTS-2126 § 2.2 renders) sees no change at all.
+static bool rcPassBlocksUseSeparator(const QString &markdown) {
+    const QStringList lines = markdown.split(QChar('\n'));
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed() != QStringLiteral("---")) continue;
+        for (int j = i + 1; j < lines.size(); ++j) {
+            const QString t = lines.at(j).trimmed();
+            if (t.isEmpty()) continue;
+            if (t.startsWith(QStringLiteral("#### Pass "))) return true;
+            break;  // this `---` is some other rule — keep scanning
+        }
+    }
+    return false;
+}
+
 // Splice `block` (already rendered, no surrounding blanks) at the end of
 // the section body, managing one leading/trailing blank line for layout.
 // Returns the updated body; *headingIdx0 ← 0-based line of the first
@@ -1022,9 +1043,14 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     const auto *sec = rcPassFindSection(index, section, &refusal);
     if (!sec) return refusal;
 
+    // ANTS-4117 — close the block the way this file closes its others.
+    QString block = it.block;
+    if (rcPassBlocksUseSeparator(markdown))
+        block += QStringLiteral("\n\n---");
+
     int headingIdx0 = 0;
     const QString updated =
-        rcSplicePassBlock(markdown, *sec, it.block, &headingIdx0);
+        rcSplicePassBlock(markdown, *sec, block, &headingIdx0);
 
     if (req.value(QStringLiteral("dry_run")).toBool()) {
         QJsonObject out;
@@ -1038,8 +1064,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
         // create a second, wrong roadmap", and it cost them the verb.
         out["file"]    = QFileInfo(roadmapPath).fileName();
         out["line"]    = headingIdx0 + 1;
-        out["bullet"]  = it.block;
-        out["bytes"]   = static_cast<qint64>(it.block.toUtf8().size());
+        out["bullet"]  = block;
+        out["bytes"]   = static_cast<qint64>(block.toUtf8().size());
         out["format"]  = QStringLiteral("pass-headings");
         return QJsonDocument(out);
     }
@@ -1053,7 +1079,13 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
     out["line"]          = headingIdx0 + 1;
     out["format"]        = QStringLiteral("pass-headings");
-    out["bytes_written"] = static_cast<qint64>(it.block.toUtf8().size());
+    // ANTS-4117 — echo what was actually rendered, not only its size. The
+    // pass-headings shape is fixed by ANTS-2126 § 2.2 (canonical Status
+    // keyword, body verbatim, no kind/source/lanes/layman slot) and differs
+    // from some projects' house style; a caller who did not dry_run first had
+    // no way to see that until they re-read the file.
+    out["bullet"]        = block;
+    out["bytes_written"] = static_cast<qint64>(block.toUtf8().size());
     return QJsonDocument(out);
 }
 
@@ -1070,6 +1102,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
 
     QJsonArray applied, skipped;
     QStringList renderedBlocks;
+    const bool useSeparator = rcPassBlocksUseSeparator(markdown);  // ANTS-4117
     for (int i = 0; i < bullets.size(); ++i) {
         const PassAppendItem it = rcRenderPassBullet(bullets.at(i).toObject());
         if (!it.ok) {
@@ -1080,10 +1113,13 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
             skipped.append(s);
             continue;
         }
-        renderedBlocks << it.block;
+        const QString block = useSeparator
+            ? it.block + QStringLiteral("\n\n---") : it.block;
+        renderedBlocks << block;
         QJsonObject a;
         a["bullet_index"] = i;
         a["id"]           = it.synthId;
+        a["bullet"]       = block;   // ANTS-4117
         applied.append(a);
     }
 

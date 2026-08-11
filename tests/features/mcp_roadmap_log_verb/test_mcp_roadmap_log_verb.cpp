@@ -40,9 +40,11 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     // 40 KiB; ANTS-3432 declared the bundle_row props
     // cells/header/position/sort_col (~2 KiB of prose), pushing the
     // `props["caller_cwd"]`/`props["section"]` assignments to ~40.7 KiB —
-    // bumped to 44 KiB). Window sized to outrun the next couple of
+    // bumped to 44 KiB; ANTS-4097/4117 added ~1 KiB of descriptor prose to
+    // `old_text` and `pass`, pushing `props["section"]` past 44 KiB —
+    // bumped to 48 KiB). Window sized to outrun the next couple of
     // additions; trim if it grows unnecessarily.
-    const std::string region = ci.substr(pos, 44000);
+    const std::string region = ci.substr(pos, 48000);
     expect(contains(region, "\"caller_cwd\""),
            "INV-1: caller_cwd schema property present");
     expect(contains(region, "\"section\""),

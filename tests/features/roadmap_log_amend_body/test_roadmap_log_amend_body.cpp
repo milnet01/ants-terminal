@@ -456,5 +456,47 @@ TEST(roadmap_log_amend_body, Inv8Inv9SourceSurface) {
            "INV-9: schema registers new_text property");
     expect(contains(ci, "amend_body\\\" (ANTS-3406)"),
            "INV-9: op descriptor documents amend_body");
+    expect(contains(ci, "single-line is a MATCHING rule, not a "),
+           "INV-10: old_text descriptor warns that N calls compose");
     EXPECT_EQ(0, expect_failures());
+}
+
+// INV-10 (ANTS-4097) — the success envelope echoes `body_paragraph`, the
+// edited line WITH its hard-wrapped neighbours. amend_body matches within one
+// physical line, so rewriting a phrase that spans a wrapped paragraph takes N
+// calls; each succeeds and each looks right alone, and {amended, body_line,
+// bytes_written} has no view of what the N together produced. The echo is the
+// only thing in the envelope that shows it.
+TEST(roadmap_log_amend_body, Inv10WrappedParagraphEcho) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QByteArray seed = seedV1();
+    seed.append(
+        "- \xF0\x9F\x93\x8B [ANTS-0044] **Wrapped paragraph bullet.**\n"
+        "  The recommendation is to keep the cache warm across\n"
+        "  restarts, because a cold start costs about four seconds\n"
+        "  on this host.\n"
+        "  Kind: fix.\n"
+        "\n");
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seed));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path());
+    r[QStringLiteral("id")]       = QStringLiteral("ANTS-0044");
+    r[QStringLiteral("old_text")] = QStringLiteral("keep the cache warm across");
+    r[QStringLiteral("new_text")] = QStringLiteral("drop the cache between");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(r).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    const std::string para =
+        resp.value(QStringLiteral("body_paragraph")).toString().toStdString();
+    EXPECT_TRUE(contains(para, "drop the cache between"))
+        << "the echo shows the line that was edited";
+    EXPECT_TRUE(contains(para, "restarts, because a cold start"))
+        << "and the wrapped neighbours a second call would have to touch — "
+           "that is what makes the joint result readable";
+    EXPECT_FALSE(contains(para, "Wrapped paragraph bullet"))
+        << "the bullet marker bounds the paragraph; the head line is not in it";
+    EXPECT_FALSE(contains(para, "Layman: the value is pinned"))
+        << "and it never spills into the neighbouring bullet";
 }

@@ -80,6 +80,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log op:amend_body is single-line by design, so two successful calls can leave a wrapped paragraph incoherent with nothing in the envelope to show it.** (ANTS-4097)
+  Fixing two lines of the same paragraph one at a time can produce a sentence that contradicts itself, and both edits report success.
+
+- **roadmap_log op:append renders a non-conforming bullet on a pass-headings roadmap — Status: todo, unindented body, no separator.** (ANTS-4117)
+  On one project the roadmap tool writes entries in the wrong shape, so every append needs fixing by hand afterwards.
+
+- **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.** (ANTS-4109)
+  Marking items done silently does nothing on some roadmaps, and still reports success.
+
 - **Test chunks are bounded by bytes as well as file count.** (ANTS-4113)
   A suite whose tests live in a few very large files returned one chunk no reviewer could read against the full dimension list. The applied budget is echoed as `chunk_byte_budget`.
 

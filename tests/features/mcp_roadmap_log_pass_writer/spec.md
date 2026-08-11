@@ -38,6 +38,17 @@ design spec's INV-1..16 and from the format-mismatch test's INVs).
   the section heading.
 - **INV-16** — a stray `pass` arg on a GFM/ants-v1 roadmap is ignored,
   not refused (the normal bullet still writes).
+- **INV-17** (ANTS-4117) — on a roadmap whose pass blocks are separated by
+  a `---` rule, an appended block closes with one too; a roadmap that does
+  not use them is byte-unchanged in shape. Detected from the file (a `---`
+  whose next non-blank line is a `#### Pass` heading), never assumed. Both
+  the write and `dry_run` envelopes echo the rendered block as `bullet`,
+  so a caller who did not preview can still see what was written. The
+  rendered SHAPE is otherwise unchanged and stays ANTS-2126 § 2.2's: the
+  canonical Status keyword (not the caller's `status` word), `body`
+  verbatim, and no `kind`/`source`/`lanes`/`layman` slot — the `pass`
+  schema description now states all three so it is knowable before the
+  call rather than after it.
 
 Pure-helper unit cases additionally cover `passStatusKeyword` (the total
 4→keyword map) and `passIdFromDesignator` (leading-zero stripping).

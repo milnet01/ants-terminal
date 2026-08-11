@@ -68,6 +68,16 @@ note_scrubbed_params?, post_bullets?}`.
 - **INV-9** — schema advertises `amend_body` in the op enum and declares
   `old_text` / `new_text` props (`additionalProperties:false` requires
   them to be registered); the op descriptor documents amend_body.
+- **INV-10** (ANTS-4097) — The success envelope echoes `body_paragraph`:
+  the edited line together with its hard-wrapped neighbours, bounded by a
+  blank line or a bullet marker so it never spills into the next bullet.
+  Single-line matching is a MATCHING rule, not a safety one — rewriting a
+  phrase that spans a wrapped paragraph takes N calls, each succeeds, each
+  looks right alone, and the paragraph they jointly produce is checked by
+  nothing; `{amended, body_line, bytes_written}` has no view of it and
+  there is no prompt to re-read precisely because the calls succeeded. The
+  `old_text` schema description says so too. (Multi-line `old_text`
+  matching was NOT added — it would change the uniqueness guard's unit.)
 
 ## Tests
 

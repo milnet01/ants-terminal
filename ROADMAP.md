@@ -29965,7 +29965,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 DOOM Ants.
 
-- 📋 [ANTS-4097] **roadmap_log op:amend_body is single-line by design, so two successful calls can leave a wrapped paragraph incoherent with nothing in the envelope to show it.**
+- ✅ [ANTS-4097] **roadmap_log op:amend_body is single-line by design, so two successful calls can leave a wrapped paragraph incoherent with nothing in the envelope to show it.**
   The unique-match guard protects the NEIGHBOURING text, not the resulting
   sentence. Two amendments to two lines of one wrapped paragraph each
   succeed and each looks correct in isolation; the paragraph they jointly
@@ -29988,6 +29988,17 @@ defect from different angles.
   **Layman:** Fixing two lines of the same paragraph one at a time can produce a sentence that contradicts itself, and both edits report success.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 DOOM Ants.
+  Resolved (2026-08-11): fixes (a) + (b), not (c).
+  The `old_text` schema description now says single-line is a MATCHING
+  rule and not a safety one — N calls compose into a paragraph nobody
+  checked — and the success envelope echoes `body_paragraph`: the edited
+  line together with its hard-wrapped neighbours, bounded by a blank line
+  or a bullet marker so it never spills into the next bullet. Emitted on
+  both the markdown and the store path. (c) — a multi-line `old_text`
+  matched after unwrapping — was NOT done: it changes the unit the
+  uniqueness guard counts over, and that guard is the whole reason
+  amend_body cannot clobber unrelated prose. Tests:
+  roadmap_log_amend_body INV-10.
 
 - 📋 [ANTS-4098] **audit_run: spec_code_drift resolves test-file citations against source_roots only, so every citation in a tests/features/*/spec.md is a false positive.**
   5 of 6 spec_code_drift findings named a file that exists in the SAME
@@ -30246,7 +30257,7 @@ defect from different angles.
   Kind: feature.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
 
-- 📋 [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
+- ✅ [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
   roadmap_query {id:"LOTTO-0019"} resolves and returns
   bold_id:"LOTTO-0019". roadmap_log op:"flip" with the same id refuses
   bullet_not_found for every bullet in the file; the `headline` locator
@@ -30270,6 +30281,20 @@ defect from different angles.
   **Layman:** Marking items done silently does nothing on some roadmaps, and still reports success.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Lotto Tracker.
+  Resolved (2026-08-11): `walkAntsV1Bullets`
+  (remotecontrol.cpp) read an id only from a `[…]` bracket, so on a
+  bold-id roadmap every bullet came back id-less — while roadmap_query
+  resolved the same string, because the read path extracts it
+  (roadmapparse.cpp `fillBulletRecord`'s native branch). The writer now
+  mirrors that branch exactly: adopt the leading bold token only when
+  ID-SHAPED (a single whitespace-free token), so a bold-prose narrator
+  stays id-less. Additive — the headline locator that was the reporting
+  session's workaround keeps working. Fix (b) also done: flip_batch in
+  which EVERY locator is skipped now returns ok:false with a `code` (the
+  shared skipped code, else bullet_not_found); partial success is
+  unchanged. Fix (a) NOT done, as subsumed — a refusal that names a
+  matching bold_id is now unreachable, because the id locator resolves
+  that form. Tests: roadmap_log_flip_idless_antsv1 INV-4 / INV-5.
 
 - ✅ [ANTS-4110] **spec_lint's invariant_id_gap assumes per-spec INV numbering and fires 26 times on a project that numbers invariants project-globally.**
   26 invariant_id_gap findings across three specs — e.g. "INV-7 is missing
@@ -30437,7 +30462,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 RetroDB.
   Resolved (2026-08-11): the six pass-headings roadmap_log sites (append, append_batch, flip, flip_batch, and both dry_run branches) echo QFileInfo(roadmapPath).fileName() instead of a hardcoded "ROADMAP.md", so a project whose roadmap is lowercase roadmap.md sees its real filename. Basename rather than a project-relative path, matching the sibling changelog_log echo's existing convention. Suite green 3355/3355.
 
-- 📋 [ANTS-4117] **roadmap_log op:append renders a non-conforming bullet on a pass-headings roadmap — Status: todo, unindented body, no separator.**
+- ✅ [ANTS-4117] **roadmap_log op:append renders a non-conforming bullet on a pass-headings roadmap — Status: todo, unindented body, no separator.**
   On a roadmap the verb itself detects as format:"pass-headings", append
   renders `#### Pass 57.6 <headline>` / `- **Status**: todo` / body
   flush-left. The file's house format for all ~200 existing passes is
@@ -30462,6 +30487,23 @@ defect from different angles.
   **Layman:** On one project the roadmap tool writes entries in the wrong shape, so every append needs fixing by hand afterwards.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 RetroDB.
+  Resolved (2026-08-11) — partly, deliberately.
+  Read as a claim: three of the four mismatches are ANTS-2126 § 2.2's
+  SPECIFIED contract, not defects. `todo` is the canonical write keyword
+  the reader round-trips to 📋 (INV-11/12, pinned by tests); `body` is
+  written verbatim so the CALLER controls its indentation; kind / source /
+  lanes / layman have no slot in the pass format. Changing those would
+  break a shipped contract for one project's house style. What was
+  genuinely wrong: (1) the appended block did not close with the `---`
+  this file separates every block with — now emitted, DETECTED from the
+  file (a `---` whose next non-blank line is a `#### Pass` heading), so a
+  roadmap that does not use them is unchanged; (2) only dry_run echoed the
+  rendered block, so a caller who wrote first could not see the shape —
+  the write envelope now echoes `bullet` too, and each append_batch
+  `applied[]` entry carries its own; (3) nothing stated any of this BEFORE
+  the call — the `pass` schema description now names the keyword
+  substitution, the verbatim body and the ignored args. Tests:
+  mcp_roadmap_log_pass_writer INV-17.
 
 - 📋 [ANTS-4118] **The pre-push gate's ASan leg outlives an agent's command timeout, so a push is killed mid-build rather than failing.**
   Measured 2026-08-11 while shipping the ANTS-4111/4112/4113 batch. `git push`

@@ -30,6 +30,22 @@ leaving the fully id-less case (RetroArch HIGH + Album Builder,
 - **INV-3** — Regression: a mixed file (one id-ful `[ANTS-NNNN]` bullet +
   one id-less bullet) still resolves the id-ful bullet by `id` and the
   id-less bullet by `headline`; neither is dropped.
+- **INV-4** (ANTS-4109) — An ants-v1 bullet whose id is **bold** rather
+  than bracketed (`- 📋 **LOTTO-0019** …`) resolves by the `id` locator.
+  The bracket was the only id shape `walkAntsV1Bullets` knew, so these
+  bullets came back id-less and `op:flip {id}` refused `bullet_not_found`
+  for every bullet in the file — while `roadmap_query {id}` resolved the
+  same string, because the read path extracts it. The write path now
+  mirrors `fillBulletRecord`'s native branch: the leading bold token is
+  adopted **only when ID-shaped** (a single whitespace-free token), so a
+  bold-prose narrator stays id-less (INV-1 is the guard on that). The
+  bullet's `headline` locator keeps working — the change is additive.
+- **INV-5** (ANTS-4109) — `op:flip_batch` in which **every** locator fails
+  to resolve returns `ok:false` with a `code`, not `ok:true` with
+  `flipped_count:0`. Partial success stays `ok:true` (INV-2); with nothing
+  applied there is no rest to still apply, and a caller not reading
+  `flipped_count` reported a bundle shipped that was still planned.
+  `skipped[]` / `skipped_count` are unchanged.
 
 ## Tests
 

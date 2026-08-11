@@ -1815,6 +1815,31 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+// ANTS-4097 — the wrapped paragraph an amend_body edit landed in, echoed
+// on the success envelope. amend_body matches within one physical line, so
+// changing a phrase that spans a hard-wrapped paragraph takes N calls; each
+// one succeeds, each looks right in isolation, and the N-line paragraph they
+// jointly produce is checked by nothing. {amended, body_line, bytes_written}
+// has no view of it and there is no prompt to re-read precisely BECAUSE the
+// calls succeeded. Returning the paragraph is the smallest thing that makes
+// the joint result visible without re-reading the file.
+// `editedIdx` is 0-based into `lines`; a bullet marker or a blank bounds the
+// paragraph, so the run never spills into a neighbouring bullet.
+static QString rcAmendedParagraph(const QStringList &lines, int editedIdx) {
+    if (editedIdx < 0 || editedIdx >= lines.size()) return QString();
+    const auto isBoundary = [](const QString &s) {
+        const QString t = s.trimmed();
+        return t.isEmpty() || t.startsWith(QStringLiteral("- ")) ||
+               t.startsWith(QStringLiteral("* "));
+    };
+    int lo = editedIdx, hi = editedIdx;
+    while (lo > 0 && !isBoundary(lines.at(lo - 1))) --lo;
+    while (hi + 1 < lines.size() && !isBoundary(lines.at(hi + 1))) ++hi;
+    QString out = lines.mid(lo, hi - lo + 1).join(QChar('\n'));
+    if (out.size() > 2000) { out.truncate(2000); out += QStringLiteral("…"); }
+    return out;
+}
+
 // ANTS-3406 — roadmap_log op:"amend_body". Locate a bullet (id > anchor
 // > headline, same rules as flip) and replace an exact single-line
 // substring of its continuation body (`old_text` → `new_text`), guarded
@@ -2175,6 +2200,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
             }
             bodyLines[hitLine].replace(oldText, newText);
             const QString newBody = bodyLines.join(QChar('\n'));
+            // ANTS-4097 — echo the paragraph the edit landed in.
+            const QString amendedPara = rcAmendedParagraph(bodyLines, hitLine);
 
             const auto mutate = [&](QString *err) -> bool {
                 if (!store.setItemField(*itemPk, QStringLiteral("body"), newBody,
@@ -2199,6 +2226,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
             env[QStringLiteral("format")]  = QStringLiteral("ants-v1");
             env[QStringLiteral("file")]    = QStringLiteral("ROADMAP.md");
             env[QStringLiteral("amended")] = true;
+            if (!amendedPara.isEmpty())
+                env[QStringLiteral("body_paragraph")] = amendedPara;
             if (!matchedId.isEmpty())
                 env[QStringLiteral("id")] = matchedId;
             // No `line` / `body_line` / `bytes` — a store has no lines
@@ -2270,6 +2299,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
         out["line"]      = reportLine;
         out["body_line"] = editedLine + 1;
         out["amended"]   = true;
+        // ANTS-4097 — echo the paragraph the edit landed in.
+        const QString para = rcAmendedParagraph(lines, editedLine);
+        if (!para.isEmpty()) out["body_paragraph"] = para;
         if (preview) { out["dry_run"] = true; out["bytes"] = byteCount; }
         else         { rcSetWriteBytes(out, sizeBefore, byteCount); }
         if (!matchedId.isEmpty()) out["id"] = matchedId;
@@ -2665,7 +2697,31 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
 
     if (targets.isEmpty()) {
         QJsonObject out;
-        out["ok"]            = true;
+        // ANTS-4109 — nothing resolved is a refusal, not a partial success.
+        // Partial success is the documented shape when SOME locators apply;
+        // with none applied there is no rest to still apply, and ok:true read
+        // as "flipped three bullets" to a caller that did not also check
+        // flipped_count — so a bundle close reported items shipped that were
+        // still planned. skipped[] keeps carrying the per-locator detail.
+        const bool allSkipped = !skipped.isEmpty();
+        out["ok"]            = !allSkipped;
+        if (allSkipped) {
+            // The shared code when every locator failed the same way, else
+            // the generic locate failure; skipped[] has the per-locator truth.
+            QString code = skipped.first().toObject()
+                               .value(QStringLiteral("code")).toString();
+            for (const QJsonValue &v : std::as_const(skipped)) {
+                if (v.toObject().value(QStringLiteral("code")).toString()
+                        != code) {
+                    code = QStringLiteral("bullet_not_found");
+                    break;
+                }
+            }
+            out["code"]  = code;
+            out["error"] = QStringLiteral("roadmap_log op:\"flip_batch\": all "
+                "%1 locator(s) failed to resolve — nothing was flipped")
+                    .arg(skipped.size());
+        }
         out["op"]            = QStringLiteral("flip_batch");
         out["format"]        = isGfm ? QStringLiteral("gfm")
                                      : QStringLiteral("ants-v1");

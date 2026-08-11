@@ -9366,7 +9366,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "it can't silently clobber unrelated prose). "
                         "Case-sensitive; single-line (a phrase spanning a "
                         "line break won't match). The headline is out of "
-                        "scope — amend_body edits body prose only.");
+                        "scope — amend_body edits body prose only. "
+                        "ANTS-4097: single-line is a MATCHING rule, not a "
+                        "safety one — rewriting a phrase that spans a "
+                        "hard-wrapped paragraph takes N calls, each succeeds, "
+                        "each looks right alone, and the paragraph they "
+                        "jointly produce is checked by nothing. The success "
+                        "envelope echoes `body_paragraph` (the edited line "
+                        "with its wrapped neighbours) so you can read the "
+                        "joint result without re-reading the file.");
                     QJsonObject newTextProp;
                     newTextProp["type"]      = "string";
                     newTextProp["maxLength"] = 4000;
@@ -9649,7 +9657,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "when the target is a pass-headings roadmap; ignored "
                         "on GFM / ants-v1 roadmaps. Flip/annotate locate a "
                         "pass by its synthesised `PASS-N-M` id (via the `id` "
-                        "locator) or `headline`, not via `pass`.");
+                        "locator) or `headline`, not via `pass`. "
+                        "ANTS-4117 — what append RENDERS on this format is "
+                        "fixed: `#### Pass <pass> <headline>` + `- "
+                        "**Status**: <keyword>` + `body` VERBATIM (not "
+                        "indented for you), where <keyword> is the canonical "
+                        "todo / in-progress / done / deferred, NOT the "
+                        "`status` word you passed; `kind` / `source` / "
+                        "`lanes` / `layman` have no slot and are ignored. A "
+                        "trailing `---` is emitted only when the file already "
+                        "separates its pass blocks that way. Pass "
+                        "`dry_run:true` (or read the `bullet` field the write "
+                        "envelope echoes) to see the exact block.");
 
                     // ANTS-2080 — confirm-after compact echo.
                     QJsonObject returnProp;
