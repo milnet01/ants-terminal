@@ -39162,6 +39162,29 @@ contributors don't duplicate research.
   Kind: doc-fix.
   Source: in-session-2026-08-06 (ANTS-3833 commit 3).
 
+- 📋 [ANTS-4125] **src/remotecontrol.cpp carries ~10 engine includes left behind by the per-subsystem decomposition.**
+  clangd reports unused-includes for buildcache.h, coldeyesengine.h,
+  debtsweepengine.h, feedbackfile.h, fileoutline.h, findsources.h,
+  readlog.h, readregion.h, applyedits.h and build_info.h at the top of
+  src/remotecontrol.cpp. Verified 2026-08-12: for nine of the ten, every
+  top-level class/namespace the header exports has ZERO occurrences in
+  remotecontrol.cpp (build_info.h exports no class, so it was not checked
+  this way). Their consumers moved to the sibling remotecontrol_*.cpp TUs
+  when the hub was decomposed; the includes did not follow.
+
+  Same class as ANTS-4123 (one stale roadmapstore.h include in
+  remotecontrol_feedback.cpp), but at hub scale — remotecontrol.cpp is one
+  of the heaviest TUs in the build, so this is compile time on every touch.
+
+  NOT a mechanical delete: sibling TUs and remotecontrol.cpp itself may be
+  relying on TRANSITIVE inclusion through these headers, so each removal
+  needs a build. Do the whole hub in one pass with a full
+  `cmake --build build`, not one include per commit. Worth sweeping every
+  remotecontrol_*.cpp for the same residue while there.
+  **Layman:** The main remote-control file still lists ten helper files it no longer uses, so every build of it does needless work.
+  Kind: refactor.
+  Source: in-session-2026-08-12 (clangd diagnostics during ANTS-4091).
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
