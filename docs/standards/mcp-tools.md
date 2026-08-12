@@ -207,6 +207,24 @@ place when it saves a Claude session real tokens or round-trips
    handler must **not** emit it. The dispatch short-circuits a matching
    `etag_match` to `{ok:true, unchanged:true, etag:"<same>"}`.
 
+   **Exception — a timing-bearing envelope owns its own 304 (ANTS-4108).**
+   The central etag hashes the whole response text, which is correct
+   exactly when the response is a pure function of project state. A verb
+   whose envelope carries per-run measurements is not: `spec_conformance`
+   emits one measured-microsecond `observations[]` row per executed case,
+   so a central hash differs on every run and the 304 could never fire.
+   Such a verb stays **out** of `isEtagSupportedTool`, hashes the envelope
+   *minus* the measured fields, and performs the short-circuit itself —
+   see `RemoteControl::specConformanceBuildResponse`
+   (`src/remotecontrol_docs.cpp`), § 2.3 of
+   [ANTS-4108](../specs/ANTS-4108-spec-conformance-verb.md), and the
+   `Inv9EtagShortCircuitIsHandlerLocal` case in
+   `tests/features/spec_conformance_verb/`, which asserts the absence.
+   Per-run measurement in the envelope is the only condition that earns
+   this; wanting a different hash is not one. A handler-local 304 still
+   returns the same `{ok:true, unchanged:true, etag}` shape, and a refusal
+   envelope is never short-circuited.
+
 8. **Opt into `fields=` projection for high-volume reads (optional).**
    A tool with a large payload should support response narrowing
    (ANTS-1720): add it to `mcp::isFieldProjectionTool` and a
