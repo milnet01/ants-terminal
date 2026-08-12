@@ -30594,6 +30594,15 @@ defect from different angles.
   convention yet (§ 2.4a), so the verb reports nothing against today's corpus.
   ANTS-4128 (recognise the `re.search` call form) and ANTS-4127 (execute
   fixtures) are what make it earn its keep; neither blocked shipping this.
+  Follow-up (2026-08-12), one line, after the next relaunch: README.md's
+  "89 ready-made tools" is ARITHMETIC, not a measurement. The live registry
+  reported `tool_count: 88` against the pre-change binary (build 4d5b4550)
+  and this adds exactly one `registerToolProvider` call, so 89 follows — but
+  the running MCP server is still the old binary, so it could not be read
+  back. Confirm with `tool_info {catalog:true}` once Ants is relaunched.
+  Note the count is NOT `grep -c registerToolProvider src/mainwindow.cpp`,
+  which returns 87: two tools reach the registry by another route, and a
+  future session "correcting" the README from that grep would make it wrong.
 
 - ✅ [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
   roadmap_query {id:"LOTTO-0019"} resolves and returns
