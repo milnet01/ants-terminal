@@ -31103,6 +31103,19 @@ defect from different angles.
 
   Still extends ANTS-4108's extraction contract and result taxonomy
   (§ 2.4 / § 2.5) rather than replacing them. Spec next, via /write-spec.
+  Spec accepted (2026-08-12): docs/specs/ANTS-4127-test-surface-resolution.md
+  — 37 findings verified and fixed over 3 cold review loops, 1 dismissed;
+  cap reached without a clean pass, tail empty.
+
+  TWO reversals against this bullet as written, both recorded by the spec:
+  (1) the HEADLINE above still says "execute a spec's fenced FIXTURES" —
+  that is now a PERMANENT EXCLUSION, not deferred work, so no follow-up id
+  carries it; (2) the stated home was spec_conformance, and it is
+  spec_lint — resolving a citation runs nothing, and that engine already
+  walks the *Test:* clause.
+
+  ANTS-4108 § 6 deferred TWO bullets to this id (fixture execution, and
+  Python `re` as an engine). Both are closed here by decision.
 
 - 📋 [ANTS-4128] **spec_conformance: recognise the `re.search(pattern, input)` CALL form, not only the fence+table convention.**
   Found by building ANTS-4108's engine and pointing it at this repo, which is
@@ -31538,6 +31551,34 @@ defect from different angles.
   **Layman:** Our error-code rulebook defines a code one way, then gives an example that breaks its own definition. Two developers reading it will ship different error codes for the same situation.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (ANTS-4129 review-contract loop 2).
+
+- 📋 [ANTS-4135] **23 specs cite feature-test directories that do not exist.**
+  Measured 2026-08-12 over docs/specs/ (excluding ANTS-4127's own spec):
+  266 distinct `tests/features/<name>` directories are named, and 26 are
+  absent from disk. Three are truncation artefacts of a wildcard
+  (`audit_*` etc.), leaving 23 real. Counted per (spec, surface) pair the
+  corpus holds 25: 3 in specs whose own Status says the work SHIPPED, 20 in
+  live draft states, 2 in superseded/considered specs.
+
+  The three that matter, because their specs claim delivery:
+    ANTS-1111 (`v1 shipped 2026-05-13 in 0.7.88`) cites
+      tests/features/audit_since_baseline and .../audit_allow_widening
+    ANTS-3504 (`Implemented (2026-07-12) — cold-eyes clean`) cites
+      tests/features/feedback_ship_date
+  None is a rename — `grep -rl <name> tests/` is empty for all three.
+
+  Each needs one of: write the test, or amend the clause to name the
+  surface that really locks the invariant. Not a bulk edit — the answer
+  differs per invariant, and a spec claiming a test that does not exist is
+  exactly the defect ANTS-4127 exists to detect.
+
+  ANTS-4127 is the DETECTOR for this class; this bullet is the existing
+  backlog it will report on its first run. Doing this first would make that
+  run come back clean and prove nothing, so land ANTS-4127 first and use
+  its output as the worklist.
+  **Layman:** Some specs say "this rule is checked by that test" and the test was never written. Two of them say the work already shipped.
+  Kind: fix.
+  Source: in-session-2026-08-12 (measured while speccing ANTS-4127).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
