@@ -344,9 +344,15 @@ constexpr int kRoadmapQueryBodyStoreCap = 16384;
 // The marker is a fixed string carrying no counts, so it stays byte-stable
 // across calls (prompt-cache / ETag friendly) and a second elision at
 // emission cannot render a stale count.
+//
+// ANTS-4091 — it also names the remedy. Saying only that text was elided left
+// the caller with no route to the omitted span, and the span that goes is the
+// MIDDLE — where a bullet's resume plan sits. Still count-free, for the
+// byte-stability reason above.
 const QString &kBodyElisionMarker() {
-    static const QString m =
-        QStringLiteral("\n\n… [body elided — tail follows] …\n\n");
+    static const QString m = QStringLiteral(
+        "\n\n… [body elided — tail follows; refetch by id with "
+        "max_body_bytes for more] …\n\n");
     return m;
 }
 

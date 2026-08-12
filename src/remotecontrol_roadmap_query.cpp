@@ -668,6 +668,21 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
         if (allDigit) return true;
         return t.contains(QLatin1Char('.')) || t.contains(QLatin1Char('/'));
     };
+    // ANTS-4088 — a LABEL token gets the same denoiser plus per-token
+    // punctuation stripping. rcNormaliseHeadline only chops trailing
+    // punctuation off the WHOLE headline, and isNoiseToken ran on the
+    // cluster tokens but never on the label ones, so real labels read
+    // `- be bookmarked` / `"most` / `57 blocks duplication:`. Returns an
+    // empty string for a token that should not reach the label. The
+    // CLUSTER tokens are deliberately left as they are: stripping there
+    // would move bundle membership (INV-2 / INV-14), a separate change.
+    const auto labelToken = [&isNoiseToken](const QString &raw) -> QString {
+        QString t = raw;
+        while (!t.isEmpty() && !t.front().isLetterOrNumber()) t.remove(0, 1);
+        while (!t.isEmpty() && !t.back().isLetterOrNumber())  t.chop(1);
+        if (t.isEmpty() || isNoiseToken(t)) return {};
+        return t;
+    };
     QHash<QString, int> df;
     for (const Item &it : active)
         for (const QString &t : it.tokens)
@@ -792,7 +807,17 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
         // ≥ ceil(size/2) members, sorted (freq desc, token asc), first 3.
         QHash<QString, int> tokFreq;
         for (int mi : members) {
-            for (const QString &t : active[mi].tokens) tokFreq[t] += 1;
+            // ANTS-4088 — one vote per member, counted on the CLEANED token:
+            // stripping can collapse two raw tokens of the same member
+            // (`"most"` and `most`) onto one key, which would otherwise let a
+            // single member vote twice and clear the majority gate alone.
+            QSet<QString> counted;
+            for (const QString &t : active[mi].tokens) {
+                const QString c = labelToken(t);
+                if (c.isEmpty() || counted.contains(c)) continue;
+                counted.insert(c);
+                tokFreq[c] += 1;
+            }
         }
         const int need = (size + 1) / 2;   // ceil(size/2)
         QStringList qualifying;
@@ -1039,13 +1064,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // single large epic body raises it up to kRoadmapQueryBodyStoreCap
     // (16 KiB). Clamped to [2000, 16384]; ignored on list/section/
     // section_index paths (they always emit at the 2000 cap).
-    int idBodyCap = kRoadmapQueryBodyCap;
+    // ANTS-4091 — 0 ⟹ not supplied. The targeted default is DERIVED from the
+    // id count once `ids` is parsed (below), so it is no longer the 2000 list
+    // cap; an explicit value still wins.
+    int reqBodyCap = 0;
     if (req.contains(QStringLiteral("max_body_bytes"))) {
         int req_cap = req.value(QStringLiteral("max_body_bytes")).toInt(
             kRoadmapQueryBodyCap);
         if (req_cap < kRoadmapQueryBodyCap)      req_cap = kRoadmapQueryBodyCap;
         if (req_cap > kRoadmapQueryBodyStoreCap) req_cap = kRoadmapQueryBodyStoreCap;
-        idBodyCap = req_cap;
+        reqBodyCap = req_cap;
     }
 
     // ANTS-1726 — optional `ids` plural-selector. Same intent as `id`
@@ -1133,6 +1161,22 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             return QJsonDocument(out);
         }
     }
+
+    // ANTS-4091 — the TARGETED (id/ids) default body cap scales with how many
+    // ids were named. Head+tail elision (ANTS-3736) keeps both ends and drops
+    // the MIDDLE, so a bullet whose resume plan sits mid-body lost precisely
+    // what the caller opened it to read. On a targeted fetch that cost is
+    // avoidable: naming the ids has already narrowed the payload. The `/n`
+    // divisor preserves the bound the 2000 default was really protecting —
+    // total body payload on this path stays around the 16 KiB store cap
+    // however many ids are named (from 9 ids up it is back at the 2000
+    // floor). List / section / section_index paths are unchanged.
+    const int idBodyCap =
+        reqBodyCap > 0
+            ? reqBodyCap
+            : qBound(kRoadmapQueryBodyCap,
+                     kRoadmapQueryBodyStoreCap / qMax(1, idsArg.size()),
+                     kRoadmapQueryBodyStoreCap);
 
     // ANTS-1436-INV-8 — optional `offset` + `limit` args. Forwarded
     // verbatim from the dispatch lambda (NOT type-gated there) so

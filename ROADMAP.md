@@ -29755,7 +29755,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 AI Prompts.
   Resolved (2026-08-11): the overlay model was already correct and specified (ANTS-3636 § 4 — counts.ok == anchored-and-found + anchor_missing + unchecked, with a test pinning it), so the defect was that nothing in the REPLY said which keys are statuses. doc_citations now emits `counts_overlay_keys`, so a caller can assert sum(counts[k] for k not in counts_overlay_keys) == count without reading the spec first; the description also glosses `unchecked` as resolved-but-nothing-to-cross-check rather than unverified. Smaller than the reshuffle the report offered, because moving the keys would break two specs and two tests for a naming problem. Suite 3352/3352.
 
-- 📋 [ANTS-4088] **roadmap_query mode:"bundles" emits token-soup bundle_labels when no cluster is found.**
+- ✅ [ANTS-4088] **roadmap_query mode:"bundles" emits token-soup bundle_labels when no cluster is found.**
   With 6 unrelated active items the verb correctly reports
   no_clusters_found:true and 6 size-1 bundles, but each carries a label
   synthesised from headline tokens — "- be bookmarked", "\"/\" - anywhere",
@@ -29795,6 +29795,25 @@ defect from different angles.
   kills `"most`, `"/"`, `57` and the bare hyphens; (b) omit bundle_label when
   no_clusters_found is true. Neither touches the fallback ladder INV-9/INV-13
   pin, so neither is blocked on a spec amendment.
+  Resolved (2026-08-12): shipped the report's suggestion (a). A new
+  `labelToken` cleaner strips leading/trailing punctuation off each label
+  token and then runs the EXISTING `isNoiseToken` denoiser over it, so
+  `"most"`, `57`, a bare `-`, `in`, `foo.cpp` and `duplication:` no longer
+  reach a bundle_label. Verified cause: rcNormaliseHeadline only chops
+  trailing punctuation off the WHOLE headline, and isNoiseToken was wired
+  to the cluster edge but never to the label. Counting is one vote per
+  member on the CLEANED token, so a member carrying two spellings of a
+  word cannot vote twice. INV-17 + mcp_roadmap_bundles.Ants4088LabelTokensDenoised.
+
+  NOT done, deliberately: (i) suggestion (b), omit bundle_label when
+  no_clusters_found is true — that IS a contract change and it breaks
+  INV-13, whose fixture is a single singleton (so no_clusters_found is
+  true) asserting a non-empty lane label; (ii) the singleton "use the
+  item's id + headline_oneline" suggestion stays reverted, per the prior
+  session's finding — it reddens the INV-9/INV-13 fallback ladder and
+  gives up the deterministic lane-label property; (iii) CLUSTER tokens are
+  NOT punctuation-stripped — that would move bundle membership
+  (INV-2/INV-14) and is a separate change with its own tests.
 
 - ✅ [ANTS-4089] **apply_edits takes {old,new} while the native Edit tool takes {old_string,new_string} — accept both.**
   Every session arrives at apply_edits from the native Edit tool, writes
@@ -29829,7 +29848,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Ants Projects Hub.
 
-- 📋 [ANTS-4091] **roadmap_query include_body's head+tail elision silently drops a bullet's middle, and max_body_bytes cannot rescue a list query.**
+- ✅ [ANTS-4091] **roadmap_query include_body's head+tail elision silently drops a bullet's middle, and max_body_bytes cannot rescue a list query.**
   ANTS-3736 made truncation keep the head plus the final ~1 KiB, tuned for
   an append-only progress log where the newest text is last. A bullet
   carrying a RESUME PLAN has the opposite shape — the plan sits in the
@@ -29845,6 +29864,34 @@ defect from different angles.
   **Layman:** Opening a long roadmap item can quietly cut out the middle — exactly where a resume plan lives — and the result looks complete.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Ants Terminal.
+  Resolved (2026-08-12). The report's "silently" is WRONG: an elided body
+  always carried an explicit `… [body elided — tail follows] …` marker plus
+  body_truncated:true (ANTS-3736), so it never read as complete. The two
+  verified halves shipped:
+
+  (1) The TARGETED id/ids default body cap now scales — 16384/N floored at
+  2000, where N is the number of ids named (1 for `id`). Was a flat 2000.
+  So a single-id fetch returns any body under the 16 KiB store cap WHOLE,
+  and the middle — where a resume plan sits — can no longer be dropped on
+  the one path where the caller has already narrowed the payload. The /N
+  divisor keeps the bound the flat default was really protecting: total
+  body payload on this path stays around the store cap however many ids are
+  named (from 9 ids up it is back at the 2000 floor).
+
+  (2) The elision marker now names the remedy ("refetch by id with
+  max_body_bytes for more") and is still count-free, so ANTS-3736's
+  byte-stability property (a re-elision at emission must not render a stale
+  count) still holds.
+
+  INV-6/7/8 + 3 tests in roadmap_query_id_body_cap; schema prose updated.
+
+  NOT done: suggestion (3), preserve heading/structure lines from the
+  elided span — it makes the elided length data-dependent and the slice
+  non-contiguous, for a gain the raised targeted default already delivers
+  on the path that reported the problem. Also NOT done: honouring
+  max_body_bytes on list/section paths — 500 bullets x 16 KiB is exactly
+  the unbounded response the 2000 list cap exists to prevent; read_region
+  section= stays the untruncated path for a large section.
 
 - ✅ [ANTS-4092] **project_settings op:detect suggests gitignored directories as source_roots, including a 2 GB state directory.**
   On ~/.claude, detect returned suggestion.source_roots = ["plugins",

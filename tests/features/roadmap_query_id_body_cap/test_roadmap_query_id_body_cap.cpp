@@ -63,6 +63,23 @@ QByteArray roadmapWithSentinelBody(int lines) {
     return md;
 }
 
+// ANTS-4091 fixture — N long-bodied bullets (ANTS-7800…), so a wide ids[]
+// fetch can prove the scaled default still falls back to the 2000 floor.
+QByteArray roadmapWithNLongBullets(int n) {
+    QByteArray md = "# Roadmap\n\n## Work\n\n";
+    for (int b = 0; b < n; ++b) {
+        md += "- \xF0\x9F\x93\x8B [ANTS-";
+        md += QByteArray::number(7800 + b);
+        md += "] **Long-body epic.**\n";
+        for (int i = 0; i < 60; ++i) {
+            md += "  Lorem ipsum dolor sit amet consectetur adipiscing.\n";
+        }
+        md += "  Kind: feature.\n";
+        md += "  Source: test.\n";
+    }
+    return md;
+}
+
 bool writeFile(const QString &path, const QByteArray &body) {
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -228,4 +245,109 @@ TEST(roadmap_query_id_body_cap, Inv5TailSurvivesTheStoreCap) {
     EXPECT_GT(body.size(), 2000);
     EXPECT_TRUE(body.contains(QStringLiteral("TAILSENTINEL")))
         << "a body over the store cap must still surface its tail";
+}
+
+// INV-6 (ANTS-4091) — a targeted fetch's DEFAULT cap scales with the id
+// count, so a single-id fetch of a body under the store cap returns it
+// WHOLE. Head+tail elision keeps both ends and drops the MIDDLE — where a
+// bullet's resume plan sits — and on a targeted fetch that cost is
+// avoidable: the caller has already narrowed the payload to the ids named.
+TEST(roadmap_query_id_body_cap, Inv6TargetedDefaultReturnsWholeBody) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(60)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("id")]           = QStringLiteral("ANTS-7777");
+    req[QStringLiteral("include_body")] = true;   // NO max_body_bytes
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const QString body =
+        bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+    EXPECT_GT(body.size(), 2000)
+        << "an unqualified id fetch must not fall back to the 2000 list cap";
+    EXPECT_FALSE(body.contains(QStringLiteral("[body elided")))
+        << "a ~3 K body is under the store cap — nothing should be elided";
+    EXPECT_TRUE(body.contains(QStringLiteral("HEADSENTINEL")));
+    EXPECT_TRUE(body.contains(QStringLiteral("TAILSENTINEL")));
+
+    // A one-element ids[] is the same targeted fetch (n == 1).
+    QJsonObject req2;
+    req2[QStringLiteral("caller_cwd")]   = tmp.path();
+    QJsonArray ids;
+    ids.append(QStringLiteral("ANTS-7777"));
+    req2[QStringLiteral("ids")]          = ids;
+    req2[QStringLiteral("include_body")] = true;
+    const QJsonObject resp2 = rc.cmdRoadmapQuery(req2).object();
+    ASSERT_TRUE(resp2.value(QStringLiteral("ok")).toBool());
+    const QString body2 =
+        bodyForId(resp2.value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+    EXPECT_EQ(body2, body) << "ids:[X] must behave as id:X";
+}
+
+// INV-7 (ANTS-4091) — the `/n` divisor is what makes INV-6 safe: a 9-id
+// fetch (16384 / 9 < 2000) falls to the 2000 floor, so the targeted path's
+// total body payload stays bounded however many ids are named.
+TEST(roadmap_query_id_body_cap, Inv7ScaledDefaultKeepsPayloadBounded) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithNLongBullets(9)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    QJsonArray ids;
+    for (int i = 0; i < 9; ++i) {
+        ids.append(QStringLiteral("ANTS-%1").arg(7800 + i));
+    }
+    req[QStringLiteral("ids")]          = ids;
+    req[QStringLiteral("include_body")] = true;   // NO max_body_bytes
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const QJsonArray bullets = resp.value(QStringLiteral("bullets")).toArray();
+    ASSERT_EQ(bullets.size(), 9);
+    for (const auto &v : bullets) {
+        const QJsonObject o = v.toObject();
+        EXPECT_EQ(o.value(QStringLiteral("body")).toString().size(), 2000)
+            << "a 9-id fetch must emit at the 2000 floor, not the store cap";
+        EXPECT_TRUE(o.value(QStringLiteral("body_truncated")).toBool());
+    }
+}
+
+// INV-8 (ANTS-4091) — the elision marker names the remedy. ANTS-3736's
+// marker said text was elided but not how to read it; it must stay
+// count-free so it is byte-stable across calls.
+TEST(roadmap_query_id_body_cap, Inv8ElisionMarkerNamesTheRemedy) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(60)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("include_body")] = true;   // list path — elides at 2000
+    const QString body =
+        bodyForId(rc.cmdRoadmapQuery(req).object()
+                      .value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+
+    ASSERT_TRUE(body.contains(QStringLiteral("[body elided")));
+    EXPECT_TRUE(body.contains(QStringLiteral("max_body_bytes")))
+        << "the marker must name how to read the elided span";
+
+    RemoteControl rc2(nullptr);
+    const QString body2 =
+        bodyForId(rc2.cmdRoadmapQuery(req).object()
+                      .value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+    EXPECT_EQ(body, body2)
+        << "the marker must carry no counts — byte-stable across calls";
 }

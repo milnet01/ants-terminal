@@ -2355,7 +2355,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "with `body_truncated:true` on truncation). "
                         "ANTS-3736 — a truncated body keeps BOTH its head "
                         "and its final ~1 KiB, joined by an explicit "
-                        "`… [body elided — tail follows] …` marker, so an "
+                        "`… [body elided — tail follows; refetch by id "
+                        "with max_body_bytes for more] …` marker, so an "
                         "append-only progress-log body still reports its "
                         "CURRENT state and not just its oldest text. "
                         "Default false. Use when triaging dense bundle "
@@ -2372,9 +2373,12 @@ void ClaudeIntegration::onMcpConnection() {
                     maxBodyProp["type"] = "integer";
                     maxBodyProp["description"] = QStringLiteral(
                         "Max body bytes for a TARGETED id=/ids= fetch "
-                        "(clamped [2000, 16384]; default 2000). Lets a "
-                        "single-bullet / id-set read return a large epic "
-                        "narrator body the 2000 list cap would truncate. "
+                        "(clamped [2000, 16384]). ANTS-4091 — the targeted "
+                        "DEFAULT is no longer 2000: it is 16384/N for an "
+                        "N-id fetch, floored at 2000, so a single-id fetch "
+                        "returns any body under 16 KiB whole (elision drops "
+                        "the MIDDLE, where a resume plan sits) while a wide "
+                        "id-set stays payload-bounded. Pass this to override. "
                         "Ignored on list / section / section_index paths, "
                         "which always emit at the 2000 cap (ANTS-3402).");
                     props["max_body_bytes"] = maxBodyProp;

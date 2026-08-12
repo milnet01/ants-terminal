@@ -86,6 +86,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Opening one roadmap item by ID now returns its whole body, not the ends with the middle cut out** (ANTS-4091)
+  A long item was trimmed to its first and last part with the middle replaced by a marker — and the middle is where a resume plan lives. Asking for a specific item by ID now returns it in full (up to 16 KB), because naming the item has already kept the reply small; asking for many at once still trims, so a wide query cannot balloon. The trim marker also now says how to read the omitted part.
+
+- **`roadmap_query mode:"bundles"` no longer labels a group with punctuation and filler** (ANTS-4088)
+  The "what should I work on next" view opened with labels like `- be bookmarked` or `57 blocks duplication:` — leftover quotes, stray hyphens, bare numbers and filenames scraped out of the item titles. Group labels are now cleaned the same way the grouping itself already cleaned them, so they read as words.
+
 - **The bug scanner no longer goes blind on non-Qt C++ projects** (ANTS-4094)
   Ants told the scanner to expect Qt code, always — because Ants itself is
   a Qt app. On a project that isn't, that setting makes the scanner treat

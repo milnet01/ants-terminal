@@ -63,6 +63,39 @@ truncation site, before any emission cap ran — so no `max_body_bytes` value
 could reach it. A ceiling fetch (`max_body_bytes: 16384`) on a ~20 K-char
 body must still contain the tail sentinel.
 
+### INV-6 — a targeted fetch's DEFAULT cap scales with the id count
+
+ANTS-4091. Head+tail elision keeps both ends and drops the MIDDLE — which
+is where a bullet's resume plan sits, so the one part the caller opened the
+bullet to read is the part that goes. On a targeted fetch that cost was
+avoidable: the caller has already narrowed the payload to the ids it named,
+yet the default stayed at the 2000 list cap and only an explicit
+`max_body_bytes` raised it.
+
+A targeted `id` / `ids` fetch with no `max_body_bytes` now defaults to
+`kRoadmapQueryBodyStoreCap / n` clamped to `[2000, 16384]`, where `n` is the
+number of requested ids (1 for singular `id`). So `{id, include_body}`
+against a ~3000-char body returns the body WHOLE — both sentinels present
+and no `[body elided` marker. An explicit `max_body_bytes` still wins over
+the derived default, and list / section / section_index paths are unchanged
+(INV-3).
+
+### INV-7 — the scaled default keeps the targeted payload bounded
+
+The `/n` divisor is what makes INV-6 safe: a 9-id fetch (16384 / 9 < 2000)
+falls to the 2000 floor, so total body payload on the targeted path stays
+bounded at roughly the 16 KiB store cap however many ids are named. A
+9-id fetch of long-bodied bullets emits each body at 2000 with
+`body_truncated: true`.
+
+### INV-8 — the elision marker names the remedy
+
+The ANTS-3736 marker said only that text was elided, not how to read it. It
+now also names `max_body_bytes` as the way to get more, and still carries no
+counts — the byte-stability property ANTS-3736 relies on (a re-elision at
+emission must not render a stale count). The marker still begins `[body
+elided`, which INV-4 pins.
+
 ## Test plan
 
 End-to-end against a seeded temp ROADMAP.md (a bullet with a ~3000-char

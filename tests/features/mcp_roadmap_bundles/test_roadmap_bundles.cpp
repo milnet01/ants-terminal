@@ -348,6 +348,41 @@ TEST(mcp_roadmap_bundles, Inv13MixedCaseLaneLabel) {
     EXPECT_EQ(b.value("lanes").toArray().size(), 2);
 }
 
+// INV-17 (ANTS-4088) — label tokens are denoised + punctuation-stripped.
+// rcNormaliseHeadline only chops trailing punctuation off the WHOLE headline
+// and isNoiseToken never ran on the label tokens, so a real roadmap produced
+// labels like `"most` / `- be bookmarked` / `57 blocks duplication:`.
+TEST(mcp_roadmap_bundles, Ants4088LabelTokensDenoised) {
+    QJsonArray a;
+    // Singleton: every token qualifies (need = 1), so the label is the first
+    // three surviving tokens in ascending order — pre-fix `"most" - 57`,
+    // because '"' (0x22) and '-' (0x2D) sort before any letter.
+    a.append(bullet("ANTS-4401", kPlanned,
+                    "\"most\" 57 - duplication: bookmarked in foo.cpp"));
+    const QJsonObject env = RemoteControl::buildRoadmapBundlesEnvelope(a, kCap);
+    const QString label =
+        findBundle(env, "ANTS-4401").value("bundle_label").toString();
+    EXPECT_EQ(label, QStringLiteral("bookmarked duplication most"))
+        << "label must strip per-token punctuation and drop noise tokens "
+           "(digits, ≤2 chars, path-like) — got \""
+        << label.toStdString() << "\"";
+
+    // Stripping also merges `"bookmark"` and `bookmark` into ONE frequency
+    // bucket, so the token ranks by its true frequency instead of splitting
+    // its votes across two spellings and losing the freq-desc sort.
+    QJsonArray b;
+    b.append(bullet("ANTS-4402", kPlanned,
+                    "\"bookmark\" session restore duplication"));
+    b.append(bullet("ANTS-4403", kPlanned,
+                    "bookmark session restore ordering"));
+    const QJsonObject env2 = RemoteControl::buildRoadmapBundlesEnvelope(b, kCap);
+    const QJsonObject bun = findBundle(env2, "ANTS-4402");
+    ASSERT_EQ(bun.value("size").toInt(), 2) << "fixture must form one bundle";
+    EXPECT_EQ(bun.value("bundle_label").toString(),
+              QStringLiteral("bookmark restore session"))
+        << "quoted and bare spellings of a token must tally as one";
+}
+
 // INV-6 — combo refusals (source-grep on the three guards).
 TEST(mcp_roadmap_bundles, Inv6ComboGuards) {
     expect_reset();

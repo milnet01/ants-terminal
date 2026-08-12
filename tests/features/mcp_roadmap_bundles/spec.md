@@ -55,6 +55,19 @@ bullet object carries the keys the builder reads: `id`, `status`
   `no_clusters_found` (bool): `true` ⟺ no bundle in the full pre-cap set
   reached size ≥ 2 (all-singletons, or an empty active set), so a caller
   distinguishes "grouped into singletons" from a real grouping.
+- **INV-17** — (ANTS-4088) `bundle_label` tokens are denoised the same way
+  the cluster edge's tokens are, plus per-token punctuation stripping.
+  `rcNormaliseHeadline` only chops trailing punctuation off the WHOLE
+  headline, so per-token punctuation survived into the label, and
+  `isNoiseToken` was applied to the cluster tokens but never to the label
+  ones. A label token is now stripped of leading/trailing punctuation
+  first, then dropped if it is a stop-word, ≤ 2 chars, all-digits, or
+  path-like (contains `.` or `/`). So `"most" 57 - duplication:
+  bookmarked in foo.cpp` labels as `bookmarked duplication most`, not
+  `"most" - 57`. Stripping also merges `"most` and `most` into one
+  frequency bucket. The fallback ladder is untouched: a bundle whose
+  every token denoises away still falls through majority-token →
+  most-common case-folded lane → lowest member id (INV-9 / INV-13).
 
 ## Pre-fix check
 
