@@ -48,7 +48,8 @@ checklist below walks the full procedure; this is the at-a-glance map
   `check.resolved` for the canonical path (empty if not-yet-existing).
 - **ETag 304 (ANTS-1499).** Read tools opt in via `isEtagSupportedTool`
   + `makeEtagMatchProp()`; a matching `etag_match` short-circuits to
-  `{ok, unchanged, etag}`.
+  `{ok, unchanged, etag}`. **Except an envelope carrying per-run
+  measurements, which owns its own 304 and uses neither — step 7.**
 - **`fields=` projection (ANTS-1720).** Opt in via
   `isFieldProjectionTool` + `makeFieldsProp()`; narrows to named
   top-level fields. Independent of the ETag opt-in, not a subset of it
@@ -72,7 +73,7 @@ checklist below walks the full procedure; this is the at-a-glance map
   / changelog_log / spec_log keep tailored copies). Supported:
   roadmap_log, changelog_log, spec_log, apply_edits, project_settings,
   feedback_log, audit_falsepos_log, indie_review_fold_in, cold_eyes_fold_in,
-  debt_sweep_defer, roadmap_migrate. **`roadmap_migrate` is a stated
+  debt_sweep_defer, roadmap_migrate, audit_dismiss. **`roadmap_migrate` is a stated
   deviation from the "before any disk write" rule** (ANTS-3855 § 2.3.1): its
   preview opens the store, and on a machine with no store yet that *creates an
   empty schema-initialised one*. Required for the preview to be correct rather
@@ -87,7 +88,11 @@ checklist below walks the full procedure; this is the at-a-glance map
   Not yet (ANTS-2227 tail): test_audit_fold_in (struct-based, inline provider
   lambda) and debt_sweep_apply_fix (shell-exec — needs the fix script's own
   dry-run). Read-only verbs (`get_*`, `*_query`, `find_*`, `read_*`) are out
-  of scope.
+  of scope, as are the **session-state** writers `session_memory` and
+  `workflow_state`: they mutate, and deliberately carry no `dry_run` — the
+  rule is about verbs that write a **project file**, where a wrong write is
+  expensive to undo. Both lists above are the live inventory; treat a verb on
+  neither as unclassified rather than compliant.
 
 ---
 
@@ -118,8 +123,11 @@ place when it saves a Claude session real tokens or round-trips
    `Optional` / `TabSpecific` / `ProcessGlobal` (ANTS-1404 defined the
    enum + the static `ClaudeIntegration::callerCwdContractFor` table;
    ANTS-1419 made it the registration arg above). The two MUST agree —
-   `registerToolProvider` asserts (via `Q_ASSERT_X`, i.e. debug builds)
-   that the passed contract matches the static table, so add/confirm the
+   `registerToolProvider` compares the passed contract against the static
+   table and, on drift, asserts via `Q_ASSERT_X` (debug) **and refuses the
+   registration in every build config** (ANTS-1419 / ANTS-1834) — the tool
+   goes missing, which is loud in its own right, rather than running
+   mis-classified. So add/confirm the
    tool's entry in `callerCwdContractFor` too. The dispatch enforces `Required` (empty
    `caller_cwd` ⇒ `{ok:false, code:"caller_cwd_required"}`) before your
    lambda runs. The static table is still live: it is the accessor for
@@ -160,8 +168,11 @@ place when it saves a Claude session real tokens or round-trips
    dispatch site (ANTS-1294) — register normally and it happens for
    you. Control-plane tools whose JSON is pure structural metadata
    (e.g. `get_session_info`, `token_usage`, `tool_info`) bypass the
-   wrap — canonical bypass list is `isControlPlaneTool()` in
-   `src/claudeintegration.cpp` (see ANTS-1294 REG-4). Success
+   wrap — the canonical bypass list is the inline `isControlPlane`
+   predicate at the `tools/call` dispatch site in
+   `src/claudeintegration.cpp` (ANTS-1294 REG-4); there is no
+   `isControlPlaneTool()` accessor, and `mcp_output_sanitisation`
+   asserts that set exactly, so do not extract one. Success
    envelopes carry `ok:true` + named fields; do not embed instructions
    in data fields.
 
@@ -183,7 +194,10 @@ place when it saves a Claude session real tokens or round-trips
    applies whenever reader and writer discovery can diverge —
    `project_layout` discovering a `data/changelog.yaml` the
    Keep-a-Changelog writer can't append to, or `roadmap_query` parsing
-   a `#### Pass N.M` heading roadmap the bullet writer can't splice.
+   a `#### Pass N.M` heading roadmap that `roadmap_log`'s
+   `create_section` can't splice — though `op:"append"` *does* render
+   a pass block on that format (ANTS-2126 / ANTS-4117), which is why
+   this is decided per op and not per verb.
    Instances: ANTS-2031 (roadmap_log returns `format_mismatch` instead
    of `bullet_not_found` on pass-headings — per **op**, not per verb;
    `amend_body` on that same file returns `unsupported_format`),
@@ -195,15 +209,22 @@ place when it saves a Claude session real tokens or round-trips
    kind); `format_mismatch` is reserved for the *discovered-but-
    unwritable-format* branch. The `format_mismatch` code is defined in
    [mcp-error-codes.md](mcp-error-codes.md); reuse it rather than
-   minting a per-verb variant. **Three codes are in play, and
-   [mcp-error-codes.md](mcp-error-codes.md) owns the boundary between
-   them** — `unrecognised_format` (the reader parsed nothing at all),
-   `unsupported_format`, and `format_mismatch`. Read its rows before
-   choosing rather than deriving the boundary here: `roadmap_log`
-   emits the latter two on the *same* pass-headings file
-   (`create_section` → `format_mismatch`, `amend_body` →
-   `unsupported_format`), so "can this verb write the format" is not
-   the test.
+   minting a per-verb variant. **Three codes are in play, and the choice
+   is per *op*, never per verb:** `unrecognised_format` when the reader
+   parsed nothing at all; otherwise choose between `unsupported_format`
+   and `format_mismatch` by what **this op's** writer can produce.
+   `roadmap_log` emits both on the *same* pass-headings file —
+   `create_section` → `format_mismatch`, `amend_body` →
+   `unsupported_format` — while `op:"append"` writes that format.
+
+   **The boundary between those two is contested; ANTS-4134 is resolving
+   it in [mcp-error-codes.md](mcp-error-codes.md), which owns the
+   taxonomy.** That document's `format_mismatch` row currently glosses
+   the code as "the whole verb cannot write the format", which the
+   shipped behaviour above contradicts — five sibling ops write the
+   format the `format_mismatch` case refuses. Until it lands, follow the
+   per-op rule and the worked pair above, and do **not** derive a
+   verb-level test from either document.
 
    **6b. Every *mutating* verb takes `dry_run` (ANTS-2077 / 2136 /
    2227).** The contract is stated in full in the quick-reference map
@@ -349,3 +370,17 @@ adding one.
 |---|---|---|---|---|
 | 1 | 2026-08-12 | 3 (same doc, independent, cold) | 2 / 3 / 3 / n-a | **First gate on this document**, triggered by ANTS-4129's edit to step 7. 8 verified, 0 dismissed, all fixed. Q4 is not asked of a standard. All three lanes independently led on the same two defects, both in the new step-7 exception and both the same shape — it sanctioned a handler-local 304 without stating what else comes with it: the verb must still **declare** an `etag_match` schema property (step 10's `additionalProperties:false` rejects the arg otherwise, so the 304 is unreachable while every handler-level test still passes), and it must **decline** `fields=`, which the linked ANTS-4108 § 2.3 records as the second forced deviation. The `fields=` defect was also found by the orchestrator while building the packet. Verified against the dispatch predicate, not inferred: `etagUnchanged` is only ever set inside the `isEtagSupportedTool` branch, so a handler-local 304 always falls through to `mcp::projectFields` and a caller sending `etag_match` + `fields` loses `unchanged` from its own 304. Pre-existing defects the same read surfaced: the `fields=` quick-reference claimed the projection set is "a subset of the ETag set" — it is not, `read_log` projects but does not 304 (13-name set vs 25-name set, compared element-wise); § 6a's `format_mismatch` MUST was unqualified where `mcp-error-codes.md` reserves the narrower `unsupported_format` for the per-op gap, which `roadmap_log` emits live (`amend_body` → `unsupported_format`, `create_section` → `format_mismatch`, both predicates opened); `dry_run` was a hard obligation stated only in the at-a-glance map and absent from the checklist the document calls "the ordered procedure so a new tool doesn't miss a step" — added as **6b** rather than a new step, because ANTS-4108 and ANTS-2021 cite steps 7 and 8 by number and renumbering would strand them; step 10 permitted two of step 2's four contract words; and three pointers sent authors to `CLAUDE.md` § Conventions for wrap mechanics, hook points and a state-routing note that section has never contained. **Resolved clean, so not in the tally:** step 4's `validatePath` signature and defaults, and step 2's `Q_ASSERT_X` contract-drift assertion — both checked against source, both accurate; the lanes could not check them only because the packet lacked those windows. |
 | 2 | 2026-08-12 | 3 (same doc, independent, cold, same packet rebuilt) | 2 / 2 / 2 / n-a | 6 verified, 0 dismissed, all fixed. **Half were loop 1's own collateral**, which is the honest headline. All three lanes led on the same one: loop 1's § 6a rewrite asserted `format_mismatch` is for "a format the verb cannot produce on any op" — false, and refuted by the example beside it, since `roadmap_log` *does* write pass-headings on `append` (ANTS-2126 / ANTS-4117) while `create_section` still refuses `format_mismatch`. The rule was deleted rather than restated: `mcp-error-codes.md` owns that boundary and this document now defers to it, because a discriminator derived here was wrong twice. Two lanes also found the step-7 exception said to *declare* `etag_match` without saying **how** — the shipped exemplar builds it inline, and a conformer reaching for `makeEtagMatchProp()` ships a description that names no excluded fields for an etag computed over a subset. **Loop 1's stated mechanism for that obligation was itself wrong and is corrected here**: `additionalProperties:false` does **not** reject an undeclared arg — measured by calling a verb with one, the dispatcher drops it and reports `ignored_args` (`src/claudeintegration.cpp:11750-11764`), so the 304 is unreachable silently rather than loudly. Loop 1's row is left as written; this row is the correction. Pre-existing defects found: the `Instances:` line stated ANTS-2031's `format_mismatch` for the verb when it is per-op; and the step-1 template broke the line between `registerToolProvider(` and `"<name>",` while the test it prescribes scrapes for them adjacent — 87 registrations in `mainwindow.cpp` use the adjacent form and none the split one, so a conformer copying the template ships a registration its mandated test cannot see. Also scoped "tenant-hashed storage", a phrase used once and never defined. **Three further errors were caught inside this loop's own fix pass by executing each new claim**: the factory description does not "promise an etag over the whole response" (it names no scope at all), `RcGate` is used far beyond the two state verbs, and a positive discriminator was asserted where none could be grounded — all three corrected before the commit. **Filed, not fixed here:** `mcp-error-codes.md`'s `format_mismatch` row defines the code as "the whole verb cannot write the format" while its own example has five sibling ops writing that format — a contradiction in the document that owns the taxonomy, out of scope for this one. Resolved clean, not in the tally: `PathValidation::validatePath` — the qualifier is right, `src/pathvalidation.h:13` opens `namespace PathValidation`. |
+| 3 (cap) | 2026-08-12 | 3 (same doc, independent, cold, packet rebuilt) | 5 / 2 / 1 / n-a | 8 verified, 0 dismissed, all 8 fixed. **Stopped at the `--max-loops` cap, NOT converged** — see the note below the table. Sharpest find: `isControlPlaneTool()` was named as the "canonical bypass list" and **exists nowhere in the tree** — the real one is an inline `isControlPlane` predicate at the `tools/call` dispatch site, and `mcp_output_sanitisation` scrapes for that literal, so an author extracting the accessor the doc named would have reddened the suite. That defect was **inside the packet's own "settled, do not re-confirm" list**, which claimed every unresolved identifier had been spot-checked; the lane overrode the instruction and said so, which is exactly the behaviour the brief asks for when a finding contradicts a stated fact. Also: "`Q_ASSERT_X`, i.e. debug builds" understated the enforcement — ANTS-1834 makes `registerToolProvider` **refuse the registration in every build config**, so drift makes the tool go missing rather than run mis-classified. § 6a's *trigger example* still said the bullet writer "can't splice" pass-headings, contradicting the per-op rule three lines below it. `dry_run`'s "every mutating verb" was false against its own lists — `audit_dismiss` ships one and was unlisted, while `session_memory` / `workflow_state` mutate and deliberately carry none; the rule is now scoped to verbs that write a **project file**. The quick-reference ETag bullet stated the opt-in unqualified against step 7's exception — a judgement call left open at loop 1 on the grounds that a cold loop should decide it, and it did. **Two findings were loop 2's own collateral**: deferring § 6a's boundary wholly to `mcp-error-codes.md` pointed at a gloss the shipped code contradicts, and deleting the discriminator left the MUST with no selection test at all — unfalsifiable at authoring. § 6a now states the per-op rule the code implements and names the contested part explicitly (ANTS-4134) instead of asserting or deferring. **One error was caught inside this loop's fix pass by executing the claim**: the drift log is `ANTS_LOG`, not the `qWarning` two lanes named — they reasoned from a *paraphrase in my packet*, and reading the source gave a stronger and different answer (refusal, not a warning). |
+
+**Not converged at the cap.** The remaining tail is one item: § 6a's
+`format_mismatch` / `unsupported_format` boundary cannot be stated correctly
+here until **ANTS-4134** fixes the definition in `mcp-error-codes.md`, which
+owns the taxonomy and currently contradicts the shipped code. § 6a records
+that openly rather than guessing, so an implementer knows the boundary is
+contested. Loop counts here are **not** a size signal — at 372 lines this
+document is mid-pack among its siblings. The cap bound because this is a
+**hub**: it restates contracts owned by `mcp-error-codes.md`, `mcp-caches.md`,
+`mcp-behavioural-notes.md` and the specs, and every restatement is an
+independent chance to drift from its owner. Three loops each found drift of
+exactly that kind. The durable fix is fewer restatements and more pointers,
+which is a restructuring job, not a review finding.
