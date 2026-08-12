@@ -38466,6 +38466,62 @@ contributors don't duplicate research.
   Lanes: auditdialog, indiereviewengine, findsources.
   Source: in-session-2026-08-12.
 
+- 📋 [ANTS-4121] **roadmap_log's bad_section refusal names no candidates, so a duplicate heading costs three calls to resolve.**
+  Hit twice this session. ROADMAP.md has four `### 🎨 Features`
+  headings; three carry a suffix, so exactly one slugs to `features`
+  and the numbered guess `features-2` is wrong. The refusal is bare:
+
+    {"code":"bad_section","error":"unknown section slug \"features-2\""}
+
+  No candidates, no near-miss. Resolving it took a fallback to
+  `grep -n '^### '` — twice — because the obvious next call,
+  roadmap_query mode:"section_index", offloads to a spill handle on
+  this roadmap (65 sections, >20 KB) and so is not a cheap slug
+  lookup either.
+
+  Two fixes, both cheap and independent:
+  (a) bad_section carries `candidates[]` — the nearest slugs by edit
+      distance, which is what `section_ambiguous` already does for
+      read_region (ANTS-2234) and what bad_case already does with
+      `canonical_slug`. This verb is the outlier.
+  (b) a slugs-only projection for section_index (`fields:["slug"]`
+      already helps, but the rows carry six count fields each; a
+      `mode:"slugs"` returning a flat string array would fit a
+      65-section roadmap inside the cap).
+
+  (a) alone removes the failure; (b) removes the fallback.
+  **Layman:** When you name a section that doesn't exist, the tool says "no" without saying what the real names are.
+  Kind: fix.
+  Lanes: remotecontrol, roadmapparse.
+  Source: in-session-2026-08-12.
+
+- 📋 [ANTS-4122] **workspace_search's 5 s default budget hard-kills a whole-repo regex on this project, and the hint fires only after the cost.**
+  A 2-alternation regex over the whole repo
+  (`indie_review_corroborate|indie_review_partition`, no lane) was
+  hard-killed at the 5 s wall budget. Re-running the SAME query with
+  `lane:"src"` returned in 1.2 s — so the budget is not far off, but
+  the repo-root walk (a 3.4 MB ROADMAP.md, docs/, build trees) eats
+  it before src/ is reached.
+
+  The refusal hint is good (narrow lane=, raise timeout_sec, fall
+  back to Bash rg) but arrives only after the caller has paid 5 s
+  and a round-trip. Options, cheapest first:
+
+  (a) raise the DEFAULT to ~10 s. The ceiling is already 30, the
+      scan is bounded, and a 5 s default that a routine two-term
+      query on the maintainer's own repo cannot meet is mis-tuned
+      for the corpus it ships against.
+  (b) on hard-kill, report what it HAD scanned when the budget
+      expired (files seen, last directory) so the caller can pick a
+      lane from evidence rather than guessing.
+
+  Not proposing an implicit lane default — silently searching less
+  than asked is worse than refusing.
+  **Layman:** The code search gives up after 5 seconds on a big search, and you only learn to narrow it after waiting.
+  Kind: enhancement.
+  Lanes: remotecontrol.
+  Source: in-session-2026-08-12.
+
 ### 🔒 Security
 
 - 💭 [ANTS-1095] **Confidential computing.** Run the PTY in an SGX/SEV enclave,
