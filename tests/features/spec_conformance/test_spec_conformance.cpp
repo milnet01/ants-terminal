@@ -84,6 +84,47 @@ TEST(spec_conformance, Inv1NestedFenceIsNotScanned) {
     EXPECT_TRUE(arr(env, "candidates").isEmpty());
 }
 
+// INV-1 — an INDENTED fence is not a fence, and the silence is total.
+// This is the natural GFM rendering of a pattern invariant attached to an
+// `- **INV-N**` bullet, so it is the mistake an author is most likely to make;
+// docs/standards/specs.md § 3.5.1 warns about it precisely because nothing
+// here reports it.
+TEST(spec_conformance, Inv1IndentedFenceIsNotScanned) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString p = writeSpec(d, "ind.md",
+        "- **INV-1** — the bullet this block is attached to.\n\n"
+        "  ```regex pcre2\n  ^(a)\n  ```\n\n"
+        "  | input | expected |\n  |---|---|\n  | `ab` | `a` |\n");
+    const QJsonObject env = SpecConformance::run(p);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("cases_run").toInt(), 0)
+        << "fenceDelimLen counts from index 0 — an indented fence is not one";
+    EXPECT_TRUE(arr(env, "findings").isEmpty());
+    EXPECT_TRUE(arr(env, "candidates").isEmpty())
+        << "invisible, NOT a candidate — this failure is silent by design";
+    EXPECT_TRUE(arr(env, "refusals").isEmpty());
+}
+
+// INV-1 — a fence whose info string's FIRST word is not exactly `regex` is not
+// ours at all. Distinct from INV-5's `regex python`, which IS ours and refuses:
+// here the engine check never runs, so there is no refusal to report.
+TEST(spec_conformance, Inv1NonRegexFirstWordIsInvisible) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString p = writeSpec(d, "tw.md",
+        fence("regexp pcre2", "^(a)") +
+        "| input | expected |\n|---|---|\n| `ab` | `a` |\n");
+    const QJsonObject env = SpecConformance::run(p);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("cases_run").toInt(), 0);
+    EXPECT_TRUE(arr(env, "findings").isEmpty());
+    EXPECT_TRUE(arr(env, "candidates").isEmpty())
+        << "not engine_not_declared — a `regexp` fence is not ours to judge";
+    EXPECT_TRUE(arr(env, "refusals").isEmpty())
+        << "not unsupported_engine — that is only for `regex <other>`";
+}
+
 // INV-2 — the reporter's own defect is the canonical finding.
 TEST(spec_conformance, Inv2MismatchIsAFinding) {
     QTemporaryDir d;

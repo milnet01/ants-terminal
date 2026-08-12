@@ -31178,7 +31178,7 @@ defect from different angles.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (ANTS-4108 wiring pass).
 
-- 📋 [ANTS-4130] **spec_conformance's extraction contract is silent on fence indentation, and nothing tests it.**
+- ✅ [ANTS-4130] **spec_conformance's extraction contract is silent on fence indentation, and nothing tests it.**
   Two gaps, both found by the cold gate on the specs.md § 3.5.1 amendment.
 
   1. **Column 0 is load-bearing and undocumented.** `fenceDelimLen()`
@@ -31220,6 +31220,37 @@ defect from different angles.
   **Layman:** A spec author who indents a pattern block the natural way gets no error and no result — the checker just never sees it.
   Kind: fix.
   Source: in-session-2026-08-12 (review-contract loop 1 on docs/standards/specs.md).
+  Resolved (2026-08-12). All three parts done.
+
+  Correcting the filing's own scope while closing it: of the three silent
+  modes, the NESTED-fence case was already locked by
+  `Inv1NestedFenceIsNotScanned`, which shipped with ANTS-4108. This item
+  was right that the INDENTED case had no test; the gap was two modes, not
+  three.
+
+  Added `Inv1IndentedFenceIsNotScanned` and
+  `Inv1NonRegexFirstWordIsInvisible`. The second is a genuinely distinct
+  path from INV-5's `regex python`: there the first word IS `regex`, so
+  the fence is ours and refuses `unsupported_engine`; with ` ```regexp `
+  the fence is not ours at all and nothing is emitted.
+
+  Both were verified to FAIL against a mutated engine before being
+  accepted, per the project test convention — mutation 1 made
+  `fenceDelimLen()` skip leading spaces, mutation 2 relaxed the first-word
+  test to `startsWith("regex")`. Each mutation reddened exactly its own
+  test and left the other green, so neither is a tautology. Engine
+  restored byte-identical; suite 3395/3395.
+
+  § 2.4 now carries all three modes as a numbered group with a *Test:*
+  clause each, and states why they are grouped: silence is the one outcome
+  an author cannot debug from the envelope, which is also why
+  docs/standards/specs.md § 3.5.1 restates this list and nothing else.
+
+  Part 3 fixed too: § 2.4 said the table search stops at "the next fence or
+  heading"; the code also breaks on any prose line, so a sentence between
+  fence and table demotes the case to a `pattern_without_expectation`
+  candidate. Prose corrected, and the distinction stated — that one is
+  reported, not silent.
 
 - 📋 [ANTS-4131] **Cache the qt62-baseline container image so the Qt-floor guard is cheap enough to run before a push.**
   ANTS-4108 shipped `src/specconformance.cpp` using

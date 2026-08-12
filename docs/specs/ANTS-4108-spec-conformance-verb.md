@@ -188,15 +188,34 @@ the same section, so that authoring one is a local act:
 
 - The fence's **info string declares the engine** (`regex pcre2`). A fence
   tagged `regex` with no engine is a CANDIDATE, never a guess (§ 2.5).
-- **Only TOP-LEVEL fences are scanned.** The extractor tracks fence nesting
-  and never descends into a fence opened by a longer delimiter. The example
-  immediately below is the reason: it is a four-backtick `markdown` fence
-  *containing* a `regex pcre2` fence and its table, so a naive line scan
-  would extract three cases from this spec's own illustration and report
-  any deliberately-wrong example as a real FINDING.
+- **THREE ways a block is invisible — no case, no candidate, no refusal.**
+  These are the extractor's silent modes, and they are grouped here because
+  silence is the one outcome an author cannot debug from the envelope.
+  `docs/standards/specs.md` § 3.5.1 restates exactly this list conformer-side,
+  and nothing else from this section, for that reason.
+  1. **The fence must open at column 0.** `fenceDelimLen()` counts backticks
+     from index 0, so an indented fence returns 0 and the line is skipped.
+     This is the likeliest author error, since attaching a fenced block to an
+     `- **INV-N**` bullet in GFM means indenting it.
+     *Test:* `Inv1IndentedFenceIsNotScanned`.
+  2. **The info string's FIRST word must be exactly `regex`.** ` ```regexp `,
+     ` ```pcre2 ` and every other near-miss are not ours — the engine check
+     below never runs, so this is NOT `unsupported_engine`.
+     *Test:* `Inv1NonRegexFirstWordIsInvisible`.
+  3. **Only TOP-LEVEL fences are scanned.** The extractor never descends into
+     a fence opened by a longer delimiter. The example immediately below is
+     the reason: it is a four-backtick `markdown` fence *containing* a
+     `regex pcre2` fence and its table, so a naive line scan would extract
+     three cases from this spec's own illustration and report any
+     deliberately-wrong example as a real FINDING. A spec quoting another
+     spec's pattern invariant inherits the same silence.
+     *Test:* `Inv1NestedFenceIsNotScanned`.
 - The expectation table is the **first** GFM table after the fence with
-  exactly the columns `input` and `expected`, before the next fence or
-  heading. Anything else is not an expectation table.
+  exactly the columns `input` and `expected`. The search skips blank lines
+  and stops at the next fence, the next heading, **or any other prose line** —
+  so a sentence between fence and table demotes the case to a
+  `pattern_without_expectation` CANDIDATE. That is reported, not silent.
+  Anything else is not an expectation table.
 - `expected` is either the `no match` sentinel, or the text of **capture
   group 1** when the pattern has **at least one** capturing group (group 1
   regardless of how many follow), else the **first** match under search
