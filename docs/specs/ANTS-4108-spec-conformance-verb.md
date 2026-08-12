@@ -220,13 +220,23 @@ the same section, so that authoring one is a local act:
   A bare empty cell is malformed and yields a CANDIDATE, never a silent
   reading of any of the three.
 
-  **Discriminate with `QRegularExpressionMatch::hasCaptured(1)`
-  (`qregularexpression.h:232`), never by comparing the captured string.**
-  Qt returns a null `QString` for a non-participating group and an empty
-  one for a zero-length capture, and `QString() == QString("")` is **true**
-  — so an implementer reaching for `==` or `isEmpty()` collapses rows two
-  and three of that table and INV-3 fails for a reason the encoding cannot
-  express.
+  **Discriminate on whether group 1 *participated*, never by comparing
+  the captured string.** Qt returns a null `QString` for a
+  non-participating group and an empty one for a zero-length capture, and
+  `QString() == QString("")` is **true** — so an implementer reaching for
+  `==` or `isEmpty()` collapses rows two and three of that table and INV-3
+  fails for a reason the encoding cannot express.
+
+  **`QRegularExpressionMatch::hasCaptured()` says exactly this and is the
+  wrong call here: it is Qt 6.3+, and this project's floor is Qt 6.2**
+  (`dependencies.md` § 4, enforced by `ci.yml`'s `qt62-baseline` job).
+  The first implementation used it, compiled on this host's Qt, passed
+  the full suite, and failed the baseline job with *"no member named
+  `hasCaptured`"* — the exact class that job exists to catch. Spell out
+  its two clauses instead: `m.lastCapturedIndex() >= 1 &&
+  m.capturedStart(1) != -1`, since `capturedStart()` is `-1` precisely
+  when the group did not participate. Both have been available since
+  Qt 5.
 
 ### 2.4a The convention is NEW, and nothing uses it yet
 

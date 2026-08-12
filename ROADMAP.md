@@ -31221,6 +31221,47 @@ defect from different angles.
   Kind: fix.
   Source: in-session-2026-08-12 (review-contract loop 1 on docs/standards/specs.md).
 
+- 📋 [ANTS-4131] **Cache the qt62-baseline container image so the Qt-floor guard is cheap enough to run before a push.**
+  ANTS-4108 shipped `src/specconformance.cpp` using
+  `QRegularExpressionMatch::hasCaptured()`, which is **Qt 6.3+**. The
+  project floor is Qt 6.2 (dependencies.md § 4). It compiled here, passed
+  3393/3393, passed the pre-push hook, and broke `qt62-baseline` on three
+  consecutive pushes with "no member named 'hasCaptured'".
+
+  Nothing in the local loop could have caught it. The pre-push hook
+  deliberately excludes `qt62-baseline` (CLAUDE.md: "Not covered by the
+  hook: --lints, qt62-baseline, and e2e/perf"), and the exclusion is
+  justified — the leg spends most of its ~25 min on `apt-get install` of
+  the Qt6 toolchain inside a fresh ubuntu:22.04 container, every single
+  run.
+
+  **That cost is almost entirely cacheable.** Build the dependency layer
+  once as a local image (`ants-qt62-baseline:latest`) and the leg reduces
+  to configure + compile against a warm layer — minutes, not half an
+  hour. At that price it can join the pre-push hook for any push touching
+  `src/`, which is exactly the population of pushes that can break it.
+
+  Shape:
+  - `tools/ci-parity.sh --qt62` builds the image on first use from a
+    small Containerfile carrying ci.yml's apt list, then reuses it.
+  - The Containerfile's apt set and ci.yml's `qt62-baseline` install step
+    must stay in lockstep — they are already required to stay in lockstep
+    with release.yml, so this is a third copy of one list and should
+    probably be generated from ci.yml rather than hand-mirrored.
+  - Invalidate on ci.yml change (hash its install step into the tag).
+
+  **Do NOT solve this by grepping for a banned API list.** It needs
+  maintaining per Qt release, it cannot see APIs nobody has listed yet,
+  and the compile is the ground truth. The container IS the check; the
+  only defect is that it is too slow to run at the moment it would help.
+
+  Related: ANTS-4108's spec § 2.4 named the Qt 6.3 call as the mandated
+  discriminator and has been amended to name the Qt 5-era two-clause form
+  plus the reason.
+  **Layman:** Make the "does it still build on the oldest Qt we support?" check fast, so it runs before code leaves the machine instead of failing on the server 25 minutes later.
+  Kind: enhancement.
+  Source: in-session-2026-08-12 (three red CI runs from ANTS-4108).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23

@@ -75,10 +75,17 @@ QString outcomeOf(const QRegularExpression &rx, const QString &input) {
     const QRegularExpressionMatch m = rx.match(input);
     if (!m.hasMatch()) return QStringLiteral("no match");
     if (rx.captureCount() >= 1) {
-        // hasCaptured, never a string compare: Qt returns a null QString for a
-        // group that did not participate and an empty one for a zero-length
-        // capture, and QString() == QString("") is TRUE.
-        if (!m.hasCaptured(1)) return QStringLiteral("no capture");
+        // "Did group 1 participate?" — never a string compare: Qt returns a
+        // null QString for a group that did not participate and an empty one
+        // for a zero-length capture, and QString() == QString("") is TRUE.
+        //
+        // QRegularExpressionMatch::hasCaptured() says exactly this and would
+        // be the idiomatic call, but it is Qt 6.3+ and this project's floor is
+        // Qt 6.2 (dependencies.md § 4, enforced by ci.yml's qt62-baseline).
+        // So spell out its two clauses: capturedStart() is -1 precisely when
+        // the group did not participate.
+        if (m.lastCapturedIndex() < 1 || m.capturedStart(1) == -1)
+            return QStringLiteral("no capture");
         return m.captured(1);
     }
     return m.captured(0);
