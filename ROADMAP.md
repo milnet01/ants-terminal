@@ -31085,6 +31085,24 @@ defect from different angles.
   **Layman:** Also run the little test programs a spec contains, to catch ones that quietly pass without testing anything.
   Kind: feature.
   Source: in-session-2026-08-12 (ANTS-4108 spec, deferred half).
+  Decision (2026-08-12, user): do NOT execute fenced fixtures. The two
+  decisions this bullet said must be settled are settled by dropping the
+  premise. Measured first, per the ANTS-4108 § 2.4a precedent: `docs/`
+  carries **1** `python` fence and 442 `cpp` fences across 151 files, and
+  the latter are illustrative snippets — signatures and excerpts — not
+  self-contained programs. So "execute the fixtures" would need an opt-in
+  convention nothing uses yet, to run an interpreter the corpus invokes
+  once, behind an OS sandbox and a new external dependency.
+
+  New shape: a fixture claim CITES a real test. The verb checks the named
+  test exists, is wired into a build target, and goes red under a stated
+  mutation — using the suite the project already runs. No interpreter, no
+  sandbox, no new dependency, and it makes an existing habit checkable
+  rather than inventing a second one: every INV in the ANTS-4108 spec
+  already carries a *Test:* clause naming a real fixture.
+
+  Still extends ANTS-4108's extraction contract and result taxonomy
+  (§ 2.4 / § 2.5) rather than replacing them. Spec next, via /write-spec.
 
 - 📋 [ANTS-4128] **spec_conformance: recognise the `re.search(pattern, input)` CALL form, not only the fence+table convention.**
   Found by building ANTS-4108's engine and pointing it at this repo, which is
