@@ -30663,6 +30663,17 @@ defect from different angles.
   a build that never started are therefore indistinguishable from the task
   output, which is what sent the first two investigations down the wrong path.
 
+- 📋 [ANTS-4123] **remotecontrol_feedback.cpp includes roadmapstore.h without naming RoadmapStore.**
+  clangd's unused-includes check flags `src/remotecontrol_feedback.cpp:14`.
+  Verified: `RoadmapStore` appears zero times in the file. Left in place
+  deliberately rather than swept with an unrelated fix (CLAUDE.md §11) — the
+  header may be serving as a transitive include for something the file DOES
+  use, so removing it needs a build to confirm, not a grep. Cheap when
+  someone is next building that TU anyway.
+  **Layman:** A leftover "include" line at the top of one source file pulls in code the file never uses.
+  Kind: chore.
+  Source: in-session-2026-08-12 (clangd diagnostic while shipping ANTS-4114).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
