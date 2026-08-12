@@ -30935,6 +30935,39 @@ defect from different angles.
 
   3380/3380 green.
 
+- 📋 [ANTS-4127] **spec_conformance, second half — execute a spec's fenced FIXTURES, not just its patterns.**
+  Split out of ANTS-4108 at spec time (docs/specs/ANTS-4108-spec-conformance-verb.md
+  § 2.2 / § 6), deliberately and with the cost stated: ANTS-4108 ships pattern
+  conformance, which catches ONE of the reporting session's four defects
+  outright and surfaces the rest only as CANDIDATEs ("nobody stated what this
+  should do").
+
+  The other three need the fixture's own code RUN, not just its pattern
+  applied: a performance fixture that returned before the regex under test
+  ever ran (green by construction, and green under its own prescribed
+  mutation), and a quoted 0.24us cost that was timing that early return
+  against a real 77us.
+
+  Two things must be decided before any code, and they are why this is not
+  folded into ANTS-4108: (1) which interpreter, given the reporter's evidence
+  is Python `re` while Ants is Qt/C++ and ANTS-4108 refuses to substitute one
+  regex flavour for another (its INV-5); (2) a real sandbox, since this
+  crosses from "apply a pattern to a string" — which cannot reach the
+  filesystem or network whatever it contains — to executing arbitrary block
+  text from a document. In-process interpreter sandboxes for that job are not
+  sound.
+
+  Start from src/luaengine.cpp: it already ships a 5-library allowlist, a
+  memory-capped allocator and an instruction-count + wall-clock watchdog
+  (ANTS-1172). That is the right SHAPE; Lua patterns are not regexes, so it
+  is not the right engine.
+
+  Blocked by ANTS-4108 shipping first — this extends its extraction contract
+  and result taxonomy rather than replacing them.
+  **Layman:** Also run the little test programs a spec contains, to catch ones that quietly pass without testing anything.
+  Kind: feature.
+  Source: in-session-2026-08-12 (ANTS-4108 spec, deferred half).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
