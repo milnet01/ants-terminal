@@ -1,276 +1,94 @@
-<!-- ants-commit-standards: 1 -->
-# Commit Standards — v1
-
-A shareable contract for git commits in this project. Pairs with
-the other three standards in this folder ([coding](coding.md),
-[documentation](documentation.md), [testing](testing.md)) — see
-the [index](README.md) for the full set.
-
-This standard governs every commit, plus the release-orchestration
-work under ROADMAP bullets with `Kind: chore` or `release`.
-
-
-## 1. Commit message format
-
-### 1.1 The `<ID>: <description>` mandate
-
-Every commit subject leads with the ROADMAP item ID it implements,
-followed by `:` and a present-tense description:
-
-```
-PROJ-1234: implement live-search filter
-PROJ-1235: fix config-reload inotify loop
-PROJ-1236: extract storeIfChanged helper
-```
-
-This connects the commit to the work item end-to-end. A reader of
-`git log --oneline` can map every commit back to the ROADMAP entry
-that justified it; a reader of the ROADMAP can grep `git log` for
-an ID and see exactly which commits implemented it.
-
-The ID prefix replaces the type-based prefix (`feat:`, `fix:`,
-`refactor:`) of conventional-commits style — the **kind** is
-declared by the ROADMAP item's `Kind:` field, not the commit
-subject. This avoids the awkward `PROJ-1234: feat: …` double
-prefix.
-
-### 1.2 Exception — commits without a ROADMAP item
-
-A few commit types don't ship a ROADMAP-tracked work item; they
-use a category prefix instead:
-
-| Type | Format | Example |
-|------|--------|---------|
-| Release | `X.Y.Z: theme — short summary` | `0.7.55: VT parser correctness + audit-dialog hardening` |
-| Chore (debt sweep, gitignore tweak, dep bump) | `chore: short summary` | `chore: post-0.7.55 debt sweep` |
-| Doc-only (typo, README tweak not tracked on roadmap) | `docs: short summary` | `docs: fix typo in PLUGINS.md OSC 8 section` |
-| Hotfix without prior ROADMAP entry (will be back-filled) | `fix: short summary` + `Refs: PROJ-NNNN` trailer | see §1.4 |
-
-If the work was substantive enough to be tracked on the roadmap
-(any feature, any non-trivial fix, any refactor), it gets a
-ROADMAP item with an ID *first*, then the commit references that
-ID. Don't ship code that should have been planned.
-
-### 1.3 Subject line constraints
-
-- Single line, present tense, ≤ 72 chars.
-- No trailing period.
-- Capitalisation matches the ID's case (`PROJ-1234:`); the
-  description starts lowercase unless it begins with a proper
-  noun.
-- Don't repeat the ID in the description ("PROJ-1234: PROJ-1234
-  implement live search").
-
-### 1.4 Body
-
-Optional, but encouraged when the change isn't self-explanatory.
-Format:
-
-```
-PROJ-1234: implement live-search filter
-
-Optional one-paragraph description of the why.
-
-- Bulleted list of specific changes.
-- Bulleted list of files / subsystems touched.
-- Note any follow-up needed.
-
-Refs: PROJ-1235  (for related but separate work)
-Co-Authored-By: <name> <email>
-```
-
-Wrap at 72 columns. Use the body to explain WHY; the diff shows
-WHAT.
-
-### 1.5 Trailers
-
-| Trailer | When |
-|---------|------|
-| `Co-Authored-By:` | Anyone who contributed materially (humans, AI agents) |
-| `Reviewed-by:` | After a `/indie-review` pass |
-| `Fixes:` | When the commit closes a tracker issue (Fixes: #42) |
-| `Refs:` | Cross-references — e.g. `Refs: PROJ-1235` for related ROADMAP items |
-| `Signed-off-by:` | DCO-required projects |
-
-For AI-assisted commits, include the AI's identifier:
-
-```
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-```
-
-
-## 2. Commit hygiene
-
-### 2.1 One concern per commit
-
-If a single commit touches three unrelated subsystems, split it.
-The git log is read by the next contributor — make their life
-easier.
-
-Exception: cross-cutting refactors (rename, signature change)
-that genuinely span the codebase. Note the cross-cutting nature
-in the body. The commit ID is the cross-cutting ROADMAP item.
-
-### 2.2 Always create new commits, don't amend
-
-When a pre-commit hook fails, the commit DID NOT happen — so
-`--amend` would modify the *previous* commit, not the failed one.
-Fix the issue, re-stage, create a new commit.
-
-Only amend when fixing your *own* unpublished commit before push,
-and only if you're certain.
-
-### 2.3 Don't skip hooks
-
-`--no-verify`, `--no-gpg-sign`, etc. bypass project safety nets.
-Use only when the user explicitly authorises it for a specific
-commit. If a hook fails, investigate and fix the underlying issue
-(per [coding § 1.2](coding.md) — no workarounds).
-
-### 2.4 Commit only files you mean to
-
-`git add -A` and `git add .` are convenient and dangerous — they
-pick up `.env`, `credentials.json`, `node_modules/`,
-secret-bearing dotfiles. Add files by name, or use `git add -p`
-for staged review.
-
-### 2.5 Don't commit half-finished work
-
-If the commit doesn't build or test green, it doesn't go in. Use
-`git stash` for in-progress state. The TDD cycle (per
-[testing § 1](testing.md)) means each commit ends with green
-tests as a matter of course.
-
-### 2.6 Don't commit generated files
-
-Build artifacts (`build/`, `dist/`, `*.o`, `node_modules/`,
-`__pycache__/`) belong in `.gitignore`. Generated docs (`/_build/`,
-`docs/_static/`) too. Check `git status` before staging.
-
-
-## 3. Branching
-
-### 3.1 Trunk-based default
-
-`main` is the integration branch. Short-lived feature branches
-fork from `main`, ship via PR (or direct push for solo
-development), get rebased + merged in days, not weeks.
-
-### 3.2 Branch names
-
-`<author>/<id>-<topic>` for personal branches: `alice/PROJ-1234-live-search`.
-`feature/<id>-<topic>` for shared work. The ID lets a reviewer
-find the ROADMAP context at a glance.
-
-### 3.3 Don't force-push to shared branches
-
-`git push --force` overwrites remote history. On personal
-branches, fine. On `main` / `master` / shared branches, never —
-use `git revert` + new commit instead.
-
-
-## 4. Push policy
-
-### 4.1 Public vs private repos
-
-Push cadence (public: push freely; private: batch + ask once
-5+ commits/tags accrue) lives in the user's global
-`~/.claude/CLAUDE.md` § 6 — canonical source.
-
-### 4.2 Tag format
-
-Annotated tags only:
-
-```bash
-git tag -a vX.Y.Z -m "X.Y.Z"
-```
-
-Don't create lightweight tags (`git tag vX.Y.Z`) for releases —
-they don't carry the release message.
-
-Push tags explicitly: `git push origin vX.Y.Z` for one,
-`git push --tags` for a batch. **Don't force-push tags under any
-circumstance** — if a tag collision happens, stop and ask.
-
-### 4.3 Confirm before destructive operations
-
-`reset --hard`, `branch -D`, `clean -f`, `push --force` to a
-shared branch — pause and confirm with the user, unless the user
-has explicitly authorised the specific operation in advance.
-
-A user approving an action once does NOT approve it in all
-contexts.
-
-
-## 5. Release commits (`Kind: release`)
-
-Release commits use the `X.Y.Z: theme — summary` format from
-§1.2 plus a categorical body drawn from the CHANGELOG entry:
-
-```
-0.7.55: VT parser correctness + audit-dialog hardening
-
-Tier-1 fixes:
-
-- PROJ-1042: HIGH — ESC-in-OSC dispatches RIS as side-effect.
-- PROJ-1043: HIGH — Audit-pipeline rule-quality file pollutes git status.
-
-Tier-2 hardening:
-
-- ...
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-```
-
-Note that the *bullets* inside the release body still cite
-ROADMAP IDs — the release commit aggregates many ID-tracked
-items into one shipping point.
-
-Touched files for a release commit are typically: every
-version-bearing file (`CMakeLists.txt`, packaging files,
-`README.md`, `ROADMAP.md`), `CHANGELOG.md` (new dated section),
-and the implementation changes themselves.
-
-If a `.claude/bump.json` recipe exists, the `/bump` skill handles
-the version-bearing-file edits. Otherwise, do it manually and run
-any project-specific drift checks (e.g.
-`packaging/check-version-drift.sh`) before committing.
-
-
-## 6. Releases on public hosts
-
-After a release commit + tag on a public GitHub repo:
-
-```bash
-gh release create vX.Y.Z \
-    --title "X.Y.Z — <theme>" \
-    --notes "$(extract-changelog-section X.Y.Z)"
-```
-
-The notes body is the corresponding `[X.Y.Z]` section from
-`CHANGELOG.md`. Use a heredoc to preserve markdown formatting.
-
-CI (if wired up) will fire on the tag push and attach build
-artifacts (AppImage, MSI, .dmg) to the release automatically.
-Don't manually upload artifacts that CI will produce.
-
-
-## 7. Anti-patterns
-
-- ❌ Subject without a ROADMAP ID for substantive work.
-- ❌ Subject that doesn't fit on one screen.
-- ❌ "Update files" / "Various changes" / "WIP" as the only
-  description.
-- ❌ Bundle 5 unrelated changes into one commit because "they
-  were all in the working tree".
-- ❌ `git commit --amend` after a failed pre-commit hook.
-- ❌ `git add .` with no review.
-- ❌ Force-pushing to a shared branch.
-- ❌ Skipping hooks (`--no-verify`) without explicit authorisation.
-- ❌ Committing build artifacts / `.env` / credentials.
-- ❌ Lightweight tags for releases (`git tag vX.Y.Z` without
-  `-a`).
-- ❌ Pushing a release tag whose CI hasn't run / passed.
-- ❌ Force-pushing tags.
-- ❌ ROADMAP IDs that don't actually exist (typos in the prefix
-  or an ID that was never assigned).
+<!-- ants-commit-standards: 2 -->
+# Commit Standards — Ants Terminal deltas
+
+> **The standard itself is `~/.claude/standards/commits.md`. Read it there,
+> and `~/.claude/standards/releases.md` for cutting a version.** This file
+> carries only what is specific to *this* project.
+
+**Why this file is a delta (2026-08-12).** It was a verbatim `/start-app`
+copy, last touched 2026-04-30, and it had drifted into instructing
+**`git push --tags`** — which global § 4.3 forbids because it publishes every
+local tag, including ones never meant to leave the machine. It also shipped a
+copy-paste `Co-Authored-By:` block naming a superseded model, which is
+exactly the failure global § 1.5 warns about.
+
+## Where the rules actually live
+
+| You want | Read |
+|---|---|
+| The `<ID>: <description>` mandate and its exceptions | global `commits.md` § 1.1–1.2 |
+| Subject constraints, body format, trailers | global `commits.md` § 1.3–1.5 |
+| Commit hygiene — one concern, don't amend, don't skip hooks, stage by name | global `commits.md` § 2 |
+| Branching and force-push policy | global `commits.md` § 3 |
+| Push cadence (public vs private) | global `CLAUDE.md` § 6 |
+| **Run the pipeline locally before any push** | global `commits.md` § 4.2 |
+| Tags — annotated only, `--follow-tags`, never `--tags` | global `commits.md` § 4.3 |
+| Confirm before destructive operations | global `commits.md` § 4.4 |
+| Cutting a release | global `releases.md` |
+| Anti-patterns | global `commits.md` § 5 |
+
+**Two the drifted copy got wrong, restated so nobody re-derives them from a
+stale memory:** push a tag batch with `git push --follow-tags origin main`,
+**never** `git push --tags`; and name the model that actually did the work in
+`Co-Authored-By:`, at the version currently running — never copied from an
+older commit.
+
+## Project-local rules
+
+### This repo is PUBLIC — push freely
+
+`gh repo view --json visibility` reports `PUBLIC`, so CI minutes are free and
+global § 4.1's batch-and-ask cadence does not apply. Commit and push each
+logical commit. That does **not** exempt you from global § 4.2 — see the
+pre-push gate below, which is this project's answer to it.
+
+### The local pipeline gate
+
+Global § 4.2 requires running the pipeline locally before a push and requires
+the local run to *execute* the workflow rather than mirror it. This project's
+answer:
+
+- **`tools/ci-parity.sh --full`** is the complete mirror — all three `ci.yml`
+  jobs, in isolated `build-ci-parity*/` trees. A gate whose tool is absent
+  SKIPs loudly and is listed as incomplete parity; it never reports silently
+  green.
+- **`tools/hooks/pre-push`** runs the reduced form automatically on every
+  push (wired via `core.hooksPath=tools/hooks`). It runs the Release suite
+  against the warm `build/` **without building**, plus the sanitizer suite
+  when a warm ASan tree exists, plus the Qt 6.2 floor guard when the push
+  touches compilable source.
+- Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`,
+  `ANTS_PREPUSH_NO_QT62=1`.
+
+**Run `--full` before a release, when touching packaging- or e2e-sensitive
+code, and whenever a push ADDS a source file.** That last trigger is not
+decorative: a new translation unit is the change most likely to reach for a
+Qt API newer than the 6.2 floor, and it cost three consecutive red CI runs on
+ANTS-4108.
+
+**One push in flight at a time.** Two concurrent pre-push hooks build
+`build-asan` simultaneously and produce `mold: unknown file type`, which
+looks like corruption and is not.
+
+### Releases are `packaging/cut-rc.sh`, not the global `/release` skill
+
+The weekly Wednesday cadence cuts a public release plus a Patron-preview RC.
+The `-rcN` suffix lives **only** at the git tag, GitHub-release title and
+AppImage filename — never in `CMakeLists.txt` or `bump.json`. Orchestration
+is `packaging/cut-rc.sh` (`new-rc` / `respin` / `promote` / `status` /
+`cycle` / `hotfix`); the version bump between phases is `/bump`, which the
+script never does itself.
+
+### Version bumps
+
+`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single source of
+truth. Use `/bump` — its `.claude/bump.json` recipe covers the packaging
+carriers — and `packaging/check-version-drift.sh` verifies the lockstep.
+
+## What checks this
+
+`tools/hooks/pre-push` (automatic, every push),
+`packaging/check-version-drift.sh` (via `ci-parity.sh --lints` and CI), and
+`ci.yml` itself. Nothing checks commit-message *format* — this project has no
+`commit-msg` hook and no `.githooks/` directory, so § 1's mandate is read,
+not enforced.

@@ -298,20 +298,33 @@ finding from the next `feedback_query` delta (no watermark to advance).
 
 ## Project standards
 
-Shared v1 standards in `docs/standards/` (from the `/start-app` template):
-[`coding.md`](docs/standards/coding.md),
-[`documentation.md`](docs/standards/documentation.md),
-[`testing.md`](docs/standards/testing.md),
-[`commits.md`](docs/standards/commits.md). Project sub-specs:
+**The shared standards are owned globally, at `~/.claude/standards/`, and
+read in place — not copied here.** `coding.md`, `documentation.md`,
+`testing.md` and `commits.md` in `docs/standards/` are **deltas only**: each
+is a pointer to its global owner plus the Qt/C++/Ants-specific rules that
+cannot live in a language-agnostic standard. Read the global file for the
+rule; read the project file for what this project adds to it.
 
-- [`roadmap-format.md`](docs/standards/roadmap-format.md) — `[ANTS-NNNN]`
-  IDs from `.roadmap-counter`, status emojis (✅ 🚧 📋 💭),
-  position-is-priority, `Kind:` / `Source:` taxonomy, `Layman:` field,
-  archive rotation.
-- [`specs.md`](docs/standards/specs.md) (ANTS-1728) — spec-authoring
-  standard for `docs/specs/ANTS-NNNN.md` (H1 + Status/Kind/Source header;
-  Problem / Surface / Invariants / Tests; the `- **INV-N** —` bullet form;
-  cold-eyes loop log; `spec_query` contract).
+That reversed on 2026-08-12 (see `~/.claude/standards/README.md`). Until
+then `/start-app` copied the whole set into each project with an instruction
+to keep the copies verbatim, and nothing checked it — by the time the copies
+were reconciled they had drifted for three months, and three of them
+instructed behaviour the current global standard forbids. A copy of a global
+standard does not belong here.
+
+**Two files are NOT deltas, deliberately:**
+
+- [`roadmap-format.md`](docs/standards/roadmap-format.md) — **this project
+  is UPSTREAM of the global copy** (CFG-0069, user decision 2026-08-12),
+  because the parser, the store and the migration all live here. Where the
+  two disagree, this one governs and the global copy is corrected to match —
+  never the reverse. It is a full standard and stays one.
+- [`specs.md`](docs/standards/specs.md) — a full standard, not a delta; its
+  § 0 records why. It owns a spec's **shape**; global `spec-format.md` § 1
+  owns whether a spec is needed at all.
+
+Project sub-specs (no global counterpart exists for any of these):
+
 - [`mcp-error-codes.md`](docs/standards/mcp-error-codes.md) (ANTS-1353) —
   canonical `code` taxonomy for refusal envelopes.
 - [`mcp-caches.md`](docs/standards/mcp-caches.md) (ANTS-1439) — cache
@@ -332,17 +345,20 @@ Shared v1 standards in `docs/standards/` (from the `/start-app` template):
   dependency-version policy: latest stable by default (features + security);
   a below-latest pin is allowed only with a **Downgrade Ledger** row naming
   the breaking version + a re-test trigger; minimum-supported floors (Qt 6.2,
-  Lua 5.4, C++20) are distinct from pins. The project mechanism for global
-  `~/.claude/CLAUDE.md` §5.
+  Lua 5.4, C++20) are distinct from pins. The project-side companion to
+  global `standards/dependencies.md` (which carries the policy and no
+  version numbers).
 - [`mcp-config-keys.md`](docs/standards/mcp-config-keys.md) (ANTS-3429) —
   Ants-MCP config-file / Settings keys (master gate, auto model-switcher,
   result offload, tabular encoding, `project_query`); relocated from this
   preamble to keep the always-loaded session context lean.
 
-Project-local additions: `coding.md` adds the `setOwnerOnlyPerms()` note
-(§5.2); `documentation.md` adds §7 Accessibility (ANTS-1235) and
-§§ 1.6–1.7 (concision; symbol-not-line citations);
-`commits.md` / `testing.md` are template-identical.
+**Do not cite a section number of a delta file from memory.** The global
+files were restructured on 2026-08-12 and the numbers moved: the
+symbol-not-line-numbers rule is global `documentation.md` § 2.3 (it was
+§ 1.7 in the old project copy), and global `coding.md` now has its own
+§ 1.6 / § 1.7 on entirely different subjects. Open the file.
+
 [`mcp-errors.md`](docs/standards/mcp-errors.md) is a superseded
 (2026-05-12) draft — `mcp-error-codes.md` is the authoritative taxonomy.
 

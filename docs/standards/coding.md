@@ -1,187 +1,72 @@
-<!-- ants-coding-standards: 1 -->
-# Coding Standards — v1
+<!-- ants-coding-standards: 2 -->
+# Coding Standards — Ants Terminal deltas
 
-A shareable contract for code in this project. Pairs with the
-other three standards in this folder ([documentation](documentation.md),
-[testing](testing.md), [commits](commits.md)) — see the
-[index](README.md) for the full set.
+> **The standard itself is `~/.claude/standards/coding.md`. Read it there.**
+> This file carries only what is specific to *this* project — the C++/Qt
+> spellings and the one project-local helper. It is not a copy and must never
+> become one.
 
-This standard governs ROADMAP bullets with `Kind: implement`,
-`fix`, `refactor`, `audit-fix`, or `review-fix`. The other kinds
-(`doc`, `test`, `chore`/`release`) defer to their respective
-companion documents.
+**Why this file is a delta (2026-08-12).** Until today it was a verbatim copy
+of the global standard, dropped in by `/start-app` with an instruction to keep
+it in sync that nothing checked. It had drifted since 2026-06-02, and by the
+time it was reconciled it was instructing three things the current global
+standard forbids — most sharply, it told you to add language sections *here*,
+which is the exact growth global § 5 exists to prevent. Two copies are two
+standards that will disagree; this one lost.
 
+## Where the rules actually live
 
-## 1. Principles
+| You want | Read |
+|---|---|
+| Principles — shortest correct implementation, no workarounds, reuse before rewriting, the six-month test, latest stable library | global `coding.md` § 1 |
+| State an assumption rather than building on it | global `coding.md` § 1.6 |
+| Surgical changes — every changed line traces to the reason you are there | global `coding.md` § 1.7 |
+| Error handling | global `coding.md` § 2 |
+| Comments | global `coding.md` § 3 |
+| Naming | global `coding.md` § 4 |
+| Performance | global `coding.md` § 6 |
+| Anti-patterns | global `coding.md` § 8 |
+| Security — validate at the boundary, atomic writes, never log a credential | global `security.md` (there is no project copy; read the global file) |
+| **C++ spellings** — version floor, idioms, casing | global `languages/cpp.md` |
+| **Qt spellings** — `tr()`, `QSaveFile`, `Q_OBJECT`, parent-child ownership, new-style `connect` | global `languages/qt.md` |
+| **Python spellings** — casing (`snake_case`, *not* the camelCase this file used to mandate), idioms | global `languages/python.md` |
 
-### 1.1 Shortest correct implementation
+**Adding a language?** Create `~/.claude/standards/languages/<name>.md`. Do
+not add a section here, and do not add one to the global `coding.md` either.
 
-50 lines beats 250. No scaffolding for hypothetical futures, no
-abstractions where a direct call works, no error paths for
-scenarios that can't happen at the call site. Every line pays rent
-in legibility or function.
+## Project-local rules
 
-### 1.2 No workarounds without a root-cause fix
+These are the whole of this project's additions. Everything else is global.
 
-Silencing warnings, `try/except: pass`, `--no-verify`, commenting
-out broken code, disabling checks — last resort, not default.
-Applies to build, test, runtime, and lint failures alike. When a
-workaround is genuinely the only option, leave a comment naming
-the underlying constraint so it reads as deliberate, not neglect.
+### House style
 
-### 1.3 Reuse before rewriting
+- **K&R braces.**
+- `m_` for member variables, **`s_` for static members**, `PascalCase` types,
+  `camelCase` functions. (The `s_` prefix is the project-local part; the rest
+  is `languages/qt.md`.)
+- **`#pragma once` everywhere; no include guards.**
+- **Signals/slots for cross-component communication — never a direct call
+  between siblings.** This is the architectural rule behind the module map in
+  [`docs/subsystems.md`](../subsystems.md); a direct sibling call couples two
+  lanes that are meant to be independently reviewable.
 
-Before writing new code, look for existing code that does the same
-or similar thing, in order of preference:
+These four were previously stated only in
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md) § Code style highlights, which
+pointed here "for the full list" — at a file that did not contain them.
 
-1. Call it directly.
-2. Refactor it to cover the new case, then call it — existing
-   call-sites benefit.
-3. Only if neither fits, write new code and justify the
-   duplication.
+### `setOwnerOnlyPerms()` is ours, not Qt's
 
-**Rule of Three:** extract a helper on the third call-site, not
-the first or second. Premature DRY costs more than duplication.
+Global `languages/qt.md` requires owner-only permissions on any file holding
+config or secrets. In this project the helper that does it is
+**`setOwnerOnlyPerms()` in [`src/secureio.h`](../../src/secureio.h)** — a
+project-local function, **not** a Qt built-in. It has two overloads
+(`QFileDevice&` and `const QString&`). Reach for it rather than hand-rolling
+a `QFile::setPermissions()` call, and do not go looking for it in the Qt
+documentation.
 
-### 1.4 Six-month test
+## What checks this
 
-If someone opens this file six months from now, can they read the
-change and understand *why* the code looks this way without the
-author? If not, it's too clever or too long.
-
-### 1.5 Use latest stable library + current idioms
-
-When pulling in an external library (Qt, React, Python pkg, …),
-prefer the latest stable release unless pinned for an explicit
-reason. When calling library APIs, use the current idiomatic
-syntax for that version — not the one current three years ago.
-
-Examples: Qt 6 uses `connect(sender, &Class::signal, …)` not `SIGNAL/SLOT`
-macros; React 18+ uses functional components + hooks, not class
-components; Python 3.10+ uses `match`/`case` and `list[int]` over
-`List[int]`. When unsure what's current, check the library docs first.
-Stale idioms compile but they age the codebase.
-
-
-## 2. Error handling
-
-- **Validate at boundaries, not internally.** User input, network,
-  IPC, deserialisation → validate. Internal calls → trust.
-- **Don't write paths that can't happen.** If a function is only
-  called with non-null input from internal code, don't add a null
-  check.
-- **Surface unexpected errors loudly.** Swallowed exceptions are
-  loaded guns. Log + propagate, don't `except: pass`.
-- **Specific exceptions over generic.** `except FileNotFoundError`
-  over `except Exception`.
-- **Don't write fallbacks for scenarios that can't occur.** Trust
-  framework guarantees; only fall back at real failure points.
-
-
-## 3. Comments
-
-Default to **no comments**. Only add one when the WHY is
-non-obvious:
-
-- A hidden constraint (`// gpg is single-threaded; serialise here`).
-- A subtle invariant (`// must run before m_grid is freed`).
-- A workaround for a specific bug (`// QTBUG-79126: frameless +
-  modal drops clicks on Wayland — fall back to event filter`).
-- Behaviour that would surprise a reader.
-
-Don't:
-
-- Explain WHAT the code does — well-named identifiers do that.
-- Reference the current task / fix / callers ("used by X", "added
-  for Y") — those belong in the commit body.
-- Write multi-line block comments or paragraph docstrings.
-
-
-## 4. Naming
-
-- **Functions** — verb phrases (`parseRGBColor`, `applyTheme`).
-- **Variables** — noun phrases (`m_currentTab`, `gridSize`).
-- **Booleans** — `is*` / `has*` / `can*` (`isReady`, `hasFocus`).
-- **Constants** — match the file's existing style. Don't mix
-  SCREAMING_SNAKE and PascalCase in one file.
-- **Avoid abbreviations** except universally-known (`url`, `id`,
-  `db`). Prefer `temperature` over `temp` when ambiguous.
-- **No Hungarian notation.** `m_` prefix for member fields is
-  fine where a project uses it; type prefixes (`strName`, `iCount`)
-  are not.
-
-
-## 5. Language-specific notes
-
-### 5.1 C++
-
-- C++20 minimum unless project pins higher.
-- `auto` for obvious types; explicit type when the type matters
-  for the reader.
-- RAII for everything that owns a resource.
-- `[[nodiscard]]` on factory / parser return types.
-- `std::make_unique` / `std::make_shared` over raw `new`.
-- Prefer `std::optional<T>` over sentinel values (`-1`, `nullptr`).
-- `noexcept` on move constructors, swap, destructors.
-
-### 5.2 Qt
-
-- Modern signal-slot connection syntax only.
-- Parent-child ownership; don't manually `delete` a parented child.
-- `Q_OBJECT` macro on every QObject subclass.
-- Wrap user-visible strings in `tr()` for translator compatibility.
-- `QSaveFile` for atomic writes, not raw `QFile::Truncate`.
-- `setOwnerOnlyPerms()` on files that contain config / secrets (project-local helper, `src/secureio.h`; not a Qt built-in).
-
-### 5.3 Python
-
-- Type hints on every public function signature.
-- Use `pathlib.Path` over `os.path`.
-- `pyproject.toml` for config; no `setup.py`.
-- `subprocess.run([cmd, arg])` not `shell=True` with f-strings.
-
-(Add language sections as the project grows.)
-
-
-## 6. Performance
-
-- **Profile before optimising.** "Make it work, make it right,
-  make it fast" — in that order.
-- Avoid premature `O(n²)` patterns where `O(n)` fits.
-- For hot paths: pre-allocate, batch I/O, avoid copies.
-- Don't write a cache without measuring the hit rate first.
-- Don't pessimise — use `std::move` on the return of
-  rvalue-returning helpers, reserve capacity on growable
-  containers when the size is known.
-
-
-## 7. Security
-
-- **Never trust user input.** Validate at the boundary.
-- **No `shell=True`.** Use argv arrays:
-  `subprocess.run([cmd, arg])`, `QProcess::start(cmd, args)`.
-- **Atomic file writes.** Temp + rename, or `QSaveFile`. Don't
-  truncate-and-write — a crash leaves an empty file.
-- **Restrictive perms on secret-bearing files.** 0600 for config,
-  tokens, keys.
-- **Path traversal** — resolve and check `commonpath` /
-  `QDir::canonicalPath` before opening user-supplied paths.
-- **Argv injection** — when calling external tools with
-  user-supplied filenames, prepend `--` separator and prefix
-  paths with `./` if they could start with `-`.
-- **Don't log secrets.** Strip Authorization headers, API tokens,
-  private-key blocks before any `qDebug` / `print` / log call.
-
-
-## 8. Anti-patterns
-
-- ❌ Multi-paragraph docstrings on every function.
-- ❌ "Just in case" exception handlers that swallow everything.
-- ❌ Half-finished implementations behind feature flags.
-- ❌ Renaming a variable to `_unused` instead of removing it.
-- ❌ `// TODO: fix later` with no roadmap entry tracking it.
-- ❌ Hardcoded paths / magic numbers without a named constant.
-- ❌ Dead-code branches kept "just in case".
-- ❌ Compatibility shims for callers that don't exist any more.
-- ❌ `using namespace std;` in headers.
-- ❌ `from foo import *` in Python.
+Nothing mechanical checks the house-style rules; they are read in review.
+`setOwnerOnlyPerms()` usage is not enforced either — a new config writer that
+skips it compiles and passes. The `/audit` pack's grep rules are the closest
+thing, and they do not cover this.

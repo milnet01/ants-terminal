@@ -126,7 +126,8 @@ manager without extra repository configuration.
 **Blocker:** real-user shakedown of the 0.7.3 Flatpak before claiming
 the Flathub repo name.
 
-1. **Tag the release.** `git tag -s v<version>; git push --tags`.
+1. **Tag the release.** `git tag -s v<version>; git push --follow-tags
+   origin main` (never `--tags` — `commits.md` § 4.2).
 2. **Regenerate the tag-pinned manifest:**
    `packaging/flatpak/make-flathub-manifest.sh v<version> >
    /tmp/org.ants.Terminal.yml`.
@@ -31327,6 +31328,45 @@ defect from different angles.
   ~11 min cold build, and opts out with ANTS_PREPUSH_NO_QT62=1.
   Disk: ~1.2 GB image + ~3.5 GB volume, reclaimed by
   tools/qt62-guard.sh --clean.
+
+- 📋 [ANTS-4132] **Two standards still name the retired /cold-eyes and /indie-review skills.**
+  Both skills were deleted 2026-08-12 (global CLAUDE.md line 16: each
+  predecessor "was deleted in the same commit that promoted its
+  replacement"). Verified absent from ~/.claude/skills/. `/cold-eyes` ->
+  `review-contract`; `/indie-review` -> `/code-quality-review`.
+
+  Live references still instructing them:
+  - docs/standards/audit-false-positives.md — 5 sites (lines 7, 34, 35,
+    139, 151), including two table rows that ROUTE a reader to a skill
+    that no longer exists.
+  - docs/standards/roadmap-format.md — the `Source:` taxonomy value
+    `indie-review-YYYY-MM-DD` (line 418) and the § prose at 523.
+
+  Deliberately NOT fixed in the reconciliation commit, for two different
+  reasons:
+
+  1. audit-false-positives.md is a 21 KB live standard, so an authoring
+     edit re-arms the review-contract gate on the whole document. That is
+     a deliberate spend, not a drive-by rename.
+  2. roadmap-format.md is the harder one and is NOT a rename. This project
+     is UPSTREAM of the global copy (CFG-0069), and `Source:` is a
+     vocabulary that existing bullets already use — a corpus-wide grep is
+     needed before deciding whether to rename the value, accept both, or
+     leave it as a historical spelling. The global copy already uses
+     `code-quality-review-YYYY-MM-DD`, so the two disagree and, per the
+     upstream rule, GLOBAL is the copy that must be corrected — unless the
+     decision here is to adopt its spelling.
+
+  Nothing parses `Source:` values, so neither is a parse failure today;
+  the loss is traceability.
+
+  Do NOT touch the loop-log rows that mention `/cold-eyes`
+  (mcp-behavioural-notes.md:597 and others) — a loop log records what a
+  pass found on a date, and back-dating it destroys the thing it is kept
+  for (global CLAUDE.md rule 14).
+  **Layman:** Two rulebooks tell you to run tools that were deleted; the replacements have different names.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (standards reconciliation, review-agent-rules).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

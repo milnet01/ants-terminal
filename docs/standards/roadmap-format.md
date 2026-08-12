@@ -317,13 +317,21 @@ on its own and an absent `id_high_water` row must **not** be treated as a safe
 0. Only the store row covers those ids today; the export (ANTS-3794) is subject
 to neither exclusion, which is the whole reason it supersedes both.
 
+**Illustrative only — this is NOT the allocation path.** It shows the
+counter's shape, not how an id is issued: real allocation goes through
+`roadmap_log`, which takes the lock above and floors to the committed corpus.
+
 ```bash
-# Allocate the next ID — illustrative, and for the counter carrier only.
-# A real allocator takes the flock above, floors to the committed corpus, and
-# treats an absent counter file as 0 rather than failing on the `cat`.
-echo $(($(cat .roadmap-counter) + 1)) > .roadmap-counter
-printf "PROJ-%04d\n" $(cat .roadmap-counter)
+# What the counter file holds -- NOT an allocator.
+cat .roadmap-counter        # e.g. 42  ->  the last id issued was PROJ-0042
 ```
+
+**Extended into an allocator — reading the counter, adding one, formatting the
+result — it reissues live ids on a fresh clone**, where the gitignored counter
+is absent, the read yields nothing and the next id is `PROJ-0001`: the exact
+failure the two rules above promise is impossible. This block deliberately
+does not show that form. (Adopted from the global copy 2026-08-12; this file
+previously shipped the runnable version.)
 
 #### 3.5.2 Insertion order vs numbering
 
