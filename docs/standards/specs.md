@@ -59,7 +59,9 @@ from this paragraph.
 
 ## 3. Required structure
 
-Every spec has, in this order:
+Every spec opens with these, in this order. They are not the whole
+required set — § 4 carries two more that are required whenever their
+trigger applies.
 
 ### 3.1 Title (H1)
 
@@ -157,10 +159,12 @@ Rules for invariants:
 When an invariant's claim is about a **regex pattern**, state the
 pattern as a fence tagged with its engine and put an `| input |
 expected |` table directly beneath it. In that form the
-`spec_conformance` verb *runs* the pattern against every row, and a
-pattern that disagrees with its own example comes back as a finding
-instead of surviving a cold read. The example below is nested inside a
-four-backtick fence so this standard does not itself become a case:
+`spec_conformance` verb *runs* the pattern against each row — within
+its per-run case cap, and skipping any pattern or input over 512 bytes
+as a `too_large` refusal — and a pattern that disagrees with its own
+example comes back as a finding instead of surviving a cold read. The
+example below is nested inside a four-backtick fence so this standard
+does not itself become a case:
 
 ````markdown
 ```regex pcre2
@@ -173,19 +177,27 @@ four-backtick fence so this standard does not itself become a case:
 | `  - **[ANTS-1]** indented` | no match |
 ````
 
-- **Start the fence at column 0, with only blank lines between it and
-  the table.** The fence and its table are siblings of the `INV-N`
-  bullet, never indented children of it. This is the one part of the
-  extraction contract restated here, because it is the only one that
-  fails *silently*: an indented fence is not a fence, so the case is
-  never run and is reported as nothing at all — no finding, no
-  candidate, no refusal. Prose between fence and table is reported, as
-  a candidate.
+**Two mistakes make the block invisible — no finding, no candidate, no
+refusal.** They are restated here, and nothing else from the extraction
+contract is, because every other way of getting this wrong is reported
+back to you:
+
+- **Start the fence at column 0**, with only blank lines between it and
+  the table. The fence and its table are siblings of the `INV-N`
+  bullet, never indented children of it — an indented fence is not a
+  fence. (Prose between fence and table *is* reported, as a candidate.)
+- **The first word of the info string must be exactly `regex`.** A
+  fence tagged ` ```regexp `, ` ```pcre2 ` or any other near-miss is not
+  a case at all. This is the typo's failure mode.
+
+Then:
+
 - **Tag the engine.** `regex pcre2` is `QRegularExpression`, Qt's PCRE2.
-  A bare ` ```regex ` fence is reported as a candidate and any other
-  engine is refused — never silently run under a substitute, because a
-  pattern written for one flavour and run under another can return a
-  confident wrong answer about a spec that is correct.
+  Given a correct `regex` first word, a bare ` ```regex ` fence is
+  reported as a candidate and any other engine is refused — never
+  silently run under a substitute, because a pattern written for one
+  flavour and run under another can return a confident wrong answer
+  about a spec that is correct.
 - **`expected` has three outcomes, not two**, because a group that did
   not participate and a group that captured nothing are different
   states: bare `no match`, bare `no capture`, or the expected text in
@@ -195,6 +207,12 @@ four-backtick fence so this standard does not itself become a case:
 - `expected` is capture group 1 when the pattern has any capturing
   group, else the whole match, under search semantics — not anchored
   unless you anchor it.
+
+**Run `spec_conformance` on your own draft once written** — the same
+habit § 6 asks for with `spec_query`, and the only way to catch the two
+invisible mistakes above, which by definition no reader can see. A
+pattern invariant that comes back as a candidate, a refusal, or nothing
+at all is not yet in the runnable form.
 
 This is a recommendation, not a requirement: an invariant whose pattern
 has no meaningful example, or whose real subject is the surrounding
@@ -213,10 +231,12 @@ component, give the manual recipe as a subsection.
 
 ## 4. Recommended sections
 
-Add these when they carry weight; omit when they would be empty:
+Add these when they carry weight; omit when they would be empty — with
+two exceptions, marked below, that are required whenever their trigger
+applies:
 
-- **§ RAM / build cost** — required for any feature that holds state or
-  adds a build target. State the memory budget and eviction policy at
+- **§ RAM / build cost** — **required** for any feature that holds state
+  or adds a build target. State the memory budget and eviction policy at
   design time (the project's standing rule: no unbounded growth ships
   without a named cap). Note new external libraries (prefer none).
 - **§ Out of scope** — the spec's edges, stated so they read as decisions
@@ -241,7 +261,9 @@ Add these when they carry weight; omit when they would be empty:
   (CLAUDE.md module map, CHANGELOG, README, PLUGINS.md, sibling specs).
 - **§ Open questions** — unresolved design forks, so a reviewer knows
   where judgment is still needed.
-- **§ Cold-eyes loop log** — see § 5.7.
+- **§ Cold-eyes loop log** — **required on every spec.** The gate always
+  runs (§ 5.7), so this section is never empty, and its heading is what
+  `check-doc-facts` looks for. See § 5.7.
 
 ## 5. Conventions
 
@@ -379,4 +401,5 @@ Feature test: `tests/features/<name>/`. Covers INV-1..N. Label
 
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
+| 2 | 2026-08-12 | 2, cold; identical packet rebuilt from disk after loop 1's edits, with the change-hint paragraph neutralised so no section was flagged | **Q1 2 · Q2 2 · Q3 1** (5 verified / 0 unverified) | **One finding was against loop 1's own repair.** Loop 1 added "it is the only one that fails *silently*" about an indented fence; that is false. `run()` skips any fence whose info string's FIRST word is not exactly `regex`, so ` ```regexp ` — the typo's failure mode — is equally invisible: no finding, no candidate, no refusal. The bullet now names both, and the engine bullet no longer implies a mis-tag is always reported. **A second was against the § 3.5.1 amendment itself:** it promised the verb "runs the pattern against every row" with no mention of `kMaxPatternBytes` / `kMaxInputBytes` (512, a `too_large` refusal rather than a run) or `Options::maxCases` (200, ceiling 1000, sets `truncated`) — the same false confidence the section exists to prevent. Qualified. **A third: the section stated a rule with no check** — it never told an author to run the verb, though § 6 does exactly that for `spec_query`, and the two invisible failures above are by definition undetectable by reading. It now does. **Two were pre-existing**, both in § 4: its opener makes the whole list optional-on-judgement while its `§ RAM / build cost` entry is required on a stated trigger, and `§ Cold-eyes loop log` sat in a "Recommended" list although the gate always runs and `check-doc-facts` looks for the heading — so an author could omit a section and fail a mechanical check they were told was optional. Both marked required, with § 3 amended not to read as the exhaustive required set. **Resolved, not a finding:** a lane asked whether table cells are trimmed after backtick-stripping, which would make this standard's own `no match` row a mismatch. `test_spec_conformance.cpp:59` already asserts `` | `  const local = ` | no match | `` against a `^`-anchored pattern and is green, so leading spaces inside backticks survive. |
 | 1 | 2026-08-12 | 2, cold; genre pinned `standard`; one byte-stable shared packet carrying the `spec_conformance` engine windows and the `documentation.md` / `roadmap-format.md` / ANTS-4108 excerpts | **Q1 1 · Q2 3 · Q3 1** (5 verified / 0 unverified) | **This standard's first gate**, triggered by the § 3.5.1 amendment ANTS-4108 § 9 had left undone. **One finding was against that new text:** § 3.5.1 never said the fence must start at **column 0**, and that is the one part of the extraction contract whose breach is *silent* — `fenceDelimLen()` counts backticks from index 0, so an indented fence returns 0 and is skipped with no finding, no candidate and no refusal. A conformer writing the natural GFM rendering — fence and table indented under their `- **INV-N**` bullet — gets a spec that renders correctly and is never run. ANTS-4108 § 2.4 is silent on it too and no test covers it (filed: ANTS-4130). **Four were pre-existing.** § 1 still carried "When unsure, write the spec", which `~/.claude/standards/spec-format.md` § 1 deleted on 2026-08-08 for biasing every borderline call toward a document *plus its full review gate*; the two standards biased opposite ways at exactly the point of doubt, and this one now carries the two-files-in escape hatch instead. § 5.7 told authors to run a "cold-eyes review loop … until a clean pass", naming a skill that no longer exists (replaced by `review-contract`) and a bar stricter than the one the skill defines — `spec-format.md` § 6 gives the skill sole ownership of convergence. The `## Cold-eyes loop log` heading is kept and the freeze is now stated: it is what `check-doc-facts` looks for and what every gated document in the corpus already carries. And the **Applies to:** line named only the bare `ANTS-NNNN.md` shape while § 2 *requires* `<ID>-<topic>.md` on new specs, so a conformer writing the mandated shape could read the standard as not governing their file. **Dismissed:** the remaining `cold-eyes` mentions (§§ 3.2, 4) name the frozen section and the live in-Ants engine (`src/coldeyesengine.h`, the `cold_eyes_*` verbs), not a command. **Surfaced, not fixed:** whether this file should become a deltas-only `spec-format-overrides.md` rather than a full parallel standard — a scope decision above this review. |
