@@ -11,7 +11,6 @@
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "falseposledger.h"
 #include "resolvedroot.h"
-#include "roadmapstore.h"
 #include "terminalwidget.h"
 #include <QDir>
 #include <QFile>

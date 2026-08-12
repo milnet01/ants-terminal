@@ -2,7 +2,6 @@
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "findsources.h"
-#include "claudeintegration.h"
 #include "mainwindow.h"
 #include "pathvalidation.h"
 #include "scrollbackerrors.h"

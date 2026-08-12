@@ -73,6 +73,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **Dropped 52 stale file references from the remote-control code, cutting build work** (ANTS-4125)
+  When this area was split into a dozen smaller files, the code that used
+  each helper moved out but the line naming that helper stayed behind — so
+  the main file still pulled in 48 helpers it never touched. Every
+  candidate was removed and then re-compiled to prove it was genuinely
+  unused; the five that turned out to be needed were put back. No
+  behaviour change. (Also closes ANTS-4123, the single-file version of the
+  same thing.)
+
 - **`test_audit_partition`'s `dimensions:"auto"` no longer includes the five test-STYLE dimensions.** (ANTS-4111)
   They are still accepted explicitly via `csv:`, and now appear in `dimensions_skipped[]` with a reason. `dimensions_active[]` is what /test-audit seeds subagents from, so returning all 18 briefed reviewers on exactly what the skill had removed.
 

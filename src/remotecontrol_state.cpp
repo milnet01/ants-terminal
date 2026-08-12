@@ -14,7 +14,6 @@
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "similarcode.h"
 #include "subsystemmap.h"
-#include "terminalwidget.h"
 #include "testrescache.h"
 #include <QDir>
 #include <QFileInfo>

@@ -30802,7 +30802,7 @@ defect from different angles.
   a build that never started are therefore indistinguishable from the task
   output, which is what sent the first two investigations down the wrong path.
 
-- 📋 [ANTS-4123] **remotecontrol_feedback.cpp includes roadmapstore.h without naming RoadmapStore.**
+- ✅ [ANTS-4123] **remotecontrol_feedback.cpp includes roadmapstore.h without naming RoadmapStore.**
   clangd's unused-includes check flags `src/remotecontrol_feedback.cpp:14`.
   Verified: `RoadmapStore` appears zero times in the file. Left in place
   deliberately rather than swept with an unrelated fix (CLAUDE.md §11) — the
@@ -30812,6 +30812,10 @@ defect from different angles.
   **Layman:** A leftover "include" line at the top of one source file pulls in code the file never uses.
   Kind: chore.
   Source: in-session-2026-08-12 (clangd diagnostic while shipping ANTS-4114).
+  Resolved (2026-08-12) as part of ANTS-4125's hub sweep — the same defect
+  class at file scale, so fixing it alone would have meant two builds of
+  the same TUs. remotecontrol_feedback.cpp no longer includes
+  roadmapstore.h; verified by compiling without it. 3377/3377 green.
 
 - 📋 [ANTS-4124] **AuditDialog still carries its own inline Qt detection alongside AuditEngine::projectUsesQt.**
   ANTS-4094 added AuditEngine::projectUsesQt() because the headless
@@ -39162,7 +39166,7 @@ contributors don't duplicate research.
   Kind: doc-fix.
   Source: in-session-2026-08-06 (ANTS-3833 commit 3).
 
-- 📋 [ANTS-4125] **src/remotecontrol.cpp carries ~10 engine includes left behind by the per-subsystem decomposition.**
+- ✅ [ANTS-4125] **src/remotecontrol.cpp carries ~10 engine includes left behind by the per-subsystem decomposition.**
   clangd reports unused-includes for buildcache.h, coldeyesengine.h,
   debtsweepengine.h, feedbackfile.h, fileoutline.h, findsources.h,
   readlog.h, readregion.h, applyedits.h and build_info.h at the top of
@@ -39184,6 +39188,40 @@ contributors don't duplicate research.
   **Layman:** The main remote-control file still lists ten helper files it no longer uses, so every build of it does needless work.
   Kind: refactor.
   Source: in-session-2026-08-12 (clangd diagnostics during ANTS-4091).
+  Resolved (2026-08-12): 52 include lines removed across four TUs — 49 from
+  the hub (48 project headers + a stray <cmath>, leaving the 13 it actually
+  uses), plus roadmapstore.h from remotecontrol_feedback.cpp (that is
+  ANTS-4123, closed by this sweep), terminalwidget.h from
+  remotecontrol_state.cpp and claudeintegration.h from
+  remotecontrol_terminal.cpp. Also deleted a 5-line ANTS-3793/3809 comment
+  left dangling over an unrelated include once its two includes went; the
+  same note still lives at roadmapdialog.cpp:7, where the include is live.
+  Build clean, 3377/3377 green.
+
+  Method, because the heuristics BOTH misfire in opposite directions and
+  the compiler was the only arbiter: a name-grep over each header's
+  exported types under-reports (it called 9 hub headers used because
+  generic secondary names like `Lane` / `Options` / `Finding` appear for
+  unrelated reasons — clangd caught those) and over-reports (it flagged
+  secureio.h, whose exports are free inline functions; resolvedroot.h,
+  used only as `ants::expandGlobalConfigSentinel`; and terminalwidget.h /
+  build_info.h, used via a pointer or extern consts, so the names never
+  appear literally). Every candidate was therefore removed and compiled:
+  5 came back and were restored.
+
+  Correcting this bullet's own claim: the transitive-inclusion risk I
+  wrote about SIBLING TUs was wrong — these includes are in .cpp files, so
+  a removal can only affect its own TU. The real risk was that TU losing a
+  header it reached transitively, which the build checks.
+
+  NOT done: the 9 remaining remotecontrol_*.cpp TUs got only the
+  primary-symbol grep + compile check, not a real include-what-you-use
+  pass — no IWYU on this host, and clangd's unused-includes diagnostic is
+  editor-only (`clangd --check` does not emit it), so the hub was swept
+  from live editor diagnostics that the siblings never produced. There is
+  no mechanical guard stopping the residue returning; adding IWYU to
+  tools/ci-parity.sh --lints would be the real fix and is its own item if
+  it is ever worth the dependency.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

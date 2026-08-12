@@ -1,66 +1,20 @@
 // ANTS-3833 TU 1/12 — Dispatcher and shared helpers.
+//
+// ANTS-4125 — include list swept 2026-08-12. The ANTS-3833 decomposition moved
+// most verb bodies out to the sibling remotecontrol_*.cpp TUs but left their
+// engine headers behind here: 48 project headers (plus a stray <cmath>) named
+// nothing this TU uses, leaving the 13 that do. Add an
+// include only when THIS TU names the symbol; a verb body that lives in a
+// sibling takes its header with it.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"  // ANTS-3833 — shared rcdetail helpers
-#include "build_info.h"          // ANTS-2073 — server build identity for session_orient
-#include "buildcache.h"
-#include "coldeyesengine.h"
-#include "debtsweepengine.h"
-#include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
-#include "fileoutline.h"
-#include "findsources.h"
-#include "readlog.h"
-#include "readregion.h"
 #include "mcpspill.h"        // ANTS-2094 — read_spill
-#include "applyedits.h"
-#include "codebaseindex.h"
-#include "docsindex.h"
-#include "docintegrity.h"      // ANTS-3601 — doc_integrity verb
-#include "doccitations.h"      // ANTS-3636 — doc_citations verb
-#include "speclog.h"             // ANTS-1963
-#include "specparse.h"           // ANTS-3665 — hoisted spec-body parser
-#include "speclint.h"            // ANTS-3662 — spec_lint verb
-#include "docdedup.h"            // ANTS-3660 — doc_dedup verb
-#include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
-#include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
-#include "focusedtest.h"
-#include "gitwrap.h"
-#include "claudeintegration.h"
-#include "config.h"
-#include "indiereviewdispatcher.h"
-#include "indiereviewengine.h"
 #include "mainwindow.h"
 #include "mcpprojection.h"
-#include "paginationengine.h"
-#include "pathvalidation.h"
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
-#include "plantemplateengine.h"
-#include "falseposledger.h"
-#include "auditfpledger.h"      // ANTS-1713 — audit_dismiss learned-FP ledger
-#include "projectlayoutengine.h"
-#include "remotecontrolgate.h"
 #include "resolvedroot.h"
-#include "scrollbackerrors.h"
-#include "buildfixhint.h"
-#include "sessionmemoryengine.h"
-#include "similarcode.h"
-#include "symbolquery.h"
-#include "tokenusageengine.h"
 #include "roadmapdialog.h"
-#include "roadmapfoldin.h"
 #include "roadmapindex.h"
-// ANTS-3793 — the read seam and the store behind it. Included HERE and not in
-// remotecontrol.h: roadmapstore.h pulls <QSqlDatabase>, and the link edge that
-// gets it here is PRIVATE (CMakeLists.txt § "ANTS-3793 § 4").
-#include "roadmapsource.h"
-#include "roadmapstore.h"
-// ANTS-3809 — the write shape the eight roadmap_log ops go through on a
-// migrated project. Same PRIVATE link edge as the read seam above.
-#include "roadmapwrite.h"
-#include "changeloglog.h"
-#include "passheadingwrite.h"
-#include "subsystemmap.h"
-#include "terminalwidget.h"
-#include "testrescache.h"
 #include "verifyengine.h"
 #include "verifytrust.h"
 #include "debuglog.h"
@@ -95,7 +49,6 @@
 #include <QStandardPaths>
 #include <QTabWidget>
 #include <QThread>
-#include <cmath>
 
 #include <sys/socket.h>
 #include <sys/stat.h>
