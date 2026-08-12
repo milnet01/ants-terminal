@@ -16,10 +16,16 @@ repo's Python. **A copy of a global standard does not belong here.**
 
 | Delta file | Global owner | What the project file adds |
 |----------|--------|--------|
-| [coding.md](coding.md) | `~/.claude/standards/coding.md` (+ `languages/cpp.md`, `qt.md`, `python.md`, `security.md`) | House style (`s_` statics, K&R, `#pragma once`, signals/slots never sibling calls) and `setOwnerOnlyPerms()` in `src/secureio.h`. |
+| [coding.md](coding.md) | `~/.claude/standards/coding.md` (+ `languages/cpp.md`, `qt.md`, `python.md`) | House style (`s_` statics, K&R, `#pragma once`, signals/slots never sibling calls) and `setOwnerOnlyPerms()` in `src/secureio.h`. |
 | [documentation.md](documentation.md) | `~/.claude/standards/documentation.md` | § 1.8 the `doc-examples` marker contract, § 3 ROADMAP/CHANGELOG routing, § 7 Qt accessibility, § 9 the fold-in heading. Section numbers are preserved for inbound links. |
 | [testing.md](testing.md) | `~/.claude/standards/testing.md` (+ `languages/cpp.md`) | The corrected prove-a-test-is-real recipe, audit-rule fixtures, the real label set, the bundle-target trap. |
 | [commits.md](commits.md) | `~/.claude/standards/commits.md` (+ `releases.md`) | This repo is public; the `ci-parity.sh` / pre-push gate; `cut-rc.sh` releases; `/bump`. |
+
+**One file is a MIRROR, not a delta.** [`security.md`](security.md) is a
+verbatim copy of `~/.claude/standards/security.md`, kept in the repo because
+this repo is public and a pointer into a private home directory is useless to
+an outside reader. **Do not edit it here** — corrections go upstream and are
+re-copied down. Project-specific security rules go in `coding.md`.
 
 **Two files here are NOT deltas, deliberately.** `roadmap-format.md` is
 **upstream of** its global copy (CFG-0069, 2026-08-12) — the parser, the store
@@ -40,7 +46,7 @@ template):
 | [dialogs.md](dialogs.md) | Dialog convention for every `QDialog` — theme conformance via `DialogChrome`, user-resizable, size persisted to `Config`, always re-centered over the terminal window on open (D1–D4). |
 | [mcp-tools.md](mcp-tools.md) | Ordered authoring checklist for adding a tool to the Ants MCP surface — registration, caller-cwd contract, path validation, response wrap, refusal codes, ETag / `fields=` opt-ins, cache contract, required tests. Umbrella over mcp-error-codes.md + mcp-caches.md. |
 | [status-bar.md](status-bar.md) | Status-bar widget convention specific to this codebase's `MainWindow` + `ClaudeStatusBarController` architecture. |
-| [audit-false-positives.md](audit-false-positives.md) | False-positive ledger (`.ants_review_falsepos.jsonl`) shared across the `/audit`, `review-contract`, `/code-quality-review` and `/test-audit` sweep skills — schema, CC write contract, MCP read contract. **Its body still names the retired `/cold-eyes` and `/indie-review` — ANTS-4132.** |
+| [audit-false-positives.md](audit-false-positives.md) | False-positive ledger (`.ants_review_falsepos.jsonl`) shared across the `/audit`, `review-contract`, `/code-quality-review` and `/test-audit` sweep skills — schema, CC write contract, MCP read contract. |
 | [mcp-caches.md](mcp-caches.md) | Keying + relocation contract for every MCP cache (ANTS-1439). Invariant: a path-keyed cache may go cold/orphan on project move but must never shadow. Inventory table + "adding a new cache" checklist. |
 | [mcp-error-codes.md](mcp-error-codes.md) | Canonical taxonomy for the `code` field on MCP refusal envelopes (ANTS-1353). Five categories: input validation, resource state, caller-cwd contract, I/O, dispatcher. |
 | [specs.md](specs.md) | Spec-authoring standard for `docs/specs/ANTS-NNNN.md` (ANTS-1728): required structure, INV-N bullet form, grounding/RAM/security conventions, `spec_query` machine-readability contract. |

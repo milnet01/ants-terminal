@@ -31329,7 +31329,7 @@ defect from different angles.
   Disk: ~1.2 GB image + ~3.5 GB volume, reclaimed by
   tools/qt62-guard.sh --clean.
 
-- 📋 [ANTS-4132] **Two standards still name the retired /cold-eyes and /indie-review skills.**
+- ✅ [ANTS-4132] **Two standards still name the retired /cold-eyes and /indie-review skills.**
   Both skills were deleted 2026-08-12 (global CLAUDE.md line 16: each
   predecessor "was deleted in the same commit that promoted its
   replacement"). Verified absent from ~/.claude/skills/. `/cold-eyes` ->
@@ -31367,6 +31367,28 @@ defect from different angles.
   **Layman:** Two rulebooks tell you to run tools that were deleted; the replacements have different names.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (standards reconciliation, review-agent-rules).
+  Resolved (2026-08-12): renamed in every LIVE instruction across
+  audit-false-positives.md and roadmap-format.md. `/cold-eyes` ->
+  `review-contract`, `/indie-review` -> `/code-quality-review`.
+
+  The `Source:` vocabulary question the bullet flagged is settled by
+  adopting the global spelling (user decision: "the global rules are the
+  new standard"): `code-quality-review-YYYY-MM-DD` is canonical,
+  `indie-review-YYYY-MM-DD` still parses and existing bullets keep it.
+  Nothing reads Source: values, so this is traceability, not a format
+  break.
+
+  Deliberately NOT renamed:
+  - Loop-log rows naming `/cold-eyes` (mcp-behavioural-notes.md and
+    others). A loop log records what a pass found on a date; back-dating
+    it destroys the thing it is kept for (global CLAUDE.md rule 14).
+  - The MCP verb names `cold_eyes_brief` / `indie_review_*`. Those are
+    live verb identifiers, not skill names.
+  - The `📝 Cold-eyes documentation review fold-in` theme-emoji label and
+    the `Cold-eyes loop log` section heading — the ARTEFACT keeps its name
+    in the global standards too.
+
+  doc_integrity clean over all 24 files in docs/standards/ afterwards.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

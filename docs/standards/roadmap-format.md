@@ -415,7 +415,7 @@ item.
 | `planned` | On the roadmap from project design (default; usually omitted) |
 | `user-YYYY-MM-DD` | User report on date YYYY-MM-DD |
 | `audit-YYYY-MM-DD` | `/audit` skill output on date YYYY-MM-DD |
-| `indie-review-YYYY-MM-DD` | `/indie-review` skill output on date YYYY-MM-DD |
+| `code-quality-review-YYYY-MM-DD` | `/code-quality-review` skill output on date YYYY-MM-DD. **Adopted from the global standard 2026-08-12**; the old spelling `indie-review-YYYY-MM-DD` still parses and existing bullets keep it — nothing reads `Source:` values, so this is traceability, not a format break. Write the new one. |
 | `debt-sweep-YYYY-MM-DD` | `/debt-sweep` skill output on date YYYY-MM-DD |
 | `doc-review-YYYY-MM-DD` | Documentation review on date YYYY-MM-DD |
 | `static-analysis` | cppcheck / clazy / semgrep / ruff / bandit ad-hoc |
@@ -520,7 +520,7 @@ appear in the 📋/🚧/💭 filters.
 ### 3.8 Findings fold-in subsections
 
 When an external review produces new items — `/audit`,
-`/indie-review`, a documentation review, a user bug report,
+`/code-quality-review`, a documentation review, a user bug report,
 static-analysis run, an upstream advisory — fold them into a
 dedicated `###` subsection inside the active release block, with
 date and source stamped on the heading. The pattern is the same

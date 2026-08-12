@@ -4,7 +4,7 @@
 
 This document is the canonical contract for **logging false-positive
 findings** across the four Ants-supported sweep skills: `/audit`,
-`/cold-eyes`, `/indie-review`, `/test-audit`. Each skill uses a
+`review-contract`, `/code-quality-review`, `/test-audit`. Each skill uses a
 different ledger — `/audit` suppresses via `.audit_suppress` (line-grain,
 tool-keyed); the three AI-review skills share `.ants_review_falsepos.jsonl`
 (prose-grain, review-kind-keyed). This standard covers both ledgers
@@ -31,8 +31,8 @@ model and pins the discipline of "log it once, don't re-debate".
 | Sweep | Finding grain | Ledger | How the harness-side MCP tool honours it |
 |-------|---------------|--------|------------------------------------------|
 | `/audit` (cppcheck, clazy, ruff, bandit, semgrep, gitleaks, …) | line-grain `(path, line, rule)` | `.audit_suppress` (JSONL v2) | `auditdialog` reads at the filter stage; marks `f.suppressed = true` so SARIF § 3.34 surfaces but the report drops |
-| `/cold-eyes` | prose claim against a contract / spec | `.ants_review_falsepos.jsonl` | `cold_eyes_brief` (Ants harness MCP tool) injects a "previously-rejected" block |
-| `/indie-review` | prose claim against source + spec | `.ants_review_falsepos.jsonl` | `indie_review_brief` + `indie_review_dispatch` (Ants harness MCP tools) inject the same block |
+| `review-contract` | prose claim against a contract / spec | `.ants_review_falsepos.jsonl` | `cold_eyes_brief` (Ants harness MCP tool) injects a "previously-rejected" block |
+| `/code-quality-review` | prose claim against source + spec | `.ants_review_falsepos.jsonl` | `indie_review_brief` + `indie_review_dispatch` (Ants harness MCP tools) inject the same block |
 | `/test-audit` | structured dimension finding (dimension + severity + summary) | `.ants_review_falsepos.jsonl` | `test_audit_brief` (Ants harness MCP tool) returns `prior_false_positives: [...]` as a structured field |
 
 Note: the tool names in the last column (`cold_eyes_brief`, `indie_review_brief`, `indie_review_dispatch`, `test_audit_brief`) are Ants-harness skill-side MCP tools — they appear in `mcp__ants__*` form in skill invocations. They are distinct from the in-app `tools/call` registry (the `registerToolProvider` verbs in `src/mainwindow.cpp`).
@@ -136,7 +136,7 @@ One JSON object per line. All fields are strings unless noted.
 | `claim` | yes | One-line summary of the false-positive claim. ≤ 280 UTF-16 code units (one tweet's worth) on read; longer values are truncated with `…` at the nearest non-surrogate boundary (no split surrogate pairs). |
 | `rationale` | yes | Why it's a false positive. This is the **load-bearing field** — it's what future reviewers read and must explain enough to prevent re-raising. Cite specific files, lines, or external systems. ≤ 1024 UTF-16 code units on read, same surrogate-safe truncation. |
 | `timestamp` | yes | ISO date `YYYY-MM-DD` (date-only, NO `Thh:mm:ss` suffix). Validated via `QDate::fromString(s, "yyyy-MM-dd").isValid()` — datetime forms, malformed strings (`2026-02-30`), and the like are rejected on read. |
-| `lane` | optional | For `/indie-review` or `/cold-eyes`, the lane name from `derivePartition`. Empty = applies to all lanes. |
+| `lane` | optional | For `/code-quality-review` or `review-contract`, the lane name from `derivePartition`. Empty = applies to all lanes. |
 | `topic` | optional | Short tag for grouping (`rate-limit`, `path-traversal`, `unused-import`). Conventionally lowercase, hyphen-separated, ≤ 24 chars but not enforced — purely informational. |
 | `logged_by` | optional | `user-confirmed` / `cc-session` / `external`. Defaults to `cc-session` if omitted. Useful for audit trail. |
 
@@ -148,7 +148,7 @@ The bar for logging is **the finding was raised AND the user
 concurred (explicitly or by acceptance of the fold-in pass without
 the finding) that it is a false positive**. Specifically:
 
-1. A `/audit`, `/cold-eyes`, `/indie-review`, or `/test-audit`
+1. A `/audit`, `review-contract`, `/code-quality-review`, or `/test-audit`
    sweep surfaced a finding to the user.
 2. During fold-in (the step that classifies findings into
    actionable / false-positive / known-issue), the finding was

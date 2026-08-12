@@ -27,7 +27,7 @@ standards that will disagree; this one lost.
 | Naming | global `coding.md` § 4 |
 | Performance | global `coding.md` § 6 |
 | Anti-patterns | global `coding.md` § 8 |
-| Security — validate at the boundary, atomic writes, never log a credential | global `security.md` (there is no project copy; read the global file) |
+| Security — validate at the boundary, atomic writes, never log a credential | [`security.md`](security.md) — a verbatim mirror of the global owner, kept in-repo because this repo is public |
 | **C++ spellings** — version floor, idioms | global `languages/cpp.md` |
 | **Qt spellings** — `tr()`, `QSaveFile`, `Q_OBJECT`, parent-child ownership, new-style `connect` | global `languages/qt.md` |
 | **Python spellings** — casing (`snake_case`, *not* the camelCase this file used to mandate), idioms | global `languages/python.md` |

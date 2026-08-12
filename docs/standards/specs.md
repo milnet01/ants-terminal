@@ -317,13 +317,23 @@ The same gate applies to the spec itself, per
 [`documentation.md` § 1.6](documentation.md). Show request/response
 shapes, structs and limits as schemas, tables and fenced blocks — never
 as paragraphs narrating them — and state each limit once
-([`documentation.md` § 1.5](documentation.md)). Two
-yardsticks: a spec several times longer than a sibling spec covering
-comparable surface, or several times longer than the code it specifies,
-is over-built until it names the extra surface it covers. Length is not
-just a reading cost — every restatement of a fact is one more place for
-the next review loop to find a contradiction, so an over-long spec
-actively delays its own convergence.
+([`documentation.md` § 1.5](documentation.md)).
+
+**Length is not itself the defect, and the sibling-size yardstick is
+withdrawn** (2026-08-12). This section used to say a spec several times
+longer than a comparable sibling, or than the code it specifies, was
+over-built until it named the extra surface. Global `documentation.md`
+§ 2.8 is the owner and says the opposite: a longer document is worth a
+look, not automatically wrong, and "a length target invites deleting
+whatever is easiest to delete." Apply § 2.8's test instead — look for a
+duplicated fact, prose narrating a table, or a decision never made. If
+none is present, the length is the subject's.
+
+What survives is the *reason* the old rule was reaching for: every
+restatement of a fact is one more place for the next review loop to find
+a contradiction, so a spec that repeats itself delays its own
+convergence. That is the duplicated-fact case of § 2.8, and it is caught
+by deleting the duplicate — never by cutting to a size.
 
 ### 5.4 Security boundaries
 
