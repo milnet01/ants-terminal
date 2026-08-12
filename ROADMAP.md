@@ -30338,6 +30338,7 @@ defect from different angles.
   **Layman:** Actually run the patterns a spec prescribes against the examples beside them, instead of asking a reviewer to eyeball whether they match.
   Kind: feature.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
+  Deferred BY CHOICE, not blocked (2026-08-12; the user was asked at the 2026-08-11 triage and again during the 08-12 sweep, and chose both times to keep clearing small fixes first). Nothing about it is gated — it is simply much bigger than its neighbours in this section: it needs /write-spec plus the rule-14 /cold-eyes gate before any code, because the exec sandbox and the pattern-extraction contract are both surfaces other sessions would build against. Recorded here because the decision had been carried in session hand-off briefs only, so a fresh session would have re-asked. Re-raise when the small-fix queue in this section runs dry; until then do not open it, and do not treat its size as a reason to build a cut-down version without the spec.
 
 - ✅ [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
   roadmap_query {id:"LOTTO-0019"} resolves and returns
