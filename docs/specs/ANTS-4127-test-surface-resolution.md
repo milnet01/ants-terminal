@@ -740,6 +740,11 @@ nothing stood; the remainder replaced text rather than sitting beside it.
 `sections_checked: false` — no format standard in this project ships a
 `<!-- required-sections -->` block, so required-section structure was
 verified by hand against `docs/standards/specs.md` § 3 + § 4, not by a tool.
+**This is not specific to this spec: the check has never run on any spec in
+this corpus**, and the missing block is tracked as **ANTS-3829** (with
+**ANTS-4080** for the global-standard half). Until one of those lands, every
+`spec_lint` clean result in this project is silent about section structure,
+and a gate reporting it as settled is reporting something nobody measured.
 
 **Loop 2 (2026-08-12).** 8 of the 11 came from the two lanes (3 raised by
 both); 3 more surfaced from lane open questions the orchestrator resolved.
