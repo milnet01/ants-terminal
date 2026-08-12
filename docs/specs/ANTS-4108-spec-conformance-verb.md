@@ -41,7 +41,7 @@ Nothing in the current gate executes those artefacts.
    evidence.** Per the ANTS-4108 bullet: three `/cold-eyes` loops, six
    strong-model lanes and 75 verified findings read the prescribed patterns
    and passed them. Running the same patterns surfaced four defects in about
-   two minutes:
+   two minutes, of which the bullet records these three:
    - `re.search(r"\d{1,5}(?![0-9])", " 123456")` returns `23456`, not a
      refusal — a lookahead does not reject a longer number under *search*,
      because the engine advances the start position.
@@ -64,7 +64,8 @@ pattern is wrong, everything built from it is wrong. This runs them.
 ### 2.1 A new verb, not a `spec_lint` mode
 
 `spec_lint`'s contract states that it runs no subprocess and executes
-nothing (§ 1.1). Folding execution into it would falsify a published
+nothing — the decision quoted in § 1, item 1, from `src/speclint.cpp`
+itself. Folding execution into it would falsify a published
 contract that another spec's invariants rest on, so `spec_conformance` is a
 separate verb. `spec_lint` keeps raising `command_test_no_expectation` as a
 CANDIDATE — a clause that states no expectation is precisely a clause this
@@ -109,8 +110,10 @@ beside it, § 2.5). The fixture-execution half is § 6.
                       "engine": "pcre2", "input": " 123456",
                       "expected": "no match", "actual": "23456" } ],
   "candidates":   [ { "kind": "pattern_without_expectation", "line": 143,
-                      "pattern": "^\\s*#{1,6}\\s" } ],
+                      "pattern": "^#{1,6}\\s" } ],
+  "refusals":     [ { "line": 210, "code": "unsupported_engine" } ],
   "observations": [ { "kind": "timing", "line": 88, "micros": 77 } ],
+  "truncated": false,
   "etag": "<hex>" }
 ```
 
@@ -127,12 +130,13 @@ the same section, so that authoring one is a local act:
 
 ````markdown
 ```regex pcre2
-^\s*(?:export\s++)?(?:const|let|var)\s++([A-Za-z_$][\w$]*)\s*=
+^(?:export\s++)?(?:default\s++)?(?:const|let|var)\s++([A-Za-z_$][\w$]*)\s*=
 ```
 
 | input | expected |
 |---|---|
 | `const CSS = ` | `CSS` |
+| `export const CLIENT_JS = ` | `CLIENT_JS` |
 | `  const local = ` | no match |
 ````
 
@@ -142,8 +146,14 @@ the same section, so that authoring one is a local act:
   exactly the columns `input` and `expected`, before the next fence or
   heading. Anything else is not an expectation table.
 - `expected` is either `no match`, or the text of **capture group 1** when
-  the pattern has one, else the whole match. Backticks around a cell are
-  stripped so a literal can carry leading or trailing spaces visibly.
+  the pattern has one, else the **first** match under search semantics.
+  Backticks around a cell are stripped so a literal can carry leading or
+  trailing spaces visibly.
+- **The empty result has an encoding, because INV-3 turns on it.** An empty
+  backtick pair (`` `` ``) means *matched, captured the empty string*. A
+  bare empty cell is malformed and yields a CANDIDATE, never a silent
+  reading of either. Without this rule "matched but captured nothing" and
+  "did not match" are indistinguishable in the table.
 
 ### 2.5 Result taxonomy
 
@@ -155,23 +165,44 @@ the same section, so that authoring one is a local act:
 
 CANDIDATEs are the verb's answer to the defects it cannot execute: it
 cannot tell whether a fixture is reachable, but it can say **nobody stated
-what this pattern should do**, which is what produced two of the four
-reported defects.
+what this pattern should do**, which is what produced two of the reported
+defects.
+
+**A refusal is PER CASE, never per call.** An unsupported engine or an
+over-cap pattern adds a row to `refusals[]` and the run continues; the
+other cases in the file still produce their findings. Only a malformed
+*request* — an unreadable `path`, a `max_cases` outside its clamp — refuses
+the whole call. The alternative was tried on paper and rejected: a
+corpus-wide sweep in which one stray fence blinds an entire file is a sweep
+that reports clean for the wrong reason. `cases_run` counts cases actually
+executed, so a refused case is excluded from it.
 
 ### 2.6 Engines
+
+**This table ranges over fences whose info string's FIRST word is `regex`.**
+A fence tagged anything else (` ```cpp `, ` ```jsonc `, ` ```markdown `) is
+not a case, is not a candidate, and is not a refusal — it is invisible to
+this verb. Every spec in the corpus carries such fences, this one included,
+so a rule that refused them would refuse nearly every real document.
 
 | Fence tag | Engine | Notes |
 |---|---|---|
 | `regex pcre2` | `QRegularExpression` | Qt's PCRE2; no new dependency |
-| anything else | — | refused `unsupported_engine`; never silently substituted |
+| `regex` (no engine) | — | CANDIDATE, never a guess and never a refusal (§ 2.4) |
+| `regex <other>` | — | refused `unsupported_engine`; never silently substituted |
+
+`unsupported_engine` is the one new code this verb adds, named to match the
+taxonomy's existing `unsupported_format`. The cap refusal reuses `too_large`
+rather than minting a second (INV-7).
 
 **A substitute engine is worse than no engine.** The two agree on the
 reported case — verified, not assumed: `python3 -c "import re;
 print(re.search(r'\d{1,5}(?![0-9])', ' 123456').group(0))"` and
 `printf ' 123456' | grep -oP '\d{1,5}(?![0-9])'` both return `23456`. They
 are still not the same engine, and the defaults differ where it matters:
-Qt leaves `QRegularExpression::UseUnicodePropertiesOption`
-(`qregularexpression.h`) **off** by default, so `\d` is ASCII-only, while
+Qt leaves `QRegularExpression::UseUnicodePropertiesOption` — a Qt header
+symbol, not a project one (`/usr/include/qt6/QtCore/qregularexpression.h:42`
+on this host) — **off** by default, so `\d` is ASCII-only, while
 Python 3's `\d` matches Unicode digits unless `re.ASCII` is passed. A
 pattern written against one and run under the other can therefore return a
 *confident wrong answer about a spec that is correct* — the one outcome
@@ -204,7 +235,7 @@ a runaway pattern an author wrote by mistake — and the verb explicitly does
 
 | Cap | Value | Reason |
 |---|---|---|
-| pattern length | 512 bytes | mirrors `fileoutline.cpp`'s `kMaxLineBytes` guard against catastrophic backtracking |
+| pattern length | 512 bytes | same class of guard as `fileoutline.cpp`'s `kMaxLineBytes`, which caps a scanned line at **1024** for the same backtracking reason; half that here because a pattern is shorter than a source line |
 | input length | 512 bytes | an expectation row is an example, not a corpus |
 | cases per file | `max_cases`, default 200 | bounds total work per call |
 
@@ -239,29 +270,49 @@ row is deliberately `nothing` in § 8.
   an unchecked pattern indistinguishable from an absent one — the state that
   produced two of the four reported defects.
 - **INV-5** — an unrecognised engine tag is refused `unsupported_engine`
-  and no pattern is run under a substitute. *Test:* fixture tagged
-  `regex python` asserts the refusal code and `cases_run == 0`. *Breaks
-  when:* the tag is ignored and the pattern runs under PCRE2, which returns
-  a confident wrong verdict on a correct spec (§ 2.6).
+  and no pattern is run under a substitute; the refusal is per case.
+  *Test:* two fixtures. One containing **only** a `regex python` fence
+  asserts `refusals[0].code == "unsupported_engine"` and `cases_run == 0`.
+  One containing that fence **plus two valid `regex pcre2` cases** asserts
+  `ok: true`, `cases_run == 2` and one refusal row — the leg that catches a
+  call-level abort. *Breaks when:* the tag is ignored and the pattern runs
+  under PCRE2, which returns a confident wrong verdict on a correct spec
+  (§ 2.6); or one bad fence aborts the file, so a sweep reports clean
+  because it stopped.
 - **INV-6** — the verb writes nothing. *Test:* hash every file under the
-  project root before and after a run over a fixture containing findings;
-  assert equality. *Breaks when:* a future autofix is added here rather than
-  in an author-side tool.
+  **fixture directory and `docs/specs/`** before and after a run over a
+  fixture containing findings; assert equality. *Breaks when:* a future
+  autofix is added here rather than in an author-side tool. The hash is
+  scoped rather than taken over the project root, because `build*/` and
+  `.git/` are written by the harness running the test — a root-wide hash
+  fails whatever the verb does, which falsifies nothing.
 - **INV-7** — the § 2.8 caps are enforced and reported, not silently
   applied. *Test:* a 600-byte pattern and a 600-byte input each yield a
-  refusal naming the cap; a file with 201 cases at `max_cases: 200` returns
-  `truncated: true`. *Breaks when:* the cap clamps quietly, so a partial run
-  reads as a complete one.
+  per-case `refusals[]` row with code `too_large` — the taxonomy's existing
+  code for an input resource over a cap, not a new one minted here; a file
+  with 201 cases at `max_cases: 200` returns `truncated: true` with
+  `cases_run == 200`.
+  *Breaks when:* the cap clamps quietly, so a partial run reads as a
+  complete one.
 - **INV-8** — this verb runs no subprocess and loads no interpreter, so
-  `spec_lint`'s § 1.1 contract stays true of the pair. *Test:* source-grep
-  over `src/specconformance.cpp` asserts no `QProcess`. *Breaks when:*
-  Python support (§ 6) is added here instead of behind its own decision.
-- **INV-9** — two runs over an unchanged file return byte-identical
-  envelopes, and a matching `etag_match` short-circuits. *Test:* run twice,
-  compare serialised output; then pass the returned etag and assert
-  `unchanged: true`. *Breaks when:* timing observations are emitted inside
-  the etag'd body — measured µs differ per run, which would make every call
-  a cache miss. Timings are therefore excluded from the etag input.
+  `spec_lint`'s no-execution contract stays true of the pair. *Test:*
+  source-grep across **every file § 2.7 names** for
+  `QProcess|system\(|popen|fork\(|lua_newstate|luaL_newstate|Py_Initialize`,
+  asserting zero hits. *Breaks when:* Python support (§ 6) is added here
+  instead of behind its own decision. A grep for `QProcess` alone on a
+  single TU was the first draft's test and could not falsify the
+  interpreter half of its own claim — every one of the other six tokens
+  passed it.
+- **INV-9** — two runs over an unchanged file return envelopes that are
+  byte-identical **except for `observations`**, and a matching `etag_match`
+  short-circuits. *Test:* run twice, compare the serialised envelope with
+  `observations` elided; then pass the returned etag and assert
+  `unchanged: true`. *Breaks when:* the etag is computed over the whole
+  envelope — measured µs differ per run, so every call would be a cache
+  miss. The etag is therefore computed over the envelope minus
+  `observations`. Full byte-identity is **not** claimed: § 2.3 emits
+  per-run timings on purpose, and an invariant demanding both would be
+  unsatisfiable by any correct implementation.
 
 ## 4. RAM / build cost
 
@@ -290,8 +341,9 @@ external library.
 
 ## 6. Out of scope
 
-- **Executing fenced fixtures** (reachability and timing defects 2–4 of the
-  reporter's four) — deferred, tracked by **ANTS-4127**. Needs a decision on
+- **Executing fenced fixtures** — the reachability and timing defects, the
+  second and third of the three listed in § 1 — deferred, tracked by
+  **ANTS-4127**. Needs a decision on
   an interpreter and a real sandbox; `luaengine.cpp`'s watchdog is the
   in-repo precedent to start from.
 - **Python `re` as an engine** — deferred, same id. Requires an
@@ -307,8 +359,10 @@ external library.
 ## 7. Tests
 
 Feature test: `tests/features/spec_conformance/`, label `features;fast`,
-covering INV-1..9. Source-scrape covers the schema, dispatch and provider
-wiring per the `mcp-tools.md` checklist. Each test is verified to fail
+covering INV-1..7 and INV-9. **INV-8 is a source-scrape, not a runtime
+case** — no running test can observe the absence of an interpreter.
+Source-scrape also covers the schema, dispatch and provider wiring per the
+`mcp-tools.md` checklist. Each test is verified to fail
 against pre-implementation source before the implementation lands, per the
 project test convention.
 
@@ -317,7 +371,7 @@ project test convention.
 | Invariant | Checked by |
 |---|---|
 | INV-1..7, INV-9 | `tests/features/spec_conformance/` |
-| INV-8 | source-grep for `QProcess` in the new TU |
+| INV-8 | source-grep for the seven subprocess/interpreter tokens across every file § 2.7 names |
 | A pattern's engine matching the one its artefact will really run under | **nothing** — the fence tag is the author's claim, and no check ties it to the consuming code |
 | A catastrophic pattern within the caps | **nothing** — § 2.8, no interruption exists |
 | Whether an expectation row states the *right* expectation | **nothing** — a wrong expectation and a wrong pattern are indistinguishable from inside |
@@ -337,4 +391,49 @@ its stated example agree, never that either is what the author meant.
 
 ## 10. Cold-eyes loop log
 
-_No loop has run yet._
+| Loop | Lanes | Q1 | Q2 | Q3 | Q4 | Verified / dismissed | Outcome |
+|---|---|---|---|---|---|---|---|
+| 1 | 2 cold, spec genre | 1 | 4 | 2 | 2 | 9 / 0 | all fixed |
+
+**Loop 1 (2026-08-12).** Both lanes independently found the same five
+defects, which is what two rolls of a cold read are for.
+
+- **[Q1]** § 2.4's worked example was itself the class this verb exists to
+  catch. The fence pasted a pattern beginning `^\s*` while its expectation
+  table was written for the column-0 form the example is meant to
+  illustrate, so the row `` `  const local = ` `` → `no match` was false —
+  verified by running it: `printf '  const local = ' | grep -oP '^\s*…'`
+  matches and captures `local`. Fixed by restoring the column-0 anchor and
+  re-running all three rows.
+- **[Q2]** § 2.6's catch-all row refused every fence it did not recognise,
+  including `cpp`/`jsonc` fences that every spec carries, and contradicted
+  § 2.4's rule that a bare `regex` fence is a CANDIDATE. Scoped to
+  `regex*` fences and given an explicit bare-`regex` row.
+- **[Q2]** INV-9 demanded byte-identical envelopes while § 2.3 emits
+  per-run timings — unsatisfiable by any correct implementation. Scoped to
+  exclude `observations`, and the etag subset stated.
+- **[Q2]** `truncated` was asserted by INV-7 but absent from the § 2.3
+  envelope; added, along with the `refusals[]` array.
+- **[Q2]** § 7 enumerated INV-8 into the feature test while § 8 and INV-8
+  itself assigned it to a source-scrape. § 7 corrected.
+- **[Q3]** Refusal granularity was undefined — one bad fence aborting the
+  file, or skipping the case, were both buildable. Now stated: per case,
+  with only a malformed request refusing the call.
+- **[Q3]** The encoding for an empty capture was undefined while INV-3
+  turns on exactly that distinction. Now stated.
+- **[Q4]** INV-6 hashed the whole project root, which `build*/` and `.git/`
+  churn during any test run — it would fail regardless of the verb. Scoped.
+- **[Q4]** INV-8 claimed "no subprocess **and no interpreter**" while its
+  test grepped one file for `QProcess` alone; `luaL_newstate`,
+  `Py_Initialize`, `system(`, `popen` and `fork(` all passed it. Grep set
+  and file set widened.
+
+Author-side during the fix pass: the cap refusal was about to mint a new
+`cap_exceeded` code, corrected to the taxonomy's existing `too_large`
+(`mcp-error-codes.md`); a `§ 1.1` self-citation that resolved to nothing was
+made explicit; and the "four defects" count was reconciled with the three
+the bullet actually enumerates.
+
+Lane spend: 99.4k and 96.5k input tokens against a ~60k/turn budget — over,
+because the packet carries eight code windows and the document is long for
+its genre.
