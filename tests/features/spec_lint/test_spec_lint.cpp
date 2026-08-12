@@ -19,10 +19,20 @@
 #include <QString>
 #include <QStringList>
 
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QFileInfo>
+
+#include <string>
+
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #if !defined(DOCS_STANDARDS_SPECS_MD_PATH) || !defined(DOCS_SPECS_DIR_PATH)
 #error "spec_lint test needs DOCS_STANDARDS_SPECS_MD_PATH and DOCS_SPECS_DIR_PATH"
+#endif
+#if !defined(SRC_SPECLINT_CPP_PATH) || !defined(SRC_SPECLINT_H_PATH)
+#error "spec_lint test needs SRC_SPECLINT_CPP_PATH and SRC_SPECLINT_H_PATH"
 #endif
 
 namespace {
@@ -38,6 +48,33 @@ QString slurp(const char *path) {
     QFile f(QString::fromUtf8(path));
     if (!f.open(QIODevice::ReadOnly)) return {};
     return QString::fromUtf8(f.readAll());
+}
+
+// ANTS-4127 — a one-invariant spec, so a fixture differs from its sibling only
+// in the line under test. `status` empty writes NO Status line at all, which is
+// the state 53 specs of this corpus are in.
+QString specDoc(const QString &status, const QString &clause) {
+    QString d = QStringLiteral("# ANTS-1 — a spec\n");
+    if (!status.isEmpty())
+        d += QStringLiteral("**Status:** ") + status + QLatin1Char('\n');
+    d += QStringLiteral("\n## 3. Invariants\n\n- **INV-1** — a rule. *Test:* ") +
+         clause + QLatin1Char('\n');
+    return d;
+}
+
+SpecLint::Options withDirs(const QSet<QString> &existing,
+                           const QSet<QString> &wired = {}) {
+    SpecLint::Options o;
+    o.existingTestDirs = existing;
+    o.wiredTestDirs    = wired;
+    return o;
+}
+
+const DocFinding::Finding *firstOfKind(const SpecLint::Result &r,
+                                       const char *kind) {
+    for (const auto &f : r.findings)
+        if (f.kind == QString::fromUtf8(kind)) return &f;
+    return nullptr;
 }
 
 }  // namespace
@@ -455,6 +492,373 @@ TEST(SpecLint, Ants4110SiblingNumbersAreNotGaps) {
     // The corpus scan the verb layer feeds it: ownership, from either form.
     const QSet<int> owned = SpecLint::invariantNumbers(doc);
     EXPECT_EQ(owned, (QSet<int>{1, 2, 7}));
+}
+
+// =====================================================================
+// ANTS-4127 — test-surface resolution. A `*Test:*` clause is the claim that an
+// invariant is locked by something real; nothing checked that the thing it names
+// exists, and three specs in this corpus name test directories that never have.
+// Every row below drives the engine by INJECTING the two filesystem sets, which
+// is what keeping it filesystem-free buys.
+// =====================================================================
+
+// INV-1 — one resolution attempt per DISTINCT name in a clause, a wrapped clause
+// harvested whole, and distinctness scoped per DOCUMENT.
+//
+// The assertion is `surfaces_resolved`, not a finding count: "attempts" is not an
+// emitted quantity, and counting findings would pass against an engine that
+// harvests once and errors twice.
+TEST(SpecLint, Ants4127Inv1SurfaceHarvest) {
+    const auto opts = withDirs({QStringLiteral("alpha"), QStringLiteral("beta")});
+
+    // (a) two distinct present directories in ONE clause → two surfaces.
+    const SpecLint::Result two = SpecLint::check(
+        specDoc(QStringLiteral("spec draft."),
+                QStringLiteral("`tests/features/alpha/` and "
+                               "`tests/features/beta/` both cover it.")),
+        QStringLiteral("a.md"), opts);
+    EXPECT_EQ(two.surfacesResolved, 2)
+        << "a harvest that stops at the first match leaves the second surface "
+           "of every multi-surface clause unchecked";
+    EXPECT_TRUE(two.findings.isEmpty());
+
+    // (b) the SAME directory twice → one.
+    const SpecLint::Result dup = SpecLint::check(
+        specDoc(QStringLiteral("spec draft."),
+                QStringLiteral("`tests/features/alpha/`, and again "
+                               "`tests/features/alpha/`.")),
+        QStringLiteral("b.md"), opts);
+    EXPECT_EQ(dup.surfacesResolved, 1);
+
+    // (c) the path on a CONTINUATION line, `*Test:*` ending its own. Invariant
+    //     bullets hard-wrap, so this is the shape the corpus actually writes —
+    //     and a line-scoped scan misses every one of them, the error that put
+    //     this spec's own yield measurement at 40 instead of 137.
+    const QString wrapped = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "**Status:** spec draft.\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — a rule that needs a long sentence to state. *Test:*\n"
+        "  `tests/features/alpha/` — a fixture asserting the thing.\n");
+    const SpecLint::Result w = SpecLint::check(wrapped, QStringLiteral("c.md"), opts);
+    EXPECT_EQ(w.surfacesResolved, 1) << "a wrapped clause is harvested whole";
+
+    // (d) PER-DOCUMENT distinctness: two separate invariants, one directory.
+    //     Without this an engine deduplicating per clause passes every other row
+    //     here and still reports a different total for the same corpus.
+    const QString twice = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "**Status:** spec draft.\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — a rule. *Test:* `tests/features/alpha/` covers it.\n"
+        "- **INV-2** — another rule. *Test:* `tests/features/alpha/` too.\n");
+    const SpecLint::Result t = SpecLint::check(twice, QStringLiteral("d.md"), opts);
+    EXPECT_EQ(t.surfacesResolved, 1)
+        << "a directory two invariants of one spec both name is one surface";
+}
+
+// INV-2 — a `tests/features/<name>*` WILDCARD yields no attempt and no finding.
+// A spec legitimately writes one when it means a family of tests, so reading
+// `tests/features/audit_*` as a directory named `audit_` manufactures a finding
+// against a correct spec — worse than not checking at all.
+TEST(SpecLint, Ants4127Inv2WildcardIsNotADirectory) {
+    const auto opts = withDirs({QStringLiteral("alpha")});
+    const SpecLint::Result r = SpecLint::check(
+        specDoc(QStringLiteral("shipped (2026-01-01)."),
+                QStringLiteral("`tests/features/audit_*` and "
+                               "`tests/features/remote_control_*` cover it.")),
+        QStringLiteral("w.md"), opts);
+    EXPECT_TRUE(r.findings.isEmpty()) << "a wildcard names no directory";
+    EXPECT_EQ(r.surfacesResolved, 0);
+
+    // And the pattern is not simply blind: a real name in the same clause still
+    // resolves, so the row cannot pass against an extractor that harvests nothing.
+    const SpecLint::Result mixed = SpecLint::check(
+        specDoc(QStringLiteral("shipped (2026-01-01)."),
+                QStringLiteral("`tests/features/audit_*` plus "
+                               "`tests/features/alpha/`.")),
+        QStringLiteral("m.md"), opts);
+    EXPECT_TRUE(mixed.findings.isEmpty());
+    EXPECT_EQ(mixed.surfacesResolved, 1);
+}
+
+// INV-3 — the spec's own Status picks the bucket, and only a confidently-shipped
+// one yields a FINDING. The two documents differ in NOTHING else.
+TEST(SpecLint, Ants4127Inv3StatusChoosesTheBucket) {
+    const auto opts  = withDirs({QStringLiteral("something_else")});
+    const QString cl = QStringLiteral("`tests/features/absent_one/` covers it.");
+
+    const SpecLint::Result shipped = SpecLint::check(
+        specDoc(QStringLiteral("shipped 2026-05-13 in 0.7.88."), cl),
+        QStringLiteral("s.md"), opts);
+    EXPECT_EQ(countKind(shipped, "test_surface_absent"), 1);
+    EXPECT_EQ(countKind(shipped, "test_surface_unresolved"), 0);
+
+    const SpecLint::Result draft = SpecLint::check(
+        specDoc(QStringLiteral("spec draft."), cl), QStringLiteral("d.md"), opts);
+    EXPECT_EQ(countKind(draft, "test_surface_unresolved"), 1)
+        << "an absent surface in a spec nobody has implemented yet is a forward "
+           "reference, and collapsing the two buckets files 20 findings against "
+           "specs that are doing nothing wrong";
+    EXPECT_EQ(countKind(draft, "test_surface_absent"), 0);
+
+    // The per-finding detail § 2.3 puts on the wire.
+    const DocFinding::Finding *f = firstOfKind(shipped, "test_surface_absent");
+    ASSERT_NE(f, nullptr);
+    EXPECT_EQ(f->extra.value(QStringLiteral("invariant")).toString(),
+              QStringLiteral("INV-1"));
+    EXPECT_EQ(f->extra.value(QStringLiteral("surface")).toString(),
+              QStringLiteral("tests/features/absent_one"));
+    EXPECT_EQ(f->extra.value(QStringLiteral("spec_status")).toString(),
+              QStringLiteral("shipped"));
+    EXPECT_GT(f->line, 0) << "the finding anchors on the INV-N bullet";
+    EXPECT_FALSE(f->autoFixable);
+
+    // `v1 shipped …` — the form ANTS-1111 actually carries, and the reason `v1`
+    // is in the vocabulary at all.
+    const SpecLint::Result v1 = SpecLint::check(
+        specDoc(QStringLiteral("v1 shipped 2026-05-13 in 0.7.88."), cl),
+        QStringLiteral("v.md"), opts);
+    EXPECT_EQ(countKind(v1, "test_surface_absent"), 1);
+}
+
+// INV-4 — no Status line, or an unrecognised word, is a CANDIDATE and NEVER a
+// FINDING. Two further arms pin § 2.3's normalisation, and each fails a
+// different one of its three steps.
+TEST(SpecLint, Ants4127Inv4UnparsedStatusNeverReachesFinding) {
+    const auto opts  = withDirs({QStringLiteral("something_else")});
+    const QString cl = QStringLiteral("`tests/features/absent_one/` covers it.");
+
+    // No Status line at all — 53 specs of this corpus, so the common case.
+    const SpecLint::Result none =
+        SpecLint::check(specDoc(QString(), cl), QStringLiteral("n.md"), opts);
+    EXPECT_EQ(countKind(none, "test_surface_unresolved"), 1);
+    EXPECT_EQ(countKind(none, "test_surface_absent"), 0);
+
+    // …and its `spec_status` is JSON null, not "" and not an absent key: a
+    // consumer grouping by this field would silently drop a quarter of the
+    // corpus if the key could vanish.
+    const DocFinding::Finding *nf = firstOfKind(none, "test_surface_unresolved");
+    ASSERT_NE(nf, nullptr);
+    ASSERT_TRUE(nf->extra.contains(QStringLiteral("spec_status")));
+    EXPECT_TRUE(nf->extra.value(QStringLiteral("spec_status")).isNull());
+
+    const SpecLint::Result odd = SpecLint::check(
+        specDoc(QStringLiteral("banana (2026-01-01)."), cl),
+        QStringLiteral("o.md"), opts);
+    EXPECT_EQ(countKind(odd, "test_surface_unresolved"), 1);
+    EXPECT_EQ(countKind(odd, "test_surface_absent"), 0);
+
+    // Normalisation step 1 — the value opens BOLD. An engine taking the literal
+    // first word reads `**shipped**`, matches no row, and files a CANDIDATE.
+    const SpecLint::Result bold = SpecLint::check(
+        specDoc(QStringLiteral("**shipped** (2026-01-01)."), cl),
+        QStringLiteral("b.md"), opts);
+    EXPECT_EQ(countKind(bold, "test_surface_absent"), 1);
+
+    // Normalisation step 3 — trailing punctuation on the word itself.
+    const SpecLint::Result comma = SpecLint::check(
+        specDoc(QStringLiteral("shipped, then amended."), cl),
+        QStringLiteral("c.md"), opts);
+    EXPECT_EQ(countKind(comma, "test_surface_absent"), 1);
+}
+
+// INV-5 — an abandoned spec is skipped BEFORE either check, so it yields nothing
+// at all AND contributes nothing to the counter. Per-spec, not per-check: the
+// wiring check is deliberately Status-proof, so a per-check skip would let it
+// fire on work nobody intends to finish and report it as drift forever.
+TEST(SpecLint, Ants4127Inv5AbandonedSpecsAreSkippedEntirely) {
+    const auto opts = withDirs({QStringLiteral("present_one")},
+                               {QStringLiteral("something_else")});
+
+    const SpecLint::Result absent = SpecLint::check(
+        specDoc(QStringLiteral("superseded (2026-07-28) — merged into ANTS-3663."),
+                QStringLiteral("`tests/features/absent_one/` covers it.")),
+        QStringLiteral("a.md"), opts);
+    EXPECT_TRUE(absent.findings.isEmpty());
+    EXPECT_EQ(absent.surfacesResolved, 0);
+
+    // The present-but-UNWIRED arm is the one a per-check skip would miss: INV-6
+    // fires whatever the live Status, and only the per-spec skip stops it here.
+    const SpecLint::Result unwired = SpecLint::check(
+        specDoc(QStringLiteral("superseded (2026-07-28) — merged into ANTS-3663."),
+                QStringLiteral("`tests/features/present_one/` covers it.")),
+        QStringLiteral("u.md"), opts);
+    EXPECT_TRUE(unwired.findings.isEmpty());
+    EXPECT_EQ(unwired.surfacesResolved, 0)
+        << "a skipped spec resolves nothing, so a walk over one corpus reports "
+           "one denominator rather than two";
+
+    const SpecLint::Result considered = SpecLint::check(
+        specDoc(QStringLiteral("**considered / shelved (2026-07-19, user decision)"),
+                QStringLiteral("`tests/features/absent_one/` covers it.")),
+        QStringLiteral("c.md"), opts);
+    EXPECT_TRUE(considered.findings.isEmpty())
+        << "`**considered` must normalise to `considered`, or a shelved spec "
+           "falls to the catch-all and is reported forever";
+    EXPECT_EQ(considered.surfacesResolved, 0);
+}
+
+// INV-6 — present on disk but in no bundle is a `test_surface_unwired` FINDING
+// whatever the live Status. A test source on disk and in no bundle compiles
+// nowhere and runs never, and no draft state makes that intended.
+TEST(SpecLint, Ants4127Inv6UnwiredIsStatusProof) {
+    const auto opts = withDirs({QStringLiteral("present_one")},
+                               {QStringLiteral("something_else")});
+    const QString cl = QStringLiteral("`tests/features/present_one/` covers it.");
+
+    const SpecLint::Result draft = SpecLint::check(
+        specDoc(QStringLiteral("spec draft."), cl), QStringLiteral("d.md"), opts);
+    EXPECT_EQ(countKind(draft, "test_surface_unwired"), 1);
+    EXPECT_EQ(countKind(draft, "test_surface_absent"), 0)
+        << "the directory is right there — a reader told `absent` goes hunting "
+           "for a missing one";
+    EXPECT_EQ(draft.surfacesResolved, 1) << "it resolved; it just does not run";
+
+    const SpecLint::Result shipped = SpecLint::check(
+        specDoc(QStringLiteral("shipped (2026-01-01)."), cl),
+        QStringLiteral("s.md"), opts);
+    EXPECT_EQ(countKind(shipped, "test_surface_unwired"), 1);
+
+    // A wired directory fires nothing, so the row cannot pass against an engine
+    // that reports every resolved surface.
+    const SpecLint::Result ok = SpecLint::check(
+        specDoc(QStringLiteral("spec draft."), cl), QStringLiteral("k.md"),
+        withDirs({QStringLiteral("present_one")}, {QStringLiteral("present_one")}));
+    EXPECT_TRUE(ok.findings.isEmpty());
+    EXPECT_EQ(ok.surfacesResolved, 1);
+}
+
+// INV-7 — `surfaces_resolved` counts distinct SURFACES that resolved, not the
+// clauses carrying them, and is emitted even when zero. The multi-surface clause
+// is what separates the two readings; a one-per-clause fixture cannot.
+TEST(SpecLint, Ants4127Inv7ResolvedCountsSurfacesNotClauses) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "**Status:** shipped (2026-01-01).\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — a rule. *Test:* `tests/features/alpha/` and "
+        "`tests/features/beta/`.\n"
+        "- **INV-2** — another. *Test:* `tests/features/absent_one/` covers it.\n");
+    const SpecLint::Result r = SpecLint::check(
+        doc, QStringLiteral("r.md"),
+        withDirs({QStringLiteral("alpha"), QStringLiteral("beta")}));
+    EXPECT_EQ(r.surfacesResolved, 2) << "two clauses, three surfaces, two found";
+    EXPECT_EQ(countKind(r, "test_surface_absent"), 1);
+
+    // Zero is a REPORTED value: without it "checked everything, found nothing"
+    // and "harvested nothing" are the same envelope.
+    const SpecLint::Result clean = SpecLint::check(
+        specDoc(QStringLiteral("shipped (2026-01-01)."),
+                QStringLiteral("a prose fixture asserting the thing.")),
+        QStringLiteral("p.md"), withDirs({QStringLiteral("alpha")}));
+    EXPECT_EQ(clean.surfacesResolved, 0);
+    EXPECT_TRUE(clean.surfacesChecked);
+    EXPECT_TRUE(clean.findings.isEmpty()) << "a prose surface is invisible by design";
+}
+
+// INV-8 — the engine opens no file: both filesystem sets arrive through Options,
+// and nothing is written or executed anywhere.
+//
+// COMMENTS ARE STRIPPED FIRST, and that is not hygiene. speclint.cpp cites
+// `QProcess` in a comment as an example of a code span that is NOT a command, so
+// the naive grep returns 1 against correct code — and the likely repair is
+// weakening the pattern.
+TEST(SpecLint, Ants4127Inv8EngineTouchesNoFilesystem) {
+    for (const char *path : {SRC_SPECLINT_CPP_PATH, SRC_SPECLINT_H_PATH}) {
+        const std::string src =
+            ants_test::stripComments(ants_test::slurpFile(path));
+        ASSERT_FALSE(src.empty()) << path;
+        for (const char *banned :
+             {"QProcess", "system(", "popen", "fork(", "QFile", "QDir"})
+            EXPECT_EQ(src.find(banned), std::string::npos)
+                << path << " must reach the filesystem through Options alone, "
+                           "never directly: " << banned;
+    }
+
+    // The other arm cannot be static: "this run wrote nothing" is a claim about
+    // something that ran. Digest the spec corpus either side of a real check.
+    const auto digest = []() {
+        QDir dir(QString::fromUtf8(DOCS_SPECS_DIR_PATH));
+        QCryptographicHash h(QCryptographicHash::Sha256);
+        const QStringList names = dir.entryList({QStringLiteral("*.md")},
+                                                QDir::Files, QDir::Name);
+        for (const QString &n : names) {
+            const QFileInfo fi(dir.filePath(n));
+            h.addData(n.toUtf8());
+            h.addData(QByteArray::number(fi.size()));
+            h.addData(fi.lastModified().toString(Qt::ISODateWithMs).toUtf8());
+        }
+        return h.result();
+    };
+    const QByteArray before = digest();
+    ASSERT_FALSE(before.isEmpty());
+    const QString real = slurp(DOCS_SPECS_DIR_PATH "/ANTS-4127-test-surface-resolution.md");
+    ASSERT_FALSE(real.isEmpty()) << "the owning spec must be readable";
+    SpecLint::check(real, QStringLiteral("docs/specs/ANTS-4127.md"),
+                    withDirs({QStringLiteral("spec_lint")},
+                             {QStringLiteral("spec_lint")}));
+    EXPECT_EQ(digest(), before) << "a run must leave the corpus byte-identical";
+}
+
+// INV-9 — each injected set gates its own check, and EMPTY MEANS SKIP.
+//
+// (a) against (b) is the whole test: same document, same absent surface, and the
+// only difference is whether the set was empty. Three arms all asserting zero
+// would pass against an engine that never ran either check.
+TEST(SpecLint, Ants4127Inv9EmptySetMeansSkipNotFail) {
+    const QString doc = specDoc(QStringLiteral("shipped (2026-01-01)."),
+                                QStringLiteral("`tests/features/absent_one/` covers it."));
+
+    const SpecLint::Result a = SpecLint::check(doc, QStringLiteral("a.md"), {});
+    EXPECT_TRUE(a.findings.isEmpty()) << "the verb layer supplied nothing";
+
+    const SpecLint::Result b = SpecLint::check(
+        doc, QStringLiteral("b.md"), withDirs({QStringLiteral("something_else")}));
+    EXPECT_EQ(countKind(b, "test_surface_absent"), 1);
+
+    const SpecLint::Result c = SpecLint::check(
+        doc, QStringLiteral("c.md"), withDirs({QStringLiteral("absent_one")}));
+    EXPECT_TRUE(c.findings.isEmpty())
+        << "`not in the set` must never be read as `not on disk` — one failed "
+           "CMakeLists.txt read would become a FINDING against every resolved "
+           "surface in the corpus";
+}
+
+// INV-10 — `surfaces_checked` is false exactly when INV-9 skipped, and is
+// emitted on every run.
+//
+// ARM (b) IS THE ONLY FALSIFIER of the three. An implementation reading
+// `surfaces_checked = (surfaces_resolved > 0)` gives false/0 at (a) and true/1
+// at (c) and passes both; so does one setting the flag false whenever ANY check
+// skipped. Only flag-true-while-counter-zero separates the contract from either.
+TEST(SpecLint, Ants4127Inv10CheckedIsNotInferredFromTheCounter) {
+    const QString doc = specDoc(QStringLiteral("shipped (2026-01-01)."),
+                                QStringLiteral("`tests/features/absent_one/` covers it."));
+
+    const SpecLint::Result a = SpecLint::check(doc, QStringLiteral("a.md"), {});
+    EXPECT_FALSE(a.surfacesChecked);
+    EXPECT_EQ(a.surfacesResolved, 0);
+
+    const SpecLint::Result b = SpecLint::check(
+        doc, QStringLiteral("b.md"), withDirs({QStringLiteral("something_else")}));
+    EXPECT_TRUE(b.surfacesChecked)
+        << "check (1) ran — the surface was simply not there";
+    EXPECT_EQ(b.surfacesResolved, 0);
+
+    // Arm (c) is also § 2.6's middle row: `wiredTestDirs` is empty here, so the
+    // wiring check skipped — and the flag is still true, because it reports
+    // whether resolution happened at all, not whether every check fired.
+    const SpecLint::Result c = SpecLint::check(
+        doc, QStringLiteral("c.md"), withDirs({QStringLiteral("absent_one")}));
+    EXPECT_TRUE(c.surfacesChecked);
+    EXPECT_EQ(c.surfacesResolved, 1);
 }
 
 // § 2.1's fire-rate measurement, on the ANTS-3661 precedent. `command_test_

@@ -1,12 +1,13 @@
 # ANTS-4127 — resolve the test surface a spec cites, instead of reading it
 
-**Status:** accepted (2026-08-12) — 37 findings verified and fixed across
-three cold review loops, 1 dismissed; the gate hit its 3-loop cap **without
-a clean pass**, so this is accepted-with-caveat, not converged. The tail is
-empty (every finding is fixed) and § 11 records why the cap bound. § 1,
-§ 2.1, § 2.2 and § 6 produced no findings after loop 1 and are settled;
-**treat § 2.3–§ 2.5's counts as the most-revised part** — the invisible-
-clause figure alone was wrong in three consecutive loops.
+**Status:** implemented (2026-08-12) — shipped in `src/speclint.{h,cpp}` +
+`src/remotecontrol_docs.cpp`, 11 test rows across both lanes, full suite
+3410/3410. Accepted the same day after three cold review loops: 37 findings
+verified and fixed, 1 dismissed; **the gate hit its 3-loop cap without a clean
+pass**, so this was accepted-with-caveat, not converged. The tail is empty and
+§ 11 records why the cap bound. § 1, § 2.1, § 2.2 and § 6 produced no findings
+after loop 1 and are settled; **treat § 2.3–§ 2.5's counts as the most-revised
+part** — the invisible-clause figure alone was wrong in three consecutive loops.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-4127 (split out of ANTS-4108 at spec time;
 scope re-decided 2026-08-12 by the user — see § 2.2).

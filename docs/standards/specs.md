@@ -252,6 +252,12 @@ the requirement to **verify the test fails against pre-fix code**
 before the fix is restored. For designs with a live-API or manual
 component, give the manual recipe as a subsection.
 
+A `*Test:*` clause naming a feature test writes the
+`tests/features/<name>` path, because that is the form `spec_lint`
+resolves against disk (ANTS-4127). Prose remains a legitimate surface
+and is left alone; a wildcard (`tests/features/audit_*`) is understood
+as a family and is not resolved. No existing clause is invalidated.
+
 ## 4. Recommended sections
 
 Add these when they carry weight; omit when they would be empty — with

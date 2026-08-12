@@ -146,6 +146,56 @@ bool isDelimiterRow(const QString &line) {
     return isTableRow(line) && re.match(s).hasMatch();
 }
 
+// ANTS-4127 — the spec's own `**Status:**` reduced to the single word § 2.5's
+// table keys on. THREE steps, not one, because the corpus needs all three:
+// a value may open bold (`**considered / shelved (2026-07-19, user decision)`)
+// and routinely carries trailing punctuation (`accepted (2026-05-27),`). The
+// literal first word is `**considered` and `accepted,`, which match no row and
+// fall to the catch-all — filing a CANDIDATE where a FINDING was required,
+// silently, because the catch-all absorbs them.
+//
+// Truncating at the first character outside `[a-z0-9]` is also what makes "first
+// word" implicit: no split is needed, and `v1 shipped 2026-05-13` yields `v1`.
+QString statusWord(const QString &status) {
+    QString s = status.trimmed();
+    int lead = 0;
+    while (lead < s.size() && s.at(lead) == QLatin1Char('*')) ++lead;
+    s = s.mid(lead).toLower();
+    int n = 0;
+    while (n < s.size()) {
+        const QChar c = s.at(n);
+        if ((c >= QLatin1Char('a') && c <= QLatin1Char('z')) ||
+            (c >= QLatin1Char('0') && c <= QLatin1Char('9')))
+            ++n;
+        else
+            break;
+    }
+    return s.left(n);
+}
+
+// The only two vocabularies § 2.5's table names. Everything else — including an
+// absent Status, which is 53 specs of this corpus — falls to the catch-all and
+// is a CANDIDATE. That row is the one doing the real work: an unrecognised word
+// is the common case, not the exotic one, and it must never reach FINDING.
+const QSet<QString> &shippedStatusWords() {
+    static const QSet<QString> v = {
+        QStringLiteral("shipped"), QStringLiteral("implemented"),
+        QStringLiteral("v1"),
+    };
+    return v;
+}
+
+// Abandoned on purpose: the spec is skipped BEFORE either check, so it yields
+// nothing at all and contributes nothing to `surfacesResolved`. Per-spec rather
+// than per-check, or the Status-proof wiring check fires on work nobody intends
+// to finish and reports it as drift forever.
+const QSet<QString> &abandonedStatusWords() {
+    static const QSet<QString> v = {
+        QStringLiteral("superseded"), QStringLiteral("considered"),
+    };
+    return v;
+}
+
 QString collapseWs(const QString &s) {
     static const QRegularExpression ws(QStringLiteral(R"(\s+)"));
     return s.trimmed().replace(ws, QStringLiteral(" "));
@@ -201,8 +251,12 @@ Result check(const QString &text, const QString &relPath,
     const QVector<bool> fence = MarkdownScan::fenceMask(lines);
 
     int emitted = 0;
+    // ANTS-4127 — `extra` carries the per-kind detail (`invariant`, `surface`,
+    // `spec_status`); it is empty for every kind that predates it, and
+    // DocFinding::toJson emits nothing for an empty one.
     const auto add = [&](const QString &kind, int line, const QString &msg,
-                         bool autoFixable = false) {
+                         bool autoFixable = false,
+                         const QJsonObject &extra = {}) {
         if (r.findings.size() >= opts.maxFindings) {
             r.truncated = true;
             return;
@@ -214,6 +268,7 @@ Result check(const QString &text, const QString &relPath,
         f.line          = line;
         f.message       = msg;
         f.autoFixable   = autoFixable;
+        f.extra         = extra;
         f.emissionIndex = emitted++;
         r.findings.append(f);
     };
@@ -332,6 +387,38 @@ Result check(const QString &text, const QString &relPath,
         return a.n != b.n ? a.n < b.n : a.letter < b.letter;
     });
 
+    // --- ANTS-4127: test-surface resolution --------------------------------
+    // The same absent directory is a defect or a forward reference depending on
+    // whether the spec claims to have shipped, so the bucket is chosen by the
+    // document's OWN Status — a claim it makes about itself, which is why only a
+    // confidently-shipped word yields a FINDING (spec § 2.5).
+    const QString docStatus =
+        statusWord(parsed.value(QStringLiteral("status")).toString());
+    const QJsonValue statusJson =
+        docStatus.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(docStatus);
+
+    // Reported as the injected state, not as a per-document outcome: false
+    // EXACTLY when the verb layer supplied nothing, which is the one state where
+    // neither check ran. A `superseded` spec still sets it true — nothing was
+    // checked in that document, but resolution was on (INV-10 keys on the set,
+    // INV-5 on the counter and the findings).
+    r.surfacesChecked = !opts.existingTestDirs.isEmpty();
+    const bool resolveSurfaces =
+        r.surfacesChecked && !abandonedStatusWords().contains(docStatus);
+
+    // Harvest only the one form the corpus uses at scale. The trailing
+    // `(?!\w|\*)` is the whole of the wildcard rule: without it
+    // `tests/features/audit_*` reads as a directory named `audit_` and is
+    // reported absent, manufacturing a finding against a spec that correctly
+    // named a FAMILY of tests. The measurement in this spec's own § 1 made that
+    // mistake, which is why the extractor must not.
+    static const QRegularExpression surfaceRe(
+        QStringLiteral(R"(tests/features/([a-z0-9]+(?:_[a-z0-9]+)*)(?!\w|\*))"));
+
+    // Per DOCUMENT, not per clause (§ 2.3): two invariants naming one directory
+    // are one surface, so they count once and report once.
+    QSet<QString> seenSurfaces;
+
     for (const InvId &e : ids) {
         const QString     id = e.id;
         const QJsonObject o  = parsedById.value(id);
@@ -366,12 +453,65 @@ Result check(const QString &text, const QString &relPath,
         // expected | table beside it is run by the spec_conformance verb,
         // which needs no subprocess because applying a pattern to a string
         // cannot reach the filesystem. A COMMAND clause — this branch — still
-        // has no runtime owner but /write-spec Step 3, and fenced FIXTURES
-        // have none at all until ANTS-4127 settles an interpreter and sandbox.
+        // has no runtime owner but /write-spec Step 3, and fenced FIXTURES have
+        // none at all — permanently. ANTS-4127 was where that was to be settled
+        // and settled it the other way (user decision, 2026-08-12): `docs/`
+        // carries one `python` fence against 442 illustrative `cpp` ones, so an
+        // interpreter and a sandbox would be built for a defect class this
+        // corpus cannot exhibit. There is no follow-up id.
         if (isCommandWithoutExpectation(clause))
             add(QStringLiteral("command_test_no_expectation"), line,
                 QStringLiteral("%1's test clause is a command but states "
                                "nothing it should return (candidate)").arg(id));
+
+        // ANTS-4127 — resolve what the clause NAMES. The clause is the parser's
+        // joined `test_surface`, so a bullet that hard-wraps its path onto a
+        // continuation line is harvested whole; scanning line-wise here would
+        // miss most of what the corpus actually writes.
+        if (!resolveSurfaces) continue;
+        auto sit = surfaceRe.globalMatch(clause);
+        while (sit.hasNext()) {
+            const QString name = sit.next().captured(1);
+            if (seenSurfaces.contains(name)) continue;
+            seenSurfaces.insert(name);
+
+            QJsonObject extra;
+            extra[QStringLiteral("invariant")]   = id;
+            extra[QStringLiteral("surface")]     =
+                QStringLiteral("tests/features/") + name;
+            extra[QStringLiteral("spec_status")] = statusJson;
+
+            if (!opts.existingTestDirs.contains(name)) {
+                const bool shipped = shippedStatusWords().contains(docStatus);
+                add(shipped ? QStringLiteral("test_surface_absent")
+                            : QStringLiteral("test_surface_unresolved"),
+                    line,
+                    shipped
+                        ? QStringLiteral("%1 names tests/features/%2, which does "
+                                         "not exist").arg(id, name)
+                        : QStringLiteral("%1 names tests/features/%2, which does "
+                                         "not exist (candidate)").arg(id, name),
+                    false, extra);
+                continue;
+            }
+            ++r.surfacesResolved;
+
+            // A directory that exists can still hold a test that never runs —
+            // the trap CLAUDE.md documents as recurring. Its own kind, not
+            // `test_surface_absent`: the directory is right there, and a
+            // consumer told "absent" goes hunting for a missing one.
+            //
+            // Skipped wholesale on an empty `wiredTestDirs`, which is what an
+            // unreadable or moved CMakeLists.txt produces. Without that, one
+            // failed file read files a FINDING against every resolved surface
+            // in the corpus.
+            if (!opts.wiredTestDirs.isEmpty() &&
+                !opts.wiredTestDirs.contains(name))
+                add(QStringLiteral("test_surface_unwired"), line,
+                    QStringLiteral("%1 names tests/features/%2, which exists but "
+                                   "has no test source in any bundle").arg(id, name),
+                    false, extra);
+        }
     }
 
     // --- invariant_id_gap --------------------------------------------------

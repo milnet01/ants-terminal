@@ -1928,6 +1928,11 @@ if(ANTS_TESTS)
         # ANTS-3662 INV-4 — the spec_lint engine must never execute a test
         # clause; "runs no subprocess" is a claim only a source scrape can hold.
         SRC_SPECLINT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclint.cpp"
+        # ANTS-4127 INV-8 — and never opens a FILE either: both filesystem sets
+        # are injected. The header is scraped beside the .cpp because it is where
+        # the no-filesystem contract is stated, so a QFile creeping in there
+        # would contradict its own comment and pass a .cpp-only scan.
+        SRC_SPECLINT_H_PATH="${CMAKE_SOURCE_DIR}/src/speclint.h"
         # ANTS-3662 INV-1 arm (c) — a LIVE assertion that the project's own
         # standard carries no <!-- required-sections --> block, which is what
         # catches an engine that guesses the list from § 3's prose instead.

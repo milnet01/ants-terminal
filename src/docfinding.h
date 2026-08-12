@@ -42,6 +42,20 @@ struct Finding {
     // `broken_link`s on one line naming the same missing target) and a
     // comparator over those six alone is therefore not a total order.
     int     emissionIndex = 0;
+
+    // ANTS-4127 — per-KIND detail, merged into the wire object as it stands.
+    // The six fields above are the ones every kind has; this is for the ones a
+    // single kind has and no other. `test_surface_absent` carries `invariant`,
+    // `surface` and `spec_status` (spec § 2.3), and naming those three here
+    // would put three permanently-empty keys on the five verbs that will never
+    // set them — the "nothing is here in case" rule above, read forwards.
+    //
+    // Empty is the default and emits nothing, so no existing finding's wire
+    // form moves. A key colliding with one of the six is NOT allowed to
+    // overwrite it (toJson enforces): the base shape is the contract ANTS-3663
+    // sorts and de-duplicates on, and a producer must not be able to redefine
+    // `line` for one kind.
+    QJsonObject extra;
 };
 
 // Wire form. Keys are snake_case while the members are camelCase (INV-3),

@@ -1,7 +1,10 @@
 # spec_lint — engine conformance
 
-Contract for `tests/features/spec_lint/test_spec_lint.cpp`. Owning spec:
-[`docs/specs/ANTS-3662.md`](../../../docs/specs/ANTS-3662.md).
+Contract for `tests/features/spec_lint/test_spec_lint.cpp`. Owning specs:
+[`docs/specs/ANTS-3662.md`](../../../docs/specs/ANTS-3662.md) and
+[`docs/specs/ANTS-4127-test-surface-resolution.md`](../../../docs/specs/ANTS-4127-test-surface-resolution.md).
+Rows are prefixed by owner: `Inv*` are ANTS-3662's, `Ants4127Inv*` are
+ANTS-4127's, and the two numbering schemes are independent.
 
 `SpecLint::check` is pure — document text in, findings out — so every row here
 drives it directly, with no MainWindow and no filesystem. The one exception is
@@ -19,6 +22,21 @@ an implementation is tempted to guess around.
 | `Inv5LoopLogOutcomeCells` | INV-5 | A loop row with an empty **last** cell fires, in every table shape; a non-`Loop` table is not scanned. |
 | `Inv6SizeIsNotAFinding` | INV-6 | Size is reported in the envelope and never emitted as a finding. |
 | `DISABLED_CorpusCalibration` | — | § 2.1's fire-rate measurement for `command_test_no_expectation`. Not a contract; re-runnable. |
+
+### ANTS-4127 — test-surface resolution
+
+| Row | Invariant | Claim |
+|---|---|---|
+| `Ants4127Inv1SurfaceHarvest` | INV-1 | One attempt per **distinct** name; a wrapped clause harvested whole; distinctness scoped **per document**. |
+| `Ants4127Inv2WildcardIsNotADirectory` | INV-2 | `tests/features/audit_*` names no directory — no attempt, no finding — while a real name in the same clause still resolves. |
+| `Ants4127Inv3StatusChoosesTheBucket` | INV-3 | Two documents differing **only** in their Status line split into `test_surface_absent` and `test_surface_unresolved`. |
+| `Ants4127Inv4UnparsedStatusNeverReachesFinding` | INV-4 | No Status line, or an unrecognised word, is a CANDIDATE; the three normalisation steps each get an arm. |
+| `Ants4127Inv5AbandonedSpecsAreSkippedEntirely` | INV-5 | `superseded` / `considered` skip **before either check**: nothing emitted, and `surfacesResolved == 0`. |
+| `Ants4127Inv6UnwiredIsStatusProof` | INV-6 | Present-but-unwired is its own kind and fires whatever the live Status. |
+| `Ants4127Inv7ResolvedCountsSurfacesNotClauses` | INV-7 | The counter is over surfaces, not clauses, and zero is a reported value. |
+| `Ants4127Inv8EngineTouchesNoFilesystem` | INV-8 | Comment-stripped token scrape over `speclint.{h,cpp}`, plus a corpus digest either side of a real run. |
+| `Ants4127Inv9EmptySetMeansSkipNotFail` | INV-9 | Each set gates its own check; empty means skip. Arms (a) and (b) differ **only** in whether the set was empty. |
+| `Ants4127Inv10CheckedIsNotInferredFromTheCounter` | INV-10 | `surfacesChecked` is false exactly when INV-9 skipped. **Arm (b) is the only falsifier.** |
 
 ## Verified RED before the implementation landed
 
@@ -60,6 +78,32 @@ one match ran across two rows — returning INV-1 with a `test_surface` of
 `| INV-2 | another`, and consuming INV-2 out of the list entirely. A well-formed
 three-column table masked it. Fixed in `specparse.cpp`; this row is its
 regression lock.
+
+### ANTS-4127 — verified RED
+
+Five of the ten rows assert positive counts of a `test_surface_*` kind and so
+fail against pre-implementation source by construction: those kinds did not
+exist. The rows that assert an **absence** would pass vacuously, and each was
+re-proven by mutating the shipped engine.
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | Drop the `(?!\|w\|\*)` lookahead from the extraction pattern | RED — `Inv2` reports a directory named `audit_` absent, filing a finding against a correct spec. |
+| M2 | Harvest regardless of `existingTestDirs` being empty | RED — `Inv9` arm (a) reports 1 where 0 is expected: an empty set condemning everything it reads. |
+| M3 | Apply the abandoned-status skip per-CHECK (absence only) instead of per-spec | RED — `Inv5`'s present-but-unwired arm fires on a `superseded` spec. Its absent arm stays green, which is why the unwired arm is in the fixture. |
+| M4 | Add a `QDir` to `speclint.cpp` | RED — `Inv8`'s token scrape. Confirms the scan survives comment-stripping rather than being satisfied by it. |
+| M5 | Infer `surfacesChecked` from `surfacesResolved > 0`, leaving the gate itself correct | RED — `Inv10` arm (b) **only**; arms (a) and (c) pass, which is exactly the claim § 2.3 makes about them. `Inv7`'s zero-with-checked assertion goes red on the same defect. |
+
+**M5 was cut twice, and the first cut is the lesson.** Removing the
+`surfacesChecked` assignment outright also disabled the harvest gate that reads
+it, so nine rows went red and the mutation proved only that the feature was
+switched off. A mutation that turns everything red demonstrates nothing about
+the row it was aimed at. The second cut kept the gate on a local and mis-derived
+only the reported flag — one row, the intended one.
+
+The hash arm of `Inv8` is **not** mutation-proven: writing an engine that writes
+in order to watch the digest move would damage the corpus it digests. It is a
+guard, and recorded as one.
 
 ## Not covered here
 

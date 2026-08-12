@@ -18,6 +18,16 @@ QJsonObject toJson(const Finding &f) {
         o[QStringLiteral("auto_fixable")] = true;
     // f.emissionIndex is deliberately absent — see the header. This is the line
     // an "obvious" serialiser adds, which is why INV-1 asserts against it.
+    //
+    // ANTS-4127 — per-kind detail, merged last but NEVER over one of the six
+    // above. A producer that sets `extra["line"]` gets it dropped rather than
+    // silently redefining the field ANTS-3663 sorts on. Null values survive:
+    // `spec_status` is JSON null when the spec carries no Status line, and
+    // that is a value the consumer groups by (spec § 2.3).
+    for (auto it = f.extra.constBegin(); it != f.extra.constEnd(); ++it) {
+        if (o.contains(it.key())) continue;
+        o[it.key()] = it.value();
+    }
     return o;
 }
 

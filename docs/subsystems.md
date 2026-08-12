@@ -105,8 +105,15 @@ Listed only where behavior isn't obvious from the name.
   Tombstones (`*moved to <ID>*`, `*withdrawn — …*`) are exempt from both
   invariant checks. `missing_section` runs only when the project's format
   standard carries a `<!-- required-sections -->` block; no standard here has
-  one, so `sectionsChecked:false` is the shipping default. Powers the
-  `spec_lint` MCP verb. ANTS-3662.
+  one, so `sectionsChecked:false` is the shipping default. ANTS-4127 adds
+  three more kinds to the same walk — `test_surface_absent`,
+  `test_surface_unresolved` and `test_surface_unwired` — resolving a
+  `tests/features/<name>` a clause NAMES against disk and against
+  `CMakeLists.txt`, bucketed by the spec's own `**Status:**` so only a
+  shipped one yields a finding; wildcards are not resolved. Both filesystem
+  facts are injected through `Options` like `requiredSections`, so the engine
+  still opens nothing, and an empty set means skip rather than fail. Powers
+  the `spec_lint` MCP verb. ANTS-3662, ANTS-4127.
 - `docdedup` (Qt6::Core, `ants_core_lib`) — near-duplicate passage detection
   across a doc set: paragraph segmentation (a list item is one passage, marker
   line included), word 3-gram shingles, exact Jaccard, and connected-component

@@ -14,6 +14,19 @@ for security-relevant changes.
 
 ### Added
 
+- **spec_lint resolves the test surface a spec cites, instead of reading it (ANTS-4127)**
+  A spec's *Test:* clause claims an invariant is locked by something real, and
+  nothing checked that the thing it names exists — three specs in this corpus
+  name test directories that never have, two of them claiming to have shipped.
+  spec_lint now resolves a cited `tests/features/<name>` against disk and
+  against CMakeLists.txt, adding `test_surface_absent`, `test_surface_unresolved`
+  and `test_surface_unwired`, plus `surfaces_resolved` / `surfaces_checked` on
+  the envelope. The bucket is chosen by the spec's own **Status:**, so only a
+  shipped one yields a finding and a draft's forward reference does not; a
+  wildcard (`tests/features/audit_*`) names a family and is not resolved. The
+  engine still opens no file — both filesystem facts are injected by the verb
+  layer, gathered once per run — and an empty set means skip, never fail.
+
 - **Qt 6.2 floor guard now runs before every push (ANTS-4131)** (ANTS-4131)
   New `tools/qt62-guard.sh` compiles the whole project against the
   oldest supported Qt inside a container, and the pre-push hook now runs

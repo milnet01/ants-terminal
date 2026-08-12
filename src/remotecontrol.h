@@ -564,10 +564,16 @@ public:
     // `sectionsChecked` is ALWAYS emitted: it is the one field distinguishing
     // "every required section is there" from "nobody checked", and those are
     // the two states this verb ships between (spec § 2.1).
+    //
+    // ANTS-4127 — `surfacesResolved` / `surfacesChecked` are emitted under the
+    // same rule and are not defaulted here: a caller that forgets to pass them
+    // should fail to compile rather than ship a silent zero, which is exactly
+    // the "nobody checked, reported as clean" state the pair exists to prevent.
     static QJsonObject specLintBuildResponse(
         const QList<DocFinding::Finding> &findings, bool sectionsChecked,
         const QJsonObject &lineCounts, bool truncated,
-        const QStringList &checkedDocs);
+        const QStringList &checkedDocs, int surfacesResolved,
+        bool surfacesChecked);
     // ANTS-4108 — spec_conformance: RUN the patterns a spec prescribes against
     // the expectation table beside them (SpecConformance::run). Reads ONE
     // document, so `path` is required — there is no tree walk to default to.

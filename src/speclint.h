@@ -26,7 +26,13 @@
 //     enumerating headings, and the two sets are DISJOINT. ANTS-3682 carries
 //     the prerequisite — spec § 5.
 //
-// See docs/specs/ANTS-3662.md.
+// ANTS-4127 adds a sixth check to the same walk: a `*Test:*` clause naming a
+// `tests/features/<name>` directory is RESOLVED against disk instead of read,
+// yielding `test_surface_absent` / `test_surface_unresolved` / `_unwired`. It
+// executes nothing — resolving a citation runs nothing — and it opens nothing
+// either: both filesystem facts are injected (see Options below).
+//
+// See docs/specs/ANTS-3662.md and docs/specs/ANTS-4127-test-surface-resolution.md.
 
 #pragma once
 
@@ -61,6 +67,32 @@ struct Options {
     // pre-ANTS-4110 behaviour exactly.
     QSet<int> siblingInvNumbers;
 
+    // ANTS-4127 — the two filesystem facts behind test-surface resolution: the
+    // `tests/features/<name>` directories that EXIST, and the subset of those
+    // holding a `test_*.cpp` named in `CMakeLists.txt` (so it compiles into a
+    // bundle and actually runs). Both hold the BARE `<name>`, never the
+    // `tests/features/` prefix; the prefix is re-attached onto the finding's
+    // `surface` field, which is the only place the full path means anything.
+    //
+    // Injected for the reason stated twice above: this engine is Qt6::Core-only
+    // and opens nothing, so it can neither stat a directory nor read
+    // `CMakeLists.txt`. The verb layer gathers both ONCE per run and shares them
+    // across every document in the walk (spec § 2.8).
+    //
+    // EACH SET GATES ITS OWN CHECK, AND EMPTY MEANS SKIP — the contract
+    // `requiredSections` already uses, for the same reason: a check against an
+    // empty set condemns everything it reads. An empty `existingTestDirs` skips
+    // both checks; a non-empty `existingTestDirs` with an empty `wiredTestDirs`
+    // runs the existence check and skips the wiring one, so one failed read of
+    // `CMakeLists.txt` cannot present as a corpus-wide defect (spec § 2.6).
+    //
+    // `wiredTestDirs` is a SUBSET of `existingTestDirs` by construction — the
+    // gatherer filters the directories it just scanned — so a name in the second
+    // and not the first is not a state it can produce. This engine does not
+    // validate that and defines no behaviour for its breach.
+    QSet<QString> existingTestDirs;
+    QSet<QString> wiredTestDirs;
+
     // A directory-scoped checker with no cap is one bad corpus away from an
     // unbounded response. Per call; the verb decrements a run-wide budget.
     int maxFindings = 500;
@@ -79,6 +111,25 @@ struct Result {
     // `sectionsChecked` is: a check that quietly declines to fire is what the
     // defect this field exists for was made of.
     int idGapsSuppressed = 0;
+
+    // ANTS-4127 — DISTINCT test surfaces this document cited that were found on
+    // disk. Distinct is scoped PER DOCUMENT: a directory two invariants of one
+    // spec both name counts once, and a walk's total is the sum over documents,
+    // so the same directory cited by three specs contributes three. Without that
+    // scope two conforming engines report different totals for one corpus.
+    //
+    // It is the denominator without which two zero-finding runs cannot be told
+    // apart — but zero is also what a skipped run reports, which is why the flag
+    // below exists and is not inferred from this.
+    int  surfacesResolved = 0;
+
+    // ANTS-4127 — false EXACTLY when `existingTestDirs` was empty, the one state
+    // in which neither check ran. True once the existence check ran, INCLUDING
+    // the case where the wiring check skipped for an empty `wiredTestDirs`: it
+    // reports whether resolution happened at all, not whether every check fired.
+    // Always reported and never inferred from a zero count, for the same reason
+    // `sectionsChecked` is never inferred from an empty findings list.
+    bool surfacesChecked = false;
 
     int  lineCount = 0;   // reported, NEVER emitted as a finding (INV-6)
     bool truncated = false;

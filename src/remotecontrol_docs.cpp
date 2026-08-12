@@ -427,6 +427,47 @@ static QStringList specLintRequiredSections(const QString &rootCanonical) {
     return {};
 }
 
+// ANTS-4127 — the two filesystem facts the spec_lint engine cannot gather for
+// itself: the `tests/features/<name>` directories that EXIST, and the subset
+// holding a `test_*.cpp` named in `CMakeLists.txt`. Both keyed by the BARE
+// `<name>`. Read ONCE per run and shared across every document in the walk, like
+// specLintRequiredSections above — the cost is one directory scan plus one file
+// read whatever the walk's size.
+//
+// An absent directory or an unreadable CMakeLists.txt returns an EMPTY set,
+// which the engine reads as "skip this check". That is the whole failure
+// posture: a check that cannot see the disk must decline, never condemn.
+static QSet<QString> specLintExistingTestDirs(const QString &rootCanonical) {
+    QDir features(QDir(rootCanonical).filePath(QStringLiteral("tests/features")));
+    if (!features.exists()) return {};
+    const QStringList names =
+        features.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    return QSet<QString>(names.begin(), names.end());
+}
+
+// The wiring half. Deliberately a SUBSET of what it is handed rather than an
+// independent scrape: a name CMakeLists.txt mentions but no directory backs is
+// not a wired test, and letting it into the set would break the subset invariant
+// the engine's header states.
+static QSet<QString> specLintWiredTestDirs(const QString &rootCanonical,
+                                           const QSet<QString> &existing) {
+    if (existing.isEmpty()) return {};
+    QFile f(QDir(rootCanonical).filePath(QStringLiteral("CMakeLists.txt")));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    const QString text = QString::fromUtf8(f.readAll());
+    f.close();
+
+    static const QRegularExpression re(
+        QStringLiteral(R"(tests/features/([a-z0-9_]+)/test_[a-z0-9_]+\.cpp)"));
+    QSet<QString> wired;
+    auto it = re.globalMatch(text);
+    while (it.hasNext()) {
+        const QString name = it.next().captured(1);
+        if (existing.contains(name)) wired.insert(name);
+    }
+    return wired;
+}
+
 // ANTS-3662 — spec_lint: the deterministic half of /cold-eyes § 1e's spec
 // pre-pass. caller_cwd Required. `path` routes through PathValidation and then
 // the SAME enumeration doc_integrity uses, defaulted to `specs_dir` rather than
@@ -465,6 +506,10 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     opts.requiredSections = specLintRequiredSections(rootCanonical);
     opts.maxFindings      = qBound(1, req.value(QStringLiteral("max_findings"))
                                           .toInt(500), 5000);
+    // ANTS-4127 — same once-per-run rule, same reason (spec § 2.8).
+    opts.existingTestDirs = specLintExistingTestDirs(rootCanonical);
+    opts.wiredTestDirs    = specLintWiredTestDirs(rootCanonical,
+                                                  opts.existingTestDirs);
 
     // ANTS-4110 — decide the project's INV NUMBERING SCHEME once per run, then
     // hand the engine the numbers its siblings own. The discriminator is
@@ -509,6 +554,13 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     QStringList checked;
     bool truncated = false, sectionsChecked = false;
     int idGapsSuppressed = 0;
+    // ANTS-4127 — the walk's total is the SUM over documents (§ 2.3), so a
+    // directory cited by three specs contributes three. `surfacesChecked` is a
+    // property of the injected set rather than of any one document, so it is
+    // seeded from the set and not accumulated: a walk that read no document
+    // still reports honestly whether resolution was on.
+    int  surfacesResolved = 0;
+    bool surfacesChecked  = !opts.existingTestDirs.isEmpty();
     int budget = opts.maxFindings;
     for (const QString &rel : std::as_const(relDocs)) {
         QFile f(QDir(rootCanonical).filePath(rel));
@@ -526,6 +578,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         lineCounts[rel] = r.lineCount;
         sectionsChecked = sectionsChecked || r.sectionsChecked;
         idGapsSuppressed += r.idGapsSuppressed;
+        surfacesResolved += r.surfacesResolved;
         if (budget <= 0) {
             truncated = true;
             continue;
@@ -540,7 +593,8 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
     // content-sensitive (ANTS-3737 — same shape as doc_integrity).
     QJsonObject out = specLintBuildResponse(findings, sectionsChecked,
-                                            lineCounts, truncated, checked);
+                                            lineCounts, truncated, checked,
+                                            surfacesResolved, surfacesChecked);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     // ANTS-4110 — say that gaps were suppressed and how many. Emitted only when
     // non-zero: a caller reading a short findings list is entitled to know a
@@ -554,7 +608,8 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
 QJsonObject RemoteControl::specLintBuildResponse(
     const QList<DocFinding::Finding> &findings, bool sectionsChecked,
     const QJsonObject &lineCounts, bool truncated,
-    const QStringList &checkedDocs) {
+    const QStringList &checkedDocs, int surfacesResolved,
+    bool surfacesChecked) {
     QJsonObject o;
     o[QStringLiteral("ok")]       = true;
     o[QStringLiteral("findings")] = DocFinding::toJson(findings);
@@ -564,6 +619,13 @@ QJsonObject RemoteControl::specLintBuildResponse(
             .value(QStringLiteral("spec_lint")).toObject();
     // Never omitted when false — see the header.
     o[QStringLiteral("sections_checked")] = sectionsChecked;
+    // ANTS-4127 — the same contract, for the same reason: the count is the
+    // denominator without which two zero-finding runs are indistinguishable, and
+    // the flag is what stops a zero being read as "checked and clean" when it
+    // means "nobody checked". Both always emitted; neither inferred from the
+    // other.
+    o[QStringLiteral("surfaces_resolved")] = surfacesResolved;
+    o[QStringLiteral("surfaces_checked")]  = surfacesChecked;
     o[QStringLiteral("line_count")]       = lineCounts;
     o[QStringLiteral("checked_docs")]     = QJsonArray::fromStringList(checkedDocs);
     if (truncated) o[QStringLiteral("truncated")] = true;

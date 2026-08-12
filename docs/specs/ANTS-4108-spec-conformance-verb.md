@@ -99,8 +99,10 @@ The consequence is stated plainly rather than buried: **this verb catches
 one of the reporter's four defects and surfaces none of the others.** A
 fixture lives in a `python` or `cpp` fence, which § 2.6 makes invisible to
 this verb — so the reachability and timing defects produce nothing at all
-here, not even a CANDIDATE. The fixture-execution half is § 6, tracked by
-ANTS-4127.
+here, not even a CANDIDATE. The fixture-execution half is § 6, and it is a
+permanent exclusion as of 2026-08-12 rather than work waiting on ANTS-4127 —
+that id shipped the citation half instead (`test_surface_absent` and its two
+siblings), which resolves what a clause NAMES and still executes nothing.
 
 ### 2.3 Inputs and envelope
 
@@ -520,13 +522,19 @@ external library.
 ## 6. Out of scope
 
 - **Executing fenced fixtures** — the reachability and timing defects, the
-  second and third of the three listed in § 1 — deferred, tracked by
-  **ANTS-4127**. Needs a decision on
-  an interpreter and a real sandbox; `luaengine.cpp`'s watchdog is the
-  in-repo precedent to start from.
-- **Python `re` as an engine** — deferred, same id. Requires an
-  out-of-process runner; until it exists, INV-5 refuses rather than
-  approximates.
+  second and third of the three listed in § 1. **No longer deferred: a
+  permanent exclusion, closed by decision on 2026-08-12 and carrying no
+  follow-up id.** It was tracked by **ANTS-4127**, which settled the
+  interpreter-and-sandbox question by dropping the premise that raised it —
+  `docs/` holds one `python` fence against 442 illustrative `cpp` ones, so
+  the runner would be built for a defect class this corpus cannot exhibit
+  (ANTS-4127 § 6). ANTS-4127 shipped the citation half instead: it resolves
+  what a `*Test:*` clause names, and executes nothing.
+- **Python `re` as an engine** — a **permanent exclusion** for the same
+  reason, also closed 2026-08-12 with no follow-up id: the out-of-process
+  runner it requires is the sandbox above. INV-5 continues to refuse an
+  unrecognised engine rather than approximate one, which is the correct
+  standing behaviour and needs nothing further.
 - **Prose quality, or whether an invariant is well chosen** — a permanent
   exclusion. That is `review-contract`'s judgement half, and this verb exists
   precisely because the two are different instruments.

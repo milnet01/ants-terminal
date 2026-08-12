@@ -31053,7 +31053,7 @@ defect from different angles.
 
   3380/3380 green.
 
-- 📋 [ANTS-4127] **spec_conformance, second half — execute a spec's fenced FIXTURES, not just its patterns.**
+- ✅ [ANTS-4127] **spec_conformance, second half — execute a spec's fenced FIXTURES, not just its patterns.**
   Split out of ANTS-4108 at spec time (docs/specs/ANTS-4108-spec-conformance-verb.md
   § 2.2 / § 6), deliberately and with the cost stated: ANTS-4108 ships pattern
   conformance, which catches ONE of the reporting session's four defects
@@ -31116,6 +31116,20 @@ defect from different angles.
 
   ANTS-4108 § 6 deferred TWO bullets to this id (fixture execution, and
   Python `re` as an engine). Both are closed here by decision.
+  Resolved (2026-08-12): shipped as three spec_lint finding kinds —
+  test_surface_absent / test_surface_unresolved / test_surface_unwired — plus
+  surfaces_resolved + surfaces_checked on the envelope. Engine
+  src/speclint.{h,cpp} (Options gains existingTestDirs / wiredTestDirs, both
+  INJECTED so it still opens nothing); gathering in
+  src/remotecontrol_docs.cpp::cmdSpecLint, once per run. Tests: 11 new rows
+  across tests/features/spec_lint/ and spec_lint_verb/ — ctest -N -R SpecLint
+  moved 12 to 23; the absence-asserting rows are mutation-proven (5 mutations,
+  each red on its own row, table in tests/features/spec_lint/spec.md). Full
+  suite 3410/3410.
+
+  The headline above is the work that was CANCELLED, not the work that
+  shipped: fixture execution is a permanent exclusion, and so is Python `re`.
+  Read the spec's title, not this bullet's.
 
 - 📋 [ANTS-4128] **spec_conformance: recognise the `re.search(pattern, input)` CALL form, not only the fence+table convention.**
   Found by building ANTS-4108's engine and pointing it at this repo, which is
@@ -31579,6 +31593,42 @@ defect from different angles.
   **Layman:** Some specs say "this rule is checked by that test" and the test was never written. Two of them say the work already shipped.
   Kind: fix.
   Source: in-session-2026-08-12 (measured while speccing ANTS-4127).
+  Progress (2026-08-12): ANTS-4127 shipped, so this class is now machine-
+  detectable — and its FIRST live target is ANTS-4127's own spec. INV-9's
+  *Test:* clause reads "one `shipped` spec citing `tests/features/absent_one`,
+  run three ways"; `absent_one` is a fixture INPUT, not a test surface, and the
+  clause never names where the test actually lives
+  (`tests/features/spec_lint/`). With that spec's Status now `implemented` the
+  checker files a `test_surface_absent` against it. The checker is RIGHT: the
+  clause under-specifies its own surface.
+
+  Left standing deliberately, per the decision recorded when ANTS-4127 was
+  accepted — fixing the corpus before the detector's first run makes that run
+  come back clean and prove nothing. Fix it here, with the other 23, and note
+  that this one is an authoring edit to an accepted spec, so it re-arms rule
+  14's gate on that document.
+
+  Measured count is therefore 24 specs / 26 spec-surface pairs, not 23 / 25.
+
+- 📋 [ANTS-4136] **spec_log op:set_status replaces a multi-line Status value wholesale, with no way to keep its prose.**
+  Hit while shipping ANTS-4127. A spec's `**Status:**` value is a wrapped
+  field (specparse's headerField joins continuation lines), and this corpus
+  routinely carries a paragraph there: review-loop counts, whether the gate
+  converged, which sections are most-revised. `op:"set_status"` overwrites the
+  whole extent with the single new word, so a 490-byte review history was
+  deleted by a call whose stated job is to change one word.
+
+  It is RECOVERABLE, not silent — the envelope returns the full
+  `previous_status` — so this is a usability gap, not data loss. But the caller
+  must notice, and then hand-rebuild the line with an Edit, which is the shape
+  of edit this verb exists to avoid.
+
+  Wanted: a `preserve_body: true` (keep the trailing prose after the first
+  word) or an `append` that puts the new state in front of the old text.
+  Either turns the recovery into the default.
+  **Layman:** Marking a spec "implemented" wipes the paragraph explaining how it was reviewed; you have to paste it back by hand.
+  Kind: enhancement.
+  Source: in-session-2026-08-12 (ANTS-4127 implementation).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
