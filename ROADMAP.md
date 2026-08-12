@@ -28899,6 +28899,27 @@ against current source before filing.
     owns wiring those ops at all.
   No spec needed per spec-format.md § 1: one subsystem, a new
   case in an existing mechanism.
+  Progress (2026-08-12): still OPEN, and deliberately not closed by
+  copying an answer down.
+
+  The GLOBAL copy of roadmap-format.md § 3.9 has since decided this
+  question unilaterally: it states that a pre-1.0 roadmap using phase
+  blocks does not rotate, instructs promoting to release blocks instead,
+  and argues that inventing a `docs/roadmap/P01.md` form would add a
+  second archive naming scheme.
+
+  That may well be the right answer. It is not global's to make: CFG-0069
+  (user decision, 2026-08-12) makes THIS project upstream of that file —
+  "where the two disagree, that pair governs and this file is corrected to
+  match, never the reverse."
+
+  So the decision is still owed here. Written up for the global config
+  session as item 6 of
+  ~/.claude/docs/ants-terminal-findings-for-global-2026-08-12.md, either
+  to raise upstream or to mark their text provisional pending this call.
+
+  Do NOT resolve this by adopting global's wording without deciding it —
+  that would invert the ownership rule the same week it was set.
 
 - 📋 [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -31389,6 +31410,43 @@ defect from different angles.
     in the global standards too.
 
   doc_integrity clean over all 24 files in docs/standards/ afterwards.
+
+- 📋 [ANTS-4133] **The four delta standards point at a global path a public reader cannot follow.**
+  On 2026-08-12 coding.md / documentation.md / testing.md / commits.md
+  became DELTAS: a pointer to `~/.claude/standards/<name>.md` plus only
+  the project-specific residue. That is right for drift (three of the four
+  copies had drifted into instructing behaviour the owner forbids) and it
+  is what the global standard requires.
+
+  But this repo is PUBLIC. An outside contributor reading
+  `docs/standards/coding.md` on GitHub cannot open
+  `~/.claude/standards/coding.md`, so for them the rule is simply absent.
+  `CONTRIBUTING.md` § Code style highlights links into `coding.md` "for the
+  full list", which makes the gap reachable from the contributor path.
+
+  Already handled for the sharpest case: `docs/standards/security.md` is a
+  verbatim MIRROR of the global owner, headed "do not edit here", with the
+  refresh command named. That shape works and is the candidate answer.
+
+  Options, in rough order of cost:
+  (a) Mirror the other four the same way, keeping the delta content in the
+      same file above the mirrored body. Cheapest for a reader; needs a
+      drift check, and the global tree already ships
+      `.githooks/check-copied-standards` for exactly that (this repo has
+      no `.githooks/` at all — that is the missing piece, not the hook).
+  (b) Publish the global standards somewhere fetchable and point at a URL.
+  (c) Accept it: state in each delta that the owner is not public and that
+      outside contributors should follow CONTRIBUTING.md alone.
+
+  Raised with the global config session as the closing section of
+  ~/.claude/docs/ants-terminal-findings-for-global-2026-08-12.md, since
+  whether a marked mirror is the sanctioned shape is global's call — the
+  no-copies rule currently reads as absolute.
+
+  Blocked on that answer; do not pick (a) unilaterally.
+  **Layman:** Our rulebooks now say "read the real rule in a file on my home drive" — which nobody browsing the public repo can open.
+  Kind: doc.
+  Source: in-session-2026-08-12 (standards delta cutover).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
