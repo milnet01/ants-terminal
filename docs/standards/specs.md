@@ -143,6 +143,48 @@ Rules for invariants:
   is referenced elsewhere — invariants are cited by id from CHANGELOG,
   CLAUDE.md, and other specs. Add `INV-14`, don't reflow.
 
+#### 3.5.1 Pattern invariants — state them so they can be run
+
+When an invariant's claim is about a **regex pattern**, state the
+pattern as a fence tagged with its engine and put an `| input |
+expected |` table directly beneath it. In that form the
+`spec_conformance` verb *runs* the pattern against every row, and a
+pattern that disagrees with its own example comes back as a finding
+instead of surviving a cold read. The example below is nested inside a
+four-backtick fence so this standard does not itself become a case:
+
+````markdown
+```regex pcre2
+^- \*\*\[(ANTS-\d+)\]\*\*
+```
+
+| input | expected |
+|---|---|
+| `- **[ANTS-4108]** ships the verb` | `ANTS-4108` |
+| `  - **[ANTS-1]** indented` | no match |
+````
+
+- **Tag the engine.** `regex pcre2` is `QRegularExpression`, Qt's PCRE2.
+  A bare ` ```regex ` fence is reported as a candidate and any other
+  engine is refused — never silently run under a substitute, because a
+  pattern written for one flavour and run under another can return a
+  confident wrong answer about a spec that is correct.
+- **`expected` has three outcomes, not two**, because a group that did
+  not participate and a group that captured nothing are different
+  states: bare `no match`, bare `no capture`, or the expected text in
+  backticks (an empty backtick pair for a zero-length capture). A bare
+  empty cell is malformed. The sentinels are read *before* backticks are
+  stripped, so `` `no match` `` is the literal string.
+- `expected` is capture group 1 when the pattern has any capturing
+  group, else the whole match, under search semantics — not anchored
+  unless you anchor it.
+
+This is a recommendation, not a requirement: an invariant whose pattern
+has no meaningful example, or whose real subject is the surrounding
+code rather than the pattern, stays prose. The full extraction contract
+is `docs/specs/ANTS-4108-spec-conformance-verb.md` § 2.4; do not restate
+it here.
+
 ### 3.6 Tests
 
 A `## N. Tests` section naming the feature-test directory

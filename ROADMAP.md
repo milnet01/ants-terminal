@@ -31097,6 +31097,55 @@ defect from different angles.
   **Layman:** Teach the pattern-checker to read the way specs already write patterns, instead of only a new format nobody has adopted yet.
   Kind: feature.
   Source: in-session-2026-08-12 (found by building ANTS-4108 and running it on the corpus).
+  Measured (2026-08-12), before writing any code — and the measurement
+  falsifies this item's premise. Across ALL tracked markdown (2643 files:
+  240 docs/specs, 493 tests/features/*/spec.md, ROADMAP, CHANGELOG,
+  docs/standards) there are 16 call-form sites, and only FIVE carry a
+  literal input:
+
+    git ls-files '*.md' -z | xargs -0 grep -nP \
+      're\.(search|match|fullmatch)\(\s*r?(["\x27]).*?\2\s*,\s*r?["\x27]'
+    -> 5 hits, ALL the same call: re.search(r"\d{1,5}(?![0-9])", " 123456")
+       3x in docs/specs/ANTS-4108 (its own worked evidence), 2x in ROADMAP
+       (the ANTS-4108 / ANTS-4128 bullets quoting it).
+
+  The other 11 sites have a VARIABLE input, not a literal, so no case can
+  be built from them at all: re.findall(..., src[k]) in ANTS-2079,
+  re.match(..., l) in ANTS-3757, reBare.match(s.trimmed()) in ANTS-1160,
+  and two bare QRegularExpression(...) constructors in ANTS-1238 that are
+  prose describing what a test does and carry no input. None is a
+  prescribed contract about pattern behaviour; they are utility scripts
+  and implementation snippets.
+
+  So route (a) — extract the call form — yields exactly ONE extractable
+  case corpus-wide, and it is the example ANTS-4108 wrote about itself.
+  Against the other 11 it would emit "pattern in call form, no input
+  stated" candidates over utility-script lines: a false-positive
+  generator, the debt_sweep_scan failure mode. It would also have to take
+  the expectation from English prose ("returns `23456`"), which is the
+  guessing INV-5 and the CANDIDATE bucket exist to refuse, and then run a
+  Python pattern under PCRE2 — the engine substitution INV-5 forbids
+  outright.
+
+  Route (b) — convert the corpus to fence+table — fails from the other
+  end, for the same reason: there is nothing to convert. The corpus holds
+  no pattern+input+expectation triples in call form.
+
+  What actually creates yield is the thing § 2.4a already named as the
+  precondition and § 9 listed as cross-doc impact, and which was NEVER
+  DONE: the docs/standards/specs.md § 3.5 amendment making fence+table
+  the recommended way to state a pattern invariant. Verified absent —
+  grep for regex/pcre2/expectation-table over specs.md returns nothing
+  relevant. Being taken now, with the review-contract gate that a
+  docs/standards edit re-arms.
+
+  NOT closed, because the premise is wrong rather than the goal: if the
+  convention lands and authors still write the call form, recognising it
+  becomes worth revisiting — on a corpus that then has something to
+  recognise. Reopen against a re-run of the grep above, not against
+  recall. Caveat this measurement is Ants-only; the verb resolves paths
+  under caller_cwd, so another project's corpus could differ and is
+  unmeasured from here.
 
 - 📋 [ANTS-4129] **mcp-tools.md step 7 states an absolute the spec_conformance verb has to break.**
   Step 7 of docs/standards/mcp-tools.md says a read verb opts into ETag by

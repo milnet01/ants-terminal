@@ -360,6 +360,14 @@ Result check(const QString &text, const QString &relPath,
         // legitimate surface with nothing to state. Never autoFixable, and this
         // engine runs no subprocess — /write-spec Step 3 owns executing a
         // clause, at write time, where a failure is free (INV-4).
+        //
+        // Execution splits by artefact, and only one half moved (ANTS-4108):
+        // a PATTERN stated as a ```regex pcre2 fence with an | input |
+        // expected | table beside it is run by the spec_conformance verb,
+        // which needs no subprocess because applying a pattern to a string
+        // cannot reach the filesystem. A COMMAND clause — this branch — still
+        // has no runtime owner but /write-spec Step 3, and fenced FIXTURES
+        // have none at all until ANTS-4127 settles an interpreter and sandbox.
         if (isCommandWithoutExpectation(clause))
             add(QStringLiteral("command_test_no_expectation"), line,
                 QStringLiteral("%1's test clause is a command but states "
