@@ -149,7 +149,14 @@ push on the Release suite against the warm `build/`, plus — when a
 sanitizer tree already exists — an incremental `build-asan` build and its
 sanitized suite. Docs-only pushes skip, mirroring `ci.yml`'s `paths-ignore`.
 Not covered by the hook: `--lints`, `qt62-baseline`, and `e2e`/`perf`; run
-`--full` before a release or when touching packaging- / e2e-sensitive code.
+`--full` before a release, when touching packaging- / e2e-sensitive code,
+**and whenever a push ADDS a source file** (ANTS-4131). That last trigger
+cost three consecutive red CI runs: `spec_conformance` shipped using
+`QRegularExpressionMatch::hasCaptured()`, which is **Qt 6.3+** against this
+project's **Qt 6.2 floor** (`dependencies.md` § 4). It compiled here, passed
+3393/3393, and passed the hook — only `qt62-baseline` can see a floor
+violation, and the hook does not run it. A new TU is the one change most
+likely to reach for a Qt API newer than the floor.
 Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`. The ASan
 leg is cost-gated (ANTS-4118): it runs only over a tree that is warm
 (≤ `ANTS_PREPUSH_ASAN_MAX_EDGES`, default 25 pending steps), skipping with
@@ -169,6 +176,14 @@ SIGTERM a push mid-ninja.
   `test_<feature>.cpp`, exit 0/non-zero with enough output to diagnose;
   (3) add the source to a bundle's `SOURCES` list (do NOT `add_executable`);
   (4) verify it FAILS against pre-fix code before restoring the fix.
+  **Then build THAT bundle's target and check the ctest count moved.**
+  Building the wrong target succeeds silently and runs the old binary, so
+  the new test neither compiles nor appears — and a green run reads as
+  success. `ctest -N -R <name>` before and after is the check; the count,
+  not the pass rate, is the signal. (Bundles are not guessable from the
+  path: `tests/features/spec_conformance/` builds into `test_claude`, not
+  `test_core`. `grep -n <feature> CMakeLists.txt`, then read upward for the
+  enclosing `ants_add_*_bundle(`.)
 - **E2E harness** (`tools/e2e/`, label `e2e`, ANTS-2049) — drive a
   throwaway `--e2e` instance as a user (inject-key/click, resize-window,
   grab-image over its socket via `--remote-json`) and observe it. Opt-in:
