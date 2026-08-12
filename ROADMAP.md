@@ -31169,7 +31169,7 @@ defect from different angles.
   under caller_cwd, so another project's corpus could differ and is
   unmeasured from here.
 
-- 📋 [ANTS-4129] **mcp-tools.md step 7 states an absolute the spec_conformance verb has to break.**
+- ✅ [ANTS-4129] **mcp-tools.md step 7 states an absolute the spec_conformance verb has to break.**
   Step 7 of docs/standards/mcp-tools.md says a read verb opts into ETag by
   joining `isEtagSupportedTool`, and that "the handler must **not** emit it"
   — the dispatcher hashes the whole response text.
@@ -31199,6 +31199,45 @@ defect from different angles.
   **Layman:** One of our own rulebooks says "never do X"; a tool we just shipped has to do X, for a good reason. The rulebook should say so, or the next person will read it as a mistake.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (ANTS-4108 wiring pass).
+  Resolved (2026-08-12): step 7 now carries the condition it was missing —
+  the central etag is correct exactly when the response is a pure function
+  of project state, and a verb whose envelope carries per-run measurements
+  owns its own 304. Two obligations came with it that the bullet had not
+  anticipated, both found by all three cold lanes: the verb still DECLARES
+  an `etag_match` property (inline, not via `makeEtagMatchProp()`, naming
+  the fields its etag excludes), and it DECLINES `fields=` — verified
+  against the dispatch predicate, where `etagUnchanged` is only ever set
+  inside the `isEtagSupportedTool` branch, so a handler-local 304 falls
+  through to `mcp::projectFields`.
+
+  Gated per rule 14: `review-contract --genre standard`, 3 loops, 3 cold
+  `general-purpose` lanes each. 22 verified, 22 fixed, 0 dismissed
+  (L1 Q1 2/Q2 3/Q3 3 · L2 Q1 2/Q2 2/Q3 2 · L3 Q1 5/Q2 2/Q3 1). Q4 is not
+  asked of a standard. **Stopped at the cap, not converged** — the tail is
+  ANTS-4134.
+
+  The document had never been gated, so most findings were pre-existing and
+  unrelated to this bullet: `isControlPlaneTool()` was named as the canonical
+  control-plane bypass and exists nowhere in the tree (the real one is an
+  inline `isControlPlane` predicate that `mcp_output_sanitisation` scrapes by
+  literal, so extracting the named accessor would have reddened the suite);
+  the `fields=` quick-reference claimed the projection set is a subset of the
+  ETag set (`read_log` projects but does not 304); `dry_run`'s "every mutating
+  verb" was false against its own inventory; the step-1 template split
+  `registerToolProvider(` from `"<name>",` while the test it prescribes
+  scrapes them adjacent; three pointers sent authors to a `CLAUDE.md` section
+  that never held what they promised; and "`Q_ASSERT_X`, i.e. debug builds"
+  understated ANTS-1834, which refuses the registration in every build.
+
+  Cost worth recording: **roughly half of loops 2 and 3 was collateral from
+  this run's own fixes.** Loop 1 asserted `additionalProperties:false` rejects
+  an undeclared arg — measured false, the dispatcher drops it and reports
+  `ignored_args`. Loop 2 invented a `format_mismatch` discriminator, then
+  over-corrected by deleting it entirely and deferring to a doc that
+  contradicts the code. Four more errors were caught inside the fix passes by
+  executing each new claim before commit. The lesson is the skill's own: run
+  the case that would REFUTE a sentence, and read the predicate rather than
+  paraphrasing it — two lanes were sent wrong by a paraphrase in my packet.
 
 - ✅ [ANTS-4130] **spec_conformance's extraction contract is silent on fence indentation, and nothing tests it.**
   Two gaps, both found by the cold gate on the specs.md § 3.5.1 amendment.
