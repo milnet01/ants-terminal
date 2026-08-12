@@ -206,6 +206,41 @@ the same section, so that authoring one is a local act:
   and three of that table and INV-3 fails for a reason the encoding cannot
   express.
 
+### 2.4a The convention is NEW, and nothing uses it yet
+
+Found by building the engine and pointing it at the corpus (2026-08-12),
+not by reading:
+
+```
+grep -rn -e '^```regex' docs/   →  1 hit, in this spec
+grep -rlE '^\|\s*input\s*\|\s*expected\s*\|' docs/  →  1 file, this spec
+```
+
+That single hit is § 2.4's illustration, nested inside a four-backtick
+fence, which the extractor correctly ignores. **So against today's corpus
+this verb reports nothing at all.**
+
+Two consequences the rest of this document must be read against:
+
+1. **Its value is prospective.** It checks patterns authors write in the
+   fence-plus-table form from now on; it does not retrofit itself onto the
+   239 existing specs. § 9 lists the `docs/standards/specs.md` amendment
+   that makes the convention the recommended way to state a pattern
+   invariant — that amendment is the precondition for this verb finding
+   anything, not a nicety.
+2. **The reporting session's defects were in a different form.** Its
+   evidence (§ 1) is `re.search(r"\d{1,5}(?![0-9])", " 123456")` — a Python
+   *call*, in a Python fence. This verb's extractor would not have found
+   it. It catches that defect only once the pattern is restated as a
+   `regex pcre2` fence with a table beside it. Recognising the call form
+   directly is **ANTS-4128**.
+
+Neither is a reason not to ship: a pattern nobody can check is exactly what
+§ 2.5's CANDIDATE bucket is for, and the convention has to exist before it
+can be adopted. But a reader who took § 1's evidence as a promise of
+immediate yield would be wrong, so it is stated here rather than left to be
+discovered.
+
 ### 2.5 Result taxonomy
 
 | Bucket | Meaning | Example |
@@ -486,6 +521,7 @@ its stated example agree, never that either is what the author meant.
 | 1 | 2 cold, spec genre | 1 | 4 | 2 | 2 | 9 / 0 | all fixed |
 | 2 | 2 cold, spec genre | 0 | 2 | 4 | 2 | 8 / 0 | all fixed |
 | 3 | 2 cold, spec genre | 1 | 2 | 6 | 0 | 9 / 0 | all fixed; **cap reached, not converged** |
+| 3-impl | none — implementation, no reviewer dispatched | 1 | 0 | 0 | 0 | 1 / 0 | § 2.4a added |
 
 **Loop 1 (2026-08-12).** Both lanes independently found the same five
 defects, which is what two rolls of a cold read are for.
@@ -620,3 +656,19 @@ are settled.
 build test-first. Every unresolved item is envelope detail that a fixture
 pins in seconds and a cold read argues about for a loop — which is this
 spec's own thesis (§ 1) turned on itself.
+
+**Row `3-impl` (2026-08-12) — implementation, NO reviewer dispatched.**
+The engine was built test-first and its ten fixtures pass. Building it
+surfaced one [Q1] defect that three cold loops and six lanes could not,
+because it needs a corpus rather than a reader: **nothing in this
+repository uses the convention § 2.4 defines** — one `regex` fence exists
+and it is § 2.4's own nested illustration — so the verb reports nothing
+against today's corpus, and the reporting session's evidence was a Python
+`re.search` CALL that this extractor does not recognise at all. § 2.4a now
+states both, and ANTS-4128 carries the fix.
+
+**A re-gate of this amendment is owed and deliberately not run.** Step 8
+asks for one; the addition is a stated limitation rather than a changed
+contract, the gate had already bound its cap on this document, and the
+standing recommendation is to trust fixtures over further cold reads here.
+Recorded as a decision so it is not mistaken for an oversight.

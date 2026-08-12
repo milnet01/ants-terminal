@@ -31000,6 +31000,40 @@ defect from different angles.
   Kind: feature.
   Source: in-session-2026-08-12 (ANTS-4108 spec, deferred half).
 
+- 📋 [ANTS-4128] **spec_conformance: recognise the `re.search(pattern, input)` CALL form, not only the fence+table convention.**
+  Found by building ANTS-4108's engine and pointing it at this repo, which is
+  the one check no amount of reading the spec could perform:
+
+    grep -rn -e '^```regex' docs/   -> 1 hit, inside ANTS-4108's own spec
+    grep -rlE '^\|\s*input\s*\|\s*expected\s*\|' docs/  -> 1 file, the same
+
+  That single hit is the § 2.4 illustration nested in a four-backtick fence,
+  which the extractor correctly ignores. So against today's corpus the verb
+  reports NOTHING. Its value is entirely prospective.
+
+  The sharper half: the reporting session's own evidence was not in the
+  fence+table form at all. It was `re.search(r"\d{1,5}(?![0-9])", " 123456")`
+  — a Python CALL in a Python fence. ANTS-4108's extractor would not have
+  found the defect that motivated ANTS-4108, in the form it actually
+  appeared.
+
+  Two routes, and the choice is the work:
+  (a) Extract the call form directly — `re.search/match/fullmatch(r"...",
+  "...")` and the `QRegularExpression("...").match("...")` equivalent — with
+  the expectation taken from the prose or an adjacent comment. Catches
+  existing documents with no author action, but the expectation is often
+  implicit, which is what makes it a design job rather than a parser tweak.
+  (b) Seed the convention instead: convert the prescribed patterns in the
+  existing corpus to fence+table. Mechanical, auditable, and it makes the
+  verb useful on documents that already exist — but it is 239 specs.
+
+  ANTS-4108 § 2.4a states the limitation; this item is the fix. Do NOT
+  treat it as a blocker for shipping ANTS-4108 — a convention has to exist
+  before anything can adopt it.
+  **Layman:** Teach the pattern-checker to read the way specs already write patterns, instead of only a new format nobody has adopted yet.
+  Kind: feature.
+  Source: in-session-2026-08-12 (found by building ANTS-4108 and running it on the corpus).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
