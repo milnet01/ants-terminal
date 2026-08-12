@@ -30472,7 +30472,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
   Resolved (2026-08-11): id pattern widened to INV-N[a-z] in parseSpecBody's table + bullet + prose-token matchers and in spec_lint's two anchor regexes. The consequence that mattered is fixed at the same time: spec_lint's checks used to rebuild `INV-%1` from an int, so every sub-lettered id fell out of invariant_no_test; they now walk the id strings, and the gap scan alone reduces to numbers (a sub-letter occupies its parent's slot, so it can never open a gap). Regression-locked by SpecLint.Ants4107SubLetteredInvariantIds. Suite 3352/3352.
 
-- 📋 [ANTS-4108] **A `spec_conformance` verb — execute a spec's own regexes, bounds and predicates instead of reading them.**
+- 🚧 [ANTS-4108] **A `spec_conformance` verb — execute a spec's own regexes, bounds and predicates instead of reading them.**
   /doc-lint owns the deterministic half of spec review but has no check for
   the class that produced almost every serious finding in the reporting
   session: a spec that PRESCRIBES an executable artefact (a regex, a range
@@ -30534,6 +30534,11 @@ defect from different angles.
   Recommended next step, per ANTS-4070's precedent: build test-first rather
   than run a fourth loop. Every unresolved item is envelope detail a fixture
   pins in seconds and a cold read argues about for a loop.
+  Progress (2026-08-12): implementation started, test-first per the spec's
+  own recommendation — the accepted-with-caveat status marks § 2.3–§ 2.6
+  provisional, so the fixtures are the arbiter where they disagree with the
+  prose, and any divergence folds back into the spec (write-spec Step 8)
+  rather than being worked around in code.
 
 - ✅ [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
   roadmap_query {id:"LOTTO-0019"} resolves and returns

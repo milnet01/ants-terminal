@@ -395,6 +395,11 @@ add_library(ants_core_lib STATIC
     # contract (missing sections, untested invariants, id gaps, loop-log rows,
     # command test clauses with no expectation); Qt6::Core-only.
     src/speclint.cpp
+    # ANTS-4108 — spec_conformance engine: the EXECUTABLE half. Runs the
+    # patterns a spec prescribes against the expectation table beside them.
+    # Patterns only, never fenced code (spec § 2.2); no subprocess and no
+    # interpreter (INV-8). Qt6::Core-only.
+    src/specconformance.cpp
     # ANTS-3660 — doc_dedup engine: near-duplicate passage detection across a
     # doc set (paragraph segmentation, word shingles, Jaccard, clustering);
     # report-only, Qt6::Core-only.
@@ -1608,6 +1613,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_headline_only/test_roadmap_query_headline_only.cpp
                 # ANTS-1922 roadmap_query mode:"bundles".
                 tests/features/mcp_roadmap_bundles/test_roadmap_bundles.cpp
+                # ANTS-4108 — spec_conformance engine conformance.
+                tests/features/spec_conformance/test_spec_conformance.cpp
                 # ANTS-1876 workspace_search payload knobs.
                 tests/features/workspace_search_payload_knobs/test_workspace_search_payload_knobs.cpp
                 # ANTS-2220 workspace_search enclosing_symbol annotation.
