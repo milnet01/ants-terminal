@@ -103,6 +103,22 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.105" date="2026-08-13">
+      <description>
+        <p>A broad correctness sweep of the built-in Claude Code integration, driven by defects other sessions reported while using the tools, plus the roadmap store's migration half and a project's coding standards now readable in the repository itself.</p>
+        <ul>
+          <li><em>Added:</em> Specs can be checked against the code they describe — <code>spec_conformance</code> runs the regex patterns a spec prescribes against the example table beside them, and <code>spec_lint</code> resolves the test surface a spec cites rather than trusting the citation. (ANTS-4108, 4127)</li>
+          <li><em>Added:</em> Roadmap store — a <code>roadmap_migrate</code> verb loads a project into the database, released versions can be archived and sections renamed, the store records which roadmap dialect a project was migrated from and reports it when the file later disagrees. (ANTS-3855, 4070, 3815, 3809)</li>
+          <li><em>Added:</em> The Qt 6.2 floor guard now runs before every push, and review tooling reports each lane's real size so a lane too big to review is visible before it is dispatched. (ANTS-4131, 4100, 4106)</li>
+          <li><em>Added:</em> This project's four shared standards now carry their full text in the repository rather than pointing at a private path, with a commit gate that refuses a copy which has drifted from its owner. (ANTS-4133)</li>
+          <li><em>Changed:</em> The remote-control implementation is split across eleven source files and no longer carries fifty-two stale file references, cutting build work. (ANTS-3833, 4125, 4111)</li>
+          <li><em>Fixed:</em> Roadmap reading and import — headlines quoting code, bold work-type and owner fields, items marked partial, a declared kind being dropped, and a database that refused to open rather than update. (ANTS-4077, 4071, 4066, 4065, 3781, 3838)</li>
+          <li><em>Fixed:</em> A wide sweep across the analysis verbs — citation resolution, invariant-id parsing, section detection, response paging and byte bounds, placeholder links, namespace reporting, and edits accepting the native tool's spelling. (ANTS-4087, 4089, 4091, 4095, 4101, 4102, 4107, 4110, 4113, 4115)</li>
+          <li><em>Fixed:</em> Project analysis on codebases unlike this one — the audit window recognises projects keeping code in the top folder, the bug scanner no longer goes blind on non-Qt C++, and review lanes cover hand-written shader source. (ANTS-4124, 4094, 4096, 4112)</li>
+          <li><em>Fixed:</em> The push safety check no longer starts a sanitizer build it cannot finish in time. (ANTS-4118)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.104" date="2026-08-12">
       <description>
         <p>The roadmap store lands end to end — a project's roadmap can be migrated into a database, read from it, edited through it and regenerated back to ROADMAP.md — plus zypper installs on openSUSE, and packages for Leap 16.0 and Mageia 10.</p>

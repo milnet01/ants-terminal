@@ -1,3 +1,41 @@
+ants-terminal (0.7.105-1) unstable; urgency=medium
+
+  * Specs can be checked against the code they describe — spec_conformance
+    runs the regex patterns a spec prescribes against the example table
+    beside them, and spec_lint resolves the test surface a spec cites
+    rather than trusting the citation. (ANTS-4108, 4127)
+  * Roadmap store — a roadmap_migrate verb loads a project into the
+    database, released versions can be archived and sections renamed, and
+    the store records which roadmap dialect a project was migrated from,
+    reporting it when the file later disagrees. (ANTS-3855, 4070, 3815,
+    3809)
+  * The Qt 6.2 floor guard now runs before every push, and review tooling
+    reports each lane's real size so a lane too big to review is visible
+    before it is dispatched. (ANTS-4131, 4100, 4106)
+  * This project's four shared standards now carry their full text in the
+    repository rather than pointing at a private path, with a commit gate
+    that refuses a copy which has drifted from its owner. (ANTS-4133)
+  * The remote-control implementation is split across eleven source files
+    and no longer carries fifty-two stale file references, cutting build
+    work. (ANTS-3833, 4125, 4111)
+  * Roadmap reading and import — headlines quoting code, bold work-type
+    and owner fields, items marked partial, a declared kind being dropped,
+    and a database that refused to open rather than update. (ANTS-4077,
+    4071, 4066, 4065, 3781, 3838)
+  * A wide sweep across the analysis verbs — citation resolution,
+    invariant-id parsing, section detection, response paging and byte
+    bounds, placeholder links, namespace reporting, and edits accepting
+    the native tool's spelling. (ANTS-4087, 4089, 4091, 4095, 4101, 4102,
+    4107, 4110, 4113, 4115)
+  * Project analysis on codebases unlike this one — the audit window
+    recognises projects keeping code in the top folder, the bug scanner no
+    longer goes blind on non-Qt C++, and review lanes cover hand-written
+    shader source. (ANTS-4124, 4094, 4096, 4112)
+  * The push safety check no longer starts a sanitizer build it cannot
+    finish in time. (ANTS-4118)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 13 Aug 2026 00:00:00 +0200
+
 ants-terminal (0.7.104-1) unstable; urgency=medium
 
   * Roadmap store, end to end — the migration reads a hand-written
