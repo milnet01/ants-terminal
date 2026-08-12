@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The push safety check no longer starts a sanitizer build it cannot finish in time** (ANTS-4118)
+  Pushing from an automated session could be cut off part-way through the second half of the check, failing the push and leaving the sanitizer build tree half-done. The check now measures how much work is pending first and, if that is more than a couple of minutes' worth, says so and skips that half rather than starting it (the cloud build still covers it). If it does get interrupted, it marks the tree and the next run tells you the one command that repairs it. It also now tells you up front how to skip that half, instead of only mentioning it once you already had.
+
+- **The file map now shows top-level data blocks in JavaScript and similar files** (ANTS-4090)
+  A quick map of a file listed its functions but skipped plain top-level values — which, in a file that keeps big blocks of text or styling in a named value, are the largest parts of it. One reported file showed a 250-line hole. Those entries now appear, labelled as data rather than code, with only their name shown so a 95-line block never lands in the reply. You can also pull one up by name now.
+
 - **Opening one roadmap item by ID now returns its whole body, not the ends with the middle cut out** (ANTS-4091)
   A long item was trimmed to its first and last part with the middle replaced by a marker — and the middle is where a resume plan lives. Asking for a specific item by ID now returns it in full (up to 16 KB), because naming the item has already kept the reply small; asking for many at once still trims, so a wide query cannot balloon. The trim marker also now says how to read the omitted part.
 

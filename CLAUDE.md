@@ -124,7 +124,9 @@ Wraps `cmake --build` in a systemd-user scope (`MemoryMax=24G` /
 *build*, not the session. Layers 1–2 (JOB_POOLS, `workstation` preset)
 should make it unnecessary; reach for it after kernel / Qt-major updates.
 Optional audit deps self-disable if absent. **Cppcheck gotcha:** pass
-`--library=qt` or it misparses `emit` as a type.
+`--library=qt` or it misparses `emit` as a type. Qt projects ONLY —
+elsewhere that flag breaks the parse and the TU loses all coverage
+(ANTS-4094).
 
 ### Local CI: `tools/ci-parity.sh` + the pre-push hook (ANTS-2134 / 3410 / 3580)
 
@@ -148,7 +150,12 @@ sanitizer tree already exists — an incremental `build-asan` build and its
 sanitized suite. Docs-only pushes skip, mirroring `ci.yml`'s `paths-ignore`.
 Not covered by the hook: `--lints`, `qt62-baseline`, and `e2e`/`perf`; run
 `--full` before a release or when touching packaging- / e2e-sensitive code.
-Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`.
+Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`. The ASan
+leg is cost-gated (ANTS-4118): it runs only over a tree that is warm
+(≤ `ANTS_PREPUSH_ASAN_MAX_EDGES`, default 25 pending steps), skipping with
+a loud message when the tree is cold, mid-CMake-regen, or carries a damaged
+deps log from a killed build — so a caller's command timeout can no longer
+SIGTERM a push mid-ninja.
 
 ## Test harnesses
 

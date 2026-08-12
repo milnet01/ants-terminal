@@ -26,10 +26,11 @@ in-tree `auditdialog.cpp` (INV-3 floor check).
 | 11 | (ANTS-2028) `FileOutline::compute` captures free functions with a single-token return type — `int alpha()`, `static QByteArray slurpBody(...)`, and the declaration `const std::string &makeName(int);` all surface — while the qualified member `Widget::method` still resolves via `rxCppMember`. Guards against `rxCppFunc` folding the return type and the name into one possessive class (which left nothing for the name capture, so free functions never matched). |
 | 12 | (ANTS-2147) `FileOutline::compute` does not emit a statement-position call as a function symbol — `return gamma(7);` surfaces no `gamma` symbol — while the enclosing free function `int beta()` still surfaces. `rxCppFunc` rejects an expression-introducing reserved keyword (`return`/`co_return`/`co_await`/`co_yield`/`throw`/`else`) as the leading return-type token. |
 | 13 | (ANTS-2223) `cmdFileOutline` in the remotecontrol TUs supports the multi-path form: the single-path and multi-path bodies share the extracted `outlineOneFile()` helper; the handler branches on a `paths` array (`pathsVal.isArray()`); each entry carries a per-file etag via `outlineFileEtag()`; an optional `etags` map 304s an unchanged entry to an `unchanged` stub; and the batch envelope emits `files[]` + `count`. (Locked at source level — the handler needs a live `MainWindow` to invoke, as with INV-2/INV-4.) |
+| 14 | (ANTS-4090) In `Mode::Generic`, a top-level data binding — `const`/`let`/`var NAME =`, with or without `export`/`default` — is emitted with kind `"const"`. `rxGenericDecl` lists `const` only as a MODIFIER before a declaration keyword and `rxGenericArrow` requires `=>`, so a binding holding a template literal, object or string matched nothing; in a file that stores payloads that way those are its largest regions. `rxGenericBinding` is anchored at column 0 with NO leading-whitespace class (indentation survives to the match, and it is the only cheap top-level signal a line-based scanner has), so an indented local inside a function body is NOT outlined. The arrow rule keeps precedence, so an arrow assignment stays kind `"func"`. The signature stops at the `=` plus `…`, so a 95-line literal's opening never rides along in the response. |
 
 ## Acceptance
 
-Exit 0 = all 13 invariants hold.
+Exit 0 = all 14 invariants hold.
 
 Wired as a source file in the `test_claude` bundle (uses the same
 compile defs as the existing MCP-related tests). The runtime

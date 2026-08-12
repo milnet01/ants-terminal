@@ -7,9 +7,10 @@
 # the complete, exact CI mirror is `tools/ci-parity.sh --full`.
 #
 # Scope: the Release correctness suite, plus ci.yml's build-asan job when a
-# sanitizer tree already exists locally (added after CI run 30587366963 went red
-# on an ASan-only failure the Release suite structurally cannot see — see the
-# build-asan leg below for why it is conditional). Still NOT covered: --lints
+# sanitizer tree already exists locally AND is warm enough to build inside a
+# caller's timeout (added after CI run 30587366963 went red on an ASan-only
+# failure the Release suite structurally cannot see — see the build-asan leg
+# below for why it is conditional, and ANTS-4118 for the cost gate). Still NOT covered: --lints
 # (cppcheck / appstream / desktop / groff / version-drift / completions), the
 # qt62-baseline compile guard, and e2e/perf under either build. Those run via
 # `tools/ci-parity.sh --full`, which is the exact and complete CI mirror, before
@@ -132,22 +133,92 @@ elif [[ -z "$asan_dir" ]]; then
     echo "            cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DANTS_SANITIZERS=ON"
     echo "          or run the complete mirror: tools/ci-parity.sh --full"
 else
-    echo "pre-push: build-asan gate (incremental build + sanitized suite in $asan_dir)…"
-    if ! cmake --build "$asan_dir"; then
-        echo >&2
-        echo "pre-push: sanitizer build FAILED — push blocked." >&2
-        echo "          ('git push --no-verify' to override.)" >&2
-        exit 1
+    # ANTS-4118 — cost gate. "A tree that already exists" is not the same as
+    # "a tree that is warm": after a pull or a header touch the incremental
+    # build is minutes long, and a caller with a command timeout (an agent
+    # harness caps at 600 s) gets SIGTERMed mid-ninja. That costs twice — the
+    # push fails, AND a killed ninja leaves the tree in the state this project
+    # treats as untrustworthy. So measure the pending work and refuse a build
+    # that will not fit, rather than starting one that may be killed. A warm
+    # tree — the common case while iterating — is a handful of edges and runs.
+    asan_marker="$asan_dir/.ants-prepush-interrupted"
+    asan_max_edges="${ANTS_PREPUSH_ASAN_MAX_EDGES:-25}"
+
+    # `ninja -n` lists the edges it WOULD run, in `[i/n] …` form, and costs
+    # milliseconds. Unmeasurable (no ninja, no build.ninja) counts as unsafe:
+    # an unmeasured build is exactly the one that gets killed. stderr is kept —
+    # ninja reports a damaged deps file there, and that is a reading too.
+    asan_dry=""
+    asan_edges=""
+    if command -v ninja >/dev/null 2>&1 && [[ -f "$asan_dir/build.ninja" ]]; then
+        asan_dry="$(ninja -C "$asan_dir" -n 2>&1 || true)"
+        asan_edges="$(grep -cE '^\[[0-9]+/[0-9]+\]' <<<"$asan_dry" || true)"
     fi
-    if ! ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
-         UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-         LC_ALL=C.UTF-8 ctest --test-dir "$asan_dir" -j2 --output-on-failure \
-                              --timeout 300 -LE 'e2e|perf'; then
-        echo >&2
-        echo "pre-push: sanitized suite FAILED — push blocked." >&2
-        echo "          This is the class that reached CI as run 30587366963." >&2
-        echo "          ('git push --no-verify' to override.)" >&2
-        exit 1
+
+    if [[ -f "$asan_marker" ]]; then
+        echo "pre-push: ⊘ build-asan gate SKIPPED — an earlier run was killed"
+        echo "          mid-build in $asan_dir, so an incremental result over it"
+        echo "          is a false pass, not a cheap one. Heal the tree and clear"
+        echo "          the marker in one go:"
+        echo "            cmake --build $asan_dir --clean-first && rm $asan_marker"
+        echo "          CI's build-asan job still covers this push."
+    elif [[ -z "$asan_edges" ]] || grep -q 'Re-running CMake' <<<"$asan_dry"; then
+        # A pending regen hides every real edge behind it: the count reads 1
+        # for what may be a full rebuild, which is what a changed CMakeLists.txt
+        # produces. Unmeasurable, not cheap.
+        echo "pre-push: ⊘ build-asan gate SKIPPED — cannot measure pending work"
+        echo "          in $asan_dir (no ninja / no build.ninja, or a pending"
+        echo "          CMake regen hiding the real edges), and an unmeasured"
+        echo "          build is the one a caller timeout kills."
+        echo "          Run it deliberately: tools/ci-parity.sh --full."
+    elif (( asan_edges > asan_max_edges )); then
+        echo "pre-push: ⊘ build-asan gate SKIPPED — $asan_dir has $asan_edges"
+        echo "          pending build steps, over the $asan_max_edges cap"
+        echo "          (ANTS_PREPUSH_ASAN_MAX_EDGES). That is a cold or stale"
+        echo "          tree: minutes of build, which a caller timeout would kill"
+        echo "          mid-ninja. Run it yourself (cmake --build $asan_dir) or"
+        echo "          tools/ci-parity.sh --full; CI's build-asan job still"
+        echo "          covers this push."
+    else
+        echo "pre-push: build-asan gate ($asan_edges pending build steps +"
+        echo "          sanitized suite in $asan_dir) — expect a few minutes."
+        echo "          Skip just this leg with ANTS_PREPUSH_NO_ASAN=1."
+        # ANTS-4118 — ninja's "premature end of file; recovering" on the deps
+        # log is reported, NOT gated on. Measured 2026-08-12: it survived a
+        # full `--clean-first` rebuild of this repo's build-asan, so it is a
+        # property of the on-disk log rather than a per-run signal, and a gate
+        # keyed to it would never clear — permanently disabling the very leg
+        # this cost gate exists to keep running. Recovery also errs toward
+        # rebuilding more (a dropped dep record reads as dirty), not less.
+        if grep -q 'premature end of file' <<<"$asan_dry"; then
+            echo "          note: ninja is recovering a truncated deps log in"
+            echo "          $asan_dir. Harmless (it rebuilds more, not less);"
+            echo "          'cmake --build $asan_dir --clean-first' clears it."
+        fi
+        # If the caller's timeout kills us anyway, mark the tree so the NEXT
+        # run refuses to trust an incremental build over a killed ninja.
+        trap 'touch "$asan_marker"
+              echo >&2
+              echo "pre-push: interrupted during the sanitizer build — $asan_dir" >&2
+              echo "          marked untrusted; the next run will say how to heal it." >&2
+              exit 143' TERM INT
+        if ! cmake --build "$asan_dir"; then
+            echo >&2
+            echo "pre-push: sanitizer build FAILED — push blocked." >&2
+            echo "          ('git push --no-verify' to override.)" >&2
+            exit 1
+        fi
+        if ! ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+             UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+             LC_ALL=C.UTF-8 ctest --test-dir "$asan_dir" -j2 --output-on-failure \
+                                  --timeout 300 -LE 'e2e|perf'; then
+            echo >&2
+            echo "pre-push: sanitized suite FAILED — push blocked." >&2
+            echo "          This is the class that reached CI as run 30587366963." >&2
+            echo "          ('git push --no-verify' to override.)" >&2
+            exit 1
+        fi
+        trap - TERM INT
     fi
 fi
 

@@ -360,6 +360,25 @@ const QRegularExpression &rxGenericArrow() {
     return rx;
 }
 
+// (4) ANTS-4090 — top-level data bindings: `const NAME =`, `let`, `var`, with
+// or without `export`. Rule (3) only catches the arrow-function form, and
+// rxGenericDecl lists `const` as a MODIFIER before a declaration keyword, so a
+// binding holding a template literal, object or string matched nothing — and in
+// a file that stores payloads that way those are its largest regions.
+//
+// Anchored at column 0 with NO leading-whitespace class (unlike rules 1–3):
+// indentation survives to the match here, and it is the only cheap signal a
+// line-based scanner has for "top level". Without it every local inside every
+// function body would be outlined. Captures name=group1.
+const QRegularExpression &rxGenericBinding() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^(?:export\s++)?(?:default\s++)?(?:const|let|var)\s++([A-Za-z_$][\w$]*)\s*=)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+
 // Map a brace-family extension to its precise language name for the response
 // `language` field (so the map reads "rust"/"typescript", not "generic").
 // Returns "" for an extension not in the generic family.
@@ -838,6 +857,14 @@ QJsonObject compute(const QString &absPath,
                 offer("func", m.captured(1), line);
             } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
                 offer("func", m.captured(1), line);
+            } else if ((m = rxGenericBinding().match(line)).hasMatch()) {
+                // ANTS-4090 — its own kind, so a caller can tell a data
+                // binding from a function. The signature stops at the `=`:
+                // the value may be a 95-line template literal whose first
+                // line would otherwise ride along in every outline response.
+                offer("const", m.captured(1),
+                      line.left(m.capturedEnd(0)).trimmed() +
+                          QStringLiteral(" …"));
             }
         }
     }

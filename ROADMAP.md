@@ -29831,7 +29831,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 Ants Projects Hub.
   Resolved (2026-08-11): apply_edits accepts old_string/new_string as aliases for old/new. Both the handler (remotecontrol_workspace.cpp cmdApplyEdits) and the declared schema — additionalProperties is false, so the aliases had to be declared or a call carrying them would be refused before the handler saw it, and `new` had to leave items.required for the same reason. Canonical old/new win if both spellings arrive. Suite green 3355/3355.
 
-- 📋 [ANTS-4090] **file_outline (JavaScript) omits top-level non-function const bindings, hiding a file's largest regions.**
+- ✅ [ANTS-4090] **file_outline (JavaScript) omits top-level non-function const bindings, hiding a file's largest regions.**
   The JS outline reports functions and arrow-function consts but not other
   top-level `const NAME = ...` bindings. In a file storing payloads in
   template literals (stylesheets, client scripts, SQL, HTML shells) those
@@ -29847,6 +29847,35 @@ defect from different angles.
   **Layman:** The cheap file map skips big blocks of code, so a quarter of the file looks empty.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Ants Projects Hub.
+  Resolved (2026-08-12): new `rxGenericBinding` in fileoutline.cpp emits a
+  top-level `const`/`let`/`var NAME =` (with or without `export`/`default`)
+  as its own kind, "const". Cause confirmed: rxGenericDecl lists `const`
+  only as a MODIFIER before a declaration keyword, and rxGenericArrow
+  requires `=>`, so a binding holding a template literal matched nothing.
+  INV-14 in mcp_file_outline/spec.md + McpFileOutline.Ants4090TopLevelBindings.
+
+  Two design points the report left open. The regex is anchored at column 0
+  with NO leading-whitespace class, unlike rules 1-3: indentation survives
+  to the match (only CRLF is stripped), and it is the only cheap top-level
+  signal a line-based scanner has — without it every local inside every
+  function body would be outlined. And the signature stops at the `=` plus
+  `…`, so neither a one-line payload nor a 95-line literal's opening rides
+  along in the response.
+
+  Bonus the report did not ask for: read_region's symbol mode ends an
+  unrecognised kind at the next symbol's line, so these regions are now
+  addressable by name — `read_region {symbol:"CSS"}` returns the literal
+  that was previously invisible.
+
+  Deliberately emitted for ALL top-level bindings, not only multi-line ones
+  as the report offered ("at least when the initialiser spans multiple
+  lines"): the multi-line test needs lookahead state for no gain, and a
+  top-level binding is a top-level symbol whether its value wraps or not.
+
+  Also fixed in passing: the file_outline schema still advertised
+  "Languages: cpp / py / md", which predated the whole brace family
+  (ANTS-2150 shipped rust/go/js/ts/java/csharp/kotlin/swift/scala/php/ruby).
+  It now lists them.
 
 - ✅ [ANTS-4091] **roadmap_query include_body's head+tail elision silently drops a bullet's middle, and max_body_bytes cannot rescue a list query.**
   ANTS-3736 made truncation keep the head plus the final ~1 KiB, tuned for
@@ -30756,7 +30785,7 @@ defect from different angles.
   substitution, the verbatim body and the ignored args. Tests:
   mcp_roadmap_log_pass_writer INV-17.
 
-- 📋 [ANTS-4118] **The pre-push gate's ASan leg outlives an agent's command timeout, so a push is killed mid-build rather than failing.**
+- ✅ [ANTS-4118] **The pre-push gate's ASan leg outlives an agent's command timeout, so a push is killed mid-build rather than failing.**
   Measured 2026-08-11 while shipping the ANTS-4111/4112/4113 batch. `git push`
   ran the hook's Release suite (green) and then began the incremental
   `build-asan` build; the harness command cap is 600 s and the push was SIGTERMed
@@ -30801,6 +30830,46 @@ defect from different angles.
   output file until the command ends, because `tail` buffers. A killed build and
   a build that never started are therefore indistinguishable from the task
   output, which is what sent the first two investigations down the wrong path.
+  Resolved (2026-08-12). All three fixes shipped, plus a new test:
+  tests/features/prepush_asan_gate (7 invariants, registered as a ctest).
+
+  (a) The hatch is now named BEFORE the leg starts, in the branch that runs
+  it — it used to appear only in the skip branch, so a caller learned it
+  existed only after already using it. (b) A SIGTERM/INT trap writes
+  <asan_dir>/.ants-prepush-interrupted; the next run skips and prints one
+  command that both heals the tree and clears the marker. (c) The leg is
+  cost-gated on `ninja -n` pending edges (ANTS_PREPUSH_ASAN_MAX_EDGES,
+  default 25) — a cold or stale tree is refused with the edge count rather
+  than started and killed. The 25 is reasoned, not measured: ~300 s of the
+  600 s cap is left after the Release suite and the sanitized ctest, at
+  ~10-15 s per Debug+ASan TU.
+
+  Two things the implementation found that the report did not, both from
+  running the real dry run instead of trusting the design:
+
+  1. `[0/1] Re-running CMake...` HIDES every real edge behind it, so a
+  changed CMakeLists.txt reads as one cheap edge for what may be a full
+  rebuild. The first version of my own gate would have sailed straight into
+  the timeout it was written to prevent. Now treated as unmeasurable.
+
+  2. ninja's "premature end of file; recovering" on the deps log is NOT a
+  usable signal, and an earlier draft skipped the leg on it. Measured here:
+  the warning SURVIVED a full `cmake --build build-asan --clean-first`, so
+  it describes the on-disk log, not the run — a gate keyed to it would never
+  clear, permanently disabling the leg this feature exists to keep running.
+  Recovery also errs toward rebuilding more (a dropped dep record reads as
+  dirty). It is now reported and proceeded past.
+
+  The two open facts this bullet asked to check: c13f9e98's CI run is green
+  (build-asan included). 7497271e has NO CI run at all — a batched push
+  creates one run for the push TIP only, so intermediate commits never get
+  their own. Its sanitizer coverage came from the later tip's run, not its
+  own. The local build-asan tree was healed with a clean build today.
+
+  NOT done: no auto-heal inside the hook — a clean ASan build is ~20 minutes,
+  exactly what a pre-push hook must never do; it prints the command instead.
+  tools/ci-parity.sh is untouched (it is the deliberate, complete mirror and
+  has no timeout to respect).
 
 - ✅ [ANTS-4123] **remotecontrol_feedback.cpp includes roadmapstore.h without naming RoadmapStore.**
   clangd's unused-includes check flags `src/remotecontrol_feedback.cpp:14`.

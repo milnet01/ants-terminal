@@ -521,6 +521,78 @@ TEST(McpFileOutline, BraceFamilyGenericOutline) {
     EXPECT_TRUE(hasName(rb, "valid?"))         << "ruby predicate-method name not outlined";
 }
 
+// ANTS-4090 — a top-level `const NAME = …` that is NOT an arrow function was
+// invisible to the generic scanner: rxGenericDecl lists `const` only as a
+// MODIFIER before a declaration keyword, and rxGenericArrow requires `=>`. In a
+// file that stores payloads in template literals those bindings are the largest
+// regions, so the outline showed a hole exactly where the content is (reporter:
+// stats.mjs, 1006 lines, the outline jumping 685 → 933 across a 95-line CSS
+// literal and a 110-line client-script one).
+TEST(McpFileOutline, Ants4090TopLevelBindings) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    const QString path = tmp.path() + QStringLiteral("/stats.mjs");
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+    f.write(
+        "import { readFile } from 'node:fs/promises';\n"
+        "const CSS = `\n"
+        "  body { color: red; }\n"
+        "`;\n"
+        "export const CLIENT_JS = `\n"
+        "  console.log(1);\n"
+        "`;\n"
+        "let mutableTotal = 0;\n"
+        "const SQL = 'SELECT id, name, created_at FROM runs ORDER BY id DESC';\n"
+        "export const handler = (req) => {\n"
+        "  const localOnly = compute();\n"
+        "  return localOnly;\n"
+        "};\n"
+        "function sortRows(a) { return a; }\n");
+    f.close();
+
+    const QJsonObject js = FileOutline::compute(path, FileOutline::Mode::Auto,
+                                                /*includeDocComment=*/false,
+                                                /*maxSymbols=*/100);
+    auto sym = [&](const char *n) {
+        for (const auto &v : js.value("symbols").toArray()) {
+            const QJsonObject o = v.toObject();
+            if (o.value("name").toString() == QLatin1String(n)) return o;
+        }
+        return QJsonObject();
+    };
+
+    EXPECT_EQ(js.value("language").toString().toStdString(), "javascript");
+    EXPECT_FALSE(sym("CSS").isEmpty())
+        << "a top-level const holding a template literal must be outlined";
+    EXPECT_FALSE(sym("CLIENT_JS").isEmpty()) << "`export const` must be outlined";
+    EXPECT_FALSE(sym("mutableTotal").isEmpty()) << "top-level `let` must be outlined";
+
+    // The existing rules keep precedence: an arrow assignment is still a func,
+    // and a function declaration is untouched.
+    EXPECT_EQ(sym("handler").value("kind").toString().toStdString(), "func")
+        << "the arrow rule must still win over the new binding rule";
+    EXPECT_FALSE(sym("sortRows").isEmpty());
+
+    // Its own kind, so a caller can tell a data binding from a function.
+    EXPECT_EQ(sym("CSS").value("kind").toString().toStdString(), "const");
+
+    // Indentation is the top-level discriminator: a local inside a function
+    // body must not reach the outline, or every JS file becomes noise.
+    EXPECT_TRUE(sym("localOnly").isEmpty())
+        << "an indented local binding must stay out of the outline";
+
+    // The signature stops at the assignment — otherwise a one-line payload
+    // (or the head of a 95-line literal) lands in every outline response.
+    const QString sqlSig = sym("SQL").value("signature").toString();
+    EXPECT_TRUE(sqlSig.contains(QStringLiteral("SQL")))
+        << "signature must still name the binding (got: " << sqlSig.toStdString() << ")";
+    EXPECT_FALSE(sqlSig.contains(QStringLiteral("SELECT")))
+        << "signature must be truncated at the assignment, not carry the value";
+}
+
 // INV-10 — non-existent path returns the not_found code without
 // crashing.
 TEST(McpFileOutline, NotFoundPath) {

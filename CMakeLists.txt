@@ -1049,6 +1049,16 @@ if(ANTS_TESTS)
         LABELS "audit;fast"
         TIMEOUT 30)
 
+    # ANTS-4118 — the pre-push hook's build-asan cost gate (cold-tree refusal,
+    # interrupt marker, hatch announcement). Drives the real hook with stubbed
+    # ctest/cmake/ninja; see tests/features/prepush_asan_gate/spec.md.
+    add_test(NAME prepush_asan_gate
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/prepush_asan_gate/test_prepush_asan_gate.sh")
+    set_tests_properties(prepush_asan_gate PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        ENVIRONMENT "PREPUSH_HOOK=${CMAKE_CURRENT_SOURCE_DIR}/tools/hooks/pre-push")
+
     add_test(NAME claude_git_context_script
              COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/claude_git_context_hook/test_script.sh")
     set_tests_properties(claude_git_context_script PROPERTIES
