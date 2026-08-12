@@ -13,6 +13,15 @@ the rule simply absent for them (ANTS-4133). **Do not edit a mirrored half** —
 a correction goes upstream, then `tools/check-standard-mirrors.sh --write`
 re-copies it down.
 
+**A link inside a mirrored half points at the owner's siblings, not at this
+folder's.** Five do not resolve here at all — `releases.md`,
+`spec-format.md`, `changelog-format.md` and
+`skeletons/standard-skeleton.md` are global files this repo does not carry —
+and one, `README.md`, resolves to *this* index rather than the global one it
+means. That is the same gap one hop out, tracked as ANTS-4138; it cannot be
+fixed by editing the mirror, since a mirror that differs from its owner is
+what the gate exists to refuse.
+
 That arrangement dates from 2026-08-12. Until then these were verbatim
 `/start-app` copies kept in sync by discipline, with nothing checking them.
 When they were finally reconciled all four had drifted, and three instructed

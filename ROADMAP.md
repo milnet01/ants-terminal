@@ -31764,6 +31764,24 @@ defect from different angles.
   **Layman:** We copied the four main rulebooks into the public repo, but they refer to four more rulebooks that are still only on my home drive.
   Kind: doc.
   Source: in-session-2026-08-12 (ANTS-4133 implementation).
+  Measured (2026-08-12), after ANTS-4133 landed. The gap is not only prose
+  pointers — the mirrored bodies carry ten markdown links, and five of them now
+  404 for a reader on GitHub: `releases.md` (twice, from commits.md),
+  `spec-format.md` and `skeletons/standard-skeleton.md` (documentation.md), and
+  `changelog-format.md` (documentation.md, whose own delta already notes this
+  project has no such file). A sixth, `README.md` in coding.md's mirror,
+  resolves — to `docs/standards/README.md`, which is this project's index and
+  not the global one the sentence means, so it is wrong in the way a broken
+  link is not: it looks fine.
+
+  `testing.md`, `coding.md` and `roadmap-format.md` land on the project files
+  of the same name, which is close enough to right to leave alone.
+
+  This cannot be fixed by editing a mirror — a mirror that differs from its
+  owner is exactly what the pre-commit gate refuses. The fixes available are:
+  mirror those owners too (the marker mechanism already generalises), or leave
+  them and say so. Said so for now in docs/standards/README.md, which is the
+  one place describing the arrangement.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
