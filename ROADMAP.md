@@ -29923,7 +29923,7 @@ defect from different angles.
   case is now the positive one; that test and its spec bullet were updated
   rather than left to fail. Test: project_settings_verb INV-21.
 
-- 📋 [ANTS-4094] **audit_run's cppcheck parses C++ translation units as C, so a .cpp file gets zero coverage while reporting one syntax error.**
+- ✅ [ANTS-4094] **audit_run's cppcheck parses C++ translation units as C, so a .cpp file gets zero coverage while reporting one syntax error.**
   On a mixed C/C++ project, audit_run analysed a 10,386-line r_vulkan.cpp
   as C: one syntaxError, zero findings. Distinct from the parse-failure
   REPORTING of ANTS-3585/3706, which worked and is how it was noticed.
@@ -29944,6 +29944,46 @@ defect from different angles.
   **Layman:** The bug scanner reads C++ files as if they were C, finds nothing in them, and the report still looks thorough.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 DOOM Ants.
+  Resolved (2026-08-12): cppcheck's `--library=qt` is now gated on the new
+  AuditEngine::projectUsesQt(projectRoot) instead of being hardcoded into
+  the headless argv. Follow-up ANTS-4124 files the GUI's now-duplicate
+  inline detector.
+
+  The reported cause was wrong, and so was the reported remedy. This is
+  not a C-vs-C++ language problem. Reproduced on the reporter's own file:
+
+    cppcheck --library=qt --enable=all --std=c++20 -I . r_vulkan.cpp
+        -> 1 syntaxError at 7091, zero coverage
+    same command without --library=qt
+        -> 0 syntaxErrors, 59 findings
+
+  Line 7091 is `emit.push_back(...)`. `--library=qt` teaches cppcheck that
+  `emit` / `signals` / `slots` are Qt keywords, so an ordinary identifier
+  with that name fails the parse and the whole TU is lost. audit_run
+  passed the flag to every project because Ants itself is a Qt app. The
+  "Code 'std::vector' is invalid C code" message in the report came from
+  the reporter's own --language=c experiment, not from audit_run.
+
+  Both proposed fixes were therefore NOT implemented, because both rest on
+  that wrong cause and neither would have helped:
+    (a) "stop passing a project-wide --language" -- no --language flag
+        exists anywhere in src/; nothing was passing one. Verified that
+        audit_run's argv parses .cpp as C++ and .c as C correctly on
+        cppcheck 2.21, on both the compile-DB and directory-scan paths.
+    (b) "support --project=compile_commands.json" -- already shipped in
+        ANTS-2182 and exercised on every full run when a DB exists. The
+        report's "audit_run currently cannot consume such a database" is
+        false. DOOM_Ants simply has no compile_commands.json, so it took
+        the documented fallback.
+
+  Detection is CMakeLists Qt marker, else Q_OBJECT in an early header,
+  mirroring the dialog's gate (auditdialog.cpp `qtLib`) and adding a
+  flat-layout fallback so a project with no src/ is still scanned. Ants
+  itself still gets --library=qt, asserted rather than assumed.
+
+  Tests: mcp_audit_run Ants4094QtLibraryFlagGatedOnQtProject (both
+  directions), Ants4094QtDetectedViaQObjectHeader,
+  Ants4094QtDetectionHandlesFlatLayout. Suite 3373/3373.
 
 - ✅ [ANTS-4095] **indie_review_corroborate reads N report files and parses 0 findings from all of them (total_input_bytes:0).**
   Pointed at 14 lane reports totalling ~86 KB, the verb returned
@@ -30725,6 +30765,30 @@ defect from different angles.
   **Layman:** A leftover "include" line at the top of one source file pulls in code the file never uses.
   Kind: chore.
   Source: in-session-2026-08-12 (clangd diagnostic while shipping ANTS-4114).
+
+- 📋 [ANTS-4124] **AuditDialog still carries its own inline Qt detection alongside AuditEngine::projectUsesQt.**
+  ANTS-4094 added AuditEngine::projectUsesQt() because the headless
+  audit_run argv hardcoded --library=qt while the GUI gated it. The GUI's
+  gate is the inline block at auditdialog.cpp:279-301 (CMakeLists Qt
+  marker, then a Q_OBJECT scan over src/), which now duplicates the shared
+  helper almost line for line.
+
+  Two copies of this predicate is exactly the drift that produced
+  ANTS-4094 in the first place, and auditdialog.cpp:61 already states the
+  no-drift principle for its find / grep / trivy / cppcheck / FeatureCoverage
+  copies.
+
+  Not folded into ANTS-4094 deliberately: the GUI's copy is CORRECT (it
+  gates properly), so changing it is orthogonal to that fix per global
+  CLAUDE.md rule 11. It is also not a pure substitution — the GUI's local
+  `isQt` also feeds `m_detectedTypes << "Qt"`, and the shared helper adds a
+  flat-layout fallback (scan the project root when src/ is absent) that the
+  GUI copy lacks, so adopting it would change GUI detection for flat-layout
+  Qt projects. That change is desirable but should be made deliberately,
+  with the dialog's detection block tested, not as a side effect.
+  **Layman:** Two separate bits of code decide "is this a Qt project?" — they can drift apart, which is what caused the bug they were just added to fix.
+  Kind: refactor.
+  Source: in-session-2026-08-12 (ANTS-4094 follow-up).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

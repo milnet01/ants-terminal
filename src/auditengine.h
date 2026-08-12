@@ -339,6 +339,15 @@ QString resolveCompileCommands(const QString &projectRoot);
 // of this), so a new build-preset name is added in exactly one place.
 QString resolveBuildDir(const QString &projectRoot);
 
+// ANTS-4094 — does this project use Qt? Decides whether cppcheck may be
+// given `--library=qt`, which teaches it that `emit` / `signals` / `slots`
+// are Qt keywords. That is required on a Qt codebase and actively harmful
+// off one: a non-Qt project with an ordinary identifier named `emit` fails
+// to parse the whole translation unit, losing all coverage for it.
+// Two signals, cheapest first: a Qt marker in CMakeLists.txt, else Q_OBJECT
+// in an early header under src/ (or the project root on a flat layout).
+bool projectUsesQt(const QString &projectRoot);
+
 // ANTS-1254 — wire-shape view of a single SARIF finding for the
 // last_audit_summary MCP tool. Distinct from `Finding` (the audit
 // dialog's in-memory parse target) because the wire needs the

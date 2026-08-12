@@ -458,8 +458,17 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
         // categories that flood the MCP audit path (missingIncludeSystem
         // etc.) — mirrors the in-app AuditDialog suppress set, and is the
         // no-compile-DB fallback that keeps the result usable without one.
-        QStringList args = {QStringLiteral("--library=qt"),
-                            QStringLiteral("--enable=all"),
+        // ANTS-4094 — `--library=qt` is gated on the project actually being
+        // Qt. It teaches cppcheck that `emit` / `signals` / `slots` are
+        // keywords: required on a Qt codebase, and destructive off one, where
+        // an ordinary identifier named `emit` fails the parse and the entire
+        // translation unit silently loses coverage while the sweep still
+        // reports a clean-looking total. The in-app dialog has always gated
+        // it (auditdialog.cpp `qtLib`); only this headless argv hardcoded it.
+        QStringList args;
+        if (AuditEngine::projectUsesQt(projectRoot))
+            args += QStringLiteral("--library=qt");
+        args += {QStringLiteral("--enable=all"),
                             QStringLiteral("--std=c++20"),
                             QStringLiteral("--quiet"),
                             QStringLiteral("--inline-suppr"),

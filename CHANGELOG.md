@@ -86,6 +86,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The bug scanner no longer goes blind on non-Qt C++ projects** (ANTS-4094)
+  Ants told the scanner to expect Qt code, always — because Ants itself is
+  a Qt app. On a project that isn't, that setting makes the scanner treat
+  the word `emit` as special. Any file using `emit` as an ordinary variable
+  name then failed to read at all, so the scanner found nothing in it and
+  the report still looked complete. One real project lost every finding in
+  its largest file this way: 10,000 lines, zero results. It now reports 59.
+
+  Ants now checks whether a project actually uses Qt before turning that
+  setting on, so Qt projects keep the Qt-aware scan and everyone else stops
+  losing whole files.
+
 - **The audit's changelog-coverage check now recognises tests linked by ticket number** (ANTS-4099)
   On a project that ties each release note to its tests by ticket number,
   every entry was reported as untested even though all of them had tests.

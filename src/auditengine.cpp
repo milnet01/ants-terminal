@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -209,6 +210,38 @@ QString resolveBuildDir(const QString &projectRoot) {
         if (QFileInfo::exists(db)) return d;
     }
     return QString();
+}
+
+bool projectUsesQt(const QString &projectRoot) {
+    // Signal 1 — a Qt marker in the build file. Cheapest, and definitive for
+    // a CMake project.
+    QFile cmake(projectRoot + QStringLiteral("/CMakeLists.txt"));
+    if (cmake.open(QIODevice::ReadOnly)) {
+        const QByteArray head = cmake.read(4096);
+        if (head.contains("find_package(Qt6") || head.contains("find_package(Qt5")
+            || head.contains("Qt6::") || head.contains("Qt5::"))
+            return true;
+    }
+    // Signal 2 — Q_OBJECT in an early header, for a qmake / Meson / hand-rolled
+    // Qt build carrying no CMake marker. Scans src/ when it exists, else the
+    // project root: a flat-layout project has no src/, and that is exactly the
+    // shape the src/-only scan could never detect. Capped — this runs once per
+    // audit and one match settles it.
+    const QString headerRoot =
+        QFileInfo(projectRoot + QStringLiteral("/src")).isDir()
+            ? projectRoot + QStringLiteral("/src")
+            : projectRoot;
+    QDirIterator it(headerRoot,
+                    {QStringLiteral("*.h"), QStringLiteral("*.hpp")},
+                    QDir::Files);
+    int scanned = 0;
+    while (it.hasNext() && scanned < 30) {
+        QFile hf(it.next());
+        ++scanned;
+        if (!hf.open(QIODevice::ReadOnly)) continue;
+        if (hf.read(2048).contains("Q_OBJECT")) return true;
+    }
+    return false;
 }
 
 QString resolveCompileCommands(const QString &projectRoot) {

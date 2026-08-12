@@ -610,6 +610,69 @@ TEST(mcp_audit_run, Ants3710CppcheckKeepsNoDefaultExclusions) {
         << "no caller exclusions ⇒ cppcheck argv unchanged";
 }
 
+// ──────────────────────────────────────── ANTS-4094 ──
+// `--library=qt` teaches cppcheck that `emit` is a Qt keyword. On a project
+// that is not Qt, an ordinary identifier called `emit` (or signals / slots /
+// foreach) then fails to parse, and the WHOLE translation unit gets zero
+// coverage — surfacing as one syntaxError while the sweep still looks
+// complete. The in-app dialog gates the flag on Qt detection; the headless
+// argv hardcoded it, so every non-Qt project paid for Ants being a Qt app.
+namespace {
+void writeProjectFile(const QString &path, const QByteArray &body) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+    f.write(body);
+}
+}  // namespace
+
+TEST(mcp_audit_run, Ants4094QtLibraryFlagGatedOnQtProject) {
+    QTemporaryDir qtProj;
+    QTemporaryDir plainProj;
+    ASSERT_TRUE(qtProj.isValid());
+    ASSERT_TRUE(plainProj.isValid());
+
+    writeProjectFile(qtProj.path() + QStringLiteral("/CMakeLists.txt"),
+                     "project(app)\nfind_package(Qt6 REQUIRED COMPONENTS Core)\n");
+    // The DOOM shape: C/C++, no Qt anywhere, and an identifier named `emit`.
+    writeProjectFile(plainProj.path() + QStringLiteral("/CMakeLists.txt"),
+                     "project(doom)\nadd_executable(doom r_vulkan.cpp)\n");
+    writeProjectFile(plainProj.path() + QStringLiteral("/r_vulkan.cpp"),
+                     "#include <vector>\nvoid f(){std::vector<float> emit;"
+                     "emit.push_back(1.f);}\n");
+
+    EXPECT_TRUE(AuditEngine::projectUsesQt(qtProj.path()));
+    EXPECT_FALSE(AuditEngine::projectUsesQt(plainProj.path()));
+
+    EXPECT_TRUE(AuditRunner::internal::toolArgv("cppcheck", qtProj.path(), {})
+                    .contains(QStringLiteral("--library=qt")))
+        << "a Qt project still gets the Qt-aware parse";
+    EXPECT_FALSE(AuditRunner::internal::toolArgv("cppcheck", plainProj.path(), {})
+                     .contains(QStringLiteral("--library=qt")))
+        << "a non-Qt project must not have `emit` treated as a Qt keyword";
+}
+
+// Fallback signal: a Qt project whose build file carries no Qt marker
+// (qmake, Meson, hand-rolled) is still detected via Q_OBJECT in a header.
+TEST(mcp_audit_run, Ants4094QtDetectedViaQObjectHeader) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    writeProjectFile(d.path() + QStringLiteral("/src/widget.h"),
+                     "class W : public QWidget { Q_OBJECT\npublic: W(); };\n");
+    EXPECT_TRUE(AuditEngine::projectUsesQt(d.path()));
+}
+
+// Flat-layout projects have no src/ — the header scan must still find the
+// marker at the project root, or every qmake-style flat Qt project silently
+// loses the Qt-aware parse.
+TEST(mcp_audit_run, Ants4094QtDetectionHandlesFlatLayout) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    writeProjectFile(d.path() + QStringLiteral("/mainwindow.h"),
+                     "class M : public QMainWindow { Q_OBJECT\n};\n");
+    EXPECT_TRUE(AuditEngine::projectUsesQt(d.path()));
+}
+
 // ─────────────────────────────────────────── ANTS-3395 ──
 // A JSON tool's progress bar / log noise must not be parsed as findings.
 // bandit emits its Rich progress bar to stderr; merged after the JSON it
