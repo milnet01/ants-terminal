@@ -1,6 +1,13 @@
 # ANTS-4108 — run a spec's own patterns against the examples beside them
 
-**Status:** spec draft (2026-08-12).
+**Status:** accepted (2026-08-12) — 26 findings verified and fixed across
+three cold review loops; the gate hit its 3-loop cap **without a clean
+pass**, so this is accepted-with-caveat, not converged. Review closed in
+favour of building test-first (§ 10 carries the evidence and the reasoning).
+§ 1, § 2.1, § 2.2, § 5 and § 6 are settled and produced no findings after
+loop 1. **Treat § 2.3–§ 2.6 as provisional** — the envelope and extraction
+taxonomy were still being designed inside the review, and the first
+fixtures should be trusted over the prose where they disagree.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-4108 (cross-session-feedback-2026-08-11, Local
 Web Server Manager).
@@ -121,10 +128,18 @@ ANTS-4127.
   "etag": "<hex>" }
 ```
 
-**`line` is the expectation ROW's line** on a `findings[]` entry and on a
-per-row refusal, since that is the line an author must edit. It is the
-**fence's opening line** on a `candidates[]` entry and on a pattern-cap
-refusal, because neither has a row to point at.
+**`line` is always the line an author must edit**, which resolves it for
+every bucket without a second rule:
+
+| Entry | `line` |
+|---|---|
+| `findings[]`, `observations[]`, a per-row refusal (`too_large` on an input) | the expectation ROW |
+| `candidates[]` kind `malformed_expectation_cell` | the offending ROW |
+| `candidates[]` kinds `pattern_without_expectation` / `engine_not_declared`, and a fence-level refusal (`unsupported_engine`, `too_large` on a pattern) | the FENCE's opening line |
+
+`observations[]` carries **one entry per case**, on the same line as the
+finding it would have produced — a per-fence timing could not attribute a
+slow row.
 
 Conforms to [`docs/standards/mcp-tools.md`](../standards/mcp-tools.md) —
 response-wrap, `caller_cwd` + `CallerCwdContract`, path validation under the
@@ -151,6 +166,12 @@ the same section, so that authoring one is a local act:
 
 - The fence's **info string declares the engine** (`regex pcre2`). A fence
   tagged `regex` with no engine is a CANDIDATE, never a guess (§ 2.5).
+- **Only TOP-LEVEL fences are scanned.** The extractor tracks fence nesting
+  and never descends into a fence opened by a longer delimiter. The example
+  immediately below is the reason: it is a four-backtick `markdown` fence
+  *containing* a `regex pcre2` fence and its table, so a naive line scan
+  would extract three cases from this spec's own illustration and report
+  any deliberately-wrong example as a real FINDING.
 - The expectation table is the **first** GFM table after the fence with
   exactly the columns `input` and `expected`, before the next fence or
   heading. Anything else is not an expectation table.
@@ -163,11 +184,27 @@ the same section, so that authoring one is a local act:
   Otherwise a pattern expected to match that text could not be written.
   Backticks are stripped after, so a literal can carry leading or trailing
   spaces visibly.
-- **The empty result has an encoding, because INV-3 turns on it.** An empty
-  backtick pair (`` `` ``) means *matched, captured the empty string*. A
-  bare empty cell is malformed and yields a CANDIDATE, never a silent
-  reading of either. Without this rule "matched but captured nothing" and
-  "did not match" are indistinguishable in the table.
+- **There are THREE outcomes, not two, because INV-3 turns on telling them
+  apart.** Qt returns a *null* string for a capture group that did not
+  participate and an *empty* one for a group that participated and matched
+  nothing, so a two-way encoding collapses two different states:
+
+  | Outcome | Written as |
+  |---|---|
+  | the pattern did not match | `no match` |
+  | matched; group 1 did not participate (e.g. `a(b)?` on `a`) | `no capture` |
+  | matched; group 1 captured the empty string (e.g. `a(b*)` on `a`) | an empty backtick pair `` `` `` |
+
+  A bare empty cell is malformed and yields a CANDIDATE, never a silent
+  reading of any of the three.
+
+  **Discriminate with `QRegularExpressionMatch::hasCaptured(1)`
+  (`qregularexpression.h:232`), never by comparing the captured string.**
+  Qt returns a null `QString` for a non-participating group and an empty
+  one for a zero-length capture, and `QString() == QString("")` is **true**
+  — so an implementer reaching for `==` or `isEmpty()` collapses rows two
+  and three of that table and INV-3 fails for a reason the encoding cannot
+  express.
 
 ### 2.5 Result taxonomy
 
@@ -184,14 +221,23 @@ table), `engine_not_declared` (a bare ` ```regex ` fence), and
 them loses the distinction between "nobody stated an expectation" and
 "the table is broken".
 
-CANDIDATEs are the verb's answer to the defects it cannot execute: it
-cannot tell whether a fixture is reachable, but it can say **nobody stated
-what this pattern should do**, which is what produced two of the reported
-defects.
+A CANDIDATE says **nobody stated what this pattern should do**. Its scope
+is a `regex` fence and nothing else — it is not a partial answer to the
+fixture defects, which § 2.2 states this verb does not surface at all.
 
-**A refusal is PER CASE, never per call.** An unsupported engine or an
-over-cap pattern adds a row to `refusals[]` and the run continues; the
-other cases in the file still produce their findings. Only a malformed
+**A refusal is PER CASE, and per FENCE where the fence yields no case.**
+An engine or pattern defect is a property of the fence, so it emits **one**
+refusal row however many expectation rows sit beneath it — including zero,
+which is how INV-5's table-less `regex python` fixture emits a refusal with
+no case at all. An input defect is a property of one row and emits one row.
+**A case emits at most one refusal**, under this precedence: engine →
+pattern cap → expectation table → input cap. Without the order, a
+`regex python` fence carrying a 600-byte pattern satisfies both
+`unsupported_engine` and `too_large`, and a fixture asserting
+`refusals[0].code` is green or red by build order.
+
+The run continues either way; the other cases in the file still produce
+their findings. Only a malformed
 *request* — an unreadable `path`, a `max_cases` outside its range — refuses
 the whole call. The alternative was tried on paper and rejected: a
 corpus-wide sweep in which one stray fence blinds an entire file is a sweep
@@ -216,10 +262,11 @@ so a rule that refused them would refuse nearly every real document.
 taxonomy's existing `unsupported_format`. The cap refusal reuses `too_large`
 rather than minting a second (INV-7).
 
-**The engine check runs BEFORE the expectation-table check**, so a
-`regex python` fence with no table is a refusal and never also a candidate.
-Without that order an unsupported-engine fence satisfies INV-4's
-description and INV-5's at once, and both are buildable.
+The check precedence that keeps an unsupported-engine fence from also
+counting as a candidate is stated once, in § 2.5. **A fence yields at most
+one candidate** under that same order: a bare ` ```regex ` fence with no
+table is `engine_not_declared`, and the table check is never reached — so
+it is one candidate, not two.
 
 **A substitute engine is worse than no engine.** The two agree on the
 reported case — verified, not assumed: `python3 -c "import re;
@@ -287,21 +334,21 @@ row is deliberately `nothing` in § 8.
   uses an anchored match rather than a search, which makes the defect that
   motivated this verb invisible to it.
 - **INV-3** — `expected: no match` is satisfied only by zero matches.
-  *Test:* two rows, and the second is the one that matters. (a) A row
-  expecting `no match` against a pattern that matches non-emptily is
-  reported as a finding. (b) A pattern with an **optional** capture group
-  that matches while capturing nothing, against a row whose `expected` is
-  the empty-backtick encoding (§ 2.4), is NOT reported — and the same case
-  against `no match` IS. *Breaks when:* an empty capture group is conflated
-  with no match. Row (a) alone cannot catch that, because it never produces
-  an empty capture — the clause would name a break its own test could not
-  reach.
+  *Test:* three rows, one per § 2.4 outcome, and the last two are the ones
+  that matter. (a) `no match` against a pattern that matches non-emptily is
+  reported as a finding. (b) `a(b*)` against input `a` — group 1
+  participates and captures the empty string — is NOT reported against an
+  empty backtick pair, and IS reported against `no match`. (c) `a(b)?`
+  against input `a` — group 1 does not participate — is NOT reported
+  against `no capture`, and IS reported against the empty backtick pair.
+  *Breaks when:* any two of the three outcomes are conflated. Row (a) alone
+  reaches none of that, and (b) alone cannot separate a null capture from an
+  empty one — which is the distinction Qt actually returns.
 - **INV-4** — a fence with a declared engine and NO expectation table is a
   CANDIDATE, never silently dropped and never a finding. *Test:* fixture
   with a bare `regex pcre2` fence asserts one candidate, zero findings.
   *Breaks when:* extraction requires a table to emit anything, which makes
-  an unchecked pattern indistinguishable from an absent one — the state that
-  produced two of the four reported defects.
+  an unchecked pattern indistinguishable from an absent one.
 - **INV-5** — an unrecognised engine tag is refused `unsupported_engine`
   and no pattern is run under a substitute; the refusal is per case.
   *Test:* two fixtures. One containing **only** a `regex python` fence
@@ -337,12 +384,15 @@ row is deliberately `nothing` in § 8.
   asserting zero hits. *Breaks when:* Python support (§ 6) is added here
   instead of behind its own decision.
   **Scope, and it is the whole point of the clause:** the grep covers the
-  new engine only, NOT the shared TUs § 2.7 also lists. `src/mainwindow.cpp`
-  and `src/claudeintegration.cpp` already carry 35 and 6 hits between them
-  for dozens of unrelated verbs (`grep -cE '<tokens>' src/mainwindow.cpp`
-  → 35), so a scrape over "every file § 2.7 names" asserts zero where 41
-  exist — red for every possible implementation, and therefore falsifying
-  nothing. `\b` on `QProcess` keeps `QProcessEnvironment` from counting.
+  new engine only, NOT the shared TUs § 2.7 also lists. Under the regex
+  above, `grep -cE` (matching **lines**) returns 33 for
+  `src/mainwindow.cpp`, 1 for `src/claudeintegration.cpp` and 0 for
+  `src/remotecontrol_docs.cpp` — 34 lines already there for unrelated
+  verbs. A scrape over "every file § 2.7 names" would assert zero against
+  those 34: red for every possible implementation, and therefore falsifying
+  nothing. `\b` on `QProcess` keeps `QProcessEnvironment` from counting,
+  which is most of the difference between this figure and the same grep
+  without it.
 - **INV-9** — two runs over an unchanged file return envelopes that are
   byte-identical **except for `observations`**, and a matching `etag_match`
   short-circuits. *Test:* run twice, compare the serialised envelope with
@@ -411,7 +461,7 @@ project test convention.
 | Invariant | Checked by |
 |---|---|
 | INV-1..7, INV-9 | `tests/features/spec_conformance/` |
-| INV-8 | source-grep for the seven subprocess/interpreter tokens over `src/specconformance.{h,cpp}` only — the shared TUs already carry 41 such hits for other verbs |
+| INV-8 | source-grep for the seven subprocess/interpreter tokens over `src/specconformance.{h,cpp}` only — the shared TUs already carry 34 such lines for other verbs |
 | A pattern's engine matching the one its artefact will really run under | **nothing** — the fence tag is the author's claim, and no check ties it to the consuming code |
 | A catastrophic pattern within the caps | **nothing** — § 2.8, no interruption exists |
 | Whether an expectation row states the *right* expectation | **nothing** — a wrong expectation and a wrong pattern are indistinguishable from inside |
@@ -435,6 +485,7 @@ its stated example agree, never that either is what the author meant.
 |---|---|---|---|---|---|---|---|
 | 1 | 2 cold, spec genre | 1 | 4 | 2 | 2 | 9 / 0 | all fixed |
 | 2 | 2 cold, spec genre | 0 | 2 | 4 | 2 | 8 / 0 | all fixed |
+| 3 | 2 cold, spec genre | 1 | 2 | 6 | 0 | 9 / 0 | all fixed; **cap reached, not converged** |
 
 **Loop 1 (2026-08-12).** Both lanes independently found the same five
 defects, which is what two rolls of a cold read are for.
@@ -517,3 +568,55 @@ tightened to the three header lines that show it.
 Lane spend: 108.5k and 105.1k input tokens. Document grew 394 → 479 lines
 across the fix pass, which is the cost this review's consolidation rule
 exists to watch.
+
+**Loop 3 (2026-08-12) — the cap. Nine findings, all fixed, NOT converged.**
+
+- **[Q1]** Both lanes caught the same thing, and it is loop 2's own: the
+  INV-8 scope paragraph cited "35 and 6 hits … 41" while prescribing a
+  `\b`-anchored regex. Under the regex it actually prescribes the figures
+  are 33, 1 and 0 — 34 lines. The paragraph measured one regex and
+  prescribed another, **and its own closing sentence about `\b` excluding
+  `QProcessEnvironment` was the proof**. Corrected in both places.
+- **[Q2]** § 2.2's loop-2 rewrite ("surfaces none of the others") left
+  § 2.5 and INV-4 still crediting CANDIDATEs with "two of the four reported
+  defects". Deleted rather than reconciled.
+- **[Q2]** The `line` rule sent every candidate to the fence's line, but
+  `malformed_expectation_cell` has a row to point at. Replaced with a table
+  covering all five entry kinds.
+- **[Q3]** A refusal was "per case", but INV-5's fixture is a fence with
+  **zero** cases — so its own asserted `refusals[0]` had no case to attach
+  to. Now per case, and per fence where the fence yields none.
+- **[Q3]** Only one ordering rule existed (engine before table), leaving a
+  `regex python` fence with a 600-byte pattern satisfying two codes at once.
+  Full precedence stated: engine → pattern cap → table → input cap, at most
+  one refusal per case.
+- **[Q3]** A bare ` ```regex ` fence with no table satisfied two candidate
+  kinds; now at most one candidate per fence, engine check winning.
+- **[Q3]** `observations[]` had no cardinality and no `line` rule.
+- **[Q3]** The empty-capture encoding conflated a *non-participating* group
+  with a *zero-length* one. Qt distinguishes them, but `QString() ==
+  QString("")` is **true**, so the spec now names
+  `QRegularExpressionMatch::hasCaptured(1)` as the discriminator — an
+  implementer reaching for `==` would have collapsed two of the three
+  outcomes INV-3 exists to separate.
+- **[Q3]** Fence **nesting** was never specified, and § 2.4's own worked
+  example is a four-backtick `markdown` fence containing a `regex` fence:
+  a naive scanner run on this very spec would extract three cases from an
+  illustration. Only top-level fences are scanned.
+
+**Why the cap bound, since that is evidence about this document.** Not
+size: 30,930 bytes against a corpus median of 20,676 and a 90th percentile
+of 55,794 (`ls -l docs/specs/*.md`), and the two specs that needed nine and
+eleven loops were over a thousand lines. The cause is that **the response
+envelope and extraction taxonomy were being designed inside the review**.
+Every loop's fixes added surface — new fields, new `kind` values, new
+ordering rules — and that new surface is what the next cold read found: 3
+of loop 2's 8 findings and at least 4 of loop 3's 9 landed on text an
+earlier loop had added. § 1, § 2.1, § 2.2, § 5 and § 6 — the problem, the
+scope decision and the alternatives — produced no findings after loop 1 and
+are settled.
+
+**Recommendation, following ANTS-4070's precedent:** close the review and
+build test-first. Every unresolved item is envelope detail that a fixture
+pins in seconds and a cold read argues about for a loop — which is this
+spec's own thesis (§ 1) turned on itself.
