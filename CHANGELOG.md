@@ -86,6 +86,27 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit's changelog-coverage check now recognises tests linked by ticket number** (ANTS-4099)
+  On a project that ties each release note to its tests by ticket number,
+  every entry was reported as untested even though all of them had tests.
+  The check was comparing the wording of the release note against the
+  title of each test contract — but a release note is written for users
+  and a test title for developers, so the better the note read, the worse
+  it matched. When an entry ends with its ticket number, that number is
+  now looked for in the tests directly. Entries without one are matched
+  by wording as before, and an entry whose ticket appears nowhere is
+  still reported.
+
+- **The audit's spec-drift check no longer flags a test contract for naming its own test file** (ANTS-4098)
+  A per-feature contract that says "covered by `test_min_size.py`" was
+  reported as referring to something that does not exist, even with that
+  file sitting in the same folder. The check compared the name against
+  the *contents* of every file in the project, and a file's name is not
+  written inside itself. It only ever worked here by luck, because this
+  project's build file happens to list every test by name. The check now
+  also looks at the list of files that exist, so naming a real file is
+  enough. A name that matches nothing at all is still reported.
+
 - **spec_log `set_status` now reports the value it replaced, and its schema no longer teaches one project's Status vocabulary to every project** (ANTS-4114)
   The verb writes the caller's `status` string verbatim and validates no
   vocabulary — but its schema offered `"accepted (2026-06-03)"` as the

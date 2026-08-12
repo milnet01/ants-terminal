@@ -97,6 +97,46 @@ body.
 17. **Empty title list → false.** A bullet vs `[]` always returns
     `false` (nothing to match against).
 
+## On-disk runners (invariants 18-22)
+
+The two runners compose the parsers above with a real project tree.
+These invariants pin the resolution rules, which is where both lanes
+have misfired on projects whose layout differs from this one's.
+
+18. **A cited filename that exists in the tree is not drift.**
+    `runSpecDriftCheck` resolves tokens against a blob that includes
+    every walked file's project-relative path, so a spec citing its
+    own sibling test file (`test_min_size.py`) reports nothing —
+    even when no other file's *text* mentions that filename.
+    Before ANTS-4098 the blob held file *contents* only, so a cited
+    test filename resolved by accident (a build file listing it) and
+    on a project whose test files are named in no manifest, every
+    such citation was reported as drift.
+
+19. **A cited symbol that exists nowhere is still drift.** The
+    path-manifest widening must not silence the lane: a spec citing
+    `ghost_symbol_xyz`, absent from every file's text *and* every
+    file's path, is still reported.
+
+20. **Entry-id extraction.** `extractChangelogEntryId` returns the
+    trailing parenthesised id of a CHANGELOG bullet
+    (`**Thing** (FIBR-0042)` → `FIBR-0042`) and `""` when there is
+    none. Only a *trailing* id counts — that is the position
+    `changelog_log` writes it in.
+
+21. **Id-keyed coverage beats prose.** In
+    `runChangelogCoverageCheck` a bullet carrying an id is covered
+    when that id appears anywhere in the `tests/features/*` corpus,
+    whatever its prose says. Before ANTS-4099 the lane compared
+    bullet prose against each spec's H1 title alone, so a project
+    keying coverage by ticket id failed every entry — changelog
+    prose is written for users and spec titles for developers, so
+    the better the prose, the worse the match.
+
+22. **Fallbacks are unchanged.** A bullet whose id appears nowhere
+    in the corpus is still reported, and a bullet carrying no id at
+    all is matched by invariants 14-15 exactly as before.
+
 ## Acceptance
 
 - `ctest -L fast -R feature_coverage` passes.

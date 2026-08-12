@@ -268,6 +268,17 @@ QStringList significantWords(const QString &text) {
     return out;
 }
 
+QString extractChangelogEntryId(const QString &bulletText) {
+    // Anchored at end: `changelog_log` renders `- **summary** (ID)`, so the
+    // bullet's own key is always trailing. An id quoted mid-sentence is a
+    // cross-reference to some other entry and must not be read as this
+    // bullet's key.
+    static const QRegularExpression idRe(
+        R"(\(([A-Za-z][A-Za-z0-9]{1,15}-\d+)\)[\s.]*$)");
+    const QRegularExpressionMatch m = idRe.match(bulletText.trimmed());
+    return m.hasMatch() ? m.captured(1) : QString();
+}
+
 bool bulletMatchesAnyTitle(const QString &bulletText,
                            const QStringList &titles) {
     // Strong match — shared backtick token with any title.
@@ -472,7 +483,17 @@ QString runSpecDriftCheck(const QString &projectPath) {
     if (!projectDir.exists("src")) return {};
     if (!projectDir.exists("tests/features")) return {};
 
-    const QString sourceBlob = buildProjectSourceBlob(projectPath);
+    // ANTS-4098 — append the path manifest. A feature spec cites FILES as
+    // often as symbols (its own sibling test, a fixture, a config it drives),
+    // and a filename is not present in its own contents. With contents alone
+    // such a citation resolved only when some *other* file's text happened to
+    // name it — true here, where CMakeLists.txt lists every test source, and
+    // false on a project whose tests are collected by convention (pytest and
+    // friends), where every cited test file read as drift. The manifest makes
+    // the file's existence the evidence, which is what the citation claims.
+    // A symbol that exists nowhere is unaffected: it is in no path either.
+    const QString sourceBlob = buildProjectSourceBlob(
+        projectPath, BlobOptions{.appendPathManifest = true});
     if (sourceBlob.isEmpty()) return {};
 
     auto resolves = [&sourceBlob](const QString &tok) {
@@ -602,6 +623,40 @@ QString runChangelogCoverageCheck(const QString &projectPath) {
     // convention. Don't flood it with coverage warnings; silently skip.
     if (titles.isEmpty()) return {};
 
+    // ANTS-4099 — id-keyed coverage, checked before the prose match below.
+    // An entry written by `changelog_log` carries its ticket id in a trailing
+    // `(PROJ-NNNN)`, and the feature locking it cites the same id in its spec
+    // or test. That id is an exact join key; prose is not, because a
+    // changelog headline is written for users and a spec title for
+    // developers, so the better the headline reads the worse it matches.
+    // Scanned lazily and once — a project with no ids pays nothing.
+    QSet<QString> corpusIds;
+    bool corpusIdsLoaded = false;
+    auto idIsCovered = [&](const QString &id) {
+        if (!corpusIdsLoaded) {
+            corpusIdsLoaded = true;
+            static const QRegularExpression anyIdRe(
+                R"(\b[A-Za-z][A-Za-z0-9]{1,15}-\d+\b)");
+            const QFileInfoList dirs = featuresDir.entryInfoList(
+                QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+            for (const QFileInfo &fd : dirs) {
+                const QFileInfoList files =
+                    QDir(fd.filePath()).entryInfoList(QDir::Files);
+                for (const QFileInfo &ff : files) {
+                    QFile f(ff.filePath());
+                    if (!f.open(QIODevice::ReadOnly)) continue;
+                    const QString text = QString::fromUtf8(f.readAll());
+                    f.close();
+                    QRegularExpressionMatchIterator it =
+                        anyIdRe.globalMatch(text);
+                    while (it.hasNext())
+                        corpusIds.insert(it.next().captured(0));
+                }
+            }
+        }
+        return corpusIds.contains(id);
+    };
+
     const QList<ChangelogBullet> bullets =
         extractTopVersionBullets(clogText, /*skipUnreleased=*/true);
 
@@ -611,6 +666,8 @@ QString runChangelogCoverageCheck(const QString &projectPath) {
         // have a locking test. Changed/Removed/Deprecated/Security are
         // often internal or intentionally untested at the feature level.
         if (b.section != "Added" && b.section != "Fixed") continue;
+        const QString entryId = extractChangelogEntryId(b.text);
+        if (!entryId.isEmpty() && idIsCovered(entryId)) continue;
         if (bulletMatchesAnyTitle(b.text, titles)) continue;
         QString preview = b.text;
         if (preview.size() > 90) preview = preview.left(87) + "…";

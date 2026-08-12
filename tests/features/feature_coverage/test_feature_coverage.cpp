@@ -4,8 +4,12 @@
 
 #include "featurecoverage.h"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <cstdio>
 #include <functional>
@@ -279,6 +283,85 @@ void testMatchEmptyTitleList() {
           "match.emptyTitles");
 }
 
+// ---------------------------------------------------------------------------
+// On-disk runners (invariants 18-22)
+// ---------------------------------------------------------------------------
+
+bool writeFile(const QString &path, const QString &content) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    f.write(content.toUtf8());
+    return true;
+}
+
+// INV-18 / INV-19 — a spec citing its own sibling test file is not drift,
+// but a symbol that exists nowhere still is. Models the ANTS-4098 report:
+// a Python corpus where no build manifest names the test files, so a cited
+// test filename appears in no file's *contents* anywhere in the tree.
+void testSpecDriftCitedFilenameResolves() {
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid(), "specDrift.tmpdir");
+    if (!tmp.isValid()) return;
+    const QString root = tmp.path();
+
+    // A src/ tree must exist or the lane self-disables and returns "".
+    writeFile(root + "/src/app.py", "def render():\n    return 1\n");
+    writeFile(root + "/tests/features/dashboard/test_min_size.py",
+              "def test_min_size():\n    assert True\n");
+    writeFile(root + "/tests/features/dashboard/spec.md",
+              "# Dashboard\n\nCovered by `test_min_size.py`.\n"
+              "Renamed away: `ghost_symbol_xyz`.\n");
+
+    const QString out = FeatureCoverage::runSpecDriftCheck(root);
+    CHECK(!out.contains(QStringLiteral("test_min_size.py")),
+          "specDrift.citedFilenameNotDrift (INV-18)");
+    CHECK(out.contains(QStringLiteral("ghost_symbol_xyz")),
+          "specDrift.missingSymbolStillDrift (INV-19)");
+}
+
+// INV-20 — trailing parenthesised id only; that is where changelog_log
+// writes it.
+void testChangelogEntryIdExtraction() {
+    CHECK(FeatureCoverage::extractChangelogEntryId(
+              "**Overspend nudges land before payday** (FIBR-0042)")
+              == QStringLiteral("FIBR-0042"),
+          "entryId.trailing (INV-20)");
+    CHECK(FeatureCoverage::extractChangelogEntryId(
+              "**Overspend nudges land before payday**").isEmpty(),
+          "entryId.absent (INV-20)");
+    CHECK(FeatureCoverage::extractChangelogEntryId(
+              "Mentions (FIBR-0042) mid-sentence and then keeps going.")
+              .isEmpty(),
+          "entryId.midSentenceIgnored (INV-20)");
+}
+
+// INV-21 / INV-22 — an id-keyed project: bullet prose deliberately shares
+// no significant word and no backtick token with the spec's H1 title, so
+// the only available join key is the ticket id. Models ANTS-4099.
+void testChangelogCoverageByEntryId() {
+    QTemporaryDir tmp;
+    CHECK(tmp.isValid(), "changelogCoverage.tmpdir");
+    if (!tmp.isValid()) return;
+    const QString root = tmp.path();
+
+    writeFile(root + "/CHANGELOG.md",
+              "# Changelog\n\n"
+              "## [1.2.0] - 2026-08-01\n"
+              "### Added\n"
+              "- **Overspend nudges land before payday** (FIBR-0042)\n"
+              "- **Receipts export as one bundle** (FIBR-9999)\n");
+    writeFile(root + "/tests/features/spending_alerts/spec.md",
+              "# Alert threshold evaluation pipeline\n\n"
+              "Locks the behaviour shipped as FIBR-0042.\n");
+
+    const QString out = FeatureCoverage::runChangelogCoverageCheck(root);
+    CHECK(!out.contains(QStringLiteral("FIBR-0042")),
+          "changelogCoverage.idCovered (INV-21)");
+    CHECK(out.contains(QStringLiteral("FIBR-9999")),
+          "changelogCoverage.idUncoveredStillReported (INV-22)");
+}
+
 } // namespace
 
 static int runMain() {
@@ -307,6 +390,10 @@ static int runMain() {
     testMatchSignificantWordFallback();
     testMatchNoMatch();
     testMatchEmptyTitleList();
+
+    testSpecDriftCitedFilenameResolves();
+    testChangelogEntryIdExtraction();
+    testChangelogCoverageByEntryId();
 
     if (failures > 0) {
         std::fprintf(stderr, "\n%d test(s) failed.\n", failures);

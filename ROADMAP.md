@@ -30030,7 +30030,7 @@ defect from different angles.
   amend_body cannot clobber unrelated prose. Tests:
   roadmap_log_amend_body INV-10.
 
-- 📋 [ANTS-4098] **audit_run: spec_code_drift resolves test-file citations against source_roots only, so every citation in a tests/features/*/spec.md is a false positive.**
+- ✅ [ANTS-4098] **audit_run: spec_code_drift resolves test-file citations against source_roots only, so every citation in a tests/features/*/spec.md is a false positive.**
   5 of 6 spec_code_drift findings named a file that exists in the SAME
   directory as the spec citing it (tests/features/dashboard/spec.md →
   test_min_size.py, and the same for forecast/ and spending_alerts/). The
@@ -30050,8 +30050,33 @@ defect from different angles.
   **Layman:** A check complains that a test contract references files that don't exist — they're sitting in the same folder as the contract.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Fin Break.
+  Resolved (2026-08-12): runSpecDriftCheck now builds its blob with
+  BlobOptions{.appendPathManifest = true}, so a spec-cited FILENAME
+  resolves by that file existing rather than by some other file's text
+  happening to name it.
 
-- 📋 [ANTS-4099] **audit_run: changelog_test_coverage matches CHANGELOG headline PROSE against feature-directory names, so an id-keyed project fails every entry.**
+  The reported cause was wrong and is worth recording. The lane never
+  reads .ants/project.json, so source_roots / test_roots played no part.
+  The blob has been whole-tree (src/ AND tests/) since ANTS-2113; it
+  concatenated file CONTENTS only, and a filename is not present in its
+  own contents. On this repo CMakeLists.txt lists every test source, so
+  cited test filenames resolved by accident and the defect was invisible;
+  on a project whose tests are collected by convention (pytest), nothing
+  names them and every citation read as drift.
+
+  NOT done, deliberately: the proposed "resolve relative to the citing
+  file's own directory first, then the declared roots". The path manifest
+  ANTS-3600 already built for the contract_doc_drift lane covers the same
+  cases with one flag and no new resolution order. A citing-dir-first rule
+  would also make a spec's own directory a privileged namespace, which is
+  how a stale citation to a deleted sibling would start passing.
+
+  Guard against blanket-silencing: INV-19 asserts a symbol absent from
+  every file's text AND every path is still reported;
+  tests/features/mcp_audit_run still asserts the lane lands >=1 finding on
+  this repo. Test: feature_coverage testSpecDriftCitedFilenameResolves.
+
+- ✅ [ANTS-4099] **audit_run: changelog_test_coverage matches CHANGELOG headline PROSE against feature-directory names, so an id-keyed project fails every entry.**
   6/6 false positives. The rule fuzzy-matches an entry's headline text
   against feature-directory names; the project keys coverage by ticket id
   (the entry ends `(FIBR-NNNN)` and the id appears in the spec/test), so
@@ -30071,6 +30096,33 @@ defect from different angles.
   **Layman:** A check says six shipped features have no tests; all six have tests, found by their ticket number.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Fin Break.
+  Resolved (2026-08-12): runChangelogCoverageCheck now checks a bullet's
+  trailing (PROJ-NNNN) id against the ids appearing anywhere in the
+  tests/features/* corpus before falling back to prose matching. New pure
+  helper extractChangelogEntryId, anchored at end-of-bullet — that is
+  where changelog_log writes it, and an id quoted mid-sentence is a
+  cross-reference to another entry, not this bullet's key. The corpus id
+  set is scanned lazily and once, so a project with no ids pays nothing.
+
+  The reported cause was wrong: the lane never matched against feature
+  DIRECTORY names. It matched bullet prose against each spec's H1 title
+  (bulletMatchesAnyTitle: shared backtick token, else >=2 significant
+  words). The consequence reported was real and its root is adjacent —
+  only the spec's FIRST LINE was ever read, so an id carried in the spec
+  body or in the test file could never serve as a join key.
+
+  NOT done, deliberately: the proposed "grep the id across test_roots" was
+  narrowed to the tests/features/* corpus the lane already walks. The
+  finding message says literally "no matching tests/features/*/spec.md",
+  so searching all of test_roots would change what the lane claims without
+  changing what it prints. Accepted imprecision: an id cited in a spec for
+  background rather than for coverage now reads as covered — the lane is
+  Info severity and awareness-raising, and 6/6 reported entries were
+  genuinely covered.
+
+  Guard: INV-22 asserts a bullet whose id appears nowhere is still
+  reported, and a bullet carrying no id falls through to the unchanged
+  prose match. Test: feature_coverage testChangelogCoverageByEntryId.
 
 - ✅ [ANTS-4100] **indie_review_partition returns a directory-shaped partition (one `src` lane for a 21k-LoC app) with no signal that it is too coarse.**
   The verb derives lanes from CLAUDE.md's module map by grouping on TOP-

@@ -118,6 +118,13 @@ QList<QString> extractBacktickTokens(const QString &s);
 bool bulletMatchesAnyTitle(const QString &bulletText,
                            const QStringList &specTitles);
 
+// ANTS-4099 — the trailing parenthesised ticket id of a CHANGELOG bullet
+// (`**Thing that shipped** (FIBR-0042)` → `FIBR-0042`), or "" when there
+// is none. Only a TRAILING id counts: that is the position `changelog_log`
+// writes it in, and an id quoted mid-sentence is a cross-reference to some
+// other entry, not this bullet's key.
+QString extractChangelogEntryId(const QString &bulletText);
+
 // ---------------------------------------------------------------------------
 // Reusable project-walk helpers (ANTS-1113 v1).
 //
@@ -148,8 +155,9 @@ bool bulletMatchesAnyTitle(const QString &bulletText,
 // scope — was the bug.
 // ANTS-3600 — options controlling what buildProjectSourceBlob concatenates.
 // The defaults reproduce the pre-ANTS-3600 whole-tree-including-`.md`
-// behaviour, so both existing 1-arg call-sites (runSpecDriftCheck,
-// DebtSweepEngine) are behaviour-preserved with no edit.
+// behaviour, which is what the remaining 1-arg call-site (DebtSweepEngine)
+// still wants. ANTS-4098 moved runSpecDriftCheck onto the 2-arg form so it
+// gets the path manifest too.
 struct BlobOptions {
     bool includeMarkdownContents = true;   // false → exclude *.md bodies
     bool appendPathManifest      = false;  // true  → append every walked
@@ -188,17 +196,21 @@ const QSet<QString> &specStopwords();
 // ---------------------------------------------------------------------------
 
 // Lane 1 — spec ↔ code drift. Walks `<projectPath>/tests/features/*/spec.md`,
-// extracts identifier tokens, reports the ones not present anywhere under
-// `<projectPath>/src/`. Silently returns "" for projects without the
-// `tests/features/` convention or without a `src/` tree.
+// extracts identifier tokens, reports the ones that match nothing in the
+// whole-tree blob — neither any file's text nor (ANTS-4098) any file's
+// project-relative path, so a spec citing a file that exists is not drift.
+// Silently returns "" for projects without the `tests/features/` convention
+// or without a `src/` tree.
 QString runSpecDriftCheck(const QString &projectPath);
 
-// Lane 2 — CHANGELOG bullets without a matching feature-test spec title.
-// Reads `<projectPath>/CHANGELOG.md`, collects the spec titles from
-// `<projectPath>/tests/features/*/spec.md`, and reports bullets in the
-// top version section's Added/Fixed subsections that don't match any
-// title via `bulletMatchesAnyTitle`. Silently returns "" if CHANGELOG.md
-// is absent or no specs exist.
+// Lane 2 — CHANGELOG bullets with no locking feature test. Reads
+// `<projectPath>/CHANGELOG.md` and reports bullets in the top released
+// version's Added/Fixed subsections that match nothing in
+// `<projectPath>/tests/features/*`. A bullet is matched two ways, in order:
+// by its trailing `(PROJ-NNNN)` id appearing anywhere in that corpus
+// (ANTS-4099 — the exact join key), else by `bulletMatchesAnyTitle` against
+// the specs' H1 titles. Silently returns "" if CHANGELOG.md is absent or no
+// specs exist.
 QString runChangelogCoverageCheck(const QString &projectPath);
 
 // ANTS-3600 — read `<projectPath>/.ants_doc_drift_allow.txt` into a token
