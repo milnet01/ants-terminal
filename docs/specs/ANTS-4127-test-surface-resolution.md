@@ -1,6 +1,12 @@
 # ANTS-4127 — resolve the test surface a spec cites, instead of reading it
 
-**Status:** spec draft (2026-08-12).
+**Status:** accepted (2026-08-12) — 37 findings verified and fixed across
+three cold review loops, 1 dismissed; the gate hit its 3-loop cap **without
+a clean pass**, so this is accepted-with-caveat, not converged. The tail is
+empty (every finding is fixed) and § 11 records why the cap bound. § 1,
+§ 2.1, § 2.2 and § 6 produced no findings after loop 1 and are settled;
+**treat § 2.3–§ 2.5's counts as the most-revised part** — the invisible-
+clause figure alone was wrong in three consecutive loops.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-4127 (split out of ANTS-4108 at spec time;
 scope re-decided 2026-08-12 by the user — see § 2.2).
@@ -52,8 +58,10 @@ That artefact is not incidental — § 2.4 makes avoiding it an invariant,
 because the shipped extractor must not reproduce a defect its own spec's
 measurement had.
 
-Two of the twenty-three sit in specs whose own **Status** says the work
-shipped:
+**Three of them** — in **two** specs, ANTS-1111 citing two — sit in specs
+whose own **Status** says the work shipped. The two counts differ because a
+finding is emitted per cited surface, not per spec, and § 6's yield figures
+are the surface count:
 
 | Spec | Status line says | Cites | On disk |
 |---|---|---|---|
@@ -148,7 +156,19 @@ present, so a consumer reading "absent" would go looking for a missing
 directory that is right there. It carries the same fields, and — unlike the
 other two — its bucket does not depend on `spec_status` (§ 2.6).
 
-`spec_status` is the lowercased first word of the `**Status:**` value, and
+`spec_status` is the **normalised** first word of the `**Status:**` value,
+and normalisation is three steps, not one — the corpus needs all three and
+§ 2.5's own measuring pipeline performs all three:
+
+1. strip leading `*` (a Status value may open bold: `**considered / shelved
+   (2026-07-19, user decision)`);
+2. lowercase;
+3. truncate at the first character outside `[a-z0-9]` (values carry
+   trailing punctuation: `accepted (2026-05-27),` → `accepted`).
+
+"First word" alone yields `**considered` or `accepted,`, which match no row
+in § 2.5's table and fall to the catch-all — filing a CANDIDATE where INV-3
+requires a FINDING, silently, because the catch-all absorbs them. The value
 is **JSON `null`** — not `""`, not absent — when the line is missing or
 empty. **56 specs are in that state** (53 carrying no Status line, 3
 carrying an empty one — § 2.5), reached by two different paths and
@@ -236,10 +256,11 @@ Silence here is a decision, not an omission.
 ### 2.4b This document is inside the corpus it measures
 
 Every figure in § 1, § 2.4 and § 2.5 was measured before this file existed,
-and this file then joined `docs/specs/`. It carries nine `*Test:*` clauses
-of its own plus several prose mentions of the literal token, so the
-unqualified commands now return **1039** where the spec says 1026 — the
-number was right when taken and the corpus moved under it.
+and this file then joined `docs/specs/`. It carries **ten** `*Test:*`
+clauses of its own — one per invariant — plus several prose mentions of the
+literal token, so the unqualified commands now return **1039** where § 2.4
+says **1018**: the number was right when taken and the corpus moved under
+it.
 
 Hence the `--exclude='ANTS-4127-*'` on every count: the figures describe
 **the corpus this checker would be pointed at, not counting the document
@@ -369,7 +390,7 @@ the record, which is what ANTS-4108 § 2.4a learned the expensive way.
 
 | File | Role |
 |---|---|
-| `src/speclint.cpp` | the two new finding kinds, in the existing `*Test:*` walk — text only, no filesystem |
+| `src/speclint.cpp` | the three new finding kinds, in the existing `*Test:*` walk — text only, no filesystem |
 | `src/speclint.h` | `Options` gains `existingTestDirs` / `wiredTestDirs`; `Result` gains `surfacesResolved` **and** `surfacesChecked` |
 | `src/remotecontrol_docs.cpp` | `RemoteControl::cmdSpecLint` gathers both sets and injects them, as the sibling helper `specLintRequiredSections` already does for the section list |
 | `tests/features/spec_lint/` | engine lane — extraction, classification, wiring, injected-set handling |
@@ -405,7 +426,12 @@ every other kind.
   every wrapped clause — the error that put § 2.4's own yield at 40 instead
   of 137. **"Attempts" is not an emitted quantity**, so the assertion is
   written against `surfaces_resolved`; counting findings instead would pass
-  against an engine that harvests once and errors twice.
+  against an engine that harvests once and errors twice. A fifth fixture
+  pins § 2.3's **per-document** distinctness, which no other clause
+  reaches: two *separate* invariants of one spec citing the same present
+  directory assert `surfaces_resolved == 1`. Without it an engine
+  deduplicating per clause passes every other test here and still reports a
+  different total for the same corpus.
 - **INV-2** — a `tests/features/<name>*` **wildcard** yields no resolution
   attempt and no finding of any kind. *Test:* § 2.4's fence-and-table, run
   by `spec_conformance` over this document, plus a `spec_lint` fixture
@@ -418,12 +444,18 @@ every other kind.
   draft state it is a CANDIDATE. *Test:* two fixtures differing **only** in
   their Status line, asserting `test_surface_absent` and
   `test_surface_unresolved` respectively. *Breaks when:* the two collapse
-  into one bucket, which either files 23 findings against specs nobody has
-  implemented yet or files none against the two that shipped.
+  into one bucket, which either files 20 findings against specs nobody has
+  implemented yet or files none against the 3 surfaces that shipped.
 - **INV-4** — a spec with **no** `**Status:**` line, or one whose first
   word is unrecognised, classifies as CANDIDATE and never as FINDING.
   *Test:* a fixture with no Status line asserts `test_surface_unresolved`;
   a second carrying `**Status:** banana (2026-01-01).` asserts the same.
+  Two further fixtures pin § 2.3's normalisation, and each fails a
+  different one of its three steps: `**Status:** **shipped** (2026-01-01).`
+  and `**Status:** shipped, then amended.` must both classify as
+  `shipped` and yield `test_surface_absent` — an engine taking the literal
+  first word reads `**shipped**` and `shipped,`, matches no § 2.5 row, and
+  files a CANDIDATE.
   *Breaks when:* an unparsed status defaults to shipped — which would fire
   against the 53 Status-less specs measured in § 2.5.
 - **INV-5** — a spec whose Status first word is `superseded` or
@@ -432,9 +464,14 @@ every other kind.
   unwired one. *Test:* two fixtures carrying `**Status:** superseded
   (2026-07-28) — merged into ANTS-3663.`, one citing an absent surface and
   one citing a present-but-unwired surface; both assert an empty
-  `findings[]`. *Breaks when:* the skip is applied per-check rather than
-  per-spec, which lets INV-6 fire on abandoned work and reports it as drift
-  forever — training readers to ignore the kind.
+  `findings[]` **and `surfaces_resolved == 0`** — a skipped spec resolves
+  nothing, so it contributes nothing to the counter, and a directory walk
+  over the same corpus therefore reports one denominator rather than two.
+  *Breaks when:* the skip is applied per-check rather than per-spec, which
+  lets INV-6 fire on abandoned work and reports it as drift forever —
+  training readers to ignore the kind; or the spec is skipped for findings
+  but still counted, which makes the § 2.3 denominator depend on how many
+  abandoned specs a walk happened to cross.
 - **INV-6** — for a spec INV-5 did not skip, a resolved directory present
   in `existingTestDirs` but absent from `wiredTestDirs` is a
   `test_surface_unwired` FINDING **whatever its live Status** — `spec draft`
@@ -481,12 +518,16 @@ every other kind.
 - **INV-10** — `surfaces_checked` is false exactly when INV-9 skipped, and
   is emitted on every run. *Test:* all three of INV-9's arms — (a) asserts
   `surfaces_checked == false` with `surfaces_resolved == 0`; **(b) asserts
-  `true`, because check (1) ran even though check (2) skipped**; (c)
-  asserts `true` with `surfaces_resolved == 1`. Arm (b) is the one that
-  pins the definition: a reading that sets the flag false whenever *any*
-  check skipped passes (a) and (c) and fails only here. The (a)/(c) pair
-  additionally ensures **neither field alone separates them**, so inferring
-  the boolean from the counter fails (c).
+  `true` with `surfaces_resolved == 0`**, the surface being absent so
+  nothing resolved, yet check (1) having run; (c) asserts `true` with
+  `surfaces_resolved == 1`.
+  **Arm (b) is the only falsifier of the three.** Both defects this
+  invariant guards against survive (a) and (c): an implementation reading
+  `surfaces_checked = (surfaces_resolved > 0)` gives false/0 at (a) and
+  true/1 at (c) and passes both, and so does one setting the flag false
+  whenever *any* check skipped. Only (b) — flag `true` while the counter is
+  `0` — separates the correct contract from either, so a suite asserting
+  (a) and (c) alone tests nothing this invariant exists for.
   *Breaks when:* the boolean is inferred from the counter, the defect
   `Result::sectionsChecked` exists to prevent — its header comment says it
   "is always reported and never inferred from an empty findings list".
@@ -519,8 +560,10 @@ rather than once per document.
 - **Execute the fenced fixtures under an OS sandbox** — the ROADMAP
   bullet's original design. Rejected on measurement: `docs/` carries
   **one** `python` fence and **442** `cpp` fences across 151 files
-  (`grep -rcE '^```(python|py)\b' docs/` summed, and the same for
-  `^```(cpp|c\+\+)\b`), and the `cpp` fences are signatures and excerpts,
+  (`grep -rhcE '^```(python|py)\b' docs/ --exclude='ANTS-4127-*'` summed,
+  and the same for `^```(cpp|c\+\+)\b`; without the exclusion the figures
+  read 443 across 152, because § 2.6 of this document is itself a `cpp`
+  fence — § 2.4b), and the `cpp` fences are signatures and excerpts,
   not self-contained programs. So it would need a new authoring convention
   nothing uses, to run an interpreter the corpus invokes once, behind a
   sandbox and an external dependency — for a defect class this corpus
@@ -532,9 +575,17 @@ rather than once per document.
   clause walk already exists; a second walk over the same bullets is
   duplication with a maintenance cost and no user-visible gain.
 - **Report every absent surface as a FINDING, ignoring Status** — rejected:
-  it files 23 findings today, of which 2 are defects and 21 are forward
-  references or abandoned work. A check whose first run is 91% noise is one
-  nobody runs twice.
+  the corpus holds **25** (spec, absent-surface) pairs today, of which
+  **3** are defects; the other 22 are forward references or abandoned work.
+  A check whose first run is 88% noise is one nobody runs twice. Under
+  § 2.5 the same corpus yields 3 FINDINGs, 20 CANDIDATEs and 2 invisible —
+  the classification is the whole difference between a usable first run and
+  an ignored one. (Counted per pair, not per distinct directory name: the
+  23 real absent names of § 1 produce 25 pairs because
+  `claude_statusbar_extraction` and `doc_lint_fix` are each cited by two
+  specs. 23 is also exactly what § 2.4's pattern yields, the three wildcard
+  artefacts being excluded by construction — INV-2 holding on live data
+  rather than on a fixture.)
 
 ## 7. Out of scope
 
@@ -566,8 +617,12 @@ Engine lane: `tests/features/spec_lint/`, label `features;fast`, covering
 INV-1..7, INV-9 and INV-10 — every one drivable by injecting `Options`,
 which is what keeping the engine filesystem-free buys. Verb lane:
 `tests/features/spec_lint_verb/`, same labels, for the gathering step
-(a real `tests/features/` scan and `CMakeLists.txt` parse) and for the new
-`kind` values and `surfaces_resolved` reaching the envelope.
+(a real `tests/features/` scan and `CMakeLists.txt` parse) and for the
+three new `kind` values and **both** envelope fields —
+`surfaces_resolved` *and* `surfaces_checked` — reaching the wire.
+`surfaces_checked` is the one § 2.3 says is "always emitted and never
+inferred", so a verb lane that never asserts it leaves that claim untested
+at the only layer where it is observable.
 **INV-8 has two arms and only one of them is static:** the token
 source-scrape runs no engine, while the write-check *does* run `spec_lint`
 over a fixture and hashes the tree either side of it — a claim that nothing
@@ -615,7 +670,7 @@ the document itself joined the corpus.
   branch says "fenced FIXTURES have none at all until ANTS-4127 settles an
   interpreter and sandbox". ANTS-4127 settles neither; amend it in the same
   commit, or the code asserts a future this spec has cancelled.
-- `docs/subsystems.md` — the `spec_lint` entry gains the two kinds.
+- `docs/subsystems.md` — the `spec_lint` entry gains the three kinds.
 - `ROADMAP.md` ANTS-4127 — **two** reversals to annotate on accept, not
   one. The stated home (`spec_conformance`) is superseded by § 2.1; and the
   bullet's **headline** still promises to "execute a spec's fenced
@@ -630,6 +685,7 @@ the document itself joined the corpus.
 |---|---|---|---|---|---|---|---|
 | 1 | 2 cold, spec genre | 7 | 4 | 4 | 1 | 16 / 0 | all fixed |
 | 2 | 2 cold, spec genre | 3 | 3 | 4 | 1 | 11 / 0 | all fixed; + 4 collateral in own sweep |
+| 3 | 2 cold, spec genre | 3 | 3 | 2 | 2 | 10 / 1 | all fixed; **cap reached, not converged**; empty tail |
 
 **Loop 1 (2026-08-12).** 12 of the 16 came from the two lanes (2 raised by
 both, merged on defect identity); 4 were found by the orchestrator — two
@@ -730,3 +786,62 @@ commands lacked the `--exclude` § 2.4b requires** — § 1's, which now reads
 directories, and § 2.5's, which now reads 241/188 because this document is
 itself a spec carrying a Status line. The reflexivity § 2.4b describes is
 not a one-time correction; it re-arms on every edit that adds an example.
+
+**Loop 3 (2026-08-12) — the cap.** 10 verified, 1 dismissed. Three lane
+open questions resolved **clean** (ANTS-4108 § 2.2's "not even a CANDIDATE"
+wording; `tests/features/spec_lint_verb/` really is wired; `QFile`/`QDir`/
+`system(`/`popen`/`fork(` appear nowhere in `src/speclint.{h,cpp}`, so
+INV-8's comment carve-out is load-bearing for `QProcess` alone).
+
+- **[Q4] INV-10's own falsifier was misattributed** — the clause claimed
+  arms (a) and (c) ensure "neither field alone separates them", but an
+  implementation reading `surfaces_checked = (surfaces_resolved > 0)`
+  returns false/0 at (a) and true/1 at (c) and **passes both**. Arm (b) is
+  the only falsifier. A test author trusting the sentence would have shipped
+  a suite that could not catch the defect the invariant exists for — the
+  same green-by-construction shape § 1 is about, in this document's own
+  contract, at the third loop.
+- **[Q2] The first-run yield was counted per spec where findings are
+  emitted per surface.** § 1's table lists three absent surfaces in two
+  shipped-status specs (ANTS-1111 cites two), so § 6's "2 defects / 21
+  noise" was wrong on both halves. Re-measured per (spec, surface) pair:
+  **25 pairs — 3 FINDINGs, 20 CANDIDATEs, 2 invisible**, so the rejected
+  alternative is 88% noise, not 91%.
+- **[Q3] `spec_status` normalisation was under-specified.** § 2.3 said
+  "lowercased first word"; § 2.5's own pipeline also strips leading `*` and
+  truncates at the first non-`[a-z0-9]`. Without all three, `**considered`
+  and `accepted,` match no row and fall to the catch-all — a CANDIDATE
+  where INV-3 requires a FINDING, silently. INV-4 gained a fixture per step.
+- **[Q4] Per-document distinctness had no test.** § 2.3 pinned the scope in
+  loop 2 and no clause reached it; an engine deduplicating per clause passed
+  every invariant and still reported a different corpus total.
+- Also fixed: "two new finding kinds" survived in § 2.7 and § 10 after § 2.3
+  grew a third (Q2); § 2.4b cited a figure (1026) the document no longer
+  states (Q1); § 8's verb lane omitted `surfaces_checked`, the one field
+  § 2.3 calls "always emitted" (Q2); "nine `*Test:*` clauses of its own"
+  where there are ten (Q1); INV-5 was silent on what a skipped spec
+  contributes to `surfaces_resolved` (Q3); and § 6's `cpp`-fence count
+  needed the `--exclude` too, this document's own § 2.6 snippet having made
+  it 443/152 (Q1).
+
+**Dismissed (1).** A lane reported the document's invariant count as
+disagreeing with the briefing packet's "9". The document carries ten and
+`spec_query` returns ten — the **packet** was stale, written before INV-10
+existed. Recorded rather than dropped, and the lane was right to dispute a
+packet fact rather than defer to it. **Collateral (1):** a blank-line
+paragraph added inside INV-10 split the bullet, so `spec_query` parsed the
+new prose as part of the *body* and left the test surface truncated —
+caught by re-running the parse check after the fix, not by reading.
+
+**Why the cap bound, and it is not size.** At 781 lines this spec sits
+above the corpus median (392) but below the 90th percentile (822), with 32
+of 241 specs larger; the documents that historically needed nine and eleven
+loops were over 1000. The cause is that this document is unusually
+**measurement-dense** — nearly every section rests on a corpus count, and
+each count carried a distinct population trap: proxy versus pattern, line
+versus clause, spec versus surface, and the corpus changing because this
+file joined it. The single figure "how many clauses are invisible" was
+wrong in three consecutive loops by three unrelated mechanisms. Those are
+Q1 defects a cold read surfaces one at a time, and splitting the document
+would not have found them faster — the measurements are the contract.
+**The tail is empty: every finding from all three loops is fixed.**
