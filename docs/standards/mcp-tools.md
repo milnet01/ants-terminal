@@ -15,9 +15,9 @@ restated:
 - [mcp-behavioural-notes.md](mcp-behavioural-notes.md) — per-verb
   behavioural reference (not authoring rules; ANTS-2088).
 
-The per-feature details (exact line ranges, the wrap mechanics) live
-in `CLAUDE.md` § Conventions; this standard is the ordered procedure
-so a new tool doesn't miss a step.
+This standard is the ordered procedure so a new tool doesn't miss a
+step; per-verb behaviour is
+[mcp-behavioural-notes.md](mcp-behavioural-notes.md).
 
 ---
 
@@ -51,8 +51,9 @@ checklist below walks the full procedure; this is the at-a-glance map
   `{ok, unchanged, etag}`.
 - **`fields=` projection (ANTS-1720).** Opt in via
   `isFieldProjectionTool` + `makeFieldsProp()`; narrows to named
-  top-level fields (a subset of the ETag set — list `"etag"` in `fields`
-  to keep 304).
+  top-level fields. Independent of the ETag opt-in, not a subset of it
+  (`read_log` projects but does not 304); where a verb has both, list
+  `"etag"` in `fields` to keep the 304.
 - **Refusal codes** follow [mcp-error-codes.md](mcp-error-codes.md);
   **caches** follow [mcp-caches.md](mcp-caches.md) (a path-keyed cache
   may go cold but must never *shadow*).
@@ -132,8 +133,8 @@ place when it saves a Claude session real tokens or round-trips
    project-scoped, resolve the root via `ants::resolveCallerCwdRoot`
    (ANTS-1401, `src/resolvedroot.h`) — never re-implement
    canonicalisation or tab-walks inline. Read vs write routing is
-   asymmetric (see the `session_memory` / `workflow_state` note in
-   CLAUDE.md): writes on tenant-hashed storage go through the
+   asymmetric (see the state-routing bullet above): writes on
+   tenant-hashed storage go through the
    focused-tab gate; reads anchor to `caller_cwd` directly.
 
 4. **Validate every path argument.** Any arg that is a path (`path`,
@@ -168,7 +169,7 @@ place when it saves a Claude session real tokens or round-trips
 
    **6a. Writer/reader format parity (ANTS-2042).** When a
    discovery/reader verb recognises a target format that the paired
-   *writer* can't yet produce, the writer MUST refuse with
+   *writer* can't yet produce **at all**, the writer MUST refuse with
    `format_mismatch` — carrying the discovered `format`, the `path`
    to the recognised file, and a format-appropriate Edit-fallback
    `hint` (naming the discovered format's append shape, not a bare
@@ -188,10 +189,19 @@ place when it saves a Claude session real tokens or round-trips
    kind); `format_mismatch` is reserved for the *discovered-but-
    unwritable-format* branch. The `format_mismatch` code is defined in
    [mcp-error-codes.md](mcp-error-codes.md); reuse it rather than
-   minting a per-verb variant. (If the reader *also* can't parse the
-   file — zero recognised structure — that's `unrecognised_format`,
-   not `format_mismatch`; the latter is for a *recognised* format the
-   writer can't produce.)
+   minting a per-verb variant. Three codes, narrowing: if the reader
+   *also* can't parse the file — zero recognised structure — that's
+   `unrecognised_format`; if the verb writes the format on other ops
+   but not on **this** one, that's `unsupported_format` (as
+   `roadmap_log` emits on a pass-headings roadmap, `create_section`
+   refusing `format_mismatch` while `amend_body` refuses
+   `unsupported_format`); `format_mismatch` is for a *recognised*
+   format the verb cannot produce on any op.
+
+   **6b. Every *mutating* verb takes `dry_run` (ANTS-2077 / 2136 /
+   2227).** The contract is stated in full in the quick-reference map
+   above; it is repeated here as a checklist step because a mutating
+   verb walked through steps 1–11 would otherwise ship without it.
 
    **File note for steps 7–8:** a tool's `inputSchema` lives in the
    `tools/list` builder in `src/claudeintegration.cpp` — a *different*
@@ -204,7 +214,8 @@ place when it saves a Claude session real tokens or round-trips
    (ANTS-1499): add it to `isEtagSupportedTool` and add a
    `makeEtagMatchProp()` line to its schema. The dispatcher injects the
    `etag` field (`applyEtagPattern` → `etagFor(responseText)`); the
-   handler must **not** emit it. The dispatch short-circuits a matching
+   handler must **not** emit it — unless it owns its own 304 under the
+   exception below. The dispatch short-circuits a matching
    `etag_match` to `{ok:true, unchanged:true, etag:"<same>"}`.
 
    **Exception — a timing-bearing envelope owns its own 304 (ANTS-4108).**
@@ -225,6 +236,16 @@ place when it saves a Claude session real tokens or round-trips
    returns the same `{ok:true, unchanged:true, etag}` shape, and a refusal
    envelope is never short-circuited.
 
+   Two obligations come with it, and a verb missing either is broken in a
+   way no test of the handler can see. **It still declares an `etag_match`
+   input property in its schema** — step 10's `additionalProperties:false`
+   would otherwise reject the argument before the handler ever runs, so
+   only the `isEtagSupportedTool` entry is withheld, not the property.
+   **It declines `fields=` (step 8)**: central projection is skipped only
+   on a *central* 304, so a handler-local one is invisible to it and a
+   caller passing `etag_match` and `fields` together would have
+   `unchanged` projected out of its own 304 response.
+
 8. **Opt into `fields=` projection for high-volume reads (optional).**
    A tool with a large payload should support response narrowing
    (ANTS-1720): add it to `mcp::isFieldProjectionTool` and a
@@ -239,8 +260,9 @@ place when it saves a Claude session real tokens or round-trips
 
 10. **Schema hygiene.** `inputSchema.type == "object"`,
     `additionalProperties == false`, an explicit `required[]`, and a
-    one-line `description` per property. Document `caller_cwd` as
-    Required/Optional matching step 2.
+    one-line `description` per property. Document `caller_cwd` with
+    its step-2 contract word — all four are permissible, not just
+    `Required` / `Optional`.
 
 11. **Keep the wire `description` short; move encyclopedic prose to
     `detail` (ANTS-2079).** Every tool's `description` ships in
@@ -305,5 +327,12 @@ scrape window.
 The dispatch order is load-bearing: idempotent-read cache →
 `applyEtagPattern` → `mcp::projectFields` → `<ants_mcp_data>` wrap. A
 new opt-in (a future projection-like transform) slots into that chain;
-read CLAUDE.md § Conventions for the exact hook points before adding
-one.
+read `applyEtagPattern`, `mcp::projectFields` and
+`ClaudeIntegration::wrapMcpData` for the exact hook points before
+adding one.
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 / Q2 / Q3 / Q4 | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-12 | 3 (same doc, independent, cold) | 2 / 3 / 3 / n-a | **First gate on this document**, triggered by ANTS-4129's edit to step 7. 8 verified, 0 dismissed, all fixed. Q4 is not asked of a standard. All three lanes independently led on the same two defects, both in the new step-7 exception and both the same shape — it sanctioned a handler-local 304 without stating what else comes with it: the verb must still **declare** an `etag_match` schema property (step 10's `additionalProperties:false` rejects the arg otherwise, so the 304 is unreachable while every handler-level test still passes), and it must **decline** `fields=`, which the linked ANTS-4108 § 2.3 records as the second forced deviation. The `fields=` defect was also found by the orchestrator while building the packet. Verified against the dispatch predicate, not inferred: `etagUnchanged` is only ever set inside the `isEtagSupportedTool` branch, so a handler-local 304 always falls through to `mcp::projectFields` and a caller sending `etag_match` + `fields` loses `unchanged` from its own 304. Pre-existing defects the same read surfaced: the `fields=` quick-reference claimed the projection set is "a subset of the ETag set" — it is not, `read_log` projects but does not 304 (13-name set vs 25-name set, compared element-wise); § 6a's `format_mismatch` MUST was unqualified where `mcp-error-codes.md` reserves the narrower `unsupported_format` for the per-op gap, which `roadmap_log` emits live (`amend_body` → `unsupported_format`, `create_section` → `format_mismatch`, both predicates opened); `dry_run` was a hard obligation stated only in the at-a-glance map and absent from the checklist the document calls "the ordered procedure so a new tool doesn't miss a step" — added as **6b** rather than a new step, because ANTS-4108 and ANTS-2021 cite steps 7 and 8 by number and renumbering would strand them; step 10 permitted two of step 2's four contract words; and three pointers sent authors to `CLAUDE.md` § Conventions for wrap mechanics, hook points and a state-routing note that section has never contained. **Resolved clean, so not in the tally:** step 4's `validatePath` signature and defaults, and step 2's `Q_ASSERT_X` contract-drift assertion — both checked against source, both accurate; the lanes could not check them only because the packet lacked those windows. |
