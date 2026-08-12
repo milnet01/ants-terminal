@@ -170,6 +170,36 @@ TEST(McpSpecLog, SetStatusPure) {
     EXPECT_GT(r.line, 0);
 }
 
+// T13 (ANTS-4114, pure) — set_status reports the value it REPLACED. The verb
+// imposes no Status vocabulary (the caller's string is written verbatim), so
+// the replaced value is the only evidence of the project's own vocabulary,
+// and without it a wrong value surfaces at the project's lint gate minutes
+// later instead of at the call.
+TEST(McpSpecLog, SetStatusPureReportsPreviousValue) {
+    const SpecLog::EditResult r =
+        SpecLog::setStatus(QString::fromUtf8(kSpec),
+                           QStringLiteral("accepted (2026-06-04)"));
+    ASSERT_TRUE(r.ok);
+    EXPECT_EQ(r.previousValue, QStringLiteral("spec draft (2026-06-03)."));
+}
+
+// T13 (ANTS-4114, pure) — a WRAPPED Status reports its whole extent, joined,
+// not just the opener. Reporting the opener alone would misrepresent the
+// vocabulary of exactly the specs (49 of 172) whose Status carries history.
+TEST(McpSpecLog, SetStatusPreviousValueJoinsWrappedExtent) {
+    const SpecLog::EditResult r =
+        SpecLog::setStatus(QString::fromUtf8(kWrappedSpec),
+                           QStringLiteral("accepted (2026-08-02)"));
+    ASSERT_TRUE(r.ok);
+    EXPECT_TRUE(r.previousValue.startsWith(
+        QStringLiteral("shipped (2026-08-01). **Split at loop 4:**")));
+    EXPECT_TRUE(r.previousValue.endsWith(
+        QStringLiteral("this document is the read half.")))
+        << "the continuation lines belong to the replaced value";
+    EXPECT_FALSE(r.previousValue.contains(QLatin1Char('\n')))
+        << "the extent is space-joined, one line";
+}
+
 // T1 (refusal) — no Status line → unrecognised_format.
 TEST(McpSpecLog, SetStatusNoLine) {
     const SpecLog::EditResult r =
@@ -289,6 +319,12 @@ TEST(McpSpecLog, HandlerSetStatus) {
     EXPECT_TRUE(QString::fromUtf8(readAll(p)).contains(
         "**Status:** accepted (2026-06-04)"));
 
+    // ANTS-4114 — the envelope names the value that was replaced, so a caller
+    // writing a value the project's own standard rejects sees the mismatch
+    // here rather than at the project's lint gate.
+    EXPECT_EQ(env.value("previous_status").toString(),
+              "spec draft (2026-06-03).");
+
     // ANTS-3724 — bytes_written is the ADDED-bytes delta, file_bytes the whole
     // file (parity with roadmap_log/changelog_log). The old `bytes_written > 0`
     // assertion could not distinguish the two, and is wrong here besides: this
@@ -380,7 +416,12 @@ TEST(McpSpecLog, HandlerDryRunWritesNothing) {
       EXPECT_GT(env.value("bytes").toInt(), 0);
       EXPECT_FALSE(env.contains("bytes_written"));
       // ANTS-3724 — the write-side pair is absent on a preview, both halves.
-      EXPECT_FALSE(env.contains("file_bytes")); }
+      EXPECT_FALSE(env.contains("file_bytes"));
+      // ANTS-4114 — previous_status is on the PREVIEW too: that is what makes
+      // dry_run a free pre-flight for "what vocabulary does this project use?"
+      // rather than something you learn only after writing.
+      EXPECT_EQ(env.value("previous_status").toString(),
+                "spec draft (2026-06-03)."); }
 
     // append_inv dry_run.
     { QJsonObject r = base(); r["op"] = "append_inv";
@@ -388,7 +429,10 @@ TEST(McpSpecLog, HandlerDryRunWritesNothing) {
       const QJsonObject env = rc.cmdSpecLog(r).object();
       ASSERT_TRUE(env.value("ok").toBool())
           << env.value("error").toString().toStdString();
-      EXPECT_TRUE(env.value("dry_run").toBool()); }
+      EXPECT_TRUE(env.value("dry_run").toBool());
+      // ANTS-4114 — set_status-only; an append op has no replaced value, and
+      // an empty string would read as "the Status was blank".
+      EXPECT_FALSE(env.contains("previous_status")); }
 
     // append_loop dry_run.
     { QJsonObject r = base(); r["op"] = "append_loop";

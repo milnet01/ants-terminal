@@ -26,6 +26,12 @@ struct EditResult {
     int     line = -1;   // 1-based line the edit landed on (success only)
     QString code;
     QString error;
+    // ANTS-4114 — set_status only: the value being REPLACED, space-joined
+    // across its continuations. The verb imposes no Status vocabulary (it
+    // writes the caller's string verbatim), so the project's own vocabulary
+    // is only knowable from the value already in the file. Empty for the
+    // append ops.
+    QString previousValue;
 };
 
 // op:"set_status" — replace the first `**Status:**` field's WHOLE extent

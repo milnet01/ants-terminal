@@ -34,3 +34,10 @@ Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
   replaced) and `file_bytes` as the whole file. Parity with `roadmap_log`
   (ANTS-3702) / `changelog_log` (ANTS-3723). Neither field appears on a
   dry_run preview, which reports `bytes` instead.
+- T13 — (ANTS-4114) `set_status` reports `previous_status`: the replaced
+  value, space-joined across the field's continuation lines (a wrapped
+  Status reports its whole extent, not just the opener), on the write
+  envelope AND the `dry_run` preview. The append ops omit the key — an
+  empty string there would read as "the Status was blank". The verb
+  validates no vocabulary, so this is the caller's only project-agnostic
+  read of the one in use.

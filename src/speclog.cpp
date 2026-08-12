@@ -132,6 +132,12 @@ EditResult setStatus(const QString &content, const QString &newStatus) {
 
         EditResult r;
         r.ok = true;
+        // ANTS-4114 — report the value being replaced. This verb imposes no
+        // Status vocabulary (it writes `newStatus` verbatim) and cannot: the
+        // permitted set is stated as prose in each project's own standard, in
+        // shapes that do not share a grammar. The value already in the file is
+        // the one project-agnostic evidence of that vocabulary, so hand it back.
+        r.previousValue = e.value;
         r.content = lines.join(QLatin1Char('\n'));
         if (ewn) r.content += QLatin1Char('\n');
         // 1-based line of the rewritten Status line (ANTS-1963 INV-10's shape;

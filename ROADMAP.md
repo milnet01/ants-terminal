@@ -30479,7 +30479,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 OneUp.
   Resolved (2026-08-11): chunk packing is now bounded by a 48 KiB per-chunk byte budget as well as chunk_size, echoed as chunk_byte_budget so a caller can see why a chunk holds fewer files than it asked for. Did NOT implement the report's second half (splitting an over-budget single file into line ranges): a fragment without its header and helpers is a different and worse kind of shallow review, and Chunk's contract is paths rather than ranges — such a file gets a chunk to itself instead. Existing fixtures are far below the budget, so no partition in the suite changed shape. Suite 3354/3354.
 
-- 📋 [ANTS-4114] **spec_log op:set_status writes a Status value the calling project's own standard rejects, then reports ok:true.**
+- ✅ [ANTS-4114] **spec_log op:set_status writes a Status value the calling project's own standard rejects, then reports ok:true.**
   The verb wrote `**Status:** accepted (2026-08-07)` — generic spec-format
   vocabulary — into a spec in a project whose standard defines exactly four
   permitted values (Draft | Reviewed | Implemented | Superseded by <id>)
@@ -30499,6 +30499,35 @@ defect from different angles.
   **Layman:** The documented way to mark a spec's status wrote a value the project's own checker fails, and said it worked.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 OneUp.
+  Resolved (2026-08-12) — but NOT by the fix the report asked for, and the
+  difference matters. The report's cause ("the verb wrote a value the
+  project rejects") is a pass-through: `SpecLog::setStatus` writes the
+  caller's `status` string verbatim and imposes no vocabulary anywhere. What
+  actually taught the wrong value was the verb's own schema, whose example
+  was `"accepted (2026-06-03)"` — Ants' dated lifecycle presented as the
+  generic form.
+
+  Shipped: (a) `set_status` now returns `previous_status`, the value it
+  replaced, space-joined across the field's continuation lines, on the write
+  envelope AND the `dry_run` preview; (b) the schema no longer offers an
+  example value, and states that the string is written verbatim, that no
+  vocabulary is validated, and that `previous_status` / `dry_run` is the way
+  to read the vocabulary actually in use. The mismatch is now visible in the
+  write's own envelope instead of at the caller's lint gate minutes later.
+  Spec ANTS-1963 INV-12 + test T13 (3 assertions, red on assertions before
+  the fix); INV-10 also corrected — it had never recorded `file_bytes`
+  (ANTS-3724 drift).
+
+  NOT done, deliberately: sniffing the permitted set out of the project's
+  standard and refusing `status_not_permitted`. The two vocabularies now
+  known are stated as prose in incompatible shapes — Ants' standard §5.6
+  gives an arrow lifecycle (`spec draft (DATE)` → `accepted (DATE)` →
+  `shipped X.Y.Z (DATE)`), OneUp's a four-word closed list that forbids
+  history — so a heuristic extractor would sometimes refuse a CORRECT write,
+  which is a worse failure than the one reported. If a project wants
+  enforcement, the durable route is a declared key in `.ants/project.json`
+  (ANTS-2160's mechanism), not prose parsing; not filed, because no project
+  has asked for it.
 
 - ✅ [ANTS-4115] **spec_query returns invariants:[] for the `- **INV-1** <text>` bullet form while reporting possible_untabled_invariants:9 — it can see them and will not return them.**
   spec_query returned {invariants:[], invariants_count:0,

@@ -1550,6 +1550,8 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         out["path"]    = rel;
         out["line"]    = res.line;
         out["bytes"]   = static_cast<qint64>(utf8.size());
+        if (op == QStringLiteral("set_status"))
+            out["previous_status"] = res.previousValue;
         return QJsonDocument(out);
     }
 
@@ -1586,6 +1588,12 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     if (!id.isEmpty()) out["id"] = id;
     out["path"]          = rel;
     out["line"]          = res.line;
+    // ANTS-4114 — set_status echoes the value it replaced. A project whose
+    // standard defines its own Status vocabulary otherwise learns of a wrong
+    // value at its lint gate minutes later; the replaced value makes the
+    // mismatch visible in the write's own envelope.
+    if (op == QStringLiteral("set_status"))
+        out["previous_status"] = res.previousValue;
     rcSetWriteBytes(out, specBefore, static_cast<qint64>(utf8.size()));
     return QJsonDocument(out);
 }

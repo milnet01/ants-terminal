@@ -5917,7 +5917,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "also resolves; phase_<NN>_<topic> → "
                         "docs/phases/) or a project-relative `path`. "
                         "Atomic write. Returns {ok, op, id?, path, line, "
-                        "bytes_written, file_bytes} (ANTS-3724: "
+                        "bytes_written, file_bytes} plus `previous_status` "
+                        "on set_status (ANTS-4114 — the replaced value, so a "
+                        "vocabulary mismatch shows here, not at the project's "
+                        "lint gate) (ANTS-3724: "
                         "bytes_written is the ADDED-bytes delta, matching "
                         "roadmap_log/changelog_log; file_bytes is the whole "
                         "file); dry_run:true previews line/`bytes` "
@@ -5954,11 +5957,20 @@ void ClaudeIntegration::onMcpConnection() {
                             "`id` routing.");
                     QJsonObject statusProp; statusProp["type"] = "string";
                         statusProp["description"] = QStringLiteral(
-                            "set_status: the replacement value, written as "
-                            "one line after \"**Status:** \" (e.g. "
-                            "\"accepted (2026-06-03)\"). Any continuation "
-                            "lines the previous value wrapped onto are "
-                            "replaced too, not left behind.");
+                            "set_status: the replacement value, written "
+                            "VERBATIM as one line after \"**Status:** \". "
+                            "Any continuation lines the previous value "
+                            "wrapped onto are replaced too, not left behind. "
+                            "ANTS-4114 — this verb imposes NO vocabulary and "
+                            "cannot validate one: each project's permitted "
+                            "values live in its own spec standard (Ants uses "
+                            "a dated lifecycle, others a fixed word list that "
+                            "forbids history), so a value this verb accepts "
+                            "may still fail the project's lint gate. Match "
+                            "the project's standard; the envelope's "
+                            "`previous_status` (on dry_run too) names the "
+                            "value being replaced, which is the cheapest "
+                            "read of the vocabulary actually in use.");
                     QJsonObject labelProp; labelProp["type"] = "string";
                         labelProp["description"] = QStringLiteral(
                             "append_loop: the loop label "
