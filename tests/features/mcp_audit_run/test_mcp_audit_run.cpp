@@ -673,6 +673,42 @@ TEST(mcp_audit_run, Ants4094QtDetectionHandlesFlatLayout) {
     EXPECT_TRUE(AuditEngine::projectUsesQt(d.path()));
 }
 
+// ──────────────────────────────────────── ANTS-4124 ──
+// ANTS-4094 added AuditEngine::projectUsesQt because the headless argv and the
+// GUI disagreed about what a Qt project is. Leaving the GUI's inline copy in
+// place would have kept two implementations of the predicate whose divergence
+// caused that bug — and auditdialog.cpp already states the no-drift principle
+// for its find / grep / trivy / cppcheck / FeatureCoverage copies.
+//
+// Source-level, deliberately: detectProject() is private and this codebase
+// tests AuditDialog invariants by source-grep (see
+// audit_dialog_render_hardening). The BEHAVIOUR the dialog gains by adopting
+// the helper — flat-layout detection — is covered above by
+// Ants4094QtDetectionHandlesFlatLayout against the helper itself.
+TEST(mcp_audit_run, Ants4124DialogUsesTheSharedQtDetector) {
+    const std::string dlg = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+
+    EXPECT_NE(dlg.find("AuditEngine::projectUsesQt("), std::string::npos)
+        << "the dialog must call the shared detector";
+
+    // The duplicated predicate is gone. Asserted on the CODE shape, not the
+    // bare literals: auditdialog.cpp legitimately discusses `find_package(Qt6
+    // REQUIRED ...)` in prose for the unrelated version-floor hygiene rule, so
+    // banning the substring would forbid an innocent comment and, worse, would
+    // pass or fail for reasons unrelated to this invariant.
+    EXPECT_EQ(dlg.find("contains(\"find_package(Qt6\")"), std::string::npos)
+        << "the dialog still tests the Qt CMake marker itself";
+    EXPECT_EQ(dlg.find("contains(\"find_package(Qt5\")"), std::string::npos)
+        << "the dialog still tests the Qt CMake marker itself";
+    EXPECT_EQ(dlg.find("contains(\"Q_OBJECT\")"), std::string::npos)
+        << "the dialog still runs its own Q_OBJECT header scan";
+
+    // The detected-types label is still fed — adopting the helper must not
+    // drop the "Qt" chip the dialog shows and populateChecks() reads.
+    EXPECT_NE(dlg.find("m_detectedTypes << \"Qt\""), std::string::npos)
+        << "the Qt entry must still reach m_detectedTypes";
+}
+
 // ─────────────────────────────────────────── ANTS-3395 ──
 // A JSON tool's progress bar / log noise must not be parsed as findings.
 // bandit emits its Rich progress bar to stderr; merged after the JSON it

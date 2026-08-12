@@ -95,6 +95,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit window now recognises Qt projects that keep their code in the top folder** (ANTS-4124)
+  Two separate pieces of code decided whether a project was a Qt one, and
+  they had already drifted apart once — that drift was the bug fixed in the
+  previous release. They are now one piece. The window inherits the better
+  version as a result: a Qt project whose source sits in the top folder
+  rather than a `src/` subfolder is now detected, so it gets the correct
+  analysis settings instead of being treated as a plain C++ project.
+
 - **The push safety check no longer starts a sanitizer build it cannot finish in time** (ANTS-4118)
   Pushing from an automated session could be cut off part-way through the second half of the check, failing the push and leaving the sanitizer build tree half-done. The check now measures how much work is pending first and, if that is more than a couple of minutes' worth, says so and skips that half rather than starting it (the cloud build still covers it). If it does get interrupted, it marks the tree and the next run tells you the one command that repairs it. It also now tells you up front how to skip that half, instead of only mentioning it once you already had.
 

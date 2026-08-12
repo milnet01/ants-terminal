@@ -277,28 +277,15 @@ void AuditDialog::detectProject() {
 
     // Framework detection — lets us pick better tool flags (e.g. cppcheck
     // --library=qt) and decide which rule packs to apply.
-    QFile cmake(m_projectPath + "/CMakeLists.txt");
-    bool isQt = false;
-    if (cmake.open(QIODevice::ReadOnly)) {
-        const QByteArray content = cmake.read(4096);
-        if (content.contains("find_package(Qt6") || content.contains("find_package(Qt5") ||
-            content.contains("Qt6::")            || content.contains("Qt5::"))
-            isQt = true;
-        cmake.close();
-    }
-    // Fallback: scan for Q_OBJECT in src/
-    if (!isQt) {
-        QDirIterator it(m_projectPath + "/src", {"*.h", "*.hpp"},
-                        QDir::Files, QDirIterator::NoIteratorFlags);
-        int scanned = 0;
-        while (it.hasNext() && scanned < 30) {
-            QFile hf(it.next());
-            ++scanned;
-            if (!hf.open(QIODevice::ReadOnly)) continue;
-            if (hf.read(2048).contains("Q_OBJECT")) { isQt = true; break; }
-        }
-    }
-    if (isQt) m_detectedTypes << "Qt";
+    //
+    // ANTS-4124 — the shared predicate, not a local copy. This block used to
+    // reimplement it (CMake marker, then a Q_OBJECT scan over src/), which is
+    // the same duplication whose divergence produced ANTS-4094: the headless
+    // runner hardcoded --library=qt while this gate was correct. One caller
+    // gaining a signal the other lacks is exactly how that recurs. Adopting it
+    // also FIXES a gap here — the helper falls back to the project root when
+    // there is no src/, so a flat-layout qmake Qt project is now detected.
+    if (AuditEngine::projectUsesQt(m_projectPath)) m_detectedTypes << "Qt";
 
     // IaC / container / CI detection — used by populateChecks() to decide
     // whether hadolint / checkov lanes should auto-enable. Kept cheap: a

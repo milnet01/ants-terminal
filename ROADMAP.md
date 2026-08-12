@@ -30886,7 +30886,7 @@ defect from different angles.
   the same TUs. remotecontrol_feedback.cpp no longer includes
   roadmapstore.h; verified by compiling without it. 3377/3377 green.
 
-- 📋 [ANTS-4124] **AuditDialog still carries its own inline Qt detection alongside AuditEngine::projectUsesQt.**
+- ✅ [ANTS-4124] **AuditDialog still carries its own inline Qt detection alongside AuditEngine::projectUsesQt.**
   ANTS-4094 added AuditEngine::projectUsesQt() because the headless
   audit_run argv hardcoded --library=qt while the GUI gated it. The GUI's
   gate is the inline block at auditdialog.cpp:279-301 (CMakeLists Qt
@@ -30909,6 +30909,31 @@ defect from different angles.
   **Layman:** Two separate bits of code decide "is this a Qt project?" — they can drift apart, which is what caused the bug they were just added to fix.
   Kind: refactor.
   Source: in-session-2026-08-12 (ANTS-4094 follow-up).
+  Resolved (2026-08-12): AuditDialog::detectProject now calls
+  AuditEngine::projectUsesQt instead of reimplementing it — 22 lines of
+  inline CMake-marker + Q_OBJECT scan replaced by one call. auditengine.h
+  was already reachable (auditdialog.h:6 includes it), so no new include.
+  `m_detectedTypes << "Qt"` still fires, so the dialog's Qt chip and
+  populateChecks()'s rule-pack decisions are unchanged.
+
+  The intended behaviour change came with it: the shared helper falls back
+  to scanning the project root when there is no src/, so the GUI now detects
+  a FLAT-LAYOUT qmake/Meson Qt project that its own copy structurally could
+  not. Covered by mcp_audit_run.Ants4094QtDetectionHandlesFlatLayout against
+  the helper.
+
+  Guard: mcp_audit_run.Ants4124DialogUsesTheSharedQtDetector. Source-level
+  by choice — detectProject() is private and this repo tests AuditDialog
+  invariants by source-grep (audit_dialog_render_hardening is the
+  precedent). The first draft of that guard was WRONG and worth recording:
+  it asserted the bare substrings `find_package(Qt6` / `Q_OBJECT` were
+  absent from auditdialog.cpp, which failed against two comments — my own
+  new one, and a pre-existing note about the unrelated version-floor
+  hygiene rule at auditdialog.cpp:589. A test that bans a word rather than
+  a construct fails for reasons unrelated to its invariant, so it now
+  asserts the CODE shape (`contains("Q_OBJECT")`) instead.
+
+  3380/3380 green.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
@@ -39291,6 +39316,26 @@ contributors don't duplicate research.
   no mechanical guard stopping the residue returning; adding IWYU to
   tools/ci-parity.sh --lints would be the real fix and is its own item if
   it is ever worth the dependency.
+
+- 📋 [ANTS-4126] **Include residue in tests/ — the ANTS-4125 sweep covered src/remotecontrol*.cpp only.**
+  clangd reports `cstdio` unused at
+  tests/features/mcp_audit_run/test_mcp_audit_run.cpp:27. Noticed while
+  working in that file for ANTS-4124 and NOT folded in — it is orthogonal to
+  that fix (global CLAUDE.md rule 11), and one include is not worth its own
+  build.
+
+  Scope it as the tests/ half of ANTS-4125, which deliberately covered only
+  src/remotecontrol*.cpp. Same method applies and it is the only one that
+  works: remove every candidate, build, restore what fails. A name-grep
+  under-reports (generic type names match for unrelated reasons) and
+  over-reports (free functions, pointer-only uses, extern consts never
+  appear as literals).
+
+  Low value on its own — fold it into the next pass that is already
+  rebuilding the test bundles rather than paying a full build for it.
+  **Layman:** Some test files list helper files they no longer use, the same tidy-up just done for the main source.
+  Kind: refactor.
+  Source: in-session-2026-08-12 (clangd, during ANTS-4124).
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
