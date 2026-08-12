@@ -205,7 +205,13 @@ Optional pieces:
   op:append` / `op:append_batch` via their `evidence: […]` arg and
   echoed by `roadmap_query` as an `evidence` array (omitted when the
   bullet has none) so a later session can re-locate the files.
-  Case-sensitive label (ANTS-3382).
+  **Case-INsensitive label.** ANTS-3382 introduced it case-sensitive and
+  ANTS-3407 gave it `CaseInsensitiveOption` for parity with `Layman:`;
+  this line said "case-sensitive" until 2026-08-12 and the code had
+  disagreed with it since. Verified against `rxEvidence()` in
+  `src/roadmapparse.cpp`. `Kind:`, `Lanes:` and `Source:` are the
+  case-SENSITIVE ones — the opposite grouping to what both this file and
+  the global copy previously implied.
 - **Sub-bullets** — for parametrised work (e.g. "implement for X
   / Y / Z").
 
