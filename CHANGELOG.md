@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **Qt 6.2 floor guard now runs before every push (ANTS-4131)** (ANTS-4131)
+  New `tools/qt62-guard.sh` compiles the whole project against the
+  oldest supported Qt inside a container, and the pre-push hook now runs
+  it whenever a push touches compilable source. Both the toolchain layer
+  and the build tree are cached, so a check that used to take about 25
+  minutes now takes 5-7 seconds — and rejects a too-new Qt call in about
+  one. This is the failure that broke CI three times on ANTS-4108 and
+  could not be caught on this machine at all.
+
 - **`spec_conformance` — an MCP verb that RUNS the regex patterns a spec prescribes against the `| input | expected |` table beside them** (ANTS-4108)
   A cold read passes a wrong pattern; running it does not. A row whose
   actual result differs from `expected` comes back as a finding, a

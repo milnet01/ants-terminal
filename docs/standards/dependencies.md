@@ -123,7 +123,7 @@ cycle**, and opportunistically when editing a manifest. Per dependency type:
 | GoogleTest (the `FetchContent_Declare(googletest …)` `GIT_TAG`) | compare the pinned `GIT_TAG` against `github.com/google/googletest` releases |
 | CI actions (`.github/workflows/*.yml`) | `gh api repos/<owner>/<repo>/releases/latest -q .tag_name`; bump the pinned **SHA** *and* its `# vX.Y.Z` comment together (§6) |
 | CI runner images (`runs-on:`) | GitHub's runner-image release notes (`ubuntu-24.04` → next LTS). **Caveat:** the `qt62-baseline` job's `ubuntu-22.04` is *not* a stale pin — it mirrors the §4 Qt 6.2 floor. Do **not** bump it in the runner sweep; it moves only if the Qt 6.2 floor itself is deliberately raised. |
-| Container base (`tools/ci-parity.sh` `qt62_image`) | keep in lockstep with the `qt62-baseline` `runs-on:` Ubuntu version it mirrors |
+| Container base (`tools/ci-parity.sh` `qt62_base`) | keep in lockstep with the `qt62-baseline` `runs-on:` Ubuntu version it mirrors. Its **apt set** needs no sweep — ANTS-4131 extracts that from `ci.yml` at run time |
 | LayerShellQt (`find_package(LayerShellQt CONFIG QUIET)`) | optional `CONFIG`-discovered dep, no version pin — sweep is present-or-absent only (nothing to bump) |
 
 On any bump: apply §5b (update callers/idioms in the same change) and re-run
@@ -151,8 +151,12 @@ map.
   by 40-char SHA with a `# vX.Y.Z` human comment — a mutable tag is never
   trusted; cf. the `tj-actions/changed-files` 2025 incident), `runs-on:`
   runner images, the apt Qt/Lua package sets.
-- **`tools/ci-parity.sh`** — the `qt62_image` container base + its apt set
-  (kept in lockstep with `ci.yml`'s `qt62-baseline` step).
+- **`tools/ci-parity.sh`** — the `qt62_base` container base only. It carries
+  **no apt list of its own**: since ANTS-4131 `qt62_ci_packages()` extracts the
+  package set from `ci.yml`'s `qt62-baseline` install step at run time and
+  refuses to run if it cannot parse it, so there is nothing here to keep in
+  lockstep and nothing to sweep. A package added to `ci.yml` reaches the parity
+  container automatically (and re-keys its cached image).
 
 ## 7. Current sweep candidates (as of 2026-07-03)
 

@@ -26,6 +26,7 @@
 #                                      #    ctest, --version/--help smoke
 #   tools/ci-parity.sh --qt62          #  + qt62-baseline compile guard in a podman
 #                                      #    ubuntu:22.04 / Qt 6.2 container (needs podman)
+#   tools/ci-parity.sh --qt62-clean    # drop the cached qt62 image + build volume
 #   tools/ci-parity.sh --full          #  --lints + --asan + --qt62 (every CI gate)
 #   tools/ci-parity.sh --repeat 5      # rerun each test up to 5x, fail on first flake
 #   tools/ci-parity.sh --stress        # add background CPU load (needs stress-ng)
@@ -38,9 +39,11 @@
 #
 # The qt62-baseline job (ubuntu-22.04 / Qt 6.2 compile guard) needs a distro +
 # Qt older than an openSUSE dev box provides, so --qt62 runs it inside a podman
-# ubuntu:22.04 container (source bind-mounted read-only, build tree in the
-# container so the host repo stays clean). It is the only gate that needs a
+# ubuntu:22.04 container (source bind-mounted read-only, build tree in a podman
+# volume so the host repo stays clean). It is the only gate that needs a
 # container, and SKIPs loudly when podman is absent; --full includes it.
+# ANTS-4131 caches both its apt layer and its build tree — see the section
+# comment above qt62_ci_packages() for the keying and the disk budget.
 #
 # NB: no `set -e` — gates must accumulate rather than abort on the first
 # failure. Critical build failures are handled with explicit `|| exit`.
@@ -57,6 +60,7 @@ stress=0
 do_lints=0
 do_asan=0
 do_qt62=0
+do_qt62_clean=0
 ctest_args=()
 
 while [[ $# -gt 0 ]]; do
@@ -66,6 +70,7 @@ while [[ $# -gt 0 ]]; do
         --lints)  do_lints=1; shift ;;
         --asan)   do_asan=1; shift ;;
         --qt62)   do_qt62=1; shift ;;
+        --qt62-clean) do_qt62_clean=1; shift ;;
         --full)   do_lints=1; do_asan=1; do_qt62=1; shift ;;
         *) ctest_args+=("$1"); shift ;;
     esac
@@ -73,6 +78,14 @@ done
 
 declare -a FAILED=()
 declare -a SKIPPED=()
+
+# --- --qt62-clean: reclaim the ANTS-4131 caches (runs before any gate) -------
+# Alone it cleans and exits; with --qt62 it forces the next run to rebuild the
+# image and the build tree from cold.
+if [[ "$do_qt62_clean" == 1 ]]; then
+    bash tools/qt62-guard.sh --clean
+    [[ "$do_qt62" == 1 ]] || exit 0
+fi
 
 # gate <label> <cmd...> — run a CI gate; record (never abort) on failure.
 gate() {
@@ -182,47 +195,17 @@ if [[ "$do_asan" == 1 ]]; then
     fi
 fi
 
-# --- qt62-baseline: Qt 6.2 compile guard in a podman ubuntu:22.04 container --
-# Mirrors ci.yml's qt62-baseline job exactly: same apt package set, same
-# `cmake -B build-qt62 -DCMAKE_BUILD_TYPE=Release` + `--build --parallel`
-# compile guard (no ctest — running the suite is build-test's remit). The repo
-# is bind-mounted read-only and the build tree lives in the container
-# (/tmp/build-qt62), so a stray source write fails loudly and the host repo /
-# its build*/ trees are never touched. Keep the Qt/build package list below in
-# lockstep with ci.yml's qt62-baseline "Install Qt6 + build deps" step.
-#
-# `git` + `ca-certificates` are NOT in ci.yml's list: the GitHub ubuntu-22.04
-# runner ships them pre-installed, but the bare ubuntu:22.04 base image does
-# not — and the tests' GTest fallback (CMakeLists.txt:748, FetchContent
-# GIT_REPOSITORY googletest) git-clones over HTTPS when no system GTest is
-# found (the runner has none either, so CI takes the same FetchContent path).
-# So they reproduce the runner ENV, not a divergence from ci.yml.
-qt62_image="docker.io/library/ubuntu:22.04"
-qt62_container() {
-    podman run --rm --security-opt label=disable \
-        -v "$PWD:/src:ro" -w /src "$qt62_image" \
-        bash -euo pipefail -c '
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update -qq
-            apt-get install -y --no-install-recommends \
-                git ca-certificates \
-                build-essential cmake ninja-build pkg-config \
-                qt6-base-dev qt6-base-dev-tools \
-                libqt6opengl6-dev libqt6openglwidgets6 \
-                qt6-wayland qt6-wayland-dev \
-                liblua5.4-dev \
-                libgl-dev libglx-dev libegl-dev libglu1-mesa-dev \
-                libfontconfig1-dev libfreetype-dev \
-                libxkbcommon-dev libxkbcommon-x11-dev
-            cmake -S /src -B /tmp/build-qt62 -G Ninja -DCMAKE_BUILD_TYPE=Release
-            cmake --build /tmp/build-qt62 --parallel
-        '
-}
-
+# --- qt62-baseline: Qt 6.2 compile guard (ANTS-4131) -------------------------
+# Delegated to tools/qt62-guard.sh, which owns the container base, the ci.yml
+# package extraction, the cache keying and the compile itself. It is a separate
+# script because tools/hooks/pre-push runs the same guard, and the image/volume
+# derivation must not exist in two places — a second copy is how the parity
+# harness silently stops reproducing CI.
 if [[ "$do_qt62" == 1 ]]; then
-    echo "ci-parity: qt62-baseline (podman $qt62_image — Qt 6.2 compile guard)"
-    maybe_gate podman "qt62-baseline: Qt 6.2 compile guard (container)" qt62_container
+    maybe_gate podman "qt62-baseline: Qt 6.2 compile guard (container)" \
+        bash tools/qt62-guard.sh
 fi
+
 
 # --- summary ----------------------------------------------------------------
 echo

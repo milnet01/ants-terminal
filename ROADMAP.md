@@ -31252,7 +31252,7 @@ defect from different angles.
   candidate. Prose corrected, and the distinction stated — that one is
   reported, not silent.
 
-- 📋 [ANTS-4131] **Cache the qt62-baseline container image so the Qt-floor guard is cheap enough to run before a push.**
+- ✅ [ANTS-4131] **Cache the qt62-baseline container image so the Qt-floor guard is cheap enough to run before a push.**
   ANTS-4108 shipped `src/specconformance.cpp` using
   `QRegularExpressionMatch::hasCaptured()`, which is **Qt 6.3+**. The
   project floor is Qt 6.2 (dependencies.md § 4). It compiled here, passed
@@ -31292,6 +31292,41 @@ defect from different angles.
   **Layman:** Make the "does it still build on the oldest Qt we support?" check fast, so it runs before code leaves the machine instead of failing on the server 25 minutes later.
   Kind: enhancement.
   Source: in-session-2026-08-12 (three red CI runs from ANTS-4108).
+  Resolved (2026-08-12): shipped as tools/qt62-guard.sh (single owner)
+  + a pre-push leg + a ci-parity.sh delegation.
+
+  The bullet's stated CAUSE was wrong, and measuring it first is what
+  changed the design. It assumed apt was "most of the ~25 min". Measured
+  on this host:
+
+    apt layer (image build) .......  61 s, once
+    compile, empty build tree ..... 617 s
+    compile, warm tree, no change ...  5 s
+    compile, warm tree, 1 TU touched   7 s
+    compile, warm tree, floor break .  1 s  (fails, naming the symbol)
+
+  So apt is one minute of ten and caching it alone — the fix as scoped —
+  would have left the leg unusable in a hook. What makes it viable is
+  caching the BUILD TREE in a podman volume, which the bullet treated as
+  irreducible.
+
+  Verified by mutation, not by inspection: injecting
+  QRegularExpressionMatch::hasCaptured() (the Qt 6.3+ call that broke CI
+  three times) makes the warm guard fail in 1 s with "no member named
+  'hasCaptured'"; restoring it passes in 7 s. A fast guard that had
+  stopped seeing anything would look identical without this check.
+
+  The apt package set is EXTRACTED from ci.yml at run time rather than
+  mirrored, so the third copy the bullet worried about does not exist —
+  and the extractor refuses rather than guessing if ci.yml stops parsing
+  (verified by feeding it a renamed step). Image and build volume are both
+  keyed to a digest of that list, so a ci.yml change re-keys both.
+
+  Pre-push leg runs only when the push touches compilable sources
+  (incl. .cpp.in/.h.in templates), is --warm-only so it never pays the
+  ~11 min cold build, and opts out with ANTS_PREPUSH_NO_QT62=1.
+  Disk: ~1.2 GB image + ~3.5 GB volume, reclaimed by
+  tools/qt62-guard.sh --clean.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

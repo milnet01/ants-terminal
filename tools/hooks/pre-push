@@ -222,5 +222,53 @@ else
     fi
 fi
 
+# --- qt62-baseline leg (ANTS-4131) ------------------------------------------
+# The Qt 6.2 floor guard. This dev box runs a much newer Qt, so an API newer
+# than the floor compiles here, passes the full suite here, and passes both
+# legs above — and breaks only in CI. ANTS-4108 shipped
+# QRegularExpressionMatch::hasCaptured() (Qt 6.3+) and went red on three
+# consecutive pushes for exactly that reason.
+#
+# The leg used to be excluded because it cost ~25 min. ANTS-4131 caches the apt
+# layer as an image and the build tree as a podman volume, and measured on this
+# host 2026-08-12 a warm run is 5-7 s, with a floor violation rejected in ~1 s.
+# At that price it belongs here.
+#
+# Scope: only a push that changes something COMPILABLE can break the floor, so
+# a docs- or packaging-only push skips it. --warm-only guarantees the hook never
+# pays the ~11 min cold build; it skips loudly instead, naming the one command
+# that warms the caches.
+#
+# Opt out for one push with ANTS_PREPUSH_NO_QT62=1.
+if [[ -n "${ANTS_PREPUSH_NO_QT62:-}" ]]; then
+    echo "pre-push: qt62-baseline leg skipped (ANTS_PREPUSH_NO_QT62 set)."
+elif [[ ! -x tools/qt62-guard.sh ]]; then
+    echo "pre-push: ⊘ tools/qt62-guard.sh missing — Qt-floor guard did NOT run."
+else
+    # run_gate=1 means we could not compute a precise range, so we cannot rule
+    # out a source change — run it rather than skip on uncertainty.
+    compilable=""
+    if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
+        # `.cpp.in` / `.h.in` count: a template that generates a compiled TU can
+        # break the floor exactly as the generated file would.
+        compilable="$(grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)(\.in)?$|(^|/)CMakeLists\.txt$|\.cmake$' \
+                      <<<"$changed" || true)"
+    else
+        compilable="(range unknown)"
+    fi
+
+    if [[ -z "$compilable" ]]; then
+        echo "pre-push: qt62-baseline leg skipped — no compilable source in this push."
+    elif ! tools/qt62-guard.sh --warm-only; then
+        echo >&2
+        echo "pre-push: Qt 6.2 FLOOR violation — push blocked." >&2
+        echo "          The code compiles on this box's Qt but not on the 6.2 floor" >&2
+        echo "          (dependencies.md § 4). This is the class that broke CI three" >&2
+        echo "          times on ANTS-4108; only this guard sees it locally." >&2
+        echo "          ('git push --no-verify' to override.)" >&2
+        exit 1
+    fi
+fi
+
 echo "pre-push: correctness suite green — push allowed."
 exit 0
