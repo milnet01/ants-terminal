@@ -2059,6 +2059,9 @@ if(ANTS_TESTS)
                 tests/features/test_audit_declared_test_roots/test_declared_test_roots.cpp
                 # ANTS-3709 — computed partition fallback when no module map parses.
                 tests/features/indie_review_computed_partition/test_indie_review_computed_partition.cpp
+                # ANTS-4095/4096/4100 — citation resolution, generated-file
+                # exclusion + shader admission, and the too-coarse lane signal.
+                tests/features/indie_review_resolution_and_coarseness/test_indie_review_resolution_and_coarseness.cpp
                 # ANTS-1579 — verify_changes timeout_sec end-to-end plumb.
                 tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp
                 # ANTS-1339 — applyFilter streaming line-split.

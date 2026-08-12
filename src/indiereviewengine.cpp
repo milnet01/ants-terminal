@@ -225,6 +225,42 @@ QList<Lane> deriveFileListPartition(const QString &projectPath,
     return out;
 }
 
+// ANTS-4096 — a generated source file is not review material: a lane briefed
+// from one reviews a compiler's output. The prefix-only test this replaces
+// (`moc_`/`ui_`/`qrc_`) missed every SUFFIX-shaped generator, which is how a
+// shaders/ directory partitioned into 22 `*.spv.h` byte-array headers and none
+// of the 19 hand-written GLSL sources beside them.
+//
+// Deliberately NOT AuditDialog::isGeneratedFile: that one lives on a
+// Widgets-linked class this core library must not see, and it carries
+// audit-artifact rules (`.audit_cache/`, `audit_fixtures/`) that have no
+// meaning for a review partition. It also predates `.spv.h`. Third site of
+// this shape (auditdialog, findsources, here) — the Rule-of-Three extraction
+// is filed as its own item rather than smuggled into this fix.
+bool isGeneratedSource(const QString &fileName) {
+    static const QStringList kPrefixes = {
+        QStringLiteral("moc_"), QStringLiteral("ui_"), QStringLiteral("qrc_"),
+    };
+    for (const QString &p : kPrefixes)
+        if (fileName.startsWith(p)) return true;
+
+    // Suffix-shaped generators: shader byte arrays (glslc/spirv `-mfs`),
+    // protobuf/gRPC, flex/bison, and the `*_generated.<ext>` convention.
+    static const QStringList kSuffixes = {
+        QStringLiteral(".spv.h"),  QStringLiteral(".spv.hpp"),
+        QStringLiteral(".pb.h"),   QStringLiteral(".pb.cc"),
+        QStringLiteral(".yy.cc"),  QStringLiteral(".tab.cc"),
+        QStringLiteral(".ttf.h"),  QStringLiteral(".moc"),
+    };
+    for (const QString &s : kSuffixes)
+        if (fileName.endsWith(s, Qt::CaseInsensitive)) return true;
+
+    static const QRegularExpression reGenerated(
+        QStringLiteral(R"(_generated\.[A-Za-z0-9]+$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return reGenerated.match(fileName).hasMatch();
+}
+
 }  // namespace
 
 // ANTS-3709 — computed fallback partition. Every earlier deriver reads a
@@ -254,9 +290,6 @@ QList<Lane> deriveComputedPartition(const QString &projectPath) {
                       ? QStringLiteral("src") : QStringLiteral("."));
     }
 
-    static const QStringList kGenPrefixes = {
-        QStringLiteral("moc_"), QStringLiteral("ui_"), QStringLiteral("qrc_"),
-    };
     QMap<QString, QStringList> byDir;   // dir rel path → file rel paths
     int seen = 0;
     for (const QString &root : roots) {
@@ -270,10 +303,7 @@ QList<Lane> deriveComputedPartition(const QString &projectPath) {
             const QFileInfo fi(abs);
             if (!CodebaseIndex::isIndexableSuffix(fi.suffix().toLower()))
                 continue;
-            bool generated = false;
-            for (const QString &p : kGenPrefixes)
-                if (fi.fileName().startsWith(p)) generated = true;
-            if (generated) continue;
+            if (isGeneratedSource(fi.fileName())) continue;
             const QStringList segs = rel.split(QLatin1Char('/'));
             bool noise = false;
             for (int i = 0; i + 1 < segs.size(); ++i)
@@ -305,6 +335,49 @@ QList<Lane> deriveComputedPartition(const QString &projectPath) {
         }
     }
     return out.size() > 1 ? out : QList<Lane>{};
+}
+
+// ANTS-4100 — see header. Counts reviewable files behind a lane's sourcePaths,
+// expanding any entry that is a directory. Capped: past the threshold the
+// caller only needs to know it is over, not by how much.
+int laneFileCount(const QString &projectPath, const Lane &lane) {
+    constexpr int kCountCap = 5000;
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty()) return 0;
+
+    QSet<QString> counted;   // a file named twice is one file
+    for (const QString &sp : lane.sourcePaths) {
+        const QString abs = QDir(projectPath).filePath(sp);
+        const QString canon = QFileInfo(abs).canonicalFilePath();
+        if (canon.isEmpty()) continue;
+        if (canon != rootCanon && !canon.startsWith(rootCanon + QChar('/')))
+            continue;
+        const QFileInfo fi(canon);
+        if (fi.isFile()) {
+            if (CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())
+                && !isGeneratedSource(fi.fileName()))
+                counted.insert(canon);
+            continue;
+        }
+        if (!fi.isDir()) continue;
+        QDirIterator it(canon, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext() && counted.size() < kCountCap) {
+            const QString f = it.next();
+            const QFileInfo ffi(f);
+            if (!CodebaseIndex::isIndexableSuffix(ffi.suffix().toLower()))
+                continue;
+            if (isGeneratedSource(ffi.fileName())) continue;
+            const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
+                                    ? f.mid(rootCanon.size() + 1) : QString();
+            bool noise = false;
+            const QStringList segs = rel.split(QLatin1Char('/'));
+            for (int i = 0; i + 1 < segs.size(); ++i)
+                if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+            if (noise) continue;
+            counted.insert(f);
+        }
+    }
+    return counted.size();
 }
 
 QList<Lane> derivePartition(const QString &projectPath) {
@@ -392,9 +465,17 @@ int levenshtein(const QString &a, const QString &b) {
 // across such lanes, so summary-similarity would flag nonsensical merges
 // (src+tests, .github+tests). A fallback summary carries no subsystem signal,
 // so it must never drive a merge — exclude it from the summary-similarity pass.
-bool isFileListFallbackSummary(const QString &summary) {
-    return summary.contains(
-        QLatin1String("grouped by top-level directory"));
+//
+// ANTS-4096 — the SAME argument covers the ANTS-3709 computed fallback, whose
+// template reads "(computed partition — no module map; grouped by directory)".
+// ANTS-3591 keyed on the file-list wording alone, so the computed lanes stayed
+// eligible and every pair scored as near-identical BY CONSTRUCTION: one run
+// emitted 38 suggestions, including merging two disjoint slices of the same
+// directory and an "ipx with sndserv" pair at 93%. Match on the shared
+// "grouped by" stem so a third fallback template cannot reintroduce this.
+bool isDerivedFallbackSummary(const QString &summary) {
+    return summary.contains(QLatin1String("grouped by top-level directory"))
+        || summary.contains(QLatin1String("grouped by directory"));
 }
 
 }  // namespace
@@ -409,10 +490,10 @@ QList<MergeSuggestion> suggestedMerges(const QList<Lane> &lanes) {
         const QString a = lanes.at(i).summary.trimmed();
         // ANTS-3591 — skip fallback lanes (boilerplate summaries) as a merge
         // source; their summary text is meaningless for similarity.
-        if (a.isEmpty() || isFileListFallbackSummary(a)) continue;
+        if (a.isEmpty() || isDerivedFallbackSummary(a)) continue;
         for (int j = i + 1; j < lanes.size(); ++j) {
             const QString b = lanes.at(j).summary.trimmed();
-            if (b.isEmpty() || isFileListFallbackSummary(b)) continue;
+            if (b.isEmpty() || isDerivedFallbackSummary(b)) continue;
 
             QString rationale;
             if (a == b) {
@@ -644,8 +725,42 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
     return m;
 }
 
+QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
+    // Same walk shape and caps as deriveComputedPartition: indexable
+    // suffixes, no generated output, no noise directories, bounded total.
+    constexpr int kMaxFilesTotal = 20000;
+    QHash<QString, QString> out;
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty()) return out;
+
+    QDirIterator it(rootCanon, QDir::Files, QDirIterator::Subdirectories);
+    int seen = 0;
+    while (it.hasNext() && seen < kMaxFilesTotal) {
+        const QString abs = it.next();
+        if (!abs.startsWith(rootCanon + QLatin1Char('/'))) continue;
+        const QString rel = abs.mid(rootCanon.size() + 1);
+        const QFileInfo fi(abs);
+        if (!CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())) continue;
+        if (isGeneratedSource(fi.fileName())) continue;
+        const QStringList segs = rel.split(QLatin1Char('/'));
+        bool noise = false;
+        for (int i = 0; i + 1 < segs.size(); ++i)
+            if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+        if (noise) continue;
+        ++seen;
+        const QString base = fi.fileName();
+        auto existing = out.constFind(base);
+        if (existing == out.constEnd()) out.insert(base, rel);
+        else if (existing.value() != rel)
+            out.insert(base, QString());   // ambiguous — resolves to nothing
+    }
+    return out;
+}
+
 QList<Citation> extractFileLineCitations(const QString &projectPath,
-                                         const QString &report) {
+                                         const QString &report,
+                                         const QHash<QString, QString> *basenameIndex,
+                                         CorroborateStats *stats) {
     QList<Citation> out;
     if (report.isEmpty()) return out;
 
@@ -656,23 +771,48 @@ QList<Citation> extractFileLineCitations(const QString &projectPath,
     if (scope.size() > kMaxScanBytes) scope = scope.left(kMaxScanBytes);
 
     // Longest-first extension alternation (cpp before c, hpp before h).
+    // ANTS-4096 admitted GLSL to the partition walk, so a shader lane is now
+    // reviewable; without the same extensions here every finding it cites
+    // would be dropped at corroboration — the very failure ANTS-4095 is.
     static const QRegularExpression reLine(
-        QStringLiteral(R"(\b([A-Za-z0-9_./-]+\.(?:cpp|hpp|cc|yaml|json|yml|md|py|sh|h|c)):(\d+))"));
+        QStringLiteral(R"(\b([A-Za-z0-9_./-]+\.(?:cpp|hpp|cc|yaml|json|yml|md|py|sh|glsl|comp|frag|vert|geom|tesc|tese|rgen|rchit|rmiss|h|c)):(\d+))"));
     static const QRegularExpression reFile(
-        QStringLiteral(R"(\b([A-Za-z0-9_./-]+\.(?:cpp|hpp|cc|yaml|json|yml|md|py|sh|h|c))\b)"));
+        QStringLiteral(R"(\b([A-Za-z0-9_./-]+\.(?:cpp|hpp|cc|yaml|json|yml|md|py|sh|glsl|comp|frag|vert|geom|tesc|tese|rgen|rchit|rmiss|h|c))\b)"));
 
     QFileInfo rootInfo(projectPath);
     const QString rootCanon = rootInfo.canonicalFilePath();
     if (rootCanon.isEmpty()) return out;
 
-    auto resolveOk = [&](const QString &rel) -> QString {
-        // Resolve `rel` against projectPath; reject if it escapes.
-        const QString abs = QDir(projectPath).filePath(rel);
+    // The reFile pass re-matches every token reLine already saw, so count each
+    // DISTINCT cited token once — an inflated "seen" would misreport the very
+    // ratio the caller reads to decide whether resolution failed.
+    QSet<QString> countedTokens;
+    auto resolveOk = [&](const QString &cited) -> QString {
+        const bool fresh = stats && !countedTokens.contains(cited);
+        if (fresh) { countedTokens.insert(cited); ++stats->citationsSeen; }
+        // Resolve `cited` against projectPath; reject if it escapes.
+        const QString abs = QDir(projectPath).filePath(cited);
         const QString canon = QFileInfo(abs).canonicalFilePath();
-        if (canon.isEmpty()) return {};
-        if (canon != rootCanon
-            && !canon.startsWith(rootCanon + QChar('/'))) return {};
-        return rel;
+        if (!canon.isEmpty()
+            && (canon == rootCanon
+                || canon.startsWith(rootCanon + QChar('/')))) {
+            if (fresh) ++stats->citationsResolved;
+            return cited;
+        }
+        // ANTS-4095 — reviewers cite the file they were shown, and a brief
+        // shows `d_main.c`, not `linuxdoom-1.10/d_main.c`. Fall back to a
+        // UNIQUE basename match; an ambiguous one (empty value) stays
+        // dropped, because guessing between two same-named files would
+        // corroborate two lanes that never agreed.
+        if (basenameIndex && !cited.contains(QLatin1Char('/'))) {
+            const QString mapped = basenameIndex->value(cited);
+            if (!mapped.isEmpty()) {
+                if (fresh) { ++stats->citationsResolved;
+                             ++stats->citationsByBasename; }
+                return mapped;
+            }
+        }
+        return {};
     };
 
     auto contextAt = [&](int pos, int matchLen) -> QString {
@@ -727,16 +867,22 @@ QList<Citation> extractFileLineCitations(const QString &projectPath,
 QList<CorroboratedFinding> corroboratedFindings(
     const QString &projectPath,
     const QHash<QString, QString> &reports,
-    int minLanes) {
+    int minLanes,
+    CorroborateStats *stats) {
     if (minLanes < 1) minLanes = 1;
 
     // (file, line) → set<lane>; (file, line) → ordered <lane, context>
     QHash<QPair<QString, int>, QSet<QString>> coverage;
     QHash<QPair<QString, int>, QHash<QString, QString>> contexts;
 
+    // ANTS-4095 — built once for the whole pass, not per report: the walk is
+    // the expensive half and every lane resolves against the same tree.
+    const QHash<QString, QString> basenames = buildBasenameIndex(projectPath);
+
     for (auto it = reports.constBegin(); it != reports.constEnd(); ++it) {
         const QString lane = it.key();
-        const auto cites = extractFileLineCitations(projectPath, it.value());
+        const auto cites = extractFileLineCitations(
+            projectPath, it.value(), &basenames, stats);
         for (const Citation &c : cites) {
             const QPair<QString, int> key{c.file, c.line};
             coverage[key].insert(lane);
@@ -773,7 +919,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
     const QString &projectPath,
     const QString &reportsDirRelative,
     int minLanes,
-    int *reportsRead) {
+    int *reportsRead,
+    CorroborateStats *stats) {
     if (reportsRead) *reportsRead = 0;
 
     // INV-3: reject absolute paths outright.
@@ -790,7 +937,7 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
     }
 
     return corroboratedFindingsFromCanonicalDir(projectPath, canon, minLanes,
-                                                reportsRead);
+                                                reportsRead, stats);
 }
 
 // ANTS-3713 — the read half, split out so the MCP layer's
@@ -800,7 +947,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
     const QString &projectPath,
     const QString &canonicalDir,
     int minLanes,
-    int *reportsRead) {
+    int *reportsRead,
+    CorroborateStats *stats) {
     if (reportsRead) *reportsRead = 0;
 
     QDir dir(canonicalDir);
@@ -831,7 +979,7 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
         if (reportsRead) (*reportsRead)++;
     }
 
-    return corroboratedFindings(projectPath, reports, minLanes);
+    return corroboratedFindings(projectPath, reports, minLanes, stats);
 }
 
 QString synthesisPrompt(const QHash<QString, QString> &reports,

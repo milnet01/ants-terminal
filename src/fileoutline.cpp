@@ -11,6 +11,26 @@
 
 namespace FileOutline {
 
+// ANTS-3800 — the SAME extension set symbolquery.cpp's ANTS-3558 lane accepts,
+// deliberately: the whole defect was three verbs disagreeing about which files
+// are GLSL, and a second list here would be that defect with an extra step.
+// Note what it omits, and why: `.vs`/`.fs`/`.gs` are excluded because `.fs` is
+// also F# source.
+// ANTS-4096 — hoisted out of the anonymous namespace and declared in the
+// header so CodebaseIndex::isIndexableSuffix reuses this list instead of
+// growing the fourth copy the comment above warns about.
+bool isGlslExt(const QString &ext) {
+    static const QSet<QString> kGlsl = {
+        QStringLiteral("glsl"), QStringLiteral("comp"), QStringLiteral("frag"),
+        QStringLiteral("vert"), QStringLiteral("geom"), QStringLiteral("tesc"),
+        QStringLiteral("tese"), QStringLiteral("vsh"),  QStringLiteral("fsh"),
+        QStringLiteral("mesh"), QStringLiteral("task"), QStringLiteral("rgen"),
+        QStringLiteral("rchit"),QStringLiteral("rmiss"),QStringLiteral("rahit"),
+        QStringLiteral("rint"), QStringLiteral("rcall"),
+    };
+    return kGlsl.contains(ext);
+}
+
 namespace {
 
 constexpr int kMaxLineBytes      = 1024;   // ANTS-1249-INV-8
@@ -364,23 +384,6 @@ QString genericLangName(const QString &ext) {
 }
 
 bool isGenericExt(const QString &ext) { return !genericLangName(ext).isEmpty(); }
-
-// ANTS-3800 — the SAME extension set symbolquery.cpp's ANTS-3558 lane accepts,
-// deliberately: the whole defect was three verbs disagreeing about which files
-// are GLSL, and a second list here would be that defect with an extra step.
-// Note what it omits, and why: `.vs`/`.fs`/`.gs` are excluded because `.fs` is
-// also F# source.
-bool isGlslExt(const QString &ext) {
-    static const QSet<QString> kGlsl = {
-        QStringLiteral("glsl"), QStringLiteral("comp"), QStringLiteral("frag"),
-        QStringLiteral("vert"), QStringLiteral("geom"), QStringLiteral("tesc"),
-        QStringLiteral("tese"), QStringLiteral("vsh"),  QStringLiteral("fsh"),
-        QStringLiteral("mesh"), QStringLiteral("task"), QStringLiteral("rgen"),
-        QStringLiteral("rchit"),QStringLiteral("rmiss"),QStringLiteral("rahit"),
-        QStringLiteral("rint"), QStringLiteral("rcall"),
-    };
-    return kGlsl.contains(ext);
-}
 
 Mode pickModeByExt(const QString &absPath) {
     const QString ext = QFileInfo(absPath).suffix().toLower();

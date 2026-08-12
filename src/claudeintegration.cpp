@@ -6803,7 +6803,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "(ANTS-1288) — lanes whose summaries duplicate each "
                         "other (e.g. a multi-name module-map bullet) so you "
                         "can fold them into one review unit rather than "
-                        "dispatching two near-identical briefs.");
+                        "dispatching two near-identical briefs. ANTS-4100 — "
+                        "each lane carries `file_count` (a real walk; a lane "
+                        "may name a directory), and a lane above 30 files is "
+                        "marked `too_coarse:true`, mirrored by envelope "
+                        "`too_coarse` / `too_coarse_lanes` / "
+                        "`too_coarse_hint`. The verb mirrors the module map's "
+                        "granularity and never splits a lane for you: treat "
+                        "`too_coarse` as a prompt to partition by cohesion "
+                        "and commit `.indie-review/partition.json`.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split source files for multi-reviewer "
                         "indie-review dispatch. Pairs with "
@@ -6914,7 +6922,19 @@ void ClaudeIntegration::onMcpConnection() {
                         "min_lanes (default 2); "
                         "allow_outside_project (ANTS-3713) to point "
                         "reports_dir at an absolute path such as the "
-                        "session scratchpad.");
+                        "session scratchpad. A citation is matched as "
+                        "`path/to/file.ext:LINE` (bold wrapping and a "
+                        "`423-424` range both parse; the range's first "
+                        "number is used); ANTS-4095 — a citation naming only "
+                        "a basename resolves when that basename is UNIQUE in "
+                        "the tree, and stays dropped when it is ambiguous. "
+                        "The envelope reports `citations_seen` / "
+                        "`citations_resolved` (+ `citations_by_basename`), "
+                        "and sets `unresolved_citations:true` when reports "
+                        "parsed but nothing resolved — that case is NOT the "
+                        "same as no two lanes agreeing. `total_input_bytes` "
+                        "is 0 by design on the reports_dir path and is not a "
+                        "parse-failure signal.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to cross-check two+ reviewers' findings "
                         "against shared evidence. Reduces false "

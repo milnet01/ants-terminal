@@ -49,6 +49,12 @@ enum class Mode {
 
 Mode parseMode(const QString &s);
 
+// True for a GLSL / Vulkan shader-stage extension (lowercase, no dot).
+// ANTS-4096 — exported so CodebaseIndex::isIndexableSuffix keys on the same
+// set ANTS-3558 (find_definition) and ANTS-3800 (this verb) already share,
+// rather than a fourth copy that can drift out of step with them.
+bool isGlslExt(const QString &ext);
+
 // Compute the outline for a single file. `absPath` MUST be a
 // canonical filesystem path under the project root (the caller is
 // responsible for the path-escape check; ANTS-1249-INV-1 lives at

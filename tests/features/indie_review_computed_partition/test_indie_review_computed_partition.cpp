@@ -134,7 +134,14 @@ TEST(IndieReviewComputedPartition, Inv5HandlerLabelsDerivedAndKeepsHint) {
     ASSERT_FALSE(rc.empty());
     const auto fn = rc.find("RemoteControl::cmdIndieReviewPartition");
     ASSERT_NE(fn, std::string::npos);
-    const std::string body = rc.substr(fn, 4000);
+    // ANTS-4100 — was `rc.substr(fn, 4000)`. Adding the too-coarse signal to
+    // this handler pushed `env["derived"]` past byte 4000 and reddened this
+    // test, which asserts nothing about that signal: the fixed window measured
+    // the function's LENGTH, not its behaviour. slurpFunctionBody brace-matches
+    // the real body, which is what srcgrep.h exists for.
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdIndieReviewPartition");
+    ASSERT_FALSE(body.empty());
 
     const auto guard = body.find("if (lanes.size() <= 1)");
     const auto call  = body.find("deriveComputedPartition");

@@ -50,7 +50,13 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             derived = true;
         }
     }
+    // ANTS-4100 — a lane's size is not sourcePaths.size(): a module map may
+    // name a directory, and one such lane covered 96 files / 21k LoC across
+    // crypto, a vault, importers, services and 40 UI modules while presenting
+    // as one tidy entry. The partition read as fine because nothing measured
+    // it, so the coarseness — not the silence — is what gets reported here.
     QJsonArray arr;
+    QStringList coarseLanes;
     for (const auto &l : lanes) {
         QJsonObject o;
         o["name"]    = l.name;
@@ -58,6 +64,12 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         QJsonArray sps;
         for (const QString &sp : l.sourcePaths) sps.append(sp);
         o["sourcePaths"] = sps;
+        const int files = IndieReviewEngine::laneFileCount(root, l);
+        o["file_count"] = files;
+        if (files > IndieReviewEngine::kMaxReviewableFilesPerLane) {
+            o["too_coarse"] = true;
+            coarseLanes << l.name;
+        }
         arr.append(o);
     }
     QJsonObject env;
@@ -118,6 +130,29 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "<projectPath>/.indie-review/partition.json to persist an "
             "override.")
                 .arg(mapLaneCount);
+    }
+    // ANTS-4100 — the verb mirrors the module map's granularity, and a map
+    // that lists one directory yields one lane covering the whole application.
+    // That is a defensible thing for it to return and an indefensible thing to
+    // return SILENTLY: an empty suggested_merges reads as "this partition is
+    // fine". Hand-splitting the case that prompted this into 16 cohesive lanes
+    // surfaced 3 critical and 11 high findings the single lane did not.
+    if (!coarseLanes.isEmpty()) {
+        env["too_coarse"] = true;
+        QJsonArray cl;
+        for (const QString &n : std::as_const(coarseLanes)) cl.append(n);
+        env["too_coarse_lanes"] = cl;
+        env["too_coarse_hint"]  = QStringLiteral(
+            "%1 lane(s) exceed %2 source files each (see per-lane "
+            "`file_count`). This verb mirrors the granularity of the module "
+            "map it reads; it does not split a lane for you. A lane this size "
+            "gets one shallow review pass. Split it by COHESION — not by "
+            "directory — and commit the result as "
+            "<projectPath>/.indie-review/partition.json, or brief each "
+            "subsystem ad-hoc via indie_review_brief(lane=\"<label>\", "
+            "source_paths=[...]).")
+                .arg(coarseLanes.size())
+                .arg(IndieReviewEngine::kMaxReviewableFilesPerLane);
     }
     return QJsonDocument(env);
 }
@@ -397,6 +432,10 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     QString reportsDir;
     int     reportsRead = 0;
     qint64  totalIn = 0;
+    // ANTS-4095 — why the pass found what it found. Without it, "the reports
+    // parsed but nothing resolved" and "two lanes genuinely never agreed"
+    // produce the identical empty envelope, and the first reads as the second.
+    IndieReviewEngine::CorroborateStats stats;
     // ANTS-1344 — surface per-lane truncation when the engine's 64 KiB
     // kMaxScanBytes cap clipped the input. Collected at the MCP layer
     // (cheap; bounded by lane count) so the engine's pure-function
@@ -432,9 +471,9 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
         if (check.bad) return QJsonDocument(check.err);
         found = allowOutside
             ? IndieReviewEngine::corroboratedFindingsFromCanonicalDir(
-                  root, check.resolved, minLanes, &reportsRead)
+                  root, check.resolved, minLanes, &reportsRead, &stats)
             : IndieReviewEngine::corroboratedFindingsFromDir(
-                  root, reportsDir, minLanes, &reportsRead);
+                  root, reportsDir, minLanes, &reportsRead, &stats);
         // No totalIn tally for the disk path — the orchestrator
         // didn't pay the parent-context cost, which is the whole
         // point of ANTS-1282.
@@ -473,7 +512,7 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
         }
         reportsRead = reports.size();
         found = IndieReviewEngine::corroboratedFindings(
-            root, reports, minLanes);
+            root, reports, minLanes, &stats);
     }
 
     QJsonArray arr;
@@ -497,6 +536,28 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     env["total_findings"]     = arr.size();
     env["reports_read"]       = reportsRead;
     if (hasReportsDir) env["reports_dir"] = reportsDir;
+    // ANTS-4095 — resolution accounting. `citations_seen` counts the distinct
+    // file / file:line tokens the scan matched; `citations_resolved` how many
+    // named a real file under the root. Note `total_input_bytes` is 0 BY
+    // DESIGN on the reports_dir path (the orchestrator never paid the context
+    // cost — ANTS-1282) and so is not the parse-failure signal it looks like;
+    // these two are.
+    env["citations_seen"]     = stats.citationsSeen;
+    env["citations_resolved"] = stats.citationsResolved;
+    if (stats.citationsByBasename > 0)
+        env["citations_by_basename"] = stats.citationsByBasename;
+    if (reportsRead > 0 && stats.citationsSeen > 0
+        && stats.citationsResolved == 0) {
+        env["unresolved_citations"] = true;
+        env["unresolved_citations_hint"] = QStringLiteral(
+            "Read %1 report(s) and matched %2 citation(s), but NONE named a "
+            "file under this project root — so findings:[] here means "
+            "\"nothing resolved\", not \"no two lanes agreed\". Usual causes: "
+            "the reports cite a different checkout, or they cite basenames "
+            "that are ambiguous within this tree (a unique basename does "
+            "resolve). Check that caller_cwd is the project the lanes "
+            "reviewed.").arg(reportsRead).arg(stats.citationsSeen);
+    }
     // ANTS-1344 — surface truncation. `truncated` is the headline flag;
     // `truncated_lanes` lets the caller know which inputs to re-fetch
     // smaller / paginate. Both omitted when no truncation occurred

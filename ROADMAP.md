@@ -29945,7 +29945,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 DOOM Ants.
 
-- 📋 [ANTS-4095] **indie_review_corroborate reads N report files and parses 0 findings from all of them (total_input_bytes:0).**
+- ✅ [ANTS-4095] **indie_review_corroborate reads N report files and parses 0 findings from all of them (total_input_bytes:0).**
   Pointed at 14 lane reports totalling ~86 KB, the verb returned
   reports_read:14 but total_findings:0, findings:[] and — the tell —
   total_input_bytes:0. It opened the files and extracted nothing, so the
@@ -29966,8 +29966,9 @@ defect from different angles.
   **Layman:** The cross-check that confirms two reviewers found the same bug reads every report and extracts nothing, then reports "no agreement".
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 DOOM Ants.
+  Resolved (2026-08-12): the reported tell was wrong. `total_input_bytes:0` is BY DESIGN on the reports_dir path (ANTS-1282 — the orchestrator never pays the context cost), so refusing on it would fire on every healthy disk call; the bold-wrapping and `423-424` range shapes already parsed. The real cause: every citation was a BARE BASENAME (`d_main.c:1049`) because that is what a brief shows a reviewer, while the file lives at `linuxdoom-1.10/d_main.c` — so resolveOk's join-to-root canonicalised all of them to nothing. Verified against the live verb before fixing: 8 reports, 1 finding, and that one only a file-level cite of the one path spelled in full. Fixed: buildBasenameIndex() maps basename → rel path once per pass; a UNIQUE basename resolves, an AMBIGUOUS one stays dropped (the key is poisoned to empty) because guessing between two `main.c` would manufacture agreement between lanes that cited different files. Added CorroborateStats (citations_seen / citations_resolved / citations_by_basename) + `unresolved_citations` — the pair that distinguishes a parse failure from a real empty result, counted per DISTINCT token so the two regex passes don't inflate it. Also admitted GLSL extensions to the citation regexes, since ANTS-4096 makes shader lanes reviewable and without it every shader finding would drop at corroboration. NOT done: no refusal envelope — an empty result is still ok:true with a diagnostic, because a genuine no-agreement is a valid answer. Tests: tests/features/indie_review_resolution_and_coarseness INV-1..3.
 
-- 📋 [ANTS-4096] **indie_review_partition's computed fallback lists GENERATED headers instead of the real sources, and its suggested_merges are summary-string noise.**
+- ✅ [ANTS-4096] **indie_review_partition's computed fallback lists GENERATED headers instead of the real sources, and its suggested_merges are summary-string noise.**
   Two defects in the sparse_partition:true fallback, on top of the known
   directory grouping (ANTS-3709).
 
@@ -29992,6 +29993,7 @@ defect from different angles.
   **Layman:** The review planner pointed the reviewers at compiled byte arrays instead of the shader code sitting next to them.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 DOOM Ants.
+  Resolved (2026-08-12): both halves confirmed and fixed. (1) The generated-file test was PREFIX-only (moc_/ui_/qrc_), so every suffix-shaped generator passed — hence 22 `*.spv.h` byte-array headers in a lane. Compounding it, the shader SOURCES were absent from CodebaseIndex::isIndexableSuffix entirely, even though find_definition (ANTS-3558) and file_outline (ANTS-3800) have admitted shader stages since, and that gate's own comment claims it is kept in step with them — so it was the outlier, and the fix went there rather than into a local list. FileOutline::isGlslExt was hoisted out of its anonymous namespace and exported so the gate DELEGATES to the existing set instead of growing a fourth copy (that file's comment warns against exactly that). (2) Confirmed: ANTS-3591's isFileListFallbackSummary matched only the ANTS-3507 wording (`grouped by top-level directory`), while the ANTS-3709 computed template says `grouped by directory` — so computed lanes stayed merge-eligible and scored near-identical by construction. Renamed isDerivedFallbackSummary and matched on the shared stem. NOT done: the Rule-of-Three extraction of the generated-file predicate (3rd site now: auditdialog, findsources, here) — filed as ANTS-4120 rather than smuggled into a fix, since AuditDialog::isGeneratedFile is Widgets-linked and carries audit-artifact policy core must not inherit. Tests: INV-4, INV-5.
 
 - ✅ [ANTS-4097] **roadmap_log op:amend_body is single-line by design, so two successful calls can leave a wrapped paragraph incoherent with nothing in the envelope to show it.**
   The unique-match guard protects the NEIGHBOURING text, not the resulting
@@ -30070,7 +30072,7 @@ defect from different angles.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Fin Break.
 
-- 📋 [ANTS-4100] **indie_review_partition returns a directory-shaped partition (one `src` lane for a 21k-LoC app) with no signal that it is too coarse.**
+- ✅ [ANTS-4100] **indie_review_partition returns a directory-shaped partition (one `src` lane for a 21k-LoC app) with no signal that it is too coarse.**
   The verb derives lanes from CLAUDE.md's module map by grouping on TOP-
   LEVEL DIRECTORY. For a project whose map is a file list under `src/`,
   that collapses the whole application into one lane: sourcePaths:
@@ -30092,6 +30094,7 @@ defect from different angles.
   **Layman:** The review planner put a whole 21,000-line application into one bucket and gave no hint that was wrong.
   Kind: fix.
   Source: cross-session-feedback-2026-08-11 Fin Break.
+  Resolved (2026-08-12): took the cheap half (a) as the reporter recommended — 'silence is the real problem, not the coarseness'. Each lane now carries a measured `file_count` and `too_coarse:true` past 30 files, mirrored by envelope `too_coarse` / `too_coarse_lanes` / `too_coarse_hint`. The count is a real walk, not sourcePaths.size(): a lane may name a DIRECTORY, which is precisely how one entry hid 96 files. Threshold calibrated against this project's own declared partition (largest lane: remotecontrol, 14 files) so a real module map never trips it — a signal that cries wolf on good partitions is worse than none. NOT done: (b) recursing one level into a single-directory lane. A verb that re-partitions on its own would be guessing cohesion from directory names, which is the same mistake one level down; the hint says to split by cohesion and commit .indie-review/partition.json. Schema now states the verb mirrors the module map's granularity and never splits a lane for you. Tests: INV-6, INV-7. Side effect: ANTS-3709's Inv5 source-scrape test was reddened by the added prose — its fixed 4000-byte window was measuring the function's LENGTH, not its behaviour; switched to srcgrep's brace-matched slurpFunctionBody, which exists for this.
 
 - ✅ [ANTS-4101] **file_outline reports a C++ `namespace X {` with kind:"class".**
   Outlining a header whose contents sit in a namespace emits the namespace
@@ -38407,6 +38410,61 @@ contributors don't duplicate research.
   **Layman:** A button on the status bar that pops open a list of the current project's files and what is in them, with line numbers, so you can see the shape of a codebase without opening anything.
   Kind: feature.
   Source: user-request-2026-08-06.
+
+- 📋 [ANTS-4119] **Roadmap store: make `Source:` a first-class queryable dimension, not a body substring.**
+  Today the only way to list every open item that came from another
+  CC session is `roadmap_query {status:"active", query:"cross-session-
+  feedback"}` — a case-insensitive SUBSTRING scan over headline+body
+  that happens to hit the `Source:` line. It works (11 open items,
+  verified 2026-08-12) but it is a coincidence, not a contract:
+
+    - it matches the same text anywhere else in a body, so a bullet
+      merely DISCUSSING cross-session feedback is indistinguishable
+      from one sourced from it;
+    - the substring must be guessed, and the corpus uses several
+      (`cross-session-feedback-<date> <Project>`, `RetroDB cross-
+      session reports`, `indie-review-<date> lane-N`);
+    - `query` matches against the ~2000-char-capped body, so a long
+      body's Source line can fall outside the window;
+    - there is no way to ask the reverse question — "which sources
+      exist, and how many open items does each have?"
+
+  The store already parses `Source:` per bullet. Promote it to a
+  column and add: `source=<exact>` and `source_prefix=<stem>` filters
+  on roadmap_query, and a `mode:"sources"` rollup returning
+  [{source, active_count, shipped_count}] — the "who is waiting on
+  me" view. Group-by-source is the whole point; a filter alone still
+  requires knowing the value.
+
+  Note the migration hazard in ANTS-4065: the 2026-08-08 import
+  silently rewrote 123 Kind values, so `Source` must be verified
+  against the markdown before anything keys on the column.
+  **Layman:** Ask "what is still open that another project asked for?" and get an answer grouped by who asked, instead of guessing at a keyword.
+  Kind: feature.
+  Lanes: roadmapsource, remotecontrol.
+  Source: user-request-2026-08-12.
+
+- 📋 [ANTS-4120] **One generated-file predicate, not three.**
+  `AuditDialog::isGeneratedFile` (Widgets-linked, also carries
+  audit-artifact rules), `findsources.cpp`'s inline `.pb.h` /
+  `_generated.*` test, and now `indiereviewengine.cpp`'s
+  `isGeneratedSource` (ANTS-4096) each decide the same question
+  differently. The third was added deliberately rather than reusing
+  either: the audit one lives on a class `ants_core_lib` must not
+  see, and it predates `.spv.h` — which is exactly the omission that
+  made ANTS-4096 a bug.
+
+  That is the Rule-of-Three trigger (CLAUDE.md §3). Extract the
+  generated-SOURCE half into a core helper all three call, leaving
+  the audit-artifact rules (`.audit_cache/`, `audit_fixtures/`,
+  `AUTOMATED_AUDIT_REPORT_*`) where they are — those are audit
+  policy, not a fact about the file. Filed rather than folded into
+  ANTS-4096 so a three-site refactor across a Widgets boundary is
+  not smuggled into a fix.
+  **Layman:** Three parts of the app each keep their own list of "files a machine wrote"; they disagree, and one of those disagreements was a bug.
+  Kind: refactor.
+  Lanes: auditdialog, indiereviewengine, findsources.
+  Source: in-session-2026-08-12.
 
 ### 🔒 Security
 

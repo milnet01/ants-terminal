@@ -65,6 +65,18 @@ struct Citation {
     QString context;  // ±40 chars
 };
 
+// ANTS-4096 — why a corroboration pass found what it found. Every count is
+// over the citations the regexes MATCHED, before the min_lanes filter, so
+// `seen > 0 && resolved == 0` positively identifies a resolution failure and
+// distinguishes it from a genuine "no two lanes agreed". That pair was
+// previously unobservable: a run over 8 real reports returned findings:[] and
+// looked exactly like a clean result.
+struct CorroborateStats {
+    int citationsSeen       = 0;  // file:line / bare-file tokens matched
+    int citationsResolved   = 0;  // ... that named a real file under the root
+    int citationsByBasename = 0;  // ... resolved only via the basename fallback
+};
+
 // ANTS-1288 — a suggested merge of two review lanes whose CLAUDE.md /
 // docs/subsystems.md summaries are duplicate or near-duplicate. Advisory
 // only: derivePartition already merges lanes with identical source-file
@@ -123,6 +135,19 @@ QList<Lane> derivePartition(const QString &projectPath);
 // `derived: true` rather than passing off a guess as a declared partition.
 QList<Lane> deriveComputedPartition(const QString &projectPath);
 
+// ANTS-4100 — how many reviewable source files a lane actually covers. A lane
+// may name a DIRECTORY (a module map that says `src/finbreak`), so the count
+// is a bounded walk, not sourcePaths.size(): one such lane measured 96 files
+// and 21k LoC while presenting as a single tidy entry. Generated output and
+// noise directories are excluded, so the number is what a reviewer would read.
+int laneFileCount(const QString &projectPath, const Lane &lane);
+
+// A lane above this is past what one briefed reviewer can hold: the review
+// skills partition for 8-20 cohesive subsystems, and this project's own
+// declared lanes top out at 14 files. Chosen so a real declared partition
+// never trips it and a whole-application lane always does.
+constexpr int kMaxReviewableFilesPerLane = 30;
+
 // ANTS-1288 — scan a partition for lanes whose summaries are duplicate or
 // near-duplicate and return one MergeSuggestion per candidate pair (in
 // stable lane order). Pure, side-effect-free. Identical summaries (after
@@ -151,13 +176,29 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
 QString assembleBriefForDispatch(const QString &projectPath,
                                  const Lane &lane);
 
+// ANTS-4096 — basename → project-relative path for every indexable source
+// file under the project, used to resolve a citation that names a file
+// without its directory. A basename occurring more than once maps to an
+// EMPTY string: attributing a citation to the wrong `main.c` would corrupt
+// corroboration silently, so ambiguity resolves to nothing rather than to a
+// guess. Built once per corroboration pass (the walk is bounded); pass the
+// result to extractFileLineCitations for every report in that pass.
+QHash<QString, QString> buildBasenameIndex(const QString &projectPath);
+
+// `basenameIndex` is optional. Without it a citation must already carry a
+// path that resolves from the project root — which is what every reviewer
+// writing `d_main.c:1049` for a file that lives at `linuxdoom-1.10/d_main.c`
+// silently failed. `stats`, when non-null, accumulates across calls.
 QList<Citation> extractFileLineCitations(
-    const QString &projectPath, const QString &report);
+    const QString &projectPath, const QString &report,
+    const QHash<QString, QString> *basenameIndex = nullptr,
+    CorroborateStats *stats = nullptr);
 
 QList<CorroboratedFinding> corroboratedFindings(
     const QString &projectPath,
     const QHash<QString, QString> &reports,
-    int minLanes = 2);
+    int minLanes = 2,
+    CorroborateStats *stats = nullptr);
 
 // ANTS-1282: read reports from disk, then corroborate. The directory
 // is resolved relative to projectPath; lane name = filename stem of
@@ -175,7 +216,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
     const QString &projectPath,
     const QString &reportsDirRelative,
     int minLanes = 2,
-    int *reportsRead = nullptr);
+    int *reportsRead = nullptr,
+    CorroborateStats *stats = nullptr);
 
 // ANTS-3713 — the read half of the above, entered with an ALREADY-VALIDATED
 // canonical directory, which may sit outside projectPath. The MCP layer uses
@@ -188,7 +230,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
     const QString &projectPath,
     const QString &canonicalDir,
     int minLanes = 2,
-    int *reportsRead = nullptr);
+    int *reportsRead = nullptr,
+    CorroborateStats *stats = nullptr);
 
 QString synthesisPrompt(
     const QHash<QString, QString> &reports,
