@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.105] — unreleased (Patron RC preview)
 ### Added
 
 - **The four shared standards now carry their full text in-repo, gated against drift** (ANTS-4133)
