@@ -1,9 +1,10 @@
 <!-- ants-testing-standards: 2 -->
 # Testing Standards — Ants Terminal deltas
 
-> **The standard itself is `~/.claude/standards/testing.md`. Read it there,
-> and read `~/.claude/standards/languages/cpp.md` for the C++/CTest
-> spellings.** This file carries only what is specific to *this* project.
+> **The standard itself is `~/.claude/standards/testing.md`. Read it there.**
+> `~/.claude/standards/languages/cpp.md` carries the C++ idioms, but **three
+> of its testing rules do not apply to this project** — see the note under the
+> table. This file carries only what is specific to *this* project.
 
 **Why this file is a delta (2026-08-12).** It was a verbatim `/start-app`
 copy, last touched 2026-04-30, and it had drifted into instructing a
@@ -27,31 +28,60 @@ step this project got wrong.
 | Coverage policy | global `testing.md` § 8 |
 | Tests are code | global `testing.md` § 9 |
 | Anti-patterns | global `testing.md` § 10 |
-| CMake/CTest wiring, `QVERIFY2`, label vocabulary | global `languages/cpp.md` |
+| `QVERIFY2` and the C++ idioms | global `languages/cpp.md` |
+
+**Three things in `languages/cpp.md` do NOT apply here, and this file wins on
+all three:** its prove-the-test recipe omits the rebuild before the green run;
+its label vocabulary (`integration`, `network`) is not this project's; and its
+feature-test wiring is `add_executable`, where this project uses shared
+bundles. Sections below own each.
 
 ## Project-local rules
 
 ### Proving a test is real — the corrected recipe
 
+**The fix is usually already committed** — a test written after its fix, or
+one added during review. Those two cases need different commands.
+
+Fix already committed:
+
 ```bash
-git stash push src/foo.cpp                    # park the fix
+git revert --no-commit <fix-sha>              # un-apply the fix
 cmake --build build && ctest -R the_new_test  # must FAIL
-git stash pop                                 # restore the fix
+git revert --abort                            # restore it
 cmake --build build && ctest -R the_new_test  # must PASS
 ```
 
+Fix still uncommitted in the working tree:
+
+```bash
+git stash push src/foo.cpp                    # park the fix
+cmake --build build && ctest -R the_new_test  # must FAIL
+git stash pop                                 # restore it
+cmake --build build && ctest -R the_new_test  # must PASS
+```
+
+**Do not use `git stash` on a committed fix.** `git stash push <path>` with
+nothing modified prints `No local changes to save` and **exits 0**, leaving
+the fix in place — so the "must FAIL" run passes and you conclude the *test*
+is wrong. The paired `git stash pop` then pops an unrelated stash entry into
+your tree. Both verified 2026-08-12.
+
+**Do not use `git checkout <ref> -- <file>` for either** — it silently
+overwrites uncommitted edits in that file.
+
 **Rebuild on both sides.** A bare `ctest` after restoring runs the binary
 from the reverted build. That is a false pass and it is indistinguishable
-from a real one.
+from a real one. Global `languages/cpp.md`'s version of this recipe omits the
+second rebuild; the recipe above is the corrected one and wins here.
 
-**`git stash`, never `git checkout <ref> -- <file>`** — the checkout form
-silently overwrites uncommitted edits in that file.
-
-**Check the matched count, not the pass rate.** `ctest -R` filters test
-*names*, not build targets, and it is **case-sensitive**: a pattern that
-matches none of your tests still runs whatever else it happens to match and
-reports "100% tests passed". Run `ctest -N -R <pattern>` first and confirm
-the number is the one you expect.
+**Neither a green line nor a zero exit status proves your test ran.** `ctest
+-R` filters test *names*, not build targets, and it is **case-sensitive**
+(`-R roadmap` matches 367 tests, `-R Roadmap` a disjoint 348). A pattern
+matching *other* tests reports "100% tests passed"; one matching **nothing**
+prints `No tests were found!!!` and **still exits 0**, so a scripted
+`ctest -R … && …` chain treats it as success. Run `ctest -N -R <pattern>`
+first and confirm the count is the one you expect.
 
 **Build the right target.** Feature tests compile into shared bundles, not
 standalone executables, and the bundle is not guessable from the path —
@@ -73,8 +103,16 @@ freely.
 `features`, `fast`, `perf`, `e2e`, `audit`. Set them with
 `set_tests_properties(... LABELS ...)`.
 
-`e2e` and `perf` are excluded from the default presets — `e2e` drives a
-throwaway GUI instance, and `perf` benchmarks must not contend under `-j`.
+**`LABELS` REPLACES; it does not add.** On a bundle test it overwrites the
+bundle's `features;fast`, so the case silently leaves the default presets and
+the pre-push gate. Restate every label you still want.
+`tests/slow_test_timeouts.cmake` documents this and keeps a named drift guard
+(`RoadmapReadSeam.Ants3793LatencyCaseIsPerfLabelled`) against it.
+
+`e2e` and `perf` are excluded from the `default`, `fast` and `workstation`
+presets — `e2e` drives a throwaway GUI instance, and `perf` benchmarks must
+not contend under `-j`. **`debug` excludes only `e2e`**, so a `perf` case does
+run there, under ASan.
 
 > Corrected 2026-08-12: this file previously documented `integration` and
 > `network` labels that no test uses, and omitted `e2e` and `audit`, which
@@ -98,3 +136,9 @@ hook, which runs the correctness labels against `build/` **without
 building** — so a stale `build/` gates on stale binaries. `tools/ci-parity.sh
 --full` is the complete CI mirror. Nothing checks the recipe above; it is
 read.
+
+## Review loop log
+
+| Loop | Date | Lanes | Q1/Q2/Q3/Q4 | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-12 | 1 (cold, general-purpose) | Q1 2 · Q2 3 · Q3 1 · Q4 n/a | 6 verified, 6 fixed, 0 dismissed. **The draft's own fix was broken.** `git stash push` on a *committed* fix — the case the recipe exists for — prints `No local changes to save`, exits 0 and leaves the fix in place, so the "must FAIL" run passes; the paired `pop` then lands an unrelated stash entry. Verified in a throwaway repo and replaced with `git revert --no-commit` / `--abort`, round-tripped before being written down. Also: the zero-match ctest message is `No tests were found!!!` with exit 0, not "100% tests passed"; `LABELS` replaces rather than adds; the cpp.md pointer routed to an uncorrected recipe, the wrong labels and `add_executable` wiring; `debug` excludes only `e2e`. |

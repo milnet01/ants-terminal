@@ -7,10 +7,11 @@
 
 **Why this file is a delta (2026-08-12).** It was a verbatim `/start-app`
 copy, last touched 2026-04-30, and it had drifted into instructing
-**`git push --tags`** — which global § 4.3 forbids because it publishes every
-local tag, including ones never meant to leave the machine. It also shipped a
-copy-paste `Co-Authored-By:` block naming a superseded model, which is
-exactly the failure global § 1.5 warns about.
+**`git push --tags`** — which global `commits.md` § 4.3 forbids as a bulk tag
+push, and which global `CLAUDE.md` § 6 rules out by name because it publishes
+every local tag, including ones never meant to leave the machine. It also
+shipped a copy-paste `Co-Authored-By:` block naming a superseded model, which
+is exactly the failure global § 1.5 warns about.
 
 ## Where the rules actually live
 
@@ -22,7 +23,8 @@ exactly the failure global § 1.5 warns about.
 | Branching and force-push policy | global `commits.md` § 3 |
 | Push cadence (public vs private) | global `CLAUDE.md` § 6 |
 | **Run the pipeline locally before any push** | global `commits.md` § 4.2 |
-| Tags — annotated only, `--follow-tags`, never `--tags` | global `commits.md` § 4.3 |
+| Tags — annotated only, pushed explicitly, never force-pushed (stop and ask on a collision) | global `commits.md` § 4.3 |
+| The tag-batch command: `--follow-tags`, never `--tags` | global `CLAUDE.md` § 6 |
 | Confirm before destructive operations | global `commits.md` § 4.4 |
 | Cutting a release | global `releases.md` |
 | Anti-patterns | global `commits.md` § 5 |
@@ -49,14 +51,25 @@ the local run to *execute* the workflow rather than mirror it. This project's
 answer:
 
 - **`tools/ci-parity.sh --full`** is the complete mirror — all three `ci.yml`
-  jobs, in isolated `build-ci-parity*/` trees. A gate whose tool is absent
-  SKIPs loudly and is listed as incomplete parity; it never reports silently
-  green.
-- **`tools/hooks/pre-push`** runs the reduced form automatically on every
-  push (wired via `core.hooksPath=tools/hooks`). It runs the Release suite
-  against the warm `build/` **without building**, plus the sanitizer suite
-  when a warm ASan tree exists, plus the Qt 6.2 floor guard when the push
-  touches compilable source.
+  jobs. `build-test` and `build-asan` run in isolated `build-ci-parity*/`
+  trees; `qt62-baseline` runs in a podman container against a cached image and
+  build volume (needs podman; `tools/qt62-guard.sh --clean` reclaims them). A
+  gate whose tool is absent SKIPs loudly and is listed as incomplete parity;
+  it never reports silently green.
+- **`tools/hooks/pre-push`** runs the reduced form automatically (wired via
+  `core.hooksPath=tools/hooks`). It runs the Release suite against the warm
+  `build/` **without building**, plus the sanitizer suite when a warm ASan
+  tree exists, plus the Qt 6.2 floor guard when the push touches compilable
+  source.
+- **A docs-only push skips the hook entirely** — it mirrors `ci.yml`'s
+  `paths-ignore`, so a push touching nothing outside `ROADMAP.md`,
+  `CHANGELOG.md`, `README.md`, `PLUGINS.md`, `LICENSE`, `.roadmap-counter` and
+  `docs/` runs no gate at all. Editing *this file* and pushing it runs
+  nothing. Global § 4.2's exemption then applies and **its two conditions are
+  yours to check by hand**: the last remote run was green, and no job acts on
+  the changed paths. The second is not vacuous here — `ci.yml`'s
+  `pull_request` trigger has no `paths-ignore`, so the same change opened as a
+  PR does get the lint gate.
 - Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`,
   `ANTS_PREPUSH_NO_QT62=1`.
 
@@ -87,8 +100,15 @@ carriers — and `packaging/check-version-drift.sh` verifies the lockstep.
 
 ## What checks this
 
-`tools/hooks/pre-push` (automatic, every push),
+`tools/hooks/pre-push` (automatic on every push that touches something outside
+the docs-only set above — a docs-only push is gated by nothing),
 `packaging/check-version-drift.sh` (via `ci-parity.sh --lints` and CI), and
 `ci.yml` itself. Nothing checks commit-message *format* — this project has no
 `commit-msg` hook and no `.githooks/` directory, so § 1's mandate is read,
 not enforced.
+
+## Review loop log
+
+| Loop | Date | Lanes | Q1/Q2/Q3/Q4 | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-12 | 1 (cold, general-purpose) | Q1 3 · Q2 0 · Q3 1 · Q4 n/a | 4 verified, 4 fixed, 0 dismissed. Attributed `--follow-tags` and the every-local-tag rationale to global `commits.md` § 4.3, which carries neither (they are `CLAUDE.md` § 6) while dropping § 4.3's never-force-push rule; claimed the pre-push hook runs on **every** push when a docs-only push skips it entirely — including a push of this file; claimed all three ci-parity jobs run in `build-ci-parity*/` trees when qt62-baseline runs in a podman volume; gave no route to § 4.2's docs-only exemption conditions. |

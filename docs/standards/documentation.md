@@ -26,7 +26,8 @@ pointers so those links keep resolving.
 | Durable references — cite symbols, not line numbers | global § 2.3 |
 | Show, don't claim | global § 2.4 |
 | Concision | global § 2.5 |
-| The six-month test; ISO 8601 dates | global § 2.6 |
+| The six-month test | global `coding.md` § 1.4 |
+| ISO 8601 dates | global § 2.6 |
 | Don't reference what isn't shipped | global § 2.7 |
 | Document length | global § 2.8 |
 | The `## What checks this` requirement | global § 2.9 |
@@ -38,6 +39,16 @@ pointers so those links keep resolving.
 | Markdown style | global § 8 |
 | Mechanical checks, the review gate, escalation | global § 9 |
 | Anti-patterns | global § 10 |
+
+**Sections below are kept at their original numbers so inbound links keep
+resolving.** One whose content moved to the global standard is a pointer, not
+a deletion.
+
+### 1.1–1.4 Six-month test · show don't claim · ISO 8601 dates · don't reference what isn't shipped
+
+→ global `coding.md` § 1.4 (the six-month test), then global § 2.4, § 2.6
+and § 2.7 respectively. The six-month test is **not** in the global
+documentation standard; it is a coding-standard rule.
 
 ### 1.5 One source of truth per fact
 
@@ -106,6 +117,13 @@ Grounded in three hand-repairs of the same drift (ANTS-3470, ANTS-3596,
 ANTS-3641): ANTS-3470 found that the one citation which survived the
 refactor was the one naming its symbol chain.
 
+## 2. Project-level files
+
+→ global § 5 (README, CLAUDE.md, LICENSE, SECURITY.md, CODE_OF_CONDUCT,
+CONTRIBUTING). Global § 5.1's README section list is the ordered one. The badges and
+plugin sections this file used to require are not in it — but a
+**where-the-rest-of-the-documentation-is** section is, so do not trim that.
+
 ## 3. ROADMAP.md and CHANGELOG.md formats
 
 **Project-local routing.** Both formats live in
@@ -116,8 +134,12 @@ split its changelog spec into one, and this project has not. Follow
 
 The high-level rules:
 
-- `ROADMAP.md` is the single place to track unshipped work; shipped work
-  moves to `CHANGELOG.md`.
+- `ROADMAP.md` is the single place to track unshipped work. Shipped work is
+  recorded in `CHANGELOG.md`, but the ✅ bullet **stays in `ROADMAP.md`**
+  until archive rotation moves it byte-identically to
+  `docs/roadmap/<MAJOR>.<MINOR>.md` (`roadmap-format.md` § 3.9). Nothing
+  moves shipped items out automatically; deleting them at release time
+  leaves rotation with nothing to archive.
 - `ROADMAP.md` uses status emojis (✅🚧📋💭), theme emojis, and stable
   per-bullet IDs (`ANTS-NNNN`, allocated by `roadmap_log`) plus phase IDs
   (`P##` — see `roadmap-format.md` § 3.2 for the heading format).
@@ -127,6 +149,22 @@ The high-level rules:
   the `changelog_log` verb's own enum carries it.
 
 Write CHANGELOG entries with `mcp__ants__changelog_log`, not by hand.
+
+## 4. API / contract docs
+
+→ global § 6.
+
+## 5. In-code documentation
+
+→ global `coding.md` § 3 (Comments). A one-line documentation comment saying
+what a caller gets is not the "comment" that rule discourages — it is the
+contract.
+
+## 6. Screenshots
+
+→ global § 7. **`docs/screenshots/`, and recordings in `docs/videos/`.** This
+file previously also permitted `assets/screenshots/`, which does not exist in
+this repo and is not a location global allows.
 
 ## 7. Accessibility
 
@@ -160,6 +198,10 @@ model — **not** via HTML metadata.
   `src/roadmapdialog.cpp` (Roadmap card status labels and filter checkboxes,
   per ANTS-1235).
 
+## 8. Markdown style
+
+→ global § 8.
+
 ## 9. Doc reviews
 
 → global § 9 owns the mechanical checks, the review gate and escalation. Run
@@ -170,10 +212,23 @@ cold read.
 `### 📚 Documentation review fold-in (YYYY-MM-DD)`, per
 [`roadmap-format.md` § 3.8](roadmap-format.md).
 
+## 10. Anti-patterns
+
+→ global § 10. Two it names that this project has committed, and that the
+delta rewrite exists to undo: **repeating a global rule in a project
+document**, and **a `path:line` citation**.
+
 ## What checks this
 
 `mcp__ants__doc_citations` (honours § 1.8's markers),
 `mcp__ants__doc_integrity`, `mcp__ants__doc_symbols` and
-`mcp__ants__doc_dedup`, plus the `check-doc-facts` skill. Nothing checks § 7
-— accessibility is verified by reading the rendered plain text, and no test
-asserts it.
+`mcp__ants__doc_dedup`, plus the `check-doc-facts` skill. § 7 is **partial**: the widget half — `setAccessibleName` /
+`setAccessibleDescription` on chrome controls — is asserted by
+`tests/features/a11y_chrome_names/` (label `features`). **Nothing** checks the
+QTextDocument plain-text projection that the rest of § 7 is about.
+
+## Review loop log
+
+| Loop | Date | Lanes | Q1/Q2/Q3/Q4 | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-12 | 1 (cold, general-purpose) | Q1 3 · Q2 2 · Q3 0 · Q4 n/a | 5 verified, 5 fixed, 0 dismissed. Routed the six-month test to global documentation § 2.6, which is ISO 8601 dates — the rule is `coding.md` § 1.4; claimed global § 5.1 omits a documentation section when it requires one; said shipped work "moves to CHANGELOG" when the ✅ bullet stays in ROADMAP until archive rotation, so following it would empty the per-minor archives; claimed nothing checks § 7 when `tests/features/a11y_chrome_names/` covers its widget half. Surfaced, not fixed: `specs.md` § 5.3 still prescribes the sibling-size rule § 1.6 withdraws. |

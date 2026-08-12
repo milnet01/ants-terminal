@@ -183,8 +183,7 @@ where `<ID>` is the stable ANTS-NNNN per `docs/standards/roadmap-format.md`
 - Signals/slots for cross-component comms — never direct sibling calls.
 - **No workarounds unless no viable solution exists.** Diagnose root cause
   first. Document the constraint if a workaround is genuinely the only
-  option (see [`docs/standards/coding.md`](docs/standards/coding.md)
-  § Error handling).
+  option (global `coding.md` § 1.2).
 
 See [`docs/standards/coding.md`](docs/standards/coding.md) for the full list.
 
