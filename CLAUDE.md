@@ -298,19 +298,22 @@ finding from the next `feedback_query` delta (no watermark to advance).
 
 ## Project standards
 
-**The shared standards are owned globally, at `~/.claude/standards/`, and
-read in place — not copied here.** `coding.md`, `documentation.md`,
-`testing.md` and `commits.md` in `docs/standards/` are **deltas only**: each
-is a pointer to its global owner plus the Qt/C++/Ants-specific rules that
-cannot live in a language-agnostic standard. Read the global file for the
-rule; read the project file for what this project adds to it.
+**The shared standards are owned globally, at `~/.claude/standards/`.**
+`coding.md`, `documentation.md`, `testing.md` and `commits.md` in
+`docs/standards/` are **deltas**: each opens with the Qt/C++/Ants-specific
+rules that cannot live in a language-agnostic standard, then mirrors its
+owner verbatim below a divider (`security.md` is the mirror alone, no delta).
+Read the delta half for what this project adds.
 
-That reversed on 2026-08-12 (see `~/.claude/standards/README.md`). Until
-then `/start-app` copied the whole set into each project with an instruction
-to keep the copies verbatim, and nothing checked it — by the time the copies
-were reconciled they had drifted for three months, and three of them
-instructed behaviour the current global standard forbids. A copy of a global
-standard does not belong here.
+**Never edit a mirrored half.** A correction goes upstream, then
+`tools/check-standard-mirrors.sh --write` re-copies it down;
+`tools/hooks/pre-commit` refuses a commit whose mirror has drifted
+(ANTS-4133). The mirrors exist because this repo is public and an outside
+reader cannot open a path in a private home directory — not as a licence to
+keep a second copy of a rule. That was the pre-2026-08-12 arrangement, where
+`/start-app` copied the set in with an instruction to keep them verbatim and
+nothing checked it: they drifted for three months and three ended up
+instructing behaviour the owner forbids.
 
 **Two files are NOT deltas, deliberately:**
 

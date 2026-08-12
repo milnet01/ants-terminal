@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **The four shared standards now carry their full text in-repo, gated against drift** (ANTS-4133)
+  `docs/standards/{coding,documentation,testing,commits}.md` keep their
+  project-specific delta and now mirror their global owner verbatim below it;
+  `security.md` joins them under the same markers. This repo is public, and a
+  pointer to `~/.claude/standards/…` left the rule simply absent for anyone
+  reading on GitHub. `tools/check-standard-mirrors.sh` (`--check` / `--write`)
+  compares each mirrored region against its owner and `tools/hooks/pre-commit`
+  refuses a commit that has drifted; a checkout without the global tree skips
+  and passes.
+
 - **spec_lint resolves the test surface a spec cites, instead of reading it (ANTS-4127)**
   A spec's *Test:* clause claims an invariant is locked by something real, and
   nothing checked that the thing it names exists — three specs in this corpus

@@ -31525,7 +31525,7 @@ defect from different angles.
 
   doc_integrity clean over all 24 files in docs/standards/ afterwards.
 
-- 📋 [ANTS-4133] **The four delta standards point at a global path a public reader cannot follow.**
+- ✅ [ANTS-4133] **The four delta standards point at a global path a public reader cannot follow.**
   On 2026-08-12 coding.md / documentation.md / testing.md / commits.md
   became DELTAS: a pointer to `~/.claude/standards/<name>.md` plus only
   the project-specific residue. That is right for drift (three of the four
@@ -31592,6 +31592,47 @@ defect from different angles.
 
   Still worth telling the global session, but as a report, not a request —
   it no longer blocks.
+  Shipped (2026-08-12). Option (a) as decided: coding / documentation /
+  testing / commits each keep their delta above a divider and mirror their
+  owner verbatim below it, between `<!-- MIRROR BEGIN ~/.claude/standards/… -->`
+  and `<!-- MIRROR END -->`. security.md was brought under the same markers —
+  it was the one mirror already here and nothing checked it either.
+
+  **The decision note named the wrong mechanism, and this is the correction.**
+  `~/.claude/.githooks/check-copied-standards` is a copy DETECTOR, not a drift
+  checker: it flags any project file overlapping a global standard as a breach.
+  Run against this repo before any change today it reported
+  `docs/standards/security.md — COPY 99%` and exited 1, i.e. it condemns the
+  sanctioned mirror. Installed as a commit gate it would have refused every
+  commit here permanently. It is also not a git hook by filename and is not
+  wired into the global pre-commit; it is a standalone CLI. The earlier note's
+  inference — "a rule that ships a drift-checker FOR copies is not a rule that
+  forbids copies" — read the intent off the filename. The conclusion (a marked
+  mirror with a gate is the opposite failure mode from an unmarked one) still
+  holds; only the tool was wrong.
+
+  So the gate is `tools/check-standard-mirrors.sh` (`--check` / `--write`),
+  which asks the opposite question: does the region between the markers still
+  equal its owner byte for byte, minus the owner's own leading marker line.
+  `tools/hooks/pre-commit` runs it — installed in the EXISTING hooks directory,
+  so `core.hooksPath` stays `tools/hooks` and there is still exactly one.
+
+  Verified, not assumed: drifting one line inside testing.md's mirror made
+  `git commit` exit 1, naming the file, printing the diff and the fix, with
+  HEAD unmoved; restoring made it pass. A checkout with no
+  `~/.claude/standards` (outside contributor, CI) SKIPs loudly and exits 0 —
+  the mirror is what such a reader has instead of an owner. shellcheck clean;
+  `doc_citations` reports 0 stale citations across the mirrored halves.
+
+  Docs updated in the same commit: docs/standards/README.md (the "don't copy"
+  guidance now distinguishes an unmarked copy from a marked one with a gate),
+  CLAUDE.md § Project standards, and each delta's own "What checks this".
+  The four deltas went `: 2` → `: 3` — a whole second half is not additive.
+
+  Not done, deliberately: `languages/cpp.md`, `qt.md`, `python.md` and
+  `releases.md` are cited by the deltas but not mirrored, so those pointers are
+  still unfollowable for an outside reader. Narrower than the filed problem and
+  worth its own call — filed as ANTS-4138.
 
 - 📋 [ANTS-4134] **mcp-error-codes.md's format_mismatch row contradicts its own worked example.**
   The `unsupported_format` row defines its sibling as "`format_mismatch`,
@@ -31690,6 +31731,39 @@ defect from different angles.
   **Layman:** Marking a spec "implemented" wipes the paragraph explaining how it was reviewed; you have to paste it back by hand.
   Kind: enhancement.
   Source: in-session-2026-08-12 (ANTS-4127 implementation).
+
+- 📋 [ANTS-4138] **The mirrored standards still point at four unmirrored global files.**
+  ANTS-4133 mirrored coding / documentation / testing / commits (plus
+  security) so a public reader gets the rule rather than a pointer into a
+  private home directory. Those five bodies then cite others that were NOT
+  mirrored, so the same gap survives one hop further out:
+
+  - `languages/cpp.md`, `languages/qt.md`, `languages/python.md` — coding.md's
+    delta routes every C++/Qt/Python spelling to them by name, and testing.md's
+    delta contradicts three of `cpp.md`'s rules, which an outside reader cannot
+    read to judge.
+  - `releases.md` — commits.md's delta sends "cutting a version" there.
+
+  Deliberately out of ANTS-4133's scope: that bullet named the four delta
+  standards and security.md, and widening it mid-change would have been an
+  orthogonal edit. It is also not obviously the same call — a language
+  spelling file is bigger and churns faster than a standard, so mirroring all
+  three may cost more than it buys for a repo whose outside contributors are
+  rare.
+
+  The mechanism is already built and generic: add a `MIRROR BEGIN` /
+  `MIRROR END` pair naming the owner and `tools/check-standard-mirrors.sh`
+  picks it up with no code change — it globs `docs/standards/*.md` and reads
+  the owner path out of the marker. So the work is a decision plus the
+  markers, not new tooling.
+
+  Decide: mirror all four, mirror only `cpp.md` + `qt.md` (the two a
+  contributor to THIS codebase actually needs), or state in each delta that
+  those pointers are for the maintainer and CONTRIBUTING.md is the outside
+  reader's route.
+  **Layman:** We copied the four main rulebooks into the public repo, but they refer to four more rulebooks that are still only on my home drive.
+  Kind: doc.
+  Source: in-session-2026-08-12 (ANTS-4133 implementation).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

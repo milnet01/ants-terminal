@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# ANTS-4133 — pre-commit gate: a mirrored global standard must still match its
+# owner. docs/standards/{coding,documentation,testing,commits,security}.md each
+# carry a verbatim copy of `~/.claude/standards/<name>.md` so a reader of this
+# public repo can follow the rule without a private home directory. A copy that
+# nothing checks is the pre-cutover state with better manners — this is the
+# check. `tools/check-standard-mirrors.sh --write` is the fix.
+#
+# Skips silently on a checkout with no ~/.claude/standards (outside
+# contributor, CI): there is no owner to compare against.
+#
+# Bypass (use sparingly): `git commit --no-verify`, or ANTS_PRECOMMIT_NO_MIRRORS=1.
+set -uo pipefail
+
+[ "${ANTS_PRECOMMIT_NO_MIRRORS:-0}" = "1" ] && exit 0
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -x "$repo_root/tools/check-standard-mirrors.sh" ] || exit 0
+
+exec "$repo_root/tools/check-standard-mirrors.sh"

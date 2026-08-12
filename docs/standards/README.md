@@ -1,18 +1,28 @@
 # Project Standards
 
-**The four shared standards are owned globally at `~/.claude/standards/` and
-read in place.** The files below with the same names are **deltas**: a pointer
-to the global owner plus the Qt/C++/Ants-specific rules that cannot live in a
-language-agnostic standard. Read the global file for the rule; read the
-project file for what this project adds.
+**The four shared standards are owned globally at `~/.claude/standards/`.** The
+files below with the same names are **deltas**: a pointer to the global owner
+plus the Qt/C++/Ants-specific rules that cannot live in a language-agnostic
+standard. Read the delta for what this project adds.
 
-That reversed on 2026-08-12. Until then these were verbatim `/start-app`
-copies kept in sync by discipline, with nothing checking them. When they were
-finally reconciled all four had drifted, and three instructed behaviour the
-current global standard forbids — a `git push --tags` that publishes every
-local tag, a prove-your-test recipe whose green run skipped the rebuild and so
-could report a false pass, and a naming rule that mandated camelCase for this
-repo's Python. **A copy of a global standard does not belong here.**
+Each of them then **mirrors its owner verbatim below a divider**, between
+`<!-- MIRROR BEGIN … -->` and `<!-- MIRROR END -->`. That half exists because
+this repo is PUBLIC: an outside contributor reading `coding.md` on GitHub
+cannot open a path inside a private home directory, so a pointer alone left
+the rule simply absent for them (ANTS-4133). **Do not edit a mirrored half** —
+a correction goes upstream, then `tools/check-standard-mirrors.sh --write`
+re-copies it down.
+
+That arrangement dates from 2026-08-12. Until then these were verbatim
+`/start-app` copies kept in sync by discipline, with nothing checking them.
+When they were finally reconciled all four had drifted, and three instructed
+behaviour the current global standard forbids — a `git push --tags` that
+publishes every local tag, a prove-your-test recipe whose green run skipped
+the rebuild and so could report a false pass, and a naming rule that mandated
+camelCase for this repo's Python. **An unmarked copy that nothing checks does
+not belong here.** A marked one with a drift gate is the opposite failure
+mode, not the same one: `tools/hooks/pre-commit` refuses a commit whose mirror
+no longer matches its owner.
 
 | Delta file | Global owner | What the project file adds |
 |----------|--------|--------|
@@ -21,11 +31,10 @@ repo's Python. **A copy of a global standard does not belong here.**
 | [testing.md](testing.md) | `~/.claude/standards/testing.md` (+ `languages/cpp.md`) | The corrected prove-a-test-is-real recipe, audit-rule fixtures, the real label set, the bundle-target trap. |
 | [commits.md](commits.md) | `~/.claude/standards/commits.md` (+ `releases.md`) | This repo is public; the `ci-parity.sh` / pre-push gate; `cut-rc.sh` releases; `/bump`. |
 
-**One file is a MIRROR, not a delta.** [`security.md`](security.md) is a
-verbatim copy of `~/.claude/standards/security.md`, kept in the repo because
-this repo is public and a pointer into a private home directory is useless to
-an outside reader. **Do not edit it here** — corrections go upstream and are
-re-copied down. Project-specific security rules go in `coding.md`.
+**One file is a MIRROR only, with no delta.** [`security.md`](security.md)
+carries nothing of its own — it is the owner and nothing else, under the same
+markers and the same drift gate as the four above. Project-specific security
+rules go in `coding.md`.
 
 **Two files here are NOT deltas, deliberately.** `roadmap-format.md` is
 **upstream of** its global copy (CFG-0069, 2026-08-12) — the parser, the store
@@ -85,16 +94,22 @@ existing code, no "ask the original author".
 
 ## Adopting these standards in another project
 
-**Don't copy them.** Read `~/.claude/standards/` in place; that is what it is
-for. This folder previously told you to copy the four files verbatim, and this
-project is the worked example of why that fails: the copies drifted for three
-months, nothing noticed, and three of them ended up instructing behaviour the
-owner forbids.
+**Read `~/.claude/standards/` in place; that is what it is for.** This folder
+previously told you to copy the four files verbatim and keep them in sync by
+hand, and this project is the worked example of why that fails: the copies
+drifted for three months, nothing noticed, and three of them ended up
+instructing behaviour the owner forbids.
 
 If a project genuinely needs to differ, write a **delta** like the four above —
 a pointer to the global owner plus only what is specific to that project — and
 say in its header why the difference exists. A delta that grows back into a
 restatement of its owner has become a second standard.
+
+**Mirror the owner only if the project is public**, and only under the marker
+pair with a drift gate wired in the same change. The distinction that makes it
+safe is not the copying; it is that a machine, not a person's memory, notices
+when the copy stops matching. A mirror without a gate is exactly the
+arrangement above that failed.
 
 ## Versioning
 
@@ -102,7 +117,7 @@ Each standard carries a version marker in its first-line HTML
 comment:
 
 ```html
-<!-- ants-coding-standards: 2 -->
+<!-- ants-coding-standards: 3 -->
 ```
 
 Future revisions increment the version number. Backwards-
@@ -112,7 +127,11 @@ changes stay on the current version.
 
 **The four delta files went to `: 2` on 2026-08-12** — the cut from
 full copy to delta renames and removes sections, which is
-backwards-incompatible by the rule above.
+backwards-incompatible by the rule above. **They went to `: 3` the
+same day**, when the owner's text was mirrored back in below the
+delta: the file gained a whole second half, and a reader who had
+bookmarked a section anchor now finds two documents under one path.
+`security.md` stays at `: mirror` — it has no delta half to version.
 
 **Exception — sub-specs.** `roadmap-format.md` uses
 `ants-roadmap-format-spec: 1.1` rather than the standard
