@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.104" date="2026-08-05">
+    <release version="0.7.104" date="2026-08-12">
       <description>
         <p>The roadmap store lands end to end — a project's roadmap can be migrated into a database, read from it, edited through it and regenerated back to ROADMAP.md — plus zypper installs on openSUSE, and packages for Leap 16.0 and Mageia 10.</p>
         <ul>

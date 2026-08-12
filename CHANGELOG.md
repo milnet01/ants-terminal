@@ -341,7 +341,7 @@ for security-relevant changes.
   called everything below it absent. It now reads a wrapped entry as
   one entry. A genuinely missing entry is still reported.
 
-## [0.7.104] — unreleased (Patron RC preview)
+## [0.7.104] — 2026-08-12
 ### Added
 
 - **Roadmap edits on a migrated project now change the database, and the file is rebuilt from it** (ANTS-3809)

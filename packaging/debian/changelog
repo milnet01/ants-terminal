@@ -28,7 +28,7 @@ ants-terminal (0.7.104-1) unstable; urgency=medium
     URI, and project search is much faster on the first search after a
     build. (ANTS-3828, 3732)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 05 Aug 2026 00:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 12 Aug 2026 00:00:00 +0200
 
 ants-terminal (0.7.102-1) unstable; urgency=medium
 
