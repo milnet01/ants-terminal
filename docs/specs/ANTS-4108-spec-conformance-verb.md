@@ -89,9 +89,11 @@ grounds:
   cheap, total half shippable now.
 
 The consequence is stated plainly rather than buried: **this verb catches
-one of the reporter's four defects directly, and makes the other three
-visible only as CANDIDATEs** (a prescribed artefact with no expectation
-beside it, § 2.5). The fixture-execution half is § 6.
+one of the reporter's four defects and surfaces none of the others.** A
+fixture lives in a `python` or `cpp` fence, which § 2.6 makes invisible to
+this verb — so the reachability and timing defects produce nothing at all
+here, not even a CANDIDATE. The fixture-execution half is § 6, tracked by
+ANTS-4127.
 
 ### 2.3 Inputs and envelope
 
@@ -99,7 +101,9 @@ beside it, § 2.5). The fixture-execution half is § 6.
 // request
 { "path": "docs/specs/ANTS-4070-rotation-and-section-title.md",  // required
   "caller_cwd": "/abs/project/root",                             // required
-  "max_cases": 200,        // optional, clamp [1, 1000], default 200
+  "max_cases": 200,        // optional, range [1, 1000], default 200;
+                           // out of range refuses the call (bad_args) —
+                           // it is not silently clamped (§ 2.5)
   "etag_match": "<etag>" } // optional, 304 short-circuit
 
 // response
@@ -110,12 +114,17 @@ beside it, § 2.5). The fixture-execution half is § 6.
                       "engine": "pcre2", "input": " 123456",
                       "expected": "no match", "actual": "23456" } ],
   "candidates":   [ { "kind": "pattern_without_expectation", "line": 143,
-                      "pattern": "^#{1,6}\\s" } ],
+                      "pattern": "^#{1,6}\\s" } ],   // kinds: § 2.5
   "refusals":     [ { "line": 210, "code": "unsupported_engine" } ],
   "observations": [ { "kind": "timing", "line": 88, "micros": 77 } ],
   "truncated": false,
   "etag": "<hex>" }
 ```
+
+**`line` is the expectation ROW's line** on a `findings[]` entry and on a
+per-row refusal, since that is the line an author must edit. It is the
+**fence's opening line** on a `candidates[]` entry and on a pattern-cap
+refusal, because neither has a row to point at.
 
 Conforms to [`docs/standards/mcp-tools.md`](../standards/mcp-tools.md) —
 response-wrap, `caller_cwd` + `CallerCwdContract`, path validation under the
@@ -145,10 +154,15 @@ the same section, so that authoring one is a local act:
 - The expectation table is the **first** GFM table after the fence with
   exactly the columns `input` and `expected`, before the next fence or
   heading. Anything else is not an expectation table.
-- `expected` is either `no match`, or the text of **capture group 1** when
-  the pattern has one, else the **first** match under search semantics.
-  Backticks around a cell are stripped so a literal can carry leading or
-  trailing spaces visibly.
+- `expected` is either the `no match` sentinel, or the text of **capture
+  group 1** when the pattern has **at least one** capturing group (group 1
+  regardless of how many follow), else the **first** match under search
+  semantics.
+- **The sentinel is recognised BEFORE backtick stripping**, so bare
+  `no match` is the sentinel and `` `no match` `` is the literal string.
+  Otherwise a pattern expected to match that text could not be written.
+  Backticks are stripped after, so a literal can carry leading or trailing
+  spaces visibly.
 - **The empty result has an encoding, because INV-3 turns on it.** An empty
   backtick pair (`` `` ``) means *matched, captured the empty string*. A
   bare empty cell is malformed and yields a CANDIDATE, never a silent
@@ -160,8 +174,15 @@ the same section, so that authoring one is a local act:
 | Bucket | Meaning | Example |
 |---|---|---|
 | FINDING | a row ran and disagreed | `\d{1,5}(?![0-9])` on `" 123456"` yields `23456`, expected no match |
-| CANDIDATE | a prescribed artefact nothing can check | a `regex` fence with no expectation table, or no declared engine |
+| CANDIDATE | a prescribed artefact nothing can check | see the three `kind` values below |
 | OBSERVATION | a measured fact, never a verdict | per-pattern match time in µs |
+
+A candidate's `kind` is one of exactly three, because the author action
+differs for each: `pattern_without_expectation` (a `regex` fence with no
+table), `engine_not_declared` (a bare ` ```regex ` fence), and
+`malformed_expectation_cell` (a bare empty `expected` cell). Collapsing
+them loses the distinction between "nobody stated an expectation" and
+"the table is broken".
 
 CANDIDATEs are the verb's answer to the defects it cannot execute: it
 cannot tell whether a fixture is reachable, but it can say **nobody stated
@@ -171,7 +192,7 @@ defects.
 **A refusal is PER CASE, never per call.** An unsupported engine or an
 over-cap pattern adds a row to `refusals[]` and the run continues; the
 other cases in the file still produce their findings. Only a malformed
-*request* — an unreadable `path`, a `max_cases` outside its clamp — refuses
+*request* — an unreadable `path`, a `max_cases` outside its range — refuses
 the whole call. The alternative was tried on paper and rejected: a
 corpus-wide sweep in which one stray fence blinds an entire file is a sweep
 that reports clean for the wrong reason. `cases_run` counts cases actually
@@ -195,14 +216,21 @@ so a rule that refused them would refuse nearly every real document.
 taxonomy's existing `unsupported_format`. The cap refusal reuses `too_large`
 rather than minting a second (INV-7).
 
+**The engine check runs BEFORE the expectation-table check**, so a
+`regex python` fence with no table is a refusal and never also a candidate.
+Without that order an unsupported-engine fence satisfies INV-4's
+description and INV-5's at once, and both are buildable.
+
 **A substitute engine is worse than no engine.** The two agree on the
 reported case — verified, not assumed: `python3 -c "import re;
 print(re.search(r'\d{1,5}(?![0-9])', ' 123456').group(0))"` and
 `printf ' 123456' | grep -oP '\d{1,5}(?![0-9])'` both return `23456`. They
 are still not the same engine, and the defaults differ where it matters:
-Qt leaves `QRegularExpression::UseUnicodePropertiesOption` — a Qt header
-symbol, not a project one (`/usr/include/qt6/QtCore/qregularexpression.h:42`
-on this host) — **off** by default, so `\d` is ASCII-only, while
+Qt leaves `QRegularExpression::UseUnicodePropertiesOption` **off** by
+default — a Qt header symbol, not a project one: the option is `0x0040`
+and the constructor takes `PatternOptions options = NoPatternOption`
+(`0x0000`), both at `/usr/include/qt6/QtCore/qregularexpression.h:35,42,53`
+on this host — so `\d` is ASCII-only, while
 Python 3's `\d` matches Unicode digits unless `re.ASCII` is passed. A
 pattern written against one and run under the other can therefore return a
 *confident wrong answer about a spec that is correct* — the one outcome
@@ -259,10 +287,15 @@ row is deliberately `nothing` in § 8.
   uses an anchored match rather than a search, which makes the defect that
   motivated this verb invisible to it.
 - **INV-3** — `expected: no match` is satisfied only by zero matches.
-  *Test:* same fixture, one row expecting `no match` against a pattern that
-  matches, asserted as a finding. *Breaks when:* an empty capture group is
-  conflated with no match — a pattern that matches but captures nothing then
-  reads as a refusal.
+  *Test:* two rows, and the second is the one that matters. (a) A row
+  expecting `no match` against a pattern that matches non-emptily is
+  reported as a finding. (b) A pattern with an **optional** capture group
+  that matches while capturing nothing, against a row whose `expected` is
+  the empty-backtick encoding (§ 2.4), is NOT reported — and the same case
+  against `no match` IS. *Breaks when:* an empty capture group is conflated
+  with no match. Row (a) alone cannot catch that, because it never produces
+  an empty capture — the clause would name a break its own test could not
+  reach.
 - **INV-4** — a fence with a declared engine and NO expectation table is a
   CANDIDATE, never silently dropped and never a finding. *Test:* fixture
   with a bare `regex pcre2` fence asserts one candidate, zero findings.
@@ -272,7 +305,9 @@ row is deliberately `nothing` in § 8.
 - **INV-5** — an unrecognised engine tag is refused `unsupported_engine`
   and no pattern is run under a substitute; the refusal is per case.
   *Test:* two fixtures. One containing **only** a `regex python` fence
-  asserts `refusals[0].code == "unsupported_engine"` and `cases_run == 0`.
+  asserts `refusals[0].code == "unsupported_engine"`, `cases_run == 0`
+  **and `candidates == []`** — the last is what pins the § 2.6 ordering,
+  since that fence also has no expectation table.
   One containing that fence **plus two valid `regex pcre2` cases** asserts
   `ok: true`, `cases_run == 2` and one refusal row — the leg that catches a
   call-level abort. *Breaks when:* the tag is ignored and the pattern runs
@@ -294,15 +329,20 @@ row is deliberately `nothing` in § 8.
   `cases_run == 200`.
   *Breaks when:* the cap clamps quietly, so a partial run reads as a
   complete one.
-- **INV-8** — this verb runs no subprocess and loads no interpreter, so
-  `spec_lint`'s no-execution contract stays true of the pair. *Test:*
-  source-grep across **every file § 2.7 names** for
-  `QProcess|system\(|popen|fork\(|lua_newstate|luaL_newstate|Py_Initialize`,
+- **INV-8** — the conformance ENGINE runs no subprocess and loads no
+  interpreter, so `spec_lint`'s no-execution contract stays true of the
+  pair. *Test:* source-grep over `src/specconformance.h` and
+  `src/specconformance.cpp` — the files this change creates — for
+  `\bQProcess\b|system\(|popen|fork\(|lua_newstate|luaL_newstate|Py_Initialize`,
   asserting zero hits. *Breaks when:* Python support (§ 6) is added here
-  instead of behind its own decision. A grep for `QProcess` alone on a
-  single TU was the first draft's test and could not falsify the
-  interpreter half of its own claim — every one of the other six tokens
-  passed it.
+  instead of behind its own decision.
+  **Scope, and it is the whole point of the clause:** the grep covers the
+  new engine only, NOT the shared TUs § 2.7 also lists. `src/mainwindow.cpp`
+  and `src/claudeintegration.cpp` already carry 35 and 6 hits between them
+  for dozens of unrelated verbs (`grep -cE '<tokens>' src/mainwindow.cpp`
+  → 35), so a scrape over "every file § 2.7 names" asserts zero where 41
+  exist — red for every possible implementation, and therefore falsifying
+  nothing. `\b` on `QProcess` keeps `QProcessEnvironment` from counting.
 - **INV-9** — two runs over an unchanged file return envelopes that are
   byte-identical **except for `observations`**, and a matching `etag_match`
   short-circuits. *Test:* run twice, compare the serialised envelope with
@@ -371,7 +411,7 @@ project test convention.
 | Invariant | Checked by |
 |---|---|
 | INV-1..7, INV-9 | `tests/features/spec_conformance/` |
-| INV-8 | source-grep for the seven subprocess/interpreter tokens across every file § 2.7 names |
+| INV-8 | source-grep for the seven subprocess/interpreter tokens over `src/specconformance.{h,cpp}` only — the shared TUs already carry 41 such hits for other verbs |
 | A pattern's engine matching the one its artefact will really run under | **nothing** — the fence tag is the author's claim, and no check ties it to the consuming code |
 | A catastrophic pattern within the caps | **nothing** — § 2.8, no interruption exists |
 | Whether an expectation row states the *right* expectation | **nothing** — a wrong expectation and a wrong pattern are indistinguishable from inside |
@@ -394,6 +434,7 @@ its stated example agree, never that either is what the author meant.
 | Loop | Lanes | Q1 | Q2 | Q3 | Q4 | Verified / dismissed | Outcome |
 |---|---|---|---|---|---|---|---|
 | 1 | 2 cold, spec genre | 1 | 4 | 2 | 2 | 9 / 0 | all fixed |
+| 2 | 2 cold, spec genre | 0 | 2 | 4 | 2 | 8 / 0 | all fixed |
 
 **Loop 1 (2026-08-12).** Both lanes independently found the same five
 defects, which is what two rolls of a cold read are for.
@@ -437,3 +478,42 @@ the bullet actually enumerates.
 Lane spend: 99.4k and 96.5k input tokens against a ~60k/turn budget — over,
 because the packet carries eight code windows and the document is long for
 its genre.
+
+**Loop 2 (2026-08-12).** Both lanes again converged, and **three of the
+eight findings were collateral from loop 1's own fixes** — the pattern the
+review procedure warns about, arriving on schedule.
+
+- **[Q4]** INV-8's widened grep (a loop-1 fix) became *unreachable*: § 2.7
+  names `src/mainwindow.cpp` and `src/claudeintegration.cpp`, which already
+  carry 35 and 6 hits of the token set for unrelated verbs. Asserting zero
+  where 41 exist is red for every possible implementation, so it falsified
+  nothing. Scoped to the two files this change creates, and `\b`-anchored so
+  `QProcessEnvironment` stops counting. *Loop-1 collateral.*
+- **[Q2]** § 2.3 said `max_cases` is clamped; § 2.5 (a loop-1 fix) said an
+  out-of-range value refuses the call. Both were buildable. Now: refuses.
+  *Loop-1 collateral.*
+- **[Q2]** § 2.2 claimed the three uncaught defects surface "as CANDIDATEs"
+  while § 2.6 (a loop-1 fix) made non-`regex` fences invisible. § 2.2 now
+  says plainly that this verb surfaces none of them. *Loop-1 collateral.*
+- **[Q3]** Only one candidate `kind` was ever named while three causes
+  produce candidates; all three enumerated, since the author's next action
+  differs per kind.
+- **[Q3]** An unsupported-engine fence with no table satisfied INV-4 and
+  INV-5 at once. § 2.6 now fixes the order (engine before table) and INV-5
+  asserts `candidates == []`.
+- **[Q3]** `line` was emitted in three buckets and defined in none.
+- **[Q3]** `expected` did not say which group a multi-group pattern yields,
+  and the `no match` sentinel was indistinguishable from the literal after
+  backtick stripping.
+- **[Q4]** INV-3 named the empty-capture conflation as its break, but its
+  test used a pattern that never captures emptily — the break was
+  unreachable by its own fixture. Second row added.
+
+A lane also challenged § 2.6's load-bearing premise (that Qt leaves
+`UseUnicodePropertiesOption` off). Verified rather than defended: the
+constructor takes `PatternOptions options = NoPatternOption` — citation
+tightened to the three header lines that show it.
+
+Lane spend: 108.5k and 105.1k input tokens. Document grew 394 → 479 lines
+across the fix pass, which is the cost this review's consolidation rule
+exists to watch.
