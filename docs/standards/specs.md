@@ -2,7 +2,9 @@
 # Spec-authoring standard
 
 **Status:** v1 (2026-05-21).
-**Applies to:** every file under `docs/specs/ANTS-NNNN.md`.
+**Applies to:** every spec under `docs/specs/` — the
+`<ID>-<topic>.md` shape § 2 requires, and the bare `<ID>.md` of
+legacy files.
 
 A *spec* is the implementation contract for one ROADMAP item. It sits
 between the one-paragraph ROADMAP bullet (the *what* and *why*) and the
@@ -26,9 +28,16 @@ Skip the formal spec (a regression test is more useful) when the work
 is mechanical: a typo, a one-line fix, a menu entry, a dependency bump.
 A `spec.md` under `tests/features/<name>/` (the feature-conformance
 contract) is the right home for a small, single-invariant behaviour;
-a top-level `docs/specs/ANTS-NNNN.md` is for designs big enough that
-the contract spans files. When unsure, write the spec — it is cheaper
-than the rewrite that follows an unstated assumption.
+a top-level spec under `docs/specs/` is for designs big enough that
+the contract spans files.
+
+**If you are two files in and it is still spreading, stop and write the
+spec.** That is the correction for a call that went the wrong way, and
+it is cheaper than finishing it wrong. There is deliberately no "when
+unsure, write the spec" rule — that instruction biased every borderline
+call toward a document plus its full review gate. `spec-format.md` § 1
+owns the five triggers and the skip test; read it rather than deciding
+from this paragraph.
 
 ## 2. File + naming
 
@@ -164,6 +173,14 @@ four-backtick fence so this standard does not itself become a case:
 | `  - **[ANTS-1]** indented` | no match |
 ````
 
+- **Start the fence at column 0, with only blank lines between it and
+  the table.** The fence and its table are siblings of the `INV-N`
+  bullet, never indented children of it. This is the one part of the
+  extraction contract restated here, because it is the only one that
+  fails *silently*: an indented fence is not a fence, so the case is
+  never run and is reported as nothing at all — no finding, no
+  candidate, no refusal. Prose between fence and table is reported, as
+  a candidate.
 - **Tag the engine.** `regex pcre2` is `QRegularExpression`, Qt's PCRE2.
   A bare ` ```regex ` fence is reported as a candidate and any other
   engine is refused — never silently run under a substitute, because a
@@ -253,7 +270,8 @@ correct form, no scaffolding for hypothetical futures. A spec proposing
 The same gate applies to the spec itself, per
 [`documentation.md` § 1.6](documentation.md). Show request/response
 shapes, structs and limits as schemas, tables and fenced blocks — never
-as paragraphs narrating them — and state each limit once (§ 1.5). Two
+as paragraphs narrating them — and state each limit once
+([`documentation.md` § 1.5](documentation.md)). Two
 yardsticks: a spec several times longer than a sibling spec covering
 comparable surface, or several times longer than the code it specifies,
 is over-built until it names the extra surface it covers. Length is not
@@ -284,12 +302,18 @@ changes get their own spec that supersedes it (`**Superseded by:**`).
 
 ### 5.7 Cold-eyes loop log
 
-Specs in this project run a cold-eyes review loop (review → verify →
-fix) until a clean pass before sign-off — never ship a first-draft
-spec. Record each loop's findings + resolutions in a
-`## Cold-eyes loop log` section and reflect progress in the **Status**
-line. The log is the evidence the loop happened and the audit trail for
-why a contract reads the way it does.
+Specs in this project run through the `review-contract` skill before
+implementation, looped until it reports convergence — never ship a
+first-draft spec. The skill owns the procedure and the definition of
+convergence; this standard does not restate them.
+
+Record each loop's findings + resolutions in a `## Cold-eyes loop log`
+section and reflect progress in the **Status** line. **The section name
+is frozen deliberately**: it is the heading `check-doc-facts` looks for
+and the one every gated document in this corpus already carries, so
+renaming it here would strand all of them. The log is the evidence the
+loop happened and the audit trail for why a contract reads the way it
+does.
 
 ## 6. Machine-readability (`spec_query`)
 
@@ -350,3 +374,9 @@ Feature test: `tests/features/<name>/`. Covers INV-1..N. Label
 
 <CLAUDE.md / CHANGELOG / README / sibling specs touched this release>
 ```
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q-count | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-12 | 2, cold; genre pinned `standard`; one byte-stable shared packet carrying the `spec_conformance` engine windows and the `documentation.md` / `roadmap-format.md` / ANTS-4108 excerpts | **Q1 1 · Q2 3 · Q3 1** (5 verified / 0 unverified) | **This standard's first gate**, triggered by the § 3.5.1 amendment ANTS-4108 § 9 had left undone. **One finding was against that new text:** § 3.5.1 never said the fence must start at **column 0**, and that is the one part of the extraction contract whose breach is *silent* — `fenceDelimLen()` counts backticks from index 0, so an indented fence returns 0 and is skipped with no finding, no candidate and no refusal. A conformer writing the natural GFM rendering — fence and table indented under their `- **INV-N**` bullet — gets a spec that renders correctly and is never run. ANTS-4108 § 2.4 is silent on it too and no test covers it (filed: ANTS-4130). **Four were pre-existing.** § 1 still carried "When unsure, write the spec", which `~/.claude/standards/spec-format.md` § 1 deleted on 2026-08-08 for biasing every borderline call toward a document *plus its full review gate*; the two standards biased opposite ways at exactly the point of doubt, and this one now carries the two-files-in escape hatch instead. § 5.7 told authors to run a "cold-eyes review loop … until a clean pass", naming a skill that no longer exists (replaced by `review-contract`) and a bar stricter than the one the skill defines — `spec-format.md` § 6 gives the skill sole ownership of convergence. The `## Cold-eyes loop log` heading is kept and the freeze is now stated: it is what `check-doc-facts` looks for and what every gated document in the corpus already carries. And the **Applies to:** line named only the bare `ANTS-NNNN.md` shape while § 2 *requires* `<ID>-<topic>.md` on new specs, so a conformer writing the mandated shape could read the standard as not governing their file. **Dismissed:** the remaining `cold-eyes` mentions (§§ 3.2, 4) name the frozen section and the live in-Ants engine (`src/coldeyesengine.h`, the `cold_eyes_*` verbs), not a command. **Surfaced, not fixed:** whether this file should become a deltas-only `spec-format-overrides.md` rather than a full parallel standard — a scope decision above this review. |

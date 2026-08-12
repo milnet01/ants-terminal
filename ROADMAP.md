@@ -31178,6 +31178,49 @@ defect from different angles.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (ANTS-4108 wiring pass).
 
+- 📋 [ANTS-4130] **spec_conformance's extraction contract is silent on fence indentation, and nothing tests it.**
+  Two gaps, both found by the cold gate on the specs.md § 3.5.1 amendment.
+
+  1. **Column 0 is load-bearing and undocumented.** `fenceDelimLen()`
+  counts backticks from index 0, so an indented fence returns 0 and
+  `run()` skips the line outright. There is no finding, no candidate and
+  no refusal — the case is invisible. This is the ONLY part of the
+  extraction contract whose breach is silent, and it is the one a
+  conformer is most likely to hit: § 3.5 mandates the `- **INV-N**`
+  bullet form, and attaching a fenced block to a list item in GFM means
+  indenting it. ANTS-4108 § 2.4 never states the requirement; grep for
+  "column 0" / "indent" over the spec returns only two loop-log hits,
+  both about a pattern's `^` anchor, not a fence's indentation.
+  docs/standards/specs.md § 3.5.1 now states it conformer-side; the spec
+  should state it engine-side.
+
+  2. **No test covers it.** `tests/features/spec_conformance/` has no
+  indented-fence case — grep for indent/column over
+  test_spec_conformance.cpp returns nothing. So the behaviour is
+  load-bearing, undocumented AND unlocked: a future extractor change
+  could start accepting indented fences, or stop, and the suite stays
+  green either way.
+
+  3. **§ 2.4 also understates when the table search stops.** It says the
+  expectation table is the first `| input | expected |` table "before the
+  next fence or heading". The code also breaks on ANY other prose line —
+  `if (t.startsWith('|')) {...} break;` with a bare `break` as the
+  fallthrough — so one explanatory sentence between fence and table
+  demotes the case to a `pattern_without_expectation` candidate. That is
+  reported rather than silent, so it is the milder of the two, but the
+  spec's sentence is incomplete as written.
+
+  §§ 2.3-2.6 are marked PROVISIONAL and the spec's own rule is that where
+  prose and fixtures disagree the fixtures win and the spec is amended —
+  so all three are spec-side amendments plus one new fixture, not a
+  behaviour change. Do NOT "fix" the extractor to accept indented fences
+  without deciding that deliberately: CommonMark allows up to three
+  spaces of fence indentation, so matching it is defensible, but it is a
+  contract change and the fixture is what would pin it.
+  **Layman:** A spec author who indents a pattern block the natural way gets no error and no result — the checker just never sees it.
+  Kind: fix.
+  Source: in-session-2026-08-12 (review-contract loop 1 on docs/standards/specs.md).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
