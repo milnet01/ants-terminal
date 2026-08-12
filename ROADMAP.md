@@ -31448,6 +31448,40 @@ defect from different angles.
   Kind: doc.
   Source: in-session-2026-08-12 (standards delta cutover).
 
+- 📋 [ANTS-4134] **mcp-error-codes.md's format_mismatch row contradicts its own worked example.**
+  The `unsupported_format` row defines its sibling as "`format_mismatch`,
+  which says the **whole verb** cannot write the format". Its own worked
+  example contradicts that in the same cell: on a pass-headings roadmap
+  `create_section` refuses `format_mismatch` while "five other ops write
+  that format happily (ANTS-2126 / ANTS-3406)". So the shipped
+  `format_mismatch` case is one where the verb *can* write the format —
+  exactly what the definition assigns to `unsupported_format`.
+
+  Verified against the predicates, not the prose: `create_section` routes
+  to `rcPassHeadingsWriteRefusal` (`remotecontrol_roadmap_log.cpp:3281`),
+  which sets `format_mismatch` (`remotecontrol.cpp:250`); `amend_body`
+  sets `unsupported_format` (`remotecontrol_roadmap_log.cpp:1968`);
+  `append` renders `#### Pass &lt;pass&gt; &lt;headline&gt;` on that format
+  (ANTS-2126 / ANTS-4117). The code is self-consistent; the definition is
+  not.
+
+  The row's parenthetical does carry a workable discriminator — "no
+  heading-format **section** writer at all" vs "a pass body is sub-bullets
+  under a heading, not the indented continuation lines it patches" — i.e.
+  the boundary is the op's output artifact, not the verb. That is what the
+  headline definition should say.
+
+  Found by ANTS-4129's review-contract loop 2, where all three cold lanes
+  independently flagged mcp-tools.md § 6a for restating the "whole verb"
+  rule. That restatement was deleted and § 6a now defers here, so this
+  document is the single owner of the boundary — which is why the
+  contradiction has to be resolved here rather than worked around there.
+  Not fixed inline: it is a definitional change in a standard with its own
+  review gate, not a sentence repair.
+  **Layman:** Our error-code rulebook defines a code one way, then gives an example that breaks its own definition. Two developers reading it will ship different error codes for the same situation.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (ANTS-4129 review-contract loop 2).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
