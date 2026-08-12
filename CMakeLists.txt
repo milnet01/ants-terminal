@@ -1613,8 +1613,10 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_headline_only/test_roadmap_query_headline_only.cpp
                 # ANTS-1922 roadmap_query mode:"bundles".
                 tests/features/mcp_roadmap_bundles/test_roadmap_bundles.cpp
-                # ANTS-4108 — spec_conformance engine conformance.
+                # ANTS-4108 — spec_conformance engine conformance, and its verb
+                # layer (handler-local ETag 304 + refusal minimums).
                 tests/features/spec_conformance/test_spec_conformance.cpp
+                tests/features/spec_conformance_verb/test_spec_conformance_verb.cpp
                 # ANTS-1876 workspace_search payload knobs.
                 tests/features/workspace_search_payload_knobs/test_workspace_search_payload_knobs.cpp
                 # ANTS-2220 workspace_search enclosing_symbol annotation.

@@ -4,6 +4,7 @@
 #include "codebaseindex.h"
 #include "docsindex.h"
 #include "speclint.h"            // ANTS-3662 — spec_lint verb
+#include "specconformance.h"     // ANTS-4108 — spec_conformance verb
 #include "pathvalidation.h"
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "falseposledger.h"
@@ -567,6 +568,88 @@ QJsonObject RemoteControl::specLintBuildResponse(
     o[QStringLiteral("checked_docs")]     = QJsonArray::fromStringList(checkedDocs);
     if (truncated) o[QStringLiteral("truncated")] = true;
     return o;
+}
+
+// ANTS-4108 — spec_conformance: RUN the patterns a spec prescribes against the
+// expectation table beside them, instead of reading them. caller_cwd Required;
+// `path` REQUIRED and validated under the project root — this verb reads ONE
+// document, so unlike its spec_lint sibling there is no tree walk to default to.
+// Engine: SpecConformance::run. See docs/specs/ANTS-4108-spec-conformance-verb.md.
+QJsonDocument RemoteControl::cmdSpecConformance(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] =
+            QStringLiteral("spec_conformance: no focused project");
+        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (rawPath.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] =
+            QStringLiteral("spec_conformance: path is required");
+        o[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        return QJsonDocument(o);
+    }
+    const auto check = PathValidation::validatePath(
+        rawPath, rootCanonical, QStringLiteral("spec_conformance"),
+        QStringLiteral("path"));
+    if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+    // `resolved` is empty when the path does not canonicalise (absent file);
+    // hand the joined form to the engine so IT reports not_found, rather than
+    // minting a second absence code here.
+    const QString abs = check.resolved.isEmpty()
+        ? QDir(rootCanonical).filePath(rawPath)
+        : check.resolved;
+
+    SpecConformance::Options opt;
+    // NOT clamped. An out-of-range max_cases REFUSES the call (engine INV-7):
+    // a clamp here would make a partial run read as a complete one, which is
+    // the failure mode the whole verb exists to catch.
+    opt.maxCases = req.value(QStringLiteral("max_cases")).toInt(opt.maxCases);
+
+    return QJsonDocument(specConformanceBuildResponse(
+        SpecConformance::run(abs, opt),
+        QDir(rootCanonical).relativeFilePath(abs),
+        req.value(QStringLiteral("etag_match")).toString()));
+}
+
+// ANTS-4108 — pure: engine envelope → the verb's response.
+//
+// The ETag 304 is HANDLER-LOCAL, deliberately against mcp-tools.md step 7. The
+// envelope carries one measured-microsecond `observations[]` row per case, so
+// the dispatcher's etag — a hash of the whole response text — would differ on
+// every run: the 304 could never fire. The engine hashes the envelope MINUS
+// observations (spec INV-9) and this compares that. `spec_conformance` is
+// therefore absent from isEtagSupportedTool, and a test asserts that absence.
+//
+// The etag covers the engine's ABSOLUTE path while the response carries the
+// project-relative one. That makes it strictly more discriminating, never less:
+// same root + same content → same etag, and a different root is a different
+// file. The rewrite is here because the envelope crosses the wire, where an
+// absolute path leaks the caller's home directory and differs per machine.
+QJsonObject RemoteControl::specConformanceBuildResponse(
+    const QJsonObject &engineOut, const QString &relPath,
+    const QString &etagMatch) {
+    // A refusal passes through untouched: it carries no etag, and reporting
+    // "unchanged" for a call that never ran would hide it from the caller.
+    if (!engineOut.value(QStringLiteral("ok")).toBool()) return engineOut;
+
+    QJsonObject out = engineOut;
+    out[QStringLiteral("path")] = relPath;
+
+    const QString etag = out.value(QStringLiteral("etag")).toString();
+    if (!etagMatch.isEmpty() && etagMatch == etag) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]        = true;
+        env[QStringLiteral("unchanged")] = true;
+        env[QStringLiteral("etag")]      = etag;
+        return env;
+    }
+    return out;
 }
 
 // ANTS-3660 — doc_dedup: the same passage written twice, across a doc set.

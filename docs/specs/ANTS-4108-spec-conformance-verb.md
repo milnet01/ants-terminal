@@ -143,9 +143,31 @@ slow row.
 
 Conforms to [`docs/standards/mcp-tools.md`](../standards/mcp-tools.md) —
 response-wrap, `caller_cwd` + `CallerCwdContract`, path validation under the
-project root, ETag-304, `fields=`, and the refusal taxonomy in
+project root, and the refusal taxonomy in
 [`mcp-error-codes.md`](../standards/mcp-error-codes.md). Read-only: the verb
-never writes, so it has no state-routing surface.
+never writes, so it has no state-routing surface. `path` is **required**: this
+verb executes one document, so unlike `spec_lint` there is no tree walk to
+default to. The emitted `path` is project-relative — the envelope crosses the
+wire, where an absolute path leaks the caller's home directory.
+
+**Two deviations from that checklist, both forced by `observations[]`** and
+recorded here because a reader would otherwise take them for oversights
+(2026-08-12, wiring pass — see § 10 row `3-impl-2`):
+
+- **The ETag 304 is handler-local, against step 7.** That step has the
+  dispatcher hash the whole response text and forbids the handler from emitting
+  an etag. This envelope carries one measured-microsecond row per case, so that
+  hash differs on every run: the 304 could never fire and INV-9 would be
+  unsatisfiable. The engine hashes the envelope minus `observations` and
+  `RemoteControl::specConformanceBuildResponse` compares it. The verb is
+  therefore deliberately **absent** from `isEtagSupportedTool`, and
+  `tests/features/spec_conformance_verb/` asserts that absence — wiring both
+  mechanisms would overwrite the stable etag with a timing-sensitive one and
+  kill the cache silently.
+- **`fields=` (step 8, optional) is declined.** Central projection is skipped
+  only on a *central* 304; a handler-local one is invisible to it, so a caller
+  passing `etag_match` and `fields` together would have `unchanged` projected
+  out of its own 304 response.
 
 ### 2.4 Extraction contract
 
@@ -333,7 +355,9 @@ fine and was wrong, which is the exact class § 1 is about.)*
 | `src/specconformance.{h,cpp}` | pure engine: extract → run → classify. Joins `ants_core_lib` beside `src/speclint.cpp` |
 | `src/remotecontrol_docs.cpp` | `cmdSpecConformance` handler |
 | `src/claudeintegration.cpp` | `tools/list` schema + `tools/call` dispatch |
-| `src/mainwindow.cpp` | provider lambda |
+| `src/mainwindow.cpp` | provider lambda (`rcDelegate`, which forwards the whole arg object — no per-verb allowlist to drop `max_cases` through, the ANTS-3420 class) |
+| `tests/features/spec_conformance/` | engine lane, 10 fixtures |
+| `tests/features/spec_conformance_verb/` | verb lane, 3 fixtures |
 
 ### 2.8 Caps and the trust boundary
 
@@ -486,8 +510,11 @@ external library.
 Feature test: `tests/features/spec_conformance/`, label `features;fast`,
 covering INV-1..7 and INV-9. **INV-8 is a source-scrape, not a runtime
 case** — no running test can observe the absence of an interpreter.
-Source-scrape also covers the schema, dispatch and provider wiring per the
-`mcp-tools.md` checklist. Each test is verified to fail
+Verb-layer lane: `tests/features/spec_conformance_verb/`, same bundle and
+labels — the handler-local ETag 304 (INV-9's second half, which no engine
+test can reach), the project-relative `path`, and the source-scrape of the
+schema, dispatch and provider wiring per the `mcp-tools.md` checklist.
+Each test is verified to fail
 against pre-implementation source before the implementation lands, per the
 project test convention.
 
@@ -495,7 +522,8 @@ project test convention.
 
 | Invariant | Checked by |
 |---|---|
-| INV-1..7, INV-9 | `tests/features/spec_conformance/` |
+| INV-1..7, INV-9 (etag stable across runs) | `tests/features/spec_conformance/` |
+| INV-9 (a matching `etag_match` short-circuits) | `tests/features/spec_conformance_verb/` — the 304 is handler-local, so the engine lane cannot reach it |
 | INV-8 | source-grep for the seven subprocess/interpreter tokens over `src/specconformance.{h,cpp}` only — the shared TUs already carry 34 such lines for other verbs |
 | A pattern's engine matching the one its artefact will really run under | **nothing** — the fence tag is the author's claim, and no check ties it to the consuming code |
 | A catastrophic pattern within the caps | **nothing** — § 2.8, no interruption exists |
@@ -522,6 +550,7 @@ its stated example agree, never that either is what the author meant.
 | 2 | 2 cold, spec genre | 0 | 2 | 4 | 2 | 8 / 0 | all fixed |
 | 3 | 2 cold, spec genre | 1 | 2 | 6 | 0 | 9 / 0 | all fixed; **cap reached, not converged** |
 | 3-impl | none — implementation, no reviewer dispatched | 1 | 0 | 0 | 0 | 1 / 0 | § 2.4a added |
+| 3-impl-2 | none — MCP wiring, no reviewer dispatched | 0 | 2 | 0 | 0 | 2 / 0 | § 2.3 deviations stated |
 
 **Loop 1 (2026-08-12).** Both lanes independently found the same five
 defects, which is what two rolls of a cold read are for.
@@ -667,8 +696,34 @@ against today's corpus, and the reporting session's evidence was a Python
 `re.search` CALL that this extractor does not recognise at all. § 2.4a now
 states both, and ANTS-4128 carries the fix.
 
-**A re-gate of this amendment is owed and deliberately not run.** Step 8
+**A re-gate of that amendment is owed and deliberately not run.** Step 8
 asks for one; the addition is a stated limitation rather than a changed
 contract, the gate had already bound its cap on this document, and the
 standing recommendation is to trust fixtures over further cold reads here.
+Recorded as a decision so it is not mistaken for an oversight.
+
+**Row `3-impl-2` (2026-08-12) — MCP wiring, NO reviewer dispatched.**
+The verb is wired and its three verb-layer fixtures pass. Wiring it surfaced
+two [Q2] contradictions between § 2.3 and the standard it claims conformance
+with, and both have the same cause — `observations[]`, which no earlier loop
+traced past the etag:
+
+- § 2.3 claimed ETag-304 per `mcp-tools.md` step 7, which computes the etag
+  over the **whole** response. INV-9 already knew the timings had to be
+  excluded, and loop 1 scoped the etag for exactly that reason; what nobody
+  followed through was that the central mechanism therefore **cannot** be the
+  one used. Under it the 304 never fires, which makes INV-9 unsatisfiable —
+  the same defect class loop 2 caught in INV-8.
+- § 2.3 claimed `fields=` as well. Central projection is skipped on a central
+  304 only, so a handler-local 304 would have `unchanged` projected out of it.
+  Declined.
+
+Both are now stated in § 2.3 with the reason, and the `isEtagSupportedTool`
+absence — the thing that keeps the two mechanisms from being wired at once —
+is asserted by a fixture rather than left to a comment.
+
+**A re-gate of these amendments is owed and deliberately not run**, on the
+same grounds as the row above: the additions state which of two documented
+mechanisms this verb uses and why the other is unavailable, the gate had
+already bound its cap on this document, and the fixtures now pin the choice.
 Recorded as a decision so it is not mistaken for an oversight.

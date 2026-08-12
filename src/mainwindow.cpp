@@ -5213,6 +5213,11 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("spec_lint",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdSpecLint));
+    // ANTS-4108 — spec_conformance: run a spec's own patterns against the
+    // examples beside them (spec_lint's executable sibling).
+    m_claudeIntegration->registerToolProvider("spec_conformance",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdSpecConformance));
     // ANTS-3660 — doc_dedup: the same passage written twice.
     m_claudeIntegration->registerToolProvider("doc_dedup",
         ClaudeIntegration::CallerCwdContract::Required,

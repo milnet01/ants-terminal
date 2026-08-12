@@ -30472,7 +30472,7 @@ defect from different angles.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
   Resolved (2026-08-11): id pattern widened to INV-N[a-z] in parseSpecBody's table + bullet + prose-token matchers and in spec_lint's two anchor regexes. The consequence that mattered is fixed at the same time: spec_lint's checks used to rebuild `INV-%1` from an int, so every sub-lettered id fell out of invariant_no_test; they now walk the id strings, and the gap scan alone reduces to numbers (a sub-letter occupies its parent's slot, so it can never open a gap). Regression-locked by SpecLint.Ants4107SubLetteredInvariantIds. Suite 3352/3352.
 
-- 🚧 [ANTS-4108] **A `spec_conformance` verb — execute a spec's own regexes, bounds and predicates instead of reading them.**
+- ✅ [ANTS-4108] **A `spec_conformance` verb — execute a spec's own regexes, bounds and predicates instead of reading them.**
   /doc-lint owns the deterministic half of spec review but has no check for
   the class that produced almost every serious finding in the reporting
   session: a spec that PRESCRIBES an executable artefact (a regex, a range
@@ -30563,6 +30563,37 @@ defect from different angles.
   § 2.3 is the envelope, § 2.7 the file map. § 2.3-2.6 are marked provisional
   (the gate hit its cap), so where the prose and the fixtures disagree, the
   fixtures win and the spec is amended.
+  Resolved (2026-08-12): the MCP wiring landed, so the verb is live on the
+  next relaunch. All four remaining steps done — `cmdSpecConformance` in
+  src/remotecontrol_docs.cpp (caller_cwd Required, `path` required and
+  PathValidation'd, `max_cases` forwarded UNCLAMPED so an out-of-range value
+  refuses per engine INV-7), the tools/list schema + CallerCwdContract entry
+  + kindForName bucket + offload cost row in src/claudeintegration.cpp, the
+  `rcDelegate` provider lambda in src/mainwindow.cpp, and a verb lane at
+  tests/features/spec_conformance_verb/ (3 fixtures, written first and
+  verified red on assertions against a stub). Suite 3393/3393 via
+  `ctest --preset=default`.
+
+  The ANTS-3420 arg-allowlist class does not apply: `rcDelegate` forwards the
+  whole args object, so `max_cases` / `etag_match` reach the handler without a
+  per-verb allowlist to fall out of. Verified at src/mainwindow.cpp's factory
+  rather than assumed.
+
+  Wiring it surfaced two contradictions between the spec's § 2.3 and
+  docs/standards/mcp-tools.md, both caused by `observations[]` — folded back
+  into § 2.3 and the loop log as row `3-impl-2` rather than worked around:
+  (1) the ETag 304 is HANDLER-LOCAL, against step 7, because the central etag
+  hashes the whole response text and per-run timings would make it miss every
+  time — the verb is deliberately absent from `isEtagSupportedTool` and a
+  fixture asserts that absence; (2) `fields=` is declined, because central
+  projection is skipped only on a CENTRAL 304, so a caller passing
+  `etag_match` + `fields` would have `unchanged` projected out of its own 304.
+  The standard's own missing exception clause is filed as ANTS-4129.
+
+  Still true and unchanged: nothing in this repository uses the fence+table
+  convention yet (§ 2.4a), so the verb reports nothing against today's corpus.
+  ANTS-4128 (recognise the `re.search` call form) and ANTS-4127 (execute
+  fixtures) are what make it earn its keep; neither blocked shipping this.
 
 - ✅ [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
   roadmap_query {id:"LOTTO-0019"} resolves and returns
@@ -31057,6 +31088,37 @@ defect from different angles.
   **Layman:** Teach the pattern-checker to read the way specs already write patterns, instead of only a new format nobody has adopted yet.
   Kind: feature.
   Source: in-session-2026-08-12 (found by building ANTS-4108 and running it on the corpus).
+
+- 📋 [ANTS-4129] **mcp-tools.md step 7 states an absolute the spec_conformance verb has to break.**
+  Step 7 of docs/standards/mcp-tools.md says a read verb opts into ETag by
+  joining `isEtagSupportedTool`, and that "the handler must **not** emit it"
+  — the dispatcher hashes the whole response text.
+
+  ANTS-4108's `spec_conformance` cannot use that path. Its envelope carries
+  `observations[]`, one measured-microsecond row per executed case, so the
+  central hash differs on every run: the 304 would never fire, and the
+  verb's own INV-9 would be unsatisfiable by any correct implementation.
+  It therefore computes its etag over the envelope minus `observations` and
+  performs the 304 in `RemoteControl::specConformanceBuildResponse`, staying
+  deliberately OUT of `isEtagSupportedTool` (asserted by
+  `tests/features/spec_conformance_verb/`).
+
+  The deviation is recorded in that spec's § 2.3 and in the code, so nothing
+  is lost — but the standard still reads as an absolute, and the next author
+  with a timing-bearing envelope will either follow it into a dead 304 or
+  read the shipped verb as a violation. What step 7 is missing is the
+  condition, not the rule: the central etag is correct exactly when the
+  response is a pure function of project state, and a verb whose envelope
+  carries per-run measurements owns its own 304.
+
+  Not fixed inline because docs/standards/ is rule-14 territory: an
+  authoring edit re-arms the review-contract gate on the whole document, and
+  that is a deliberate spend rather than a drive-by. Cheap when taken:
+  one paragraph under step 7, then `review-contract docs/standards/mcp-tools.md
+  --genre standard`.
+  **Layman:** One of our own rulebooks says "never do X"; a tool we just shipped has to do X, for a good reason. The rulebook should say so, or the next person will read it as a mistake.
+  Kind: doc-fix.
+  Source: in-session-2026-08-12 (ANTS-4108 wiring pass).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

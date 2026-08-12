@@ -4431,6 +4431,63 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(specLint);
 
+                // ANTS-4108 — spec_conformance: the EXECUTABLE half of spec
+                // review. spec_lint greps a spec's structure; this RUNS the
+                // patterns it prescribes against the examples beside them.
+                QJsonObject specConf;
+                specConf["name"] = "spec_conformance";
+                specConf["description"] = QStringLiteral(
+                    "Run a spec's own regex patterns against the `| input | expected |` "
+                    "table beside them, instead of reading them. Three buckets: a row "
+                    "whose actual result differs from `expected` is a FINDING; a "
+                    "```regex fence with no table beside it is a CANDIDATE; a per-case "
+                    "timing is an OBSERVATION (which is what catches a fixture that "
+                    "returns before the pattern under test ever runs). Executes "
+                    "PATTERNS ONLY — never fenced code, so nothing it runs can reach "
+                    "the filesystem or the network. Engine tag `pcre2` only; anything "
+                    "else refuses `unsupported_engine` per fence rather than "
+                    "substituting an engine. Refusals: bad_args (absent `path`, "
+                    "`max_cases` outside [1,1000] — refused, never clamped), bad_path, "
+                    "not_found. Read-only. caller_cwd required; `path` required.");
+                specConf["selection_hint"] = QStringLiteral(
+                    "Use on a spec that prescribes regexes, before implementing it: a "
+                    "cold read passes a wrong pattern, running it does not.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd"),
+                                                    QStringLiteral("path")};
+                    QJsonObject props;
+                    QJsonObject scPath; scPath["type"] = "string";
+                        scPath["description"] = QStringLiteral(
+                            "Project-relative path to ONE markdown document. Required — "
+                            "this verb executes a document, so there is no tree walk to "
+                            "default to (unlike spec_lint).");
+                    QJsonObject scCwd; scCwd["type"] = "string";
+                        scCwd["description"] = QStringLiteral(
+                            "Your $PWD. Required — anchors the path under your project.");
+                    QJsonObject scMax; scMax["type"] = "integer";
+                        scMax["description"] = QStringLiteral(
+                            "Cap on executed cases (default 200, range [1,1000]). Out of "
+                            "range REFUSES bad_args rather than clamping; a capped run "
+                            "returns truncated:true so a partial run never reads as a "
+                            "complete one.");
+                    QJsonObject scEtag; scEtag["type"] = "string";
+                        scEtag["description"] = QStringLiteral(
+                            "Server-issued etag from a prior call; an unchanged document "
+                            "short-circuits to {ok:true, unchanged:true}. The etag covers "
+                            "the envelope minus observations[] (per-run timings), so it "
+                            "tracks the answer and not the clock.");
+                    props["path"] = scPath;
+                    props["caller_cwd"] = scCwd;
+                    props["max_cases"] = scMax;
+                    props["etag_match"] = scEtag;
+                    schema["properties"] = props;
+                    specConf["inputSchema"] = schema;
+                }
+                tools.append(specConf);
+
                 // ANTS-3660 — doc_dedup: the same passage written twice, which
                 // /cold-eyes § 1e has no mechanical check for at all.
                 QJsonObject docDedup;
@@ -10691,6 +10748,10 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-3662 — spec_lint: findings are sparse on a
                         // conforming corpus; line_count adds one row per spec.
                         {QStringLiteral("spec_lint"),         {600,  5000}},
+                        // ANTS-4108 — spec_conformance: findings are sparse,
+                        // but observations[] is one row per executed case, so
+                        // the ceiling scales with max_cases rather than defects.
+                        {QStringLiteral("spec_conformance"),  {700,  9000}},
                         // ANTS-3660 — doc_dedup: one entry per pair PLUS one
                         // per cluster, and a corpus-wide walk is the upper end
                         // (measured: 275 pairs / 128 clusters over docs/).
@@ -10858,6 +10919,9 @@ void ClaudeIntegration::onMcpConnection() {
                         name == QLatin1String("doc_citations") ||
                         name == QLatin1String("doc_symbols") ||
                         name == QLatin1String("spec_lint") ||   // ANTS-3662
+                        // ANTS-4108 — spec_conformance: spec_lint's executable
+                        // sibling; same project-scoped document reader family.
+                        name == QLatin1String("spec_conformance") ||
                         name == QLatin1String("doc_dedup") ||   // ANTS-3660
                         // ANTS-2161 — project_settings: project-scoped
                         // layout-config detect + create/update.
@@ -12260,6 +12324,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-3662 — spec_lint walks the focused project's specs_dir and reads its
     // format standard from the same root; Required.
     if (toolName == QStringLiteral("spec_lint"))           return C::Required;
+    // ANTS-4108 — spec_conformance resolves a required `path` under the focused
+    // project's root and reads only that document; Required.
+    if (toolName == QStringLiteral("spec_conformance"))    return C::Required;
     // ANTS-3660 — doc_dedup walks the focused project's docs_dir; Required.
     if (toolName == QStringLiteral("doc_dedup"))           return C::Required;
     // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json

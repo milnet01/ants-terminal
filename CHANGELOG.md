@@ -14,6 +14,21 @@ for security-relevant changes.
 
 ### Added
 
+- **`spec_conformance` — an MCP verb that RUNS the regex patterns a spec prescribes against the `| input | expected |` table beside them** (ANTS-4108)
+  A cold read passes a wrong pattern; running it does not. A row whose
+  actual result differs from `expected` comes back as a finding, a
+  \```regex fence with no table beside it as a candidate, and a per-case
+  timing as an observation — which is what catches a fixture that returns
+  before the pattern under test ever runs. Executes patterns only, never
+  fenced code: a pattern applied to a string cannot reach the filesystem
+  or the network whatever it contains. `pcre2` only; any other engine tag
+  refuses per fence rather than substituting one. `max_cases` outside
+  [1,1000] refuses the call rather than clamping, so a partial run can
+  never read as a complete one. Nothing in this repository uses the
+  convention yet, so it reports nothing here today — ANTS-4128 (the
+  `re.search` call form) and ANTS-4127 (executing fixtures) are what make
+  it earn its keep.
+
 - **indie_review_partition reports each lane's real size and flags lanes too big to review** (ANTS-4100)
   A module map naming one directory produced a single lane covering a whole 21,000-line application, and nothing in the response said so. Each lane now carries a measured file count, and one over 30 files is marked too_coarse with a hint to split by cohesion. The threshold is set above this project's own largest lane so a good partition never trips it.
 

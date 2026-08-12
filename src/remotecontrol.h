@@ -568,6 +568,22 @@ public:
         const QList<DocFinding::Finding> &findings, bool sectionsChecked,
         const QJsonObject &lineCounts, bool truncated,
         const QStringList &checkedDocs);
+    // ANTS-4108 — spec_conformance: RUN the patterns a spec prescribes against
+    // the expectation table beside them (SpecConformance::run). Reads ONE
+    // document, so `path` is required — there is no tree walk to default to.
+    QJsonDocument cmdSpecConformance(const QJsonObject &req);
+    // Pure, for the same headless-test reason as the pairs above, and because
+    // this verb's ETag 304 is HANDLER-LOCAL rather than central: the envelope
+    // carries a measured-microsecond `observations[]` row per case, so the
+    // dispatcher's hash-the-whole-response etag would differ on every run and
+    // never match. The engine hashes the envelope minus `observations` (spec
+    // INV-9) and this compares it. `relPath` replaces the engine's absolute
+    // `path` — the envelope crosses the wire. A refusal passes through
+    // untouched: it carries no etag, and 304-ing one would report "unchanged"
+    // for a call that never ran.
+    static QJsonObject specConformanceBuildResponse(const QJsonObject &engineOut,
+                                                    const QString &relPath,
+                                                    const QString &etagMatch);
     // ANTS-3660 — doc_dedup: near-duplicate passages across a doc set
     // (DocDedup::Accumulator). Reuses docIntegrityEnumerate for the walk like
     // its two siblings. The ONE verb in this family whose engine is
