@@ -28920,6 +28920,36 @@ against current source before filing.
 
   Do NOT resolve this by adopting global's wording without deciding it —
   that would invert the ownership rule the same week it was set.
+  Decided (2026-08-12, user delegated the call): **RAISE UPSTREAM — correct
+  global's text to match this project's 2026-08-10 decision.** Not "mark
+  provisional": provisional leaves a wrong instruction live in a file every
+  session reads, and buys a second round-trip to reach the same place. The
+  2026-08-10 reversal is evidence-backed and global's paragraph contradicts
+  the evidence rather than the taste.
+
+  Re-scanned rather than inherited (2026-08-12, `^## +[A-Z]*P[0-9]+` over
+  every corpus ROADMAP.md). It has GROWN since the 2026-08-10 count:
+  LocalWebServerManager 16 blocks / 2847 lines, finbreak 14 / 6373,
+  **Games_Hub 3 / 507 (new — not in the earlier scan)**,
+  Ants_Projects_Hub_Website 2 / 253. Four projects, not three. finbreak went
+  6099 → 6373 lines in two days, so the unbounded growth § 3.9 predicts is
+  not merely live, it is accelerating. Global's "promote to release blocks"
+  would have four projects rewrite a plan sequence into a release sequence —
+  a large edit that also means something else.
+
+  **One point of global's is right and must survive the correction**: archive
+  NAMING. Rotating a phase block needs somewhere to put it, and a
+  `docs/roadmap/P01.md` form is a second archive scheme. Settle that as part
+  of the § 3.9 edit rather than leaving it to the implementer — it is the one
+  thing the 2026-08-10 decision did not price.
+
+  Next action: correct `~/.claude/standards/roadmap-format.md` § 3.9 (and
+  § 3.5.4 step 2) per CFG-0069's direction of authority, carrying the scan
+  above as the evidence, and pick the archive name in the same edit. Item 6
+  of ~/.claude/docs/ants-terminal-findings-for-global-2026-08-12.md is the
+  write-up. The implementation half (widen the grammar to P07.5 / FP03 /
+  DS01, teach rotate_minor the second heading shape) stays open here,
+  sequenced after ANTS-4081.
 
 - 📋 [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -31531,6 +31561,37 @@ defect from different angles.
   **Layman:** Our rulebooks now say "read the real rule in a file on my home drive" — which nobody browsing the public repo can open.
   Kind: doc.
   Source: in-session-2026-08-12 (standards delta cutover).
+  Decided (2026-08-12, user delegated the call): **take option (a) — mirror
+  the other four the same way `security.md` already is.** Unblocked: the
+  premise that this needs global's permission does not hold.
+
+  Two facts checked rather than assumed. (1) `docs/standards/security.md`
+  already opens `<!-- ants-security-standards: mirror -->` + "MIRROR — do not
+  edit this file", naming its owner and the reason (this repo is public).
+  The shape is precedent in this repo, not a proposal. (2) The global tree
+  ships `~/.claude/.githooks/check-copied-standards`. **A rule that ships a
+  drift-checker FOR copies is not a rule that forbids copies** — the
+  no-copies rule bans an unmarked, unchecked, silently-drifting copy, which
+  is exactly what the four pre-cutover files were and why they drifted into
+  instructing behaviour their owner forbids. A marked mirror with a hook is
+  the opposite failure mode, not the same one.
+
+  So the sanctioned shape is already sanctioned; what is missing here is the
+  enforcement, and the bullet names it: **this repo has no `.githooks/` at
+  all.** That is the real work, and it must land in the SAME change as the
+  mirrors — a mirror without a drift check is the pre-cutover state with
+  better manners.
+
+  Next action, in one commit: point `core.hooksPath` at the project hooks
+  (note it is currently `tools/hooks` for the pre-push gate, so the two must
+  be reconciled — one directory, not two), install
+  `check-copied-standards`, then mirror coding.md / documentation.md /
+  testing.md / commits.md with the delta content kept ABOVE the mirrored
+  body. Verify by editing one mirrored line and confirming the hook refuses
+  the commit.
+
+  Still worth telling the global session, but as a report, not a request —
+  it no longer blocks.
 
 - 📋 [ANTS-4134] **mcp-error-codes.md's format_mismatch row contradicts its own worked example.**
   The `unsupported_format` row defines its sibling as "`format_mismatch`,
