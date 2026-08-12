@@ -30539,6 +30539,30 @@ defect from different angles.
   provisional, so the fixtures are the arbiter where they disagree with the
   prose, and any divergence folds back into the spec (write-spec Step 8)
   rather than being worked around in code.
+  Progress (2026-08-12, second): the ENGINE is done and verified; only the
+  MCP wiring remains. Shipped in 53fc62ad / be574f7c:
+  src/specconformance.{h,cpp} (in ants_core_lib, beside speclint.cpp) plus
+  tests/features/spec_conformance/ — 10 fixtures, all green, full suite
+  3390/3390 via `ctest --preset=default`. Written test-first against a stub:
+  7 red on assertions, 2 vacuously green (they assert absence), then 10
+  green.
+
+  REMAINING, and it is all wiring — the engine needs no further work:
+    1. src/remotecontrol_docs.cpp — `cmdSpecConformance` handler
+       (caller_cwd + path validation under the project root, ETag-304,
+       fields=, per docs/standards/mcp-tools.md).
+    2. src/claudeintegration.cpp — tools/list schema + tools/call dispatch.
+    3. src/mainwindow.cpp — provider lambda delegating to the handler.
+    4. Source-scrape test for that wiring (the mcp-tools.md checklist), in
+       the same bundle.
+  Note the ANTS-3420 class of bug when doing (3): the provider lambda
+  hand-forwards an arg allowlist, and a verb-specific arg missing from it is
+  silently dropped at the MCP boundary — that has now happened five times.
+
+  Do NOT re-derive the design: docs/specs/ANTS-4108-spec-conformance-verb.md
+  § 2.3 is the envelope, § 2.7 the file map. § 2.3-2.6 are marked provisional
+  (the gate hit its cap), so where the prose and the fixtures disagree, the
+  fixtures win and the spec is amended.
 
 - ✅ [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
   roadmap_query {id:"LOTTO-0019"} resolves and returns
