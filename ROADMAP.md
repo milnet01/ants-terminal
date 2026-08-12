@@ -30507,6 +30507,33 @@ defect from different angles.
   Kind: feature.
   Source: cross-session-feedback-2026-08-11 Local Web Server Manager.
   Deferred BY CHOICE, not blocked (2026-08-12; the user was asked at the 2026-08-11 triage and again during the 08-12 sweep, and chose both times to keep clearing small fixes first). Nothing about it is gated — it is simply much bigger than its neighbours in this section: it needs /write-spec plus the rule-14 /cold-eyes gate before any code, because the exec sandbox and the pattern-extraction contract are both surfaces other sessions would build against. Recorded here because the decision had been carried in session hand-off briefs only, so a fresh session would have re-asked. Re-raise when the small-fix queue in this section runs dry; until then do not open it, and do not treat its size as a reason to build a cut-down version without the spec.
+  Progress (2026-08-12): spec written and gated —
+  docs/specs/ANTS-4108-spec-conformance-verb.md, status accepted-with-caveat.
+  The deferral condition this bullet set ("re-raise when the small-fix queue
+  in this section runs dry") was met: ANTS-4088/4090/4091/4118/4123/4124 all
+  shipped the same day. Still 📋 because the spec is the deliverable; no code
+  written.
+
+  Three cold review loops, 26 findings verified and fixed, zero dismissed —
+  but the gate hit its 3-loop cap WITHOUT a clean pass, so § 2.3–§ 2.6 (the
+  envelope and extraction taxonomy) are marked provisional. The diagnosis is
+  in the spec's loop log: the envelope was being designed inside the review,
+  so each loop's fixes were the next loop's findings (3 of loop 2's 8 and 4
+  of loop 3's 9 landed on text an earlier loop added). Not a size problem —
+  30,930 bytes against a 20,676-byte corpus median.
+
+  Two scope decisions a future session must not silently re-open:
+  (1) the verb executes PATTERNS, not fenced code — a pattern applied to a
+  string cannot reach the filesystem or network whatever it contains, and
+  in-process interpreter sandboxes for arbitrary blocks are not sound. The
+  cost is that it catches ONE of the reporter's four defects and surfaces
+  none of the others; the fixture half is ANTS-4127.
+  (2) it is a new verb, not a spec_lint mode, because spec_lint's contract
+  states it runs no subprocess and executes nothing.
+
+  Recommended next step, per ANTS-4070's precedent: build test-first rather
+  than run a fourth loop. Every unresolved item is envelope detail a fixture
+  pins in seconds and a cold read argues about for a loop.
 
 - ✅ [ANTS-4109] **roadmap_log's `id` locator matches zero bullets on a roadmap whose ids are bold (`**LOTTO-0019**`), while roadmap_query resolves the same id fine.**
   roadmap_query {id:"LOTTO-0019"} resolves and returns
