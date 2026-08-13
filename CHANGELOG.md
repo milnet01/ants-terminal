@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Re-importing a roadmap no longer aborts on an id the store and the file both claim** (ANTS-4142)
+  A migration re-run refused the whole project with `UNIQUE constraint
+  failed: item.project_id, item.id_fold` when a bullet's hand-filed id had
+  already been synthesised by an earlier run for a different, id-less
+  bullet. Two causes: matching walked the plan once in document order, so
+  the weaker id-less key could consume a row the id itself named (now two
+  passes, id-bearing first); and allocation took the store's high-water
+  *instead of* the source file's highest id rather than the higher of the
+  two, so it could re-issue an id the file was already using.
+
 - **`feedback_log op:compact_resolved` no longer lists the same id twice** (ANTS-3739)
   An id named twice on one `**Proposed ID:**` line now reports once, matching `op:assign_id`.
 

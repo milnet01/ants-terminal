@@ -26874,7 +26874,7 @@ against current source before filing.
   Kind: fix.
   Source: ANTS-3793 spec § 2.1.2 (2026-08-04) — found while deciding what the store read path returns..
 
-- 📋 [ANTS-3821] **Backfill the missing `Layman:` lines so the render gate can pass.**
+- ✅ [ANTS-3821] **Backfill the missing `Layman:` lines so the render gate can pass.**
   ANTS-3758's render refuses to write ANY file for a project holding an
   open item with no `layman` (`roadmaprender.cpp`, `isOpen(it->status) &&
   it->layman.isEmpty()` -> `Outcome::gateFailures`; INV-5). The gate is per
@@ -26891,6 +26891,17 @@ against current source before filing.
   the content sweep.
 
   Command that produced the count is quoted in ANTS-3809 § 1.
+
+  Resolved (2026-08-13): the sweep is complete. Re-measured against the
+  file — **0 of 366 open id-bearing bullets** now lack a `Layman:` line,
+  down from 102 of 327; the store's own import agrees (0 of 381 open rows
+  with a null or empty `layman`). The status had been left at 📋.
+
+  The render gate is still not passing, and it is worth saying why this
+  item does not own that: `render_gate_unmet` now names ANTS-4338, a
+  **store-synthesised** id that has never existed in the file, so no edit
+  to ROADMAP.md can fill it. That belongs to ANTS-4141 / ANTS-4142's lane,
+  not to this content sweep.
   **Layman:** Add the one-line plain-English summary to the roadmap items that are missing it, so the new roadmap file-writer will run.
   Kind: chore.
   Source: in-session-2026-08-04 (ANTS-3809 spec grounding).
@@ -28330,7 +28341,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
-- 📋 [ANTS-4065] **Define the markdown-to-store import mapping contract, so a roadmap can be imported without losing or inventing data.**
+- 🚧 [ANTS-4065] **Define the markdown-to-store import mapping contract, so a roadmap can be imported without losing or inventing data.**
   The first real migration proved the import is not yet trustworthy, in
   three distinct ways measured on this project and across the corpus.
 
@@ -28371,6 +28382,18 @@ against current source before filing.
 
   Spec at `docs/specs/ANTS-4065-import-mapping-contract.md`; build order
   at `docs/plans/ANTS-4065-import-mapping-contract.md`.
+
+  Progress (2026-08-13): most of it is built — the status had been left at
+  📋 through the whole build. Phases A–C are done and Phase D is under way.
+  The `Kind` loss is fixed and measured on the real roadmap, not on
+  fixtures (ANTS-4086: `field_defaulted(kind)` 369 → 360, exactly the 9
+  corrupted items, `kind_unmapped` down to 1 genuine malformed value); the
+  bold-label `Kind:` form is accepted (ANTS-4077); and the re-import itself
+  now survives a colliding id (ANTS-4142). **Remaining: D3, render → re-import,
+  and D4, the residual `headline` / `layman` / `lanes` round-trip drift** —
+  which is the "it does not round-trip" third of this bullet and the only
+  part still open. D2's confirming run is blocked on relaunching Ants so the
+  MCP picks up the new parser.
   **Layman:** Write down exactly how every field in the text roadmap turns into a database field, so importing stops quietly changing things.
   Kind: implement.
   Source: user-request-2026-08-08.
@@ -29045,7 +29068,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-09.
 
-- 📋 [ANTS-4076] **ANTS-4065's INV-8 test clause is wrong about what the parser does with an undocumented status marker.**
+- ✅ [ANTS-4076] **ANTS-4065's INV-8 test clause is wrong about what the parser does with an undocumented status marker.**
   The spec says a bullet with a malformed marker "defaults to `planned`
   with a note". Measured 2026-08-09 while writing the conformance test:
   it becomes no item at all. `RoadmapParse::stripInlineEmoji()`
@@ -29059,6 +29082,12 @@ against current source before filing.
   behaviour (no item, line carried as narration, no `dropped` row); the
   spec's INV-8 *Test:* clause needs the same correction, which is an
   authoring edit and so re-arms rule 14's gate on that spec.
+
+  Resolved (2026-08-13): the correction is in the spec. INV-8 now reads
+  "the emoji→status mapping is **total and closed** over the four
+  documented markers", the "defaults to `planned` with a note" clause is
+  gone, and the spec's own header records the edit. The status had been
+  left at 📋.
   **Layman:** A spec says an odd status emoji becomes a planned item; it actually becomes plain text.
   Kind: doc-fix.
   Source: in-session-2026-08-09.
@@ -39148,6 +39177,50 @@ here.)
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (hit while recording the cross-session feedback batch).
+
+- ✅ [ANTS-4142] **A migration re-run aborted on an id the store and the file both claimed, and both halves of why are fixed.**
+  ANTS-4141 called the collision before it happened — "this bullet's own id
+  was taken by hand from the counter and may already exist in the store".
+  It did, and Phase D2's re-run refused the whole project with
+  `UNIQUE constraint failed: item.project_id, item.id_fold`, rolling back
+  all 1,975 items. Two defects, one behind the other.
+
+  **Matching.** `matchItems()` walked the plan once in document order, and
+  ANTS-3765 § 2.6's id rule and § 2.6.1's id-less rule claim from one pool
+  of stored rows. The id-less bullet at `ROADMAP.md:72` reached the row
+  holding ANTS-4141 first and consumed it; the real ANTS-4141 bullet, later
+  in the file, then found its row taken, fell through to the insert branch
+  still carrying that id, and hit the constraint. Fixed by resolving the
+  strong claim first — two passes, id-bearing then id-less. § 2.6.1 already
+  calls its own key "weaker than an id", so a weak claim must not preempt a
+  strong one; a displaced id-less item degrades as that section allows.
+
+  **Allocation**, which is why the two spaces overlap at all. § 2.8 step 2
+  read "`idHighWater()` when the row exists, OTHERWISE the plan's maximum",
+  and the terms are not alternatives: the stored row is what the store has
+  allocated, the plan's maximum is what the file already contains, and a
+  project files ids into ROADMAP.md between migrations without the store
+  hearing about it. Now the higher of both, so the migration can no longer
+  re-issue a live file id.
+
+  Both spec sections amended to match the build. Two regression tests, each
+  verified failing against pre-fix code first; the first reproduces the
+  production error verbatim. ctest 3414/3414, count 3422 → 3423.
+
+  **What this does NOT fix, and it is ANTS-4141's second question:** the
+  reverse direction. `roadmap_log`'s markdown path takes
+  `max(.roadmap-counter, file max)` and never consults the store's
+  high-water, so a hand or markdown-path append can still land on an id the
+  store synthesised — ANTS-4141 … ANTS-4337 are all still squatted. That is
+  now survivable rather than fatal (the real bullet keeps the id, the
+  synthesised one is re-allocated above the high-water), but it churns one
+  stored id per collision and there are ~196 left. The durable fix is to
+  reconcile the counter with the store's high-water after a migration, and
+  it belongs with ANTS-4141's ruling on which path owns allocation.
+  **Layman:** Re-importing the roadmap crashed because one ticket number had been handed out twice — once by the database and once by hand. Both causes are fixed.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: in-session-2026-08-13 (hit re-running Phase D2 after the ANTS-4086 fix).
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
