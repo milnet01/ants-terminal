@@ -269,7 +269,7 @@ The five displaced synthesised ids landed as designed (`ANTS-4141`
 `4141…4337` block, so each took its id back and the id-less bullet that
 held it was re-inserted at `ANTS-4338`…`4342`). One thing the re-run does
 NOT do: those five store rows still carry `id_origin='synthesised'`
-although their source bullets now declare the id — [ANTS-4146].
+although their source bullets now declare the id — [ANTS-4343].
 
 Until D3 closes the render drift, `roadmap_log` still rewrites
 `ROADMAP.md` wholesale from the store ([ANTS-4141]) and `roadmap_query`
@@ -283,13 +283,43 @@ answers from the store while reporting `path: ROADMAP.md` ([ANTS-4143]).
 > fail here** — they are the spec's named undiagnosed drift, and this run is the
 > instrument for diagnosing them. Anything *else* failing is a Phase C defect.
 
-**D4. Diagnose the residual drift** those three columns show, and either fold
-the cause into the spec as a new § 2.x (re-gating the amendment per rule 14) or
-split it into its own item.
+**D3/D4 result, 2026-08-13 — run, and the prediction above was wrong in both
+directions.** Method: snapshot the store's governed columns, drive a real
+render through `roadmap_log`, re-import, diff the store against its own
+snapshot, then restore the files with `git checkout` and re-import to resync.
+Cycle 1 over 1,980 items:
 
-> **Verify:** INV-6 green across all nine columns, on two consecutive
-> render→import cycles rather than one — a single pass cannot distinguish
-> "stable" from "drifting slowly".
+| column | moved |
+|---|---|
+| status, headline, kind, source, lanes | **0** |
+| layman | 1 |
+| body | 363 |
+
+**Two of the three columns the spec named as expected failures do not fail
+at all.** `headline` and `lanes` round-trip exactly; earlier phases fixed
+them and the spec's § 4 was never corrected. `layman` moves on exactly one
+item — `ANTS-1861`, whose layman text *quotes the markup pattern the
+renderer emits*, so it is self-referential rather than a class.
+
+**`body` is the whole story, it is one cause, and the spec never named it.**
+The render writes `Kind: implement.` for an item whose kind was defaulted;
+the re-import parses that line as the kind (hence `kind` moving 0) **and
+also leaves it in the body**. Every one of the 363 diffs is that line and
+nothing else. So the trailer-strip and the field-parse disagree about
+whether a rendered `Kind:` line is body text.
+
+**It converges — cycle 2 moves 2 items** (the marker annotate that drove
+the render, and the `ANTS-1861` layman). It does not compound: the
+duplicated line is appended once and is thereafter stable. That is the
+distinction this step was told to make, and it comes out on the safe side.
+
+**The severe finding was not drift at all** — the render deletes any bullet
+the store has not imported. Recorded on [ANTS-4141] with the measurement.
+
+**D4 remains open** on the `body` cause: fix the trailer-strip so a rendered
+`Kind:` line is not also body text, then re-run both cycles. Fold into
+ANTS-3758 (`§ 2.x`, re-gating per rule 14) rather than ANTS-3765 — the
+render emits the line, and the parse is doing what it was told.
 
 ---
 

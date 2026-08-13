@@ -39173,6 +39173,32 @@ here.)
   Note the running MCP binary was 3 commits behind HEAD (built c463b600 vs
   b50a0c77) when this happened — worth ruling in or out before designing a
   fix, but it does not explain minting ids.
+
+  **Measured 2026-08-13 (ANTS-4065 D3), and the shape is worse than
+  "reformatting": the render DELETES any bullet the store has not imported.**
+  A bullet filed by hand as `ANTS-4146` was, one `roadmap_log op:annotate`
+  later, gone — replaced in full by the store's own `ANTS-4146` ("Command
+  blocks as first-class UI"), with no trace of the filed text anywhere in
+  the file. Not drift: the render writes the store's document, and a bullet
+  the store has never seen is simply not in it. Every hand edit between two
+  `roadmap_log` calls is at risk, and the window is invisible.
+
+  **The allocator divergence is confirmed live and is what steers a hand
+  edit into that hole.** `.roadmap-counter` read 4146 while the store's
+  `id_prefix.high_water` read 4342, so the next id taken by hand landed
+  ~200 inside a block the store already owns. Reconciled to 4343 by hand;
+  nothing reconciles it automatically, and the counter is gitignored so a
+  fresh clone starts wrong again.
+
+  **What this is NOT, which narrows the fix.** The render's *fidelity* is
+  good: a full render→re-import cycle over 1,980 items moves `status`,
+  `headline`, `kind`, `lanes` and `source` **not at all**, `layman` on one
+  self-referential item, and `body` on 363 — all 363 from one cause (the
+  render emits `Kind: implement.` for a defaulted kind, and the re-import
+  reads it as the kind *and* leaves the line in the body). A second cycle
+  moves 2. So the round trip converges after one pass and does not
+  compound. The defect is ownership of allocation and the clobbering of
+  un-imported bullets, not the renderer's output.
   **Layman:** Marking two roadmap items done silently rewrote the entire roadmap file — thousands of lines, invented ticket numbers, and two archive files nobody touched.
   Kind: fix.
   Lanes: mcp, roadmap.
@@ -39292,7 +39318,7 @@ here.)
   Lanes: mcp.
   Source: in-session-2026-08-13 (hit persisting state before a relaunch).
 
-- 📋 [ANTS-4146] **A store row keeps `id_origin='synthesised'` after the source file starts declaring that id, so the store records an id as invented that a human filed by hand.**
+- 📋 [ANTS-4343] **A store row keeps `id_origin='synthesised'` after the source file starts declaring that id, so the store records an id as invented that a human filed by hand.**
   Found in ANTS-4065 Phase D2. `ANTS-4141`…`ANTS-4145` were allocated by
   the loader in run 1, then filed by hand into `ROADMAP.md` before run 2.
   Run 2 matched each bullet to its stored row by `(project_id, id_fold)`
