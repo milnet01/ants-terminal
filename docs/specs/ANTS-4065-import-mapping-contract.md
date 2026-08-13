@@ -361,10 +361,16 @@ not a new predicate.**
 >
 > **The rule taken instead: for `kind`, a match is a candidate only when its
 > value is RECOGNISED VOCABULARY** — one of § 3.5.3's 21 taxonomy values, or
-> one of `mappedKind()`'s inputs (`bug`, `performance`, `process + tooling`,
-> `audit`). The mapping inputs are in deliberately: this project carries none
-> of them today, but other corpus projects do, and dropping them would make the
-> rollout regress on exactly the values § 2.1 exists to translate. Among
+> **any key of `mappedKind()`**, which is all fifteen and not merely § 2.1's
+> four additions: `improve`, `docs`, `bugfix`, `testing`, `spike`, `feat`,
+> `enhance`, `perf / fix`, `perf / optimize`, `tooling`, `behaviour-change`,
+> `bug`, `performance`, `process + tooling`, `audit`. The test is against the
+> **lowercased, trimmed** capture, because `mappedKind()` takes a lowercased
+> key and two of them carry spaces and a slash. The mapping inputs are in
+> deliberately: this project carries none today, but other corpus projects do,
+> and dropping them would make the rollout regress on exactly the values § 2.1
+> exists to translate — so the predicate reads `mappedKind()`'s table rather
+> than restating it, or the two drift the first time a value is added. Among
 > recognised candidates the `anchored` preference decides; when **no** match is
 > recognised the field defaults and § 2.3's `field_defaulted` note fires with
 > the raw capture in `extras.source_kind`, which is what an absent field
