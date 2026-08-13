@@ -250,6 +250,29 @@ the spec explains why the direction is the whole finding.
 > is the check that would have caught the original 123 rewrites, and it is the
 > one that says Phase C worked.
 
+**D2 status, 2026-08-13 — blocked on a relaunch, not on any remaining work.**
+The run refused the whole project with `UNIQUE constraint failed:
+item.project_id, item.id_fold`. Cause and fix are [ANTS-4142] (commit
+`d7987e89`): § 2.8 allocates synthesised ids out of the same number space
+the project's own counter allocates from, so run 1's `ANTS-4141` and a
+later hand-filed `ANTS-4141` were the same id; one-pass matching then let
+the id-less bullet consume the row and the id-bearing one abort the
+transaction. Both halves are fixed and regression-tested, but the MCP
+serves the binary that was running at launch, so **D2 must be re-run after
+Ants is relaunched** — no code change is outstanding.
+
+On the re-run, expect **three synthesised ids to be displaced**:
+`ANTS-4142`, `ANTS-4143` and `ANTS-4144` were filed by hand into the still
+squatted `4141…4337` block, so each takes back its id and the id-less
+bullet that held it is re-inserted above the high-water. That is
+ANTS-4142's designed degradation, not a Phase C defect — do not chase it.
+
+Two things D2 must NOT be judged against while it is unconfirmed:
+`roadmap_query` answers from the store on this project while reporting
+`path: ROADMAP.md` ([ANTS-4143]), and `roadmap_log` renders `ROADMAP.md`
+from that same store ([ANTS-4141]). Read the file directly and edit it by
+hand until the import is known good.
+
 **D3. Render, then re-import — the acceptance test (INV-6).**
 
 > **Verify:** `items_updated == 0` over the nine governed columns and no

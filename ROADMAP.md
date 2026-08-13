@@ -39265,6 +39265,33 @@ here.)
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (measured re-running Phase D2).
 
+- 📋 [ANTS-4145] **`session_memory` write ops key their tenancy gate on the FOCUSED tab, so a session in any other tab cannot save its own project's state.**
+  Hit 2026-08-13 trying to persist Phase D2's resume state before a
+  relaunch — the verb's headline use case. From an Ants_Terminal session:
+
+      op:"set", caller_cwd:"/mnt/…/Ants_Terminal"
+      -> cwd_mismatch: "calling session cwd … does not match focused tab
+         cwd \"/mnt/…/DOOM_Ants\""
+
+  ANTS-1336's confused-deputy gate is right in principle, but focus is the
+  wrong signal for it: a session writes state at the END of its work, which
+  is exactly when the user has clicked away to another tab, and a
+  background session can never write at all. Read ops were already relaxed
+  to anchor on `caller_cwd` directly (ANTS-1435); the write gate did not
+  follow, and the asymmetry means `get` succeeds against a key `set` can
+  never create.
+
+  The deputy being guarded against is a session writing to a project it is
+  not in — which `caller_cwd` alone already answers, since the MCP resolves
+  it per call and refuses a path outside the project. Suggest gating on
+  "caller_cwd resolves to a project this session is running in" rather than
+  on which tab happens to have focus. Fallback used meanwhile: the state
+  went into `docs/plans/ANTS-4065-import-mapping-contract.md § Phase D`.
+  **Layman:** A session can't save its own notes for next time unless its tab is the one on screen.
+  Kind: fix.
+  Lanes: mcp.
+  Source: in-session-2026-08-13 (hit persisting state before a relaunch).
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
