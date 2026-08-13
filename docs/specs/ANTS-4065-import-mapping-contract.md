@@ -98,11 +98,8 @@ projects (4,378 items, re-measured 2026-08-08 after Phase B2).
 it does not restate it.** `roadmap-data-model.md` § 7.4 carries the table
 ("the migration-scoped mapping is normative") and `mappedKind()`
 (`src/roadmapmigrate.cpp`) implements all **fifteen** of its rows, applied as
-written — eleven original plus the four this spec's Phase C added (see below
-and § 7.4). **The count is load-bearing since 2026-08-13**, because § 2.2's
-recognised-vocabulary predicate is defined by reference to `mappedKind()`'s
-keys; a reader who sizes that set from a stale count here builds a predicate
-that rejects eleven mapped values. They are deliberately not reproduced here: a second copy would be free
+written. § 2.2's predicate is defined by reference to those keys, so the count
+is load-bearing. They are deliberately not reproduced here: a second copy would be free
 to diverge from the first, which is the failure this whole spec exists to stop.
 
 **§ 7.4's table is incomplete, and the reason it looks complete is a measurement
@@ -377,20 +374,13 @@ not a new predicate.**
 > than restating it, or the two drift the first time a value is added. Among
 > recognised candidates the `anchored` preference decides.
 >
-> **When NO match is recognised, the resolver returns the last match seen, raw
-> and unfiltered** — it does not return "absent". The rejected capture is
-> carried through to `makeItem()` as `rawKind`, so the existing unmapped branch
-> runs unchanged: `implement`, `provenance.kind = defaulted`,
-> `extras.source_kind` preserving the raw value, and **both** the
-> `kind_unmapped` and `field_defaulted` notes. **This is not what an absent
-> field does**, and an earlier draft of this paragraph said it was: the
-> empty-`rawKind` branch emits `field_defaulted` alone and writes no `extras`
-> at all. Keeping the two distinct is what preserves § 2.4's discriminator —
-> present-with-defaulted means an unrecognised value, absent-with-defaulted
-> means no `Kind:` was parsed — and it is what keeps the shipped
-> `BoldAndPlainKindLabelsAgree` case green, which asserts
-> `extras.source_kind == "refactor (no behaviour change)"`. **The predicate
-> chooses among candidates; it never destroys evidence.**
+> **When NO match is recognised the resolver returns the last match seen, raw**
+> — not "absent". `makeItem()` then takes its unmapped branch unchanged:
+> `implement`, `extras.source_kind`, and both the `kind_unmapped` and
+> `field_defaulted` notes. **An absent field is a different branch** and emits
+> `field_defaulted` alone with no `extras`; § 2.4's discriminator depends on
+> the two staying distinct. **The predicate chooses among candidates; it never
+> destroys evidence.**
 >
 > **The guard is `kind`-only, deliberately.** `layman`, `source` and `evidence`
 > are free text and `lanes` is an open list, so there is no vocabulary to check
@@ -406,28 +396,16 @@ supplies as the recognised-vocabulary test above. `trailerValuesIn()` moves
 `layman`, `lanes`, `evidence` and `source` onto it from `matchIn()`, passing no
 predicate. **Order matters within the resolver:** the predicate filters first
 and `anchored` decides among what survives, never the reverse. **ANTS-3754 is
-the shape to build against, and it is TWO line-initial matches, not one of
-each**: `collectBulletBody()` trims every continuation line, so its wrapped
-`Kind:), § 3.1's …` is line-initial exactly as the real `Kind: doc.`
-twenty-two lines above it is. Ordering alone cannot separate them — both are
-anchored and the wrapped one is later — so only the predicate can, by making
-the wrapped capture no candidate at all. A fixture built around a *mid-line*
-unrecognised match tests a case ordering already handles and leaves the one
-measured instance uncovered.
+TWO line-initial matches, not one of each** — `collectBulletBody()` trims every
+continuation line, so its wrapped `Kind:), § 3.1's …` is line-initial exactly
+as the real `Kind: doc.` above it is. Both are anchored and the wrapped one is
+later, so only the predicate separates them.
 
-**Every consumer of the resolver takes the predicate, including
-`rlDeriveTrailerColumns()`, and there it is a strict improvement.** That
-function derives trailer columns from the body before and after a
-`roadmap_log` write and clears a column only when the old body carried a value
-and the new one does not. Applying the predicate to both parses cannot cause a
-clear: an off-taxonomy `Kind:` yields no value on either side, so the
-`oldValue.isEmpty() && newValue.isEmpty()` guard skips the key. What it does
-fix is the live case where `op:annotate` appends prose mentioning `Kind:` — the
-new parse currently yields that prose fragment and **overwrites the stored
-kind**, which is the same defect Phase D found at import, on a user write path.
-An earlier draft delegated this seam to the implementer; it is answered here
-because two builders scoping it differently produce stores that later have to
-agree. Adding
+**Every consumer takes the predicate, `rlDeriveTrailerColumns()` included.**
+There it cannot cause a clear: that function clears only when the old body
+carried a value and the new one does not, and an off-taxonomy `Kind:` is empty
+on both sides. It fixes a live defect instead — today `op:annotate` appending
+prose that mentions `Kind:` overwrites the stored value. Adding
 precedence inside `matchIn()` instead would be wrong, because it would leave
 `kind` — which does not route through it — unchanged, fixing four fields and
 not the one this section is about.
@@ -797,14 +775,10 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   spelling**. *Test:* fixture bodies containing ``the `Kind:` trailer`` and
   ``the `**Kind:** implement.` line`` both import with a defaulted kind. **The
   plain fixture asserts `provenance.kind == 'defaulted'` **and that
-  `extras.source_kind` is absent** — corrected 2026-08-13, because
-  `kind != 'trailer'` cannot fail in the state *Breaks when* names: with the
-  lookbehind dropped the body ``the `Kind:` trailer`` captures `` ` trailer``
-  (the backtick falls inside the capture, since `\s*` cannot consume it), which
-  is unrecognised, so the item imports `implement` / `defaulted` anyway and both
-  old assertions hold. The absent-`extras.source_kind` half is what
-  discriminates, and it is what the shipped case already asserts — the spec was
-  weaker than the code it governs. The bold one CANNOT assert on the
+  `extras.source_kind` is absent**. Corrected 2026-08-13: `kind != 'trailer'`
+  could not fail in the state *Breaks when* names, since dropping the lookbehind
+  captures `` ` trailer``, which is unrecognised and defaults anyway. The
+  bold one CANNOT assert on the
   value at all** — a defaulted kind *is* `implement`, so "defaulted" and
   "`implement`" are the same observation and the two outcomes are
   indistinguishable by value. Its discriminator is
@@ -924,16 +898,12 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   first-match key**: a body whose line-initial `Source:` / `Layman:` trailer
   is *preceded* by an indented sample carrying those labels → the bullet's own
   values, not the sample's.
-  **(f) THE PREDICATE'S OWN FIXTURE, added 2026-08-13 — without it nothing in
-  this spec can fail if the vocabulary guard is never built.** (a)–(e) are all
-  decided by the `anchored` ordering alone, so a resolver that hard-wires
-  `isCandidate` to accept-everything passes every clause above. (f) is
-  ANTS-3754's real shape: a body with **two line-initial** `Kind:` matches, the
-  earlier recognised (`Kind: doc.`) and the later an unrecognised wrap artefact
-  (`Kind:), § 3.1's format marker,`) → `kind='doc'`, with
-  `extras.source_kind` absent because a recognised candidate won. Under
-  ordering alone it returns `), § 3`; it is the only fixture here that
-  separates the two rules.
+  **(f) the predicate's own fixture, added 2026-08-13.** (a)–(e) are all
+  decided by `anchored` ordering, so a resolver with no predicate passes them
+  all. (f) is ANTS-3754's shape: **two line-initial** matches, the earlier
+  recognised (`Kind: doc.`) and the later an unrecognised wrap artefact
+  (`Kind:), § 3.1's format marker,`) → `kind='doc'`, `extras.source_kind`
+  absent. Ordering alone returns `), § 3`.
   *Breaks when:* precedence is dropped back to plain positional resolution.
   That fails in **opposite directions** per key, which is why one rule is
   stated for all five: `kind` routes through `matchLastIn()` and is displaced
@@ -1088,13 +1058,9 @@ against **post-Phase-C** source:
   is the must-fail-first proof for extending the rule beyond `Kind:`. It fails
   for the opposite reason to (b), which is why both are needed: a resolver that
   fixed only one direction would pass one and red the other.
-- **INV-11 fixture (f)** — added by the 2026-08-13 amendment, and the only
-  must-red proof the **vocabulary predicate** has. Two line-initial `Kind:`
-  matches, the earlier recognised and the later an unrecognised wrap artefact.
-  Today's implementation, and any resolver built with ordering alone, returns
-  the wrap artefact and so reds. **(b) and (e) do not cover it** — both are
-  satisfied by the `anchored` preference with no predicate at all, so without
-  (f) the predicate could be omitted entirely and the suite would stay green.
+- **INV-11 fixture (f)** — the predicate's only must-red proof. (b) and (e) are
+  both satisfied by `anchored` ordering alone, so without (f) the predicate
+  could be omitted and the suite would stay green.
 
 Fixtures (a), (c) and (d) are expected **green**, since plain last-match
 already satisfies them — they are regression guards, not discriminators. (b)
