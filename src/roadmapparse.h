@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -184,9 +185,26 @@ struct TrailerValues {
     TrailerMatch lanes, evidence;
     QStringList  lanesList, evidenceList;   // the split forms parseBullets() assigns
 };
+// The kind vocabulary (ANTS-4086). It lives here rather than in the migrator
+// because trailerValuesIn() applies it, and applying it there is what lets
+// every consumer inherit the guard without threading a predicate through five
+// call sites — one of which would eventually be missed.
+//
+// `mappedKind()` keys on a LOWERCASED value and returns "" when unmapped.
+// `isRecognisedKind()` is the test trailerValuesIn() uses: canonical or
+// mappable, after a trim and a fold.
+const QSet<QString> &canonicalKinds();
+QString mappedKind(const QString &lower);
+bool isRecognisedKind(const QString &raw);
+
 // The five trailer keys as they appear in `body`. parseBullets() assigns its
 // own record fields from this call, so the equality INV-4 asserts holds by
 // construction rather than by two implementations agreeing.
+//
+// ANTS-4086: `kind` is resolved against isRecognisedKind(); a capture that is
+// not recognised is no candidate, so prose that wraps onto the label cannot
+// displace a real declaration. When NO capture is recognised the last match is
+// returned raw, so makeItem()'s unmapped branch still sees it.
 TrailerValues trailerValuesIn(const QString &body);
 
 // Pure helper: parse `markdownText` into top-level status-emoji bullets.

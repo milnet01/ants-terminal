@@ -8,6 +8,8 @@
 
 #include "roadmapparse.h"
 
+#include <QHash>
+
 #include "roadmapindex.h"      // ANTS-1287 — canonical heading/slug helpers
 
 #include <QByteArray>
@@ -426,17 +428,50 @@ TrailerMatch matchIn(const QRegularExpression &rx, const QString &body) {
 // Only `kind` uses this. The other four keys stay on matchIn(): none of them is
 // re-emitted by the render into a body that may already discuss it, so changing
 // their precedence would be a behaviour change with no defect behind it.
-TrailerMatch matchLastIn(const QRegularExpression &rx, const QString &body) {
-    TrailerMatch out;
+//
+// ANTS-4086 — plain last-match was not enough. `roadmap_log op:annotate`
+// appends notes to the END of a body, below the trailer, so a later note
+// mentioning the label in running text became the last match and displaced the
+// real declaration. Measured on the first real Phase D import: 56 bullets carry
+// more than one `Kind:`, and 4 imported the wrong kind.
+//
+// Two rules, and the order between them is the fix. `isCandidate` filters
+// first; `anchored` orders what survives. The reverse loses ANTS-3754, where a
+// paragraph wrapped onto the label so BOTH the real `Kind: doc.` and the
+// artefact `Kind:), § 3.1's …` are line-initial and the artefact is later —
+// ordering alone cannot separate them, only the vocabulary can.
+//
+// With nothing recognised the last match is returned RAW rather than nothing,
+// so makeItem()'s unmapped branch still records the value it could not read.
+// The predicate chooses among candidates; it never discards evidence.
+using CandidatePred = bool (*)(const QString &);
+
+TrailerMatch matchLastIn(const QRegularExpression &rx, const QString &body,
+                         CandidatePred isCandidate = nullptr) {
+    TrailerMatch best;      // last candidate, anchored preferred
+    TrailerMatch lastSeen;  // last match of any kind
+    bool haveAnchored = false;
+
     auto i = rx.globalMatch(body);
     while (i.hasNext()) {
         const QRegularExpressionMatch m = i.next();
-        out.value    = m.captured(1);
-        out.offset   = m.capturedStart(1);
         const int at = m.capturedStart(0);
-        out.anchored = (at == 0) || (at > 0 && body.at(at - 1) == QLatin1Char('\n'));
+        TrailerMatch cur;
+        cur.value    = m.captured(1);
+        cur.offset   = m.capturedStart(1);
+        cur.anchored = (at == 0) || (at > 0 && body.at(at - 1) == QLatin1Char('\n'));
+        lastSeen = cur;
+
+        if (isCandidate && !isCandidate(cur.value))
+            continue;
+        if (cur.anchored) {
+            best = cur;
+            haveAnchored = true;
+        } else if (!haveAnchored) {
+            best = cur;
+        }
     }
-    return out;
+    return best.offset >= 0 ? best : lastSeen;
 }
 
 // Split a comma-separated trailer value the way parseBullets() always has:
@@ -1146,11 +1181,67 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
 // and raw captures would never compare equal — the suppression would never
 // fire and this verb would be documented as working while the duplication
 // stayed live.
+// roadmap-format.md § 3.5.3's 21-value enum.
+const QSet<QString> &canonicalKinds() {
+    static const QSet<QString> k = {
+        QStringLiteral("implement"),   QStringLiteral("fix"),
+        QStringLiteral("audit-fix"),   QStringLiteral("review-fix"),
+        QStringLiteral("doc"),         QStringLiteral("doc-fix"),
+        QStringLiteral("refactor"),    QStringLiteral("test"),
+        QStringLiteral("chore"),       QStringLiteral("release"),
+        QStringLiteral("perf"),        QStringLiteral("security"),
+        QStringLiteral("feature"),     QStringLiteral("enhancement"),
+        QStringLiteral("investigate"), QStringLiteral("research"),
+        QStringLiteral("accessibility"), QStringLiteral("optimize"),
+        QStringLiteral("package"),     QStringLiteral("marketing"),
+        QStringLiteral("ux"),
+    };
+    return k;
+}
+
+// roadmap-data-model.md § 7.4's normative migration mapping, applied rather
+// than restated. The two compound entries map to their FIRST term, per that
+// section: picking the second would silently reclassify performance work.
+QString mappedKind(const QString &lower) {
+    static const QHash<QString, QString> m = {
+        {QStringLiteral("improve"),          QStringLiteral("enhancement")},
+        {QStringLiteral("docs"),             QStringLiteral("doc")},
+        {QStringLiteral("bugfix"),           QStringLiteral("fix")},
+        {QStringLiteral("testing"),          QStringLiteral("test")},
+        {QStringLiteral("spike"),            QStringLiteral("research")},
+        {QStringLiteral("feat"),             QStringLiteral("feature")},
+        {QStringLiteral("enhance"),          QStringLiteral("enhancement")},
+        {QStringLiteral("perf / fix"),       QStringLiteral("perf")},
+        {QStringLiteral("perf / optimize"),  QStringLiteral("perf")},
+        {QStringLiteral("tooling"),          QStringLiteral("chore")},
+        {QStringLiteral("behaviour-change"), QStringLiteral("enhancement")},
+        // ANTS-4065 § 2.1's four additions. They were missing because the
+        // survey § 7.4's table was derived from had rxKind()'s own anchor, so
+        // every value written inline was invisible to it — `bug` is the single
+        // largest unmapped value in the corpus (29) and all 29 write it inline.
+        {QStringLiteral("bug"),              QStringLiteral("fix")},
+        {QStringLiteral("performance"),      QStringLiteral("perf")},
+        {QStringLiteral("process + tooling"), QStringLiteral("chore")},
+        {QStringLiteral("audit"),            QStringLiteral("audit-fix")},
+    };
+    return m.value(lower);
+}
+
+// ANTS-4086 — the test trailerValuesIn() applies to a `Kind:` capture. Trim and
+// fold first: mappedKind() keys on a lowercased value, and two of its keys carry
+// a space and a slash.
+bool isRecognisedKind(const QString &raw) {
+    const QString k = raw.trimmed().toLower();
+    if (k.isEmpty()) return false;
+    return canonicalKinds().contains(k) || !mappedKind(k).isEmpty();
+}
+
 TrailerValues trailerValuesIn(const QString &body) {
     TrailerValues out;
 
-    // ANTS-4065 INV-11 — LAST match, not first. See matchLastIn().
-    out.kind   = matchLastIn(rxKind(), body);
+    // ANTS-4065 INV-11 — LAST match, not first. ANTS-4086 — and only among
+    // captures the kind vocabulary recognises. See matchLastIn().
+    out.kind   = matchLastIn(rxKind(), body, &isRecognisedKind);
     out.kind.value = out.kind.value.trimmed();
 
     out.layman = matchIn(rxLayman(), body);

@@ -597,6 +597,47 @@ TEST(RoadmapImportMapping, LastKindMatchWins) {
         << "the stale prose value won over the trailer the render authored";
 }
 
+// INV-11 fixture (f) — the vocabulary predicate's only must-red proof. (a)-(e)
+// are all decided by the anchored ordering, so a resolver with no predicate
+// passes them. This is ANTS-3754's real shape: TWO line-initial matches, the
+// later one a wrap artefact, because collectBulletBody() trims continuation
+// lines and the source paragraph happened to break right before the label.
+
+TEST(RoadmapImportMapping, UnrecognisedLineInitialKindLosesToRecognisedOne) {
+    const auto plan = planText(doc(QStringLiteral(
+        "- 📋 [DEMO-0061] **A bullet whose prose wraps onto the label.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: doc.\n"
+        "  It must carry every required piece (emoji, ID, bold headline,\n"
+        "  Kind:), § 3.1's format marker, and prose after it.\n")));
+
+    const PlannedItem *it = itemById(plan, "DEMO-0061");
+    ASSERT_NE(it, nullptr);
+    EXPECT_EQ(it->kind, QStringLiteral("doc"))
+        << "ordering alone returns the wrap artefact";
+    EXPECT_TRUE(extraOf(*it, "source_kind").isEmpty())
+        << "a recognised candidate won, so nothing was discarded";
+}
+
+// The reject path. When NO match is recognised the resolver returns the last
+// match raw, so makeItem()'s unmapped branch still runs: the predicate chooses
+// among candidates, it never destroys evidence.
+
+TEST(RoadmapImportMapping, NoRecognisedCandidateStillReachesTheUnmappedBranch) {
+    const auto plan = planText(doc(QStringLiteral(
+        "- 📋 [DEMO-0062] **A bullet declaring a kind nothing recognises.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: bananas.\n")));
+
+    const PlannedItem *it = itemById(plan, "DEMO-0062");
+    ASSERT_NE(it, nullptr);
+    EXPECT_EQ(it->kind, QStringLiteral("implement"));
+    EXPECT_EQ(provOf(*it, "kind"), QStringLiteral("defaulted"));
+    EXPECT_EQ(extraOf(*it, "source_kind"), QStringLiteral("bananas"));
+    EXPECT_TRUE(hasNote(plan.notes, "kind_unmapped", QStringLiteral("bananas")))
+        << notesDump(plan.notes).toStdString();
+}
+
 // ---------------------------------------------------------------- INV-6 ---
 // import(render(store)) changes none of § 2.6's nine governed columns.
 //

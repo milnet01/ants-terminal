@@ -101,51 +101,12 @@ bool keywordIsNamed(const QString &kw) {
 
 // ------------------------------------------------------------------ kind ---
 
-// roadmap-format.md § 3.5.3's 21-value enum.
-const QSet<QString> &canonicalKinds() {
-    static const QSet<QString> k = {
-        QStringLiteral("implement"),   QStringLiteral("fix"),
-        QStringLiteral("audit-fix"),   QStringLiteral("review-fix"),
-        QStringLiteral("doc"),         QStringLiteral("doc-fix"),
-        QStringLiteral("refactor"),    QStringLiteral("test"),
-        QStringLiteral("chore"),       QStringLiteral("release"),
-        QStringLiteral("perf"),        QStringLiteral("security"),
-        QStringLiteral("feature"),     QStringLiteral("enhancement"),
-        QStringLiteral("investigate"), QStringLiteral("research"),
-        QStringLiteral("accessibility"), QStringLiteral("optimize"),
-        QStringLiteral("package"),     QStringLiteral("marketing"),
-        QStringLiteral("ux"),
-    };
-    return k;
-}
-
-// roadmap-data-model.md § 7.4's normative migration mapping, applied rather
-// than restated. The two compound entries map to their FIRST term, per that
-// section: picking the second would silently reclassify performance work.
-QString mappedKind(const QString &lower) {
-    static const QHash<QString, QString> m = {
-        {QStringLiteral("improve"),          QStringLiteral("enhancement")},
-        {QStringLiteral("docs"),             QStringLiteral("doc")},
-        {QStringLiteral("bugfix"),           QStringLiteral("fix")},
-        {QStringLiteral("testing"),          QStringLiteral("test")},
-        {QStringLiteral("spike"),            QStringLiteral("research")},
-        {QStringLiteral("feat"),             QStringLiteral("feature")},
-        {QStringLiteral("enhance"),          QStringLiteral("enhancement")},
-        {QStringLiteral("perf / fix"),       QStringLiteral("perf")},
-        {QStringLiteral("perf / optimize"),  QStringLiteral("perf")},
-        {QStringLiteral("tooling"),          QStringLiteral("chore")},
-        {QStringLiteral("behaviour-change"), QStringLiteral("enhancement")},
-        // ANTS-4065 § 2.1's four additions. They were missing because the
-        // survey § 7.4's table was derived from had rxKind()'s own anchor, so
-        // every value written inline was invisible to it — `bug` is the single
-        // largest unmapped value in the corpus (29) and all 29 write it inline.
-        {QStringLiteral("bug"),              QStringLiteral("fix")},
-        {QStringLiteral("performance"),      QStringLiteral("perf")},
-        {QStringLiteral("process + tooling"), QStringLiteral("chore")},
-        {QStringLiteral("audit"),            QStringLiteral("audit-fix")},
-    };
-    return m.value(lower);
-}
+// ANTS-4086 — canonicalKinds() and mappedKind() moved to RoadmapParse.
+// trailerValuesIn() has to apply the vocabulary to decide which `Kind:`
+// capture is a declaration at all, and two copies of the enum would be free
+// to diverge — which is the failure this whole spec exists to stop.
+using RoadmapParse::canonicalKinds;
+using RoadmapParse::mappedKind;
 
 // -------------------------------------------------------------- structure --
 
