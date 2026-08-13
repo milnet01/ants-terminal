@@ -68,16 +68,33 @@ badge in the Roadmap dialog footer.
 | Level | Use | Example |
 |-------|-----|---------|
 | `#` | File title (one per file) | `# MyProject — Roadmap` |
-| `##` | Release block (post-1.0) **or** phase block (pre-1.0) | `## 0.7.0 — shell integration` / `## P01 — Bootstrap` |
+| `##` | Release block (post-1.0), phase block (pre-1.0), or a § 3.8 fold-in hoisted from `###` | `## 0.7.0 — shell integration` / `## P01 — Bootstrap` / `## FP03 — review fold-in` |
 | `###` | Theme group within a release/phase | `### 🎨 Features` |
 | `####` | Optional subgroup | `#### Tier 1 — ship-this-week` |
 
 The Roadmap dialog treats `##` as a top-level boundary (release
 or phase), `###` as the theme filter, `####` as a fold-out.
 Pre-1.0 projects use phase blocks (`## P01 — Bootstrap`) since
-there's no real version to anchor to yet; phase blocks promote
-naturally to release blocks once the project ships 1.0 (the work
-under `P01` becomes the body of `## 1.0.0 — initial release`).
+there's no real version to anchor to yet. The designator is `P`
+followed by digits, optionally with a `.<sub>` for a phase inserted
+after the sequence was set (`P07.5`, live in one corpus project).
+§ 3.9 names archives after it verbatim and § 3.5.4 step 2 selects
+the active phase by its number, so the designator is load-bearing,
+not decoration.
+
+**At 1.0, whatever phase work is still in `ROADMAP.md` becomes the
+body of `## 1.0.0 — initial release`** — the active phase and any
+above it. Phases § 3.9 has already rotated stay archived under
+their phase names: they are not renamed, and a reader keeps
+accepting the phase archive form after 1.0. Do not promote *early*
+to obtain rotation — § 3.9's closing note is why that is a
+different organising axis rather than a rename.
+
+**A `## FP<NN>` or `## DS<NN>` block is neither a release nor a
+phase.** It is a § 3.8 fold-in hoisted from `###`, which one corpus
+project does; § 3.5.4 step 2 and § 3.9 both give the shape defined
+behaviour, so a parser must accept it, but § 3.8 is still where a
+new fold-in goes.
 
 **Headings are addressable.** The viewer auto-generates anchor
 names of the form `roadmap-toc-N` from each heading's *position*
@@ -455,7 +472,18 @@ roadmap"*, it MUST:
 1. Read the file top-to-bottom.
 2. Skip past `##` release blocks until it finds the **active
    release** (the lowest version `##` that contains any 📋 or 🚧
-   items).
+   items) — or, on a pre-1.0 phase-block file (§ 3.2), the
+   **lowest-numbered `## P<NN>` block** containing any.
+   **Numbered, not first in document order.** Live phase roadmaps
+   interleave `## FP<NN>` fold-in and `## DS<NN>` debt-sweep blocks
+   above and below the phase sequence — one corpus project opens
+   with `FP03 FP04 FP05 FP06 FP01` and closes with `DS01 FP02`,
+   wrapping `P01`…`P10` — so position does not track the sequence
+   and reading top-to-bottom selects a fold-in as the active phase.
+   Those blocks carry no phase number and are never selected: they
+   are § 3.8 fold-ins hoisted to `##`, so treat each as an extra
+   theme section of the active phase, worked in step 3 after that
+   phase's own themes.
 3. Within the active release, find the first non-✅ bullet under
    each `###` theme section, prioritising 🚧 over 📋.
 4. Tackle bullets in document order — *not* in ID order.
@@ -606,8 +634,11 @@ Conventions for any findings fold-in:
 When a `ROADMAP.md` grows past ~150 KiB, split closed minors out
 into per-minor archive files.
 
-**The size figure is a review trigger, not a rotation event.** The
-only rotation event is a minor or major bump (below), so a file
+**The size figure is a review trigger, not a rotation event.** On a
+versioned roadmap the only rotation event is a minor or major bump
+(below) — a phase-block roadmap's occasion is phase closure instead,
+owned by the phase bullet, and every unqualified mention of `/bump`
+in this section is the versioned rule. So a file
 that crosses 150 KiB part-way through a minor has nothing eligible
 to rotate — every section under the open minor stays put — and it
 stays over the threshold until that minor closes. Crossing it is
@@ -634,8 +665,76 @@ The convention:
   `(major, minor)` integer tuple, descending — lexical sort breaks
   on minor 10 (`0.10` < `0.9` lexically). Numeric sort is the
   contract; the naming rule (above) is what makes it parseable.
-- Rotation happens at `/bump` time on a minor or major bump only.
-  Patch bumps don't rotate. The `/bump` recipe (`.claude/bump.json`
+- **A pre-1.0 roadmap using phase blocks (`## P01 — …`, § 3.2)
+  rotates on a closed *phase*, exactly as a versioned one rotates
+  on a closed minor.** Archives live at
+  `<dir(ROADMAP.md)>/docs/roadmap/<designator>.md` with the
+  designator copied **verbatim** from the heading — `P01.md`,
+  `P07.5.md` — under the case-sensitive regex
+  `^P[0-9]+(\.[0-9]+)?\.md$`. Verbatim is what keeps one name per
+  block: the zero-padding width is the project's business, and
+  copying it means `P01` can never also archive as `P1`.
+  **Phase archives sort as a separate, strictly older class** —
+  every version archive first, descending by `(major, minor)`, then
+  every phase archive, descending by `(phase, sub)` with an absent
+  `sub` reading as 0. The two cannot share one key space: `P01.md`
+  and `1.0.md` both parse to `(1, 0)`. Two classes need no tiebreak,
+  because § 3.2 makes phases pre-1.0 only and promotion one-way, so
+  no phase can postdate any version block.
+
+  **The occasion is the phase closing, not a bump.** A pre-1.0
+  project on phase blocks may never bump a version at all, so
+  keying rotation to `/bump` as the next bullet does would mean it
+  never fires. A phase is closed when every actionable bullet under
+  it is ✅ — no 📋, no 🚧 and **no 💭**, that last being live
+  research-phase work (§ 3.3) which archiving would hide from
+  `roadmap-query` and so from every agent working the file. **Every
+  closed phase rotates except the highest-numbered one in the file,
+  which always stays**: it is where new work is filed, and stating
+  it that way also settles the all-closed file — no phase is active,
+  and rotation still has a referent. The size rule at the head of
+  this section applies unchanged.
+
+  **`## FP<NN>` and `## DS<NN>` blocks do not rotate on their
+  own.** They are § 3.8 fold-in subsections that some projects
+  hoist to `##`; they carry no phase number, so there is nothing to
+  name an archive after and no position saying which phase they
+  closed with. File a fold-in where § 3.8 puts it — inside the
+  block it was raised against — and it rotates with that block.
+  **A project already carrying hoisted `##` fold-ins moves them back
+  in order to archive them** — the heading's date and source (§ 3.8)
+  say which block each was raised against. Until moved they stay in
+  `ROADMAP.md`, which is a real cost rather than a formality:
+  LocalWebServerManager carries seven in that shape, of seventeen
+  `##` blocks.
+
+  **No shipped reader accepts this name yet, and the failure is
+  silent — so do not rotate a phase block by hand until they
+  widen.** The rule is specified and unimplemented. Four sites
+  enforce the version-only form: `parseArchiveFilename`
+  (`src/roadmapdialog.cpp`), which makes the viewer **skip** a
+  non-conforming entry with no message; `archiveNameRx()`
+  (`src/roadmapmigrate.cpp`); `isPlaceableSourcePath`
+  (`src/roadmapmigrateload.cpp`); and `rotate_minor`'s `kMinorRx`
+  (`src/remotecontrol_roadmap_log.cpp`). A `P01.md` written today
+  is read by none of them, so the block would leave `ROADMAP.md`
+  and reach no reader. ANTS-4073 owns widening them.
+
+  > Global `roadmap-format.md` § 3.9 said until 2026-08-13 that
+  > phase roadmaps do not rotate and should promote to release
+  > blocks instead. A corpus re-scan that day found four projects
+  > live on phase blocks — LocalWebServerManager (17 blocks, 2881
+  > lines), finbreak (14, 6472), Games_Hub (3, 556),
+  > Ants_Projects_Hub_Website (2, 253) — with finbreak up 99 lines
+  > on the 2026-08-12 count and 373 on the 2026-08-10 one. Promoting would have
+  > all four rewrite a plan sequence (`P01 Bootstrap` … `P13
+  > Packaging`) as a release sequence, which is a different
+  > organising axis rather than a rename. The cost that answer was
+  > avoiding — a second archive naming scheme — is one added regex
+  > reusing the sort contract already stated. Decided here per
+  > CFG-0069 and raised into the global copy (ANTS-4073).
+- **On a versioned roadmap** rotation happens at `/bump` time on a
+  minor or major bump only. Patch bumps don't rotate. The `/bump` recipe (`.claude/bump.json`
   on each project) owns the snip-and-create step. Rotation is
   content-preserving: every bullet under the closed minor's
   `## <closed>.0 — …` heading and its sub-headings moves to
@@ -673,8 +772,15 @@ this paragraph exists to prevent. `roadmap-data-model.md` § 8 owns the
 reasoning.
 
 The operation is **`roadmap_log op:"rotate_minor"`** (Ants ANTS-4070), taking
-the closed `<MAJOR>.<MINOR>` and nothing else. Three things about it are part of
-this convention rather than that project's implementation detail:
+the closed `<MAJOR>.<MINOR>` and nothing else. **It is implemented and it is
+not reachable** — the handler exists, but the verb's `op` dispatch carries
+only `append`, `append_batch`, `flip`, `flip_batch`, `annotate`,
+`amend_body`, `create_section` and `bundle_row`, so a call reaches
+`bad_op_combo` and none of the refusal codes below can fire. Do not build a
+`/bump` recipe on it yet; ANTS-4081 owns the wiring, and § 4.3's
+`retitle_section` is unreachable for the same reason and by the same commit.
+Three things about it are part of this convention rather than that project's
+implementation detail:
 
 - **The archive path is derived, never passed** — `docs/roadmap/<M>.<N>.md`,
   relative to the **project root**, so the naming regex above stays stated in
@@ -986,6 +1092,7 @@ either side of cutover, and nothing did before.
 
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
+| 4 | 2026-08-13 | 2, cold — **this copy's first gate as a co-subject rather than as a cross-reference.** ANTS-4073's edit was gated on the global copy; loop 2 of that run put both copies in one packet as a tightly-coupled pair, genre pinned `standard` | **Q1 1 · Q3 1** (this file's share of a joint 16) | **Two fixed here, thirteen filed as ANTS-4140, and the split is scope rather than doubt.** Fixed: § 3.9 presented `roadmap_log op:"rotate_minor"` as the rotation operation while the phase paragraph sixty lines above discloses that the archive path is unimplemented — both lanes found it, the live `op` dispatch carries eight ops and `rotate_minor` is not among them, so its three documented refusal codes are unreachable and a `/bump` recipe built on the section always errors; the paragraph now says so and points at ANTS-4081. And the new phase bullet forward-referenced "§ 3.5.4 step 2's no-workable-item state", which **this** copy does not define — its absence is a declared divergence, so the all-closed case is now stated directly instead of by reference. **Filed, not fixed:** this copy has never been gated against the global one, and thirteen findings are its own pre-existing defects — an unwired `retitle_section` in § 4.3, § 3.10.4's `id_prefix` grammar omitting its 16-character cap, `rxPrefix` cited in `remotecontrol.cpp` when it lives in `remotecontrol_roadmap_log.cpp`, § 3.10.3 step 2 numbering against a fresh `.roadmap-counter` that § 3.5.1 of this same file measures as reissuing live ids, "marker last" placing step 5's store write inside the window forbidding store writes, § 3.5.1 reading an absent `id_high_water` row as 0 and forbidding it as a safe 0, `Priority:` prescribed here as a severity word and globally as a band `1`–`5`, and `**Evidence:**` declaring nothing because `rxEvidence` alone carries no bold alternation. Two of those are decisions. **In every one the global copy already holds the correct text, so the repair is to raise it here** — the CFG-0069 direction — and that is a gate of its own, which ANTS-4140 books. |
 | 3 | 2026-08-09 | 3, cold — identical packet rebuilt from disk; dispatched only after the blast-radius sweep was re-run over loop 2's rows | **Q1 0 · Q2 5 · Q3 1** (this file's share of a joint 8) | **Exited at the 3-loop cap.** § 3.10.3 gained a **step 5**: its five passes never re-ran the store migration, so a project with a store row finished the conversion recording `github-task-list` against a file now classifying `ants-v1` — the exact mismatch `roadmap-data-model.md` § 4.1.1 refuses every later write on, with the procedure offering no remedy. § 3.5.1 still promised a committed-corpus floor that "can never reissue a live or migrated id", although § 7.5 keeps `internal` and `dropped` items off the render entirely, so their ids reach no committed file and an absent `id_high_water` row is not a safe 0 on a store-migrated project; the caveat now sits on both sides of the pair rather than only in the data model. § 3.10.5 glossed the emoji format as `- **headline** [ID]`, with the ID *after* the headline, where § 3.5 pins it immediately after the status emoji — a parser author following the gloss would scan mid-text for ids, which the data model's § 10 names an anti-pattern. And § 3's preamble — rewritten in loop 1 — said closed bullets carry "their IDs, which is what § 3.6.2's CHANGELOG matching and § 3.6.3's commit matching resolve against"; both of those sections **fuzzy-match headlines** (lowercase, hyphens as spaces, punctuation stripped), and it is § 4.2's CHANGELOG citations that resolve ids. **Filed rather than fixed:** ANTS-4073, because § 3.2 tells a pre-1.0 project to use `## P01 —` phase blocks while § 3.9 rotates only under a `## <minor>.0 —` heading and § 3.5.4 step 2 selects "the lowest version `##`" — so such a roadmap can never rotate, and choosing between scoping § 3.2 and defining phase-block rotation is a decision. |
 | 2 | 2026-08-09 | 3, cold — identical packet rebuilt from disk after loop 1's edits | **Q1 1 · Q2 4** (this file's share of a joint 10) | **Three findings were against loop 1's own repairs.** The § 3.10.3 ordering rule was justified by "the marker is what makes the file classify `ants-v1`", which § 3.5.1 contradicts four hundred lines earlier: the detector falls back to a **best-effort parse**, and step 1 alone — replacing `- [x]` / `- [ ]` with emoji bullets — can be enough for it to classify. Marker-last therefore narrows the hand-over window without closing it; the rule now says so and adds what actually makes it safe (no commit, no store write, between step 1 and step 0). Step 2 four lines above still told a store-row project the counter goes unread, which under marker-last is exactly backwards — it is the carrier until the marker lands. **One pre-existing defect was a regex that does not do what the sentence beside it says**: § 3.9 published `^[0-9]+\.[0-9]+\.md$` while forbidding zero-padding, and `[0-9]+` accepts `00.07.md`. The shipped `archiveNameRx()` is `\A(0\|[1-9][0-9]*)\.(0\|[1-9][0-9]*)\.md\z`, which rejects it — so the code implemented the prose and the standard's own regex was wrong. Corrected, then executed against twelve names (`0.10.md`, `10.0.md`, `00.07.md`, `01.7.md`, `0.7.0.md`, `0.7.MD`, a trailing space and others) before it landed. Also recorded: § 3.5.1's carrier table has no comparison against the stored `source_format`, so a project whose dialect changes falls through to the counter row instead of refusing — the counterpart rule now lives in `roadmap-data-model.md` § 4.1.1. **Collateral caught by the post-fix structural check, not by a lane:** loop 1's new loop-log section was missing from § Contents. |
 | 1 | 2026-08-09 | 3, cold — gated as a pair with [`roadmap-data-model.md`](roadmap-data-model.md), one shared byte-stable packet carrying the live corpus survey, the pass-headings status reader, archive discovery, render routing and the store DDL; genre pinned `standard` | **Q1 0 · Q2 5 · Q3 3** (this file's share of a joint 11) | **This standard's first gate.** It had never had one; the run was triggered by ANTS-4069 after an authoring edit corrected § 3.5.1's detector literal `gfm` → `github-task-list`, and by the § 9 decision pass that added the post-cutover paragraphs to §§ 3.9 and 4.3. **Two findings were against that new text**: § 4.3 claimed steps 3–4 both edit *bullets*, but step 4 rewrites a release-block `##` heading — a section title with no store operation, so a cut-over project cannot perform it (filed onto ANTS-4070); and § 3's preamble still said released work "moves out of the roadmap into the CHANGELOG", which contradicts `roadmap-data-model.md` § 7.5's rule that closed items are published and would have had a renderer author drop every ✅ item. **Five were pre-existing.** `Kind:` was simultaneously "Required as of v1.1" (§ 3.5) and "two optional metadata fields" whose absence "stays terse" (§ 3.5.3) — two lanes found it independently, and it decides whether a conformance checker rejects a bullet. § 3.10.3 put the format marker at step 0, which hands a store-row project to the store before its four hand-edit steps run, so all four are discarded at the next render while the store path refuses them for an unmet publish gate — the marker now goes last. § 3.9's ~150 KiB threshold reads as a breach at 0.7.104's 3.2 MB although no closed minor exists to rotate; it is now stated as a review trigger, with no within-minor rotation by design. § 3.10.4 required "one counter per prefix — one file each" while no per-prefix filename exists here or in any source file; inventing one would have two tools reading zero for each other's prefix and reissuing live IDs, so both standards now say such a project allocates from the committed-corpus floor alone. And § 3.9's `roadmap-query` bullet ("archives are dialog-only by contract") had no post-cutover answer — the contract survives, carried by the read seam's include-archive flag rather than by which file is parsed. |

@@ -28950,6 +28950,54 @@ against current source before filing.
   write-up. The implementation half (widen the grammar to P07.5 / FP03 /
   DS01, teach rotate_minor the second heading shape) stays open here,
   sequenced after ANTS-4081.
+  Doc half DONE (2026-08-13); the code half is what keeps this open.
+
+  Both copies of `roadmap-format.md` now rotate a phase roadmap on a
+  closed phase. The archive name — the one thing the 2026-08-10
+  decision had not priced — is `docs/roadmap/<designator>.md`, the
+  designator copied verbatim from the heading (`P01.md`, `P07.5.md`),
+  regex `^P[0-9]+(\.[0-9]+)?\.md$`.
+
+  Three things the evidence changed, none of them foreseen here:
+
+  1. **Phase archives cannot share the version sort key.** `P01.md`
+  and `1.0.md` both parse to `(1, 0)`. They are a separate, strictly
+  older class — every version archive first, then every phase
+  archive — which needs no tiebreak because § 3.2 makes phases
+  pre-1.0 and promotion one-way.
+
+  2. **Active-phase selection is by NUMBER, not document order.**
+  LocalWebServerManager orders its blocks `FP03 FP04 FP05 FP06 FP01
+  P01…P10 DS01 FP02`, so four fold-in blocks precede `P01` and a
+  top-to-bottom read selects a fold-in as the active phase.
+
+  3. **The occasion is phase closure, not `/bump`** — a pre-1.0
+  project on phase blocks may never bump a version. Closed means
+  every actionable bullet is ✅: a "no 📋 and no 🚧" test archives a
+  phase holding live 💭 items, and archives are dialog-only, so they
+  would vanish from `roadmap_query`.
+
+  Corpus re-scanned again before landing: LocalWebServerManager 17
+  blocks / 2881 lines, finbreak 14 / 6472, Games_Hub 3 / 556,
+  Ants_Projects_Hub_Website 2 / 253.
+
+  Gated: two `review-contract` loops, 15 verified and fixed on this
+  edit. The pre-dispatch pass found the one with user-visible
+  consequences — **four sites enforce the version-only archive name
+  and the viewer skips a non-conforming file silently**
+  (`parseArchiveFilename`, `archiveNameRx()`, `isPlaceableSourcePath`,
+  `rotate_minor`'s `kMinorRx`), so a `P01.md` written today would
+  leave `ROADMAP.md` and reach no reader. Both copies now forbid hand
+  rotation of a phase block until those widen.
+
+  REMAINING, and it is this bullet's whole scope now: widen those
+  four sites, and teach `rotate_minor` the second heading shape.
+  Sequenced after ANTS-4081, which owns wiring the op at all — the
+  op is implemented and undispatched, so nothing can call it yet.
+
+  Filed alongside: ANTS-4139 (two § 3.9 rotation rules disagree
+  between the copies) and ANTS-4140 (this copy has never been gated
+  against the global one; thirteen findings).
 
 - 📋 [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -29478,6 +29526,94 @@ against current source before filing.
   to begin with a letter — is a parser-behaviour decision and
   is surfaced, not applied. **Do not implement the resolver
   until it is settled.**
+
+- 📋 [ANTS-4139] **Two roadmap-format § 3.9 rotation rules disagree between this copy and the global one.**
+  Found cold while gating ANTS-4073's edit. Both are Q2 across the
+  governing pair, neither is that edit's collateral, and both were
+  surfaced rather than picked because each is a design call.
+
+  1. **The ~150 KiB figure.** This copy: a review trigger, not a
+  rotation event — every minor bump rotates the closed minor, and
+  crossing the size means "check rotation is still happening".
+  Global: rotation runs at a minor/major bump *and only if* the file
+  exceeds the threshold. A minor bump on a 50 KiB file therefore
+  rotates under this copy and rotates nothing under global. This
+  copy gives a reason (no within-minor rotation, § 3.6 ID stability
+  over bytes); global gives none, so this copy looks right and
+  global is the side owing the change under CFG-0069.
+
+  2. **What a rotation moves.** This copy's § 3.9 bullet moves only
+  the closed minor's `## <closed>.0` heading; global moves every
+  `## <closed>.<patch>` block of that minor, on the measured ground
+  that rotating `X.Y.0` alone leaves the patch releases behind and
+  never relieves the size trigger. **This copy contradicts itself**:
+  its own `rotate_minor` prose selects section titles by `<M>.<N>`
+  "followed by … a `.` and a digit", which is a patch block. So the
+  shipped op moves patch blocks while the bullet above it says only
+  `.0` moves.
+
+  Both are recorded as rows in global's header divergence table so a
+  maintainer applying "corrected to match" does not revert either
+  blind. Fixing item 2 is the smaller job and this copy owns it.
+  **Layman:** The rule for trimming old roadmap sections is written two different ways in two copies of the same standard, so a tool built from one behaves differently from a tool built from the other.
+  Kind: doc-fix.
+  Source: in-session-2026-08-13 (ANTS-4073 review-contract loop 1, lane 1).
+
+- 📋 [ANTS-4140] **This copy of roadmap-format.md has never been gated against the global one, and carries seven undeclared divergences.**
+  Found by widening ANTS-4073's loop 2 to review both copies as a
+  pair. None is that edit's collateral; all are pre-existing, and
+  they are filed rather than fixed because closing them is a gate of
+  its own, not a step in ANTS-4073.
+
+  **Both lanes found the first two independently.** In each case the
+  GLOBAL copy already carries the correct text, so the repair is to
+  raise it upstream — the CFG-0069 direction — not to invent one.
+
+  Q1, false about the code:
+  - § 4.3 presents `roadmap_log op:"retitle_section"` as performing
+  release-flow step 4. It is implemented and undispatched, like
+  `rotate_minor`, so step 4 is unperformable and global names it
+  "the one hole the cutover leaves". (§ 3.9's `rotate_minor`
+  paragraph was fixed in this session; § 4.3 was not.)
+  - § 3.10.4 says `id_prefix` is validated by "the *same*" grammar as
+  id parsing. `kIdPrefixShape` caps it at 16 characters, so a longer
+  prefix parses and flips but cannot be allocated.
+  - § 3.10.4 cites `rxPrefix` in `remotecontrol.cpp`; it lives in
+  `remotecontrol_roadmap_log.cpp`.
+
+  Q2, contradictions:
+  - § 3.10.3 step 2 numbers against "a fresh `.roadmap-counter`",
+  which § 3.5.1 of this same file measures as reissuing live ids on
+  a fresh clone; and its stated reason yields the opposite carrier
+  under its own table, since step 1 alone can make the file
+  classify `ants-v1`.
+  - § 3.10.3's "add the marker last" puts step 5 — a store write —
+  inside the window the next paragraph forbids store writes in.
+  - § 3.5.1 reads an absent `id_high_water` row as 0 and also
+  forbids treating it as a safe 0, with no third behaviour stated.
+  Global repairs this only for an unreachable store, leaving the
+  reachable-store-absent-row case unruled. **Needs a decision.**
+  - `Priority:` is a band `1`-`5` in global and a severity word
+  (`CRITICAL`) here. Global's header note excuses it as one of "this
+  copy's added optional trailers", which is false — this copy has
+  carried it since before the fork, so no divergence row covers it.
+  **Needs a decision**, and `roadmap-data-model.md` § 7.5 quotes
+  THIS copy's spelling as the shape it maps.
+
+  Q3:
+  - § 3.5 states the case rule for every trailer label and the bold
+  rule for none. `rxEvidence` carries no `(?:\*\*)?` alternation
+  where the other four do, so `**Evidence:** shot.png` declares
+  nothing and is indistinguishable from a bullet with no evidence.
+  - § 3.5.4 step 2 specifies nothing for the case where no block
+  qualifies as active. Global says stop and report.
+
+  Do this as `review-contract <this file> --genre standard` with the
+  global copy in the packet, not as a fix list — two of the nine are
+  decisions and the rest need their own blast-radius sweep.
+  **Layman:** Our copy of the roadmap standard and the global copy disagree in seven places nobody has written down, and three of our statements about the code are simply wrong.
+  Kind: doc-fix.
+  Source: in-session-2026-08-13 (ANTS-4073 review-contract loop 2, both lanes).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
