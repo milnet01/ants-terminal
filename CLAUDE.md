@@ -404,6 +404,17 @@ version files). For an urgent bug in the already-published release, use
 `/bump` that ship `vN` + the cherry-picked fix as the next public patch
 and roll the in-flight RC up one number.
 
+**`new-rc` builds and tests before it tags — run it backgrounded, never
+under a short command timeout.** The preceding `/bump` edits
+`CMakeLists.txt`, which regenerates `build_info` and invalidates most of
+the graph, so the gate is a near-full rebuild (630 pending steps on
+0.7.105). A rehearsal killed at a 2-minute timeout is a SIGTERM'd ninja —
+the corruption case CLAUDE.md warns about elsewhere. It survived
+(`ninja -C build -n` exit 0, `-t recompact` clean), but check that before
+doing anything else if it happens. `--skip-build` skips the gate, not the
+tagging. **Never leave `/bump` to author a CHANGELOG section** —
+`.claude/bump.json` todo 2 explains why; `new-rc` owns that roll.
+
 ## Key design decisions (non-obvious)
 
 - Custom VT100 parser, no pyte/libvterm. Qt6 is the only runtime dep.
