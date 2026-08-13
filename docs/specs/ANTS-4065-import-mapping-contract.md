@@ -1,6 +1,6 @@
 # ANTS-4065 — define the markdown→store import mapping, so importing neither loses nor invents a field
 
-**Status:** amended 2026-08-10, re-gate pending — accepted 2026-08-08 after a
+**Status:** amended 2026-08-10 and again 2026-08-13, re-gate pending — accepted 2026-08-08 after a
 rule-14 gate run to its 3-loop cap, 2 cold lanes per loop, 66 findings verified
 and 63 fixed; 3 filed as non-build-changing in the loop-3 row. The amendment
 rewrites § 2.2's match-precedence rule and INV-11 (ANTS-4086, a defect this
@@ -348,19 +348,44 @@ not a new predicate.**
 > Source wrapping is arbitrary and re-wraps whenever anyone reflows a
 > paragraph, so this is not a one-off to correct in the source.
 >
-> The rule below is therefore **necessary but not sufficient**: it fixes the
-> five corrupt-`kind` bullets and ANTS-3808's `source`/`layman`, and it does
-> not fix ANTS-3754. A candidate tightening is to require the captured value to
-> begin with a letter (`), § 3` fails; `doc`, `refactor (no behaviour change)`
-> pass), which is minimal and testable — but it is a parser-behaviour decision
-> rather than a wording fix, so it is **surfaced, not applied**. Do not
-> implement the resolver until it is settled: an implementer shipping the rule
-> as written trades one wrong value for another on this bullet.
+> The `anchored` preference below is therefore **necessary but not
+> sufficient**, and what completes it was **settled 2026-08-13 (user
+> decision)**.
+>
+> **The candidate tightening this section used to carry — require the captured
+> value to begin with a letter — was rejected on measurement.** It rejects
+> `), § 3`, `\s*([^\` and `; when absent …`, and it **accepts** the capture
+> that corrupts ANTS-3608, `explicit on every actionable bullet; section
+> context is a hint …`. Prose appended after a trailer usually begins with a
+> word, so the test misses the common shape.
+>
+> **The rule taken instead: for `kind`, a match is a candidate only when its
+> value is RECOGNISED VOCABULARY** — one of § 3.5.3's 21 taxonomy values, or
+> one of `mappedKind()`'s inputs (`bug`, `performance`, `process + tooling`,
+> `audit`). The mapping inputs are in deliberately: this project carries none
+> of them today, but other corpus projects do, and dropping them would make the
+> rollout regress on exactly the values § 2.1 exists to translate. Among
+> recognised candidates the `anchored` preference decides; when **no** match is
+> recognised the field defaults and § 2.3's `field_defaulted` note fires with
+> the raw capture in `extras.source_kind`, which is what an absent field
+> already does.
+>
+> **The guard is `kind`-only, deliberately.** `layman`, `source` and `evidence`
+> are free text and `lanes` is an open list, so there is no vocabulary to check
+> them against; those four take the `anchored` preference alone. The resolver
+> is therefore shared and takes an optional per-key predicate, rather than four
+> callers pretending to a fifth's constraint.
 
 **Implement it once, in one shared resolver, and route all five keys through
-it.** `matchLastIn()` gains the preference — keep the last match whose
-`anchored` is true, else the last match seen — and `trailerValuesIn()` moves
-`layman`, `lanes`, `evidence` and `source` onto it from `matchIn()`. Adding
+it.** `matchLastIn()` gains the preference — **among candidates**, keep the
+last whose `anchored` is true, else the last candidate seen — plus an optional
+`isCandidate` predicate defaulting to accept-everything, which `kind` alone
+supplies as the recognised-vocabulary test above. `trailerValuesIn()` moves
+`layman`, `lanes`, `evidence` and `source` onto it from `matchIn()`, passing no
+predicate. **Order matters within the resolver:** the predicate filters first
+and `anchored` decides among what survives, never the reverse — an unrecognised
+line-initial capture (ANTS-3754's wrapped `Kind:), § 3.1's …`) must lose to a
+recognised non-line-initial one, which is the whole case the letter test failed. Adding
 precedence inside `matchIn()` instead would be wrong, because it would leave
 `kind` — which does not route through it — unchanged, fixing four fields and
 not the one this section is about.
@@ -831,6 +856,11 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   line-initial match, and falls back to the last mid-line match only when there
   is no line-initial match at all. **This holds for all five keys** — `kind`,
   `source`, `layman`, `lanes`, `evidence` — not for `Kind:` alone.
+  **For `kind`, § 2.2's recognised-vocabulary predicate filters the candidate
+  set BEFORE that ordering applies** (settled 2026-08-13), so an unrecognised
+  line-initial capture loses to a recognised mid-line one. Ordering alone is
+  not sufficient; the two rules are one resolver and neither works without the
+  other.
   *Test:* five fixtures. (a) body `… the old Kind: refactor. …` **followed by**
   trailer `Kind: security.` → `kind='security'`; green under plain last-match
   too, so it is a regression guard, not a discriminator. (b) trailer
@@ -855,14 +885,25 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   exactly two. In **13** the two values are identical, so the choice cannot be
   observed. In **ANTS-3808** and **ANTS-3787** the bullet's own trailer is the
   later one, which last-line-initial returns correctly; ANTS-3808 is fixture
-  (e)'s real-world case. **In ANTS-3754 the rule returns garbage** — see the
-  wrapping defect below, which is a different mechanism and is not fixed by
-  ordering.
+  (e)'s real-world case. **In ANTS-3754 ordering alone returns garbage**
+  (`), § 3`) — the wrapping defect below is a different mechanism, and it is
+  what § 2.2's vocabulary predicate was added to close. Ordering does not fix
+  it; the predicate does, by making the wrapped capture no candidate at all.
   **An earlier draft named ANTS-3573 and ANTS-3780 here as the below-the-trailer
   cases. Both were wrong**, artefacts of the superseded scan: ANTS-3573 carries
   exactly one `Kind:` (its body ends at a col-0 heading), and ANTS-3780 is a
-  short bullet with an inline trailer and no nested entries. **So the
-  below-the-trailer case has no demonstrated instance in this corpus**, and an
+  short bullet with an inline trailer and no nested entries. **That left the
+  below-the-trailer case with no demonstrated instance — which the first real
+  Phase D import then supplied.** Measured against the live store 2026-08-13,
+  after Phase C shipped: **56** items carry more than one `Kind:` mention, **9**
+  of them stored a prose capture in `extras.source_kind`, and **4 are confirmed
+  wrong** — ANTS-3814 (`investigate` → `implement`), ANTS-1278 (`chore` →
+  `implement`), ANTS-1866 and ANTS-3608 (both `doc-fix` → `implement`). Phase C
+  changed the *shape* of the corruption rather than removing it: the raw
+  fragment now lands in `extras.source_kind` and the field defaults to
+  `implement`, which reads as a real answer. The remaining risk is the case with
+  no marker at all — a prose capture that happens to BE a taxonomy word, silently
+  taken. And an
   implementer should treat it as a guard against a shape that may not occur
   rather than as a repair with known targets. Nor does this invariant cover a
   backtick span crossing a line break, which defeats the guard entirely and is
