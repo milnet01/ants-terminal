@@ -388,13 +388,19 @@ not a new predicate.**
 > is therefore shared and takes an optional per-key predicate, rather than four
 > callers pretending to a fifth's constraint.
 
-**Implement it once, in one shared resolver, and route all five keys through
-it.** `matchLastIn()` gains the preference — **among candidates**, keep the
-last whose `anchored` is true, else the last candidate seen — plus an optional
-`isCandidate` predicate defaulting to accept-everything, which `kind` alone
-supplies as the recognised-vocabulary test above. `trailerValuesIn()` moves
-`layman`, `lanes`, `evidence` and `source` onto it from `matchIn()`, passing no
-predicate. **Order matters within the resolver:** the predicate filters first
+**`matchLastIn()` gains the preference** — among candidates, keep the last
+whose `anchored` is true, else the last candidate seen — plus an optional
+`isCandidate` predicate defaulting to accept-everything, which `kind` supplies
+as the recognised-vocabulary test above.
+
+**Built 2026-08-13, and narrower than this paragraph used to ask.** It said to
+route all five keys through the resolver and delete `matchIn()`. Only `kind`
+was moved. The measured defect is `kind`'s alone, and the comment on
+`matchLastIn()` gives a standing reason against the rest: none of the other
+four is re-emitted by the render into a body that may already discuss it, so
+changing their precedence is a behaviour change with no defect behind it.
+`matchIn()` stays. Revisit if ANTS-3808's `source`/`layman` case is measured
+rather than asserted. **Order matters within the resolver:** the predicate filters first
 and `anchored` decides among what survives, never the reverse. **ANTS-3754 is
 TWO line-initial matches, not one of each** — `collectBulletBody()` trims every
 continuation line, so its wrapped `Kind:), § 3.1's …` is line-initial exactly
@@ -410,16 +416,9 @@ precedence inside `matchIn()` instead would be wrong, because it would leave
 `kind` — which does not route through it — unchanged, fixing four fields and
 not the one this section is about.
 
-**`matchIn()` then has no callers left, and the spec must say so rather than
-imply otherwise.** Corrected 2026-08-10: an earlier draft of this paragraph
-also claimed `matchIn()` was "the first-match helper other callers rely on".
-It is not — its only call sites are the four inside `trailerValuesIn()`
-(`layman`, `lanes`, `evidence`, `source`), so once they move it is
-unreferenced. **Delete it** in the same change; keeping an unused static helper
-earns a compiler warning and leaves a second, subtly different resolver for the
-next author to reach for. `matchLastIn()` with the preference is a strict
-superset of it — for a body with one match the two agree by construction — so
-nothing is lost.
+**`matchIn()` keeps its four callers** — `layman`, `lanes`, `evidence` and
+`source`. An earlier draft had it deleted, on the plan to move all five keys;
+that plan was narrowed at build time (above), so it stays referenced.
 
 Two consequences to carry, neither optional. `rxSource()` captures to
 end-of-line (`([^\n]+)`) rather than to the first period, so a first-match hit
