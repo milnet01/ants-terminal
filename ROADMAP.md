@@ -39349,6 +39349,40 @@ here.)
   Lanes: roadmap-store, mcp.
   Source: in-session-2026-08-13 (ANTS-4065 Phase D2 re-run).
 
+- 📋 [ANTS-4344] **A rendered `Kind:` line survives into the next import's `body`, so 363 of 1,980 items change on a render→re-import round trip that should change none.**
+  ANTS-4065 D3's acceptance measurement. Method and full column table are
+  in `docs/plans/ANTS-4065-import-mapping-contract.md § Phase D`; the
+  headline number is that `status`, `headline`, `kind`, `source` and
+  `lanes` move **0**, `layman` moves 1 (ANTS-1861, whose layman text quotes
+  the renderer's own markup), and `body` moves 363 — every one of them the
+  same single line, `Kind: implement.`, appended to the stored body.
+
+  The 363 are exactly the items whose kind was **defaulted**. The render
+  writes a `Kind:` trailer for them (the store holds `implement`, so it is
+  not wrong to emit it); the re-import then reads that line as the kind —
+  `kind` moves 0, so the field parse is right — **and also keeps it in the
+  body**. Items that declared a kind do not drift at all.
+
+  **It converges: a second cycle moves 2** (the marker annotate that drove
+  the render, and ANTS-1861). So the line is absorbed once and is stable
+  after, which is the distinction D4's verify was written to make — this is
+  not slow corruption.
+
+  **The mechanism is not pinned yet, and the obvious readings both fail.**
+  The rendered trailer is byte-identical in shape between a drifting bullet
+  and a clean one (`  Kind: <value>.`, last line of the block), so "the
+  stripper does not know the key" would drift both; and "the line is left in
+  the body and re-emitted next cycle" predicts compounding, which the cycle-2
+  number rules out. Read `RoadmapParse`'s body/trailer split against
+  `RoadmapRender::bulletText()` before designing anything.
+
+  Belongs with ANTS-3758 (the render emits the line) rather than ANTS-3765,
+  and closing it needs INV-6 green on two consecutive cycles.
+  **Layman:** Saving the roadmap and reading it back adds one stray line to 363 items — once each, not repeatedly.
+  Kind: fix.
+  Lanes: roadmap-store, mcp.
+  Source: in-session-2026-08-13 (ANTS-4065 Phase D3 acceptance run).
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
