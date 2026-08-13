@@ -39222,6 +39222,49 @@ here.)
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (hit re-running Phase D2 after the ANTS-4086 fix).
 
+- 📋 [ANTS-4143] **`roadmap_query` answers from the store while its envelope names ROADMAP.md as the source, so a caller cannot tell which document it read.**
+  Reproduced 2026-08-13, twice, and the second is the clean one. ANTS-3821
+  was flipped 📋 → ✅ in ROADMAP.md with a resolution note and committed;
+  `roadmap_query {id:"ANTS-3821"}` immediately after still returned
+  `status: 📋` and the pre-flip body, with
+  `path: "/mnt/…/Ants_Terminal/ROADMAP.md"` in the same envelope. The first
+  was sharper: `{id:"ANTS-4141"}` returned ``**`.desktop` file**`` — a
+  store-synthesised row — while the only `[ANTS-4141]` token in the file is
+  the re-render-defect bullet at line 39113.
+
+  Serving the store on a migrated project may well be the intended design;
+  the defect is the `path` field asserting a file it did not read. It cost
+  real time here — the store held a known-bad import, so every answer was
+  trusted as file content and was not. Whatever the routing rule is, the
+  envelope should say which source answered (a `source: "store" | "file"`
+  discriminator, and `path` only when the file was actually read).
+
+  Related, same session: `roadmap_query` is what a caller reaches for to
+  confirm a write landed, so a stale answer reads as a failed edit.
+  **Layman:** Asking about a roadmap item can return the database's old copy while claiming it came from the roadmap file.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: in-session-2026-08-13 (hit confirming the ANTS-4142 status flips).
+
+- 📋 [ANTS-4144] **A rolled-back `roadmap_migrate` still emits its full note list, spending thousands of tokens describing writes that did not happen.**
+  The failed Phase D2 run returned `ok:false` with a one-line error and
+  `notes_count: 1032`, `notes_truncated: true` — roughly 180 truncated
+  entries in the response, almost all repeats of `field_defaulted(kind)`,
+  `field_defaulted(source)` and `id_allocation_owed(closed)` keyed by line.
+  The transaction rolled back, so every one of them describes a store state
+  that does not exist.
+
+  Two calls of it (one real, one `dry_run`) dominated this session's token
+  spend on a task whose actionable content was a single constraint name.
+  A refusal envelope should carry the error, the counts, and a bounded
+  sample — the same shape `workspace_search` already uses when it
+  downshifts. Worth checking whether the notes are worth emitting in full
+  even on SUCCESS: 1,032 for 1,975 items is one note per two items.
+  **Layman:** When importing the roadmap fails and undoes itself, it still prints a thousand lines about changes it never made.
+  Kind: perf.
+  Lanes: mcp, roadmap.
+  Source: in-session-2026-08-13 (measured re-running Phase D2).
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
