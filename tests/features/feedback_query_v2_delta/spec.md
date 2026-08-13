@@ -35,7 +35,11 @@ version-correct.
   with an id or an `n/a` closure, and a `### ` block with no id line, are all
   excluded.
 - **INV-4** — v2 `mappedIds` = inline ids only (closure contributes zero); the
-  retained v1 table ids are not counted.
+  retained v1 table ids are not counted. **ANTS-3744 fallback:** when the
+  inline harvest is empty, ids are taken from a `## Tracked in ROADMAP …`
+  pointer line (the fully-condensed form) — a file that still carries an
+  inline id keeps the inline-only harvest. *Tests:*
+  `CondensedTrackedLineSuppliesMappedIds`, `InlineIdsWinOverTrackedLine`.
 - **INV-5** — `suspectedUntagged` lists no-id finding-shaped blocks; bare prose
   excluded; empty on v1.
 - **INV-6** — the v1 boundary scan is version-independent.

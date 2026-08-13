@@ -29,6 +29,9 @@ per-finding, on the injected roadmap sets (pure helper) or the live
   incidental `ANTS-1525`.
 - **multi-id partial (INV-2)** — `ANTS-1525, ANTS-1579` with only one ✅ →
   `has_open_id`, not collapsed.
+- **duplicate ids (ANTS-3739)** — an id named twice on one `**Proposed ID:**`
+  line reports once in `ids`, first occurrence wins, matching `assign_id`'s
+  documented de-duplication.
 - **archive rotation (§2.5 gate 3)** — an id absent from `roadmapIds` →
   `roadmap_unresolved_ids`, not collapsed (checked before the ✅ gate).
 - **idempotency (INV-6)** — feeding the collapsed output back collapses

@@ -316,6 +316,23 @@ ParseResult parse(const QString &fileContent) {
             deltaLineTotal += blk.size();
             deltaBlocks.append(blk.join(QLatin1Char('\n')));
         }
+        // ANTS-3744 — a fully-condensed file (ANTS-3475) keeps its ids only on
+        // a `## Tracked in ROADMAP (detail + status there): ANTS-…` pointer
+        // line, with no finding blocks left to carry a `**Proposed ID:**`
+        // slot. Without this branch such a file reports mapped_ids:[], so the
+        // reporting session's documented way of learning that its item shipped
+        // (mapped_id_status) returns nothing for exactly the files tidied
+        // hardest. Only consulted when the finding blocks yielded no id, so a
+        // file that still carries write-ups keeps its existing harvest.
+        if (v2ids.isEmpty()) {
+            static const QRegularExpression trackedLineRe(
+                QStringLiteral(R"(^#{1,6}\s+Tracked in ROADMAP\b)"));
+            for (const QString &l : lines) {
+                if (!trackedLineRe.match(l).hasMatch()) continue;
+                auto it = idRe.globalMatch(l);
+                while (it.hasNext()) v2ids.insert(it.next().captured(0));
+            }
+        }
         r.mappedIds = QStringList(v2ids.begin(), v2ids.end());
         r.mappedIds.sort();
         if (!deltaBlocks.isEmpty()) {
@@ -961,8 +978,15 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
         ResolvedFinding f;
         f.heading = fb.heading;
         f.line    = fb.headingLine0 + 1;
+        // ANTS-3739 — de-duplicate, first occurrence wins, matching assignId's
+        // documented contract. An id line may name the same id twice (a closure
+        // like `n/a — confirms ANTS-3468/ANTS-3503 shipped … per ANTS-3468
+        // resolution`), which otherwise reports it twice in skipped[].ids.
         auto it = idTokRe.globalMatch(fb.idValue);
-        while (it.hasNext()) f.ids.append(it.next().captured(0));
+        while (it.hasNext()) {
+            const QString id = it.next().captured(0);
+            if (!f.ids.contains(id)) f.ids.append(id);
+        }
 
         const bool closure = closureRe().match(fb.idValue.trimmed()).hasMatch();
         if (closure || f.ids.isEmpty()) {                       // gate 1

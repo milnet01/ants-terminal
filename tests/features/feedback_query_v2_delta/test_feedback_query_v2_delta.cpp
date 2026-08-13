@@ -272,6 +272,45 @@ TEST(FeedbackV2Delta, FenceSafety) {
     EXPECT_TRUE(r.mappedIds.isEmpty());
 }
 
+// ANTS-3744 — a fully-condensed file (no finding blocks left) harvests its ids
+// from the `## Tracked in ROADMAP …` pointer line, so mapped_id_status still
+// answers "did my item ship?" for the files tidied hardest.
+TEST(FeedbackV2Delta, CondensedTrackedLineSuppliesMappedIds) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 Test\n"
+        "\n"
+        "> Format: docs/standards/mcp-feedback-files.md.\n"
+        "\n"
+        "## Tracked in ROADMAP (detail + status there): ANTS-2054, ANTS-3388\n";
+    const FeedbackFile::ParseResult r =
+        FeedbackFile::parse(QString::fromUtf8(fix));
+    EXPECT_EQ(r.formatVersion, 2);
+    EXPECT_FALSE(r.deltaPresent);
+    ASSERT_EQ(r.mappedIds.size(), 2);
+    EXPECT_EQ(r.mappedIds.at(0), QStringLiteral("ANTS-2054"));
+    EXPECT_EQ(r.mappedIds.at(1), QStringLiteral("ANTS-3388"));
+}
+
+// ANTS-3744 — the pointer line is a FALLBACK: a file that still carries an
+// inline `**Proposed ID:**` keeps the pre-3744 inline-only harvest, so a
+// partially-condensed file cannot silently gain ids from a stale pointer line.
+TEST(FeedbackV2Delta, InlineIdsWinOverTrackedLine) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# T\n"
+        "\n"
+        "## Tracked in ROADMAP (detail + status there): ANTS-2054\n"
+        "\n"
+        "### Still open\n"
+        "- **Proposed ID:** ANTS-3388\n"
+        "- **What:** something.\n";
+    const FeedbackFile::ParseResult r =
+        FeedbackFile::parse(QString::fromUtf8(fix));
+    ASSERT_EQ(r.mappedIds.size(), 1);
+    EXPECT_EQ(r.mappedIds.at(0), QStringLiteral("ANTS-3388"));
+}
+
 // INV-7 (ANTS-3598) — the fence opener is space-indent-only (CommonMark): a
 // TAB-indented ``` is NOT a fence, so a real finding after it is not swallowed.
 // Guards against `fenceRe`'s prior `\s{0,3}` (which admitted a tab) silently

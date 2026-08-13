@@ -218,6 +218,27 @@ TEST(FeedbackCompactResolved, ProposedIdLiftedAndSecondDropped) {
     EXPECT_FALSE(r.newContent.contains(QStringLiteral("ANTS-1579")));
 }
 
+// ANTS-3739 — an id named twice on one `**Proposed ID:**` line is reported
+// once, matching assign_id's documented de-duplication. Observed on
+// finbreak's file, where a closure cited ANTS-3468 twice in one sentence.
+TEST(FeedbackCompactResolved, DuplicateIdsReportedOnce) {
+    const char *dup =
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# T\n"
+        "\n"
+        "### IMPROVED (ANTS-1525 / ANTS-1579)\n"
+        "- **Proposed ID:** n/a \xE2\x80\x94 confirms ANTS-1525/ANTS-1579 shipped "
+        "per ANTS-1525 resolution\n"
+        "- **What:** already covered.\n";
+    const FeedbackFile::ResolveResult r =
+        FeedbackFile::compactResolved(QString::fromUtf8(dup), stdOpts());
+    ASSERT_EQ(r.findings.size(), 1);
+    EXPECT_EQ(r.findings.at(0).code, QStringLiteral("no_shippable_id"));
+    EXPECT_EQ(r.findings.at(0).ids,
+              (QStringList{ QStringLiteral("ANTS-1525"),
+                            QStringLiteral("ANTS-1579") }));
+}
+
 // INV-2 — a multi-id finding with only one id ✅ is has_open_id, not collapsed.
 TEST(FeedbackCompactResolved, MultiIdPartialOpen) {
     FeedbackFile::ResolveOptions o;
