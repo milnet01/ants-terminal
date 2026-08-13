@@ -250,28 +250,31 @@ the spec explains why the direction is the whole finding.
 > is the check that would have caught the original 123 rewrites, and it is the
 > one that says Phase C worked.
 
-**D2 status, 2026-08-13 — blocked on a relaunch, not on any remaining work.**
-The run refused the whole project with `UNIQUE constraint failed:
-item.project_id, item.id_fold`. Cause and fix are [ANTS-4142] (commit
-`d7987e89`): § 2.8 allocates synthesised ids out of the same number space
-the project's own counter allocates from, so run 1's `ANTS-4141` and a
-later hand-filed `ANTS-4141` were the same id; one-pass matching then let
-the id-less bullet consume the row and the id-bearing one abort the
-transaction. Both halves are fixed and regression-tested, but the MCP
-serves the binary that was running at launch, so **D2 must be re-run after
-Ants is relaunched** — no code change is outstanding.
+**D2 is DONE, 2026-08-13.** It refused the whole project once, on
+`UNIQUE constraint failed: item.project_id, item.id_fold` — cause and fix
+are [ANTS-4142] (commit `d7987e89`) — and ran clean on the first attempt
+after the fixed binary was live: `ok`, 1980 items, **0 orphaned**, 1955
+unchanged, 20 updated, 5 inserted, 5 ids allocated.
 
-On the re-run, expect **three synthesised ids to be displaced**:
-`ANTS-4142`, `ANTS-4143` and `ANTS-4144` were filed by hand into the still
-squatted `4141…4337` block, so each takes back its id and the id-less
-bullet that held it is re-inserted above the high-water. That is
-ANTS-4142's designed degradation, not a Phase C defect — do not chase it.
+**The verify is green over every bullet, not a spot-check.** Comparing the
+kind each bullet *declares* against the kind the store *holds*, across
+`ROADMAP.md` and both rotated archives: **1434 bullets declare a kind, 0
+mismatches, 0 declared-but-absent**. The four the ANTS-4086 resolver had
+been getting wrong now read `ANTS-3814 investigate`, `ANTS-1278 chore`,
+`ANTS-1866 doc-fix`, `ANTS-3608 doc-fix`. `field_defaulted(kind)` is 360 —
+items whose bullet declares nothing, not items the import guessed at.
 
-Two things D2 must NOT be judged against while it is unconfirmed:
-`roadmap_query` answers from the store on this project while reporting
-`path: ROADMAP.md` ([ANTS-4143]), and `roadmap_log` renders `ROADMAP.md`
-from that same store ([ANTS-4141]). Read the file directly and edit it by
-hand until the import is known good.
+The five displaced synthesised ids landed as designed (`ANTS-4141`
+… `ANTS-4145` were each filed by hand into the still-squatted
+`4141…4337` block, so each took its id back and the id-less bullet that
+held it was re-inserted at `ANTS-4338`…`4342`). One thing the re-run does
+NOT do: those five store rows still carry `id_origin='synthesised'`
+although their source bullets now declare the id — [ANTS-4146].
+
+Until D3 closes the render drift, `roadmap_log` still rewrites
+`ROADMAP.md` wholesale from the store ([ANTS-4141]) and `roadmap_query`
+answers from the store while reporting `path: ROADMAP.md` ([ANTS-4143]).
+**Keep editing the file by hand.**
 
 **D3. Render, then re-import — the acceptance test (INV-6).**
 

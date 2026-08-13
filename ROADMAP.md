@@ -39292,6 +39292,37 @@ here.)
   Lanes: mcp.
   Source: in-session-2026-08-13 (hit persisting state before a relaunch).
 
+- 📋 [ANTS-4146] **A store row keeps `id_origin='synthesised'` after the source file starts declaring that id, so the store records an id as invented that a human filed by hand.**
+  Found in ANTS-4065 Phase D2. `ANTS-4141`…`ANTS-4145` were allocated by
+  the loader in run 1, then filed by hand into `ROADMAP.md` before run 2.
+  Run 2 matched each bullet to its stored row by `(project_id, id_fold)`
+  and updated the row's content correctly — but `id_origin` is fixed at
+  insert, so all five still read `synthesised`.
+
+  ANTS-3765 § 2.6 states the never-update rule and gives a reason that
+  does not cover this case: it argues the store's identity is the id, so
+  "an id that changed is a *different* item". Here the id did not change —
+  only the claim about where it came from did. The rule is right for the
+  case it reasons about and unexamined for this one.
+
+  **No behaviour rides on it today**, which is why this is filed rather
+  than fixed in place. The only consumer that branches on origin is
+  `Loader::allocateId`'s high-water scan (`roadmapmigrateload.cpp:553`),
+  and that reads the *plan's* origin — parsed from the file, already
+  correct — never the store's. The render half does not consult it at all,
+  so no bullet loses its id. What is wrong is the record: `SELECT … WHERE
+  id_origin='parsed'` under-reports, and any future feature that trusts the
+  column inherits the lie.
+
+  Fix is one line in the governed-field set plus the § 2.6 paragraph, but
+  it needs the spec amendment to say *why* the exception is safe — that a
+  parsed id arriving for a synthesised row is the one origin transition
+  that cannot mean a different item.
+  **Layman:** The database still says the computer made up five ID numbers that a person actually typed in.
+  Kind: fix.
+  Lanes: roadmap-store, mcp.
+  Source: in-session-2026-08-13 (ANTS-4065 Phase D2 re-run).
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
