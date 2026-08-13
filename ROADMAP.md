@@ -29370,7 +29370,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-10 (ANTS-4068 doc-edit verification).
 
-- 📋 [ANTS-4086] **ANTS-4065 § 2.2's take-the-last-match rule loses to prose appended after the trailer.**
+- ✅ [ANTS-4086] **ANTS-4065 § 2.2's take-the-last-match rule loses to prose appended after the trailer.**
   Found surveying what still blocks Phase D. **This is a spec defect, not an
   implementation one** — Phase C built § 2.2 exactly as written and its 19
   conformance tests are green.
@@ -29526,6 +29526,25 @@ against current source before filing.
   to begin with a letter — is a parser-behaviour decision and
   is surfaced, not applied. **Do not implement the resolver
   until it is settled.**
+  Resolved (2026-08-13). **Settled, built and verified — the stop
+  instruction above is discharged, not standing.** The letter test
+  was REJECTED on measurement: it accepts the capture corrupting
+  ANTS-3608, which begins with a word. Taken instead: a `Kind:`
+  capture counts only when its lowercased value is one of the 21
+  taxonomy values or a key of `mappedKind()` (all fifteen). The
+  predicate filters, then `anchored` orders what survives — that
+  order is the fix, since ANTS-3754's wrapped artefact and its real
+  `Kind: doc.` are BOTH line-initial. With nothing recognised the
+  last match returns raw, so the unmapped branch still records it.
+  Shipped in 903f22bf; `canonicalKinds()`/`mappedKind()` moved to
+  `RoadmapParse` so all five `trailerValuesIn()` consumers inherit
+  the guard. Only `kind` moved — `matchIn()` keeps its four callers,
+  narrowing the spec at build time because only `kind`'s defect was
+  measured. Verified on the real roadmap via
+  `roadmap_migrate_load.CorpusArchiveRun`: `field_defaulted(kind)`
+  369 → 360 (exactly the 9 corrupted), `kind_unmapped` → 1 (a
+  genuine malformed value), 1975 items, 0 orphaned, second run
+  all-unchanged. Suite 3408.
 
 - 📋 [ANTS-4139] **Two roadmap-format § 3.9 rotation rules disagree between this copy and the global one.**
   Found cold while gating ANTS-4073's edit. Both are Q2 across the
