@@ -28,6 +28,10 @@ ANTS-3598/3599.
   *Test:* `NoOpAndPartialDir`.
 - **INV-10** — the registration leaves the output filter uncapped
   (`maxLines = 0`). *Test:* `RegistrationUncapped` (source-grep).
+- **INV-11** (ANTS-3849) — a `path:line` or `path:line-range` citation
+  (`remotecontrol.cpp:2540`, `src/vault.py:39-49`) is not extracted; the bare
+  path still flags (INV-5) and a non-path `head:N` stays in scope. *Test:*
+  `PathLineCitationsSkipped`.
 
 INV-7 (blob refactor behaviour-preserving) and INV-8 (caller-agnostic
 free function) are covered by the existing `feature_coverage` +

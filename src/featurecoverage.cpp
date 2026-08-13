@@ -149,6 +149,17 @@ QList<SpecToken> extractDocLiteralTokens(const QString &docText) {
     // case-insensitively (so `HTTPS://…` is also skipped).
     static const QRegularExpression urlScheme(
         R"(^[a-z][a-z0-9+.-]*://)", QRegularExpression::CaseInsensitiveOption);
+    // ANTS-3849 — path:line citation guard. `remotecontrol.cpp:2540` and
+    // `src/vault.py:39-49` name a LOCATION, not a literal any source could
+    // contain: the path manifest (§ 2.3) records paths with no line suffix, so
+    // the shape can never resolve and is false by construction. Measured on
+    // this corpus: 1,146 of the lane's 2,315 findings (49.5%). Citation
+    // staleness has its own owner — `doc_citations` (ANTS-3636) resolves the
+    // anchor; this lane checks literals. The head must look like a path (holds
+    // a `.` or `/`) so a JSON fragment (`limit:10`) or a bare `symbol:123`
+    // stays in scope.
+    static const QRegularExpression pathLineCitation(
+        R"(^[^\s:]*[./][^\s:]*:\d+(?:-\d+)?$)");
 
     const QStringList lines = docText.split('\n');
     // Fenced code blocks are illustrations, not contract claims — skip them.
@@ -167,6 +178,7 @@ QList<SpecToken> extractDocLiteralTokens(const QString &docText) {
             if (stop.contains(tok)) continue;
             if (isPseudoToken(tok)) continue;
             if (urlScheme.match(tok).hasMatch()) continue;
+            if (pathLineCitation.match(tok).hasMatch()) continue;
             if (seen.contains(tok)) continue;
             seen.insert(tok);
             out.append({tok, i + 1});

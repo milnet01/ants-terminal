@@ -173,6 +173,30 @@ TEST(ContractDocDrift, NoOpAndPartialDir) {
     }
 }
 
+// INV-11 (ANTS-3849) — a `path:line` / `path:line-range` citation is not
+// extracted: the path manifest carries no line suffix, so the shape can never
+// resolve and was 49.5% of this lane's findings on the Ants corpus. The bare
+// path is still in scope (INV-5), and a non-path `head:N` (a JSON fragment)
+// stays in scope too — the guard is the path shape, not the colon.
+TEST(ContractDocDrift, PathLineCitationsSkipped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+
+    ASSERT_TRUE(writeFile(root + "/src/code.cpp", "int x;\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/standards/doc.md",
+                          "Cites `src/gone.cpp:2540` (citation, skipped).\n"
+                          "Cites `gone.cpp:39-49` (range citation, skipped).\n"
+                          "Cites `src/gone.cpp` (bare path, still flags).\n"
+                          "Cites `limit:10` (not a path, still flags).\n"));
+
+    const QString out = FeatureCoverage::runContractDocDriftCheck(root);
+    EXPECT_EQ(countMentions(out, "src/gone.cpp:2540"), 0);
+    EXPECT_EQ(countMentions(out, "gone.cpp:39-49"), 0);
+    EXPECT_EQ(countMentions(out, "`src/gone.cpp`"), 1);
+    EXPECT_EQ(countMentions(out, "limit:10"), 1);
+}
+
 // INV-10 — the registered audit check leaves the output filter uncapped
 // (maxLines = 0), so no finding is dropped past the default 100-line cap.
 // Source-grep over auditdialog.cpp's populateChecks (the feature test cannot
