@@ -359,21 +359,40 @@ bool Loader::matchItems() {
         byIdFold.insert(r.idFold, r.itemPk);
 
     matchPk = QVector<qint64>(plan.items.size(), 0);
+
+    // The id pass runs to completion BEFORE the id-less one, and
+    // the two-pass shape is the whole fix. § 2.6 calls `(project_id, id_fold)`
+    // the store's own identity and § 2.6.1 calls its own key "the weakest thing
+    // that is still safe", so a weak claim must never consume a row a strong one
+    // needs. Interleaved in document order it can: on 2026-08-13 the id-less
+    // bullet at ROADMAP.md:72 reached stored row ANTS-4141 first — an id run 1
+    // had SYNTHESISED for it — and consumed it; the real, hand-filed ANTS-4141
+    // bullet then found its row taken, fell through to the insert branch with a
+    // non-empty id, and hit UNIQUE (project_id, id_fold). That aborts the entire
+    // migration, so one collision costs every item in the plan.
+    //
+    // A displaced id-less item is not a loss: it fails to re-match, is inserted
+    // fresh, and § 2.8 allocates it an id above the high-water. That is the
+    // degradation § 2.6.1 already accepts for an edited headline.
     for (qsizetype i = 0; i < plan.items.size(); ++i) {
         const PlannedItem &it = plan.items.at(i);
-
-        if (!it.id.isEmpty()) {
-            // § 2.6 — the store's own identity, case-folded within a project.
-            // Never headline, never position: both change while an item stays
-            // itself, and matching on either would delete and re-create it,
-            // destroying its history rows.
-            const qint64 pk = byIdFold.value(it.id.toLower(), 0);
-            if (pk && !consumed.contains(pk)) {
-                matchPk[i] = pk;
-                consumed.insert(pk);
-            }
+        if (it.id.isEmpty())
             continue;
+        // § 2.6 — the store's own identity, case-folded within a project.
+        // Never headline, never position: both change while an item stays
+        // itself, and matching on either would delete and re-create it,
+        // destroying its history rows.
+        const qint64 pk = byIdFold.value(it.id.toLower(), 0);
+        if (pk && !consumed.contains(pk)) {
+            matchPk[i] = pk;
+            consumed.insert(pk);
         }
+    }
+
+    for (qsizetype i = 0; i < plan.items.size(); ++i) {
+        const PlannedItem &it = plan.items.at(i);
+        if (!it.id.isEmpty())
+            continue;
 
         // § 2.6.1 — an id-less item cannot be matched by id, and ~40% of the
         // corpus is id-less. Its natural key is the weakest thing that is still
@@ -555,30 +574,39 @@ bool Loader::allocateId(QString *allocated) {
             }
         }
 
-        // § 2.8 step 2. The stored high-water when there is one; otherwise the
+        // § 2.8 step 2, and step 4 when neither term yields anything. The
         // maximum numeric suffix among the plan's parsed ids carrying this
-        // prefix. Quarantined and synthesised ids are excluded from both: a
-        // PASS-43-5 comes from a heading, not from the counter, and would
-        // otherwise set the high-water to 5.
+        // prefix, and the stored high-water, and the HIGHER of the two.
+        // Quarantined and synthesised ids are excluded from both: a PASS-43-5
+        // comes from a heading, not from the counter, and would otherwise set
+        // the high-water to 5.
+        //
+        // The spec reads "`idHighWater()` when the row exists, OTHERWISE the
+        // plan's maximum" and taking it literally is a defect (2026-08-13).
+        // The two terms record different things: the stored row is what THIS
+        // STORE has allocated, the plan's maximum is what the SOURCE FILE
+        // already contains — and a project files ids into ROADMAP.md between
+        // migrations, through `roadmap_log`'s markdown path or by hand, without
+        // the store hearing about it. So the file routinely runs ahead, and
+        // preferring the stored row alone re-issues an id the source is already
+        // using. The next id-less bullet is then inserted under a live id:
+        // UNIQUE (project_id, id_fold), which rolls back the entire project.
+        // Neither term dominates, so neither can be the one that wins.
         err.clear();
         const auto storedHigh = store.idHighWater(projectId, prefix, &err);
         if (!err.isEmpty())
             return fail(err);
-        if (storedHigh) {
-            highWater = *storedHigh;
-        } else {
-            highWater = 0;   // step 4 — no parsed id yields an integer suffix
-            for (const PlannedItem &p : plan.items) {
-                if (p.idOrigin != QLatin1String("parsed"))
-                    continue;
-                const int cut = p.id.lastIndexOf(QLatin1Char('-'));
-                if (cut <= 0 || p.id.left(cut) != prefix)
-                    continue;
-                bool isInt = false;
-                const qint64 n = p.id.mid(cut + 1).toLongLong(&isInt);
-                if (isInt && n > highWater)
-                    highWater = n;
-            }
+        highWater = storedHigh ? *storedHigh : 0;
+        for (const PlannedItem &p : plan.items) {
+            if (p.idOrigin != QLatin1String("parsed"))
+                continue;
+            const int cut = p.id.lastIndexOf(QLatin1Char('-'));
+            if (cut <= 0 || p.id.left(cut) != prefix)
+                continue;
+            bool isInt = false;
+            const qint64 n = p.id.mid(cut + 1).toLongLong(&isInt);
+            if (isInt && n > highWater)
+                highWater = n;
         }
         prefixResolved = true;
     }

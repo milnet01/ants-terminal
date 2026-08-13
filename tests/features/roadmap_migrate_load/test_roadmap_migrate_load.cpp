@@ -226,6 +226,107 @@ TEST(RoadmapMigrateLoad, Inv2ReRunWithoutIdsIsIdempotent) {
     EXPECT_EQ(f.count(QStringLiteral("history")), 0);
 }
 
+// Regression, found by re-running the real Ants roadmap on 2026-08-13 rather
+// than by any invariant. § 2.6 matches on `(project_id, id_fold)` — the store's
+// own identity — and § 2.6.1 matches an id-less item on the far weaker
+// (section, headline, migrated) key. Both consume from one pool, so walking the
+// plan in document order lets the weak claim take a row the strong one needs.
+//
+// It is reachable because § 2.8 allocates synthesised ids out of the same
+// number space the project's own `.roadmap-counter` allocates from: run 1 gave
+// an id-less bullet PROJ-0001, and an author later filed a real PROJ-0001. On
+// re-run the id-less bullet reached that row first, and the real one fell
+// through to the insert branch carrying an id the store already held — UNIQUE
+// (project_id, id_fold), which rolls back the whole project. One collision cost
+// every item in the plan.
+TEST(RoadmapMigrateLoad, IdBearingItemClaimsItsRowBeforeAnIdlessRematch) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const auto first = RoadmapMigrateLoad::load(
+        f.store, planOf({item(QString(), QStringLiteral("one"), QStringLiteral("s"), 0)}),
+        f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    ASSERT_EQ(first.idsAllocated, 1);
+    ASSERT_EQ(f.scalar(QStringLiteral("SELECT id FROM item")),
+              QStringLiteral("PROJ-0001"));
+
+    // The id-less bullet is still id-less in source and still comes FIRST in
+    // document order; the author's own PROJ-0001 arrives after it.
+    const auto again = RoadmapMigrateLoad::load(
+        f.store,
+        planOf({item(QString(), QStringLiteral("one"), QStringLiteral("s"), 0),
+                item(QStringLiteral("PROJ-0001"), QStringLiteral("filed by hand"),
+                     QStringLiteral("s"), 1)}),
+        f.opts());
+    ASSERT_TRUE(again.ok)
+        << "a duplicate id must not abort the project: " << again.error.toStdString();
+
+    // The id owns the row it names, so PROJ-0001 is now the author's bullet...
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                  "SELECT headline FROM item WHERE id = 'PROJ-0001'")),
+              QStringLiteral("filed by hand"));
+    // ...and the displaced id-less bullet is re-inserted above the high-water
+    // rather than lost — the degradation § 2.6.1 already accepts.
+    EXPECT_EQ(f.count(QStringLiteral("item")), 2);
+    EXPECT_EQ(again.itemsInserted, 1);
+    EXPECT_EQ(again.idsAllocated, 1);
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                  "SELECT id FROM item WHERE headline = 'one'")),
+              QStringLiteral("PROJ-0002"));
+}
+
+// The same collision from the other side, and the root cause of it. § 2.8 step
+// 2 reads "`idHighWater()` when the row exists, OTHERWISE the plan's maximum",
+// and the two terms are not alternatives: the stored row is what this store has
+// allocated, the plan's maximum is what the source file already contains. A
+// project files ids into ROADMAP.md between migrations without the store
+// hearing about it, so the file runs ahead and the stored row alone re-issues a
+// live id.
+TEST(RoadmapMigrateLoad, AllocationClearsTheSourceFilesOwnIdsNotJustTheStores) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const auto first = RoadmapMigrateLoad::load(
+        f.store,
+        planOf({item(QStringLiteral("PROJ-0005"), QStringLiteral("five"),
+                     QStringLiteral("s"), 0),
+                item(QString(), QStringLiteral("one"), QStringLiteral("s"), 1)}),
+        f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    ASSERT_EQ(f.scalar(QStringLiteral(
+                  "SELECT id FROM item WHERE headline = 'one'")),
+              QStringLiteral("PROJ-0006"));
+    ASSERT_EQ(f.scalar(QStringLiteral("SELECT high_water FROM id_prefix")),
+              QStringLiteral("6"));
+
+    // Between runs a human files PROJ-0007 straight into the source file, and
+    // adds one more bullet with no id. The store's high-water still says 6.
+    const auto again = RoadmapMigrateLoad::load(
+        f.store,
+        planOf({item(QStringLiteral("PROJ-0005"), QStringLiteral("five"),
+                     QStringLiteral("s"), 0),
+                item(QString(), QStringLiteral("one"), QStringLiteral("s"), 1),
+                item(QStringLiteral("PROJ-0007"), QStringLiteral("seven"),
+                     QStringLiteral("s"), 2),
+                item(QString(), QStringLiteral("two"), QStringLiteral("s"), 3)}),
+        f.opts());
+    ASSERT_TRUE(again.ok)
+        << "allocation must not re-issue an id the source file already carries: "
+        << again.error.toStdString();
+
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                  "SELECT id FROM item WHERE headline = 'two'")),
+              QStringLiteral("PROJ-0008"))
+        << "PROJ-0007 is live in the source, so the next free id is 0008";
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                  "SELECT headline FROM item WHERE id = 'PROJ-0007'")),
+              QStringLiteral("seven"));
+    EXPECT_EQ(f.count(QStringLiteral("item")), 4);
+}
+
 // INV-2, the synthetic root section — regression, found by running the ten
 // real project roadmaps rather than by any invariant test. A section carrying
 // content above the first heading has an empty slug AND title, and the read
