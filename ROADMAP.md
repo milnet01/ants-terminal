@@ -22808,7 +22808,7 @@ against current source before filing.
   Lanes: mcp, fileoutline.
   Source: in-session-2026-07-30 (noticed while fixing ANTS-3735).
 
-- 📋 [ANTS-3739] **feedback_log op:compact_resolved reports duplicate ids in a skipped[] entry's `ids` array.**
+- ✅ [ANTS-3739] **feedback_log op:compact_resolved reports duplicate ids in a skipped[] entry's `ids` array.**
   Observed 2026-07-30 running compact_resolved on finbreak_Ants_MCP_Feedback.md. The skipped[] entry for the finding headed "IMPROVED (ANTS-3468 / ANTS-3503): session_orient's embedded codebase_index now ships a full source_files[] list" carried ids:["ANTS-3468","ANTS-3503","ANTS-3468"] — ANTS-3468 twice. It looks like ids harvested from the heading text are concatenated with ids parsed from the `**Proposed ID:**` line without a de-duplication pass; op:assign_id documents de-duplication for its own `ids` argument, so the two paths are inconsistent.
     Cosmetic only — no wrong decision follows from it (the gating logic reads statuses, and a repeated id resolves to the same status). Filed because it is a one-line fix in the reporting path and it makes the envelope self-inconsistent with assign_id's documented contract.
     Fix: de-duplicate (first occurrence wins, preserving order) when assembling the reported ids array, matching assign_id.
@@ -22816,6 +22816,13 @@ against current source before filing.
   Kind: fix.
   Lanes: mcp, feedback.
   Source: in-session-2026-07-30 (observed during the feedback triage sweep).
+  Resolved (2026-08-13): compactResolved de-duplicates a finding's ids, first
+  occurrence wins, matching assignId. The stated cause was wrong and worth
+  correcting: ids are harvested ONLY from the `**Proposed ID:**` line
+  (`fb.idValue`), never concatenated with the heading — finbreak's
+  [ANTS-3468, ANTS-3503, ANTS-3468] came from one closure line naming
+  ANTS-3468 twice in its own prose. Test:
+  FeedbackCompactResolved.DuplicateIdsReportedOnce (red before the fix).
 
 - ✅ [ANTS-3740] **cold_eyes_brief: per-doc section index (the second half of ANTS-3718).**
   Split out of ANTS-3718 when its `input_hash` half shipped
@@ -22965,7 +22972,7 @@ against current source before filing.
   Tests: 6 in debt_sweep_engine (4 pure, 2 end-to-end over a git fixture) + the
   amended scrape test. Full suite 3090/3090 green.
 
-- 📋 [ANTS-3744] **feedback_query returns mapped_ids:[] for a fully-condensed v2 file, so the reporting session cannot see its own items' status.**
+- ✅ [ANTS-3744] **feedback_query returns mapped_ids:[] for a fully-condensed v2 file, so the reporting session cannot see its own items' status.**
   VERIFIED 2026-07-30 against three live corpus files, not inferred.
 
   The ANTS-3475 condensation pass reduced each file to a header, a
@@ -22997,6 +23004,16 @@ against current source before filing.
   **Layman:** After we tidied the shared feedback files, some projects can no longer see whether their reported issues were fixed.
   Kind: fix.
   Source: in-session-2026-07-30 (found closing the ANTS-3389 loop back to MAME Curator).
+  Resolved (2026-08-13): `parse()`'s v2 branch falls back to the
+  `## Tracked in ROADMAP …` pointer line when the inline harvest is empty, so
+  a fully-condensed file reports mapped_ids again and mapped_id_status answers
+  "did my item ship?". Inline ids win — a file still carrying a
+  `**Proposed ID:**` keeps the inline-only harvest, so a stale pointer line
+  cannot add ids mid-triage. Verified against the three condensed corpus files
+  (MAME_Curator / RetroArch / Contact_List, all mapped_ids:[] before). Tests:
+  FeedbackV2Delta.CondensedTrackedLineSuppliesMappedIds (red before the fix)
+  + InlineIdsWinOverTrackedLine (guard). Standard updated:
+  mcp-feedback-files.md § Tooling, feedback_query row.
 
 - 📋 [ANTS-3745] **No MCP verb answers "which build target owns this file?" — every test edit falls back to awk over CMakeLists.txt.**
   Hit four separate times in one session. After editing a
@@ -39093,6 +39110,45 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-04 (noticed while fixing ANTS-3828).
 
+- 📋 [ANTS-4141] **A single `roadmap_log op:flip` re-rendered the whole of ROADMAP.md from a store that has diverged from the file by ~200 ids.**
+  Hit 2026-08-13 flipping two bullets. The write reported
+  `items_rendered: 1975` and touched three files —
+  `ROADMAP.md`, `docs/roadmap/0.6.md`, `docs/roadmap/0.5.md` — for a change
+  that should have moved two status glyphs. The ROADMAP.md diff was
+  **+5,618 / −4,121**: the legend reordered, every table separator rewritten
+  to `| --- |`, ~180 previously id-less historical bullets minted new ids
+  (ANTS-4141 … ANTS-4324+), `Kind: implement.` stamped on items that never
+  declared one, and every affected headline split from its own prose
+  (`**Scrollback regex search**\n  . \`Ctrl+Shift+F\` …`). The two archive
+  files gained a `<!-- ants-roadmap-format: 1 -->` marker they did not have.
+  Reverted with `git checkout`; the three roadmap edits this session needed
+  were then made by hand.
+
+  The divergence is the root of it, and it is measurable: ROADMAP.md's highest
+  id is **ANTS-4140** and `.roadmap-counter` reads 4140, while the store holds
+  at least **ANTS-4338** — a `dry_run` append refuses with
+  `render_gate_unmet` naming ANTS-4338 as an open item with no `Layman:` line,
+  an id the file has never contained. So the render is not reformatting the
+  file, it is *replacing* it with a different document.
+
+  Two things to settle, and the first is urgent because it is a data-loss
+  shape: a write verb whose stated job is a two-glyph flip must not rewrite
+  1,975 items and two untouched archive files. Either the surgical path
+  regressed (commit b50a0c77, three commits earlier, flipped a bullet with a
+  +20/−1 diff, so it worked recently) or the store-backed render is now the
+  default write path and needs an explicit opt-in. Second: id allocation is
+  running from the store while `.roadmap-counter` sits at 4140, so a hand
+  append and a verb append will collide. **This bullet's own id was taken by
+  hand from the counter and may already exist in the store.**
+
+  Note the running MCP binary was 3 commits behind HEAD (built c463b600 vs
+  b50a0c77) when this happened — worth ruling in or out before designing a
+  fix, but it does not explain minting ids.
+  **Layman:** Marking two roadmap items done silently rewrote the entire roadmap file — thousands of lines, invented ticket numbers, and two archive files nobody touched.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: in-session-2026-08-13 (hit while recording the cross-session feedback batch).
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
@@ -40199,6 +40255,29 @@ contributors don't duplicate research.
   Related: ANTS-4105 (the false-positive ledger the reporting sessions
   reached for does not suppress tool findings, so this cannot currently be
   quieted).
+
+  Progress (2026-08-13): measured, then half-fixed. Measurement first, per
+  this bullet's own instruction — but by shape over the WHOLE category rather
+  than a 30-sample: a Python replica of runContractDocDriftCheck reproduced
+  2,315 findings against the reported 2,325 (0.4% off), so the classification
+  below is of the real set, not an estimate.
+  Shipped: a `path:line` / `path:line-range` citation guard in
+  extractDocLiteralTokens — 1,146 findings, 49.5%. That shape is false BY
+  CONSTRUCTION (the path manifest carries no line suffix, so it can never
+  resolve), and citation staleness already has an owner in doc_citations
+  (ANTS-3636). Spec ANTS-3600 § 2.4 + INV-11; test
+  ContractDocDrift.PathLineCitationsSkipped.
+  NOT taken, and both were measured before rejecting: (a) Fin Break's filter
+  (1) in full — skipping every token holding `/` or a `.md`/`.py`/`.sh`
+  extension — collides head-on with INV-5 (a slash-path absent from sources
+  IS reported) and would hide the signal ANTS-4138 is about (docs citing
+  unmirrored global files); (b) their filter (2) plus an `mcp__ants__`
+  prefix-strip — 2 and 23 findings respectively, not worth the surface.
+  STILL OPEN, and the goal is not met: 1,168 remain — 712 plain identifiers,
+  177 slash-paths, 166 dotted, 65 `*.md` filenames, 23 `mcp__` verb
+  spellings, 17 `scoped::names`, 8 trailing-colon labels. The 712 is where
+  the next pass has to look, and it needs a true-positive read rather than
+  another shape rule.
 
 - 📋 [ANTS-3850] **cppcheck: 24 structs with uninitialised POD members, plus 8 by-value/by-reference nits.**
   From the 2026-08-06 audit. cppcheck reports, on the post-split tree:

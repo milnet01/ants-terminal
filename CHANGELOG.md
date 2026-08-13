@@ -12,6 +12,17 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`feedback_log op:compact_resolved` no longer lists the same id twice** (ANTS-3739)
+  An id named twice on one `**Proposed ID:**` line now reports once, matching `op:assign_id`.
+
+- **`feedback_query` again reports `mapped_ids` for a fully-condensed feedback file** (ANTS-3744)
+  A file tidied down to its `## Tracked in ROADMAP …` pointer line returned no ids, so the reporting project could not see whether its own findings had shipped. Inline ids still win where a file has them.
+
+- **Audit: the Contract-Doc ↔ Code Drift lane no longer reports `path:line` citations** (ANTS-3849)
+  A `remotecontrol.cpp:2540`-shaped token can never resolve — the path index holds no line numbers — so half the category was noise by construction. 1,146 of 2,315 findings on this repo. Citation staleness is `doc_citations`' job.
+
 ## [0.7.105] — unreleased (Patron RC preview)
 ### Added
 
