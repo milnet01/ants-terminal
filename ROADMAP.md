@@ -41088,6 +41088,36 @@ here.)
 
   Belongs with ANTS-3758 (the render emits the line) rather than ANTS-3765,
   and closing it needs INV-6 green on two consecutive cycles.
+  **Mechanism PINNED (2026-08-14), as this bullet asked — and both readings
+  it dismissed were wrong for the same reason: there is no stripper.**
+  `roadmapparse.cpp` stores the body verbatim (`rec.body = body;`), so a
+  bullet's body always contains its trailer lines. Nothing strips them at any
+  point, which is why "the stripper does not know the key" cannot be the
+  cause.
+  The convergence comes from the RENDER, not the parse: `bulletText()` emits
+  `Kind:` only when `shadows(tv.kind, it.kind)` is false — i.e. unless the
+  body already carries that exact value. So an item that DECLARED a kind
+  never drifts (its body always held the line, so it is never re-emitted),
+  and a DEFAULTED one drifts exactly once: cycle 1 appends the line because
+  the body lacks it, cycle 2 sees it and suppresses. That is the observed
+  363-then-2, and it rules out compounding by construction rather than by
+  luck.
+  **So the defect is the same class as ANTS-4063, not a parser bug**: the
+  render materialises a DEFAULTED value into the file, which the next import
+  reads as asserted. `roadmaprender.cpp` already solves exactly this for
+  `source`, testing `provenance != "defaulted"` — and the reasoning there
+  (`ABSENT provenance means "not a defaultable field", never "defaulted"`)
+  transfers unchanged.
+  **What is NOT yet settled, and it is a design call rather than a fix.**
+  `Kind:` is a required piece of the § 3.5 form, so suppressing it for a
+  defaulted item leaves the rendered bullet incomplete, where suppressing
+  `Source:` did not — `Source:` has a documented default and `Kind:` does
+  not. The alternative is that this is not a code defect at all but a wrong
+  acceptance criterion: the migration already accepts that the first
+  store-backed render is "a visible one-time reformat", so the round-trip
+  invariant may belong as *idempotence after canonicalisation* (cycle 2 = 0)
+  rather than cycle 1 = 0. Both branches are cheap; they are materially
+  different, and the second closes D4 without changing any code.
   **Layman:** Saving the roadmap and reading it back adds one stray line to 363 items — once each, not repeatedly.
   Kind: fix.
   Lanes: roadmap-store, mcp.
