@@ -31978,7 +31978,7 @@ finbreak re-verified it.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager).
 
-- 📋 [ANTS-4398] **A `mutation_probe` verb: apply a mutation, run a selector, restore — and REFUSE a mutation that did not change the file.**
+- ✅ [ANTS-4398] **A `mutation_probe` verb: apply a mutation, run a selector, restore — and REFUSE a mutation that did not change the file.**
   There is no verb for the mutate-and-watch-it-go-red loop, which several
   projects' CLAUDE.md files mandate before believing an invariant is held.
   `focused_test` is ctest-only and does not mutate; `invariant_check` reads
@@ -32010,6 +32010,25 @@ finbreak re-verified it.
   visible; optionally require a green baseline and refuse otherwise.
   **This project hand-rolled the same loop six times on 2026-08-14** while
   implementing the first triage batch, which is independent corroboration.
+  Resolved (2026-08-14). Every guarantee the report names: an inert mutation
+  gets its own outcome and **runs NO test at all** (a run there would pass
+  against unmutated code, which is the false reading the verb exists to
+  prevent); the restore is verified against the BASELINE BYTES rather than
+  assumed, on every exit path including a timed-out run; each mutation is
+  applied to a clean baseline so two cannot compound; per-mutation
+  passed/failed counts; and `require_green_baseline` refuses the batch when
+  the suite is already red.
+  Three decisions beyond the brief. **`test_command` is an ARGV ARRAY, never a
+  shell string** — a deliberate narrowing, because this verb writes to a
+  source file and spawns a process, and a shell string would make it an
+  arbitrary-command surface reachable from a tool call; everything a selector
+  needs is expressible as argv, so the narrowing costs nothing. **Unparsed
+  runner output leaves the counts at -1, not 0** — a run whose output could
+  not be read has not said that nothing passed. And the verb is registered on
+  the WORKER delegate, since a batch of full test runs must not block the GUI
+  thread.
+  Six registration sites plus the prefix-tag bucket; the bucket was caught by
+  `mcp_tool_prefix_tags` INV-3 rather than by memory.
   **Layman:** Checking that a test would actually notice a bug means editing the code, running the test, and putting it back — done by hand every time, and a typo in the edit looks exactly like a passing test.
   Kind: feature.
   Lanes: mcp, testing.

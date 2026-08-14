@@ -360,6 +360,7 @@ add_library(ants_core_lib STATIC
     ${ANTS_RC_SOURCES_REL}
     src/remotecontrolgate.cpp
     src/fileoutline.cpp
+    src/mutationprobe.cpp        # ANTS-4398
     # ANTS-1993 — Claude permission-prompt structural gate (Qt6::Core-only).
     src/claudepromptdetect.cpp
     # ANTS-1855 — read_log pure filtering helper (Qt6::Core-only).
@@ -1475,6 +1476,7 @@ if(ANTS_TESTS)
                 tests/features/mcp_tools_list_schema/test_mcp_tools_list_schema.cpp
                 tests/features/mcp_workspace_search/test_mcp_workspace_search.cpp
                 tests/features/mcp_file_outline/test_mcp_file_outline.cpp
+                tests/features/mutation_probe/test_mutation_probe.cpp
                 # ANTS-1855 — read_log filter verb.
                 tests/features/mcp_read_log/test_mcp_read_log.cpp
                 # ANTS-2021 — read_region slice verb.

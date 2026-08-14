@@ -1,5 +1,6 @@
 // ANTS-3833 TU 6/12 — Workspace and code index verbs.
 #include "remotecontrol.h"
+#include "mutationprobe.h"   // ANTS-4398
 #include "remotecontrol_internal.h"
 #include "fileoutline.h"
 #include "readlog.h"
@@ -1463,6 +1464,256 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     return QJsonDocument(outlineOneFile(rawPath, rootCanonical, mode,
                                         includeDoc, maxSymbols, maxBytes,
                                         withSizes, maxHeadingLevel));
+}
+
+// ANTS-4398 — mutation_probe: apply a mutation, run a test selector, restore.
+//
+// The guarantees are the reason this is a verb rather than a documented bash
+// recipe. A shell loop can do the mechanics; it cannot promise them.
+//
+//  * An INERT mutation gets its own outcome, never "survived". See
+//    mutationprobe.h — this is the field the whole verb is for.
+//  * The restore is guaranteed, INCLUDING on a failed or timed-out run. The
+//    hand-rolled version leaks a mutated source file when the run is
+//    interrupted, which is genuinely dangerous in a repo the session then
+//    commits. `restored_clean` is verified against the baseline bytes, not
+//    assumed.
+//  * Each mutation runs against a CLEAN baseline, so two cannot compound.
+//  * Per-mutation pass/fail counts, so "died for the wrong reason" (a
+//    collection error rather than the target assertion) is visible.
+//
+// `test_command` is an ARGV ARRAY, never a shell string. That is a deliberate
+// narrowing: this verb writes to a source file and spawns a process, and a
+// shell string would make it an arbitrary-command surface reachable from a
+// tool call. Everything a test selector needs is expressible as argv.
+QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
+    auto mpErr = [](const QString &code, const QString &message) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("code")]  = code;
+        o[QStringLiteral("error")] = message;
+        return QJsonDocument(o);
+    };
+
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty())
+        return mpErr(QStringLiteral("bad_path"),
+                     QStringLiteral("mutation_probe: no focused project"));
+
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (rawPath.isEmpty())
+        return mpErr(QStringLiteral("bad_args"),
+                     QStringLiteral("mutation_probe: `path` is required"));
+    const auto check = PathValidation::validatePath(
+        rawPath, rootCanonical, QStringLiteral("mutation_probe"),
+        QStringLiteral("path"));
+    if (check.bad) return QJsonDocument(check.err);
+    if (check.resolved.isEmpty())
+        return mpErr(QStringLiteral("not_found"),
+                     QStringLiteral("mutation_probe: \"%1\" does not exist")
+                         .arg(rawPath));
+
+    QStringList argv;
+    for (const QJsonValue &v :
+             req.value(QStringLiteral("test_command")).toArray())
+        argv.append(v.toString());
+    if (argv.isEmpty())
+        return mpErr(QStringLiteral("bad_args"),
+            QStringLiteral("mutation_probe: `test_command` is required and is "
+                           "an ARGV ARRAY, not a shell string — e.g. "
+                           "[\"pytest\", \"-k\", \"test_supervisor\"]. A shell "
+                           "string is refused on purpose: this verb writes to "
+                           "a source file and spawns a process."));
+
+    const QJsonArray muts = req.value(QStringLiteral("mutations")).toArray();
+    if (muts.isEmpty())
+        return mpErr(QStringLiteral("bad_args"),
+            QStringLiteral("mutation_probe: `mutations` must hold at least "
+                           "one {label, old, new}"));
+    if (muts.size() > 50)
+        return mpErr(QStringLiteral("bad_args"),
+            QStringLiteral("mutation_probe: %1 mutations exceeds the 50 cap — "
+                           "each one is a full test run").arg(muts.size()));
+
+    int timeoutSec = qBound(5, req.value(QStringLiteral("timeout_sec"))
+                                   .toInt(300), 1800);
+
+    // Read the baseline ONCE. Every mutation is applied to this, never to the
+    // previous mutant, so two mutations cannot compound.
+    QFile bf(check.resolved);
+    if (!bf.open(QIODevice::ReadOnly))
+        return mpErr(QStringLiteral("read_failed"),
+                     QStringLiteral("mutation_probe: could not read \"%1\"")
+                         .arg(rawPath));
+    const QByteArray baselineBytes = bf.readAll();
+    bf.close();
+    const QString baseline = QString::fromUtf8(baselineBytes);
+
+    struct RunOut { bool started; bool timedOut; int exitCode; QString output; };
+    auto runTests = [&]() -> RunOut {
+        QProcess p;
+        p.setWorkingDirectory(rootCanonical);
+        p.setProcessChannelMode(QProcess::MergedChannels);
+        p.start(argv.first(), argv.mid(1));
+        RunOut o{true, false, -1, QString()};
+        if (!p.waitForStarted(5000)) { o.started = false; return o; }
+        if (!p.waitForFinished(timeoutSec * 1000)) {
+            p.kill();
+            p.waitForFinished(2000);
+            o.timedOut = true;
+        }
+        o.exitCode = p.exitCode();
+        QByteArray out = p.readAllStandardOutput();
+        static const int kCap = 512 * 1024;
+        if (out.size() > kCap) out = out.right(kCap);
+        o.output = QString::fromUtf8(out);
+        return o;
+    };
+    // The restore, used on every exit path. Writing the ORIGINAL BYTES (not a
+    // re-encode of the decoded string) is what makes `restored_clean` a real
+    // guarantee rather than a hope.
+    auto restore = [&]() -> bool {
+        QFile w(check.resolved);
+        if (!w.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+        const bool wrote = (w.write(baselineBytes) == baselineBytes.size());
+        w.close();
+        if (!wrote) return false;
+        QFile v(check.resolved);
+        if (!v.open(QIODevice::ReadOnly)) return false;
+        const bool same = (v.readAll() == baselineBytes);
+        v.close();
+        return same;
+    };
+
+    QJsonObject out;
+    QJsonArray results;
+    bool restoredClean = true;
+
+    // Optional green-baseline gate. A RED baseline makes every result
+    // meaningless — a mutant "dying" proves nothing when the suite was
+    // already failing — so a caller can refuse the batch up front.
+    if (req.value(QStringLiteral("require_green_baseline")).toBool(false)) {
+        const RunOut base = runTests();
+        if (!base.started)
+            return mpErr(QStringLiteral("command_not_found"),
+                QStringLiteral("mutation_probe: could not start \"%1\"")
+                    .arg(argv.first()));
+        const auto bc = MutationProbe::parseCounts(base.output);
+        if (base.timedOut || base.exitCode != 0) {
+            QJsonObject o2;
+            o2[QStringLiteral("ok")]    = false;
+            o2[QStringLiteral("code")]  = QStringLiteral("baseline_not_green");
+            o2[QStringLiteral("error")] = QStringLiteral(
+                "mutation_probe: the baseline run is not green, so every "
+                "mutation result would be meaningless — a mutant \"dying\" "
+                "proves nothing when the suite was already failing. Fix the "
+                "suite first, or drop require_green_baseline to probe anyway.");
+            o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
+            o2[QStringLiteral("baseline_timed_out")] = base.timedOut;
+            o2[QStringLiteral("baseline_passed")]    = bc.passed;
+            o2[QStringLiteral("baseline_failed")]    = bc.failed;
+            return QJsonDocument(o2);
+        }
+        out[QStringLiteral("baseline_passed")] = bc.passed;
+        out[QStringLiteral("baseline_failed")] = bc.failed;
+    }
+
+    for (const QJsonValue &mv : muts) {
+        const QJsonObject mo = mv.toObject();
+        MutationProbe::Mutation m;
+        m.label   = mo.value(QStringLiteral("label")).toString();
+        m.oldText = mo.value(QStringLiteral("old")).toString();
+        m.newText = mo.value(QStringLiteral("new")).toString();
+
+        QJsonObject r;
+        r[QStringLiteral("label")] = m.label;
+
+        const auto ap = MutationProbe::applyOne(baseline, m);
+        if (!ap.ok) {
+            // Inert: NO test run at all. Running one would produce a green
+            // result against unmutated code, which is the false reading this
+            // whole verb exists to prevent — so the run is skipped rather
+            // than performed and disclaimed.
+            r[QStringLiteral("applied")] = false;
+            r[QStringLiteral("inert")]   = true;
+            r[QStringLiteral("outcome")] = QStringLiteral("inert");
+            r[QStringLiteral("inert_reason")] =
+                ap.inert == MutationProbe::Inert::OldTextAbsent
+                    ? QStringLiteral("old_text_absent")
+                    : (ap.inert == MutationProbe::Inert::OldTextEmpty
+                           ? QStringLiteral("old_text_empty")
+                           : QStringLiteral("unchanged"));
+            r[QStringLiteral("summary")] = QStringLiteral(
+                "the file was NOT changed, so no test was run — a run here "
+                "would pass against unmutated code and read as a weak test. "
+                "This is a defect in the mutation, not evidence about the "
+                "suite.");
+            results.append(r);
+            continue;
+        }
+
+        QFile w(check.resolved);
+        if (!w.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            r[QStringLiteral("applied")] = false;
+            r[QStringLiteral("outcome")] = QStringLiteral("write_failed");
+            results.append(r);
+            continue;
+        }
+        const QByteArray patched = ap.patched.toUtf8();
+        const bool wrote = (w.write(patched) == patched.size());
+        w.close();
+        if (!wrote) {
+            if (!restore()) restoredClean = false;
+            r[QStringLiteral("applied")] = false;
+            r[QStringLiteral("outcome")] = QStringLiteral("write_failed");
+            results.append(r);
+            continue;
+        }
+
+        const RunOut run = runTests();
+        // Restore BEFORE interpreting anything, so no early return can leak a
+        // mutated file.
+        if (!restore()) restoredClean = false;
+
+        r[QStringLiteral("applied")]     = true;
+        r[QStringLiteral("inert")]       = false;
+        r[QStringLiteral("occurrences")] = ap.occurrences;
+        if (!run.started) {
+            r[QStringLiteral("outcome")] = QStringLiteral("command_not_found");
+        } else if (run.timedOut) {
+            // Timed out is NOT "killed" — a mutant that hangs the suite has
+            // told you something, but not that the test caught it.
+            r[QStringLiteral("outcome")] = QStringLiteral("timed_out");
+        } else {
+            const auto c = MutationProbe::parseCounts(run.output);
+            r[QStringLiteral("passed")]    = c.passed;
+            r[QStringLiteral("failed")]    = c.failed;
+            r[QStringLiteral("exit_code")] = run.exitCode;
+            r[QStringLiteral("outcome")]   = run.exitCode == 0
+                ? QStringLiteral("survived")   // the suite did NOT notice
+                : QStringLiteral("killed");
+            if (run.exitCode == 0) {
+                r[QStringLiteral("summary")] = QStringLiteral(
+                    "the mutation applied (%1 occurrence(s)) and the tests "
+                    "still passed — the suite does not measure this.")
+                        .arg(ap.occurrences);
+            }
+        }
+        results.append(r);
+    }
+
+    out[QStringLiteral("ok")]             = true;
+    out[QStringLiteral("path")]           = rawPath;
+    out[QStringLiteral("results")]        = results;
+    out[QStringLiteral("restored_clean")] = restoredClean;
+    if (!restoredClean) {
+        out[QStringLiteral("restore_hint")] = QStringLiteral(
+            "the source file could NOT be restored to its baseline — check "
+            "\"%1\" with git before doing anything else. This is the failure "
+            "mode the verb exists to prevent, so it is reported loudly rather "
+            "than folded into a per-mutation outcome.").arg(rawPath);
+    }
+    return QJsonDocument(out);
 }
 
 // ANTS-1855 — read_log: filter a log file, return only matching lines.

@@ -3957,6 +3957,103 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(foTool);
 
+                // ANTS-4398 — mutation_probe.
+                {
+                    QJsonObject mp;
+                    mp["name"] = "mutation_probe";
+                    mp["description"] = QStringLiteral(
+                        "Apply a textual mutation to a source file, run a test "
+                        "command, restore the file — and REFUSE a mutation that "
+                        "did not change anything. The mutate-and-watch-it-go-red "
+                        "loop several projects' CLAUDE.md files mandate before "
+                        "believing an invariant is held, which had no verb: "
+                        "focused_test is ctest-only and does not mutate, "
+                        "invariant_check reads specs and runs nothing. "
+                        "`inert` is the field that matters: a mutation whose "
+                        "`old` is absent, or whose replacement leaves the bytes "
+                        "identical, is reported INERT and NO test is run — "
+                        "running one would pass against unmutated code and read "
+                        "as a weak test, which is the false conclusion this verb "
+                        "exists to prevent. Outcomes: killed (the suite noticed) "
+                        "| survived (it did not) | inert | timed_out | "
+                        "command_not_found | write_failed. "
+                        "Each mutation is applied to a CLEAN baseline so two "
+                        "cannot compound, and the restore is guaranteed even on "
+                        "a failed or timed-out run — `restored_clean` is "
+                        "VERIFIED against the baseline bytes, because a leaked "
+                        "mutated file in a repo the session then commits is the "
+                        "dangerous failure. Pass require_green_baseline:true to "
+                        "refuse the batch when the suite is already red, since a "
+                        "mutant \"dying\" proves nothing then. "
+                        "`test_command` is an ARGV ARRAY, never a shell string — "
+                        "a deliberate narrowing, because this verb writes to a "
+                        "source file and spawns a process. caller_cwd required.");
+                    mp["selection_hint"] = QStringLiteral(
+                        "Use to prove a test would actually catch a defect "
+                        "before trusting it — and to find green tests that "
+                        "measure nothing.");
+                    {
+                        QJsonObject schema;
+                        schema["type"] = "object";
+                        schema["required"] = QJsonArray{
+                            QStringLiteral("caller_cwd"), QStringLiteral("path"),
+                            QStringLiteral("mutations"),
+                            QStringLiteral("test_command")};
+                        QJsonObject props;
+                        QJsonObject pathP; pathP["type"] = "string";
+                            pathP["description"] = QStringLiteral(
+                                "Project-relative source file to mutate.");
+                        QJsonObject cmdP; cmdP["type"] = "array";
+                            { QJsonObject it; it["type"] = "string";
+                              cmdP["items"] = it; }
+                            cmdP["description"] = QStringLiteral(
+                                "ARGV array, e.g. [\"pytest\", \"-k\", "
+                                "\"test_supervisor\"]. NOT a shell string.");
+                        QJsonObject mutsP; mutsP["type"] = "array";
+                            {
+                                QJsonObject item; item["type"] = "object";
+                                QJsonObject ip;
+                                QJsonObject l; l["type"] = "string";
+                                    l["description"] = QStringLiteral(
+                                        "Your name for this mutant, echoed back.");
+                                QJsonObject ov; ov["type"] = "string";
+                                    ov["description"] = QStringLiteral(
+                                        "Exact substring to replace. Absent from "
+                                        "the file ⟹ inert.");
+                                QJsonObject nv; nv["type"] = "string";
+                                    nv["description"] = QStringLiteral(
+                                        "Replacement; may be empty (a deletion "
+                                        "is a mutation). Equal to `old` ⟹ inert.");
+                                ip["label"] = l; ip["old"] = ov; ip["new"] = nv;
+                                item["properties"] = ip;
+                                mutsP["items"] = item;
+                            }
+                            mutsP["description"] = QStringLiteral(
+                                "1-50 mutations, each run separately against a "
+                                "clean baseline. Capped because each is a full "
+                                "test run.");
+                        QJsonObject grP; grP["type"] = "boolean";
+                            grP["default"] = false;
+                            grP["description"] = QStringLiteral(
+                                "Run the suite unmutated first and refuse the "
+                                "batch (baseline_not_green) if it is red.");
+                        QJsonObject toP; toP["type"] = "integer";
+                            toP["default"] = 300;
+                            toP["description"] = QStringLiteral(
+                                "Per-run wall-clock budget in seconds, clamped "
+                                "to [5, 1800].");
+                        props["path"]                   = pathP;
+                        props["test_command"]           = cmdP;
+                        props["mutations"]              = mutsP;
+                        props["require_green_baseline"] = grP;
+                        props["timeout_sec"]            = toP;
+                        props["caller_cwd"] = makeCallerCwdReadProp();
+                        schema["properties"] = props;
+                        mp["inputSchema"] = schema;
+                    }
+                    tools.append(mp);
+                }
+
                 // ANTS-1855 — read_log: filter a log file, return only
                 // matching lines + counts instead of Read-ing a whole
                 // multi-MB log into context.
@@ -11641,6 +11738,10 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1302 — focused_test (shares the test bucket).
                     if (name == QLatin1String("focused_test"))
                         return QStringLiteral("test");
+                    // ANTS-4398 — mutation_probe (same bucket: it asks
+                    // whether the tests measure anything).
+                    if (name == QLatin1String("mutation_probe"))
+                        return QStringLiteral("test");
                     // ANTS-1303 — symbol queries.
                     if (name == QLatin1String("find_definition") ||
                         name == QLatin1String("find_caller"))
@@ -13092,6 +13193,7 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-3368 — co_change_family: project-scoped repo-wide field scan.
     if (toolName == QStringLiteral("co_change_family"))   return C::Required;
     if (toolName == QStringLiteral("file_outline"))       return C::Required;
+    if (toolName == QStringLiteral("mutation_probe"))     return C::Required;  // ANTS-4398
     if (toolName == QStringLiteral("plan_template"))      return C::Required;
     // ANTS-1569 — current_state aggregator: project-scoped read over
     // ROADMAP + git + audit cache. The ANTS-1520 fall-through default

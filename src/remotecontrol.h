@@ -502,6 +502,8 @@ public:
     // the pathInRepoRoot helper with cmdWorkspaceSearch.
     // See docs/specs/ANTS-1249.md.
     QJsonDocument cmdFileOutline(const QJsonObject &req);
+    // ANTS-4398 — mutation_probe: mutate, run, restore.
+    QJsonDocument cmdMutationProbe(const QJsonObject &req);
     // ANTS-1855 — read_log: filter a log file (Ants debug log by
     // default, or a caller_cwd-relative path) via ReadLog::filter.
     QJsonDocument cmdReadLog(const QJsonObject &req);

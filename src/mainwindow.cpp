@@ -5215,6 +5215,12 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("file_outline",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdFileOutline));
+    // ANTS-4398 — mutation_probe. rcDelegateWorker, not rcDelegate: each
+    // mutation runs a full test command, so a batch is seconds-to-minutes and
+    // must not block the GUI thread.
+    m_claudeIntegration->registerToolProvider("mutation_probe",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegateWorker(&RemoteControl::cmdMutationProbe));
     // ANTS-1855 — read_log: filter a log file (debug log or caller_cwd path).
     m_claudeIntegration->registerToolProvider("read_log",
         ClaudeIntegration::CallerCwdContract::Required,
