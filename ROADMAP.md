@@ -31031,6 +31031,97 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (LottoTracker).
 
+- 📋 [ANTS-4379] **`doc_symbols` reports Python module-level constants as `unresolved_symbol`, so a spec citing an error-message constant reads as a broken reference.**
+  finbreak: `_MISPARSE` and `_E_TOTALS_MISMATCH` flagged "no definition
+  found", while both are plain top-level assignments in the very file the doc
+  cites. `file_outline` already emits a top-level `const` kind for the brace
+  family (ANTS-4090); Python has no equivalent, and `doc_symbols` shares that
+  index.
+  It bites a specific and unavoidable shape: a codebase whose user-facing
+  error strings are module constants — the natural Python idiom, and exactly
+  what a spec *about error messages* must cite. So every such citation reads
+  as broken.
+  The cost is dilution, not the miss itself: that run reported 19 unresolved
+  of 60, only 2 of this class, but all 19 had to be hand-triaged — which is
+  how a genuinely unresolved symbol gets waved through as "probably another
+  builtin". **Exactly the mechanism ANTS-4359 documents**, where a real
+  citation defect survived two review loops inside a bucket declared settled.
+  Fix: extend the Python outline to emit top-level `NAME = …` as `kind:"const"`,
+  mirroring ANTS-4090, and let `doc_symbols` resolve against it. Narrower
+  alternative if that is too broad: keep them out of the outline but have
+  `doc_symbols` fall back to an anchored `^NAME\s*=` scan of the candidate
+  file before declaring a symbol unresolved.
+  **Layman:** A spec that quotes the program's own error messages is told those messages do not exist.
+  Kind: fix.
+  Lanes: docsymbols, fileoutline, mcp.
+  Source: cc-feedback-2026-08-14 (finbreak).
+
+- 📋 [ANTS-4380] **`roadmap_query` refuses `mode:"sections"` although the response key it returns is named `sections` — the accepted name is `section_index`.**
+  The name a caller reads out of a previous reply is exactly the name the
+  input rejects. finbreak filed it twice (2026-08-12, re-verified 2026-08-13)
+  and explicitly framed it as the LAST known member of a class, not a fresh
+  report: the sibling instance — input `status`, echoed as `filter` — was
+  closed as ANTS-3698, which they confirmed shipped in the same file.
+  Genuinely self-correcting (the refusal lists every accepted mode, so the
+  retry is one call), and they said outright it is not worth a behaviour
+  change on its own. Filed because the fix is a one-line alias and because
+  closing the class beats closing instances.
+  Fix: accept `sections` as an alias for `section_index`, the way `filter`
+  became an alias for `status`. Worth checking symmetrically whether
+  `bullets` mode's payload key matches its input name.
+  **Layman:** The tool answers with a list called "sections" but refuses to be asked for "sections".
+  Kind: enhancement.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (finbreak, filed twice).
+
+- 📋 [ANTS-4381] **`doc_citations` returns `missing_file` for a citation whose path is a real SUFFIX of a real file, so a live file reads as deleted.**
+  finbreak: `ui/import_wizard.py:163` cited where the file is
+  `src/finbreak/ui/import_wizard.py` (1567 lines, present) came back
+  `status:"missing_file"` — with `basename_index_size:165` in the same
+  envelope, so the index was loaded. The basename map does not fire because
+  the token has a directory component and so is not a bare basename. Every
+  citation in the same document written with the full path resolves `ok`.
+  **The mis-classification is the defect, not the miss.** `missing_file`
+  asserts the file does not exist. A reviewer triaging the stale list must
+  open the tree to tell "deleted or moved" (a real finding) from "prefix
+  short" (a different, smaller doc fix — and sometimes a deliberate historical
+  citation).
+  It matters most inside `review-contract` Phase 1d, where `doc_citations`
+  output is triaged into FINDINGS / CANDIDATES / OBSERVATIONS and a FINDING is
+  passed to cold lanes as settled fact — so a `missing_file` promoted on its
+  label alone tells reviewers a live file is gone.
+  Fix: add a suffix rung to the resolution ladder — if the token is not a bare
+  basename and does not resolve project-relative, match files whose path ENDS
+  with it and resolve when exactly one does (ambiguity keeps the existing
+  `ambiguous` status). Alternative: keep resolution as-is and split the
+  status, `path_prefix_short` alongside `missing_file`, so the two are
+  distinguishable without opening the tree.
+  **Layman:** A document points at a file using a short version of its path, and the checker reports the file as deleted.
+  Kind: fix.
+  Lanes: doccitations, mcp.
+  Source: cc-feedback-2026-08-14 (finbreak).
+
+- 📋 [ANTS-4382] **`roadmap_query`'s `leaner_call_hint` fires on a targeted `ids`+`include_body` call and recommends exactly the options that would discard what was asked for — two of which the schema refuses.**
+  finbreak: `{ids:[3], include_body:true, compact:true}` returned the correct
+  payload plus a hint suggesting `mode:"headline_only"`, `status:"active"` or
+  `mode:"section_index"`. All three drop the bodies — the one thing the call
+  explicitly opted into — and `status` / `section_index` cannot combine with
+  `ids` at all; the schema refuses that pairing with `bad_mode_combo`. **So on
+  this shape the hint partly recommends a refusal.**
+  Cosmetic, and the reporter ignored it. Filed on their reasoning, which
+  generalises: a hint that contradicts the call's explicit intent trains a
+  caller to stop reading hints, which costs more where they are right. The
+  hint is a good idea on an untargeted list query, where a caller may not know
+  the lean modes exist.
+  Fix: suppress `leaner_call_hint` when `id`/`ids` is present or when
+  `include_body:true` was passed explicitly; if kept for targeted fetches,
+  narrow it to the options that actually compose with `ids` (`max_body_bytes`,
+  `fields`, `etag_match`).
+  **Layman:** The tool suggests a cheaper way to make the call that would throw away the very thing you asked for, and two of its three suggestions are not even allowed.
+  Kind: enhancement.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (finbreak).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
