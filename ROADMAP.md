@@ -30909,6 +30909,128 @@ collision are different strengths of evidence.
   Lanes: mcp, docs.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager, converged from three findings).
 
+- 📋 [ANTS-4375] **An offloaded `roadmap_query` drops a bullet, and `read_spill` row mode reports the truncated array length as the total.**
+  LottoTracker: `{status:"active", include_body:true}` with no explicit limit
+  offloaded (18527 bytes); paging the handle returned `total_rows:11` and
+  `truncated:false` on the last page, but the roadmap had TWELVE active
+  bullets. The missing one was last in document order and was noticed only
+  because a parallel `mode:"headline_only"` on the identical filter returned
+  12. **A truncation that announces itself costs a page; this one read as
+  completeness** on the single most common "what should I do next?" call —
+  that session picked its work from the list and would never have seen the
+  dropped item.
+  The schema documents an auto-downshift to headline-only rows on the
+  soft-cap path "so you keep every id instead of losing the tail". That
+  downshift did not happen: full bodies were kept and the tail bullet was lost
+  instead.
+  **Partially fixed already, by the reporter's own re-tests.** By 2026-08-13
+  the no-limit `include_body` path returns `truncated:true` AND a `total`
+  carrying the pre-cap population (`count:6, total:10, truncated:true`) —
+  which closes the follow-up they filed in between. What is NOT confirmed
+  fixed is the original: `read_spill` row mode's `total_rows` reporting the
+  array it was handed rather than the population. That reply did not offload,
+  so the offload path was never re-exercised.
+  Work: confirm whether the offload branch still drops a tail bullet, and make
+  `read_spill`'s `total_rows` the population. Same family as ANTS-4374.
+  **Layman:** A list of your open work quietly came back one item short, and said it was complete.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (LottoTracker), partially self-closed by their re-test.
+
+- 📋 [ANTS-4376] **`invariant_check` scans ZERO specs and returns `ok:true` on every project except Ants Terminal — `/write-code` Phase 0's opening call is a false all-clear almost everywhere.**
+  **Reported by LottoTracker with a hypothesis that turned out to be wrong,
+  and the real defect is far wider than they could see from one project.**
+  They observed `specs_scanned:0, matched_count:0, ok:true` where `spec_query`
+  list mode reported seven specs in `docs/specs`, and reasonably suspected
+  their topic-suffixed `<id>-<topic>.md` filenames.
+  Measured here 2026-08-14 across four projects:
+  | caller_cwd | `spec_query` list | `invariant_check` |
+  |---|---|---|
+  | Ants Terminal | 243 | **243 scanned**, 5 matched |
+  | LottoTracker | 8 | **0** |
+  | DOOM | 19 | **0** |
+  | OneUp | (specs present) | **0** |
+  So the topic suffix is NOT the cause — this project's specs are
+  topic-suffixed too and `ANTS-3368-co-change-family.md` matched fine. Nor is
+  the id-prefix length (DOOM is 4 chars, LOTTO and ONEUP are 5, all fail).
+  **The only project it works on is the one the running Ants instance is
+  rooted in**, while `spec_query` resolves `docs/specs` correctly on all four
+  — so this is `invariant_check`-specific resolution, not a shared layout
+  problem. The exact line is not yet isolated; a spec set cached or indexed
+  for the focused project only is the leading candidate.
+  Severity is high because of where it sits: `/write-code` Phase 0 opens with
+  `invariant_check` over the files about to be edited, precisely to surface a
+  documented contract before an edit breaks it. `matched_count:0` with
+  `ok:true` is indistinguishable from the legitimate "no spec governs these
+  files", so a session takes it at face value and edits under contract without
+  ever seeing the contract. LottoTracker caught it only because their
+  CLAUDE.md names the governing spec independently. **Three sessions have now
+  re-confirmed it**, and it has been live since at least 2026-08-12.
+  Work: (1) find why the scan reads zero where `spec_query` reads many —
+  compare the two verbs' specs-dir resolution directly, which the table above
+  narrows to a one-project-vs-rest split. (2) Regardless of cause, a scan that
+  read NO specs must not answer in the same shape as a scan that read specs
+  and matched nothing — refuse `no_specs_scanned`, or carry an advisory when
+  `specs_scanned` is 0 while a specs directory exists. That is ANTS-4374's
+  invariant again, on the verb where it costs the most.
+  **Layman:** The check that is supposed to warn you before you break a documented rule reads nothing at all on almost every project, and reports that everything is fine.
+  Kind: fix.
+  Lanes: mcp, speclint, remotecontrol.
+  Source: cc-feedback-2026-08-14 (LottoTracker), scope corrected + measured across four projects in-session.
+
+- 📋 [ANTS-4377] **`roadmap_log op:"append"` silently discards a `note` argument and reports success, writing a bullet with no body.**
+  `note` is the parameter for `flip`/`annotate`; `body` is the one `append`
+  takes. Both are top-level optional strings on the same verb, differing only
+  by which op consumes them, and the unused one is dropped in silence.
+  LottoTracker sent 2.3 KB of body prose as `note` and got
+  `{ok:true, bytes_written:328}` — the bullet landed with headline, Layman,
+  Kind and Source and NO body. **`bytes_written` is non-zero either way**,
+  because the headline and metadata lines are real bytes, so it does not
+  distinguish the outcomes. They caught it only because 328 looked small
+  against the prose they sent; a shorter note would have passed unnoticed, and
+  the body is where the measurement, the reasoning and the blocking
+  relationships live.
+  Reproduces under `dry_run:true`, which is the cheap non-destructive probe.
+  Fix: refuse rather than discard — `note` on `append` (and `body` on
+  `annotate`) returns `bad_op_combo` naming the parameter the op actually
+  takes; the verb already has that code and already uses it for other
+  op/argument mismatches. Weaker alternatives: accept `note` as an alias for
+  `body` on append (the intent is unambiguous), or carry `ignored_params:[…]`
+  on the success envelope. Same family as ANTS-4357 and ANTS-4374.
+  **Layman:** Send the text of a roadmap item under the wrong field name and it is thrown away, with a success message and a plausible byte count.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (LottoTracker).
+
+- 📋 [ANTS-4378] **`roadmap_query mode:"headline_only"` returns the bare id as the headline for `**ID** Headline.` bullets, losing the headline entirely.**
+  On a roadmap mixing two bullet formats, a bullet written
+  `- 📋 **LOTTO-0010** Read the payout SMSes and reconcile them…` comes back
+  as `{id:"LOTTO-0010", headline_oneline:"LOTTO-0010"}`. The headline is on
+  the same line immediately after the closing `**` and is dropped; bullets in
+  the newer `[ID] **Headline.**` form parse correctly. 7 of 11 active bullets
+  rendered as bare ids there, 5 of 10 on a later re-test.
+  `headline_only` is the cheap "what should I do next?" call and its whole
+  value is choosing without pulling bodies — a list where most rows read as
+  bare ids cannot be chosen from, so the session either pulls every body
+  (defeating the mode) or picks from the minority that render.
+  **It cost real duplicated work**: LOTTO-0029 was filed as a new idea when
+  LOTTO-0010 already covered the same ground, and the duplication was
+  invisible in the listing because LOTTO-0010 rendered as the string
+  "LOTTO-0010". Found with a grep, not with the roadmap verbs — and
+  duplicate-detection is exactly what this mode should answer.
+  Fix: parse `**ID** rest-of-line` the way `[ID] **headline**` is parsed —
+  take the remainder after the bold id, falling back to the body's first line
+  when empty. The verb already extracts `bold_id` separately, so the two are
+  distinguishable at parse time; the remainder is simply not kept. Worth
+  checking `op:"flip"`'s headline locator against the same shape, since it
+  hash-matches on headline text.
+  Projects that migrated id format mid-life show both shapes in one listing,
+  which is how this stayed hidden.
+  **Layman:** Two thirds of the roadmap list came back showing only item numbers instead of what they say, so a duplicate item got filed that was already there.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (LottoTracker).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
