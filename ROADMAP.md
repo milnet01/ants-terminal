@@ -30368,6 +30368,23 @@ collision are different strengths of evidence.
   Found by a cold reviewer as an open question against `roadmap-format.md`
   § 3.10.5, then confirmed against the live schema: the standard is accurate
   to the verb, so the gap is the verb's.
+  **Measured independently by claude_config 2026-08-12, and the real
+  behaviour is worse than the schema reading suggested: `append_batch` can
+  write NONE, not merely one.** On a pass-headings fixture every bullet is
+  refused `bad_args` "pass is required on a pass-headings roadmap" — and
+  supplying the top-level `pass` does not help, because `append_batch` never
+  reads it; the refusal is byte-identical. `op:"append"` with the same
+  top-level `pass` succeeds on the same fixture, which isolates it. So the op
+  cannot write a single bullet to that dialect, and the error names a
+  parameter the caller has no slot to satisfy — the shape that reads as "I
+  passed it wrong" and invites retries that cannot work. Verified by
+  `dry_run` only; nothing was written.
+  That raises the second fix option: refuse the CALL with `format_mismatch`
+  (already documented for `create_section` on this dialect) and point at
+  `op:"append"`, so a caller learns the right thing on the first attempt.
+  Independently: the `pass` description reads "Pass designator for
+  op:\"append\"", which is accurate but easy to read as covering the append
+  family — naming `append_batch` as excluded there would have prevented this.
   Fix, either: add an optional per-bullet `pass` (mirroring how `stable_id`
   is already per-bullet under `id_strategy:"stable_prefix"`), or refuse
   `append_batch` on the pass-headings dialect with `format_mismatch`, as
@@ -31121,6 +31138,210 @@ collision are different strengths of evidence.
   Kind: enhancement.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (finbreak).
+
+- 📋 [ANTS-4383] **`roadmap_log op:append_batch` burns one id between consecutive calls — the allocator issues an id to nothing.**
+  Two batches of five with no other call between them allocated CFG-0021…0025
+  then CFG-0027…0031. The second envelope reported `counter_advanced_to:31`
+  for ids ending at 31, so the loss happened at the END of the first call —
+  its counter finished at 26 while its highest issued id was 25. Only the
+  fourth of four batches lost one; the three before were contiguous, which
+  makes it look like a boundary condition rather than a per-batch off-by-one.
+  A gap is legal (`roadmap-format.md` § 3.5.1 makes ids opaque), so this is
+  mostly a trust cost — but it broke the reasonable assumption that ids
+  returned by N successive batches are contiguous, and a bullet in the second
+  batch cited CFG-0026 as "the next id" and needed an `amend_body` to correct.
+  **An allocator that silently issues an id to nothing is hard to reason about
+  from outside**: a caller cannot tell a burned id from one whose bullet
+  failed to write, and `skipped[]` was empty on every call.
+  Work: confirm whether the counter is bumped before or after the bullets are
+  rendered — a reserve-then-write path reserving n+1, or a bump on a
+  section-boundary retry, would produce exactly this. **If reservation is
+  deliberate (crash-safety), the envelope should say so**: report
+  `ids_reserved` alongside `ids` so a caller knows the counter moved further
+  than the ids it got. Regression test: four successive `append_batch` calls
+  in one session, asserting the concatenation of returned `ids` is contiguous.
+  **Layman:** Adding roadmap items in batches quietly skips a number, so the next one you predict is wrong.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (claude_config).
+
+- 📋 [ANTS-4384] **`file_outline` reports `total_bytes` for the file but no per-symbol size, so "which section is heaviest / where do I split" falls back to `awk`.**
+  The two questions that motivate outlining a large document before
+  restructuring it — which section carries the weight, and where is the
+  natural seam — cannot be answered from the reply, though the server has
+  already computed everything needed (each symbol's start line, and the next
+  symbol's).
+  claude_config outlined a 39722-byte SKILL.md, got 20 headings with line
+  numbers and no sizes, and fell back to one `awk` that answered it and
+  pointed straight at the section holding 28% of the file — which is where the
+  whole task then went. They ran it twice, once to choose targets and once to
+  re-measure after edits.
+  It sits inside the verb's own pitch ("prefer this over a full Read when you
+  only need to know what's IN a file"): *where do I cut this one* is the same
+  class of question and is the one it cannot answer, sending the caller to the
+  raw-tool fallback the verb exists to replace.
+  Fix: opt-in `sizes:true` giving each symbol `bytes` and `lines`, measured
+  from its start line to the line before the next symbol at the
+  **same-or-higher level** (EOF for the last). **That rule is the part that
+  matters for md mode** — a `##` section's size must include its `###`
+  children, or the reply answers "how long is this paragraph" rather than
+  "where is the seam". Sibling-scoped is the cpp/py equivalent. Opt-in keeps
+  the default envelope byte-identical and composes with `compact` / `fields` /
+  `etag_match`; cheap server-side, one byte count per range on a walk that
+  already happens. Composes well with the `paths:[…]` multi-file form.
+  **Layman:** The file map tells you what is in a document but not how big any of it is, which is the thing you need before splitting it up.
+  Kind: enhancement.
+  Lanes: fileoutline, mcp.
+  Source: cc-feedback-2026-08-14 (claude_config).
+
+- 📋 [ANTS-4385] **`roadmap_log`'s `section` parameter tells callers to get slugs from "`roadmap_query`'s section echo" — no such field or mode exists, and the wrong name generated a false finding.**
+  The capability is there as `mode:"section_index"`. The NAME is not: a caller
+  who reads that sentence and searches the schema for "echo" finds nothing.
+  **That is not hypothetical — it is exactly what happened.** claude_config
+  filed "roadmap_query has no section-listing mode" on 2026-08-11 after trying
+  `fields:["sections"]` and a bullet fetch, never `section_index`; they found
+  and retracted it themselves two days later, verifying that `section_index`
+  returns slug, level and per-status counts in one call and lists sections
+  holding no matching bullets under `status:"all"` — the empty-section case
+  the original finding said had no route.
+  So the documented name cost one false finding and one retraction. Fix is one
+  sentence: "Get valid slugs from `roadmap_query` mode:\"section_index\"".
+  **Layman:** The instructions point at a feature by a name it does not have, so someone reported it missing when it was there all along.
+  Kind: doc-fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (claude_config, self-retracted).
+
+- 📋 [ANTS-4386] **No verb checks a QUOTED FRAGMENT attributed to a named document — the highest-yield mechanical class in a cross-referencing doc set, and it is hand-rolled in Bash.**
+  `doc_citations` resolves `path:line`. `doc_integrity` resolves links and
+  anchors. `doc_symbols` resolves named symbols. **Nothing resolves a
+  quotation** — a passage reproducing another document's words verbatim and
+  attributing them by NAME rather than by path:line, which is how a document
+  cites a sibling it does not want coupled to a line number. That is most of
+  the time in a standards/skills tree: the target moves, the quotation does
+  not.
+  Measured: the subject document returned `doc_citations` count 0 and
+  `doc_integrity` all-zero — a completely clean mechanical pass — while
+  carrying ~30 such quotations, **eight of which had drifted. Every single
+  verified finding of that review loop was in this class, and none of it was
+  reachable by any verb.**
+  Three costs, increasing: ~30 hand-written greps per loop; then
+  **correctness** — a quotation in a hard-wrapped document does not survive a
+  line-oriented search, so the fallback reported "not found" for a phrase that
+  was present, and the reviewer nearly "fixed" a passage that was already
+  correct, which is the collateral-generating move the whole skill tries to
+  prevent (two of three lanes caught the false negative); then **coverage** —
+  this is the one class where a cheap deterministic check replaces an
+  expensive judgement lane outright.
+  Fix: a `doc_quotes` verb, or `quotes:true` on `doc_citations`. Harvest
+  quoted spans (emphasis-wrapped, plain double-quoted above a length floor,
+  blockquotes) and resolve each against a target set as
+  `ok | not_found | ambiguous | no_target`. **Two design points carry all the
+  value:** (1) **whitespace-insensitive matching**, normalising runs of
+  whitespace including newlines on BOTH sides — without it the verb
+  reproduces the exact false negative that makes the hand-rolled version
+  unsafe, and hard-wrapped is the normal case; (2) **target inference from the
+  attribution** — a quotation is nearly always introduced by a backticked name
+  in the same sentence, and resolving that through the basename map
+  `doc_citations` already carries gives the search scope for free, falling
+  back to a repo-wide search reporting `ambiguous` with the hit list rather
+  than guessing. A `min_length` floor (~30 chars) keeps it off ordinary quoted
+  words; the existing `only:"stale"` filter makes the common call cheap.
+  **Layman:** When one document quotes another word for word, nothing checks the quote is still accurate — and doing it by hand gets it wrong on wrapped lines.
+  Kind: feature.
+  Lanes: doccitations, mcp.
+  Source: cc-feedback-2026-08-14 (claude_config).
+
+- 📋 [ANTS-4387] **`roadmap_query` reports an ARCHIVED id in `missing_ids`, indistinguishable from an id that never existed — and it would block a good release.**
+  Reading only the current ROADMAP.md is by design (`roadmap-format.md` § 3.9,
+  "Archives are dialog-only"). **The problem is the envelope, not the scope**:
+  an id rotated into `docs/roadmap/<MAJOR>.<MINOR>.md` returns in
+  `missing_ids` beside a genuinely unknown id, and nothing tells them apart.
+  The caller most likely to hit it is one checking ids that are by definition
+  OLD — a release check, a changelog audit, a shipped-work sweep — so the verb
+  is least informative on the query shape that needs it most. Rotation is not
+  rare: § 3.9 fires at every minor/major bump past ~150 KiB, and this project
+  carries `docs/roadmap/0.5.md` and `0.6.md`.
+  **The concrete cost is a live one.** The new `cut-release` skill's
+  pre-flight reads the ids a changelog section claims shipped and STOPS the
+  release on any that is not ✅. Against this project it found a real defect
+  (a bullet claiming ANTS-4065 shipped while the roadmap held it 🚧) — the
+  check working. But a release whose changelog cites work closed in an earlier
+  minor gets those ids back as `missing_ids`, the only safe reading of
+  "missing" is to stop, **and the fix a session reaches for under release
+  pressure is to weaken the check — which silently discards the true finding
+  too.** The skill now greps `ROADMAP.md docs/roadmap/*.md` instead, so it
+  hard-codes the archive convention rather than letting the server own it.
+  Secondary: `found:true` on a partially-resolved id set reads as success, so
+  a caller checking `found` alone never learns two of its fifty did not
+  resolve — ANTS-4374's invariant again.
+  Fix: (1) **split the field** — keep `missing_ids` for genuinely unresolved
+  and add `archived_ids` for ids visible in `docs/roadmap/*.md`; the archive
+  convention is already specified in § 3.9 and implemented four times in this
+  codebase's own C++, so no new parsing rules. Or (2) opt-in
+  `include_archives:true` resolving against the archives with an
+  `archived:true` marker and source path — opt-in keeps the § 3.9 contract
+  intact, since the dialog-only rule is about DEFAULT cost and a targeted
+  `ids:[…]` fetch is not the whole-file scan it protects against.
+  **Layman:** Ask about an old roadmap item and you are told it does not exist, which would stop a release that was perfectly fine.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (claude_config).
+
+- 📋 [ANTS-4388] **`workspace_search` has no distinct-MATCH mode — every trim it offers is row-shaped, so `grep -o | sort -u` stays hand-rolled.**
+  All four narrowing options are about the ROW: `count_only` drops rows,
+  `files_only` gives one row per file, `headline_only` thins rows,
+  `max_match_bytes` shortens rows. There is no way to ask for **the distinct
+  matched substrings**. `dedup` looks like it and is not — its key is the
+  whitespace-normalised LINE, so two different lines containing the same token
+  stay two rows, and one line containing two different tokens stays one.
+  "What is the set of X in this tree" is a whole class of question and the
+  cheap half of several checks: placeholder inventories, status vocabularies,
+  id prefixes in use, which `§ N.N` numbers a corpus cites.
+  **Measured, and the row cap did not merely cost tokens — it made the reply
+  WRONG for the question asked.** A search for `{{[A-Z_]+}}` returned 15 rows,
+  `truncated:true`; the true answer is three strings. A caller stopping at the
+  default had no way to know whether a fourth existed past the cut, **and a
+  placeholder missed at scaffold time ships a literal `{{PROJECT_NAME}}` into
+  a new project's README.** The new `start-project` skill derives its
+  placeholder list from the tree rather than the documentation precisely
+  because the two had drifted (README documents five, `files/` contains
+  three) — and that derivation is the one step of the skill that had to drop
+  out of the MCP into Bash.
+  Fix: `matches_only:true` (or `mode:"distinct"`) returning
+  `{matches:[{text, count, files_count}], distinct_count}`. **Two properties
+  matter more than the names**: the cap applies to DISTINCT values not
+  occurrences, so a 3-token answer is never truncated by a 50-row limit; and
+  `count`/`files_count` come from the full uncapped scan, as `count_only`'s
+  `count` already does. Sensible with `regex:true`; refusing a literal pattern
+  is fine. Not a duplicate of `count_only` (ANTS-3537), which counts
+  occurrences of one pattern — this asks which distinct strings it matched.
+  **Layman:** Asking "what different things match this?" returns one row per occurrence and cuts them off, so the real answer — three words — can be silently incomplete.
+  Kind: feature.
+  Lanes: mcp, remotecontrol.
+  Source: cc-feedback-2026-08-14 (claude_config).
+
+- 📋 [ANTS-4389] **`workspace_search`'s `max_match_bytes` clip marker is emitted as mojibake — `â¦` instead of `…`.**
+  `â¦` is exactly U+2026's UTF-8 bytes (`E2 80 A6`) reinterpreted as latin-1,
+  so the marker is being concatenated as raw bytes onto a string already
+  decoded, rather than as a character. **`§` in the same string renders
+  correctly**, which rules out a general encoding problem and isolates it to
+  the appended marker.
+  **Confirmed independently in-session 2026-08-14**: a `workspace_search` here
+  returned `"…verbs refuse `mcp_disâ¦"` in its own output while `§` elsewhere
+  in the same reply was fine.
+  Beyond looks: the schema documents the clip as "payload prefix + 3-byte
+  ellipsis", so a caller stripping the documented marker to recover the prefix
+  will not match `â¦` — and a caller **grepping the returned text verbatim**,
+  which is exactly what a cross-document review does when verifying a
+  quotation (see ANTS-4386), gets three spurious characters at the boundary.
+  `max_match_bytes` now defaults to 512 (ANTS-3548), so this is on by default
+  rather than opt-in.
+  Fix: append the marker as a character in the same encoding as the payload,
+  or use a plain ASCII `...` — the schema's "3-byte" wording survives either.
+  **Layman:** Long search results are cut off with a symbol that arrives scrambled, and anything comparing the text against the real file then mismatches.
+  Kind: fix.
+  Lanes: mcp, remotecontrol.
+  Source: cc-feedback-2026-08-14 (claude_config), reproduced in-session.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
