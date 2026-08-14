@@ -316,7 +316,7 @@ for security-relevant changes.
   title was dropped without a word. Twelve entries across all projects were
   affected. The reader now recognises backticked code as literal text.
 
-- **Roadmap import no longer loses a declared `Kind:`, invents a `Source:`, or defaults a field in silence** (ANTS-4065)
+- **Roadmap import no longer loses a declared `Kind:`, invents a `Source:`, or defaults a field in silence** (ANTS-4086, ANTS-4063)
   The markdown→store import read `Kind:` only at the start of a line, so
   the 99 bullets in this project that write the trailer inline were read
   as declaring nothing and quietly filed as `implement`. It also wrote
@@ -328,7 +328,8 @@ for security-relevant changes.
   further `Kind:` spellings map to their canonical value, a path cited by
   `Source:`/`Evidence:` that no longer exists is reported rather than
   ignored, and every defaulted field raises a note with a per-field tally
-  on the migration report.
+  on the migration report. The re-migration this unblocked is verified
+  over every bullet — 1,434 declare a kind, 0 mismatch the store.
 
 - **The roadmap database can now be brought up to date instead of refusing to open** (ANTS-3781)
   A roadmap database written by an older build had no route forward: it

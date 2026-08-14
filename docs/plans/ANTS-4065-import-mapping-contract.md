@@ -335,6 +335,11 @@ render emits the line, and the parse is doing what it was told.
 **E1.** Flip ANTS-4062 and ANTS-4063 to shipped; they are discharged by § 2.1
 and INV-5 respectively.
 
+**E1 is DONE for ANTS-4063, 2026-08-14.** Flipped ✅ with `RoadmapImportMapping`
+green (21/21, INV-5's `DefaultedSourceIsNotRendered` among them). The `Kind:`
+half that bullet asked to check is a real separate defect and is ANTS-4344.
+ANTS-4062 was already ✅.
+
 **E2.** Migrate the remaining 13 projects, one at a time, each gated on D3's
 round-trip check.
 

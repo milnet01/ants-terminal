@@ -28273,7 +28273,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
-- 📋 [ANTS-4063] **RoadmapRender materialises "Source: planned." onto bullets that have no recorded provenance.**
+- ✅ [ANTS-4063] **RoadmapRender materialises "Source: planned." onto bullets that have no recorded provenance.**
   The first store-backed render of this project took bullets whose
   `source` column is genuinely empty and emitted `Source: planned.`
   for them. Measured on the same file across that one render: 36 such
@@ -28299,6 +28299,18 @@ against current source before filing.
   Found while reviewing the render diff rather than by a test, which is
   the gap: nothing currently asserts that render(parse(x)) does not gain
   fields x never had.
+
+  Resolved (2026-08-14): built by ANTS-4065 Phase C4 —
+  `RoadmapRender::bulletText()` gates the `Source:` line on
+  `provenance.source != "defaulted"` (`src/roadmaprender.cpp:118`), so a
+  source the import supplied is no longer written back. The round-trip
+  invariant this bullet asked for is INV-5,
+  `RoadmapImportMapping.DefaultedSourceIsNotRendered`; the suite is green
+  (21/21). Phase E1 of `docs/plans/ANTS-4065-import-mapping-contract.md`
+  designates this bullet discharged by INV-5, which is the flip recorded
+  here. The `Kind:` half this bullet asked to check is a real and separate
+  defect — a rendered `Kind:` line survives into the next import's body —
+  filed as ANTS-4344.
   **Layman:** When the roadmap is rewritten from the database, hundreds of entries gain a made-up "where this came from" line that nobody ever wrote.
   Kind: fix.
   Source: in-session-2026-08-08 (found reviewing the first store-backed render).
@@ -28389,11 +28401,25 @@ against current source before filing.
   fixtures (ANTS-4086: `field_defaulted(kind)` 369 → 360, exactly the 9
   corrupted items, `kind_unmapped` down to 1 genuine malformed value); the
   bold-label `Kind:` form is accepted (ANTS-4077); and the re-import itself
-  now survives a colliding id (ANTS-4142). **Remaining: D3, render → re-import,
-  and D4, the residual `headline` / `layman` / `lanes` round-trip drift** —
-  which is the "it does not round-trip" third of this bullet and the only
-  part still open. D2's confirming run is blocked on relaunching Ants so the
-  MCP picks up the new parser.
+  now survives a colliding id (ANTS-4142).
+
+  Progress (2026-08-14): D2 and D3 are both done. D2 ran clean — 1,980
+  items, 0 orphaned — and its verify is green over every bullet, not a
+  spot-check: 1,434 bullets declare a kind, 0 mismatch the store. D3's
+  round-trip measurement contradicted this bullet's own prediction in both
+  directions — `headline` and `lanes` do not drift at all, `layman` moves on
+  one self-referential item, and the whole of the residual drift is `body`,
+  363 items, one cause: a rendered `Kind:` line is parsed as the kind AND
+  left in the body. That is filed as ANTS-4344 and it converges rather than
+  compounding. **Remaining: D4 (fix the trailer-strip, re-run both cycles)
+  and Phase E (E1 done — ANTS-4063 flipped 2026-08-14; E2, the other 13
+  projects, not started).**
+
+  The 0.7.105 release notes no longer cite this id (2026-08-14). What
+  shipped in that cycle is Phases A–C, which are attributed to their own
+  ✅ items — ANTS-4086 and ANTS-4063 on the import/render bullet, ANTS-4077
+  and ANTS-4142 on their own. This umbrella item stays 🚧 until D4 and
+  Phase E close, so a release section cannot claim it.
   **Layman:** Write down exactly how every field in the text roadmap turns into a database field, so importing stops quietly changing things.
   Kind: implement.
   Source: user-request-2026-08-08.
