@@ -20463,6 +20463,15 @@ server build id so clients can self-diagnose this.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Vestige, advisory fired ≥3 sessions).
   Reconciled with ANTS-3495 (2026-07-21): these are the same Vestige request. ANTS-3495 SHIPPED the safe deterministic half — changelog_log op:normalize reorders the ### category blocks into canonical Keep-a-Changelog order (Added/Changed/Deprecated/Removed/Fixed/Security), leaving prose in place. This item now tracks ONLY the remaining prose-relocation half ("regroup stray prose + entries under the right category headings"), which ANTS-3495's design note deferred as needing a decided policy (rule 8): changeloglog.cpp's firstInterleavedProseLine only DETECTS interleaved prose — it can't know the prose's intended home (continuation line vs stray paragraph vs mis-formatted bullet). Recommended policy from ANTS-3495: append stray prose as a 2-space continuation under the nearest preceding bullet, with dry_run always previewing the move. Kept planned (real work remains); no longer a duplicate. Surface the policy choice before implementing.
+  Policy DECIDED by the user (2026-08-14), so this is no longer blocked: take
+  the ANTS-3495 recommendation — append stray prose as a 2-space continuation
+  under the nearest preceding bullet, with `dry_run` always previewing the move
+  before any write. The two alternatives put to them and declined were a
+  read-only richer warning (names every stray line and its suggested home, moves
+  nothing) and a per-line confirmation prompt. Implementation may proceed
+  without re-asking; keep the preview unconditional, because the failure mode
+  this policy accepts is prose that was meant to stand alone being folded into
+  the entry above it, and the preview is the only thing that catches it.
 
 - ✅ [ANTS-3382] **roadmap_log — optional evidence:[paths] / attachments[] for image/log-driven bullets, echoed by roadmap_query.**
   DOOM-0145 was diagnosed from phone photos referenced only in free-text; the real file paths aren't queryable. Add optional evidence:[paths] on roadmap_log append/annotate, echoed by roadmap_query, rendered as an 'Evidence:' line. Low priority, cheap, useful for image-heavy projects.
@@ -31990,6 +31999,41 @@ defect from different angles.
   **Layman:** Our error-code rulebook defines a code one way, then gives an example that breaks its own definition. Two developers reading it will ship different error codes for the same situation.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (ANTS-4129 review-contract loop 2).
+
+- 📋 [ANTS-4345] **`spec_lint`'s required-section check is silently off for this entire project, because our format standard carries no `<!-- required-sections -->` block.**
+  Hit while authoring `docs/specs/ANTS-3716-cited-by-sweep.md` (2026-08-14).
+  `spec_lint` came back `ok:true` with one candidate finding, and
+  `sections_checked:false` — meaning the `missing_section` check never ran. Its
+  own contract says so: `missing_section` runs ONLY when the project's format
+  standard carries a `<!-- required-sections -->` block, and without one it is
+  skipped. `docs/standards/specs.md` has no such block.
+
+  That default is right in general — a check against a guessed section list
+  would fire on every conforming spec. What makes it a defect *here* is that
+  our standard is unusually explicit about the required set: § 3 opens "Every
+  spec opens with these, in this order", enumerates § 3.1 Title through § 3.6
+  Tests, and § 4 marks two more as required (RAM / build cost when its trigger
+  applies, Cold-eyes loop log always). The list a machine needs is written out
+  in prose and simply never handed to the verb. So every spec in this corpus is
+  authored against a required-section rule that nothing checks, and an author
+  reading a clean `spec_lint` reasonably concludes the structure was verified.
+
+  Work: add the `<!-- required-sections -->` block to `docs/standards/specs.md`
+  transcribing § 3 + § 4's required set, then re-run `spec_lint` over
+  `docs/specs/` and triage what it reports. Expect a real backlog on the first
+  run — the corpus predates any structural check, and § 2 already records that
+  bare `<ID>.md` specs from an earlier convention are still present.
+
+  Note the second-order risk, which is why this is worth doing rather than
+  documenting: `/write-spec` Step 4 tells the author to read the envelope and
+  say when `sections_checked` is false, precisely because Phase 1d then tells
+  the review lanes the structural checks are settled. An unrun check reported
+  as clean becomes a settled false fact the reviewers are forbidden to
+  question.
+  **Layman:** Our spec checker has a "are all the required sections present?" test that has never once run on this project, because nobody gave it the list — and a clean result looks identical to a passing one.
+  Kind: fix.
+  Lanes: mcp, speclint, docs.
+  Source: in-session-2026-08-14 (authoring the ANTS-3716 spec).
 
 - 📋 [ANTS-4135] **23 specs cite feature-test directories that do not exist.**
   Measured 2026-08-12 over docs/specs/ (excluding ANTS-4127's own spec):
