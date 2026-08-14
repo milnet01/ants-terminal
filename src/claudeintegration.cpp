@@ -3051,6 +3051,118 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-3368 — co_change_family: the grouped edit-site
+                // checklist for one settings-backed field.
+                {
+                    QJsonObject t;
+                    t["name"] = "co_change_family";
+                    t["description"] = QStringLiteral(
+                        "Given one exemplar settings field, list every edit "
+                        "site you must touch to mirror it — grouped by file, "
+                        "with the JSON string key and the derived names "
+                        "(setX, m_X, XChanged) a whole-word symbol search "
+                        "misses. Matches on the longest run of the stem's "
+                        "words that is contiguous in both names, so "
+                        "setMcpEnabled still belongs to claudeMcpEnabled. "
+                        "Returns {ok, stems, stem_words, min_run, "
+                        "files:[{path, sites:[{line, stem, name, role, run, "
+                        "run_len, text}]}], files_count, sites_count, "
+                        "truncated}. `role` is LEXICAL, one of "
+                        "json_key|member|mutator|signal|type|reference. "
+                        "Required: `caller_cwd` plus `stem` or `stems`. "
+                        "Refusals: bad_args, no_project, rg_failed. "
+                        "Scans the whole repo (minus .gitignore), unlike "
+                        "find_sources.");
+                    t["detail"] = QStringLiteral(
+                        "min_run is the shortest accepted word-run, resolved "
+                        "per stem against that stem's own word count: it "
+                        "defaults to min(2, words) and clamps to 1..words. "
+                        "Setting it to 1 widens the SCAN, not just the "
+                        "filter — the default pattern alternates adjacent "
+                        "word pairs and can never produce a one-word match, "
+                        "so min_run:1 is what reaches a site sharing a "
+                        "single word (audioLod from lodEnabled). That is "
+                        "much more expensive on a common word. A run of "
+                        "nothing but stopwords (get/set/is/has/on/off/"
+                        "enabled/disabled/value/data/flag/count/size/index/"
+                        "name/type/mode/m/p) is dropped, and a stem made "
+                        "only of stopwords refuses bad_args rather than "
+                        "returning a silent empty result. One row per "
+                        "(path, line): a line matching several stems is "
+                        "emitted once, owned by the longest run, ties by "
+                        "position in stems. Files are ordered by their "
+                        "maximum run_len descending then path; sites by "
+                        "line. When max_sites binds, the sites retained are "
+                        "those with the highest run_len — never the first N "
+                        "in scan order — and truncated is set. truncated is "
+                        "also set when the ripgrep budget is exhausted; "
+                        "rg_failed is reserved for a scanner that did not "
+                        "run at all. Contract: docs/specs/"
+                        "ANTS-3368-co-change-family.md.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use when mirroring an existing settings field and "
+                        "you need every file to touch. find_sources returns "
+                        "ranked files under src/+tests/; this returns lines "
+                        "repo-wide, including the JSON key and docs.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p; p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "One exemplar name — an identifier "
+                            "(claudeMcpEnabled) or a config key "
+                            "(claude.mcp_enabled). Sugar for a one-element "
+                            "`stems`; `stems` wins when both are sent. Must "
+                            "match ^[A-Za-z0-9_.-]+$.");
+                        props["stem"] = p;
+                    }
+                    {
+                        QJsonObject p; p["type"] = "array";
+                        QJsonObject items; items["type"] = "string";
+                        p["items"] = items;
+                        p["description"] = QStringLiteral(
+                            "The field group; the union of each stem's "
+                            "family. Each site carries the stem that owns "
+                            "it. Required unless `stem` is given.");
+                        props["stems"] = p;
+                    }
+                    {
+                        QJsonObject p; p["type"] = "integer";
+                        p["description"] = QStringLiteral(
+                            "Shortest accepted word-run (default "
+                            "min(2, stem words), clamped per stem to "
+                            "1..words, never refused). 1 widens the scan "
+                            "itself — see tool_info detail.");
+                        props["min_run"] = p;
+                    }
+                    {
+                        QJsonObject p; p["type"] = "integer";
+                        p["default"] = 200;
+                        p["description"] = QStringLiteral(
+                            "Cap on sites (default 200, clamped to "
+                            "1..1000). When it binds, the highest-run_len "
+                            "sites are kept and `truncated` is true.");
+                        props["max_sites"] = p;
+                    }
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["etag_match"] = makeEtagMatchProp();
+                    props["fields"]     = makeFieldsProp();
+                    // No `encoding` prop: the columnar repack is for a
+                    // top-level array of FLAT objects, and files[] carries a
+                    // nested sites[] per row. ANTS-3368 § 2.4 does not
+                    // declare it either.
+                    schema["properties"] = props;
+                    // `stem`/`stems` is an either-or that required[] cannot
+                    // express, so it is a runtime check refusing bad_args.
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1248: workspace_search — ripgrep wrapper. The
                 // schema declares all 7 spec args and marks `pattern`
                 // as required. The description names the alternative
@@ -11072,6 +11184,9 @@ void ClaudeIntegration::onMcpConnection() {
                         // ANTS-1636 — find_sources: project-scoped
                         // src/+tests/ topic walker.
                         name == QLatin1String("find_sources") ||
+                        // ANTS-3368 — co_change_family: project-scoped
+                        // repo-wide co-change site scan.
+                        name == QLatin1String("co_change_family") ||
                         // ANTS-1637 — codebase_index: project-scoped
                         // structural-map reader.
                         name == QLatin1String("codebase_index") ||
@@ -12585,6 +12700,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("workspace_search"))   return C::Required;
     // ANTS-1636 — find_sources: project-scoped topic-to-files scan.
     if (toolName == QStringLiteral("find_sources"))       return C::Required;
+    // ANTS-3368 — co_change_family: project-scoped repo-wide field scan.
+    if (toolName == QStringLiteral("co_change_family"))   return C::Required;
     if (toolName == QStringLiteral("file_outline"))       return C::Required;
     if (toolName == QStringLiteral("plan_template"))      return C::Required;
     // ANTS-1569 — current_state aggregator: project-scoped read over
@@ -12693,6 +12810,9 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // ANTS-3716 — cited_by: a pure function of (tree, request), and its
         // arrays all carry a stated order precisely so the hash is stable.
         || toolName == QStringLiteral("cited_by")
+        // ANTS-3368 — co_change_family: a pure function of (tree, stems), and
+        // INV-6 pins a total order on files and sites, so the hash is stable.
+        || toolName == QStringLiteral("co_change_family")
         || toolName == QStringLiteral("doc_symbols")  // ANTS-3661
         || toolName == QStringLiteral("spec_lint")    // ANTS-3662
         || toolName == QStringLiteral("doc_dedup")    // ANTS-3660

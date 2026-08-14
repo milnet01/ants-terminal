@@ -4252,6 +4252,11 @@ void MainWindow::setupClaudeMcpProviders() {
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdFindSources));
 
+    // ANTS-3368 — co_change_family: every edit site of one settings field.
+    m_claudeIntegration->registerToolProvider("co_change_family",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdCoChangeFamily));
+
     m_claudeIntegration->registerToolProvider("get_scrollback",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         [this](const QJsonObject &args) -> QString {

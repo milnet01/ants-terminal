@@ -7,6 +7,7 @@
 #include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "applyedits.h"
 #include "codebaseindex.h"
+#include "cochangefamily.h"   // ANTS-3368 — co_change_family pure seam
 #include "claudeintegration.h"
 #include "mainwindow.h"
 #include "pathvalidation.h"
@@ -2194,3 +2195,201 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
                              params));
 }
 
+
+// ANTS-3368 — co_change_family. Given one exemplar settings-field stem,
+// return every edit site grouped by file: the JSON string key and the
+// affixed derived names (setX, m_X, XChanged) a whole-word symbol search
+// cannot reach. The matching rule, the role vocabulary and the widening all
+// live in src/cochangefamily.{h,cpp} so a test can drive them without a live
+// tab (INV-10); this handler is the ripgrep plumbing plus the envelope.
+//
+// The scan is deliberately repo-wide (INV-14): a config key's docs/ and
+// CLAUDE.md mentions are co-change sites, which is exactly what a walk
+// narrowed to the declared source roots would drop.
+QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
+    QStringList rawStems;
+    const QJsonArray stemsArr = req.value(QStringLiteral("stems")).toArray();
+    for (const QJsonValue &v : stemsArr) {
+        const QString s = v.toString().trimmed();
+        if (!s.isEmpty()) rawStems.append(s);
+    }
+    if (rawStems.isEmpty()) {
+        // `stem` is sugar for a one-element `stems`; `stems` wins when both
+        // are sent, so a caller's mistake shows up in the echoed `stems`.
+        const QString one =
+            req.value(QStringLiteral("stem")).toString().trimmed();
+        if (!one.isEmpty()) rawStems.append(one);
+    }
+    if (rawStems.isEmpty()) {
+        return QJsonDocument(wsErr("bad_args",
+            QStringLiteral("co_change_family: pass \"stem\" or \"stems\"")));
+    }
+
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString rootCanonical = QFileInfo(callerRaw).canonicalFilePath();
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(wsErr("no_project",
+            QStringLiteral("co_change_family: caller_cwd \"%1\" does not resolve")
+                .arg(callerRaw)));
+    }
+
+    const bool hasMinRun = req.contains(QStringLiteral("min_run"));
+    const int  reqMinRun = req.value(QStringLiteral("min_run")).toInt();
+
+    QVector<CoChangeFamily::Stem> stems;
+    QStringList patterns;
+    for (const QString &raw : rawStems) {
+        if (!CoChangeFamily::isValidStem(raw)) {
+            return QJsonDocument(wsErr("bad_args",
+                QStringLiteral("co_change_family: stem \"%1\" must match "
+                               "^[A-Za-z0-9_.-]+$").arg(raw)));
+        }
+        const QStringList w = CoChangeFamily::splitWords(raw);
+        if (w.isEmpty()) {
+            return QJsonDocument(wsErr("bad_args",
+                QStringLiteral("co_change_family: stem \"%1\" yields no words")
+                    .arg(raw)));
+        }
+        if (CoChangeFamily::allStopwords(w)) {
+            // Every run this stem could form would be dropped, so an empty
+            // result would read as "this field is touched nowhere".
+            return QJsonDocument(wsErr("bad_args",
+                QStringLiteral("co_change_family: stem \"%1\" is all "
+                               "stopwords; it can form no distinctive run")
+                    .arg(raw)));
+        }
+        CoChangeFamily::Stem s;
+        s.name   = raw;
+        s.words  = w;
+        s.minRun = hasMinRun
+                       ? CoChangeFamily::clampMinRun(reqMinRun, w.size())
+                       : CoChangeFamily::defaultMinRun(w.size());
+        stems.append(s);
+        patterns.append(CoChangeFamily::scanPattern(w, s.minRun));
+    }
+
+    QStringList argv;
+    argv << QStringLiteral("--json") << QStringLiteral("--line-number");
+    for (const QString &p : patterns) argv << QStringLiteral("-e") << p;
+    argv << QStringLiteral("--") << rootCanonical;
+
+    const RgRun run = rcRunRg(argv, rootCanonical, kWorkspaceSearchHardKillMs);
+    if (run.startFailed || run.crashed) {
+        return QJsonDocument(wsErr("rg_failed",
+            QStringLiteral("co_change_family: ripgrep did not run")));
+    }
+    // Exit 1 is ripgrep's "no matches" — a valid empty answer, not a failure.
+    // A hard kill is a PARTIAL answer and is reported through `truncated`;
+    // rg_failed is reserved for a scanner that did not run (INV-7).
+    if (run.exitCode != 0 && run.exitCode != 1 && !run.hardKilled) {
+        return QJsonDocument(wsErr("rg_failed",
+            QStringLiteral("co_change_family: ripgrep exited %1")
+                .arg(run.exitCode)));
+    }
+
+    QVector<CoChangeFamily::RawMatch> raws;
+    const QList<QByteArray> events = run.stdoutBytes.split('\n');
+    for (const QByteArray &evBytes : events) {
+        if (evBytes.isEmpty()) continue;
+        const QJsonObject ev = QJsonDocument::fromJson(evBytes).object();
+        if (ev.value(QStringLiteral("type")).toString() !=
+            QLatin1String("match")) {
+            continue;
+        }
+        const QJsonObject data = ev.value(QStringLiteral("data")).toObject();
+        QString path = data.value(QStringLiteral("path"))
+                           .toObject().value(QStringLiteral("text")).toString();
+        if (path.startsWith(rootCanonical + QLatin1Char('/'))) {
+            path = path.mid(rootCanonical.size() + 1);
+        }
+        QString text = data.value(QStringLiteral("lines"))
+                           .toObject().value(QStringLiteral("text")).toString();
+        if (text.endsWith(QLatin1Char('\n'))) text.chop(1);
+        const QByteArray textUtf8 = text.toUtf8();
+
+        const QJsonArray subs =
+            data.value(QStringLiteral("submatches")).toArray();
+        for (const QJsonValue &sv : subs) {
+            const QJsonObject sm = sv.toObject();
+            const int bs = sm.value(QStringLiteral("start")).toInt();
+            const int be = sm.value(QStringLiteral("end")).toInt();
+            if (bs < 0 || be < bs || be > textUtf8.size()) continue;
+            CoChangeFamily::RawMatch m;
+            m.path = path;
+            m.line = data.value(QStringLiteral("line_number")).toInt();
+            m.text = text;
+            // ripgrep reports BYTE offsets into lines.text; the seam indexes
+            // by QChar, so convert rather than assuming the line is ASCII.
+            m.matchStart = static_cast<int>(
+                QString::fromUtf8(textUtf8.left(bs)).size());
+            m.matchEnd = static_cast<int>(
+                QString::fromUtf8(textUtf8.left(be)).size());
+            raws.append(m);
+        }
+    }
+
+    CoChangeFamily::Options opts;
+    if (req.contains(QStringLiteral("max_sites"))) {
+        opts.maxSites = CoChangeFamily::clampMaxSites(
+            req.value(QStringLiteral("max_sites")).toInt());
+    }
+    const CoChangeFamily::Result res =
+        CoChangeFamily::assemble(raws, stems, opts);
+
+    // assemble() already ordered the sites, so grouping is a single pass:
+    // every row of one file is contiguous.
+    QJsonArray files;
+    QJsonObject curFile;
+    QJsonArray curSites;
+    QString curPath;
+    bool haveFile = false;
+    const auto flush = [&]() {
+        if (!haveFile) return;
+        curFile[QStringLiteral("sites")] = curSites;
+        files.append(curFile);
+    };
+    for (const CoChangeFamily::Site &s : res.sites) {
+        if (!haveFile || s.path != curPath) {
+            flush();
+            haveFile = true;
+            curPath  = s.path;
+            curFile  = QJsonObject();
+            curFile[QStringLiteral("path")] = curPath;
+            curSites = QJsonArray();
+        }
+        QJsonObject o;
+        o[QStringLiteral("line")]    = s.line;
+        o[QStringLiteral("stem")]    = s.stem;
+        o[QStringLiteral("name")]    = s.name;
+        o[QStringLiteral("role")]    =
+            QString::fromLatin1(CoChangeFamily::roleStr(s.role));
+        o[QStringLiteral("run")]     = QJsonArray::fromStringList(s.run);
+        o[QStringLiteral("run_len")] = s.runLen;
+        o[QStringLiteral("text")]    = s.text;
+        curSites.append(o);
+    }
+    flush();
+
+    QJsonArray stemNames;
+    QJsonObject stemWords;
+    QJsonObject minRuns;
+    for (const CoChangeFamily::Stem &s : stems) {
+        stemNames.append(s.name);
+        stemWords[s.name] = QJsonArray::fromStringList(s.words);
+        minRuns[s.name]   = s.minRun;
+    }
+
+    QJsonObject out;
+    out[QStringLiteral("ok")]          = true;
+    out[QStringLiteral("stems")]       = stemNames;
+    out[QStringLiteral("stem_words")]  = stemWords;
+    out[QStringLiteral("min_run")]     = minRuns;
+    out[QStringLiteral("files")]       = files;
+    out[QStringLiteral("files_count")] = files.size();
+    out[QStringLiteral("sites_count")] = static_cast<int>(res.sites.size());
+    out[QStringLiteral("truncated")]   = res.truncated || run.hardKilled;
+    // `etag` is NOT emitted here: the dispatcher injects it (mcp-tools.md
+    // step 7), and a handler-written one would be overwritten or doubled.
+    return QJsonDocument(out);
+}

@@ -193,9 +193,16 @@ TEST(McpTestResults, WiringContract) {
     {
         const auto pos = ciCpp.find("auto kindForName");
         ASSERT_NE(pos, std::string::npos);
-        // Generous window: find() returns the FIRST "test_results" (the real
-        // kindForName branch), so a larger budget can't false-match (ANTS-2029).
-        const std::string fn = ciCpp.substr(pos, 8000);
+        // ANTS-3368 — brace-matched body, not a fixed byte window. The old
+        // `substr(pos, 8000)` put "test_results" at offset 7987, so adding
+        // ONE verb to an earlier branch sliced the token in half and the
+        // test reported a missing branch that was still there. Widening the
+        // budget only moves the next such failure; slurpFunctionBody bounds
+        // the window to the lambda itself and cannot drift (ANTS-1348).
+        const std::string fn =
+            ants_test::slurpFunctionBody(ciCpp, "auto kindForName");
+        ASSERT_FALSE(fn.empty())
+            << "kindForName's body did not brace-match";
         const auto branch = fn.find("\"test_results\"");
         ASSERT_NE(branch, std::string::npos)
             << "test_results must have an explicit branch in "

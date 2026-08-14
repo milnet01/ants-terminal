@@ -433,6 +433,8 @@ add_library(ants_core_lib STATIC
     src/buildfixhint.cpp
     # ANTS-1636 — find_sources topic-to-files discovery.
     src/findsources.cpp
+    # ANTS-3368 — co_change_family pure seam (word split, run match, roles).
+    src/cochangefamily.cpp
     src/gitwrap.cpp
     src/indiereviewengine.cpp
     src/debtsweepengine.cpp
@@ -1867,6 +1869,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_last_selection/test_mcp_last_selection.cpp
                 # ANTS-1636 find_sources MCP + pure-function tests.
                 tests/features/mcp_find_sources/test_mcp_find_sources.cpp
+                # ANTS-3368 co_change_family seam + MCP wiring.
+                tests/features/co_change_family/test_co_change_family.cpp
                 # ANTS-1306 task_priors MCP context bundler.
                 tests/features/mcp_task_priors/test_mcp_task_priors.cpp
                 # ANTS-1307 project_conventions MCP convention summary.

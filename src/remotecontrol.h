@@ -485,6 +485,11 @@ public:
     // 500 results. See docs/specs/ANTS-1248.md.
     QJsonDocument cmdWorkspaceSearch(const QJsonObject &req);
 
+    // ANTS-3368 — co_change_family: every edit site of one settings field,
+    // grouped by file. Shares this TU's rcRunRg() call site; the matching
+    // rule itself is the pure seam in cochangefamily.h.
+    QJsonDocument cmdCoChangeFamily(const QJsonObject &req);
+
     // ANTS-3716: cited_by — given the anchors a review loop changed, which
     // documents cite which of them. One rg run per anchor so attribution is by
     // construction; the caller records the verdicts. Beside cmdWorkspaceSearch
