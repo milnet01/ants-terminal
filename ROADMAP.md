@@ -31887,7 +31887,7 @@ finbreak re-verified it.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (finbreak).
 
-- 📋 [ANTS-4395] **`changelog_log op:"add_batch"` reports the same `line` for every applied entry, so only the first can be right.**
+- ✅ [ANTS-4395] **`changelog_log op:"add_batch"` reports the same `line` for every applied entry, so only the first can be right.**
   A two-entry batch returned `applied:[{index:0, line:26}, {index:1,
   line:26}]`. Two entries appended under one category cannot both occupy line
   26 — whichever is written second lands after the first. The reported line
@@ -31900,12 +31900,21 @@ finbreak re-verified it.
   Fix: compute each entry's line after its own insertion. **If per-entry lines
   are awkward, DROPPING the field on the batch path is more honest than
   reporting one that is right once** — the reporter's own framing, and right.
+  Resolved (2026-08-14) by re-resolving each applied entry's line against the
+  FINAL markdown, so the field is kept and made true rather than dropped.
+  `res.line` is correct at insert time and goes stale the moment a later entry
+  lands in the same category — insertion is at the category head, so entry 1
+  takes entry 0's line and pushes it down. Entries claim their matched line so
+  two identical summaries in one batch cannot collapse onto one. The test
+  asserts the reported lines DIFFER and that each actually holds its entry;
+  the second half is the real check, since differing-but-wrong would pass the
+  first.
   **Layman:** Add several changelog entries at once and the tool says they all landed on the same line.
   Kind: fix.
   Lanes: mcp, changelog.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager).
 
-- 📋 [ANTS-4396] **`file_outline` has no heading-depth filter, so orienting on a long append-only markdown log costs the whole outline — and `max_symbols` truncates the WRONG end.**
+- ✅ [ANTS-4396] **`file_outline` has no heading-depth filter, so orienting on a long append-only markdown log costs the whole outline — and `max_symbols` truncates the WRONG end.**
   Outlining a 532-line feedback file returns ~85 symbols dominated by `###`
   finding titles that are themselves full sentences. To answer "what is still
   open?" only the `##` day headings are needed. There is no depth filter and
@@ -31919,6 +31928,16 @@ finbreak re-verified it.
   a natural fit for the mode-based parser that would serve any long structured
   doc, ROADMAP.md included; or (b) keep the TAIL when truncating markdown.
   (a) is the more generally useful.
+  Resolved (2026-08-14) as (a), `max_heading_level`, agreeing it is the more
+  generally useful. **Applied at offer time rather than as a post-pass**, so a
+  filtered outline does not compete with `max_symbols` for the same budget:
+  dropping the `###` noise frees room for `##` headings further down, which is
+  the whole point on an append-only log and is asserted by its own case.
+  Out of range means NO FILTER rather than no headings — a typo must not
+  return an empty outline that reads as a file with no structure.
+  (b) is not implemented: the depth filter removes the reason to truncate at
+  all on the file shape that motivated it, and flipping truncation direction
+  for one mode is a behaviour change every existing md caller would feel.
   **Layman:** Asking for a map of a long log gives you every sentence in it, and trimming the map throws away the newest part.
   Kind: enhancement.
   Lanes: fileoutline, mcp.
@@ -31980,7 +31999,7 @@ finbreak re-verified it.
   Lanes: mcp, testing.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager), corroborated in-session.
 
-- 📋 [ANTS-4399] **`session_orient`'s `active_bullets` slice is capped at 20 with no prominence, so a session plans from the first 20 of 95 ordered by document position.**
+- ✅ [ANTS-4399] **`session_orient`'s `active_bullets` slice is capped at 20 with no prominence, so a session plans from the first 20 of 95 ordered by document position.**
   The fields are all present and correct — `count:20, total:95,
   truncated:true, next_offset:20`. What is missing is prominence: the bundle
   reads as "here are your active items", and a session that does not inspect
@@ -31994,6 +32013,11 @@ finbreak re-verified it.
   mode:bundles for the thematic view". **`bundles` already exists and is the
   better planning surface, and nothing points at it from the orientation
   call.**
+  Resolved (2026-08-14) as the hint, not the raised cap — the cap is a real
+  cost on a large roadmap and the ordering is the actual problem. The hint
+  fires only when the slice is a genuine minority, and says the two things the
+  bare fields do not: that the order is POSITION IN THE FILE and not priority,
+  and that `mode:"bundles"` exists and is the better planning surface.
   **Layman:** The session-start summary shows the first twenty open items out of ninety-five and does not say so loudly.
   Kind: enhancement.
   Lanes: mcp, remotecontrol.

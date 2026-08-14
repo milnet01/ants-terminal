@@ -1211,7 +1211,41 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         // a single envelope-level flag cannot say which entry did what.
         a["created_category"] = res.created_category;
         if (res.created_category) anyCreatedCategory = true;
+        // ANTS-4395 — stash the bullet so the line can be RE-RESOLVED against
+        // the final markdown below. `res.line` is correct at insert time and
+        // goes stale the moment a later entry lands in the same category:
+        // insertion is at the category head, so entry 1 takes entry 0's line
+        // and pushes it down. A two-entry batch therefore reported the same
+        // line for both, and only the first could ever be right.
+        a["_bullet_head"] = er.bullet.split(QChar('\n')).value(0);
         applied.append(a);
+    }
+
+    // ANTS-4395 — resolve each applied entry's line against the FINAL
+    // markdown. A caller using the returned `line` to cite or re-read the
+    // entry it just wrote read the wrong one for every entry after the first;
+    // the single-entry op:"add" path was always correct, which is why this
+    // went unnoticed.
+    {
+        const QStringList finalLines = markdown.split(QChar('\n'));
+        QSet<int> claimed;
+        for (int k = 0; k < applied.size(); ++k) {
+            QJsonObject a = applied.at(k).toObject();
+            const QString head =
+                a.take(QStringLiteral("_bullet_head")).toString();
+            if (head.isEmpty()) { applied.replace(k, a); continue; }
+            // First unclaimed exact match. Two entries CAN render identical
+            // heads (the same summary filed twice), so claiming keeps them
+            // from collapsing onto one line.
+            for (int ln = 0; ln < finalLines.size(); ++ln) {
+                if (claimed.contains(ln)) continue;
+                if (finalLines.at(ln) != head) continue;
+                a[QStringLiteral("line")] = ln + 1;   // 1-based
+                claimed.insert(ln);
+                break;
+            }
+            applied.replace(k, a);
+        }
     }
 
     qint64 bytesWritten = 0;

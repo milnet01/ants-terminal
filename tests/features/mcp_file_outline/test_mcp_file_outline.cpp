@@ -925,3 +925,73 @@ TEST(McpFileOutline, Ants4361HtmlLandmarksAndScriptBodies) {
     // only an id= ATTRIBUTE is one.
     EXPECT_TRUE(kindOf("main").isEmpty());
 }
+
+// ANTS-4396 — md heading-depth filter.
+//
+// Outlining a 532-line append-only feedback log returned ~85 symbols
+// dominated by `###` finding titles that are themselves full sentences, when
+// the question — "what is still open?" — needed only the `##` day headings.
+// ~4-5k tokens to orient on a file whose useful surface was about six lines,
+// recurring every session and monotonically worse as the file only grows.
+//
+// `max_symbols` was not a substitute and made it worse: it truncates from the
+// TOP, so on an append-only log it keeps the OLDEST entries and drops the
+// newest — the opposite of what such a file wants.
+TEST(McpFileOutline, Ants4396MdHeadingDepthFilter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/log.md");
+    const QByteArray body =
+        "# Feedback\n"
+        "\n"
+        "## 2026-08-01\n"
+        "\n"
+        "### An older finding whose title is a whole sentence\n"
+        "\n"
+        "### Another older finding, likewise\n"
+        "\n"
+        "## 2026-08-14\n"
+        "\n"
+        "### Today's finding\n";
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    }
+    auto names = [](const QJsonObject &o) {
+        QStringList n;
+        for (const auto &v : o.value("symbols").toArray())
+            n << v.toObject().value("name").toString();
+        return n;
+    };
+
+    // No filter — every level, the behaviour that must not change.
+    const QJsonObject all = FileOutline::compute(
+        path, FileOutline::Mode::Auto, false, 100, false, /*maxHeadingLevel=*/0);
+    EXPECT_EQ(names(all).size(), 6);
+
+    // Depth 2 — only `#` and `##`.
+    const QJsonObject shallow = FileOutline::compute(
+        path, FileOutline::Mode::Auto, false, 100, false, /*maxHeadingLevel=*/2);
+    const QStringList got = names(shallow);
+    EXPECT_EQ(got, (QStringList{QStringLiteral("Feedback"),
+                                QStringLiteral("2026-08-01"),
+                                QStringLiteral("2026-08-14")}))
+        << "got: " << got.join(QStringLiteral(", ")).toStdString();
+
+    // The filter must free BUDGET, not merely hide rows: with max_symbols:2
+    // and the filter on, the two day headings both survive. Filtering as a
+    // post-pass would spend the budget on the `###` noise first and return
+    // only the first day — which is the same failure the caller was already
+    // hitting with max_symbols alone.
+    const QJsonObject capped = FileOutline::compute(
+        path, FileOutline::Mode::Auto, false, /*maxSymbols=*/3, false, 2);
+    EXPECT_TRUE(names(capped).contains(QStringLiteral("2026-08-14")))
+        << "the newest day heading must survive a tight cap once the deeper "
+           "headings are filtered out";
+
+    // Out-of-range means "no filter", not "no headings" — a typo must not
+    // return an empty outline that reads as a file with no structure.
+    EXPECT_EQ(names(FileOutline::compute(path, FileOutline::Mode::Auto,
+                                         false, 100, false, 99)).size(), 6);
+}

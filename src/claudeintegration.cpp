@@ -3919,6 +3919,25 @@ void ClaudeIntegration::onMcpConnection() {
                     props["paths"]                = pathsProp;
                     props["etags"]                = etagsProp;
                     props["sizes"]                = sizesProp;
+                    {   // ANTS-4396 — md heading-depth filter.
+                        QJsonObject mh; mh["type"] = "integer";
+                                        mh["minimum"] = 1;
+                                        mh["maximum"] = 6;
+                                        mh["description"] = QStringLiteral(
+                            "Optional (ANTS-4396), md mode. Drop headings "
+                            "deeper than this level — 2 keeps only `#`/`##`. "
+                            "For a long append-only log (a feedback file, a "
+                            "ROADMAP) the `###` entries are full sentences and "
+                            "swamp the day headings that answer \"what is "
+                            "here?\". NOT the same as `max_symbols`, which "
+                            "truncates from the TOP and therefore keeps the "
+                            "OLDEST entries — the opposite of what such a file "
+                            "wants. The filter applies before the symbol "
+                            "budget, so dropping deep headings frees room for "
+                            "shallow ones further down. Out of range or "
+                            "omitted = no filter.");
+                        props["max_heading_level"] = mh;
+                    }
                     props["raw"]                  = makeRawProp();        // ANTS-4365
                     props["mode"]                 = modeProp;
                     props["include_doc_comment"]  = hdrProp;
@@ -6220,7 +6239,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "project_layout (where docs / specs / roadmap "
                         "live) + roadmap_query mode:section_index "
                         "status:\"active\" (active roadmap sections) + "
-                        "active_bullets (top-20 active item headlines, "
+                        "active_bullets (top-20 active item headlines — "
+                        "ANTS-4399: carries an `active_bullets_hint` when that "
+                        "slice is a minority of the queue, because the list is "
+                        "ordered by POSITION IN THE FILE and not by priority; "
+                        "do not plan from it alone, use roadmap_query "
+                        "mode:\"bundles\" instead; "
                         "mode:headline_only — resolve the next work "
                         "bundle without a follow-up call) + server_build "
                         "(ANTS-2073 — the running server's version + git "

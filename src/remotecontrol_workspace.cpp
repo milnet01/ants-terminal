@@ -1294,7 +1294,8 @@ static QJsonObject outlineOneFile(const QString &rawPath,
                                   const QString &rootCanonical,
                                   FileOutline::Mode mode, bool includeDoc,
                                   int maxSymbols, int maxBytes,
-                                  bool withSizes = false) {
+                                  bool withSizes = false,
+                                  int maxHeadingLevel = 0) {
     if (rawPath.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -1319,7 +1320,7 @@ static QJsonObject outlineOneFile(const QString &rawPath,
     }
     QJsonObject result = FileOutline::compute(check.resolved, mode,
                                               includeDoc, maxSymbols,
-                                              withSizes);
+                                              withSizes, maxHeadingLevel);
     // Reframe the path back to project-relative so callers get stable
     // paths regardless of where the binary was launched.
     if (result.value("ok").toBool()) {
@@ -1383,6 +1384,12 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     const int  maxBytes   = req.value("max_bytes").toInt(0);
     // ANTS-4384 — opt-in per-symbol extents (uniform across a batch).
     const bool withSizes  = req.value(QStringLiteral("sizes")).toBool(false);
+    // ANTS-4396 — md heading-depth filter (0 = off). Clamped to the syntax's
+    // own range; a value outside it means "no filter" rather than "no
+    // headings", since the latter would return an empty outline for a typo.
+    int maxHeadingLevel =
+        req.value(QStringLiteral("max_heading_level")).toInt(0);
+    if (maxHeadingLevel < 0 || maxHeadingLevel > 6) maxHeadingLevel = 0;
 
     // ANTS-2223 — multi-path form: outline several related files (a header +
     // its impl + a consumer) in ONE call instead of N. Triggered by a `paths`
@@ -1400,7 +1407,7 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         for (const QJsonValue &pv : paths) {
             QJsonObject fileObj = outlineOneFile(
                 pv.toString(), rootCanonical, mode, includeDoc,
-                maxSymbols, maxBytes, withSizes);
+                maxSymbols, maxBytes, withSizes, maxHeadingLevel);
             const QString etag = outlineFileEtag(fileObj);
             const QString rel  = fileObj.value(QStringLiteral("path")).toString();
             const QString prior = priorEtags.value(rel).toString();
@@ -1455,7 +1462,7 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     // ANTS-1249-INV-10: reachability gate is upstream (UDS SO_PEERCRED).
     return QJsonDocument(outlineOneFile(rawPath, rootCanonical, mode,
                                         includeDoc, maxSymbols, maxBytes,
-                                        withSizes));
+                                        withSizes, maxHeadingLevel));
 }
 
 // ANTS-1855 — read_log: filter a log file, return only matching lines.

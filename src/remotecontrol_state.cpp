@@ -1624,6 +1624,31 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
                 "include_narrator_bullets:true — the queue is NOT empty.")
                 .arg(legacyRawActive);
         }
+        // ANTS-4399 — say loudly when the slice is a MINORITY of the queue.
+        // The fields were already correct (count / total / truncated /
+        // next_offset); what was missing is prominence. The bundle reads as
+        // "here are your active items", so a session that does not inspect
+        // `truncated` plans from the first 20 of 95 — ordered by document
+        // position, which is not an ordering that means anything. It bit a
+        // reporting session indirectly: the first 20 were dominated by one
+        // section, and the items worth doing were reachable only because a
+        // handoff brief named them.
+        //
+        // The hint points at `bundles`, which already exists and is the
+        // better planning surface — and which nothing pointed at from the
+        // orientation call.
+        if (rq.value(QStringLiteral("truncated")).toBool()) {
+            const int shown = rq.value(QStringLiteral("count")).toInt(0);
+            const int total = rq.value(QStringLiteral("total")).toInt(0);
+            if (total > shown) {
+                rq[QStringLiteral("active_bullets_hint")] = QStringLiteral(
+                    "showing %1 of %2 active items, ordered by position in "
+                    "the file — NOT by priority. Do not plan from this slice "
+                    "alone: call roadmap_query mode:\"bundles\" for the "
+                    "thematic view, or page with offset:%1.")
+                        .arg(shown).arg(total);
+            }
+        }
         result[QStringLiteral("active_bullets")] = rq;
     }
 

@@ -86,11 +86,20 @@ bool isGlslExt(const QString &ext);
 // than "where do I split this file", which is the question it exists for.
 // Opt-in: the default envelope stays byte-identical, and the only cost when
 // asked for is a per-line offset table.
+// ANTS-4396 — `maxHeadingLevel` (md mode, 0 = no filter) drops headings
+// deeper than N. Outlining a 532-line append-only log returned ~85 symbols
+// dominated by `###` titles that are themselves full sentences, when the
+// question — "what is still open?" — needed only the `##` day headings.
+//
+// `maxSymbols` was not a substitute and made it worse: it truncates from the
+// TOP, so on an append-only log it keeps the OLDEST entries and drops the
+// newest, which is the opposite of what such a file wants.
 QJsonObject compute(const QString &absPath,
                     Mode mode,
                     bool includeDocComment,
                     int maxSymbols,
-                    bool withSizes = false);
+                    bool withSizes = false,
+                    int maxHeadingLevel = 0);
 
 }  // namespace FileOutline
 

@@ -364,3 +364,61 @@ TEST(changelog_log_add_batch, Inv7DryRunWritesNothing) {
             << "add_batch dry_run must not write CHANGELOG.md";
     }
 }
+
+// ANTS-4395 — each applied entry reports the line it ACTUALLY occupies.
+//
+// A two-entry batch returned applied:[{index:0, line:26}, {index:1,
+// line:26}]. Two entries appended under one category cannot both occupy line
+// 26: insertion is at the category head, so the second takes the first's line
+// and pushes it down. `res.line` is correct at insert time and goes stale the
+// moment a later entry lands in the same category — so only the first could
+// ever be right, and the single-entry op:"add" path was always correct, which
+// is why it went unnoticed.
+//
+// The file was correct throughout; this is the envelope. But a caller using
+// the returned line to cite or re-read the entry it just wrote read the wrong
+// one for every entry after the first.
+TEST(changelog_log_add_batch, Ants4395PerEntryLinesAreDistinctAndReal) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+
+    QJsonArray entries;
+    // BOTH in the same category — the shape that collides.
+    entries.append(addEntry(QStringLiteral("First added thing."),
+                            QStringLiteral("feature"),
+                            QStringLiteral("ANTS-1010")));
+    entries.append(addEntry(QStringLiteral("Second added thing."),
+                            QStringLiteral("feature"),
+                            QStringLiteral("ANTS-1016")));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    req[QStringLiteral("entries")]    = entries;
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+
+    const QJsonArray applied = resp.value(QStringLiteral("applied")).toArray();
+    ASSERT_EQ(applied.size(), 2);
+    const int l0 = applied.at(0).toObject().value(QStringLiteral("line")).toInt();
+    const int l1 = applied.at(1).toObject().value(QStringLiteral("line")).toInt();
+    EXPECT_NE(l0, l1)
+        << "two entries in one category cannot occupy the same line";
+
+    // And each reported line must actually hold that entry in the file — the
+    // point is not that the numbers differ but that they are TRUE.
+    const QStringList lines =
+        QString::fromStdString(readFileStd(clPath(tmp.path())))
+            .split(QLatin1Char('\n'));
+    ASSERT_GT(lines.size(), qMax(l0, l1));
+    EXPECT_TRUE(lines.at(l0 - 1).contains(QStringLiteral("(ANTS-1010)")))
+        << "line " << l0 << " is: " << lines.at(l0 - 1).toStdString();
+    EXPECT_TRUE(lines.at(l1 - 1).contains(QStringLiteral("(ANTS-1016)")))
+        << "line " << l1 << " is: " << lines.at(l1 - 1).toStdString();
+
+    // The scaffolding field must not leak into the envelope.
+    EXPECT_FALSE(applied.at(0).toObject().contains(QStringLiteral("_bullet_head")));
+}

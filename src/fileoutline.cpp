@@ -528,7 +528,8 @@ QJsonObject compute(const QString &absPath,
                     Mode mode,
                     bool includeDocComment,
                     int maxSymbols,
-                    bool withSizes) {
+                    bool withSizes,
+                    int maxHeadingLevel) {
     if (maxSymbols <= 0)            maxSymbols = 200;
     if (maxSymbols > kMaxSymbolsCap) maxSymbols = kMaxSymbolsCap;
 
@@ -906,9 +907,16 @@ QJsonObject compute(const QString &absPath,
         } else if (effective == Mode::Md) {
             QRegularExpressionMatch m = rxMdHeading().match(line);
             if (m.hasMatch()) {
-                if (withSizes)
-                    mdLevelByLine.insert(totalLines, m.captured(1).size());
-                offer("heading", m.captured(2), line);
+                const int level = m.captured(1).size();
+                if (withSizes) mdLevelByLine.insert(totalLines, level);
+                // ANTS-4396 — the depth filter. Applied at OFFER time rather
+                // than as a post-pass, so a filtered outline is not silently
+                // competing with maxSymbols for the same budget: dropping the
+                // `###` noise must free room for the `##` headings further
+                // down the file, which is the whole point on an append-only
+                // log.
+                if (maxHeadingLevel <= 0 || level <= maxHeadingLevel)
+                    offer("heading", m.captured(2), line);
             }
         } else if (effective == Mode::Html) {
             // ANTS-4361 — LANDMARKS, deliberately not a DOM parse. Scoping to
