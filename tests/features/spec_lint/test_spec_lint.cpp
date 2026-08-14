@@ -15,6 +15,7 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -126,16 +127,109 @@ TEST(SpecLint, Inv1SectionListIsReadNotAssumed) {
     EXPECT_FALSE(b.sectionsChecked);
     EXPECT_EQ(countKind(b, "missing_section"), 0);
 
-    // (c) THE CORPUS'S ACTUAL STATE — the project's standard is present and
-    //     carries no marked block, so the list is empty and the check skips.
-    //     This is a live assertion against the real file, not a fixture: it
-    //     fails the moment an implementation starts scraping prose instead.
+    // (c) THE CORPUS'S ACTUAL STATE — a live assertion against the real file,
+    //     not a fixture, so it fails the moment an implementation starts
+    //     guessing the list from § 3's prose or § 7's skeleton instead of
+    //     reading the marked block.
+    //
+    //     ANTS-4345 (2026-08-14) added that block, so this flipped from "the
+    //     list is empty and the check skips" to naming the five entries. They
+    //     are UNNUMBERED on purpose: this standard does not fix section
+    //     numbers, and an exact-match list built from § 7's skeleton was
+    //     measured firing on 188 of 243 specs, almost none of it real.
     const QString real = slurp(DOCS_STANDARDS_SPECS_MD_PATH);
     ASSERT_FALSE(real.isEmpty()) << "docs/standards/specs.md must be readable";
-    EXPECT_TRUE(SpecLint::parseRequiredSections(real).isEmpty())
-        << "specs.md carries no <!-- required-sections --> block yet "
-           "(ANTS-3662 § 7 files it); anything else here means the engine is "
-           "guessing the list from § 3's prose or § 7's skeleton";
+    const QStringList realReq = SpecLint::parseRequiredSections(real);
+    EXPECT_EQ(realReq, (QStringList{QStringLiteral("## Problem"),
+                                    QStringLiteral("## Surface"),
+                                    QStringLiteral("## Invariants"),
+                                    QStringLiteral("## Tests"),
+                                    QStringLiteral("## Cold-eyes loop log")}))
+        << "specs.md § 3's <!-- required-sections --> block is the list; it is "
+           "a deliberate SUBSET of § 3 + § 4 (no Title/Header block — not `##` "
+           "sections; no RAM / build cost — § 4 requires it conditionally and "
+           "a flat list cannot carry a condition)";
+    for (const QString &e : realReq)
+        EXPECT_FALSE(e.contains(QRegularExpression(QStringLiteral(R"(^##\s+\d)"))))
+            << "entries stay unnumbered: " << qPrintable(e);
+}
+
+// ANTS-4345 — a required entry written WITHOUT a number matches on the section
+// NAME; a numbered one keeps the exact match. Both halves are load-bearing and
+// they serve different standards: the global config repo fixes its numbering
+// (1..12) and relies on the number being part of a section's identity, while
+// this project's standard never fixes numbers — § 4's optional sections are
+// inserted where they read best, which shifts every heading after them.
+// Measured 2026-08-14 over all 243 specs in docs/specs/: an exact-match block
+// built from § 7's skeleton fired on 188 of them, and `## 6. Tests` alone was
+// absent-as-written in 174 — almost none of that missing structure, just a
+// number the standard never mandated.
+TEST(SpecLint, RequiredSectionMatchesByNameWhenUnnumbered) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — t\n"
+        "\n"
+        "**Status:** spec draft (2026-08-14).\n"
+        "\n"
+        "## 1. Problem\n"
+        "\n"
+        "p\n"
+        "\n"
+        "## 4. Tests\n"
+        "\n"
+        "t\n"
+        "\n"
+        "## Cold-eyes loop log\n");
+
+    // (a) unnumbered entries match whatever number the document carries —
+    //     `## Tests` finds `## 4. Tests`, and an unnumbered heading still
+    //     matches an unnumbered entry.
+    const QString byName = QStringLiteral(
+        "<!-- required-sections -->\n"
+        "```\n"
+        "## Problem\n"
+        "## Tests\n"
+        "## Cold-eyes loop log\n"
+        "```\n");
+    SpecLint::Options byNameOpts;
+    byNameOpts.requiredSections = SpecLint::parseRequiredSections(byName);
+    ASSERT_EQ(byNameOpts.requiredSections.size(), 3);
+    const SpecLint::Result a =
+        SpecLint::check(doc, QStringLiteral("s.md"), byNameOpts);
+    EXPECT_TRUE(a.sectionsChecked);
+    EXPECT_EQ(countKind(a, "missing_section"), 0)
+        << "an unnumbered entry must not care which number the heading has";
+
+    // (b) a NUMBERED entry still matches exactly, so a standard whose numbers
+    //     are identity keeps the stricter check: `## 6. Tests` does not match
+    //     this document's `## 4. Tests`.
+    const QString byNumber = QStringLiteral(
+        "<!-- required-sections -->\n"
+        "```\n"
+        "## 1. Problem\n"
+        "## 6. Tests\n"
+        "```\n");
+    SpecLint::Options byNumberOpts;
+    byNumberOpts.requiredSections = SpecLint::parseRequiredSections(byNumber);
+    ASSERT_EQ(byNumberOpts.requiredSections.size(), 2);
+    const SpecLint::Result b =
+        SpecLint::check(doc, QStringLiteral("s.md"), byNumberOpts);
+    EXPECT_TRUE(b.sectionsChecked);
+    EXPECT_EQ(countKind(b, "missing_section"), 1)
+        << "`## 1. Problem` matches; `## 6. Tests` must not match `## 4. Tests`";
+
+    // (c) a genuinely absent section is still reported under name matching —
+    //     the loosening must not swallow the finding the check exists for.
+    const QString missing = QStringLiteral(
+        "<!-- required-sections -->\n"
+        "```\n"
+        "## Surface\n"
+        "```\n");
+    SpecLint::Options missingOpts;
+    missingOpts.requiredSections = SpecLint::parseRequiredSections(missing);
+    const SpecLint::Result c =
+        SpecLint::check(doc, QStringLiteral("s.md"), missingOpts);
+    EXPECT_EQ(countKind(c, "missing_section"), 1)
+        << "the document has no Surface section at any number";
 }
 
 // INV-2 — every INV-N carrying no test-surface clause produces exactly one

@@ -32122,7 +32122,7 @@ defect from different angles.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (ANTS-4129 review-contract loop 2).
 
-- 📋 [ANTS-4345] **`spec_lint`'s required-section check is silently off for this entire project, because our format standard carries no `<!-- required-sections -->` block.**
+- ✅ [ANTS-4345] **`spec_lint`'s required-section check is silently off for this entire project, because our format standard carries no `<!-- required-sections -->` block.**
   Hit while authoring `docs/specs/ANTS-3716-cited-by-sweep.md` (2026-08-14).
   `spec_lint` came back `ok:true` with one candidate finding, and
   `sections_checked:false` — meaning the `missing_section` check never ran. Its
@@ -32184,6 +32184,47 @@ defect from different angles.
   `## Problem`, and is the smallest change; it is the recommendation.
   Until one is chosen this stays open and `sections_checked` stays false.
   See also the withdrawn ANTS-4347.
+  Resolved (2026-08-14): option (c) taken, per user decision. `spec_lint`
+  now matches a required entry EXACTLY when it carries a number and by NAME
+  when it does not (`speclint.cpp` `headingIsNumbered` / `sectionNameOf`),
+  so one matcher serves both standards: the global `spec-format.md` keeps
+  numbering-as-identity, and this project — which never fixed its numbers —
+  gets a list it can satisfy. `docs/standards/specs.md` § 3 now carries the
+  block, deliberately a SUBSET of § 3 + § 4: no Title / Header block (not
+  `##` sections, and `spec_query` already fails loudly on both), and no
+  RAM / build cost (§ 4 requires it *conditionally*, and a flat list cannot
+  carry a condition — listing it would silently convert a conditional rule
+  into an unconditional one). No new obligation, so rule 14's gate does not
+  re-arm: every entry was already required in prose, and what changed is
+  that a live rule is now checked. 3 new cases in
+  `tests/features/spec_lint/`, red first; the pre-existing live guard that
+  asserted specs.md had NO block was flipped to assert the five entries and
+  that they stay unnumbered. The legacy backlog this exposes is ANTS-4348,
+  filed rather than absorbed.
+
+- 📋 [ANTS-4348] **139 of 243 specs are missing a section `docs/standards/specs.md` § 3 requires — the backlog ANTS-4345's check exposes.**
+  Now that § 3 carries a `<!-- required-sections -->` block, `spec_lint`
+  reports `missing_section` against the five unconditionally-required
+  sections. Measured 2026-08-14 by name (number-insensitive, so this is
+  genuine absence and not a numbering mismatch): **139 of 243** specs miss
+  at least one — `Cold-eyes loop log` absent in 133, `Tests` in 112,
+  `Surface` in 87, `Invariants` in 20, `Problem` in 11.
+  **Most of this is age, not neglect.** The standard is v1 (2026-05-21) and
+  much of the corpus predates it; § 2 already records that bare `<ID>.md`
+  specs from an earlier convention are still present, which ANTS-3755
+  tracks separately. A shipped spec is a historical record (§ 5.6), so
+  back-filling a `Cold-eyes loop log` onto one that never ran a gate would
+  manufacture evidence — the loop log is the audit trail of what each pass
+  found, and § 5.7 forbids back-filling it. **So this is NOT "add the
+  missing headings".**
+  Work: decide the policy first, then apply it. Options: scope the check to
+  specs authored after the standard (needs a cutoff `spec_lint` has no way
+  to express today); fix only specs still being implemented against;
+  or accept a standing finding count and treat it as a known baseline.
+  **Layman:** The spec checker just started working, and it says most of our older spec documents are missing a chapter. Mostly that is because they were written before the rule existed — so the question is which ones are worth going back to, not how fast we can silence it.
+  Kind: investigate.
+  Lanes: specs, speclint, docs.
+  Source: in-session-2026-08-14 (measured while closing ANTS-4345).
 
 - 📋 [ANTS-4135] **23 specs cite feature-test directories that do not exist.**
   Measured 2026-08-12 over docs/specs/ (excluding ANTS-4127's own spec):

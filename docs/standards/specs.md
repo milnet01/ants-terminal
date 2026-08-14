@@ -81,6 +81,42 @@ Every spec opens with these, in this order. They are not the whole
 required set — § 4 carries two more: **§ RAM / build cost** when its
 trigger applies, and **§ Cold-eyes loop log** always.
 
+The block below is that rule in the form `spec_lint`'s `missing_section`
+check reads (ANTS-4345). It **adds no obligation** — every entry is
+already required by this section or by § 4, and it is deliberately a
+*subset* of them:
+
+- **§ 3.1 Title and § 3.2 Header block are absent** because they are an
+  `#` heading and bold key-value lines, not `##` sections, so the check
+  cannot address them. `spec_query` already fails loudly on both.
+- **§ RAM / build cost is absent** because § 4 requires it *conditionally*
+  ("whenever its trigger applies"), and a flat list cannot carry a
+  condition. Listing it would convert a conditional rule into an
+  unconditional one, which is a change this standard has not made.
+- **The entries carry no section numbers, on purpose.** This standard
+  does not fix them — § 4's optional sections are inserted wherever they
+  read best, which shifts every heading after them — so the check matches
+  these by name at whatever number a spec gives them. A standard whose
+  numbering *is* part of a section's identity writes the numbers in and
+  gets an exact match instead; the global `spec-format.md` does exactly
+  that.
+
+<!-- required-sections -->
+```
+## Problem
+## Surface
+## Invariants
+## Tests
+## Cold-eyes loop log
+```
+
+**Expect a real backlog the first time this runs over `docs/specs/`, and
+it is not evidence the list is wrong.** Measured 2026-08-14 across all
+243 specs: 139 are missing at least one of these five as a `##` section —
+`Cold-eyes loop log` in 133, `Tests` in 112, `Surface` in 87. The corpus
+predates this standard (v1, 2026-05-21) and § 2 already records that
+specs from an earlier convention are still present.
+
 ### 3.1 Title (H1)
 
 ```

@@ -201,6 +201,29 @@ QString collapseWs(const QString &s) {
     return s.trimmed().replace(ws, QStringLiteral(" "));
 }
 
+// ANTS-4345 — the number prefix of a normalised heading, if it has one.
+// `## 6. Tests` yes, `## Cold-eyes loop log` no. A required-section entry is
+// matched EXACTLY when it carries a number and by NAME when it does not, which
+// lets one matcher serve two standards: the global config repo fixes its
+// numbering 1..12 and treats the number as part of a section's identity, while
+// this project's standard never fixes numbers at all — its optional sections
+// are inserted wherever they read best, shifting every heading after them.
+bool headingIsNumbered(const QString &normalisedHeading) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^#{2,6}\s+\d+(?:\.\d+)*\.?\s+\S)"));
+    return re.match(normalisedHeading).hasMatch();
+}
+
+// The name half of a normalised heading: `## 6. Tests` -> `Tests`.
+// Returns the trimmed input unchanged when it does not look like a heading, so
+// a malformed entry degrades to an exact comparison rather than to a wildcard.
+QString sectionNameOf(const QString &normalisedHeading) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^#{2,6}\s+(?:\d+(?:\.\d+)*\.?\s+)?(\S.*)$)"));
+    const auto m = re.match(normalisedHeading);
+    return m.hasMatch() ? m.captured(1).trimmed() : normalisedHeading.trimmed();
+}
+
 }  // namespace
 
 QSet<int> invariantNumbers(const QString &text) {
@@ -318,9 +341,19 @@ Result check(const QString &text, const QString &relPath,
     if (!opts.requiredSections.isEmpty()) {
         r.sectionsChecked = true;
         const QSet<QString> present(headingLines.begin(), headingLines.end());
+        // ANTS-4345 — a name-keyed index beside the exact one, so an entry
+        // written without a number matches whatever number the document
+        // carries. Built once, not per required entry.
+        QSet<QString> presentNames;
+        presentNames.reserve(headingLines.size());
+        for (const QString &h : headingLines) presentNames.insert(sectionNameOf(h));
+
         for (const QString &req : opts.requiredSections) {
             const QString want = collapseWs(req);
-            if (!present.contains(want))
+            const bool found = headingIsNumbered(want)
+                                   ? present.contains(want)
+                                   : presentNames.contains(sectionNameOf(want));
+            if (!found)
                 add(QStringLiteral("missing_section"), 0,
                     QStringLiteral("required section is absent: %1").arg(want));
         }
