@@ -2350,6 +2350,13 @@ void ClaudeIntegration::onMcpConnection() {
                     inclBodyProp["type"] = "boolean";
                     inclBodyProp["default"] = false;
                     inclBodyProp["description"] = QStringLiteral(
+                        "ANTS-4362 — an `id`/`ids` fetch returns bodies "
+                        "WITHOUT this flag; a status- or section-filtered "
+                        "query withholds them unless it is set, because a "
+                        "filter can match the whole roadmap. A filtered reply "
+                        "that withheld them carries `bodies_omitted:true` + "
+                        "`bodies_omitted_reason`, so a missing body is never "
+                        "mistaken for a bullet that has none. "
                         "If true, each bullet carries a `body` field "
                         "(continuation prose, truncated to ~2000 chars "
                         "with `body_truncated:true` on truncation). "

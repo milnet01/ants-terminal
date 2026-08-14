@@ -351,3 +351,44 @@ TEST(roadmap_query_id_body_cap, Inv8ElisionMarkerNamesTheRemedy) {
     EXPECT_EQ(body, body2)
         << "the marker must carry no counts — byte-stable across calls";
 }
+
+// ANTS-4362 — the id/ids paths return bodies WITHOUT include_body while a
+// status- or section-filtered query strips them unless asked. That asymmetry
+// is deliberate (a targeted fetch is a handful of bullets, a status filter can
+// match the whole roadmap) but it was SILENT, so a filtered reply read as
+// though those bullets simply had no bodies — and orienting on a queue is
+// exactly the filtered shape. Games_Hub picked between two candidates on
+// headlines alone because of it.
+TEST(roadmap_query_id_body_cap, Ants4362FilteredQuerySaysBodiesWereWithheld) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithLongBody()));
+    RemoteControl rc(nullptr);
+
+    // (a) filtered, no include_body → bodies withheld, and it SAYS so.
+    QJsonObject filtered;
+    filtered[QStringLiteral("caller_cwd")] = tmp.path();
+    filtered[QStringLiteral("status")]     = QStringLiteral("all");
+    const QJsonObject fr = rc.cmdRoadmapQuery(filtered).object();
+    ASSERT_TRUE(fr.value(QStringLiteral("ok")).toBool());
+    ASSERT_FALSE(fr.value(QStringLiteral("bullets")).toArray().isEmpty());
+    EXPECT_TRUE(fr.value(QStringLiteral("bodies_omitted")).toBool())
+        << "a filtered query that withheld bodies must say so";
+    EXPECT_TRUE(fr.value(QStringLiteral("bodies_omitted_reason"))
+                    .toString().contains(QStringLiteral("include_body")))
+        << "and name the argument that returns them";
+
+    // (b) the same filter WITH include_body → no marker, bodies present.
+    filtered[QStringLiteral("include_body")] = true;
+    const QJsonObject wr = rc.cmdRoadmapQuery(filtered).object();
+    EXPECT_FALSE(wr.contains(QStringLiteral("bodies_omitted")))
+        << "nothing was withheld, so nothing should be claimed";
+
+    // (c) an id fetch never withholds, so it must not carry the marker
+    // either — the marker means "withheld", not "this is a list".
+    QJsonObject byId;
+    byId[QStringLiteral("caller_cwd")] = tmp.path();
+    byId[QStringLiteral("id")]         = QStringLiteral("ANTS-7777");
+    EXPECT_FALSE(rc.cmdRoadmapQuery(byId).object()
+                     .contains(QStringLiteral("bodies_omitted")));
+}

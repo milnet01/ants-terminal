@@ -30640,7 +30640,7 @@ collision are different strengths of evidence.
   Lanes: fileoutline, mcp.
   Source: cc-feedback-2026-08-14 (AI_Prompts).
 
-- 📋 [ANTS-4362] **`roadmap_query mode:"bullets"` returns bullet bodies ONLY on the `id` path — a status- or section-filtered query silently drops `body`.**
+- ✅ [ANTS-4362] **`roadmap_query mode:"bullets"` returns bullet bodies ONLY on the `id` path — a status- or section-filtered query silently drops `body`.**
   The mode is named for returning bodies. Filtered by `id` it does; filtered
   by `status` or `section` it returns the lean default shape with no `body`
   key and nothing in the envelope saying it was withheld, so the reply reads
@@ -30658,6 +30658,21 @@ collision are different strengths of evidence.
   an opt-in — and let a filter matching a handful return them regardless.
   A truncated body-bearing reply is recoverable; one that looks complete and
   is not, is not.
+  Resolved (2026-08-14) by the reporter's SECOND option, not their first.
+  Reading the code, the asymmetry is deliberate: the `id`/`ids` paths strip
+  bodies only when `include_body:false` is passed EXPLICITLY, while the
+  status/section paths strip unless `include_body:true` is. That is a real
+  size guard — a targeted fetch is a handful of bullets, a status filter can
+  match the whole roadmap — so emitting bodies on every path would blow the
+  payload the guard exists to bound.
+  What was wrong is that it was SILENT, which is exactly what they said in
+  their fallback: make it visible and controllable. A filtered reply that
+  withheld bodies now carries `bodies_omitted:true` +
+  `bodies_omitted_reason` naming `include_body`, on both the status and
+  section paths, and the schema states the asymmetry. Tested three ways —
+  withheld says so, `include_body:true` claims nothing, and an id fetch
+  never carries the marker, because it means "withheld" and not "this is a
+  list".
   **Layman:** Ask for the open items and their detail, and you get the detail only if you already knew each item's number.
   Kind: fix.
   Lanes: mcp, roadmap.

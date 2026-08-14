@@ -2230,6 +2230,24 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (!includeBody) rcStripBodyFields(page.slice);
         out["ok"] = true;
         out["bullets"] = page.slice;
+        // ANTS-4362 — say when the bodies were withheld. `mode:"bullets"` is
+        // NAMED for returning bodies, and on an `id`/`ids` fetch it does so by
+        // default; on a status- or section-filtered query it strips them
+        // unless `include_body` is passed. That asymmetry is deliberate — a
+        // targeted fetch is a handful of bullets, a status filter can match
+        // the whole roadmap — but it was SILENT, so the reply read as though
+        // those bullets simply had no bodies and a session picked between
+        // candidates on headlines alone. Orienting on a queue is exactly the
+        // status-filtered shape, which is the one that drops them.
+        if (!includeBody && mode != QLatin1String("headline_only")
+            && !page.slice.isEmpty()) {
+            out["bodies_omitted"] = true;
+            out["bodies_omitted_reason"] = QStringLiteral(
+                "a filtered bullets query withholds bodies by default because "
+                "the filter can match the whole roadmap; pass "
+                "include_body:true to get them (an id/ids fetch returns them "
+                "without asking)");
+        }
         out["path"] = path;
         out["count"] = page.slice.size();
         out["filter"] = filter;
@@ -2674,6 +2692,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 
     out["ok"] = true;
     out["bullets"] = page.slice;
+    // ANTS-4362 — see the section-path note: the withholding is deliberate,
+    // the silence was not. This is the STATUS-filtered path, which is the one
+    // a session orienting on its queue actually uses.
+    if (!includeBody && mode != QLatin1String("headline_only")
+        && !page.slice.isEmpty()) {
+        out["bodies_omitted"] = true;
+        out["bodies_omitted_reason"] = QStringLiteral(
+            "a filtered bullets query withholds bodies by default because the "
+            "filter can match the whole roadmap; pass include_body:true to get "
+            "them (an id/ids fetch returns them without asking)");
+    }
     out["path"] = path;
     // ANTS-1247-INV-10: count is post-filter post-pagination size.
     out["count"] = page.slice.size();
