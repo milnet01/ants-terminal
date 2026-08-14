@@ -312,3 +312,95 @@ TEST(FileOutlineCppScanner, TerminatorTestIsLiteralAware) {
     // body opens and the local is suppressed.
     EXPECT_FALSE(fns.contains(QStringLiteral("inner")));
 }
+
+// ANTS-4366 — a space between the function name and its `(` made the whole
+// signature invisible, so 52 of 67 .c files in a 1997-style C tree outlined
+// to nothing while `ok:true` said the file simply had no symbols.
+//
+// The cause is NOT the space itself — `\s*\(` always allowed it — and it is
+// not the Allman brace, which the reporter first blamed and then disproved.
+// It is the POSSESSIVE `++` on the return-type group: given `byte* I_ZoneBase
+// (int* size)` the group consumes `byte* ` and then `I_ZoneBase ` too, because
+// a name followed by a space looks like another return-type token, and a
+// possessive quantifier cannot give it back. With `name(` there is no trailing
+// space, so the name survives — which is exactly the observed split.
+TEST(FileOutlineCppScanner, SpaceBeforeParenStillResolves) {
+    QTemporaryDir dir;
+    // The five lines below are i_system.c's real shapes. The first three are
+    // the forms that already worked; they are the control, and they must keep
+    // working or the fix has traded one blind spot for another.
+    const QString path = writeCpp(dir, QStringLiteral(
+        "ticcmd_t*\tI_BaseTiccmd(void)\n"
+        "{\n"
+        "    return 0;\n"
+        "}\n"
+        "\n"
+        "void I_WaitVBL(int count)\n"
+        "{\n"
+        "}\n"
+        "\n"
+        "byte*\tI_AllocLow(int length)\n"
+        "{\n"
+        "    return 0;\n"
+        "}\n"
+        "\n"
+        "byte* I_ZoneBase (int*\tsize)\n"
+        "{\n"
+        "    return 0;\n"
+        "}\n"
+        "\n"
+        "int  I_GetTime (void)\n"
+        "{\n"
+        "    return 0;\n"
+        "}\n"
+        "\n"
+        "unsigned int I_Spaced (int a)\n"
+        "{\n"
+        "    return 0;\n"
+        "}\n"));
+    const QStringList names = funcNames(path);
+
+    // Control — the forms that already resolved.
+    EXPECT_TRUE(names.contains(QStringLiteral("I_BaseTiccmd")));
+    EXPECT_TRUE(names.contains(QStringLiteral("I_WaitVBL")));
+    EXPECT_TRUE(names.contains(QStringLiteral("I_AllocLow")));
+
+    // The reported misses, same file, same brace style, differing only by
+    // the space.
+    EXPECT_TRUE(names.contains(QStringLiteral("I_ZoneBase")))
+        << "space before the paren: " << names.join(QLatin1Char(',')).toStdString();
+    EXPECT_TRUE(names.contains(QStringLiteral("I_GetTime")))
+        << "two spaces after the return type: "
+        << names.join(QLatin1Char(',')).toStdString();
+    // A multi-token return type AND a space — the return-type group must
+    // still consume `unsigned int ` while leaving the name.
+    EXPECT_TRUE(names.contains(QStringLiteral("I_Spaced")))
+        << names.join(QLatin1Char(',')).toStdString();
+}
+
+// ANTS-4366 second half — a recognised, non-trivial source file that matched
+// nothing says so. The reporter argued this is the more valuable half, and
+// they are right: the resolver gap above was one dialect, but "found nothing"
+// reading identically to "could not look" is the shape that turns any future
+// gap into a silently wrong answer.
+TEST(FileOutlineCppScanner, EmptyParseOfARecognisedFileIsFlagged) {
+    QTemporaryDir dir;
+    QString body;
+    for (int i = 0; i < 20; ++i)
+        body += QStringLiteral("    someStatement(%1);\n").arg(i);
+    const QJsonObject out = FileOutline::compute(
+        writeCpp(dir, body), FileOutline::Mode::Cpp, false, 1000);
+
+    EXPECT_TRUE(out.value(QStringLiteral("symbols")).toArray().isEmpty());
+    EXPECT_TRUE(out.value(QStringLiteral("parse_empty")).toBool())
+        << "a 20-line recognised C++ file matching nothing must say so";
+    EXPECT_FALSE(out.value(QStringLiteral("hint")).toString().isEmpty());
+
+    // And it must NOT fire where symbols were found — otherwise it is noise
+    // on every healthy call.
+    const QString ok = writeCpp(dir, QStringLiteral(
+        "void realFunction (int a)\n{\n    return;\n}\n"));
+    const QJsonObject good =
+        FileOutline::compute(ok, FileOutline::Mode::Cpp, false, 1000);
+    EXPECT_FALSE(good.contains(QStringLiteral("parse_empty")));
+}

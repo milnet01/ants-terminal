@@ -60,7 +60,7 @@ const QRegularExpression &rxCppMember() {
         // The leading keyword lookahead rejects a col-0 `return Foo::bar(`
         // statement (mirrors rxCppFunc's ANTS-2147 guard); the qualified
         // name still starts at the run after the last return-type token.
-        QRegularExpression r(QStringLiteral(R"(^(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:[\w:<>]+[\s*&]+)++[\w:]+::[\w~]+\s*\()"));
+        QRegularExpression r(QStringLiteral(R"(^(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++[\w:]+::[\w~]+\s*\()"));
         r.optimize();
         return r;
     }();
@@ -113,7 +113,7 @@ const QRegularExpression &rxCppFunc() {
     //
     // ANTS-2147: a statement-position call (`return foo(...)`,
     // `throw foo(...)`, `else foo(...)` …) has a leading keyword + space
-    // that the return-type group `(?:[\w:<>]+[\s*&]+)++` would otherwise
+    // that the return-type group `(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++` would otherwise
     // absorb, emitting the call site as a spurious function symbol. The
     // negative lookahead rejects an expression-introducing reserved
     // keyword as the first token — a keyword is never a return type, so
@@ -144,7 +144,7 @@ const QRegularExpression &rxCppFunc() {
     //      allowed before the `[{;]` terminator. The qualifier group is
     //      shared verbatim with rxCppFuncOpen.
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\((?:[^()]++|\([^()]*+\))*+\)(?:\s*(?:const|volatile|noexcept\s*\((?:[^()]++|\([^()]*+\))*+\)|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+\s*[{;])"));
+        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else)\b)(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++(\w+)\s*\((?:[^()]++|\([^()]*+\))*+\)(?:\s*(?:const|volatile|noexcept\s*\((?:[^()]++|\([^()]*+\))*+\)|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+\s*[{;])"));
         r.optimize();
         return r;
     }();
@@ -168,7 +168,7 @@ const QRegularExpression &rxCppFuncOpen() {
         // rxCppFunc, with the terminator relaxed to end-of-line (body `{` on
         // the next line). So a `ReturnType name(std::function<void()> cb) const`
         // whose brace sits below is still detected.
-        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\((?:[^()]++|\([^()]*+\))*+\)(?:\s*(?:const|volatile|noexcept\s*\((?:[^()]++|\([^()]*+\))*+\)|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+\s*$)"));
+        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++(\w+)\s*\((?:[^()]++|\([^()]*+\))*+\)(?:\s*(?:const|volatile|noexcept\s*\((?:[^()]++|\([^()]*+\))*+\)|noexcept|override|final|mutable|&&|&|=\s*(?:0|default|delete)))*+\s*$)"));
         r.optimize();
         return r;
     }();
@@ -193,7 +193,7 @@ const QRegularExpression &rxCppNameArgs() {
 // 2-3 lines down. Control keywords are rejected up front as in the siblings.
 const QRegularExpression &rxCppFuncHeaderOpen() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*$)"));
+        QRegularExpression r(QStringLiteral(R"(^(?:extern\s*"[^"]*"\s*)?(static|inline|template[^>]*>)?\s*(?!(?:return|co_return|co_await|co_yield|throw|else|if|for|while|switch|do|catch)\b)(?:(?![\w:<>]+\s*\()[\w:<>]+[\s*&]+)++(\w+)\s*\([^)]*$)"));
         r.optimize();
         return r;
     }();
@@ -887,6 +887,27 @@ QJsonObject compute(const QString &absPath,
     out["truncated"]   = truncated;
     out["total_bytes"] = static_cast<double>(totalBytes);
     out["total_lines"] = totalLines;
+    // ANTS-4366 — "this file genuinely has no top-level symbols" and "the
+    // outliner could not read this file" were byte-identical replies, which is
+    // what turned a parser gap into a silently wrong answer: a caller
+    // reasonably concluded a 1935-line file had no functions. Emit a truthy
+    // marker on the second case only. Truthy on purpose — `compact:true` drops
+    // an empty `symbols` array entirely, so the ABSENCE of symbols cannot
+    // carry the signal, and a `false` would be dropped too.
+    //
+    // Deliberately narrow: a recognised language AND a non-trivial file. An
+    // unknown extension already reports `language:"unknown"`, and a 3-line
+    // header stub having no symbols is not evidence of anything.
+    if (symbols.isEmpty() && totalLines > 10
+        && languageStr != QLatin1String("unknown")
+        && !languageStr.isEmpty()) {
+        out["parse_empty"] = true;
+        out["hint"] = QStringLiteral(
+            "no symbol matched in a recognised %1 file of %2 lines — this is "
+            "the outliner finding nothing, which reads the same as a file that "
+            "has nothing. If the file plainly declares symbols, it is a parser "
+            "gap worth reporting.").arg(languageStr).arg(totalLines);
+    }
     return out;
 }
 

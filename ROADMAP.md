@@ -30727,7 +30727,7 @@ collision are different strengths of evidence.
   Lanes: fileoutline, mcp.
   Source: cc-feedback-2026-08-14 (Games_Hub).
 
-- 📋 [ANTS-4366] **`file_outline` returns ZERO symbols for a C function written `name (args)` — a space before the paren — and reports `ok:true`, so 52 of 67 files in a classic C tree read as symbol-free.**
+- ✅ [ANTS-4366] **`file_outline` returns ZERO symbols for a C function written `name (args)` — a space before the paren — and reports `ok:true`, so 52 of 67 files in a classic C tree read as symbol-free.**
   **The reporter's own diagnosis was wrong first and they corrected it, which
   is what makes this actionable.** The original report blamed Allman braces;
   a later measurement disproved that with a single file. `linuxdoom-1.10/i_system.c`
@@ -30760,6 +30760,25 @@ collision are different strengths of evidence.
   back empty, say why.
   Fixture: assert `i_system.c` returns BOTH `I_AllocLow` and `I_GetTime` —
   same file, same brace style, differing only in that space.
+  Resolved (2026-08-14), and the CAUSE was neither of the two the report
+  named. It is not the Allman brace (the reporter disproved that themselves)
+  and it is not the space as such — `\s*\(` always allowed it. It is the
+  POSSESSIVE quantifier on the return-type group: given `byte* I_ZoneBase
+  (int* size)` the group consumes `byte* ` and then `I_ZoneBase ` as well,
+  because a name followed by a space looks like another return-type token,
+  and `++` cannot give it back. With `name(` there is no trailing space, so
+  the name survives — which is exactly the observed split, and why the same
+  file resolved some functions and not others.
+  Fix: a negative lookahead inside the group so it never consumes a token
+  that is itself followed by `(`, applied to all 5 occurrences. Possessive
+  matching is retained, so the backtracking bound it was added for is
+  unchanged. The regression test carries i_system.c's real shapes, with the
+  three that already worked as controls so the fix cannot trade one blind
+  spot for another.
+  Second half also shipped: a recognised, non-trivial file that matched
+  nothing now carries `parse_empty:true` + a hint. Truthy on purpose —
+  `compact:true` drops an empty array, so the absence of symbols cannot
+  carry the signal and a `false` would be dropped too.
   **Layman:** A space before a bracket makes a whole file look empty to the code map, and the tool reports success either way.
   Kind: fix.
   Lanes: fileoutline, mcp.
