@@ -30270,7 +30270,7 @@ in each bullet, not just the reporter's symptom.
   Lanes: ci, tests.
   Source: user-report-2026-08-14 (CI failure email), diagnosed in-session.
 
-- 📋 [ANTS-4392] **`tools/ci-parity.sh` does not execute `.github/workflows/ci.yml`, though `CLAUDE.md` describes it as "the exact mirror … all three jobs".**
+- ✅ [ANTS-4392] **`tools/ci-parity.sh` does not execute `.github/workflows/ci.yml`, though `CLAUDE.md` describes it as "the exact mirror … all three jobs".**
   Found while diagnosing ANTS-4391. The script contains no workflow parser, no
   `act`, and no YAML read — it reimplements the jobs in shell and delegates
   the Qt-6.2 leg to `tools/qt62-guard.sh`. `CLAUDE.md` says a hand-written
@@ -30288,6 +30288,16 @@ in each bullet, not just the reporter's symptom.
   nobody runs catches nothing. Recommend (a) plus keeping ANTS-4391's static
   check, which closes the specific hole (b) would have closed here at a
   fraction of the cost.
+  Resolved (2026-08-14) as (a), the recommended option. `CLAUDE.md` and the
+  script's own header now say it is a hand-maintained PARALLEL
+  IMPLEMENTATION, name the drift class it cannot catch by construction
+  (anything DECLARED in `ci.yml` the script never knew to assume — a runner
+  package, an env var, an action version), cite ANTS-4391 as what that costs,
+  and record that `act` was considered and rejected so the question is not
+  re-opened from scratch. The phrase "the exact mirror" is gone.
+  ANTS-4391's static guard stays and is named as the repair shape for this
+  class: check that the two AGREE, rather than have one pretend to run the
+  other.
   **Layman:** Our local stand-in for the build server is described as running the real thing, and it does not — it is a separate script that can drift.
   Kind: doc-fix.
   Lanes: ci, docs.

@@ -2,6 +2,25 @@
 # ANTS-2134 — reproduce CI test conditions locally.
 # ANTS-3410 — extended into a full pre-push CI mirror (--lints / --asan / --full).
 #
+# ANTS-4392 — WHAT THIS IS, precisely: a hand-maintained PARALLEL
+# IMPLEMENTATION of .github/workflows/ci.yml. It does not parse, read or
+# execute that file — there is no workflow parser and no `act` here — it
+# re-states the jobs in shell. So the two CAN DRIFT, and the class of drift
+# this cannot catch by construction is anything declared in ci.yml that the
+# script never knew to assume: a runner package, an env var, an action
+# version, a `paths-ignore` rule.
+#
+# ANTS-4391 is what that costs. `ripgrep` was declared by no job in ci.yml and
+# CI was red for five commits, invisible to every local run — rg exists on the
+# dev box, so no parallel implementation could ever have noticed. The repair
+# was a STATIC guard comparing source against the workflow
+# (tests/features/ci_workflow_deps), which is the shape that closes this hole:
+# check the two agree, rather than pretending one runs the other.
+#
+# Driving the real workflow with `act` was considered and rejected: it pulls
+# container images and is slow enough that nobody would run it before a push,
+# and a gate nobody runs catches nothing.
+#
 # Tests pass on the dev box but fail on the GitHub runner because the two
 # environments differ in ways that change test outcomes:
 #   * Locale — CI runs under C.UTF-8 (POSIX collation); a dev box usually

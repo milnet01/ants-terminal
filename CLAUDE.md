@@ -130,12 +130,25 @@ elsewhere that flag breaks the parse and the TU loses all coverage
 
 ### Local CI: `tools/ci-parity.sh` + the pre-push hook (ANTS-2134 / 3410 / 3580)
 
-**`tools/ci-parity.sh --full` IS this project's local CI check** — the exact
-mirror of `.github/workflows/ci.yml`, all three jobs (`build-test` incl. the
+**`tools/ci-parity.sh --full` IS this project's local CI check** — it covers
+all three jobs of `.github/workflows/ci.yml` (`build-test` incl. the
 packaging/lint gates, `build-asan`, and `qt62-baseline` in a podman
 ubuntu:22.04 container). There is no second script; anything calling itself
 `local-CI.sh` would be a duplicate of this one. A gate whose tool is absent
 SKIPs loudly and is listed as incomplete parity — never silently green.
+
+**It is a hand-maintained PARALLEL IMPLEMENTATION, not a runner for
+`ci.yml` (ANTS-4392).** It contains no workflow parser, no `act` and no YAML
+read; it re-states the jobs in shell. So the two can drift, and the drift it
+cannot catch by construction is anything *declared* in `ci.yml` that the
+script never knew to assume — a runner package, an env var, an action
+version. **ANTS-4391 is what that costs**: `ripgrep` was installed by no job,
+CI was red for five commits, and no local run could see it because rg exists
+on the dev box. The repair for that class is a *static* check that the two
+agree (`tests/features/ci_workflow_deps`), never a parallel implementation
+trying harder. Driving the real workflow with `act` was considered and
+rejected — it pulls container images and is slow enough that nobody would run
+it before a push, and a gate nobody runs catches nothing.
 
 CI is red where local is green when the runner's environment differs:
 `C.UTF-8` POSIX collation (ANTS-2120) and a loaded 4-vCPU host that
