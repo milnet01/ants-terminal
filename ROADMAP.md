@@ -30744,6 +30744,171 @@ collision are different strengths of evidence.
   Lanes: symbolquery, mcp.
   Source: cc-feedback-2026-08-14 (DOOM).
 
+- 📋 [ANTS-4370] **`spec_conformance` returns an all-empty envelope on a spec whose patterns sit in ```` ```python ```` fences, so "cannot read this" is byte-identical to "nothing to check".**
+  It executes only ```` ```regex ```` fences tagged `pcre2`. A spec prescribing
+  patterns as ```` ```python ```` with `re.compile(...)` — which is what the
+  corpus that motivated ANTS-4108 actually looks like — yields
+  `{findings:[], candidates:[], observations:[], refusals:[], cases_run:0}`.
+  Every bucket empty, `refusals` included.
+  LWSM pointed it at a spec containing 6 python fences, 6 `re.compile`/
+  `search`/`match` occurrences and 13 `| input | expected |` rows — including
+  the very `\d{1,5}(?![0-9])` defect quoted in ANTS-4108's original write-up —
+  and it reported nothing at all. **This defeats the specific thing the
+  original proposal asked for**: "report any fenced pattern with NO table
+  beside it — an unexercised prescription IS the finding". Unexercised is now
+  silent, provided it is unexercised because of the tag.
+  Why their specs are not simply retagged: every spec there writes patterns in
+  ```` ```python ```` because that is what `ruff format` formats and CI gates;
+  a ```` ```regex ```` fence is invisible to the formatter and would drift.
+  They had also just deleted a 605-line hand-rolled conformance script (which
+  had caught 7 defects) on the strength of this verb being its standing
+  replacement — and on the first spec it is pointed at, it is a no-op that
+  reads as a pass.
+  Fix, first part far more important: **(1) never return silently empty** —
+  a `skipped_fences[]` naming each fence seen and declined with its tag and
+  line, or an `executable_fences: 0` counter beside `cases_run`. The existing
+  `refusals[]` bucket is the natural home; it already fires per-fence on
+  `unsupported_engine`, one tag-mismatch away from this. **(2) optionally read
+  `re.compile` out of a python fence** — extracting the raw pattern from
+  `NAME = re.compile(r"…", flags)` is a bounded parse and the result is still
+  a pattern run as a pattern, so the exec objection does not apply; Python
+  `re` and PCRE2 differ, so either run it under Python or report the
+  non-porting constructs. If (2) is not worth it, (1) alone is actionable:
+  "6 patterns found, 0 executable, tag them ```` ```regex ```` " beats silence.
+  **Layman:** Point the pattern-checker at a document full of patterns it cannot read, and it says everything is fine.
+  Kind: fix.
+  Lanes: mcp, speclint.
+  Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+
+- 📋 [ANTS-4371] **`audit_run`'s zero-finding envelope carries no evidence the tools read anything — `artifacts: 0` on every tool, no per-tool files-scanned count.**
+  Five tools over `scope:"full"` returned `total_raw:0, total_actionable:0,
+  partial:false, incomplete_tools:[]`, and every SARIF run carried
+  `results: 0` AND `artifacts: 0`. Nothing distinguishes "ran across 2116
+  lines and found nothing" from "ran against an empty file list".
+  `incomplete_tools` / `parse_failures` correctly cover crash and timeout —
+  the harder half. The gap is the quiet one: a tool exiting 0 having been
+  handed no work.
+  LWSM could not confirm the sweep was real from the envelope and re-ran two
+  tools by hand: `bandit` reported "Total lines of code: 2116". **That number
+  is the evidence the envelope is missing.** The sweep WAS genuine, so this is
+  a reporting gap, not a correctness bug — but confirming it cost a manual
+  re-run of the tools the verb had just run, which is the cost the verb exists
+  to remove.
+  It matters because a zero-finding audit is the most consequential result the
+  verb returns: it is what lets a phase close. That project's `/close-phase`
+  step 5 runs the audit and a clean result permits steps 7-9. Their CLAUDE.md
+  already carries three hard-won warnings about green runs that were not green
+  (a shared skip flag folding a missing tool into a pass; a stale `.pyc`; an
+  `os._exit` ending pytest at 40% with exit 0) — each one a report that could
+  not distinguish "passed" from "never ran".
+  Narrowing scopes sharpen it: `scope:"files"` / `"since-last-run"`
+  legitimately hand a tool zero files, and `no_changes` covers the whole-run
+  case but not the per-tool one, so a five-tool sweep where two got nothing
+  reports one undifferentiated `0`.
+  Fix: `by_tool: [{tool, status, files_scanned, findings, elapsed_ms}]`.
+  `files_scanned` is the field that matters and needs no new parsing — the
+  file list is already what gets passed as positionals. Cheapest version: a
+  top-level `files_scanned_total` plus a `status:"no_files"` in the existing
+  `incomplete_tools_detail[]` shape.
+  **Layman:** A clean audit and an audit that examined nothing look exactly the same, and the clean one is what lets work ship.
+  Kind: fix.
+  Lanes: audit, mcp.
+  Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+
+- 📋 [ANTS-4372] **`roadmap_log` has no op to edit a bullet's HEADLINE, so a routine re-label falls back to hand-editing ROADMAP.md.**
+  The op set writes status, body, or a whole new bullet. None edits an
+  existing headline, and `amend_body` rules it out by name ("the headline is
+  out of scope").
+  A headline is not immutable metadata — on that roadmap it carries the
+  delivering phase as a prefix (`P03: …`), and a phase re-scope changes which
+  phase delivers an item. Same shape covers a typo, a renamed subsystem, a
+  corrected scope word. LWSM needed four bullets re-prefixed `P03` → `P03b`
+  and had no verb: `roadmap_query` located all four in one call, then the
+  fallback was a native Read of a ~2400-line ROADMAP.md plus 4 native Edits.
+  **The Read is the sharp end** — the native Edit tool requires a prior native
+  Read, and `file_outline` / `read_region` explicitly do not satisfy that
+  precondition, so a four-word change forces the raw tools onto a large file,
+  which is exactly what the roadmap verbs exist to prevent. Worse as
+  precedent: a session that has hand-edited once has the read-precondition
+  satisfied, making the NEXT hand-edit cheaper than the verb, and the guard
+  rails are per-session.
+  It also breaks atomicity where it is most wanted: re-labelling four bullets
+  is conceptually one act; `append_batch` and `flip_batch` exist precisely so
+  a multi-bullet act lands as one atomic commit, while this is four
+  non-atomic writes and a crash halfway leaves the roadmap claiming two
+  different phases deliver one phase's work.
+  Fix: extend `amend_body` rather than adding an op — an optional `scope` of
+  `"body"` (default, byte-identical today), `"headline"`, or `"bullet"`. The
+  unique-match guard, case-sensitivity, single-line rule, `dry_run` and
+  locator set all carry over; refusals become `headline_match_not_found` /
+  `headline_match_ambiguous`. **One guard kept strict**: refuse any `new_text`
+  that would alter the `- <emoji> [PROJ-NNNN] **` prefix or the bold
+  delimiters, so a headline edit can never orphan an id or break the parse the
+  query verbs depend on — which makes the op strictly safer than the hand-edit
+  it replaces, and is the argument for it existing.
+  **Layman:** Renaming a roadmap item means opening the whole file by hand, which is the thing these tools exist to avoid.
+  Kind: feature.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+
+- 📋 [ANTS-4373] **`spec_lint`'s SKIP reporting — `sections_checked:false` is a single unflagged boolean in an envelope whose every other field reads as success.**
+  The check itself is ANTS-4345, shipped 2026-08-14. This is the separate half
+  LWSM argued and that fix did NOT address: the shape around the skip.
+  Their framing is the sharpest statement of it anywhere in this corpus.
+  `ok:true` + empty `findings[]` is the same envelope a genuinely clean run
+  produces; nothing says which standard path was consulted, that a check was
+  skipped, or what would make it run. **And it launders**: `/write-spec`
+  Step 4 reads that envelope, and `review-contract` Phase 1d feeds the
+  mechanical results to cold lanes as SETTLED FACTS they are forbidden to
+  question — so an unrun check reported as clean becomes an unchallengeable
+  false fact one layer downstream. They caught it only because their CLAUDE.md
+  carries a standing warning about reports that cannot tell "passed" from
+  "never ran"; without it they would have passed "structure verified" to three
+  lanes.
+  **And the check would not have come back clean** — reading the global
+  standard's block against their four specs found two real defects (recommended
+  sections interleaved rather than appended from 13, and one § 3 heading
+  worded differently from its three siblings), both sat unreported for ten days
+  behind an `ok:true`.
+  Fix, in their order of value: (1) `skipped: ["missing_section"]` — an array
+  is read, a false is not, and it is additive; (2) a `hint` naming the resolved
+  standard path that was consulted and what would make the check run;
+  (3) per-check counts as `doc_integrity` already does, with `null` visibly not
+  zero; (4) **fall back to the GLOBAL standard's block when the project's has
+  none** — since the 2026-08-08 precedence inversion made the global
+  authoritative with projects stating only deltas, a project without a block is
+  now the normal case rather than an unconfigured one. (4) changes what the
+  verb checks and deserves its own decision; gate it behind a
+  `sections_source: "global"|"project"|null` so a caller can still tell which
+  list ran.
+  **Layman:** The checker can quietly decline to run one of its tests and still report success, and a review then treats that silence as a verified fact.
+  Kind: fix.
+  Lanes: speclint, mcp.
+  Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+
+- 📋 [ANTS-4374] **Write the invariant three separate findings converged on into `mcp-tools.md`: a verb reporting ZERO must say what it looked at.**
+  LWSM reached this independently from three directions in one session, and it
+  is the common shape behind ANTS-4370 (`spec_conformance` `cases_run:0`),
+  ANTS-4371 (`audit_run` `total_raw:0`), ANTS-4373 (`spec_lint`
+  `sections_checked:false`) — and it also covers ANTS-4366's second half
+  (`file_outline` `ok:true` with no symbols) and the refusal side in
+  ANTS-4350 / ANTS-4368.
+  In every case the envelope for "checked, clean" is byte-identical to the
+  envelope for "could not check", and every one of them is read as a pass at a
+  gate. The existing `file_stem_hint` on `find_definition` is the pattern
+  already got right, and this generalises it.
+  Work: a short authoring rule in `docs/standards/mcp-tools.md` — a verb whose
+  result can be empty for two different reasons distinguishes them in the
+  envelope, by a read field (an array or a hint, never a lone boolean), and
+  names what it examined (files scanned, fences seen, the standard path
+  consulted). Then a sweep of the read verbs against it.
+  Filing the rule separately because fixing four verbs one at a time leaves
+  the fifth to be reported by somebody else next month.
+  **Layman:** Several different tools all report "nothing found" when they mean "I could not look", so write down the rule once instead of fixing it five times.
+  Kind: doc.
+  Lanes: mcp, docs.
+  Source: cc-feedback-2026-08-14 (LocalWebServerManager, converged from three findings).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
