@@ -651,3 +651,154 @@ TEST(McpSymbolQuery, Ants3555FilesOnlyManifest) {
     EXPECT_NE(fcBlock.find("props[\"files_only\"]"), std::string::npos)
         << "find_caller tools/list schema must enumerate files_only";
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// The C++ matcher's four reported blind spots, fixed in one pass:
+// ANTS-4346 (namespace + case-insensitive stem hint), ANTS-4358
+// (auto NAME = [ lambda assignment), ANTS-4368 (extern "C" linkage
+// prefix) and ANTS-4369 (a trailing comment defeating the decl test).
+// Reported independently by DOOM, Ants Terminal and AI_Prompts.
+// ─────────────────────────────────────────────────────────────────────
+namespace {
+
+// One tree carrying all four shapes, plus the controls that isolate each.
+QString cppFormsRoot(QTemporaryDir &tmp) {
+    const QString root = tmp.path();
+    writeFile(root, QStringLiteral("src/seam.cpp"), QStringLiteral(
+        "#include \"seam.h\"\n"
+        "\n"
+        "// Control for ANTS-4368: same file, same Allman brace, NO linkage\n"
+        "// prefix. If this resolves and RB_VulkanProbe does not, the prefix\n"
+        "// is the only variable.\n"
+        "void CreateFramebuffers()\n"
+        "{\n"
+        "}\n"
+        "\n"
+        "extern \"C\" int RB_VulkanProbe(void)\n"
+        "{\n"
+        "    return 0;\n"
+        "}\n"
+        "\n"
+        "extern \"C++\" void CppLinkageThing(void)\n"
+        "{\n"
+        "}\n"
+        "\n"
+        "void Host()\n"
+        "{\n"
+        "    auto makeEtagMatchProp = []{\n"
+        "        return 1;\n"
+        "    };\n"
+        "    static const auto makeFieldsProp = [](int n) { return n; };\n"
+        "}\n"
+        "\n"
+        "namespace SeamSpace {\n"
+        "int inner = 0;\n"
+        "}\n"));
+    writeFile(root, QStringLiteral("src/seam.h"), QStringLiteral(
+        "#pragma once\n"
+        "extern int  RB_VulkanProbe(void);   // trailing comment, ANTS-4369\n"
+        "extern void RB_Vulkan_Present(void);\n"));
+    return root;
+}
+
+bool hasKindAt(const SymbolQuery::DefResult &r, const char *fileSuffix,
+               const char *kind) {
+    for (const auto &d : r.definitions)
+        if (d.file.endsWith(QLatin1String(fileSuffix)) &&
+            d.kind == QLatin1String(kind))
+            return true;
+    return false;
+}
+
+}  // namespace
+
+// ANTS-4368 — an `extern "C"` definition is a definition, not just the
+// header prototype. The control proves the linkage prefix is the variable.
+TEST(SymbolQueryCppForms, ExternCDefinitionsResolve) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = cppFormsRoot(tmp);
+    SymbolQuery::Options o;
+
+    // Control: no linkage prefix, same brace style -> already worked.
+    const auto control =
+        SymbolQuery::findDefinition(root, QStringLiteral("CreateFramebuffers"), o);
+    EXPECT_TRUE(hasKindAt(control, "seam.cpp", "definition"))
+        << "control must resolve, or the test proves nothing about extern \"C\"";
+
+    const auto probe =
+        SymbolQuery::findDefinition(root, QStringLiteral("RB_VulkanProbe"), o);
+    EXPECT_TRUE(hasKindAt(probe, "seam.cpp", "definition"))
+        << "the extern \"C\" body in the .cpp must be found, not only the "
+           "header prototype — returning the prototype with ok:true and "
+           "definitions_count:1 is a confident wrong answer";
+    EXPECT_TRUE(hasKindAt(probe, "seam.h", "declaration"));
+
+    EXPECT_TRUE(hasKindAt(
+        SymbolQuery::findDefinition(root, QStringLiteral("CppLinkageThing"), o),
+        "seam.cpp", "definition")) << "extern \"C++\" too";
+}
+
+// ANTS-4358 — `auto NAME = [...]{...}` inside a function body.
+TEST(SymbolQueryCppForms, LambdaAssignmentDefinitionsResolve) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = cppFormsRoot(tmp);
+    SymbolQuery::Options o;
+
+    EXPECT_TRUE(hasKindAt(
+        SymbolQuery::findDefinition(root, QStringLiteral("makeEtagMatchProp"), o),
+        "seam.cpp", "definition"))
+        << "auto NAME = []{ at function-body indent";
+    EXPECT_TRUE(hasKindAt(
+        SymbolQuery::findDefinition(root, QStringLiteral("makeFieldsProp"), o),
+        "seam.cpp", "definition"))
+        << "static const auto NAME = [](args) { ... }";
+}
+
+// ANTS-4369 — a trailing `//` comment must not turn a prototype into a
+// definition. The two header lines differ ONLY by the comment.
+TEST(SymbolQueryCppForms, TrailingCommentDoesNotMakeADeclarationADefinition) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = cppFormsRoot(tmp);
+    SymbolQuery::Options o;
+
+    const auto commented =
+        SymbolQuery::findDefinition(root, QStringLiteral("RB_VulkanProbe"), o);
+    for (const auto &d : commented.definitions) {
+        if (!d.file.endsWith(QLatin1String("seam.h"))) continue;
+        EXPECT_EQ(d.kind, QStringLiteral("declaration"))
+            << "a prototype with a trailing comment is still a prototype: "
+            << d.signature.toStdString();
+    }
+
+    const auto plain =
+        SymbolQuery::findDefinition(root, QStringLiteral("RB_Vulkan_Present"), o);
+    EXPECT_TRUE(hasKindAt(plain, "seam.h", "declaration"))
+        << "control: the uncommented sibling was always right";
+}
+
+// ANTS-4346 — a namespace resolves, and the stem hint is case-insensitive.
+TEST(SymbolQueryCppForms, NamespaceResolvesAndStemHintIsCaseInsensitive) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = cppFormsRoot(tmp);
+    SymbolQuery::Options o;
+
+    const auto ns =
+        SymbolQuery::findDefinition(root, QStringLiteral("SeamSpace"), o);
+    EXPECT_FALSE(ns.definitions.isEmpty())
+        << "a namespace is a definition a caller can ask for";
+    EXPECT_TRUE(hasKindAt(ns, "seam.cpp", "namespace"))
+        << "and it is tagged `namespace`, so a caller can tell it from a "
+           "function without opening the file";
+
+    // PascalCase query against a lowercase filename — this repo's convention,
+    // which the case-sensitive compare could never match.
+    const auto miss =
+        SymbolQuery::findDefinition(root, QStringLiteral("Seam"), o);
+    EXPECT_FALSE(miss.fileStemHint.isEmpty())
+        << "no symbol `Seam`, but src/seam.cpp exists — the ANTS-1950 rescue "
+           "must fire across case or it never fires on this codebase";
+}

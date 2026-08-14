@@ -30516,7 +30516,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (Ants Terminal).
 
-- 📋 [ANTS-4358] **`find_definition` misses the C++ lambda-assignment form `auto NAME = [](…){…}`.**
+- ✅ [ANTS-4358] **`find_definition` misses the C++ lambda-assignment form `auto NAME = [](…){…}`.**
   Measured 2026-08-12: `find_definition{symbol:"makeEtagMatchProp"}` returned
   `definitions:[]` across 896 files scanned, while the symbol is defined at
   `src/claudeintegration.cpp` as `auto makeEtagMatchProp = []{`. Same for
@@ -30530,6 +30530,15 @@ collision are different strengths of evidence.
   capture list and `static`/`const` qualifiers — the same shape ANTS-4090
   already added, spelled the C++ way. **Sibling of ANTS-4346** (the same
   resolver returning empty on a namespace); worth doing in one pass.
+  Resolved (2026-08-14): a `(?:static|const|constexpr)* auto <name> = [`
+  anchor, deliberately NOT column-anchored, since the whole point is that
+  these live at function-body indent. Recovers `makeEtagMatchProp`,
+  `makeFieldsProp`, `makeRawProp` and `makeDryRunProp` — the four helpers
+  `mcp-tools.md` cites by name. Case `LambdaAssignmentDefinitionsResolve`.
+  Building it surfaced a second edge the report did not name: a one-line
+  `static const auto f = [](int n) { … };` ends in `;`, so the declaration
+  heuristic called it a prototype. The kind test now requires the absence of
+  `{` as well, which also fixes a one-line `struct Foo { int a; };`.
   **Layman:** Asking where a helper is defined comes back empty, because it is written in a style the search does not recognise.
   Kind: fix.
   Lanes: symbolquery, mcp.
@@ -30767,7 +30776,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (DOOM).
 
-- 📋 [ANTS-4368] **`find_definition` is blind to `extern "C"` definitions, so a C/C++ project's entire cross-language seam resolves only to its header prototype — with `ok:true` and `definitions_count:1`.**
+- ✅ [ANTS-4368] **`find_definition` is blind to `extern "C"` definitions, so a C/C++ project's entire cross-language seam resolves only to its header prototype — with `ok:true` and `definitions_count:1`.**
   The C++ matcher anchors on the return type at line start, so
   `extern "C" <type> <name>(…)` is not recognised. The verb then returns the
   declaration alone and reports success, which is a confident wrong answer
@@ -30793,12 +30802,18 @@ collision are different strengths of evidence.
   **Third gap in the same resolver**, with ANTS-4346 (namespace) and ANTS-4358
   (lambda assignment). Worth one coordinated pass over the C++ matcher rather
   than three separate patches.
+  Resolved (2026-08-14): an optional `extern "C"` / `extern "C++"` linkage
+  prefix ahead of the return-type group, which is what the group could never
+  match because `"` is not a word character. The regression test carries
+  DOOM's control — a plain Allman function in the same file, same brace style
+  — so the prefix is provably the only variable. Case
+  `ExternCDefinitionsResolve`.
   **Layman:** Ask where a cross-language function is defined and you are handed its one-line announcement instead of its body, with no sign anything is missing.
   Kind: fix.
   Lanes: symbolquery, mcp.
   Source: cc-feedback-2026-08-14 (DOOM).
 
-- 📋 [ANTS-4369] **`find_definition` labels an `extern` prototype as `kind:"definition"` when a trailing `//` comment follows the semicolon.**
+- ✅ [ANTS-4369] **`find_definition` labels an `extern` prototype as `kind:"definition"` when a trailing `//` comment follows the semicolon.**
   The declaration-vs-definition test checks whether the matched line ENDS in
   `;`; a trailing comment defeats it. Two adjacent lines in one file get
   opposite labels on nothing but the comment:
@@ -30814,6 +30829,11 @@ collision are different strengths of evidence.
   unquoted `//`, and any `/* … */` tail, then rstrip). Cheap and local to the
   classifier. Worth checking a trailing block comment and a `;` inside a
   string literal on the same line, though neither is likely.
+  Resolved (2026-08-14): comments are stripped before the ends-with-`;` test,
+  skipping `//` and `/* … */` that sit inside a string or char literal. The
+  test carries the reporter's crisp repro — two adjacent prototypes differing
+  only by a trailing comment. Case
+  `TrailingCommentDoesNotMakeADeclarationADefinition`.
   **Layman:** A one-line function announcement gets reported as the real thing purely because someone wrote a note after it.
   Kind: fix.
   Lanes: symbolquery, mcp.
@@ -33533,7 +33553,7 @@ defect from different angles.
   them and say so. Said so for now in docs/standards/README.md, which is the
   one place describing the arrangement.
 
-- 📋 [ANTS-4346] **find_definition resolves no C++ namespace, and the ANTS-1950 stem-hint rescue is case-sensitive — so on this codebase's own naming convention the caller gets an empty result AND no nudge.**
+- ✅ [ANTS-4346] **find_definition resolves no C++ namespace, and the ANTS-1950 stem-hint rescue is case-sensitive — so on this codebase's own naming convention the caller gets an empty result AND no nudge.**
   VERIFIED by running it, twice, while settling ANTS-3747's routing question.
   `find_definition {symbol:"DocIntegrity"}` and `{symbol:"SpecLint"}` both
   return `definitions:[]`, `definitions_count:0`, `files_scanned:901`,
@@ -33569,6 +33589,13 @@ defect from different angles.
   case-insensitive stem compare when the exact one misses, keeping the exact
   hit preferred. Regression: fixtures for `namespace Foo {` in a `foo.cpp`,
   and a `FooBar` query against `foobar.h` asserting the hint fires.
+  Resolved (2026-08-14): both halves. A `namespace <name>` anchor was added
+  to the C++ matcher and the kind logic tags it `namespace`, so it is
+  distinguishable from a function without opening the file; and the ANTS-1950
+  stem hint now compares case-INSENSITIVELY, which is what makes it reachable
+  at all on this codebase's PascalCase-symbol / lowercase-filename convention.
+  Fixed in one coordinated pass with ANTS-4358, ANTS-4368 and ANTS-4369 —
+  four reported gaps in one matcher. Case `NamespaceResolvesAndStemHintIsCaseInsensitive`.
   **Layman:** Asking "where is DocIntegrity defined?" comes back completely empty even though it is right there — and the built-in "did you mean the file?" nudge is spelt in a way that can never match this project's filenames.
   Kind: fix.
   Lanes: remotecontrol, symbolquery.

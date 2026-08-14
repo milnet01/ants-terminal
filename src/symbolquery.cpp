@@ -85,6 +85,63 @@ Lang langForExt(const QString &ext) {
     return Lang::Auto;
 }
 
+// ANTS-4369 — the declaration test is "does the line end in `;`", and a
+// trailing comment defeated it: two adjacent prototypes in one header were
+// classified oppositely on nothing but a `// note`. Cut from the first `//`
+// that is NOT inside a string or char literal, drop a trailing `/* … */`,
+// then test. It compounds ANTS-4368 when both are live — that bug drops the
+// real definition and this one relabels the surviving prototype AS the
+// definition, so the envelope holds one result marked `definition` pointing
+// at a line with no body, and nothing suggests the answer is incomplete.
+//
+// Returns the line with comments removed, so both tests below read code
+// rather than prose.
+QString codeWithoutComments(const QString &line) {
+    QString code;
+    code.reserve(line.size());
+    QChar quote;                       // null when outside a literal
+    for (int i = 0; i < line.size(); ++i) {
+        const QChar c = line.at(i);
+        if (!quote.isNull()) {
+            if (c == QLatin1Char('\\')) {          // skip the escaped char
+                code.append(c);
+                if (i + 1 < line.size()) code.append(line.at(++i));
+                continue;
+            }
+            if (c == quote) quote = QChar();
+            code.append(c);
+            continue;
+        }
+        if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
+            quote = c;
+            code.append(c);
+            continue;
+        }
+        if (c == QLatin1Char('/') && i + 1 < line.size()) {
+            const QChar n = line.at(i + 1);
+            if (n == QLatin1Char('/')) break;      // line comment: done
+            if (n == QLatin1Char('*')) {
+                const int close = line.indexOf(QStringLiteral("*/"), i + 2);
+                if (close < 0) break;              // unterminated: rest is comment
+                i = close + 1;
+                continue;
+            }
+        }
+        code.append(c);
+    }
+    return code.trimmed();
+}
+
+// A line is a DECLARATION when it ends in `;` and opens no body. The brace
+// half is ANTS-4358's other edge: `static const auto f = [](int n) { … };`
+// ends in `;` and is unmistakably a definition, and so is a one-line
+// `struct Foo { int a; };`. Testing the semicolon alone called both
+// prototypes.
+bool looksLikeDeclaration(const QString &line) {
+    const QString code = codeWithoutComments(line);
+    return code.endsWith(QLatin1Char(';')) && !code.contains(QLatin1Char('{'));
+}
+
 // Per-call compiled anchors for one language. `def` holds 1-2 patterns
 // (a line is a definition if any matches); `call` is the call anchor.
 // `cppKind` selects the trailing-`;` declaration/definition split.
@@ -123,7 +180,15 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // Reject when the first token is an expression-introducing
             // reserved keyword: a keyword is never a return type, so the
             // negative lookahead has zero false negatives.
-            add(QStringLiteral("^[ \\t]*(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)(?:[\\w:<>~]+[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
+            // ANTS-4368 — an optional linkage prefix ahead of the return
+            // type. `extern "C" int foo(void)` failed the return-type group
+            // because `"` is not in `[\w:<>~]`, so a C/C++ project's whole
+            // cross-language seam resolved only to its header prototype —
+            // and reported ok:true with definitions_count:1, which is a
+            // confident wrong answer rather than an empty one. The slot also
+            // takes `static`/`inline`/`__declspec(...)` later without another
+            // change. Measured by DOOM: 48 such definitions in one file.
+            add(QStringLiteral("^[ \\t]*(?:extern\\s*\"C(?:\\+\\+)?\"\\s+)?(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)(?:[\\w:<>~]+[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
             // Out-of-line constructor / destructor definitions carry no
             // return type (`Foo::Foo(` / `Foo::~Foo(`); match them
             // explicitly so a class query still resolves its ctor/dtor.
@@ -139,6 +204,20 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // existing kind logic tags `Foo {` → definition, `Foo;` (forward
             // decl) → declaration, with no schema change.
             add(QStringLiteral("^[ \\t]*(?:template\\s*<[^>]*>\\s*)?(?:typedef\\s+)?(?:struct|class|union|enum(?:\\s+class|\\s+struct)?)\\s+(?:[A-Z_][A-Z0-9_]*\\s+)?") + s + QStringLiteral("\\b"));
+            // ANTS-4358 — a lambda assigned to `auto` inside a function body.
+            // ANTS-4090 added the brace family's top-level `const NAME =`;
+            // C++ spells the same idea with `auto` and nests it, which is how
+            // this codebase defines its shared MCP schema helpers
+            // (makeEtagMatchProp, makeFieldsProp, makeRawProp, makeDryRunProp)
+            // — four symbols `mcp-tools.md` cites by name and the resolver
+            // could not find. NOT anchored to column 0: the whole point is
+            // that these live at function-body indent.
+            add(QStringLiteral("^\\s*(?:static\\s+)?(?:const\\s+)?(?:constexpr\\s+)?auto\\s+") + s + QStringLiteral("\\s*=\\s*\\["));
+            // ANTS-4346 — a namespace. `find_definition` returned an empty
+            // `definitions[]` for one, which reads as "no such symbol" for a
+            // thing that is plainly there. Tagged `namespace` by the kind
+            // logic below so a caller can tell it from a function.
+            add(QStringLiteral("^[ \\t]*namespace\\s+") + s + QStringLiteral("\\b"));
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             a.cppKind = true;
             break;
@@ -256,8 +335,14 @@ void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
             ++st.defsTotal;
             const QString trimmed = line.trimmed();
             QString kind = QStringLiteral("definition");
-            if (an.cppKind && trimmed.endsWith(QLatin1Char(';')))
-                kind = QStringLiteral("declaration");
+            if (an.cppKind) {
+                if (trimmed.startsWith(QLatin1String("namespace"))) {
+                    // ANTS-4346 — neither a body nor a prototype.
+                    kind = QStringLiteral("namespace");
+                } else if (looksLikeDeclaration(trimmed)) {
+                    kind = QStringLiteral("declaration");
+                }
+            }
             QVector<DefMatch> &bucket =
                 (kind == QStringLiteral("declaration")) ? st.defsDecl : st.defsDefn;
             if (bucket.size() < st.defCap) {
@@ -316,8 +401,13 @@ void walk(ScanState &st, const QString &dirPath) {
         // ANTS-1950 — note a file whose base name equals the query, before
         // the lang filter so a stem hint surfaces even when the filter would
         // otherwise skip the file. Recorded once (first walk-order hit).
+        // ANTS-4346 — compare case-INSENSITIVELY. The exact compare could
+        // never fire on this codebase's own convention, where a PascalCase
+        // symbol (`DocIntegrity`) lives in a lowercase file
+        // (`docintegrity.cpp`), so the rescue existed and was unreachable
+        // for precisely the queries that most need it.
         if (st.fileStemHit.isEmpty() && !st.symbol.isEmpty()
-            && fi.completeBaseName() == st.symbol)
+            && fi.completeBaseName().compare(st.symbol, Qt::CaseInsensitive) == 0)
             st.fileStemHit = fi.absoluteFilePath().mid(st.rootPrefixLen);
 
         if (st.langFilter != Lang::Auto && lang != st.langFilter) continue;
