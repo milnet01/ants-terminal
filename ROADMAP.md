@@ -22423,6 +22423,19 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Each review round re-investigates the same rejected points from scratch, because nothing remembers they were already settled.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
+  Premise re-checked against the current skill (2026-08-14) — SUBSTANTIALLY
+  REDUCED, though not dead like ANTS-3717. The cost this suppresses is "a
+  finding raised, verified and deliberately rejected three loops running", and
+  `review-contract` now caps a run at **2 loops** for a spec or plan, 3 for a
+  standard or ADR (`SKILL.md:144`). Three-loop repetition can no longer happen
+  on the common genre, so the headline saving is gone. Two things do survive
+  the cap and are the real remaining case: the skill records a `disposition`
+  per verified finding on its fix ledger (`SKILL.md:572`) but that ledger is
+  per-run and lives in `/tmp`, so nothing carries a rejection ACROSS runs — a
+  document reviewed again next month re-litigates every dismissal. And the
+  novelty count would still be a better convergence signal than raw finding
+  count within the two loops there are. Re-scope to cross-run memory before
+  building; the within-run half is close to worthless now.
 
 - 📋 [ANTS-3716] **A fix-ledger verb, including the batched cited_by sweep the review orchestrator currently hand-rolls.**
   `/cold-eyes` Phase 4 maintains a JSON fix ledger: one row per verified finding, a
@@ -22452,6 +22465,22 @@ requesting no action and are closed in place rather than filed.
   **Layman:** The bookkeeping a review keeps about its own fixes is written and re-read by the model four times a round, and a context compaction can silently lose it.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
+  Premise re-checked against the current skill (2026-08-14) — HALF of this is
+  already done, by the asking project rather than here. This bullet's own
+  maintainer note asked that ledger rows be keyed on the FINDING with a
+  disposition column instead of one row per edit; `review-contract` now does
+  exactly that and states the defect verbatim ("a ledger indexed by edit shows a
+  mistaken fix but never a missing one", `SKILL.md:577`, ledger at
+  `/tmp/review-contract-<sid>/fix-ledger.json`, "one row per verified finding",
+  `:572`). So the row-shape half is closed and needs no verb.
+  STILL OPEN and unchanged: the `sweep` op — collect a loop's changed anchors,
+  one pass over the doc set, report which documents cite any of them. The skill
+  still hand-rolls that as reasoning. Note `workspace_search` already gets close
+  (`regex:true` alternation + `files_only:true` returns the documents in one
+  call); what it cannot do is say WHICH anchor matched WHICH file, and that
+  mapping is the whole product. Scope the next pass to that gap rather than to
+  the four-op verb as filed, and note it is an interface another session builds
+  against, so it wants a spec first.
 
 - 📋 [ANTS-3717] **Loop-health metrics — the collateral ratio and per-doc size delta, the stopping signals review currently lacks.**
   The `/cold-eyes` fix-ledger reference records a measured loop where five of nine
@@ -22485,6 +22514,21 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Nothing tells you when a review has started reviewing its own edits rather than the original document, which is when it should stop.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
+  Premise re-checked against the current skill (2026-08-14) — MATERIALLY
+  OVERTAKEN; do not build this as filed. Its value rests on one sentence:
+  "directly addresses the reported regression from 3-loop convergence to
+  10-plus". `review-contract` now hard-caps the run — `--max-loops` defaults to
+  **2** for a spec or plan and 3 for a standard or ADR (`SKILL.md:144`), and at
+  the cap it files the tail and exits rather than asking to continue. A metric
+  whose job is to say "stop looping" cannot pay for itself against a run that
+  can loop at most twice. Second half likewise: `collateral` is already a
+  recorded column on the fix ledger (`SKILL.md:639`, `:751`), and the skill
+  already routes on it without a number ("a finding landing on a passage you
+  edited last loop is your own collateral — sweep, do not dispatch", `:690`).
+  So the signal exists and is acted on; what is absent is only the ratio as a
+  figure. Re-file a much smaller item if a number is still wanted, or close
+  this as superseded — it is the asking project's call, not ours, since they
+  are the consumer.
 
 - ✅ [ANTS-3718] **`cold_eyes_brief`: return an `input_hash` and a section index — blocked on the skill not calling that verb.**
   Two requests against `cold_eyes_brief`, merged and filed as CONSIDERED rather than
