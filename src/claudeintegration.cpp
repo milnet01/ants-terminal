@@ -4720,7 +4720,15 @@ void ClaudeIntegration::onMcpConnection() {
                     "not_checked means a needle the run never looked up (cap or deadline), "
                     "never 'does not exist'; truncated:true accompanies it. Emits "
                     "docs_digest, a fingerprint of the checked set, so the ETag tracks the "
-                    "documents and not just the findings (ANTS-3737). Read-only. "
+                    "documents and not just the findings (ANTS-3737). "
+                    "ANTS-4359: the unresolved bucket is classified by the SHAPE the "
+                    "document wrote — each finding carries `shape` (call | qualified | "
+                    "bare) and `counts` carries `unresolved_by_shape`. Read the "
+                    "call-shaped ones FIRST: a span with `()` is a claim about a "
+                    "FUNCTION, where \"no such symbol\" is usually a real defect, while "
+                    "bare identifiers are as often enum values, macros, CMake variables "
+                    "or JSON keys. A classification, never a verdict — nothing is "
+                    "filtered and no bucket is dropped. Read-only. "
                     "caller_cwd required.");
                 docSym["selection_hint"] = QStringLiteral(
                     "Use when reviewing a spec or design doc to get the short list of names "

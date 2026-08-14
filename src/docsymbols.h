@@ -96,6 +96,14 @@ struct ScanResult {
     int total      = 0;
     int resolved   = 0;
     int unresolved = 0;
+    // ANTS-4359 — the unresolved bucket split by the SHAPE the document wrote,
+    // so a reader can start with the class where "no such symbol" is a real
+    // defect. A span with `()` is a claim about a FUNCTION; a bare identifier
+    // is as likely to be an enum value, a macro, a CMake variable or a JSON
+    // key. A count, not a filter: nothing is dropped and nothing is judged.
+    int unresolvedCall      = 0;
+    int unresolvedQualified = 0;
+    int unresolvedBare      = 0;
     int notChecked = 0;
 
     // ANTS-3692 — NEEDLE-scoped, not occurrence-scoped: true iff some needle

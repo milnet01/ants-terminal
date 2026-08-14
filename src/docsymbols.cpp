@@ -231,6 +231,38 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
                             ? QStringLiteral("no definition found for `%1`").arg(c.needle)
                             : QStringLiteral("no definition found for `%1` (from `%2`)")
                                   .arg(c.needle, c.span);
+            // ANTS-4359 — the SHAPE of the span the document wrote, so the
+            // flat unresolved bucket can be read by class instead of name by
+            // name. On one standard the bucket was 24 of 58 checked: enum
+            // values, a Qt macro, a CMake variable, a JSON key — every one
+            // benign-looking, so the whole bucket was logged into a cold-review
+            // brief as settled noise with three reviewers told not to
+            // re-confirm it. ONE name in it was a genuine defect: the document
+            // cited `isControlPlaneTool()` as "the canonical bypass list" and
+            // no such symbol exists. It survived two full loops inside a
+            // dismissed bucket.
+            //
+            // The discriminator is call-shape, because that is what separates
+            // the two populations: a span written with `()` is a claim about a
+            // FUNCTION, and "no such function" is a real defect; enum values,
+            // macros, CMake variables and JSON keys are bare identifiers.
+            // `isControlPlaneTool()` carried its parens, so it would have
+            // sorted to the top of its own bucket rather than into the middle
+            // of two dozen benign names.
+            //
+            // A classification, never a verdict — § 2.3's report-never-judge
+            // rule. Nothing is filtered out and no bucket is dropped; the
+            // reader still decides.
+            const QString shape =
+                c.span.contains(QStringLiteral("()"))
+                    ? QStringLiteral("call")
+                    : (c.needle.contains(QStringLiteral("::"))
+                           ? QStringLiteral("qualified")
+                           : QStringLiteral("bare"));
+            f.extra[QStringLiteral("shape")] = shape;
+            if (shape == QLatin1String("call"))           ++res.unresolvedCall;
+            else if (shape == QLatin1String("qualified")) ++res.unresolvedQualified;
+            else                                          ++res.unresolvedBare;
             // autoFixable stays false: a reader decides whether this is rot or
             // a forward reference, so there is nothing here to repair.
             f.emissionIndex = res.findings.size();

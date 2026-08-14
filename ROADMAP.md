@@ -30597,7 +30597,7 @@ collision are different strengths of evidence.
   Lanes: symbolquery, mcp.
   Source: cc-feedback-2026-08-14 (Ants Terminal).
 
-- 📋 [ANTS-4359] **`doc_symbols` emits unresolved symbols as one flat bucket, and the resulting noise hid a real citation defect for two review loops.**
+- ✅ [ANTS-4359] **`doc_symbols` emits unresolved symbols as one flat bucket, and the resulting noise hid a real citation defect for two review loops.**
   Filed as an enhancement by the reporter and worth taking on its own merits,
   independently of ANTS-4358. On `docs/standards/mcp-tools.md` the unresolved
   bucket was 24 names out of 58 checked: four were the ANTS-4358 lambda false

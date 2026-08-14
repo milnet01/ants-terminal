@@ -430,3 +430,63 @@ TEST(DocSymbols, DISABLED_CorpusCalibration) {
         std::cout << "  " << top.at(i).first << "  " << top.at(i).second.toStdString() << "\n";
     std::cout << std::flush;
 }
+
+// ANTS-4359 — the unresolved bucket is classified by the SHAPE the document
+// wrote, so it can be read by class instead of name by name.
+//
+// On one standard that bucket was 24 names of 58 checked: enum values, a Qt
+// macro, a CMake variable, a JSON key — every one benign-looking, so the whole
+// bucket went into a cold-review brief as settled noise with three reviewers
+// told not to re-confirm it. ONE name in it was a genuine defect: the document
+// cited `isControlPlaneTool()` as "the canonical bypass list" and no such
+// symbol exists. It survived two full review loops inside a dismissed bucket.
+//
+// Call-shape is the discriminator because it separates the two populations: a
+// span with `()` is a claim about a FUNCTION, and "no such function" is a real
+// defect, while the benign names are all bare identifiers. It is a
+// classification and never a verdict — § 2.3's report-never-judge rule —
+// so nothing is filtered and no bucket is dropped.
+TEST(DocSymbols, Ants4359UnresolvedIsClassifiedByShape) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(seedTree(root));
+
+    const QString doc = QStringLiteral(R"MD(# Title
+
+The canonical bypass list is `isControlPlaneTool()`.
+An enum value `SomeEnumValue` and a CMake variable `ANTS_TESTS`.
+A qualified miss `Widget::gone()`.
+)MD");
+
+    DocSymbols::Options opts;
+    opts.rootCanonical = root;
+    const DocSymbols::ScanResult r =
+        DocSymbols::scan(doc, QStringLiteral("docs/x.md"), opts);
+
+    auto shapeOf = [&](const char *name) -> QString {
+        for (const auto &f : r.findings) {
+            if (f.kind != QLatin1String("unresolved_symbol")) continue;
+            if (f.message.contains(QString::fromUtf8(name)))
+                return f.extra.value(QStringLiteral("shape")).toString();
+        }
+        return QString();
+    };
+
+    EXPECT_EQ(shapeOf("isControlPlaneTool"), QStringLiteral("call"))
+        << "the defect that hid for two loops sorts into its own class";
+    EXPECT_EQ(shapeOf("SomeEnumValue"), QStringLiteral("bare"))
+        << "an enum value is a bare identifier — the benign population";
+    EXPECT_EQ(shapeOf("ANTS_TESTS"), QStringLiteral("bare"));
+    EXPECT_EQ(shapeOf("gone"), QStringLiteral("call"))
+        << "a qualified CALL is still a call — parens win over `::`, because "
+           "the claim being made is about a function either way";
+
+    // The counters agree with the per-finding labels, and nothing was dropped.
+    EXPECT_EQ(r.unresolvedCall + r.unresolvedQualified + r.unresolvedBare,
+              r.unresolved)
+        << "the split must account for every unresolved name — a bucket that "
+           "loses one is worse than the flat list it replaced";
+    EXPECT_GE(r.unresolvedCall, 2);
+    EXPECT_GE(r.unresolvedBare, 2);
+}

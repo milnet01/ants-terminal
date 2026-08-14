@@ -411,6 +411,32 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
     counts[QStringLiteral("resolved")]    = resolved;
     counts[QStringLiteral("unresolved")]  = unresolved;
     counts[QStringLiteral("not_checked")] = notChecked;
+    // ANTS-4359 — split the unresolved bucket by the SHAPE the document wrote,
+    // so a reader starts with the class where "no such symbol" is a real
+    // defect rather than reading two dozen names one by one. On one standard
+    // that bucket was 24 of 58 and every name looked benign, so the whole of
+    // it was logged into a cold-review brief as settled noise — with one
+    // genuine defect inside it, which survived two full loops.
+    //
+    // A count, never a filter: nothing is dropped and nothing is judged
+    // (§ 2.3's report-never-judge rule). Each finding also carries its own
+    // `shape`, so the list can be sorted rather than only summarised.
+    {
+        int callN = 0, qualN = 0, bareN = 0;
+        for (const auto &f : std::as_const(findings)) {
+            if (f.kind != QLatin1String("unresolved_symbol")) continue;
+            const QString sh =
+                f.extra.value(QStringLiteral("shape")).toString();
+            if (sh == QLatin1String("call"))           ++callN;
+            else if (sh == QLatin1String("qualified")) ++qualN;
+            else                                       ++bareN;
+        }
+        QJsonObject byShape;
+        byShape[QStringLiteral("call")]      = callN;
+        byShape[QStringLiteral("qualified")] = qualN;
+        byShape[QStringLiteral("bare")]      = bareN;
+        counts[QStringLiteral("unresolved_by_shape")] = byShape;
+    }
 
     QJsonObject o;
     o[QStringLiteral("ok")]           = true;
