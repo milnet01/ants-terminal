@@ -30235,6 +30235,64 @@ in each bullet, not just the reporter's symptom.
   Source: vestige-feedback-2026-08-03.
   Resolved (2026-08-03). find_caller gains an optional `lane` scope filter: SymbolQuery::Options::lane restricts the WALK to a project-relative subdirectory, so callers_count and truncated describe the scoped set rather than a filtered view of a wider one, and the applied value is echoed back as `lane` on both the callers[] and files_only paths. Declared in the inputSchema — without that, additionalProperties:false strips the arg, which is the ANTS-3432 trap this verb family has hit before. A lane that does not resolve to a directory under the root is IGNORED rather than refused: a typo returning zero callers is the same silent-empty-reads-as-an-answer failure the finding is about. Took the cheapest of the reporter's three suggested fixes; qualified Class::method matching stays unimplemented because `symbol` is constrained to a bare identifier and cannot express it.
 
+### 🔧 CI
+
+- ✅ [ANTS-4391] **CI was red on `main` for at least five commits because `ripgrep` is installed by no job in `ci.yml`, and no local runner can ever catch that.**
+  Failure: `{"code":"rg_failed","error":"cited_by: rg failed to start (is
+  ripgrep installed?)"}` in both `build-test` and `build-asan`.
+  `CitedBy.Inv1…` and `CitedBy.Inv2…` fail; `qt62-baseline` passes because it
+  is **compile-only** ("Build everything (compile guard — no ctest)"), so it
+  never starts the binary.
+  **Pre-existing, not introduced by this session's work** — `af15f586`,
+  `6476749` and `a49df627` are all red for the same reason, so it predates
+  2026-08-14's commits.
+  **Why every local gate missed it, and would always miss it.** `rg` is
+  installed on the development host, so `ctest`, `tools/ci-parity.sh` and the
+  pre-push hook all exercise a machine where the dependency is present. The
+  full suite was green locally (3452/3452) the entire time CI was red. This is
+  the class `CLAUDE.md` names — "CI is red where local is green when the
+  runner's environment differs" — and no amount of running things locally
+  closes it.
+  Fixed: `ripgrep` added to the `build-test` and `build-asan` package lists.
+  Not added to `qt62-baseline`, which runs no tests.
+  Guarded: `tests/features/ci_workflow_deps/` asserts every tool the suite
+  shells out to **with no skip path** is declared in `ci.yml`, and a second
+  case ties that set back to the source so it cannot pin a dependency the
+  project has dropped. The check is deliberately static — comparing the source
+  against the workflow rather than against the machine — because the workflow
+  is the only artefact that knows what the runner will have.
+  **Two limits stated rather than implied**: it checks presence in the file,
+  not which job declares it (a third ctest job added without the package would
+  break CI and pass this test), and it does not prove the `ripgrep` package
+  provides the `rg` binary.
+  **Layman:** The build server never had the search tool the tests need, and every check we run on this machine passes because this machine has it.
+  Kind: fix.
+  Lanes: ci, tests.
+  Source: user-report-2026-08-14 (CI failure email), diagnosed in-session.
+
+- 📋 [ANTS-4392] **`tools/ci-parity.sh` does not execute `.github/workflows/ci.yml`, though `CLAUDE.md` describes it as "the exact mirror … all three jobs".**
+  Found while diagnosing ANTS-4391. The script contains no workflow parser, no
+  `act`, and no YAML read — it reimplements the jobs in shell and delegates
+  the Qt-6.2 leg to `tools/qt62-guard.sh`. `CLAUDE.md` says a hand-written
+  mirror "returns green for a pipeline that will fail" and asserts this script
+  is not one; the grep says otherwise.
+  ANTS-4391 is what that gap costs: a dependency declared in `ci.yml` and
+  absent from the parity script's assumptions is invisible to the local run by
+  construction.
+  Work: decide which is true and make the other match. Either (a) reword
+  `CLAUDE.md` and `ci-parity.sh`'s own header to say it is a hand-maintained
+  parallel implementation, and state what it therefore cannot catch — the
+  honest, cheap option; or (b) drive the real workflow, which is what the
+  description promises. **(b) is not obviously right**: `act` pulls container
+  images and is slow enough that nobody would run it before a push, and a gate
+  nobody runs catches nothing. Recommend (a) plus keeping ANTS-4391's static
+  check, which closes the specific hole (b) would have closed here at a
+  fraction of the cost.
+  **Layman:** Our local stand-in for the build server is described as running the real thing, and it does not — it is a separate script that can drift.
+  Kind: doc-fix.
+  Lanes: ci, docs.
+  Source: in-session-2026-08-14 (found while fixing ANTS-4391).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus

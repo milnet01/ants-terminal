@@ -61,7 +61,7 @@ jobs:
             build-essential cmake ninja-build pkg-config ccache
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
-            liblua5.4-dev cppcheck
+            liblua5.4-dev cppcheck ripgrep
             appstream desktop-file-utils groff zsh fish
           version: 1.0
 
@@ -183,7 +183,7 @@ jobs:
             build-essential cmake ninja-build pkg-config ccache
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
-            liblua5.4-dev
+            liblua5.4-dev ripgrep
           version: 1.0
 
       - name: Restore ccache (asan)

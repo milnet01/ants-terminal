@@ -1871,6 +1871,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_find_sources/test_mcp_find_sources.cpp
                 # ANTS-3368 co_change_family seam + MCP wiring.
                 tests/features/co_change_family/test_co_change_family.cpp
+                # ANTS-4391 ci.yml declares the tools the suite shells out to.
+                tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp
                 # ANTS-1306 task_priors MCP context bundler.
                 tests/features/mcp_task_priors/test_mcp_task_priors.cpp
                 # ANTS-1307 project_conventions MCP convention summary.
@@ -1889,6 +1891,8 @@ if(ANTS_TESTS)
     # MCP-server hooks.
     target_link_libraries(test_claude PRIVATE Qt6::Test Qt6::Network)
     target_compile_definitions(test_claude PRIVATE
+        # ANTS-4391 — the CI-dependency guard reads the workflow.
+        SRC_CI_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/ci.yml"
         ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
