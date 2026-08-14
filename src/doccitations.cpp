@@ -602,8 +602,48 @@ Target resolvePath(const QString &root, const QString &pathText, const Options &
         t.kind = Target::OutOfRoot;                      // step 0, zero stats
         return t;
     }
-    if (pathText.contains(QLatin1Char('/')))             // step 1, terminal both ways
-        return statAndGate(root, pathText, opts);
+    if (pathText.contains(QLatin1Char('/'))) {           // step 1
+        Target step1 = statAndGate(root, pathText, opts);
+        if (step1.kind != Target::MissingFile) return step1;
+
+        // ANTS-4381 — step 1b, the SUFFIX rung. A citation written
+        // `ui/import_wizard.py` against `src/finbreak/ui/import_wizard.py`
+        // came back missing_file: it has a directory component, so the
+        // basename map never fired, and step 1 was terminal both ways.
+        //
+        // The MIS-CLASSIFICATION is the defect, not the miss. `missing_file`
+        // asserts the file does not exist, so a reviewer triaging the stale
+        // list must open the tree to tell "deleted or moved" (a real finding)
+        // from "prefix short" (a smaller doc fix, and sometimes a deliberate
+        // historical citation). It matters most inside review-contract Phase
+        // 1d, where a FINDING is passed to cold lanes as settled fact — so a
+        // missing_file promoted on its label alone tells reviewers a live file
+        // is gone.
+        //
+        // Reuses the basename index rather than walking: look the final
+        // component up, then keep the paths that actually END with the cited
+        // token. Ambiguity keeps the existing `ambiguous` status rather than
+        // guessing, which is the same answer step 2b already gives.
+        const QString base = pathText.section(QLatin1Char('/'), -1);
+        const auto bhit = opts.basenameIndex.constFind(base);
+        if (bhit != opts.basenameIndex.constEnd()) {
+            const QString needle = QLatin1Char('/') + pathText;
+            QStringList suffixHits;
+            for (const QString &cand : *bhit) {
+                if (cand == pathText || cand.endsWith(needle))
+                    suffixHits.append(cand);
+            }
+            if (suffixHits.size() == 1)
+                return statAndGate(root, suffixHits.first(), opts);
+            if (suffixHits.size() >= 2) {
+                t.kind       = Target::Ambiguous;
+                t.candidates = suffixHits;
+                std::sort(t.candidates.begin(), t.candidates.end());
+                return t;
+            }
+        }
+        return step1;
+    }
 
     const auto hit = opts.basenameIndex.constFind(pathText);
     if (hit != opts.basenameIndex.constEnd() && !hit->isEmpty()) {

@@ -1027,3 +1027,51 @@ TEST(DocCitations, Inv42CountsAreWholeDoc) {
            "INV-42: entries past the cap were still resolved", render(r));
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-4381 — a citation whose path is a real SUFFIX of a real file must not
+// be reported as missing.
+//
+// `ui/import_wizard.py` cited where the file is
+// `src/finbreak/ui/import_wizard.py` came back missing_file — with the
+// basename index loaded in the same envelope. The map does not fire because
+// the token has a directory component and so is not a bare basename, and
+// step 1 was terminal both ways.
+//
+// The MIS-CLASSIFICATION is the defect, not the miss. `missing_file` asserts
+// the file does not exist, so a reviewer triaging the stale list must open
+// the tree to tell "deleted or moved" (a real finding) from "prefix short"
+// (a smaller doc fix, sometimes a deliberate historical citation). It matters
+// most inside review-contract Phase 1d, where a FINDING reaches cold lanes as
+// settled fact — so a missing_file promoted on its label alone tells three
+// reviewers a live file is gone.
+TEST(DocCitations, Ants4381SuffixPathResolves) {
+    Fixture fx;
+    fx.write(QStringLiteral("src/pkg/ui/import_wizard.py"), "a\nb\nc\n");
+    fx.write(QStringLiteral("src/pkg/core/util.py"), "x\n");
+    fx.write(QStringLiteral("vendor/core/util.py"), "y\n");
+
+    DocCitations::Options opts;
+    opts.basenameIndex.insert(QStringLiteral("import_wizard.py"),
+                              {QStringLiteral("src/pkg/ui/import_wizard.py")});
+    opts.basenameIndex.insert(QStringLiteral("util.py"),
+                              {QStringLiteral("src/pkg/core/util.py"),
+                               QStringLiteral("vendor/core/util.py")});
+    opts.basenameIndex.insert(QStringLiteral("nowhere.py"),
+                              {QStringLiteral("src/pkg/nowhere.py")});
+
+    const QString doc = fx.doc(
+        "suffix `ui/import_wizard.py:2`\n"
+        "two-way `core/util.py:1`\n"
+        "genuinely absent `other/nowhere.py:1`\n");
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+
+    EXPECT_EQ(status(r, 0), QStringLiteral("ok"))
+        << "a suffix that matches exactly ONE real file resolves — reporting "
+           "it missing_file asserts a live file was deleted";
+    EXPECT_EQ(status(r, 1), QStringLiteral("ambiguous"))
+        << "two files ending with the cited suffix stay ambiguous rather than "
+           "being guessed at — the same answer the bare-basename rung gives";
+    EXPECT_EQ(status(r, 2), QStringLiteral("missing_file"))
+        << "a suffix matching nothing on disk is still genuinely missing, so "
+           "the rung has not turned the check off";
+}

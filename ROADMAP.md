@@ -31315,7 +31315,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (LottoTracker).
 
-- 📋 [ANTS-4379] **`doc_symbols` reports Python module-level constants as `unresolved_symbol`, so a spec citing an error-message constant reads as a broken reference.**
+- ✅ [ANTS-4379] **`doc_symbols` reports Python module-level constants as `unresolved_symbol`, so a spec citing an error-message constant reads as a broken reference.**
   finbreak: `_MISPARSE` and `_E_TOTALS_MISMATCH` flagged "no definition
   found", while both are plain top-level assignments in the very file the doc
   cites. `file_outline` already emits a top-level `const` kind for the brace
@@ -31335,6 +31335,17 @@ collision are different strengths of evidence.
   alternative if that is too broad: keep them out of the outline but have
   `doc_symbols` fall back to an anchored `^NAME\s*=` scan of the candidate
   file before declaring a symbol unresolved.
+  Resolved (2026-08-14) with the FIRST fix — the Python outline emits a
+  top-level `NAME = …` / `NAME: T = …` as `kind:"const"`, mirroring ANTS-4090,
+  so `doc_symbols` resolves it through the index it already shares rather than
+  growing a private fallback scan.
+  **Anchored at column 0, and that is the whole of the scope control**: an
+  indented assignment is a class attribute or a function local, and emitting
+  those would bury every outline in every intermediate variable in every
+  function body — the opposite of what the verb is for. Both exclusions carry
+  their own assertion, as does the class-method qualification (ANTS-3404) that
+  shares the branch. The signature stops at the `=`, so a 40-line dict literal
+  does not ride along.
   **Layman:** A spec that quotes the program's own error messages is told those messages do not exist.
   Kind: fix.
   Lanes: docsymbols, fileoutline, mcp.
@@ -31363,7 +31374,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (finbreak, filed twice).
 
-- 📋 [ANTS-4381] **`doc_citations` returns `missing_file` for a citation whose path is a real SUFFIX of a real file, so a live file reads as deleted.**
+- ✅ [ANTS-4381] **`doc_citations` returns `missing_file` for a citation whose path is a real SUFFIX of a real file, so a live file reads as deleted.**
   finbreak: `ui/import_wizard.py:163` cited where the file is
   `src/finbreak/ui/import_wizard.py` (1567 lines, present) came back
   `status:"missing_file"` — with `basename_index_size:165` in the same
@@ -31382,7 +31393,14 @@ collision are different strengths of evidence.
   Fix: add a suffix rung to the resolution ladder — if the token is not a bare
   basename and does not resolve project-relative, match files whose path ENDS
   with it and resolve when exactly one does (ambiguity keeps the existing
-  `ambiguous` status). Alternative: keep resolution as-is and split the
+  `ambiguous` status). Resolved (2026-08-14) exactly so — a suffix rung after
+  step 1, reusing the basename index (look the final component up, keep the
+  paths that actually END with the cited token) rather than walking the tree,
+  so it costs nothing on a citation that already resolves. Two files matching
+  stay `ambiguous`, which is the same answer the bare-basename rung gives; a
+  suffix matching nothing on disk is still `missing_file`, so the rung has not
+  turned the check off. All three cases are asserted.
+  Alternative: keep resolution as-is and split the
   status, `path_prefix_short` alongside `missing_file`, so the two are
   distinguishable without opening the tree.
   **Layman:** A document points at a file using a short version of its path, and the checker reports the file as deleted.

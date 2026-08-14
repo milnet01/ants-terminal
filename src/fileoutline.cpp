@@ -297,6 +297,27 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
     }
     return delta;
 }
+// ANTS-4379 — a TOP-LEVEL Python assignment (`NAME = …`, `NAME: T = …`).
+// The brace family has carried a `const` kind since ANTS-4090; Python had no
+// equivalent, and doc_symbols shares this index — so a spec citing a
+// module-level constant read as a broken reference.
+//
+// It bites a specific and unavoidable shape: a codebase whose user-facing
+// error strings are module constants, which is the natural Python idiom and
+// exactly what a spec ABOUT error messages must cite.
+//
+// Anchored at column 0 — an indented assignment is a local or a class
+// attribute, not a module constant, and emitting those would bury the outline
+// in every intermediate variable in every function body.
+const QRegularExpression &rxPyConst() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(
+            R"(^([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=))"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
 const QRegularExpression &rxPy() {
     // ANTS-3404 — capture leading indentation (group 1) so an indented
     // `def`/`class` is matched too, not only a top-level `^def`. compute()
@@ -846,6 +867,21 @@ QJsonObject compute(const QString &absPath,
                     pyClassStack.append(qMakePair(indent, qualified));
                 } else {
                     offer("func", qualified, line);
+                }
+            } else {
+                // ANTS-4379 — a module-level constant. Only at column 0, and
+                // only outside any class body still on the stack (a top-level
+                // assignment after a class has ended is a constant; one
+                // inside it is a class attribute).
+                QRegularExpressionMatch cm = rxPyConst().match(line);
+                if (cm.hasMatch()) {
+                    pyClassStack.clear();   // column 0 ⟹ outside every class
+                    // The signature stops at the `=`: a constant's value may
+                    // be a 40-line dict that would otherwise ride along in
+                    // every outline response (same rule as ANTS-4090's).
+                    offer("const", cm.captured(1),
+                          line.left(cm.capturedEnd(0)).trimmed() +
+                              QStringLiteral(" …"));
                 }
             }
         } else if (effective == Mode::Md) {

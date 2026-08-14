@@ -761,3 +761,75 @@ TEST(McpFileOutline, Ants4349BatchReportsFoundAndMissingCounts) {
     EXPECT_TRUE(contains(rc, "files_missing"))
         << "…and how many did not, so ok:true is not the only signal";
 }
+
+// ANTS-4379 — a Python MODULE-LEVEL constant is a symbol.
+//
+// `_MISPARSE` and `_E_TOTALS_MISMATCH` were reported "no definition found"
+// while both are plain top-level assignments in the very file the doc cited.
+// The brace family has carried a `const` kind since ANTS-4090; Python had no
+// equivalent, and doc_symbols shares this index — so every such citation read
+// as a broken reference.
+//
+// The shape is unavoidable rather than exotic: a codebase whose user-facing
+// error strings are module constants is the natural Python idiom, and exactly
+// what a spec ABOUT error messages must cite. The cost was dilution — 19
+// unresolved of 60, only 2 of this class, but all 19 hand-triaged, which is
+// how a genuinely unresolved symbol gets waved through as "probably another
+// false positive".
+TEST(McpFileOutline, Ants4379PythonModuleConstants) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/mod.py");
+    const QByteArray body =
+        "_MISPARSE = \"could not parse row {n}\"\n"
+        "_E_TOTALS_MISMATCH: str = \"totals do not match\"\n"
+        "\n"
+        "class Importer:\n"
+        "    LIMIT = 10\n"          // class attribute — NOT a module constant
+        "    def run(self):\n"
+        "        local_tmp = 1\n"   // a local — must never surface
+        "        return local_tmp\n"
+        "\n"
+        "AFTER_CLASS = 3\n"         // top level again, after the class body
+        "\n"
+        "def helper():\n"
+        "    pass\n";
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Auto, /*includeDocComment=*/false,
+        /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+
+    auto kindOf = [&](const char *n) -> QString {
+        for (const auto &v : out.value("symbols").toArray()) {
+            const QJsonObject s = v.toObject();
+            if (s.value("name").toString() == QLatin1String(n))
+                return s.value("kind").toString();
+        }
+        return QString();
+    };
+
+    EXPECT_EQ(kindOf("_MISPARSE"), QStringLiteral("const"));
+    EXPECT_EQ(kindOf("_E_TOTALS_MISMATCH"), QStringLiteral("const"))
+        << "an annotated assignment is still a module constant";
+    EXPECT_EQ(kindOf("AFTER_CLASS"), QStringLiteral("const"))
+        << "a top-level assignment AFTER a class body is a module constant";
+
+    // Indented assignments must NOT surface. Emitting them would bury the
+    // outline in every intermediate variable in every function body — the
+    // opposite of what this verb is for.
+    EXPECT_TRUE(kindOf("LIMIT").isEmpty())
+        << "a class attribute is not a module constant";
+    EXPECT_TRUE(kindOf("local_tmp").isEmpty())
+        << "a function local must never surface";
+
+    // The shapes that already worked still work.
+    EXPECT_EQ(kindOf("Importer"), QStringLiteral("class"));
+    EXPECT_EQ(kindOf("helper"), QStringLiteral("func"));
+    EXPECT_EQ(kindOf("Importer.run"), QStringLiteral("func"))
+        << "class-method qualification (ANTS-3404) must be unaffected";
+}
