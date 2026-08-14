@@ -1621,6 +1621,11 @@ if(ANTS_TESTS)
                 tests/features/workspace_search_payload_knobs/test_workspace_search_payload_knobs.cpp
                 # ANTS-2220 workspace_search enclosing_symbol annotation.
                 tests/features/workspace_search_enclosing_symbol/test_workspace_search_enclosing_symbol.cpp
+                # ANTS-3716 — cited_by: which document cites which anchor.
+                # Behavioural against real fixture trees and a real rg (every
+                # invariant is about what rg actually does), plus two source
+                # scrapes. Shares workspace_search's extracted rg runner.
+                tests/features/cited_by/test_cited_by.cpp
                 # ANTS-1882 roadmap_query per-section ETag invariance.
                 tests/features/roadmap_query_per_section_etag/test_roadmap_query_per_section_etag.cpp
                 # ANTS-1880 spec_query + project_layout phases-dir recognition.

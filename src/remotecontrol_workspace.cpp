@@ -10,6 +10,7 @@
 #include "claudeintegration.h"
 #include "mainwindow.h"
 #include "pathvalidation.h"
+#include "projectsettings.h"   // ANTS-3716 — cited_by's default scope
 #include "falseposledger.h"
 #include "resolvedroot.h"
 #include "terminalwidget.h"
@@ -21,8 +22,71 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QCryptographicHash>
+#include <QMap>
+#include <QSet>
+#include <algorithm>
 
 using namespace rcdetail;  // ANTS-3833
+
+namespace {
+
+// ANTS-3716 § 2.4 — the ONE rg call site in this TU (INV-9). Runs a ripgrep
+// invocation to completion — start, wall budget, terminate/kill grace, stderr
+// cap — and returns the raw result.
+//
+// It classifies NOTHING, and that is not style. `workspace_search`'s
+// classification reads its PARSED matches, which only exist after the caller
+// has parsed the stdout returned here, so it cannot move into a process runner
+// even in principle. And the two verbs classify differently on purpose:
+// `workspace_search` treats three of its four failure branches as failures only
+// when no matches were parsed, while `cited_by` refuses on any failed run,
+// because a partial cell set is indistinguishable from a complete one.
+struct RgRun {
+    QByteArray stdoutBytes;
+    QByteArray stderrTail;        // capped at kWorkspaceSearchStderrCapBytes
+    int  exitCode    = 0;
+    bool startFailed = false;
+    bool crashed     = false;     // abnormal exit that was not our own kill
+    bool hardKilled  = false;
+};
+
+RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs) {
+    RgRun out;
+    QProcess rg;
+    rg.setWorkingDirectory(workingDir);
+    rg.setProcessChannelMode(QProcess::SeparateChannels);
+    // ANTS-1248-INV-3: QProcess::start(QString, QStringList) — argv
+    // form. No shell, no single-string overload.
+    rg.start(QStringLiteral("rg"), argv);
+    if (!rg.waitForStarted(500)) {
+        out.startFailed = true;
+        return out;
+    }
+
+    // ANTS-1248-INV-5: hard kill via budgetMs. waitForFinished returns false
+    // on timeout. On timeout we terminate(), then grant 200 ms grace, then
+    // kill().
+    if (!rg.waitForFinished(budgetMs)) {
+        out.hardKilled = true;
+        rg.terminate();
+        if (!rg.waitForFinished(kWorkspaceSearchKillGraceMs)) {
+            rg.kill();
+            rg.waitForFinished(kWorkspaceSearchKillGraceMs);
+        }
+    }
+
+    // ANTS-1248-INV-8: stderr cap. Read up to 4 KiB; the CALLER decides
+    // whether to emit it — emitting on success leaks path enumeration.
+    out.stderrTail = rg.readAllStandardError();
+    if (out.stderrTail.size() > kWorkspaceSearchStderrCapBytes)
+        out.stderrTail.truncate(kWorkspaceSearchStderrCapBytes);
+    out.stdoutBytes = rg.readAllStandardOutput();
+    out.exitCode    = rg.exitCode();
+    out.crashed     = (rg.exitStatus() != QProcess::NormalExit) && !out.hardKilled;
+    return out;
+}
+
+}  // namespace
 
 QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     QElapsedTimer wall;
@@ -272,8 +336,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         req.value(QStringLiteral("include_hidden")).toBool(false);
 
     // ANTS-1248-INV-3: shell-less argv. Every flag is a separate
-    // QString in the argv list — QProcess does not invoke a shell.
-    // Two-argument start() overload (QString program, QStringList args).
+    // QString in the argv list; rcRunRg() above starts rg with the
+    // two-argument start() overload and no shell.
     QStringList argv;
     argv << QStringLiteral("--json")
          << QStringLiteral("--no-heading")
@@ -306,40 +370,18 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     }
     argv << QStringLiteral("--") << pattern << laneAbs;
 
-    QProcess rg;
-    rg.setWorkingDirectory(rootCanonical);
-    rg.setProcessChannelMode(QProcess::SeparateChannels);
-    // ANTS-1248-INV-3: QProcess::start(QString, QStringList) — argv
-    // form. No shell, no single-string overload.
-    rg.start(QStringLiteral("rg"), argv);
-    if (!rg.waitForStarted(500)) {
+    // ANTS-3716 § 2.4 — the process run (start, budget, hard kill, stderr cap)
+    // moved to rcRunRg() so `cited_by` shares one rg call site (INV-9). The
+    // classification below stays here: it reads the parsed `matches`, which do
+    // not exist until this handler has parsed the stdout the helper returned.
+    const RgRun run = rcRunRg(argv, rootCanonical, budgetMs);
+    if (run.startFailed) {
         return QJsonDocument(wsErr("rg_failed",
             QStringLiteral("workspace-search: rg failed to start (is ripgrep installed?)")));
     }
-
-    // ANTS-1248-INV-5: hard kill via budgetMs (default 5 s,
-    // ANTS-1565 expanded to a per-call override; was a hard-coded 2 s
-    // until ANTS-1565). waitForFinished returns false on timeout.
-    // On timeout we terminate(), then grant 200 ms grace, then kill().
-    const bool finished = rg.waitForFinished(budgetMs);
-    bool hardKilled = false;
-    if (!finished) {
-        hardKilled = true;
-        rg.terminate();
-        if (!rg.waitForFinished(kWorkspaceSearchKillGraceMs)) {
-            rg.kill();
-            rg.waitForFinished(kWorkspaceSearchKillGraceMs);
-        }
-    }
-
-    // ANTS-1248-INV-8: stderr cap. Read up to 4 KiB; emit only on
-    // the error branch to avoid path-enumeration leaks on success.
-    QByteArray stderrTail = rg.readAllStandardError();
-    if (stderrTail.size() > kWorkspaceSearchStderrCapBytes) {
-        stderrTail.truncate(kWorkspaceSearchStderrCapBytes);
-    }
-
-    const QByteArray stdoutBytes = rg.readAllStandardOutput();
+    const bool hardKilled          = run.hardKilled;
+    const QByteArray &stderrTail   = run.stderrTail;
+    const QByteArray &stdoutBytes  = run.stdoutBytes;
 
     // rg --json emits one event per line. We want type=="match" events.
     // Each match event has data.path.text, data.line_number, and
@@ -502,7 +544,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         lastMatchIdx = matches.size() - 1;
     }
 
-    if (rg.exitStatus() != QProcess::NormalExit && !hardKilled) {
+    if (run.crashed) {
         QJsonObject o = wsErr("rg_failed",
             QStringLiteral("workspace-search: rg crashed (exit status not normal)"));
         if (!stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(stderrTail);
@@ -511,10 +553,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // rg exit codes: 0 = matches found, 1 = no matches (still ok),
     // 2 = error. Anything ≥ 2 (or hard-kill) is treated as failure
     // only when no matches were parsed.
-    if (rg.exitCode() >= 2 && matches.isEmpty() && !hardKilled) {
+    if (run.exitCode >= 2 && matches.isEmpty() && !hardKilled) {
         QJsonObject o = wsErr("rg_failed",
             QStringLiteral("workspace-search: rg returned non-zero exit code %1")
-                .arg(rg.exitCode()));
+                .arg(run.exitCode));
         if (!stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(stderrTail);
         return QJsonDocument(o);
     }
@@ -812,6 +854,338 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // Nothing extra to do here.
     // ANTS-1248-INV-7: tools/list schema declared in claudeintegration.cpp
     // (this body's contract; the schema lives at the wire boundary).
+    return QJsonDocument(out);
+}
+
+// ───────────────────────────── ANTS-3716 — cited_by ──────────────────────────
+
+namespace {
+
+// § 2.1 — argv and run count both stay bounded by this.
+constexpr int kCitedByMaxAnchors      = 64;
+constexpr int kCitedByDefaultMaxCells = 500;
+constexpr int kCitedByMaxCellsCap     = 5000;
+// § 4 — the pathological-case guard, 100× the default `max_cells`. Past it
+// cell COLLECTION stops and every run is still drained to completion: the
+// matched-anchor set is 64 booleans and the matching-file set is a path set,
+// and both are what INV-2 and INV-8 promise are computed over every run.
+constexpr int kCitedByCellCeiling     = 50000;
+
+struct CitedByCell {
+    int count     = 0;   // OCCURRENCES (summed submatches), not matching lines
+    int firstLine = 0;
+};
+
+}  // namespace
+
+// ANTS-3716 — `cited_by`: one call that says which document cites which anchor.
+// Spec: docs/specs/ANTS-3716-cited-by-sweep.md
+//
+// The post-fix sweep a review loop runs by hand: given the anchors a loop
+// changed, which documents mention any of them? It is a pure search being
+// performed as reasoning, N round-trips wide, four times per loop. Here it is
+// one call and one response. The verdicts stay with the caller — this verb
+// produces the grid they are recorded against.
+QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
+    QElapsedTimer wall;
+    wall.start();
+
+    // Root resolution mirrors cmdWorkspaceSearch's, ANTS-1390's `~global`
+    // sentinel included — the documents this verb sweeps routinely live under
+    // ~/.claude. Deliberately duplicated rather than hoisted into a shared
+    // helper: ANTS-1390's INV-4 scrapes for the sentinel call *inside*
+    // cmdWorkspaceSearch's body, so extracting it would redden that test.
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    QString rootCwd;
+    const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
+    if (!sentinelRoot.isEmpty()) {
+        rootCwd = sentinelRoot;
+    } else if (!callerRaw.isEmpty()) {
+        rootCwd = callerRaw;
+    } else if (m_main) {
+        if (auto *t = m_main->currentTerminal()) rootCwd = t->shellCwd();
+    }
+    if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
+    const QString rootCanonical = QFileInfo(rootCwd).canonicalFilePath();
+    if (rootCanonical.isEmpty()) {
+        return QJsonDocument(wsErr("bad_path",
+            QStringLiteral("cited_by: project root \"%1\" does not exist").arg(rootCwd)));
+    }
+
+    // § 2.1 — anchors: 1…64 literal strings, none empty (INV-6, INV-13). The
+    // empty-string rejection is not pedantry: measured, `rg -F -e ''` matches
+    // at every byte position — 25 submatches from a 24-character file — so one
+    // empty anchor saturates the collection ceiling with junk and starves
+    // every real anchor of the cap.
+    const QJsonValue anchorsVal = req.value(QStringLiteral("anchors"));
+    QStringList anchors;
+    if (anchorsVal.isArray()) {
+        const QJsonArray arr = anchorsVal.toArray();
+        anchors.reserve(arr.size());
+        for (const QJsonValue &v : arr) anchors << v.toString();
+    }
+    if (!anchorsVal.isArray() || anchors.isEmpty() ||
+        anchors.size() > kCitedByMaxAnchors) {
+        return QJsonDocument(wsErr("bad_args",
+            QStringLiteral("cited_by: \"anchors\" must be an array of 1-%1 "
+                           "non-empty strings").arg(kCitedByMaxAnchors)));
+    }
+    if (anchors.contains(QString())) {
+        return QJsonDocument(wsErr("bad_args",
+            QStringLiteral("cited_by: \"anchors\" contains an empty string, which "
+                           "matches at every byte position and would crowd out "
+                           "every real anchor")));
+    }
+
+    // § 2.2 — `insensitive` by default and NO `smart` mode. rg resolves
+    // --smart-case over the COMBINED pattern set, so one anchor carrying a
+    // capital silently flips every other anchor in the request to
+    // case-sensitive. A sweep whose results depend on the company an anchor
+    // keeps is worse than no sweep, because it looks complete.
+    const QString caseMode =
+        req.value(QStringLiteral("case")).toString(QStringLiteral("insensitive"));
+    if (caseMode != QLatin1String("insensitive") &&
+        caseMode != QLatin1String("sensitive")) {
+        return QJsonDocument(wsErr("bad_args",
+            QStringLiteral("cited_by: \"case\" must be \"insensitive\" (default) or "
+                           "\"sensitive\"; \"smart\" is deliberately absent because "
+                           "rg resolves it over the whole pattern set")));
+    }
+
+    int maxCells = kCitedByDefaultMaxCells;
+    const QJsonValue cellsVal = req.value(QStringLiteral("max_cells"));
+    if (cellsVal.isDouble()) {
+        maxCells = std::clamp(cellsVal.toInt(), 1, kCitedByMaxCellsCap);
+    }
+
+    // § 2.3 — the budget is for the WHOLE set of runs, not per run.
+    int budgetMs = kWorkspaceSearchHardKillMs;
+    const QJsonValue tsVal = req.value(QStringLiteral("timeout_sec"));
+    if (tsVal.isDouble()) {
+        const int requestedMs = tsVal.toInt() * 1000;
+        if (requestedMs >= kWorkspaceSearchMinBudgetMs &&
+            requestedMs <= kWorkspaceSearchMaxBudgetMs) {
+            budgetMs = requestedMs;
+        }
+    }
+    const int budgetSec = budgetMs / 1000;
+
+    // § 2.1 / § 2.5 — scope. Defaults to the three targets the post-fix sweep
+    // names; every entry, defaulted or supplied, is validated and then STAT'd,
+    // because PathValidation::validatePath does not require existence and rg
+    // exits 2 on a path that is not there.
+    QStringList scopeRaw;
+    const QJsonValue scopeVal = req.value(QStringLiteral("scope"));
+    if (scopeVal.isArray()) {
+        for (const QJsonValue &v : scopeVal.toArray())
+            if (v.isString() && !v.toString().isEmpty()) scopeRaw << v.toString();
+    } else {
+        scopeRaw << ProjectSettings::load(rootCanonical).docsDir
+                        .value_or(QStringLiteral("docs"))
+                 << QStringLiteral("README.md")
+                 << QStringLiteral("CLAUDE.md");
+    }
+
+    QStringList scopeRel, scopeArgv, scopeCanon;
+    for (const QString &raw : std::as_const(scopeRaw)) {
+        const auto check = PathValidation::validatePath(
+            raw, rootCanonical, QStringLiteral("cited_by"),
+            QStringLiteral("scope"));
+        if (check.bad) return QJsonDocument(check.err);
+        if (check.resolved.isEmpty()) continue;   // § 2.5 — pruned, not passed to rg
+        scopeRel   << raw;
+        scopeArgv  << check.argvForm;
+        scopeCanon << check.resolved;
+    }
+    // § 2.5 — de-overlap. rg searches a file once per positional path that
+    // reaches it and does not de-duplicate, so scope:["docs","docs/specs"]
+    // would DOUBLE that pair's `count` — a wire value the consumer reads as
+    // occurrences (INV-12).
+    QStringList keptRel, keptArgv;
+    for (int i = 0; i < scopeCanon.size(); ++i) {
+        bool contained = false;
+        for (int j = 0; j < scopeCanon.size() && !contained; ++j) {
+            if (i == j) continue;
+            const QString &a = scopeCanon.at(i);
+            const QString &b = scopeCanon.at(j);
+            if (a == b) contained = (j < i);      // exact repeat: keep the first
+            else contained = a.startsWith(b + QLatin1Char('/'));
+        }
+        if (!contained) { keptRel << scopeRel.at(i); keptArgv << scopeArgv.at(i); }
+    }
+
+    // § 2.3 — one rg run per anchor, in sorted anchor order, so every match in
+    // a run belongs to that anchor and there is no attribution step. Repeats
+    // are dropped from the RUN list only: two runs of one anchor would tally
+    // into the same (anchor, file) key and double its count, the same defect
+    // the scope de-overlap above prevents. The request's own array still backs
+    // the matched / unmatched partition, so a caller that sent a repeat sees it
+    // in both places it sent it.
+    QStringList runAnchors = anchors;
+    std::sort(runAnchors.begin(), runAnchors.end());
+    runAnchors.removeDuplicates();
+
+    // QMap, not QHash: its key order IS § 2.6's required (anchor, file) sort,
+    // which the ETag depends on — rg's own event order is not stable across
+    // runs at --threads 4.
+    QMap<QString, QMap<QString, CitedByCell>> byAnchor;
+    QSet<QString> matchedAnchors, matchingFiles;
+    int  collectedCells = 0;
+    bool truncated      = false;
+
+    // Same shape as cmdWorkspaceSearch's parse budget (ANTS-3405): rg's budget
+    // plus an equal parse budget, checked every 2048 events.
+    const qint64 totalBudgetMs = static_cast<qint64>(budgetMs) * 2;
+    int scanCounter = 0;
+
+    for (const QString &anchor : std::as_const(runAnchors)) {
+        if (keptArgv.isEmpty()) break;   // nothing survived scope pruning
+
+        QStringList argv;
+        argv << QStringLiteral("--json")
+             << QStringLiteral("--no-heading")
+             << QStringLiteral("--line-number")
+             << QStringLiteral("--threads") << QString::number(kWorkspaceSearchThreads)
+             // INV-3 — literal, and passed UNESCAPED. QRegularExpression::escape
+             // backslashes every non-[A-Za-z0-9_] character, non-ASCII included,
+             // and rg's regex engine rejects a backslash before a non-ASCII
+             // character (exit 2) — so an accented anchor would abort its own run.
+             << QStringLiteral("--fixed-strings")
+             << (caseMode == QLatin1String("sensitive")
+                     ? QStringLiteral("--case-sensitive")
+                     : QStringLiteral("--ignore-case"))
+             // `--` first, so an anchor like `--old-flag` is a pattern and not a flag.
+             << QStringLiteral("--") << anchor;
+        argv += keptArgv;
+
+        const int remainingMs = budgetMs - static_cast<int>(wall.elapsed());
+        const RgRun run = rcRunRg(argv, rootCanonical, qMax(1, remainingMs));
+
+        // INV-10 — ANY failed run refuses, and cells tallied from earlier
+        // anchors are discarded. This drops the `matches.isEmpty()` guard
+        // cmdWorkspaceSearch applies to three of its four branches: there, a
+        // partial result with a swallowed error is a defensible trade; here it
+        // is indistinguishable from a complete sweep, and every anchor whose
+        // run had not happened yet would be reported uncited.
+        if (run.startFailed) {
+            return QJsonDocument(wsErr("rg_failed",
+                QStringLiteral("cited_by: rg failed to start (is ripgrep installed?)")));
+        }
+        if (run.crashed) {
+            QJsonObject o = wsErr("rg_failed",
+                QStringLiteral("cited_by: rg crashed (exit status not normal) on "
+                               "anchor \"%1\"").arg(anchor));
+            if (!run.stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(run.stderrTail);
+            return QJsonDocument(o);
+        }
+        if (run.hardKilled) {
+            QJsonObject o = wsErr("rg_failed",
+                QStringLiteral("cited_by: exceeded the %1 s wall budget for the whole "
+                               "anchor set, hard-killed on anchor \"%2\"")
+                    .arg(budgetSec).arg(anchor));
+            o["timeout_sec"] = budgetSec;
+            o["hint"] = QStringLiteral(
+                "narrow `scope`, send fewer anchors, or raise timeout_sec (max 30)");
+            return QJsonDocument(o);
+        }
+        // rg exit codes: 0 = matches, 1 = no matches (still fine), >= 2 = error.
+        if (run.exitCode >= 2) {
+            QJsonObject o = wsErr("rg_failed",
+                QStringLiteral("cited_by: rg returned exit code %1 on anchor \"%2\"")
+                    .arg(run.exitCode).arg(anchor));
+            if (!run.stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(run.stderrTail);
+            return QJsonDocument(o);
+        }
+
+        const QList<QByteArray> lines = run.stdoutBytes.split('\n');
+        for (const QByteArray &line : lines) {
+            if (line.isEmpty()) continue;
+            if ((++scanCounter & 0x7FF) == 0 && wall.hasExpired(totalBudgetMs)) {
+                QJsonObject o = wsErr("rg_failed",
+                    QStringLiteral("cited_by: match stream too large to parse within "
+                                   "the %1 s wall budget").arg(budgetSec));
+                o["timeout_sec"] = budgetSec;
+                o["hint"] = QStringLiteral(
+                    "narrow `scope`, send fewer anchors, or raise timeout_sec (max 30)");
+                return QJsonDocument(o);
+            }
+            QJsonParseError perr{};
+            const QJsonDocument doc = QJsonDocument::fromJson(line, &perr);
+            if (perr.error != QJsonParseError::NoError || !doc.isObject()) continue;
+            const QJsonObject ev = doc.object();
+            if (ev.value(QStringLiteral("type")).toString() != QLatin1String("match"))
+                continue;
+
+            const QJsonObject data = ev.value(QStringLiteral("data")).toObject();
+            QString path = data.value(QStringLiteral("path")).toObject()
+                               .value(QStringLiteral("text")).toString();
+            if (path.startsWith(rootCanonical + QLatin1Char('/')))
+                path = path.mid(rootCanonical.size() + 1);
+            const int lineNo = data.value(QStringLiteral("line_number")).toInt();
+            // § 2.6 — `count` is OCCURRENCES: the summed length of submatches[],
+            // so an anchor named twice on one line counts 2. The two readings
+            // are one `++` apart and the field name does not disambiguate them.
+            const int hits =
+                qMax(1, data.value(QStringLiteral("submatches")).toArray().size());
+
+            // Before the ceiling check, on purpose (INV-2 / INV-8): these two
+            // are what survive a truncated collection.
+            matchedAnchors.insert(anchor);
+            matchingFiles.insert(path);
+
+            QMap<QString, CitedByCell> &files = byAnchor[anchor];
+            const auto it = files.find(path);
+            if (it == files.end()) {
+                if (collectedCells >= kCitedByCellCeiling) { truncated = true; continue; }
+                files.insert(path, CitedByCell{hits, lineNo});
+                ++collectedCells;
+            } else {
+                it->count += hits;
+                if (lineNo < it->firstLine) it->firstLine = lineNo;
+            }
+        }
+    }
+
+    // § 2.6 — the cap is applied AFTER the sort, never during a run: truncating
+    // while parsing would retain a run-dependent subset that sorting cannot
+    // restore to byte-identity. QMap's iteration order is the sort.
+    QJsonArray cells;
+    int totalCells = 0;
+    for (auto ai = byAnchor.cbegin(); ai != byAnchor.cend(); ++ai) {
+        for (auto fi = ai.value().cbegin(); fi != ai.value().cend(); ++fi) {
+            ++totalCells;
+            if (cells.size() >= maxCells) continue;
+            QJsonObject c;
+            c["anchor"]     = ai.key();
+            c["file"]       = fi.key();
+            c["count"]      = fi.value().count;
+            c["first_line"] = fi.value().firstLine;
+            cells.append(c);
+        }
+    }
+    if (totalCells > cells.size()) truncated = true;
+
+    // INV-2 — the two arrays partition `anchors` exactly, in REQUEST order, and
+    // are computed over every run, so they hold when `truncated` is true.
+    QJsonArray matchedArr, unmatchedArr;
+    for (const QString &a : std::as_const(anchors)) {
+        if (matchedAnchors.contains(a)) matchedArr.append(a);
+        else                            unmatchedArr.append(a);
+    }
+
+    QJsonObject out;
+    out["ok"]                = true;
+    out["cells"]             = cells;
+    out["cells_count"]       = cells.size();          // the CAPPED length
+    out["anchors_matched"]   = matchedArr;
+    out["anchors_unmatched"] = unmatchedArr;
+    out["files_count"]       = matchingFiles.size();  // UNCAPPED (INV-8)
+    out["scope_resolved"]    = QJsonArray::fromStringList(keptRel);
+    out["truncated"]         = truncated;
+    // No `elapsed_ms`, deliberately, where cmdWorkspaceSearch carries one: this
+    // verb opts into the CENTRAL ETag, whose hash covers the whole envelope, so
+    // one per-run measurement would differ on every call and the 304 could never
+    // fire (mcp-tools.md step 7's ANTS-4108 case).
     return QJsonDocument(out);
 }
 

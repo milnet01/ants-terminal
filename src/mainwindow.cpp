@@ -5163,6 +5163,13 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("workspace_search",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegateWorker(&RemoteControl::cmdWorkspaceSearch));
+    // ANTS-3716 — cited_by. Off the socket thread for the same reason
+    // workspace_search is, and more so: it runs ONE rg per anchor, up to 64 of
+    // them, each blocking on waitForFinished(). caller_cwd is Required, so the
+    // off-thread path never reaches the m_main->currentTerminal() fallback.
+    m_claudeIntegration->registerToolProvider("cited_by",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegateWorker(&RemoteControl::cmdCitedBy));
     m_claudeIntegration->registerToolProvider("file_outline",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdFileOutline));

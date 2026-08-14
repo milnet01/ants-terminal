@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **`cited_by` — one call that says which document cites which anchor** (ANTS-3716)
+  Give it the names a change touched and it reports which documents
+  mention which of them, with an occurrence count and a first line
+  per pair — plus the anchors nothing cites, which is the half a
+  caller cannot infer from an absence. One ripgrep run per anchor, so
+  each match belongs to its anchor by construction. Replaces a
+  per-anchor search loop a review pass otherwise runs by hand four
+  times a round. Scope defaults to the project's docs directory,
+  README.md and CLAUDE.md.
+
 - **`doc_integrity` catches a skill that calls an MCP tool it never granted itself** (ANTS-3719)
   A Claude Code skill lists the tools it may use in its frontmatter and
   names the ones it needs in its instructions. When the two drift the

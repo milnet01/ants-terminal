@@ -3440,6 +3440,142 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(wsTool);
 
+                // ANTS-3716 — cited_by: which document cites which anchor, in
+                // one call. Spec: docs/specs/ANTS-3716-cited-by-sweep.md.
+                QJsonObject cbTool;
+                cbTool["name"] = "cited_by";
+                cbTool["description"] = QStringLiteral(
+                    "Given the anchors a change touched (symbols, flags, config "
+                    "keys, paths), report which documents cite which of them — one "
+                    "call in place of one search per anchor. Returns {ok, "
+                    "cells:[{anchor, file, count, first_line}], cells_count, "
+                    "anchors_matched, anchors_unmatched, files_count, "
+                    "scope_resolved, truncated}. `count` is OCCURRENCES, not "
+                    "matching lines. Anchors match LITERALLY — for a regex use "
+                    "workspace_search. `anchors_unmatched` is a first-class "
+                    "result: \"nothing cites this\" is the cheap half of a sweep. "
+                    "`scope` defaults to the project's docs dir + README.md + "
+                    "CLAUDE.md; an entry absent on disk is pruned and drops out of "
+                    "`scope_resolved`. Refusals: bad_args (anchors absent, empty, "
+                    "over 64, an empty-string anchor, or case \"smart\"), bad_path "
+                    "(scope escapes the project root), rg_failed. caller_cwd "
+                    "Required. Full detail via tool_info {name:\"cited_by\"}.");
+                cbTool["detail"] = QStringLiteral(
+                    "One rg run per anchor, in sorted anchor order, so every match "
+                    "belongs to its anchor by construction and there is no "
+                    "attribution step. A combined single pass was measured and "
+                    "rejected: rg reports the matched TEXT rather than the pattern "
+                    "(so a case-insensitive hit cannot be mapped back to its "
+                    "anchor), and with several -F patterns a nested anchor loses "
+                    "leftmost-first and is reported uncited. 64 sequential runs "
+                    "over a docs tree cost ~0.45 s against a 5 s default budget, "
+                    "and it is still one round-trip either way.\n"
+                    "`case` is \"insensitive\" by default and there is NO \"smart\" "
+                    "mode: rg resolves --smart-case over the combined pattern set, "
+                    "so one anchor carrying a capital would silently flip every "
+                    "other anchor in the request to case-sensitive.\n"
+                    "`max_cells` (default 500, clamp 1-5000) caps cells[] AFTER "
+                    "the (anchor, file) sort, so two calls over an unchanged tree "
+                    "return byte-identical bodies. `cells_count` is the capped "
+                    "length; `files_count` is the UNCAPPED number of distinct "
+                    "matching files. anchors_matched / anchors_unmatched are "
+                    "computed over every run and stay meaningful when truncated "
+                    "is true. A 50,000-cell collection ceiling guards the "
+                    "pathological case; past it collection stops but every run "
+                    "still drains, so no anchor is misreported as uncited.\n"
+                    "`timeout_sec` (default 5, clamp 1-30) is the budget for the "
+                    "WHOLE anchor set, not per run. Any failed rg run refuses "
+                    "rg_failed and discards the cells already tallied — a partial "
+                    "cell set is indistinguishable from a complete one.\n"
+                    "Overlapping scope entries are de-overlapped before the run "
+                    "(rg searches a file once per positional path that reaches it, "
+                    "which would double a cell's count). No line bodies: "
+                    "first_line is enough to get there, and read_region is the "
+                    "drill-in. ETag-304 supported.");
+                cbTool["selection_hint"] = QStringLiteral(
+                    "Use after a change to ask \"which documents mention any of "
+                    "these?\" — one call instead of one workspace_search per "
+                    "anchor, and it names the anchors nothing cites. Not a "
+                    "replacement for workspace_search: no regexes, no line "
+                    "bodies.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "array";
+                        QJsonObject items;
+                        items["type"] = "string";
+                        p["items"] = items;
+                        p["description"] = QStringLiteral(
+                            "The changed names, 1-64 literal strings — symbol, "
+                            "flag, config key, env var or path. Never regexes. An "
+                            "empty array, over 64 entries, or an empty-string "
+                            "element refuses bad_args.");
+                        props["anchors"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "array";
+                        QJsonObject items;
+                        items["type"] = "string";
+                        p["items"] = items;
+                        p["description"] = QStringLiteral(
+                            "Project-relative files and/or dirs to search. "
+                            "Defaults to the project's docs dir, README.md and "
+                            "CLAUDE.md. Entries absent on disk are pruned; "
+                            "scope_resolved echoes what was actually searched.");
+                        props["scope"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        e.append("insensitive");
+                        e.append("sensitive");
+                        p["enum"]    = e;
+                        p["default"] = "insensitive";
+                        p["description"] = QStringLiteral(
+                            "Match case. \"smart\" is deliberately absent — rg "
+                            "resolves it over the whole pattern set, so one anchor "
+                            "would change every other anchor's result.");
+                        props["case"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["default"]     = 500;
+                        p["minimum"]     = 1;
+                        p["maximum"]     = 5000;
+                        p["description"] = QStringLiteral(
+                            "Cap on cells[] (default 500), applied after the sort. "
+                            "files_count stays uncapped; truncated says so.");
+                        props["max_cells"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]        = "integer";
+                        p["default"]     = 5;
+                        p["minimum"]     = 1;
+                        p["maximum"]     = 30;
+                        p["description"] = QStringLiteral(
+                            "Wall-clock budget in seconds for the WHOLE anchor "
+                            "set, not per run (default 5).");
+                        props["timeout_sec"] = p;
+                    }
+                    props["caller_cwd"]  = makeCallerCwdReadProp();
+                    props["etag_match"]  = makeEtagMatchProp();   // ANTS-1499
+                    schema["properties"] = props;
+                    QJsonArray required;
+                    required.append("anchors");
+                    required.append("caller_cwd");
+                    schema["required"]             = required;
+                    schema["additionalProperties"] = false;
+                    cbTool["inputSchema"] = schema;
+                }
+                tools.append(cbTool);
+
                 // ANTS-1249: file_outline — regex-scanner outline for
                 // a single file. ~13-39× compression on a typical
                 // source file vs full Read. Schema declares `path`
@@ -10897,6 +11033,10 @@ void ClaudeIntegration::onMcpConnection() {
                     if (name == QLatin1String("git_state"))
                         return QStringLiteral("git");
                     if (name == QLatin1String("workspace_search") ||
+                        // ANTS-3716 — cited_by: caller_cwd-Required,
+                        // path-validated tree search (workspace_search family,
+                        // whose rg runner it shares).
+                        name == QLatin1String("cited_by") ||
                         name == QLatin1String("file_outline") ||
                         // ANTS-1855 — read_log: caller_cwd-Required,
                         // path-validated file reader (file_outline family).
@@ -12457,6 +12597,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-1305 — similar_code scans the project tree under the
     // caller's root; Required matches sibling project-scoped readers.
     if (toolName == QStringLiteral("similar_code"))        return C::Required;
+    // ANTS-3716 — cited_by searches the caller's doc tree; Required, same as
+    // workspace_search, whose rg runner it shares.
+    if (toolName == QStringLiteral("cited_by"))            return C::Required;
     // ANTS-1306 + ANTS-1307 — task-start context composers read under
     // the caller's project root; Required matches sibling readers.
     if (toolName == QStringLiteral("task_priors"))        return C::Required;
@@ -12530,6 +12673,9 @@ bool ClaudeIntegration::isEtagSupportedTool(const QString &toolName) {
         // ANTS-3636 — doc_citations: unchanged doc + unchanged targets → an
         // identical answer → 304.
         || toolName == QStringLiteral("doc_citations")
+        // ANTS-3716 — cited_by: a pure function of (tree, request), and its
+        // arrays all carry a stated order precisely so the hash is stable.
+        || toolName == QStringLiteral("cited_by")
         || toolName == QStringLiteral("doc_symbols")  // ANTS-3661
         || toolName == QStringLiteral("spec_lint")    // ANTS-3662
         || toolName == QStringLiteral("doc_dedup")    // ANTS-3660

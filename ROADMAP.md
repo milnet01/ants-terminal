@@ -22446,7 +22446,7 @@ requesting no action and are closed in place rather than filed.
   count within the two loops there are. Re-scope to cross-run memory before
   building; the within-run half is close to worthless now.
 
-- 📋 [ANTS-3716] **A fix-ledger verb, including the batched cited_by sweep the review orchestrator currently hand-rolls.**
+- ✅ [ANTS-3716] **A fix-ledger verb, including the batched cited_by sweep the review orchestrator currently hand-rolls.**
   `/cold-eyes` Phase 4 maintains a JSON fix ledger: one row per verified finding, a
   disposition cell, a `must_agree` list, a `cited_by` list, and a per-cell verdict
   recorded on the post-fix sweep. Every part is written and re-read by the model.
@@ -22519,6 +22519,20 @@ requesting no action and are closed in place rather than filed.
   rg call site cannot be extracted as a *classifying* helper: every branch reads
   the parsed `matches`, which exist only after the handler parses the stdout the
   helper returned, so the helper returns the raw run and each verb classifies.
+
+  Resolved (2026-08-14): `cited_by` shipped — the `sweep` half only, exactly as
+  the paragraph above scoped it. One rg run per anchor, cells keyed on
+  (anchor, file) with an OCCURRENCE count and a `first_line`, and
+  `anchors_unmatched` as a first-class result. Both findings above landed as
+  written: the failure policy diverges (any failed run refuses, cells already
+  tallied are discarded) and the extracted `rcRunRg()` returns the raw run and
+  classifies nothing, each verb keeping its own branches. `open` / `close` /
+  `report` are a PERMANENT exclusion, not deferred work — this bullet's own
+  maintainer note asked that rows key on the finding with a disposition column,
+  `review-contract` now does that itself, and the storage half has no remaining
+  customer; verdicts stay with the caller as the one part that is not
+  mechanical. 13 invariants in `tests/features/cited_by/`, six behavioural cases
+  proved red against mutations of the shipped verb. Suite 3441/3441.
 
 - 📋 [ANTS-3717] **Loop-health metrics — the collateral ratio and per-doc size delta, the stopping signals review currently lacks.**
   The `/cold-eyes` fix-ledger reference records a measured loop where five of nine
@@ -39530,6 +39544,18 @@ here.)
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (hit confirming the ANTS-4142 status flips).
+
+  Measured again 2026-08-14, and the sharper shape is a stale BODY rather than a
+  missing bullet. `roadmap_query {ids:["ANTS-3715","ANTS-3717"],
+  include_body:true, max_body_bytes:6000}` returned each bullet's PRE-2026-08-14
+  body — ending cleanly at its `Source:` trailer, with no `body_truncated` and no
+  elision marker — while ROADMAP.md carries several further paragraphs on each
+  (3715's "Re-scope to cross-run memory before building", 3717's premise
+  re-check). A missing bullet is at least visibly missing; a stale body is
+  indistinguishable from a current one, and this one cost a session a
+  confidently-wrong statement to the user about what those two items still
+  wanted. Whatever fixes the source label should also make staleness visible —
+  a `source:"store"` field, or a freshness check against the file's mtime.
 
 - 📋 [ANTS-4144] **A rolled-back `roadmap_migrate` still emits its full note list, spending thousands of tokens describing writes that did not happen.**
   The failed Phase D2 run returned `ok:false` with a one-line error and
