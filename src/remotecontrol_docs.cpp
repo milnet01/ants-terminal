@@ -1029,6 +1029,11 @@ DocCitations::Options RemoteControl::docCitationsClampOptions(const QJsonObject 
     o.only   = req.value(QStringLiteral("only")).toString() == QLatin1String("stale")
                    ? DocCitations::Only::Stale
                    : DocCitations::Only::All;
+    // ANTS-4386 — opt-in quotation check. Off by default so no existing
+    // caller's envelope moves and nobody pays for a pass they did not ask
+    // for; the floor keeps it off every quoted word in the corpus.
+    o.quotes        = req.value(QStringLiteral("quotes")).toBool(false);
+    o.quoteMinChars = clamped("quote_min_chars", o.quoteMinChars, 10, 500);
     return o;
 }
 

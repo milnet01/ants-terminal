@@ -31576,7 +31576,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (claude_config, self-retracted).
 
-- 📋 [ANTS-4386] **No verb checks a QUOTED FRAGMENT attributed to a named document — the highest-yield mechanical class in a cross-referencing doc set, and it is hand-rolled in Bash.**
+- ✅ [ANTS-4386] **No verb checks a QUOTED FRAGMENT attributed to a named document — the highest-yield mechanical class in a cross-referencing doc set, and it is hand-rolled in Bash.**
   `doc_citations` resolves `path:line`. `doc_integrity` resolves links and
   anchors. `doc_symbols` resolves named symbols. **Nothing resolves a
   quotation** — a passage reproducing another document's words verbatim and
@@ -31611,6 +31611,25 @@ collision are different strengths of evidence.
   back to a repo-wide search reporting `ambiguous` with the hit list rather
   than guessing. A `min_length` floor (~30 chars) keeps it off ordinary quoted
   words; the existing `only:"stale"` filter makes the common call cheap.
+  Resolved (2026-08-14) as `quotes:true` on `doc_citations` rather than a new
+  verb — it reuses the basename map the reporter identified as the source of
+  free target inference, and avoids a seventh registration site for one pass.
+  **Both design points ship, and the whitespace one is verified by mutation
+  rather than by reading**: with the fold removed, the fixture's wrapped
+  quotation reports `not_found` for a phrase that IS present — the exact false
+  negative that makes the hand-rolled version unsafe. A genuinely absent
+  quotation is still caught in the same test, so the fold has not simply
+  turned the check off.
+  Target inference takes the LAST backticked path-shaped token on the line
+  (closest to the quote it introduces); several matches report `ambiguous`
+  with the hit list, and a line naming no document reports `no_target` rather
+  than guessing. A quotation inside a fence is a specimen and is skipped, like
+  a citation. `quote_min_chars` (default 30) keeps it off ordinary quoted
+  words, and `quotes_checked` is emitted so an empty `quotes[]` cannot read as
+  "every quotation is sound" (ANTS-4374).
+  `doc_citations`'s descriptor test pins its property count exactly — a guard
+  against a prop added to the handler and not the schema — so that invariant
+  moved with the change, 9 → 11.
   **Layman:** When one document quotes another word for word, nothing checks the quote is still accurate — and doing it by hand gets it wrong on wrapped lines.
   Kind: feature.
   Lanes: doccitations, mcp.

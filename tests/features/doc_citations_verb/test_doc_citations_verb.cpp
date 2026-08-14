@@ -235,15 +235,19 @@ TEST(DocCitationsVerb, Inv22DescriptorShape) {
                && region.mid(req, 160).contains(QStringLiteral("path")),
            "INV-22: an explicit required[] naming caller_cwd and path");
 
-    // All nine properties. The five optional request args are load-bearing:
+    // All eleven properties. The optional request args are load-bearing:
     // under additionalProperties:false an undeclared one is client-rejected,
-    // which would leave INV-21's whole clamp path unreachable.
+    // which would leave INV-21's whole clamp path unreachable — and the exact
+    // count is what catches a property added to the handler but not here.
+    // 9 → 11 by ANTS-4386, which added the opt-in quotation check
+    // (`quotes` + `quote_min_chars`).
     for (const char *p : {"caller_cwd", "path", "only", "offset", "max_range_lines",
-                          "max_bytes", "max_doc_lines", "etag_match", "encoding"})
+                          "max_bytes", "max_doc_lines", "etag_match", "encoding",
+                          "quotes", "quote_min_chars"})
         expect(region.contains(QStringLiteral("props[\"%1\"]").arg(QLatin1String(p))),
                "INV-22: property declared", QLatin1String(p));
-    expect(ants_test::countOccurrences(region.toStdString(), "props[\"") == 9,
-           "INV-22: exactly nine properties, no more");
+    expect(ants_test::countOccurrences(region.toStdString(), "props[\"") == 11,
+           "INV-22: exactly eleven properties, no more");
     expect(region.contains(QStringLiteral("makeEtagMatchProp()"))
                && region.contains(QStringLiteral("makeEncodingProp()")),
            "INV-22: the shared etag_match / encoding makers are used");

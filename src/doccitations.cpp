@@ -697,6 +697,54 @@ QJsonObject refusal(const QString &code) {
 
 }  // namespace
 
+
+// ---------------------------------------------------------------------------
+// ANTS-4386 — quotation checking.
+//
+// Nothing in the toolchain verified a fragment a document attributes to
+// another document, and it is the highest-yield mechanical class in a
+// cross-referencing corpus: a quote rots exactly when the quoted document is
+// edited, which is when nobody re-reads the quoting one.
+//
+// TWO design points carry all the value, and both come from the hand-rolled
+// substitute being WORSE than nothing:
+//
+//  (1) Whitespace-insensitive matching, normalising runs of whitespace
+//      INCLUDING NEWLINES on both sides. A quotation in a hard-wrapped
+//      document does not survive a line-oriented search, so the grep version
+//      reported "not found" for a phrase that was present and a reviewer
+//      nearly "fixed" a passage that was already correct. Hard-wrapped is the
+//      normal case, so without this the verb reproduces that false negative.
+//
+//  (2) Target inference from the ATTRIBUTION. A quotation is nearly always
+//      introduced by a backticked document name in the same sentence, and
+//      resolving that through the basename map this verb already carries
+//      gives the search scope for free. An attribution naming a basename with
+//      several matches reports `ambiguous` WITH the hit list rather than
+//      guessing — guessing is how a check like this starts producing
+//      confident wrong answers.
+static QString dcFoldWhitespace(const QString &in) {
+    static const QRegularExpression ws(QStringLiteral("\\s+"));
+    return in.simplified().replace(ws, QStringLiteral(" "));
+}
+
+// The document a quotation is attributed to: the LAST backticked token on the
+// line that looks like a document path or filename. Last, not first, because
+// the attribution sits closest to the quote it introduces.
+static QString dcAttributionOnLine(const QString &line) {
+    static const QRegularExpression tick(QStringLiteral("`([^`]+)`"));
+    QString best;
+    auto it = tick.globalMatch(line);
+    while (it.hasNext()) {
+        const QString tok = it.next().captured(1).trimmed();
+        if (tok.contains(QLatin1Char(' '))) continue;
+        if (!tok.contains(QLatin1Char('.')) &&
+            !tok.contains(QLatin1Char('/'))) continue;
+        best = tok;
+    }
+    return best;
+}
+
 QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                   const Options &opts) {
     QStringList lines;
@@ -972,6 +1020,89 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         {QStringLiteral("basename_index_size"), opts.basenameIndex.size()}};
     if (opts.basenameIndexTruncated)
         out.insert(QStringLiteral("basename_index_truncated"), true);
+
+    // ANTS-4386 — opt-in quotation pass. Runs over the same `prefix` lines and
+    // the same fence mask, so a quotation inside a fenced block (a specimen)
+    // is invisible here exactly as a citation is.
+    if (opts.quotes) {
+        static const QRegularExpression quoteRe(
+            QStringLiteral("\u201C([^\u201D]{2,})\u201D|\"([^\"]{2,})\""));
+        QJsonArray quotesOut;
+        QHash<QString, int> qTally;
+        int harvested = 0;
+        for (int i = 0; i < prefix.size() && harvested < opts.maxQuotes; ++i) {
+            if (i < fence.size() && fence.at(i)) continue;   // specimen
+            const QString &line = prefix.at(i);
+            auto it = quoteRe.globalMatch(line);
+            while (it.hasNext() && harvested < opts.maxQuotes) {
+                const auto m = it.next();
+                const QString text = m.captured(1).isEmpty() ? m.captured(2)
+                                                             : m.captured(1);
+                if (text.size() < opts.quoteMinChars) continue;  // ordinary prose
+
+                QJsonObject q;
+                q[QStringLiteral("line")] = i + 1;
+                q[QStringLiteral("text")] = text;
+
+                const QString attr = dcAttributionOnLine(line);
+                if (attr.isEmpty()) {
+                    // No document named in the same sentence. NOT a finding:
+                    // the verb cannot know what a bare quotation is from, and
+                    // guessing is how a check like this starts producing
+                    // confident wrong answers.
+                    q[QStringLiteral("status")] = QStringLiteral("no_target");
+                    ++qTally[QStringLiteral("no_target")];
+                    quotesOut.append(q);
+                    ++harvested;
+                    continue;
+                }
+                q[QStringLiteral("target")] = attr;
+
+                const Target t = resolvePath(rootCanonical, attr, opts);
+                if (t.kind == Target::Ambiguous) {
+                    q[QStringLiteral("status")] = QStringLiteral("ambiguous");
+                    q[QStringLiteral("candidates")] =
+                        QJsonArray::fromStringList(t.candidates);
+                    ++qTally[QStringLiteral("ambiguous")];
+                } else if (t.kind != Target::Resolved) {
+                    q[QStringLiteral("status")] = QStringLiteral("no_target");
+                    ++qTally[QStringLiteral("no_target")];
+                } else {
+                    QFile tf(t.absPath);
+                    QString body;
+                    if (tf.open(QIODevice::ReadOnly) &&
+                        decodeChecked(tf.readAll(), &body)) {
+                        // (1) — fold whitespace on BOTH sides. Without this a
+                        // hard-wrapped target reports not_found for a phrase
+                        // that is present, which is the false negative that
+                        // makes the hand-rolled version unsafe.
+                        const bool found =
+                            dcFoldWhitespace(body).contains(dcFoldWhitespace(text));
+                        q[QStringLiteral("status")] = found
+                            ? QStringLiteral("ok")
+                            : QStringLiteral("not_found");
+                        ++qTally[found ? QStringLiteral("ok")
+                                       : QStringLiteral("not_found")];
+                    } else {
+                        q[QStringLiteral("status")] = QStringLiteral("no_target");
+                        ++qTally[QStringLiteral("no_target")];
+                    }
+                }
+                quotesOut.append(q);
+                ++harvested;
+            }
+        }
+        out.insert(QStringLiteral("quotes"), quotesOut);
+        QJsonObject qCounts;
+        for (const char *k : {"ok", "not_found", "ambiguous", "no_target"})
+            qCounts[QLatin1String(k)] = qTally.value(QLatin1String(k), 0);
+        out.insert(QStringLiteral("quote_counts"), qCounts);
+        // ANTS-4374 — say what was looked at, so `quotes:[]` cannot read as
+        // "every quotation checks out".
+        out.insert(QStringLiteral("quotes_checked"), harvested);
+        if (harvested >= opts.maxQuotes)
+            out.insert(QStringLiteral("quotes_truncated"), true);
+    }
     if (reader.budgetHit()) out.insert(QStringLiteral("read_budget_exhausted"), true);
     if (sc.unterminatedFence >= 0)
         out.insert(QStringLiteral("unterminated_fence"), sc.unterminatedFence);

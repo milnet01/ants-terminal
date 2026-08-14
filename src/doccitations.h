@@ -75,7 +75,37 @@ struct Options {
     qint64 maxTargetBytes = 8 * 1024 * 1024;    // on-disk bytes of one target
     qint64 maxCacheBytes  = 24 * 1024 * 1024;   // IN-MEMORY bytes, not on-disk
 
+    // ANTS-4386 — opt-in QUOTATION check. Nothing in the toolchain verified a
+    // fragment a document attributes to another document, and it is the
+    // highest-yield mechanical class in a cross-referencing corpus: a quote
+    // rots exactly when the quoted document is edited, which is when nobody
+    // re-reads the quoting one.
+    //
+    // The hand-rolled substitute is worse than nothing. A quotation in a
+    // hard-wrapped document does not survive a line-oriented search, so a grep
+    // reported "not found" for a phrase that was present and a reviewer nearly
+    // "fixed" a passage that was already correct — the collateral-generating
+    // move the review skill exists to prevent.
+    bool quotes        = false;
+    // Below this many characters a double-quoted span is ordinary prose, not a
+    // quotation. Keeps the check off every quoted word in the corpus.
+    int  quoteMinChars = 30;
+    int  maxQuotes     = 200;
+
     Probe *probe = nullptr;    // test-only, see above
+};
+
+// ANTS-4386 — one harvested quotation and its verdict.
+struct Quote {
+    int     docLine = 0;      // 1-based line the quoted span starts on
+    QString text;             // the quoted text, delimiters stripped
+    QString target;           // the attributed document, when one was inferred
+    // "ok"        — found in the attributed document
+    // "not_found" — the target was read and does not contain it
+    // "ambiguous" — the attribution named a basename with several matches
+    // "no_target" — no document was attributed in the same sentence
+    QString status;
+    QStringList candidates;   // ambiguous only
 };
 
 // One recognised, validated citation.

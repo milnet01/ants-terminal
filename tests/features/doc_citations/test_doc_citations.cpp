@@ -1075,3 +1075,89 @@ TEST(DocCitations, Ants4381SuffixPathResolves) {
         << "a suffix matching nothing on disk is still genuinely missing, so "
            "the rung has not turned the check off";
 }
+
+// ANTS-4386 — quotation checking, and the whitespace rule is the whole thing.
+//
+// Nothing verified a fragment a document attributes to another document, and
+// it is the highest-yield mechanical class in a cross-referencing corpus: a
+// quote rots exactly when the quoted document is edited, which is when nobody
+// re-reads the quoting one.
+//
+// The hand-rolled substitute is WORSE than not checking. A quotation in a
+// hard-wrapped document does not survive a line-oriented search, so a grep
+// reported "not found" for a phrase that was present and a reviewer nearly
+// "fixed" a passage that was already correct — the collateral-generating move
+// the whole review skill exists to prevent. Two of three lanes caught that
+// false negative; one did not.
+TEST(DocCitations, Ants4386QuotationsAreCheckedAcrossLineWraps) {
+    Fixture fx;
+    // The target is HARD-WRAPPED, which is the normal case and the one that
+    // breaks a line-oriented search.
+    fx.write(QStringLiteral("docs/standards/commits.md"),
+             "# Commits\n"
+             "\n"
+             "Every commit message must name the reason the change\n"
+             "exists, not merely what it changed.\n");
+    fx.write(QStringLiteral("docs/a/dup.md"), "shared basename\n");
+    fx.write(QStringLiteral("docs/b/dup.md"), "shared basename\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+    opts.basenameIndex.insert(QStringLiteral("dup.md"),
+                              {QStringLiteral("docs/a/dup.md"),
+                               QStringLiteral("docs/b/dup.md")});
+
+    const QString doc = fx.doc(
+        // Present in the target, but SPANNING its line break.
+        "As `docs/standards/commits.md` puts it, \"name the reason the "
+        "change exists, not merely what it changed\".\n"
+        // Not present anywhere in the target.
+        "It also says \"every commit shall be signed by two witnesses\" "
+        "in `docs/standards/commits.md`.\n"
+        // Attribution resolves to two files.
+        "See `dup.md`: \"a quotation attributed to an ambiguous basename\".\n"
+        // No document named on the line at all.
+        "Someone once said \"a quotation with nobody to attribute it to\".\n"
+        // Below the floor — ordinary prose, must not be harvested.
+        "The flag is called \"quotes\" and defaults to false.\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+
+    auto statusOf = [&](const char *needle) -> QString {
+        for (const auto &v : qs) {
+            const QJsonObject q = v.toObject();
+            if (q.value(QStringLiteral("text")).toString()
+                    .contains(QString::fromUtf8(needle)))
+                return q.value(QStringLiteral("status")).toString();
+        }
+        return QStringLiteral("<absent>");
+    };
+
+    EXPECT_EQ(statusOf("name the reason"), QStringLiteral("ok"))
+        << "the quotation IS present in the target — it merely spans a line "
+           "break there. Reporting not_found here is the false negative that "
+           "makes the hand-rolled version unsafe";
+    EXPECT_EQ(statusOf("two witnesses"), QStringLiteral("not_found"))
+        << "…and a genuinely absent quotation must still be caught, or the "
+           "whitespace fold has simply turned the check off";
+    EXPECT_EQ(statusOf("ambiguous basename"), QStringLiteral("ambiguous"))
+        << "an attribution matching several files reports the ambiguity "
+           "rather than guessing which one it meant";
+    EXPECT_EQ(statusOf("nobody to attribute"), QStringLiteral("no_target"))
+        << "a quotation with no document named is not a finding — the verb "
+           "cannot know what it is from";
+    EXPECT_EQ(statusOf("quotes"), QStringLiteral("<absent>"))
+        << "below the length floor is ordinary prose, not a quotation";
+
+    // ANTS-4374's invariant: the zero has to say what was looked at.
+    EXPECT_EQ(r.value(QStringLiteral("quotes_checked")).toInt(), 4);
+    const QJsonObject qc = r.value(QStringLiteral("quote_counts")).toObject();
+    EXPECT_EQ(qc.value(QStringLiteral("ok")).toInt(), 1);
+    EXPECT_EQ(qc.value(QStringLiteral("not_found")).toInt(), 1);
+
+    // Off by default: no existing caller's envelope moves.
+    DocCitations::Options plain;
+    const QJsonObject r2 = DocCitations::check(fx.root, doc, plain);
+    EXPECT_FALSE(r2.contains(QStringLiteral("quotes")));
+}

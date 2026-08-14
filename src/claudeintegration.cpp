@@ -5047,6 +5047,42 @@ void ClaudeIntegration::onMcpConnection() {
                     props["max_range_lines"] = dcRange;
                     props["max_bytes"]       = dcBytes;
                     props["max_doc_lines"]   = dcDocLines;
+                    {   // ANTS-4386 — quotation check.
+                        QJsonObject q; q["type"] = "boolean";
+                                       q["default"] = false;
+                                       q["description"] = QStringLiteral(
+                            "Optional (ANTS-4386). Also check QUOTATIONS: a "
+                            "double-quoted span of at least `quote_min_chars` "
+                            "characters, resolved against the document "
+                            "attributed to it by a backticked path on the same "
+                            "line. Emits `quotes[]` "
+                            "({line, text, target, status, candidates}) with "
+                            "status ok | not_found | ambiguous | no_target, "
+                            "plus `quote_counts` and `quotes_checked` — a "
+                            "zero says the pass ran and found nothing to "
+                            "check, not that every quotation is sound. "
+                            "Matching folds runs of whitespace INCLUDING "
+                            "NEWLINES on both sides: a quotation in a "
+                            "hard-wrapped document does not survive a "
+                            "line-oriented search, and reporting \"not "
+                            "found\" for a phrase that is present is worse "
+                            "than not checking — it makes a reviewer \"fix\" "
+                            "a passage that was already correct. An "
+                            "attribution naming a basename with several "
+                            "matches is `ambiguous` WITH the hit list, never a "
+                            "guess. A quotation inside a fence is a specimen "
+                            "and is skipped. Off by default.");
+                        props["quotes"] = q;
+                        QJsonObject qm; qm["type"] = "integer";
+                                        qm["default"] = 30;
+                                        qm["minimum"] = 10;
+                                        qm["maximum"] = 500;
+                                        qm["description"] = QStringLiteral(
+                            "Optional (ANTS-4386). Minimum length for a "
+                            "double-quoted span to count as a quotation. "
+                            "Keeps the check off ordinary quoted words.");
+                        props["quote_min_chars"] = qm;
+                    }
                     props["caller_cwd"]      = makeCallerCwdReadProp();
                     props["etag_match"]      = makeEtagMatchProp();   // ANTS-1499
                     props["encoding"]        = makeEncodingProp();    // ANTS-2090
