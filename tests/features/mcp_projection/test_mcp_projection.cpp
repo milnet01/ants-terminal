@@ -861,3 +861,60 @@ TEST(McpReadHints, Ants4382NoLeanerNudgeOnATargetedFetch) {
                                            false))
                     .contains("leaner_call_hint"));
 }
+
+// ANTS-4367 — a short query needs a narrowing knob.
+//
+// `query:"CI"` over 175 bullets returned 20 hits, truncated:true, and the
+// first matched only because its body says "decision". "specific",
+// "efficiency", "precision" and "facing" all do the same. The damage is
+// REORDERING rather than padding: genuine hits are pushed off page one by
+// substring noise, and truncated:true gives no clue the answer is in the
+// tail — so a session trusting page one concludes the roadmap has no CI
+// items. The documented recovery (raise `limit`, page with `offset`) grows
+// the payload while the signal-to-noise stays identical.
+TEST(McpProjection, Ants4367WholeWordAndRegexNarrowTheQuery) {
+    const auto bullet = [](const char *headline, const char *body) {
+        QJsonObject o;
+        o[QStringLiteral("headline")] = QString::fromUtf8(headline);
+        o[QStringLiteral("body")]     = QString::fromUtf8(body);
+        return o;
+    };
+    const QJsonObject noise = bullet("A design decision about efficiency",
+                                     "precision matters, facing specifics");
+    const QJsonObject real  = bullet("CI is red on main",
+                                     "ripgrep is installed by no job");
+    const QJsonObject lower = bullet("ci runs on every push", "");
+
+    // Default is unchanged — every existing caller sees the same answers.
+    EXPECT_TRUE(mcp::bulletMatchesQuery(noise, QStringLiteral("CI")));
+    EXPECT_TRUE(mcp::bulletMatchesQuery(real,  QStringLiteral("CI")));
+
+    // whole_word — the substring noise goes, the genuine hits stay, and the
+    // match stays case-insensitive like the default.
+    EXPECT_FALSE(mcp::bulletMatchesQuery(noise, QStringLiteral("CI"),
+                                         mcp::QueryMode::WholeWord))
+        << "\"decision\" / \"efficiency\" / \"precision\" / \"facing\" must not "
+           "match a whole-word CI";
+    EXPECT_TRUE(mcp::bulletMatchesQuery(real, QStringLiteral("CI"),
+                                        mcp::QueryMode::WholeWord));
+    EXPECT_TRUE(mcp::bulletMatchesQuery(lower, QStringLiteral("CI"),
+                                        mcp::QueryMode::WholeWord))
+        << "whole_word narrows the boundary, not the casing";
+
+    // A hyphenated occurrence IS a whole word — `-` is a boundary. Stated as a
+    // test because it is the one case where the fix looks wrong at a glance.
+    EXPECT_TRUE(mcp::bulletMatchesQuery(bullet("the CI-parity script", ""),
+                                        QStringLiteral("CI"),
+                                        mcp::QueryMode::WholeWord));
+
+    // regex — the same knob workspace_search spells the same way.
+    EXPECT_TRUE(mcp::bulletMatchesQuery(real, QStringLiteral("^CI is"),
+                                        mcp::QueryMode::Regex));
+    EXPECT_FALSE(mcp::bulletMatchesQuery(noise, QStringLiteral("^CI is"),
+                                         mcp::QueryMode::Regex));
+
+    // An invalid pattern must not silently match everything — that would turn
+    // a typo into "the roadmap is entirely about X".
+    EXPECT_FALSE(mcp::bulletMatchesQuery(real, QStringLiteral("CI("),
+                                         mcp::QueryMode::Regex));
+}

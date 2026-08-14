@@ -30826,7 +30826,7 @@ collision are different strengths of evidence.
   Lanes: fileoutline, mcp.
   Source: cc-feedback-2026-08-14 (DOOM), reporter-corrected 2026-08-13.
 
-- 📋 [ANTS-4367] **`roadmap_query`'s `query` is a bare substring match with no word-boundary option, so a short acronym returns near-pure noise.**
+- ✅ [ANTS-4367] **`roadmap_query`'s `query` is a bare substring match with no word-boundary option, so a short acronym returns near-pure noise.**
   DOOM: `query:"CI"` over 175 bullets returned 20 hits, `truncated:true`, and
   the first was a bullet matching only because its body contains "de-CI-sion".
   "specific", "efficiency", "precision", "facing" all do the same. The two
@@ -30844,6 +30844,21 @@ collision are different strengths of evidence.
   chars and the hit count is large, an advisory `hint`. `workspace_search`
   already sets the precedent by hinting when a multi-word query hits zero;
   this is the mirror case, a too-short query hitting far too many.
+  Resolved (2026-08-14): BOTH knobs, not just the smaller one — `whole_word`
+  and `regex`, the latter spelled exactly as `workspace_search` spells it, so
+  a caller who knows one knows the other; `regex` wins when both are sent.
+  Default is unchanged, so every existing caller is byte-identical.
+  Two decisions worth naming. They narrow the BOUNDARY, not the casing — a
+  caller reaching for `whole_word` to find "CI" still wants the bullet that
+  writes it "ci". And a hyphenated occurrence (`CI-parity`) DOES match, since
+  `-` is a word boundary; that is correct and is the one case where the rule
+  looks wrong at a glance, so it is pinned by its own assertion. The noise
+  this removes is "decision"/"efficiency"/"precision"/"facing", where the
+  term sits INSIDE a word.
+  A malformed pattern refuses `bad_args` rather than matching nothing: the
+  predicate fails closed so a typo cannot return every bullet, but silent zero
+  hits would read as "the roadmap has no such items", which is the same wrong
+  conclusion this item is about.
   **Layman:** Searching the roadmap for a two-letter abbreviation matches it inside ordinary words like "decision", burying the real results.
   Kind: enhancement.
   Lanes: mcp, roadmap.

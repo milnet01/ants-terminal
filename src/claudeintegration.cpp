@@ -2405,8 +2405,39 @@ void ClaudeIntegration::onMcpConnection() {
                         "combine with id / ids / mode:section_index / "
                         "mode:bundles (bad_mode_combo — those are targeted or "
                         "aggregate surfaces with no per-bullet list to "
-                        "filter).");
+                        "filter). ANTS-4367: a SHORT query needs narrowing — "
+                        "`query:\"CI\"` matches \"decision\", \"efficiency\", "
+                        "\"precision\" and \"facing\", and the damage is "
+                        "REORDERING rather than padding, since genuine hits get "
+                        "pushed off page one while truncated:true gives no clue "
+                        "the answer is in the tail. Pass `whole_word:true` (or "
+                        "`regex:true`) instead of raising `limit`, which grows "
+                        "the payload at identical signal-to-noise.");
                     props["query"] = queryProp;
+                    // ANTS-4367 — the two narrowing knobs.
+                    QJsonObject wwProp; wwProp["type"] = "boolean";
+                                        wwProp["default"] = false;
+                                        wwProp["description"] = QStringLiteral(
+                        "Optional (ANTS-4367). Wrap `query` in word boundaries "
+                        "so a short acronym stops matching inside longer words. "
+                        "Still case-insensitive — it narrows the BOUNDARY, not "
+                        "the casing, so \"CI\" still finds a bullet writing it "
+                        "\"ci\". A hyphenated occurrence (`CI-parity`) DOES "
+                        "match, because `-` is a word boundary. Default false, "
+                        "so every existing caller is byte-identical.");
+                    QJsonObject qReProp; qReProp["type"] = "boolean";
+                                         qReProp["default"] = false;
+                                         qReProp["description"] = QStringLiteral(
+                        "Optional (ANTS-4367). Treat `query` as a regular "
+                        "expression (case-insensitive) — the same knob "
+                        "workspace_search spells the same way, so a caller who "
+                        "knows one knows the other. Wins over `whole_word` when "
+                        "both are sent. A malformed pattern refuses with "
+                        "bad_args rather than matching nothing silently, since "
+                        "zero hits with no explanation reads as \"the roadmap "
+                        "has no such items\".");
+                    props["whole_word"] = wwProp;
+                    props["regex"]      = qReProp;
                     // ANTS-1437 — mode arg. Default "bullets" (legacy).
                     // "section_index" returns a compact section index
                     // instead of bullets — use to discover slugs cheaply.

@@ -155,6 +155,14 @@ QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known);
 // cmdRoadmapQuery list path and the feature test share one matcher. Empty
 // needle → true (an empty substring is contained in everything; the caller
 // gates on non-empty so the filter is a no-op, not a match-all-then-drop).
-bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle);
+// ANTS-4367 — how `query` is matched. Substring is the default and the
+// historical behaviour; the other two exist because a short query had NO
+// narrowing knob at all, and the damage from that is reordering rather than
+// padding — genuine hits get pushed off page one by substring noise while
+// `truncated:true` gives no clue the answer is in the tail.
+enum class QueryMode { Substring, WholeWord, Regex };
+
+bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,
+                        QueryMode mode = QueryMode::Substring);
 
 }  // namespace mcp

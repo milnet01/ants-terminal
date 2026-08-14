@@ -1,4 +1,5 @@
 #include "mcpprojection.h"
+#include <QRegularExpression>
 
 #include <atomic>
 
@@ -450,7 +451,8 @@ QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known) {
     return out;
 }
 
-bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle) {
+bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,
+                        QueryMode mode) {
     const QString needleLower = needle.toLower();
     // headline + headline_full + body — the text surfaces the list emits.
     // headline_full is present only when a long headline was capped; absent
@@ -461,7 +463,31 @@ bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle) {
         (bullet.value(QStringLiteral("headline")).toString() + QChar('\n') +
          bullet.value(QStringLiteral("headline_full")).toString() + QChar('\n') +
          bullet.value(QStringLiteral("body")).toString()).toLower();
-    return hay.contains(needleLower);
+    if (mode == QueryMode::Substring) return hay.contains(needleLower);
+
+    // ANTS-4367 — the two narrowing modes. Both are case-insensitive, like
+    // the default: what they narrow is the BOUNDARY (or the pattern), never
+    // the casing, and a caller reaching for whole_word to find "CI" still
+    // wants the bullet that writes it "ci".
+    //
+    // A hyphenated occurrence (`CI-parity`) matches under WholeWord, because
+    // `-` is a word boundary. That is correct and is the one case where the
+    // rule looks wrong at a glance — the noise this exists to remove is
+    // "decision" / "efficiency" / "precision" / "facing", where the term sits
+    // INSIDE a word.
+    const QString pattern =
+        (mode == QueryMode::WholeWord)
+            ? QStringLiteral("\\b") + QRegularExpression::escape(needle) +
+                  QStringLiteral("\\b")
+            : needle;
+    QRegularExpression re(pattern,
+                          QRegularExpression::CaseInsensitiveOption);
+    // An invalid pattern matches NOTHING rather than everything: a typo that
+    // returned every bullet would read as "the roadmap is entirely about X",
+    // which is the more expensive wrong answer. The caller-facing refusal for
+    // a malformed pattern is the verb's job, not this predicate's.
+    if (!re.isValid()) return false;
+    return re.match(hay).hasMatch();
 }
 
 }  // namespace mcp

@@ -1,5 +1,6 @@
 // ANTS-3833 TU 3/12 — Roadmap read ops.
 #include "remotecontrol.h"
+#include <QRegularExpression>
 #include "remotecontrol_internal.h"
 #include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "mainwindow.h"
@@ -1042,11 +1043,36 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     for (int i = 0; i < queryArg.size(); ++i) {
         if (queryArg.at(i).unicode() < 0x20) queryArg[i] = QChar('?');
     }
-    auto applyQueryFilter = [&queryArg](QJsonArray &arr) {
+    // ANTS-4367 — narrowing knobs for `query`. `regex` wins when both are
+    // sent (it is the more explicit request); `whole_word` is the cheap one a
+    // caller reaches for without composing a pattern.
+    const bool queryRegex = req.value(QStringLiteral("regex")).toBool(false);
+    const bool queryWholeWord =
+        req.value(QStringLiteral("whole_word")).toBool(false);
+    const mcp::QueryMode queryMode =
+        queryRegex     ? mcp::QueryMode::Regex
+        : queryWholeWord ? mcp::QueryMode::WholeWord
+                         : mcp::QueryMode::Substring;
+    // A malformed pattern is the caller's typo, and it must be REPORTED
+    // rather than silently matching nothing — the predicate's fail-closed
+    // rule keeps a typo from returning every bullet, but a caller who gets
+    // zero hits and no explanation concludes the roadmap has no such items.
+    if (queryMode == mcp::QueryMode::Regex && !queryArg.isEmpty() &&
+        !QRegularExpression(queryArg).isValid()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        o[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_query: `query` is not a valid regular expression "
+            "(regex:true was passed): %1")
+                .arg(QRegularExpression(queryArg).errorString());
+        return QJsonDocument(o);
+    }
+    auto applyQueryFilter = [&queryArg, queryMode](QJsonArray &arr) {
         if (queryArg.isEmpty()) return;  // no filter → keep all, skip iteration
         QJsonArray kept;
         for (const auto &v : std::as_const(arr)) {
-            if (mcp::bulletMatchesQuery(v.toObject(), queryArg))
+            if (mcp::bulletMatchesQuery(v.toObject(), queryArg, queryMode))
                 kept.append(v);
         }
         arr = kept;
