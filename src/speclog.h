@@ -12,6 +12,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 namespace SpecLog {
 
@@ -32,6 +33,15 @@ struct EditResult {
     // is only knowable from the value already in the file. Empty for the
     // append ops.
     QString previousValue;
+    // ANTS-4353/4364 — append_loop only. `rowShape` is "table" or "bullet",
+    // so a caller can see which form the section actually holds rather than
+    // assuming. `rowOrder` is the direction INFERRED from the existing rows —
+    // "oldest_first", "newest_first", or "ambiguous" when fewer than two rows
+    // carry a loop number. Loop logs run in opposite directions across specs
+    // in one corpus, and a row inserted at the wrong end reads as a different
+    // loop's result — which a checker validating only per-row tallies passes.
+    QString rowShape;
+    QString rowOrder;
 };
 
 // op:"set_status" — replace the first `**Status:**` field's WHOLE extent
@@ -43,8 +53,19 @@ EditResult setStatus(const QString &content, const QString &newStatus);
 // of the first `## …` section whose heading contains "Cold-eyes loop log"
 // (case-insensitive). Creates the section at EOF when absent (repaired,
 // not refused).
+// ANTS-4364 — `cells` is the TABLE form: one string per column, ordered to
+// match the table's own header. Where the section holds a table and `cells`
+// is empty the call REFUSES rather than writing a bullet into it — writing
+// bullet form into a table was the original defect, and it is silent.
+// Where the section holds bullets (or does not exist yet), `label` + `body`
+// render the bullet as before and `cells` is ignored.
+//
+// The empty-section case deliberately still writes a BULLET rather than
+// synthesising a table: the column set belongs to the project's format
+// standard, and inventing one here would encode another repo's choice.
 EditResult appendLoop(const QString &content, const QString &label,
-                      const QString &body);
+                      const QString &body,
+                      const QStringList &cells = QStringList());
 
 // op:"append_inv" — append a `- **<invId>** — <body>.` bullet (plus
 // ` *Test:* <test>.` when test non-empty) at the end of the first `## …`

@@ -6360,8 +6360,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "the whole **Status:** field, including any "
                         "continuation lines it wraps onto (ANTS-3785); "
                         "op:\"append_loop\" appends a "
-                        "cold-eyes loop-log bullet (creating the section "
-                        "if absent); op:\"append_inv\" appends an INV-N "
+                        "cold-eyes loop-log row, matching the SHAPE the "
+                        "section already holds (ANTS-4364): a TABLE row when "
+                        "it holds a table — pass `cells`, one string per "
+                        "column in the header's order; a bullet from "
+                        "`loop_label` + `body` when it holds bullets or does "
+                        "not exist yet. Against a table with no `cells` it "
+                        "REFUSES format_mismatch, naming the columns it read, "
+                        "rather than writing a bullet that corrupts the table. "
+                        "The insertion END is INFERRED from the existing rows "
+                        "(ANTS-4353), because loop logs run in opposite "
+                        "directions across specs in one corpus and a row at "
+                        "the wrong end reads as a different loop's result; the "
+                        "envelope echoes `row_shape` and `row_order` "
+                        "(oldest_first | newest_first | ambiguous, the last "
+                        "when fewer than two rows carry a loop number). op:\"append_inv\" appends an INV-N "
                         "bullet at the end of the Invariants section "
                         "(never renumbers). Target via `id` (<PREFIX>-NNNN → "
                         "docs/specs/<id>.md, any project prefix e.g. "
@@ -6431,6 +6444,20 @@ void ClaudeIntegration::onMcpConnection() {
                         bodyProp["description"] = QStringLiteral(
                             "append_loop / append_inv: the bullet body "
                             "prose.");
+                    // ANTS-4364 — the table form.
+                    QJsonObject cellsProp; cellsProp["type"] = "array";
+                    {
+                        QJsonObject it; it["type"] = "string";
+                        cellsProp["items"] = it;
+                    }
+                    cellsProp["description"] = QStringLiteral(
+                        "append_loop, TABLE form: one string per column, in "
+                        "the table header's own order. Required when the loop "
+                        "log is a table (the shipped spec skeleton's is); a "
+                        "wrong count refuses column_mismatch rather than "
+                        "writing a ragged row. Pipes are escaped and newlines "
+                        "folded to <br>, so a cell cannot break the column "
+                        "count. Ignored for a bullet-shaped log.");
                     QJsonObject invProp; invProp["type"] = "string";
                         invProp["description"] = QStringLiteral(
                             "append_inv: the new INV id (^INV-[0-9]+$). "
@@ -6450,6 +6477,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["path"]       = pathProp;
                     props["status"]     = statusProp;
                     props["loop_label"] = labelProp;
+                    props["cells"]      = cellsProp;  // ANTS-4364
                     props["body"]       = bodyProp;
                     props["inv_id"]     = invProp;
                     props["test"]       = testProp;

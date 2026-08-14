@@ -30417,7 +30417,7 @@ collision are different strengths of evidence.
   Lanes: mcp, speclint, remotecontrol.
   Source: cc-feedback-2026-08-14 (OneUp).
 
-- 📋 [ANTS-4353] **Loop logs run in OPPOSITE row order across specs, so any verb that appends a row must infer the direction rather than assume it.**
+- ✅ [ANTS-4353] **Loop logs run in OPPOSITE row order across specs, so any verb that appends a row must infer the direction rather than assume it.**
   Filed by OneUp as an unverified hazard rather than a defect — they
   hand-edited rather than using `spec_log`, so nothing broke. In one project
   two specs run newest-first and a third runs oldest-first; the project's own
@@ -30437,6 +30437,18 @@ collision are different strengths of evidence.
   echo it (`row_order:"newest_first"`, `inserted_at_line`) so the caller can
   see which way it went. Fewer than two numbered rows is the one genuinely
   ambiguous case; there an explicit argument or a documented default is fair.
+  Resolved (2026-08-14) with ANTS-4364, which is where the table path lives —
+  the reporter was right that they are one job. Direction is read from the
+  first and last data row's loop numbers and the row inserted at whichever end
+  continues the sequence; the envelope echoes `row_order`
+  (`oldest_first`/`newest_first`/`ambiguous`) and the landing `line`.
+  Fewer than two numbered rows reports `ambiguous` rather than guessing
+  quietly. A `4-tail` / `4-merge` label parses as loop 4 — those are real
+  labels in this corpus, so the number is the leading digits.
+  Verified by mutation, not by reading: with the newest-first branch forced to
+  append at the bottom, the identical call lands at the wrong end and the test
+  reddens. That pair — same input, opposite placement, decided only by the
+  rows already there — is what makes the inference load-bearing.
   **Layman:** Some of these review logs read newest-first and others oldest-first, so "add a row at the end" means opposite ends in different files.
   Kind: fix.
   Lanes: speclog, mcp.
@@ -30750,7 +30762,7 @@ collision are different strengths of evidence.
   Lanes: mcp, changelog.
   Source: cc-feedback-2026-08-14 (Games_Hub).
 
-- 📋 [ANTS-4364] **`spec_log op:append_loop` writes bullet form while the shipped spec skeleton's loop log is a TABLE, so the verb is unusable on a conforming spec.**
+- ✅ [ANTS-4364] **`spec_log op:append_loop` writes bullet form while the shipped spec skeleton's loop log is a TABLE, so the verb is unusable on a conforming spec.**
   `~/.claude/standards/skeletons/spec-skeleton.md` ships the loop log as a
   table; the verb appends a bullet. `review-contract` therefore tells sessions
   outright not to reach for it ("it writes bullet form and the skeleton ships
@@ -30768,6 +30780,20 @@ collision are different strengths of evidence.
   and ANTS-4353 are best done together. If bullet form is deliberate for some
   other format, then the skeleton and the verb contradict each other and one
   must move.
+  Resolved (2026-08-14) together with ANTS-4353, as the bullet asks.
+  `append_loop` now matches the shape the section already holds: a table row
+  from `cells[]` (one string per column, in the header's order) when it holds
+  a table, a bullet from `loop_label`+`body` when it holds bullets. Against a
+  table with NO `cells` it refuses `format_mismatch` **naming the columns it
+  read**, so a caller can compose the row without opening the file — refusing
+  beats writing a bullet into a table, which is silent corruption. A wrong
+  count refuses `column_mismatch` rather than writing a ragged row.
+  **One deviation from the brief, deliberate**: an EMPTY section still gets a
+  bullet rather than the skeleton's table. The column set belongs to the
+  project's format standard, and hard-coding `Loop | Date | Lanes | Q1…Q4 |
+  Outcome` into the verb would encode one repo's choice into every project —
+  the "encode the standard" failure. A project wanting the table writes its
+  header once; from then on the verb matches it.
   The friction sits on the exact path that most needs to be frictionless: a
   loop log's whole value is that it is written as the loops happen.
   **Layman:** The tool for adding a review-log row writes it in a shape the standard template does not use, so everyone edits by hand and sometimes puts the row at the wrong end.

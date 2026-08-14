@@ -1500,12 +1500,20 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         const QString label =
             req.value(QStringLiteral("loop_label")).toString();
         const QString body = req.value(QStringLiteral("body")).toString();
-        if (label.isEmpty() || body.isEmpty()) {
+        // ANTS-4364 — the TABLE form. One string per column, ordered to match
+        // the table's own header; the engine refuses rather than writing a
+        // bullet into a table.
+        QStringList loopCells;
+        for (const QJsonValue &cv :
+                 req.value(QStringLiteral("cells")).toArray())
+            loopCells.append(cv.toString());
+        if (loopCells.isEmpty() && (label.isEmpty() || body.isEmpty())) {
             return slErr(QStringLiteral("bad_args"),
                          QStringLiteral("spec_log: append_loop requires "
-                                        "\"loop_label\" and \"body\""));
+                                        "\"loop_label\" and \"body\" (bullet "
+                                        "form) or \"cells\" (table form)"));
         }
-        res = SpecLog::appendLoop(content, label, body);
+        res = SpecLog::appendLoop(content, label, body, loopCells);
     } else {  // append_inv
         const QString invId =
             req.value(QStringLiteral("inv_id")).toString();
@@ -1551,6 +1559,11 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         out["bytes"]   = static_cast<qint64>(utf8.size());
         if (op == QStringLiteral("set_status"))
             out["previous_status"] = res.previousValue;
+        // ANTS-4353/4364 — say which SHAPE was written and which DIRECTION
+        // was inferred, so a caller can see which way the row went instead of
+        // re-reading the file to find out.
+        if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
+        if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;
         return QJsonDocument(out);
     }
 
@@ -1593,6 +1606,9 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     // mismatch visible in the write's own envelope.
     if (op == QStringLiteral("set_status"))
         out["previous_status"] = res.previousValue;
+    // ANTS-4353/4364 — the shape written and the direction inferred.
+    if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
+    if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;
     rcSetWriteBytes(out, specBefore, static_cast<qint64>(utf8.size()));
     return QJsonDocument(out);
 }

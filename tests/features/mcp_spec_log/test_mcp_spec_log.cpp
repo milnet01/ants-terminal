@@ -445,3 +445,99 @@ TEST(McpSpecLog, HandlerDryRunWritesNothing) {
     // None of the three previews touched the spec.
     EXPECT_EQ(readAll(p), before) << "dry_run must not write the spec";
 }
+
+// ANTS-4364 — the shipped spec skeleton's loop log is a TABLE; this verb only
+// ever wrote a bullet, so on a conforming spec it was unusable.
+// `review-contract` therefore tells sessions outright not to reach for it,
+// which is self-reinforcing: a verb the governing skill says to avoid gets no
+// usage, so the mismatch never becomes pressure to fix.
+//
+// ANTS-4353 — and loop logs run in OPPOSITE directions across specs in one
+// corpus. This project has both: ANTS-4108's spec runs oldest-first and
+// ANTS-4065's runs newest-first, and a session prepended a row twice on a
+// rule learned from the wrong sibling. A row at the wrong end reads as a
+// different loop's result, and a checker that only balances per-row tallies
+// passes the corruption — so the direction is INFERRED, not assumed.
+TEST(McpSpecLog, Ants4364TableFormAnd4353DirectionInference) {
+    const QString head = QStringLiteral(
+        "# PROJ-1 — a spec\n"
+        "\n"
+        "## 12. Cold-eyes loop log\n"
+        "\n"
+        "| Loop | Date | Outcome |\n"
+        "|------|------|---------|\n");
+
+    // Oldest-first (1, 2) → the new row goes at the BOTTOM.
+    const QString oldestFirst = head +
+        QStringLiteral("| 1 | 2026-08-01 | 3 findings |\n"
+                       "| 2 | 2026-08-02 | 1 finding |\n");
+    const auto a = SpecLog::appendLoop(
+        oldestFirst, QString(), QString(),
+        {QStringLiteral("3"), QStringLiteral("2026-08-14"),
+         QStringLiteral("0 findings")});
+    ASSERT_TRUE(a.ok) << a.error.toStdString();
+    EXPECT_EQ(a.rowShape, QStringLiteral("table"));
+    EXPECT_EQ(a.rowOrder, QStringLiteral("oldest_first"));
+    EXPECT_GT(a.content.indexOf(QStringLiteral("| 3 | 2026-08-14")),
+              a.content.indexOf(QStringLiteral("| 2 | 2026-08-02")))
+        << "an oldest-first log continues at the bottom";
+
+    // Newest-first (2, 1) → the SAME call must go at the TOP. This is the
+    // pair that makes the inference load-bearing: identical input, opposite
+    // placement, decided only by the rows already there.
+    const QString newestFirst = head +
+        QStringLiteral("| 2 | 2026-08-02 | 1 finding |\n"
+                       "| 1 | 2026-08-01 | 3 findings |\n");
+    const auto b = SpecLog::appendLoop(
+        newestFirst, QString(), QString(),
+        {QStringLiteral("3"), QStringLiteral("2026-08-14"),
+         QStringLiteral("0 findings")});
+    ASSERT_TRUE(b.ok) << b.error.toStdString();
+    EXPECT_EQ(b.rowOrder, QStringLiteral("newest_first"));
+    EXPECT_LT(b.content.indexOf(QStringLiteral("| 3 | 2026-08-14")),
+              b.content.indexOf(QStringLiteral("| 2 | 2026-08-02")))
+        << "a newest-first log continues at the top — the opposite end, from "
+           "the same call";
+
+    // One row carries no direction. Reported as ambiguous rather than
+    // guessed at silently.
+    const QString single = head +
+        QStringLiteral("| 1 | 2026-08-01 | 3 findings |\n");
+    const auto c = SpecLog::appendLoop(
+        single, QString(), QString(),
+        {QStringLiteral("2"), QStringLiteral("2026-08-14"), QStringLiteral("x")});
+    ASSERT_TRUE(c.ok);
+    EXPECT_EQ(c.rowOrder, QStringLiteral("ambiguous"));
+
+    // A table with no `cells` REFUSES rather than writing a bullet into it —
+    // that silent corruption is the original defect.
+    const auto noCells =
+        SpecLog::appendLoop(oldestFirst, QStringLiteral("3"),
+                            QStringLiteral("0 findings"));
+    EXPECT_FALSE(noCells.ok);
+    EXPECT_EQ(noCells.code, QStringLiteral("format_mismatch"));
+    EXPECT_TRUE(noCells.error.contains(QStringLiteral("Loop | Date | Outcome")))
+        << "the refusal names the columns it read, so the caller can compose "
+           "`cells` without opening the file";
+
+    // Wrong column count refuses too, rather than writing a ragged row.
+    const auto ragged = SpecLog::appendLoop(
+        oldestFirst, QString(), QString(),
+        {QStringLiteral("3"), QStringLiteral("2026-08-14")});
+    EXPECT_FALSE(ragged.ok);
+    EXPECT_EQ(ragged.code, QStringLiteral("column_mismatch"));
+
+    // A BULLET loop log still takes the bullet form — the table support must
+    // not have broken the shape that already worked.
+    const QString bulletLog = QStringLiteral(
+        "# PROJ-1 — a spec\n"
+        "\n"
+        "## 12. Cold-eyes loop log\n"
+        "\n"
+        "- **Loop 1** — 3 findings.\n");
+    const auto d = SpecLog::appendLoop(bulletLog, QStringLiteral("Loop 2"),
+                                       QStringLiteral("0 findings."));
+    ASSERT_TRUE(d.ok) << d.error.toStdString();
+    EXPECT_EQ(d.rowShape, QStringLiteral("bullet"));
+    EXPECT_TRUE(d.content.contains(QStringLiteral("- **Loop 2** — 0 findings.")));
+}

@@ -151,8 +151,48 @@ EditResult setStatus(const QString &content, const QString &newStatus) {
                                "(set_status needs one to rewrite)"));
 }
 
+// ANTS-4353 — split a markdown table row into trimmed cells.
+static QStringList slRowCells(const QString &line) {
+    QString t = line.trimmed();
+    if (t.startsWith(QLatin1Char('|'))) t = t.mid(1);
+    if (t.endsWith(QLatin1Char('|')))   t.chop(1);
+    QStringList out;
+    for (const QString &c : t.split(QLatin1Char('|'))) out.append(c.trimmed());
+    return out;
+}
+
+// A `|---|---|` separator, which is what makes the block above it a HEADER
+// rather than a row that happens to contain pipes.
+static bool slIsTableSeparator(const QString &line) {
+    const QString t = line.trimmed();
+    if (!t.startsWith(QLatin1Char('|'))) return false;
+    for (const QString &c : slRowCells(line)) {
+        if (c.isEmpty()) return false;
+        for (const QChar ch : c) {
+            if (ch != QLatin1Char('-') && ch != QLatin1Char(':')) return false;
+        }
+    }
+    return true;
+}
+
+// The leading loop NUMBER of a data row, or -1. `4-tail` and `4-merge` are
+// real labels in this corpus (a row hung off loop 4 that no review produced),
+// so the number is the leading digits and the suffix is ignored.
+static int slRowLoopNumber(const QString &line) {
+    const QStringList cells = slRowCells(line);
+    if (cells.isEmpty()) return -1;
+    QString lead;
+    for (const QChar ch : cells.first()) {
+        if (ch.isDigit()) lead.append(ch);
+        else if (!lead.isEmpty()) break;
+    }
+    bool ok = false;
+    const int n = lead.toInt(&ok);
+    return ok ? n : -1;
+}
+
 EditResult appendLoop(const QString &content, const QString &label,
-                      const QString &body) {
+                      const QString &body, const QStringList &cells) {
     bool ewn = false;
     QStringList lines = toLines(content, ewn);
     const QString bullet = QStringLiteral("- **") + label +
@@ -160,11 +200,116 @@ EditResult appendLoop(const QString &content, const QString &label,
     const int hdr = findSectionHeading(
         lines, QStringLiteral("Cold-eyes loop log"));
     if (hdr >= 0) {
+        // ANTS-4364 — does this section hold a TABLE? The shipped spec
+        // skeleton's loop log is one, while this verb only ever wrote a
+        // bullet — so on a conforming spec the verb was unusable, and
+        // `review-contract` tells sessions outright not to reach for it.
+        // That is self-reinforcing: a verb the governing skill says to avoid
+        // gets no usage, so the mismatch never becomes pressure to fix.
+        int sectionEnd = lines.size();
+        for (int i = hdr + 1; i < lines.size(); ++i) {
+            if (lines.at(i).startsWith(QStringLiteral("## "))) {
+                sectionEnd = i;
+                break;
+            }
+        }
+        int headerLine = -1, sepLine = -1;
+        for (int i = hdr + 1; i + 1 < sectionEnd && i + 1 < lines.size(); ++i) {
+            if (lines.at(i).trimmed().startsWith(QLatin1Char('|')) &&
+                slIsTableSeparator(lines.at(i + 1))) {
+                headerLine = i;
+                sepLine    = i + 1;
+                break;
+            }
+        }
+
+        if (headerLine >= 0) {
+            const QStringList header = slRowCells(lines.at(headerLine));
+            if (cells.isEmpty()) {
+                EditResult r;
+                r.code = QStringLiteral("format_mismatch");
+                r.error = QStringLiteral(
+                    "spec_log: this spec's loop log is a TABLE (columns: %1), "
+                    "so append_loop needs `cells` — one string per column, in "
+                    "that order. `loop_label`/`body` render a BULLET, which "
+                    "would corrupt the table. Refusing rather than writing it.")
+                        .arg(header.join(QStringLiteral(" | ")));
+                return r;
+            }
+            if (cells.size() != header.size()) {
+                EditResult r;
+                r.code = QStringLiteral("column_mismatch");
+                r.error = QStringLiteral(
+                    "spec_log: the loop log has %1 columns (%2) but `cells` "
+                    "carries %3")
+                        .arg(header.size())
+                        .arg(header.join(QStringLiteral(" | ")))
+                        .arg(cells.size());
+                return r;
+            }
+
+            // Bound the contiguous data rows below the separator.
+            int firstData = -1, lastData = -1;
+            for (int i = sepLine + 1; i < sectionEnd && i < lines.size(); ++i) {
+                if (!lines.at(i).trimmed().startsWith(QLatin1Char('|'))) {
+                    if (firstData >= 0) break;   // the table ended
+                    if (lines.at(i).trimmed().isEmpty()) continue;
+                    break;
+                }
+                if (firstData < 0) firstData = i;
+                lastData = i;
+            }
+
+            // ANTS-4353 — INFER the direction rather than assuming it. Loop
+            // logs run in opposite orders across specs in one corpus (this
+            // project has both), so "append at the end" means opposite ends
+            // in different files. A row at the wrong end reads as a different
+            // loop's result, and a checker that only balances per-row tallies
+            // passes the corruption.
+            QString rowOrder = QStringLiteral("ambiguous");
+            int insertAt = (lastData >= 0) ? lastData + 1 : sepLine + 1;
+            if (firstData >= 0 && lastData > firstData) {
+                const int a = slRowLoopNumber(lines.at(firstData));
+                const int b = slRowLoopNumber(lines.at(lastData));
+                if (a >= 0 && b >= 0 && a != b) {
+                    if (a < b) {
+                        rowOrder = QStringLiteral("oldest_first");
+                        insertAt = lastData + 1;
+                    } else {
+                        rowOrder = QStringLiteral("newest_first");
+                        insertAt = firstData;
+                    }
+                }
+            }
+
+            QStringList escaped;
+            for (const QString &c : cells) {
+                QString e = c;
+                e.replace(QLatin1Char('|'), QStringLiteral("\\|"));
+                e.replace(QLatin1Char('\n'), QStringLiteral("<br>"));
+                escaped.append(e);
+            }
+            const QString row = QStringLiteral("| ") +
+                                escaped.join(QStringLiteral(" | ")) +
+                                QStringLiteral(" |");
+            lines.insert(insertAt, row);
+
+            EditResult r;
+            r.ok       = true;
+            r.content  = lines.join(QLatin1Char('\n'));
+            if (ewn) r.content += QLatin1Char('\n');
+            r.line     = insertAt + 1;   // 1-based
+            r.rowShape = QStringLiteral("table");
+            r.rowOrder = rowOrder;
+            return r;
+        }
+
         const auto ins = insertAtSectionEnd(lines, hdr, bullet, ewn);
         EditResult r;
         r.ok = true;
         r.content = ins.content;
         r.line = ins.line;
+        r.rowShape = QStringLiteral("bullet");
         return r;
     }
     // No section — append a new `## Cold-eyes loop log` heading + the
@@ -181,6 +326,7 @@ EditResult appendLoop(const QString &content, const QString &label,
     r.content = out.join(QLatin1Char('\n'));
     if (ewn) r.content += QLatin1Char('\n');
     r.line = out.size();  // bullet is the last line
+    r.rowShape = QStringLiteral("bullet");
     return r;
 }
 
