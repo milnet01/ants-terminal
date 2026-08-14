@@ -890,11 +890,28 @@ struct PassAppendItem {
     QString block;    // rendered `#### Pass …` block iff ok
     QString synthId;  // reader-synthesised id iff ok
 };
-static PassAppendItem rcRenderPassBullet(const QJsonObject &b) {
+// ANTS-4354 — `fallbackPass` is the CALL-level `pass`, used when a bullet
+// carries none. On the single-append path the bullet object IS the request,
+// so nothing changed there. On `append_batch` the bullet is one `bullets[]`
+// item with no `pass` slot, and this function was handed it alone — so every
+// bullet refused bad_args "pass is required", and supplying the top-level
+// `pass` did not help because nothing read it. The refusal was byte-identical
+// either way, which is the shape that reads as "I passed it wrong" and
+// invites retries that cannot work. So append_batch could write NONE on a
+// pass-headings roadmap, not merely all-under-one-heading as the schema
+// suggested.
+//
+// Both halves of the reporter's first option ship: a per-bullet `pass`
+// (mirroring how `stable_id` is already per-bullet under
+// id_strategy:"stable_prefix"), AND the call-level one as the fallback, so a
+// batch of N passes can name N designators or share one.
+static PassAppendItem rcRenderPassBullet(const QJsonObject &b,
+                                         const QString &fallbackPass = {}) {
     PassAppendItem it;
     const QString status   = b.value(QStringLiteral("status")).toString();
     const QString headline = b.value(QStringLiteral("headline")).toString();
-    const QString pass     = b.value(QStringLiteral("pass")).toString();
+    const QString perBullet = b.value(QStringLiteral("pass")).toString();
+    const QString pass = perBullet.isEmpty() ? fallbackPass : perBullet;
     QString body           = b.value(QStringLiteral("body")).toString();
     // INV-3 — status / pass / headline are required; bad_args is the
     // documented missing/ill-shaped-arg code (ANTS-2128 keeps the GFM
@@ -913,7 +930,9 @@ static PassAppendItem rcRenderPassBullet(const QJsonObject &b) {
     if (pass.isEmpty()) {
         it.code = QStringLiteral("bad_args");
         it.error = QStringLiteral("pass is required on a pass-headings "
-            "roadmap (e.g. \"43.5\" or \"43.5.B\")"); return it;
+            "roadmap (e.g. \"43.5\" or \"43.5.B\") — set it per bullet, or "
+            "once at the call to share one designator across the batch");
+        return it;
     }
     if (!PassHeadingWrite::isValidPassDesignator(pass)) {
         it.code = QStringLiteral("bad_args");
@@ -1131,7 +1150,9 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
     QStringList renderedBlocks;
     const bool useSeparator = rcPassBlocksUseSeparator(markdown);  // ANTS-4117
     for (int i = 0; i < bullets.size(); ++i) {
-        const PassAppendItem it = rcRenderPassBullet(bullets.at(i).toObject());
+        const PassAppendItem it = rcRenderPassBullet(
+            bullets.at(i).toObject(),
+            req.value(QStringLiteral("pass")).toString());   // ANTS-4354
         if (!it.ok) {
             QJsonObject s;
             s["bullet_index"] = i;

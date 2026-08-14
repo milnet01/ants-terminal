@@ -554,3 +554,69 @@ TEST(McpRoadmapLogPassWriter, IdFromDesignator) {
               QStringLiteral("PASS-7-1-B"));
     EXPECT_TRUE(PassHeadingWrite::passIdFromDesignator(QStringLiteral("bad")).isEmpty());
 }
+
+// ANTS-4354 — a batch may name its pass ONCE at the call, or per bullet.
+//
+// The report's framing needs a correction worth recording: a per-bullet
+// `pass` already worked (INV-14 above relies on it) — what was missing was
+// that the item SCHEMA never advertised the field, so a caller reading the
+// schema put `pass` at the top level, where append_batch never read it. Every
+// bullet then refused bad_args "pass is required", byte-identically to
+// passing nothing — the shape that reads as "I passed it wrong" and invites
+// retries that cannot work. So the op could write NONE on this dialect, worse
+// than the all-under-one-heading the schema suggested.
+TEST(McpRoadmapLogPassWriter, Ants4354CallLevelPassIsTheBatchFallback) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp.path(), kPass));
+    RemoteControl rc(nullptr);
+
+    auto mk = [](const QString &pass, const QString &headline) {
+        QJsonObject b;
+        if (!pass.isEmpty()) b[QStringLiteral("pass")] = pass;
+        b[QStringLiteral("status")]   = QStringLiteral("planned");
+        b[QStringLiteral("headline")] = headline;
+        return b;
+    };
+
+    // Top-level `pass`, no per-bullet ones — the call the schema led callers
+    // to make, and the one that used to write nothing at all.
+    QJsonObject batch = baseReq(tmp.path());
+    batch[QStringLiteral("section")] = QStringLiteral("active");
+    batch[QStringLiteral("pass")]    = QStringLiteral("2.1");
+    QJsonArray bs;
+    bs.append(mk(QString(), QStringLiteral("Shares the call's pass.")));
+    bs.append(mk(QString(), QStringLiteral("So does this one.")));
+    // …and a per-bullet pass still WINS over the call-level one, so a batch
+    // of N passes can name N designators. That is the property the op exists
+    // for, and sharing one is the degenerate case rather than the only one.
+    bs.append(mk(QStringLiteral("2.2"), QStringLiteral("Names its own.")));
+    batch[QStringLiteral("bullets")] = bs;
+
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(batch).object();
+    ASSERT_TRUE(okOf(out)) << "code=" << code(out).toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("applied_count")).toInt(), 3);
+    EXPECT_EQ(out.value(QStringLiteral("skipped_count")).toInt(), 0);
+
+    const QByteArray md = readFile(rmPath(tmp.path()));
+    EXPECT_TRUE(md.contains("#### Pass 2.1 Shares the call's pass."));
+    EXPECT_TRUE(md.contains("#### Pass 2.1 So does this one."));
+    EXPECT_TRUE(md.contains("#### Pass 2.2 Names its own."))
+        << "a per-bullet pass must override the call-level fallback";
+
+    // With neither, the refusal now says where the field can go — the old
+    // message named a parameter the caller had no slot to satisfy.
+    QJsonObject none = baseReq(tmp.path());
+    none[QStringLiteral("section")] = QStringLiteral("active");
+    QJsonArray one;
+    one.append(mk(QString(), QStringLiteral("Nowhere to land.")));
+    none[QStringLiteral("bullets")] = one;
+    const QJsonObject out2 =
+        rc.cmdRoadmapLogAppendBatchForTest(none).object();
+    EXPECT_EQ(out2.value(QStringLiteral("applied_count")).toInt(), 0);
+    const QJsonArray sk = out2.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(sk.size(), 1);
+    EXPECT_TRUE(sk.at(0).toObject().value(QStringLiteral("error"))
+                    .toString().contains(QStringLiteral("per bullet")))
+        << "the refusal must name a slot the caller actually has";
+}

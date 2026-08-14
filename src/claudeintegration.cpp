@@ -10088,6 +10088,19 @@ void ClaudeIntegration::onMcpConnection() {
                             "(ANTS-2078).");
                         bulletItemProps["stable_id"] = p;
                     }
+                    {   // ANTS-4354 — per-bullet pass designator.
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Pass designator for THIS bullet on a "
+                            "pass-headings roadmap (e.g. \"43.5\"), mirroring "
+                            "`stable_id`. This is what lets a batch of N "
+                            "passes name N designators rather than sharing "
+                            "one; the call-level `pass` is the fallback for "
+                            "any bullet omitting it. Ignored on GFM / ants-v1 "
+                            "roadmaps.");
+                        bulletItemProps["pass"] = p;
+                    }
                     bulletItem["properties"] = bulletItemProps;
                     QJsonObject bulletsProp;
                     bulletsProp["type"]  = "array";
@@ -10220,7 +10233,8 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject passProp;
                     passProp["type"] = "string";
                     passProp["description"] = QStringLiteral(
-                        "Pass designator for op:\"append\" on a pass-headings "
+                        "Pass designator for op:\"append\" / "
+                        "op:\"append_batch\" on a pass-headings "
                         "(`#### Pass N.M`) roadmap (ANTS-2126), e.g. \"43.5\" "
                         "or \"43.5.B\"; validated "
                         "^\\d+\\.\\d+(?:\\.[A-Za-z][A-Za-z0-9]*)?$. REQUIRED "
@@ -10228,6 +10242,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "on GFM / ants-v1 roadmaps. Flip/annotate locate a "
                         "pass by its synthesised `PASS-N-M` id (via the `id` "
                         "locator) or `headline`, not via `pass`. "
+                        "ANTS-4354 — under op:\"append_batch\" a designator "
+                        "may be set PER BULLET (a `pass` on the bullets[] "
+                        "item, mirroring `stable_id`), so a batch of N passes "
+                        "can name N designators; this call-level value is the "
+                        "FALLBACK for any bullet that carries none. Previously "
+                        "the batch read neither this nor an item `pass` from "
+                        "the schema's point of view, so every bullet refused "
+                        "bad_args and the op could write nothing at all on "
+                        "this dialect. "
                         "ANTS-4117 — what append RENDERS on this format is "
                         "fixed: `#### Pass <pass> <headline>` + `- "
                         "**Status**: <keyword>` + `body` VERBATIM (not "
