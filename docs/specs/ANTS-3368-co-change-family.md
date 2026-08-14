@@ -1,6 +1,6 @@
 # ANTS-3368 — `co_change_family`: the grouped edit-site checklist for a settings-backed field
 
-**Status:** spec draft (2026-08-14).
+**Status:** accepted (2026-08-14), review-contract loops 1 + 2 folded, cap reached.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-3368 (cc-feedback-2026-06-30, Vestige Sug-A, 6 consecutive slices).
 **Pairs with:** ANTS-2156 (`similar_code include_bodies` — the exemplar's *body*; this verb is the exemplar's *edit sites*).

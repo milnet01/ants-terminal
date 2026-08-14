@@ -20372,6 +20372,12 @@ server build id so clients can self-diagnose this.
   **Layman:** When you add a setting the same way as a previous one, this lists every file you must touch — including the easy-to-miss JSON key and the auto-named helper types.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Vestige Sug-A, 6 consecutive slices).
+  Progress (2026-08-14): spec accepted —
+  `docs/specs/ANTS-3368-co-change-family.md`, 14 invariants (INV-8 withdrawn),
+  review-contract 2 loops / 4 cold lanes / 17 verified findings fixed, cap
+  reached. Design settles on longest-contiguous-word-run matching rather than
+  name matching, six lexical roles (not the bullet's semantic ones — see § 2.3
+  for why), and a repo-wide scan. Not implemented; status stays 📋.
 
 - ✅ [ANTS-3369] **project_settings op:detect — populate source_roots + non-empty reason on non-standard / src-less layouts.**
   Recurring across 4 projects: Vestige (missed low-count entry-point app/), Music (nested src/<pkg>/ + egg-info noise), RetroDB (src-less routes/services/scraper — 67% of code missed). Fix: when default walk covers <~60% of total_source_count, populate suggestion.source_roots with top-level dirs holding the missed code; include low-count entry-point dirs; echo would_use_roots + excluded[] (egg-info/build/dist); ALWAYS set a non-empty reason; when present:true echo declared source_roots instead of zeroed counts.
