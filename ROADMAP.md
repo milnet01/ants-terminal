@@ -30666,7 +30666,7 @@ collision are different strengths of evidence.
   Lanes: mcp, changelog.
   Source: cc-feedback-2026-08-14 (AI_Prompts).
 
-- 📋 [ANTS-4361] **`file_outline` has no HTML mode, so a single-file web page — the largest file in such a project — outlines to nothing.**
+- ✅ [ANTS-4361] **`file_outline` has no HTML mode, so a single-file web page — the largest file in such a project — outlines to nothing.**
   `file_outline` on a 828-line `template.html` returns `language:"unknown"`
   with no `symbols` array; the mode enum offers auto/cpp/py/md/json/generic/
   glsl and `generic` is not selected for `.html`, nor honoured when forced.
@@ -30688,6 +30688,19 @@ collision are different strengths of evidence.
   a top-level `const NAME =` (ANTS-4090). Scoping to landmarks avoids the tar
   pit of parsing HTML properly. Stopgap that helps alone: honour
   `mode:"generic"` when forced on a `.html` file.
+  Resolved (2026-08-14) as the FULL fix rather than the stopgap — `mode:"html"`
+  auto-selected for `.html`/`.htm`, all three landmark classes: each
+  `<style>`/`<script>` as a `region` with its start line, every element
+  carrying an `id=` as an `anchor` (both quote styles — a hand-written page
+  uses both), and the top-level declarations inside each JavaScript `<script>`
+  through the existing brace-family regexes, reporting their real line in the
+  FILE so they are addressable by `read_region`. `kind:"const"` (ANTS-4090)
+  came along for free, exactly as predicted.
+  Two scope guards, each with its own assertion: a `<script>` whose `type` is
+  not JavaScript (`application/json`, `text/template`) is DATA and is not
+  parsed — a JSON blob would otherwise emit noise as symbols; and a CSS id
+  selector inside `<style>` is not an anchor, since only an `id=` ATTRIBUTE
+  is one.
   **Layman:** The one file that most needs a map — a whole web page in a single file — is the one the map tool cannot read.
   Kind: enhancement.
   Lanes: fileoutline, mcp.

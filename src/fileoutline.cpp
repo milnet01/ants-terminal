@@ -309,6 +309,17 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
 // Anchored at column 0 — an indented assignment is a local or a class
 // attribute, not a module constant, and emitting those would bury the outline
 // in every intermediate variable in every function body.
+// ANTS-4361 — an element's `id="…"` attribute: the anchor a caller navigates
+// to. Single or double quoted, since a hand-written page uses both.
+const QRegularExpression &rxHtmlId() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(
+            R"(\bid\s*=\s*["\']([A-Za-z_][\w:.-]*)["\'])"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
 const QRegularExpression &rxPyConst() {
     static const QRegularExpression rx = []{
         QRegularExpression r(QStringLiteral(
@@ -446,6 +457,8 @@ Mode pickModeByExt(const QString &absPath) {
         ext == QLatin1String("txt")) return Mode::Md;
     if (ext == QLatin1String("json")) return Mode::Json;
     if (isGlslExt(ext)) return Mode::Glsl;        // ANTS-3800 shader stages
+    if (ext == QLatin1String("html") || ext == QLatin1String("htm"))
+        return Mode::Html;                       // ANTS-4361
     if (isGenericExt(ext)) return Mode::Generic;  // ANTS-2150 brace family
     return Mode::Auto;  // sentinel meaning "unknown" downstream
 }
@@ -457,6 +470,7 @@ const char *modeToLanguageString(Mode m) {
         case Mode::Md:      return "md";
         case Mode::Json:    return "json";
         case Mode::Generic: return "generic";  // compute() overrides w/ precise name
+        case Mode::Html:    return "html";     // ANTS-4361
         case Mode::Glsl:    return "glsl";     // ANTS-3800
         case Mode::Auto:    return "unknown";
     }
@@ -467,6 +481,7 @@ QString headerCommentMarker(Mode m) {
     switch (m) {
         case Mode::Cpp:     return QStringLiteral("//");
         case Mode::Generic: return QStringLiteral("//");  // brace family (ANTS-2150)
+        case Mode::Html:    return QStringLiteral("<!--"); // ANTS-4361
         case Mode::Glsl:    return QStringLiteral("//");  // ANTS-3800
         case Mode::Py:      return QStringLiteral("#");
         case Mode::Md:      return QStringLiteral("<!--");
@@ -502,6 +517,7 @@ Mode parseMode(const QString &s) {
     if (s == QLatin1String("cpp"))  return Mode::Cpp;
     if (s == QLatin1String("py"))   return Mode::Py;
     if (s == QLatin1String("md"))   return Mode::Md;
+    if (s == QLatin1String("html")) return Mode::Html;   // ANTS-4361
     if (s == QLatin1String("json")) return Mode::Json;
     if (s == QLatin1String("generic")) return Mode::Generic;
     if (s == QLatin1String("glsl")) return Mode::Glsl;   // ANTS-3800
@@ -585,6 +601,9 @@ QJsonObject compute(const QString &absPath,
     // top-level def/class stays bare. Each entry = (indent width, dotted
     // class-name prefix so far). Nested classes chain (`Outer.Inner`).
     QVector<QPair<int, QString>> pyClassStack;
+    // ANTS-4361 — HTML landmark state.
+    bool inHtmlScript  = false;
+    bool htmlScriptIsJs = true;
 
     while (!f.atEnd()) {
         const QByteArray rawLine = f.readLine();
@@ -890,6 +909,54 @@ QJsonObject compute(const QString &absPath,
                 if (withSizes)
                     mdLevelByLine.insert(totalLines, m.captured(1).size());
                 offer("heading", m.captured(2), line);
+            }
+        } else if (effective == Mode::Html) {
+            // ANTS-4361 — LANDMARKS, deliberately not a DOM parse. Scoping to
+            // landmarks is what keeps this out of the tar pit of parsing HTML
+            // properly, and it is enough: the questions a caller has about a
+            // single-file page are "where does the script start", "where is
+            // the style block", "where is the element I am editing".
+            //
+            // The valuable half is the JS, and it is nearly free — the brace
+            // family this outliner already parses well is exactly what is
+            // inside a <script>, so the SAME regexes run over those lines.
+            // Only the file's extension ever routed it to the fallback.
+            const QString lower = line.toLower();
+            if (lower.contains(QStringLiteral("<script"))) {
+                inHtmlScript = !lower.contains(QStringLiteral("</script"));
+                // A `type=` that is not JavaScript (application/json,
+                // text/template) must NOT be handed to the brace parser —
+                // its contents are data, and a JSON blob would emit noise.
+                htmlScriptIsJs =
+                    !lower.contains(QStringLiteral("type=\"application/json\"")) &&
+                    !lower.contains(QStringLiteral("type=\"text/template\""));
+                offer("region", QStringLiteral("<script>"), line.trimmed());
+            } else if (lower.contains(QStringLiteral("</script"))) {
+                inHtmlScript = false;
+            } else if (lower.contains(QStringLiteral("<style"))) {
+                offer("region", QStringLiteral("<style>"), line.trimmed());
+            } else if (inHtmlScript && htmlScriptIsJs) {
+                // Delegate to the brace-family set, which already emits
+                // kind:"const" for a top-level `const NAME =` (ANTS-4090).
+                QRegularExpressionMatch m = rxGenericDecl().match(line);
+                if (m.hasMatch()) {
+                    offer("func", m.captured(2), line);
+                } else if ((m = rxGenericMethod().match(line)).hasMatch()) {
+                    offer("func", m.captured(1), line);
+                } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
+                    offer("func", m.captured(1), line);
+                } else if ((m = rxGenericBinding().match(line)).hasMatch()) {
+                    offer("const", m.captured(1),
+                          line.left(m.capturedEnd(0)).trimmed() +
+                              QStringLiteral(" …"));
+                }
+            } else {
+                // Every element carrying an `id=` is an anchor a caller can
+                // navigate to — outside a script, where an `id:` in JS would
+                // be a property name rather than a landmark.
+                QRegularExpressionMatch idm = rxHtmlId().match(line);
+                if (idm.hasMatch())
+                    offer("anchor", idm.captured(1), line.trimmed());
             }
         } else if (effective == Mode::Generic) {
             // Try keyword decl, then C-style method, then arrow assignment;

@@ -37,6 +37,20 @@ enum class Mode {
     Md,
     Json,
     Generic,
+    // ANTS-4361 — a single self-contained HTML page, which is the normal
+    // shape for a small local tool and was the LARGEST file in the reporting
+    // project: 828 lines returning language:"unknown" and no symbols at all,
+    // so learning where things were cost a full native Read (~10k tokens) —
+    // the verb's own 13-39× saving forgone on the one file that most needed
+    // it.
+    //
+    // Structural LANDMARKS, never a DOM parse: each <style>/<script> block as
+    // a region with its start line, and every element carrying an `id=` as an
+    // anchor. The valuable half is nearly free — the JS inside a <script> IS
+    // the brace family this outliner already parses well, so its top-level
+    // declarations come from the existing parser run over those lines with an
+    // offset. Only the extension ever routed it to the fallback.
+    Html,
     // ANTS-3800 — GLSL / Vulkan shader stages. Extracted through the Cpp path
     // (the declaration grammar is the same shape: `<type> <name>(<args>)` at
     // file scope followed by `{`), but reported as its own language so the

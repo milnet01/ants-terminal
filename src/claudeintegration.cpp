@@ -3777,7 +3777,16 @@ void ClaudeIntegration::onMcpConnection() {
                     "Languages (auto-picked by extension): cpp/c (+ glsl), "
                     "py, md, json, and the brace family — rust, go, "
                     "javascript, typescript, java, csharp, kotlin, swift, "
-                    "scala, php, ruby. ANTS-4090: in the brace family a "
+                    "scala, php, ruby, and html. ANTS-4361: a single "
+                    "self-contained HTML page — the normal shape for a small "
+                    "local tool — outlines to structural LANDMARKS rather "
+                    "than a DOM parse: each <style>/<script> as a region with "
+                    "its start line, every element carrying an id= as an "
+                    "anchor, and the top-level declarations inside each "
+                    "JavaScript <script> via the brace-family parser, "
+                    "reporting their real line in the FILE. A <script> whose "
+                    "type is not JavaScript (application/json, text/template) "
+                    "is data and is not parsed. ANTS-4090: in the brace family a "
                     "top-level `const`/`let`/`var NAME =` is emitted with "
                     "kind \"const\", so a file storing payloads in template "
                     "literals shows those regions instead of a gap. Anything "
@@ -3839,6 +3848,7 @@ void ClaudeIntegration::onMcpConnection() {
                     // IS the schema disagreeing with what the verb accepts.
                     modeEnum.append("generic");
                     modeEnum.append("glsl");
+                    modeEnum.append("html");     // ANTS-4361
                     modeProp["enum"]    = modeEnum;
                     modeProp["default"] = "auto";
                     QJsonObject hdrProp;      hdrProp["type"]      = "boolean";

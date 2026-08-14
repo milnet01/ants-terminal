@@ -833,3 +833,95 @@ TEST(McpFileOutline, Ants4379PythonModuleConstants) {
     EXPECT_EQ(kindOf("Importer.run"), QStringLiteral("func"))
         << "class-method qualification (ANTS-3404) must be unaffected";
 }
+
+// ANTS-4361 — a single self-contained HTML page gets an outline.
+//
+// `file_outline` on an 828-line template.html returned language:"unknown"
+// with no symbols array at all, so learning where things were before editing
+// seven regions cost a native Read of all 828 lines (~10k tokens) — the
+// verb's own 13-39× saving forgone on the LARGEST file in the project. Not
+// niche: a single self-contained page is the normal shape for a small local
+// tool, and several projects filing feedback here are web front-ends.
+//
+// The irony the reporter named is the fix: the JS inside a <script> IS the
+// brace family this outliner already parses well, and only the extension ever
+// routed it to the fallback.
+TEST(McpFileOutline, Ants4361HtmlLandmarksAndScriptBodies) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/page.html");
+    const QByteArray body =
+        "<!doctype html>\n"
+        "<html>\n"
+        "<head>\n"
+        "<style>\n"
+        "  #main { color: red; }\n"
+        "</style>\n"
+        "</head>\n"
+        "<body>\n"
+        "<div id=\"toolbar\">x</div>\n"
+        "<section id='results'></section>\n"
+        "<script type=\"application/json\">\n"
+        "  {\"notAFunction\": 1}\n"
+        "</script>\n"
+        "<script>\n"
+        "const API_BASE = \"/api/v1\";\n"
+        "function renderResults(rows) { return rows; }\n"
+        "</script>\n"
+        "</body>\n"
+        "</html>\n";
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Auto, /*includeDocComment=*/false,
+        /*maxSymbols=*/100);
+    ASSERT_TRUE(out.value("ok").toBool());
+    EXPECT_EQ(out.value("language").toString(), QStringLiteral("html"))
+        << "the extension must route to the HTML mode, not to \"unknown\"";
+
+    auto kindOf = [&](const char *n) -> QString {
+        for (const auto &v : out.value("symbols").toArray()) {
+            const QJsonObject s = v.toObject();
+            if (s.value("name").toString() == QLatin1String(n))
+                return s.value("kind").toString();
+        }
+        return QString();
+    };
+    auto lineOf = [&](const char *n) -> int {
+        for (const auto &v : out.value("symbols").toArray()) {
+            const QJsonObject s = v.toObject();
+            if (s.value("name").toString() == QLatin1String(n))
+                return s.value("line").toInt();
+        }
+        return -1;
+    };
+
+    // Landmarks — the regions read_region can then fetch on their own.
+    EXPECT_EQ(kindOf("<style>"), QStringLiteral("region"));
+    EXPECT_EQ(kindOf("<script>"), QStringLiteral("region"));
+
+    // Anchors — every element carrying an id=, in both quote styles.
+    EXPECT_EQ(kindOf("toolbar"), QStringLiteral("anchor"));
+    EXPECT_EQ(kindOf("results"), QStringLiteral("anchor"))
+        << "single-quoted id= is as common in a hand-written page";
+
+    // The valuable half: the brace-family parser over the <script> body.
+    EXPECT_EQ(kindOf("renderResults"), QStringLiteral("func"));
+    EXPECT_EQ(kindOf("API_BASE"), QStringLiteral("const"))
+        << "ANTS-4090's top-level const kind comes along for free";
+    EXPECT_GT(lineOf("renderResults"), lineOf("<script>"))
+        << "script symbols report their real line in the FILE, which is what "
+           "makes them addressable";
+
+    // A non-JavaScript <script> must NOT be handed to the brace parser — its
+    // contents are data, and a JSON blob would emit noise as symbols.
+    EXPECT_TRUE(kindOf("notAFunction").isEmpty())
+        << "type=\"application/json\" is data, not code";
+
+    // The CSS id selector inside <style> must not be mistaken for an anchor:
+    // only an id= ATTRIBUTE is one.
+    EXPECT_TRUE(kindOf("main").isEmpty());
+}
