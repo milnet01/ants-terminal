@@ -326,6 +326,19 @@ keep a second copy of a rule. That was the pre-2026-08-12 arrangement, where
 nothing checked it: they drifted for three months and three ended up
 instructing behaviour the owner forbids.
 
+**Check the owner is COMMITTED before running `--write`.** `~/.claude` is a
+live repo another session may be editing, and the gate compares against the
+owner's working tree, not its HEAD — so a review pass in flight upstream
+shows up here as drift on a file you never touched, and `--write` copies a
+half-written document into this public repo. `git -C ~/.claude status
+--porcelain` first: if the owner is dirty, the honest move is to leave that
+mirror alone and commit with `ANTS_PRECOMMIT_NO_MIRRORS=1`, saying so in the
+message. Where the owner is clean, `--write` is right and the drift is real
+(its history will usually name the pass that changed it). Hit 2026-08-14 on
+`security.md` while `documentation.md`, committed upstream the same hour,
+needed the ordinary re-copy — two mirrors, two different correct answers,
+minutes apart.
+
 **Two files are NOT deltas, deliberately:**
 
 - [`roadmap-format.md`](docs/standards/roadmap-format.md) — **this project
