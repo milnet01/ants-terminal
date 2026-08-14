@@ -30267,6 +30267,18 @@ collision are different strengths of evidence.
   `section_ambiguous` already returns a `candidates` array — the not-found
   path simply does not use it. A number-prefix match alone (`4.3`) would have
   resolved both misses.
+  **Reported independently by DOOM the same day, and its recurrence settles
+  the design.** First DOOM repro: number right, words wrong
+  (`5. Targets, shaders and barriers` vs `## 5. Data & resources`). Second:
+  words exactly right, number invented (`5. GPU profiler slots` vs
+  `### GPU profiler slots`, a level-3 child of § 5). **A shared-leading-token
+  heuristic returns nothing on the second; word overlap returns the answer
+  outright — so word overlap is primary and the numeric prefix secondary.**
+  The second is also structural rather than lexical: a caller addressing
+  "section 5" often wants text living under a `###` child with no number of
+  its own, so candidates drawn from descendants of a numerically-matching
+  ancestor resolve both. Recovery cost a `file_outline` over 38 headings, ~40×
+  the bytes of the refusal.
   **Layman:** When you half-remember a section title the tool says "no such section" and nothing else, instead of showing you the ones it does have.
   Kind: enhancement.
   Lanes: mcp, remotecontrol.
@@ -30523,6 +30535,214 @@ collision are different strengths of evidence.
   Kind: enhancement.
   Lanes: fileoutline, mcp.
   Source: cc-feedback-2026-08-14 (AI_Prompts).
+
+- 📋 [ANTS-4362] **`roadmap_query mode:"bullets"` returns bullet bodies ONLY on the `id` path — a status- or section-filtered query silently drops `body`.**
+  The mode is named for returning bodies. Filtered by `id` it does; filtered
+  by `status` or `section` it returns the lean default shape with no `body`
+  key and nothing in the envelope saying it was withheld, so the reply reads
+  as though those bullets have no bodies.
+  Games_Hub proved it three ways on one bullet: `status:"planned"` → 9
+  bullets, no bodies; `section:` → the same bullet, no body; `id:"GHUB-0017"`
+  → the same bullet WITH its full multi-line body. Same file, same mode, only
+  the filter differs.
+  The cost lands exactly where the mode is for: orienting on a queue means
+  "show me the open items and what they say", which is a status filter — the
+  one shape that drops them. A session that did not already know the id path
+  behaves differently would pick between candidates on headlines alone.
+  Fix: emit `body` on every `bullets` path. If the omission is a size guard,
+  make it visible and controllable — `bodies_omitted:true` with a reason plus
+  an opt-in — and let a filter matching a handful return them regardless.
+  A truncated body-bearing reply is recoverable; one that looks complete and
+  is not, is not.
+  **Layman:** Ask for the open items and their detail, and you get the detail only if you already knew each item's number.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (Games_Hub).
+
+- 📋 [ANTS-4363] **`changelog_log` has no op to CLOSE `[Unreleased]` into a version block — the one changelog edit every release makes.**
+  The verb covers add / add_from_roadmap / add_batch / add_subsection /
+  normalize — every way of putting an entry in, and no way of closing.
+  Renaming `## [Unreleased]` to `## [X.Y.Z] - <date>` with a fresh empty
+  `[Unreleased]` above it is what `releases.md` §§ 2 and 6 mandate, and it is
+  done by hand on a file the verb otherwise owns.
+  Games_Hub hit it cutting v0.3.0: the entry went in through the verb, the
+  close was a native `Edit`. Low-moderate severity but it lands at the
+  highest-stakes moment — that project's release workflow greps
+  `^## \[<version>\]` to extract release notes, so a hand-typed heading in the
+  wrong shape publishes an empty release body. It also splits ownership of
+  one file: the verb writes the entries, a human writes the heading they end
+  up under.
+  Fix: `op:"release"` taking `{version, date?}` — rename the heading, insert a
+  fresh empty `[Unreleased]`, refuse when `[Unreleased]` is empty (nothing to
+  release) or the version already exists, and optionally return the closed
+  block's body since callers want it as release notes immediately. `dry_run`
+  pairs with it as everywhere else.
+  **Layman:** The tool can add every kind of changelog entry but cannot do the one thing a release does — draw the line and stamp the version on it.
+  Kind: feature.
+  Lanes: mcp, changelog.
+  Source: cc-feedback-2026-08-14 (Games_Hub).
+
+- 📋 [ANTS-4364] **`spec_log op:append_loop` writes bullet form while the shipped spec skeleton's loop log is a TABLE, so the verb is unusable on a conforming spec.**
+  `~/.claude/standards/skeletons/spec-skeleton.md` ships the loop log as a
+  table; the verb appends a bullet. `review-contract` therefore tells sessions
+  outright not to reach for it ("it writes bullet form and the skeleton ships
+  a table — use Edit"), which is self-reinforcing: a verb the governing skill
+  says to avoid gets no usage, so the mismatch never becomes pressure to fix.
+  Games_Hub wrote four table rows by hand across three loops plus a fold-back,
+  **and two landed in the wrong order** because a text anchor prepends where a
+  verb would append. That is the third independent sighting of the ordering
+  problem — see ANTS-4353, and this project hit it twice today.
+  Fix: detect the section's existing shape and match it — a table row when it
+  holds a table (reading the header to order the cells), a bullet when it
+  holds bullets, the skeleton's table when it is empty. **Column-aware
+  appending fixes the ordering for free**, since a row goes after the last
+  data row rather than wherever an anchor matched, which is why this bullet
+  and ANTS-4353 are best done together. If bullet form is deliberate for some
+  other format, then the skeleton and the verb contradict each other and one
+  must move.
+  The friction sits on the exact path that most needs to be frictionless: a
+  loop log's whole value is that it is written as the loops happen.
+  **Layman:** The tool for adding a review-log row writes it in a shape the standard template does not use, so everyone edits by hand and sometimes puts the row at the wrong end.
+  Kind: fix.
+  Lanes: speclog, mcp.
+  Source: cc-feedback-2026-08-14 (Games_Hub).
+
+- 📋 [ANTS-4365] **`file_outline` has no `raw` escape, so `header_doc` is always returned in the neutralised spelling.**
+  `read_region` and `workspace_search` both take `raw:true`, documented as the
+  way to get bytes back verbatim because the default framing rewrites a
+  literal HTML comment marker. `file_outline` emits `header_doc` from the top
+  of the file and takes no such parameter — so on any Markdown file whose
+  header IS an HTML comment, which every `*_Ants_MCP_Feedback.md` is (the
+  version marker), `header_doc` cannot be obtained truthfully.
+  Two consequences, and the second is the one that bites: a caller matching
+  `header_doc` exactly against the file's real first line silently fails while
+  a digits-only substring check happens to work; and a caller building an
+  `Edit` from `header_doc` — precisely the hazard `raw:true` was added to
+  `read_region` for — writes the mangled spelling back and breaks the version
+  marker the feedback verbs key on.
+  Fix: accept `raw:true` with `read_region`'s semantics and apply it to
+  `header_doc` (and to `signature`, same exposure for a language whose comment
+  syntax collides). If per-call framing genuinely cannot work here, document
+  the omission so a caller reaches for `read_region` instead of discovering
+  the mangling by eye. Weakest fallback: add `header_doc_lines` giving the
+  1-based span, so the raw re-fetch is one obvious call rather than a guess.
+  **Layman:** One tool quietly rewrites a file's first line before showing it to you, and unlike its siblings offers no way to ask for the real thing.
+  Kind: fix.
+  Lanes: fileoutline, mcp.
+  Source: cc-feedback-2026-08-14 (Games_Hub).
+
+- 📋 [ANTS-4366] **`file_outline` returns ZERO symbols for a C function written `name (args)` — a space before the paren — and reports `ok:true`, so 52 of 67 files in a classic C tree read as symbol-free.**
+  **The reporter's own diagnosis was wrong first and they corrected it, which
+  is what makes this actionable.** The original report blamed Allman braces;
+  a later measurement disproved that with a single file. `linuxdoom-1.10/i_system.c`
+  has the brace on its own line throughout, and splits anyway:
+  found `I_BaseTiccmd(void)`, `I_WaitVBL(int count)`, `I_AllocLow(int length)`;
+  missed `I_ZoneBase (int* size)`, `I_GetTime (void)`. Every found symbol
+  writes `name(`, every missed one `name (`. The signature regex rejects the
+  line before brace handling is ever reached, so "accept the brace on the next
+  line" would have fixed none of them.
+  That is why the gap looks file-shaped: 1997 id Software house style puts the
+  space in throughout, so `d_main.c` (1610 lines) returns zero symbols while
+  everything written since outlines fine.
+  Knock-on cost is larger than the outline: `read_region{symbol:…}` refuses
+  `symbol_not_found` and `find_definition`'s `include_body` cannot attach a
+  body, because both resolve through the outline. So the documented "outline,
+  then read one symbol" workflow silently fails across most of the tree and
+  the fallback is a full Read of a 1935-line file — the exact cost these verbs
+  exist to remove.
+  **Two parts, and the second matters even if the first is easy.** (1) Tolerate
+  `\s*` between the identifier and `(` — a one-token change that recovers
+  `d_main.c`, `i_system.c`, `p_tick.c` and the rest; keep brace-scanning for
+  the split-return-type form (`int\nwipe_doMelt\n( … )`, still missed
+  separately). (2) **Stop returning `ok:true` with no symbols as a success.**
+  A recognised, non-trivially-sized source file whose parser matched nothing
+  should say so — explicit `symbols:[]` plus `parse_empty:true` or a `hint` —
+  because right now "genuinely has no symbols" and "the outliner could not
+  read this" are byte-identical. Worse under `compact:true`, which drops the
+  empty array entirely so the response reads even more like a well-formed
+  answer. Same reasoning as the existing `file_stem_hint`: when the verb comes
+  back empty, say why.
+  Fixture: assert `i_system.c` returns BOTH `I_AllocLow` and `I_GetTime` —
+  same file, same brace style, differing only in that space.
+  **Layman:** A space before a bracket makes a whole file look empty to the code map, and the tool reports success either way.
+  Kind: fix.
+  Lanes: fileoutline, mcp.
+  Source: cc-feedback-2026-08-14 (DOOM), reporter-corrected 2026-08-13.
+
+- 📋 [ANTS-4367] **`roadmap_query`'s `query` is a bare substring match with no word-boundary option, so a short acronym returns near-pure noise.**
+  DOOM: `query:"CI"` over 175 bullets returned 20 hits, `truncated:true`, and
+  the first was a bullet matching only because its body contains "de-CI-sion".
+  "specific", "efficiency", "precision", "facing" all do the same. The two
+  genuine CI bullets survived only by falling inside the first page.
+  The damage is reordering, not padding: genuine hits get pushed off page one
+  by substring noise and `truncated:true` gives no clue the answer is in the
+  tail, so a session trusting page one concludes the roadmap has no CI items.
+  The documented recovery — raise `limit`, page with `offset` — grows the
+  payload while the signal-to-noise stays identical. There is no narrowing
+  knob at all.
+  Fix, smaller first: (1) `whole_word:true` wrapping the term in `\b…\b`,
+  default false so every existing caller is byte-identical; (2) `regex:true`,
+  mirroring `workspace_search` — the same knob spelled the same way, so a
+  caller who knows one knows the other. Worth pairing: when `query` is ≤3
+  chars and the hit count is large, an advisory `hint`. `workspace_search`
+  already sets the precedent by hinting when a multi-word query hits zero;
+  this is the mirror case, a too-short query hitting far too many.
+  **Layman:** Searching the roadmap for a two-letter abbreviation matches it inside ordinary words like "decision", burying the real results.
+  Kind: enhancement.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (DOOM).
+
+- 📋 [ANTS-4368] **`find_definition` is blind to `extern "C"` definitions, so a C/C++ project's entire cross-language seam resolves only to its header prototype — with `ok:true` and `definitions_count:1`.**
+  The C++ matcher anchors on the return type at line start, so
+  `extern "C" <type> <name>(…)` is not recognised. The verb then returns the
+  declaration alone and reports success, which is a confident wrong answer
+  rather than an empty one.
+  Isolated cleanly by the reporter: `CreateFramebuffers` in the SAME file,
+  same Allman style, resolves correctly; `RB_VulkanProbe`, `RB_Vulkan_Present`
+  and `RB_Vulkan_Available` all return their header prototype and miss the
+  body in `r_vulkan.cpp`. The `extern "C"` prefix is the only variable, so
+  this is not the ANTS-4366 brace/space issue. 48 such definitions in that one
+  file.
+  It fires precisely on the interesting functions — `extern "C"` marks the API
+  boundary, which is what someone tracing behaviour across a seam looks up.
+  Hit live: diagnosing a renderer tier fallback needed
+  `RB_Vulkan_Available`'s body; the verb pointed at a prototype and the real
+  body was found with `grep -n`.
+  Fix: (1) allow an optional linkage prefix before the return type —
+  `(extern\s*"C(\+\+)?"\s+)?` — which covers all 48 here and leaves a slot
+  for `static`/`inline`/`__declspec` later; the `extern "C" { … }` block form
+  is worth handling too though the per-function spelling dominates.
+  (2) Independently: **when every result is `kind:"declaration"`, say so** —
+  a `declarations_only:true` flag or a hint — turning a silently wrong answer
+  into a recoverable one, mirroring `file_stem_hint`.
+  **Third gap in the same resolver**, with ANTS-4346 (namespace) and ANTS-4358
+  (lambda assignment). Worth one coordinated pass over the C++ matcher rather
+  than three separate patches.
+  **Layman:** Ask where a cross-language function is defined and you are handed its one-line announcement instead of its body, with no sign anything is missing.
+  Kind: fix.
+  Lanes: symbolquery, mcp.
+  Source: cc-feedback-2026-08-14 (DOOM).
+
+- 📋 [ANTS-4369] **`find_definition` labels an `extern` prototype as `kind:"definition"` when a trailing `//` comment follows the semicolon.**
+  The declaration-vs-definition test checks whether the matched line ENDS in
+  `;`; a trailing comment defeats it. Two adjacent lines in one file get
+  opposite labels on nothing but the comment:
+  `extern int RB_Vulkan_Available(int want_rt);   // want_rt: …` → `definition`
+  (wrong); `extern void RB_Vulkan_Present(void);` → `declaration` (right).
+  Low alone, but it **compounds ANTS-4368 into something worse than either**:
+  that bug drops the real definition, this one relabels the surviving
+  prototype as the definition, so the envelope holds a single result marked
+  `kind:"definition"` pointing at a line with no body, and nothing anywhere
+  suggests the answer is incomplete. A caller filtering on
+  `kind == "definition"` — the obvious use of the field — gets a prototype.
+  Fix: strip trailing line comments before the ends-with-`;` test (cut from an
+  unquoted `//`, and any `/* … */` tail, then rstrip). Cheap and local to the
+  classifier. Worth checking a trailing block comment and a `;` inside a
+  string literal on the same line, though neither is likely.
+  **Layman:** A one-line function announcement gets reported as the real thing purely because someone wrote a note after it.
+  Kind: fix.
+  Lanes: symbolquery, mcp.
+  Source: cc-feedback-2026-08-14 (DOOM).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
