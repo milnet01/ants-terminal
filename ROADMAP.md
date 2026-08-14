@@ -30403,7 +30403,7 @@ collision are different strengths of evidence.
   Lanes: speclint, mcp.
   Source: cc-feedback-2026-08-14 (OneUp), reproduced in-session-2026-08-14.
 
-- 📋 [ANTS-4352] **No verb answers "has this gated document been edited since its last review loop?" — a Reviewed stamp does not survive an edit made by another item.**
+- ✅ [ANTS-4352] **No verb answers "has this gated document been edited since its last review loop?" — a Reviewed stamp does not survive an edit made by another item.**
   OneUp: a spec was stamped Reviewed on 2026-08-05; on 2026-08-07 a different
   roadmap item rewrote its § 7 while closing a defect elsewhere — a legitimate
   commit nobody read cold. The stamp stayed. The eventual re-gate found 20
@@ -30422,6 +30422,25 @@ collision are different strengths of evidence.
   edit by another item (does), and in OneUp's case the commit subject was
   itself the whole diagnosis. Cheaper fallback: expose `last_loop_date` on
   `spec_query`'s existing per-spec output and let the caller do the git half.
+  Resolved (2026-08-14) as the FULL proposal, not the fallback —
+  `spec_query mode:"gate_drift"` returning `{stale, current, ungated}` with
+  `commits_since:[{sha, date, subject, same_day?}]` on each stale row. It is a
+  JOIN of two things Ants could already see, so it added no new knowledge.
+  **Measurement changed the design, and this is worth recording.** The obvious
+  implementation (`git log --after=<loop date>`) is WRONG in the common case:
+  `--after=YYYY-MM-DD` means "after midnight of that day", so it includes the
+  day's own commits — which is exactly when the gate's OWN fix pass lands, and
+  global rule 14 says that pass does not re-arm the gate. Run against this
+  repo's 243 specs the naive form reported **52 stale, of which 16 (31%) were
+  same-day gate commits**. Each commit now carries `same_day`, and a spec whose
+  only commits since the loop are same-day is reported CURRENT with
+  `same_day_commits_only:true`. Final measurement: 36 stale, 63 current,
+  144 ungated.
+  Three buckets rather than two, deliberately: "never gated" is a different
+  answer from "gated and current", and a caller needs to tell them apart —
+  144 of this corpus's specs carry no loop log at all. A spec whose git
+  history could not be read reports `git_error` rather than landing in
+  `current`, since an unanswerable check is not a pass (ANTS-4374).
   **Layman:** A document can say "reviewed" long after someone else edited it, and nothing notices — the stamp outlives the thing it was about.
   Kind: feature.
   Lanes: mcp, speclint, remotecontrol.

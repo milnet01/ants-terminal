@@ -214,3 +214,53 @@ TEST(McpSpecQuery, WiringContract) {
     // source-grep INVs were toothless).
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-4352 — mode:"gate_drift": which gated specs have been EDITED since
+// their last review loop.
+//
+// A spec was stamped Reviewed on one date; two days later a different roadmap
+// item rewrote one of its sections while closing a defect elsewhere — a
+// legitimate commit nobody read cold. The stamp stayed for six days. The
+// eventual re-gate found 20 verified defects across three loops, two of which
+// would have shipped a contrast regression into the only appearance mode
+// low-vision users have.
+//
+// The failure is silent AND self-concealing: the document asserts it was
+// reviewed, that assertion is what the next session trusts, and the
+// invalidating edit sits in another item's commit where nobody looks.
+TEST(McpSpecQuery, Ants4352GateDriftMode) {
+    const std::string rcCpp = ants_test::slurpRemoteControl();
+
+    EXPECT_NE(rcCpp.find("gate_drift"), std::string::npos)
+        << "the mode must be reachable from cmdSpecQuery";
+    EXPECT_NE(rcCpp.find("commits_since"), std::string::npos)
+        << "commits_since is what makes the answer ACTIONABLE rather than "
+           "merely alarming — it is what distinguishes the gate's own fix "
+           "pass from an authoring edit by another item";
+    for (const char *k : {"\"stale\"", "\"current\"", "\"ungated\""})
+        EXPECT_NE(rcCpp.find(k), std::string::npos)
+            << "three buckets, not two: \"never gated\" is a different answer "
+               "from \"gated and current\" and a caller needs to tell them "
+               "apart — " << k;
+
+    // The same-day rule, and it is not cosmetic. `git log --after=YYYY-MM-DD`
+    // means "after midnight of that day", so it INCLUDES the day's own
+    // commits — which is when the gate's OWN fix pass lands. Global rule 14
+    // is explicit that a document whose only changes came from that pass is
+    // still gated: the run that made those edits WAS the review.
+    //
+    // Measured against this repo's 243 specs: the naive form reported 52
+    // stale, of which 16 (31%) were same-day gate commits. Reporting those as
+    // drift would make the common case a false positive.
+    EXPECT_NE(rcCpp.find("same_day"), std::string::npos)
+        << "each commit must be flagged when it lands on the loop date";
+    EXPECT_NE(rcCpp.find("same_day_commits_only"), std::string::npos)
+        << "…and a spec whose ONLY commits since the loop are same-day is "
+           "CURRENT, not stale";
+
+    // An unanswerable check is not a pass (ANTS-4374): if git cannot answer,
+    // the spec must not be silently reported as current.
+    EXPECT_NE(rcCpp.find("git_error"), std::string::npos)
+        << "a spec whose git history could not be read must say so rather "
+           "than land in `current`";
+}

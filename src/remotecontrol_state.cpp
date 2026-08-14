@@ -1,5 +1,6 @@
 // ANTS-3833 TU 9/12 — Session and state verbs.
 #include "remotecontrol.h"
+#include "gitwrap.h"   // ANTS-4352 — gate_drift
 #include "remotecontrol_internal.h"
 #include "buildcache.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
@@ -244,6 +245,7 @@ QStringList resolveLaneFiles(const QString &lane, const QString &rootCanonical) 
     std::sort(out.begin(), out.end());
     return out;
 }
+
 
 }  // namespace rcdetail
 
@@ -1982,6 +1984,151 @@ QJsonObject specListEnvelope(const QString &rootCanonical) {
     return out;
 }
 
+// ANTS-4352 — mode:"gate_drift": which gated specs have been EDITED since
+// their last review loop.
+//
+// A spec was stamped Reviewed on one date; two days later a different roadmap
+// item rewrote one of its sections while closing a defect elsewhere — a
+// legitimate commit nobody read cold. The stamp stayed. The eventual re-gate
+// found 20 verified defects across three loops, two of which would have
+// shipped a contrast regression into the only appearance mode low-vision
+// users have.
+//
+// The failure is silent AND self-concealing: the document asserts it was
+// reviewed, that assertion is what the next session trusts, and the
+// invalidating edit sits in another item's commit where nobody looks.
+//
+// Both halves were already visible here — the loop log is parsed, and git is
+// reachable — so this is a join, not new knowledge. `commits_since` is the
+// part that makes it actionable rather than merely alarming: it is what
+// distinguishes the gate's OWN fix pass (which does not re-arm the gate) from
+// an authoring edit by another item (which does), and in the reported case
+// the commit subject was itself the whole diagnosis.
+static QString sqLastLoopDate(const QString &body) {
+    // The latest ISO date anywhere in the loop-log section, whichever row
+    // order the log runs in — this corpus has both (ANTS-4353), so keying on
+    // "the last row" would read the wrong end of half the specs.
+    const int hdr = body.indexOf(QStringLiteral("loop log"), 0,
+                                 Qt::CaseInsensitive);
+    if (hdr < 0) return QString();
+    int end = body.indexOf(QStringLiteral("\n## "), hdr);
+    if (end < 0) end = body.size();
+    static const QRegularExpression dateRe(
+        QStringLiteral("\\b(\\d{4}-\\d{2}-\\d{2})\\b"));
+    QString latest;
+    auto it = dateRe.globalMatch(body.mid(hdr, end - hdr));
+    while (it.hasNext()) {
+        const QString d = it.next().captured(1);
+        if (d > latest) latest = d;   // ISO dates sort lexically
+    }
+    return latest;
+}
+
+QJsonObject specGateDriftEnvelope(const QString &rootCanonical) {
+    const QJsonObject list = specListEnvelope(rootCanonical);
+    QJsonObject out;
+    out["ok"]        = true;
+    out["mode"]      = QStringLiteral("gate_drift");
+    out["specs_dir"] = list.value(QStringLiteral("specs_dir"));
+
+    QJsonArray stale, current, ungated;
+    for (const QJsonValue &v : list.value(QStringLiteral("specs")).toArray()) {
+        const QJsonObject e   = v.toObject();
+        const QString     rel = e.value(QStringLiteral("path")).toString();
+        QFile f(rootCanonical + QLatin1Char('/') + rel);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        const QString body = QString::fromUtf8(f.readAll());
+        f.close();
+
+        QJsonObject row;
+        row["path"]   = rel;
+        row["status"] = e.value(QStringLiteral("status"));
+
+        const QString loopDate = sqLastLoopDate(body);
+        if (loopDate.isEmpty()) {
+            // No loop log at all. NOT stale — nobody claimed it was gated, so
+            // there is no stamp to have outlived anything. Reported so a
+            // caller can tell "never gated" from "gated and current", which
+            // is the distinction a bare two-bucket answer loses.
+            ungated.append(row);
+            continue;
+        }
+        row["last_loop_date"] = loopDate;
+
+        // Commits touching this file since the last loop date.
+        //
+        // `--after=YYYY-MM-DD` means "after midnight of that day", so it
+        // INCLUDES the day's own commits — measured against this repo's 243
+        // specs, where the top stale row was `docs: cold-eyes loop 7 Phase 4
+        // — accuracy fixes` dated the loop date itself. That is the gate's
+        // OWN fix pass, which global rule 14 says does not re-arm the gate,
+        // so reporting it as drift would make the common case a false
+        // positive.
+        //
+        // They are kept rather than filtered, because a same-day commit CAN
+        // be an authoring edit — but each is flagged `same_day`, so the
+        // distinction the reporter wanted from reading subjects is available
+        // mechanically as well.
+        const auto r = GitWrap::run(rootCanonical, {
+            QStringLiteral("log"),
+            QStringLiteral("--after=") + loopDate,
+            QStringLiteral("--pretty=format:%h %ad %s"),
+            QStringLiteral("--date=short"),
+            QStringLiteral("--"), rel});
+        if (r.exitCode != 0) {
+            // Git could not answer. Say so rather than reporting the spec as
+            // current — an unanswerable check is not a pass (ANTS-4374).
+            row["git_error"] = true;
+            ungated.append(row);
+            continue;
+        }
+        QJsonArray since;
+        QString lastCommitDate;
+        const QStringList outLines =
+            QString::fromUtf8(r.stdoutBytes).split(QLatin1Char('\n'),
+                                                   Qt::SkipEmptyParts);
+        for (const QString &ln : outLines) {
+            const int sp1 = ln.indexOf(QLatin1Char(' '));
+            if (sp1 < 0) continue;
+            const int sp2 = ln.indexOf(QLatin1Char(' '), sp1 + 1);
+            if (sp2 < 0) continue;
+            QJsonObject c;
+            c["sha"]     = ln.left(sp1);
+            c["date"]    = ln.mid(sp1 + 1, sp2 - sp1 - 1);
+            c["subject"] = ln.mid(sp2 + 1);
+            if (lastCommitDate.isEmpty())
+                lastCommitDate = c["date"].toString();
+            if (c["date"].toString() == loopDate) c["same_day"] = true;
+            since.append(c);
+        }
+        // A spec whose ONLY commits since the loop are same-day is current:
+        // that is the gate's own fix pass, and rule 14 is explicit that a
+        // document whose only changes came from the gate's fix pass is gated
+        // — the run that made those edits WAS the review.
+        bool anyLater = false;
+        for (const QJsonValue &cv : std::as_const(since))
+            if (!cv.toObject().value(QStringLiteral("same_day")).toBool())
+                anyLater = true;
+        if (since.isEmpty() || !anyLater) {
+            if (!since.isEmpty()) row["same_day_commits_only"] = true;
+            current.append(row);
+        } else {
+            row["last_commit_date"] = lastCommitDate;
+            row["commits_since"]    = since;
+            stale.append(row);
+        }
+    }
+    out["stale"]   = stale;
+    out["current"] = current;
+    out["ungated"] = ungated;
+    out["counts"]  = QJsonObject{
+        {QStringLiteral("stale"),   stale.size()},
+        {QStringLiteral("current"), current.size()},
+        {QStringLiteral("ungated"), ungated.size()}};
+    return out;
+}
+
+
 }  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
@@ -2004,6 +2151,12 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
             return QJsonDocument(sqErr(
                 QStringLiteral("no_project"),
                 QStringLiteral("spec_query: project root unresolved")));
+        }
+        // ANTS-4352 — mode:"gate_drift" answers "has this gated document been
+        // edited since its last review loop?", which nothing could answer.
+        if (req.value(QStringLiteral("mode")).toString()
+                == QLatin1String("gate_drift")) {
+            return QJsonDocument(specGateDriftEnvelope(rootCanonical));
         }
         return QJsonDocument(specListEnvelope(rootCanonical));
     }
