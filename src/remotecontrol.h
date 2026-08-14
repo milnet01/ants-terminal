@@ -585,7 +585,11 @@ public:
         const QList<DocFinding::Finding> &findings, bool sectionsChecked,
         const QJsonObject &lineCounts, bool truncated,
         const QStringList &checkedDocs, int surfacesResolved,
-        bool surfacesChecked);
+        bool surfacesChecked,
+        // ANTS-4373/4390 — the standard path actually consulted, empty when
+        // none resolved. Reported so a caller is told what to fix rather than
+        // re-deriving it from a bare boolean.
+        const QString &sectionsSource = QString());
     // ANTS-4108 — spec_conformance: RUN the patterns a spec prescribes against
     // the expectation table beside them (SpecConformance::run). Reads ONE
     // document, so `path` is required — there is no tree walk to default to.

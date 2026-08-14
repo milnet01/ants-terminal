@@ -33,7 +33,20 @@ bool isTombstone(const QString &body) {
         QStringLiteral(R"(^\*moved to ([A-Z]+-\d+)\*)"));
     static const QRegularExpression withdrawnRe(
         QStringLiteral(R"(^\*withdrawn — (.+?)\*)"));
-    const QString b = body.trimmed();
+    // ANTS-4351 — join the body onto one logical line before matching, which
+    // is what a reader does. `.` does not cross a newline, so a hard-wrapped
+    // tombstone was not exempt and came back as `invariant_no_test` — byte
+    // for byte the finding a genuinely untested invariant gets. The natural
+    // reading of that is "my vocabulary is wrong" rather than "my line
+    // wrapping is wrong", and one reporting project spent three attempts on
+    // it before this project reproduced it independently the same day.
+    //
+    // The anchors stay anchored at the START of the joined body, so this
+    // widens the LAYOUT the forms accept and not the forms themselves: prose
+    // that merely discusses a withdrawal is still a live invariant that owes
+    // a test.
+    static const QRegularExpression wsRun(QStringLiteral(R"(\s+)"));
+    const QString b = body.trimmed().replace(wsRun, QStringLiteral(" "));
     return movedRe.match(b).hasMatch() || withdrawnRe.match(b).hasMatch();
 }
 

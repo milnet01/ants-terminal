@@ -430,15 +430,38 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
 // lives outside the project root, which this verb's own bad_path contract
 // forbids it from reading — and because that file always exists, a _shared tier
 // would mean the skip arm never fires (spec § 2.1). In-project or skipped.
-static QStringList specLintRequiredSections(const QString &rootCanonical) {
+// ANTS-4390 — the candidate list, in resolution order. The `standards/`
+// entries are NOT a guess at a second convention: the global standards repo
+// (~/.claude) has no `docs/standards/` because it IS the standards set, so
+// every candidate missed and `sections_checked` came back false on the one
+// repository that owns the canonical block. One extra stat makes it
+// self-checkable.
+//
+// ANTS-4373 — `whichOut` reports the path that was actually consulted. A
+// boolean says a check did not run; it does not say what to fix, so without
+// this every caller re-derives the cause.
+static const QStringList &specLintStandardCandidates() {
+    static const QStringList v = {
+        QStringLiteral("docs/standards/spec-format.md"),
+        QStringLiteral("docs/standards/specs.md"),
+        QStringLiteral("standards/spec-format.md"),
+        QStringLiteral("standards/specs.md"),
+    };
+    return v;
+}
+
+static QStringList specLintRequiredSections(const QString &rootCanonical,
+                                            QString *whichOut = nullptr) {
     const QDir root(rootCanonical);
-    for (const QString &rel : {QStringLiteral("docs/standards/spec-format.md"),
-                               QStringLiteral("docs/standards/specs.md")}) {
+    for (const QString &rel : specLintStandardCandidates()) {
         QFile f(root.filePath(rel));
         if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
         const QStringList got =
             SpecLint::parseRequiredSections(QString::fromUtf8(f.readAll()));
-        if (!got.isEmpty()) return got;
+        if (!got.isEmpty()) {
+            if (whichOut) *whichOut = rel;
+            return got;
+        }
     }
     return {};
 }
@@ -519,7 +542,9 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // means the check is skipped — which is this verb's shipping default, since
     // no standard in this project carries the block yet.
     SpecLint::Options opts;
-    opts.requiredSections = specLintRequiredSections(rootCanonical);
+    QString sectionsSource;
+    opts.requiredSections =
+        specLintRequiredSections(rootCanonical, &sectionsSource);
     opts.maxFindings      = qBound(1, req.value(QStringLiteral("max_findings"))
                                           .toInt(500), 5000);
     // ANTS-4127 — same once-per-run rule, same reason (spec § 2.8).
@@ -610,7 +635,8 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // content-sensitive (ANTS-3737 — same shape as doc_integrity).
     QJsonObject out = specLintBuildResponse(findings, sectionsChecked,
                                             lineCounts, truncated, checked,
-                                            surfacesResolved, surfacesChecked);
+                                            surfacesResolved, surfacesChecked,
+                                            sectionsSource);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     // ANTS-4110 — say that gaps were suppressed and how many. Emitted only when
     // non-zero: a caller reading a short findings list is entitled to know a
@@ -625,7 +651,7 @@ QJsonObject RemoteControl::specLintBuildResponse(
     const QList<DocFinding::Finding> &findings, bool sectionsChecked,
     const QJsonObject &lineCounts, bool truncated,
     const QStringList &checkedDocs, int surfacesResolved,
-    bool surfacesChecked) {
+    bool surfacesChecked, const QString &sectionsSource) {
     QJsonObject o;
     o[QStringLiteral("ok")]       = true;
     o[QStringLiteral("findings")] = DocFinding::toJson(findings);
@@ -635,6 +661,32 @@ QJsonObject RemoteControl::specLintBuildResponse(
             .value(QStringLiteral("spec_lint")).toObject();
     // Never omitted when false — see the header.
     o[QStringLiteral("sections_checked")] = sectionsChecked;
+    // ANTS-4373 — the shape AROUND the skip, which is a separate defect from
+    // the check not running. `ok:true` with an empty `findings[]` is the same
+    // envelope a genuinely clean run produces, and nothing said which standard
+    // was consulted, that a check was skipped, or what would make it run.
+    //
+    // It launders: /write-spec Step 4 reads this envelope, and
+    // review-contract Phase 1d feeds the mechanical results to cold lanes as
+    // SETTLED FACTS they are forbidden to question — so an unrun check
+    // reported as clean becomes an unchallengeable false fact one layer
+    // downstream. An ARRAY is read where a `false` is not, which is why the
+    // skip is reported as one.
+    o[QStringLiteral("sections_source")] =
+        sectionsSource.isEmpty() ? QJsonValue(QJsonValue::Null)
+                                 : QJsonValue(sectionsSource);
+    if (!sectionsChecked) {
+        QJsonArray skipped;
+        skipped.append(QStringLiteral("missing_section"));
+        o[QStringLiteral("skipped")] = skipped;
+        o[QStringLiteral("skipped_hint")] = QStringLiteral(
+            "the required-section check did NOT run: no `<!-- required-sections "
+            "-->` fenced block was found in any of %1 (relative to the project "
+            "root). Findings are silent about section structure — this is not "
+            "a clean structural result. Add the block to whichever of those "
+            "files is this project's spec-format standard.")
+                .arg(specLintStandardCandidates().join(QStringLiteral(", ")));
+    }
     // ANTS-4127 — the same contract, for the same reason: the count is the
     // denominator without which two zero-finding runs are indistinguishable, and
     // the flag is what stops a zero being read as "checked and clean" when it

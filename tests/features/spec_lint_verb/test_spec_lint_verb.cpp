@@ -238,3 +238,35 @@ TEST(SpecLintVerb, Ants4127SurfaceFieldsReachTheWire) {
     EXPECT_TRUE(wired.contains(QStringLiteral("spec_lint")))
         << "this very test's directory must be in a bundle, or it is not running";
 }
+
+// ANTS-4390 — the global standards repo must be able to check its own specs.
+// `~/.claude` has NO `docs/standards/` because it IS the standards set, so
+// every candidate path missed and `sections_checked` came back false on the
+// one repository that owns the canonical block. The `standards/` entries are
+// not a guess at a second convention; they are that repo's real layout.
+//
+// ANTS-4373 — and the shape around the skip is its own defect: `ok:true` with
+// an empty findings[] is the envelope a genuinely clean run produces, so an
+// unrun check reads as a pass. It launders downstream, because
+// review-contract Phase 1d hands the mechanical results to cold lanes as
+// settled facts they are forbidden to question.
+TEST(SpecLintVerb, Ants4390And4373StandardResolutionAndSkipReporting) {
+    const std::string rc = ants_test::slurpRemoteControl();
+
+    // ANTS-4390 — both layouts are candidates.
+    EXPECT_TRUE(rc.find("\"docs/standards/spec-format.md\"") != std::string::npos)
+        << "the project layout must stay first in the resolution order";
+    EXPECT_TRUE(rc.find("\"standards/spec-format.md\"") != std::string::npos)
+        << "the global standards repo's own layout must resolve too — it has "
+           "no docs/ prefix because it IS the standards set";
+
+    // ANTS-4373 — an array is read where a `false` is not, and the caller is
+    // told which path was consulted rather than re-deriving the cause.
+    EXPECT_TRUE(rc.find("\"sections_source\"") != std::string::npos)
+        << "say WHICH standard was consulted, or null when none was";
+    EXPECT_TRUE(rc.find("\"skipped\"") != std::string::npos)
+        << "a skipped check must be reported as a read field, not inferred "
+           "from a boolean nobody branches on";
+    EXPECT_TRUE(rc.find("\"skipped_hint\"") != std::string::npos)
+        << "a boolean says a check did not run; it does not say what to fix";
+}

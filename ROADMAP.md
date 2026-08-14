@@ -30360,7 +30360,7 @@ collision are different strengths of evidence.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (OneUp).
 
-- 📋 [ANTS-4351] **`spec_lint`'s tombstone exemption silently requires the `*withdrawn — …*` span to sit on ONE physical line.**
+- ✅ [ANTS-4351] **`spec_lint`'s tombstone exemption silently requires the `*withdrawn — …*` span to sit on ONE physical line.**
   The schema documents the vocabulary (`*moved to X*`, `*withdrawn — …*`) but
   not the layout constraint: `speclint.cpp`'s anchors are
   `^\*moved to ([A-Z]+-\d+)\*` and `^\*withdrawn — (.+?)\*`, and `.` does not
@@ -30381,6 +30381,13 @@ collision are different strengths of evidence.
   vocabulary miss. It bites hardest where tombstones happen — hard-wrapped
   prose specs — and on this machine withdrawing-with-a-pointer is the ONLY
   sanctioned way to retire an invariant, so it is the common path.
+  Resolved (2026-08-14): the reporter's first-preference fix (a) — the body is
+  joined onto one logical line before the anchors are matched, which is what a
+  reader does. The anchors stay anchored at the START of the joined body, so
+  this widens the accepted LAYOUT and not the vocabulary; a second test proves
+  prose that merely discusses a withdrawal is still a live invariant owing a
+  test. Verified red first: the wrapped fixture reported 2 findings where the
+  single-line spelling reported 0.
   **Layman:** Retiring a spec rule works only if you fit the note on one line; wrap it and the checker says the rule is untested, which is a different problem entirely.
   Kind: fix.
   Lanes: speclint, mcp.
@@ -31012,7 +31019,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager).
 
-- 📋 [ANTS-4373] **`spec_lint`'s SKIP reporting — `sections_checked:false` is a single unflagged boolean in an envelope whose every other field reads as success.**
+- ✅ [ANTS-4373] **`spec_lint`'s SKIP reporting — `sections_checked:false` is a single unflagged boolean in an envelope whose every other field reads as success.**
   The check itself is ANTS-4345, shipped 2026-08-14. This is the separate half
   LWSM argued and that fix did NOT address: the shape around the skip.
   Their framing is the sharpest statement of it anywhere in this corpus.
@@ -31042,6 +31049,16 @@ collision are different strengths of evidence.
   verb checks and deserves its own decision; gate it behind a
   `sections_source: "global"|"project"|null` so a caller can still tell which
   list ran.
+  Resolved (2026-08-14), items (1)–(3): the envelope now carries
+  `skipped:["missing_section"]`, a `skipped_hint` naming every path consulted
+  and what would make the check run, and `sections_source` — the standard that
+  DID resolve, `null` when none did. **Item (4) is deliberately NOT taken**,
+  on the reporter's own reasoning that it changes what the verb checks and
+  deserves its own decision: reaching into `~/.claude/standards/` is a
+  cross-repository read, and a project would then be silently checked against
+  a list it never opted into. What shipped instead is ANTS-4390's in-repo
+  fallback, which fixes the case that motivated (4) — a repository that IS the
+  standards set — without the cross-repo reach.
   **Layman:** The checker can quietly decline to run one of its tests and still report success, and a review then treats that silence as a verified fact.
   Kind: fix.
   Lanes: speclint, mcp.
@@ -31551,7 +31568,7 @@ collision are different strengths of evidence.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (claude_config), reproduced in-session.
 
-- 📋 [ANTS-4390] **`spec_lint` resolves its format standard under a project-relative `docs/standards/`, so the GLOBAL standards repo cannot check its own specs — its block is at `standards/spec-format.md`.**
+- ✅ [ANTS-4390] **`spec_lint` resolves its format standard under a project-relative `docs/standards/`, so the GLOBAL standards repo cannot check its own specs — its block is at `standards/spec-format.md`.**
   Distinct from ANTS-4345 (a project whose standard simply lacked the block)
   and from ANTS-4373 (the shape around the skip). **The reporter identified
   the cause precisely and explicitly declined to merge it** — "recorded
@@ -31572,6 +31589,17 @@ collision are different strengths of evidence.
   Also noted, uninvestigated: `surfaces_checked:false` with
   `surfaces_resolved:0` on a spec whose invariants all carry `*Test:*`
   clauses in the documented form — same shape, possibly the same cause.
+  Resolved (2026-08-14), fix (1) plus (3): `standards/spec-format.md` and
+  `standards/specs.md` join the candidate list AFTER the two `docs/standards/`
+  entries, so a project layout still wins and the global standards repo becomes
+  self-checkable for one extra stat. Fix (2), a `format_standard:` argument,
+  was not needed once (1) resolved the real case; (3) shipped as ANTS-4373's
+  `sections_source` / `skipped` / `skipped_hint`.
+  **Premise verified against the real repo rather than assumed**: `~/.claude`
+  has no `docs/standards/` at all, and `standards/spec-format.md` does carry
+  the `<!-- required-sections -->` block.
+  The `surfaces_checked:false` note above is NOT covered by this — different
+  resolution path, still uninvestigated.
   **Layman:** The one repository that owns the master rulebook is the one place the rule-checker cannot find it.
   Kind: fix.
   Lanes: speclint, mcp.

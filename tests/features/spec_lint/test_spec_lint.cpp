@@ -1017,3 +1017,62 @@ TEST(SpecLint, DISABLED_CorpusCalibration) {
             fprintf(stderr, "  [%s] %s\n", qPrintable(it.key()), qPrintable(s));
     SUCCEED();
 }
+
+// ANTS-4351 — a tombstone is exempt however it is WRAPPED.
+//
+// The anchors are `^\*moved to (ID)\*` and `^\*withdrawn — (.+?)\*`, and `.`
+// does not cross a newline — so a hard-wrapped tombstone was not exempt and
+// came back as `invariant_no_test`, the same finding a genuinely untested
+// invariant gets. The natural reading of that is "my vocabulary is wrong",
+// not "my line wrapping is wrong", and one reporting project burned three
+// attempts on it. This project then hit it independently the same day while
+// withdrawing INV-8 of docs/specs/ANTS-3368-co-change-family.md.
+//
+// It bites hardest exactly where tombstones happen — hard-wrapped prose specs
+// — and withdrawing-with-a-pointer is the only sanctioned way to retire an
+// invariant here, so it is the common path rather than an edge.
+TEST(SpecLint, Ants4351TombstoneIsExemptAcrossLineWraps) {
+    // Same document twice; only the wrapping differs. Neither may be reported.
+    const QString oneLine = QStringLiteral(
+        "# ANTS-1 — wrapping\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** *withdrawn — superseded by the scan-pattern rule.*\n"
+        "- **INV-2** *moved to ANTS-9999*\n");
+    const QString wrapped = QStringLiteral(
+        "# ANTS-1 — wrapping\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** *withdrawn — superseded by the scan-pattern rule, which\n"
+        "  makes the narrower form unreachable and therefore untestable.*\n"
+        "- **INV-2** *moved to\n"
+        "  ANTS-9999*\n");
+
+    EXPECT_EQ(countKind(SpecLint::check(oneLine, QStringLiteral("s.md"), {}),
+                        "invariant_no_test"), 0)
+        << "control: the single-line spelling was always exempt";
+    EXPECT_EQ(countKind(SpecLint::check(wrapped, QStringLiteral("s.md"), {}),
+                        "invariant_no_test"), 0)
+        << "a hard-wrapped tombstone must be exempt too — a reader joins the "
+           "body before reading it, and so must the check";
+}
+
+// ANTS-4351 — and the exemption must not have widened into "mentions the word
+// somewhere". The tombstone forms are anchored at the START of the body on
+// purpose (spec INV-3): a live invariant whose prose merely discusses
+// withdrawal is still a live invariant, and still owes a test.
+TEST(SpecLint, Ants4351JoiningDoesNotWidenTheExemption) {
+    const QString discussesIt = QStringLiteral(
+        "# ANTS-1 — not a tombstone\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** The parser rejects a clause that was *withdrawn — see\n"
+        "  the note* in an earlier revision, and says so.\n");
+    EXPECT_EQ(countKind(SpecLint::check(discussesIt, QStringLiteral("s.md"), {}),
+                        "invariant_no_test"), 1)
+        << "prose that merely CONTAINS the tombstone vocabulary is a live "
+           "invariant with no test, and joining lines must not exempt it";
+}
