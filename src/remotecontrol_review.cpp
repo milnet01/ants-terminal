@@ -1117,6 +1117,12 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
     for (auto it = detectorsBy.constBegin(); it != detectorsBy.constEnd(); ++it)
         shape << QStringLiteral("%1 has %2").arg(it.key())
                      .arg(it.value().toArray().size());
+    // ANTS-3747 — the closing see_also clause. A contributor filed a request
+    // for a doc_drift link-resolution detector that DocIntegrity::check has
+    // shipped all along, because nothing in this envelope said so. Naming the
+    // owning verb here is the whole fix: routing the findings in would
+    // double-count one broken link into both debt_sweep_fold_in's id
+    // allocation and the cold-eyes Phase-1e feed.
     env["scope_note"] = QStringLiteral(
         "Marker/lockstep heuristics only (TODO-FIXME age, version lockstep, "
         "bounded dead-code / duplicate-include, dead lint suppressions). Not a "
@@ -1126,7 +1132,11 @@ QJsonDocument RemoteControl::cmdDebtSweepScan(const QJsonObject &req) {
         "required. Read every by_category count against "
         "detectors_by_category, which lists the detector_ids behind it: the "
         "categories are NOT evenly covered (%1), so a 0 in a thin category is "
-        "a much weaker signal than a 0 in a thick one.")
+        "a much weaker signal than a 0 in a thick one. Documentation link "
+        "and anchor resolution is NOT here and never will be: doc_integrity "
+        "owns broken_link / dead_anchor / toc_gap / heading_sequence over an "
+        "enumerated doc set, and this verb's git-since window is the wrong "
+        "scope for it.")
         .arg(shape.join(QStringLiteral(", ")));
     // Resolve since for response transparency.
     QString sinceRes = opt.sinceRef;

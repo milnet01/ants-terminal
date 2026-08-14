@@ -23243,7 +23243,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-07-30 (hit while implementing ANTS-3743).
 
-- 📋 [ANTS-3747] **The two debt-sweep detectors ANTS-3743 did NOT ship — doc_drift link/status resolution, and the "reserved field is assigned" comment check.**
+- 📋 [ANTS-3747] **Detector 4 ("a comment says reserved, something assigns it") is the only one of ANTS-3743's two leftovers still worth building — detector 3 is closed by measurement, both halves.**
   Filed so ANTS-3743's ✅ is honest. It shipped detectors (1) and (2) —
   the pair its own body named as strongest — and flipping it to shipped
   with two of four undone would make the status over-claim exactly the
@@ -23251,16 +23251,41 @@ against current source before filing.
   ANTS-3748). ANTS-3743's resolution note says which two landed; this
   bullet is where the other two live.
 
-  (3) doc_drift: resolve relative markdown links, and diff a spec's
-  `Status:` line against the roadmap status of the same id. Note the
-  overlap to settle first — `DocIntegrity::check` ALREADY emits
-  `broken_link` for a `[t](relpath)` whose target is missing, and
-  doc_integrity is a separate verb the cold-eyes Phase-1e feed consumes.
-  So the link half may be a routing question (surface doc_integrity's
-  findings under debt_sweep's doc_drift) rather than a new detector, and
-  deciding that is the first step, not an implementation detail. The
-  spec-Status-vs-roadmap-status half has no existing home and is the
-  genuinely new work.
+  (3) CLOSED 2026-08-14 — NOT BUILT, both halves, each for its own
+  measured reason. Do not re-file it without new numbers.
+
+  Link half: already shipped, in a different verb. `DocIntegrity::check`
+  (`src/docintegrity.cpp`, Phase B check 1+2) resolves the relative path
+  via `resolveRelative` — skipping external / absolute / root-escaping
+  targets — and emits `broken_link` when the file is missing, plus
+  `dead_anchor` for the `#anchor` half this bullet never asked for.
+  Building it again in `DebtSweepEngine` is a second implementation of a
+  shipped check. Re-surfacing it under `doc_drift` was rejected too, on
+  three grounds: the two verbs have incompatible scope models
+  (`debt_sweep_scan` is git-`since`-windowed, `doc_integrity` is
+  path-enumerated), one broken link would then be counted twice — once
+  into `debt_sweep_fold_in`'s roadmap-id allocation and once into the
+  cold-eyes Phase-1e feed, the double-count ANTS-4106 went out of its way
+  to prevent — and `detectorsByCategory()` would list a detector_id whose
+  implementation is in another engine, so the ANTS-3707 denominator would
+  stop describing `DebtSweepEngine`. What was real here is
+  DISCOVERABILITY: the filer proposed a duplicate because nothing in
+  `debt_sweep_scan`'s envelope says link resolution lives elsewhere.
+  Fixed as a `see_also` clause in `scope_note`, not as a detector.
+
+  Status half: measured over this project's own 242 specs, and it finds
+  nothing. 56 carry no `**Status:**` at all; of the 186 that do, only 59
+  use a word `SpecLint::shippedStatusWords()` recognises (`shipped` 33,
+  `implemented` 25, `v1` 1) and ALL 59 sit against a ✅ roadmap item —
+  zero true positives. The other 127 use vocabulary no table names
+  (`spec` 53, `accepted` 47, `in` 13, `implementing` 6, `ready` 3,
+  `draft` 2, `amended` 1), so a naive status diff fires on 127 of 186 —
+  68%, reproducing the ~94%-FP baseline rather than improving on it. And
+  the 6 `accepted`-vs-`planned` pairs are the FP shape exactly: a spec
+  being accepted is not a claim that the work shipped, so the roadmap is
+  right and the spec is right. The prerequisite is a status vocabulary
+  the corpus actually uses; the detector is worthless before that and
+  still has a zero numerator after it.
 
   (4) A comment asserting a struct field or push-constant lane is
   "reserved" / "unused" / "= 0" while that field is assigned a non-zero
@@ -23272,9 +23297,22 @@ against current source before filing.
   needs its own sizing against the existing ~94%-FP baseline, and it is
   the one of the four that most rewards being got right.
 
-  Both must be added to `DebtSweepEngine::detectorsByCategory()`, which
+  Sizing attempted 2026-08-14 and it cannot be done HERE: across 295
+  `src/**` C/C++/GLSL files the candidate surface is FOUR field
+  declarations carrying a reserved/unused assertion, and one of the four
+  (`auditdialog.cpp:2600`) is already a false match on prose that is not
+  a field comment at all. A denominator of 4, on a codebase with no
+  push-constant lanes, cannot distinguish a precise detector from a
+  useless one. So the blocker is a corpus, not a design: size it against
+  DOOM Ants' own tree (where the shape was reported and has bitten
+  twice), or against a purpose-built fixture set under
+  `tests/audit_fixtures/`, before writing the assignment search. Building
+  it blind against this project would ship a detector nothing here can
+  falsify.
+
+  It must be added to `DebtSweepEngine::detectorsByCategory()`, which
   the ANTS-3707 scrape test enforces bidirectionally.
-  **Layman:** Two of the four proposed debt-sweep checks are still to build; the harder, more valuable pair.
+  **Layman:** One of the two leftover checks turned out to be already built or provably useless; the other is worth having but we have nothing here to test it on.
   Kind: enhancement.
   Source: DOOM-Ants + finbreak feedback 2026-07-28 (ANTS-3743 detectors 3 and 4).
 
