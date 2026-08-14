@@ -103,7 +103,18 @@ QString RemoteControl::docSetDigest(const QString &rootCanonical,
 // ETag-304 short-circuit is applied centrally (isEtagSupportedTool). Findings
 // come from DocIntegrity::check (docintegrity.cpp). See docs/specs/ANTS-3601.md.
 QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    // ANTS-3719 — `~global` / `~claude-config` routes to ~/.claude, the same
+    // sentinel workspace_search and file_outline already take (ANTS-1390).
+    // Without it this verb could not reach the only corpus the ungranted_tool
+    // check serves: a skill tree is not an Ants project and has no root a
+    // per-call path would validate against, which is exactly why ANTS-3719 was
+    // filed CONSIDERED until ANTS-3713 settled the second-allowed-root posture.
+    // Re-rooting rather than widening keeps INV-6/INV-10 intact — every path
+    // is still validated, against ~/.claude instead of the project.
+    const QString sentinelRoot = ants::expandGlobalConfigSentinel(
+        req.value(QStringLiteral("caller_cwd")).toString());
+    const QString rootCanonical =
+        sentinelRoot.isEmpty() ? resolveRootCanonical(m_main, req) : sentinelRoot;
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;
@@ -223,6 +234,8 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
         case DocIntegrity::Kind::TocGap:     return QStringLiteral("toc_gap");
         case DocIntegrity::Kind::HeadingSequence:   // ANTS-3700
             return QStringLiteral("heading_sequence");
+        case DocIntegrity::Kind::UngrantedTool:     // ANTS-3719
+            return QStringLiteral("ungranted_tool");
         }
         return QString();
     };
@@ -231,7 +244,7 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
     };
 
     QJsonArray findingsArr;
-    int deadAnchor = 0, brokenLink = 0, tocGap = 0, headingSeq = 0;
+    int deadAnchor = 0, brokenLink = 0, tocGap = 0, headingSeq = 0, ungranted = 0;
     for (const DocIntegrity::Finding &f : findings) {
         const QString ks = kindStr(f.kind);
         if (!wanted(ks)) continue;
@@ -248,6 +261,7 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
         case DocIntegrity::Kind::BrokenLink:      ++brokenLink; break;
         case DocIntegrity::Kind::TocGap:          ++tocGap;     break;
         case DocIntegrity::Kind::HeadingSequence: ++headingSeq; break;
+        case DocIntegrity::Kind::UngrantedTool:   ++ungranted;  break;
         }
     }
 
@@ -257,6 +271,8 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
     if (wanted(QStringLiteral("toc_gap")))     counts[QStringLiteral("toc_gap")]     = tocGap;
     if (wanted(QStringLiteral("heading_sequence")))
         counts[QStringLiteral("heading_sequence")] = headingSeq;
+    if (wanted(QStringLiteral("ungranted_tool")))
+        counts[QStringLiteral("ungranted_tool")] = ungranted;
 
     QJsonObject o;
     o[QStringLiteral("ok")]           = true;

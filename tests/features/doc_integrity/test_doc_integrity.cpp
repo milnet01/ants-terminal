@@ -523,3 +523,113 @@ TEST(DocIntegrity, HeadingSequenceQuietCases) {
     EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/c.md"}),
                         Kind::HeadingSequence), 0);
 }
+
+// ---- ANTS-3719 — ungranted_tool --------------------------------------------
+//
+// Requested by the claude_config session. A Claude Code skill declares its
+// tools in `allowed-tools:` frontmatter and names the MCP verbs it needs in its
+// body; when the two drift the skill cannot be executed as written. Measured
+// over the live ~/.claude corpus when this shipped: 18 skills carry
+// allowed-tools, zero drift — so these fixtures are the whole test surface and
+// the check ships as a regression guard, which is what the reporter asked for
+// (the defect recurred once already, reintroduced by a commit that added a
+// dependency without touching the frontmatter).
+
+// INV-23 — a verb the body calls and the frontmatter never granted is reported
+// once, naming the verb.
+TEST(DocIntegrity, UngrantedToolReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/s.md",
+                          "---\n"
+                          "name: demo\n"
+                          "allowed-tools: [Read, mcp__ants__doc_integrity]\n"
+                          "---\n\n"
+                          "# Demo\n\n"
+                          "Run `mcp__ants__doc_integrity` first, then\n"
+                          "`mcp__ants__doc_citations` over the same set.\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/s.md"});
+    EXPECT_EQ(countKind(fs, Kind::UngrantedTool), 1)
+        << "the granted verb must not be reported alongside the ungranted one";
+    EXPECT_TRUE(hasMention(fs, Kind::UngrantedTool,
+                           QStringLiteral("mcp__ants__doc_citations")));
+}
+
+// INV-24 — one finding per verb, at its first mention, however often the body
+// repeats it. A skill naming its main verb a dozen times must not produce a
+// dozen findings, or the check becomes the noise class it exists to avoid.
+TEST(DocIntegrity, UngrantedToolDeduplicatesPerVerb) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/s.md",
+                          "---\n"
+                          "allowed-tools: [Read]\n"
+                          "---\n\n"
+                          "Call `mcp__ants__spec_query` here.\n"
+                          "Then `mcp__ants__spec_query` again.\n"
+                          "And once more: `mcp__ants__spec_query`.\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/s.md"});
+    ASSERT_EQ(countKind(fs, Kind::UngrantedTool), 1);
+    for (const Finding &f : fs)
+        if (f.kind == Kind::UngrantedTool)
+            EXPECT_EQ(f.line, 5) << "reported at the FIRST mention";
+}
+
+// INV-25 — the quiet cases, each of which would make this check unusable if it
+// fired: a doc with no frontmatter at all (almost every doc in a docs tree), a
+// skill that declares no allowed-tools key (nothing to contradict), a verb
+// mentioned only inside a fence, and a verb named in a DIFFERENT frontmatter
+// key — `description:` must not silently grant what allowed-tools omits.
+TEST(DocIntegrity, UngrantedToolQuietCases) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+
+    // (a) no frontmatter — an ordinary doc that happens to name a verb.
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# Notes\n\nUse `mcp__ants__git_state` for status.\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/a.md"}),
+                        Kind::UngrantedTool), 0);
+
+    // (b) frontmatter without an allowed-tools key — declares nothing.
+    ASSERT_TRUE(writeFile(root + "/docs/b.md",
+                          "---\nname: x\n---\n\n`mcp__ants__git_state`\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/b.md"}),
+                        Kind::UngrantedTool), 0);
+
+    // (c) the only mention is inside a fence — an example, not a mandate.
+    ASSERT_TRUE(writeFile(root + "/docs/c.md",
+                          "---\nallowed-tools: [Read]\n---\n\n"
+                          "```\nmcp__ants__git_state\n```\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/c.md"}),
+                        Kind::UngrantedTool), 0);
+
+    // (d) granted in a block list, not an inline array.
+    ASSERT_TRUE(writeFile(root + "/docs/d.md",
+                          "---\nallowed-tools:\n  - Read\n"
+                          "  - mcp__ants__git_state\n---\n\n"
+                          "`mcp__ants__git_state`\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/d.md"}),
+                        Kind::UngrantedTool), 0);
+}
+
+// INV-26 — a verb named in `description:` is NOT granted. The granted set is
+// read from allowed-tools' own value, so a skill whose description advertises a
+// verb it never granted is still caught. This is the case a whole-frontmatter
+// scan would silently pass.
+TEST(DocIntegrity, UngrantedToolDescriptionDoesNotGrant) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/s.md",
+                          "---\n"
+                          "allowed-tools: [Read]\n"
+                          "description: wraps mcp__ants__git_state for you\n"
+                          "---\n\n"
+                          "Call `mcp__ants__git_state`.\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/s.md"});
+    EXPECT_EQ(countKind(fs, Kind::UngrantedTool), 1)
+        << "description: must not act as a grant";
+}

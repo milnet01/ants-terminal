@@ -22545,7 +22545,7 @@ requesting no action and are closed in place rather than filed.
   across identical inputs, busts on a changed doc body; two workspaces rather
   than a rewrite, because slurpUtf8 caches by mtime_ms). Full suite 3074/3074.
 
-- 📋 [ANTS-3719] **A check that a skill's frontmatter `allowed-tools` grants every MCP verb its own body mandates.**
+- ✅ [ANTS-3719] **A check that a skill's frontmatter `allowed-tools` grants every MCP verb its own body mandates.**
   A Claude Code skill carries YAML frontmatter with an `allowed-tools` list and a
   body whose procedure names the verbs it requires. When the two drift, the skill is
   unexecutable exactly as written. Single-file, self-consistency, fully
@@ -22580,6 +22580,58 @@ requesting no action and are closed in place rather than filed.
   Kind: feature.
   Source: claude-config-feedback-2026-07-28.
   Unblocked (2026-07-28): the stated precondition was "worth doing only if the path-validation posture is settled first — ANTS-3713 raises the same second-allowed-root question". ANTS-3713 shipped and settled it: an external root is reachable only via an explicit per-call opt-in (allow_outside_project) that PathValidation still anchors, with the project-relative entry point keeping its rejection verbatim. That is the pattern a ~/.claude-scoped check would follow.
+
+  Resolved (2026-08-14): shipped as shape (a), NOT the (b) the contributor
+  leaned toward. (b) was a new `skill_integrity` verb; (a) is one
+  `ungranted_tool` finding kind on `doc_integrity`, and it solves the asking
+  project's stated problem — "a skill can instruct you to use a tool it never
+  granted itself" — with no new verb, no new schema surface, and the existing
+  path validation, response envelope, `kinds` filter and ETag for free. The
+  objection recorded against (a) was that it "mixes a Claude-Code-specific
+  concept into a general markdown checker"; that is a taste argument, and the
+  gate answers it — the check fires only on a doc whose frontmatter carries
+  `allowed-tools:`, which no non-skill markdown has, so a docs tree never sees
+  it. If the other skill-shaped checks (b) would have absorbed are ever wanted,
+  they can join as sibling kinds.
+
+  The bullet's own precondition needed one more piece than it knew: this verb
+  could not reach `~/.claude` at all. `expandGlobalConfigSentinel` (ANTS-1390)
+  already gives `workspace_search` and `file_outline` a `~global` root, and
+  `doc_integrity` had never been wired to it — verified by calling it, which
+  refused `bad_path: no focused project`. Added here, so `caller_cwd:"~global"`
+  re-roots to `~/.claude`; every path is still validated, against that root
+  instead of the project, so INV-6 and INV-10 are untouched. `~/.claude` has no
+  `docs/` dir, so a caller must pass an explicit `path` (e.g. `"skills"`).
+
+  Matching is narrowed three ways, each trading recall for precision because a
+  noisy checker is one readers filter out: gated on the frontmatter carrying
+  `allowed-tools:`; the fully-qualified `mcp__ants__<verb>` spelling only (a
+  bare backticked name needs a known-verb list to tell a mandate from prose —
+  the bullet says so itself); and the granted set is read from
+  `allowed-tools:`' own value, not the whole frontmatter, so a `description:`
+  naming a verb cannot silently grant it. Fence-aware like every other check
+  (INV-3) — measured over the live corpus, all 99 verb mentions across the 13
+  skills that name one sit outside fences, so the mask changes no current
+  result and is consistency rather than a judgement call. One finding per verb,
+  at its first mention.
+
+  Scope limit, deliberate: the check reads ONE file, so it sees `SKILL.md`'s
+  body and not its `references/*.md`. A verb mandated only by a reference file
+  would be missed. `DocIntegrity::check` is per-doc by construction and
+  cross-file state is a different change; measured dir-wide, the live corpus is
+  clean either way.
+
+  Current corpus state, measured before building: 18 skills carry
+  `allowed-tools`, **zero drift**, one (`write-spec`) carries no
+  `allowed-tools` key at all and is correctly skipped. So this ships as a
+  regression guard rather than a fix for a live defect — which is what the
+  reporter asked for, the defect having already recurred once, reintroduced by
+  a commit that added a dependency and never touched the frontmatter.
+
+  Tests: 4 engine cases (reported / dedup-per-verb / four quiet cases /
+  `description:` does not grant) + the verb-layer `kinds`-filter case extended
+  to the new kind. Full suite 3418/3418. The live verb is unverified until Ants
+  is relaunched — the running MCP server is behind this commit.
 
 - ✅ [ANTS-3720] **Replace the fixed-byte scrape window in the MCP schema tests with a self-sizing block bound.**
   The schema-wiring tests anchor on a literal and then take a FIXED byte window

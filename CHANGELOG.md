@@ -12,6 +12,20 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **`doc_integrity` catches a skill that calls an MCP tool it never granted itself** (ANTS-3719)
+  A Claude Code skill lists the tools it may use in its frontmatter and
+  names the ones it needs in its instructions. When the two drift the
+  skill cannot be run as written — and the skill that hit this twice was
+  a review skill, so the check meant to catch everything else was itself
+  broken. A new `ungranted_tool` finding reports any `mcp__ants__` verb
+  the body calls that the `allowed-tools` list omits. It fires only on
+  files that actually carry that frontmatter key, so ordinary
+  documentation never sees it. `doc_integrity` also accepts the
+  `~global` / `~claude-config` root that search and outline already
+  take, which is what lets it read the skill tree at all.
+
 ### Fixed
 
 - **Re-importing a roadmap no longer aborts on an id the store and the file both claim** (ANTS-4142)

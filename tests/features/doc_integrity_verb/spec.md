@@ -29,9 +29,12 @@ because the pure helpers are the sharper place to pin these two invariants.
   (not root files), a non-existent in-root `path` → empty. *Test:*
   `EnumerateScoping` over `RemoteControl::docIntegrityEnumerate`.
 - **INV-18** — the `kinds` filter narrows both `findings[]` and `counts{}`,
-  across all four kinds including `heading_sequence` (ANTS-3700). The counter
-  is a `switch` over `Kind`, not an `if/else` chain whose final `else` would
-  silently tally any future kind as a `toc_gap`. *Test:*
+  across every kind, including `heading_sequence` (ANTS-3700) and
+  `ungranted_tool` (ANTS-3719). The counter is a `switch` over `Kind`, not an
+  `if/else` chain whose final `else` would silently tally any future kind as a
+  `toc_gap`; note the switch catches a kind missing from the *counter* at
+  compile time but not one missing from the *counts map*, which narrows to
+  nothing silently — hence a per-kind filter assertion. *Test:*
   `KindsFilterNarrowsCounts` over
   `RemoteControl::docIntegrityBuildResponse`.
 - **INV-10** — the verb is registered with the `Required` caller_cwd contract,

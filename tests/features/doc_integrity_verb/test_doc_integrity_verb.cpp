@@ -79,12 +79,13 @@ TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
         {Kind::BrokenLink,      "docs/a.md", 2, "m2"},
         {Kind::TocGap,          "docs/a.md", 3, "m3"},
         {Kind::HeadingSequence, "docs/a.md", 4, "m4"},   // ANTS-3700
+        {Kind::UngrantedTool,   "docs/a.md", 5, "m5"},   // ANTS-3719
     };
 
-    // Unfiltered → all four kinds present.
+    // Unfiltered → every kind present.
     const QJsonObject all = RemoteControl::docIntegrityBuildResponse(
         findings, {}, {"docs/a.md"});
-    EXPECT_EQ(all.value("findings").toArray().size(), 4);
+    EXPECT_EQ(all.value("findings").toArray().size(), 5);
     const QJsonObject allCounts = all.value("counts").toObject();
     EXPECT_EQ(allCounts.value("dead_anchor").toInt(), 1);
     EXPECT_EQ(allCounts.value("broken_link").toInt(), 1);
@@ -94,6 +95,7 @@ TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
     // toc_gap, so a heading_sequence finding would have been counted twice
     // over: once correctly, once as a TOC defect that did not exist.
     EXPECT_EQ(allCounts.value("heading_sequence").toInt(), 1);
+    EXPECT_EQ(allCounts.value("ungranted_tool").toInt(), 1);      // ANTS-3719
 
     // Filtered to dead_anchor → findings + counts narrow together.
     const QJsonObject only = RemoteControl::docIntegrityBuildResponse(
@@ -106,6 +108,20 @@ TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
     EXPECT_FALSE(onlyCounts.contains("broken_link"));
     EXPECT_FALSE(onlyCounts.contains("toc_gap"));
     EXPECT_FALSE(onlyCounts.contains("heading_sequence"));
+    EXPECT_FALSE(onlyCounts.contains("ungranted_tool"));
+
+    // ANTS-3719 — the newest kind filters like any other, and its own count
+    // survives the narrowing. Same shape as the ANTS-3700 case below, kept
+    // explicit because the counter is a switch: a kind added to the enum and
+    // not to the switch fails to compile, but one added to the switch and not
+    // to the counts map narrows to nothing silently.
+    const QJsonObject ug = RemoteControl::docIntegrityBuildResponse(
+        findings, QSet<QString>{"ungranted_tool"}, {"docs/a.md"});
+    const QJsonArray ugFs = ug.value("findings").toArray();
+    ASSERT_EQ(ugFs.size(), 1);
+    EXPECT_EQ(ugFs.at(0).toObject().value("kind").toString(),
+              QStringLiteral("ungranted_tool"));
+    EXPECT_EQ(ug.value("counts").toObject().value("ungranted_tool").toInt(), 1);
 
     // The new kind filters like any other (ANTS-3700).
     const QJsonObject seq = RemoteControl::docIntegrityBuildResponse(

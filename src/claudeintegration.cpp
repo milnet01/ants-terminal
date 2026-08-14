@@ -4246,7 +4246,7 @@ void ClaudeIntegration::onMcpConnection() {
                 docInt["name"] = "doc_integrity";
                 docInt["description"] = QStringLiteral(
                     "Deterministic markdown doc-integrity check (no LLM). Reports "
-                    "four kinds: dead_anchor (a [t](#slug) / [t](other.md#slug) "
+                    "these kinds: dead_anchor (a [t](#slug) / [t](other.md#slug) "
                     "naming no real heading), broken_link (a [t](relpath) whose "
                     "target file is missing), toc_gap (a hand-maintained Table of "
                     "Contents that omits an H2 section or lists a duplicate), and "
@@ -4254,7 +4254,13 @@ void ClaudeIntegration::onMcpConnection() {
                     "`## 5.7 Foo` that is lower than the sibling before it, skips "
                     "a number no sibling ever fills, or repeats one; siblings are "
                     "grouped by numeric parent prefix, a group's first heading is "
-                    "never flagged, and unnumbered/prose headings are untouched). "
+                    "never flagged, and unnumbered/prose headings are untouched), "
+                    "and ungranted_tool (ANTS-3719 — a Claude Code skill whose "
+                    "body calls `mcp__ants__<verb>` while its own allowed-tools "
+                    "frontmatter never granted it, so the skill is unexecutable "
+                    "as written; gated on the frontmatter carrying allowed-tools, "
+                    "which scopes it to skill files, and matched on the "
+                    "fully-qualified spelling only). "
                     "Fence-aware (fenced examples ignored); GitHub-compatible "
                     "heading slugs. path=<file|dir> scopes the run (a dir walks "
                     "its *.md recursively); paths=[...] scopes it to the UNION "
@@ -4269,7 +4275,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "editing docs without changing a finding left the envelope "
                     "identical and etag_match returned a false 304, skipping the "
                     "post-fix re-check. ETag-304: unchanged docs re-read free. "
-                    "caller_cwd required.");
+                    "caller_cwd required — or the `~global` / `~claude-config` "
+                    "sentinel (ANTS-3719) to check the global Claude config tree "
+                    "at ~/.claude, which has no docs/ dir, so pass an explicit "
+                    "path there (e.g. path=\"skills\").");
                 docInt["selection_hint"] = QStringLiteral(
                     "Use before a cold-eyes doc review, or after editing a long "
                     "contract doc, to catch dead anchors / broken links / TOC "
@@ -4292,12 +4301,13 @@ void ClaudeIntegration::onMcpConnection() {
                                 QStringLiteral("dead_anchor"),
                                 QStringLiteral("broken_link"),
                                 QStringLiteral("toc_gap"),
-                                QStringLiteral("heading_sequence")};
+                                QStringLiteral("heading_sequence"),
+                                QStringLiteral("ungranted_tool")};
                             kindsProp["items"] = items;
                         }
                         kindsProp["description"] = QStringLiteral(
                             "Optional filter; narrows findings AND counts to "
-                            "these kinds. Omitted → all four.");
+                            "these kinds. Omitted → every kind.");
                     // ANTS-4106 — the multi-file form, matching file_outline's
                     // `paths` and read_regions' slice list.
                     QJsonObject pathsProp; pathsProp["type"] = "array";

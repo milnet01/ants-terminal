@@ -1,7 +1,8 @@
 // ANTS-3601 — deterministic doc-integrity engine. Qt6::Core only, FS-reading,
 // no widgets, no subprocess (mirrors docsindex.cpp / codebaseindex.cpp). Finds
-// three classes of internal-consistency rot in markdown contract docs — all
-// computable with no LLM:
+// these classes of internal-consistency rot in markdown contract docs — all
+// computable with no LLM (the count is deliberately not written out: it has
+// been stale twice, at three while the list held four):
 //
 //   1. Dead anchors  — a `[t](#slug)` / `[t](other.md#slug)` whose slug names
 //                      no real heading.
@@ -10,6 +11,9 @@
 //                      section, or lists a duplicate/dead entry.
 //   4. Heading order — numbered headings that run out of order, skip a
 //                      number, or reuse one (ANTS-3700).
+//   5. Ungranted tool — a Claude Code skill whose body calls an MCP verb its
+//                      own `allowed-tools:` frontmatter never granted, so the
+//                      skill is unexecutable as written (ANTS-3719).
 //
 // Consumed by the `doc_integrity` MCP verb and the cold-eyes Phase-1e feed.
 // See docs/specs/ANTS-3601.md.
@@ -34,6 +38,15 @@ enum class Kind {
     // standard that DEFINES section ordering — shipped with 5.8 before 5.7 and
     // cleared three cold-eyes loops, two at full model.
     HeadingSequence,
+    // ANTS-3719 — a skill's `allowed-tools:` frontmatter omits an MCP verb its
+    // own body tells you to call. Requested by the claude_config session, which
+    // paid for this twice at cold-reader prices in one skill: loop 2 of a
+    // review found `doc_integrity` ungranted, loop 4 found `doc_citations`
+    // ungranted again, reintroduced by a commit that added the dependency and
+    // never touched the frontmatter. Both times the deterministic pre-pass that
+    // skill mandates was unexecutable as declared — the gate that catches
+    // everything else, itself broken.
+    UngrantedTool,
 };
 
 struct Finding {

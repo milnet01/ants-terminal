@@ -91,6 +91,10 @@ struct DocData {
     // TOC region (check 3); tocEndLine < 0 → no recognisable TOC.
     QList<QPair<QString, int>> tocEntries;  // (slug, line)
     int            tocEndLine = -1;         // 1-based last line of the TOC run
+    // ANTS-3719 — (1-based line, verb) per ungranted MCP verb, first mention
+    // only. Empty for every doc that is not a skill file with an
+    // `allowed-tools:` frontmatter key, which is almost all of them.
+    QList<QPair<int, QString>> ungranted;
 };
 
 QList<Heading> extractHeadings(const QStringList &lines,
@@ -346,6 +350,75 @@ void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
     out.append(local);
 }
 
+// ANTS-3719 — a Claude Code skill declares the tools it may use in an
+// `allowed-tools:` YAML frontmatter key, and its body names the MCP verbs its
+// procedure requires. When the two drift the skill is unexecutable exactly as
+// written. Single-file, self-consistency, fully deterministic — the shape this
+// engine exists for.
+//
+// Three deliberate narrowings, each costing recall to buy precision, because a
+// false positive on a checker nobody can gate on is worse than a missed one:
+//
+//   * Gated on the frontmatter actually carrying `allowed-tools:`. That is
+//     self-scoping — only a skill file has one — so no other markdown in a
+//     docs tree is touched, and a skill that grants nothing declares nothing
+//     to contradict.
+//   * Matches the fully-qualified `mcp__ants__<verb>` spelling ONLY. A bare
+//     backticked verb name needs a known-verb list to tell a mandate from
+//     prose that merely mentions one, and this engine has no such list.
+//   * Reads the granted set from `allowed-tools:`' own value, not the whole
+//     frontmatter, so a `description:` naming a verb cannot silently grant it.
+//
+// Fence-aware like every other check here (INV-3). Measured over the live
+// ~/.claude corpus when this shipped: of the 13 skills naming a verb, all 99
+// mentions sit outside fences, so the mask changes no current result and is
+// consistency rather than a judgement call.
+QList<QPair<int, QString>> detectUngrantedTools(const QStringList &lines,
+                                                const QVector<bool> &fence) {
+    static const QRegularExpression verbRe(QStringLiteral("mcp__ants__[a-z0-9_]+"));
+    static const QRegularExpression topKeyRe(QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*:"));
+    QList<QPair<int, QString>> out;
+    if (lines.isEmpty() || lines.first().trimmed() != QLatin1String("---"))
+        return out;  // no frontmatter → not a skill file
+    int fmEnd = -1;
+    for (int i = 1; i < lines.size(); ++i)
+        if (lines.at(i).trimmed() == QLatin1String("---")) { fmEnd = i; break; }
+    if (fmEnd < 0) return out;  // unterminated frontmatter — parse nothing
+
+    // The `allowed-tools:` value: its own line, plus any continuation lines
+    // before the next top-level key (a YAML block list). Both the inline
+    // `[A, B]` and the `- A` block forms fall out of collecting every verb
+    // token in that span.
+    bool inValue = false, hasAllowed = false;
+    QSet<QString> granted;
+    for (int i = 1; i < fmEnd; ++i) {
+        const QString &l = lines.at(i);
+        if (l.startsWith(QLatin1String("allowed-tools:"))) {
+            hasAllowed = true;
+            inValue = true;
+        } else if (inValue && topKeyRe.match(l).hasMatch()) {
+            inValue = false;  // next top-level key ends the value
+        }
+        if (!inValue) continue;
+        auto it = verbRe.globalMatch(l);
+        while (it.hasNext()) granted.insert(it.next().captured(0));
+    }
+    if (!hasAllowed) return out;
+
+    QSet<QString> reported;  // one finding per verb, at its first mention
+    for (int i = fmEnd + 1; i < lines.size(); ++i) {
+        if (i < fence.size() && fence.at(i)) continue;
+        auto it = verbRe.globalMatch(lines.at(i));
+        while (it.hasNext()) {
+            const QString v = it.next().captured(0);
+            if (granted.contains(v) || reported.contains(v)) continue;
+            reported.insert(v);
+            out.append({i + 1, v});
+        }
+    }
+    return out;
+}
+
 QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
                      const Options &opts, QStringList *checkedDocs) {
     const QDir rootDir(rootCanonical);
@@ -375,6 +448,7 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         for (const Heading &h : d.headings) d.slugs.insert(h.slug);
         d.links = extractLinks(lines, fence, opts.maxLinksPerDoc);
         detectToc(lines, d);
+        d.ungranted = detectUngrantedTools(lines, fence);  // ANTS-3719
 
         byRel.insert(rel, d);
         inScope.insert(rel);
@@ -461,6 +535,13 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
 
         // Check 4 — numbered-heading sequence (ANTS-3700).
         checkHeadingSequence(rel, d.headings, findings);
+
+        // Check 5 — a skill calling an MCP verb it never granted (ANTS-3719).
+        for (const auto &u : d.ungranted)
+            findings.append({Kind::UngrantedTool, rel, u.first,
+                             QStringLiteral("`%1` is called here but absent from "
+                                            "this skill's allowed-tools")
+                                 .arg(u.second)});
     }
 
     std::stable_sort(findings.begin(), findings.end(),
