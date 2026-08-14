@@ -86,10 +86,19 @@ TEST(McpInvariantCheck, WiringContract) {
     expect(contains(body, "QDir"),
            "INV-4a",
            "cmdInvariantCheck must iterate via QDir");
-    expect(contains(body, "ANTS-*.md"),
+    // ANTS-4376 — this assertion used to REQUIRE the `ANTS-*.md` glob, which
+    // pinned the defect: the verb saw nothing on any project whose id prefix
+    // is not ANTS (LottoTracker 0 specs scanned where spec_query lists 8,
+    // DOOM 0 where it lists 19, OneUp 0). Inverted deliberately — a
+    // project-prefix-specific glob must never come back.
+    expect(!contains(body, "ANTS-*.md"),
            "INV-4b",
-           "cmdInvariantCheck must filter directory entries by "
-           "the ANTS-*.md glob");
+           "cmdInvariantCheck must NOT filter specs by a project-specific "
+           "prefix glob — it saw nothing on every project but this one");
+    expect(contains(body, "specsDir"),
+           "INV-4c",
+           "cmdInvariantCheck must honour .ants/project.json specs_dir "
+           "rather than hard-coding docs/specs");
 
     // INV-5 — shared parser delegation.
     expect(contains(body, "parseSpecBody"),
@@ -256,4 +265,79 @@ TEST(McpInvariantCheck, Ants3699UnknownModeRefuses) {
                                      QStringLiteral("brief"));
     EXPECT_FALSE(env.value("ok").toBool());
     EXPECT_EQ(env.value("code").toString(), "bad_mode");
+}
+
+// ANTS-4376 — behavioural: a project whose specs are NOT `ANTS-*` is seen.
+// The guard above only proves the bad glob is gone; this proves the verb
+// actually reads such a project's specs.
+TEST(McpInvariantCheck, ScansSpecsOfAnyProjectPrefix) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir().mkpath(root + "/docs/specs"));
+
+    const auto write = [&](const QString &rel, const QString &body) {
+        QFile f(root + QLatin1Char('/') + rel);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body.toUtf8());
+    };
+    // LottoTracker's real shape: a non-ANTS prefix AND a topic suffix.
+    write(QStringLiteral("docs/specs/LOTTO-0001-ticket-tracker.md"),
+          QStringLiteral("# LOTTO-0001 — tickets\n\n"
+                         "## 3. Invariants\n\n"
+                         "- **INV-1** — `check.py` holds. *Test:* a test.\n"));
+    write(QStringLiteral("docs/specs/DOOM-0331-bloom.md"),
+          QStringLiteral("# DOOM-0331 — bloom\n\n"
+                         "## 3. Invariants\n\n"
+                         "- **INV-1** — unrelated. *Test:* a test.\n"));
+
+    QJsonObject req;
+    req["caller_cwd"] = root;
+    QJsonArray files; files.append(QStringLiteral("check.py"));
+    req["files"] = files;
+
+    RemoteControl rc(nullptr, nullptr);
+    const QJsonObject out = rc.cmdInvariantCheck(req).object();
+
+    EXPECT_TRUE(out.value("ok").toBool());
+    EXPECT_EQ(out.value("specs_scanned").toInt(), 2)
+        << "both specs must be READ, whatever their id prefix";
+    EXPECT_EQ(out.value("matched_count").toInt(), 1)
+        << "and only the one citing check.py matches";
+}
+
+// ANTS-4376 / ANTS-4374 — a scan that read NOTHING must be distinguishable
+// from a scan that read specs and matched none. Those were the same envelope
+// for three sessions, which is what let a blind verb read as an all-clear.
+TEST(McpInvariantCheck, ScanningNothingIsDistinguishableFromMatchingNothing) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QJsonObject req;
+    req["caller_cwd"] = root;
+    QJsonArray files; files.append(QStringLiteral("src/x.cpp"));
+    req["files"] = files;
+
+    RemoteControl rc(nullptr, nullptr);
+    // (a) no specs dir at all — scanned nothing.
+    const QJsonObject none = rc.cmdInvariantCheck(req).object();
+    EXPECT_TRUE(none.value("ok").toBool());
+    EXPECT_EQ(none.value("matched_count").toInt(), 0);
+    EXPECT_TRUE(none.value("scanned_nothing").toBool())
+        << "matched_count:0 with nothing read must say so";
+    EXPECT_FALSE(none.value("hint").toString().isEmpty());
+
+    // (b) a real spec that simply does not mention the file — matched
+    // nothing, but DID look. No scanned_nothing marker.
+    ASSERT_TRUE(QDir().mkpath(root + "/docs/specs"));
+    QFile f(root + "/docs/specs/PROJ-0001-thing.md");
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("# PROJ-0001 — thing\n\n## 3. Invariants\n\n"
+            "- **INV-1** — about something else. *Test:* a test.\n");
+    f.close();
+    const QJsonObject looked = rc.cmdInvariantCheck(req).object();
+    EXPECT_EQ(looked.value("matched_count").toInt(), 0);
+    EXPECT_EQ(looked.value("specs_scanned").toInt(), 1);
+    EXPECT_FALSE(looked.contains("scanned_nothing"))
+        << "it looked and found nothing — that is the legitimate case";
 }

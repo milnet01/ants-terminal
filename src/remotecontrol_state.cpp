@@ -2214,8 +2214,27 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
             matched.append(entry);
         }
     };
-    scanOneDir(QStringLiteral("docs/specs"),
-               QStringLiteral("ANTS-*.md"), specsScanned);
+    // ANTS-4376 — the specs glob was hard-coded `ANTS-*.md`, so this verb saw
+    // NOTHING on any project whose id prefix is not ANTS. Measured across four
+    // projects on 2026-08-14: Ants Terminal 243 specs scanned, LottoTracker 0
+    // (spec_query lists 8), DOOM 0 (lists 19), OneUp 0 — while spec_query
+    // resolved docs/specs on every one. It looked like "works only where Ants
+    // is rooted"; the truth is duller and worse — this project's prefix simply
+    // happens to be ANTS.
+    //
+    // It matters because /write-code Phase 0 OPENS with this call to surface a
+    // documented contract before an edit breaks it, and `matched_count:0` with
+    // `ok:true` is indistinguishable from the legitimate "no spec governs
+    // these files". So a session edits under a contract it was never shown.
+    // Three sessions re-confirmed it before it was diagnosed.
+    //
+    // Scan every `*.md`, matching what spec_query's list mode already does,
+    // and honour `.ants/project.json`'s `specs_dir` (ANTS-2160) the way
+    // doc_integrity and spec_query do rather than hard-coding docs/specs.
+    const QString specsDir =
+        ProjectSettings::load(rootCanonical).specsDir.value_or(
+            QStringLiteral("docs/specs"));
+    scanOneDir(specsDir, QStringLiteral("*.md"), specsScanned);
     scanOneDir(QStringLiteral("docs/phases"),
                QStringLiteral("phase_*.md"), phasesScanned);
 
@@ -2231,6 +2250,23 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     result["mode"]                = wantBodies ? QStringLiteral("full")
                                                : QStringLiteral("summary");
     result["invariants_included"] = wantBodies;
+    // ANTS-4376 / ANTS-4374 — a scan that read NO specs must not answer in the
+    // same shape as a scan that read specs and matched nothing. `ok:true` with
+    // `matched_count:0` is the legitimate "no spec governs these files", and
+    // for three sessions it was also what a totally blind scan returned. Say
+    // which, and say what was looked at.
+    if (specsScanned == 0 && phasesScanned == 0) {
+        result["scanned_nothing"] = true;
+        result["specs_dir"]       = specsDir;
+        result["hint"] = QDir(rootCanonical + QLatin1Char('/') + specsDir).exists()
+            ? QStringLiteral("no spec files were read: %1 exists but holds no "
+                             "*.md. matched_count:0 here means NOTHING WAS "
+                             "LOOKED AT, not that no spec governs these files.")
+                  .arg(specsDir)
+            : QStringLiteral("no spec files were read: %1 does not exist. Set "
+                             "`specs_dir` in .ants/project.json if this "
+                             "project keeps specs elsewhere.").arg(specsDir);
+    }
     if (!wantBodies && !matched.isEmpty()) {
         result["hint"] = QStringLiteral(
             "summary mode: invariant bodies omitted (invariants_count is the "

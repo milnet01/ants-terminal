@@ -31065,7 +31065,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (LottoTracker), partially self-closed by their re-test.
 
-- 📋 [ANTS-4376] **`invariant_check` scans ZERO specs and returns `ok:true` on every project except Ants Terminal — `/write-code` Phase 0's opening call is a false all-clear almost everywhere.**
+- ✅ [ANTS-4376] **`invariant_check` scans ZERO specs and returns `ok:true` on every project except Ants Terminal — `/write-code` Phase 0's opening call is a false all-clear almost everywhere.**
   **Reported by LottoTracker with a hypothesis that turned out to be wrong,
   and the real defect is far wider than they could see from one project.**
   They observed `specs_scanned:0, matched_count:0, ok:true` where `spec_query`
@@ -31101,6 +31101,24 @@ collision are different strengths of evidence.
   and matched nothing — refuse `no_specs_scanned`, or carry an advisory when
   `specs_scanned` is 0 while a specs directory exists. That is ANTS-4374's
   invariant again, on the verb where it costs the most.
+  Resolved (2026-08-14). **The cause is duller and worse than this bullet's
+  own diagnosis.** It is not "works only where Ants is rooted" — that was a
+  coincidence. `cmdInvariantCheck` hard-coded the glob `ANTS-*.md`, so it
+  read nothing on any project whose id prefix is not ANTS, and this project's
+  prefix simply happens to be ANTS. LottoTracker's topic-suffix hypothesis
+  and the prefix-LENGTH hypothesis tested here were both wrong for the same
+  reason: nobody looked at the glob.
+  Fixed: scan every `*.md`, matching what `spec_query`'s list mode already
+  does, and honour `.ants/project.json`'s `specs_dir` (ANTS-2160) instead of
+  hard-coding `docs/specs`, as `doc_integrity` and `spec_query` do.
+  **An existing guard test was PINNING the defect** — INV-4b required the
+  `ANTS-*.md` glob — so it is inverted rather than deleted: a
+  project-prefix-specific glob must never come back.
+  Second half shipped too (ANTS-4374's invariant, on the verb where it costs
+  most): a scan that read NO specs now carries `scanned_nothing:true`, the
+  resolved `specs_dir`, and a hint distinguishing "the directory is missing"
+  from "it exists and holds no .md". `matched_count:0` after a real scan is
+  unchanged — that is the legitimate answer, and both cases are tested.
   **Layman:** The check that is supposed to warn you before you break a documented rule reads nothing at all on almost every project, and reports that everything is fine.
   Kind: fix.
   Lanes: mcp, speclint, remotecontrol.
