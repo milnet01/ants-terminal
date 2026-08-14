@@ -93,10 +93,23 @@ would be a second verb sharing a name.
 What *is* reused, rather than rebuilt:
 
 - **The ripgrep plumbing** — `rcRunRg()` in `src/remotecontrol_workspace.cpp`
-  (argv, working dir, millisecond budget, `rg_failed`). The handler is
-  appended to that same TU, whose stated subject is "Workspace and code index
-  verbs", so nothing is promoted out of file scope and no TU ordinal marker
-  moves.
+  (argv, working dir, millisecond budget, `rg_failed`). It is file-local to an
+  anonymous namespace, so the handler is appended to that same TU, whose stated
+  subject is "Workspace and code index verbs".
+
+  **This is a stated divergence from `mcp-tools.md`'s TU rule, not an oversight
+  of it.** That rule's cheap position is a *new* handler TU appended last; here
+  the handler joins TU 6 of 12. What the rule exists to prevent is a
+  test-driven seam sharing a TU with its handler, which drags `RemoteControl`
+  → `MainWindow` into everything that links it and broke `test_core` when it
+  was measured (ANTS-3855). That requirement is met in full by
+  `src/cochangefamily.{h,cpp}` being its own TU under `ants_core_lib` (INV-10);
+  the new-handler-TU half is not load-bearing once it is. Joining an existing
+  TU is also strictly cheaper: a thirteenth TU would renumber every `TU N/M`
+  head marker in the sibling `remotecontrol*.cpp` files, which
+  `RcTuSplit.TuOrdinalMarkersAscend` asserts. **An implementer must not create
+  `src/remotecontrol_cochangefamily.cpp`** — that is the diff this paragraph
+  exists to prevent.
 - **The refusal taxonomy** — `caller_cwd_required`, `bad_args`, `rg_failed`,
   all already in `mcp-error-codes.md`. No new code is minted, and `bad_path`
   is absent because the verb takes **no path-typed argument**: `stem`,
@@ -117,15 +130,35 @@ splitWords("setMcpEnabled")       -> [set, mcp, enabled]
 splitWords("MCP_ENABLED")         -> [mcp, enabled]
 ```
 
-A candidate is a **site** when the longest **contiguous run** of the stem's
-words appearing in the candidate's words is at least `min_run` long. The run
+A candidate is a **site** when the longest run of stem words it shares is at
+least `min_run` long, where the run must be **contiguous in both sequences** —
+consecutive in the stem's words *and* consecutive in the candidate's. The run
 is what holds a family together, and it is what survives an affix:
 `setMcpEnabled` shares the run `[mcp, enabled]` with the stem even though it
 shares no whole name with it.
 
-The scan pattern handed to `rg` is a cheap over-approximation: it finds
-candidates, and `splitWords` on the matched identifier does the real filtering
-in process.
+**Both halves of "contiguous" are load-bearing.** Under the looser reading —
+consecutive in the stem, merely present in order in the candidate —
+`mcpTraceEnabled` would score `[mcp, enabled]` and become a site at the
+default `min_run`. It would also be unreachable, because the scan pattern
+below never matches it: the filter would be looser than the search, and the
+sites it admitted could never be found.
+
+### 2.2.1 From an `rg` match to a candidate
+
+The scan pattern finds *text*; the filter needs a *name*. The widening step
+between them decides `name`, `run`, `run_len` and `role`, so it is pinned
+rather than left to the implementer:
+
+- **Inside a string literal**, the candidate is the literal's contents.
+  `"claude.mcp_enabled"` matched at `claude.mcp` widens to the whole key, which
+  `splitWords` reads as `[claude, mcp, enabled]` — run 3, `role: json_key`.
+- **Outside one**, the candidate is the maximal surrounding `[A-Za-z0-9_]`
+  token. `m_claudeMcpEnabled` matched at `claudeMcp` widens to the whole
+  identifier — `[m, claude, mcp, enabled]`, run 3, `role: member`.
+
+Without this the same match yields a different `name` and a different `role`
+per implementer, and the two examples in § 2.5 are not reproducible.
 
 **The pattern is derived from `min_run`, because the two have to agree.** At
 `min_run >= 2` it is the case-insensitive alternation of the stem's adjacent
@@ -139,6 +172,19 @@ at every setting.
 A single-word alternation is the expensive one, which is why it is opt-in: for
 a stem whose words are common in the tree it approaches a full-text search for
 that word, bounded only by `max_sites`.
+
+### 2.2.2 Scan scope
+
+**The scan is rooted at `caller_cwd` and covers the whole repository, minus
+whatever `.gitignore` excludes** — `rg`'s own default. It does **not** consult
+`.ants/project.json`'s `source_roots` / `test_roots`.
+
+That is a deliberate divergence from `find_sources`, and it is the decision
+this verb turns on: a config key's `docs/`, `CLAUDE.md` and spec mentions are
+co-change sites, and the declared source roots exclude every one of them. The
+cost is real and § 7 states it — a repo-wide scan for `claudeMcpEnabled`
+matches 74 files here against 11 under `src/`, most of the difference being
+prose. `max_sites` and INV-7 are what keep that bounded.
 
 ### 2.3 Roles
 
@@ -214,6 +260,13 @@ six-stem call parse identically and no caller branches on which form it sent.
   "truncated": false }
 ```
 
+**One row per source line, never one per stem.** Stem families overlap — § 2.4's
+own example sends `claudeMcpEnabled` and `mcpEnabled`, whose families are
+nearly identical — so a site matching several stems is emitted **once**, owned
+by the stem with the longest run, ties broken by position in `stems[]`. Emitting
+per stem would double `sites_count`, repeat every line in `files[].sites[]`, and
+make INV-6's ordering depend on which duplicate was read first.
+
 **`etag` is absent on purpose.** The dispatcher injects it
 (`applyEtagPattern`); `mcp-tools.md` step 7 says the handler must not emit it,
 so it appears on the wire and never in `cmdCoChangeFamily`'s return.
@@ -226,7 +279,7 @@ this stem matches 74 files, most of them prose under `docs/specs/`.
 
 | File | Change |
 |---|---|
-| `src/cochangefamily.h` / `.cpp` | **New.** The pure seam: `splitWords`, `longestRun`, `scanPattern`, `classifyRole`. Own TU under `ants_core_lib` SOURCES, beside `src/findsources.cpp`. No Qt Widgets, no `RemoteControl`, no `MainWindow`. |
+| `src/cochangefamily.h` / `.cpp` | **New.** The pure seam: `splitWords`, `widenToCandidate` (§ 2.2.1), `longestRun`, `scanPattern`, `classifyRole`. Own TU under `ants_core_lib` SOURCES, beside `src/findsources.cpp`. No Qt Widgets, no `RemoteControl`, no `MainWindow`. |
 | `src/remotecontrol_workspace.cpp` | `RemoteControl::cmdCoChangeFamily()` appended; calls the seam + `rcRunRg()`. |
 | `src/remotecontrol.h` | Handler declaration. |
 | `src/mainwindow.cpp` | `registerToolProvider("co_change_family", CallerCwdContract::Required, …)`. |
@@ -258,8 +311,9 @@ this stem matches 74 files, most of them prose under `docs/specs/`.
 | `MCP_ENABLED` | `MCP_ENABLED` |
 | `mcpTrace` | no match |
 
-- **INV-3** — a candidate becomes a site only when its longest contiguous run
-  of stem words is `>= min_run`. `min_run` is resolved **per stem** against
+- **INV-3** — a candidate becomes a site only when its longest run of stem
+  words, **contiguous in the stem's sequence and in the candidate's alike**,
+  is `>= min_run`. `min_run` is resolved **per stem** against
   that stem's own word count: it defaults to `min(2, stem_words)` and is
   clamped to `1 … stem_words`. A value outside that range is clamped, never
   refused, so a group mixing a one-word and a three-word stem resolves to a
@@ -272,9 +326,13 @@ this stem matches 74 files, most of them prose under `docs/specs/`.
 - **INV-5** — every emitted `role` is one of the six values in § 2.3, assigned
   in that precedence order. No seventh value is ever emitted. *Test:* case
   `RoleVocabularyIsClosed`, asserting against the enumerated set.
-- **INV-6** — `files[]` is ordered by each file's maximum `run_len`
-  descending, ties broken by `path` ascending; `sites[]` within a file is
-  ordered by `line` ascending. *Test:* case `OrderingIsDeterministic`.
+- **INV-6** — one site row per `(path, line)`, whatever the stem count: a line
+  matching several stems is emitted once, owned by the stem with the longest
+  run, ties broken by position in `stems[]`. `files[]` is ordered by each
+  file's maximum `run_len` descending, ties broken by `path` ascending;
+  `sites[]` within a file is ordered by `line` ascending. *Test:* case
+  `OrderingIsDeterministic`, run with two overlapping stems so the dedup and
+  the ordering are asserted together.
 - **INV-7** — `truncated: true` accompanies every partial answer, and no site
   is dropped without it. Three things make an answer partial and all three set
   it: the site count exceeding `max_sites` (itself clamped to `1 … 1000`,
@@ -282,8 +340,12 @@ this stem matches 74 files, most of them prose under `docs/specs/`.
   sites already parsed are returned rather than discarded; and `rg` being
   hard-killed after that budget. **`rg_failed` is reserved for a scanner that
   did not run** — `startFailed` or a non-zero exit that is not "no matches" —
-  so a caller can distinguish "incomplete" from "no answer". *Test:* case
-  `PartialAnswersAreFlagged`.
+  so a caller can distinguish "incomplete" from "no answer". **When the cap
+  binds, the sites retained are those with the highest `run_len`, ties by
+  `path` then `line`** — never the first N in scan order. Which sites you get
+  is the verb's entire product, so a cap that kept walk order would drop a
+  header's exact-run site in favour of a doc's weak one. *Test:* case
+  `PartialAnswersAreFlagged`, asserting both the flag and the retained set.
 - **INV-8** — *withdrawn — 2026-08-14, the count it defined was uncomputable.*
   It promised a `weak_matches_available` field counting candidates rejected by
   `min_run` alone. The pairs-only scan pattern never produces a one-word
@@ -324,6 +386,21 @@ this stem matches 74 files, most of them prose under `docs/specs/`.
   `StemCannotInjectPattern`, driving the assembler directly with a word
   containing `.*` and asserting the emitted pattern matches that literal
   sequence.
+- **INV-13** — an `rg` match is widened to a candidate by § 2.2.1's rule: to
+  the string literal's contents when the match lies inside one, otherwise to
+  the maximal surrounding `[A-Za-z0-9_]` token. The widened candidate is what
+  `name` reports and what `splitWords` reads, so `run`, `run_len` and `role`
+  all derive from it and not from the raw match span. *Test:* case
+  `MatchWidensToCandidate`, asserting `"claude.mcp_enabled"` matched at
+  `claude.mcp` yields `name: "claude.mcp_enabled"`, `run_len: 3`,
+  `role: json_key`, and `m_claudeMcpEnabled` matched at `claudeMcp` yields
+  `name: "m_claudeMcpEnabled"`, `run_len: 3`, `role: member`.
+- **INV-14** — the scan is rooted at the `caller_cwd` root and covers the whole
+  repository subject to `.gitignore`; `.ants/project.json`'s `source_roots` and
+  `test_roots` are **not** consulted, so a site in `docs/` or `CLAUDE.md` is
+  returned like any other. *Test:* case `ScanIgnoresDeclaredSourceRoots`,
+  against a fixture whose `project.json` declares a root that excludes a file
+  the stem appears in, asserting the site is still returned.
 
 ## 4. RAM / build cost
 
@@ -331,20 +408,27 @@ No new build target and no new external library. `src/cochangefamily.cpp`
 joins the existing `ants_core_lib`; the handler joins an existing RC TU, so
 the RC TU count and its ordinal markers are unchanged.
 
-Memory is bounded by the response cap, not by the tree: `rg` streams, and the
-handler holds at most `max_sites` site records (hard ceiling 1000) plus one
-line of matched text each, clipped to 512 bytes — the same clip
-`workspace_search` applies. Worst case ≈ 1000 × ~600 B ≈ 600 KB, transient,
-freed with the response. No cache, no process-lifetime state, so nothing to
-evict.
+Memory is bounded by the response cap, not by the tree, and INV-7's retention
+rule is what makes the two compatible. `rg` streams; the handler keeps a
+bounded min-heap of `max_sites` records keyed by `run_len` (ties `path`, then
+`line`), evicting the weakest as it parses. So the highest-`run_len` sites
+survive the cap **without** holding every candidate — the naive reading, "sort
+at the end", would need the whole repo-wide candidate set resident and is what
+this sentence exists to rule out.
+
+Each record carries one line of matched text clipped to 512 bytes — the same
+clip `workspace_search` applies (`kDefaultMaxMatchBytes`). Worst case ≈ 1000 ×
+~600 B ≈ 600 KB, transient, freed with the response. No cache, no
+process-lifetime state, so nothing to evict.
 
 ## 5. Out of scope
 
 - **Semantic roles ("apply sink", "editor widget").** Permanent exclusion, not
   deferred — § 2.3 gives the reason. No follow-up id.
-- **Suggesting the new field's names.** The verb reports where the *exemplar*
-  is touched; writing the mirror is the agent's job. A generator would have to
-  know the target's type and defaults, which is a different verb.
+- **Suggesting the new field's names.** Permanent exclusion, no id: the verb
+  reports where the *exemplar* is touched, and writing the mirror is the
+  agent's job. A generator would have to know the target's type and defaults,
+  which is a different verb and not one this spec is deferring.
 - **Cross-repo families.** Permanent exclusion: the scan is rooted at one
   `caller_cwd`, as every project-scoped verb is.
 - **Frequency-ranked weak matches** — ranking a one-word run by how common
@@ -360,7 +444,7 @@ evict.
 Feature test: `tests/features/co_change_family/`, compiled into the
 **`test_claude`** bundle (beside `tests/features/mcp_find_sources/`; it is not
 a standalone target). Label `features;fast`. One case per live invariant, as
-named in § 3: **INV-1 … INV-7 and INV-9 … INV-12, eleven cases.** INV-8 is
+named in § 3: **INV-1 … INV-7 and INV-9 … INV-14, thirteen cases.** INV-8 is
 withdrawn and has no case.
 
 Two project conventions apply and are not optional here:
@@ -388,11 +472,15 @@ alternation at `min_run: 1`.
   caller who re-runs at `min_run: 1` and finds the extra sites useful has
   shown the default wrong. If that becomes the habit, the default flips and
   frequency ranking (§ 5) is what makes the wide net readable.
-- **Should the scan honour `.ants/project.json` roots, or the whole repo?**
-  This spec says the whole repo (minus `.gitignore`, via `rg`), because a
-  config key's `docs/` and `CLAUDE.md` mentions are co-change sites and the
-  declared source roots exclude them. That is a deliberate divergence from
-  `find_sources`, which walks the declared roots only.
+- **Is the repo-wide scope affordable?** It is decided, not open — § 2.2.2 and
+  INV-14 settle it, and the reason is that the `docs/` sites are the ones the
+  verb exists to surface. What is open is the cost: 74 matched files against
+  11 under `src/`, and a repo-wide `rg` over this tree took over two minutes
+  once during drafting on a warm cache, which is far outside a verb's budget.
+  INV-7's cap bounds the *response*, not the scan. If the scan itself proves
+  too slow, the answer is a scope argument defaulting to repo-wide — not a
+  reversal of the default, which would put the verb back where `find_sources`
+  already is.
 
 ## 8. Cross-doc impact
 
@@ -409,3 +497,4 @@ alternation at `min_run: 1`.
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-08-14 | 2, cold; genre pinned `spec`; one byte-stable shared packet carrying the `findsources` / `symbolquery` / `rcRunRg` windows, the `claude.mcp_enabled` family as it exists, and the `specs.md` / `mcp-tools.md` excerpts | **Q1 2 · Q2 3 · Q3 5 · Q4 1** (11 verified / 1 dismissed) | **This document's first gate; all 11 fixed, no deferred tail.** **[Q2] The escape hatch the design rested on was inert, and one lane found it alone.** § 2.5 promised `weak_matches_available` so a caller could tell the tight default was lossy and re-run at `min_run: 1` — but INV-2's scan pattern was the alternation of adjacent word *pairs*, which cannot return a one-word match, so every candidate already had `run_len >= 2`, the count was permanently 0, and `min_run: 1` would have returned byte-identical results. The reporter's own `audioLod` case was unreachable at every setting. Fixed by deleting the field (INV-8 withdrawn) and making INV-2 derive the pattern *from* `min_run`, so the argument widens the scan rather than only the filter. **[Q1] The § 1 premise was false about one of the two verbs it indicted.** It said `findCaller()` and `findSources()` "both match an identifier as a **whole word**"; `findSources` lowercases the file's bytes and runs `QByteArray::indexOf` per case variant, so it matches on substring and *does* reach `setClaudeMcpEnabled`. Surfaced as a lane's open question, confirmed by the orchestrator against `findsources.cpp`. § 1 now states each verb's real limit separately — `findCaller` anchors on `\b<sym>\s*\(` and cannot see a member reference at all; `findSources` is file-granular, walks `src/`+`tests/` only, and its variants are separator-blind to the dotted key. **[Q3] The verb crossed a trust boundary with no invariant, which `specs.md` § 5.4 requires** — a caller-supplied stem was interpolated into an `rg` pattern with no charset check and no escaping, so `a.*b` would have surfaced as `rg_failed` rather than `bad_args`. Now INV-9 (charset) + INV-12 (escape). **[Q3] Multi-stem mode invented its own wire shape:** the arg table said each site carries the `stem` that matched it, the response example had no such key and singular `stem`/`min_run`, and nothing said which wins when both args are sent. Now one shape always — per-stem maps, per-site `stem`, `stems` wins. **[Q2] `etag_match`/`fields` appeared in the request example but in neither the arg table nor § 2.6's prop factories** (`additionalProperties == false` would have rejected the document's own example). **[Q1] `etag` was shown as a handler-returned field**, which `mcp-tools.md` step 7 forbids. **[Q4] INV-10 claimed "the `test_core` link itself" as a test surface** although § 2.6 wires the test into `test_claude` only, so nothing pulls the seam's object into that link and the clause could never fail; the grep is now the whole surface, and the doc says why. Plus three underspecified response behaviours both lanes raised as open questions and the orchestrator promoted (**[Q3]** ×3): what a timed-out scan returns (now `truncated`, with `rg_failed` reserved for a scanner that did not run), whether an over-ceiling `max_sites` clamps or refuses (clamps), and that an all-stopword stem such as `isEnabled` would have returned a silent empty result (now `bad_args`). **Dismissed as immaterial:** an illustrative `files_count: 12` contradicting § 1's measured 11 — true, but it changes nothing built; the block was rewritten for the shape fixes anyway and the totals are now marked illustrative against a measured repo-wide 74. **Collateral, caught by 4c:** the INV-8 tombstone was first written `*withdrawn. …*`, which `speclint.cpp`'s literal `^\*withdrawn — (.+?)\*` does not match, so the withdrawal re-fired `invariant_no_test`; rewritten to the corpus form. **Resolved, not findings:** § 4's "the same clip `workspace_search` applies" is exact (`kDefaultMaxMatchBytes` = 512), and `mcp-tools.md` step 4 has nothing to validate here because the verb takes no path-typed argument — stated in § 2.1 so the next reader does not re-ask. |
+| 2 | 2026-08-14 | 2, cold; identical packet rebuilt from disk after loop 1's edits, with the `findSources` substring fact and `speclint.cpp`'s tombstone anchor added as verified source facts | **Q2 2 · Q3 4** (6 verified / 0 unverified) | **Cap reached (2 for a spec); all six fixed, no deferred tail.** The loop found no false claim — every Q1 in the document now holds — and instead found four places where a capable implementer would have had to invent something the wire binds to. **[Q3] The step from an `rg` match to a candidate was never specified**, and `name`, `run`, `run_len` and `role` all derive from it: INV-2's own table says the match for `"claude.mcp_enabled"` is `claude.mcp`, while § 2.5 emits `name: "claude.mcp_enabled"` and `run_len: 3`, with nothing in between. New § 2.2.1 + INV-13 pin the widening (string-literal contents inside a literal, maximal `[A-Za-z0-9_]` token outside one), which is also the first thing making § 2.5's two examples reproducible. **[Q3] "Contiguous run" was unanchored** — contiguous in the stem, in the candidate, or both. The loose reading makes `mcpTraceEnabled` a site at the default `min_run` *and* unreachable, because the pairs pattern never matches it: the filter would have been looser than the search. Now "contiguous in both sequences", mirrored in INV-3. **[Q3] The repo-wide scan scope was decided only inside § 7 Open questions**, with § 2, § 2.6 and every invariant silent — so an implementer reading the Surface alongside § 2.1's `find_sources` comparison would have scoped to the declared source roots and lost the `docs/` sites the verb exists to surface. Moved to § 2.2.2 + INV-14; § 7 now carries the cost rather than the fork. **[Q3] A line matching two stems had no stated arity**, and § 2.4's own example sends two stems with near-identical families — one builder doubles `sites_count`, another picks an arbitrary owner. INV-6 now pins one row per `(path, line)`, owned by the longest run, ties by `stems[]` order. **[Q2] Which sites survive the cap was unspecified, and the two candidate readings collided with § 4's memory bound** — INV-6's global `run_len` ordering implies holding every candidate, § 4 promised at most `max_sites` records. Both lanes reached this independently from opposite ends. INV-7 now retains the highest `run_len`, and § 4 states the bounded min-heap that satisfies both, explicitly ruling out "sort at the end". **[Q2] § 2.1's TU choice contradicted `mcp-tools.md` without saying so:** the standard's cheap position is a *new* handler TU appended last, this spec appends to TU 6 of 12. Verified the divergence is correct — `remotecontrol_workspace.cpp` is in `ANTS_RC_SOURCES_REL`, the seam requirement is met by `cochangefamily.{h,cpp}` being its own TU, and a thirteenth TU would renumber every `TU N/M` marker that `RcTuSplit.TuOrdinalMarkersAscend` asserts — so § 2.1 now states the divergence and forbids the new-TU diff by name. **Two of the six landed on text loop 1 wrote** (INV-7's partial-answer clause, § 2.5's per-site `stem`), which is the fix-pass-generates-defects pattern rather than an unsettled contract; the other four were in the original draft. **Dismissed:** `rg`'s millisecond budget is never pinned — true, and a local choice the builder settles, with nothing else binding to it. **Fixed but not tallied:** § 5's "Suggesting the new field's names" declared neither a permanent exclusion nor an id, which `specs.md` § 4 requires; a lane correctly declined to file it as a finding since it answers none of the four questions. **Why the cap binding is the right exit here:** every remaining risk in this document is about what the scan *costs* at repo scope, and § 7 says a repo-wide `rg` over this tree once took over two minutes. No cold read settles that — running the verb does. |
