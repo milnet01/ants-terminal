@@ -39369,6 +39369,49 @@ here.)
   b50a0c77) when this happened — worth ruling in or out before designing a
   fix, but it does not explain minting ids.
 
+  **The first hypothesis above is SETTLED, and it is wrong (2026-08-14).** This
+  bullet offered two: "either the surgical path regressed … or the store-backed
+  render is now the default write path". Its evidence for the first was that
+  `b50a0c77`, three commits earlier, flipped a bullet with a +20/−1 diff. That
+  commit's own message says why: *"Edited directly rather than via roadmap_log,
+  which renders the markdown from a store still holding the bad import."* It was
+  a **hand edit**. There is no surgical path and none regressed — so do not go
+  looking for one to restore.
+
+  `RoadmapWrite::commitAndRender` (`src/roadmapwrite.cpp`, landed with
+  ANTS-3809) is the designed write path for all eight ops, and its header states
+  the reasoning: `roadmap-data-model.md` INV-3 makes the store primary, and the
+  sequence is begin → mutate → **dry** render → commit → real render precisely
+  so the file never gets ahead of the store. A full re-render is the intended
+  behaviour, not a regression.
+
+  **So the defect is narrower than the headline, and the fix is not "restore the
+  surgical path" — that would fight the architecture.** The design assumes the
+  store is a superset of the file. That assumption is currently false by ~200
+  ids, and *nothing checks it*; the render then writes the store's document, and
+  a bullet the store never imported is simply absent from it.
+
+  Proposed fix, in two parts:
+
+  1. **A divergence guard in `commitAndRender`**, between the dry render (steps
+     3–4) and the store commit (step 6). The dry render already computes exactly
+     what would be published, so compare its id set against the ids in the live
+     file; if the file holds any the render would drop, refuse — a new code in
+     the `render_*` family — naming them, instead of publishing. It fails safe,
+     needs no new data, and sits at the one seam all eight ops share, so it
+     cannot be bypassed by fixing `op:flip` alone.
+  2. **Counter reconciliation** — `.roadmap-counter` against the store's
+     `id_prefix.high_water`. ANTS-4142 deferred this here explicitly: *"the
+     durable fix is to reconcile the counter with the store's high-water after a
+     migration, and it belongs with ANTS-4141's ruling on which path owns
+     allocation."* That ruling is the paragraph above: the store owns it.
+
+  Sequencing note: the guard makes `roadmap_log` **safe** but still **refusing**
+  while the divergence stands. Actually clearing it is a reconciliation pass —
+  importing the ~200 un-imported bullets — which is ANTS-4065 Phase E work. Do
+  the guard first regardless: it is small, it stops the data loss immediately,
+  and it is correct whatever is decided about reconciliation.
+
   **Measured 2026-08-13 (ANTS-4065 D3), and the shape is worse than
   "reformatting": the render DELETES any bullet the store has not imported.**
   A bullet filed by hand as `ANTS-4146` was, one `roadmap_log op:annotate`
