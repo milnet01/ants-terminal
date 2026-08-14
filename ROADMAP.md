@@ -31825,7 +31825,7 @@ something the first batch recorded: ANTS-4393 retires a hypothesis ANTS-4390's
 bullet carried as unverified, and ANTS-4380 was already shipped by the time
 finbreak re-verified it.
 
-- 📋 [ANTS-4393] **`spec_lint`'s `surfaces_checked` has a DIFFERENT cause from `sections_checked`, and no documented input turns it on — so the test-surface check is silently off on every project, permanently.**
+- ✅ [ANTS-4393] **`spec_lint`'s `surfaces_checked` has a DIFFERENT cause from `sections_checked`, and no documented input turns it on — so the test-surface check is silently off on every project, permanently.**
   AI_Prompts measured what ANTS-4390's bullet recorded as an unverified
   guess, on a different project, and the guess was wrong: adding the
   in-project format standard flips `sections_checked` to true and leaves
@@ -31847,12 +31847,18 @@ finbreak re-verified it.
   or say plainly that nothing does yet — it currently reads as a capability a
   caller might satisfy; (2) extend ANTS-4373's `skipped[]` to name EVERY
   gated check that did not run, not just `missing_section`.
+  Resolved (2026-08-14), both halves. `skipped[]` now names
+  `invariant_no_test` too, and a `surfaces_skipped_hint` says the limitation
+  is the VERB's rather than the project's configuration — the distinction the
+  reporter identified, since a caller told only "this did not run" goes
+  looking for a switch that does not exist. ANTS-4390's bullet is corrected:
+  the shared-cause line was a guess and is now measured false.
   **Layman:** The spec checker has two tests it can quietly decline to run, and there is no way to switch the second one on.
   Kind: fix.
   Lanes: speclint, mcp.
   Source: cc-feedback-2026-08-14 (AI_Prompts), corrects ANTS-4390's note.
 
-- 📋 [ANTS-4394] **`read_region` has no `~global` sentinel though `file_outline` and `doc_integrity` both do, so reading a global standard drops out to Bash.**
+- ✅ [ANTS-4394] **`read_region` has no `~global` sentinel though `file_outline` and `doc_integrity` both do, so reading a global standard drops out to Bash.**
   `file_outline` documents `caller_cwd:"~global"` (ANTS-1390) and
   `doc_integrity` the same (ANTS-3719). `read_region` documents neither and
   refuses `bad_path`. **So the one verb designed to fetch a NAMED SECTION of
@@ -31866,6 +31872,16 @@ finbreak re-verified it.
   shifts as it is edited, when `section=` is precisely the right tool.
   Fix: accept the same sentinel the sibling verbs accept. If it is deliberately
   read-only-verb-scoped, `read_region` is a read-only verb.
+  Resolved (2026-08-14) — **and it is a DOCUMENTATION defect, not a
+  capability gap, which changes what was wrong.** `cmdReadRegion` has resolved
+  the sentinel through `ants::expandGlobalConfigSentinel` since it was
+  written, exactly as its siblings do; the reporter said outright that they
+  did not attempt it "as the schema does not document it for this verb", and
+  their `bad_path` came from an absolute path with a PROJECT `caller_cwd`,
+  which correctly refuses. So the capability was there and unreachable.
+  An undocumented capability is an absent one — the fix is the schema, on both
+  `read_region` and `read_regions`, and the test scopes the assertion to each
+  verb's own descriptor so a mention in a sibling cannot satisfy it.
   **Layman:** The rulebook everything defers to is the one file the section-reader cannot open.
   Kind: fix.
   Lanes: mcp, remotecontrol.
@@ -31983,7 +31999,7 @@ finbreak re-verified it.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (finbreak).
 
-- 📋 [ANTS-4400] **`roadmap_query ids` returns document order with no way to recover input order.**
+- ✅ [ANTS-4400] **`roadmap_query ids` returns document order with no way to recover input order.**
   Correctly documented ("Result is in DOCUMENT order, not input order"), but
   there is no `order:"input"` and no per-bullet echo of the caller's position.
   Fetching two ids to compare them returns them in file order, so a caller who
@@ -31992,6 +32008,11 @@ finbreak re-verified it.
   so a caller can restore its own ordering without a dict comprehension.
   Genuinely low priority — each bullet already carries its `id`, so the
   caller-side fix is one line.
+  Resolved (2026-08-14) as `input_index` — the cheaper of the two, as
+  preferred. Document order is unchanged (that behaviour is deliberate and
+  documented); each bullet simply says which position of the caller's `ids`
+  array it was asked for at. The test asks for two ids in REVERSE document
+  order, which is the shape that mis-pairs.
   **Layman:** Ask for two items by number and they come back in the file's order, not yours.
   Kind: enhancement.
   Lanes: mcp, roadmap.

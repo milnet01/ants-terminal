@@ -701,10 +701,26 @@ QJsonObject RemoteControl::specLintBuildResponse(
     o[QStringLiteral("sections_source")] =
         sectionsSource.isEmpty() ? QJsonValue(QJsonValue::Null)
                                  : QJsonValue(sectionsSource);
+    // ANTS-4393 — `surfaces_checked` has a DIFFERENT cause from
+    // `sections_checked`, measured on a project where adding the format
+    // standard flipped the first to true and left the second false. So the
+    // skip list must name EVERY gated check that did not run, not just the
+    // one with a documented switch: there is a documented input for section
+    // structure and NONE for test surfaces, which means `ok:true,
+    // findings:[]` still says nothing about surfaces on every project.
+    QJsonArray skipped;
+    if (!surfacesChecked) skipped.append(QStringLiteral("invariant_no_test"));
+    if (!sectionsChecked) skipped.append(QStringLiteral("missing_section"));
+    if (!skipped.isEmpty()) o[QStringLiteral("skipped")] = skipped;
+    if (!surfacesChecked) {
+        o[QStringLiteral("surfaces_skipped_hint")] = QStringLiteral(
+            "the test-surface check did NOT run, and unlike the "
+            "required-section check there is NO documented input that turns "
+            "it on — this is a limitation of the verb, not something the "
+            "project can configure. Treat `findings:[]` as silent about test "
+            "surfaces, not as a pass. Tracked as ANTS-4393.");
+    }
     if (!sectionsChecked) {
-        QJsonArray skipped;
-        skipped.append(QStringLiteral("missing_section"));
-        o[QStringLiteral("skipped")] = skipped;
         o[QStringLiteral("skipped_hint")] = QStringLiteral(
             "the required-section check did NOT run: no `<!-- required-sections "
             "-->` fenced block was found in any of %1 (relative to the project "

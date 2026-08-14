@@ -2608,6 +2608,26 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         // INV-3 — accounting arrays. Preserve INPUT order so a caller
         // diffing against the request gets a positional read.
+        // ANTS-4400 — `input_index` on each bullet, so a caller can restore
+        // its OWN ordering. Results are in DOCUMENT order (documented, and
+        // correct), but the natural use of `ids` is "compare these two, in
+        // the order I care about" — and a caller who zips the result against
+        // its input array silently mis-pairs. The cheaper of the two fixes
+        // offered: no `order:"input"` mode, just the position each bullet was
+        // asked for at.
+        QHash<QString, int> inputIndexById;
+        for (int k = 0; k < idsArgInputOrder.size(); ++k)
+            if (!inputIndexById.contains(idsArgInputOrder.at(k)))
+                inputIndexById.insert(idsArgInputOrder.at(k), k);
+        for (int k = 0; k < matches.size(); ++k) {
+            QJsonObject b = matches.at(k).toObject();
+            const auto it2 =
+                inputIndexById.constFind(b.value(QStringLiteral("id")).toString());
+            if (it2 != inputIndexById.constEnd()) {
+                b[QStringLiteral("input_index")] = *it2;
+                matches.replace(k, b);
+            }
+        }
         QJsonArray matchedIds;
         QJsonArray missingIds;
         QJsonArray idsEcho;

@@ -392,3 +392,53 @@ TEST(roadmap_query_id_body_cap, Ants4362FilteredQuerySaysBodiesWereWithheld) {
     EXPECT_FALSE(rc.cmdRoadmapQuery(byId).object()
                      .contains(QStringLiteral("bodies_omitted")));
 }
+
+// ANTS-4400 — each bullet carries `input_index`, its position in the `ids`
+// array the caller sent.
+//
+// Results are in DOCUMENT order, which is documented and correct — but the
+// natural use of `ids` is "compare these two, in the order I care about", and
+// a caller who zips the result against its own input array silently
+// mis-pairs. Fetching FIBR-0249 and FIBR-0248 returned 0248 first because it
+// sits earlier in the file.
+//
+// The cheaper of the two offered fixes: no `order:"input"` mode, just the
+// position, so a caller restores its ordering without a dict comprehension.
+TEST(roadmap_query_id_body_cap, Ants4400IdsCarryInputIndex) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QByteArray md =
+        "# Roadmap\n\n"
+        "## Work\n\n"
+        "- \xF0\x9F\x93\x8B [ANTS-0001] **Earlier in the file.**\n"
+        "  Kind: feature.\n"
+        "  Source: test.\n\n"
+        "- \xF0\x9F\x93\x8B [ANTS-0002] **Later in the file.**\n"
+        "  Kind: feature.\n"
+        "  Source: test.\n";
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), md));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    // Asked for in REVERSE document order — the shape that mis-pairs.
+    QJsonArray ids;
+    ids.append(QStringLiteral("ANTS-0002"));
+    ids.append(QStringLiteral("ANTS-0001"));
+    req[QStringLiteral("ids")] = ids;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+
+    const QJsonArray bullets = resp.value(QStringLiteral("bullets")).toArray();
+    ASSERT_EQ(bullets.size(), 2);
+    // Document order is unchanged — the fix adds a field, it does not reorder.
+    EXPECT_EQ(bullets.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("ANTS-0001"))
+        << "results stay in DOCUMENT order; that behaviour is deliberate";
+    // …and each bullet says where the CALLER asked for it.
+    EXPECT_EQ(bullets.at(0).toObject().value(QStringLiteral("input_index")).toInt(-1), 1);
+    EXPECT_EQ(bullets.at(1).toObject().value(QStringLiteral("input_index")).toInt(-1), 0)
+        << "without this a caller zipping bullets[] against its own ids[] "
+           "pairs each bullet with the wrong request";
+}

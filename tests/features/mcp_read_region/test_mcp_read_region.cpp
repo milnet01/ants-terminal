@@ -341,3 +341,40 @@ TEST(McpReadRegion, ByteCapHead) {
     EXPECT_TRUE(benv.value("bytes_cap_clamped").toBool());
     EXPECT_FALSE(benv.value("truncated").toBool());  // whole small file fits
 }
+
+// ANTS-4394 — the `~global` sentinel is documented on read_region and
+// read_regions.
+//
+// This one is a DOCUMENTATION defect, not a capability gap, and the
+// difference is the whole finding: cmdReadRegion has resolved the sentinel
+// through ants::expandGlobalConfigSentinel since it was written, exactly as
+// file_outline (ANTS-1390) and doc_integrity (ANTS-3719) do. The schema never
+// said so, so a session wanting § 5.4 of a global standard passed an absolute
+// ~/.claude path with its PROJECT caller_cwd, got the correct `bad_path`
+// refusal, concluded the verb could not reach the tree, and fell back to
+// `Bash sed -n '405,430p'` — the raw-tool fallback the SessionStart hook
+// exists to avoid, and a line-number guess against a file that shifts as it
+// is edited, when `section=` is precisely the right tool.
+//
+// An undocumented capability is an absent one.
+TEST(McpReadRegion, Ants4394GlobalSentinelIsDocumented) {
+    const std::string rc = ants_test::slurpRemoteControl();
+    const std::string ci =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+
+    // The capability: both handlers resolve the sentinel.
+    EXPECT_NE(rc.find("expandGlobalConfigSentinel"), std::string::npos)
+        << "read_region resolves ~global through the shared helper";
+
+    // The documentation, which is what was missing. Scoped to each verb's own
+    // descriptor block so a mention in a sibling cannot satisfy it.
+    const auto rrPos  = ci.find("rrTool[\"description\"]");
+    const auto rrsPos = ci.find("rrsTool[\"description\"]");
+    ASSERT_NE(rrPos, std::string::npos);
+    ASSERT_NE(rrsPos, std::string::npos);
+    EXPECT_NE(ci.substr(rrPos, 3000).find("~global"), std::string::npos)
+        << "read_region's schema must name the sentinel — a capability the "
+           "schema does not mention is one callers do not have";
+    EXPECT_NE(ci.substr(rrsPos, 3000).find("~global"), std::string::npos)
+        << "and read_regions' too, since it shares the resolution path";
+}

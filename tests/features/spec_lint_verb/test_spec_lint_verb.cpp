@@ -270,3 +270,39 @@ TEST(SpecLintVerb, Ants4390And4373StandardResolutionAndSkipReporting) {
     EXPECT_TRUE(rc.find("\"skipped_hint\"") != std::string::npos)
         << "a boolean says a check did not run; it does not say what to fix";
 }
+
+// ANTS-4393 — `surfaces_checked` has a DIFFERENT cause from
+// `sections_checked`, and nothing documented turns it on.
+//
+// ANTS-4390's bullet recorded the shared-cause hypothesis as unverified. A
+// reporting project measured it: adding the in-project format standard flips
+// sections_checked to TRUE and leaves surfaces_checked FALSE. Same run, same
+// corpus, one input added, one flag moved. Their spec carries nine
+// invariants, every one with a *Test:* clause in the documented form, and
+// surfaces_resolved stayed 0.
+//
+// That retires a guess a later session would reasonably have acted on —
+// fixing sections_checked and expecting the other to follow. And it leaves a
+// sharper asymmetry: there is a documented input for one silent check and
+// NONE for the other, so `ok:true, findings:[]` says nothing about test
+// surfaces on every project, permanently.
+TEST(SpecLintVerb, Ants4393BothSkippedChecksAreNamed) {
+    const std::string rc = ants_test::slurpRemoteControl();
+
+    EXPECT_NE(rc.find("\"invariant_no_test\""), std::string::npos)
+        << "the skip list must name the test-surface check too — ANTS-4373 "
+           "named only missing_section, which is the one WITH a documented "
+           "switch, so the check that can never be turned on stayed silent";
+    EXPECT_NE(rc.find("surfaces_skipped_hint"), std::string::npos)
+        << "…and say that no input turns it on, because the flag otherwise "
+           "reads as a capability a caller might satisfy";
+
+    // The hint must be honest about WHOSE limitation it is. A caller told
+    // only "this did not run" goes looking for the switch; there isn't one.
+    const auto pos = rc.find("surfaces_skipped_hint");
+    ASSERT_NE(pos, std::string::npos);
+    const std::string body = rc.substr(pos, 700);
+    EXPECT_NE(body.find("NO documented input"), std::string::npos)
+        << "the hint must say no input turns it on, not merely that it "
+           "did not run";
+}
