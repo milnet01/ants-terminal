@@ -176,6 +176,16 @@ decision.
 
 ## 9. When you find a hole
 
+**This section is about a known hole in something you ship** — a
+reported vulnerability, an advisory naming a version you are on, a
+weakness you found in your own code. **A routine version sweep is not
+this**; that is `dependencies.md` §5, which reports and waits, because
+most of what a sweep returns is merely behind rather than dangerous.
+The two were saying opposite things about one event until 2026-08-14
+(ROADMAP CFG-0098). The dividing question is whether something is known
+to be exploitable, not which command surfaced it — a sweep that turns up
+a real advisory hands it here.
+
 - **It is a fix, now — not a backlog item.** Ship the fix ahead of
   queued work.
 - **Write the regression test first**, so the hole cannot reopen

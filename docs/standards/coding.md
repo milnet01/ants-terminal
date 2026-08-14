@@ -137,6 +137,16 @@ Applies to build, test, runtime, and lint failures alike. When a
 workaround is genuinely the only option, leave a comment naming
 the underlying constraint so it reads as deliberate, not neglect.
 
+**A disabled test is the one case where the comment is not enough — it
+needs a tracked item as well.** `testing.md` §7 requires one and owns
+the rule. The reason is that this workaround is invisible: every other
+one leaves something failing, or noisy, or obviously commented out,
+while a skipped test leaves a green run that looks exactly like a
+passing one. A comment in a file nobody opens is not a reminder.
+Reconciled 2026-08-14 (ROADMAP CFG-0098) — this section accepted a bare
+comment for every failure class including tests, and the two standards
+disagreed.
+
 ### 1.3 Reuse before rewriting
 
 Before writing new code, look for existing code that does the same
@@ -310,7 +320,14 @@ Rules that hold in every language:
   400 lines keeps it, even where this section would have chosen
   otherwise. Consistency within a file beats correctness across the
   repo; raise the mismatch separately rather than fixing it inside an
-  unrelated change.
+  unrelated change. **Except a database schema, which is read as one
+  object and not file by file** — `domains/database.md` §3a owns it and
+  requires one choice held across the whole schema. Without the
+  exception a schema split over several files can end up half singular
+  and half plural with both halves compliant, which is exactly the
+  confusion that rule exists to stop. Added 2026-08-14 (ROADMAP
+  CFG-0098): `database.md` deferred naming here, and this bullet routed
+  it straight back to the opposite answer.
 - **Name for someone who has never seen the file.** The test is not "is
   this name accurate" — it is "could a stranger guess what this does
   from the name alone".

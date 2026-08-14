@@ -252,6 +252,15 @@ Co-Authored-By: <name> <email>
 Wrap at 72 columns, except a token that cannot be broken — a URL, a
 pasted log line. Use the body to explain WHY; the diff shows WHAT.
 
+**A release commit body and a release tag body are exempt.** Both are
+the changelog section for that version, copied verbatim
+([releases.md](releases.md) §2–3), and changelog bullets routinely run
+past 72. Re-wrapping makes the tag stop matching the published notes,
+which is the one disagreement that standard exists to prevent — and a
+manual re-wrap is a step someone skips, so two people cutting the same
+release produce two different tags. Added 2026-08-14 (ROADMAP
+CFG-0098).
+
 ### 1.5 Trailers
 
 | Trailer | When |
@@ -373,6 +382,17 @@ Two consequences worth stating, because both have been got wrong:
   session, and remember it. Guessing per push means guessing wrong
   eventually, and the expensive direction is the silent one.
 
+**A release push is exempt from the batch, on every repository.** Once
+a version is bumped, committed and tagged, the release is half-cut
+until it is pushed and its checks have run — and a half-cut release is
+worse than the minutes it saves: the tag exists on one machine, nothing
+is published, and the next session cannot tell a queued release from a
+failed one. So [releases.md](releases.md) §6 step 7 pushes without
+asking, and this section's batch rule does not apply to it. Everything
+else on a metered repository still queues. Written down 2026-08-14
+(ROADMAP CFG-0098) because the two standards had said opposite things
+and a release completed or hung depending on which was in hand.
+
 Urgency overrides cadence — a security fix, or a push the user asks for,
 goes now regardless. The specific per-repository answers for this
 machine are in the user's global `CLAUDE.md`; this section owns the
@@ -435,7 +455,8 @@ no tagger. Push them explicitly rather than relying on a bulk push, and
 update for them, so the name comes to mean two different commits. On a
 collision, stop and ask.
 
-Release tagging is [releases.md](releases.md) §4.
+Release tagging is [releases.md](releases.md) §4, which states the
+release tag's own push rule rather than deferring it back here.
 
 ### 4.4 Confirm before destructive operations
 
@@ -488,7 +509,7 @@ the rows below say so.
 |------|----------------------|
 | §1.1–1.3 subject shape — the prefix forms, ≤72 characters, no trailing period, no ID repeated in the description | The `commit-msg` hook (`skeleton/files/.githooks/commit-msg`, installed with `git config core.hooksPath .githooks`). Roadmap-aware: it accepts an ID, `X.Y.Z:` or a category prefix in any repo, and *additionally* accepts `<component>: ` where no `ROADMAP.md` and no `.roadmap-counter` exists |
 | §1.3 present tense, and the description's capitalisation | **nothing** — both are judgements about wording rather than shape, and a hook cannot make them |
-| §9.0 of `documentation.md` — the mechanical checks ran while writing | The `pre-commit` hook (`skeleton/files/.githooks/pre-commit`), which blocks on a **markdown link** whose target does not resolve — outside `docs/`, and outside any line carrying a date — and, for `documentation.md` §2.1 rather than §9.0, on text a change deletes that survives elsewhere. **Nothing** for a backticked bare path, which it deliberately does not check, nor for §9.0's remaining checks: those are the author's discipline, and this session is the evidence that discipline alone loses |
+| §9.0 of `documentation.md` — the mechanical checks ran while writing | The `pre-commit` hook (`skeleton/files/.githooks/pre-commit`). **What it blocks on is [documentation.md](documentation.md) §9.0's to state, not this table's** — that section owns the hook's path class and gives it in both directions. A restatement lived here until 2026-08-14 and had already drifted from it (ROADMAP CFG-0098) |
 | §1.2 `<component>` names a directory or artefact that exists | **nothing** — the hook matches the component's shape, never that it is real |
 | §1.1 and §5 — the ID names a ROADMAP item that exists | **nothing** — the hook matches the ID's shape, never that it was assigned |
 | §1.4 body wrapped at 72 columns | **nothing** — the hook checks the subject only. Wrapping is decidable and was left out deliberately: a pasted log line or a URL legitimately exceeds it, and a hook that cries wolf gets bypassed with `--no-verify`, which §2.3 has no check for either |

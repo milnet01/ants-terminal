@@ -258,8 +258,15 @@ move between the two without guessing which assertion covers what.
 
 **Invariant ids are append-only.** They are cited from commit messages,
 changelog entries and sibling documents, so renumbering silently breaks
-references that nothing checks. A dropped invariant is marked retired,
-with the version and reason, rather than deleted.
+references that nothing checks. A dropped invariant is marked
+**withdrawn**, with the version and reason, rather than deleted.
+
+That word is [spec-format.md](spec-format.md) §3.7's, which owns the
+Invariants section the marking lives in — this section said *retired*
+until 2026-08-14, so the two standards named one state two ways, shared
+no searchable token, and a search for dead invariants found half of them
+(ROADMAP CFG-0098). *Retired* keeps its separate meaning elsewhere: a
+rule or a skill that has been dropped.
 
 ## 5. Kinds of test
 

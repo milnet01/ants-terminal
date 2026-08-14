@@ -335,6 +335,20 @@ transition rule restated in a second standard was narrowed there and left
 unscoped in its home, and the contradiction survived a full review loop
 because neither passage cited the other.
 
+**A "What checks this" row about machinery another document owns cites
+that document, never restates its coverage.** This is the same rule
+applied to the one place it kept being missed, and it is worth stating
+separately because such a row does not read like a copy — it reads like
+a helpful summary, written once, by whoever wrote *this* document, about
+machinery owned by a *different* one. Nothing re-reads it when the
+machinery changes, so it goes stale silently and in the most damaging
+direction: a reader trusts a green run the row promised and the check
+was never there. Say which document owns the answer and stop; a row may
+still say **nothing**, because that is a claim about this standard's own
+coverage. Added 2026-08-14 after a cross-document review found this
+pattern five times in eleven standards, more than any other seam
+(ROADMAP CFG-0098).
+
 ### 2.2 Verify, don't recall
 
 Every path, symbol, constant, flag and version-specific behaviour is
@@ -465,6 +479,17 @@ right up until they are quietly false.
 The document lands when the thing lands. Intent belongs in the roadmap.
 A README describing a feature that does not exist is not optimism, it is
 a false claim with a date on it.
+
+**Scope: documentation that describes behaviour to a reader** — a
+README, a guide, reference material, an interface description. **A spec
+or a plan is exempt, and is meant to be written first.** It is a
+contract for whoever builds the thing, not a description of something
+that exists, and getting it written before the build is the whole point
+of [spec-format.md](spec-format.md). The test is who the document is
+for: a reader learning what the software does, or a builder learning
+what to make. Limiter added 2026-08-14 (ROADMAP CFG-0098) — this rule
+carried no scope and its example was a README, so read literally it
+forbade the document family a whole standard exists to require.
 
 ### 2.8 Length is a symptom, not a verdict
 
@@ -630,7 +655,15 @@ lowercase.
 
 Hyphens, never underscores or spaces, so nothing needs quoting
 (`CODE_OF_CONDUCT` is the ecosystem's spelling, not ours, and is the one
-exception).
+exception) — **and an embedded roadmap ID is a second exception,
+spelled however its project spells it.** `roadmap-format.md` §3.5.1
+deliberately admits prefixes containing an underscore, and IDs that are
+not `<PREFIX>-NNNN` at all, and says a checker built from it must not
+reject them; a filename rule that overrode that would make a conforming
+project unable to name its own specs. The ID is copied, never
+transliterated — a filename that turns `3D_E-0007` into `3d-e-0007` no
+longer contains the ID, so searching for the ID stops finding the spec.
+Added 2026-08-14 (ROADMAP CFG-0098).
 
 ## 4. Per-kind format standards
 
@@ -928,7 +961,9 @@ is a process failure, not a review success.**
 - ❌ A `path:line` citation.
 - ❌ A claim written from memory of how the code works.
 - ❌ Relative dates in a committed document.
-- ❌ Documentation for something that has not shipped.
+- ❌ Documentation for something that has not shipped — behaviour
+  described to a reader, not a spec or plan written for a builder
+  (§2.7).
 - ❌ A screenshot of an interface that no longer exists.
 - ❌ Placeholder text left in.
 - ❌ A rule with nothing checking it and no row admitting so.
@@ -945,7 +980,7 @@ is a process failure, not a review success.**
 | §2.2 cited symbols exist | symbol resolution against current source |
 | §2.9 required sections present | structural check against the format standard |
 | §9.1 loop log present, tally balances | loop-log tally check |
-| `roadmap-format.md` / `changelog-format.md` parse | the parsers that read them. §4 routes to those documents and states no parsing rule of its own |
+| `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). This row read "the parsers that read them" until 2026-08-14, where `changelog-format.md` says nothing validates a `CHANGELOG.md` at rest |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
 | §2.1 one fact one home | **`Partial:`** the `pre-commit` hook's survivor class (§9.0) blocks when a change deletes text that still exists in another tracked `*.md` **outside `docs/`** — so it catches the copy you *edited past*, only at the moment you edit it, and **never a copy living in a spec, plan or ADR.** Nothing finds a rule sitting in two documents that nobody is touching: a cold read sees "these two passages disagree" within one document only, and **a rule copied into a second document is invisible to a single-document review** unless that document is in the review's packet. `review-contract-set` owns that half and is **live since 2026-08-14** — but it is a review, not a check, so this row stays `Partial:` |
 | §2.2 the claim is *true* | **nothing** — resolution proves a symbol exists, not that the description of it is right |
