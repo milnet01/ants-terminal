@@ -9,6 +9,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 namespace ChangelogLog {
 
@@ -95,34 +96,60 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
                                             const QString &body,
                                             const QStringList &bulletBlocks);
 
-// ANTS-3495 — op:normalize (reorder-only subset). Reorder the
-// `### <category>` blocks inside `## [Unreleased]` into canonical
-// Keep-a-Changelog order (Added/Changed/Deprecated/Removed/Fixed/
-// Security). Non-destructive: each block's body (its bullets and any
-// interleaved prose) moves with its heading — relocating stray prose
-// out of the wrong block is a deliberately deferred follow-up
-// (ROADMAP notes the policy is still undecided). A duplicate or
-// non-canonical `### ` heading keeps its relative position (stable
-// sort; unknown categories sort last). Content before the first
+// ANTS-3495 — op:normalize. Reorder the `### <category>` blocks inside
+// `## [Unreleased]` into canonical Keep-a-Changelog order (Added/Changed/
+// Deprecated/Removed/Fixed/Security). Non-destructive: each block's body
+// (its bullets and any interleaved prose) moves with its heading. A
+// duplicate or non-canonical `### ` heading keeps its relative position
+// (stable sort; unknown categories sort last). Content before the first
 // `### ` heading (a preamble paragraph) is preserved untouched.
+//
+// ANTS-3381 — normalize also RELOCATES stray interleaved prose, the half
+// ANTS-3495 deferred pending a decided policy. Policy (accepted by the
+// user 2026-08-14): a flagged prose line is folded into the nearest
+// preceding bullet as a two-space continuation. Because such a line
+// always sits after that bullet with only blanks, continuations and HTML
+// comments between them, the fold is an in-place re-indent — the line
+// count never changes, so no bullet's content moves and no ordering is
+// disturbed. Each fold is reported in `prose_moves` so `dry_run` can
+// preview it; the accepted failure mode is a paragraph that was meant to
+// stand alone being absorbed by the entry above it, and the preview is
+// the only thing that catches that. Prose separated from its bullet by a
+// heading of any depth is NOT folded (the heading is a barrier, so the
+// fold would not put the line under the bullet at all) and keeps
+// tripping the `malformed_section` advisory.
+struct ProseMove {
+    int     from_line = -1;   // 1-based line of the prose, before the fold
+    int     under_line = -1;  // 1-based line of the bullet it folds into
+    QString text;             // the folded line, trimmed
+};
+
 struct NormalizeResult {
     bool        ok = false;
     QString     markdown;             // new body (valid iff ok)
     QString     code;                 // refusal code iff !ok
     QString     error;                // human message iff !ok
-    bool        changed = false;      // true iff the reorder moved a block
+    bool        changed = false;      // a block moved, or prose was folded
     QStringList order_before;         // category headings, original order
     QStringList order_after;          // category headings, canonical order
+    // ANTS-3381 — one entry per folded prose line, in file order. Empty
+    // when the section carried no relocatable prose. Line numbers are
+    // against the INPUT body (the fold preserves the line count, so they
+    // are also valid against the result).
+    QVector<ProseMove> prose_moves;
     // Non-blocking advisory (parity with insertUnreleasedEntry): after
     // the reorder the section still interleaves non-heading prose
     // between `### ` blocks. `malformed_line` is the 1-based line of the
     // first offending line in the RESULT body (iff malformed_section).
+    // Since ANTS-3381 this can only be prose behind a heading barrier —
+    // everything foldable has already been folded.
     bool        malformed_section = false;
     int         malformed_line = -1;
 };
 
 // Canonicalise the ordering of the `### <category>` blocks under
-// `## [Unreleased]` in `markdown`. Refusals:
+// `## [Unreleased]` in `markdown`, and fold stray interleaved prose into
+// the bullet above it (ANTS-3381). Refusals:
 //   not_unreleased          — no `## [Unreleased]` heading
 //   feature_grouped_section — section uses dated `### ` topic
 //                             subsections, not flat categories (parity

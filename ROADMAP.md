@@ -20457,7 +20457,7 @@ server build id so clients can self-diagnose this.
   Source: cc-feedback-2026-06-30 (Vestige).
   Resolved (2026-07-01): src/similarcode.cpp scanFile now halves the Jaccard score (kIncidentalOverlapPenalty=0.5) when a candidate signature shares exactly ONE token with the query (new anon-namespace sharedTokenCount helper). This demotes an incidental single-token overlap below any 2+-shared-token match without dropping it. Self-correcting: when the query itself is trivial (all candidates share one token) the penalty applies uniformly, leaving relative order unchanged — so it only bites the reported failure mode (a 1-token 'add' tying/outranking a richer struct). Public jaccard()/tokenize() API untouched. Test McpSimilarCode.Ants3380IncidentalOverlapPenalty (exact scores 0.125 halved vs 0.2222 unpenalised + ranking flip; fails pre-fix). Full test_claude 1342/1342 green.
 
-- 📋 [ANTS-3381] **changelog_log op:normalize — regroup stray prose/entries under canonical [Unreleased] category headings.**
+- ✅ [ANTS-3381] **changelog_log op:normalize — regroup stray prose/entries under canonical [Unreleased] category headings.**
   Vestige: changelog_log op:add correctly warns (cites the line) that ## [Unreleased] interleaves prose between ### category blocks, across ≥3 sessions, with no resolution path. Add op:normalize (or a --fix flag) that regroups stray prose + entries under canonical category headings in one atomic write.
   **Layman:** The changelog tool keeps warning about a messy 'Unreleased' section but offers no way to tidy it; add a one-shot fix.
   Kind: feature.
@@ -20472,6 +20472,27 @@ server build id so clients can self-diagnose this.
   without re-asking; keep the preview unconditional, because the failure mode
   this policy accepts is prose that was meant to stand alone being folded into
   the entry above it, and the preview is the only thing that catches it.
+  Resolved (2026-08-14): op:normalize now folds stray prose in the same
+  atomic write as the reorder, to exactly the decided policy. The fold is
+  an IN-PLACE re-indent, not a move — a flagged line always sits after its
+  bullet with nothing but blanks, continuations and HTML comments between
+  them, so prepending two spaces already puts it under the nearest
+  preceding bullet. That keeps the line COUNT constant, which is what lets
+  the fold run before the reorder without disturbing the block partition,
+  and lets `moves[]` report line numbers valid against the file the caller
+  already has. `collectInterleavedProse` (changeloglog.cpp) replaced
+  `firstInterleavedProseLine` as the primitive so the fold pass and the
+  ANTS-2125 advisory cannot drift apart; the old function is now a
+  one-line wrapper. Envelope gains `prose_moved` + `moves[]:[{from_line,
+  under_line, text}]`, emitted under dry_run AND write. One case is
+  deliberately NOT folded: prose separated from its bullet by a heading of
+  any depth — a `#### ` sub-heading does not end the category block, so
+  the line is still flagged, but indenting it would not place it under
+  that bullet. Those keep raising the advisory, whose wording now names
+  that as the reason instead of pointing at a follow-up that no longer
+  exists. Tests: changelog_log_normalize INV-6 (rewritten), INV-10..13;
+  both halves proved red against mutations (fold disabled → 4 red; heading
+  barrier removed → INV-6 red). Suite 3445/3445.
 
 - ✅ [ANTS-3382] **roadmap_log — optional evidence:[paths] / attachments[] for image/log-driven bullets, echoed by roadmap_query.**
   DOOM-0145 was diagnosed from phone photos referenced only in free-text; the real file paths aren't queryable. Add optional evidence:[paths] on roadmap_log append/annotate, echoed by roadmap_query, rendered as an 'Evidence:' line. Low priority, cheap, useful for image-heavy projects.

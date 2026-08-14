@@ -77,11 +77,24 @@ namespace {
 //     flagging its canonical output. The stray-footer shape ANTS-2125 exists
 //     for arrives AFTER a block's bullets, and still trips: its fixture puts
 //     the `---` two lines below `### Added`'s bullet.
-int firstInterleavedProseLine(const QStringList &lines,
-                              int sectionStart, int sectionEnd) {
+//
+// ANTS-3381 — the scan is an enumerator so the relocation pass and the
+// advisory share ONE copy of the rules above. `bullet` is the 0-based line
+// of the nearest preceding bullet the prose can be folded into, or -1 when
+// a heading of any depth sits between them: a `#### ` sub-heading does not
+// end the category block (so the prose is still flagged), but folding a
+// line that follows it would not place it under that bullet, so it is
+// reported and left alone.
+struct InterleavedProse { int line; int bullet; };   // 0-based line indices
+
+QVector<InterleavedProse> collectInterleavedProse(const QStringList &lines,
+                                                  int sectionStart,
+                                                  int sectionEnd) {
+    QVector<InterleavedProse> found;
     bool sawCategory = false;
     bool sawBulletInBlock = false;   // ANTS-4103 — reset at each `### `
     bool insideComment   = false;    // ANTS-4103
+    int  lastBullet      = -1;       // ANTS-3381 — fold target
     for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
         const QString &raw = lines.at(i);
         const QString t = raw.trimmed();
@@ -99,6 +112,7 @@ int firstInterleavedProseLine(const QStringList &lines,
                 sawCategory      = true;
                 sawBulletInBlock = false;           // ANTS-4103 — new block
             }
+            lastBullet = -1;                        // ANTS-3381 — barrier
             continue;
         }
         if (!sawCategory) continue;                 // pre-category preamble
@@ -109,14 +123,21 @@ int firstInterleavedProseLine(const QStringList &lines,
             (t.at(0) == QLatin1Char('-') || t.at(0) == QLatin1Char('*') ||
              t.at(0) == QLatin1Char('+'))) {
             sawBulletInBlock = true;                // ANTS-4103
+            lastBullet       = i;                   // ANTS-3381
             continue;
         }
         if (raw.startsWith(QLatin1Char(' ')) ||     // indented continuation
             raw.startsWith(QLatin1Char('\t'))) continue;
         if (!sawBulletInBlock) continue;            // ANTS-4103 — block intro
-        return i + 1;                               // 1-based, for humans
+        found.append({i, lastBullet});
     }
-    return -1;
+    return found;
+}
+
+int firstInterleavedProseLine(const QStringList &lines,
+                              int sectionStart, int sectionEnd) {
+    const auto found = collectInterleavedProse(lines, sectionStart, sectionEnd);
+    return found.isEmpty() ? -1 : found.first().line + 1;  // 1-based
 }
 
 // ANTS-3416 — detect a FEATURE-GROUPED `## [Unreleased]` section: one whose
@@ -470,6 +491,22 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
         return r;
     }
 
+    // 4b. ANTS-3381 — fold stray interleaved prose into the bullet above
+    //     it as a two-space continuation. A flagged line is flush-left by
+    //     construction, and nothing but blanks, continuations and HTML
+    //     comments separates it from its bullet, so the fold is an
+    //     in-place re-indent: the line COUNT is unchanged, which is what
+    //     lets the block partition below (and `sectionEnd`) still hold.
+    for (const auto &p : collectInterleavedProse(lines, unrel + 1, sectionEnd)) {
+        if (p.bullet < 0) continue;              // heading barrier — advise
+        lines[p.line] = QStringLiteral("  ") + lines.at(p.line);
+        ProseMove m;
+        m.from_line  = p.line + 1;               // 1-based, for humans
+        m.under_line = p.bullet + 1;
+        m.text       = lines.at(p.line).trimmed();
+        r.prose_moves.append(m);
+    }
+
     // 5. Partition [firstCat, sectionEnd) into `### `-led blocks. A block
     //    spans its heading line through the line before the next `### `
     //    (or sectionEnd) — so its bullets, blank spacer, and any wedged
@@ -502,11 +539,11 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
     for (const Block &b : sorted)
         r.order_after.append(r.order_before.at(b.origin));
 
-    bool changed = false;
+    bool reordered = false;
     for (int b = 0; b < sorted.size(); ++b)
-        if (sorted.at(b).origin != b) { changed = true; break; }
+        if (sorted.at(b).origin != b) { reordered = true; break; }
 
-    if (!changed) {
+    if (!reordered && r.prose_moves.isEmpty()) {
         r.ok = true;
         r.markdown = markdown;
         r.changed = false;
@@ -515,9 +552,10 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
         return r;
     }
 
-    // 7. Reassemble: [0, firstCat) + reordered blocks + [sectionEnd, end).
-    //    The result is a permutation of the same lines, so total line
-    //    count — and thus the sectionEnd index — is preserved.
+    // 7. Reassemble: [0, firstCat) + blocks (reordered or not) +
+    //    [sectionEnd, end). Both passes preserve the total line count — the
+    //    reorder is a permutation and the fold is an in-place re-indent —
+    //    so the sectionEnd index still bounds the section.
     QStringList out;
     for (int k = 0; k < firstCat; ++k) out.append(lines.at(k));
     for (const Block &b : sorted) out += b.body;

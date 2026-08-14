@@ -1,8 +1,11 @@
 // ANTS-3495 — feature-conformance test for changelog_log op:"normalize"
 // (reorder the `### <category>` blocks under `## [Unreleased]` into
-// canonical Keep-a-Changelog order). Pure-helper INV-1..6 exercise
-// ChangelogLog::normalizeUnreleased directly; behavioural INV-7..9 drive
-// RemoteControl::cmdChangelogLog (m_main-independent) over a temp project.
+// canonical Keep-a-Changelog order). ANTS-3381 adds the prose-relocation
+// half: a stray flush-left line wedged between blocks folds into the
+// bullet above it. Pure-helper INV-1..6 + INV-10..11 exercise
+// ChangelogLog::normalizeUnreleased directly; behavioural INV-7..9 +
+// INV-12..13 drive RemoteControl::cmdChangelogLog (m_main-independent)
+// over a temp project.
 // Mirrors the changelog_log_writer / changelog_log_add_batch harnesses.
 
 #include "../../_support/expect.h"
@@ -47,6 +50,20 @@ const char *kCanonical =
     "### Fixed\n\n"
     "- **Fix one.** (ANTS-0002)\n\n"
     "## [0.1.0] - 2026-01-01\n\n"
+    "- old.\n";
+
+// ANTS-3381 — already in canonical category order, but with one stray
+// flush-left paragraph after Added's bullet. Line numbers in the comments
+// are what `prose_moves` reports.
+const char *kStrayProse =
+    "# Changelog\n\n"                    // 1, 2
+    "## [Unreleased]\n\n"                // 3, 4
+    "### Added\n\n"                      // 5, 6
+    "- **Add one.** (ANTS-0001)\n\n"     // 7, 8
+    "A stray paragraph wedged between category blocks.\n\n"  // 9, 10
+    "### Fixed\n\n"                      // 11, 12
+    "- **Fix one.** (ANTS-0002)\n\n"     // 13, 14
+    "## [0.1.0]\n\n"
     "- old.\n";
 
 bool contains(const std::string &h, const std::string &n) {
@@ -186,24 +203,88 @@ TEST(changelog_log_normalize, Inv5Refusals) {
     EXPECT_EQ(fg.code, QStringLiteral("feature_grouped_section"));
 }
 
-// INV-6 — interleaved prose surviving the reorder is surfaced.
-TEST(changelog_log_normalize, Inv6ProseAdvisorySurfaced) {
-    const char *withProse =
-        "# Changelog\n\n"
-        "## [Unreleased]\n\n"
-        "### Fixed\n\n"
-        "- **Fix one.**\n\n"
-        "A stray paragraph wedged between category blocks.\n\n"
-        "### Added\n\n"
-        "- **Add one.**\n\n"
+// INV-6 — prose a fold cannot reach is left in place and surfaced. A
+// heading between the prose and the nearest bullet is a barrier: indenting
+// the line would not put it under that bullet, so ANTS-3381 declines the
+// fold and the ANTS-2125 advisory still fires.
+TEST(changelog_log_normalize, Inv6UnfoldableProseAdvisorySurfaced) {
+    const char *behindHeading =
+        "# Changelog\n\n"          // 1, 2
+        "## [Unreleased]\n\n"      // 3, 4
+        "### Added\n\n"            // 5, 6
+        "- **Add one.**\n\n"       // 7, 8
+        "#### Notes\n\n"           // 9, 10
+        "A paragraph under a sub-heading.\n\n"   // 11, 12
+        "## [0.1.0]\n\n"
+        "- old.\n";
+    const QString in = QString::fromUtf8(behindHeading);
+    const auto r = ChangelogLog::normalizeUnreleased(in);
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_TRUE(r.prose_moves.isEmpty());
+    EXPECT_FALSE(r.changed);
+    EXPECT_EQ(r.markdown, in);
+    EXPECT_TRUE(r.malformed_section);
+    EXPECT_EQ(r.malformed_line, 11);
+}
+
+// INV-10 — a stray flush-left line after a bullet is folded into that
+// bullet as a two-space continuation, in place; the fold is reported and
+// the advisory clears.
+TEST(changelog_log_normalize, Inv10StrayProseFoldedUnderBullet) {
+    const QString in = QString::fromUtf8(kStrayProse);
+    const auto r = ChangelogLog::normalizeUnreleased(in);
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    ASSERT_EQ(r.prose_moves.size(), 1);
+    EXPECT_EQ(r.prose_moves.at(0).from_line, 9);
+    EXPECT_EQ(r.prose_moves.at(0).under_line, 7);
+    EXPECT_EQ(r.prose_moves.at(0).text,
+              QStringLiteral("A stray paragraph wedged between category "
+                             "blocks."));
+    // The section was ALREADY in canonical order — prose alone is a change.
+    EXPECT_EQ(r.order_before, r.order_after);
+    EXPECT_TRUE(r.changed);
+    // Folded in place: two-space continuation, same line count, and the
+    // scanner no longer sees it.
+    const std::string md = r.markdown.toStdString();
+    EXPECT_TRUE(contains(md,
+        "- **Add one.** (ANTS-0001)\n\n  A stray paragraph wedged"));
+    EXPECT_EQ(r.markdown.count(QLatin1Char('\n')),
+              in.count(QLatin1Char('\n')));
+    EXPECT_FALSE(r.malformed_section);
+}
+
+// INV-11 — every stray line folds under its OWN nearest preceding bullet,
+// reported in file order, and the folds survive a reorder in the same call.
+TEST(changelog_log_normalize, Inv11MultipleStraysEachUnderItsOwnBullet) {
+    const char *twoStrays =
+        "# Changelog\n\n"          // 1, 2
+        "## [Unreleased]\n\n"      // 3, 4
+        "### Fixed\n\n"            // 5, 6
+        "- **Fix one.**\n"         // 7
+        "Stray under fix.\n\n"     // 8, 9
+        "### Added\n\n"            // 10, 11
+        "- **Add one.**\n\n"       // 12, 13
+        "---\n\n"                  // 14, 15
         "## [0.1.0]\n\n"
         "- old.\n";
     const auto r = ChangelogLog::normalizeUnreleased(
-        QString::fromUtf8(withProse));
+        QString::fromUtf8(twoStrays));
     ASSERT_TRUE(r.ok) << r.error.toStdString();
+    ASSERT_EQ(r.prose_moves.size(), 2);
+    EXPECT_EQ(r.prose_moves.at(0).from_line, 8);
+    EXPECT_EQ(r.prose_moves.at(0).under_line, 7);
+    EXPECT_EQ(r.prose_moves.at(1).from_line, 14);
+    EXPECT_EQ(r.prose_moves.at(1).under_line, 12);
+    // A bare `---` is a thematic break, not a bullet — it folds like prose.
+    EXPECT_EQ(r.prose_moves.at(1).text, QStringLiteral("---"));
     EXPECT_TRUE(r.changed);
-    EXPECT_TRUE(r.malformed_section);
-    EXPECT_GT(r.malformed_line, 0);
+    const std::string md = r.markdown.toStdString();
+    EXPECT_TRUE(contains(md, "- **Fix one.**\n  Stray under fix."));
+    EXPECT_TRUE(contains(md, "- **Add one.**\n\n  ---"));
+    // Each fold travelled with its own block through the reorder.
+    EXPECT_LT(at(md, "### Added"), at(md, "### Fixed"));
+    EXPECT_LT(at(md, "  ---"), at(md, "### Fixed"));
+    EXPECT_FALSE(r.malformed_section);
 }
 
 // INV-7 — handler write path: rewrites CHANGELOG.md with the reordered body.
@@ -275,4 +356,70 @@ TEST(changelog_log_normalize, Inv9HandlerAlreadyCanonicalNoWrite) {
     EXPECT_FALSE(resp.contains(QStringLiteral("bytes_written")));
     // Content unchanged.
     EXPECT_EQ(readFileStd(clPath(tmp.path())), std::string(kCanonical));
+}
+
+// INV-12 — handler write path with stray prose: the fold is written, and
+// reported as `prose_moved` + `moves[]`. The section was already in
+// canonical order, so this also proves prose alone is enough to write.
+TEST(changelog_log_normalize, Inv12HandlerWritesProseFold) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kStrayProse)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("normalize");
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("changed")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("prose_moved")).toInt(), 1);
+    const QJsonArray moves =
+        resp.value(QStringLiteral("moves")).toArray();
+    ASSERT_EQ(moves.size(), 1);
+    EXPECT_EQ(moves.at(0).toObject().value(QStringLiteral("from_line")).toInt(),
+              9);
+    EXPECT_EQ(moves.at(0).toObject().value(QStringLiteral("under_line")).toInt(),
+              7);
+    // A fold adds exactly its two indent spaces — unlike a pure reorder,
+    // which reports a 0 delta (INV-7).
+    EXPECT_EQ(resp.value(QStringLiteral("bytes_written")).toInt(), 2);
+    // No advisory: the only stray line was foldable.
+    EXPECT_FALSE(resp.contains(QStringLiteral("advisory")));
+    const std::string md = readFileStd(clPath(tmp.path()));
+    EXPECT_TRUE(contains(md,
+        "- **Add one.** (ANTS-0001)\n\n  A stray paragraph wedged"));
+}
+
+// INV-13 — handler dry_run with stray prose: nothing is written, but
+// `moves[]` previews every fold. This preview is the only guard against
+// the failure mode the accepted policy tolerates (a stand-alone paragraph
+// being absorbed by the entry above it), so it must not be write-only.
+TEST(changelog_log_normalize, Inv13HandlerDryRunPreviewsProseFold) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kStrayProse)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("normalize");
+    req[QStringLiteral("dry_run")]    = true;
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_TRUE(resp.value(QStringLiteral("changed")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("prose_moved")).toInt(), 1);
+    ASSERT_EQ(resp.value(QStringLiteral("moves")).toArray().size(), 1);
+    EXPECT_EQ(resp.value(QStringLiteral("moves")).toArray().at(0).toObject()
+                  .value(QStringLiteral("text")).toString(),
+              QStringLiteral("A stray paragraph wedged between category "
+                             "blocks."));
+    EXPECT_FALSE(resp.contains(QStringLiteral("bytes_written")));
+    // File untouched — the paragraph is still flush-left on disk.
+    EXPECT_EQ(readFileStd(clPath(tmp.path())), std::string(kStrayProse));
 }

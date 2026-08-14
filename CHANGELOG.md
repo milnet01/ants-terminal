@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **changelog_log op:normalize now tidies stray prose, not just category order** (ANTS-3381)
+  A paragraph left stranded between the category blocks of
+  [Unreleased] is folded into the entry above it, in the same
+  one-shot tidy that puts the categories in order. Every fold is
+  listed back to you as `moves[]`, under `dry_run` as well as on a
+  real write, so you can see what would be absorbed before it is.
+  A line separated from its entry by a sub-heading is left alone
+  and still reported. Completes the half ANTS-3495 deferred.
+
 - **`cited_by` — one call that says which document cites which anchor** (ANTS-3716)
   Give it the names a change touched and it reports which documents
   mention which of them, with an occurrence count and a first line

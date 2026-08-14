@@ -1766,7 +1766,8 @@ if(ANTS_TESTS)
                 tests/features/changelog_log_writer/test_changelog_log_writer.cpp
                 # ANTS-2044 changelog_log op:add_batch (N entries, 1 commit).
                 tests/features/changelog_log_add_batch/test_changelog_log_add_batch.cpp
-                # ANTS-3495 changelog_log op:normalize (reorder [Unreleased] categories).
+                # ANTS-3495/3381 changelog_log op:normalize (reorder [Unreleased]
+                # categories; fold stray prose into the bullet above it).
                 tests/features/changelog_log_normalize/test_changelog_log_normalize.cpp
                 # ANTS-3584 changelog_log op:add_subsection (dated feature-grouped block).
                 tests/features/changelog_log_subsection/test_changelog_log_subsection.cpp

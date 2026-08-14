@@ -436,9 +436,10 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
 
     // ANTS-3495 — op:"normalize": reorder the `### <category>` blocks in
     // `## [Unreleased]` into canonical Keep-a-Changelog order. No summary/
-    // body/id/category resolution — it rewrites layout, not content. The
-    // prose-relocation half of the ANTS-2125 advisory is a deferred
-    // follow-up; this canonicalises category ORDER only.
+    // body/id/category resolution — it rewrites layout, not content.
+    // ANTS-3381 completes it: the other half of the ANTS-2125 advisory,
+    // relocating stray interleaved prose, now runs in the same atomic
+    // write and is previewed line by line in `moves[]`.
     if (op == QStringLiteral("normalize")) {
         QFile cf(clPath);
         if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -459,17 +460,35 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             for (const QString &s : v) a.append(s);
             return a;
         };
-        // Reorder canonicalises category ORDER; interleaved prose (the
-        // other half of the ANTS-2125 malformation) is left in place, so
-        // surface it honestly rather than implying a full tidy.
+        // ANTS-3381 — normalize now folds stray prose into the bullet above
+        // it, so anything the scanner still sees is prose a fold could not
+        // reach: a heading sits between it and the nearest bullet, and
+        // indenting it would not put it under that bullet at all. Say which
+        // case this is rather than repeating the pre-3381 "separate
+        // follow-up" line, which no longer describes anything pending.
         auto proseAdvisory = [](int line) {
             return QStringLiteral(
-                "changelog_log: category blocks reordered into canonical "
-                "Keep-a-Changelog order, but `## [Unreleased]` still "
-                "interleaves non-heading prose between `### ` blocks (first "
-                "at line %1). op:normalize reorders category order only; "
-                "relocating stray prose is a separate follow-up — tidy it by "
-                "hand or leave in place.").arg(line);
+                "changelog_log: `## [Unreleased]` still interleaves "
+                "non-heading prose between `### ` blocks (first at line %1). "
+                "op:normalize folds stray prose into the bullet above it, but "
+                "this line is separated from that bullet by a heading, so "
+                "there is no bullet to fold it into — tidy it by hand or "
+                "leave in place.").arg(line);
+        };
+        // ANTS-3381 — the fold preview. Unconditional (dry_run and write
+        // alike): the failure mode the accepted policy tolerates is a
+        // stand-alone paragraph being absorbed by the entry above it, and
+        // this list is the only thing that surfaces it.
+        auto movesArr = [](const QVector<ChangelogLog::ProseMove> &v) {
+            QJsonArray a;
+            for (const auto &m : v) {
+                QJsonObject o;
+                o["from_line"]  = m.from_line;
+                o["under_line"] = m.under_line;
+                o["text"]       = m.text;
+                a.append(o);
+            }
+            return a;
         };
 
         // dry_run, or an already-canonical section, both write nothing.
@@ -483,6 +502,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             out["order_after"]  = orderArr(res.order_after);
             out["bytes"]        =
                 static_cast<qint64>(res.markdown.toUtf8().size());
+            out["prose_moved"]  = res.prose_moves.size();
+            if (!res.prose_moves.isEmpty())
+                out["moves"] = movesArr(res.prose_moves);
             if (dryRun) out["dry_run"] = true;
             if (res.malformed_section)
                 out["advisory"] = proseAdvisory(res.malformed_line);
@@ -510,8 +532,13 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["changed"]       = true;
         out["order_before"]  = orderArr(res.order_before);
         out["order_after"]   = orderArr(res.order_after);
+        out["prose_moved"]   = res.prose_moves.size();
+        if (!res.prose_moves.isEmpty())
+            out["moves"] = movesArr(res.prose_moves);
         // ANTS-3723 — a reorder adds no content, so the honest delta is 0;
         // `file_bytes` carries the size the old field used to report.
+        // (A fold adds the two indent spaces per relocated line, so a
+        // prose-relocating normalize reports a small positive delta.)
         rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
         if (res.malformed_section)
             out["advisory"] = proseAdvisory(res.malformed_line);
