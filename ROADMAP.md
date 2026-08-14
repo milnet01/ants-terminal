@@ -31433,13 +31433,33 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (finbreak).
 
-- 📋 [ANTS-4383] **`roadmap_log op:append_batch` burns one id between consecutive calls — the allocator issues an id to nothing.**
+- ✅ [ANTS-4383] **`roadmap_log op:append_batch` burns one id between consecutive calls — the allocator issues an id to nothing.**
   Two batches of five with no other call between them allocated CFG-0021…0025
   then CFG-0027…0031. The second envelope reported `counter_advanced_to:31`
   for ids ending at 31, so the loss happened at the END of the first call —
   its counter finished at 26 while its highest issued id was 25. Only the
   fourth of four batches lost one; the three before were contiguous, which
   makes it look like a boundary condition rather than a per-batch off-by-one.
+  Resolved (2026-08-14) — **and the diagnosis in this bullet is wrong about
+  where the id went, which is worth recording.** The allocator does not burn
+  anything: `allocateIds` issues current+1…current+n and writes current+n, and
+  the batch path's `newCounter = nextId - 1` is the same arithmetic
+  (ANTS-2078 already skips the counter write entirely under stable_prefix).
+  What moved the floor is ANTS-2179/3450 reconciliation: `effCounter` is
+  max(counter, corpus high-water), and `corpusHighWater` matches
+  `\bPFX-NNNN\b` in the WHOLE TEXT of ROADMAP.md, CHANGELOG.md and
+  docs/roadmap/*.md — bodies and prose included. So **a bullet whose body
+  merely MENTIONS a higher id raises the floor past it**, and the next batch
+  legitimately starts above. That also explains "only the fourth of four
+  batches": only that one happened to cite a higher id.
+  Reproduced in a test — a body citing ANTS-9150 against a counter of 9100
+  makes the next batch start at ANTS-9151.
+  The safety property stays as-is: reissuing a live id is far worse than a
+  gap, and § 3.5.1 already makes ids opaque. What ships is the explanation —
+  `counter_floor`, `counter_file_value` and a `counter_floor_reason` naming
+  the mechanism a caller cannot guess and warning off the contiguous-ids
+  assumption. ANTS-4374's invariant on the write side: a number the caller did
+  not ask for has to say where it came from.
   A gap is legal (`roadmap-format.md` § 3.5.1 makes ids opaque), so this is
   mostly a trust cost — but it broke the reasonable assumption that ids
   returned by N successive batches are contiguous, and a bullet in the second

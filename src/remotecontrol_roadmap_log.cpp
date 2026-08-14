@@ -1834,6 +1834,41 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+// ANTS-4383 — say WHY the id sequence jumped.
+//
+// A caller reported two consecutive batches of five allocating CFG-0021…0025
+// then CFG-0027…0031 — one id issued to nothing. The allocation itself is
+// exact (RoadmapFoldIn::allocateIds issues current+1…current+n and writes
+// current+n; the batch path's `newCounter = nextId - 1` is the same
+// arithmetic, and ANTS-2078 already skips the counter write under
+// stable_prefix). What moves the floor is ANTS-2179/ANTS-3450 reconciliation:
+// `effCounter` is max(counter, corpus high-water), and corpusHighWater scans
+// ROADMAP.md + CHANGELOG.md + docs/roadmap/*.md for `\bPFX-NNNN\b` in the
+// WHOLE TEXT — bodies and prose included. So a bullet whose body merely
+// MENTIONS a higher id ("superseded by CFG-0026") raises the floor past it,
+// and the next batch legitimately starts above.
+//
+// That is the safety property working: an id that appears anywhere in the
+// corpus must never be reissued, because a gap is free and a collision is
+// not. It is also invisible — the envelope reported `counter_advanced_to`
+// and nothing about what moved it, so a contiguous-ids assumption broke with
+// no way to find out why. Which is ANTS-4374's invariant on the write side:
+// a number the caller did not ask for has to say where it came from.
+static void rlExplainCounterFloor(QJsonObject &out, qint64 counterFileValue,
+                                  qint64 corpusMax) {
+    out[QStringLiteral("counter_floor")]        = corpusMax;
+    out[QStringLiteral("counter_file_value")]   = counterFileValue;
+    out[QStringLiteral("counter_floor_reason")] = QStringLiteral(
+        "ids were allocated above `.roadmap-counter` (%1) because an id as "
+        "high as %2 already appears in the corpus — ROADMAP.md, CHANGELOG.md "
+        "or docs/roadmap/*.md. The scan matches the id token ANYWHERE in the "
+        "text, so a bullet BODY that merely mentions a higher id raises the "
+        "floor past it. This is deliberate: a gap in the sequence is free, "
+        "reissuing a live id is not. Do not assume ids from consecutive "
+        "calls are contiguous.")
+            .arg(counterFileValue).arg(corpusMax);
+}
+
 // ANTS-4097 — the wrapped paragraph an amend_body edit landed in, echoed
 // on the success envelope. amend_body matches within one physical line, so
 // changing a phrase that spans a hard-wrapped paragraph takes N calls; each
@@ -4755,6 +4790,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         out["bytes"]             = totalBytes;
         if (counterReconciled)        // ANTS-2179 — last allocated id
             out["counter_advanced_to"] = nextId - 1;
+        if (counterReconciled) rlExplainCounterFloor(out, counter, maxFileId);
         return QJsonDocument(out);
     }
 
@@ -4841,6 +4877,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     out["bytes_written"] = totalBytes;
     if (counterReconciled)            // ANTS-2179 — self-healed high-water
         out["counter_advanced_to"] = nextId - 1;
+        if (counterReconciled) rlExplainCounterFloor(out, counter, maxFileId);
     if (!possibleDuplicates.isEmpty()) {
         out["possible_duplicates"] = possibleDuplicates;
     }

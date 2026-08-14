@@ -753,3 +753,69 @@ TEST(McpRoadmapLogAppendBatch, Ants2179SingleIdHintCollisionRefused) {
     EXPECT_EQ(readCounter(dir.path()), 9000)
         << ".roadmap-counter must be untouched on a refused collision";
 }
+
+// ANTS-4383 — an id sequence that jumps must say WHY.
+//
+// A caller measured two consecutive batches of five allocating CFG-0021…0025
+// then CFG-0027…0031 — one id issued to nothing — and could not tell from the
+// envelope what had happened.
+//
+// The allocation arithmetic is exact and was not the cause. What moves the
+// floor is ANTS-2179/3450 reconciliation: `effCounter` is
+// max(counter, corpus high-water), and corpusHighWater matches
+// `\bPFX-NNNN\b` in the WHOLE TEXT of ROADMAP.md, CHANGELOG.md and
+// docs/roadmap/*.md — bodies and prose included. So a bullet whose body merely
+// MENTIONS a higher id raises the floor past it, and the next batch
+// legitimately starts above.
+//
+// That safety property stays: reissuing a live id is far worse than a gap.
+// What was missing is that the envelope reported `counter_advanced_to` and
+// nothing about what moved it.
+TEST(McpRoadmapLogAppendBatch, Ants4383CounterFloorIsExplained) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // The counter says 9100, but a BODY in the file mentions ANTS-9150 — the
+    // shape that produced the reported gap.
+    writeRoadmap(dir.path(), minimalRoadmap() +
+        QStringLiteral("- 📋 [ANTS-9003] **A bullet citing a later id.**\n"
+                       "  Superseded by ANTS-9150, which is not itself a "
+                       "bullet here.\n"
+                       "  Kind: implement.\n"
+                       "  Source: test.\n\n"));
+    writeCounter(dir.path(), 9100);
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+        baseReq(dir.path(), QJsonArray{bullet("First."), bullet("Second.")}))
+            .object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << out.value(QStringLiteral("error")).toString().toStdString();
+
+    // The ids start above the MENTIONED id, not above the counter.
+    const QJsonArray ids = out.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 2);
+    EXPECT_EQ(ids.at(0).toString(), QStringLiteral("ANTS-9151"))
+        << "the floor is the corpus max, not the counter file";
+
+    // And the envelope now says so, instead of leaving the jump unexplained.
+    EXPECT_EQ(out.value(QStringLiteral("counter_file_value")).toInt(), 9100);
+    EXPECT_EQ(out.value(QStringLiteral("counter_floor")).toInt(), 9150);
+    const QString why =
+        out.value(QStringLiteral("counter_floor_reason")).toString();
+    EXPECT_TRUE(why.contains(QStringLiteral("BODY")))
+        << "the reason must name the mechanism a caller cannot guess — that a "
+           "body merely MENTIONING an id raises the floor. Was: "
+        << why.toStdString();
+    EXPECT_TRUE(why.contains(QStringLiteral("contiguous")))
+        << "…and warn off the contiguous-ids assumption this broke";
+
+    // Control: with no higher id anywhere, nothing is reconciled and the
+    // explanation stays absent — it must not fire on every call.
+    QTemporaryDir clean;
+    ASSERT_TRUE(clean.isValid());
+    setupProject(clean, 9100);
+    const QJsonObject out2 = rc.cmdRoadmapLogAppendBatchForTest(
+        baseReq(clean.path(), QJsonArray{bullet("Only.")})).object();
+    ASSERT_TRUE(out2.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(out2.contains(QStringLiteral("counter_floor_reason")));
+}
