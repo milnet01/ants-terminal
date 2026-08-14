@@ -9542,9 +9542,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject sectionProp;
                     sectionProp["type"] = "string";
                     sectionProp["description"] = QStringLiteral(
+                        // ANTS-4385 — this used to say "from `roadmap_query`'s
+                        // section echo". No field or mode is called that, so a
+                        // caller searching the schema for "echo" found nothing
+                        // and concluded the route did not exist — which is
+                        // exactly what happened, costing one false finding and
+                        // its retraction. Name the mode.
                         "Slug of a ## or ### heading "
-                        "(e.g. \"performance-2\"). Get valid slugs "
-                        "from `roadmap_query`'s section echo. New "
+                        "(e.g. \"performance-2\"). Get valid slugs from "
+                        "`roadmap_query` mode:\"section_index\" (or its alias "
+                        "mode:\"sections\"). New "
                         "bullet appends at the end of this section.");
 
                     QJsonObject statusProp;

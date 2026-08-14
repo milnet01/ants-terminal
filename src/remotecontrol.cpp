@@ -400,8 +400,18 @@ QString rcClipMatchBytes(const QString &s, int cap) {
            (static_cast<unsigned char>(utf8.at(cut)) & 0xC0) == 0x80) {
         --cut;
     }
-    return QString::fromUtf8(utf8.constData(), cut) +
-           QStringLiteral("\xE2\x80\xA6");
+    // ANTS-4389 — the marker is a CHARACTER, not three bytes.
+    // `QStringLiteral("\xE2\x80\xA6")` reads a narrow literal as Latin-1, so
+    // U+2026's UTF-8 bytes each became their own QChar and re-encoded as the
+    // mojibake `â¦`. That mattered beyond looks: the schema documents the clip
+    // as "payload prefix + 3-byte ellipsis", so a caller stripping the
+    // documented marker never matched it, and a caller grepping the returned
+    // text verbatim — which is what a cross-document review does when
+    // verifying a quotation — got three spurious characters at the boundary.
+    // `max_match_bytes` defaults to 512 (ANTS-3548), so this was on by
+    // default. The 3-byte reservation above is unchanged and still correct:
+    // U+2026 is 3 bytes in UTF-8.
+    return QString::fromUtf8(utf8.constData(), cut) + QChar(0x2026);
 }
 
 // ANTS-1876 — apply `max_match_bytes` clip to every text-bearing

@@ -274,8 +274,16 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
             "Keep-a-Changelog categories, with `**Bold**` category runs "
             "beneath. A flat `### %2` insert would land as a sibling of the "
             "dated topics at the section end, breaking the house style. "
-            "Hand-edit CHANGELOG.md: add the note under a new or existing "
-            "`### <id> — <topic> (<date>)` subsection.")
+            // ANTS-4355 — the hint used to describe a THIRD heading shape
+            // (`### <id> — <topic> (<date>)`) that neither this verb nor
+            // changelog-format.md ever emits, so a caller who followed it
+            // produced a section the writer would not have written. Name the
+            // op instead: it renders the shape itself, and this is the moment
+            // a caller has just been told to hand-edit, which is when a wrong
+            // shape is most likely to be adopted.
+            "Use op:\"add_subsection\" instead — it writes the dated-topic "
+            "form this section uses (`### <date> <Category> — <headline>`). "
+            "To hand-edit, copy that shape exactly.")
             .arg(topicLine).arg(category);
         return r;
     }

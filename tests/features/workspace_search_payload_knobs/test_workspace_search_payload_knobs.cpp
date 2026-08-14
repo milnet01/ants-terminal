@@ -418,3 +418,27 @@ TEST(workspace_search_payload_knobs, Inv21ExplicitOptOut) {
            "INV-21: schema minimum 0 so the 0 opt-out is in-range");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-4389 — the clip marker is a CHARACTER (U+2026), not three Latin-1
+// chars. `QStringLiteral("\xE2\x80\xA6")` reads a narrow literal as
+// Latin-1, so U+2026's UTF-8 bytes each became their own QChar and
+// re-encoded as the mojibake `â¦`. Beyond looks: the schema documents the
+// clip as "payload prefix + 3-byte ellipsis", so a caller stripping the
+// documented marker never matched it, and a caller grepping the returned
+// text verbatim — which is what a cross-document quotation check does —
+// got three spurious characters at the boundary. `max_match_bytes` defaults
+// to 512 (ANTS-3548), so this was on by default rather than opt-in.
+//
+// Source-grep, matching this file's other cases: the clip helper is not
+// exported, so the byte-level spelling in the source IS the surface.
+TEST(workspace_search_payload_knobs, Ants4389ClipMarkerIsNotLatin1Bytes) {
+    const std::string rc =
+        ants_test::slurpFile(std::string(ANTS_RC_SRC_DIR) + "/remotecontrol.cpp");
+    ASSERT_FALSE(rc.empty());
+    expect(!contains(rc, "QStringLiteral(\"\\xE2\\x80\\xA6\")"),
+           "ANTS-4389: the Latin-1 byte spelling must not return: "
+           "QStringLiteral reads a narrow literal as Latin-1, which is what "
+           "produced the mojibake");
+    expect(contains(rc, "QChar(0x2026)"),
+           "ANTS-4389: the marker is appended as one character");
+}

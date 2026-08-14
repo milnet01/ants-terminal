@@ -1240,6 +1240,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const bool hasModeArg = req.contains(QStringLiteral("mode"));
     QString mode = req.value(QStringLiteral("mode")).toString().toLower();
     if (mode.isEmpty()) mode = QStringLiteral("bullets");
+    // ANTS-4380 — `sections` is accepted as an alias for `section_index`,
+    // because the RESPONSE key that mode returns is called `sections`, so the
+    // name a caller reads out of a previous reply was exactly the name the
+    // input rejected. Same class as the `status` input echoed as `filter`,
+    // closed as ANTS-3698 — and the reporter framed this as the last known
+    // member of it, which is why it was taken despite being self-correcting.
+    if (mode == QLatin1String("sections")) mode = QStringLiteral("section_index");
     // ANTS-3617 — one list, used both to validate and to tell the caller
     // what was allowed. Previously the four modes were spelled out as a
     // chain of `!=` and the refusal named only the rejected value, so a

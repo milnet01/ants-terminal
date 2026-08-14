@@ -30465,7 +30465,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (Ants Terminal).
 
-- 📋 [ANTS-4355] **`changelog_log`'s `feature_grouped_section` refusal hint tells the caller to hand-write a heading shape the writer never emits.**
+- ✅ [ANTS-4355] **`changelog_log`'s `feature_grouped_section` refusal hint tells the caller to hand-write a heading shape the writer never emits.**
   `op:"add_subsection"` writes `### <date> <Category> — <headline>` (verified
   against the live verb 2026-08-12). The refusal's hint instead says to add
   the note under a `### <id> — <topic> (<date>)` subsection — id-led, date in
@@ -30480,6 +30480,8 @@ collision are different strengths of evidence.
   is when a wrong shape is most likely to be adopted.
   Fix: quote the shape `add_subsection` emits, or drop the shape and point at
   the op.
+  Resolved (2026-08-14): the hint now names `op:"add_subsection"` and quotes
+  the shape that op actually emits, instead of a third form nothing writes.
   **Layman:** When the tool refuses and tells you to do it by hand, it describes the wrong layout.
   Kind: doc-fix.
   Lanes: mcp, changelog.
@@ -31182,7 +31184,7 @@ collision are different strengths of evidence.
   Lanes: docsymbols, fileoutline, mcp.
   Source: cc-feedback-2026-08-14 (finbreak).
 
-- 📋 [ANTS-4380] **`roadmap_query` refuses `mode:"sections"` although the response key it returns is named `sections` — the accepted name is `section_index`.**
+- ✅ [ANTS-4380] **`roadmap_query` refuses `mode:"sections"` although the response key it returns is named `sections` — the accepted name is `section_index`.**
   The name a caller reads out of a previous reply is exactly the name the
   input rejects. finbreak filed it twice (2026-08-12, re-verified 2026-08-13)
   and explicitly framed it as the LAST known member of a class, not a fresh
@@ -31195,6 +31197,11 @@ collision are different strengths of evidence.
   Fix: accept `sections` as an alias for `section_index`, the way `filter`
   became an alias for `status`. Worth checking symmetrically whether
   `bullets` mode's payload key matches its input name.
+  Resolved (2026-08-14): `sections` accepted as an alias for `section_index`,
+  the way `filter` became one for `status` (ANTS-3698). Taken despite the
+  reporter's own view that it was not worth a change alone, because they
+  framed it as the last known member of that class and closing a class beats
+  closing instances.
   **Layman:** The tool answers with a list called "sections" but refuses to be asked for "sections".
   Kind: enhancement.
   Lanes: mcp, roadmap.
@@ -31303,7 +31310,7 @@ collision are different strengths of evidence.
   Lanes: fileoutline, mcp.
   Source: cc-feedback-2026-08-14 (claude_config).
 
-- 📋 [ANTS-4385] **`roadmap_log`'s `section` parameter tells callers to get slugs from "`roadmap_query`'s section echo" — no such field or mode exists, and the wrong name generated a false finding.**
+- ✅ [ANTS-4385] **`roadmap_log`'s `section` parameter tells callers to get slugs from "`roadmap_query`'s section echo" — no such field or mode exists, and the wrong name generated a false finding.**
   The capability is there as `mode:"section_index"`. The NAME is not: a caller
   who reads that sentence and searches the schema for "echo" finds nothing.
   **That is not hypothetical — it is exactly what happened.** claude_config
@@ -31315,6 +31322,10 @@ collision are different strengths of evidence.
   the original finding said had no route.
   So the documented name cost one false finding and one retraction. Fix is one
   sentence: "Get valid slugs from `roadmap_query` mode:\"section_index\"".
+  Resolved (2026-08-14): the parameter now names `mode:"section_index"` (and
+  its new `sections` alias, ANTS-4380) instead of a "section echo" that
+  exists under no name. That sentence cost one false finding and its
+  retraction.
   **Layman:** The instructions point at a feature by a name it does not have, so someone reported it missing when it was there all along.
   Kind: doc-fix.
   Lanes: mcp, roadmap.
@@ -31429,7 +31440,7 @@ collision are different strengths of evidence.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (claude_config).
 
-- 📋 [ANTS-4389] **`workspace_search`'s `max_match_bytes` clip marker is emitted as mojibake — `â¦` instead of `…`.**
+- ✅ [ANTS-4389] **`workspace_search`'s `max_match_bytes` clip marker is emitted as mojibake — `â¦` instead of `…`.**
   `â¦` is exactly U+2026's UTF-8 bytes (`E2 80 A6`) reinterpreted as latin-1,
   so the marker is being concatenated as raw bytes onto a string already
   decoded, rather than as a character. **`§` in the same string renders
@@ -31447,6 +31458,13 @@ collision are different strengths of evidence.
   rather than opt-in.
   Fix: append the marker as a character in the same encoding as the payload,
   or use a plain ASCII `...` — the schema's "3-byte" wording survives either.
+  Resolved (2026-08-14). Cause confirmed exactly as the reporter's byte-level
+  diagnosis predicted: `QStringLiteral("\xE2\x80\xA6")` reads a NARROW literal
+  as Latin-1, so U+2026's three UTF-8 bytes each became their own QChar and
+  re-encoded as `â¦`. Now appended as `QChar(0x2026)`. The 3-byte reservation
+  in the budget is unchanged and still correct. Regression is a source-grep,
+  matching that file's other cases, since the clip helper is not exported —
+  it asserts the Latin-1 spelling cannot return.
   **Layman:** Long search results are cut off with a symbol that arrives scrambled, and anything comparing the text against the real file then mismatches.
   Kind: fix.
   Lanes: mcp, remotecontrol.
