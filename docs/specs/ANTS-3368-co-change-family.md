@@ -492,7 +492,7 @@ alternation at `min_run: 1`.
 | `docs/standards/mcp-behavioural-notes.md` | Per-verb note: the matching rule, the role vocabulary, and that `min_run` widens the scan rather than only the filter. |
 | `CHANGELOG.md` | Entry under Added on the shipping release. |
 | `ROADMAP.md` | ANTS-3368 flipped on ship, with the resolution line. |
-| `Ants_Terminal_Ants_MCP_Feedback.md` | The Vestige finding's `**Proposed ID:**` slot closes when it ships. |
+| ~~`Ants_Terminal_Ants_MCP_Feedback.md`~~ | **No change owed — this row was wrong.** It assumed the Vestige report still sat in a feedback file with a `**Proposed ID:**` slot to close. No file under `/mnt/Games/Scripts/Linux/*_Ants_MCP_Feedback.md` mentions ANTS-3368, `co-change` or `Sug-A`: the item's `cc-feedback-2026-06-30` provenance predates the v2 inline-ID migration, so the write-up was compacted away when the id was allocated. Verified 2026-08-14. |
 | `mcp-error-codes.md` | **No change** — every refusal reuses an existing code. |
 
 ## Cold-eyes loop log

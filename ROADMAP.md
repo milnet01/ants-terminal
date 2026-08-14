@@ -20367,17 +20367,31 @@ server build id so clients can self-diagnose this.
   Kind: doc-fix.
   Source: DOOM_Ants feedback 2026-06-27.
 
-- 📋 [ANTS-3368] **Co-change family verb — given an exemplar field stem, return the grouped edit-site checklist (refs + JSON string-keys + derived/camel-cased names).**
+- ✅ [ANTS-3368] **Co-change family verb — given an exemplar field stem, return the grouped edit-site checklist (refs + JSON string-keys + derived/camel-cased names).**
   Vestige: every settings-backed slice (L5/AX5/AX6/AX8/AX9/AX11) is a ~10-file lockstep fan-out. find_sources/find_caller miss the string-literal key and derived names (setLodEnabled, AudioLodApplySink, audioLod). Verb keys on a stem, groups sites by file with a role guess (struct field/json key/apply sink/editor widget); accepts multi-field groups. Natural complement to ANTS-2156.
   **Layman:** When you add a setting the same way as a previous one, this lists every file you must touch — including the easy-to-miss JSON key and the auto-named helper types.
   Kind: feature.
   Source: cc-feedback-2026-06-30 (Vestige Sug-A, 6 consecutive slices).
-  Progress (2026-08-14): spec accepted —
-  `docs/specs/ANTS-3368-co-change-family.md`, 14 invariants (INV-8 withdrawn),
-  review-contract 2 loops / 4 cold lanes / 17 verified findings fixed, cap
-  reached. Design settles on longest-contiguous-word-run matching rather than
-  name matching, six lexical roles (not the bullet's semantic ones — see § 2.3
-  for why), and a repo-wide scan. Not implemented; status stays 📋.
+  Resolved (2026-08-14): shipped on main as the `co_change_family` verb.
+  Spec `docs/specs/ANTS-3368-co-change-family.md` — 14 invariants (INV-8
+  withdrawn), review-contract 2 loops / 4 cold lanes / 17 verified findings
+  fixed, cap reached. Matching is the longest run of the stem's words
+  contiguous in BOTH sequences, not name matching, so `setMcpEnabled` joins
+  the `claudeMcpEnabled` family and `mcpTraceEnabled` does not; `min_run`
+  widens the rg pattern itself, since a pairs-only alternation can never
+  produce a one-word match. **Two deviations from this bullet, both
+  deliberate and reasoned in the spec:** roles are six LEXICAL values
+  (`json_key|member|mutator|signal|type|reference`), not the semantic
+  "apply sink"/"editor widget" asked for here — those need type resolution
+  the scanner does not have, and a confident wrong `apply_sink` is worse
+  than `mutator` plus a path (§ 2.3); and the scan is repo-wide rather than
+  `src/`-scoped, because a config key's `docs/` and `CLAUDE.md` mentions are
+  co-change sites (§ 2.2.2, INV-14). Pure seam `src/cochangefamily.{h,cpp}`
+  in `ants_core_lib`; handler appended to `remotecontrol_workspace.cpp` so
+  no TU ordinal marker moves. 13 feature cases in `test_claude`, verified
+  red against a stubbed seam first; full suite 3452/3452.
+  **Not yet exercised over a live MCP socket** — the verb is unit- and
+  wiring-tested only, so the first real call is still owed.
 
 - ✅ [ANTS-3369] **project_settings op:detect — populate source_roots + non-empty reason on non-standard / src-less layouts.**
   Recurring across 4 projects: Vestige (missed low-count entry-point app/), Music (nested src/<pkg>/ + egg-info noise), RetroDB (src-less routes/services/scraper — 67% of code missed). Fix: when default walk covers <~60% of total_source_count, populate suggestion.source_roots with top-level dirs holding the missed code; include low-count entry-point dirs; echo would_use_roots + excluded[] (egg-info/build/dist); ALWAYS set a non-empty reason; when present:true echo declared source_roots instead of zeroed counts.

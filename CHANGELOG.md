@@ -14,6 +14,19 @@ for security-relevant changes.
 
 ### Added
 
+- **`co_change_family` — every edit site of one settings field, in one call** (ANTS-3368)
+  Adding a setting by copying an existing one is a ten-file lockstep
+  change, and the easiest sites to miss are the ones that are not
+  spelled like the field: the text key in the config file
+  (`"claude.mcp_enabled"`) and the helper names built from it
+  (`setClaudeMcpEnabled`, `m_claudeMcpEnabled`, `setMcpEnabled`). Ask
+  for one example field and this lists them all, grouped by file, each
+  line tagged with what it is. Measured on this repo's own
+  `claude.mcp_enabled` family: it spans 11 files under `src/`, where
+  searching for the whole name finds 6 — and one of those 6 is found
+  only by a comment, while the two lines you actually have to copy in
+  that file match nothing at all.
+
 - **changelog_log op:normalize now tidies stray prose, not just category order** (ANTS-3381)
   A paragraph left stranded between the category blocks of
   [Unreleased] is folded into the entry above it, in the same

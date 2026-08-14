@@ -210,6 +210,30 @@ server-controllable beyond this per-tool hint.
 ## Read / incremental verbs
 
 - **`get_scrollback`** — since-cursor incremental mode (ANTS-1500).
+- **`co_change_family`** (ANTS-3368) — every edit site of ONE settings
+  field, grouped by file. Matches on the longest run of the stem's words
+  **contiguous in both** the stem and the candidate, not on the name — so
+  `setMcpEnabled` belongs to the `claudeMcpEnabled` family while
+  `mcpTraceEnabled` does not. That is what reaches the affixed derived
+  names (`setX`, `m_X`, `XChanged`) and the JSON string key, none of which
+  `find_caller` can see: its anchor is `\b<sym>\s*\(`, so it matches call
+  sites only and `_` being a word character excludes `m_…` outright.
+  **`min_run` widens the SCAN, not just the filter** — at the default the
+  rg pattern alternates adjacent word *pairs* and can never produce a
+  one-word match, so `min_run:1` is what reaches a site sharing a single
+  word (`audioLod` from `lodEnabled`), at the cost of near-full-text
+  scanning on a common word. `role` is **lexical, never semantic** —
+  `json_key|member|mutator|signal|type|reference` and nothing else; an
+  "apply sink" is a mutator on a class that happens not to be the settings
+  store, which needs type resolution this scanner does not have, so read
+  the *path* for that. One row per `(path, line)`: a line matching several
+  stems is emitted once, owned by the longest run. When `max_sites` binds,
+  the sites kept are the highest `run_len` — never the first N in scan
+  order — and `truncated` is set; `truncated` also covers an exhausted rg
+  budget, while `rg_failed` is reserved for a scanner that did not run.
+  **Scans the whole repo** (minus `.gitignore`), unlike `find_sources`,
+  because a config key's `docs/` and `CLAUDE.md` mentions are co-change
+  sites. Spec `docs/specs/ANTS-3368-co-change-family.md`.
 - **`roadmap_query`** — recognises ants-v1 / github-task-list /
   pass-headings formats (ANTS-1530). `mode:"bundles"` (ANTS-1922)
   groups the active subset (📋/🚧, id-bearing) into thematic
