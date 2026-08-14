@@ -500,3 +500,87 @@ TEST(roadmap_log_amend_body, Inv10WrappedParagraphEcho) {
     EXPECT_FALSE(contains(para, "Layman: the value is pinned"))
         << "and it never spills into the neighbouring bullet";
 }
+
+// ANTS-4372 — op:"amend_headline", the same op aimed at the HEADLINE.
+//
+// A headline is not immutable metadata: on one roadmap it carries the
+// delivering phase as a prefix (`P03: …`), and a phase re-scope changes which
+// phase delivers an item — the same shape as a typo, a renamed subsystem or a
+// corrected scope word. Four bullets needed re-prefixing and there was no
+// verb: roadmap_query located all four in one call, and the fallback was a
+// native Read of a ~2400-line ROADMAP.md plus four native Edits.
+//
+// The Read is the sharp end. The native Edit tool requires a prior native
+// Read, and file_outline / read_region explicitly do NOT satisfy that
+// precondition, so a four-word change forces the raw tools onto a large file
+// — exactly what the roadmap verbs exist to prevent.
+TEST(roadmap_log_amend_body, Ants4372AmendHeadline) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path());
+    r[QStringLiteral("op")]       = QStringLiteral("amend_headline");
+    r[QStringLiteral("id")]       = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("old_text")] = QStringLiteral("Seed bullet");
+    r[QStringLiteral("new_text")] = QStringLiteral("Renamed bullet");
+    const QJsonObject out =
+        rc.cmdRoadmapLogAmendHeadlineForTest(r).object();
+
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << out.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("op")).toString(),
+              QStringLiteral("amend_headline"))
+        << "the envelope must echo the op the CALLER used";
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "**Renamed bullet headline.**"));
+    EXPECT_FALSE(contains(md, "**Seed bullet headline.**"));
+    // The structure around it is untouched — id, emoji, bold delimiters.
+    EXPECT_TRUE(contains(md, "[ANTS-0042] **Renamed bullet headline.**"));
+    // And the BODY is untouched: this op edits one line.
+    EXPECT_TRUE(contains(md, "Layman: the value is pinned in the spec here."));
+
+    // The guard that makes the op strictly SAFER than the hand-edit it
+    // replaces: a new_text that would eat the id or the bold delimiters is
+    // refused. Editing those orphans the id or breaks the parse every query
+    // verb depends on, and a caller doing this by hand has nothing stopping
+    // them.
+    QJsonObject bad = req(tmp.path());
+    bad[QStringLiteral("op")]       = QStringLiteral("amend_headline");
+    bad[QStringLiteral("id")]       = QStringLiteral("ANTS-0042");
+    bad[QStringLiteral("old_text")] = QStringLiteral("[ANTS-0042] **");
+    bad[QStringLiteral("new_text")] = QStringLiteral("");
+    const QJsonObject badOut =
+        rc.cmdRoadmapLogAmendHeadlineForTest(bad).object();
+    EXPECT_FALSE(badOut.value(QStringLiteral("ok")).toBool())
+        << "removing the id + bold prefix must be refused";
+    EXPECT_EQ(badOut.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+    EXPECT_TRUE(contains(readFile(roadmapPath(tmp.path())).toStdString(),
+                         "[ANTS-0042] **Renamed bullet headline.**"))
+        << "a refusal must not have written anything";
+
+    // A miss reports the surface the caller ASKED for — body_match_not_found
+    // from an amend_headline call reads as a different op's error.
+    QJsonObject miss = req(tmp.path());
+    miss[QStringLiteral("op")]       = QStringLiteral("amend_headline");
+    miss[QStringLiteral("id")]       = QStringLiteral("ANTS-0042");
+    miss[QStringLiteral("old_text")] = QStringLiteral("nowhere in the headline");
+    miss[QStringLiteral("new_text")] = QStringLiteral("x");
+    const QJsonObject missOut =
+        rc.cmdRoadmapLogAmendHeadlineForTest(miss).object();
+    EXPECT_FALSE(missOut.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(missOut.value(QStringLiteral("code")).toString(),
+              QStringLiteral("headline_match_not_found"));
+
+    // The body is deliberately out of reach: a phrase that exists only in the
+    // BODY must not be matched by amend_headline, or the two ops would be one.
+    QJsonObject cross = req(tmp.path());
+    cross[QStringLiteral("op")]       = QStringLiteral("amend_headline");
+    cross[QStringLiteral("id")]       = QStringLiteral("ANTS-0042");
+    cross[QStringLiteral("old_text")] = QStringLiteral("pinned in the spec");
+    cross[QStringLiteral("new_text")] = QStringLiteral("x");
+    EXPECT_FALSE(rc.cmdRoadmapLogAmendHeadlineForTest(cross)
+                     .object().value(QStringLiteral("ok")).toBool());
+}

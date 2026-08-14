@@ -965,6 +965,7 @@ public:
     // patch) against a synthetic caller_cwd without a MainWindow.
     // m_main-independent. See tests/features/roadmap_log_amend_body/spec.md.
     QJsonDocument cmdRoadmapLogAmendBodyForTest(const QJsonObject &req);
+    QJsonDocument cmdRoadmapLogAmendHeadlineForTest(const QJsonObject &req);
     // ANTS-1690 — drive the batch-flip path against a synthetic
     // caller_cwd without a MainWindow. See
     // tests/features/roadmap_log_flip_batch/spec.md.
@@ -1003,7 +1004,14 @@ private:
     // cmdRoadmapLog when req["op"] == "amend_body". Standalone (not
     // threaded into cmdRoadmapLogFlip); reuses the shared walk/scrub
     // helpers. See tests/features/roadmap_log_amend_body/spec.md.
-    QJsonDocument cmdRoadmapLogAmendBody(const QJsonObject &req);
+    // ANTS-4372 — `headlineMode` retargets the same locate / format-gate /
+    // write machinery at the bullet's HEADLINE line instead of its body span.
+    // A shared parameter rather than a sibling handler: the locate (id >
+    // anchor > headline), the fenced-block refusal, the pass-headings gate,
+    // the unique-match guard and the atomic write are identical, and a second
+    // copy of ~400 lines is how the two drift.
+    QJsonDocument cmdRoadmapLogAmendBody(const QJsonObject &req,
+                                         bool headlineMode = false);
     // ANTS-1690 — batch flip: flip N bullets to one to_status in a
     // single read + single QSaveFile commit. Dispatched from
     // cmdRoadmapLog when req["op"] == "flip_batch".

@@ -2944,6 +2944,17 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     if (op == QStringLiteral("amend_body")) {
         return cmdRoadmapLogAmendBody(req);
     }
+    // ANTS-4372 — op:"amend_headline": the same op for a bullet's HEADLINE.
+    // A headline is not immutable metadata — it carries the delivering phase
+    // as a prefix on some roadmaps, and a re-scope changes which phase
+    // delivers an item; a typo, a renamed subsystem and a corrected scope
+    // word are the same shape. Without it a four-word change forced a native
+    // Read of a ~2400-line ROADMAP.md (file_outline / read_region do NOT
+    // satisfy the native Edit tool's read-precondition), which is exactly
+    // what the roadmap verbs exist to prevent.
+    if (op == QStringLiteral("amend_headline")) {
+        return cmdRoadmapLogAmendBody(req, /*headlineMode=*/true);
+    }
     // ANTS-1690 — batch flip: N bullets, one read + one commit.
     if (op == QStringLiteral("flip_batch")) {
         return cmdRoadmapLogFlipBatch(req);
@@ -3020,6 +3031,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipForTest(
 QJsonDocument RemoteControl::cmdRoadmapLogAmendBodyForTest(
         const QJsonObject &req) {
     return cmdRoadmapLogAmendBody(req);
+}
+
+QJsonDocument RemoteControl::cmdRoadmapLogAmendHeadlineForTest(
+        const QJsonObject &req) {
+    return cmdRoadmapLogAmendBody(req, /*headlineMode=*/true);
 }
 
 // ANTS-1690 — test seam for the batch-flip path (m_main-independent).

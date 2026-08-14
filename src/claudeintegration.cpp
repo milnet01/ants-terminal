@@ -9868,6 +9868,7 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("flip_batch");
                     opEnum.append("annotate");
                     opEnum.append("amend_body");   // ANTS-3406
+                    opEnum.append("amend_headline");  // ANTS-4372
                     opEnum.append("create_section");
                     opEnum.append("bundle_row");
                     opProp["enum"] = opEnum;
@@ -9976,7 +9977,8 @@ void ClaudeIntegration::onMcpConnection() {
                     oldTextProp["type"]      = "string";
                     oldTextProp["maxLength"] = 4000;
                     oldTextProp["description"] = QStringLiteral(
-                        "op:\"amend_body\" (ANTS-3406) — the EXACT substring "
+                        "op:\"amend_body\" (ANTS-3406) / "
+                        "op:\"amend_headline\" (ANTS-4372) — the EXACT substring "
                         "to replace inside the located bullet's continuation "
                         "body. Must occur on exactly one body line (0 → "
                         "body_match_not_found, >1 → body_match_ambiguous, so "
@@ -9984,6 +9986,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "Case-sensitive; single-line (a phrase spanning a "
                         "line break won't match). The headline is out of "
                         "scope — amend_body edits body prose only. "
+                        "op:\"amend_headline\" is the mirror: it edits the "
+                        "HEADLINE text only, with the body out of scope. A "
+                        "headline is not immutable metadata (a phase prefix, "
+                        "a typo, a renamed subsystem), and without this op a "
+                        "four-word change forced a native Read of the whole "
+                        "ROADMAP.md — file_outline / read_region do NOT "
+                        "satisfy the native Edit tool's read-precondition. It "
+                        "refuses bad_args on a `new_text` that would alter the "
+                        "`- <emoji> [ID] **` prefix or the bold delimiters, "
+                        "which makes it strictly safer than the hand-edit it "
+                        "replaces; refusals are headline_match_not_found / "
+                        "headline_match_ambiguous. NOT supported on a migrated "
+                        "project: the headline is a store column and its "
+                        "locate key, so a markdown-only patch would be "
+                        "reverted by the next render. "
                         "ANTS-4097: single-line is a MATCHING rule, not a "
                         "safety one — rewriting a phrase that spans a "
                         "hard-wrapped paragraph takes N calls, each succeeds, "
@@ -10262,7 +10279,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Optional. Supported on EVERY op — \"append\" and "
                         "\"append_batch\" (ANTS-2077), \"flip\", "
                         "\"flip_batch\", \"annotate\", \"create_section\" and "
-                        "\"amend_body\" (ANTS-2136), \"bundle_row\" "
+                        "\"amend_body\" / \"amend_headline\" (ANTS-2136, "
+                        "ANTS-4372), \"bundle_row\" "
                         "(ANTS-3798). Returns the resolved preview WITHOUT "
                         "writing ROADMAP.md or bumping .roadmap-counter — a "
                         "free pre-flight to verify prefix / format / section / "

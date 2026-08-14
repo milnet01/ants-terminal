@@ -1904,7 +1904,13 @@ static QString rcAmendedParagraph(const QStringList &lines, int editedIdx) {
 // untouched. Exact-match patch only this pass; full-body-replace is out
 // of scope (see tests/features/roadmap_log_amend_body/spec.md).
 // m_main-independent (caller_cwd + filesystem only).
-QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
+QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
+                                                    bool headlineMode) {
+    // ANTS-4372 — every message below names the op the CALLER used, so a
+    // refusal from the shared machinery never tells them about an op they did
+    // not call.
+    const QString opName = headlineMode ? QStringLiteral("amend_headline")
+                                        : QStringLiteral("amend_body");
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
         env["ok"]    = false;
@@ -1936,27 +1942,28 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
     if (!req.value(QStringLiteral("to_status")).toString().isEmpty()) {
         return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: to_status is not accepted under "
-                           "op:\"amend_body\" — it edits body prose only and "
-                           "leaves status unchanged; use op:\"flip\" to "
-                           "change status"));
+                           "op:\"%1\" — it leaves status unchanged; use "
+                           "op:\"flip\" to change status").arg(opName));
     }
     if (req.contains(QStringLiteral("id_hint"))) {
         return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: id_hint is not accepted under "
-                           "op:\"amend_body\""));
+                           "op:\"%1\"").arg(opName));
     }
     const QString oldText = req.value(QStringLiteral("old_text")).toString();
     if (oldText.isEmpty()) {
         return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: op:\"amend_body\" requires a "
-                           "non-empty `old_text` — the exact substring to "
-                           "replace inside the located bullet's body"));
+            QStringLiteral("roadmap_log: op:\"%1\" requires a non-empty "
+                           "`old_text` — the exact substring to replace "
+                           "inside the located bullet's %2")
+                .arg(opName, headlineMode ? QStringLiteral("headline")
+                                          : QStringLiteral("body")));
     }
     if (!req.contains(QStringLiteral("new_text"))) {
         return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: op:\"amend_body\" requires "
-                           "`new_text` (may be an empty string to delete the "
-                           "matched phrase)"));
+            QStringLiteral("roadmap_log: op:\"%1\" requires `new_text` "
+                           "(may be an empty string to delete the matched "
+                           "phrase)").arg(opName));
     }
     QString newText = req.value(QStringLiteral("new_text")).toString();
     // ANTS-1995 — cap both operands. old_text is matched with a linear
@@ -1978,8 +1985,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
         req.value(QStringLiteral("headline")).toString();
     if (locId.isEmpty() && locAnchor.isEmpty() && locHeadline.isEmpty()) {
         return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: op:\"amend_body\" needs at least one "
-                           "locator — `id`, `anchor`, or `headline`"));
+            QStringLiteral("roadmap_log: op:\"%1\" needs at least one "
+                           "locator — `id`, `anchor`, or `headline`")
+                .arg(opName));
     }
     if (!locHeadline.isEmpty() &&
         (!locId.isEmpty() || !locAnchor.isEmpty())) {
@@ -2020,9 +2028,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
     // mis-edit (parity with the ANTS-2031 format gate).
     if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown))) {
         return rlErr(QStringLiteral("unsupported_format"),
-            QStringLiteral("roadmap_log: op:\"amend_body\" is not supported "
-                           "on pass-headings roadmaps — edit the body with a "
-                           "text edit"));
+            QStringLiteral("roadmap_log: op:\"%1\" is not supported on "
+                           "pass-headings roadmaps — edit it with a text "
+                           "edit").arg(opName));
     }
 
     QStringList lines = markdown.split(QChar('\n'));
@@ -2191,6 +2199,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
         QString seamErr;
         const auto target =
             roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+        // ANTS-4372 — headline mode does NOT write through the store yet, and
+        // refuses rather than patching markdown a migrated project renders
+        // FROM. A headline is the store's own column and its join key for the
+        // step-2 locate (ANTS-3809 § 2.2); writing one into the file alone
+        // would be silently reverted by the next render, and writing it into
+        // both without the store's own update path is how the two disagree.
+        // Refusing here costs a migrated project the op; writing blindly
+        // could cost it the bullet.
+        if (headlineMode && target) {
+            return rlErr(QStringLiteral("unsupported_format"),
+                QStringLiteral("roadmap_log: op:\"amend_headline\" is not "
+                               "supported on a migrated project — the "
+                               "headline is a store column and its locate "
+                               "key, so a markdown-only patch would be "
+                               "reverted by the next render. Use op:\"flip\" "
+                               "/ op:\"annotate\" for status and body, or "
+                               "edit the store."));
+        }
         QJsonObject refusal;
         if (rcRoadmapSourceRefused(refusal, why, seamErr))
             return QJsonDocument(refusal);
@@ -2276,7 +2302,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
                 return QJsonDocument(env);
 
             env[QStringLiteral("ok")]      = true;
-            env[QStringLiteral("op")]      = QStringLiteral("amend_body");
+            env[QStringLiteral("op")]      = opName;
             env[QStringLiteral("format")]  = QStringLiteral("ants-v1");
             env[QStringLiteral("file")]    = QStringLiteral("ROADMAP.md");
             env[QStringLiteral("amended")] = true;
@@ -2300,10 +2326,49 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
         }
     }
 
-    // 6. Patch the body span (single-occurrence uniqueness enforced).
+    // 6. Patch. Body span, or — ANTS-4372 — the headline LINE itself.
     int editedLine = -1;
-    const int hits =
-        amendBodyExact(lines, bodyAnchorLine, oldText, newText, &editedLine);
+    int hits = 0;
+    if (headlineMode) {
+        // The headline is one physical line, so the "spans a line break"
+        // failure mode does not exist here; uniqueness is still enforced,
+        // for the same reason it is on the body — a phrase occurring twice
+        // must not be clobbered on a guess.
+        if (bodyAnchorLine >= 0 && bodyAnchorLine < lines.size()) {
+            const QString before = lines.at(bodyAnchorLine);
+            hits = before.count(oldText);
+            if (hits == 1) {
+                const QString after = QString(before).replace(oldText, newText);
+                // The guard that makes this op SAFER than the hand-edit it
+                // replaces: the id, its brackets, the status emoji and the
+                // bold delimiters are structure, not prose. Altering them
+                // orphans the id or breaks the parse every query verb depends
+                // on — and a caller doing this by hand has nothing stopping
+                // them.
+                static const QRegularExpression prefixRe(
+                    QStringLiteral(R"(^(\s*[-*]\s*\S*\s*(?:\[[^\]]+\]\s*)?\*\*))"));
+                const auto pb = prefixRe.match(before);
+                const auto pa = prefixRe.match(after);
+                if (pb.hasMatch() &&
+                    (!pa.hasMatch() || pa.captured(1) != pb.captured(1))) {
+                    return rlErr(QStringLiteral("bad_args"),
+                        QStringLiteral("roadmap_log: that `new_text` would "
+                                       "alter the bullet's structural prefix "
+                                       "(\"%1\") — the marker, id brackets or "
+                                       "bold delimiters. Editing those orphans "
+                                       "the id or breaks the parse the query "
+                                       "verbs depend on; amend_headline edits "
+                                       "the headline TEXT only.")
+                            .arg(pb.captured(1).trimmed()));
+                }
+                lines[bodyAnchorLine] = after;
+                editedLine = bodyAnchorLine + 1;   // 1-based
+            }
+        }
+    } else {
+        hits = amendBodyExact(lines, bodyAnchorLine, oldText, newText,
+                              &editedLine);
+    }
     if (hits == 0) {
         // ANTS-3467 — distinguish the two common failure modes so the caller
         // self-corrects instead of concluding the text is absent: (a) the
@@ -2312,10 +2377,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
         // (bodies wrap at ~70 cols) so no single physical line contains it.
         QJsonObject env;
         env[QStringLiteral("ok")]    = false;
-        env[QStringLiteral("code")]  = QStringLiteral("body_match_not_found");
+        // ANTS-4372 — the refusal codes name the surface the caller asked
+        // for; `body_match_not_found` from an amend_headline call reads as a
+        // different op's error.
+        env[QStringLiteral("code")]  =
+            headlineMode ? QStringLiteral("headline_match_not_found")
+                         : QStringLiteral("body_match_not_found");
         env[QStringLiteral("error")] =
-            QStringLiteral("roadmap_log: `old_text` not found in the body of "
-                           "the located bullet");
+            QStringLiteral("roadmap_log: `old_text` not found in the %1 of "
+                           "the located bullet")
+                .arg(headlineMode ? QStringLiteral("headline")
+                                  : QStringLiteral("body"));
         const QString foldedOld = oldText.simplified();
         if (markdown.contains(oldText)) {
             env[QStringLiteral("hint")] =
@@ -2323,7 +2395,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
                                "the located bullet's body block (bullet at "
                                "line %1) — verify you targeted the right "
                                "bullet").arg(reportLine);
-        } else if (!foldedOld.isEmpty() &&
+        } else if (!headlineMode && !foldedOld.isEmpty() &&
                    markdown.simplified().contains(foldedOld)) {
             env[QStringLiteral("hint")] =
                 QStringLiteral("`old_text` appears to span a hard-wrapped "
@@ -2334,10 +2406,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
         return QJsonDocument(env);
     }
     if (hits > 1) {
-        return rlErr(QStringLiteral("body_match_ambiguous"),
+        return rlErr(headlineMode
+                         ? QStringLiteral("headline_match_ambiguous")
+                         : QStringLiteral("body_match_ambiguous"),
             QStringLiteral("roadmap_log: `old_text` occurs %1 times in the "
-                           "body — narrow it to a unique substring")
-                .arg(hits));
+                           "%2 — narrow it to a unique substring")
+                .arg(hits)
+                .arg(headlineMode ? QStringLiteral("headline")
+                                  : QStringLiteral("body")));
     }
 
     const QString updated = lines.join(QChar('\n'));
@@ -2347,7 +2423,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req) {
     auto buildEnvelope = [&](bool preview, qint64 byteCount) {
         QJsonObject out;
         out["ok"]        = true;
-        out["op"]        = QStringLiteral("amend_body");
+        out["op"]        = opName;
         out["format"]    = format;
         out["file"]      = QStringLiteral("ROADMAP.md");
         out["line"]      = reportLine;
