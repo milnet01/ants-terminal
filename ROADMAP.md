@@ -32313,7 +32313,7 @@ defect from different angles.
   Lanes: remotecontrol, symbolquery.
   Source: in-session-2026-08-14 (hit twice while settling ANTS-3747).
 
-- 📋 [ANTS-4347] **`spec_lint`'s required-section check has never run on this project — `docs/standards/specs.md` carries no `<!-- required-sections -->` block.**
+- 💭 [ANTS-4347] **WITHDRAWN — duplicate of ANTS-4345, which had already filed this exact defect the same day.** *(Original text kept below; the diagnosis was right and the id was redundant.)*
   `spec_lint` gates `missing_section` on the project format standard carrying
   that marker, and skips the check when it is absent, reporting
   `sections_checked:false`. Global `spec-format.md` has the marker (2 hits);
@@ -32325,8 +32325,21 @@ defect from different angles.
   Tests, Cold-eyes loop log). Note this edits a contract document, so it
   re-arms rule 14's gate — `review-contract --genre standard`. Verify by
   re-running `spec_lint` on one spec and checking `sections_checked` flips to
-  true. NOT the same as ANTS-4345 (an upstream parser limitation); this cause
-  is a missing marker and is fixable in-project.
+  true.
+  Withdrawn (2026-08-14): this is ANTS-4345, filed hours earlier from the
+  ANTS-3716 spec, with the same cause, the same fix and the same expected
+  first-run backlog. **Why the duplicate happened is worth keeping, because
+  it was not carelessness.** The bullet above originally closed with "NOT the
+  same as ANTS-4345 (an upstream parser limitation)". That belief came
+  straight from `write-spec` Step 4, which states the live
+  `sections_checked:false` is "from an upstream parser limitation, filed as
+  ANTS-4345" and instructs the session to record it once and stop
+  re-reporting. Having checked the real cause here — no marker in
+  `docs/standards/specs.md`, read against `speclint.cpp:220` — a distinct,
+  in-project, fixable defect looked like a genuinely new finding rather than
+  the one the skill said was upstream and closed. The skill's own label is
+  what made two names for one defect. Filed against the skill; see
+  ANTS-4345 for the work.
   **Layman:** The spec checker has a "are all the required chapters present?" test that has silently never run here, because the rulebook it reads is missing one line telling it which chapters to expect.
   Kind: doc-fix.
   Lanes: specs, remotecontrol.
