@@ -345,8 +345,8 @@ Read `coding.md` always; read a language file only when the project uses
 that language. A Python project has no reason to load C++ rules.
 
 A language file carries the version floor, the casing convention, the
-current idioms, the spellings of this file's, `testing.md`'s and
-`security.md`'s general rules, and — where the language has aged
+current idioms, the spellings of this file's and `testing.md`'s general
+rules, and — where the language has aged
 visibly — the retired spellings that still compile. That last part
 matters: an idiom that no longer errors is how a codebase quietly
 becomes a museum. Write a retirement as *this over that* in the idiom
@@ -395,9 +395,13 @@ The code-level rules that used to sit here — validate at the boundary,
 argument lists never shell strings, atomic writes, owner-only
 permissions on secret-bearing files, resolve paths before opening,
 never log a credential — are in `security.md`, stated once and in
-context. §5's split applies to them as it does to this file's own
-rules: the rule lives in `security.md`, its per-language spelling in
-`languages/<name>.md`.
+context. **`security.md` states them in a way that does not need a
+per-language spelling, and no language file carries one** — checked
+2026-08-14 (ROADMAP CFG-0108). This paragraph claimed §5's split applied
+to them, which told a C++ author to look in `cpp.md` for how a boundary
+check is written and find nothing. Where a language genuinely needs the
+spelling — an API that is the safe one, a flag that must be set — add it
+to that language file and say so here.
 
 
 ## 8. Anti-patterns

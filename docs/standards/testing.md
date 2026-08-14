@@ -175,7 +175,13 @@ something breaks has done nothing.
 
 **Concepts only.** How a test is written, labelled and run in a given
 language lives in `languages/<name>.md` — the same split as `coding.md`.
-Governs `Kind: test`, plus the regression-test follow-through for `fix`,
+Governs **every change that ships behaviour, whatever its `Kind`** — §1's
+test-first order and §8's conformance test bind an `implement` or `feature`
+item exactly as they bind a `test` one. Widened 2026-08-14 (ROADMAP
+CFG-0108): this named `Kind: test` plus the regression follow-through only,
+so a conformer on a feature item read the scope line, concluded this standard
+did not govern them, and shipped untested while §8 recorded them in breach.
+The regression-test follow-through specifically covers `fix`,
 `audit-fix` and `review-fix`.
 
 ---
@@ -338,8 +344,16 @@ broken.
 past the third repetition, no dead branches, no cleverness that costs
 legibility.
 
-The one place tests differ: **a little duplication in a test is often
-better than a helper**, because a test should be readable in one place
+The one place tests differ: **the Rule of Three does not apply inside a
+test body.** Extract only where the duplicated block is itself the thing
+under test, or where a change to it would have to be made identically in
+every copy to stay correct — never merely because it appears a fourth
+time. Stated 2026-08-14 (ROADMAP CFG-0108), because §9 imports a hard
+numeric threshold from `coding.md` and then softens it three lines later
+with "often", leaving a conformer holding a fourth near-identical
+assertion block unable to tell which clause wins. **A little duplication
+in a test is better than a helper**, because a test should be readable in
+one place
 without following a chain of abstractions to find out what it actually
 asserts.
 
@@ -362,7 +376,7 @@ asserts.
 
 | Rule | Kind of check |
 |---|---|
-| Tests pass (§1) | the test runner, on every push |
+| Tests pass (§1) | the test runner — **`Partial:`** locally always, and in CI only where the project has a pipeline that runs it. §1 states no CI requirement, so on a project without one nothing checks this except the person who remembers to run it |
 | Determinism (§7) | repeated runs, and a shuffled run order where the runner supports it |
 | Network isolation (§7) | running the fast set with no connection |
 | Speed labels honoured (§5) | the runner's own timing report |
@@ -376,4 +390,10 @@ is unclosable by tooling: the whole discipline of §1 and §2 rests on
 something no artifact records. That is why both sections state *why* the
 order matters rather than merely requiring it — a rule only habit
 enforces has to be understood to survive.
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|------|------|-------|----|----|----|----|---------|
+| 1 | 2026-08-14 | 1, cold — **first gate ever**. Packet carried `spec-format.md` § 3.7 and `coding.md` § 1.2 | 1 | 1 | 1 | n/a | **Three verified, three fixed.** **The scope line excluded most of what the document governs:** *"Governs `Kind: test`, plus the regression-test follow-through for `fix`, `audit-fix` and `review-fix`"* — while § 1 binds *"every change that ships behaviour"* and § 8 requires a conformance test of *"every new feature"*. A conformer on a `Kind: implement` item read line 15, concluded this standard did not govern them, and shipped untested while § 8 recorded them in breach. Now scoped by change type rather than by Kind. **§ 9 imports `coding.md`'s Rule of Three and softens it three lines later** with *"a little duplication in a test is often better than a helper"* and no bound, so a conformer holding a fourth near-identical block could not tell which clause wins. The Rule of Three is now stated as not applying inside a test body, with the real test given. **Q1: *"the test runner, on every push"*** asserts a CI trigger § 1 never requires, on a standard that governs projects with no pipeline — now `Partial:`. **One finding was fixed in `spec-format.md` instead:** § 4 here requires a withdrawn invariant carry the version and reason, and § 3.7 there, which owns the form, had no slot for either. |
 <!-- MIRROR END -->

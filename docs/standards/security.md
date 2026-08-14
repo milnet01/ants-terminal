@@ -93,6 +93,14 @@ defending.
 Validate **where the data arrives**, not where it is used — a value
 checked at the point of use has already been passed around unchecked.
 
+**The path rule below is the deliberate exception, and it is a
+point-of-use check.** Resolution is only meaningful against the
+filesystem as it stands at the moment of opening: a path validated at the
+boundary and trusted downstream can have a symlink swapped under it in
+between. So resolve and re-confirm containment inside the open, every
+time, rather than once at the edge. Stated 2026-08-14 (ROADMAP CFG-0108),
+which found the opener and the bullet prescribing opposite code.
+
 - **Validate the shape, not the absence of known-bad content.** Accept
   what matches the expected form; reject the rest. Blocklists enumerate
   the attacks somebody already thought of.
@@ -188,8 +196,13 @@ a real advisory hands it here.
 
 - **It is a fix, now — not a backlog item.** Ship the fix ahead of
   queued work.
-- **Write the regression test first**, so the hole cannot reopen
-  silently.
+- **Where the hole is in your own code, write the regression test
+  first**, so it cannot reopen silently. **Where it is an upstream
+  advisory there is no behaviour of yours to lock down** — the check is
+  the version floor in the manifest, and no test is owed. Scoped
+  2026-08-14 (ROADMAP CFG-0108): this section was widened that morning to
+  cover an advisory naming a version you ship, and the bullets below it
+  were written for your own code only.
 - **Assume exploitation where you cannot rule it out**, and rotate
   anything that may have been exposed.
 - **Say so in the CHANGELOG.** Users of a released version need to know
@@ -218,6 +231,12 @@ tool currently fills each row.
 | Injection and unsafe calls (§3) | static analysis for the project's languages |
 | Dependency vulnerabilities (§8) | the ecosystem's own advisory check, on the `dependencies.md` cadence |
 | Lockfile committed (§8) | the repository — a missing lockfile is visible |
+| Atomic writes and owner-only permissions (§4) | **nothing mechanical** — a permission bit is greppable in principle and nothing greps it |
+| Encryption of what a stolen disk would expose (§4) | **nothing mechanical** — whether a thing *should* be encrypted is a judgement about the data |
+| TLS with verification on (§5) | static analysis, where the language has a rule for a disabled-verification flag — **`Partial:`**, since a verification disabled through config rather than code is invisible to it |
+| No credentials in a URL (§5) | a secret scanner, if its rules cover URL userinfo — otherwise **nothing** |
+| Late-acquire, early-drop privilege (§7) | **nothing mechanical** — the shape of an escalation is a design question |
+| Anti-patterns (§10) | **nothing of its own** — each restates a rule above and is caught, or not, by that rule's row |
 | Boundary list exists (§1) | **nothing mechanical** — a human reads it |
 | What may be logged (§6) | **nothing mechanical** — reviewed at the boundary |
 | Fix-now discipline (§9) | **nothing mechanical** — social |
@@ -226,4 +245,10 @@ The rows marked *nothing mechanical* are this standard's honest error
 budget: the surface where a breach can still pass unseen. When a review
 catches the same class twice, the answer is a new rule for the analyser
 so the row moves up — not a longer standard.
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|------|------|-------|----|----|----|----|---------|
+| 1 | 2026-08-14 | 1, cold — **first gate ever**, three weeks after this standard shipped. Packet carried `dependencies.md` § 5, `coding.md` § 7 and `database.md`'s citation of § 3 | 0 | 1 | 2 | n/a | **Three verified, three fixed.** **The Q3 that matters: the What-checks-this table covers §§ 1, 2, 3, 6, 8 and 9 and has no row for § 4 (data at rest), § 5 (data in transit), § 7 (privilege) or § 10** — while its closing sentence calls the three `nothing mechanical` rows "the surface where a breach can still pass unseen". A project writing its audit configuration from this table, which the preamble tells it to do, configures a secret scanner and static analysis and configures **nothing** for TLS verification or privilege, believing the budget is three rows. **§ 3 prescribed opposite code inside one section:** the opener says validate where data arrives and never at the point of use, and the path bullet says resolve and confirm containment at the open — which is a point-of-use check, and correctly so, because resolution is only meaningful against the filesystem at open time. Stated as the deliberate exception. **The third is this morning's own collateral:** § 9 was widened at 09:00 to cover an upstream advisory naming a version you ship, and its bullets — *"write the regression test first"* — were written for holes in your own code. There is no behaviour of yours to lock down against a third-party CVE; the check is the version floor. |
 <!-- MIRROR END -->

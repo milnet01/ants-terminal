@@ -939,11 +939,13 @@ its cost. `.githooks/pre-commit`'s header records the measurement for each.
 only the per-class measurement.** That header says this section delegates the
 hook's scope to it, which would make the code the home of a rule — so someone
 adding a sixth class would update the header, believe the rule updated, and
-leave this table stale. Settled here 2026-08-14 (ROADMAP CFG-0107); correcting
-the header's delegation sentence is a code-side item. **The header is also
-already incomplete**: it calls the survivor class's exclusions *"two, both
-measured, neither optional"* and the implementation carries a third, `docs/` —
-which is why the `survivor` row above lists it and the header does not.
+leave this table stale. Settled here 2026-08-14 (ROADMAP CFG-0107), and the
+header was corrected the same day to say so. **It was incomplete in the same
+place**: it called the survivor class's exclusions *"two, both measured,
+neither optional"* while the implementation carried a third, `docs/` — the one
+the `survivor` row above lists. Both were fixed together, which is the shape to
+expect: a header claiming to own a scope drifts from it, and the drift shows up
+as an undercount.
 
 **There is no advisory channel, and that absence is the more important
 half of the hook.** It shipped on 2026-08-10 with a warning on a figure
