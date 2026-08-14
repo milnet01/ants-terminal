@@ -148,16 +148,27 @@ exposes timing races (ANTS-2130). Builds + runs in isolated
 push on the Release suite against the warm `build/`, plus — when a
 sanitizer tree already exists — an incremental `build-asan` build and its
 sanitized suite. Docs-only pushes skip, mirroring `ci.yml`'s `paths-ignore`.
-Not covered by the hook: `--lints`, `qt62-baseline`, and `e2e`/`perf`; run
-`--full` before a release, when touching packaging- / e2e-sensitive code,
-**and whenever a push ADDS a source file** (ANTS-4131). That last trigger
-cost three consecutive red CI runs: `spec_conformance` shipped using
+Not covered by the hook: `--lints`, the containerised `qt62-baseline` job,
+and `e2e`/`perf`; run `--full` before a release and when touching
+packaging- / e2e-sensitive code. **The Qt-floor half IS covered now**
+(ANTS-4131): the hook runs `tools/qt62-guard.sh --warm-only`, a compile
+guard against the Qt 6.2 floor, whenever a push carries compilable source,
+and skips with a message when it does not. So adding a source file no
+longer obliges a manual `--qt62` — a green push has already been compiled
+against the floor. What that guard still cannot see is anything only the
+full ubuntu:22.04 container exercises (packaging, distro Qt behaviour at
+runtime).
+
+Why the guard exists: a push that ADDS a TU once cost three consecutive
+red CI runs — `spec_conformance` shipped using
 `QRegularExpressionMatch::hasCaptured()`, which is **Qt 6.3+** against this
 project's **Qt 6.2 floor** (`dependencies.md` § 4). It compiled here, passed
-3393/3393, and passed the hook — only `qt62-baseline` can see a floor
-violation, and the hook does not run it. A new TU is the one change most
-likely to reach for a Qt API newer than the floor.
-Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`. The ASan
+3393/3393, and passed the hook, because at that time only `qt62-baseline`
+could see a floor violation and the hook did not run it. A new TU is still
+the change most likely to reach for a Qt API newer than the floor; it is
+now caught before the push rather than by CI.
+Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`,
+`ANTS_PREPUSH_NO_QT62=1`. The ASan
 leg is cost-gated (ANTS-4118): it runs only over a tree that is warm
 (≤ `ANTS_PREPUSH_ASAN_MAX_EDGES`, default 25 pending steps), skipping with
 a loud message when the tree is cold, mid-CMake-regen, or carries a damaged
