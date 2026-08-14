@@ -1675,6 +1675,22 @@ QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
         o["rows"]       = r.rows;
         o["row_offset"] = r.rowOffset;
         o["total_rows"] = r.totalRows;
+        // ANTS-4375 — `total_rows` is the rows IN the file, which is what
+        // paging is over. When the producing verb reported a larger
+        // population, the file is short and paging to the end is NOT
+        // completeness — say so rather than letting the last page read as the
+        // whole answer.
+        if (r.population >= 0) o["population"] = r.population;
+        if (r.rowsArePartial) {
+            o["rows_are_partial"] = true;
+            o["rows_are_partial_reason"] = QStringLiteral(
+                "the spilled array holds %1 row(s) but the producing verb "
+                "reported a population of %2 — it capped the array BEFORE "
+                "spilling, so paging to the end of this handle does not reach "
+                "the whole answer. Re-run the original call with a narrower "
+                "filter or an explicit limit.")
+                    .arg(r.totalRows).arg(r.population);
+        }
         o["truncated"]  = r.truncated;
         return QJsonDocument(o);
     }

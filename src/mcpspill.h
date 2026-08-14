@@ -89,6 +89,18 @@ struct SpillRows {
     QJsonArray rows;          // parsed [rowOffset, rowOffset+count) window
     qint64     rowOffset = 0;
     qint64     totalRows = 0; // dominant array's full length
+    // ANTS-4375 — the population the PRODUCING verb was reporting on, read
+    // from a `total` alongside the array when the spilled object carries one.
+    // `totalRows` is the number of rows actually IN the file and must stay
+    // that, because paging is over those rows — making it the population
+    // would leave `truncated` true on the last page forever and page a caller
+    // into nothing. When the two disagree the file itself is short: a verb
+    // capped its array before spilling, and a caller who paged to the end read
+    // that as completeness. Reported on the single most common "what should I
+    // do next?" call, where a list came back one bullet short and said so
+    // nowhere. -1 ⟹ the object carried no population to compare against.
+    qint64     population = -1;
+    bool       rowsArePartial = false;
     bool       truncated = false;
 };
 // handle must be a bare 64-hex sha256 (validated by the caller). Negative

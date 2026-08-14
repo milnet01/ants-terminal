@@ -724,3 +724,66 @@ TEST_F(McpResultOffload, Inv14RowModeRefusalEdges) {
         EXPECT_EQ(mcp::readSpillRows(handle, 0, 10).code, QStringLiteral("not_array"));
     }
 }
+
+// ANTS-4375 — a spilled array shorter than the population it came from must
+// not read as complete.
+//
+// An offloaded roadmap_query returned total_rows:11 and truncated:false on
+// the last page while the roadmap had TWELVE active bullets. The missing one
+// was last in document order and was caught only because a parallel
+// headline_only call on the identical filter returned 12. A truncation that
+// announces itself costs a page; this one read as completeness — on the
+// single most common "what should I do next?" call, so that session picked
+// its work from a list silently one item short.
+//
+// `total_rows` deliberately stays the number of rows IN the file: paging is
+// over those rows, and making it the population would leave `truncated` true
+// on the last page forever and page a caller into nothing. The population is
+// reported beside it, and the disagreement is what gets flagged.
+TEST_F(McpResultOffload, Ants4375ShortSpillIsFlaggedNotSilent) {
+    const auto writeSpill = [&](const QString &handle, int rows, int total) {
+        QJsonArray arr;
+        for (int i = 0; i < rows; ++i) {
+            QJsonObject o;
+            o[QStringLiteral("id")] = QStringLiteral("ANTS-%1").arg(i);
+            arr.append(o);
+        }
+        QJsonObject obj;
+        obj[QStringLiteral("bullets")] = arr;
+        if (total >= 0) obj[QStringLiteral("total")] = total;
+        QFile f(spillDir() + handle + QStringLiteral(".json"));
+        EXPECT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    };
+
+    // The reported shape: 11 rows spilled, 12 in the population.
+    writeSpill(QStringLiteral("short"), 11, 12);
+    const auto shortRes =
+        mcp::readSpillRows(QStringLiteral("short"), 0, 100);
+    ASSERT_TRUE(shortRes.ok);
+    EXPECT_EQ(shortRes.totalRows, 11)
+        << "total_rows stays the rows IN the file — paging is over those, and "
+           "the population would leave truncated:true on the last page";
+    EXPECT_EQ(shortRes.population, 12);
+    EXPECT_TRUE(shortRes.rowsArePartial)
+        << "the disagreement is the signal: paging to the end of this handle "
+           "does not reach the whole answer";
+    EXPECT_FALSE(shortRes.truncated)
+        << "…and `truncated` still means \"more rows in THIS file\", which is "
+           "exactly why it could not carry this";
+
+    // A complete spill must not raise the flag — it has to stay rare enough
+    // to mean something.
+    writeSpill(QStringLiteral("whole"), 12, 12);
+    const auto whole = mcp::readSpillRows(QStringLiteral("whole"), 0, 100);
+    ASSERT_TRUE(whole.ok);
+    EXPECT_EQ(whole.population, 12);
+    EXPECT_FALSE(whole.rowsArePartial);
+
+    // No population reported at all → nothing to compare, and no claim made.
+    writeSpill(QStringLiteral("bare"), 5, -1);
+    const auto bare = mcp::readSpillRows(QStringLiteral("bare"), 0, 100);
+    ASSERT_TRUE(bare.ok);
+    EXPECT_EQ(bare.population, -1);
+    EXPECT_FALSE(bare.rowsArePartial);
+}

@@ -323,6 +323,17 @@ SpillRows readSpillRows(const QString &handle, qint64 rowOffset, qint64 rowCount
     r.key       = domKey;
     r.rowOffset = rowOffset;
     r.totalRows = totalRows;
+    // ANTS-4375 — compare the array length against the population the
+    // producing verb reported, when it reported one. A silent short file is
+    // the failure mode this exists for: a truncation that announces itself
+    // costs a page, this one read as completeness.
+    for (const char *k : {"total", "total_count", "count_total"}) {
+        const QJsonValue tv = doc.object().value(QLatin1String(k));
+        if (!tv.isDouble()) continue;
+        r.population = static_cast<qint64>(tv.toDouble());
+        break;
+    }
+    r.rowsArePartial = (r.population > totalRows);
     if (rowOffset >= totalRows) {          // past end → empty, not truncated
         r.truncated = false;
         return r;

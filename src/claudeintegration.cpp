@@ -4270,7 +4270,7 @@ void ClaudeIntegration::onMcpConnection() {
                     "whose preview showed head_rows_key (an array of rows), "
                     "pass row_offset/row_count instead to page that array by "
                     "ROW, parsed: returns a DIFFERENT envelope {mode:\"rows\", "
-                    "key, rows, row_offset, total_rows, truncated} (no "
+                    "key, rows, row_offset, total_rows, population, truncated} (no "
                     "content); page on via row_offset + rows.size(). Refusals: "
                     "bad_args (bad handle, or negative "
                     "offset/max_bytes/row_offset/row_count), "
@@ -4319,6 +4319,13 @@ void ClaudeIntegration::onMcpConnection() {
                         rcP["description"] = QStringLiteral(
                             "Row-paging: number of rows to return (default 100; "
                             "0/omitted = default). Row mode returns "
+                            "ANTS-4375: `total_rows` is the rows IN the "
+                            "spill file, which is what paging is over; "
+                            "`population` is what the producing verb was "
+                            "reporting on, and `rows_are_partial:true` fires "
+                            "when the array was capped BEFORE spilling — then "
+                            "paging to the end is NOT completeness, however "
+                            "`truncated` reads. "
                             "{mode:\"rows\", key, rows, row_offset, total_rows, "
                             "truncated}.");
                     props["handle"]     = hP;

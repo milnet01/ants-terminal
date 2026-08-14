@@ -31158,7 +31158,7 @@ collision are different strengths of evidence.
   Lanes: mcp, docs.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager, converged from three findings).
 
-- 📋 [ANTS-4375] **An offloaded `roadmap_query` drops a bullet, and `read_spill` row mode reports the truncated array length as the total.**
+- ✅ [ANTS-4375] **An offloaded `roadmap_query` drops a bullet, and `read_spill` row mode reports the truncated array length as the total.**
   LottoTracker: `{status:"active", include_body:true}` with no explicit limit
   offloaded (18527 bytes); paging the handle returned `total_rows:11` and
   `truncated:false` on the last page, but the roadmap had TWELVE active
@@ -31181,6 +31181,21 @@ collision are different strengths of evidence.
   so the offload path was never re-exercised.
   Work: confirm whether the offload branch still drops a tail bullet, and make
   `read_spill`'s `total_rows` the population. Same family as ANTS-4374.
+  Resolved (2026-08-14) — **not literally as asked, because the literal fix
+  breaks paging.** `total_rows` drives the page loop
+  (`truncated = rowOffset + take < totalRows`); making it the population would
+  leave `truncated:true` on the last page forever and page a caller into
+  nothing. `total_rows` therefore stays the rows IN the file, and the
+  population is reported beside it: `population`, plus `rows_are_partial:true`
+  and a reason when the two disagree — which is exactly the case the reporter
+  hit, an array capped BEFORE spilling. So paging to the end no longer reads
+  as completeness, and `truncated` keeps its narrower meaning ("more rows in
+  THIS file"), which is why it could not carry this in the first place.
+  The population is read from a `total` / `total_count` / `count_total`
+  alongside the array, so it composes with the producing verb's own re-test
+  fix rather than duplicating it. A spill carrying no population makes no
+  claim at all, and a complete spill does not raise the flag — a signal that
+  fires often means nothing.
   **Layman:** A list of your open work quietly came back one item short, and said it was complete.
   Kind: fix.
   Lanes: mcp, roadmap.
