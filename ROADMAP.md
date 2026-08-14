@@ -31176,7 +31176,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (LottoTracker).
 
-- 📋 [ANTS-4378] **`roadmap_query mode:"headline_only"` returns the bare id as the headline for `**ID** Headline.` bullets, losing the headline entirely.**
+- ✅ [ANTS-4378] **`roadmap_query mode:"headline_only"` returns the bare id as the headline for `**ID** Headline.` bullets, losing the headline entirely.**
   On a roadmap mixing two bullet formats, a bullet written
   `- 📋 **LOTTO-0010** Read the payout SMSes and reconcile them…` comes back
   as `{id:"LOTTO-0010", headline_oneline:"LOTTO-0010"}`. The headline is on
@@ -31198,6 +31198,16 @@ collision are different strengths of evidence.
   distinguishable at parse time; the remainder is simply not kept. Worth
   checking `op:"flip"`'s headline locator against the same shape, since it
   hash-matches on headline text.
+  Resolved (2026-08-14): one condition in `fillBulletRecord`
+  (`src/roadmapparse.cpp`) tested `h == boldId + "."` and nothing else, so the
+  DOTTED `**Cl9.**` form recovered its prose and the undotted one did not —
+  the branch fell through leaving `h` as the id. Now accepts both spellings.
+  The reporter's follow-up needs no second fix: `fillBulletRecord` serves the
+  document walk AND `parseAntsV1Bullet`, which is what feeds
+  `ItemRef::headline`, so `op:"flip"`'s headline locator was fixed by the same
+  edit. Guarded by `Ants4378UndottedBoldIdKeepsItsHeadline` in
+  `tests/features/roadmap_query_emoji_bold_id/`, whose fixture mixes all three
+  shapes (undotted, dotted, bracketed) so neither sibling can regress.
   Projects that migrated id format mid-life show both shapes in one listing,
   which is how this stayed hidden.
   **Layman:** Two thirds of the roadmap list came back showing only item numbers instead of what they say, so a duplicate item got filed that was already there.

@@ -126,3 +126,42 @@ TEST(roadmap_query_emoji_bold_id, Inv6GfmDocBracketIdsFound) {
                "github-task-list doc (emoji bullet routes native path)";
     }
 }
+
+// ANTS-4378 — the UNDOTTED bold-id form `**LOTTO-0010** headline` keeps its
+// headline. The dotted `**Cl9.** headline` form above was already handled;
+// this one was not, because the branch that recovers the prose after a
+// bold-id token tested `h == boldId + "."` and nothing else. So on a roadmap
+// that migrated id format mid-life, headline_only returned the bare id as the
+// headline for every bullet in the older shape — 7 of 11 active ones in
+// LottoTracker's case.
+//
+// It cost real duplicated work: LOTTO-0029 was filed as a new idea when
+// LOTTO-0010 already covered it, and the duplication was invisible in the
+// listing because LOTTO-0010 rendered as the string "LOTTO-0010". Finding a
+// duplicate is exactly what that mode should answer.
+TEST(roadmap_query_emoji_bold_id, Ants4378UndottedBoldIdKeepsItsHeadline) {
+    const QString mixed = QString::fromUtf8(
+        "## Work\n"
+        "\n"
+        "- \xE2\x9C\x85 [LOTTO-0001] **A bracketed bullet.**\n"
+        "- \xF0\x9F\x93\x8B **LOTTO-0010** Read the payout SMSes and "
+        "reconcile them against computed wins.\n"
+        "- \xF0\x9F\x93\x8B **LOTTO-0011.** A dotted sibling, already handled.\n");
+    const auto bullets = RoadmapDialog::parseBullets(mixed);
+
+    const auto *undotted = byHeadlineContains(bullets, "payout SMSes");
+    ASSERT_NE(undotted, nullptr)
+        << "the undotted bold-id bullet's headline must be its PROSE, not its "
+           "id — a list of bare ids cannot be chosen from";
+    EXPECT_EQ(undotted->id, QStringLiteral("LOTTO-0010"));
+    EXPECT_FALSE(undotted->headline.startsWith(QStringLiteral("LOTTO-0010")))
+        << "headline was: " << undotted->headline.toStdString();
+
+    // Controls — neither sibling shape may regress.
+    const auto *dotted = byHeadlineContains(bullets, "dotted sibling");
+    ASSERT_NE(dotted, nullptr);
+    EXPECT_EQ(dotted->id, QStringLiteral("LOTTO-0011"));
+    const auto *bracket = byHeadlineContains(bullets, "bracketed bullet");
+    ASSERT_NE(bracket, nullptr);
+    EXPECT_EQ(bracket->id, QStringLiteral("LOTTO-0001"));
+}

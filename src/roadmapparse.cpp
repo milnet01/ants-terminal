@@ -1008,7 +1008,16 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         // headline of a bold-ID'd bullet is the *next* bold
         // chunk, but if there's only one, use the post-`.`
         // text after the token.
-        if (!boldId.isEmpty() && h == boldId + QLatin1Char('.')) {
+        // ANTS-4378 — accept the UNDOTTED `**PROJ-0010** headline` form as
+        // well as the dotted `**Cl9.**`. Testing only the dotted spelling left
+        // the undotted one with its own id as the headline, so on a roadmap
+        // that migrated id format mid-life `headline_only` returned bare ids
+        // for every bullet in the older shape — 7 of 11 active ones in the
+        // reporting project. That is not merely ugly: it is the mode used to
+        // pick the next item and to spot a duplicate, and it hid one
+        // (LOTTO-0029 was filed for work LOTTO-0010 already covered).
+        if (!boldId.isEmpty() &&
+            (h == boldId || h == boldId + QLatin1Char('.'))) {
             // Find the next bold token after the bold-ID.
             const int after = boldMatch.capturedEnd();
             const auto m2 = rxBold.match(maskedBody, after);   // ANTS-4066
