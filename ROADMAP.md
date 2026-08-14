@@ -31343,6 +31343,32 @@ collision are different strengths of evidence.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (claude_config), reproduced in-session.
 
+- 📋 [ANTS-4390] **`spec_lint` resolves its format standard under a project-relative `docs/standards/`, so the GLOBAL standards repo cannot check its own specs — its block is at `standards/spec-format.md`.**
+  Distinct from ANTS-4345 (a project whose standard simply lacked the block)
+  and from ANTS-4373 (the shape around the skip). **The reporter identified
+  the cause precisely and explicitly declined to merge it** — "recorded
+  separately rather than merged, since the cause here is identified and
+  specific and merging would bury it". That judgement was right, and this
+  project proved it the hard way the same day: reading ANTS-4345 as an
+  upstream parser limitation, on the strength of a skill sentence that had
+  fused the two, produced a duplicate roadmap item (the withdrawn ANTS-4347).
+  `~/.claude` has no `docs/standards/` because it IS the global standards
+  set, so the lookup misses and `sections_checked` comes back false on every
+  spec in the repo that owns the canonical block.
+  Fix, their order: (1) fall back to `standards/spec-format.md` when
+  `docs/standards/` is absent — one extra stat, and it makes the global
+  standards repo self-checkable; (2) failing that, let the caller point at it
+  with a `format_standard:` argument; (3) independently, and overlapping
+  ANTS-4373, say WHY in the envelope — "a boolean says a check did not run,
+  it does not say what to fix, so every caller re-derives the cause".
+  Also noted, uninvestigated: `surfaces_checked:false` with
+  `surfaces_resolved:0` on a spec whose invariants all carry `*Test:*`
+  clauses in the documented form — same shape, possibly the same cause.
+  **Layman:** The one repository that owns the master rulebook is the one place the rule-checker cannot find it.
+  Kind: fix.
+  Lanes: speclint, mcp.
+  Source: cc-feedback-2026-08-14 (claude_config).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
