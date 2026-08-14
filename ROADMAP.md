@@ -32293,6 +32293,25 @@ defect from different angles.
   Lanes: remotecontrol, symbolquery.
   Source: in-session-2026-08-14 (hit twice while settling ANTS-3747).
 
+- 📋 [ANTS-4347] **`spec_lint`'s required-section check has never run on this project — `docs/standards/specs.md` carries no `<!-- required-sections -->` block.**
+  `spec_lint` gates `missing_section` on the project format standard carrying
+  that marker, and skips the check when it is absent, reporting
+  `sections_checked:false`. Global `spec-format.md` has the marker (2 hits);
+  this project's `specs.md`, which governs spec *shape* here (its § 0 says so),
+  has none — so every spec in the 242-file corpus has had its required-section
+  structure unverified, and the clean-looking `ok:true` envelope says nothing
+  about it. Fix: add the marker block to `specs.md` § 3 listing the sections
+  § 3 and § 4 already mandate (Problem, Surface, Invariants, RAM / build cost,
+  Tests, Cold-eyes loop log). Note this edits a contract document, so it
+  re-arms rule 14's gate — `review-contract --genre standard`. Verify by
+  re-running `spec_lint` on one spec and checking `sections_checked` flips to
+  true. NOT the same as ANTS-4345 (an upstream parser limitation); this cause
+  is a missing marker and is fixable in-project.
+  **Layman:** The spec checker has a "are all the required chapters present?" test that has silently never run here, because the rulebook it reads is missing one line telling it which chapters to expect.
+  Kind: doc-fix.
+  Lanes: specs, remotecontrol.
+  Source: in-session-2026-08-14 (surfaced by the ANTS-3368 spec's mechanical pass).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
