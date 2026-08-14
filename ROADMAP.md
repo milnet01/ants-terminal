@@ -32156,6 +32156,34 @@ defect from different angles.
   Kind: fix.
   Lanes: mcp, speclint, docs.
   Source: in-session-2026-08-14 (authoring the ANTS-3716 spec).
+  Blocked (2026-08-14, measured while picking this up): **the stated work
+  cannot be done as a transcription, because `spec_lint` matches a required
+  heading EXACTLY, number included** (`speclint.cpp` `check()`:
+  `present.contains(collapseWs(req))` over the document's heading lines),
+  while this standard never fixes section numbers — § 4's optional sections
+  are inserted where they read best, which shifts every number after them.
+  Measured over all 243 specs in `docs/specs/`: the block this bullet
+  proposes (`## 1. Problem`, `## 2. Surface`, `## 3. Invariants`,
+  `## 6. Tests`, `## Cold-eyes loop log`, taken from § 7's skeleton) would
+  emit a finding on **188 of 243 (77%)** and pass only 55. `## 6. Tests` is
+  absent-as-written in 174 of them; heading numbers observed in the corpus
+  are Problem 1/2/none, Surface 2/3/6/none, Invariants 3/4/5/6/9/none,
+  Tests 4/5/6/7/8/none. Most of that is NOT missing structure — it is a
+  number this standard never mandated.
+  So adding the block is a change of direction (it would newly require a
+  fixed numbering), not the doc-fix this bullet assumed, and it re-arms
+  rule 14's gate. Three ways out, and the choice is a user decision:
+  **(a)** adopt the global standard's rule — required sections numbered
+  1..N, optional appended after — and renumber the corpus (243 files;
+  collides with ANTS-3755's rename sweep); **(b)** make `spec_lint` match
+  on the section NAME, ignoring the number (one C++ change, but the global
+  config repo relies on exact numbering as identity and would lose it);
+  **(c)** make the matcher honour whichever form the block uses — a
+  numbered entry matches exactly, an unnumbered one matches by name. (c) is
+  backwards-compatible for the global repo, lets this project write
+  `## Problem`, and is the smallest change; it is the recommendation.
+  Until one is chosen this stays open and `sections_checked` stays false.
+  See also the withdrawn ANTS-4347.
 
 - 📋 [ANTS-4135] **23 specs cite feature-test directories that do not exist.**
   Measured 2026-08-12 over docs/specs/ (excluding ANTS-4127's own spec):
