@@ -946,6 +946,7 @@ replaced by an `addElement()`.
   | Source | `code` | New? |
   |---|---|---|
   | `Result::GateUnmet` | `render_gate_unmet` | new |
+  | `Result::WouldDrop` | `render_would_drop` | **added later by ANTS-4141**, not part of this spec's build — the divergence guard between the dry render and the commit. This spec's sequence assumes the store is a superset of the file and never checked it; where that is false the render deletes what the store never imported. |
   | `Result::RenderFailed` | `render_failed` | new |
   | `Result::StoreFailed` | `store_failed` | new |
   | `Result::PublishFailed` | `write_failed` | **existing**, § 4 I/O failure — "file-system write returned an error", whose own example is `roadmap_log` |

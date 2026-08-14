@@ -43,6 +43,13 @@ struct Outcome {
     // the one window staging cannot close.
     bool committed = false;
     int  itemsRendered = 0, itemsExcluded = 0, sectionsRendered = 0;
+    // ANTS-4141 — the ids of the items actually emitted, in emission order.
+    // itemsRendered is the same set counted, and a count cannot answer the one
+    // question ANTS-4141's divergence guard asks: is a bullet the live file
+    // holds today absent from what this render would publish. Empty on the
+    // gate-failure return, where nothing was emitted. An item the store holds
+    // with no id contributes nothing.
+    QStringList renderedIds;
     // Ids of public OPEN items with no `layman` (INV-5). Non-empty ⇒ nothing
     // was written. Populated on every engaged return, so a caller staring at a
     // gate failure can still see how many items would have rendered.

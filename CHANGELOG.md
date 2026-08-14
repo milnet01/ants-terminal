@@ -28,6 +28,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log no longer deletes bullets the store has never imported** (ANTS-4141)
+  The store-backed write path renders the whole roadmap from the store
+  on every op, which assumes the store holds everything the file does.
+  Where it does not, a bullet filed by hand between two verb calls was
+  simply absent from the render and the publish removed it with no
+  trace. `RoadmapWrite::commitAndRender()` now compares the dry
+  render's id set against the ids the files it would rewrite hold
+  today and refuses `render_would_drop`, naming them, instead of
+  publishing. It sits at the one seam all eight ops share, so none can
+  bypass it, and a `dry_run` preview reports the same refusal.
+
 - **Re-importing a roadmap no longer aborts on an id the store and the file both claim** (ANTS-4142)
   A migration re-run refused the whole project with `UNIQUE constraint
   failed: item.project_id, item.id_fold` when a bullet's hand-filed id had

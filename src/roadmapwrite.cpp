@@ -2,7 +2,43 @@
 
 #include "roadmapwrite.h"
 
+#include "roadmapparse.h"
+
+#include <QFile>
+#include <QSet>
+
+#include <algorithm>
+
 namespace RoadmapWrite {
+namespace {
+
+// ANTS-4141 — the ids one file carries, from each bullet's own leading
+// `[<PREFIX>-NNNN]` slot.
+//
+// `idToken` and NOT `id`: BulletRecord::id is positionless, taking the first id
+// token found ANYWHERE in the body (roadmapparse.h), so an id-less bullet that
+// merely MENTIONS an id would be read as owning it and the guard would refuse a
+// render that drops nothing. A file that does not exist yet is one the render
+// is about to create, and creating a file drops nothing.
+QStringList fileIds(const QString &path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    QStringList out;
+    const auto bullets = RoadmapParse::parseBullets(QString::fromUtf8(f.readAll()));
+    out.reserve(bullets.size());
+    for (const RoadmapParse::BulletRecord &b : bullets)
+        if (!b.idToken.isEmpty())
+            out.append(b.idToken);
+    return out;
+}
+
+// Named in the refusal. Capped because the divergence this guard was written
+// for is ~200 ids wide and a refusal is not a report: the count is the size of
+// the problem, the names are the entry point into it.
+constexpr int kNameCap = 25;
+
+}  // namespace
 
 Result commitAndRender(RoadmapStore &store, qint64 projectId,
                        const QString &projectRoot,
@@ -55,6 +91,43 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
                          .arg(dry->gateFailures.size());
         }
         return abort(Result::GateUnmet);
+    }
+
+    // Step 4b — ANTS-4141's divergence guard. See the header for why this sits
+    // here and what it deliberately does not cover. Before `dryRun` returns, so
+    // a preview reports the refusal a real call would hit, as the gate above
+    // already does.
+    {
+        const QSet<QString> rendered(dry->renderedIds.cbegin(), dry->renderedIds.cend());
+        QStringList dropped;
+        QSet<QString> seen;
+        for (const QString &path : std::as_const(dry->filesWritten)) {
+            for (const QString &id : fileIds(path)) {
+                if (rendered.contains(id) || seen.contains(id))
+                    continue;
+                seen.insert(id);
+                dropped.append(id);
+            }
+        }
+        if (!dropped.isEmpty()) {
+            std::sort(dropped.begin(), dropped.end());
+            if (error) {
+                const QStringList named = dropped.mid(0, kNameCap);
+                *error = QStringLiteral(
+                             "the roadmap render would DELETE %1 bullet(s) the store "
+                             "has never imported: %2%3. Nothing was written and the "
+                             "store is rolled back. Import them (roadmap_migrate) "
+                             "before writing through this verb again; until then, "
+                             "edit the roadmap by hand.")
+                             .arg(dropped.size())
+                             .arg(named.join(QStringLiteral(", ")),
+                                  dropped.size() > named.size()
+                                      ? QStringLiteral(", +%1 more")
+                                            .arg(dropped.size() - named.size())
+                                      : QString());
+            }
+            return abort(Result::WouldDrop);
+        }
     }
 
     // Step 5 — the caller wanted a preview. Everything above ran, so *outcome

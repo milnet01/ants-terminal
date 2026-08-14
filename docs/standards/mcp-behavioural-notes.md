@@ -529,7 +529,15 @@ which heading you expect it under.
     project does it, since every op re-renders the whole project.
     `render_gate_unmet`'s envelope carries `gate_failures[]` naming the
     offending ids, so a blameless caller is not left guessing which items
-    block it. Full entries in
+    block it. **ANTS-4141 adds `render_would_drop`** at the same seam and
+    with the same write-nothing, roll-back semantics: the write path renders
+    the store's whole document, which assumes the store is a superset of the
+    file, and where that is false a bullet the store never imported is
+    absent from the render's output and the publish deletes it. The dry
+    render's id set is compared against the ids the files it would rewrite
+    hold today, and the ids are named in `error` rather than an array —
+    capped at 25 with a `+N more` tail, because the remedy is one import and
+    not a per-id edit. Full entries in
     [`mcp-error-codes.md`](mcp-error-codes.md). Spec
     `docs/specs/ANTS-3809-roadmap-write-half.md`.
 

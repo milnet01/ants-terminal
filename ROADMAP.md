@@ -39334,7 +39334,7 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-04 (noticed while fixing ANTS-3828).
 
-- 📋 [ANTS-4141] **A single `roadmap_log op:flip` re-rendered the whole of ROADMAP.md from a store that has diverged from the file by ~200 ids.**
+- 🚧 [ANTS-4141] **A single `roadmap_log op:flip` re-rendered the whole of ROADMAP.md from a store that has diverged from the file by ~200 ids.**
   Hit 2026-08-13 flipping two bullets. The write reported
   `items_rendered: 1975` and touched three files —
   `ROADMAP.md`, `docs/roadmap/0.6.md`, `docs/roadmap/0.5.md` — for a change
@@ -39437,6 +39437,27 @@ here.)
   moves 2. So the round trip converges after one pass and does not
   compound. The defect is ownership of allocation and the clobbering of
   un-imported bullets, not the renderer's output.
+
+  **Part 1 SHIPPED 2026-08-14 — the divergence guard is in.**
+  `RoadmapWrite::commitAndRender()` now compares the dry render's id set
+  against the ids the files it would rewrite hold today, between the dry
+  render and the store commit, and refuses `render_would_drop` naming them
+  rather than publishing. `RoadmapRender::Outcome` gained `renderedIds` to
+  carry the render's own answer; the refusal reaches the envelope through the
+  existing `rcRoadmapWriteRefused()` switch, so all eight ops inherit it and
+  none can bypass it. A `dry_run` preview reports the same refusal, as the
+  INV-5 gate already does. Two declared limits: only files the render would
+  REWRITE are read, ids compared as a union across them, so a rotation into an
+  archive is not a drop; and a bullet carrying no id cannot be compared. Test:
+  `tests/features/roadmap_divergence_guard/` (4 cases, three proved red
+  against mutations of the shipped guard). Code documented in
+  `docs/standards/mcp-error-codes.md`.
+
+  **Part 2 (counter reconciliation) is NOT done, and the divergence itself
+  still stands** — `roadmap_log` is now safe on this project but will refuse
+  every write until the ~200 un-imported bullets are imported, which is
+  ANTS-4065 Phase E. Hand-edit ROADMAP.md until then.
+
   **Layman:** Marking two roadmap items done silently rewrote the entire roadmap file — thousands of lines, invented ticket numbers, and two archive files nobody touched.
   Kind: fix.
   Lanes: mcp, roadmap.

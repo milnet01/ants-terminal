@@ -151,9 +151,10 @@ bool rcdetail::rcRoadmapSourceRefused(QJsonObject &out,
 // rcRoadmapSourceRefused() above and reads the same way at a call site:
 // `if (rcRoadmapWriteRefused(out, r, err, outcome)) return QJsonDocument(out);`
 //
-// All five values carry genuinely different remedies — fill in the missing
-// Layman lines, fix the store's contents, fix the store file, re-run the
-// render — which is why they are five codes and not one.
+// Every failing value carries a genuinely different remedy — fill in the
+// missing Layman lines, import what the store is missing (ANTS-4141), fix the
+// store's contents, fix the store file, re-run the render — which is why they
+// are five codes and not one.
 bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
                                   const QString &err,
                                   const RoadmapRender::Outcome &outcome) {
@@ -174,6 +175,14 @@ bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
         return fail("render_gate_unmet",
                     "the roadmap render refuses this project: an open item "
                     "carries no Layman: line");
+    case RoadmapWrite::Result::WouldDrop:
+        // ANTS-4141. No array beside it: unlike the gate, the offenders are
+        // named in `error` itself, because the remedy is a migration the caller
+        // runs once and not a per-id edit, and the set is ~200 wide in the case
+        // this was written for.
+        return fail("render_would_drop",
+                    "the roadmap render would delete bullets the store has "
+                    "never imported");
     case RoadmapWrite::Result::RenderFailed:
         return fail("render_failed", "the roadmap render failed");
     case RoadmapWrite::Result::StoreFailed:

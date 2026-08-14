@@ -406,6 +406,8 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                         continue;   // excluded by INV-4; already counted
                     blocks.append(bulletText(*it));
                     ++out.itemsRendered;
+                    if (!it->id.isEmpty())
+                        out.renderedIds.append(it->id);   // ANTS-4141
                 } else if (e.kind == QLatin1String("table")) {
                     // Serialised, not replayed — the store holds § 5.2's
                     // canonical JSON here rather than the author's bytes

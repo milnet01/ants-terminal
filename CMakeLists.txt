@@ -1713,6 +1713,10 @@ if(ANTS_TESTS)
                 # re-renders on a migrated project. Behavioural through the
                 # verbs, against stores the migration actually built.
                 tests/features/roadmap_write_half/test_roadmap_write_half.cpp
+                # ANTS-4141 — the divergence guard: a render that would delete
+                # a bullet the store never imported refuses instead. Same
+                # harness as roadmap_write_half, same seam.
+                tests/features/roadmap_divergence_guard/test_roadmap_divergence_guard.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through
                 # the verbs, against stores the migration actually built.

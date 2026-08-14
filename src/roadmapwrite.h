@@ -23,14 +23,16 @@
 namespace RoadmapWrite {
 
 // Every FAILING value below reaches an MCP envelope, so each names a `code`
-// (docs/standards/mcp-error-codes.md): render_gate_unmet, render_failed,
-// store_failed, and the taxonomy's existing write_failed. A caller must be able
-// to branch on `code` alone, and all four have genuinely different remedies —
-// fill in the missing Layman lines, fix the store's contents, fix the store
-// file, re-run the render.
+// (docs/standards/mcp-error-codes.md): render_gate_unmet, render_would_drop,
+// render_failed, store_failed, and the taxonomy's existing write_failed. A
+// caller must be able to branch on `code` alone, and all five have genuinely
+// different remedies — fill in the missing Layman lines, import what the store
+// is missing, fix the store's contents, fix the store file, re-run the render.
 enum class Result {
     Ok,
     GateUnmet,     // the render's INV-5 gate  → `render_gate_unmet`
+    WouldDrop,     // ANTS-4141's divergence guard
+                   //                          → `render_would_drop`
     RenderFailed,  // the render could not express the mutated store
                    //                          → `render_failed`
     StoreFailed,   // begin/commit/rollback, or the mutation itself, failed
@@ -49,6 +51,23 @@ enum class Result {
 // roadmap-data-model.md INV-3 makes the store primary. Options::dryRun is what
 // makes the right sequence expressible: validate with a dry render, commit the
 // store, publish with a real one.
+//
+// ANTS-4141 adds one step between the dry render and the commit: the
+// DIVERGENCE GUARD. The sequence above assumes the store is a superset of the
+// file, and nothing checked it. When it is false the render is not reformatting
+// the file, it is replacing it with a different document — a bullet the store
+// has never imported is simply absent from the render's output, and the publish
+// deletes it with no trace. Measured under ANTS-4065 D3: a hand-filed bullet
+// was gone one `annotate` later. So the dry render's id set is compared against
+// the ids the files it would rewrite hold TODAY, and a render that would drop
+// any refuses instead of publishing. It fails safe, needs no new data, and sits
+// at the one seam all eight ops share.
+//
+// Its two declared limits. Only files the render would REWRITE are read, ids
+// compared as a union across them, so an item MOVED between the live file and
+// an archive is not a drop. And a bullet carrying no id of its own cannot be
+// compared — the guard's subject is the id-bearing hand edit, which is what the
+// ~200-id divergence is made of.
 //
 // `mutate` performs the op's store writes and returns false on failure (setting
 // *error). It is a callback rather than a shape this header enumerates because
