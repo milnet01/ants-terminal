@@ -28581,6 +28581,34 @@ against current source before filing.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
 - 🚧 [ANTS-4065] **Define the markdown-to-store import mapping contract, so a roadmap can be imported without losing or inventing data.**
+  **Phase E measurement, 2026-08-14 (dry run only — nothing was written).**
+  The divergence between ROADMAP.md and the store was measured exactly, and
+  it is NOT the shape the earlier bullets assumed:
+  - **1,839 bullets in the file, 1,981 items in the store.**
+  - **57 file-only** (ANTS-4344…4400 — this session's work). These the render
+    WOULD drop, and ANTS-4141's guard correctly refuses to publish over them.
+    Hand-editing ROADMAP.md all session was therefore the right call.
+  - **199 store-only, and 197 of them are NOT missing from the file.** Every
+    one carries `id_origin='synthesised'`: they are id-less ants-v1 bullets
+    (`- ✅ **Command blocks as first-class UI** …` at ROADMAP.md:974 is one)
+    that the importer gave ids to. The CONTENT is present; only the id is
+    store-side. The remaining 2 (ANTS-1001/1002) are genuinely archived into
+    `docs/roadmap/0.6.md` and correctly absent.
+  **So "the store holds ~200 items the file has never contained" was wrong.**
+  The file contains them; they simply had no ids until the import minted some.
+  That reframes Phase E from "publish 200 missing items" to "import 57 new
+  bullets so the store is a superset again".
+  **But `roadmap_migrate dry_run` says the operation is not safe unattended:
+  24 inserted, 9 updated, 1,526 unchanged, and 446 ORPHANED.** An orphan is a
+  store row the plan matched to no source bullet, and 446 of 1,981 is a
+  quarter of the store. That number needs a human decision before any live
+  run — it is exactly the "what happens to rows the file no longer explains?"
+  question the mapping contract exists to answer, and it is unanswered.
+  Counter state at measurement: `.roadmap-counter` 4392, store
+  `id_prefix.high_water` 4342, store max item 4343, file max 4400. The
+  counter is now AHEAD of the store (this session hand-allocated 4345-4400),
+  which is the safe direction — ANTS-4141 Part 2 is still owed for the case
+  where it lags.
   The first real migration proved the import is not yet trustworthy, in
   three distinct ways measured on this project and across the corpus.
 
