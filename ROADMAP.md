@@ -32252,6 +32252,47 @@ defect from different angles.
   them and say so. Said so for now in docs/standards/README.md, which is the
   one place describing the arrangement.
 
+- 📋 [ANTS-4346] **find_definition resolves no C++ namespace, and the ANTS-1950 stem-hint rescue is case-sensitive — so on this codebase's own naming convention the caller gets an empty result AND no nudge.**
+  VERIFIED by running it, twice, while settling ANTS-3747's routing question.
+  `find_definition {symbol:"DocIntegrity"}` and `{symbol:"SpecLint"}` both
+  return `definitions:[]`, `definitions_count:0`, `files_scanned:901`,
+  `truncated:false`, and NO `file_stem_hint` — while `namespace DocIntegrity {`
+  is at `src/docintegrity.cpp:18` and `namespace SpecLint {` at
+  `src/speclint.cpp:18`, each with a matching header.
+
+  TWO independent causes, which is why it costs more than either alone.
+
+  (a) The C++ definition anchors are function- and class-shaped; a
+  `namespace X {` line matches none of them. Nothing declares namespaces out of
+  scope — the verb's own description says "where a symbol is defined" and a
+  namespace is where four of this project's engines live (`DocIntegrity`,
+  `SpecLint`, `DebtSweepEngine`, `MarkdownScan`).
+
+  (b) The rescue that exists for exactly this dead end never fires here.
+  `src/symbolquery.cpp:320` compares `fi.completeBaseName() == st.symbol`, and
+  `QString::operator==` is case-sensitive — so `SpecLint` does not match
+  `speclint.cpp`. That is this codebase's dominant convention, not an edge
+  case: PascalCase namespace or class, all-lowercase filename. The hint
+  ANTS-1950 shipped is therefore structurally unreachable for the queries most
+  likely to need it.
+
+  Same family as ANTS-3746 (a symbol that exists returns zero, which reads as
+  "no such symbol") but a different trigger and a different mechanism — that
+  one is the definition regex, this is the namespace shape plus the failure of
+  the fallback. Cost paid this session: an extra `workspace_search` per lookup,
+  and the moment where the empty result had to be disbelieved rather than
+  acted on.
+
+  Fix: (a) add a namespace anchor to the C++ pass, emitting `kind:"namespace"`
+  so a caller can tell it from a function; (b) fall back to a
+  case-insensitive stem compare when the exact one misses, keeping the exact
+  hit preferred. Regression: fixtures for `namespace Foo {` in a `foo.cpp`,
+  and a `FooBar` query against `foobar.h` asserting the hint fires.
+  **Layman:** Asking "where is DocIntegrity defined?" comes back completely empty even though it is right there — and the built-in "did you mean the file?" nudge is spelt in a way that can never match this project's filenames.
+  Kind: fix.
+  Lanes: remotecontrol, symbolquery.
+  Source: in-session-2026-08-14 (hit twice while settling ANTS-3747).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
 Triage of cross-session *_Ants_MCP_Feedback.md addenda logged up to 2026-07-23
