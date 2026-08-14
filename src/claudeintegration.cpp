@@ -3582,6 +3582,31 @@ void ClaudeIntegration::onMcpConnection() {
                     props["headline_only"]   = hoProp;        // ANTS-1876
                     props["count_only"]      = countOnlyProp; // ANTS-3537
                     props["files_only"]      = filesOnlyProp; // ANTS-3549
+                    // ANTS-4388 — distinct-MATCH mode.
+                    {
+                        QJsonObject mo; mo["type"] = "boolean";
+                                        mo["default"] = false;
+                                        mo["description"] = QStringLiteral(
+                            "Optional (ANTS-4388). Return the DISTINCT MATCHED "
+                            "SUBSTRINGS instead of rows: {matches:[{text, "
+                            "count, files_count}], distinct_count}. Every other "
+                            "trim here is row-shaped (count_only drops rows, "
+                            "files_only gives one row per file, headline_only "
+                            "thins rows, max_match_bytes shortens rows), so "
+                            "\"what is the SET of X in this tree\" had no "
+                            "answer. `dedup` is NOT this — its key is the "
+                            "whitespace-normalised LINE, so two lines carrying "
+                            "the same token stay two rows and one line carrying "
+                            "two tokens stays one. Nor is it count_only, which "
+                            "counts occurrences of ONE pattern; this asks which "
+                            "distinct strings that pattern matched. The cap "
+                            "applies to DISTINCT VALUES, not occurrences, so a "
+                            "3-string answer is never truncated by a 50-row "
+                            "limit; `count` / `files_count` come from the full "
+                            "uncapped scan. Best with regex:true. count_only "
+                            "wins if both are set.");
+                        props["matches_only"] = mo;
+                    }
                     props["offset"]      = wsOffsetProp;      // ANTS-3547
                     props["context"]     = ctxProp;
                     props["case"]        = caseProp;

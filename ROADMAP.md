@@ -31535,7 +31535,7 @@ collision are different strengths of evidence.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (claude_config).
 
-- 📋 [ANTS-4388] **`workspace_search` has no distinct-MATCH mode — every trim it offers is row-shaped, so `grep -o | sort -u` stays hand-rolled.**
+- ✅ [ANTS-4388] **`workspace_search` has no distinct-MATCH mode — every trim it offers is row-shaped, so `grep -o | sort -u` stays hand-rolled.**
   All four narrowing options are about the ROW: `count_only` drops rows,
   `files_only` gives one row per file, `headline_only` thins rows,
   `max_match_bytes` shortens rows. There is no way to ask for **the distinct
@@ -31563,6 +31563,18 @@ collision are different strengths of evidence.
   `count` already does. Sensible with `regex:true`; refusing a literal pattern
   is fine. Not a duplicate of `count_only` (ANTS-3537), which counts
   occurrences of one pattern — this asks which distinct strings it matched.
+  Resolved (2026-08-14) as `matches_only:true`, with both named properties:
+  the cap applies to DISTINCT VALUES (so a 3-string answer is never truncated
+  by a 50-row limit), and `count` / `files_count` come from the full uncapped
+  scan as `count_only`'s already do. `truncated` means the ANSWER is partial —
+  the distinct set exceeded `max_results`, or the scan was cut off — never
+  merely that many occurrences were seen, which is the normal case here.
+  No second scan and no `-o` invocation: **verified against real rg output**
+  that `--json`'s match events already carry each match's own text at
+  `data.submatches[].match.text`. Ordering is pinned by test — the harvest
+  runs BEFORE the `max_results` ROW cap, since capping rows first is exactly
+  the defect. Output is first-appearance order, so the reply is deterministic.
+  `count_only` still wins when both are set, as `files_only` already did.
   **Layman:** Asking "what different things match this?" returns one row per occurrence and cuts them off, so the real answer — three words — can be silently incomplete.
   Kind: feature.
   Lanes: mcp, remotecontrol.

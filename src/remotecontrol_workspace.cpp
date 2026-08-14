@@ -299,6 +299,18 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // false. count_only (leaner still) takes precedence if both are set.
     const bool filesOnly =
         req.value(QStringLiteral("files_only")).toBool(false);
+    // ANTS-4388 — matches_only: the distinct MATCHED SUBSTRINGS, not rows.
+    // Every other trim here is row-shaped — count_only drops rows, files_only
+    // gives one row per file, headline_only thins rows, max_match_bytes
+    // shortens rows — so "what is the SET of X in this tree" had no answer.
+    // `dedup` looks like it and is not: its key is the whitespace-normalised
+    // LINE, so two lines carrying the same token stay two rows and one line
+    // carrying two different tokens stays one.
+    //
+    // Not a duplicate of count_only either, which counts occurrences of ONE
+    // pattern; this asks which distinct strings that pattern matched.
+    const bool matchesOnly =
+        req.value(QStringLiteral("matches_only")).toBool(false);
     // ANTS-3547 — offset cursor: skip the first `offset` matches so a
     // truncated search can be CONTINUED (page N+1) instead of re-run wider
     // from scratch. Default 0 (byte-identical to the pre-3547 envelope);
@@ -407,6 +419,12 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     QStringList filesOnlyOrder;
     QList<int>  filesOnlyHits;
     int         filesOnlyCurIdx = -1;
+    // ANTS-4388 — matches_only capture. First-appearance order, so the reply
+    // is deterministic and reads like the scan.
+    QStringList        distinctOrder;
+    QHash<QString,int> distinctIndex;
+    QList<int>         distinctHits;
+    QList<QSet<QString>> distinctFiles;
     bool truncated = false;
     int lastMatchIdx = -1;  // ANTS-1304: index into matches[] for the
                             // most recent match in the current file
@@ -497,6 +515,39 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // a file's count reflects ALL its matches, not just the first N.
         if (filesOnly) {
             if (filesOnlyCurIdx >= 0) ++filesOnlyHits[filesOnlyCurIdx];
+            continue;
+        }
+        // ANTS-4388 — harvest the distinct matched substrings. rg --json
+        // already carries each match's own text in data.submatches[].match,
+        // so no second scan and no `-o` invocation. Placed BEFORE the
+        // max_results cap on purpose: that cap counts ROWS, and the whole
+        // defect is that a 3-string answer was truncated at 15 rows with no
+        // way to tell whether a fourth existed past the cut. `count` and
+        // `files_count` therefore come from the full uncapped scan, as
+        // count_only's `count` already does.
+        if (matchesOnly) {
+            const QJsonObject mdata = ev.value("data").toObject();
+            QString mpath =
+                mdata.value("path").toObject().value("text").toString();
+            if (mpath.startsWith(rootCanonical + QLatin1Char('/')))
+                mpath = mpath.mid(rootCanonical.size() + 1);
+            const QJsonArray subs = mdata.value("submatches").toArray();
+            for (const QJsonValue &sv : subs) {
+                const QString mtext =
+                    sv.toObject().value("match").toObject()
+                      .value("text").toString();
+                if (mtext.isEmpty()) continue;
+                int idx = distinctIndex.value(mtext, -1);
+                if (idx < 0) {
+                    idx = distinctOrder.size();
+                    distinctIndex.insert(mtext, idx);
+                    distinctOrder.append(mtext);
+                    distinctHits.append(0);
+                    distinctFiles.append(QSet<QString>());
+                }
+                ++distinctHits[idx];
+                distinctFiles[idx].insert(mpath);
+            }
             continue;
         }
         // ANTS-3547 — offset cursor: skip the first `offset` matches. Placed
@@ -611,6 +662,48 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // truncated here means the COUNT itself is partial (the scan was
     // hard-killed or the parse budget was exceeded mid-stream). The filter
     // echoes mirror the ok:true path so a 0-count stays diagnosable.
+    // ANTS-4388 — matches_only: the DISTINCT matched substrings. Placed
+    // beside count_only for the same reason (no rows to dedup, clip or cap),
+    // and before it in precedence only where both are absent — count_only
+    // stays the leanest and wins if both are set, as files_only already does.
+    if (matchesOnly && !countOnly) {
+        QJsonArray distinct;
+        // The cap applies to DISTINCT VALUES, not occurrences. That is the
+        // property the whole mode exists for: a search for `{{[A-Z_]+}}`
+        // returned 15 rows and truncated:true where the true answer was three
+        // strings, and a caller stopping at the default had no way to know
+        // whether a fourth existed past the cut — which is how a placeholder
+        // missed at scaffold time ships into a new project's README.
+        // `emitCount`, not `emit` — the latter is a Qt keyword.
+        const int emitCount =
+            qMin(static_cast<int>(distinctOrder.size()), maxResults);
+        for (int i = 0; i < emitCount; ++i) {
+            QJsonObject m;
+            m["text"]        = distinctOrder.at(i);
+            m["count"]       = distinctHits.at(i);
+            m["files_count"] = static_cast<int>(distinctFiles.at(i).size());
+            distinct.append(m);
+        }
+        QJsonObject out;
+        out["ok"]             = true;
+        out["pattern"]        = pattern;
+        out["matches"]        = distinct;
+        out["distinct_count"] = static_cast<int>(distinctOrder.size());
+        out["count"]          = seenMatchEvents;
+        out["files_count"]    = filesWithMatches;
+        out["matches_only"]   = true;
+        // Truncated means the ANSWER is partial — the distinct set exceeded
+        // max_results, or the scan itself was cut off. Not merely that many
+        // occurrences were seen, which is the normal case here.
+        out["truncated"] = (distinctOrder.size() > emitCount) ||
+                           hardKilled || parseBudgetExceeded;
+        out["respect_gitignore"] = respect_gitignore;
+        out["include_hidden"]    = include_hidden;
+        out["timeout_sec"]       = budgetSec;
+        out["elapsed_ms"]        = static_cast<int>(wall.elapsed());
+        return QJsonDocument(out);
+    }
+
     if (countOnly) {
         QJsonObject out;
         out["ok"]          = true;

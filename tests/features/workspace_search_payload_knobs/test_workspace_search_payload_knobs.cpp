@@ -442,3 +442,63 @@ TEST(workspace_search_payload_knobs, Ants4389ClipMarkerIsNotLatin1Bytes) {
     expect(contains(rc, "QChar(0x2026)"),
            "ANTS-4389: the marker is appended as one character");
 }
+
+// ANTS-4388 — matches_only: the distinct MATCHED SUBSTRINGS.
+//
+// Every other trim here is row-shaped, so "what is the SET of X in this tree"
+// had no answer and `grep -o | sort -u` stayed hand-rolled. The measured cost
+// was not tokens: a search for `{{[A-Z_]+}}` returned 15 rows and
+// truncated:true where the true answer is a handful of strings, and a caller
+// stopping at the default had no way to know whether one more existed past
+// the cut — which is how a placeholder missed at scaffold time ships a
+// literal {{PROJECT_NAME}} into a new project's README.
+//
+// The verb needs a MainWindow and a live rg, so the two properties the report
+// says carry all the value are pinned against the source, in this file's
+// existing idiom.
+TEST(workspace_search_payload_knobs, Ants4388DistinctMatchMode) {
+    const std::string cpp = ants_test::slurpRemoteControl();
+    const std::string ws =
+        ants_test::slurpFunctionBody(cpp, "RemoteControl::cmdWorkspaceSearch");
+    ASSERT_FALSE(ws.empty());
+
+    expect(ws.find("\"matches_only\"") != std::string::npos,
+           "ANTS-4388: the arg is parsed inside cmdWorkspaceSearch");
+    expect(ws.find("\"distinct_count\"") != std::string::npos,
+           "ANTS-4388: the envelope reports how many DISTINCT values exist, "
+           "so a capped reply is still diagnosable");
+
+    // Property 1 — the harvest reads rg's own per-match text rather than the
+    // line, and it happens BEFORE the max_results row cap. That ordering is
+    // the whole mode: capping rows first would truncate a 3-string answer at
+    // 15 rows, which is the defect.
+    const auto harvestPos = ws.find("submatches");
+    const auto rowCapPos  = ws.find("matches.size() >= maxResults");
+    expect(harvestPos != std::string::npos,
+           "ANTS-4388: distinct values come from rg's submatches[], not from "
+           "a second scan or an -o invocation");
+    expect(rowCapPos != std::string::npos,
+           "ANTS-4388: the row cap is still present for the normal path");
+    if (harvestPos != std::string::npos && rowCapPos != std::string::npos) {
+        expect(harvestPos < rowCapPos,
+               "ANTS-4388: the distinct harvest runs BEFORE the max_results "
+               "ROW cap — otherwise the cap that counts rows silently "
+               "truncates an answer counted in distinct values");
+    }
+
+    // Property 2 — the cap that DOES apply is against the distinct set, and
+    // the totals come from the full uncapped scan (seenMatchEvents), exactly
+    // as count_only's `count` already does.
+    expect(ws.find("qMin(static_cast<int>(distinctOrder.size()), maxResults)")
+               != std::string::npos,
+           "ANTS-4388: max_results caps DISTINCT VALUES, not occurrences");
+    const auto emitPos = ws.find("out[\"matches_only\"]");
+    expect(emitPos != std::string::npos, "ANTS-4388: the mode echoes itself");
+    if (emitPos != std::string::npos) {
+        const std::string tail = ws.substr(emitPos > 900 ? emitPos - 900 : 0,
+                                           1400);
+        expect(tail.find("seenMatchEvents") != std::string::npos,
+               "ANTS-4388: `count` is the uncapped total, like count_only's");
+    }
+    EXPECT_EQ(0, expect_failures());
+}
