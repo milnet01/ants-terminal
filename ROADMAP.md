@@ -30235,6 +30235,295 @@ in each bullet, not just the reporter's symptom.
   Source: vestige-feedback-2026-08-03.
   Resolved (2026-08-03). find_caller gains an optional `lane` scope filter: SymbolQuery::Options::lane restricts the WALK to a project-relative subdirectory, so callers_count and truncated describe the scoped set rather than a filtered view of a wider one, and the applied value is echoed back as `lane` on both the callers[] and files_only paths. Declared in the inputSchema — without that, additionalProperties:false strips the arg, which is the ANTS-3432 trap this verb family has hit before. A lane that does not resolve to a directory under the root is IGNORED rather than refused: a typo returning zero callers is the same silent-empty-reads-as-an-answer failure the finding is about. Took the cheapest of the reporter's three suggested fixes; qualified Class::method matching stays unimplemented because `symbol` is constrained to a bare identifier and cannot express it.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
+
+Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
+on 2026-08-14. Nine of eighteen files carried pending input; this section is
+the allocation. Where a finding matches something this project hit
+independently, the bullet says so — a reporter's claim and a maintainer's own
+collision are different strengths of evidence.
+
+- 📋 [ANTS-4349] **`file_outline`'s multi-path form returns top-level `ok:true` when EVERY requested path failed.**
+  OneUp: `paths:["a.md","b.md"]` with both absent returned
+  `{count:2, ok:true, files:[{ok:false,code:"not_found"},{ok:false,code:"not_found"}]}`.
+  The single-path form refuses properly, so the two shapes disagree about
+  what `ok` means, and a caller branching on the documented success signal
+  reads a total miss as a success and reasons about an empty symbol set.
+  Reporter prefers keeping `ok:true` as "the call was well-formed" and adding
+  `files_found` / `files_missing` counts, since a partial hit is legitimately
+  a success — that is the better shape, because a batch verb that refuses on
+  any miss is unusable for the "outline whatever exists" case. Whichever is
+  chosen, the schema must say what `ok` means in the batch form.
+  **Layman:** Ask for two files that do not exist and the tool says "worked" — the failure is buried one level down where a caller does not look.
+  Kind: fix.
+  Lanes: mcp, remotecontrol.
+  Source: cc-feedback-2026-08-14 (OneUp).
+
+- 📋 [ANTS-4350] **`read_region`'s `section_not_found` refusal carries no near-match candidates, though the ambiguous path already builds them.**
+  OneUp: `section:"4.3 The window owns every sentence"` refused bare; the real
+  heading was `4.3 Where the wording lives…`. Cost three calls (refusal →
+  `file_outline` → re-call) where one refusal carrying candidates would have
+  done, and it happened twice in one session. The machinery exists —
+  `section_ambiguous` already returns a `candidates` array — the not-found
+  path simply does not use it. A number-prefix match alone (`4.3`) would have
+  resolved both misses.
+  **Layman:** When you half-remember a section title the tool says "no such section" and nothing else, instead of showing you the ones it does have.
+  Kind: enhancement.
+  Lanes: mcp, remotecontrol.
+  Source: cc-feedback-2026-08-14 (OneUp).
+
+- 📋 [ANTS-4351] **`spec_lint`'s tombstone exemption silently requires the `*withdrawn — …*` span to sit on ONE physical line.**
+  The schema documents the vocabulary (`*moved to X*`, `*withdrawn — …*`) but
+  not the layout constraint: `speclint.cpp`'s anchors are
+  `^\*moved to ([A-Z]+-\d+)\*` and `^\*withdrawn — (.+?)\*`, and `.` does not
+  cross a newline, so a hard-wrapped tombstone is not exempt and comes back as
+  `invariant_no_test` — identical to the finding for a genuinely untested
+  invariant. The natural reading is "my vocabulary is wrong" rather than "my
+  line wrapping is wrong". OneUp burned three attempts on it.
+  **Confirmed independently the same day**: this project hit it while
+  withdrawing INV-8 of `docs/specs/ANTS-3368-co-change-family.md` — the first
+  spelling was `*withdrawn. …*` across four lines and re-fired the check;
+  reformatting to a single-line span cleared it. That makes this a reproduced
+  defect, not a report.
+  Fix, in the reporter's order of preference: (a) join the invariant body
+  before testing, which is what a reader does; (b) failing that, state the
+  single-line constraint in the schema; (c) cheapest useful middle ground, a
+  distinct signal (`near_tombstone:true`) when a body contains `withdrawn` /
+  `moved to` but the span did not match, so a layout miss is not reported as a
+  vocabulary miss. It bites hardest where tombstones happen — hard-wrapped
+  prose specs — and on this machine withdrawing-with-a-pointer is the ONLY
+  sanctioned way to retire an invariant, so it is the common path.
+  **Layman:** Retiring a spec rule works only if you fit the note on one line; wrap it and the checker says the rule is untested, which is a different problem entirely.
+  Kind: fix.
+  Lanes: speclint, mcp.
+  Source: cc-feedback-2026-08-14 (OneUp), reproduced in-session-2026-08-14.
+
+- 📋 [ANTS-4352] **No verb answers "has this gated document been edited since its last review loop?" — a Reviewed stamp does not survive an edit made by another item.**
+  OneUp: a spec was stamped Reviewed on 2026-08-05; on 2026-08-07 a different
+  roadmap item rewrote its § 7 while closing a defect elsewhere — a legitimate
+  commit nobody read cold. The stamp stayed. The eventual re-gate found 20
+  verified defects across three loops, two of which would have shipped a
+  contrast regression into the only appearance mode low-vision users have.
+  The failure is silent and self-concealing: the document asserts it was
+  reviewed, that assertion is what the next session trusts, and the
+  invalidating edit sits in another item's commit where nobody looks. Six days
+  hidden here.
+  Both halves of the answer are already visible to Ants: `spec_query` parses
+  loop logs, `git_state` talks to git. Proposed `spec_query mode:"gate_drift"`
+  returning `{stale:[{path, status, last_loop_date, last_commit_date,
+  commits_since:[{sha, subject}]}], current, ungated}`. **`commits_since` is
+  the part that makes it actionable rather than merely alarming** — it is what
+  distinguishes the gate's own fix pass (does not re-arm) from an authoring
+  edit by another item (does), and in OneUp's case the commit subject was
+  itself the whole diagnosis. Cheaper fallback: expose `last_loop_date` on
+  `spec_query`'s existing per-spec output and let the caller do the git half.
+  **Layman:** A document can say "reviewed" long after someone else edited it, and nothing notices — the stamp outlives the thing it was about.
+  Kind: feature.
+  Lanes: mcp, speclint, remotecontrol.
+  Source: cc-feedback-2026-08-14 (OneUp).
+
+- 📋 [ANTS-4353] **Loop logs run in OPPOSITE row order across specs, so any verb that appends a row must infer the direction rather than assume it.**
+  Filed by OneUp as an unverified hazard rather than a defect — they
+  hand-edited rather than using `spec_log`, so nothing broke. In one project
+  two specs run newest-first and a third runs oldest-first; the project's own
+  checker only balances per-row tallies and does not care, so both shapes have
+  been valid for months and neither is wrong.
+  **Confirmed on this corpus the same day, which upgrades it from a hazard to
+  a live one:** `docs/specs/ANTS-4108-spec-conformance-verb.md` runs
+  oldest-first (1, 2, 3) and `docs/specs/ANTS-4065-import-mapping-contract.md`
+  runs newest-first (7…1). A rule learned on one file does not transfer to its
+  sibling — this session prepended a row twice on that basis and had to swap
+  it back both times.
+  Why it matters more than tidiness: a row inserted at the wrong end reads as
+  a different loop's result, and a loop log's whole value is that it was not
+  back-filled. A checker validating only tallies passes the corruption.
+  Fix: infer direction from the existing rows — read the first and last data
+  row's loop numbers and insert at whichever end continues the sequence — and
+  echo it (`row_order:"newest_first"`, `inserted_at_line`) so the caller can
+  see which way it went. Fewer than two numbered rows is the one genuinely
+  ambiguous case; there an explicit argument or a documented default is fair.
+  **Layman:** Some of these review logs read newest-first and others oldest-first, so "add a row at the end" means opposite ends in different files.
+  Kind: fix.
+  Lanes: speclog, mcp.
+  Source: cc-feedback-2026-08-14 (OneUp), reproduced in-session-2026-08-14.
+
+- 📋 [ANTS-4354] **`roadmap_log op:"append_batch"` is sanctioned for pass-headings roadmaps but a batch of N passes can only name ONE designator.**
+  `pass` is a single top-level parameter and the `bullets[]` item schema
+  carries no pass field of any spelling. So on that dialect either every
+  bullet in a batch lands under the same `#### Pass N.M` heading, or the op
+  cannot be used for its stated purpose. `op:"append"` is unaffected — `pass`
+  is per-call there, which is presumably why it went unnoticed.
+  Found by a cold reviewer as an open question against `roadmap-format.md`
+  § 3.10.5, then confirmed against the live schema: the standard is accurate
+  to the verb, so the gap is the verb's.
+  Fix, either: add an optional per-bullet `pass` (mirroring how `stable_id`
+  is already per-bullet under `id_strategy:"stable_prefix"`), or refuse
+  `append_batch` on the pass-headings dialect with `format_mismatch`, as
+  `create_section` already does. The first keeps the op useful; the second is
+  honest and cheap.
+  **Layman:** Adding several roadmap passes at once can only label them all the same, which defeats the point of a batch.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (Ants Terminal).
+
+- 📋 [ANTS-4355] **`changelog_log`'s `feature_grouped_section` refusal hint tells the caller to hand-write a heading shape the writer never emits.**
+  `op:"add_subsection"` writes `### <date> <Category> — <headline>` (verified
+  against the live verb 2026-08-12). The refusal's hint instead says to add
+  the note under a `### <id> — <topic> (<date>)` subsection — id-led, date in
+  trailing parentheses, no category. That third form appears neither in the
+  writer nor in `changelog-format.md`, so a caller who follows the hint
+  produces a section the writer would not have written and that the next
+  `add_subsection` sits beside in a different shape. The `normalize` refusal
+  on the same condition carries no hint at all, so the two refusals also
+  disagree about whether guidance is offered.
+  Low severity — it is a message, not behaviour — but it is the message a
+  caller reads at exactly the moment they have been told to hand-edit, which
+  is when a wrong shape is most likely to be adopted.
+  Fix: quote the shape `add_subsection` emits, or drop the shape and point at
+  the op.
+  **Layman:** When the tool refuses and tells you to do it by hand, it describes the wrong layout.
+  Kind: doc-fix.
+  Lanes: mcp, changelog.
+  Source: cc-feedback-2026-08-14 (Ants Terminal).
+
+- 📋 [ANTS-4356] **One `changelog_log op:"add_subsection"` call silently and permanently bricks a FLAT changelog — the guard exists in one direction only.**
+  **The most serious of this batch.** `op:"add"` and `op:"normalize"` both
+  refuse `feature_grouped_section` against a feature-grouped `[Unreleased]`.
+  Nothing guards the reverse. Verified 2026-08-12 against a flat fixture:
+  `add_subsection` returned `ok:true` and produced a MIXED section — a dated
+  topic sitting above a flat `### Added` block under one `[Unreleased]`.
+  From that point `op:"add"` refuses `feature_grouped_section` and
+  `op:"normalize"` refuses too, because `firstFeatureGroupedTopicLine()` now
+  matches. So one call on a flat-layout project permanently disables the flat
+  write path, `ok:true`, no warning.
+  The asymmetry reads as accidental: the existing refusal exists to stop an
+  entry "landing as a sibling of the dated topics, breaking the house style",
+  and this is the same breach in the other direction.
+  Fix: `add_subsection` refuses (`flat_section`, or reuse `format_mismatch`)
+  when `[Unreleased]` already holds flat `### <category>` blocks and no dated
+  topic — mirroring `insertUnreleasedEntry`'s existing probe. A project
+  deliberately converting layouts empties the section first, which is what
+  converting already means.
+  **Layman:** One call can put a changelog into a state where the normal way of adding entries stops working, and nothing tells you.
+  Kind: fix.
+  Lanes: mcp, changelog.
+  Source: cc-feedback-2026-08-14 (Ants Terminal).
+
+- 📋 [ANTS-4357] **`roadmap_log op:"append"` drops `kind` / `source` / `lanes` / `layman` on a pass-headings roadmap with no signal — a silent drop and a successful write are indistinguishable.**
+  Documented behaviour (ANTS-4117 records that those fields have no slot on
+  that dialect), so this is a signalling report, not a correctness one. Run
+  against a two-pass fixture 2026-08-12: four supplied fields went nowhere,
+  `ok:true`, no `ignored_fields`, nothing in the envelope. The only way to
+  learn is to re-read the file and notice an absence.
+  It matters more than it looks because `roadmap-format.md` § 3.5 makes
+  `Kind:` and `Layman:` **required** parts of a bullet. An author working to
+  that standard supplies them correctly, the writer drops them, and both the
+  author and every later reader believe the roadmap conforms.
+  Fix: echo `ignored_fields:["kind","source","lanes","layman"]` on the success
+  envelope. A refusal would be wrong — dropping them IS correct for the
+  dialect, and refusing would make a batch across mixed projects unwritable.
+  Same class as ANTS-4356: a write that quietly does something other than what
+  was asked, with `ok:true`.
+  **Layman:** You fill in four fields, the roadmap saves without them, and nothing says so.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (Ants Terminal).
+
+- 📋 [ANTS-4358] **`find_definition` misses the C++ lambda-assignment form `auto NAME = [](…){…}`.**
+  Measured 2026-08-12: `find_definition{symbol:"makeEtagMatchProp"}` returned
+  `definitions:[]` across 896 files scanned, while the symbol is defined at
+  `src/claudeintegration.cpp` as `auto makeEtagMatchProp = []{`. Same for
+  `makeFieldsProp`, `makeRawProp`, `makeDryRunProp` — four helpers
+  `docs/standards/mcp-tools.md` cites by name precisely because the authoring
+  checklist tells every new verb to call them.
+  ANTS-4090 added top-level `const`/`let`/`var NAME =` for the brace family;
+  that path does not cover a lambda assigned to `auto` inside a C++ function
+  body, which is how this codebase spells a shared schema helper.
+  Fix: teach the C++ resolver `auto NAME = [` at any indent, with optional
+  capture list and `static`/`const` qualifiers — the same shape ANTS-4090
+  already added, spelled the C++ way. **Sibling of ANTS-4346** (the same
+  resolver returning empty on a namespace); worth doing in one pass.
+  **Layman:** Asking where a helper is defined comes back empty, because it is written in a style the search does not recognise.
+  Kind: fix.
+  Lanes: symbolquery, mcp.
+  Source: cc-feedback-2026-08-14 (Ants Terminal).
+
+- 📋 [ANTS-4359] **`doc_symbols` emits unresolved symbols as one flat bucket, and the resulting noise hid a real citation defect for two review loops.**
+  Filed as an enhancement by the reporter and worth taking on its own merits,
+  independently of ANTS-4358. On `docs/standards/mcp-tools.md` the unresolved
+  bucket was 24 names out of 58 checked: four were the ANTS-4358 lambda false
+  positives, the rest enum values, a Qt macro, a CMake variable and a JSON key.
+  Every one looked benign, so the whole bucket was logged into a cold-review
+  brief as settled noise with three reviewers told not to re-confirm it.
+  **One name in that bucket was a genuine defect** — the document cited
+  `isControlPlaneTool()` as "the canonical bypass list" and no such symbol
+  exists (the real one is an inline `isControlPlane` local that
+  `tests/features/mcp_output_sanitisation` scrapes for by literal, so an
+  author extracting the accessor the doc named would have reddened the suite).
+  It survived two full loops inside a dismissed bucket and was caught on loop
+  three only because a reviewer overrode the "settled" instruction.
+  Fix: bucket unresolved findings by SHAPE rather than one flat list —
+  separate names appearing with `()` in the doc (call-shaped: the document is
+  asserting a callable exists) from bare identifiers (indistinguishable from
+  enum values, JSON keys, config keys). A caller triaging 24 flat findings
+  dismisses the bucket; a caller triaging "6 call-shaped unresolved" opens
+  each one. The verb is report-only by design and DID report the defect — the
+  ask is to make the report cheap enough to act on.
+  **Layman:** The checker found the real problem and buried it in two dozen harmless-looking ones, so it got waved through twice.
+  Kind: enhancement.
+  Lanes: docsymbols, mcp.
+  Source: cc-feedback-2026-08-14 (Ants Terminal).
+
+- 📋 [ANTS-4360] **`changelog_log op:"add_from_roadmap"` reuses the defect-phrased headline, so a fix lands under `### Fixed` still describing the bug as live.**
+  A 📋 bullet names the defect, because that is what a planned bullet is for.
+  `add_from_roadmap` copies that headline and the Layman line verbatim into
+  the changelog, where under `### Fixed` it reads as if the bug is still
+  present — present tense, no "fixed" / "no longer". AI_Prompts had to
+  hand-edit both lines immediately after the write, which is exactly the
+  round-trip the verb exists to remove.
+  Quiet failure: the verb reports `ok`, the category routing is correct
+  (`Fixed` was derived right), so nothing prompts a re-read. `Kind: fix`
+  bullets are the common case for this op, so this is the majority path.
+  Fix, reporter's preference (b) as the smaller change: let `summary`/`body`
+  override per entry while still inheriting category and id from the roadmap
+  (`summary` is currently documented as ignored under this op, which is what
+  forces the hand-edit). Option (a) — refuse a defect-phrased headline and
+  demand an explicit summary — trades a silent wrong write for one clear
+  round-trip and is defensible if (b) proves leaky. A docs note steering
+  Fixed-category callers to `dry_run` first helps immediately either way,
+  since `dry_run` already returns the rendered bullet.
+  **Layman:** A fixed bug gets written into the changelog still worded as though it is happening.
+  Kind: fix.
+  Lanes: mcp, changelog.
+  Source: cc-feedback-2026-08-14 (AI_Prompts).
+
+- 📋 [ANTS-4361] **`file_outline` has no HTML mode, so a single-file web page — the largest file in such a project — outlines to nothing.**
+  `file_outline` on a 828-line `template.html` returns `language:"unknown"`
+  with no `symbols` array; the mode enum offers auto/cpp/py/md/json/generic/
+  glsl and `generic` is not selected for `.html`, nor honoured when forced.
+  The irony the reporter notes: the JS inside `<script>` IS the brace family
+  the outliner already parses well — only the extension routes it to the
+  fallback.
+  Cost measured: a native Read of all 828 lines, ~10k tokens, purely to learn
+  where things were before editing seven regions. The verb's own stated
+  13-39× saving, forgone on the largest file in the project. Not niche —
+  a single self-contained HTML page is the normal shape for a small local
+  tool, and three projects with feedback files here are web front-ends.
+  Fix: add `mode:"html"` auto-selected for `.html`/`.htm`, emitting one symbol
+  per structural landmark rather than attempting a DOM parse — each `<style>`
+  / `<script>` block as a region with its start line (so `read_region` can
+  fetch just it), each element carrying an `id=` as an anchor, and the
+  valuable half, the top-level declarations inside each non-JSON `<script>`
+  by delegating the existing brace-family parser with a line offset. That last
+  part is nearly free: the parser exists and already emits `kind:"const"` for
+  a top-level `const NAME =` (ANTS-4090). Scoping to landmarks avoids the tar
+  pit of parsing HTML properly. Stopgap that helps alone: honour
+  `mode:"generic"` when forced on a `.html` file.
+  **Layman:** The one file that most needs a map — a whole web page in a single file — is the one the map tool cannot read.
+  Kind: enhancement.
+  Lanes: fileoutline, mcp.
+  Source: cc-feedback-2026-08-14 (AI_Prompts).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
