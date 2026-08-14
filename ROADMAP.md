@@ -31943,7 +31943,7 @@ finbreak re-verified it.
   Lanes: fileoutline, mcp.
   Source: cc-feedback-2026-08-14 (finbreak).
 
-- 📋 [ANTS-4397] **`read_region`'s spill preview emits the same over-long row TWICE — `head` and `head_rows`, both truncated — so the preview costs ~4 KB and answers nothing.**
+- ✅ [ANTS-4397] **`read_region`'s spill preview emits the same over-long row TWICE — `head` and `head_rows`, both truncated — so the preview costs ~4 KB and answers nothing.**
   On a markdown file whose rows are single very long lines (a status table),
   the spill preview carries identical content in `head` (a JSON string) and
   `head_rows` (the parsed array), both cut at the same point. Measured: an
@@ -31957,6 +31957,22 @@ finbreak re-verified it.
   exactly which lines to page. And emit `head` OR `head_rows`, not both: they
   are the same bytes in two encodings, and on a truncated preview the
   duplication is the larger half of the cost.
+  Resolved (2026-08-14) as the shape summary, **purely additive rather than
+  replacing `head_rows`** — the first attempt did replace it and broke three
+  ANTS-3538 invariants, which was the right correction: a prefix of complete
+  rows IS the right preview for a body of many SMALL rows, and that is what
+  ANTS-3538 was built for. It is the opposite shape that fails.
+  `rows_preview` is one `{index, bytes, head}` row per ACTUAL row, emitted
+  whenever the bodies do not all fit — including the single-oversized-row case
+  that previously got no structured preview at all.
+  **Complete coverage is the finding**, so when the per-row text samples do not
+  fit they are dropped and `rows_preview_heads_omitted` says so: a summary of
+  SOME rows has the same defect as a prefix of some rows — the caller still
+  cannot see which of the others are large. `bytes` decides where to page, so
+  the head is what gives way. Measured on the reporter's exact shape (80 rows
+  x 1.9 KB): 20 covered with heads, all 80 without.
+  `head` itself is NOT dropped — it is the pre-3538 field, and removing it is
+  a contract change with a wider blast radius than this finding warrants.
   **Layman:** The preview of a big result shows you one cut-off line, twice.
   Kind: fix.
   Lanes: mcp, remotecontrol.

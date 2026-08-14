@@ -787,3 +787,69 @@ TEST_F(McpResultOffload, Ants4375ShortSpillIsFlaggedNotSilent) {
     EXPECT_EQ(bare.population, -1);
     EXPECT_FALSE(bare.rowsArePartial);
 }
+
+// ANTS-4397 — a shape summary when the row BODIES do not all fit.
+//
+// On a markdown file whose rows are single very long lines (a status table),
+// the spill preview carried the identical content in `head` (a JSON string)
+// and `head_rows` (the parsed array), both cut at the same point. Measured:
+// an 80-line request returned 20,529 bytes conveying 7 lines, one of them
+// twice. The preview exists to let a caller decide whether to page the spill,
+// and there it could not — it showed one truncated row and said nothing about
+// which of the 80 rows were large.
+//
+// Purely additive: `head_rows` is untouched in every case, because a prefix
+// of complete rows is genuinely the right preview for many SMALL rows, which
+// is what ANTS-3538 was built for. It is the opposite shape that fails.
+TEST_F(McpResultOffload, Ants4397ShapeSummaryForLongRows) {
+    // The reporter's shape: 80 rows, each ~1.9 KB.
+    QJsonArray arr;
+    for (int i = 0; i < 80; ++i)
+        arr.append(QStringLiteral("| %1 | ").arg(i) +
+                   QString(1900, QLatin1Char('x')));
+    QJsonObject b; b["lines"] = arr;
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), 16384);
+
+    const QJsonObject o = offloadEnv(QStringLiteral("read_region"), body);
+    ASSERT_TRUE(o.value("offloaded").toBool());
+
+    const QJsonArray shape = o.value("rows_preview").toArray();
+    ASSERT_FALSE(shape.isEmpty())
+        << "the case the preview could not answer must now be answered";
+    EXPECT_EQ(o.value("rows_preview_key").toString(), QStringLiteral("lines"));
+
+    // The point of the summary: it covers EVERY row, where the prefix covered
+    // one. That is what lets a caller pick which rows to page.
+    EXPECT_EQ(shape.size(), 80)
+        << "80 shape rows must fit where 1 body row did — got " << shape.size();
+    EXPECT_FALSE(o.value("rows_preview_truncated").toBool());
+
+    // Each entry says how big its row is, which is the field that decides
+    // what to fetch.
+    const bool headsOmitted = o.value("rows_preview_heads_omitted").toBool();
+    for (int i = 0; i < shape.size(); ++i) {
+        const QJsonObject r = shape.at(i).toObject();
+        EXPECT_EQ(r.value("index").toInt(), i);
+        EXPECT_GT(r.value("bytes").toInt(), 1900);
+        if (headsOmitted) {
+            EXPECT_FALSE(r.contains("head"));
+        } else {
+            EXPECT_LT(r.value("head").toString().size(), 100)
+                << "the head is a SAMPLE, not the row — duplicating the row "
+                   "is the defect being fixed";
+        }
+    }
+    // Covering every row at this width means the heads had to give way, and
+    // the envelope must SAY so rather than leaving a caller to notice a
+    // missing field. `bytes` is what decides where to page; the head is a
+    // convenience, so the head is what gives way.
+    EXPECT_TRUE(headsOmitted)
+        << "80 rows of 1.9 KB cannot carry text samples within the budget — "
+           "if this ever passes with heads intact, the budget grew and the "
+           "fallback is no longer exercised here";
+
+    // And the whole envelope still beats the body (INV-9), which is the
+    // constraint the old preview was spending its budget against.
+    EXPECT_LT(compact(o).toUtf8().size(), body.toUtf8().size());
+}

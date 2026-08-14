@@ -243,6 +243,102 @@ QString offloadBody(const QString &toolName, const QString &body) {
                     o[QStringLiteral("head_rows_truncated")] =
                         headRows.size() < domCount;
                 }
+
+                // ANTS-4397 — a SHAPE summary when the row bodies do not all
+                // fit. Purely additive: `head_rows` above is untouched in
+                // every case, because a prefix of complete rows is genuinely
+                // the right preview for a body of many SMALL rows, which is
+                // what ANTS-3538 was built for and does well.
+                //
+                // It is the opposite shape that fails. On a body whose rows
+                // are single very long lines — a markdown status table — the
+                // prefix is ONE row, cut off, duplicating bytes `head`
+                // already carries in another encoding. Measured: an 80-line
+                // request returned 20,529 bytes conveying 7 lines, one of
+                // them twice, and said nothing about which of the 80 rows
+                // were large. The preview exists to let a caller decide
+                // whether to page the spill, and there it could not.
+                //
+                // One line of shape per ACTUAL row answers that for a
+                // fraction of the cost, and it is most valuable exactly where
+                // `head_rows` is emptiest — including the single-oversized-row
+                // case, which previously got no structured preview at all.
+                if (headRows.size() < domCount) {
+                    const qint64 usedSoFar = QJsonDocument(o)
+                        .toJson(QJsonDocument::Compact).size();
+                    const qint64 shapeBudget =
+                        qMin<qint64>(offloadHeadBytes() * 2,
+                                     total - usedSoFar - 1);
+                    // Build the summary with per-row heads; if that cannot
+                    // cover EVERY row, rebuild without them.
+                    //
+                    // Complete coverage is the finding: a summary of some
+                    // rows has the same defect as a prefix of some rows —
+                    // the caller still cannot see which of the others are
+                    // large. `bytes` is what decides where to page, and the
+                    // head is a convenience, so the head is what gives way.
+                    const auto buildShape = [&](bool withHeads) {
+                        QJsonArray acc;
+                        if (shapeBudget <= 0) return acc;
+                        for (int i = 0; i < fullArr.size(); ++i) {
+                            const QByteArray elBytes =
+                                QJsonDocument(QJsonObject{
+                                    {QStringLiteral("v"), fullArr.at(i)}})
+                                    .toJson(QJsonDocument::Compact);
+                            QJsonObject r;
+                            r[QStringLiteral("index")] = i;
+                            r[QStringLiteral("bytes")] =
+                                static_cast<int>(elBytes.size());
+                            if (withHeads) {
+                                QString firstChars =
+                                    fullArr.at(i).isString()
+                                        ? fullArr.at(i).toString()
+                                        : QString::fromUtf8(elBytes);
+                                if (firstChars.size() > 60) {
+                                    firstChars.truncate(60);
+                                    firstChars += QChar(0x2026);
+                                }
+                                r[QStringLiteral("head")] = firstChars;
+                            }
+                            QJsonArray probeShape = acc;
+                            probeShape.append(r);
+                            const qint64 shapeLen = QJsonDocument(probeShape)
+                                .toJson(QJsonDocument::Compact).size();
+                            if (shapeLen - 2 > shapeBudget) break;
+                            acc = probeShape;
+                        }
+                        return acc;
+                    };
+                    QJsonArray shape = buildShape(/*withHeads=*/true);
+                    bool headsDropped = false;
+                    if (shape.size() < fullArr.size()) {
+                        const QJsonArray lean = buildShape(false);
+                        if (lean.size() > shape.size()) {
+                            shape = lean;
+                            headsDropped = true;
+                        }
+                    }
+                    if (!shape.isEmpty()) {
+                        o[QStringLiteral("rows_preview_key")] = domKey;
+                        o[QStringLiteral("rows_preview")]     = shape;
+                        o[QStringLiteral("rows_preview_truncated")] =
+                            shape.size() < domCount;
+                        if (headsDropped)
+                            o[QStringLiteral("rows_preview_heads_omitted")] = true;
+                        o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
+                            "one SHAPE row per row — {index, bytes, head} — "
+                            "because the row BODIES do not all fit. Use "
+                            "`bytes` to pick which rows to fetch with "
+                            "read_spill row_offset/row_count; a prefix of "
+                            "bodies would show you the first row (possibly "
+                            "cut off, and duplicating `head`) and say nothing "
+                            "about the rest. When "
+                            "`rows_preview_heads_omitted` is set, the per-row "
+                            "text samples were dropped so that EVERY row could "
+                            "be covered — a summary of some rows has the same "
+                            "defect as a prefix of some rows.");
+                    }
+                }
             }
         }
     }
