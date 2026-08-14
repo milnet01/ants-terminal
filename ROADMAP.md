@@ -22491,6 +22491,35 @@ requesting no action and are closed in place rather than filed.
   the four-op verb as filed, and note it is an interface another session builds
   against, so it wants a spec first.
 
+  Spec ACCEPTED (2026-08-14): `docs/specs/ANTS-3716-cited-by-sweep.md`, the
+  `sweep` half only, through review-contract loops 1 and 2 to the spec cap with
+  no deferred tail — 18 verified findings, all fixed. Ready to implement; this
+  bullet stays 📋 until that starts.
+
+  The design landed where the bullet did not anticipate, and the reason is worth
+  carrying: **one rg run per anchor, not one pass with N `-e` patterns.** Both
+  drafts specified the shared pass and both were wrong, in ways only a run could
+  show — `--smart-case` resolves across the whole pattern set, so one
+  capitalised anchor silently makes every other anchor case-sensitive;
+  `submatches[].match.text` is the text as found in the file, so under the
+  default insensitive mode it never equals the anchor; and `-F` with several
+  `-e` patterns matches leftmost-first in pattern order, so `-e foo -e foobar`
+  emits no `foobar` submatch at all and would report a cited anchor as uncited.
+  Each patch needed a rule the caller would then have to know. Per-anchor runs
+  delete all three and cost **0.45 s** for 64 anchors over `docs/` +
+  `README.md` + `CLAUDE.md` against a 5 s budget — measured. The saving the
+  shared pass bought was never real: this bullet's cost is N *MCP round-trips of
+  reasoning*, and N runs inside one call is still one round-trip.
+
+  Two findings that outlive this item. `cited_by` must NOT inherit
+  `workspace_search`'s failure policy: three of its four `rg_failed` branches
+  are gated on `matches.isEmpty()` (`remotecontrol_workspace.cpp:514`, `:521`,
+  `:538`; only `:505` is unconditional), so it deliberately returns partial
+  results — which for a sweep is indistinguishable from a complete one. And the
+  rg call site cannot be extracted as a *classifying* helper: every branch reads
+  the parsed `matches`, which exist only after the handler parses the stdout the
+  helper returned, so the helper returns the raw run and each verb classifies.
+
 - 📋 [ANTS-3717] **Loop-health metrics — the collateral ratio and per-doc size delta, the stopping signals review currently lacks.**
   The `/cold-eyes` fix-ledger reference records a measured loop where five of nine
   HIGH findings had been introduced by the previous loops' own fixes. That ratio is
