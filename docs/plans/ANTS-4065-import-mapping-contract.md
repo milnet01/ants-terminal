@@ -238,6 +238,13 @@ the spec explains why the direction is the whole finding.
 
 ## Phase D — Re-migrate and prove it
 
+**D2's and D3's checks are committed, not described** —
+`tools/roadmap-import-verify.py` (declared kind vs stored kind) and
+`tools/roadmap-roundtrip-diff.py` (per-column render→re-import diff). Both
+report and never write, both take any project, and Phase E runs them per
+project. Read their module docstrings rather than re-deriving the method
+from the prose below.
+
 **D1. Dry-run the import against the reverted roadmap.**
 
 > **Verify:** `items_orphaned` 0. Every `Kind: bug` bullet reports `kind='fix'`
