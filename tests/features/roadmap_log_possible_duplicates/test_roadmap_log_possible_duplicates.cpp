@@ -198,3 +198,34 @@ TEST(roadmap_log_possible_duplicates, Inv5BatchPerBulletAdvisory) {
               QStringLiteral("ANTS-9001"));
     EXPECT_EQ(cands[0].toObject()["score"].toInt(), 100);
 }
+
+// ANTS-4377 — `note` is op:"flip"/"annotate"'s parameter and op:"append"
+// takes `body`. Both are top-level optional strings on one verb, differing
+// only by which op consumes them, and the unused one was DISCARDED IN
+// SILENCE: a caller who sent 2.3 KB of body prose as `note` got ok:true with
+// a plausible bytes_written — the headline, Kind and Source lines are real
+// bytes — and a bullet with no body at all. They caught it only because the
+// count looked small against the prose they sent.
+TEST(roadmap_log_possible_duplicates, Ants4377NoteOnAppendRefusesInsteadOfDropping) {
+    QTemporaryDir dir; ASSERT_TRUE(setup(dir));
+    RemoteControl rc(nullptr);
+
+    QJsonObject req = appendReq(dir.path(),
+        QStringLiteral("A bullet whose body was sent under the wrong key."));
+    req["note"] = QStringLiteral("Prose the caller believed would land in the "
+                                 "body: the measurement, the reasoning and "
+                                 "the blockers.");
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    EXPECT_FALSE(out["ok"].toBool()) << "silently dropping it is the defect";
+    EXPECT_EQ(out["code"].toString(), QStringLiteral("bad_op_combo"));
+    EXPECT_TRUE(out["error"].toString().contains(QStringLiteral("body")))
+        << "the refusal must name the parameter the op actually takes";
+
+    // Control — the same call with `body` still works, so this narrows one
+    // wrong key rather than breaking the op.
+    QJsonObject good = appendReq(dir.path(),
+        QStringLiteral("A bullet whose body was sent under the right key."));
+    good["body"] = QStringLiteral("Body prose.");
+    EXPECT_TRUE(rc.cmdRoadmapLogAppendForTest(good).object()["ok"].toBool());
+}

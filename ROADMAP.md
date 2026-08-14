@@ -30510,7 +30510,7 @@ collision are different strengths of evidence.
   Lanes: mcp, changelog.
   Source: cc-feedback-2026-08-14 (Ants Terminal).
 
-- 📋 [ANTS-4357] **`roadmap_log op:"append"` drops `kind` / `source` / `lanes` / `layman` on a pass-headings roadmap with no signal — a silent drop and a successful write are indistinguishable.**
+- ✅ [ANTS-4357] **`roadmap_log op:"append"` drops `kind` / `source` / `lanes` / `layman` on a pass-headings roadmap with no signal — a silent drop and a successful write are indistinguishable.**
   Documented behaviour (ANTS-4117 records that those fields have no slot on
   that dialect), so this is a signalling report, not a correctness one. Run
   against a two-pass fixture 2026-08-12: four supplied fields went nowhere,
@@ -30525,6 +30525,12 @@ collision are different strengths of evidence.
   dialect, and refusing would make a batch across mixed projects unwritable.
   Same class as ANTS-4356: a write that quietly does something other than what
   was asked, with `ok:true`.
+  Resolved (2026-08-14): both pass-append envelopes (write and dry_run) now
+  carry `ignored_fields` listing whichever of kind/source/lanes/layman/evidence
+  the caller supplied and the dialect has no slot for. Echo, not refuse — as
+  the reporter argued, dropping them IS correct here and refusing would make a
+  batch across mixed projects unwritable. The gap was only ever that a silent
+  drop and a faithful write were indistinguishable.
   **Layman:** You fill in four fields, the roadmap saves without them, and nothing says so.
   Kind: fix.
   Lanes: mcp, roadmap.
@@ -31124,7 +31130,7 @@ collision are different strengths of evidence.
   Lanes: mcp, speclint, remotecontrol.
   Source: cc-feedback-2026-08-14 (LottoTracker), scope corrected + measured across four projects in-session.
 
-- 📋 [ANTS-4377] **`roadmap_log op:"append"` silently discards a `note` argument and reports success, writing a bullet with no body.**
+- ✅ [ANTS-4377] **`roadmap_log op:"append"` silently discards a `note` argument and reports success, writing a bullet with no body.**
   `note` is the parameter for `flip`/`annotate`; `body` is the one `append`
   takes. Both are top-level optional strings on the same verb, differing only
   by which op consumes them, and the unused one is dropped in silence.
@@ -31143,6 +31149,13 @@ collision are different strengths of evidence.
   op/argument mismatches. Weaker alternatives: accept `note` as an alias for
   `body` on append (the intent is unambiguous), or carry `ignored_params:[…]`
   on the success envelope. Same family as ANTS-4357 and ANTS-4374.
+  Resolved (2026-08-14): `note` on op:"append" now refuses `bad_op_combo`
+  naming `body`, ahead of the pass-headings route so it holds on both
+  dialects. Refuse rather than alias, on the reporter's own reasoning: the
+  success envelope was indistinguishable from a correct write because the
+  headline and metadata lines make `bytes_written` plausible either way.
+  Test carries the control — the same call with `body` still writes — so this
+  narrows one wrong key rather than breaking the op.
   **Layman:** Send the text of a roadmap item under the wrong field name and it is thrown away, with a success message and a plausible byte count.
   Kind: fix.
   Lanes: mcp, roadmap.
@@ -31252,7 +31265,7 @@ collision are different strengths of evidence.
   Lanes: doccitations, mcp.
   Source: cc-feedback-2026-08-14 (finbreak).
 
-- 📋 [ANTS-4382] **`roadmap_query`'s `leaner_call_hint` fires on a targeted `ids`+`include_body` call and recommends exactly the options that would discard what was asked for — two of which the schema refuses.**
+- ✅ [ANTS-4382] **`roadmap_query`'s `leaner_call_hint` fires on a targeted `ids`+`include_body` call and recommends exactly the options that would discard what was asked for — two of which the schema refuses.**
   finbreak: `{ids:[3], include_body:true, compact:true}` returned the correct
   payload plus a hint suggesting `mode:"headline_only"`, `status:"active"` or
   `mode:"section_index"`. All three drop the bodies — the one thing the call
@@ -31268,6 +31281,10 @@ collision are different strengths of evidence.
   `include_body:true` was passed explicitly; if kept for targeted fetches,
   narrow it to the options that actually compose with `ids` (`max_body_bytes`,
   `fields`, `etag_match`).
+  Resolved (2026-08-14): the leaner nudge is suppressed when `id`/`ids` is
+  present or `include_body:true` was passed. The etag nudge is untouched, and
+  an untargeted list query still gets the hint — that is the case where it is
+  genuinely useful. Both the suppression and the control are tested.
   **Layman:** The tool suggests a cheaper way to make the call that would throw away the very thing you asked for, and two of its three suggestions are not even allowed.
   Kind: enhancement.
   Lanes: mcp, roadmap.

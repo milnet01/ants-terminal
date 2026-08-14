@@ -827,3 +827,37 @@ TEST(McpTabular, Ants2090SchemaDeclaresEncoding) {
     EXPECT_EQ(count, 8) << "expected 8 makeEncodingProp() call sites, got "
                         << count;
 }
+
+// ANTS-4382 — the leaner nudge stays quiet on a TARGETED fetch. On
+// `{ids:[…], include_body:true}` it used to recommend headline_only /
+// status / section_index: all three discard the bodies, which is the one
+// thing the call explicitly opted into, and two cannot combine with `ids`
+// at all — so it partly recommended a refusal. Cosmetic on its own; taken
+// because a hint contradicting the call's stated intent trains a caller to
+// stop reading hints, which costs more where they are right.
+TEST(McpReadHints, Ants4382NoLeanerNudgeOnATargetedFetch) {
+    QJsonObject ids;
+    ids["ids"] = QJsonArray{QStringLiteral("ANTS-1"), QStringLiteral("ANTS-2")};
+    ids["include_body"] = true;
+    const QJsonObject o = parse(mcp::appendReadHints(
+        QStringLiteral("roadmap_query"), ids, bigBodyWithEtag(), false));
+    EXPECT_FALSE(o.contains("leaner_call_hint"))
+        << "every option it names would drop the bodies the call asked for";
+    // The etag nudge is unrelated and must survive — this narrows one hint,
+    // it does not silence the verb.
+    EXPECT_TRUE(o.contains("next_call_hint"));
+
+    // include_body alone (no ids) is equally targeted.
+    QJsonObject body;
+    body["include_body"] = true;
+    EXPECT_FALSE(parse(mcp::appendReadHints(QStringLiteral("roadmap_query"),
+                                            body, bigBodyWithEtag(), false))
+                     .contains("leaner_call_hint"));
+
+    // Control: an UNTARGETED list query still gets the nudge, which is where
+    // it is genuinely useful.
+    EXPECT_TRUE(parse(mcp::appendReadHints(QStringLiteral("roadmap_query"),
+                                           QJsonObject{}, bigBodyWithEtag(),
+                                           false))
+                    .contains("leaner_call_hint"));
+}

@@ -61,6 +61,25 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             QStringLiteral("roadmap_log: section is required"));
     }
 
+    // ANTS-4377 — `note` belongs to op:"flip"/"annotate"; op:"append" takes
+    // `body`. Both are top-level optional strings on one verb differing only
+    // by which op consumes them, and the unused one was DISCARDED IN SILENCE.
+    // A caller who sent 2.3 KB of body prose as `note` got ok:true with a
+    // plausible bytes_written — the headline, Kind and Source lines are real
+    // bytes — and a bullet with no body at all, which is where the
+    // measurement, the reasoning and the blockers live. They caught it only
+    // because the byte count looked small; a shorter note passes unnoticed.
+    // Refuse rather than discard: the verb already uses bad_op_combo for
+    // other op/argument mismatches. Placed ahead of the pass-headings route
+    // so it holds on both dialects.
+    if (req.contains(QStringLiteral("note"))) {
+        return rlErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("roadmap_log: `note` is the parameter for "
+                           "op:\"flip\" / op:\"annotate\" — op:\"append\" "
+                           "takes `body`. Nothing was written; re-send with "
+                           "`body`."));
+    }
+
     // ANTS-2126 — pass-headings roadmaps route to the heading-format
     // writer here, BEFORE the GFM status/kind/source validation +
     // counter allocation below: pass append ignores kind/source,

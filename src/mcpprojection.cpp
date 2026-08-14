@@ -159,6 +159,21 @@ namespace {
 // use the lean path). Empty string = no leaner mode to suggest.
 QString leanerModeHintFor(const QString &tool, const QJsonObject &args) {
     if (tool == QStringLiteral("roadmap_query")) {
+        // ANTS-4382 — say nothing on a TARGETED fetch. On
+        // `{ids:[…], include_body:true}` the hint below recommended
+        // headline_only / status / section_index: all three discard the
+        // bodies, which is the one thing the call explicitly opted into, and
+        // two of them cannot combine with `ids` at all (bad_mode_combo). So on
+        // that shape it partly recommended a refusal. Cosmetic on its own —
+        // filed because a hint that contradicts the call's stated intent
+        // trains a caller to stop reading hints, which costs more where they
+        // are right. The nudge stays valuable on an untargeted list query,
+        // where a caller may not know the lean modes exist.
+        if (args.contains(QStringLiteral("id")) ||
+            args.contains(QStringLiteral("ids")) ||
+            args.value(QStringLiteral("include_body")).toBool()) {
+            return QString();
+        }
         const QString mode = args.value(QStringLiteral("mode")).toString();
         if (mode.isEmpty() || mode == QStringLiteral("bullets")) {
             if (args.value(QStringLiteral("status")).toString()

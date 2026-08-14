@@ -1022,6 +1022,30 @@ static QString rcSplicePassBlock(const QString &markdown,
     return lines.join(QChar('\n'));
 }
 
+// ANTS-4357 — the pass-headings block has no slot for kind / source / lanes /
+// layman (ANTS-2126 § 2.2), so those fields are correctly DROPPED on this
+// dialect. What was wrong is that the drop was silent: four supplied fields
+// went nowhere with ok:true and nothing in the envelope, so a silent drop and
+// a faithful write were indistinguishable and the only way to learn was to
+// re-read the file. That matters because roadmap-format.md § 3.5 makes `Kind:`
+// and `Layman:` REQUIRED parts of a bullet — an author conforming to the
+// standard supplies them, the writer drops them, and both the author and every
+// later reader believe the roadmap conforms.
+//
+// Echo, do not refuse: dropping them IS correct here, and refusing would make
+// a batch across mixed projects unwritable.
+QJsonArray rcPassIgnoredFields(const QJsonObject &req) {
+    QJsonArray out;
+    for (const char *k : {"kind", "source", "lanes", "layman", "evidence"}) {
+        const QJsonValue v = req.value(QLatin1String(k));
+        const bool present = !v.isUndefined() && !v.isNull() &&
+                             !(v.isString() && v.toString().isEmpty()) &&
+                             !(v.isArray() && v.toArray().isEmpty());
+        if (present) out.append(QLatin1String(k));
+    }
+    return out;
+}
+
 QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
         const QJsonObject &req, const QString &roadmapPath,
         const QString &markdown) {
@@ -1066,6 +1090,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
         out["bullet"]  = block;
         out["bytes"]   = static_cast<qint64>(block.toUtf8().size());
         out["format"]  = QStringLiteral("pass-headings");
+        const QJsonArray ignored = rcPassIgnoredFields(req);
+        if (!ignored.isEmpty()) out["ignored_fields"] = ignored;  // ANTS-4357
         return QJsonDocument(out);
     }
     if (!rcAtomicWriteRoadmap(roadmapPath, updated))
@@ -1085,6 +1111,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     // no way to see that until they re-read the file.
     out["bullet"]        = block;
     out["bytes_written"] = static_cast<qint64>(block.toUtf8().size());
+    const QJsonArray ignored = rcPassIgnoredFields(req);
+    if (!ignored.isEmpty()) out["ignored_fields"] = ignored;  // ANTS-4357
     return QJsonDocument(out);
 }
 
