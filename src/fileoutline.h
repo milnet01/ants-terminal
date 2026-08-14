@@ -64,10 +64,19 @@ bool isGlslExt(const QString &ext);
 // (ok/path/language/header_doc/symbols/truncated/total_bytes/
 //  total_lines). Errors return {ok:false, error, code} mirrored
 // from the IPC convention.
+// ANTS-4384 — `withSizes` adds `bytes` + `lines` to each symbol: its extent
+// from its start line to the line before the next symbol at the SAME OR
+// HIGHER level (EOF for the last). Level is heading depth in md mode and
+// uniform elsewhere, so a `##` section's size includes its `###` children —
+// without that rule the reply answers "how long is this paragraph" rather
+// than "where do I split this file", which is the question it exists for.
+// Opt-in: the default envelope stays byte-identical, and the only cost when
+// asked for is a per-line offset table.
 QJsonObject compute(const QString &absPath,
                     Mode mode,
                     bool includeDocComment,
-                    int maxSymbols);
+                    int maxSymbols,
+                    bool withSizes = false);
 
 }  // namespace FileOutline
 

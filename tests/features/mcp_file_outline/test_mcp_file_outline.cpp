@@ -145,8 +145,10 @@ TEST(McpFileOutline, WiringContract) {
             // the dog. Widened 6000 → 9000 by ANTS-3800, which added `generic`
             // and `glsl` to the mode enum; this class of break has bitten
             // repeatedly and reads as a real wiring failure every time.
+            // Widened 9000 → 12000 by ANTS-4384/4365, which added the `sizes`
+            // and `raw` props ahead of the props[] assignments.
             const size_t windowEnd = std::min(ciCpp.size(),
-                                              reqPos + 9000);
+                                              reqPos + 12000);
             const std::string window = ciCpp.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"paths\"") &&
@@ -606,4 +608,156 @@ TEST(McpFileOutline, NotFoundPath) {
         /*maxSymbols=*/100);
     EXPECT_FALSE(out.value("ok").toBool());
     EXPECT_EQ(out.value("code").toString().toStdString(), "not_found");
+}
+
+// ANTS-4384 — opt-in per-symbol `bytes` / `lines`.
+//
+// The two questions that motivate outlining a large document before
+// restructuring it — which section carries the weight, and where is the
+// natural seam — could not be answered from the reply, though the server had
+// already walked every line. A caller outlining a 39,722-byte SKILL.md got 20
+// headings with line numbers and no sizes, and fell back to `awk`.
+//
+// The md rule is the part that matters: a `##` section's extent runs to the
+// next heading at the SAME OR HIGHER level, so it INCLUDES its `###`
+// children. Scoped to the next symbol regardless of level, the reply answers
+// "how long is this paragraph" rather than "where is the seam".
+TEST(McpFileOutline, Ants4384SizesAreOptInAndLevelScoped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/doc.md");
+
+    // Fixture with exact, hand-countable extents.
+    //  L1 `# Top`            level 1 → to EOF          (lines 1..12)
+    //  L3 `## Alpha`         level 2 → next `##` at L9 (lines 3..8)
+    //  L5 `### Alpha child`  level 3 → next `##` at L9 (lines 5..8)
+    //  L9 `## Omega`         level 2 → EOF             (lines 9..12)
+    const QByteArray body =
+        "# Top\n"            // 1
+        "\n"                 // 2
+        "## Alpha\n"         // 3
+        "\n"                 // 4
+        "### Alpha child\n"  // 5
+        "aaa\n"              // 6
+        "aaa\n"              // 7
+        "\n"                 // 8
+        "## Omega\n"         // 9
+        "z\n"                // 10
+        "z\n"                // 11
+        "z\n";               // 12
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    }
+
+    auto sizeOf = [](const QJsonObject &out, const char *name,
+                     const char *field) -> int {
+        for (const auto &v : out.value("symbols").toArray()) {
+            const QJsonObject s = v.toObject();
+            if (s.value("name").toString() == QLatin1String(name))
+                return s.value(field).toInt(-1);
+        }
+        return -1;
+    };
+    auto hasField = [](const QJsonObject &out, const char *field) {
+        for (const auto &v : out.value("symbols").toArray())
+            if (v.toObject().contains(QLatin1String(field))) return true;
+        return false;
+    };
+
+    // Opt-in: the default envelope is unchanged, so no existing caller pays.
+    const QJsonObject plain = FileOutline::compute(
+        path, FileOutline::Mode::Auto, /*includeDocComment=*/false,
+        /*maxSymbols=*/100, /*withSizes=*/false);
+    EXPECT_FALSE(hasField(plain, "bytes"))
+        << "sizes must be opt-in — the default reply stays byte-identical";
+    EXPECT_FALSE(hasField(plain, "lines"));
+
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Auto, /*includeDocComment=*/false,
+        /*maxSymbols=*/100, /*withSizes=*/true);
+    ASSERT_TRUE(out.value("ok").toBool());
+
+    EXPECT_EQ(sizeOf(out, "Top", "lines"), 12)
+        << "the level-1 heading spans the whole document";
+    EXPECT_EQ(sizeOf(out, "Alpha", "lines"), 6)
+        << "a `##` section runs to the next `##`, INCLUDING its `###` child — "
+           "scoping to the next symbol of any level would give 2";
+    EXPECT_EQ(sizeOf(out, "Alpha child", "lines"), 4)
+        << "the `###` child runs to the next same-or-higher heading";
+    EXPECT_EQ(sizeOf(out, "Omega", "lines"), 4)
+        << "the last symbol runs to EOF";
+
+    // Bytes agree with the line spans, and with the file total.
+    EXPECT_EQ(sizeOf(out, "Top", "bytes"),
+              static_cast<int>(body.size()));
+    EXPECT_EQ(sizeOf(out, "Alpha", "bytes"),
+              sizeOf(out, "Alpha child", "bytes") +
+                  static_cast<int>(qstrlen("## Alpha\n\n")));
+}
+
+// ANTS-4384 — the flat (non-md) modes are sibling-scoped: every symbol is at
+// the same level, so each runs to the next one. A file whose symbols are
+// emitted out of line order (a typedef-struct emits at its START line once the
+// brace balances, i.e. AFTER later symbols were appended) must still get
+// extents in document order rather than array order.
+TEST(McpFileOutline, Ants4384FlatModeIsSiblingScopedInDocumentOrder) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/a.c");
+    const QByteArray body =
+        "typedef struct Tag {\n"   // 1
+        "    int x;\n"             // 2
+        "} Alias;\n"               // 3
+        "\n"                       // 4
+        "int later(void) {\n"      // 5
+        "    return 0;\n"          // 6
+        "}\n";                     // 7
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Auto, /*includeDocComment=*/false,
+        /*maxSymbols=*/100, /*withSizes=*/true);
+    ASSERT_TRUE(out.value("ok").toBool());
+
+    // Every emitted symbol carries a positive, in-range extent — the property
+    // that fails outright if extents are computed in array order over a set
+    // emitted out of document order (a later symbol would yield a negative or
+    // whole-file span).
+    int checked = 0;
+    for (const auto &v : out.value("symbols").toArray()) {
+        const QJsonObject s = v.toObject();
+        if (!s.contains(QStringLiteral("lines"))) continue;
+        ++checked;
+        const int startLine = s.value("line").toInt();
+        const int nLines    = s.value("lines").toInt();
+        EXPECT_GT(nLines, 0) << s.value("name").toString().toStdString();
+        EXPECT_LE(startLine + nLines - 1, out.value("total_lines").toInt())
+            << "extent runs past EOF for "
+            << s.value("name").toString().toStdString();
+        EXPECT_GT(s.value("bytes").toInt(), 0);
+    }
+    EXPECT_GT(checked, 0) << "fixture produced no sized symbols";
+}
+
+// ANTS-4349 — the batch form reported top-level ok:true when EVERY path
+// failed, so a caller branching on the documented success signal read a total
+// miss as a success and reasoned about an empty symbol set. ok:true stays (a
+// partial hit IS a success, and a batch verb that refuses on any miss is
+// unusable for "outline whatever exists") — what was missing is the count a
+// caller can actually branch on.
+TEST(McpFileOutline, Ants4349BatchReportsFoundAndMissingCounts) {
+    // slurpRemoteControl(), not a per-TU path define: rc_tu_split INV-11
+    // requires every `src/remotecontrol_*.cpp` literal in CMakeLists.txt to
+    // live inside the ANTS_RC_SOURCES_REL block, and a private path define is
+    // exactly the drift it guards against.
+    const std::string rc = ants_test::slurpRemoteControl();
+    EXPECT_TRUE(contains(rc, "files_found"))
+        << "the paths[] envelope must say how many paths resolved";
+    EXPECT_TRUE(contains(rc, "files_missing"))
+        << "…and how many did not, so ok:true is not the only signal";
 }

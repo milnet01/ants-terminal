@@ -1200,7 +1200,8 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
 static QJsonObject outlineOneFile(const QString &rawPath,
                                   const QString &rootCanonical,
                                   FileOutline::Mode mode, bool includeDoc,
-                                  int maxSymbols, int maxBytes) {
+                                  int maxSymbols, int maxBytes,
+                                  bool withSizes = false) {
     if (rawPath.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -1224,7 +1225,8 @@ static QJsonObject outlineOneFile(const QString &rawPath,
         return o;
     }
     QJsonObject result = FileOutline::compute(check.resolved, mode,
-                                              includeDoc, maxSymbols);
+                                              includeDoc, maxSymbols,
+                                              withSizes);
     // Reframe the path back to project-relative so callers get stable
     // paths regardless of where the binary was launched.
     if (result.value("ok").toBool()) {
@@ -1286,6 +1288,8 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     const bool includeDoc = req.value("include_doc_comment").toBool(true);
     const int  maxSymbols = req.value("max_symbols").toInt(200);
     const int  maxBytes   = req.value("max_bytes").toInt(0);
+    // ANTS-4384 — opt-in per-symbol extents (uniform across a batch).
+    const bool withSizes  = req.value(QStringLiteral("sizes")).toBool(false);
 
     // ANTS-2223 — multi-path form: outline several related files (a header +
     // its impl + a consumer) in ONE call instead of N. Triggered by a `paths`
@@ -1303,7 +1307,7 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         for (const QJsonValue &pv : paths) {
             QJsonObject fileObj = outlineOneFile(
                 pv.toString(), rootCanonical, mode, includeDoc,
-                maxSymbols, maxBytes);
+                maxSymbols, maxBytes, withSizes);
             const QString etag = outlineFileEtag(fileObj);
             const QString rel  = fileObj.value(QStringLiteral("path")).toString();
             const QString prior = priorEtags.value(rel).toString();
@@ -1320,10 +1324,24 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
                 files.append(fileObj);
             }
         }
+        // ANTS-4349 — `ok` in the batch form means "the call was well-formed",
+        // and it stays that way: a partial hit IS a success, and a batch verb
+        // that refuses on any miss is unusable for the "outline whatever
+        // exists" case this form was added for. What was missing is a signal a
+        // caller can branch on — with two absent paths the reply was
+        // {count:2, ok:true, files:[{ok:false},{ok:false}]}, so a caller
+        // reading the documented success flag saw a TOTAL miss as a success and
+        // went on to reason about an empty symbol set. The per-file `ok`s
+        // carried the truth one level down, where nobody looks.
+        int found = 0;
+        for (const QJsonValue &fv : std::as_const(files))
+            if (fv.toObject().value("ok").toBool()) ++found;
         QJsonObject out;
-        out["ok"]    = true;
-        out["files"] = files;
-        out["count"] = files.size();
+        out["ok"]            = true;
+        out["files"]         = files;
+        out["count"]         = files.size();
+        out["files_found"]   = found;
+        out["files_missing"] = files.size() - found;
         return QJsonDocument(out);
     }
 
@@ -1343,7 +1361,8 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     }
     // ANTS-1249-INV-10: reachability gate is upstream (UDS SO_PEERCRED).
     return QJsonDocument(outlineOneFile(rawPath, rootCanonical, mode,
-                                        includeDoc, maxSymbols, maxBytes));
+                                        includeDoc, maxSymbols, maxBytes,
+                                        withSizes));
 }
 
 // ANTS-1855 — read_log: filter a log file, return only matching lines.

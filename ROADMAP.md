@@ -30301,7 +30301,7 @@ the allocation. Where a finding matches something this project hit
 independently, the bullet says so — a reporter's claim and a maintainer's own
 collision are different strengths of evidence.
 
-- 📋 [ANTS-4349] **`file_outline`'s multi-path form returns top-level `ok:true` when EVERY requested path failed.**
+- ✅ [ANTS-4349] **`file_outline`'s multi-path form returns top-level `ok:true` when EVERY requested path failed.**
   OneUp: `paths:["a.md","b.md"]` with both absent returned
   `{count:2, ok:true, files:[{ok:false,code:"not_found"},{ok:false,code:"not_found"}]}`.
   The single-path form refuses properly, so the two shapes disagree about
@@ -30316,6 +30316,12 @@ collision are different strengths of evidence.
   Kind: fix.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (OneUp).
+  Resolved (2026-08-14): kept `ok:true` as "the call was well-formed" per the
+  reporter's preference — a batch verb that refuses on any miss is unusable
+  for the "outline whatever exists" case — and added `files_found` /
+  `files_missing`, so `ok:true` is no longer the only signal and
+  `files_found:0` names a total miss. The schema now states what `ok` means in
+  the batch form, which the bullet asked for either way.
 
 - ✅ [ANTS-4350] **`read_region`'s `section_not_found` refusal carries no near-match candidates, though the ambiguous path already builds them.**
   OneUp: `section:"4.3 The window owns every sentence"` refused bare; the real
@@ -30677,6 +30683,12 @@ collision are different strengths of evidence.
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (Games_Hub).
+  Resolved (2026-08-14): the requested fix, not a fallback — `file_outline`
+  joined `mcp::isRawEligible`, so `raw:true` frames the whole response
+  verbatim and covers `header_doc` AND `signature` together. This changed a
+  documented invariant: `tests/features/mcp_raw_read/` INV-5 asserted
+  `file_outline` was NOT eligible, so its spec and test moved with the code
+  rather than around it.
 
 - 📋 [ANTS-4363] **`changelog_log` has no op to CLOSE `[Unreleased]` into a version block — the one changelog edit every release makes.**
   The verb covers add / add_from_roadmap / add_batch / add_subsection /
@@ -30726,7 +30738,7 @@ collision are different strengths of evidence.
   Lanes: speclog, mcp.
   Source: cc-feedback-2026-08-14 (Games_Hub).
 
-- 📋 [ANTS-4365] **`file_outline` has no `raw` escape, so `header_doc` is always returned in the neutralised spelling.**
+- ✅ [ANTS-4365] **`file_outline` has no `raw` escape, so `header_doc` is always returned in the neutralised spelling.**
   `read_region` and `workspace_search` both take `raw:true`, documented as the
   way to get bytes back verbatim because the default framing rewrites a
   literal HTML comment marker. `file_outline` emits `header_doc` from the top
@@ -31340,8 +31352,17 @@ collision are different strengths of evidence.
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (claude_config).
+  Resolved (2026-08-14): `sizes:true` on `file_outline`, extents scoped to the
+  next symbol at the same-or-higher level (md heading depth; flat elsewhere),
+  so a `##` section includes its `###` children. Verified by mutation, not by
+  reading: scoping to the next symbol of any level makes the fixture's `##`
+  report 2 lines instead of 6, which is the assertion that fails. Extents are
+  computed in DOCUMENT order rather than array order — a typedef-struct emits
+  at its start line only once its brace balances, by which point later symbols
+  are already in the array. A truncated outline omits the LAST symbol's size
+  rather than reporting one that silently absorbs whatever the cap dropped.
 
-- 📋 [ANTS-4384] **`file_outline` reports `total_bytes` for the file but no per-symbol size, so "which section is heaviest / where do I split" falls back to `awk`.**
+- ✅ [ANTS-4384] **`file_outline` reports `total_bytes` for the file but no per-symbol size, so "which section is heaviest / where do I split" falls back to `awk`.**
   The two questions that motivate outlining a large document before
   restructuring it — which section carries the weight, and where is the
   natural seam — cannot be answered from the reply, though the server has

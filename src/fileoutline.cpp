@@ -3,6 +3,10 @@
 #include "fileoutline.h"
 
 #include <QSet>
+#include <QHash>
+#include <QPair>
+#include <QVector>
+#include <algorithm>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -486,7 +490,8 @@ Mode parseMode(const QString &s) {
 QJsonObject compute(const QString &absPath,
                     Mode mode,
                     bool includeDocComment,
-                    int maxSymbols) {
+                    int maxSymbols,
+                    bool withSizes) {
     if (maxSymbols <= 0)            maxSymbols = 200;
     if (maxSymbols > kMaxSymbolsCap) maxSymbols = kMaxSymbolsCap;
 
@@ -513,6 +518,14 @@ QJsonObject compute(const QString &absPath,
     QJsonArray symbols;
     int totalLines = 0;
     qint64 totalBytes = 0;
+    // ANTS-4384 — sizing state, built only when asked for.
+    // lineStart[i] = byte offset of line i+1; a sentinel totalBytes is
+    // appended after the walk so the last symbol's extent needs no special
+    // case. mdLevelByLine carries heading depth for the ONE mode that has
+    // levels; every other mode is flat, so its symbols are siblings and each
+    // runs to the next.
+    QVector<qint64> lineStart;
+    QHash<int, int> mdLevelByLine;
     int seenSymbols = 0;
     bool truncated = false;
     bool inHeaderBlock = includeDocComment && !isUnknown &&
@@ -554,6 +567,7 @@ QJsonObject compute(const QString &absPath,
 
     while (!f.atEnd()) {
         const QByteArray rawLine = f.readLine();
+        if (withSizes) lineStart.append(totalBytes);
         totalBytes += rawLine.size();
         ++totalLines;
 
@@ -837,6 +851,8 @@ QJsonObject compute(const QString &absPath,
         } else if (effective == Mode::Md) {
             QRegularExpressionMatch m = rxMdHeading().match(line);
             if (m.hasMatch()) {
+                if (withSizes)
+                    mdLevelByLine.insert(totalLines, m.captured(1).size());
                 offer("heading", m.captured(2), line);
             }
         } else if (effective == Mode::Generic) {
@@ -898,6 +914,51 @@ QJsonObject compute(const QString &absPath,
     // Deliberately narrow: a recognised language AND a non-trivial file. An
     // unknown extension already reports `language:"unknown"`, and a 3-line
     // header stub having no symbols is not evidence of anything.
+    // ANTS-4384 — per-symbol extents. Computed in DOCUMENT order, not array
+    // order: a symbol can be appended out of order (a typedef-struct emits at
+    // its START line only once its brace balances, by which point later
+    // symbols are already in the array), and array order would then hand it a
+    // negative or whole-file span.
+    if (withSizes && !symbols.isEmpty()) {
+        lineStart.append(totalBytes);   // sentinel: start of the line past EOF
+
+        QVector<QPair<int, int>> order;   // (start line, index into symbols)
+        order.reserve(symbols.size());
+        for (int i = 0; i < symbols.size(); ++i)
+            order.append({symbols.at(i).toObject().value("line").toInt(), i});
+        std::stable_sort(order.begin(), order.end(),
+                         [](const auto &a, const auto &b) {
+                             return a.first < b.first;
+                         });
+
+        const auto levelAt = [&](int line) {
+            return mdLevelByLine.value(line, 1);
+        };
+        for (int k = 0; k < order.size(); ++k) {
+            const int startLine = order.at(k).first;
+            if (startLine < 1 || startLine > totalLines) continue;
+            const int level = levelAt(startLine);
+            int endLine = totalLines;              // inclusive; EOF by default
+            for (int j = k + 1; j < order.size(); ++j) {
+                const int nextLine = order.at(j).first;
+                if (nextLine <= startLine) continue;   // same-line siblings
+                if (levelAt(nextLine) <= level) { endLine = nextLine - 1; break; }
+            }
+            // ANTS-4374's invariant — a number is only emitted where the walk
+            // actually saw the end of the range. `truncated` means symbols
+            // were dropped from the tail, so the last retained symbol's extent
+            // would silently absorb everything the cap hid.
+            if (truncated && k == order.size() - 1) continue;
+            if (endLine < startLine) continue;
+            QJsonObject s = symbols.at(order.at(k).second).toObject();
+            s["lines"] = endLine - startLine + 1;
+            s["bytes"] = static_cast<double>(lineStart.at(endLine) -
+                                             lineStart.at(startLine - 1));
+            symbols[order.at(k).second] = s;
+        }
+        out["symbols"] = symbols;
+    }
+
     if (symbols.isEmpty() && totalLines > 10
         && languageStr != QLatin1String("unknown")
         && !languageStr.isEmpty()) {

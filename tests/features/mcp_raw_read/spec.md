@@ -39,8 +39,12 @@ from the read output, it edits from doctored bytes and corrupts the file
 - **INV-4 tool-name hardening** — `"` / `<` / `>` / `&` in `toolName` are
   entity-escaped in the `tool="…"` attribute (mirrors `wrapMcpData`).
 - **INV-5 eligibility** — `isRawEligible` is true for `read_region` /
-  `read_regions` / `workspace_search`, false for `get_text` / `apply_edits` /
-  `roadmap_query` / `get_session_info`.
+  `read_regions` / `workspace_search` / `file_outline`, false for `get_text` /
+  `apply_edits` / `roadmap_query` / `get_session_info`.
+  `file_outline` joined the set in ANTS-4365: it returns `header_doc` (and
+  `signature`) as file bytes, so it is a content read by the same test the
+  other three pass, and without the escape a Markdown file whose header is an
+  HTML comment could not report its own first line truthfully.
 - **INV-6 wiring** — the dispatch suppresses offload under `raw` and routes to
   `wrapMcpDataRaw`; `makeRawProp` declares the schema prop. (Source-scrape — the
   dispatch glue isn't unit-testable standalone.)

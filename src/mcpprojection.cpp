@@ -111,7 +111,16 @@ bool isOffloadEligible(const QString &toolName) {
 bool isRawEligible(const QString &toolName) {
     return toolName == QStringLiteral("read_region")
         || toolName == QStringLiteral("read_regions")
-        || toolName == QStringLiteral("workspace_search");
+        || toolName == QStringLiteral("workspace_search")
+        // ANTS-4365 — file_outline returns `header_doc` (and `signature`) as
+        // file bytes, so it is a content read by exactly the test the other
+        // three pass. Without the escape, a Markdown file whose header IS an
+        // HTML comment — every `*_Ants_MCP_Feedback.md`, whose version marker
+        // lives there — could not report its own first line truthfully, and a
+        // caller building an Edit from `header_doc` wrote the mangled
+        // spelling back and broke the marker the feedback verbs key on. That
+        // is the hazard raw:true was added to read_region for.
+        || toolName == QStringLiteral("file_outline");
 }
 
 QString projectFields(const QString &responseText, const QJsonArray &fields) {

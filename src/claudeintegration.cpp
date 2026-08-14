@@ -3731,7 +3731,21 @@ void ClaudeIntegration::onMcpConnection() {
                     "NOTE (ANTS-3383): outlining a file via this verb does "
                     "NOT satisfy the native Edit tool's read-precondition — "
                     "do a native Read before editing a file you intend to "
-                    "modify.");
+                    "modify. "
+                    "ANTS-4349: in the `paths` form, top-level `ok` means the "
+                    "CALL was well-formed, NOT that any path resolved — a "
+                    "partial hit is a success. Branch on `files_found` / "
+                    "`files_missing` (or each entry's own `ok`), because "
+                    "ok:true with files_found:0 is a total miss. "
+                    "ANTS-4384: pass `sizes:true` for per-symbol `bytes` + "
+                    "`lines` — which section carries the weight, and where "
+                    "the seam is. "
+                    "ANTS-4365: pass `raw:true` for verbatim `header_doc` / "
+                    "`signature` bytes; the default framing rewrites literal "
+                    "`<!--`/`-->`, so a Markdown file whose header IS an HTML "
+                    "comment cannot report its own first line truthfully "
+                    "without it — and an Edit built from the mangled spelling "
+                    "writes it back.");
                 foTool["selection_hint"] = QStringLiteral(
                     "Use to map a large file's symbols before Read. "
                     "Prefer over `Read` when you only need a "
@@ -3798,9 +3812,32 @@ void ClaudeIntegration::onMcpConnection() {
                         "stub instead of its full symbols — so a re-outline "
                         "after editing one file in the set re-sends only the "
                         "changed bodies.");
+                    // ANTS-4384 — opt-in per-symbol extents.
+                    QJsonObject sizesProp; sizesProp["type"] = "boolean";
+                                           sizesProp["default"] = false;
+                                           sizesProp["description"] =
+                        QStringLiteral("Optional (ANTS-4384). When true, each "
+                            "symbol also carries `bytes` and `lines` — its "
+                            "extent from its start line to the line before the "
+                            "next symbol at the SAME OR HIGHER level (EOF for "
+                            "the last). So in md mode a `##` section's size "
+                            "INCLUDES its `###` children, which is what makes "
+                            "the answer \"where do I split this file\" rather "
+                            "than \"how long is this paragraph\"; the flat "
+                            "modes are sibling-scoped. Answers which section "
+                            "carries the weight and where the natural seam is "
+                            "without falling back to awk. Opt-in, so the "
+                            "default envelope is byte-identical; composes with "
+                            "compact / fields / etag_match and with the "
+                            "`paths` form (uniform across the batch). A "
+                            "truncated outline omits the LAST symbol's size "
+                            "rather than reporting an extent that silently "
+                            "absorbs everything the cap dropped.");
                     props["path"]                 = pathProp;
                     props["paths"]                = pathsProp;
                     props["etags"]                = etagsProp;
+                    props["sizes"]                = sizesProp;
+                    props["raw"]                  = makeRawProp();        // ANTS-4365
                     props["mode"]                 = modeProp;
                     props["include_doc_comment"]  = hdrProp;
                     props["max_symbols"]          = maxSymProp;

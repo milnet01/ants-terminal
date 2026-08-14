@@ -102,10 +102,18 @@ TEST(McpRawRead, ToolNameHardened) {
 
 // INV-5 — eligibility set is exactly the three advertised read verbs.
 TEST(McpRawRead, EligibilitySet) {
-    for (const char *t : {"read_region", "read_regions", "workspace_search"})
+    // ANTS-4365 added file_outline. It emits `header_doc` straight from the
+    // top of the file, and on any Markdown file whose header IS an HTML
+    // comment — every `*_Ants_MCP_Feedback.md`, whose version marker lives
+    // there — the default framing rewrites the comment markers. So the field
+    // could not be obtained truthfully, and a caller building an Edit from it
+    // wrote the mangled spelling back, breaking the marker the feedback verbs
+    // key on. That is the exact hazard raw:true was added to read_region for.
+    for (const char *t : {"read_region", "read_regions", "workspace_search",
+                          "file_outline"})
         EXPECT_TRUE(mcp::isRawEligible(QString::fromUtf8(t))) << t;
     for (const char *t : {"get_text", "get_scrollback", "apply_edits",
-                          "roadmap_query", "file_outline", "get_session_info"})
+                          "roadmap_query", "get_session_info"})
         EXPECT_FALSE(mcp::isRawEligible(QString::fromUtf8(t))) << t;
 }
 
