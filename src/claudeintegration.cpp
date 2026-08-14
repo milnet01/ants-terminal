@@ -10546,6 +10546,7 @@ void ClaudeIntegration::onMcpConnection() {
                     clOpEnum.append("add_from_roadmap");
                     clOpEnum.append("add_batch");
                     clOpEnum.append("add_subsection");
+                    clOpEnum.append("release");   // ANTS-4363
                     clOpEnum.append("normalize");
                     clOp["enum"] = clOpEnum;
                     clOp["description"] = QStringLiteral(
@@ -10558,7 +10559,25 @@ void ClaudeIntegration::onMcpConnection() {
                         "`id`-only entry → add_from_roadmap); per-entry "
                         "failures land in `skipped[]` while the rest "
                         "apply (parity with roadmap_log append_batch). "
-                        "\"add_subsection\" (ANTS-3584) writes a DATED "
+                        "\"release\" (ANTS-4363) CLOSES `## [Unreleased]` "
+                        "into `## [<version>] - <date>` and opens a fresh "
+                        "empty `[Unreleased]` above it — the one changelog "
+                        "edit every release makes, and previously the only one "
+                        "this verb did not own. Takes `version` (required; "
+                        "`date` defaults to today), returns the closed "
+                        "section as `released_body` so a caller has its "
+                        "release notes without re-reading the file, and "
+                        "refuses `nothing_to_release` on an empty section or "
+                        "`version_exists` when that heading already exists "
+                        "(two `## [X.Y.Z]` blocks leave a notes-extraction "
+                        "grep unable to choose). "
+                        "\"add_subsection\" (ANTS-3584, guarded by "
+                        "ANTS-4356 — it refuses `flat_section` against an "
+                        "[Unreleased] carrying flat `### <category>` blocks, "
+                        "because writing a dated topic there produces a MIXED "
+                        "section from which op:add and op:normalize BOTH start "
+                        "refusing; empty the section first to convert a "
+                        "project) writes a DATED "
                         "feature-grouped block (`### <date> <Category> — "
                         "<headline>` + optional prose `body` + optional "
                         "`bullets[]`) at the TOP of [Unreleased], "
@@ -10700,6 +10719,19 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject clProps;
                     clProps["caller_cwd"] = clCaller;
                     clProps["op"]         = clOp;
+                    {   // ANTS-4363
+                        QJsonObject v; v["type"] = "string";
+                                       v["description"] = QStringLiteral(
+                            "op:\"release\" — the version to stamp, WITHOUT "
+                            "brackets (they are added for you; a bracketed "
+                            "value refuses bad_args rather than writing "
+                            "`## [[1.2.3]]`, which a notes-extraction grep "
+                            "would miss). The version STRING is otherwise "
+                            "unconstrained, so a `-rc1` suffix or a "
+                            "date-version is fine — what is fixed is the "
+                            "heading shape.");
+                        clProps["version"] = v;
+                    }
                     clProps["summary"]    = clSummary;
                     clProps["category"]   = clCategory;
                     clProps["kind"]       = clKind;

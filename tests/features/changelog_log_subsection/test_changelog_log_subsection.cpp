@@ -260,3 +260,67 @@ TEST(changelog_log_subsection, Inv9Guards) {
     EXPECT_EQ(r3.value(QStringLiteral("category")).toString(),
               QStringLiteral("Fixed"));
 }
+
+// ANTS-4356 — the layout guard existed in ONE direction only, and one call
+// through the unguarded direction permanently bricks a flat changelog.
+//
+// `op:"add"` and `op:"normalize"` both refuse `feature_grouped_section`
+// against a feature-grouped [Unreleased]. Nothing guarded the reverse:
+// add_subsection against a genuinely FLAT section returned ok:true and
+// produced a MIXED one — a dated topic sitting above a flat `### Added`
+// block under a single [Unreleased]. From that point `add` refuses
+// (feature_grouped_section now matches) and `normalize` refuses too, so one
+// call on a flat-layout project permanently disables the flat write path
+// with ok:true and no warning.
+//
+// The asymmetry reads as accidental: the existing refusal exists to stop an
+// entry landing as a sibling of the dated topics and breaking the house
+// style, and this is the same breach in the other direction.
+//
+// NB the fixture above named `kFlat` is not flat — it already carries a dated
+// topic, which is why every existing row here writes into a feature-grouped
+// section and none of them exercised this.
+TEST(changelog_log_subsection, Ants4356RefusesAGenuinelyFlatSection) {
+    const char *reallyFlat =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **A flat Keep-a-Changelog entry.**\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n";
+
+    const auto r = ChangelogLog::insertUnreleasedSubsection(
+        QString::fromUtf8(reallyFlat), QStringLiteral("2026-08-14"),
+        QStringLiteral("Fixed"), QStringLiteral("A dated topic (PROJ-9)"),
+        QString(), {});
+    EXPECT_FALSE(r.ok)
+        << "a dated topic must not be written into a FLAT section — the "
+           "result is a mixed section that disables op:add and op:normalize "
+           "for good";
+    EXPECT_EQ(r.code, QStringLiteral("flat_section"));
+    EXPECT_TRUE(r.markdown.isEmpty() ||
+                r.markdown == QString::fromUtf8(reallyFlat))
+        << "a refusal must not have written anything";
+
+    // The control: an ALREADY feature-grouped section still accepts one, so
+    // the guard has not simply disabled the op.
+    const auto ok = ChangelogLog::insertUnreleasedSubsection(
+        QString::fromUtf8(kFlat), QStringLiteral("2026-08-14"),
+        QStringLiteral("Fixed"), QStringLiteral("A dated topic (PROJ-9)"),
+        QString(), {});
+    EXPECT_TRUE(ok.ok) << ok.error.toStdString();
+
+    // And an EMPTY [Unreleased] accepts one too — that is how a project
+    // deliberately converting layouts does it, and refusing there would make
+    // conversion impossible rather than merely guarded.
+    const char *emptyUnreleased =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n";
+    const auto fresh = ChangelogLog::insertUnreleasedSubsection(
+        QString::fromUtf8(emptyUnreleased), QStringLiteral("2026-08-14"),
+        QStringLiteral("Fixed"), QStringLiteral("First dated topic (PROJ-9)"),
+        QString(), {});
+    EXPECT_TRUE(fresh.ok) << fresh.error.toStdString();
+}

@@ -644,3 +644,108 @@ TEST(changelog_log_writer, Inv8ContractAndDescriptor) {
         "INV-8: dispatch registered with explicit contract");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-4360 — an explicit `summary` overrides the roadmap headline.
+//
+// A 📋 bullet names the DEFECT, because that is what a planned bullet is for.
+// Copied verbatim under `### Fixed` it reads as if the bug is still present —
+// present tense, no "fixed" / "no longer" — and `Kind: fix` bullets are the
+// common case for this op, so that was the majority path. It failed quietly:
+// the verb reported ok and the category routing was correct, so nothing
+// prompted a re-read, and callers hand-edited the rendered line straight
+// after the write — the exact round-trip this op exists to remove.
+//
+// `body` could already be overridden; `summary` was documented as ignored,
+// which is what forced the hand-edit.
+TEST(changelog_log_writer, Ants4360SummaryOverridesTheRoadmapHeadline) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapBody()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_from_roadmap");
+    req[QStringLiteral("id")]         = QStringLiteral("ANTS-0042");
+    req[QStringLiteral("summary")]    =
+        QStringLiteral("The thing is done now.");
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const std::string md = readFileStd(clPath(tmp.path()));
+    EXPECT_TRUE(contains(md, "- **The thing is done now.** (ANTS-0042)"))
+        << "the caller's summary must win — otherwise every Fixed entry needs "
+           "a hand-edit immediately after the write";
+    EXPECT_FALSE(contains(md, "- **Did the thing.** (ANTS-0042)"))
+        << "the roadmap headline must NOT also be written";
+
+    // What the caller has no reason to restate still comes from the roadmap:
+    // the category (derived from Kind:) and the id.
+    EXPECT_EQ(resp.value(QStringLiteral("category")).toString(),
+              QStringLiteral("Added"))
+        << "category still inherited from the bullet's Kind:";
+    // And the Layman line is still reused when no `body` is given — the
+    // override is per field, not all-or-nothing.
+    EXPECT_TRUE(contains(md, "It now does the thing for you."));
+}
+
+// ANTS-4363 — op:"release" closes [Unreleased] into a version block.
+//
+// The verb covered every way of putting an entry IN and no way of closing, so
+// the one edit every release makes was done by hand on a file the verb
+// otherwise owns. It lands at the highest-stakes moment: a project whose
+// release workflow greps `^## \[<version>\]` to extract release notes
+// publishes an EMPTY body when a hand-typed heading is a character out.
+TEST(changelog_log_writer, Ants4363CloseUnreleasedIntoAVersionBlock) {
+    const QString before = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **A thing.** (PROJ-1)\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n");
+
+    const auto r = ChangelogLog::closeUnreleased(
+        before, QStringLiteral("0.2.0"), QStringLiteral("2026-08-14"));
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    const std::string md = r.markdown.toStdString();
+
+    EXPECT_EQ(r.heading, QStringLiteral("## [0.2.0] - 2026-08-14"));
+    EXPECT_TRUE(contains(md, "## [0.2.0] - 2026-08-14"));
+    EXPECT_TRUE(contains(md, "## [Unreleased]"))
+        << "a fresh empty Unreleased must be opened, or the next entry has "
+           "nowhere to go";
+    EXPECT_LT(md.find("## [Unreleased]"), md.find("## [0.2.0]"))
+        << "newest-first: the fresh section sits ABOVE the closed one";
+    EXPECT_LT(md.find("## [0.2.0]"), md.find("## [0.1.0]"));
+    // The entry travelled with the version, not with [Unreleased].
+    EXPECT_LT(md.find("## [0.2.0]"), md.find("- **A thing.** (PROJ-1)"));
+
+    // The closed body comes back, because a caller wants release notes now.
+    EXPECT_TRUE(r.released_body.contains(QStringLiteral("- **A thing.**")));
+    EXPECT_FALSE(r.released_body.startsWith(QLatin1Char('\n')))
+        << "bracketing blanks are trimmed — this gets pasted verbatim";
+
+    // Re-cutting the same version refuses: two `## [0.2.0]` blocks would leave
+    // a notes-extraction grep unable to choose.
+    const auto again = ChangelogLog::closeUnreleased(
+        r.markdown, QStringLiteral("0.2.0"), QStringLiteral("2026-08-15"));
+    EXPECT_FALSE(again.ok);
+    EXPECT_EQ(again.code, QStringLiteral("version_exists"));
+
+    // And cutting the now-empty section refuses too — a version block with no
+    // entries is worse than no release.
+    const auto empty = ChangelogLog::closeUnreleased(
+        r.markdown, QStringLiteral("0.3.0"), QStringLiteral("2026-08-15"));
+    EXPECT_FALSE(empty.ok);
+    EXPECT_EQ(empty.code, QStringLiteral("nothing_to_release"));
+
+    // A version carrying its own brackets refuses rather than producing
+    // `## [[0.4.0]]`, which the grep would miss.
+    const auto bracketed = ChangelogLog::closeUnreleased(
+        before, QStringLiteral("[0.4.0]"), QStringLiteral("2026-08-15"));
+    EXPECT_FALSE(bracketed.ok);
+    EXPECT_EQ(bracketed.code, QStringLiteral("bad_args"));
+}

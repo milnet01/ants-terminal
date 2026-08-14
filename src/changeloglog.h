@@ -124,6 +124,35 @@ struct ProseMove {
     QString text;             // the folded line, trimmed
 };
 
+// ANTS-4363 — CLOSE `## [Unreleased]` into a version block: rename it to
+// `## [X.Y.Z] - <date>` and open a fresh empty `## [Unreleased]` above. This
+// is the one changelog edit every release makes, and the only one the verb
+// did not own — so a file the verb otherwise writes had its version headings
+// typed by hand, at the highest-stakes moment. A project whose release
+// workflow greps `^## \[<version>\]` to extract release notes publishes an
+// EMPTY body when that heading is a character out.
+//
+// `released_body` is the closed section's content, because a caller wants it
+// as release notes immediately after.
+struct ReleaseResult {
+    bool    ok = false;
+    QString markdown;        // new body (valid iff ok)
+    QString code;            // refusal code iff !ok
+    QString error;           // human message iff !ok
+    QString heading;         // the heading written (iff ok)
+    QString released_body;   // the closed section's content (iff ok)
+    int     line = -1;       // 1-based line of the new version heading
+};
+
+// Refuses `nothing_to_release` on an empty `[Unreleased]` (a version block
+// with no entries is worse than no release) and `version_exists` when the
+// version already has a heading — re-cutting one silently would produce two
+// blocks the notes-extraction grep cannot choose between. `date` empty ⟹
+// today, matching the sibling ops.
+ReleaseResult closeUnreleased(const QString &markdown,
+                              const QString &version,
+                              const QString &date = QString());
+
 struct NormalizeResult {
     bool        ok = false;
     QString     markdown;             // new body (valid iff ok)

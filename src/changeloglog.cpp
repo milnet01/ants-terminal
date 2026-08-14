@@ -1,6 +1,7 @@
 // ANTS-1548: see changeloglog.h.
 
 #include "changeloglog.h"
+#include <QDate>
 
 #include <QStringList>
 #include <QVector>
@@ -350,6 +351,116 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
     return r;
 }
 
+// ANTS-4363 — see the header. Close [Unreleased] into a version block.
+ReleaseResult closeUnreleased(const QString &markdown,
+                              const QString &version,
+                              const QString &date) {
+    ReleaseResult r;
+    const QString ver = version.trimmed();
+    if (ver.isEmpty()) {
+        r.code  = QStringLiteral("missing_field");
+        r.error = QStringLiteral(
+            "changelog_log: op:\"release\" requires `version`");
+        return r;
+    }
+    // Deliberately permissive about the version STRING (a project may ship
+    // `1.2.3-rc1` or a date-version), but never about the bracket/heading
+    // SHAPE — the shape is what a notes-extraction grep keys on.
+    if (ver.contains(QLatin1Char('[')) || ver.contains(QLatin1Char(']')) ||
+        ver.contains(QLatin1Char('\n'))) {
+        r.code  = QStringLiteral("bad_args");
+        r.error = QStringLiteral(
+            "changelog_log: `version` must not contain brackets or newlines "
+            "(the heading brackets are added for you): \"%1\"").arg(ver);
+        return r;
+    }
+
+    QStringList lines = markdown.split(QLatin1Char('\n'));
+
+    int unrel = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed().compare(
+                QStringLiteral("## [Unreleased]"), Qt::CaseInsensitive) == 0) {
+            unrel = i;
+            break;
+        }
+    }
+    if (unrel < 0) {
+        r.code  = QStringLiteral("not_unreleased");
+        r.error = QStringLiteral(
+            "changelog_log: no `## [Unreleased]` heading found — the "
+            "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
+            "section at the top");
+        return r;
+    }
+
+    // Bound the section, and refuse a version that already has a heading.
+    int sectionEnd = lines.size();
+    for (int i = unrel + 1; i < lines.size(); ++i) {
+        if (lines.at(i).startsWith(QStringLiteral("## "))) {
+            if (sectionEnd == lines.size()) sectionEnd = i;
+        }
+    }
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString t = lines.at(i).trimmed();
+        if (!t.startsWith(QStringLiteral("## ["))) continue;
+        const int close = t.indexOf(QLatin1Char(']'));
+        if (close < 4) continue;
+        if (t.mid(4, close - 4).trimmed() == ver) {
+            r.code  = QStringLiteral("version_exists");
+            r.error = QStringLiteral(
+                "changelog_log: version \"%1\" already has a heading at line "
+                "%2. Re-cutting it would leave two `## [%1]` blocks, and a "
+                "notes-extraction grep cannot choose between them.")
+                    .arg(ver).arg(i + 1);
+            return r;
+        }
+    }
+
+    // Refuse an empty section: a version block with no entries is worse than
+    // no release, and it is silently produced by cutting twice.
+    bool hasContent = false;
+    for (int i = unrel + 1; i < sectionEnd && i < lines.size(); ++i) {
+        if (!lines.at(i).trimmed().isEmpty()) { hasContent = true; break; }
+    }
+    if (!hasContent) {
+        r.code  = QStringLiteral("nothing_to_release");
+        r.error = QStringLiteral(
+            "changelog_log: `## [Unreleased]` is empty — there is nothing to "
+            "release. Add entries first (op:\"add\" / \"add_batch\").");
+        return r;
+    }
+
+    const QString effDate = date.trimmed().isEmpty()
+        ? QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"))
+        : date.trimmed();
+    r.heading = QStringLiteral("## [%1] - %2").arg(ver, effDate);
+
+    // Capture the closed body before rewriting, trimming the blank lines that
+    // bracket it — a caller pastes this straight into release notes.
+    {
+        QStringList bodyLines;
+        for (int i = unrel + 1; i < sectionEnd && i < lines.size(); ++i)
+            bodyLines.append(lines.at(i));
+        while (!bodyLines.isEmpty() && bodyLines.first().trimmed().isEmpty())
+            bodyLines.removeFirst();
+        while (!bodyLines.isEmpty() && bodyLines.last().trimmed().isEmpty())
+            bodyLines.removeLast();
+        r.released_body = bodyLines.join(QLatin1Char('\n'));
+    }
+
+    lines[unrel] = r.heading;
+    // The fresh empty [Unreleased], with the blank spacer the sibling ops
+    // expect to find after it.
+    lines.insert(unrel, QString());
+    lines.insert(unrel, QStringLiteral("## [Unreleased]"));
+    r.line = unrel + 3;   // 1-based line of the version heading
+
+    r.ok = true;
+    r.markdown = lines.join(QLatin1Char('\n'));
+    return r;
+}
+
 SubsectionResult insertUnreleasedSubsection(const QString &markdown,
                                             const QString &date,
                                             const QString &category,
@@ -384,6 +495,54 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
             "CHANGELOG must follow Keep-a-Changelog with an Unreleased "
             "section at the top");
         return r;
+    }
+
+    // ANTS-4356 — the reverse of ANTS-3416's guard, and the more damaging
+    // direction. `op:"add"` and `op:"normalize"` both refuse against a
+    // feature-grouped section; nothing refused a DATED TOPIC written into a
+    // flat one. The result is a MIXED section — a dated topic above a flat
+    // `### Added` block under one `## [Unreleased]` — from which
+    // firstFeatureGroupedTopicLine() matches, so `add` and `normalize` BOTH
+    // start refusing. One call therefore disabled a flat project's write path
+    // permanently, with ok:true and no warning.
+    //
+    // An EMPTY [Unreleased] is deliberately allowed: that is how a project
+    // converting layouts does it, and refusing there would make conversion
+    // impossible rather than merely guarded. Emptying the section first is
+    // what converting already means.
+    {
+        int sectionEnd = lines.size();
+        for (int i = unrel + 1; i < lines.size(); ++i) {
+            if (lines.at(i).startsWith(QStringLiteral("## "))) {
+                sectionEnd = i;
+                break;
+            }
+        }
+        int flatCategoryLine = -1;
+        for (int i = unrel + 1; i < sectionEnd && i < lines.size(); ++i) {
+            const QString t = lines.at(i).trimmed();
+            if (!t.startsWith(QStringLiteral("### "))) continue;
+            if (canonicalCategories().contains(t.mid(4).trimmed(),
+                                               Qt::CaseInsensitive)) {
+                flatCategoryLine = i + 1;   // 1-based, for humans
+                break;
+            }
+        }
+        if (flatCategoryLine > 0) {
+            r.code = QStringLiteral("flat_section");
+            r.error = QStringLiteral(
+                "changelog_log: `## [Unreleased]` is FLAT — it carries "
+                "Keep-a-Changelog category headings (first `### %1` at line "
+                "%2), not dated topics. Writing a dated topic here produces a "
+                "MIXED section, after which op:\"add\" and op:\"normalize\" "
+                "both refuse `feature_grouped_section` and the flat write path "
+                "is gone for good. Use op:\"add\" for this layout. To convert "
+                "the project to dated topics, empty `[Unreleased]` first — "
+                "which is what converting means.")
+                    .arg(lines.at(flatCategoryLine - 1).trimmed().mid(4).trimmed())
+                    .arg(flatCategoryLine);
+            return r;
+        }
     }
 
     // Insert at the TOP of the section (newest-first): right after the

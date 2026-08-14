@@ -385,12 +385,13 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     if (op != QStringLiteral("add") &&
         op != QStringLiteral("add_from_roadmap") &&
         op != QStringLiteral("add_subsection") &&
+        op != QStringLiteral("release") &&
         op != QStringLiteral("normalize")) {
         return clErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("changelog_log: unknown op \"%1\" — expected "
                            "\"add\" (default), \"add_from_roadmap\", "
-                           "\"add_batch\", \"add_subsection\", or "
-                           "\"normalize\"")
+                           "\"add_batch\", \"add_subsection\", "
+                           "\"release\", or \"normalize\"")
                 .arg(op));
     }
 
@@ -542,6 +543,68 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
         if (res.malformed_section)
             out["advisory"] = proseAdvisory(res.malformed_line);
+        return QJsonDocument(out);
+    }
+
+    // ANTS-4363 — op:"release": CLOSE `## [Unreleased]` into a version block
+    // and open a fresh empty one above it. The one changelog edit every
+    // release makes, and the only one the verb did not own — so a file the
+    // verb otherwise writes had its version headings typed by hand, at the
+    // highest-stakes moment. A project whose release workflow greps
+    // `^## \[<version>\]` for release notes publishes an EMPTY body when
+    // that heading is a character out.
+    if (op == QStringLiteral("release")) {
+        const QString version = req.value(QStringLiteral("version")).toString();
+        const QString relDate = req.value(QStringLiteral("date")).toString();
+
+        QFile cf(clPath);
+        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return clErr(QStringLiteral("changelog_read_failed"),
+                QStringLiteral("changelog_log: could not read \"%1\"")
+                    .arg(clPath));
+        }
+        const QString clMarkdown = QString::fromUtf8(cf.readAll());
+        cf.close();
+
+        const auto res =
+            ChangelogLog::closeUnreleased(clMarkdown, version, relDate);
+        if (!res.ok) return clErr(res.code, res.error);
+
+        QJsonObject out;
+        out["ok"]            = true;
+        out["op"]            = op;
+        out["file"]          = clPath.section('/', -1);
+        out["version"]       = version.trimmed();
+        out["heading"]       = res.heading;
+        out["line"]          = res.line;
+        // The closed section's content, because a caller wants it as release
+        // notes immediately — otherwise they re-read the file they just wrote.
+        out["released_body"] = res.released_body;
+
+        if (dryRun) {
+            out["dry_run"] = true;
+            out["written"] = false;
+            out["bytes"]   =
+                static_cast<qint64>(res.markdown.toUtf8().size());
+            return QJsonDocument(out);
+        }
+
+        const qint64 clBefore = QFileInfo(clPath).size();
+        QSaveFile cw(clPath);
+        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return clErr(QStringLiteral("changelog_write_failed"),
+                QStringLiteral("changelog_log: could not open \"%1\" for "
+                               "writing").arg(clPath));
+        }
+        const QByteArray utf8 = res.markdown.toUtf8();
+        if (cw.write(utf8) != utf8.size() || !cw.commit()) {
+            return clErr(QStringLiteral("changelog_write_failed"),
+                QStringLiteral("changelog_log: atomic write of \"%1\" failed")
+                    .arg(clPath));
+        }
+        out["written"]       = true;
+        out["bytes_written"] =
+            static_cast<qint64>(QFileInfo(clPath).size() - clBefore);
         return QJsonDocument(out);
     }
 
@@ -738,9 +801,27 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // match->headline is capped at 120 chars with a `…` ellipsis for the
         // Roadmap dialog (ANTS-1811), which would otherwise leak mid-word
         // into the rendered CHANGELOG bold summary.
-        summary = rcHeadlineOneline(
-            match->headlineFull.isEmpty() ? match->headline
-                                          : match->headlineFull);
+        // ANTS-4360 — an explicit `summary` OVERRIDES the roadmap headline,
+        // mirroring `body`'s long-standing behaviour. A 📋 bullet names the
+        // DEFECT, because that is what a planned bullet is for; copied
+        // verbatim under `### Fixed` it reads as if the bug is still present
+        // — present tense, no "fixed" / "no longer". `Kind: fix` bullets are
+        // the common case for this op, so that was the majority path, and it
+        // failed quietly: the verb reported ok and the category routing was
+        // correct, so nothing prompted a re-read. Callers hand-edited the
+        // rendered line immediately after the write, which is exactly the
+        // round-trip this op exists to remove.
+        //
+        // Reporter's preference (b): keep inheriting category and id from the
+        // roadmap — the parts a caller has no reason to restate — and let the
+        // prose be rewritten in changelog voice.
+        const QString summaryOverride =
+            req.value(QStringLiteral("summary")).toString().trimmed();
+        summary = summaryOverride.isEmpty()
+            ? rcHeadlineOneline(
+                  match->headlineFull.isEmpty() ? match->headline
+                                                : match->headlineFull)
+            : summaryOverride;
         // Reuse the authored user-facing prose: the bullet's Layman
         // line is CHANGELOG-voice already. An explicit `body` arg
         // overrides it. (We deliberately do NOT splat the full bullet

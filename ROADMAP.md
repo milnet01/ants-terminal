@@ -30500,7 +30500,7 @@ collision are different strengths of evidence.
   Lanes: mcp, changelog.
   Source: cc-feedback-2026-08-14 (Ants Terminal).
 
-- 📋 [ANTS-4356] **One `changelog_log op:"add_subsection"` call silently and permanently bricks a FLAT changelog — the guard exists in one direction only.**
+- ✅ [ANTS-4356] **One `changelog_log op:"add_subsection"` call silently and permanently bricks a FLAT changelog — the guard exists in one direction only.**
   **The most serious of this batch.** `op:"add"` and `op:"normalize"` both
   refuse `feature_grouped_section` against a feature-grouped `[Unreleased]`.
   Nothing guards the reverse. Verified 2026-08-12 against a flat fixture:
@@ -30518,6 +30518,14 @@ collision are different strengths of evidence.
   topic — mirroring `insertUnreleasedEntry`'s existing probe. A project
   deliberately converting layouts empties the section first, which is what
   converting already means.
+  Resolved (2026-08-14) as the reporter specified: a `flat_section` refusal
+  mirroring `insertUnreleasedEntry`'s probe, and an EMPTY `[Unreleased]` still
+  accepts a dated topic — refusing there would make conversion impossible
+  rather than merely guarded.
+  Worth recording why this was never caught: the existing fixture in
+  `tests/features/changelog_log_subsection/` is called `kFlat` and is **not
+  flat** — it already carries a dated topic, so every row in that file writes
+  into a feature-grouped section and the flat case had no coverage at all.
   **Layman:** One call can put a changelog into a state where the normal way of adding entries stops working, and nothing tells you.
   Kind: fix.
   Lanes: mcp, changelog.
@@ -30603,7 +30611,7 @@ collision are different strengths of evidence.
   Lanes: docsymbols, mcp.
   Source: cc-feedback-2026-08-14 (Ants Terminal).
 
-- 📋 [ANTS-4360] **`changelog_log op:"add_from_roadmap"` reuses the defect-phrased headline, so a fix lands under `### Fixed` still describing the bug as live.**
+- ✅ [ANTS-4360] **`changelog_log op:"add_from_roadmap"` reuses the defect-phrased headline, so a fix lands under `### Fixed` still describing the bug as live.**
   A 📋 bullet names the defect, because that is what a planned bullet is for.
   `add_from_roadmap` copies that headline and the Layman line verbatim into
   the changelog, where under `### Fixed` it reads as if the bug is still
@@ -30621,6 +30629,16 @@ collision are different strengths of evidence.
   round-trip and is defensible if (b) proves leaky. A docs note steering
   Fixed-category callers to `dry_run` first helps immediately either way,
   since `dry_run` already returns the rendered bullet.
+  Resolved (2026-08-14), preference (b): an explicit `summary` now overrides
+  the roadmap headline, mirroring `body`'s long-standing behaviour. Category
+  and id still come from the roadmap — the parts a caller has no reason to
+  restate — so the override is per field rather than all-or-nothing.
+  Option (a) was not taken: it trades a silent wrong write for a mandatory
+  round-trip on every entry, where (b) costs nothing when the headline already
+  reads correctly. Verified by mutation, not by reading — with the override
+  removed the test reports the defect-phrased headline.
+  `op:"add_batch"` never had this defect: it auto-detects on `summary`
+  already, so its resolver was deliberately left untouched.
   **Layman:** A fixed bug gets written into the changelog still worded as though it is happening.
   Kind: fix.
   Lanes: mcp, changelog.
@@ -30697,7 +30715,7 @@ collision are different strengths of evidence.
   `file_outline` was NOT eligible, so its spec and test moved with the code
   rather than around it.
 
-- 📋 [ANTS-4363] **`changelog_log` has no op to CLOSE `[Unreleased]` into a version block — the one changelog edit every release makes.**
+- ✅ [ANTS-4363] **`changelog_log` has no op to CLOSE `[Unreleased]` into a version block — the one changelog edit every release makes.**
   The verb covers add / add_from_roadmap / add_batch / add_subsection /
   normalize — every way of putting an entry in, and no way of closing.
   Renaming `## [Unreleased]` to `## [X.Y.Z] - <date>` with a fresh empty
@@ -30715,6 +30733,18 @@ collision are different strengths of evidence.
   release) or the version already exists, and optionally return the closed
   block's body since callers want it as release notes immediately. `dry_run`
   pairs with it as everywhere else.
+  Resolved (2026-08-14) as `op:"release"`, exactly the shape specified —
+  `{version, date?}`, `dry_run` like every sibling, `released_body` returned
+  so a caller has its notes without re-reading the file it just wrote, and
+  both refusals: `nothing_to_release` on an empty section (a version block
+  with no entries is worse than no release, and is silently produced by
+  cutting twice) and `version_exists` (two `## [X.Y.Z]` blocks leave the
+  notes-extraction grep unable to choose).
+  One guard added beyond the brief, for the reason the bullet gives: a
+  `version` carrying its own brackets refuses `bad_args` rather than writing
+  `## [[0.4.0]]`, since a heading a character out is exactly what publishes an
+  empty release body. The version STRING stays unconstrained (`-rc1`, a
+  date-version) — what is fixed is the heading SHAPE.
   **Layman:** The tool can add every kind of changelog entry but cannot do the one thing a release does — draw the line and stamp the version on it.
   Kind: feature.
   Lanes: mcp, changelog.
