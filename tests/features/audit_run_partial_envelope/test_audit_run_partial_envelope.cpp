@@ -91,3 +91,38 @@ TEST(AuditRunPartialEnvelope, Inv4SarifWrittenBeforeReturn) {
         << "INV-4: SARIF is written before runAudit returns (artifact "
            "exists before the caller serialises the reply)";
 }
+
+// ANTS-4371 — a zero-finding audit must carry evidence the tools were handed
+// work. Five tools over scope:"full" returned total_raw:0, partial:false,
+// incomplete_tools:[] and artifacts:0 on every SARIF run, and nothing
+// distinguished "ran across 2116 lines and found nothing" from "ran against
+// an empty file list". Confirming the sweep was real cost a manual re-run of
+// the tools the verb had just run — the cost the verb exists to remove.
+//
+// It matters because a zero-finding audit is the most consequential result
+// this verb returns: it is what lets a phase close.
+TEST(AuditRunPartialEnvelope, Ants4371CoverageEvidenceIsSerialised) {
+    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    EXPECT_TRUE(contains(mw, "paths_given"))
+        << "per-tool: how many explicit paths the tool was handed";
+    EXPECT_TRUE(contains(mw, "scanned_whole_project"))
+        << "…and whether it was pointed at the root instead. Under "
+           "scope:\"full\" paths_given is legitimately 0, so the count ALONE "
+           "would report \"scanned nothing\" for exactly the case this "
+           "reassures about — both fields together are the answer";
+    EXPECT_TRUE(contains(mw, "tools_with_no_files"))
+        << "the top-level roll-up: which tools got an explicitly narrowed but "
+           "EMPTY list, which scope:files / since-last-run produce legitimately";
+
+    // The evidence must NOT be folded into the partiality signal. A narrowed
+    // scope matching no files is a legitimate outcome, and marking it partial
+    // would make every narrow scan report a failure it did not have — trading
+    // a silent wrong answer for a noisy one.
+    const auto noFilesPos = mw.find("tools_with_no_files");
+    ASSERT_NE(noFilesPos, std::string::npos);
+    const std::string around = mw.substr(noFilesPos > 1200 ? noFilesPos - 1200 : 0,
+                                         1600);
+    EXPECT_TRUE(around.find("incomplete_tools") == std::string::npos ||
+                around.find("NOT folded") != std::string::npos)
+        << "no_files must stay out of incomplete_tools / partial";
+}

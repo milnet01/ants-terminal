@@ -4726,9 +4726,46 @@ void MainWindow::setupClaudeMcpProviders() {
                 t["raw_count"]           = it->rawCount;
                 t["after_filter_count"]  = it->afterFilterCount;
                 t["samples"]             = it->samples;
+                // ANTS-4371 — evidence the tool was handed work. A zero-finding
+                // audit is the most consequential result this verb returns (it
+                // is what lets a phase close), and "ran across the tree and
+                // found nothing" was byte-identical to "ran against an empty
+                // file list". `paths_given` is the explicit positional count;
+                // `scanned_whole_project` says the tool was pointed at the root
+                // instead, which under scope:"full" is the normal shape and
+                // makes paths_given legitimately 0 — so the count alone would
+                // read as "scanned nothing" for the very case this reassures
+                // about. `no_files` is the one that matters: a NARROWED scope
+                // that matched nothing, which scope:"files"/"since-last-run"
+                // produce legitimately.
+                t["paths_given"]           = it->pathsGiven;
+                t["scanned_whole_project"] = it->wholeProject;
+                const bool noFiles = !it->wholeProject && it->pathsGiven == 0;
+                if (noFiles) t["no_files"] = true;
                 byTool[it.key()]         = t;
             }
             env["by_tool"]          = byTool;
+            // ANTS-4371 — the top-level roll-up, so a caller reading only the
+            // summary can tell a real sweep from an empty one without walking
+            // by_tool. Deliberately NOT folded into `partial` /
+            // `incomplete_tools`: a narrowed scope matching no files is a
+            // legitimate outcome, and marking it partial would make every
+            // narrow scan report a failure it did not have.
+            {
+                QJsonArray noFilesTools;
+                int pathsTotal = 0;
+                bool anyWholeProject = false;
+                for (auto it = r.byTool.constBegin();
+                     it != r.byTool.constEnd(); ++it) {
+                    pathsTotal += it->pathsGiven;
+                    if (it->wholeProject) anyWholeProject = true;
+                    else if (it->pathsGiven == 0) noFilesTools.append(it.key());
+                }
+                env["paths_given_total"]     = pathsTotal;
+                env["scanned_whole_project"] = anyWholeProject;
+                if (!noFilesTools.isEmpty())
+                    env["tools_with_no_files"] = noFilesTools;
+            }
             env["total_raw"]        = r.totalRaw;
             env["total_actionable"] = r.totalActionable;
             env["noise_rate_pct"]   = r.noiseRatePct;

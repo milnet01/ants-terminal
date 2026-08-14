@@ -113,6 +113,22 @@ QJsonObject run(const QString &absPath, const Options &opt) {
     f.close();
 
     QJsonArray findings, candidates, refusals, observations;
+    // ANTS-4370 — every fence this verb DECLINED, with its tag and line.
+    // Pointed at a spec whose patterns sit in ```python fences the verb
+    // returned {findings:[], candidates:[], observations:[], refusals:[],
+    // cases_run:0} — every bucket empty — which reads as a clean pass. That
+    // defeats the thing the original proposal asked for ("report any fenced
+    // pattern with NO table beside it — an unexercised prescription IS the
+    // finding"): unexercised became silent, provided it was unexercised
+    // because of the tag.
+    //
+    // Deliberately NOT a candidate: § 2.6 makes a foreign fence invisible to
+    // the case extractor on purpose, and turning every code block in every
+    // spec into a finding is the noise that rule exists to prevent. This is a
+    // separate bucket saying what was looked at, which is the whole ask —
+    // "6 patterns found, 0 executable, tag them ```regex" beats silence.
+    QJsonArray skippedFences;
+    int taggedFences = 0;
     int casesRun = 0;
     bool truncated = false;
 
@@ -145,8 +161,16 @@ QJsonObject run(const QString &absPath, const Options &opt) {
             info.split(QLatin1Char(' '), Qt::SkipEmptyParts);
         if (infoWords.isEmpty() ||
             infoWords.first() != QLatin1String("regex")) {
-            continue;   // not ours — invisible, not a candidate (§ 2.6)
+            // ANTS-4370 — invisible to the extractor (§ 2.6), but no longer
+            // invisible in the envelope.
+            QJsonObject sf;
+            sf[QStringLiteral("line")] = fenceLine;
+            sf[QStringLiteral("tag")]  =
+                infoWords.isEmpty() ? QString() : infoWords.first();
+            addRow(skippedFences, sf);
+            continue;
         }
+        ++taggedFences;
 
         // ---- precedence: engine -> pattern cap -> table -> input cap -------
         if (infoWords.size() < 2) {
@@ -276,6 +300,22 @@ QJsonObject run(const QString &absPath, const Options &opt) {
     QJsonObject out;
     out[QStringLiteral("ok")]         = true;
     out[QStringLiteral("path")]       = absPath;
+    // ANTS-4370 — the counters that make a zero legible. `executable_fences`
+    // is 0 with `skipped_fences` non-empty exactly when the corpus is tagged
+    // for another language, which is the case that read as a pass.
+    out[QStringLiteral("executable_fences")] = taggedFences;
+    if (!skippedFences.isEmpty()) {
+        out[QStringLiteral("skipped_fences")] = skippedFences;
+        if (taggedFences == 0) {
+            out[QStringLiteral("hint")] = QStringLiteral(
+                "%1 fenced block(s) were found and NONE is executable by this "
+                "verb — it reads ```regex pcre2 fences only, and every fence "
+                "here carries another tag. This run therefore checked nothing; "
+                "it is not a clean result. Retag the pattern fences, or treat "
+                "this spec as outside this verb's reach.")
+                    .arg(skippedFences.size());
+        }
+    }
     out[QStringLiteral("cases_run")]  = casesRun;
     out[QStringLiteral("findings")]   = findings;
     out[QStringLiteral("candidates")] = candidates;

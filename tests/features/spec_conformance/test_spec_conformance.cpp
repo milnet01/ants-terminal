@@ -341,3 +341,59 @@ TEST(spec_conformance, Inv9StableAcrossRuns) {
     EXPECT_FALSE(arr(SpecConformance::run(p), "observations").isEmpty())
         << "a timing observation is emitted per case";
 }
+
+// ANTS-4370 — a spec whose patterns sit in ```python fences must not come
+// back looking clean.
+//
+// Pointed at one, the verb returned every bucket empty — findings,
+// candidates, observations AND refusals — with cases_run:0. That defeats the
+// thing the original proposal asked for ("report any fenced pattern with NO
+// table beside it — an unexercised prescription IS the finding"): unexercised
+// became silent, provided it was unexercised because of the tag.
+//
+// It matters because a project deleted a 605-line hand-rolled conformance
+// script (which had caught 7 defects) on the strength of this verb being its
+// standing replacement, and on the first spec it was pointed at it was a
+// no-op that read as a pass. Their specs are not simply retagged: they write
+// patterns in ```python because that is what `ruff format` formats and CI
+// gates, and a ```regex fence is invisible to the formatter and would drift.
+TEST(spec_conformance, Ants4370ForeignFencesAreReportedNotSilent) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString p = writeSpec(d, "py.md",
+        fence("python", "NAME = re.compile(r\"\\d{1,5}(?![0-9])\")") +
+        "| input | expected |\n|---|---|\n"
+        "| `12345` | `12345` |\n" +
+        fence("text", "not a pattern at all"));
+
+    const QJsonObject env = SpecConformance::run(p);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("cases_run").toInt(), 0);
+    EXPECT_EQ(env.value("executable_fences").toInt(), 0)
+        << "the denominator beside the zero — without it, cases_run:0 is the "
+           "same envelope a genuinely clean run produces";
+    ASSERT_EQ(arr(env, "skipped_fences").size(), 2)
+        << "each declined fence is named, with its tag and line";
+    EXPECT_EQ(at(env, "skipped_fences", 0).value("tag").toString(),
+              QStringLiteral("python"));
+    EXPECT_EQ(at(env, "skipped_fences", 1).value("tag").toString(),
+              QStringLiteral("text"));
+    EXPECT_TRUE(env.value("hint").toString().contains(QStringLiteral("regex")))
+        << "and the hint says what would make the check run";
+
+    // The § 2.6 rule still holds: a foreign fence is invisible to the CASE
+    // extractor, so it is not a candidate. Turning every code block in every
+    // spec into a finding is the noise that rule exists to prevent — this is
+    // a separate bucket saying what was looked at, not a new finding class.
+    EXPECT_TRUE(arr(env, "candidates").isEmpty());
+    EXPECT_TRUE(arr(env, "findings").isEmpty());
+
+    // Control — a spec with an executable fence reports executable_fences and
+    // no hint, so the signal cannot fire on a real run.
+    const QString ok = writeSpec(d, "ok.md",
+        fence("regex pcre2", "^a+$") +
+        "| input | expected |\n|---|---|\n| `aaa` | `aaa` |\n");
+    const QJsonObject env2 = SpecConformance::run(ok);
+    EXPECT_EQ(env2.value("executable_fences").toInt(), 1);
+    EXPECT_FALSE(env2.contains(QStringLiteral("hint")));
+}

@@ -35,6 +35,23 @@ checklist below walks the full procedure; this is the at-a-glance map
   `mcp::isRawEligible` honours `raw:true` (declare `makeRawProp()`),
   returning bytes verbatim in an unforgeable nonce frame via
   `wrapMcpDataRaw` — for agents reading frame-sensitive source to Edit it.
+- **A verb reporting ZERO must say what it looked at (ANTS-4374).** The
+  envelope for *"checked, and it is clean"* must not be byte-identical to
+  the envelope for *"could not check"*. Every zero a verb can emit —
+  `cases_run:0`, `total_raw:0`, `sections_checked:false`, an empty
+  `symbols[]`, an empty `missing_ids[]` — is read at a gate as a pass, and
+  a gate is exactly where the difference matters. So a zero ships with the
+  denominator beside it: what was scanned, which path was consulted, how
+  many candidates were declined and why. `find_definition`'s
+  `file_stem_hint` (ANTS-1950) is the pattern already got right.
+  **Emit the evidence as a field a caller READS, not as a `false` it must
+  know to look for** — an array or a count is noticed, a boolean is not,
+  and `compact:true` drops a `false` entirely. **And do not fold it into an
+  existing failure signal**: a narrowed scope that legitimately matched
+  nothing is not a partial run, and marking it one trades a silent wrong
+  answer for a noisy one. Reached independently from three directions in
+  one session; the instances are ANTS-4366, ANTS-4370, ANTS-4371,
+  ANTS-4373, and the refusal side of ANTS-4350 / ANTS-4368 / ANTS-4387.
 - **caller_cwd resolution (ANTS-1401).** Consume `caller_cwd` via
   `ants::resolveCallerCwdRoot` (`src/resolvedroot.h`) — never
   re-implement canonicalisation / tab-walks.

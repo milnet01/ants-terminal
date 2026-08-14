@@ -2282,6 +2282,10 @@ RunResult runAudit(const RunRequest &req) {
         tr.tool       = tool;
         tr.status     = status;
         tr.elapsedMs  = elapsedMs;
+        // ANTS-4371 — the coverage evidence, read from the same list that was
+        // handed to the process as positionals. No new parsing.
+        tr.pathsGiven   = perToolPaths.value(tool).size();
+        tr.wholeProject = perToolPaths.value(tool).isEmpty();
         // ANTS-2188 — scrub well-known secret shapes from the raw tool
         // output at this single capture point, before it reaches either
         // sink: rawByTool (→ the SARIF notification text written to

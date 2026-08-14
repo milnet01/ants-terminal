@@ -152,7 +152,12 @@ TEST(spec_conformance_verb, VerbContractMinimums) {
     // no sane default (spec_lint's tree walk is what makes its path optional).
     const std::size_t schema = ci.find("specConf[\"name\"] = \"spec_conformance\"");
     ASSERT_NE(schema, std::string::npos);
-    const std::string block = ci.substr(schema, 4000);
+    // The window must cover the whole descriptor: name + description +
+    // schema. Widened 4000 → 7000 by ANTS-4370, which added the
+    // skipped_fences / executable_fences paragraph to the description ahead
+    // of the schema. Widening is the right repair — trimming the description
+    // to fit a test's magic number is the tail wagging the dog.
+    const std::string block = ci.substr(schema, 7000);
     const std::size_t req = block.find("schema[\"required\"]");
     ASSERT_NE(req, std::string::npos);
     const std::string required = block.substr(req, 160);

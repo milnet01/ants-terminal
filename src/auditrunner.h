@@ -98,6 +98,19 @@ struct ToolResult {
     qint64     elapsedMs = 0;
     int        rawCount = 0;
     int        afterFilterCount = 0;
+    // ANTS-4371 — what this tool was actually HANDED. A zero-finding audit is
+    // the most consequential result the verb returns (it is what lets a phase
+    // close), and "ran across 2116 lines and found nothing" was byte-identical
+    // to "ran against an empty file list". Confirming a sweep was real cost a
+    // manual re-run of the tools the verb had just run.
+    //
+    // `pathsGiven` is the number of explicit positional paths. `wholeProject`
+    // says the tool was pointed at the project root instead of a list — under
+    // scope:"full" that is the NORMAL shape and pathsGiven is legitimately 0,
+    // so the count alone would report "scanned nothing" for exactly the case
+    // this exists to reassure about. Both fields together are the answer.
+    int        pathsGiven = 0;
+    bool       wholeProject = false;
     QJsonArray samples;           // each message ≤ 256 B
     // ANTS-3585 — source files this tool failed to PARSE (cppcheck syntaxError
     // / internalError / … on a TU its frontend can't handle, e.g. C++23). A
