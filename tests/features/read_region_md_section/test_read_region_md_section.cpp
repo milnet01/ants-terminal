@@ -348,3 +348,83 @@ TEST(ReadRegionMdSection, InlineFenceExampleDoesNotBlindTheScan) {
 // layer code or, if written to the current behaviour, freeze the gap. Filed as
 // ANTS-3678 against MarkdownScan, where the fix belongs and where one change
 // serves all six consumers.
+
+// ─────────────────────────────────────────────────────────────────────
+// ANTS-4350 — a section_not_found refusal carries `candidates`, the same
+// field and shape section_ambiguous already emits, so a caller handles
+// both branches with one code path.
+//
+// Reported FIVE times independently (OneUp, DOOM ×2, LocalWebServerManager,
+// claude_config), and the reports settled the ranking between them: DOOM's
+// second repro had the WORDS right and the number invented, which a
+// leading-number heuristic cannot resolve, so word overlap is primary and
+// the numeric prefix is the tiebreak.
+// ─────────────────────────────────────────────────────────────────────
+namespace {
+
+const char *kCandDoc =
+    "# Doc\n"
+    "\n"
+    "## 5. Data & resources\n"
+    "Body.\n"
+    "\n"
+    "### GPU profiler slots\n"
+    "Nested body.\n"
+    "\n"
+    "## 6. Performance\n"
+    "Body.\n";
+
+QStringList candidatesOf(const QJsonObject &env) {
+    QStringList out;
+    for (const auto v : env.value("candidates").toArray()) out << v.toString();
+    return out;
+}
+
+}  // namespace
+
+// The words are right and the number is invented — DOOM's second repro.
+// A shared-leading-token heuristic returns nothing here; word overlap
+// returns the answer outright, which is why it is primary.
+TEST(ReadRegionMdSection, NotFoundOffersWordOverlapCandidates) {
+    QTemporaryDir dir;
+    const QJsonObject env =
+        extractFrom(writeDoc(dir, "c.md"), kCandDoc, "5. GPU profiler slots");
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString().toStdString(), "section_not_found");
+
+    const QStringList cands = candidatesOf(env);
+    ASSERT_FALSE(cands.isEmpty()) << "the refusal must carry candidates";
+    EXPECT_EQ(cands.first().toStdString(), "gpu-profiler-slots")
+        << "word overlap must outrank the numeric prefix — the real heading "
+           "is a ### child with no number of its own";
+}
+
+// The number is right and the words are wrong — DOOM's first repro and
+// LocalWebServerManager's. The numeric prefix is what resolves it.
+TEST(ReadRegionMdSection, NotFoundFallsBackToNumericPrefix) {
+    QTemporaryDir dir;
+    const QJsonObject env = extractFrom(writeDoc(dir, "c.md"), kCandDoc,
+                                        "5. Targets, shaders and barriers");
+    EXPECT_FALSE(env.value("ok").toBool());
+    const QStringList cands = candidatesOf(env);
+    ASSERT_FALSE(cands.isEmpty());
+    // Asserting the numeric-prefix PROPERTY, not a hand-guessed slug: how a
+    // heading's `&` and `.` render is MarkdownScan's business, not this
+    // test's, and pinning it here would fail on a punctuation change that
+    // broke nothing.
+    EXPECT_TRUE(cands.first().startsWith(QStringLiteral("5")))
+        << "no word overlaps, so the shared leading number decides; got "
+        << cands.first().toStdString();
+}
+
+// A query sharing nothing still gets the heading list rather than a dead
+// end — LocalWebServerManager's point that for a standards file the list is
+// short, so an unranked fallback still turns a refusal into an answer.
+TEST(ReadRegionMdSection, NotFoundStillListsHeadingsWhenNothingScores) {
+    QTemporaryDir dir;
+    const QJsonObject env =
+        extractFrom(writeDoc(dir, "c.md"), kCandDoc, "zzz-unrelated-xyz");
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_FALSE(candidatesOf(env).isEmpty())
+        << "an unranked heading list beats nothing at all";
+}

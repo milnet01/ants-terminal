@@ -274,6 +274,68 @@ struct SecRange {
     QStringList candidates;         // the qualifying heading slugs when ambiguous
 };
 
+// ANTS-4350 — rank a document's headings against a query slug that matched
+// nothing, so the refusal carries near-misses instead of a dead end. Reported
+// five times independently, and the reports settled the ranking between them
+// because the two failure shapes pull opposite ways: a caller who half-
+// remembers a title gets the WORDS right and the number wrong, while a caller
+// working from a cross-reference ("commits.md § 1.1") gets the NUMBER right
+// and the words wrong. Ranking on the number alone answers only the second.
+// So non-numeric word overlap is the primary key and a shared leading numeric
+// token is the tiebreak.
+//
+// Nothing scoring is not a failure: the list falls back to document order,
+// which for a standards file is short and still turns a refusal into an
+// answer. Capped so a large document does not pay a big refusal body.
+QStringList rankSectionCandidates(const QString &wantSlug,
+                                  const QVector<MarkdownScan::Heading> &heads) {
+    constexpr int kMaxCandidates = 10;
+    if (heads.isEmpty()) return {};
+
+    const auto isNumeric = [](const QString &tok) {
+        if (tok.isEmpty()) return false;
+        for (const QChar c : tok)
+            if (!c.isDigit()) return false;
+        return true;
+    };
+    const auto split = [](const QString &s) {
+        return s.split(QLatin1Char('-'), Qt::SkipEmptyParts);
+    };
+
+    QSet<QString> wantWords;
+    QString wantNum;
+    for (const QString &t : split(wantSlug)) {
+        if (isNumeric(t)) { if (wantNum.isEmpty()) wantNum = t; }
+        else wantWords.insert(t);
+    }
+
+    struct Scored { int score; int order; QString slug; };
+    QVector<Scored> scored;
+    scored.reserve(heads.size());
+    for (int i = 0; i < heads.size(); ++i) {
+        int overlap = 0;
+        QString num;
+        for (const QString &t : split(heads[i].slug)) {
+            if (isNumeric(t)) { if (num.isEmpty()) num = t; }
+            else if (wantWords.contains(t)) ++overlap;
+        }
+        const int numMatch = (!wantNum.isEmpty() && num == wantNum) ? 1 : 0;
+        scored.push_back({overlap * 2 + numMatch, i, heads[i].slug});
+    }
+    std::stable_sort(scored.begin(), scored.end(),
+                     [](const Scored &a, const Scored &b) {
+                         if (a.score != b.score) return a.score > b.score;
+                         return a.order < b.order;   // document order
+                     });
+
+    QStringList out;
+    for (const Scored &s : scored) {
+        if (out.size() >= kMaxCandidates) break;
+        out << s.slug;
+    }
+    return out;
+}
+
 SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     SecRange r;
     QFile f(absPath);
@@ -317,7 +379,12 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
             return r;
         }
     }
-    if (idx < 0) return r;  // not found
+    if (idx < 0) {
+        // ANTS-4350 — not found, but not a dead end: the headings are already
+        // parsed at this point and the old code discarded them.
+        r.candidates = rankSectionCandidates(wantSlug, heads);
+        return r;
+    }
 
     r.found = true;
     r.start = heads[idx].line;
@@ -390,6 +457,10 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
             env["error"] = QStringLiteral(
                 "read_region: no markdown heading matches section: %1")
                     .arg(opts.section);
+            // ANTS-4350 — same field and shape the ambiguous branch emits, so
+            // a caller handles both refusals with one code path.
+            if (!sec.candidates.isEmpty())
+                env["candidates"] = QJsonArray::fromStringList(sec.candidates);
             return env;
         }
         startLine       = sec.start;

@@ -3961,7 +3961,12 @@ void ClaudeIntegration::onMcpConnection() {
                             "\"7. Build order (cheapest-first)\") when it "
                             "uniquely prefixes one heading; ambiguous prefixes "
                             "refuse with section_ambiguous + candidates "
-                            "(ANTS-2234). Mutually exclusive with the other "
+                            "(ANTS-2234). A section_not_found refusal ALSO "
+                            "carries candidates (ANTS-4350) — the same field "
+                            "and shape, so one code path handles both — "
+                            "ranked by word overlap first and a shared "
+                            "leading section number second, capped at 10. "
+                            "Mutually exclusive with the other "
                             "selectors. Echoes section + the resolved "
                             "section_slug.");
                     QJsonObject mbProp; mbProp["type"] = "integer";

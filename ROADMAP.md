@@ -30317,7 +30317,7 @@ collision are different strengths of evidence.
   Lanes: mcp, remotecontrol.
   Source: cc-feedback-2026-08-14 (OneUp).
 
-- 📋 [ANTS-4350] **`read_region`'s `section_not_found` refusal carries no near-match candidates, though the ambiguous path already builds them.**
+- ✅ [ANTS-4350] **`read_region`'s `section_not_found` refusal carries no near-match candidates, though the ambiguous path already builds them.**
   OneUp: `section:"4.3 The window owns every sentence"` refused bare; the real
   heading was `4.3 Where the wording lives…`. Cost three calls (refusal →
   `file_outline` → re-call) where one refusal carrying candidates would have
@@ -30337,6 +30337,18 @@ collision are different strengths of evidence.
   its own, so candidates drawn from descendants of a numerically-matching
   ancestor resolve both. Recovery cost a `file_outline` over 38 headings, ~40×
   the bytes of the refusal.
+  Resolved (2026-08-14): the refusal now carries `candidates` — the same
+  field and shape the ambiguous branch already emits, so a caller handles
+  both with one code path — ranked by NON-NUMERIC word overlap first and a
+  shared leading section number second, capped at 10, falling back to
+  document order when nothing scores.
+  **The ranking is the reporters' finding, not a design choice made here.**
+  Five independent reports pulled in two directions: three had the number
+  right and the words wrong, and DOOM's second had the words exactly right
+  with the number invented — which a leading-number heuristic cannot resolve
+  at all. Only running both keys, in that order, answers both, and each is a
+  regression case. The headings were already parsed at the refusal point and
+  simply discarded, so this surfaces work already done.
   **Layman:** When you half-remember a section title the tool says "no such section" and nothing else, instead of showing you the ones it does have.
   Kind: enhancement.
   Lanes: mcp, remotecontrol.
