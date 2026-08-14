@@ -274,6 +274,43 @@ qint64 corpusHighWater(const QString &projectPath, const QString &prefix) {
     return maxN;
 }
 
+// ANTS-4387 — see the header. Enumerates only the § 3.9 name shape, so an
+// unrelated .md in that directory cannot resolve an id.
+QHash<QString, QString> archivedIds(const QString &projectPath,
+                                    const QSet<QString> &wanted) {
+    QHash<QString, QString> out;
+    if (wanted.isEmpty()) return out;
+    const QString root = QFileInfo(projectPath).canonicalFilePath();
+    if (root.isEmpty()) return out;
+    QDir archive(root + QStringLiteral("/docs/roadmap"));
+    if (!archive.exists()) return out;
+
+    static const QRegularExpression nameRe(
+        QStringLiteral("\\A(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.md\\z"));
+    const auto entries =
+        archive.entryList({QStringLiteral("*.md")}, QDir::Files, QDir::Name);
+    for (const QString &e : entries) {
+        if (!nameRe.match(e).hasMatch()) continue;
+        QFile f(archive.absoluteFilePath(e));
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        const QString text = QString::fromUtf8(f.readAll());
+        f.close();
+        const QString rel =
+            QStringLiteral("docs/roadmap/") + e;
+        for (const QString &id : wanted) {
+            if (out.contains(id)) continue;   // first archive wins
+            // Bracketed or bold — the two id spellings roadmap-format.md
+            // sanctions. A bare substring would match a longer id that merely
+            // starts with this one (ANTS-406 inside ANTS-4065).
+            if (text.contains(QLatin1Char('[') + id + QLatin1Char(']')) ||
+                text.contains(QStringLiteral("**") + id + QStringLiteral("**")) ||
+                text.contains(QStringLiteral("**") + id + QStringLiteral(".**")))
+                out.insert(id, rel);
+        }
+    }
+    return out;
+}
+
 // ANTS-1618 — post-failure inspection. Callers invoke this AFTER
 // allocateIds has returned an empty list so they can compose a
 // state-specific error message instead of the generic "flock/IO

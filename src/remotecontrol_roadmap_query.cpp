@@ -2616,6 +2616,43 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (seen.contains(id)) matchedIds.append(id);
             else                    missingIds.append(id);
         }
+        // ANTS-4387 — an id ROTATED into docs/roadmap/*.md came back in
+        // `missing_ids` beside a genuinely unknown id with nothing to tell
+        // them apart. Reading only the current ROADMAP.md is by design
+        // (roadmap-format.md § 3.9), so the scope is unchanged and only the
+        // envelope moves: an archived id is reported as archived. The caller
+        // most likely to hit this is one checking ids that are by definition
+        // OLD — a release pre-flight, a changelog audit — where the only safe
+        // reading of "missing" is to STOP, and the fix reached for under
+        // release pressure is to weaken the check, discarding its true
+        // findings too. Gated on a non-empty missing set, so the ordinary
+        // fully-resolving call does no filesystem work at all.
+        QJsonArray archivedIdsArr;
+        QJsonObject archivedSources;
+        if (!missingIds.isEmpty()) {
+            QSet<QString> stillMissing;
+            for (const auto &v : std::as_const(missingIds))
+                stillMissing.insert(v.toString());
+            const QString rootForArchive =
+                callerCanonical.isEmpty()
+                    ? QFileInfo(path).absolutePath()
+                    : callerCanonical;
+            const auto found =
+                RoadmapFoldIn::archivedIds(rootForArchive, stillMissing);
+            if (!found.isEmpty()) {
+                QJsonArray trulyMissing;
+                for (const auto &v : std::as_const(missingIds)) {
+                    const QString id = v.toString();
+                    if (found.contains(id)) {
+                        archivedIdsArr.append(id);
+                        archivedSources[id] = found.value(id);
+                    } else {
+                        trulyMissing.append(id);
+                    }
+                }
+                missingIds = trulyMissing;
+            }
+        }
         out["ok"]          = true;
         out["bullets"]     = matches;
         out["path"]        = path;
@@ -2623,7 +2660,19 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["ids"]         = idsEcho;
         out["matched_ids"] = matchedIds;
         out["missing_ids"] = missingIds;
+        if (!archivedIdsArr.isEmpty()) {
+            out["archived_ids"]     = archivedIdsArr;
+            out["archived_sources"] = archivedSources;
+        }
         out["found"]       = !matches.isEmpty();
+        // ANTS-4387 secondary (ANTS-4374's invariant again) — `found:true` on
+        // a PARTIALLY resolved set reads as success, so a caller checking
+        // `found` alone never learns two of its fifty did not resolve. Emitted
+        // on the ids path only, where "all of them" is a question that exists.
+        if (!idsArgInputOrder.isEmpty()) {
+            out["all_ids_resolved"] =
+                missingIds.isEmpty() && archivedIdsArr.isEmpty();
+        }
         if (hasModeArg) out["mode"] = mode;
         if (hasIncludeBodyArg) out["include_body"] = includeBody;
         if (!m_roadmapCacheDuplicateIds.isEmpty()) {

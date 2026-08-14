@@ -170,3 +170,66 @@ TEST(FoldInIdPrefix, TestAuditFoldInHonoursIdPrefixOverride) {
     EXPECT_FALSE(rb.ok);
     EXPECT_EQ(rb.code, QStringLiteral("bad_args"));
 }
+
+// ANTS-4387 — an id rotated into docs/roadmap/*.md must be distinguishable
+// from one that never existed.
+//
+// Reading only the current ROADMAP.md is by design (roadmap-format.md § 3.9,
+// "Archives are dialog-only"), so the scope does not move — only the envelope.
+// The caller most likely to hit this is one checking ids that are by
+// definition OLD: a release pre-flight, a changelog audit, a shipped-work
+// sweep. There the only safe reading of "missing" is to STOP, and the fix a
+// session reaches for under release pressure is to weaken the check — which
+// silently discards its true findings too.
+TEST(FoldInIdPrefix, Ants4387ArchivedIdsAreDistinguishedFromUnknownOnes) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("docs/roadmap")));
+
+    const auto write = [&](const char *rel, const QByteArray &body) {
+        QFile f(root + QLatin1Char('/') + QLatin1String(rel));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(body);
+    };
+    write("docs/roadmap/0.5.md",
+          "- \xE2\x9C\x85 [PROJ-0101] **Rotated out in 0.5.**\n");
+    write("docs/roadmap/0.6.md",
+          "- \xE2\x9C\x85 **PROJ-0202** Rotated out in 0.6, bold spelling.\n");
+    // Only the § 3.9 name shape is enumerated — a stray .md in the same
+    // directory must NOT resolve an id, or any file dropped there silently
+    // becomes an authority on what shipped.
+    write("docs/roadmap/notes.md",
+          "- \xE2\x9C\x85 [PROJ-0303] **Not an archive file.**\n");
+
+    const QSet<QString> wanted = {
+        QStringLiteral("PROJ-0101"), QStringLiteral("PROJ-0202"),
+        QStringLiteral("PROJ-0303"), QStringLiteral("PROJ-9999"),
+    };
+    const auto got = RoadmapFoldIn::archivedIds(root, wanted);
+
+    EXPECT_EQ(got.value(QStringLiteral("PROJ-0101")),
+              QStringLiteral("docs/roadmap/0.5.md"))
+        << "the bracketed spelling resolves, and reports WHICH archive";
+    EXPECT_EQ(got.value(QStringLiteral("PROJ-0202")),
+              QStringLiteral("docs/roadmap/0.6.md"))
+        << "the bold spelling resolves too — both are sanctioned";
+    EXPECT_FALSE(got.contains(QStringLiteral("PROJ-0303")))
+        << "a file outside the <MAJOR>.<MINOR>.md shape is not an archive";
+    EXPECT_FALSE(got.contains(QStringLiteral("PROJ-9999")))
+        << "a genuinely unknown id stays unknown — that is the whole point";
+
+    // A prefix collision must not resolve: PROJ-010 is not PROJ-0101, and a
+    // bare substring test would say it was.
+    EXPECT_FALSE(
+        RoadmapFoldIn::archivedIds(root, {QStringLiteral("PROJ-010")})
+            .contains(QStringLiteral("PROJ-010")))
+        << "a shorter id that PREFIXES an archived one must not resolve";
+
+    // Absent archive directory and empty request are both free, not errors —
+    // the caller gates on a non-empty missing set.
+    QTemporaryDir bare;
+    ASSERT_TRUE(bare.isValid());
+    EXPECT_TRUE(RoadmapFoldIn::archivedIds(bare.path(), wanted).isEmpty());
+    EXPECT_TRUE(RoadmapFoldIn::archivedIds(root, {}).isEmpty());
+}

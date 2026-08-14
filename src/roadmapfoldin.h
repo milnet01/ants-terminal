@@ -31,6 +31,9 @@
 #include <QList>
 #include <QString>
 
+#include <QHash>
+#include <QSet>
+
 namespace RoadmapFoldIn {
 
 // Allocate `n` consecutive IDs from <projectPath>/.roadmap-counter.
@@ -70,6 +73,24 @@ QString counterFilePath(const QString &projectPath);
 // missing corpus files are skipped. Read-only.
 qint64 corpusHighWater(const QString &projectPath,
                        const QString &prefix = {});
+
+// ANTS-4387 — which of `wanted` appear in a ROTATED archive under
+// <projectPath>/docs/roadmap/, mapped id → the archive's project-relative
+// path. Reading only the current ROADMAP.md is by design (roadmap-format.md
+// § 3.9, "Archives are dialog-only"); the defect was the ENVELOPE, not the
+// scope — an archived id came back beside a genuinely unknown one with
+// nothing to tell them apart, and the caller most likely to hit it is the one
+// checking ids that are by definition OLD (a release check, a changelog
+// audit). "Missing" then reads as "stop", and the fix a session reaches for
+// under release pressure is to weaken the check, which discards the true
+// findings with it.
+//
+// Only the § 3.9 name shape is enumerated (<MAJOR>.<MINOR>.md), so an
+// unrelated .md dropped in that directory cannot resolve an id. Returns empty
+// when `wanted` is empty or the directory is absent — callers gate on the
+// missing set, so an absent archive costs nothing.
+QHash<QString, QString> archivedIds(const QString &projectPath,
+                                    const QSet<QString> &wanted);
 
 // ANTS-3473 — the project's dominant counter-style ID prefix, sniffed
 // from <projectPath>/ROADMAP.md (the most frequent `[PREFIX-NNNN]`

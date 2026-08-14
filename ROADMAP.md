@@ -31484,7 +31484,7 @@ collision are different strengths of evidence.
   Lanes: doccitations, mcp.
   Source: cc-feedback-2026-08-14 (claude_config).
 
-- 📋 [ANTS-4387] **`roadmap_query` reports an ARCHIVED id in `missing_ids`, indistinguishable from an id that never existed — and it would block a good release.**
+- ✅ [ANTS-4387] **`roadmap_query` reports an ARCHIVED id in `missing_ids`, indistinguishable from an id that never existed — and it would block a good release.**
   Reading only the current ROADMAP.md is by design (`roadmap-format.md` § 3.9,
   "Archives are dialog-only"). **The problem is the envelope, not the scope**:
   an id rotated into `docs/roadmap/<MAJOR>.<MINOR>.md` returns in
@@ -31515,6 +31515,21 @@ collision are different strengths of evidence.
   `archived:true` marker and source path — opt-in keeps the § 3.9 contract
   intact, since the dialog-only rule is about DEFAULT cost and a targeted
   `ids:[…]` fetch is not the whole-file scan it protects against.
+  Resolved (2026-08-14), fix (1): `archived_ids` + `archived_sources` (id →
+  the archive that holds it) split out of `missing_ids`, so § 3.9's scope is
+  untouched and only the envelope moves. The secondary is fixed too —
+  `all_ids_resolved` is the flag to branch on, since `found:true` is true of a
+  partially resolved set.
+  Three things the lookup deliberately does NOT do, each pinned by an
+  assertion: it enumerates only the § 3.9 `<MAJOR>.<MINOR>.md` name shape, so
+  a stray `.md` dropped in that directory cannot silently become an authority
+  on what shipped; it matches the bracketed and bold id spellings rather than
+  a bare substring, so `PROJ-010` does not resolve against `PROJ-0101`; and it
+  runs only when the missing set is non-empty, so the ordinary fully-resolving
+  call does no filesystem work at all.
+  Fix (2), `include_archives:true`, was not implemented — (1) answers the
+  question without a new opt-in, and an opt-in nobody passes would leave the
+  release pre-flight exactly where it started.
   **Layman:** Ask about an old roadmap item and you are told it does not exist, which would stop a release that was perfectly fine.
   Kind: fix.
   Lanes: mcp, roadmap.
