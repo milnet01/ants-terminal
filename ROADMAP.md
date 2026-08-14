@@ -39657,6 +39657,18 @@ here.)
   wanted. Whatever fixes the source label should also make staleness visible —
   a `source:"store"` field, or a freshness check against the file's mtime.
 
+  Third measurement 2026-08-14, and it names a second, compounding defect: a
+  Bash hook ACTIVELY ROUTES CALLERS HERE. `grep -oE '\[ANTS-[0-9]+\]'
+  ROADMAP.md` was refused with `use mcp__ants__roadmap_query (status=active
+  returns ~10x fewer tokens than full ROADMAP)` — sound advice against the
+  verb this very bullet documents as returning stale bodies with no truncation
+  flag. So the cheap correct path (grep the file) is blocked and the expensive
+  wrong one is recommended, and the session's workaround was `python3 -c` to
+  get past a hook whose reasoning is right. Until the staleness is fixed the
+  hook is pointing at a known-bad source; whichever lands first, the other must
+  be re-checked. Not filed separately — a hook recommending a broken verb is
+  this bullet's cost, not a new defect.
+
 - 📋 [ANTS-4144] **A rolled-back `roadmap_migrate` still emits its full note list, spending thousands of tokens describing writes that did not happen.**
   The failed Phase D2 run returned `ok:false` with a one-line error and
   `notes_count: 1032`, `notes_truncated: true` — roughly 180 truncated

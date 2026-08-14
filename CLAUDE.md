@@ -339,6 +339,16 @@ message. Where the owner is clean, `--write` is right and the drift is real
 needed the ordinary re-copy — two mirrors, two different correct answers,
 minutes apart.
 
+**Read the drift diff's direction right: `<` is the OWNER, `>` is the project
+mirror.** The header says "docs/standards/X.md: DRIFTED from
+~/.claude/standards/X.md", which reads as if the project file is the first
+operand and therefore the `<` side. It is not. Get this backwards and the
+mirror looks *ahead* of its owner — a state that should be impossible — and
+the tempting repair is to edit the owner, i.e. push a mirror's text upstream,
+which is the one direction the whole arrangement forbids. Confirmed 2026-08-14
+by opening the owner and finding the `<` text in it, after exactly that
+misreading; if in doubt, do the same rather than reasoning from the header.
+
 **Two files are NOT deltas, deliberately:**
 
 - [`roadmap-format.md`](docs/standards/roadmap-format.md) — **this project
