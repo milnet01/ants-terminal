@@ -31817,6 +31817,186 @@ collision are different strengths of evidence.
   Lanes: speclint, mcp.
   Source: cc-feedback-2026-08-14 (claude_config).
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 second triage
+
+Filed the same evening as the batch above, after three projects logged further
+findings while the first batch was being implemented. Two of these correct
+something the first batch recorded: ANTS-4393 retires a hypothesis ANTS-4390's
+bullet carried as unverified, and ANTS-4380 was already shipped by the time
+finbreak re-verified it.
+
+- 📋 [ANTS-4393] **`spec_lint`'s `surfaces_checked` has a DIFFERENT cause from `sections_checked`, and no documented input turns it on — so the test-surface check is silently off on every project, permanently.**
+  AI_Prompts measured what ANTS-4390's bullet recorded as an unverified
+  guess, on a different project, and the guess was wrong: adding the
+  in-project format standard flips `sections_checked` to true and leaves
+  `surfaces_checked` false. Same run, same corpus, one input added; one moved
+  and the other did not. Their spec carries nine invariants, every one with a
+  `*Test:*` clause in the documented form, and `surfaces_resolved` stayed 0.
+  **That retires a guess a later session would reasonably have acted on** —
+  reading ANTS-4390's note, fixing `sections_checked` and expecting the other
+  to follow.
+  The larger half for a caller: there is now a documented input for one silent
+  check and NONE for the other. A project can make `spec_lint` honest about
+  section structure by adding a file; nothing it can write makes the run
+  honest about test surfaces. So `ok:true, findings:[]` still means "no test
+  surface was checked" everywhere, and the envelope says so only in a field a
+  caller must know to read. They nearly shipped a spec edit on a clean run;
+  their CLAUDE.md carries a hand-written warning about exactly this, which is
+  the tell that the envelope is not carrying its own caveat.
+  Fix, two independent halves: (1) document what turns `surfaces_checked` on,
+  or say plainly that nothing does yet — it currently reads as a capability a
+  caller might satisfy; (2) extend ANTS-4373's `skipped[]` to name EVERY
+  gated check that did not run, not just `missing_section`.
+  **Layman:** The spec checker has two tests it can quietly decline to run, and there is no way to switch the second one on.
+  Kind: fix.
+  Lanes: speclint, mcp.
+  Source: cc-feedback-2026-08-14 (AI_Prompts), corrects ANTS-4390's note.
+
+- 📋 [ANTS-4394] **`read_region` has no `~global` sentinel though `file_outline` and `doc_integrity` both do, so reading a global standard drops out to Bash.**
+  `file_outline` documents `caller_cwd:"~global"` (ANTS-1390) and
+  `doc_integrity` the same (ANTS-3719). `read_region` documents neither and
+  refuses `bad_path`. **So the one verb designed to fetch a NAMED SECTION of
+  a document — exactly what you want from a long standard — is the one that
+  cannot reach the global standards tree.**
+  Global CLAUDE.md points every session at `~/.claude/standards/` as the
+  governing contracts, so a project session reads them routinely; finbreak's
+  split was decided by `spec-format.md` § 5.4. They fell back to
+  `Bash sed -n '405,430p'`, which is the raw-tool fallback the SessionStart
+  hook exists to avoid — and worse, a line-number guess against a file that
+  shifts as it is edited, when `section=` is precisely the right tool.
+  Fix: accept the same sentinel the sibling verbs accept. If it is deliberately
+  read-only-verb-scoped, `read_region` is a read-only verb.
+  **Layman:** The rulebook everything defers to is the one file the section-reader cannot open.
+  Kind: fix.
+  Lanes: mcp, remotecontrol.
+  Source: cc-feedback-2026-08-14 (finbreak).
+
+- 📋 [ANTS-4395] **`changelog_log op:"add_batch"` reports the same `line` for every applied entry, so only the first can be right.**
+  A two-entry batch returned `applied:[{index:0, line:26}, {index:1,
+  line:26}]`. Two entries appended under one category cannot both occupy line
+  26 — whichever is written second lands after the first. The reported line
+  looks like the insertion point computed once BEFORE the batch rather than
+  each entry's resulting position. The file was correct afterwards: this is
+  the envelope, not the write.
+  A caller using the returned `line` to cite or re-read the entry it just
+  wrote reads the wrong one for every entry after the first. The single-entry
+  `op:"add"` path reports correctly.
+  Fix: compute each entry's line after its own insertion. **If per-entry lines
+  are awkward, DROPPING the field on the batch path is more honest than
+  reporting one that is right once** — the reporter's own framing, and right.
+  **Layman:** Add several changelog entries at once and the tool says they all landed on the same line.
+  Kind: fix.
+  Lanes: mcp, changelog.
+  Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+
+- 📋 [ANTS-4396] **`file_outline` has no heading-depth filter, so orienting on a long append-only markdown log costs the whole outline — and `max_symbols` truncates the WRONG end.**
+  Outlining a 532-line feedback file returns ~85 symbols dominated by `###`
+  finding titles that are themselves full sentences. To answer "what is still
+  open?" only the `##` day headings are needed. There is no depth filter and
+  no tail selector, and **`max_symbols` truncates from the top, which keeps
+  the OLDEST entries and drops the newest — the opposite of what an
+  append-only log wants**: `max_symbols:20` would return July and hide today.
+  ~4-5k tokens to orient on a file whose useful surface was about six lines,
+  recurring every session that logs feedback, and monotonically worse as the
+  file only grows.
+  Fix, their preference: (a) `max_heading_level` in md mode (2 → only `#`/`##`),
+  a natural fit for the mode-based parser that would serve any long structured
+  doc, ROADMAP.md included; or (b) keep the TAIL when truncating markdown.
+  (a) is the more generally useful.
+  **Layman:** Asking for a map of a long log gives you every sentence in it, and trimming the map throws away the newest part.
+  Kind: enhancement.
+  Lanes: fileoutline, mcp.
+  Source: cc-feedback-2026-08-14 (finbreak).
+
+- 📋 [ANTS-4397] **`read_region`'s spill preview emits the same over-long row TWICE — `head` and `head_rows`, both truncated — so the preview costs ~4 KB and answers nothing.**
+  On a markdown file whose rows are single very long lines (a status table),
+  the spill preview carries identical content in `head` (a JSON string) and
+  `head_rows` (the parsed array), both cut at the same point. Measured: an
+  80-line request returned 20,529 bytes conveying 7 lines, one of them twice.
+  The preview exists to let a caller decide whether to page the spill, and
+  here it cannot — it shows one truncated row and gives no way to see which of
+  the 80 lines are large. The workaround was two extra narrow re-reads.
+  Fix: when the rows do not fit the head budget, emit a **shape summary**
+  instead of a prefix — `rows_preview:[{line, bytes, first_120_chars}]` for
+  every row, which for 80 rows costs well under the current 4 KB and says
+  exactly which lines to page. And emit `head` OR `head_rows`, not both: they
+  are the same bytes in two encodings, and on a truncated preview the
+  duplication is the larger half of the cost.
+  **Layman:** The preview of a big result shows you one cut-off line, twice.
+  Kind: fix.
+  Lanes: mcp, remotecontrol.
+  Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+
+- 📋 [ANTS-4398] **A `mutation_probe` verb: apply a mutation, run a selector, restore — and REFUSE a mutation that did not change the file.**
+  There is no verb for the mutate-and-watch-it-go-red loop, which several
+  projects' CLAUDE.md files mandate before believing an invariant is held.
+  `focused_test` is ctest-only and does not mutate; `invariant_check` reads
+  specs and runs nothing. So every session hand-rolls the same bash — LWSM
+  wrote it from scratch three times in ONE session, ~40 lines per batch, four
+  batches across four source files, restored by hand with a trailing `diff -q`
+  as the only guard.
+  **The field that matters most is `inert`.** A mutation whose `old` string is
+  absent, or whose replacement leaves the file byte-identical, must be
+  reported as inert rather than as a surviving mutant — those two are
+  indistinguishable from outside and the wrong reading is "my test is weak"
+  when the truth is "my patch never applied". They hit three inert mutations
+  in one session; that project's CLAUDE.md already records the same trap twice
+  from earlier sessions, **and three sessions independently hitting one
+  failure mode is a harness gap rather than three careless authors**.
+  What the loop bought when it worked: **7 tests that were green and measured
+  nothing**, found across 58 mutants — a launcher ignoring SIGTERM, two
+  fixtures already in sorted order for a sort-order test, a session-global
+  `gc.get_objects()` count, a one-row fixture against a per-row closure bug,
+  and no fixture reaching two whole enum states. Reading found none of them.
+  Shape: `{caller_cwd, path, mutations:[{label, old, new}], test_command |
+  test_selector, restore:true}` → `{results:[{label, applied, inert, outcome,
+  passed, failed, summary}], restored_clean}`. The guarantees are the point:
+  refuse an inert mutation with its own outcome value; **guarantee the restore
+  including on a failed or timed-out run** (the bash version leaks a mutated
+  source file if interrupted, which is dangerous in a repo the session then
+  commits); run each mutation against a clean baseline so two cannot compound;
+  report per-mutation pass/fail counts so "died for the wrong reason" is
+  visible; optionally require a green baseline and refuse otherwise.
+  **This project hand-rolled the same loop six times on 2026-08-14** while
+  implementing the first triage batch, which is independent corroboration.
+  **Layman:** Checking that a test would actually notice a bug means editing the code, running the test, and putting it back — done by hand every time, and a typo in the edit looks exactly like a passing test.
+  Kind: feature.
+  Lanes: mcp, testing.
+  Source: cc-feedback-2026-08-14 (LocalWebServerManager), corroborated in-session.
+
+- 📋 [ANTS-4399] **`session_orient`'s `active_bullets` slice is capped at 20 with no prominence, so a session plans from the first 20 of 95 ordered by document position.**
+  The fields are all present and correct — `count:20, total:95,
+  truncated:true, next_offset:20`. What is missing is prominence: the bundle
+  reads as "here are your active items", and a session that does not inspect
+  `truncated` plans tonight's work from a slice ordered by nothing meaningful.
+  It bit indirectly: the first 20 were dominated by one section, and the items
+  worth doing were reachable only because a handoff brief named them. A fresh
+  session with no brief would have seen a skewed slice.
+  Fix: raise the default slice for `active_bullets` specifically (it is the
+  cheapest field in the bundle at headline_only), or add an
+  `active_bullets_hint` when truncated — "showing 20 of 95; call roadmap_query
+  mode:bundles for the thematic view". **`bundles` already exists and is the
+  better planning surface, and nothing points at it from the orientation
+  call.**
+  **Layman:** The session-start summary shows the first twenty open items out of ninety-five and does not say so loudly.
+  Kind: enhancement.
+  Lanes: mcp, remotecontrol.
+  Source: cc-feedback-2026-08-14 (finbreak).
+
+- 📋 [ANTS-4400] **`roadmap_query ids` returns document order with no way to recover input order.**
+  Correctly documented ("Result is in DOCUMENT order, not input order"), but
+  there is no `order:"input"` and no per-bullet echo of the caller's position.
+  Fetching two ids to compare them returns them in file order, so a caller who
+  zips the result against its own input array silently mis-pairs.
+  Fix, their preference and the cheaper one: add `input_index` to each bullet
+  so a caller can restore its own ordering without a dict comprehension.
+  Genuinely low priority — each bullet already carries its `id`, so the
+  caller-side fix is one line.
+  **Layman:** Ask for two items by number and they come back in the file's order, not yours.
+  Kind: enhancement.
+  Lanes: mcp, roadmap.
+  Source: cc-feedback-2026-08-14 (finbreak).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
