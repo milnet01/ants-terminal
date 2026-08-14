@@ -655,7 +655,7 @@ the spec, never the plan; build steps live in the plan, never the spec.
 A plan that argues for its approach has become a second spec, and the
 two will disagree.
 
-`spec-format.md` owns their format. Write both with `/write-spec`.
+`spec-format.md` owns their format. Write both with `write-spec`.
 
 ### 3.3 Capitalisation of filenames
 
