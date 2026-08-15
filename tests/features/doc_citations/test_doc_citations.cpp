@@ -1161,3 +1161,71 @@ TEST(DocCitations, Ants4386QuotationsAreCheckedAcrossLineWraps) {
     const QJsonObject r2 = DocCitations::check(fx.root, doc, plain);
     EXPECT_FALSE(r2.contains(QStringLiteral("quotes")));
 }
+
+// ANTS-4085 — a quoted FOREIGN path is not a stale citation.
+//
+// `roadmap-data-model.md` § 5 quotes two sub-bullets from OTHER projects'
+// roadmaps as the evidence its item-detail-vs-section-element distinction
+// rests on. One is MAME Curator's and carries
+// `tests/api/test_fp09_fixes.py:362`. doc_citations harvested it (a citation
+// inside an inline code span IS harvested, deliberately — most real ones are
+// written that way) and reported `missing_file`, because Ants has no
+// `tests/api/` and never will: the path belongs to another repository.
+//
+// So it was a permanent finding on a frequently-linted file, unfixable at the
+// document end — rewording the quote makes it no longer a quote. Option (c)
+// of the three the item proposed: a distinct status that `only:"stale"`
+// excludes. Cheapest, and it generalises to every project that quotes
+// another's paths.
+TEST(DocCitations, Ants4085ForeignPathIsNotStale) {
+    Fixture fx;
+    fx.write(QStringLiteral("src/pkg/real.py"), "a\nb\nc\n");
+
+    DocCitations::Options opts;
+    opts.basenameIndex.insert(QStringLiteral("real.py"),
+                              {QStringLiteral("src/pkg/real.py")});
+    // `ours.py` is a file of ours the index knows about but that is not on
+    // disk — a genuine miss, and the discriminator against the foreign case.
+    opts.basenameIndex.insert(QStringLiteral("ours.py"),
+                              {QStringLiteral("src/pkg/ours.py")});
+
+    const QString doc = fx.doc(
+        "real `src/pkg/real.py:2`\n"
+        "quoted from elsewhere `tests/api/test_fp09_fixes.py:362`\n"
+        "ours and gone `src/pkg/ours.py:1`\n");
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+
+    EXPECT_EQ(status(r, 0), QStringLiteral("ok"));
+    EXPECT_EQ(status(r, 1), QStringLiteral("foreign_path"))
+        << "ANTS-4085: `tests/` names no directory here AND no file called "
+           "test_fp09_fixes.py exists anywhere in the project — that pair "
+           "means another repository's path, not one of ours that vanished";
+    EXPECT_EQ(status(r, 2), QStringLiteral("missing_file"))
+        << "ANTS-4085: the basename IS in this project's index, so the file "
+           "is ours and genuinely missing — this must stay a real defect";
+
+    // The point of the whole change: a foreign path drops out of only:"stale",
+    // so a document that quotes another project can come back clean.
+    DocCitations::Options stale = opts;
+    stale.only = DocCitations::Only::Stale;
+    const QJsonObject sr = DocCitations::check(fx.root, doc, stale);
+    const QJsonArray rows = sr.value(QStringLiteral("citations")).toArray();
+    for (const QJsonValue &v : rows) {
+        EXPECT_NE(v.toObject().value(QStringLiteral("status")).toString(),
+                  QStringLiteral("foreign_path"))
+            << "ANTS-4085: only:\"stale\" must exclude a foreign path — a "
+               "checker whose output is never empty stops being read";
+    }
+    // …but the genuinely-missing one is still there, so the filter did not
+    // simply swallow everything.
+    bool sawMissing = false;
+    for (const QJsonValue &v : rows)
+        if (v.toObject().value(QStringLiteral("status")).toString()
+            == QLatin1String("missing_file")) sawMissing = true;
+    EXPECT_TRUE(sawMissing)
+        << "ANTS-4085: a real missing_file must still reach the stale list";
+
+    // Counted like any other status, so `counts` still partitions the rows.
+    EXPECT_EQ(r.value(QStringLiteral("counts")).toObject()
+               .value(QStringLiteral("foreign_path")).toInt(), 1);
+}

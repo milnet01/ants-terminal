@@ -548,7 +548,13 @@ private:
 
 // One citation's target, after the § 2.4 ladder.
 struct Target {
-    enum Kind { Resolved, MissingFile, Ambiguous, Unresolved, OutOfRoot, Unresolvable };
+    // ANTS-4085 — ForeignPath: a path-shaped citation whose LEADING
+    // segment names no directory in this project. Almost always a
+    // quotation of another repository's path, which `missing_file`
+    // (a definite claim that OUR file is gone) reports as a defect
+    // that can never be fixed without damaging the quote.
+    enum Kind { Resolved, MissingFile, Ambiguous, Unresolved, OutOfRoot,
+                Unresolvable, ForeignPath };
     Kind        kind = Unresolvable;
     QString     relPath;
     QString     absPath;
@@ -640,6 +646,42 @@ Target resolvePath(const QString &root, const QString &pathText, const Options &
                 t.candidates = suffixHits;
                 std::sort(t.candidates.begin(), t.candidates.end());
                 return t;
+            }
+        }
+        // ANTS-4085 — every rung missed. Before calling it a missing FILE,
+        // ask whether the path is even addressed at this project: a citation
+        // whose leading segment names no directory here is a quotation of
+        // some other repository, not a file of ours that went away.
+        //
+        // `roadmap-data-model.md` § 5 quotes two sub-bullets from OTHER
+        // projects' roadmaps as the evidence its section rests on, and one
+        // carries `tests/api/test_fp09_fixes.py:362` — MAME Curator's path.
+        // Ants has no `tests/api/` and never will, so that row was a
+        // permanent finding on a frequently-linted file, unfixable without
+        // rewording the quote into no longer being a quote. A checker whose
+        // output is never empty stops being read, which is the real cost.
+        //
+        // Kept deliberately narrow: only the FIRST segment is tested, so a
+        // real citation into a real directory whose file moved or was deleted
+        // still reports `missing_file` and stays a defect.
+        //
+        // TWO conditions, and the second is what keeps this honest. The
+        // leading segment must name no directory here AND the basename must
+        // appear nowhere in the project at all. If the basename IS known, the
+        // file is ours and the citation is a real `missing_file` — that is
+        // exactly ANTS-4381's `other/nowhere.py` control, whose basename the
+        // index maps to a real project path. MAME Curator's
+        // `test_fp09_fixes.py` exists nowhere in Ants under any directory, so
+        // the pair separates the two cleanly.
+        const int slash = pathText.indexOf(QLatin1Char('/'));
+        const bool basenameUnknown = (bhit == opts.basenameIndex.constEnd());
+        if (slash > 0 && basenameUnknown) {
+            const QString lead = pathText.left(slash);
+            if (!QFileInfo(root + QLatin1Char('/') + lead).isDir()) {
+                Target foreign;
+                foreign.kind    = Target::ForeignPath;
+                foreign.relPath = pathText;
+                return foreign;
             }
         }
         return step1;
@@ -870,6 +912,13 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
             status = QStringLiteral("missing_file");
             e.insert(QStringLiteral("path"), t.relPath);
             break;
+        case Target::ForeignPath:
+            // ANTS-4085 — distinct from missing_file so `only:"stale"` can
+            // exclude it. Not silent: the row is still reported, because a
+            // caller may genuinely want to know a document cites elsewhere.
+            status = QStringLiteral("foreign_path");
+            e.insert(QStringLiteral("path"), t.relPath);
+            break;
         default: {
             e.insert(QStringLiteral("path"), t.relPath);
             const int cited = tok.endLine - tok.startLine + 1;
@@ -969,8 +1018,11 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                      });
 
     QJsonObject counts;
-    for (const char *k : {"ok", "missing_file", "out_of_range", "read_error", "ambiguous",
-                          "unresolved"})
+    // ANTS-4085 — `foreign_path` is a status like the others and is counted
+    // like the others, so the map still partitions the rows. It is only the
+    // STALE predicate that treats it as not-a-defect.
+    for (const char *k : {"ok", "missing_file", "foreign_path", "out_of_range",
+                          "read_error", "ambiguous", "unresolved"})
         counts.insert(QLatin1String(k), tally.value(QString::fromLatin1(k)));
     // Overlays on the ok subset, not statuses (ANTS-3654 § 2). `anchor_missing`
     // counts a needle that was searched for and not found — a citation with no
@@ -1118,8 +1170,18 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         // ANTS-3654 widens `stale` from "did not resolve" to "did not resolve, OR
         // resolved and no longer says what the doc claims". An ok citation with
         // no anchor was never judged, so it is not stale — it is unchecked.
+        // ANTS-4085 — `foreign_path` is NOT stale. It is a citation into
+        // another repository (a quotation), so there is nothing in this
+        // project that could go stale and nothing here that can be fixed:
+        // leaving it in the stale set makes a frequently-linted document
+        // permanently non-empty, and a checker whose output is never empty
+        // stops being read. It is still emitted under `only:"all"`, and still
+        // counted, because a caller may want to know a document cites
+        // elsewhere.
+        const QString st = e.value(QStringLiteral("status")).toString();
         const bool stale =
-            e.value(QStringLiteral("status")).toString() != QLatin1String("ok")
+            (st != QLatin1String("ok")
+             && st != QLatin1String("foreign_path"))
             || (e.contains(QStringLiteral("anchor_found"))
                 && !e.value(QStringLiteral("anchor_found")).toBool());
         if (opts.only == Only::All || stale) filtered.append(e);

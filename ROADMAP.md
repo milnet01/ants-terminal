@@ -30906,7 +30906,7 @@ against current source before filing.
   (`Dependencies` 98 among them) out of scope as a data-model
   change rather than an import mapping.
 
-- 📋 [ANTS-4085] **doc_citations reports a quoted foreign-project path as a stale citation, and cannot be silenced.**
+- ✅ [ANTS-4085] **doc_citations reports a quoted foreign-project path as a stale citation, and cannot be silenced.**
   `roadmap-data-model.md` § 5 quotes two sub-bullets from OTHER projects'
   roadmaps as evidence for its item-detail-vs-section-element distinction.
   One is MAME Curator's, and it happens to contain a path:line token:
@@ -30942,6 +30942,17 @@ against current source before filing.
   **Layman:** The link-checker flags an example copied from another project's notes as a broken reference. It is not broken — it is a quotation — so every check of that file reports a problem that cannot be fixed.
   Kind: fix.
   Source: in-session-2026-08-10 (ANTS-4068 doc-edit verification).
+  Resolved (2026-08-15) by option (c), the one the item ranked cheapest and most general: a new `foreign_path` status, reported and counted like any other but EXCLUDED from `only:"stale"`. Options (a) and (b) were not taken — (a) needs blockquote detection the item itself called hard, and (b) costs a pragma marker in prose that the quoted passage should not have to carry.
+
+  The rule needs TWO conditions, and the second is what makes it honest: the leading segment names no directory in the project AND the basename appears nowhere in the project's index. My first cut tested only the leading segment and it broke `DocCitations.Ants4381SuffixPathResolves` — whose `other/nowhere.py` control asserts that a suffix matching nothing on disk is STILL `missing_file`. That control was right and my rule was too wide. The fixture also handed me the discriminator: `nowhere.py`'s basename IS in the index (mapping to a real project path), so it is our file and genuinely gone, while MAME Curator's `test_fp09_fixes.py` exists nowhere in Ants under any directory. The pair separates them cleanly, and a real deleted-or-moved file still reports `missing_file`.
+
+  Not silenced, only reclassified: the row is still emitted under `only:"all"` and still appears in `counts`, so `counts` continues to partition the rows and a caller who wants to know a document cites elsewhere can still see it. What changes is that a document quoting another project can come back CLEAN, which is the actual cost the item named — a checker whose output is never empty stops being read.
+
+  Tests: `DocCitations.Ants4085ForeignPathIsNotStale` — asserts all three classifications, that `only:"stale"` drops the foreign row, that it does NOT drop the genuinely-missing one (so the filter is not just swallowing everything), and the count. `Ants4381SuffixPathResolves` still green, which is the evidence the narrowing worked. Suite 3528/3528.
+
+  Also updated the verb's schema text so the status is discoverable, including the two-condition rule and why a known basename stays `missing_file`.
+
+  Still true and NOT fixed here: the other three stale rows on `roadmap-data-model.md` are frozen cold-eyes loop-log history whose cited lines rotted when `remotecontrol.cpp` was split. Those must not be rewritten — a loop log records what each pass found — and they are a different problem from this one.
 
 - ✅ [ANTS-4086] **ANTS-4065 § 2.2's take-the-last-match rule loses to prose appended after the trailer.**
   Found surveying what still blocks Phase D. **This is a spec defect, not an
