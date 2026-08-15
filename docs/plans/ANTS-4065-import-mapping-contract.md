@@ -241,15 +241,36 @@ the spec explains why the direction is the whole finding.
 **D2's and D3's checks are committed, not described** —
 `tools/roadmap-import-verify.py` (declared kind vs stored kind) and
 `tools/roadmap-roundtrip-diff.py` (per-column render→re-import diff). Both
-report and never write, both take any project, and Phase E runs them per
-project. Read their module docstrings rather than re-deriving the method
-from the prose below.
+take any project, and Phase E runs them per project. Read their module
+docstrings rather than re-deriving the method from the prose below.
+
+**The two SCRIPTS report and never write. The D3 PROCEDURE between them is
+destructive, and that distinction is the one to carry into E2.** Step 2 drives
+a real render, which rewrites `ROADMAP.md` and every rotated archive from the
+store — and a bullet the store has not imported is DELETED rather than
+reformatted. So the procedure is run against a COMMITTED, CLEAN tree, restored
+with `git checkout`, and followed by a `roadmap_migrate` re-run or the store
+keeps the rendered values. `roadmap-roundtrip-diff.py`'s own docstring states
+all three; this plan did not, and E2 executes it against 13 projects.
+
+**Which columns the gate actually covers, because three different sets are in
+play and an executor has to pick one.** The spec's § 2.6 governs nine: `id`,
+`status`, `headline`, `kind`, `source`, `layman`, `lanes`, `evidence`, `body`.
+The instrument's `COLS` is also nine but not the same nine — it omits `id` and
+`evidence` and adds `section_id` and `id_origin`. The D3 table below reports
+seven. **The gate is the instrument's set**, with two riders: `evidence` is
+NOT covered by it (the `item` table has the column; the tool does not read
+it), and `id_origin` movement on the five re-run rows is [ANTS-4343], not
+drift.
 
 **D1. Dry-run the import against the reverted roadmap.**
 
 > **Verify:** `items_orphaned` 0. Every `Kind: bug` bullet reports `kind='fix'`
 > with `extras.source_kind='bug'`. No `field_defaulted` note names a field the
-> bullet visibly declares — spot-check against the 48 inline-`Kind:` items.
+> bullet visibly declares — spot-check against every inline-`Kind:` bullet (99
+> here, § 2.2). **Not 48**, which this step read until 2026-08-15: 48 was taken
+> before B1's survey fix, and B1 establishes that every `Kind:` figure predating
+> it is an undercount. Sized at 48 the check skips 51 bullets and reads clean.
 
 **D2. Run it for real, then diff store against source.**
 
@@ -278,18 +299,39 @@ held it was re-inserted at `ANTS-4338`…`4342`). One thing the re-run does
 NOT do: those five store rows still carry `id_origin='synthesised'`
 although their source bullets now declare the id — [ANTS-4343].
 
-Until D3 closes the render drift, `roadmap_log` still rewrites
-`ROADMAP.md` wholesale from the store ([ANTS-4141]) and `roadmap_query`
-answers from the store while reporting `path: ROADMAP.md` ([ANTS-4143]).
-**Keep editing the file by hand.**
+`roadmap_log` rewrites `ROADMAP.md` wholesale from the store ([ANTS-4141]);
+`roadmap_query` answers from the store ([ANTS-4143], now labelled — ANTS-4402).
 
-**D3. Render, then re-import — the acceptance test (INV-6).**
+**SUPERSEDED 2026-08-15 — do not hand-edit this project's roadmap.** This
+paragraph read "Keep editing the file by hand", conditioned on "Until D3 closes
+the render drift". D4 closes by ACCEPTING that drift rather than removing it
+(see below), so the condition could never discharge by its own terms and the
+instruction stood permanently — against E2's status note and against "What this
+plan deliberately does not do", which both say the file is generated output. A
+hand edit now lands in a file the next render overwrites. See E2.
+
+**D3. Render, then re-import — the acceptance test.** (It was INV-6's identity
+bar; ANTS-4344 replaced that with the criterion below. The step is still the
+acceptance test, just not that test.)
 
 > **Verify (CORRECTED 2026-08-15 — see ANTS-4344):** the store is **idempotent
 > after canonicalisation**. Cycle 1 may move any number of items — it is the
 > one-time normalisation ANTS-3758 § 2.6 already accepts as "not data loss" —
-> and **cycle 2 must move only items whose movement is individually explained**.
-> A residual mover with no account of itself is the defect.
+> and **cycle 2 may move ONLY the write that drove the render**. Anything else
+> fails the step.
+>
+> **One bounded exception, and it is an open defect rather than a licence:**
+> `ANTS-1861`, whose `layman` text quotes the markup the renderer emits and so
+> moves on every cycle. Filed as [ANTS-4405]; when that ships the exception is
+> deleted from this step.
+>
+> **This wording is deliberately mechanical.** The first attempt read "cycle 2
+> must move only items whose movement is individually explained", which nothing
+> can fail — every mover admits an account after the fact, and `ANTS-1861` was
+> passed on exactly that ground while moving on *both* cycles. A criterion that
+> cannot separate a one-time canonicalisation from a permanent oscillator is not
+> the criterion this step needs, and E2 runs it against 13 projects nobody has
+> read.
 >
 > **This deliberately replaces `items_updated == 0` on cycle 1, which was the
 > wrong criterion and not merely an unmet one.** Meeting it required suppressing
@@ -319,8 +361,10 @@ Cycle 1 over 1,980 items:
 | body | 363 |
 
 **Two of the three columns the spec named as expected failures do not fail
-at all.** `headline` and `lanes` round-trip exactly; earlier phases fixed
-them and the spec's § 4 was never corrected. `layman` moves on exactly one
+at all.** `headline` and `lanes` round-trip exactly; earlier phases fixed them
+and the spec was never corrected. The spec states that expectation in § 2.6 and
+defers `headline`/`layman` in § 5 — **not § 4**, which this paragraph cited
+until 2026-08-15 and which is "RAM / build cost". `layman` moves on exactly one
 item — `ANTS-1861`, whose layman text *quotes the markup pattern the
 renderer emits*, so it is self-referential rather than a class.
 
@@ -368,10 +412,22 @@ criterion rather than a code defect, which is what Phase D above now records.
 **E2.** Migrate the remaining 13 projects, one at a time, each gated on D3's
 round-trip check.
 
-> **Verify:** per project, `items_orphaned` 0 and INV-6 green before moving to
-> the next. **Expect the render gate first** — 2,141 corpus items carry no
-> `Layman:` line, and a public open item without one refuses every write on that
-> project until it is filled.
+> **Verify:** per project, `items_orphaned` 0, and **D3's corrected criterion**
+> — cycle 2 moves only the write that drove the render. **Not "INV-6 green"**,
+> which this step required until 2026-08-15: INV-6 is § 2.6's
+> `import(render(store)) == store`, the identity bar ANTS-4344 deleted, and
+> cycle 1 moves `body` on 363 items even on the reference project. The
+> instrument exits 1 whenever anything moved, so a gate wired to its exit status
+> blocks all 13 projects on the outcome D3 now calls a pass. **Expect exit 1 on
+> cycle 1; read cycle 2.**
+>
+> **Preconditions, from D3 above and not optional:** a committed, clean tree
+> before starting; `git checkout` to restore; `roadmap_migrate` re-run
+> afterwards. The render deletes bullets the store has not imported.
+>
+> **Expect the render gate first** — 2,141 corpus items carry no `Layman:`
+> line, and a public open item without one refuses every write on that project
+> until it is filled.
 
 **E2 is UNBLOCKED as of 2026-08-15, and the blocker was never a policy
 question.** The 446 orphans this phase stalled on were an artifact of
@@ -404,3 +460,13 @@ prose will hit it on a binary older than that fix.
 - **It does not back-fill `Kind:`** onto the 1,814 corpus items that carry none.
   They default legitimately; Phase C's note makes the default visible, which is
   all this work owes them.
+
+---
+
+## Cold-eyes loop log
+
+<!-- review-contract writes one row per review loop as it closes. -->
+
+| Loop | Date | Lanes | Q1/Q2/Q3/Q4 | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-15 | 3, cold — genre pinned `plan`, cap 2. Packet carried INV-12, ANTS-3758 § 2.6, roadmap-format § 3.5.3 and ANTS-4065 § 2.6 verbatim, plus the day's measured migration state | **Q1 1 · Q2 3 · Q3 2 · Q4 1** — verified 7, fixed 7, dismissed 1, out-of-scope 1 | **First gate on this plan, run because ANTS-4344 amended Phase D's acceptance criterion and said so rather than doing it unilaterally. All three lanes independently found the same three defects**, which is the run's strongest signal. **[Q2] "Keep editing the file by hand" was permanently live**: it was conditioned on "Until D3 closes the render drift", and D4 closes by ACCEPTING that drift, so the condition could never discharge — while E2 and "What this plan deliberately does not do" both say the file is generated output. An implementer reading Phase D in order would hand-edit and lose it to the next render. **[Q4] The criterion I had just written was unfalsifiable** — "cycle 2 must move only items whose movement is individually explained". Lane B produced the proof: `ANTS-1861` moves on cycle 1 *and* cycle 2, so it is a permanent oscillator, and it passed because its movement was explained. A criterion that cannot separate canonicalisation from oscillation is not the one this step needs. Now mechanical (only the write that drove the render), with `ANTS-1861` as a bounded exception filed as [ANTS-4405] rather than a standing note. **[Q2] 48 vs 99 inline-`Kind:` bullets** — D1's spot-check was sized at 48, the spec says 99 (§ 7, "1,435 own-line against 99 inline"), and B1 of this very plan establishes that every pre-fix `Kind:` figure is an undercount. Sized at 48 the check skips 51 bullets and reads clean. **[Q2] E2 gated on "INV-6 green"**, which is the identity bar ANTS-4344 deleted; the instrument exits 1 whenever anything moved, so a gate wired to it blocks all 13 projects on the outcome D3 now calls a pass. **[Q3] Three different column sets** were in play — spec § 2.6's nine, the instrument's different nine, and the D3 table's seven — with no statement of which the gate uses; `evidence` is governed but not read by the tool, and `id_origin` movement is ANTS-4343. **[Q3] E2 carried none of D3's destructive preconditions** (committed clean tree, `git checkout` restore, `roadmap_migrate` re-run), though the render deletes bullets the store has not imported and E2 runs it against 13 projects. **[Q1, found by the orchestrator while building the packet]** the plan cited "the spec's § 4" for the expected-drift statement; the spec states it in § 2.6 and defers in § 5, and § 4 is "RAM / build cost". **Dismissed, unverified:** lane A predicted `roadmap_log op:append` would reissue a live id because `id_prefix.high_water` (4342) trails the store's max item (4404). Re-run rather than reasoned — a dry-run append allocated `ANTS-4405`, correctly, because the floor is `max(counter, corpusHighWater)` and the corpus scan sees 4404. The packet fact invited the inference; the allocator is not reading that column. **Out of scope, fixed in place:** `tools/roadmap-roundtrip-diff.py` attributed its governed-column list to "ANTS-3765 § 2.4", which is that spec's list of nineteen store methods and defines no columns at all (both lanes B and C raised it as an open question). Doc 406 → 472 lines, this log included. |

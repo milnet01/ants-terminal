@@ -4,8 +4,9 @@ the store? (INV-6.)
 
 `roadmap_migrate` reports `items_updated` but not WHICH columns moved, and the
 column is the whole diagnosis — D3 found `headline`/`lanes` clean and `body`
-carrying all 363 diffs, the opposite of what ANTS-3765 § 4 predicted. Reports;
-never writes.
+carrying all 363 diffs, the opposite of what ANTS-4065 § 2.6 predicted (cited
+as "ANTS-3765 § 4" until 2026-08-15; that section is RAM / build cost).
+Reports; never writes.
 
     # 1. before the render
     tools/roadmap-roundtrip-diff.py snap /tmp/before.json
@@ -29,7 +30,12 @@ like.
 import argparse, collections, json, pathlib, sqlite3, sys
 
 DEFAULT_STORE = pathlib.Path.home() / ".local/share/ants-terminal/roadmap.sqlite"
-# The governed columns of ANTS-3765 § 2.4 — the ones a re-import may write.
+# ANTS-4065 § 2.6 governs nine columns; this list is NOT them, and the
+# difference is deliberate rather than a transcription slip. It omits `id`
+# (the match key) and `evidence` (not read here), and adds `section_id` and
+# `id_origin`, which a re-import may write and which a drift hunt wants.
+# Corrected 2026-08-15: this cited "ANTS-3765 § 2.4", which is that spec's
+# list of nineteen store methods and defines no column set at all.
 COLS = ["status", "headline", "layman", "kind", "source", "lanes", "body",
         "section_id", "id_origin"]
 
