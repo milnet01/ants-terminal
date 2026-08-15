@@ -281,10 +281,11 @@ behaviour with its source.
 The test then references the contract by invariant id, so a reader can
 move between the two without guessing which assertion covers what.
 
-**Invariant ids are append-only.** They are cited from commit messages,
-changelog entries and sibling documents, so renumbering silently breaks
-references that nothing checks. A dropped invariant is marked
-**withdrawn**, with the version and reason, rather than deleted.
+**Invariant ids take `spec-format.md` §3.7's `INV-N` form, and are
+append-only.** They are cited from commit messages, changelog entries and
+sibling documents, so renumbering silently breaks references that nothing
+checks. A dropped invariant is marked **withdrawn**, with the version and
+reason, rather than deleted.
 
 That word is [spec-format.md](spec-format.md) §3.7's, which owns the
 Invariants section the marking lives in — this section said *retired*
@@ -327,7 +328,8 @@ re-run rather than investigate, and it hides the real failure among the
 noise.
 
 - **No unseeded randomness**, and no dependence on the time of day.
-- **No dependence on timing, machine speed or execution order.**
+- **No dependence on timing, machine speed or execution order** — outside
+  a labelled performance test (§5), whose measurement is exactly that.
 - **Isolated** — no shared state, so one test's failure cannot cause
   another's.
 - **No network unless explicitly opted in**, with a label and a gate,
@@ -362,10 +364,12 @@ broken.
 `coding.md` applies to them: named for what they mean, no dead branches,
 no cleverness that costs legibility.
 
-The one place tests differ: **the Rule of Three does not apply inside a
-test body.** Extract only where the duplicated block is itself the thing
-under test, or where a change to it would have to be made identically in
-every copy to stay correct — never merely because it repeats. Stated
+The one place tests differ: **`coding.md` §1.3 does not apply inside a
+test body** — neither its reuse ladder nor the Rule of Three, so
+duplication between tests needs no commit-body justification. Extract
+only where the duplicated block is itself the thing under test, or where a
+change to it would have to be made identically in every copy to stay
+correct — never merely because it repeats. Stated
 2026-08-14 (ROADMAP CFG-0108). **A little duplication in a test is better
 than a helper**, because a test should be readable in one place without
 following a chain of abstractions to find out what it actually asserts.
@@ -377,7 +381,8 @@ following a chain of abstractions to find out what it actually asserts.
 - ❌ Mocking the very interaction the test exists to cover.
 - ❌ A skip branch that hides a platform-specific failure.
 - ❌ A test that reports failure and exits successfully.
-- ❌ Dependence on timing, machine speed or test order.
+- ❌ Dependence on timing, machine speed or test order, outside a labelled
+  performance test.
 - ❌ Touching the network without an explicit opt-in.
 - ❌ A test named for what it walks rather than what it proves.
 - ❌ Committing a test in a failing or unfinished state.
@@ -410,4 +415,5 @@ enforces has to be understood to survive.
 |------|------|-------|----|----|----|----|---------|
 | 1 | 2026-08-14 | 1, cold — **first gate ever**. Packet carried `spec-format.md` § 3.7 and `coding.md` § 1.2 | 1 | 1 | 1 | n/a | **Three verified, three fixed.** **The scope line excluded most of what the document governs:** *"Governs `Kind: test`, plus the regression-test follow-through for `fix`, `audit-fix` and `review-fix`"* — while § 1 binds *"every change that ships behaviour"* and § 8 requires a conformance test of *"every new feature"*. A conformer on a `Kind: implement` item read line 15, concluded this standard did not govern them, and shipped untested while § 8 recorded them in breach. Now scoped by change type rather than by Kind. **§ 9 imports `coding.md`'s Rule of Three and softens it three lines later** with *"a little duplication in a test is often better than a helper"* and no bound, so a conformer holding a fourth near-identical block could not tell which clause wins. The Rule of Three is now stated as not applying inside a test body, with the real test given. **Q1: *"the test runner, on every push"*** asserts a CI trigger § 1 never requires, on a standard that governs projects with no pipeline — now `Partial:`. **One finding was fixed in `spec-format.md` instead:** § 4 here requires a withdrawn invariant carry the version and reason, and § 3.7 there, which owns the form, had no slot for either. |
 | 2 | 2026-08-15 | 3, cold — packet carried `coding.md` § 1.3 verbatim, `spec-format.md` § 3.7, the full contents of `languages/cpp.md` § Tests and `python.md` § Tests, and `qt.md`'s headings | 0 | 1 | 0 | n/a | **One verified, one fixed; three dismissed.** **All three lanes independently found the same defect**, which is the strongest signal this document has produced: § 9 imported `coding.md`'s Rule of Three as *"no duplication past the third repetition"* while stating four lines below that **the Rule of Three does not apply inside a test body**. A conformer holding a fourth near-identical assertion block extracts a helper under the first clause and leaves all four under the second. **It is loop 1's own collateral** — loop 1 added the carve-out and did not delete the clause the carve-out makes wrong. The same clause was **also off by one**: § 1.3 extracts *on* the third call-site, while *"past the third repetition"* permits three and fires at the fourth. One passage, one wrong thing, so the two were merged. **Fixed by deletion**, per 4a-min: the numeric clause goes, *"a fourth time"* becomes *"it repeats"*, and the rationale describing the *"often"* wording that loop 1 had already removed goes with it. § 9 is 13 lines where it was 18. **Three dismissed, with reasons.** Two claimed § 2 and § 6 misdescribe `languages/<name>.md` — but Qt is a framework rather than a language, `cpp.md` § Tests carries the Qt spelling by name, and `python.md`'s pointer to `cpp.md` for the fix-removal recipe is `documentation.md` § 2.1's correct shape; a third lane checked the same delegation independently and found it sound. One Q3 held that § 4 never states the invariant id form — `agents/test-writer.md`:73 states *"numbered `INV-N`"*, this machine's one feature contract uses it, and § 4 already points at § 3.7, so nothing is invented. **Two open questions resolved clean and are not counted:** `feature` is a real `Kind` (`roadmap-format.md`:673, an alias for implement), and *"third repetition"* occurs exactly twice in the whole standards set, so the off-by-one was the document's rather than a lane's. **One packet defect of my own**, reported by a lane: I recorded `qt.md`'s test content as living in § Idioms, and it has none anywhere in the file. |
+| 3 | 2026-08-15 | 3, cold — identical brief, packet rebuilt from disk with loop 2's own packet error corrected | 0 | 2 | 1 | n/a | **Three verified, three fixed; two dismissed. Cap reached (3 for a standard); the run files its tail and exits.** **None of the three was loop 2's collateral** — all are pre-existing draft defects, which is what a cold loop is for, and is evidence that loop 1's single lane did not read the document. **All three lanes found § 9's carve-out too narrow.** It exempted *"the Rule of Three"* by name while § 1.3 is a reuse **ladder** *plus* that paragraph, and § 9's own *"a little duplication in a test is better than a helper"* contradicts the ladder's step 2. A conformer extracts a shared assertion helper under § 1.3, or inlines and then owes a commit-body justification under step 3 for duplication § 9 prefers. Now exempts `coding.md` § 1.3 whole, naming both halves. **§ 7 banned what § 5 sanctions:** *"No dependence on timing, machine speed or execution order"* stated absolutely, against § 5's **Performance** kind, whose measurement *is* timing and machine speed and whose stated cost is *"noisy"* — while § 7 opens by calling a sometimes-failing test worse than no test. A conformer deletes an inherited latency test as a § 7 breach. Both § 7 and § 10 now carve out a labelled performance test. **§ 4 never pinned the invariant id form**, though it states the ids are cited from commit messages, changelog entries and sibling documents — and `agents/test-writer.md` writes `INV-N`, so a hand-authored contract in any other spelling diverges from the machine's own authoring agent inside one project. Now pinned to `spec-format.md` § 3.7's form. **The run's most useful moment was 4a step 3 killing my own fix.** The § 4 repair originally added *"`check-doc-facts`' `contract` check keys on `INV-N`, so it reports n/a rather than a failure"* — plausible, and refuted by that check's own entry, which says *"Read the project's clause vocabulary; never encode one."* Deleted before the commit; **not counted in the tally, because it never survived the loop it was written in.** **Two dismissed.** The `languages/<name>.md` delegation at § 2 and § 6 was raised for the third time across two loops — and dismissed for the third time, because Qt is a framework rather than a language, a Qt project's language file is `cpp.md`, and `cpp.md` § Tests carries the Qt spelling by name; one lane this loop opened the same claims and independently reported them sound. And a lane held that *"unclosable by tooling"* over-generalises to § 2, whose removal-and-restore run does produce output — dismissed because the genre's own rule makes a standard that states its own uncaughtness the correct shape, and a second lane read the paragraph as correct. **The cap binding is not a size signal**: at 234 lines this is the fourth-shortest of the nine standards. It reflects loop 1 having run one lane. |
 <!-- MIRROR END -->
