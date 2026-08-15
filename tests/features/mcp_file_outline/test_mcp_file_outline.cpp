@@ -5,6 +5,10 @@
 
 #include "../../_support/expect.h"
 #include "fileoutline.h"
+#include <QStringList>
+#include <QIODevice>
+#include <QFileInfo>
+#include "remotecontrol.h"
 
 #include <cstdio>
 #include <regex>
@@ -994,4 +998,101 @@ TEST(McpFileOutline, Ants4396MdHeadingDepthFilter) {
     // return an empty outline that reads as a file with no structure.
     EXPECT_EQ(names(FileOutline::compute(path, FileOutline::Mode::Auto,
                                          false, 100, false, 99)).size(), 6);
+}
+
+// ANTS-3839 — `filter=<substr>` on the file_outline VERB.
+//
+// The verb's own `leaner_call_hint` advertised this argument long before it
+// existed, gated on `!args.contains("filter")` — a condition no caller could
+// ever satisfy, so the nudge fired on every call and did nothing when
+// followed. Implemented rather than retired: a symbol-name filter is a real
+// token-saver on a large file, and the hint already described the semantics.
+//
+// Driven through RemoteControl::cmdFileOutline, not FileOutline::compute: the
+// filter is the verb's, and the interesting behaviour (the widened collection
+// budget) lives there.
+TEST(McpFileOutline, Ants3839SymbolNameFilter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // 300 filler symbols BEFORE the two matches, so the match sits well past
+    // the default max_symbols of 200. This is the case that caught a defect in
+    // the first cut of this feature: filtering a list the engine had already
+    // capped searched only the first 200 and reported no match for a symbol
+    // that is plainly there — a confident wrong answer, worse than the empty
+    // envelope the feature exists to improve on.
+    QString body;
+    for (int i = 0; i < 300; ++i)
+        body += QStringLiteral("void filler%1() {\n}\n").arg(i);
+    body += QStringLiteral("void roadmapAlpha() {\n}\n");
+    body += QStringLiteral("void RoadmapBeta() {\n}\n");
+
+    const QString rel = QStringLiteral("src/big.cpp");
+    QDir().mkpath(root + QStringLiteral("/src"));
+    {
+        QFile f(root + QLatin1Char('/') + rel);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(body.toUtf8());
+    }
+
+    RemoteControl rc(nullptr);
+    auto call = [&](const QJsonObject &extra) {
+        QJsonObject r;
+        r[QStringLiteral("caller_cwd")] = root;
+        r[QStringLiteral("path")]       = rel;
+        for (auto it = extra.begin(); it != extra.end(); ++it)
+            r[it.key()] = it.value();
+        return rc.cmdFileOutline(r).object();
+    };
+
+    // A match past the default budget is still found — the whole point.
+    const QJsonObject hit = call({{QStringLiteral("filter"),
+                                   QStringLiteral("roadmap")}});
+    ASSERT_TRUE(hit.value(QStringLiteral("ok")).toBool());
+    const QJsonArray syms = hit.value(QStringLiteral("symbols")).toArray();
+    EXPECT_EQ(syms.size(), 2)
+        << "ANTS-3839: both matches resolve even though they sit past the "
+           "default max_symbols of 200 — the filter widens the collection "
+           "budget and applies the caller's budget afterwards";
+
+    // Case-INSENSITIVE: `roadmap` must find `RoadmapBeta`. A case-sensitive
+    // symbol filter returns an empty list for a spelling difference, and an
+    // unexplained empty list is exactly what ANTS-4374 forbids.
+    QStringList names;
+    for (const QJsonValue &v : syms)
+        names << v.toObject().value(QStringLiteral("name")).toString();
+    EXPECT_TRUE(names.contains(QStringLiteral("roadmapAlpha")));
+    EXPECT_TRUE(names.contains(QStringLiteral("RoadmapBeta")))
+        << "ANTS-3839: the filter is case-insensitive by design";
+
+    // ANTS-4374's invariant — a zero says what it looked at, so "no symbol
+    // matches" is distinguishable from "this file has no symbols".
+    const QJsonObject miss = call({{QStringLiteral("filter"),
+                                    QStringLiteral("zzz-no-such-symbol")}});
+    ASSERT_TRUE(miss.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(miss.value(QStringLiteral("symbols")).toArray().size(), 0);
+    EXPECT_EQ(miss.value(QStringLiteral("filter")).toString(),
+              QStringLiteral("zzz-no-such-symbol"));
+    EXPECT_GE(miss.value(QStringLiteral("symbols_considered")).toInt(), 300)
+        << "ANTS-4374: the zero must name how many symbols were examined";
+    EXPECT_EQ(miss.value(QStringLiteral("symbols_considered")).toInt(),
+              miss.value(QStringLiteral("symbols_filtered_out")).toInt())
+        << "every considered symbol was filtered out, and the envelope says so";
+
+    // No filter → the evidence fields stay ABSENT, so an existing caller's
+    // envelope is byte-identical to before this feature.
+    const QJsonObject plain = call({});
+    ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(plain.contains(QStringLiteral("filter")));
+    EXPECT_FALSE(plain.contains(QStringLiteral("symbols_considered")));
+
+    // The caller's own max_symbols still binds, on the FILTERED set, and says
+    // so — a capped list must not read as the complete set of matches.
+    const QJsonObject capped = call({{QStringLiteral("filter"),
+                                      QStringLiteral("roadmap")},
+                                     {QStringLiteral("max_symbols"), 1}});
+    EXPECT_EQ(capped.value(QStringLiteral("symbols")).toArray().size(), 1);
+    EXPECT_TRUE(capped.value(QStringLiteral("truncated")).toBool())
+        << "ANTS-3839: a filtered list cut by max_symbols is flagged";
 }

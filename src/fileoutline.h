@@ -19,6 +19,14 @@
 
 namespace FileOutline {
 
+// ANTS-3839 — the hard ceiling on `symbols[]`, exposed because the
+// `file_outline` verb needs the same number: with a `filter=` in play it must
+// ask for the WHOLE file (the budget is enforced during collection, so a
+// filter applied to a pre-capped list silently misses matches past the cap)
+// and then apply the caller's own `max_symbols` to the filtered set. It was
+// file-local in fileoutline.cpp; two copies of a cap is how they diverge.
+constexpr int kMaxSymbolsCap = 1000;
+
 // Mode hint matches the MCP tool surface — "auto" + the explicit
 // languages. Unknown extensions fall through to a byte-count-only
 // envelope (still useful for orientation).

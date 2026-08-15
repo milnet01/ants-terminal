@@ -3958,6 +3958,28 @@ void ClaudeIntegration::onMcpConnection() {
                             "omitted = no filter.");
                         props["max_heading_level"] = mh;
                     }
+                    {   // ANTS-3839 — symbol-name substring filter.
+                        QJsonObject ft; ft["type"] = "string";
+                                        ft["description"] = QStringLiteral(
+                            "Optional (ANTS-3839). Keep only symbols whose "
+                            "NAME contains this substring — the answer to "
+                            "\"where is the roadmap stuff in this 6k-line "
+                            "file?\" without paying for the whole outline. "
+                            "Case-INSENSITIVE, so `outline` finds "
+                            "`FileOutline`: a case-sensitive symbol filter "
+                            "returns an empty list for a spelling difference, "
+                            "and an unexplained empty list is what ANTS-4374 "
+                            "forbids. Applied BEFORE `max_bytes` and "
+                            "`max_symbols`, so it makes room rather than "
+                            "competing with them. The response echoes "
+                            "`filter` plus `symbols_considered` and "
+                            "`symbols_filtered_out`, so zero matches is "
+                            "distinguishable from a file with no symbols. "
+                            "This argument was advertised by the verb's own "
+                            "`leaner_call_hint` for a long time before it "
+                            "existed; the hint is now true.");
+                        props["filter"] = ft;
+                    }
                     props["raw"]                  = makeRawProp();        // ANTS-4365
                     props["mode"]                 = modeProp;
                     props["include_doc_comment"]  = hdrProp;

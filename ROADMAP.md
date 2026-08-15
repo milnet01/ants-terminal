@@ -29054,7 +29054,7 @@ against current source before filing.
   back to the unconditional stamp: RED on both allocated legs, green on
   restore. Suite: 9/9 in the bundle.
 
-- 📋 [ANTS-3839] **`leaner_call_hint` advertises a `filter` arg `file_outline` does not accept.**
+- ✅ [ANTS-3839] **`leaner_call_hint` advertises a `filter` arg `file_outline` does not accept.**
   `leanerModeHintFor` (src/mcpprojection.cpp) emits `pass filter=<substr>
   to scan only matching symbols` for `file_outline`, gated on
   `!args.contains("filter")` — so it fires on every call, since no caller
@@ -29086,6 +29086,17 @@ against current source before filing.
   **Layman:** One of the money-saving tips the tools print tells you to use a setting that does not exist, so following it does nothing.
   Kind: fix.
   Source: in-session-2026-08-06 (mcp-behavioural-notes cold-eyes gate, loop 1).
+  Resolved (2026-08-15) by option (a) — `filter` is now a real `file_outline` argument, so the hint that advertised it is true rather than retired. Chosen over (b) because a symbol-name filter is a genuine token-saver on a large file and the hint already described the semantics exactly; as a new flag on an existing verb it is `spec-format.md` § 1's skip case, so no spec gate.
+
+  Behaviour: keeps symbols whose NAME contains the substring, CASE-INSENSITIVELY. Case-insensitive is deliberate — a case-sensitive symbol filter returns an empty list for `outline` against `FileOutline`, and an unexplained empty list is precisely what ANTS-4374 forbids. The envelope echoes `filter`, `symbols_considered` and `symbols_filtered_out` so zero matches is distinguishable from a file with no symbols; with no `filter` those keys stay ABSENT, so an existing caller's envelope is unchanged.
+
+  The defect I nearly shipped, caught before the test was written: `max_symbols` is enforced DURING collection inside `FileOutline::compute`, so the first cut — filter the returned list — searched only the first 200 symbols and would have reported no match for one at line 900. That is a confident wrong answer, strictly worse than the empty envelope this feature exists to improve on. Fixed by asking the engine for `kMaxSymbolsCap` whenever a filter is present and applying the caller's own `max_symbols` to the FILTERED set, flagging `truncated` if it bites. `kMaxSymbolsCap` moved from a file-local constant in `fileoutline.cpp` to `fileoutline.h`, because two copies of a cap is how they diverge.
+
+  Filtering in the verb rather than in `compute` was the surgical call: `compute` has several per-mode emission paths (`offer`/`offerAt` plus md's own), so an engine-level filter would have touched all of them.
+
+  Test: `McpFileOutline.Ants3839SymbolNameFilter`, driving `RemoteControl::cmdFileOutline` rather than the pure engine, since the filter and the widened budget are both the verb's. Its fixture puts 300 filler symbols AHEAD of the two matches, so it fails against the naive implementation. Proven non-vacuous by mutation: gating the filter block off makes it red, restoring makes it green. Suite 3521/3521.
+
+  Not verified against a live instance: `file_outline` is MCP-registered and not socket-dispatchable, so `--remote-json` cannot reach it, and the running instance still carries the pre-change binary. The test is the evidence.
 
 - 🚧 [ANTS-3853] **Finish the roadmap store migration — the driver bullet for the remaining tail.**
   User request 2026-08-06: finish this. The goal is ONE roadmap standard

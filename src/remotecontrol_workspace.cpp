@@ -1296,7 +1296,8 @@ static QJsonObject outlineOneFile(const QString &rawPath,
                                   FileOutline::Mode mode, bool includeDoc,
                                   int maxSymbols, int maxBytes,
                                   bool withSizes = false,
-                                  int maxHeadingLevel = 0) {
+                                  int maxHeadingLevel = 0,
+                                  const QString &filter = QString()) {
     if (rawPath.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -1319,9 +1320,56 @@ static QJsonObject outlineOneFile(const QString &rawPath,
         o["code"]  = QStringLiteral("not_found");
         return o;
     }
+    // ANTS-3839 — when a name filter is in play the engine must see the WHOLE
+    // file. `maxSymbols` is enforced during collection, so asking for the
+    // caller's budget and filtering afterwards would search only the first
+    // 200 symbols and silently report no match for one at line 900 — a
+    // confident wrong answer, which is worse than the empty envelope this
+    // feature exists to improve on. Ask for the engine's hard cap instead and
+    // apply the caller's budget to the FILTERED set below.
+    const int computeBudget =
+        filter.isEmpty() ? maxSymbols : FileOutline::kMaxSymbolsCap;
     QJsonObject result = FileOutline::compute(check.resolved, mode,
-                                              includeDoc, maxSymbols,
+                                              includeDoc, computeBudget,
                                               withSizes, maxHeadingLevel);
+    // ANTS-3839 — `filter=<substr>`: keep only symbols whose NAME contains
+    // the substring. The `leaner_call_hint` had advertised this argument since
+    // ANTS-1720 while the schema exposed no such property, so the nudge was
+    // unactionable and — because its gate was `!args.contains("filter")` —
+    // fired on every single call, since no caller could ever satisfy it.
+    //
+    // Applied BEFORE the byte cap below, which is the point: the cap trims
+    // from the tail, so filtering afterwards would pay the full payload and
+    // then discard it.
+    //
+    // Case-INSENSITIVE, deliberately. A case-sensitive symbol filter silently
+    // returns nothing for `outline` against `FileOutline`, and a silent empty
+    // result is the failure mode ANTS-4374 exists to stop.
+    if (result.value("ok").toBool() && !filter.isEmpty()) {
+        const QJsonArray all = result.value(QStringLiteral("symbols")).toArray();
+        QJsonArray kept;
+        for (const QJsonValue &v : all) {
+            if (v.toObject().value(QStringLiteral("name")).toString()
+                    .contains(filter, Qt::CaseInsensitive))
+                kept.append(v);
+        }
+        // Now apply the caller's own budget to the filtered set, and say so
+        // if it bit — otherwise a capped list reads as the complete set of
+        // matches, which is the "cap with no flag" failure.
+        if (kept.size() > maxSymbols) {
+            while (kept.size() > maxSymbols) kept.removeLast();
+            result[QStringLiteral("truncated")] = true;
+        }
+        result[QStringLiteral("symbols")] = kept;
+        // ANTS-4374's invariant — a zero has to say what was looked at.
+        // Without these three fields "no symbol matches `foo`" and "this file
+        // has no symbols" are the same envelope, and a caller reads the second
+        // as "nothing here" and stops looking.
+        result[QStringLiteral("filter")]               = filter;
+        result[QStringLiteral("symbols_considered")]   = all.size();
+        result[QStringLiteral("symbols_filtered_out")] = all.size() - kept.size();
+    }
+
     // Reframe the path back to project-relative so callers get stable
     // paths regardless of where the binary was launched.
     if (result.value("ok").toBool()) {
@@ -1391,6 +1439,11 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     int maxHeadingLevel =
         req.value(QStringLiteral("max_heading_level")).toInt(0);
     if (maxHeadingLevel < 0 || maxHeadingLevel > 6) maxHeadingLevel = 0;
+    // ANTS-3839 — symbol-name substring filter, uniform across a batch like
+    // every other option here. Parsed once so the `paths` form cannot drift
+    // from the single-`path` form.
+    const QString symbolFilter =
+        req.value(QStringLiteral("filter")).toString();
 
     // ANTS-2223 — multi-path form: outline several related files (a header +
     // its impl + a consumer) in ONE call instead of N. Triggered by a `paths`
@@ -1408,7 +1461,8 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         for (const QJsonValue &pv : paths) {
             QJsonObject fileObj = outlineOneFile(
                 pv.toString(), rootCanonical, mode, includeDoc,
-                maxSymbols, maxBytes, withSizes, maxHeadingLevel);
+                maxSymbols, maxBytes, withSizes, maxHeadingLevel,
+                symbolFilter);
             const QString etag = outlineFileEtag(fileObj);
             const QString rel  = fileObj.value(QStringLiteral("path")).toString();
             const QString prior = priorEtags.value(rel).toString();
@@ -1463,7 +1517,8 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     // ANTS-1249-INV-10: reachability gate is upstream (UDS SO_PEERCRED).
     return QJsonDocument(outlineOneFile(rawPath, rootCanonical, mode,
                                         includeDoc, maxSymbols, maxBytes,
-                                        withSizes, maxHeadingLevel));
+                                        withSizes, maxHeadingLevel,
+                                        symbolFilter));
 }
 
 // ANTS-4398 — mutation_probe: apply a mutation, run a test selector, restore.

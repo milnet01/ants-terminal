@@ -38,7 +38,6 @@ bool isGlslExt(const QString &ext) {
 namespace {
 
 constexpr int kMaxLineBytes      = 1024;   // ANTS-1249-INV-8
-constexpr int kMaxSymbolsCap     = 1000;
 constexpr int kHeaderDocByteCap  = 2048;   // ANTS-1249-INV-9
 constexpr int kHeaderDocMaxLines = 30;
 
