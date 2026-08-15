@@ -23986,7 +23986,7 @@ requesting no action and are closed in place rather than filed.
   Kind: test.
   Source: in-session-2026-07-28 (hit twice while implementing ANTS-3701/3704).
 
-- 📋 [ANTS-3721] **ANTS-3661's measured figures count occurrences and spans where the text says needles.**
+- ✅ [ANTS-3721] **ANTS-3661's measured figures count occurrences and spans where the text says needles.**
   An independent cold read of the ANTS-3692 amendment found three HIGH
   findings, all the same root cause: the calibration harness reports
   OCCURRENCE counts and DISTINCT SPAN counts, and the spec quotes them as
@@ -24023,6 +24023,17 @@ requesting no action and are closed in place rather than filed.
   **Layman:** The doc_symbols design doc quotes performance numbers that were measured the wrong way round, so the timings it gives are roughly half what they should be.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-28 (ANTS-3692 amendment)..
+  Resolved (2026-08-15). Re-ran `DISABLED_CorpusCalibration` and replaced every figure with the needle-scoped one. The harness had already been needle-instrumented in an earlier pass citing this item, so the work here was the re-run and the corrections.
+
+  Measured: 267 docs, 16,681 occurrences (680 resolved / 385 unresolved / 15,616 not_checked), **500 needle walks spent** — the budget exhausted exactly, and the only true walk count. Distinct spans 4,494; distinct needles 3,638.
+
+  **The arithmetic moved ~3x, not the ~2x this bullet estimated.** ~258 ms per needle (129 s / 500 walks) against the old ~80 ms (76 s / 949 occurrences). The 10 s deadline therefore admits ~39 needles, not ~125, and the worst document (125 needles) needs ~32 s — comfortably OVER the deadline where the spec called it "marginal at ~10.6 s". So `truncated` is doing real work on this corpus's tail rather than sitting idle, which inverts what a reader took from the old text. Per-doc figures are needle-scoped too: median 21, worst 125, zero of 267 over the cap (the old "median 20, worst 132" counted spans).
+
+  **The 17:1 ratio is deleted rather than restated**, because the bullet is right that it contradicts the section's own measurement — every not_checked occurrence is unambiguous by construction, so the unambiguous side is ≥ 15,616, not 1,076. The ordering rule does not rest on the ratio's size, so the paragraph now argues from 15,616 of 16,681 directly and carries no number that can rot.
+
+  Also fixed, all from the bullet's list: the Options block omitted `rootCanonical` and `resolveDeadlineMs` while both are live in `docsymbols.h` — and the second is what § 4's whole argument turns on; the run-wide budget contract lived in the header and the verb but not in the spec, which is precisely why an occurrence count could stand in for a needle count unchallenged; and the prose carried pre-amendment percentages.
+
+  Two sub-items were already done and are recorded rather than re-did: `docsymbols.h`'s `truncated` comment has been needle-scoped since ANTS-3692, and the harness's `needleOf` reduction cites ANTS-3721 by name.
 
 - ✅ [ANTS-3722] **`roadmap_query` reads a `Lanes:`/`Kind:`/`Source:` trailer key out of mid-body prose.**
   Reading ANTS-3696 back with `include_body:true` returned

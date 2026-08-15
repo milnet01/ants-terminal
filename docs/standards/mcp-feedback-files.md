@@ -117,7 +117,10 @@ The v2 model, in four rules:
   adds no new persistent state.
 - **The un-triaged tail is "findings with no id yet."** A finding whose
   `**Proposed ID:**` line is still the blank placeholder is un-triaged; that
-  set is the maintainer's work-list (§"The un-triaged delta").
+  set is the maintainer's work-list (§"The un-triaged delta"). **One member of
+  that set is not a to-do (ANTS-3631):** an `_(awaiting reporter — …)_` marker
+  is un-triaged deliberately, so the question reaches the reporter's delta. It
+  is the maintainer's *outbox*, not their inbox.
 - **Compaction is roadmap-driven.** Once an assigned id is ✅ in the roadmap,
   the finding's write-up collapses to a `→ shipped ✅ <date> (write-up compacted,
   ANTS-3443)` stub that keeps the `**Proposed ID:**` line above it (the id lives
@@ -139,13 +142,16 @@ never in a flag-day rewrite (§"Migration from v1").
 
 | Role | Who | Writes |
 |------|-----|--------|
-| **Contributor** | Any non-Ants CC session that uses the Ants MCP server | Appends dated finding blocks at the end of the file, each with a blank `**Proposed ID:**` line. NEVER assigns an `ANTS-NNNN` id; never fills its own Proposed-ID slot. |
+| **Contributor** | Any non-Ants CC session that uses the Ants MCP server | Appends dated finding blocks at the end of the file, each with a blank `**Proposed ID:**` line. Answers an `_(awaiting reporter — …)_` question by appending a follow-up finding (ANTS-3631), never by editing the slot. NEVER assigns an `ANTS-NNNN` id; never fills its own Proposed-ID slot. |
 | **Maintainer** | The Ants Terminal CC session that owns the MCP server | Triages each un-triaged finding by filling its `**Proposed ID:**` slot in place with the roadmap id(s) it became (or a `n/a — <reason>` closure), and later collapses a shipped finding's write-up to a stub. Never persists status. |
 
 The split is what makes the delta well-defined (v2): a finding whose
 `**Proposed ID:**` line is still the blank placeholder is un-triaged
 contributor input; a finding with an id (or closure) filled in has been
-triaged. (v1: the watermark was the *last maintainer tracking table*, and
+triaged — **unless the value is an `_(awaiting reporter — …)_` marker, which
+is un-triaged whatever else it contains** (ANTS-3631; a question naturally
+quotes an id, and "has an id filled in" would classify it triaged and delete
+it from the delta). (v1: the watermark was the *last maintainer tracking table*, and
 anything after it was un-triaged — still honoured for legacy files.)
 
 Note the v2 asymmetry: the maintainer now makes **one** edit *inside* a
@@ -350,14 +356,82 @@ appending a block. For each finding in the un-triaged tail:
    Multiple ids are comma-separated (one finding can map to several). A finding
    the maintainer decides not to track carries a **closure marker** instead —
    `n/a — <reason>` (`n/a — out of scope`, `n/a — self-resolved`, `n/a — schema
-   fix already shipped`). Both an id and a closure marker count as *triaged*
-   (the finding leaves the tail); any other value is un-triaged — most commonly
+   fix already shipped`). An id and a closure marker both count as *triaged*
+   (the finding leaves the tail) **unless the value is an awaiting marker, the
+   third disposition below**; any other value is un-triaged — most commonly
    the bare `_(maintainer to assign)_` placeholder or an empty value, but a stray
    free-text value (e.g. `won't fix`) counts as un-triaged too (the full value
    rule is the parser contract below). (An
    *absent* `**Proposed ID:**` line is different: it means the `### ` block is
    not a finding at all — non-finding prose per the delta parser — not that it
    is un-triaged.)
+
+   **A third disposition: awaiting the reporter (ANTS-3631).** Triage is not
+   always id-or-drop. Some findings need a round-trip — *which project layout?*,
+   *paste the failing envelope* — and until ANTS-3631 there was nowhere to put
+   the question that its intended reader would ever see. Every way of attaching
+   one also **filled** the slot, and a filled slot is what removes the finding
+   from the reporter's next `feedback_query` delta, so the question was written
+   into the one place they had stopped looking.
+
+   The marker is `_(awaiting reporter — <question>)_`, written by
+   **`assign_id`'s `awaiting` argument** — a question string, and exactly one
+   of `ids` / `closure` / `awaiting` per call. The parameter is named here for
+   the same reason the response key is named below: every maintainer session
+   binds to whichever name the first implementation picks, and the existing
+   guard is a two-way exclusive-or that has to be rewritten for three anyway. It is **un-triaged on purpose**: the finding stays in the
+   reporter's delta, carrying the question, in the surface they already read.
+   So the value rule is three-way, not two-way — an id and a closure are
+   triaged, an awaiting marker is un-triaged-and-deliberate, and everything
+   else is un-triaged-and-accidental. Only the last is a maintainer to-do.
+
+   **An awaiting marker wins over any `ANTS-NNNN` inside the question**, the
+   same precedence a closure already has, and for a sharper reason: a question
+   naturally quotes an id (*"is this the same as ANTS-1234?"*), and without the
+   precedence that quotation would classify the finding as triaged and delete
+   it from the delta — silently losing the question the marker exists to
+   deliver. It also keeps `compact_resolved` off it: without the rule the
+   quoted id makes the finding look shippable and the write-up gets collapsed
+   under a question nobody answered.
+
+   **The reply is an ordinary `op:append_finding` — a new finding block at
+   EOF that answers the question. No existing rule bends.** The reporter never
+   touches the slot, the skeleton banner's *don't hand-edit* stays true, and no
+   new verb exists.
+
+   **The reply's heading MUST quote the original finding's heading**, as
+   `### Re: <original heading>`, mirroring the recheck convention § "Contributor
+   block" already uses. A file can carry several outstanding markers and the
+   reply lands at EOF, arbitrarily far from the one it answers; without the
+   quote the maintainer cannot tell mechanically which finding to `assign_id`,
+   and two reporting sessions would invent two conventions.
+
+   The first draft of this paragraph had the reporter OVERWRITE the marker
+   with their answer, and it was wrong in a way worth recording, because the
+   defect is the one this whole disposition exists to prevent, reappearing one
+   step later. A question naturally quotes an id — *"is this the same as
+   ANTS-1234?"* — so the natural answer quotes it too. Under a
+   replace-the-value reply that answer becomes the value, matches the
+   **Assigned** test below, and the finding is classified triaged: dropped
+   from the delta, its id added to the assigned-id union, and made shippable
+   to `compact_resolved`. Protecting the question and leaving the answer
+   unprotected buys nothing. An append cannot reach the value at all.
+
+   **The marker is cleared by the maintainer, as part of ordinary triage.**
+   The follow-up arrives in their own delta as new un-triaged input; they read
+   it and `assign_id` the original finding an id or a closure, which replaces
+   the marker. **The reply block is then triaged like any other finding** —
+   normally `n/a — answered <ORIGINAL-ID>`, since the work it describes belongs
+   to the finding it answers rather than to itself. **A question that stops
+   mattering needs no separate withdrawal**: the maintainer `assign_id`s the
+   original an id or a closure exactly as they would have anyway, and the
+   marker goes with it. There is deliberately no fourth "cancel" state — the
+   marker is a value in a slot, and every route out of it is a normal write to
+   that slot. Saying so matters: the
+   reply carries a blank slot of its own, so leaving it undisposed keeps the
+   reporter's delta permanently non-empty and the round-trip never closes. So *unanswered* means *the marker is still there*, and it stops
+   meaning that at exactly the moment the maintainer has acted on the answer —
+   which is the only moment at which the question is genuinely closed.
 
 2. **Do not write a status.** A finding's current status (📋/🚧/✅) is resolved
    live from `ROADMAP.md` by whoever reads the file (`feedback_query` renders
@@ -379,23 +453,65 @@ bold), so the separator is `:**`; a hand-written `**Proposed ID**:` (colon
 outside) is `**:` — both are consumed, leaving a clean value. A `### ` finding
 uses its **first** matching line; any later one is ignored for **both** the
 triaged decision and the assigned-id union (one id line per finding is
-canonical). The finding is *triaged* iff that value either contains an
-`ANTS-[0-9]+` id **or** begins the literal `n/a` (case-insensitive) followed by
-whitespace, a dash, or end-of-value (`n/a\b` — so `n/architecture` is NOT a
-false closure) — a **closure**. Any other free-text value (`won't fix`, a bare `(self-resolved)`)
-reads as **un-triaged**, so a closure SHOULD be written `n/a — <reason>` (the
-reason is advisory). A maintainer writes a v2 closure inline via `assign_id`
+canonical). The value is classified in **three tests, in this order** — the
+order is the contract, because two of them can match the same string:
+
+1. **Awaiting** (ANTS-3631) — the value matches `^_\(awaiting reporter\b`
+   (case-insensitive). The finding is **un-triaged** and stays in the delta.
+   Tested FIRST so a question quoting an id (*"same as ANTS-1234?"*) cannot be
+   read as an assignment.
+2. **Closure** — the value begins the literal `n/a` (case-insensitive) followed
+   by whitespace, a dash, or end-of-value (`n/a\b` — so `n/architecture` is NOT
+   a false closure). **Triaged.**
+3. **Assigned** — the value contains an `ANTS-[0-9]+` id. **Triaged**, and the
+   ids join the assigned-id union.
+
+Any other free-text value (`won't fix`, a bare `(self-resolved)`) reads as
+**un-triaged**, so a closure SHOULD be written `n/a — <reason>` (the reason is
+advisory). A maintainer writes a v2 closure inline via `assign_id`
 when they triage the finding; mechanical `migrate_v2` does **not** normalise the
 v1 `(self-resolved)` idiom (that closure history stays in the in-place v1 table).
 The placeholder `_(maintainer to assign)_` and any empty value are un-triaged.
+
+**Two un-triaged values are not the same thing, and a caller that treats them
+alike is wrong in a way nothing catches.** A placeholder means *nobody has
+looked at this*; an awaiting marker means *the maintainer looked, and is
+waiting on you*.
+
+`feedback_query` therefore reports the awaiting set **separately as well as
+inside the delta**, in an `awaiting[]` array whose entries are
+`{heading, line, question}` — the same shape as `suspected_untagged[]`, whose
+entries are `{heading, line}`, plus the question text. Named here rather than
+left to the implementer, because every maintainer session binds to whichever
+key the first implementation picks.
+
+**The marker's full form is `_(awaiting reporter — <question>)_`** — literal
+`_(awaiting reporter`, then an em-dash (U+2014) surrounded by single spaces,
+then the question, then literal `)_`. `question` is the span between that
+em-dash and the trailing `)_`, trimmed. The *classifier* still matches on the
+prefix alone (`^_\(awaiting reporter\b`), so a marker missing its em-dash or
+its closing `)_` is still un-triaged and still reaches the reporter — it just
+yields an empty `question`. Classification is the safety property and is
+deliberately the looser test; extraction is display text and may fail soft.
+
+Membership is exactly "the marker is still present", and that is a usable
+definition of *unanswered* precisely because **nothing but the maintainer's own
+`assign_id` can replace the value** — the reply is an append and cannot reach
+it. So a question leaves `awaiting[]` when the maintainer has read the answer
+and re-triaged, never merely because a reply was written. Those are different
+moments, and the later one is the one worth reporting.
 
 A value beginning `n/a` is a **closure regardless of any `ANTS-NNNN` it also
 names** — excluded from the assigned-id union and never compacted, so
 `n/a — folded into ANTS-1525` closes the finding without relabelling it as
 shipped. The assigned-id set is therefore the union of `ANTS-[0-9]+` taken from
-each finding's **first** id line **only when that line is not an `n/a` closure**
-— a finding whose first id line IS a closure contributes zero ids (the parser
-never scans past it to a later line) — including a compacted finding's retained
+each finding's **first** id line **only when that line is neither an `n/a`
+closure nor an `_(awaiting reporter — …)_` marker** — a finding whose first id
+line is either contributes zero ids (the parser never scans past it to a later
+line). The awaiting exclusion is ANTS-3631's, and it is the same defect the
+closure exclusion prevents made worse: an id quoted inside a *question* would
+otherwise enter `mapped_ids`, and the reporter would read
+`mapped_id_status` for an id their finding was never assigned — including a compacted finding's retained
 id line (§"Maintainer compaction"). It is NOT a whole-body scan (a finding may
 cite other ids in its prose).
 
@@ -464,7 +580,9 @@ carries the `**Proposed ID:**` line.
    the delta. (This "no line ⇒ prose" reclassification is why a v1 file, whose
    findings may lack the line, must use the v1 rule until migrated.)
 2. A finding is **triaged** iff its `**Proposed ID:**` value holds an
-   `ANTS-[0-9]+` id **or** begins `n/a` (a closure); it is **un-triaged**
+   `ANTS-[0-9]+` id **or** begins `n/a` (a closure), **and is not an
+   `_(awaiting reporter — …)_` marker** — that marker is checked FIRST and is
+   un-triaged whatever else the value contains (ANTS-3631). It is **un-triaged**
    otherwise — the empty value, the `_(maintainer to assign)_` placeholder, **and
    any other non-id, non-`n/a` free text** (the authoritative value rule from
    §"Maintainer triage"; the empty/placeholder pair is just its two common
@@ -472,8 +590,10 @@ carries the `**Proposed ID:**` line.
    body), wherever they sit — position is irrelevant, so no watermark is moved
    and a contributor can append anywhere at EOF without disturbing it.
 3. The **assigned-id set** = the union of `ANTS-[0-9]+` across all findings'
-   first non-`n/a` `**Proposed ID:**` lines only — NOT a whole-body scan (a
-   finding may cite other ids in its prose, as the `RetroArch…` corpus does).
+   first `**Proposed ID:**` line, and **only** where that line is neither an
+   `n/a` closure nor an `_(awaiting reporter — …)_` marker (ANTS-3631) — NOT a
+   whole-body scan (a finding may cite other ids in its prose, as the
+   `RetroArch…` corpus does).
 4. **Guard against silent loss.** A `### ` block with **finding-shaped bullets**
    (`- **What:**` / `- **Repro:**` / `- **Impact:**`) but **no** `**Proposed
    ID:**` line is a real finding a hand-editor forgot to tag (the `DOOM` legacy
@@ -496,7 +616,9 @@ yields an empty delta under either rule.
 
 Under v2, filling a `**Proposed ID:**` in place is the *sanctioned* maintainer
 edit (§"Two roles") — it removes exactly that finding from the delta and touches
-nothing else.
+nothing else. **One value is the exception (ANTS-3631):** filling the slot with
+an `_(awaiting reporter — …)_` marker deliberately LEAVES the finding in the
+delta, because the delta is how the question reaches the reporter.
 
 ## Status emojis
 
@@ -529,9 +651,15 @@ they are never parsed *from the feedback file itself* (per the scope note above)
 ## Contributor don'ts
 
 - Don't assign yourself an `ANTS-NNNN` id or fill your own `**Proposed ID:**`
-  slot — leave it the `_(maintainer to assign)_` placeholder.
+  slot — leave it the `_(maintainer to assign)_` placeholder. **This has no
+  exceptions, including ANTS-3631's:** a slot reading
+  `_(awaiting reporter — <question>)_` is a question addressed to you, and you
+  answer it by appending a NEW finding with `op:append_finding` that names the
+  original — never by editing the slot.
 - Don't edit the maintainer's inline id assignments or `→ shipped` compaction
-  stubs (the v2 equivalent of "don't edit a maintainer tracking block").
+  stubs (the v2 equivalent of "don't edit a maintainer tracking block"). An
+  awaiting marker is a maintainer write like any other; only the maintainer
+  replaces it, when they triage your answer.
 - Every finding must carry a `**Proposed ID:**` line (v2) — it's how the
   maintainer finds your un-triaged input. `feedback_log op:append_finding`
   emits it for you.
@@ -593,8 +721,11 @@ hold, evaluated first-failure-wins in this order (else it is left untouched and
 reported in `skipped[]` with a `code`):
 
 1. it has a **shippable id** — its first `**Proposed ID:**` value holds ≥ 1
-   `ANTS-[0-9]+` id **and is not an `n/a` closure** (`no_shippable_id`;
-   closure-wins-over-incidental-id per §"Maintainer triage").
+   `ANTS-[0-9]+` id **and is neither an `n/a` closure nor an
+   `_(awaiting reporter — …)_` marker** (`no_shippable_id`;
+   closure-wins-over-incidental-id per §"Maintainer triage", and ANTS-3631
+   gives the awaiting marker the same precedence for the same reason — a
+   question quoting an id must not make the finding look shippable).
 2. its body does not already carry a `→ shipped` breadcrumb line
    (`already_compacted`, idempotent) — checked **before** the roadmap gates, so
    an already-collapsed finding stays collapsed regardless of later roadmap churn
@@ -818,10 +949,11 @@ v1 code path until a file is migrated):
 
 | Verb | v2 change |
 |---|---|
-| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. Rendering each id's **live roadmap status** is **shipped (ANTS-3478)**: `mapped_id_status` = [{id, status}] resolved from the caller project's `ROADMAP.md` (present only when `mapped_ids` is non-empty; an absent id → `"unknown"`, never silently ✅). **ANTS-3504** adds `shipped_date` to each ✅ entry (the id's last roadmap `Resolved` date, parens optional; absent for non-✅ ids and ✅ ids with no `Resolved` line) so a contributor can compare it against `session_orient` `server_build.build_date` before re-reporting (§"Stale-binary self-check"). **ANTS-3744** adds the fully-condensed fallback: when a file carries no inline `**Proposed ID:**` at all — the condensed form, whose entire body is a `## Tracked in ROADMAP (detail + status there): ANTS-…` pointer line — `mapped_ids` is harvested from that line instead, so the reporting session can still see its items' live status. Inline ids win: a file that still holds one keeps the inline-only harvest, so a stale pointer line cannot add ids to a file being triaged. |
-| `session_orient` `feedback_pending` (ANTS-1964) **(ANTS-3448, no code change)** | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it now follows the v2 unfilled-`Proposed ID` rule on a `: 2` file **for free** (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). No code change on this path — the marker-aware `parse()` supplies the version-correct `deltaPresent`/`deltaLineCount`. |
+| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `awaiting[]` (`{heading, line, question}`, ANTS-3631) + `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. Rendering each id's **live roadmap status** is **shipped (ANTS-3478)**: `mapped_id_status` = [{id, status}] resolved from the caller project's `ROADMAP.md` (present only when `mapped_ids` is non-empty; an absent id → `"unknown"`, never silently ✅). **ANTS-3504** adds `shipped_date` to each ✅ entry (the id's last roadmap `Resolved` date, parens optional; absent for non-✅ ids and ✅ ids with no `Resolved` line) so a contributor can compare it against `session_orient` `server_build.build_date` before re-reporting (§"Stale-binary self-check"). **ANTS-3744** adds the fully-condensed fallback: when a file carries no inline `**Proposed ID:**` at all — the condensed form, whose entire body is a `## Tracked in ROADMAP (detail + status there): ANTS-…` pointer line — `mapped_ids` is harvested from that line instead, so the reporting session can still see its items' live status. Inline ids win: a file that still holds one keeps the inline-only harvest, so a stale pointer line cannot add ids to a file being triaged. |
+| `session_orient` `feedback_pending` (ANTS-3631) | **A file is listed only when it holds un-triaged findings that are NOT awaiting markers** — i.e. real contributor input the maintainer owes a decision on. A file whose only un-triaged findings are the maintainer's own unanswered questions is their outbox, and listing it puts a permanently non-zero to-do at every session start. The outbox stays visible as a number rather than a row: **every scanned file with a non-zero `awaiting_count` carries an entry** — a listed one gains the field, and an awaiting-only file gets a minimal entry of `{file, awaiting_count}` with no `delta_line_count`, since the absence of that key is what marks it as outbox rather than inbox. The block also carries a top-level `total_awaiting` summed across every file scanned. Putting `awaiting_count` only on listed entries would leave an awaiting-only file's count with no carrier at all, which is the one case the field exists for. The pre-existing siblings keep their meaning and cover LISTED files only: `files_with_pending` equals the number of rows, and `total_pending_lines` sums only those rows' `delta_line_count` — an awaiting-only file appears in neither, and is counted solely in `total_awaiting`. Stated because a count that disagrees with the row beside it is read as a bug in whichever the reader trusts less. `delta_line_count` is unchanged and still counts the whole delta, awaiting findings included, because it describes what `feedback_query` would return. |
+| `session_orient` `feedback_pending` (ANTS-1964) **(ANTS-3448 — no code change ON THE COUNT; the listing predicate above IS an ANTS-3631 change)** | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it now follows the v2 unfilled-`Proposed ID` rule on a `: 2` file **for free** (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). No code change on this path — the marker-aware `parse()` supplies the version-correct `deltaPresent`/`deltaLineCount`. |
 | `feedback_log op:append_finding` (ANTS-1962) | Already emits the `**Proposed ID:**` placeholder — now **structural**; no behavioural change beyond guaranteeing the line. |
-| `feedback_log op:assign_id` **(shipped, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s) or a `n/a — <reason>` closure. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
+| `feedback_log op:assign_id` **(shipped, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s), a `n/a — <reason>` closure, or an `awaiting` question rendering `_(awaiting reporter — <question>)_` (ANTS-3631 — un-triaged on purpose, so the question reaches the reporter's delta). Exactly one of the three. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
 | `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) **ANTS-3504** stamps the fix's ship-date into the stub (`→ shipped ✅ <date> (write-up compacted, ANTS-3443)`; latest `Resolved` date among the finding's ✅ ids, dateless fallback when none) — §"Stale-binary self-check". |
 | `feedback_log op:migrate_v2` **(shipped, ANTS-3446)** | One-shot **mechanical** v1→v2 migration (§"Migration from v1"): bumps the marker + stamps blank `**Proposed ID:**` placeholders on un-triaged findings; reports `orphans[]`/`unclassified[]`. Leaves the v1 tables **in place** (no move/collapse); the default path reads no table id content (the `backfill_from_tracking:true` opt-in reads the rows to carry ids inline — ANTS-3474). |
 | `feedback_log op:append_tracking` | **Superseded by `assign_id`** (shipped, ANTS-3447) for v2 files — it remains the v1 triage-write op (writes a v1 table) for un-migrated files. On a `: 2` file it now **refuses `not_v1`** (shipped, ANTS-3477) pointing at `assign_id`; on a v1 / un-migrated file it stays valid. |
