@@ -339,6 +339,14 @@ ANTS-3756's numbering, so a bare `Inv15` there would resolve two ways
 permanently. Numbering past that range costs a gap in this document and buys an
 id that means one thing everywhere it appears.
 
+The line below is that argument in the form `spec_lint` reads (ANTS-3784).
+Without it the checker reported INV-15..25 as eleven defects on every run, in
+the bucket `review-contract` Phase 1d feeds to cold lanes as settled fact.
+INV-14 sits below the floor and is untouched — it is this document's own
+inherited anchor, not a skipped number.
+
+<!-- invariant-id-base: 26 -->
+
 - **INV-14** — the store's persisted discriminator is correct and
   machine-independent: after a load, `section.source_path` is SQL `NULL` for
   every section from the live roadmap and the **project-root-relative** path

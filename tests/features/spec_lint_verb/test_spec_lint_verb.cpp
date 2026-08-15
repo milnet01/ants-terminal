@@ -306,3 +306,53 @@ TEST(SpecLintVerb, Ants4393BothSkippedChecksAreNamed) {
         << "the hint must say no input turns it on, not merely that it "
            "did not run";
 }
+
+// ANTS-4080 — the global tier. `~/.claude/standards/spec-format.md` became the
+// authoritative spec-format standard on 2026-08-08 with projects carrying
+// deltas, so a project with no local copy is linted against NOTHING and the
+// skip reads as a clean structural result one layer downstream.
+//
+// This is not the `_shared` fallback ANTS-3662 § 2.1 rejects. That one always
+// exists, so the skip arm could never fire; this one resolves through
+// `expandGlobalConfigSentinel`, whose `QDir::homePath()` follows `$HOME` — so
+// `none` stays a reachable outcome and the skip arm stays testable.
+//
+// The hint rows are BEHAVIOURAL (the pure builder is a public static); the
+// resolution rows are a source scrape, because the resolver is a file-static
+// the handler needs a live MainWindow to reach.
+TEST(SpecLintVerb, Ants4080GlobalTierAndTheTwoSkipCauses) {
+    const std::string rc = ants_test::slurpRemoteControl();
+
+    EXPECT_NE(rc.find("expandGlobalConfigSentinel(QStringLiteral(\"~global\"))"),
+              std::string::npos)
+        << "the global tier must re-root through the SAME sentinel ANTS-3719 "
+           "gave doc_integrity, not widen this verb's bad_path contract";
+    EXPECT_NE(rc.find("QStringLiteral(\"~global/\")"), std::string::npos)
+        << "sections_source must distinguish a global hit from a project one; "
+           "ANTS-4373 made that field the path, so the path is prefixed";
+
+    // An EMPTY walk checked no document, so no check of any kind ran and the
+    // format standard is irrelevant. Naming it there states a false cause for
+    // a true skip — the class ANTS-4373 exists to close, reintroduced by the
+    // hint that predates this row.
+    const QJsonObject none = RemoteControl::specLintBuildResponse(
+        {}, false, QJsonObject{}, false, QStringList{}, 0, false, QString());
+    ASSERT_TRUE(none.contains(QStringLiteral("skipped_hint")));
+    const QString h = none.value(QStringLiteral("skipped_hint")).toString();
+    EXPECT_TRUE(h.contains(QStringLiteral("no document was checked")))
+        << h.toStdString();
+    EXPECT_FALSE(h.contains(QStringLiteral("required-sections")))
+        << "an empty walk says nothing about the standard: " << h.toStdString();
+
+    // A walk that DID read a document and still skipped names the paths that
+    // were actually consulted — and there are now six, not four.
+    const QJsonObject some = RemoteControl::specLintBuildResponse(
+        {}, false, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, false, QString());
+    const QString h2 = some.value(QStringLiteral("skipped_hint")).toString();
+    EXPECT_TRUE(h2.contains(QStringLiteral("docs/standards/spec-format.md")))
+        << h2.toStdString();
+    EXPECT_TRUE(h2.contains(QStringLiteral("~/.claude/")))
+        << "the hint must name the global tier it now consults: "
+        << h2.toStdString();
+}

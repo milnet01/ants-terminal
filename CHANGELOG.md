@@ -14,6 +14,23 @@ for security-relevant changes.
 
 ### Added
 
+- **spec_lint falls back to the global spec-format standard** (ANTS-4080)
+  A project carrying only a delta was linted against nothing, and the skip
+  read as a clean structural result. The four candidate paths are now
+  retried under ~/.claude/ through the same `~global` re-rooting
+  doc_integrity uses; sections_source prefixes a global hit with
+  `~global/`. Projects shipping their own standard are unaffected.
+  **Layman:** The spec checker now falls back to the shared standard when a
+  project has no copy of its own, and says which one it used.
+
+- **spec_lint: a document can declare a deliberate invariant-id floor** (ANTS-3784)
+  A spec that continues a sibling's numbering can now say so with an
+  `<!-- invariant-id-base: N -->` line outside fenced code; missing numbers
+  below N are counted as suppressed instead of reported. Measured over
+  docs/specs/: 39 gap findings became 28, one document moved.
+  **Layman:** The spec checker kept flagging deliberately skipped numbers
+  as mistakes; a spec can now say the skip is on purpose.
+
 - **`roadmap_query` now says which backend answered — `source: "store" | "markdown"`** (ANTS-4402)
   The store has been primary for roadmap reads since ANTS-3793, while ANTS-4141's
   standing workaround has roadmap edits made by hand to ROADMAP.md — so a hand
@@ -81,6 +98,11 @@ for security-relevant changes.
   corpus with 0 newly firing.
 
 ### Fixed
+
+- **spec_lint's skip hint no longer states a false cause on an empty walk** (ANTS-4080)
+  A run that matched no document reported "no required-sections block was
+  found", which is a claim about the format standard that the run never
+  tested. It now says no document was checked.
 
 - **Roadmap migration no longer loses a quarter of the roadmap to a line of prose that quotes fence syntax** (ANTS-4403)
   The migration walk decided code-fence extents with its own

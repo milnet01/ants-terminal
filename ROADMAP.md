@@ -26555,7 +26555,7 @@ against current source before filing.
   Source: cold-eyes ANTS-3766 loop 5 deferred tail, 2026-08-01.
   Resolved (2026-08-01): all 11 findings folded into ANTS-3766 directly, without re-review. 8 produced an edit; 2 were verified as already-correct and dropped explicitly (the ANTS-3757 section 2.3 citations are both right — that section owns the second-reader rule AND the empty_source rule); 1 is a recorded judgement (no section-anchor list, matching every sibling spec). The substantive one was finding 1, which changed a rule rather than wording: the format-mismatch test is now against the first EVIDENCED source rather than sources[0], making it symmetric in both directions, with a new INV-11 leg and a livenosignal/ fixture root.
 
-- 📋 [ANTS-3784] **spec_lint: a DELIBERATE invariant-id gap has no way to be declared, so it reports one finding per skipped number forever.**
+- ✅ [ANTS-3784] **spec_lint: a DELIBERATE invariant-id gap has no way to be declared, so it reports one finding per skipped number forever.**
   Measured 2026-08-01 on the ANTS-3782 cold-eyes gate: spec_lint
   returned 11 invariant_id_gap findings (INV-15..INV-25) against a spec
   whose own section 3 argues the gap at length and correctly — it
@@ -26577,6 +26577,7 @@ against current source before filing.
   **Layman:** A documentation checker keeps flagging deliberately skipped numbers in one spec as mistakes; give the spec a way to say the skip is on purpose.
   Kind: enhancement.
   Source: in-session-2026-08-01, ANTS-3782 cold-eyes loop 3 doc-lint pass.
+  Resolved (2026-08-15): a document declares its own floor with `<!-- invariant-id-base: N -->` outside fenced code; numbers below it are counted into `id_gaps_suppressed` rather than reported. Per-document because only the file knows its numbering continues someone else's — ANTS-4110's sibling set answers the same question corpus-wide and all-or-nothing, so a corpus numbering per-document except for one family (this one) cannot reach it. Measured over docs/specs/ with the real engine linked: 39 gap findings before, 28 after; one document moved, all 11 of its gaps became suppressions, ANTS-3653's 28 untouched. ANTS-3782 carries the declaration beside the argument its § 3 already made. Fenced occurrences ignored so a doc describing the syntax cannot declare one.
 
 - ✅ [ANTS-3785] **spec_log op:set_status corrupts a spec whose Status field wraps onto a second line.**
   Hit 2026-08-01 on ANTS-3766. The verb replaces the FIRST LINE of the
@@ -30739,7 +30740,7 @@ against current source before filing.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild)..
 
-- 📋 [ANTS-4080] **spec_lint cannot see the global spec-format standard, so a project without a local copy is linted against nothing.**
+- ✅ [ANTS-4080] **spec_lint cannot see the global spec-format standard, so a project without a local copy is linted against nothing.**
   `~/.claude/standards/spec-format.md` became authoritative on 2026-08-08,
   with projects carrying deltas only. A project with no local copy therefore
   has no required-sections list for `spec_lint` to check against.
@@ -30756,6 +30757,7 @@ against current source before filing.
   **Layman:** Let the spec checker fall back to the shared standard in ~/.claude when a project has no copy of its own, and say which one it used.
   Kind: feature.
   Source: user-request-2026-08-10 (global roadmap-format rebuild)..
+  Resolved (2026-08-15): the four project candidates are now retried under ~/.claude/, re-rooted through `expandGlobalConfigSentinel` — the same `~global` sentinel ANTS-3719 gave doc_integrity, so every path is still validated and `bad_path` is not widened. Deviation from the proposal, deliberate: `sections_source` keeps ANTS-4373's PATH rather than becoming a `project|global|none` enum, with a global hit prefixed `~global/` — the path answers the enum's question and the next one. `none` stays reachable and the skip arm is now testable by construction rather than by argument, since QDir::homePath() follows $HOME. Verified the global standard parses to 12 required sections; this project is unaffected because its local docs/standards/specs.md still wins. ANTS-3662 § 2.1's no-fallback paragraph amended to record it. Folded in: the skip hint stated a false cause on an empty walk (no document checked is not no block found).
 
 - 📋 [ANTS-4081] **rotate_minor is built but unreachable — nothing calls it, and nothing enforces the rotation event.**
   ANTS-4070 § 2.4 puts `roadmap-format.md` § 3.9's rotation-event rule —

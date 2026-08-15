@@ -576,8 +576,36 @@ Result check(const QString &text, const QString &relPath,
         // numbered ids".
         int lo = ids.first().n, hi = ids.first().n;
         for (const InvId &e : ids) { lo = qMin(lo, e.n); hi = qMax(hi, e.n); }
+        // ANTS-3784 — a floor the DOCUMENT declares, for a gap it skipped on
+        // purpose. ANTS-4110's sibling set answers the same question but is
+        // corpus-wide and all-or-nothing: one number shared by two specs
+        // anywhere turns it off for every document. A corpus that numbers
+        // per-document EXCEPT for one family therefore has no route to it, and
+        // that is this project — measured 2026-08-15, ANTS-3782 still reported
+        // eleven gaps (INV-15..25, owned by ANTS-3756) out of the corpus's 39,
+        // in the bucket review-contract feeds straight into its verified list.
+        //
+        // Per-document because the fact is: only this file knows its numbering
+        // continues someone else's. A number BELOW the floor is not a gap; a
+        // number the document does own below its own floor is still a real
+        // anchor and is untouched. Read outside fenced code, so a document
+        // DOCUMENTING the syntax does not accidentally declare one.
+        int idBase = 0;
+        {
+            static const QRegularExpression baseRe(QStringLiteral(
+                R"(^ {0,3}<!--\s*invariant-id-base:\s*([0-9]+)\s*-->\s*$)"));
+            for (int i = 0; i < lines.size(); ++i) {
+                if (i < fence.size() && fence.at(i)) continue;
+                const auto m = baseRe.match(lines.at(i));
+                if (m.hasMatch()) { idBase = m.captured(1).toInt(); break; }
+            }
+        }
         for (int n = lo; n <= hi; ++n) {
             if (have.contains(n)) continue;
+            if (n < idBase) {
+                ++r.idGapsSuppressed;
+                continue;
+            }
             // ANTS-4110 — a number a SIBLING spec owns is not a gap. On a
             // project that numbers invariants once across the corpus, every id
             // living in a neighbouring document reads as one here, and the two

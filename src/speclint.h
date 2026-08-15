@@ -110,6 +110,11 @@ struct Result {
     // Reported rather than left to be inferred, for the same reason
     // `sectionsChecked` is: a check that quietly declines to fire is what the
     // defect this field exists for was made of.
+    //
+    // ANTS-3784 — it also counts gaps below a floor the document declares with
+    // an `<!-- invariant-id-base: N -->` line outside fenced code. One counter
+    // for both, because both answer "this number is not mine" and a caller
+    // auditing the suppression wants the total.
     int idGapsSuppressed = 0;
 
     // ANTS-4127 — DISTINCT test surfaces this document cited that were found on

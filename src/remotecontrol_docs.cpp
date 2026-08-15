@@ -476,20 +476,46 @@ static const QStringList &specLintStandardCandidates() {
     return v;
 }
 
+// ANTS-4080 — the GLOBAL tier, and it is not the `_shared` fallback the two
+// paragraphs above reject. That one resolved
+// `~/.claude/skills/_shared/spec-format.md`, a file which always exists, so the
+// skip arm could never fire and INV-1's second half was untestable. Three
+// things are different here. The path is `~/.claude/standards/`, which became
+// the authoritative home of the spec-format standard on 2026-08-08 with
+// projects carrying deltas — so a project with no local copy is currently
+// linted against NOTHING, which is the defect. It resolves through
+// `expandGlobalConfigSentinel`, the same `~global` re-rooting ANTS-3719 gave
+// doc_integrity: one well-known read-only root, every path still validated, no
+// widening of `bad_path`. And it is testable BY CONSTRUCTION rather than by
+// argument — `QDir::homePath()` follows `$HOME`, so a fixture pointing HOME at
+// a directory with no `.claude/` still exercises the skip arm. `none` therefore
+// stays a real outcome, which is the whole reason the old tier was refused.
+//
+// `whichOut` gets a `~global/` prefix rather than a `project|global|none`
+// enum: ANTS-4373 already made this field the PATH consulted, which answers the
+// enum's question and the next one too.
 static QStringList specLintRequiredSections(const QString &rootCanonical,
                                             QString *whichOut = nullptr) {
-    const QDir root(rootCanonical);
-    for (const QString &rel : specLintStandardCandidates()) {
-        QFile f(root.filePath(rel));
-        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-        const QStringList got =
-            SpecLint::parseRequiredSections(QString::fromUtf8(f.readAll()));
-        if (!got.isEmpty()) {
-            if (whichOut) *whichOut = rel;
-            return got;
+    const auto tryRoot = [&](const QDir &root, const QString &prefix) {
+        QStringList got;
+        for (const QString &rel : specLintStandardCandidates()) {
+            QFile f(root.filePath(rel));
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+            got = SpecLint::parseRequiredSections(QString::fromUtf8(f.readAll()));
+            if (!got.isEmpty()) {
+                if (whichOut) *whichOut = prefix + rel;
+                return got;
+            }
         }
-    }
-    return {};
+        return QStringList();
+    };
+    const QStringList local = tryRoot(QDir(rootCanonical), QString());
+    if (!local.isEmpty()) return local;
+
+    const QString globalRoot =
+        ants::expandGlobalConfigSentinel(QStringLiteral("~global"));
+    if (globalRoot.isEmpty() || globalRoot == rootCanonical) return {};
+    return tryRoot(QDir(globalRoot), QStringLiteral("~global/"));
 }
 
 // ANTS-4127 — the two filesystem facts the spec_lint engine cannot gather for
@@ -721,13 +747,26 @@ QJsonObject RemoteControl::specLintBuildResponse(
             "surfaces, not as a pass. Tracked as ANTS-4393.");
     }
     if (!sectionsChecked) {
-        o[QStringLiteral("skipped_hint")] = QStringLiteral(
-            "the required-section check did NOT run: no `<!-- required-sections "
-            "-->` fenced block was found in any of %1 (relative to the project "
-            "root). Findings are silent about section structure — this is not "
-            "a clean structural result. Add the block to whichever of those "
-            "files is this project's spec-format standard.")
-                .arg(specLintStandardCandidates().join(QStringLiteral(", ")));
+        // Two causes, and the hint must name the right one. An empty walk
+        // checked no document, so NO check ran and the format standard is
+        // irrelevant — reporting "no block was found" there states a false
+        // cause for a true skip, the class ANTS-4373 exists to close.
+        o[QStringLiteral("skipped_hint")] =
+            checkedDocs.isEmpty()
+                ? QStringLiteral(
+                      "no document was checked, so NO check ran: `path` matched "
+                      "nothing under the specs dir. `checked_docs` is empty — "
+                      "this says nothing about the project's format standard.")
+                : QStringLiteral(
+                      "the required-section check did NOT run: no `<!-- "
+                      "required-sections -->` fenced block was found in any of "
+                      "%1 (relative to the project root), nor in the same four "
+                      "relative to ~/.claude/ (ANTS-4080's global tier). "
+                      "Findings are silent about section structure — this is "
+                      "not a clean structural result. Add the block to "
+                      "whichever of those files is this project's spec-format "
+                      "standard.")
+                      .arg(specLintStandardCandidates().join(QStringLiteral(", ")));
     }
     // ANTS-4127 — the same contract, for the same reason: the count is the
     // denominator without which two zero-finding runs are indistinguishable, and

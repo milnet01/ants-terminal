@@ -588,6 +588,54 @@ TEST(SpecLint, Ants4110SiblingNumbersAreNotGaps) {
     EXPECT_EQ(owned, (QSet<int>{1, 2, 7}));
 }
 
+// ANTS-3784 — the DOCUMENT's own declaration of a deliberate floor. ANTS-4110
+// above answers the same question corpus-wide and all-or-nothing: one number
+// shared by two specs anywhere turns it off, so a corpus that numbers
+// per-document except for one family cannot reach it. Measured 2026-08-15 on
+// this project: ANTS-3782 reported 11 gaps (INV-15..25, owned by ANTS-3756) out
+// of the corpus's 39, straight into review-contract's pre-verified bucket.
+TEST(SpecLint, Ants3784DeclaredIdBaseSuppressesGapsBelowIt) {
+    const QString body = QStringLiteral(
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-14** — inherited. *Test:* t → ok.\n"
+        "- **INV-26** — new. *Test:* t → ok.\n"
+        "- **INV-28** — new. *Test:* t → ok.\n"
+        "\n"
+        "## 4. Notes\n");
+
+    // Undeclared: 15..25 and 27 are gaps — the state the item was filed against.
+    const SpecLint::Result plain =
+        SpecLint::check(QStringLiteral("# S — a spec\n") + body,
+                        QStringLiteral("s.md"), {});
+    EXPECT_EQ(countKind(plain, "invariant_id_gap"), 12);
+    EXPECT_EQ(plain.idGapsSuppressed, 0);
+
+    // Declared: everything below 26 is suppressed and COUNTED. INV-14 is the
+    // document's own anchor below its own floor and is left alone; 27 is above
+    // the floor and stays a gap, so the floor is not an off-switch.
+    const SpecLint::Result r = SpecLint::check(
+        QStringLiteral("# S — a spec\n<!-- invariant-id-base: 26 -->\n") + body,
+        QStringLiteral("s.md"), {});
+    EXPECT_EQ(countKind(r, "invariant_id_gap"), 1);
+    EXPECT_EQ(r.idGapsSuppressed, 11);
+    for (const auto &f : r.findings)
+        if (f.kind == QLatin1String("invariant_id_gap"))
+            EXPECT_TRUE(f.message.contains(QStringLiteral("INV-27")))
+                << f.message.toStdString();
+
+    // A document DOCUMENTING the syntax has not declared one: the line is read
+    // outside fenced code only. Without this, this very test file's spec would
+    // silence its own corpus.
+    const SpecLint::Result fenced = SpecLint::check(
+        QStringLiteral("# S — a spec\n\n```\n<!-- invariant-id-base: 26 -->\n```\n")
+            + body,
+        QStringLiteral("s.md"), {});
+    EXPECT_EQ(countKind(fenced, "invariant_id_gap"), 12);
+    EXPECT_EQ(fenced.idGapsSuppressed, 0);
+}
+
 // =====================================================================
 // ANTS-4127 — test-surface resolution. A `*Test:*` clause is the claim that an
 // invariant is locked by something real; nothing checked that the thing it names
