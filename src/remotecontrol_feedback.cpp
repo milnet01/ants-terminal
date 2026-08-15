@@ -1495,7 +1495,13 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
                          QStringLiteral("spec_log: set_status requires a "
                                         "non-empty \"status\""));
         }
-        res = SpecLog::setStatus(content, status);
+        // ANTS-4136 — opt in to keeping the field's continuation lines, so
+        // changing one word does not delete the review history wrapped
+        // underneath it. Off by default: the old behaviour stays byte-exact
+        // for every existing caller.
+        res = SpecLog::setStatus(
+            content, status,
+            req.value(QStringLiteral("preserve_body")).toBool(false));
     } else if (op == QStringLiteral("append_loop")) {
         const QString label =
             req.value(QStringLiteral("loop_label")).toString();

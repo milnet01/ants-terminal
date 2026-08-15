@@ -138,7 +138,8 @@ QStringList toLines(const QString &content, bool &endedWithNewline) {
 
 }  // namespace
 
-EditResult setStatus(const QString &content, const QString &newStatus) {
+EditResult setStatus(const QString &content, const QString &newStatus,
+                     bool preserveBody) {
     bool ewn = false;
     QStringList lines = toLines(content, ewn);
 
@@ -151,7 +152,17 @@ EditResult setStatus(const QString &content, const QString &newStatus) {
         SpecParse::headerField(lines, QStringLiteral("Status"));
     if (e.found()) {
         const int end = e.line + e.lineCount;  // exclusive
-        for (int k = end - 1; k > e.line; --k) lines.removeAt(k);
+        // ANTS-4136 — `preserveBody` keeps the continuation lines and
+        // rewrites only the opener. The reported loss was a wrapped Status
+        // whose review history lived on those lines, so keeping them turns
+        // the documented recovery (re-paste from `previous_status`) into the
+        // default. Deliberately a LINE rule rather than a prose-splitting
+        // heuristic: there is no delimiter this corpus agrees on between the
+        // state word and the prose after it, and guessing one would drop text
+        // on the shapes it guessed wrong — the very failure being fixed.
+        if (!preserveBody) {
+            for (int k = end - 1; k > e.line; --k) lines.removeAt(k);
+        }
         lines[e.line] = QStringLiteral("**Status:** ") + newStatus;
 
         EditResult r;

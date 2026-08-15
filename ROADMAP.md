@@ -35470,7 +35470,7 @@ defect from different angles.
 
   Measured count is therefore 24 specs / 26 spec-surface pairs, not 23 / 25.
 
-- 📋 [ANTS-4136] **spec_log op:set_status replaces a multi-line Status value wholesale, with no way to keep its prose.**
+- ✅ [ANTS-4136] **spec_log op:set_status replaces a multi-line Status value wholesale, with no way to keep its prose.**
   Hit while shipping ANTS-4127. A spec's `**Status:**` value is a wrapped
   field (specparse's headerField joins continuation lines), and this corpus
   routinely carries a paragraph there: review-loop counts, whether the gate
@@ -35489,6 +35489,13 @@ defect from different angles.
   **Layman:** Marking a spec "implemented" wipes the paragraph explaining how it was reviewed; you have to paste it back by hand.
   Kind: enhancement.
   Source: in-session-2026-08-12 (ANTS-4127 implementation).
+  Resolved (2026-08-15): `spec_log op:"set_status"` takes `preserve_body: true`, which keeps the Status field's CONTINUATION LINES and rewrites only the opener. Took the item's first option rather than the prepend-the-new-state one, because prepending leaves the old state word in the file and a reader then sees two states on one line.
+
+  The rule is deliberately about LINES, not prose. There is no delimiter this corpus agrees on between the state word and the paragraph after it — some use an em-dash, some a full stop, some a parenthetical date — so a splitting heuristic would drop text on the shapes it guessed wrong, which is the very failure being fixed. Stated plainly in the schema: prose on the SAME line as the old value is still replaced. That covers the reported case exactly, since the 490 bytes lost during ANTS-4127 were a wrapped paragraph.
+
+  Default false, so every existing caller is byte-identical and ANTS-3785's whole-extent behaviour remains the default. `previous_status` is still reported when opted in, so ANTS-4114's recovery path is unaffected.
+
+  Test: `McpSpecLog.Ants4136PreserveBodyKeepsWrappedStatusProse`, which asserts BOTH directions — that the default still replaces the whole extent, and that opting in keeps every continuation line while the old state word goes. Suite 3527/3527.
 
 - 📋 [ANTS-4138] **The mirrored standards still point at four unmirrored global files.**
   ANTS-4133 mirrored coding / documentation / testing / commits (plus

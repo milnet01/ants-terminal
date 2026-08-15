@@ -47,7 +47,14 @@ struct EditResult {
 // op:"set_status" — replace the first `**Status:**` field's WHOLE extent
 // (its opener plus any continuation lines) with one new line. ANTS-3785.
 // `unrecognised_format` when the spec has no Status line.
-EditResult setStatus(const QString &content, const QString &newStatus);
+// ANTS-4136 — `preserveBody` keeps the field's CONTINUATION LINES and
+// rewrites only the opener's value. A spec's Status is a wrapped field and
+// this corpus routinely carries a paragraph there (review-loop counts,
+// whether the gate converged, which sections were most revised); replacing
+// the whole extent to change one word deleted a 490-byte review history.
+// Default false, so every existing caller is unchanged.
+EditResult setStatus(const QString &content, const QString &newStatus,
+                     bool preserveBody = false);
 
 // op:"append_loop" — append a `- **<label>** — <body>` bullet at the end
 // of the first `## …` section whose heading contains "Cold-eyes loop log"

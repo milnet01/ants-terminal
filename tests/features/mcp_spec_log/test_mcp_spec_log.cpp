@@ -620,3 +620,51 @@ TEST(McpSpecLog, Ants3651RefusesWhenTheLoopLogSectionIsDuplicated) {
     EXPECT_TRUE(r.error.contains(QStringLiteral("Cold-eyes loop log")))
         << "the refusal must name what it found: " << r.error.toStdString();
 }
+
+// ANTS-4136 — `preserve_body` keeps a wrapped Status field's prose.
+//
+// A spec's Status is a wrapped field and this corpus routinely carries a
+// paragraph there. Replacing the whole extent to change one word deleted a
+// 490-byte review history during ANTS-4127. It is recoverable — the envelope
+// returns `previous_status` — but only if the caller notices, and then the
+// repair is the hand-edit this verb exists to avoid.
+TEST(McpSpecLog, Ants4136PreserveBodyKeepsWrappedStatusProse) {
+    const QString before = QStringLiteral(
+        "# ANTS-9999 — Fixture\n"
+        "\n"
+        "**Status:** accepted (2026-08-02)\n"
+        "3 review loops; converged on loop 3 with 0 verified findings.\n"
+        "Most-revised sections: § 4 (emission) and § 6 (tests).\n"
+        "\n"
+        "## 1. Problem\n");
+
+    // Default is unchanged — the whole extent goes, as ANTS-3785 established.
+    const SpecLog::EditResult wiped =
+        SpecLog::setStatus(before, QStringLiteral("implemented (2026-08-15)"));
+    ASSERT_TRUE(wiped.ok) << wiped.error.toStdString();
+    EXPECT_FALSE(wiped.content.contains(QStringLiteral("3 review loops")))
+        << "default behaviour is unchanged: the wrapped extent is replaced";
+
+    // Opted in — the continuation lines survive, the state word changes.
+    const SpecLog::EditResult kept = SpecLog::setStatus(
+        before, QStringLiteral("implemented (2026-08-15)"), true);
+    ASSERT_TRUE(kept.ok) << kept.error.toStdString();
+    EXPECT_TRUE(kept.content.contains(
+        QStringLiteral("**Status:** implemented (2026-08-15)")))
+        << "ANTS-4136: the opener still carries the new value";
+    EXPECT_FALSE(kept.content.contains(QStringLiteral("accepted (2026-08-02)")))
+        << "ANTS-4136: the OLD state word is gone — this is set_status, not "
+           "an append";
+    EXPECT_TRUE(kept.content.contains(QStringLiteral(
+        "3 review loops; converged on loop 3 with 0 verified findings.")))
+        << "ANTS-4136: the wrapped review history survives";
+    EXPECT_TRUE(kept.content.contains(QStringLiteral(
+        "Most-revised sections: § 4 (emission) and § 6 (tests).")))
+        << "ANTS-4136: every continuation line survives, not just the first";
+
+    // The section after the field is untouched either way.
+    EXPECT_TRUE(kept.content.contains(QStringLiteral("## 1. Problem")));
+    // And `previous_status` is still reported, so the ANTS-4114 recovery path
+    // is unaffected by opting in.
+    EXPECT_FALSE(kept.previousValue.isEmpty());
+}

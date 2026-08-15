@@ -6707,7 +6707,9 @@ void ClaudeIntegration::onMcpConnection() {
                             "set_status: the replacement value, written "
                             "VERBATIM as one line after \"**Status:** \". "
                             "Any continuation lines the previous value "
-                            "wrapped onto are replaced too, not left behind. "
+                            "Any continuation lines the previous value "
+                            "wrapped onto are replaced too — pass "
+                            "`preserve_body:true` to KEEP them (ANTS-4136). "
                             "ANTS-4114 — this verb imposes NO vocabulary and "
                             "cannot validate one: each project's permitted "
                             "values live in its own spec standard (Ants uses "
@@ -6758,6 +6760,30 @@ void ClaudeIntegration::onMcpConnection() {
                     props["id"]         = idProp;
                     props["path"]       = pathProp;
                     props["status"]     = statusProp;
+                    {   // ANTS-4136 — keep the Status field's wrapped prose.
+                        QJsonObject pb; pb["type"] = "boolean";
+                                        pb["default"] = false;
+                                        pb["description"] = QStringLiteral(
+                            "Optional (ANTS-4136), op:\"set_status\" only. "
+                            "Keep the Status field's CONTINUATION LINES and "
+                            "rewrite only the opener, instead of replacing the "
+                            "whole extent. A spec's Status is a wrapped field "
+                            "and this corpus routinely carries a paragraph "
+                            "there — review-loop counts, whether the gate "
+                            "converged, which sections were most revised — so "
+                            "a call whose stated job is to change one word was "
+                            "deleting a 490-byte review history. Recoverable "
+                            "via `previous_status`, but only if the caller "
+                            "notices; this makes the recovery the default. "
+                            "It is a LINE rule, not a prose split: there is no "
+                            "delimiter this corpus agrees on between the state "
+                            "word and the prose after it, so a heuristic would "
+                            "drop text on the shapes it guessed wrong — the "
+                            "very failure being fixed. Prose on the SAME line "
+                            "as the old value is still replaced. Default false, "
+                            "so existing callers are unchanged.");
+                        props["preserve_body"] = pb;
+                    }
                     props["loop_label"] = labelProp;
                     props["cells"]      = cellsProp;  // ANTS-4364
                     props["body"]       = bodyProp;
