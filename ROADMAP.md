@@ -28338,7 +28338,7 @@ against current source before filing.
   Kind: implement.
   Source: in-session-2026-08-04 (ANTS-3809 cold-eyes loop 1, lane A).
 
-- 📋 [ANTS-3823] **`bad_op_combo` is used 23 times and documented nowhere.**
+- ✅ [ANTS-3823] **`bad_op_combo` is used 23 times and documented nowhere.**
   `grep -o 'bad_op_combo' src/remotecontrol.cpp src/claudeintegration.cpp |
   wc -l` -> 23; `grep -c bad_op_combo docs/standards/mcp-error-codes.md` -> 0
   (both 2026-08-04).
@@ -28354,6 +28354,7 @@ against current source before filing.
   **Layman:** One of the error codes the tools return isn't in the error-code list, so a caller has no way to look up what it means.
   Kind: doc-fix.
   Source: in-session-2026-08-04 (ANTS-3809 cold-eyes loop 3, lane E).
+  Resolved (2026-08-15): `bad_op_combo` now has a row in `mcp-error-codes.md`, next to its read-side sibling `bad_mode_combo`. Re-measured first — 29 uses in `src/` now, up from the 23 at filing, and the single pre-existing mention in the file was inside the `locator_unsupported` row rather than a row of its own, so a caller branching on `code` still had nothing to look up. The row names both conditions (unknown op; valid op carrying another op's argument), says why the second is not `bad_args` (the argument is well-formed — the PAIRING is wrong, so the remedy is to change the op, not to fix a value), and distinguishes it from `bad_mode` and `missing_field`.
 
 - 📋 [ANTS-3824] **Decide whether the render gains a markdown carrier for `resolution`.**
   Verified 2026-08-04 while grounding ANTS-3810's round-trip oracle.
@@ -28385,7 +28386,7 @@ against current source before filing.
   Kind: investigate.
   Source: in-session-2026-08-04 (found while drafting ANTS-3810).
 
-- 📋 [ANTS-3825] **docs/subsystems.md is missing the three shipped roadmap-store lanes.**
+- ✅ [ANTS-3825] **docs/subsystems.md is missing the three shipped roadmap-store lanes.**
   Measured 2026-08-04: `grep -n '^- `roadmap' docs/subsystems.md` returns
   four hits -- roadmapdialog, roadmapparse, roadmapmigrate,
   roadmapmigrateload. `roadmapstore` (ANTS-3756), `roadmapexport`
@@ -28402,8 +28403,9 @@ against current source before filing.
   **Layman:** The map of what lives in which source file never got entries for three files that already shipped.
   Kind: doc-fix.
   Source: in-session-2026-08-04 (found while grounding ANTS-3810 § 7).
+  Resolved (2026-08-15): `roadmapstore`, `roadmaprender` and `roadmapexport` now have entries in `docs/subsystems.md`, each written from that lane's own header doc rather than from recall — the store as PRIMARY-not-a-cache under XDG_DATA_HOME, the render as the migration's inverse and lossy in membership only, the export as the durable record whose INV-1 is a round trip. Note the file had moved since filing: `roadmapsource` and `roadmapwrite` had been added, so the gap was these three, not the four the item's grep implied. This matters beyond tidiness — CLAUDE.md routes every session's orientation through this file, and `indie_review_partition` derives one review lane per entry, so three shipped subsystems were invisible to both.
 
-- 📋 [ANTS-3826] **Three specs cite testing.md for an mtime rule it does not contain.**
+- ✅ [ANTS-3826] **Three specs cite testing.md for an mtime rule it does not contain.**
   ANTS-3793 § 6 and ANTS-3808 § 6 both read "testing.md owns the
   mutation-harness rules, including mtime busting". Measured 2026-08-04:
   `grep -rni mtime docs/standards/testing.md` returns NOTHING. The
@@ -28425,6 +28427,7 @@ against current source before filing.
   **Layman:** Several design documents point at a standard for a rule that was never written into it.
   Kind: doc-fix.
   Source: in-session-2026-08-04 (found while grounding ANTS-3810 § 6).
+  Resolved (2026-08-15) by taking half (b), which the item called the better outcome: the rule now exists, so the two citations became TRUE rather than needing repair — half (a) turned out to be no edit at all. `docs/standards/testing.md` § Project-local rules gains the mtime-busting rule beside the must-fail-first recipe it protects: restoring a mutated source with a method that PRESERVES mtime (`shutil.copy2`, `cp -p`, `rsync -t`, untar) leaves ninja believing the object is current, so it skips the rebuild, the mutation survives into a green-linking binary, and the proof is vacuous — and the mutations accumulate across a sweep. It went in the PROJECT-LOCAL half, above the mirror divider, deliberately: the mechanism is ninja's, not language-agnostic, so it is not the global standard's to carry. Verified the `git revert` / `git stash` recipes already above it are safe (git stamps a fresh mtime), so the rule is scoped to hand-rolled harnesses, which is where it has bitten. `check-standard-mirrors` still reports 5 in sync.
 
 - 📋 [ANTS-3827] **The migration converts no relationships, though the model says it converts two types.**
   `roadmap-data-model.md` § 6's Migration column marks two of the six
@@ -35257,7 +35260,7 @@ defect from different angles.
   still unfollowable for an outside reader. Narrower than the filed problem and
   worth its own call — filed as ANTS-4138.
 
-- 📋 [ANTS-4134] **mcp-error-codes.md's format_mismatch row contradicts its own worked example.**
+- ✅ [ANTS-4134] **mcp-error-codes.md's format_mismatch row contradicts its own worked example.**
   The `unsupported_format` row defines its sibling as "`format_mismatch`,
   which says the **whole verb** cannot write the format". Its own worked
   example contradicts that in the same cell: on a pass-headings roadmap
@@ -35290,6 +35293,7 @@ defect from different angles.
   **Layman:** Our error-code rulebook defines a code one way, then gives an example that breaks its own definition. Two developers reading it will ship different error codes for the same situation.
   Kind: doc-fix.
   Source: in-session-2026-08-12 (ANTS-4129 review-contract loop 2).
+  Resolved (2026-08-15): the `unsupported_format` row's definition now states the boundary the item identified — the op's OUTPUT ARTIFACT, not the verb. It had read "narrower than `format_mismatch`, which says the whole verb cannot write the format", which its own worked example contradicted inside the same cell, since the shipped `format_mismatch` case is `create_section` on a file five sibling ops write happily. The discriminator was already sitting in the row's parenthetical; it is now the definition, with the old wording recorded as corrected so a reader who remembers it knows it changed. ALSO fixed the sibling: `format_mismatch`'s own row still said "a recognised format the verb can read but can't write", so repairing only one row would have moved the contradiction rather than removing it — both now name the artifact boundary and each points at the other.
 
 - ✅ [ANTS-4345] **`spec_lint`'s required-section check is silently off for this entire project, because our format standard carries no `<!-- required-sections -->` block.**
   Hit while authoring `docs/specs/ANTS-3716-cited-by-sweep.md` (2026-08-14).
@@ -36676,7 +36680,7 @@ that needs them.
   Lanes: remotecontrol, roadmapfoldin.
   Source: in-session-2026-07-26 (hit while writing ANTS-3638).
 
-- 📋 [ANTS-3641] **Repair the drifted `mcpprojection.cpp:28` citation in docs/specs/ANTS-2090.md.**
+- ✅ [ANTS-3641] **Repair the drifted `mcpprojection.cpp:28` citation in docs/specs/ANTS-2090.md.**
   docs/specs/ANTS-2090.md:69 reads "`compactEnvelope` (gated on
   `isFieldProjectionTool`, `mcpprojection.cpp:28`)". src/mcpprojection.cpp:28
   is today a blank line between two unrelated functions — the code moved and
@@ -36693,6 +36697,7 @@ that needs them.
   **Layman:** A design doc points at a line of code that has since moved, so it now points at an empty line. Fix the pointer.
   Kind: doc-fix.
   Source: in-session-2026-07-26 (found while speccing ANTS-3636).
+  Resolved (2026-08-15): the citation had drifted again since filing — `isFieldProjectionTool` is at `src/mcpprojection.cpp:65` now, not the `:28` the doc named nor the position it held in July. Re-pinning the number would have re-staled it, so the citation now names the SYMBOL and the file with no line number, per global `documentation.md` § 2.3. The sibling `isOffloadEligible` citation on the next line carried a bare `:45` and got the same treatment.
 
 - 📋 [ANTS-3642] **doc_citations: request-side `expect` map for scripted re-verification.**
   Deferred out of the ANTS-3636 spec, which substitutes an anchor-symbol
@@ -36739,7 +36744,7 @@ that needs them.
   Kind: implement.
   Source: in-session-2026-07-26 (ANTS-3636 spec, cold-eyes loop 1 deferral).
 
-- 📋 [ANTS-3644] **Fix the stale `mcpprojection` tool count in docs/subsystems.md.**
+- ✅ [ANTS-3644] **Fix the stale `mcpprojection` tool count in docs/subsystems.md.**
   docs/subsystems.md:85 describes `isFieldProjectionTool` as a
   "7-tool allowlist". The live set in src/mcpprojection.cpp:64-77 has 13
   entries (roadmap_query, changelog_query, project_layout, file_outline,
@@ -36751,6 +36756,7 @@ that needs them.
   **Layman:** A reference doc says a list holds 7 entries; it actually holds 13.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 3 lane C.
+  Resolved (2026-08-15): `docs/subsystems.md` said "7-tool allowlist"; the live predicate holds FOURTEEN entries — one more than the thirteen this item counted on 2026-07-26, because ANTS-3368 added `co_change_family` in between, which is the item's own argument made for it. Took its recommendation and dropped the count rather than re-pinning it: the entry now points at the predicate and says why no number is stated.
 
 - 📋 [ANTS-3645] **Document the token-cost table as a required MCP registration step.**
   docs/standards/mcp-tools.md has no mention of the per-verb token-cost

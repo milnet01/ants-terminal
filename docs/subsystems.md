@@ -130,8 +130,9 @@ Listed only where behavior isn't obvious from the name.
   changed files → `ctest -R` patterns via `tests/coverage-map.json`, with
   a basename heuristic + conservative full-suite fallback. Spec ANTS-1302.
 - `mcpprojection` (Qt6::Core) — `fields=` response projection for MCP
-  read tools; `projectFields` + `isFieldProjectionTool` (7-tool
-  allowlist). ANTS-1720.
+  read tools; `projectFields` + `isFieldProjectionTool` (read the
+  predicate for the current allowlist — it grows a verb at a time, and a
+  count stated here goes stale on the next addition). ANTS-1720.
 - `briefdispatch` (Qt6::Core, `ants_core_lib`) — shared dispatch-brief
   composer for the review-dialog family: `fenceBody` (4-backtick
   fence-hardening kernel), `inlineBodies`, `inlineRelevantSections`
@@ -301,6 +302,23 @@ Listed only where behavior isn't obvious from the name.
   `ants_core_lib`'s Widgets/Network/DBus surface. Owns the ONLY bullet
   grammar: `parseAntsV1Bullet()` (ANTS-3793) hands one bullet's worth of
   it to the store reader rather than letting that reader grow a copy.
+- `roadmapstore` (`ants_roadmapstore_lib`) — the store itself: engine,
+  location, schema and connection pragmas. It is PRIMARY, not a cache —
+  it lives under `XDG_DATA_HOME` (never a cache path), is created
+  `synchronous=FULL` and mode 0600, and its only rebuild path is the
+  export. Spec ANTS-3756.
+- `roadmaprender` (`ants_roadmapstore_lib`) — the inverse of the
+  migration: generates `ROADMAP.md` from the store at full fidelity, every
+  item in `roadmap-format.md` § 3.5 bullet form, so the generated file is
+  the file that used to be written by hand. Lossy in MEMBERSHIP only
+  (`internal` and `dropped` are excluded), never in detail. Qt6::Core +
+  Qt6::Sql only, so a headless publish path can call it. Spec ANTS-3758.
+- `roadmapexport` (`ants_roadmapstore_lib`) — the DURABLE RECORD: the
+  store is untracked and the published render is lossy, so the JSONL
+  export is the only complete copy that survives a lost disk. Reader and
+  writer live together because INV-1 is a round trip (export → rebuild →
+  re-export → byte-identical) and neither half is testable alone. Spec
+  ANTS-3761.
 - `roadmapsource` (`ants_roadmapstore_lib`) — the read seam: the same
   `BulletRecord`s a consumer would have parsed out of `ROADMAP.md`,
   sourced from the store instead. `bulletsFor()` dispatches on a project

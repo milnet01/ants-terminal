@@ -80,6 +80,25 @@ your tree. Both verified 2026-08-12.
 **Do not use `git checkout <ref> -- <file>` for either** — it silently
 overwrites uncommitted edits in that file.
 
+**A mutation harness must BUST THE MTIME when it restores a file.** Ninja
+decides what to rebuild from timestamps, so restoring a mutated source by a
+method that *preserves* the old mtime — Python's `shutil.copy2`, `cp -p`,
+`rsync -t`, restoring from a tar — leaves ninja believing the object file is
+current. It skips the rebuild, the mutation survives into a binary that links
+and runs green, and the must-fail-first proof above is vacuous: the run you
+read as "the fix restored it" never compiled the restored file. Worse, the
+mutations then ACCUMULATE across iterations of a sweep.
+
+Write the bytes back (Python `Path.write_text`, a plain `cp` with no `-p`, a
+shell redirect) rather than copying with attributes preserved. The `git
+revert` / `git stash` recipes above are already safe — git stamps a fresh
+mtime — so this fires on hand-rolled harnesses, which is where it has bitten.
+
+Recorded here rather than in the global standard because the mechanism is
+ninja's, and because it had no home at all: ANTS-3793 § 6 and ANTS-3808 § 6
+both cited `testing.md` for it while the word `mtime` appeared nowhere in the
+file (ANTS-3826).
+
 **Rebuild on both sides.** A bare `ctest` after restoring runs the binary
 from the reverted build. That is a false pass and it is indistinguishable
 from a real one. Global `languages/cpp.md`'s version of this recipe omits the
