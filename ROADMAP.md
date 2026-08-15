@@ -27393,7 +27393,7 @@ against current source before filing.
   rendered bullet repeats its own headline and every field -- blocks
   ANTS-3794).
 
-- 📋 [ANTS-3807] **Per-project migration prompts — a copy-paste brief the user can hand to each project's CC session at cutover.**
+- ✅ [ANTS-3807] **Per-project migration prompts — a copy-paste brief the user can hand to each project's CC session at cutover.**
   The migration is driven per project and the user runs it by handing a
   brief to that project's own CC session. Thirteen projects means the
   brief is written once or explained thirteen times, and an explained-each-
@@ -27439,6 +27439,7 @@ against current source before filing.
   command to name. Its `dry_run:true` mode is also what the brief should tell a
   session to run first — it reports the real run's counts and notes (allocated
   ids included, which is this item's second bullet) and rolls back.
+  Resolved (2026-08-15): `docs/roadmap-migration-briefs.md` — three groups (12 ready / 2 blocked on dialect / 2 done), a per-project facts table measured against the live corpus, and a copy-paste 7-step brief. Validated by a real run rather than by review: AI_Prompts was cut over with it the same day and went exactly as its row predicted (27 items, 0 orphaned, 0 ids allocated, re-run 0/27 unchanged, id-set difference 0 lost), in six calls. The run corrected two steps of the brief — step 6's id pattern matched the regex class `[0-9]` in prose, and step 3's gate-clearing instruction was unfollowable when the gate names the item being appended — and filed ANTS-4410 and ANTS-4411 for the two MCP defects behind them.
 
 - ✅ [ANTS-3808] **The migration and the render disagree about what `item.body` holds, so a rendered bullet repeats its own headline and every field.**
   Observed, not inferred — rendered out of a real store in the
@@ -33333,6 +33334,59 @@ finbreak re-verified it.
   Kind: enhancement.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (finbreak).
+
+- 📋 [ANTS-4410] **roadmap_migrate leaves store_high_water at 0, so every migrated project reports a false divergence.**
+  Measured on the AI_Prompts cutover (2026-08-15), immediately after a
+  clean migrate: 27 inserted, 0 orphaned, re-run dry run 0/27 unchanged.
+  The very next roadmap_query returned `store_high_water: 0` alongside
+  `file_highest_id: 29` and `file_ahead_of_store: true`.
+
+  The allocator is NOT affected — a dry-run append correctly offered
+  AIPR-0030, because the floor is max(counter, corpusHighWater) and the
+  corpus scan carries it. So this is a REPORTING defect: the witness
+  field the envelope publishes is never set by the import path.
+
+  Why it matters beyond cosmetics: `file_ahead_of_store` is the signal a
+  session uses to decide whether the store is stale and needs
+  re-importing. Reporting true on a just-migrated project trains the
+  reader to ignore the one field that would catch a real divergence —
+  which is exactly the failure that made every roadmap read stale on
+  this project before ANTS-4403.
+
+  Related to ANTS-4406 (the witness comparing an allocator mark against
+  a prose regex scan) but distinct: this is the import path not writing
+  the mark at all.
+  **Layman:** After importing a project's roadmap, the tool still says the file is ahead of the database — it never records how far the ids have got.
+  Kind: fix.
+  Source: in-session-2026-08-15 AI_Prompts cutover.
+
+- 📋 [ANTS-4411] **render_gate_unmet names the id being appended, so its remedy is unfollowable.**
+  Measured on the AI_Prompts cutover (2026-08-15). A `roadmap_log
+  op:append` with no `layman` refused:
+
+    code: render_gate_unmet
+    error: "the roadmap render refuses this project: 1 open item(s)
+            carry no Layman: line"
+    gate_failures: ["AIPR-0030"]
+
+  AIPR-0030 is the item the call was appending. It is not in the
+  roadmap, so a session following the documented remedy — fill the named
+  ids via `roadmap_log op:annotate` — searches for it, cannot find it,
+  and has no route forward. `docs/roadmap-migration-briefs.md` step 3
+  gives exactly that instruction.
+
+  Both halves of the envelope mislead. The prose says "open item(s)"
+  which reads as pre-existing, and the count folds the inbound item in
+  with any genuine pre-existing failures, so a caller cannot tell the
+  two apart.
+
+  Fix shape: distinguish the inbound item from the pre-existing set —
+  either refuse it with a distinct code (`layman_required`) naming the
+  missing field rather than an unallocated id, or split the envelope
+  into `gate_failures` (pre-existing) and an explicit inbound flag.
+  **Layman:** When a new roadmap entry is missing its plain-English line, the error tells you to go fix an entry number that does not exist yet.
+  Kind: fix.
+  Source: in-session-2026-08-15 AI_Prompts cutover.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

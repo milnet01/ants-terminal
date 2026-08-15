@@ -37,12 +37,19 @@ disappeared.
 
 | | Projects | What to do |
 |---|---|---|
-| **Ready** | AI_Prompts, Ants_Projects_Hub_Website, Contact_List, DOOM_Ants, Games_Hub, LocalWebServerManager, LottoTracker, MAME_Curator, Music_Production, OneUp, RetroArch, Rolodex, finbreak | Send the brief. 13 projects. |
+| **Ready** | Ants_Projects_Hub_Website, Contact_List, DOOM_Ants, Games_Hub, LocalWebServerManager, LottoTracker, MAME_Curator, Music_Production, OneUp, RetroArch, Rolodex, finbreak | Send the brief. 12 projects. |
 | **Blocked on dialect** | Vestige (GFM task lists), RetroDB (`#### Pass N.M` headings) | **Do not cut over.** Only the emoji-bullet form renders back today (`ANTS-3758 § 5`). Migrating them makes their reads store-backed with no way to write the file again. |
-| **Done** | Ants_Terminal | Migrated 2026-08-15. |
+| **Done** | Ants_Terminal, AI_Prompts | Migrated 2026-08-15. |
 
-That is where the plan's "remaining 13" comes from: 15 projects hold a
-roadmap, less the two whose dialect cannot round-trip.
+15 projects hold a roadmap, less the two whose dialect cannot round-trip,
+less the two already done.
+
+**AI_Prompts was the first project cut over by this brief, and the run is
+what corrected steps 3 and 6 above.** It went exactly as the table
+predicted — 27 items, 0 orphaned, 0 ids allocated, re-run 0/27 unchanged,
+and an id-set difference showing 0 lost. Total cost: six calls. Two Ants
+MCP defects surfaced and were filed rather than worked around
+([ANTS-4410], [ANTS-4411]); neither blocks a cutover.
 
 ---
 
@@ -55,7 +62,6 @@ store-backed write on that project until it is filled.
 
 | Project | Roadmap file | Prefix | Items | No id | Gate |
 |---|---|---|---|---|---|
-| AI_Prompts | `ROADMAP.md` | `AIPR` | 27 | 0 | 0 |
 | Ants_Projects_Hub_Website | `ROADMAP.md` | `APHW` | 9 | 0 | 0 |
 | Contact_List | `ROADMAP.md` | `CL` | 62 | 0 | 0 |
 | DOOM_Ants | `ROADMAP.md` | `DOOM` | 345 | 0 | 0 |
@@ -126,6 +132,11 @@ Steps:
    with a one-sentence plain-English `Layman:` line each, via
    `roadmap_log op:"annotate"`. Do not bulk-fill the whole roadmap.
 
+   **If a named id is not in the roadmap, it is the item your own call is
+   appending — pass `layman` on that call instead of hunting for it.**
+   The gate counts the inbound item and reports it as an "open item",
+   which reads as pre-existing. Filed as [ANTS-4411].
+
 4. Migrate for real:
       roadmap_migrate {caller_cwd: "<abs path>"}
    Record `items_inserted`, `items_orphaned`, `ids_allocated`.
@@ -138,11 +149,19 @@ Steps:
 
 6. Prove the render is lossless BEFORE you trust it. Note the id set,
    make any small `roadmap_log` write, then compare:
-      git show HEAD:<ROADMAP PATH> | grep -oE '\[[A-Za-z0-9_-]+-[0-9]+\]' | sort -u > /tmp/before.ids
-      grep -oE '\[[A-Za-z0-9_-]+-[0-9]+\]' <ROADMAP PATH> | sort -u > /tmp/after.ids
+      git show HEAD:<ROADMAP PATH> | grep -oE '\[[A-Za-z][A-Za-z0-9_]*-[0-9]+\]' | sort -u > /tmp/before.ids
+      grep -oE '\[[A-Za-z][A-Za-z0-9_]*-[0-9]+\]' <ROADMAP PATH> | sort -u > /tmp/after.ids
       comm -23 /tmp/before.ids /tmp/after.ids     # MUST be empty
    Ids GAINED are fine (allocated ids being written into the text). Any id
    LOST means stop and `git checkout` immediately.
+
+   **The prefix must start with a letter.** An earlier form of this
+   pattern allowed a leading digit, which matched the regex character
+   class `[0-9]` wherever a roadmap body quotes one — so the before-set
+   carried a phantom id. It was harmless here (a phantom appears on both
+   sides and cancels), but it inflates the counts and it would read as a
+   LOST id if the render ever rewrapped the line it sat on. Found on the
+   AI_Prompts cutover, which was this brief's first real run.
 
 7. Report back: the step-4 counts, the step-5 confirmation, and whether
    step 6 was empty.
