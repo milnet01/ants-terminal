@@ -108,6 +108,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`mutation_probe`'s green-baseline gate no longer passes when it cannot tell** (ANTS-4401)
+  `require_green_baseline` tested for red and read everything else as
+  green, so a baseline whose output could not be parsed, or that ran no
+  tests at all, satisfied it. Both now refuse with `baseline_unreadable`,
+  naming which of the two it hit.
+  **Layman:** A safety check meaning "stop if the tests are already
+  broken" quietly did nothing when it couldn't tell whether they were.
+
 - **spec_lint's skip hint no longer states a false cause on an empty walk** (ANTS-4080)
   A run that matched no document reported "no required-sections block was
   found", which is a claim about the format standard that the run never

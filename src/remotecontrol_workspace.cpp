@@ -1655,7 +1655,9 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                 QStringLiteral("mutation_probe: could not start \"%1\"")
                     .arg(argv.first()));
         const auto bc = MutationProbe::parseCounts(base.output);
-        if (base.timedOut || base.exitCode != 0) {
+        const auto verdict =
+            MutationProbe::judgeBaseline(base.timedOut, base.exitCode, bc);
+        if (verdict == MutationProbe::BaselineVerdict::NotGreen) {
             QJsonObject o2;
             o2[QStringLiteral("ok")]    = false;
             o2[QStringLiteral("code")]  = QStringLiteral("baseline_not_green");
@@ -1664,6 +1666,54 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                 "mutation result would be meaningless — a mutant \"dying\" "
                 "proves nothing when the suite was already failing. Fix the "
                 "suite first, or drop require_green_baseline to probe anyway.");
+            o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
+            o2[QStringLiteral("baseline_timed_out")] = base.timedOut;
+            o2[QStringLiteral("baseline_passed")]    = bc.passed;
+            o2[QStringLiteral("baseline_failed")]    = bc.failed;
+            return QJsonDocument(o2);
+        }
+        // ANTS-4401 — a zero exit code is not evidence of a green baseline,
+        // and this gate promised evidence. Two states reach here having failed
+        // nothing without having passed anything either:
+        //
+        //   -1 / -1  the output was unparsable. ANTS-4398 chose -1 over 0
+        //            deliberately — "a run whose output could not be read has
+        //            NOT said that nothing passed" — and then this guard read
+        //            that same value as not-red. So the one flag whose whole
+        //            job is to refuse a red suite stood down in precisely the
+        //            case where the verb does not know.
+        //    0 /  0  parsed, and nothing ran. A gtest binary with a filter
+        //            matching no test exits 0; so does an empty suite.
+        //
+        // Both are the three-silences shape the reporting session named: could
+        // not tell, did not fail, reads as a pass. A caller who asked to be
+        // gated on green is better served by a refusal naming the reason than
+        // by a batch whose premise was never checked — every mutant it then
+        // reports `killed` is unfalsifiable.
+        if (verdict != MutationProbe::BaselineVerdict::Green) {
+            const bool unreadable =
+                verdict == MutationProbe::BaselineVerdict::Unreadable;
+            QJsonObject o2;
+            o2[QStringLiteral("ok")]    = false;
+            o2[QStringLiteral("code")]  = QStringLiteral("baseline_unreadable");
+            o2[QStringLiteral("error")] =
+                (unreadable
+                     ? QStringLiteral(
+                           "mutation_probe: the baseline exited 0 but its "
+                           "output could not be parsed for pass/fail counts, "
+                           "so `require_green_baseline` has nothing to check. "
+                           "A run that could not be read has not said the "
+                           "suite is green. Point `test_command` at a runner "
+                           "whose summary this verb recognises (ctest, pytest "
+                           "or gtest), or drop require_green_baseline to probe "
+                           "anyway.")
+                     : QStringLiteral(
+                           "mutation_probe: the baseline ran no tests — 0 "
+                           "passed, 0 failed, exit 0. A suite that executes "
+                           "nothing cannot be green, and every mutant would "
+                           "then report `survived` for the wrong reason. "
+                           "Check the filter or the build, or drop "
+                           "require_green_baseline to probe anyway."));
             o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
             o2[QStringLiteral("baseline_timed_out")] = base.timedOut;
             o2[QStringLiteral("baseline_passed")]    = bc.passed;

@@ -33332,7 +33332,7 @@ finbreak re-verified it.
   Lanes: mcp, testing.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager), corroborated in-session.
 
-- 📋 [ANTS-4401] **`mutation_probe`'s `require_green_baseline` does not refuse when it CANNOT READ the baseline — unparsable output passes the gate.**
+- ✅ [ANTS-4401] **`mutation_probe`'s `require_green_baseline` does not refuse when it CANNOT READ the baseline — unparsable output passes the gate.**
   Hit 2026-08-15 running ANTS-3849's red-before-green proof. Called with
   `require_green_baseline:true` and a `test_command` whose runner output the
   parser could not read; the reply carried `baseline_passed:-1,
@@ -33352,6 +33352,7 @@ finbreak re-verified it.
   Kind: fix.
   Lanes: mcp, testing.
   Source: in-session-2026-08-15 (hit while proving ANTS-3849's test red).
+  Resolved (2026-08-15): the gate tested for RED and read everything else as green; it now tests for evidence of GREEN. Refuses `baseline_unreadable` on both silences, not only the one filed — unparsable counts (-1/-1, the case reported) and a run that executed nothing (0/0 with exit 0, which a gtest binary under a filter matching no test produces). Same code, two messages, because the remedies differ: fix the runner's output format vs fix the filter. The decision moved out of the verb into `MutationProbe::judgeBaseline(timedOut, exitCode, Counts)` so it is testable without a MainWindow; it also now treats a non-zero FAILURE count as red even on a zero exit, since the count is the more specific witness. Documented `baseline_unreadable` in mcp-error-codes.md, and added the row its sibling `baseline_not_green` had been missing since ANTS-4398. 2 tests (+1 covering the Green arm itself, without which every other assertion is satisfied by a function that always refuses).
 
 - ✅ [ANTS-4399] **`session_orient`'s `active_bullets` slice is capped at 20 with no prominence, so a session plans from the first 20 of 95 ordered by document position.**
   The fields are all present and correct — `count:20, total:95,

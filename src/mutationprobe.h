@@ -83,4 +83,22 @@ struct Counts {
 // both at -1 rather than guessing.
 Counts parseCounts(const QString &output);
 
+// ANTS-4401 — what `require_green_baseline` decides, as a pure function of
+// what the baseline run reported.
+//
+// It exists because the gate used to test for RED (timed out, or a non-zero
+// exit) and treat everything else as green. Two states are neither: an
+// unparsable summary, which ANTS-4398 deliberately reports as -1 rather than 0
+// because "a run whose output could not be read has NOT said that nothing
+// passed"; and a run that executed nothing, which a gtest binary under a
+// filter matching no test reports as 0/0 with exit 0. Both satisfied a gate
+// whose entire job is to refuse an unproven baseline.
+enum class BaselineVerdict {
+    Green,       // ran, passed something, failed nothing
+    NotGreen,    // timed out or exited non-zero
+    Unreadable,  // exit 0, counts unparsable (-1)
+    Empty,       // exit 0, parsed, nothing ran (0/0)
+};
+BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c);
+
 }  // namespace MutationProbe

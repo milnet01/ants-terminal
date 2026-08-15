@@ -139,3 +139,67 @@ TEST(MutationProbe, Inv3GuaranteesWired) {
         << "the refusal must say so, since a shell string is the natural "
            "thing a caller reaches for";
 }
+
+// ANTS-4401 — `require_green_baseline` must be gated on EVIDENCE of green,
+// not on the absence of red.
+//
+// Hit live on 2026-08-15 proving ANTS-3849's test red: the flag was set, the
+// runner's output was in a format parseCounts does not recognise, the reply
+// carried baseline_passed:-1 / baseline_failed:-1, and the batch ran anyway.
+// The mutant was genuinely killed that time, which is luck rather than
+// design — the gate whose whole job is to refuse an unproven baseline had
+// stood down in precisely the case where the verb does not know.
+TEST(MutationProbe, Ants4401BaselineGateNeedsEvidenceOfGreen) {
+    using V = MutationProbe::BaselineVerdict;
+    const auto judge = [](bool timedOut, int exit, int passed, int failed) {
+        MutationProbe::Counts c;
+        c.passed = passed;
+        c.failed = failed;
+        return MutationProbe::judgeBaseline(timedOut, exit, c);
+    };
+
+    // The two states this row was filed for. Both exit 0 and fail nothing,
+    // and both used to satisfy the gate.
+    EXPECT_EQ(judge(false, 0, -1, -1), V::Unreadable)
+        << "an unparsable summary is not a green baseline — -1 was chosen "
+           "over 0 precisely because the run did not say nothing passed";
+    EXPECT_EQ(judge(false, 0, 0, 0), V::Empty)
+        << "a run that executed nothing cannot be green; a gtest binary "
+           "under a filter matching no test exits 0";
+
+    // A HALF-parsed run is unreadable too. parseCounts fills the absent half
+    // with 0 only when it recognised the format, so a lone -1 reaching here
+    // means the format was not recognised at all.
+    EXPECT_EQ(judge(false, 0, 5, -1), V::Unreadable);
+    EXPECT_EQ(judge(false, 0, -1, 0), V::Unreadable);
+
+    // The pre-existing red arms are unchanged — this widens the gate, it does
+    // not move it.
+    EXPECT_EQ(judge(true,  0, 10, 0), V::NotGreen) << "timed out";
+    EXPECT_EQ(judge(false, 1, 10, 0), V::NotGreen) << "non-zero exit";
+    // A non-zero exit wins over the counts, and a non-zero failure count wins
+    // over a zero exit: the loudest evidence of red decides either way.
+    EXPECT_EQ(judge(false, 1, -1, -1), V::NotGreen);
+    EXPECT_EQ(judge(false, 0, 10, 2), V::NotGreen)
+        << "a runner that reports failures and exits 0 is still red";
+
+    // And the one state that IS green: it ran, something passed, nothing
+    // failed. Without this arm every assertion above is satisfied by a
+    // function that returns NotGreen unconditionally.
+    EXPECT_EQ(judge(false, 0, 42, 0), V::Green);
+    EXPECT_EQ(judge(false, 0, 1, 0), V::Green);
+}
+
+// The refusal must reach the wire, and must name which of the two silences it
+// hit — the remedies differ (fix the runner's output vs fix the filter).
+TEST(MutationProbe, Ants4401RefusalIsWiredAndDistinguishesTheTwoCauses) {
+    const std::string rc = ants_test::slurpRemoteControl();
+    EXPECT_NE(rc.find("baseline_unreadable"), std::string::npos)
+        << "the new refusal code must be emitted by the verb";
+    EXPECT_NE(rc.find("could not be parsed for pass/fail counts"),
+              std::string::npos)
+        << "the unparsable arm must say the counts could not be read";
+    EXPECT_NE(rc.find("ran no tests"), std::string::npos)
+        << "the empty arm must say nothing executed — pointing a caller at "
+           "their runner's output format would be the wrong repair";
+}

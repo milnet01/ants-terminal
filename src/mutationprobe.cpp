@@ -95,4 +95,18 @@ Counts parseCounts(const QString &output) {
     return c;
 }
 
+// ANTS-4401 — see mutationprobe.h. Ordered so the loudest evidence wins: a
+// non-zero exit is red whatever the counts say, and only then is the absence
+// of evidence separated from evidence of success.
+BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c) {
+    if (timedOut || exitCode != 0) return BaselineVerdict::NotGreen;
+    if (c.passed < 0 || c.failed < 0) return BaselineVerdict::Unreadable;
+    if (c.passed == 0 && c.failed == 0) return BaselineVerdict::Empty;
+    // A parsed run that failed something exited 0 only if the runner lies
+    // about its exit code — rare, and reported red rather than green, because
+    // the count is the more specific witness.
+    if (c.failed > 0) return BaselineVerdict::NotGreen;
+    return BaselineVerdict::Green;
+}
+
 }  // namespace MutationProbe
