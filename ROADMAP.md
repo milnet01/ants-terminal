@@ -26747,7 +26747,7 @@ against current source before filing.
   Kind: investigate.
   Source: in-session-2026-08-02, ANTS-3786 cold-eyes gate.
 
-- 📋 [ANTS-3789] **The wrapped-Status corpus figure is transcribed, so it has already drifted.**
+- ✅ [ANTS-3789] **The wrapped-Status corpus figure is transcribed, so it has already drifted.**
   `src/specparse.h`'s FieldExtent comment states "49 of 172 specs
   carrying a Status have a wrapped one", and ANTS-3785 quotes the same
   pair. `tools/spec-header-survey.py` now reports **50 of 173** — the
@@ -26766,6 +26766,7 @@ against current source before filing.
   **Layman:** A comment in the code quotes a count of documents that has since changed; it should point at the tool that measures it rather than writing the number down.
   Kind: doc-fix.
   Source: in-session-2026-08-02 (noticed while implementing ANTS-3786).
+  Resolved (2026-08-15): the figure is replaced by a citation of the tool at all four sites — `src/specparse.h`, `src/speclog.cpp`, `src/specparse.cpp` and ANTS-3785 § 2. The bullet's own numbers demonstrate the point better than the argument does: the code said 49 of 172, the bullet said 50 of 173 on 2026-08-02, and `tools/spec-header-survey.py` measures **65 of 190** today. Three values, one fact. The prose now states the shape of the claim (a wrapped Status is the common case) and names the command; where a number survives — ANTS-3785's worked example — it carries a measurement date and a re-run instruction beside it, which is the rung `documentation.md` asks for.
 
 - ✅ [ANTS-3793] **Roadmap consumer cutover — roadmap_query, roadmap_log and RoadmapDialog read and write the store.**
   Split out of ANTS-3758 so the render and the consumer cutover are
@@ -29524,7 +29525,7 @@ against current source before filing.
   Kind: implement.
   Source: ANTS-3781 spec § 5 (2026-08-07) — filed while scoping the store-side upgrade path..
 
-- 📋 [ANTS-3861] **test_blocker_taxonomy's ANTS_SRC_DIR fallback builds a doubled src/src/ path that can never exist.**
+- ✅ [ANTS-3861] **test_blocker_taxonomy's ANTS_SRC_DIR fallback builds a doubled src/src/ path that can never exist.**
   `tests/features/model_near_miss_ledger/test_blocker_taxonomy.cpp`'s
   findSourceFile() walks up from the working directory looking for
   `src/modelautoswitch.cpp`, then falls back to
@@ -29550,6 +29551,7 @@ against current source before filing.
   **Layman:** A test has a backup way of finding a source file, and the backup builds a wrong path — so if it ever has to use it, it fails confusingly instead of working.
   Kind: fix.
   Source: in-session-2026-08-07 — noticed while verifying ANTS-3781 § 4's claim about test_core's compile definitions..
+  Resolved (2026-08-15): dropped the extra `/src` segment. `ANTS_SRC_DIR` is `${CMAKE_SOURCE_DIR}/src` — the src dir itself — which is how this bundle's three other consumers read it, so the fallback was composing `<root>/src/src/modelautoswitch.cpp`. The comment now says why, because the defect is invisible by construction: the upward walk finds the file on every normal run, and the fallback fires only from a working directory outside the tree, which is precisely the case it exists for.
 
 - ✅ [ANTS-3862] **spec_lint reports 11 false invariant_id_gaps on ANTS-3782, which continues ANTS-3756's numbering rather than its own.**
   `spec_lint` on docs/specs/ANTS-3782-roadmap-section-provenance.md
@@ -30580,7 +30582,7 @@ against current source before filing.
   between the copies) and ANTS-4140 (this copy has never been gated
   against the global one; thirteen findings).
 
-- 📋 [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
+- ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
   roadmap-format.md § 3.9's, adopted as they stand; the name regex is
   deliberately tighter (see `archiveNameRx()`)." That was true while § 3.9
@@ -30594,6 +30596,7 @@ against current source before filing.
   **Layman:** A code comment says the code is stricter than the rulebook. The rulebook was fixed to match, so the comment now misleads anyone who reads it.
   Kind: doc-fix.
   Source: in-session-2026-08-09 (ANTS-4069 cold-eyes loop 3, dismissed finding).
+  Resolved (2026-08-15): comment-only, no behaviour. Verified both sides first — `archiveNameRx()` is `\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md\z` and roadmap-format.md § 3.9 now publishes `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.md$`, identical shapes. The comment now says the regex is § 3.9's adopted as it stands, and records what it used to claim and why that stopped being true, since it had already cost one cold reviewer a wrong conclusion about roadmap-data-model.md § 8.
 
 - ✅ [ANTS-4075] **Four migration notes claimed the live roadmap when they were about an archive.**
   Found while implementing ANTS-4065 Phase C. `makeItem()`

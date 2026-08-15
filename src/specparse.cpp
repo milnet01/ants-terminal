@@ -79,8 +79,10 @@ QJsonObject parseSpecBody(const QString &body) {
 
     // Metadata: the `**Status:**` / `**Kind:**` header fields. ANTS-3785 —
     // both may wrap onto continuation lines, so the extent rule owns where each
-    // one ends; matching a single line here truncated 49 of 172 specs' Status
-    // (ANTS-3672). Costs one split of the body, which this function is the only
+    // one ends; matching a single line here truncated the wrapped-Status
+    // majority (ANTS-3672) — `tools/spec-header-survey.py` measures the share,
+    // which is not transcribed here because it drifts on every new spec
+    // (ANTS-3789). Costs one split of the body, which this function is the only
     // caller of.
     const QStringList bodyLines = body.split(QLatin1Char('\n'));
     const FieldExtent statusExtent = headerField(bodyLines, QStringLiteral("Status"));

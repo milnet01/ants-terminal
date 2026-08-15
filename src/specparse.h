@@ -18,7 +18,12 @@ namespace SpecParse {
 //
 // A header field's value MAY wrap: docs/standards/specs.md § 3.2 tells authors
 // to append progress to Status inline, and the corpus hard-wraps at ~80
-// columns, so 49 of 172 specs carrying a Status have a wrapped one. Modelling
+// columns, so a WRAPPED Status is the common case rather than the exception.
+// ANTS-3789 — the share is cited as a tool, never transcribed: run
+// `python3 tools/spec-header-survey.py`. The figure here read "49 of 172" and
+// was already wrong when written, because it drifts on every new spec; it
+// measured 65 of 190 on 2026-08-15. A number nobody can re-derive is a claim
+// with an expiry date nobody can see. Modelling
 // the field as a single line is what made the reader truncate it (ANTS-3672)
 // and the writer orphan its continuations (ANTS-3785).
 struct FieldExtent {

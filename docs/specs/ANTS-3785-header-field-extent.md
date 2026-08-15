@@ -49,8 +49,8 @@ does continuously, this spec's own arrival having moved the denominator:
 
 ```sh
 python3 tools/spec-header-survey.py docs/specs
-# wrapped Status: 49 of 172
-# wrapped Kind: 1 of 149
+# wrapped Status: 65 of 190      <- measured 2026-08-15; RE-RUN, do not trust
+# wrapped Kind: 1 of 167         <- these drift on every new spec (ANTS-3789)
 # first field inside a fence: 0
 # fence opened inside a header block: 0
 # orphaned-continuation signature: 0

@@ -22,7 +22,14 @@ QString findSourceFile() {
     }
     // Fall back to the CMake-injected source dir if defined.
 #ifdef ANTS_SRC_DIR
-    return QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/src/modelautoswitch.cpp");
+    // ANTS-3861 — ANTS_SRC_DIR is `${CMAKE_SOURCE_DIR}/src`, the src dir
+    // ITSELF, as this bundle's three other consumers read it. The extra
+    // `/src` segment composed `<root>/src/src/…`, a path that cannot exist —
+    // and it was invisible because the upward walk above finds the file on
+    // every normal run. The fallback fires only from a working directory
+    // outside the tree, which is precisely the case it was added for, so the
+    // safety net had a hole exactly where it was needed.
+    return QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/modelautoswitch.cpp");
 #else
     return QString();
 #endif

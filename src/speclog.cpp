@@ -144,7 +144,9 @@ EditResult setStatus(const QString &content, const QString &newStatus,
     QStringList lines = toLines(content, ewn);
 
     // ANTS-3785 — replace the field's WHOLE extent, not just its first line.
-    // A Status that wraps is the common case (49 of 172 specs), and rewriting
+    // A Status that wraps is the common case — `tools/spec-header-survey.py`
+    // measures the share; it is deliberately not transcribed here (ANTS-3789).
+    // Rewriting
     // only the opener left the continuations behind as an orphaned paragraph
     // while still reporting success. SpecParse owns where a field ends so the
     // reader and this writer cannot disagree about it.

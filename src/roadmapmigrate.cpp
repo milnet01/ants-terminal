@@ -759,9 +759,17 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
         disc.sources.append(live);
     }
 
-    // 2. Archives under <root>/docs/roadmap/ — ANTS-3766 § 2.2. The directory
-    // and the descending sort are roadmap-format.md § 3.9's, adopted as they
-    // stand; the name regex is deliberately tighter (see archiveNameRx()).
+    // 2. Archives under <root>/docs/roadmap/ — ANTS-3766 § 2.2. The directory,
+    // the descending sort AND the name regex are roadmap-format.md § 3.9's,
+    // adopted as they stand.
+    //
+    // ANTS-4074 — this read "the name regex is deliberately tighter", which
+    // was true only while § 3.9 published `^[0-9]+\.[0-9]+\.md$` (accepting
+    // `00.07.md` while the prose beside it forbade zero-padding). The ANTS-4069
+    // gate corrected the standard to `archiveNameRx()`'s own shape, so the two
+    // agree exactly and the divergence the comment described is gone. It had
+    // already misled one cold reviewer into concluding roadmap-data-model.md
+    // § 8 was false; the comment was.
     const QFileInfo archiveDir(dir.filePath(QStringLiteral("docs/roadmap")));
     if (archiveDir.exists()) {
         if (!archiveDir.isDir() || !archiveDir.isReadable()) {
