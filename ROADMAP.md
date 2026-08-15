@@ -41596,6 +41596,50 @@ here.)
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (hit while recording the cross-session feedback batch).
 
+- 📋 [ANTS-4402] **The same store divergence has a READ side, and it is silent: `roadmap_query` serves the store while echoing `ROADMAP.md` as its path, so every hand edit is invisible.**
+  ANTS-4141 documents the WRITE side and prescribes the workaround this
+  project has followed since — "make roadmap edits BY HAND". ANTS-3793 cut
+  the reads over to the store (`roadmapsource.h`: "The store has been primary
+  since ANTS-3756 … until this file nothing READ it: every consumer parsed
+  ROADMAP.md, so the store was a write-only copy that drifted the moment
+  anyone edited the file"). Both decisions are individually defensible and
+  together they mean **a hand edit lands in a file no reader reads**.
+
+  Measured 2026-08-15, three shapes, all against a committed working tree:
+  a hand-filed bullet is UNREACHABLE — `roadmap_query ids:["ANTS-4401"]`
+  returns it in `missing_ids` minutes after the commit; a hand status flip is
+  WRONG — ANTS-3716 is `✅` in the file and reports `📋`, and ANTS-3719 is `✅`
+  in the file too; and hand-added body text is ABSENT — a progress note
+  appended to ANTS-3849 does not appear, with the elision marker showing the
+  tail, so truncation is not hiding it. Same for ANTS-3747, whose headline was
+  rewritten and whose detector 3 was closed: the verb still serves the
+  superseded text.
+
+  **Why this outranks the write side: the write announces itself and the read
+  does not.** A bad render produces a +5,618/−4,121 diff nobody can miss. A
+  stale read just hands you last month's roadmap, correctly formatted, with
+  `ok:true` and the right `path`. Nothing in the envelope says which backend
+  answered.
+
+  Cost, observed rather than argued: this session was handed a briefing naming
+  ANTS-3715/3716/3717/3719 and ANTS-3747 as untouched spec-scale work needing
+  `/write-spec`. Against the FILE, two of those shipped, one is closed by
+  measurement, one is superseded and one is blocked on a corpus. Every one of
+  those closures was recorded by a previous session, by hand, and was
+  therefore invisible to the verb that briefed this one. `session_orient`
+  embeds `roadmap_query`, so the staleness is served at session bootstrap.
+
+  Smallest honest fix, and it is not the migration: make the backend VISIBLE.
+  Echo `source:"store"|"markdown"` on every roadmap read, and where the store
+  is primary, compare its `high_water` against the file's highest id and set a
+  `file_ahead_of_store` warning with both numbers. That converts a silent
+  wrong answer into a loud one and costs one stat plus one query. Reconciling
+  the two stores is ANTS-4141's job and needs the render fixed first.
+  **Layman:** Roadmap edits made by hand are written to a file the tools no longer read, so the tools keep reporting the old roadmap and never say they might be out of date.
+  Kind: fix.
+  Lanes: mcp, roadmap.
+  Source: in-session-2026-08-15 (hit while acting on a briefing the defect had made stale).
+
 - ✅ [ANTS-4142] **A migration re-run aborted on an id the store and the file both claimed, and both halves of why are fixed.**
   ANTS-4141 called the collision before it happened — "this bullet's own id
   was taken by hand from the counter and may already exist in the store".
