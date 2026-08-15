@@ -31566,8 +31566,12 @@ collision are different strengths of evidence.
   merely MENTIONS a higher id raises the floor past it**, and the next batch
   legitimately starts above. That also explains "only the fourth of four
   batches": only that one happened to cite a higher id.
-  Reproduced in a test — a body citing ANTS-9150 against a counter of 9100
-  makes the next batch start at ANTS-9151.
+  Reproduced in a test — a body citing id 9150 against a counter of 9100
+  makes the next batch start at 9151. Those two ids are deliberately
+  written without the project prefix: spelled in full they are matched by
+  the very corpus scan this paragraph describes, and they had raised this
+  project's own allocation floor from 4405 to 9152 — found and corrected
+  2026-08-15, by which time nothing had been filed above the floor.
   The safety property stays as-is: reissuing a live id is far worse than a
   gap, and § 3.5.1 already makes ids opaque. What ships is the explanation —
   `counter_floor`, `counter_file_value` and a `counter_floor_reason` naming
