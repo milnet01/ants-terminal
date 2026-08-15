@@ -359,22 +359,16 @@ broken.
 
 ## 9. Tests are code
 
-`coding.md` applies to them: named for what they mean, no duplication
-past the third repetition, no dead branches, no cleverness that costs
-legibility.
+`coding.md` applies to them: named for what they mean, no dead branches,
+no cleverness that costs legibility.
 
 The one place tests differ: **the Rule of Three does not apply inside a
 test body.** Extract only where the duplicated block is itself the thing
 under test, or where a change to it would have to be made identically in
-every copy to stay correct — never merely because it appears a fourth
-time. Stated 2026-08-14 (ROADMAP CFG-0108), because §9 imports a hard
-numeric threshold from `coding.md` and then softens it three lines later
-with "often", leaving a conformer holding a fourth near-identical
-assertion block unable to tell which clause wins. **A little duplication
-in a test is better than a helper**, because a test should be readable in
-one place
-without following a chain of abstractions to find out what it actually
-asserts.
+every copy to stay correct — never merely because it repeats. Stated
+2026-08-14 (ROADMAP CFG-0108). **A little duplication in a test is better
+than a helper**, because a test should be readable in one place without
+following a chain of abstractions to find out what it actually asserts.
 
 ## 10. Anti-patterns
 
@@ -415,4 +409,5 @@ enforces has to be understood to survive.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
 | 1 | 2026-08-14 | 1, cold — **first gate ever**. Packet carried `spec-format.md` § 3.7 and `coding.md` § 1.2 | 1 | 1 | 1 | n/a | **Three verified, three fixed.** **The scope line excluded most of what the document governs:** *"Governs `Kind: test`, plus the regression-test follow-through for `fix`, `audit-fix` and `review-fix`"* — while § 1 binds *"every change that ships behaviour"* and § 8 requires a conformance test of *"every new feature"*. A conformer on a `Kind: implement` item read line 15, concluded this standard did not govern them, and shipped untested while § 8 recorded them in breach. Now scoped by change type rather than by Kind. **§ 9 imports `coding.md`'s Rule of Three and softens it three lines later** with *"a little duplication in a test is often better than a helper"* and no bound, so a conformer holding a fourth near-identical block could not tell which clause wins. The Rule of Three is now stated as not applying inside a test body, with the real test given. **Q1: *"the test runner, on every push"*** asserts a CI trigger § 1 never requires, on a standard that governs projects with no pipeline — now `Partial:`. **One finding was fixed in `spec-format.md` instead:** § 4 here requires a withdrawn invariant carry the version and reason, and § 3.7 there, which owns the form, had no slot for either. |
+| 2 | 2026-08-15 | 3, cold — packet carried `coding.md` § 1.3 verbatim, `spec-format.md` § 3.7, the full contents of `languages/cpp.md` § Tests and `python.md` § Tests, and `qt.md`'s headings | 0 | 1 | 0 | n/a | **One verified, one fixed; three dismissed.** **All three lanes independently found the same defect**, which is the strongest signal this document has produced: § 9 imported `coding.md`'s Rule of Three as *"no duplication past the third repetition"* while stating four lines below that **the Rule of Three does not apply inside a test body**. A conformer holding a fourth near-identical assertion block extracts a helper under the first clause and leaves all four under the second. **It is loop 1's own collateral** — loop 1 added the carve-out and did not delete the clause the carve-out makes wrong. The same clause was **also off by one**: § 1.3 extracts *on* the third call-site, while *"past the third repetition"* permits three and fires at the fourth. One passage, one wrong thing, so the two were merged. **Fixed by deletion**, per 4a-min: the numeric clause goes, *"a fourth time"* becomes *"it repeats"*, and the rationale describing the *"often"* wording that loop 1 had already removed goes with it. § 9 is 13 lines where it was 18. **Three dismissed, with reasons.** Two claimed § 2 and § 6 misdescribe `languages/<name>.md` — but Qt is a framework rather than a language, `cpp.md` § Tests carries the Qt spelling by name, and `python.md`'s pointer to `cpp.md` for the fix-removal recipe is `documentation.md` § 2.1's correct shape; a third lane checked the same delegation independently and found it sound. One Q3 held that § 4 never states the invariant id form — `agents/test-writer.md`:73 states *"numbered `INV-N`"*, this machine's one feature contract uses it, and § 4 already points at § 3.7, so nothing is invented. **Two open questions resolved clean and are not counted:** `feature` is a real `Kind` (`roadmap-format.md`:673, an alias for implement), and *"third repetition"* occurs exactly twice in the whole standards set, so the off-by-one was the document's rather than a lane's. **One packet defect of my own**, reported by a lane: I recorded `qt.md`'s test content as living in § Idioms, and it has none anywhere in the file. |
 <!-- MIRROR END -->
