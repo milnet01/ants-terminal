@@ -30,6 +30,11 @@ ID_DASHED = re.compile(r"\[(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\
 # IDs to a human but do NOT match the grammar above. Counted separately so the
 # gap stays visible rather than being silently absorbed.
 ID_ANY = re.compile(r"\[(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*?-?\d+\]")
+# ANTS-3770 - any leading bracketed token, recognised as an id or not. Mirrors
+# the reader's rxLeadToken: what makes a bullet an ITEM is the bold headline
+# after the token, and refusing to look past a MALFORMED token is what made
+# this scan under-count.
+ID_LEAD_TOKEN = re.compile(r"\[[^\]]{1,64}\]")
 
 # roadmap-format.md § 3.5.3's 21-value enum.
 CANONICAL_KINDS = {
@@ -210,7 +215,19 @@ def survey(path):
 
         after = (rest[1:] if status else rest[3:]).lstrip()
         dashed, anyid = ID_DASHED.match(after), ID_ANY.match(after)
-        tail = after[(dashed or anyid).end():].lstrip() if (dashed or anyid) else after
+        # ANTS-3770 — the headline test must see past ANY leading `[token]`,
+        # not only a RECOGNISED id. The reader's own rxLeadToken strips the
+        # bracketed token whatever is inside it, so a bullet carrying an
+        # unrecognised token AND a bold headline is an item by
+        # roadmap-data-model.md 7.2 — and this scan was failing it into
+        # `status_no_id_no_headline`, i.e. counting it as detail belonging to
+        # the item above.
+        #
+        # `tail` feeds ONLY the headline discriminator below. The id
+        # classification still keys on `dashed` / `anyid`, so an unrecognised
+        # token stays off-grammar rather than being promoted to an id.
+        lead = (dashed or anyid) or ID_LEAD_TOKEN.match(after)
+        tail = after[lead.end():].lstrip() if lead else after
 
         # A status bullet with neither an ID nor a bold headline is not an
         # item: it is either detail belonging to the item above it, or a

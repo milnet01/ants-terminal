@@ -3,6 +3,8 @@
 
 #include "passheadingwrite.h"
 
+#include "roadmapparse.h"   // ANTS-3768 — the format's status vocabulary
+
 #include <QRegularExpression>
 #include <QStringList>
 #include <algorithm>
@@ -11,16 +13,12 @@ namespace PassHeadingWrite {
 
 namespace {
 
-// The four canonical status glyphs (UTF-8 byte sequences, matching the
-// reader). ANTS-3764 moved the reader to roadmapparse.{h,cpp} and exported
-// the same four as RoadmapParse::kEmojiDone / kEmojiPlanned /
-// kEmojiInProgress / kEmojiConsidered, so these are now a duplicate of a
-// header this file could include — see ANTS-3768.
-QString glyphTodo()       { return QString::fromUtf8("\xF0\x9F\x93\x8B"); } // 📋
-QString glyphInProgress() { return QString::fromUtf8("\xF0\x9F\x9A\xA7"); } // 🚧
-QString glyphDone()       { return QString::fromUtf8("\xE2\x9C\x85");     } // ✅
-QString glyphDeferred()   { return QString::fromUtf8("\xF0\x9F\x92\xAD"); } // 💭
-
+// ANTS-3768 — the four status glyphs come from RoadmapParse, the reader's own
+// header, rather than being spelled again here. This file used to define them
+// as UTF-8 byte escapes under a comment promising they matched the reader, and
+// that comment was the tell: a hand-maintained "kept in step with" note is
+// exactly what a shared constant makes unnecessary. One definition of the
+// format's vocabulary, so the writer cannot drift from the reader silently.
 // `#### Pass <major>.<minor>[.<sub>] (meta) <tail>` — MUST stay in sync
 // with the reader's rxHead (roadmapdialog.cpp parsePassHeadingBullets,
 // ANTS-1530/2035/2039). The write-side INV-12 round-trip test is the
@@ -116,10 +114,15 @@ QString passStatusKeyword(const QString &roadmapStatus) {
 }
 
 QString passStatusEmoji(const QString &keyword) {
-    if (keyword == QStringLiteral("todo"))        return glyphTodo();
-    if (keyword == QStringLiteral("in-progress")) return glyphInProgress();
-    if (keyword == QStringLiteral("done"))        return glyphDone();
-    if (keyword == QStringLiteral("deferred"))    return glyphDeferred();
+    // The constants are `const char *`; the callers here want QString.
+    if (keyword == QStringLiteral("todo"))
+        return QString::fromUtf8(RoadmapParse::kEmojiPlanned);
+    if (keyword == QStringLiteral("in-progress"))
+        return QString::fromUtf8(RoadmapParse::kEmojiInProgress);
+    if (keyword == QStringLiteral("done"))
+        return QString::fromUtf8(RoadmapParse::kEmojiDone);
+    if (keyword == QStringLiteral("deferred"))
+        return QString::fromUtf8(RoadmapParse::kEmojiConsidered);
     return QString();
 }
 

@@ -26230,7 +26230,7 @@ against current source before filing.
   § 2.3 constrains how a write is stored, never that it can happen.
   This unblocks ANTS-3765.
 
-- 📋 [ANTS-3768] **passheadingwrite.cpp duplicates the four status emoji ANTS-3764 just exported.**
+- ✅ [ANTS-3768] **passheadingwrite.cpp duplicates the four status emoji ANTS-3764 just exported.**
   Surfaced, not fixed — out of ANTS-3764's lane (rule 11), and the
   duplication is pre-existing rather than something that extraction
   introduced.
@@ -26254,6 +26254,7 @@ against current source before filing.
   **Layman:** Two files now spell out the same four status symbols; one of them can just borrow the other's.
   Kind: refactor.
   Source: ANTS-3764 extraction, in-lane surfacing 2026-07-31.
+  Resolved (2026-08-15): `passheadingwrite.cpp` includes `roadmapparse.h` and its four `glyph*()` helpers are gone, with the call sites wrapping the `const char *` constants in `QString::fromUtf8`. The comment that used to promise the glyphs "matched the reader" is deleted rather than reworded — a hand-maintained kept-in-step note is exactly what a shared constant makes unnecessary, and it was the tell that the duplication was there.
 
 - ✅ [ANTS-3769] **Seven ROADMAP bullets carry a malformed id (`[ANTS-119&]`, `[ANTS-121&]`) and are unreachable by id.**
   Found by running ANTS-3764's new leading-slot token matcher over the whole
@@ -26295,7 +26296,7 @@ against current source before filing.
   The durable prevention is ANTS-3771: nothing refused these ids at write
   time, which is how a literal & reached seven bullets in the first place.
 
-- 📋 [ANTS-3770] **roadmap-corpus-survey.py under-counts a bullet whose leading token is unrecognised.**
+- ✅ [ANTS-3770] **roadmap-corpus-survey.py under-counts a bullet whose leading token is unrecognised.**
   Found by running the survey as ANTS-3757 INV-2's parity oracle. Its
   item test strips a *recognised* id token and then asks whether the
   rest starts with `**`; a bullet carrying an unrecognised leading
@@ -26311,6 +26312,9 @@ against current source before filing.
   **Layman:** The script that counts what is in every roadmap misses a handful of items whose id has a typo in it.
   Kind: fix.
   Source: in-session-2026-07-31 (ANTS-3757 implementation).
+  Resolved (2026-08-15): the headline discriminator now looks past ANY leading `[token]` via a new `ID_LEAD_TOKEN`, mirroring the reader's `rxLeadToken`, instead of only past a RECOGNISED id. The id classification is untouched and still keys on `ID_DASHED` / `ID_ANY`, so an unrecognised token stays off-grammar rather than being promoted to an id — only the item-vs-detail test changed.
+
+  Verdict-diffed rather than asserted, and the diff on THIS project is empty: **ANTS-3769 has shipped**, so the seven malformed-id bullets it names were repaired and the shape is extinct here (measured: 0 bullets of that shape, item count 1638 before and after). Proved the fix on a fixture carrying two `[ANTS-119&]`-style bullets instead — 1 item before, 3 after, with the `Done — ...` legend line still correctly excluded, so exactly the two malformed bullets moved and nothing else did. The survey is a cross-PROJECT corpus tool, so the fix still matters for any project that has not had its ANTS-3769.
 
 - 📋 [ANTS-3771] **Declare each project's id format in .ants/project.json so the reader stops guessing.**
   Every id rule in the reader today is a HEURISTIC inferred from the text,
@@ -28295,6 +28299,13 @@ against current source before filing.
   **Layman:** The roadmap database exposes a raw back door that lets code bypass the safety checks built around it.
   Kind: security.
   Source: ANTS-3793 store-surface review (2026-08-04) — noticed while mapping the read surface..
+  Progress (2026-08-15) — callers enumerated, as the bullet asks, and the result is that this is BLOCKED on ANTS-3816 rather than ready.
+
+  `db()` has exactly three production call sites, all in `src/roadmapexport.cpp` (678, 746, 794), plus a large number in `tests/features/roadmap_store_schema/`. The test callers are legitimate and should stay: asserting the SCHEMA is precisely the job raw SQL is for, and routing them through the typed surface would make them assert the surface instead of the thing under it.
+
+  So the narrowing turns entirely on the three export sites, and they are the one caller a typed reader does not yet serve — the export streams the whole store, which is exactly ANTS-3816's "batched full-item reader and cheap size aggregate". Until that lands there is nothing to give them, and making the accessor private today would either break the export or need a `friend`, which is the same hole with a narrower name.
+
+  Two things worth recording so the next session does not re-derive them. Constness buys nothing here: `QSqlQuery` takes a non-const `QSqlDatabase`, and two of the three sites already take a COPY (`QSqlDatabase db = store.db()`), which shares the same connection — so a `const &` accessor would not close the hole. And the honest sequencing is ANTS-3816 first, then this item's narrowing becomes a small mechanical change to three call sites plus an access-specifier move.
 
 - 📋 [ANTS-3820] **A dropped item has no markdown form, and nothing asserts that the render never tries.**
   Verified 2026-08-04, and the round trip is worse than "no glyph":
