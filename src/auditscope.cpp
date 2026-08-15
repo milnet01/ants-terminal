@@ -2,6 +2,7 @@
 
 #include "auditscope.h"
 
+#include <QFileInfo>
 #include <QProcess>
 #include <QSet>
 
@@ -236,8 +237,27 @@ QStringList enumerateSourceFiles(const QString &canonProject) {
     // pure-helpers region stays git-free (audit_run_since_last_run INV-9).
     // `git ls-files` returns one project-relative path per line with no
     // leading whitespace, so the trimming runGit is correct here.
-    const QString out = runGit(canonProject, {QStringLiteral("ls-files"),
-                                              QStringLiteral("src/")});
+    //
+    // ANTS-3741 — the pathspec was hardcoded `src/`, so a project that keeps
+    // its code anywhere else (DOOM Ants in `linuxdoom-1.10/`, Fin Break flat
+    // at the root) enumerated NOTHING. `runAudit` then falls through
+    // `perToolPaths[tool] = safe.isEmpty() ? req.paths : safe` to an empty
+    // list, so every file-scoped tool reverted to its own whole-tree walk and
+    // `changed_files_count` was recorded as 0 — an envelope saying the
+    // opposite of what happened, on a run that had in fact scanned everything.
+    // It also silently broke the one thing `scope:"full"` was added for
+    // (ANTS-2015): giving clazy / clang-tidy real source positionals.
+    //
+    // Same detection ANTS-1456 already uses for cppcheck's own argv
+    // (`srcRoot` in auditrunner.cpp), which this enumerator never got. An
+    // empty pathspec means "the whole tracked tree" to git, which is the
+    // correct answer for a flat layout; `filterForTool` stays the thing that
+    // narrows it by language.
+    const bool hasSrcDir =
+        QFileInfo(canonProject + QLatin1String("/src")).isDir();
+    QStringList args{QStringLiteral("ls-files")};
+    if (hasSrcDir) args << QStringLiteral("src/");
+    const QString out = runGit(canonProject, args);
     return out.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
 }
 

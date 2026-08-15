@@ -24234,7 +24234,7 @@ against current source before filing.
   excluded, cap flagged, absent from brief text) + 3 in markdownscan
   (INV-12/INV-13, added to its spec.md). Full suite 3084/3084 green.
 
-- 📋 [ANTS-3741] **audit_run scope:"full" enumerates only `src/`, so a flat-layout project gets an empty file list and a misleading changed_files_count:0.**
+- ✅ [ANTS-3741] **audit_run scope:"full" enumerates only `src/`, so a flat-layout project gets an empty file list and a misleading changed_files_count:0.**
   VERIFIED 2026-07-30 by reading the code, not inferred.
   `AuditScope::enumerateSourceFiles` (src/auditscope.cpp) is
   `git ls-files src/`, hardcoded. On a project with no `src/` directory
@@ -24264,6 +24264,13 @@ against current source before filing.
   **Layman:** On a project that does not keep its code in a folder called "src", the "audit everything" mode quietly hands the tools no file list and reports that it looked at zero files.
   Kind: fix.
   Source: in-session-2026-07-30 (found while scoping ANTS-3710).
+  Resolved (2026-08-15): `AuditScope::enumerateSourceFiles` now detects `src/` the same way ANTS-1456 already did for cppcheck's own argv, and passes NO pathspec when it is absent — an empty pathspec means "the whole tracked tree" to git, which is the right answer for a flat layout. `filterForTool` stays the thing that narrows by language, exactly as the item proposed.
+
+  Test: `tests/features/audit_scope_flat_layout/` (new, wired into `test_claude`), two invariants against real temp git repos. INV-1 is the regression — a project with no `src/` (fixture mirrors DOOM Ants' `linuxdoom-1.10/` plus a root `main.c`) must not enumerate zero files. INV-2 is the guard on the other side: a project WITH `src/` must still narrow to it, because widening that case would drag vendored trees into every full audit. Proven by mutation: forcing `hasSrcDir = true` restores the pre-fix behaviour and reddens INV-1 alone, leaving INV-2 green — the right discrimination.
+
+  The test's git helpers strip `GIT_DIR` / `GIT_WORK_TREE` / `GIT_INDEX_FILE` and pin `GIT_CONFIG_GLOBAL` / `GIT_CONFIG_SYSTEM` to /dev/null. The existing git-fixture tests do not, which is ANTS-3841 (still open) — a new test should not be written carrying a hazard that is already filed, so this one closes it on its own fixtures rather than inheriting it. Suite 3523/3523.
+
+  Not fixed here, and still true: the second consequence in the body — `changed_files_count:0` on a run that scanned everything — follows from the empty list and is fixed by this, but the interaction with ANTS-3710 that the body notes (on a flat project the exclusions must ride on each tool's native flags, since there is no positional list to filter) is untouched and remains that item's.
 
 - ✅ [ANTS-3743] **Four proposed debt-sweep detectors, split out of ANTS-3707's envelope fix.**
   ANTS-3707 shipped the envelope half (detectors_by_category) on

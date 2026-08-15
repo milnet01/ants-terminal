@@ -1840,6 +1840,7 @@ if(ANTS_TESTS)
                 tests/features/audit_run_cache/test_audit_run_cache.cpp
                 # ANTS-1504 audit_run since-last-run scope.
                 tests/features/audit_run_since_last_run/test_audit_run_since_last_run.cpp
+                tests/features/audit_scope_flat_layout/test_audit_scope_flat_layout.cpp
                 # ANTS-1870 audit_run since-last-run findings delta.
                 tests/features/audit_run_delta/test_audit_run_delta.cpp
                 # ANTS-2045 workspace_search multi-word phrase hint.
