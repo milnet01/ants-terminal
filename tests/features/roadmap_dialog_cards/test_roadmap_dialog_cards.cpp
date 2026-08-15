@@ -7,6 +7,12 @@
 //
 // Exit 0 = all invariants hold.
 
+#include <QTextTable>
+#include <QTextFrame>
+#include <QTextCursor>
+#include <QAbstractTextDocumentLayout>
+#include <QList>
+#include <functional>
 #include "roadmapdialog.h"
 
 #include <QSet>
@@ -756,4 +762,122 @@ static int runMain(int argc, char **argv) {
 
 TEST(RoadmapDialogCards, Main) {
     ASSERT_EQ(0, runMain(0, nullptr));
+}
+
+// ANTS-3762 — every section's card table obeys ONE column grid.
+//
+// The defect: each section renders its own `table.rm-cards`, so Qt's
+// auto-layout sizes each table from that section's content. The state, kind
+// and id columns land somewhere different in every group, and reading down
+// the list means re-finding each field on every row. Worst case is a row with
+// no kind: the cell collapses to nothing and the headline slides left, which
+// is how one group shows three different text left-edges.
+//
+// This drives the SAME static the dialog calls, not a copy of its logic. The
+// control half matters as much as the assertion: it proves the grid is doing
+// the work, because Qt silently ignores `table-layout:fixed` and a CSS `width`
+// on a `td` (measured 2026-08-15) — so a stylesheet "fix" would leave this
+// test green-looking while changing nothing on screen.
+namespace {
+
+using RD = RoadmapDialog;
+
+QList<QTextTable *> cardTablesOf(QTextDocument &doc) {
+    QList<QTextTable *> out;
+    std::function<void(QTextFrame *)> walk = [&](QTextFrame *f) {
+        for (auto it = f->begin(); !it.atEnd(); ++it)
+            if (QTextFrame *cf = it.currentFrame()) {
+                if (auto *tt = qobject_cast<QTextTable *>(cf))
+                    if (tt->columns() == 4) out << tt;
+                walk(cf);
+            }
+    };
+    walk(doc.rootFrame());
+    return out;
+}
+
+// The x of each column's first cell, for one table.
+QVector<double> columnXs(QTextDocument &doc, QTextTable *t) {
+    QVector<double> xs;
+    for (int c = 0; c < t->columns(); ++c) {
+        QTextCursor cur = t->cellAt(0, c).firstCursorPosition();
+        xs << doc.documentLayout()->blockBoundingRect(cur.block()).x();
+    }
+    return xs;
+}
+
+// Two sections chosen to size very differently under auto-layout: the first
+// has long status labels and a kind on every row, the second has short ones
+// and no kind at all.
+QString gridFixtureMarkdown() {
+    return QStringLiteral(
+        "# Fixture\n\n"
+        "## Wide section\n\n"
+        "- 📋 [ANTS-9101] **A considerably longer headline for the wide "
+        "section so the summary column has real content.**\n"
+        "  Layman: wide one.\n"
+        "  Kind: review-fix.\n"
+        "  Source: fixture.\n"
+        "- 📋 [ANTS-9102] **Second wide row.**\n"
+        "  Layman: wide two.\n"
+        "  Kind: implement.\n"
+        "  Source: fixture.\n\n"
+        "## Narrow section\n\n"
+        "- 📋 [ANTS-9103] **Short.**\n"
+        "  Layman: narrow one.\n"
+        "  Source: fixture.\n"
+        "- 📋 [ANTS-9104] **Tiny.**\n"
+        "  Layman: narrow two.\n"
+        "  Source: fixture.\n");
+}
+
+}  // namespace
+
+TEST(RoadmapDialogCards, Ants3762ColumnGridIsSharedAcrossSections) {
+    RD::CardRenderOptions opts;
+    opts.activePreset = RD::Preset::Full;
+    // Sections render collapsed by default; both must be open for their card
+    // tables to exist at all.
+    opts.expandedSections.insert(QStringLiteral("wide-section"));
+    opts.expandedSections.insert(QStringLiteral("narrow-section"));
+    const QString html = RD::renderCardsHtml(
+        gridFixtureMarkdown(), kAllOn, {}, QStringLiteral("light"),
+        RD::SortOrder::Document, QString(), {}, opts);
+
+    QTextDocument doc;
+    doc.setTextWidth(1400);
+    doc.setHtml(html);
+
+    const QList<QTextTable *> tables = cardTablesOf(doc);
+    ASSERT_GE(tables.size(), 2)
+        << "fixture must render at least two per-section card tables — "
+           "the whole defect is that they are separate tables";
+
+    // Control — without the grid the two sections DISAGREE. If this ever stops
+    // being true the assertion below proves nothing, so it is checked, not
+    // assumed.
+    const QVector<double> rawFirst  = columnXs(doc, tables.first());
+    const QVector<double> rawSecond = columnXs(doc, tables.last());
+    EXPECT_NE(rawFirst, rawSecond)
+        << "control: Qt's auto-layout is expected to size each section's "
+           "table independently; if it no longer does, this test can no "
+           "longer detect the regression it exists for";
+
+    RoadmapDialog::applyCardColumnGrid(&doc, RD::Density::Cozy);
+
+    const QVector<double> gridFirst = columnXs(doc, tables.first());
+    for (int i = 1; i < tables.size(); ++i) {
+        EXPECT_EQ(gridFirst, columnXs(doc, tables.at(i)))
+            << "ANTS-3762: section " << i << " must sit on the same column "
+               "grid as the first — state, kind and id at identical x";
+    }
+
+    // The kind column must RESERVE its width on the narrow section, whose rows
+    // carry no kind at all. That is the half that fixes the differing text
+    // left-edges, and equal-x above would also hold if every column collapsed.
+    EXPECT_GT(gridFirst.at(2), gridFirst.at(1))
+        << "ANTS-3762: the summary column starts after a kind column that "
+           "still occupies space when the row has no kind";
+    EXPECT_GT(gridFirst.at(3), gridFirst.at(2))
+        << "ANTS-3762: the id column sits to the right of the summary";
 }

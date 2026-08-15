@@ -25764,7 +25764,7 @@ against current source before filing.
   Its one open question (a trailing checksum line, spec § 8) stays open as a
   question, not as work.
 
-- 📋 [ANTS-3762] **Roadmap dialog — align every row on a fixed column grid so information sits where the eye expects it.**
+- ✅ [ANTS-3762] **Roadmap dialog — align every row on a fixed column grid so information sits where the eye expects it.**
   The earlier styling pass made the dialog far more readable, but nothing
   lines up vertically between one heading's rows and the next, so reading
   down the list means re-finding each field on every row.
@@ -25799,6 +25799,15 @@ against current source before filing.
   **Layman:** Make the roadmap window line up in neat columns, so you always know where to look for the status, the type and the ID.
   Kind: ux.
   Source: user-request-2026-07-30 (raised during the ANTS-3753 store work).
+  Resolved (2026-08-15): `RoadmapDialog::applyCardColumnGrid(QTextDocument*, Density)` pins every card table to one grid — fixed state / kind / id columns, flexible summary — applied after `setHtml` in the render path. The kind column now reserves its width when a row carries no kind, which is what fixed the three different text left-edges inside a single group. The item is closed on its stated scope (layout only); the busy filter bar above the rows is ANTS-4412, filed the same day from the same screenshot and sequenced next.
+
+  The non-obvious part, and the reason this is not a stylesheet change: Qt's rich-text engine honours NEITHER `table-layout:fixed` NOR a CSS `width` on a `td`. Measured 2026-08-15 with a probe against the real engine — two tables given identical CSS widths still auto-sized from their own content, one putting its summary column at x=285 and the other at x=75. The CSS fix was written first, compiled, passed every existing test, and would have changed nothing on screen. `QTextTableFormat::setColumnWidthConstraints` on the parsed table IS honoured (both tables then reported identical x for every column), so the widths are applied in code and the `<style>` block carries a comment saying why they are not there.
+
+  That also keeps ANTS-1238 INV-6 (non-`<style>` HTML byte-identical across density tiers) safe by construction rather than by care: the per-tier widths never reach the HTML. Widths live in `kDensityTable` as `colStatePx`/`colKindPx`/`colMetaPx` and scale with the tier, since the text in them does.
+
+  Test: `RoadmapDialogCards.Ants3762ColumnGridIsSharedAcrossSections`, driving the same public static the dialog calls rather than a copy of its logic. It asserts a CONTROL first — that the two fixture sections DISAGREE before the grid is applied — because without that, equal-x afterwards would also hold if Qt had simply started aligning them on its own, and the test would prove nothing. Then equal column x across every section, plus two ordering assertions so the kind column is shown to occupy space rather than to have collapsed. Suite 3520/3520.
+
+  Also verified end to end: the dialog was launched on a virtual display through the e2e harness with the change in, opened, and rendered without crashing.
 
 - 📋 [ANTS-3763] **Three pre-existing doc-lint findings in older specs, surfaced by an unrelated run.**
   Found by a `doc_integrity` run over `docs/specs/` that was scoped to a
@@ -43674,6 +43683,62 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-15 (found while writing ANTS-3807's migration briefs).
   Lanes: roadmap, audit.
+
+- 📋 [ANTS-4412] **Roadmap dialog — the filter bar is three dense rows of checkboxes and needs collapsing.**
+  User request 2026-08-15, with a screenshot of the "Next" tab. The
+  companion to ANTS-3762 (which aligns the ROWS on a column grid) —
+  this one is the CHROME above them, and it is deliberately a separate
+  item because ANTS-3762's scope note says "layout only, not a re-theme".
+
+  What is on screen today, top to bottom:
+
+  - A tab strip: Full roadmap / History / Current / Next / Far Future /
+    Custom.
+  - A full-width Search field.
+  - A status row of five checkboxes, each with its own emoji, laid out
+    edge to edge: Shipped, Planned, In progress, Considered, Currently
+    being tackled. A density combo ("Cozy") is stranded at the far right
+    of the same row.
+  - A second row of ELEVEN category checkboxes: implement, fix,
+    audit-fix, review-fix, doc, doc-fix, refactor, test, chore, release,
+    research, ux.
+
+  So sixteen checkboxes across two rows, plus a combo, plus a search
+  field, plus six tabs — before a single roadmap item is visible. On the
+  captured window the chrome takes 150 px of vertical space against
+  roughly 760 px of content.
+
+  The complaint, in the user's words: "extremely busy".
+
+  Wanted, to be settled at design time rather than assumed here:
+
+  - The status set and the category set each collapse to ONE control
+    that shows its current selection and opens the full set on demand —
+    a multi-select dropdown summarising as `3 of 12` or similar. The
+    common case is all-on or one-off, and neither needs eleven
+    always-visible boxes.
+  - The density combo moves out of the status row; it is a view
+    preference, not a filter, and sitting inside the filter row is what
+    makes that row read as unbounded.
+  - A visible "filters active" affordance and a one-click reset, so a
+    collapsed control can never hide why the list looks short. This is
+    the risk the collapse introduces and it must be answered in the same
+    pass.
+  - Keyboard parity with today: whatever replaces a checkbox must still
+    be reachable without the mouse.
+
+  Sequencing: do it WITH ANTS-3762 rather than before or after. They
+  touch the same widget and the same paint path, and laying it out twice
+  is the churn the refactor-first rule exists to avoid. Both are now
+  unblocked — ANTS-3762 was deliberately parked behind the store cutover
+  (ANTS-3758), and that landed 2026-08-15.
+
+  Not in scope: the colour theme, the tab strip's membership, and where
+  the rows get their data (the dialog already reads through the store
+  seam; the leftover file read is ANTS-3863).
+  **Layman:** The row of options at the top of the roadmap window is cluttered and hard to scan; it should collapse into a few tidy controls.
+  Kind: ux.
+  Source: user-request-2026-08-15.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

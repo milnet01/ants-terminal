@@ -57,6 +57,7 @@
 // ANTS-3793 § 4 — the read seam by forward declaration, not #include:
 // roadmapstore.h pulls <QSqlDatabase>, ants_dialogs_lib links the store
 // PRIVATE, and this header is included by widgets that have no Sql include path.
+class QTextDocument;
 class RoadmapStore;
 namespace RoadmapSource { enum class ReadError; }
 
@@ -277,6 +278,21 @@ public:
                                    const QString &searchPredicate = QString(),
                                    const QSet<QString> &kindFilter = {},
                                    const CardRenderOptions &opts = {});
+
+    // ANTS-3762 — pin every card table's columns to ONE grid, so the state,
+    // kind and id columns sit at the same x in every section.
+    //
+    // Must run AFTER the HTML is parsed into `doc`, and it cannot be done in
+    // the stylesheet at all: measured 2026-08-15, Qt's rich-text engine
+    // honours neither `table-layout:fixed` nor a CSS `width` on a `td` — two
+    // tables given identical CSS widths still auto-sized from their own
+    // content. Column width CONSTRAINTS on the parsed QTextTable are honoured.
+    //
+    // Static and public so the conformance test drives the same code the
+    // dialog runs, rather than a copy of its logic. Keeping the per-tier
+    // widths out of the HTML also preserves ANTS-1238 INV-6 (non-<style> HTML
+    // byte-identical across density tiers) by construction.
+    static void applyCardColumnGrid(QTextDocument *doc, Density density);
 
     // ANTS-1154 — build the `shippedDates` map from a CHANGELOG.md
     // file by walking `^## [X.Y.Z] — YYYY-MM-DD` headings and

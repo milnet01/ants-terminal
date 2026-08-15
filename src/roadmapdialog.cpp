@@ -43,6 +43,10 @@
 #include <QTabBar>
 #include <QTextBlock>
 #include <QTextBrowser>
+#include <QTextDocument>
+#include <QTextTable>
+#include <QTextFrame>
+#include <functional>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -174,6 +178,16 @@ struct DensityTier {
     int cardMargin;
     int bodyFirstPaddingTop;
     int bodyFirstMarginTop;
+    // ANTS-3762 — fixed widths for the three non-flexible card columns
+    // (`.rm-col-state` / `.rm-col-kind` / `.rm-col-meta`); the summary column
+    // takes the remainder. Every section renders its OWN `table.rm-cards`, so
+    // without these Qt's auto-layout sizes each table from its own content and
+    // the columns land somewhere different in every group — which is the
+    // misalignment the item was filed for. They scale with the tier because
+    // the text in them does; they live here (and reach the document only via
+    // the <style> block) so ANTS-1238 INV-6 — non-<style> HTML byte-identical
+    // across tiers — still holds.
+    int colStatePx, colKindPx, colMetaPx;
 };
 constexpr DensityTier kDensityTable[3] = {
     // Compact: -2 px tier; label + meta groups floored at 11 px (ANTS-2211,
@@ -182,7 +196,8 @@ constexpr DensityTier kDensityTable[3] = {
      /*codePx*/10, /*metaPx*/11, /*labelPx*/11,
      /*pMargin*/1, /*hMarginTop*/2, /*hMarginBottom*/1,
      /*cardPaddingY*/2, /*cardPaddingX*/6, /*cardMargin*/1,
-     /*bodyFirstPaddingTop*/2, /*bodyFirstMarginTop*/1},
+     /*bodyFirstPaddingTop*/2, /*bodyFirstMarginTop*/1,
+     /*colStatePx*/258, /*colKindPx*/94, /*colMetaPx*/68},
     // Cozy: current default. (ANTS-2211 raised the meta + label tier to
     // 12 px for readability, so Cozy is no longer byte-equal to the
     // pre-1238 renderer for those two classes; INV-1 default==Cozy holds.)
@@ -190,13 +205,15 @@ constexpr DensityTier kDensityTable[3] = {
      /*codePx*/12, /*metaPx*/12, /*labelPx*/12,
      /*pMargin*/3, /*hMarginTop*/4, /*hMarginBottom*/2,
      /*cardPaddingY*/4, /*cardPaddingX*/8, /*cardMargin*/2,
-     /*bodyFirstPaddingTop*/4, /*bodyFirstMarginTop*/2},
+     /*bodyFirstPaddingTop*/4, /*bodyFirstMarginTop*/2,
+     /*colStatePx*/290, /*colKindPx*/106, /*colMetaPx*/76},
     // Comfortable: +2 px tier, more vertical headroom.
     {/*bodyPx*/15, /*h1Px*/18, /*h2Px*/15, /*h3Px*/14, /*h4Px*/13,
      /*codePx*/14, /*metaPx*/13, /*labelPx*/12,
      /*pMargin*/5, /*hMarginTop*/6, /*hMarginBottom*/4,
      /*cardPaddingY*/6, /*cardPaddingX*/12, /*cardMargin*/4,
-     /*bodyFirstPaddingTop*/6, /*bodyFirstMarginTop*/3},
+     /*bodyFirstPaddingTop*/6, /*bodyFirstMarginTop*/3,
+     /*colStatePx*/322, /*colKindPx*/118, /*colMetaPx*/86},
 };
 static_assert(std::size(kDensityTable) == 3,
               "kDensityTable must keep one row per Density enum value.");
@@ -1203,6 +1220,17 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // cell (.rm-col-state). Density scales the cell padding (%18/%19) via
         // this <style> block only, so ANTS-1238 INV-6 (non-<style> HTML byte-
         // identical across tiers) still holds.
+        // ANTS-3762 — the column WIDTHS are not here, deliberately. Measured
+        // 2026-08-15 against Qt's rich-text engine: it ignores both
+        // `table-layout:fixed` and a CSS `width` on a `td`. Two tables given
+        // identical CSS widths still auto-sized from their own content, one
+        // putting its summary column at x=285 and the other at x=75 — which is
+        // exactly the misalignment being fixed, so a CSS fix here would have
+        // looked right in the source and changed nothing on screen.
+        // `applyCardColumnGrid()` sets QTextTableFormat column constraints
+        // after the HTML is parsed instead. That also keeps ANTS-1238 INV-6
+        // safe by construction rather than by care: no per-tier width ever
+        // reaches the HTML.
         "table.rm-cards{border-collapse:collapse;margin:%17px 0;width:100%;}"
         "td{border:none;padding:%18px %19px;vertical-align:top;background:%3;}"
         ".rm-col-state{border-left:3px solid %5;white-space:nowrap;}"
@@ -3012,6 +3040,60 @@ bool RoadmapDialog::wantsHistoryLoad() const {
         m_searchBox ? m_searchBox->text() : QString());
 }
 
+// ANTS-3762 — pin the card table columns to one grid the whole view obeys.
+//
+// Every section renders its OWN `table.rm-cards`, so Qt's auto-layout sizes
+// each table from that section's content: the state, kind and id columns land
+// somewhere different in every group, and reading down the list means
+// re-finding each field on every row. An absent kind chip is the worst of it —
+// the cell collapses to nothing and the headline slides left, which is how a
+// single group ends up showing three different text left-edges.
+//
+// This runs AFTER setHtml on purpose. Measured 2026-08-15 against Qt's
+// rich-text engine: it honours neither `table-layout:fixed` nor a CSS `width`
+// on a `td`, so the obvious stylesheet fix parses cleanly and changes nothing
+// on screen. Column width CONSTRAINTS on the parsed QTextTable are honoured —
+// two tables with wildly different content then put every column at an
+// identical x. Doing it here also keeps ANTS-1238 INV-6 (non-<style> HTML
+// byte-identical across density tiers) safe by construction: the per-tier
+// widths never reach the HTML at all.
+//
+// The summary column is the flexible one; the other three are fixed, so the
+// kind column reserves its space whether or not the row has a kind.
+void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
+    if (!doc) return;
+
+    const DensityTier &t = kDensityTable[densityToIndex(density)];
+    const QVector<QTextLength> cols{
+        QTextLength(QTextLength::FixedLength,      t.colStatePx),
+        QTextLength(QTextLength::FixedLength,      t.colKindPx),
+        QTextLength(QTextLength::PercentageLength, 100),
+        QTextLength(QTextLength::FixedLength,      t.colMetaPx),
+    };
+
+    // Depth-first over the frame tree; a card table can nest inside the body
+    // row of another (`rm-card-body` uses colspan, but a future body could
+    // carry its own table, and recursing costs nothing).
+    std::function<void(QTextFrame *)> walk = [&](QTextFrame *frame) {
+        for (auto it = frame->begin(); !it.atEnd(); ++it) {
+            QTextFrame *child = it.currentFrame();
+            if (!child) continue;
+            if (auto *table = qobject_cast<QTextTable *>(child)) {
+                // Only the four-column card tables. A markdown table in an
+                // expanded body has its own column count and must keep its
+                // own natural layout.
+                if (table->columns() == cols.size()) {
+                    QTextTableFormat fmt = table->format();
+                    fmt.setColumnWidthConstraints(cols);
+                    table->setFormat(fmt);
+                }
+            }
+            walk(child);
+        }
+    };
+    walk(doc->rootFrame());
+}
+
 void RoadmapDialog::rebuild() {
     if (!m_viewer) return;
 
@@ -3066,6 +3148,8 @@ void RoadmapDialog::rebuild() {
     const bool wasAtBottom = vbar && (oldMax - saved <= 4);
 
     m_viewer->setHtml(html);
+    // ANTS-3762 — must follow setHtml: it constrains the PARSED tables.
+    applyCardColumnGrid(m_viewer->document(), m_density);
     if (m_lastHtml) *m_lastHtml = html;
 
     if (vbar) {
