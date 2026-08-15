@@ -285,10 +285,26 @@ answers from the store while reporting `path: ROADMAP.md` ([ANTS-4143]).
 
 **D3. Render, then re-import — the acceptance test (INV-6).**
 
-> **Verify:** `items_updated == 0` over the nine governed columns and no
-> `field_conflict` naming one. **`headline`, `layman` and `lanes` are expected to
-> fail here** — they are the spec's named undiagnosed drift, and this run is the
-> instrument for diagnosing them. Anything *else* failing is a Phase C defect.
+> **Verify (CORRECTED 2026-08-15 — see ANTS-4344):** the store is **idempotent
+> after canonicalisation**. Cycle 1 may move any number of items — it is the
+> one-time normalisation ANTS-3758 § 2.6 already accepts as "not data loss" —
+> and **cycle 2 must move only items whose movement is individually explained**.
+> A residual mover with no account of itself is the defect.
+>
+> **This deliberately replaces `items_updated == 0` on cycle 1, which was the
+> wrong criterion and not merely an unmet one.** Meeting it required suppressing
+> the rendered `Kind:` line for a defaulted kind, and ANTS-3758 INV-12 forbids
+> exactly that by name — every emitted bullet must carry the four pieces
+> roadmap-format.md § 3.5 makes required, `Kind:` among them, and INV-12's own
+> "Breaks when:" is written as "the renderer skips `Kind:` for items whose kind
+> is `implement`, on the reasoning that the default restores it". The `Source:`
+> precedent does not transfer: § 3.5.3 makes `Source:` optional with a
+> documented default, while `Kind:` is required as of v1.1, so suppressing it
+> emits a non-conforming bullet.
+>
+> **`headline` and `lanes` are NOT expected to fail** — the earlier text said
+> they were, and the D3 run below measured both at 0. Earlier phases fixed them
+> and § 4 of the spec was never corrected.
 
 **D3/D4 result, 2026-08-13 — run, and the prediction above was wrong in both
 directions.** Method: snapshot the store's governed columns, drive a real
@@ -323,10 +339,18 @@ distinction this step was told to make, and it comes out on the safe side.
 **The severe finding was not drift at all** — the render deletes any bullet
 the store has not imported. Recorded on [ANTS-4141] with the measurement.
 
-**D4 remains open** on the `body` cause: fix the trailer-strip so a rendered
-`Kind:` line is not also body text, then re-run both cycles. Fold into
-ANTS-3758 (`§ 2.x`, re-gating per rule 14) rather than ANTS-3765 — the
-render emits the line, and the parse is doing what it was told.
+**D4 is CLOSED, 2026-08-14 — as a wrong acceptance criterion, not a code
+defect** ([ANTS-4344], commit `647cd8cd`). This step previously read "fix the
+trailer-strip so a rendered `Kind:` line is not also body text, then re-run
+both cycles", and that fix is the forbidden branch above: the only way to stop
+the render emitting `Kind:` for a defaulted kind is to suppress it, which
+INV-12 refuses. The property to hold is idempotence after canonicalisation,
+and D3's own numbers satisfy it — cycle 1 moves 363, cycle 2 moves 2, and both
+movers are explained rather than residual.
+
+So Phase D is complete. No trailer-strip change is owed, and a future session
+finding `body` moving on cycle 1 should read that as the canonicalisation
+working, not as this step reopening.
 
 ---
 
@@ -335,10 +359,11 @@ render emits the line, and the parse is doing what it was told.
 **E1.** Flip ANTS-4062 and ANTS-4063 to shipped; they are discharged by § 2.1
 and INV-5 respectively.
 
-**E1 is DONE for ANTS-4063, 2026-08-14.** Flipped ✅ with `RoadmapImportMapping`
-green (21/21, INV-5's `DefaultedSourceIsNotRendered` among them). The `Kind:`
-half that bullet asked to check is a real separate defect and is ANTS-4344.
-ANTS-4062 was already ✅.
+**E1 is DONE, 2026-08-14.** Flipped ✅ for ANTS-4063 with
+`RoadmapImportMapping` green (21/21, INV-5's `DefaultedSourceIsNotRendered`
+among them); ANTS-4062 was already ✅. The `Kind:` half that bullet asked to
+check became ANTS-4344, and it is ✅ too — resolved as a wrong acceptance
+criterion rather than a code defect, which is what Phase D above now records.
 
 **E2.** Migrate the remaining 13 projects, one at a time, each gated on D3's
 round-trip check.
@@ -347,6 +372,26 @@ round-trip check.
 > the next. **Expect the render gate first** — 2,141 corpus items carry no
 > `Layman:` line, and a public open item without one refuses every write on that
 > project until it is filled.
+
+**E2 is UNBLOCKED as of 2026-08-15, and the blocker was never a policy
+question.** The 446 orphans this phase stalled on were an artifact of
+[ANTS-4403]: one line of prose at `ROADMAP.md:31081` opened a fence nothing
+closed, so 481 bullets never reached the plan and every store row they would
+have matched was reported unmatched. With the fence rule taken from
+`MarkdownScan`, a dry run reports **0 orphaned**.
+
+**This project is re-imported and current as of 2026-08-15** — 0 orphaned, 61
+inserted, 1,969 unchanged, 12 updated, 0 ids allocated; the store now holds
+2,042 items to `ANTS-4404`. That closes the read-side divergence [ANTS-4402]
+named and clears the precondition [ANTS-4141] set for `roadmap_log`: the
+divergence guard passes, so the verb writes rather than refusing, and the
+hand-edit workaround is no longer required on this project.
+
+One caveat a per-project run should expect, found the same day and fixed as
+[ANTS-4404]: the write path's own fence walkers carried the same naive
+predicate, which made 391 of this roadmap's 2,032 bullets refuse
+`anchor_unsafe_context`. Any project whose roadmap quotes fence syntax in
+prose will hit it on a binary older than that fix.
 
 ---
 
