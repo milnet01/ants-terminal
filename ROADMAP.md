@@ -31716,7 +31716,7 @@ collision are different strengths of evidence.
   Lanes: speclog, mcp.
   Source: cc-feedback-2026-08-14 (OneUp), reproduced in-session-2026-08-14.
 
-- 📋 [ANTS-4354] **`roadmap_log op:"append_batch"` is sanctioned for pass-headings roadmaps but a batch of N passes can only name ONE designator.**
+- ✅ [ANTS-4354] **`roadmap_log op:"append_batch"` is sanctioned for pass-headings roadmaps but a batch of N passes can only name ONE designator.**
   `pass` is a single top-level parameter and the `bullets[]` item schema
   carries no pass field of any spelling. So on that dialect either every
   bullet in a batch lands under the same `#### Pass N.M` heading, or the op
@@ -31751,6 +31751,7 @@ collision are different strengths of evidence.
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (Ants Terminal).
+  Resolved (2026-08-15, status reconciliation): shipped as the first of the two fix options in this body — an optional PER-BULLET `pass` on `bullets[]`, mirroring `stable_id`, with the call-level `pass` as the fallback for any bullet omitting one. Live in `src/remotecontrol_terminal.cpp:893` (`fallbackPass`) and `:1155`, documented in the schema. Verified by `McpRoadmapLogPassWriter.Ants4354CallLevelPassIsTheBatchFallback`, green. Flipped after a source-and-test check found the work done but the status never moved.
 
 - ✅ [ANTS-4355] **`changelog_log`'s `feature_grouped_section` refusal hint tells the caller to hand-write a heading shape the writer never emits.**
   `op:"add_subsection"` writes `### <date> <Category> — <headline>` (verified
@@ -32258,7 +32259,7 @@ collision are different strengths of evidence.
   Lanes: symbolquery, mcp.
   Source: cc-feedback-2026-08-14 (DOOM).
 
-- 📋 [ANTS-4370] **`spec_conformance` returns an all-empty envelope on a spec whose patterns sit in ```` ```python ```` fences, so "cannot read this" is byte-identical to "nothing to check".**
+- ✅ [ANTS-4370] **`spec_conformance` returns an all-empty envelope on a spec whose patterns sit in ```` ```python ```` fences, so "cannot read this" is byte-identical to "nothing to check".**
 It executes only ```` ```regex ```` fences tagged `pcre2`. A spec prescribing
 patterns as ```` ```python ```` with `re.compile(...)` — which is what the
 corpus that motivated ANTS-4108 actually looks like — yields
@@ -32293,8 +32294,9 @@ non-porting constructs. If (2) is not worth it, (1) alone is actionable:
   Kind: fix.
   Lanes: mcp, speclint.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+  Resolved (2026-08-15, status reconciliation): `spec_conformance` now reports every fence it DECLINED, with its tag and line, plus the counters that make a zero legible (`src/specconformance.cpp:116`, `:164`, `:303`). "Cannot read this" is no longer byte-identical to "nothing to check". Verified by `spec_conformance.Ants4370ForeignFencesAreReportedNotSilent`, green. Flipped after a source-and-test check found the work done but the status never moved.
 
-- 📋 [ANTS-4371] **`audit_run`'s zero-finding envelope carries no evidence the tools read anything — `artifacts: 0` on every tool, no per-tool files-scanned count.**
+- ✅ [ANTS-4371] **`audit_run`'s zero-finding envelope carries no evidence the tools read anything — `artifacts: 0` on every tool, no per-tool files-scanned count.**
   Five tools over `scope:"full"` returned `total_raw:0, total_actionable:0,
   partial:false, incomplete_tools:[]`, and every SARIF run carried
   `results: 0` AND `artifacts: 0`. Nothing distinguishes "ran across 2116
@@ -32328,8 +32330,9 @@ non-porting constructs. If (2) is not worth it, (1) alone is actionable:
   Kind: fix.
   Lanes: audit, mcp.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+  Resolved (2026-08-15, status reconciliation): `audit_run` now serialises per-tool coverage evidence — what each tool was actually handed — plus the top-level roll-up asked for in this body (`src/auditrunner.h:101`, `src/auditrunner.cpp:2285`, `src/mainwindow.cpp:4729`, `:4748`). A zero-finding audit and an audit that examined nothing are now distinguishable, which is what lets a phase close honestly. Verified by `AuditRunPartialEnvelope.Ants4371CoverageEvidenceIsSerialised`, green. Flipped after a source-and-test check found the work done but the status never moved.
 
-- 📋 [ANTS-4372] **`roadmap_log` has no op to edit a bullet's HEADLINE, so a routine re-label falls back to hand-editing ROADMAP.md.**
+- ✅ [ANTS-4372] **`roadmap_log` has no op to edit a bullet's HEADLINE, so a routine re-label falls back to hand-editing ROADMAP.md.**
   The op set writes status, body, or a whole new bullet. None edits an
   existing headline, and `amend_body` rules it out by name ("the headline is
   out of scope").
@@ -32364,6 +32367,7 @@ non-porting constructs. If (2) is not worth it, (1) alone is actionable:
   Kind: feature.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager).
+  Resolved (2026-08-15, status reconciliation): shipped as a distinct `op:"amend_headline"` rather than the `scope` parameter this body proposed — same guard set (unique-match, case-sensitive, single-line, dry_run, full locator set) and the strict prefix guard, so a headline edit can never orphan an id or break the parse. `src/remotecontrol_roadmap_log.cpp:1909`, `:2329`, `:2380`; `src/remotecontrol.h:1009` (`headlineMode`). Verified by `roadmap_log_amend_body.Ants4372AmendHeadline`, green, and by a live call: on this now-migrated project it refuses `unsupported_format` with the reason, which is correct — the headline is a store column and a markdown-only patch would be reverted by the next render. Known remaining edge, already noted in-source at `remotecontrol_roadmap_log.cpp:2202`: headline mode does not write through the store, which is why the migrated-project refusal exists rather than a store write. Flipped after a source-and-test check found the work done but the status never moved.
 
 - ✅ [ANTS-4373] **`spec_lint`'s SKIP reporting — `sections_checked:false` is a single unflagged boolean in an envelope whose every other field reads as success.**
   The check itself is ANTS-4345, shipped 2026-08-14. This is the separate half
@@ -32410,7 +32414,7 @@ non-porting constructs. If (2) is not worth it, (1) alone is actionable:
   Lanes: speclint, mcp.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager).
 
-- 📋 [ANTS-4374] **Write the invariant three separate findings converged on into `mcp-tools.md`: a verb reporting ZERO must say what it looked at.**
+- ✅ [ANTS-4374] **Write the invariant three separate findings converged on into `mcp-tools.md`: a verb reporting ZERO must say what it looked at.**
   LWSM reached this independently from three directions in one session, and it
   is the common shape behind ANTS-4370 (`spec_conformance` `cases_run:0`),
   ANTS-4371 (`audit_run` `total_raw:0`), ANTS-4373 (`spec_lint`
@@ -32432,6 +32436,7 @@ non-porting constructs. If (2) is not worth it, (1) alone is actionable:
   Kind: doc.
   Lanes: mcp, docs.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager, converged from three findings).
+  Resolved (2026-08-15, status reconciliation): both halves are done. The authoring rule is `docs/standards/mcp-tools.md:38` — "A verb reporting ZERO must say what it looked at (ANTS-4374)" — naming the four zero shapes it covers and requiring a read field rather than a lone boolean. The sweep of the read verbs landed with it: the invariant is applied and cited in `doccitations.cpp:1100`, `specconformance.cpp`, `auditrunner.h:101`, `fileoutline.cpp:1058`, `remotecontrol_state.cpp:2105`/`:2431` and `remotecontrol_roadmap_query.cpp:2759`, and asserted by tests in `doc_citations`, `mcp_invariant_check` and `mcp_spec_query`. Flipped after a source-and-test check found the work done but the status never moved.
 
 - ✅ [ANTS-4375] **An offloaded `roadmap_query` drops a bullet, and `read_spill` row mode reports the truncated array length as the total.**
   LottoTracker: `{status:"active", include_body:true}` with no explicit limit
