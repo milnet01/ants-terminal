@@ -28670,6 +28670,17 @@ against current source before filing.
   and Phase E (E1 done — ANTS-4063 flipped 2026-08-14; E2, the other 13
   projects, not started).**
 
+  Update (2026-08-15): **D4 has no trailer-strip to fix.** ANTS-4344 is
+  resolved as a wrong acceptance criterion rather than a code defect — the
+  provenance-gated `Kind:` suppression it proposed is forbidden by name by
+  ANTS-3758 INV-12, whose test is live
+  (`RoadmapRender.Inv12RequiredPiecesPresent`). D4's remaining work is
+  therefore the criterion amendment in
+  `docs/plans/ANTS-4065-import-mapping-contract.md` § Phase D (cycle 1 = 0 →
+  cycle 2 = 0), which is a plan edit and owes CLAUDE.md rule 14's gate, plus a
+  confirming re-run. The D3 numbers already satisfy the corrected criterion in
+  substance. Phase E2 is unchanged and is the real remaining work.
+
   The 0.7.105 release notes no longer cite this id (2026-08-14). What
   shipped in that cycle is Phases A–C, which are attributed to their own
   ✅ items — ANTS-4086 and ANTS-4063 on the import/render bullet, ANTS-4077
@@ -41829,7 +41840,7 @@ here.)
   Lanes: roadmap-store, mcp.
   Source: in-session-2026-08-13 (ANTS-4065 Phase D2 re-run).
 
-- 📋 [ANTS-4344] **A rendered `Kind:` line survives into the next import's `body`, so 363 of 1,980 items change on a render→re-import round trip that should change none.**
+- ✅ [ANTS-4344] **A rendered `Kind:` line survives into the next import's `body`, so 363 of 1,980 items change on a render→re-import round trip that should change none.**
   ANTS-4065 D3's acceptance measurement. Method and full column table are
   in `docs/plans/ANTS-4065-import-mapping-contract.md § Phase D`; the
   headline number is that `status`, `headline`, `kind`, `source` and
@@ -41888,6 +41899,47 @@ here.)
   invariant may belong as *idempotence after canonicalisation* (cycle 2 = 0)
   rather than cycle 1 = 0. Both branches are cheap; they are materially
   different, and the second closes D4 without changing any code.
+  **Resolved (2026-08-15) as the second branch — NO CODE CHANGE. The design
+  call this bullet left open is settled by a live invariant that forbids the
+  first branch BY NAME.**
+  ANTS-3758 INV-12 requires every emitted bullet to carry all four pieces
+  § 3.5 makes required, `Kind:` among them, and states its own *Breaks when:*
+  as "the renderer skips `Kind:` for items whose kind is `implement`, **on the
+  reasoning that the default restores it**" — which is precisely the
+  provenance-gated suppression this bullet proposed, and precisely the
+  reasoning it proposed it on. The test is live:
+  `RoadmapRender.Inv12RequiredPiecesPresent` asserts the rendered TEXT contains
+  `Kind: implement.` and fails with "Kind: omitted because it equals the
+  default". INV-12 also answers `roadmap-data-model.md` § 9's request for the
+  check that catches a render silently dropping a required piece, so weakening
+  it to close a round-trip metric would trade a format guarantee for an
+  acceptance number.
+  The `source` precedent does NOT transfer, though it looks identical:
+  `roadmap-format.md` § 3.5.3 gives `Source:` a documented default AND marks it
+  optional, while `Kind:` is **required as of v1.1**. Suppressing an optional
+  field with a default loses nothing; suppressing a required one emits a
+  non-conforming bullet.
+  So the acceptance criterion was the defect, exactly as this bullet's second
+  branch guessed. ANTS-3758 § 2.6 already states it: "the first render of a
+  hand-written roadmap produces a large diff — a one-time normalisation … it is
+  not data loss". The round-trip property to hold is therefore **idempotence
+  after canonicalisation (cycle 2), not cycle 1**. The D3 numbers already
+  satisfy it in substance: cycle 1 moves 363, cycle 2 moves 2, and both movers
+  are explained rather than residual — the marker annotate that drove the
+  render (an artifact of the measurement, not of the render) and ANTS-1861,
+  whose `layman` text quotes the renderer's own markup and so is
+  self-referential by construction.
+  One consequence to accept knowingly, because it is visible: 363 pre-v1.1
+  bullets gain a `Kind: implement.` line. That is not new information — the
+  store already holds `implement` for every one of them, so `roadmap_query` has
+  been reporting it all along; the render only makes it visible. § 3.5.3
+  anticipates the backfill ("A backfill pass over the active roadmap is a
+  `Kind: doc-fix` item"), and a wrong kind is now legible in the file where
+  before it was only in the store.
+  NOT done here, deliberately: `docs/plans/ANTS-4065-import-mapping-contract.md`
+  § Phase D still states D4's verify as cycle 1 = 0. Amending it changes what a
+  conformer builds, so it is a plan edit that owes CLAUDE.md rule 14's gate —
+  recommended, not taken unilaterally.
   **Layman:** Saving the roadmap and reading it back adds one stray line to 363 items — once each, not repeatedly.
   Kind: fix.
   Lanes: roadmap-store, mcp.
