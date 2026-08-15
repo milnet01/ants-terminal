@@ -24386,7 +24386,7 @@ against current source before filing.
   + InlineIdsWinOverTrackedLine (guard). Standard updated:
   mcp-feedback-files.md § Tooling, feedback_query row.
 
-- 📋 [ANTS-3745] **No MCP verb answers "which build target owns this file?" — every test edit falls back to awk over CMakeLists.txt.**
+- ✅ [ANTS-3745] **No MCP verb answers "which build target owns this file?" — every test edit falls back to awk over CMakeLists.txt.**
   Hit four separate times in one session. After editing a
   tests/features/<x>/test_<x>.cpp you must know its bundle to run
   anything narrower than a full build, and nothing in the toolkit says.
@@ -24413,6 +24413,7 @@ against current source before filing.
   **Layman:** There is no quick way to ask "which test program do I rebuild after editing this test file?", so we fall back to scraping the build script by hand.
   Kind: enhancement.
   Source: in-session-2026-07-30 (hit four times while shipping ANTS-3389/3710/3707).
+  Resolved (2026-08-15): shipped as its own verb `build_target_for`, not as an op on `focused_test`. Reason: that verb's whole contract is running ctest against an existing build, and hanging a static read-only lookup off it would give one name two cost profiles. Engine `src/buildtargets.cpp` (Qt6::Core-only, opens nothing) parses every `add_library` / `add_executable` / `ants_add_*_bundle` block; the verb adds the two things the answer is FOR — the `cmake --build --target` line and the `ctest -R` filter built from the source's TEST/TEST_F/TEST_P suites, which is the half the `--gtest_list_tests` fallback was paying a process launch for. Sources are collected by SHAPE (a token with a slash and a C/C++ suffix) rather than by tracking SOURCES, because the wrappers take only LIBS;SOURCES and a library name is never path-shaped. A path behind a CMake variable is reported unowned rather than attributed — `found:false` is a real answer with a hint, and the hint names the ANTS-3745 trap by name (a new test source is unwired until it is in a bundle's SOURCES, and the build then succeeds silently and runs the old binary). Covers libraries too, so it also answers which archive to link a throwaway probe against. 7 engine tests, two of them against the real CMakeLists.txt asserting the two mappings this item cites as proof recall does not substitute; mutation-verified (a matcher change reddened 3 of the 7, including the live row). CLAUDE.md's test-harness section now points at the verb and keeps the awk recipe as the non-Ants fallback.
 
 - ✅ [ANTS-3746] **find_definition misses a C++ function whose return type is a reference to a comma-bearing template.**
   VERIFIED by running it, not inferred. `find_definition
@@ -29539,7 +29540,7 @@ against current source before filing.
   Kind: fix.
   Source: in-session-2026-08-07 — noticed while verifying ANTS-3781 § 4's claim about test_core's compile definitions..
 
-- 📋 [ANTS-3862] **spec_lint reports 11 false invariant_id_gaps on ANTS-3782, which continues ANTS-3756's numbering rather than its own.**
+- ✅ [ANTS-3862] **spec_lint reports 11 false invariant_id_gaps on ANTS-3782, which continues ANTS-3756's numbering rather than its own.**
   `spec_lint` on docs/specs/ANTS-3782-roadmap-section-provenance.md
   reports invariant_id_gap for INV-15 through INV-25 "missing from the id
   sequence with no tombstone". Verified: the document carries INV-14,
@@ -29573,6 +29574,7 @@ against current source before filing.
   **Layman:** A documentation checker complains that a design document is missing eleven numbered rules. It isn't — the document deliberately carries on the numbering of the document it amends, and the checker doesn't know that.
   Kind: doc-fix.
   Source: in-session-2026-08-07 (found by /doc-lint during ANTS-3781 implementation).
+  Resolved (2026-08-15): duplicate of ANTS-3784, same eleven findings on the same document, filed from a different session. Both are closed by the `invariant-id-base` declaration shipped in 2f2c2c61 — ANTS-3782 now declares a floor of 26 beside the argument its § 3 already made, and the corpus went 39 gap findings to 28 with all eleven becoming suppressions. Kept as its own row rather than merged: the two reports arrived independently and the second is evidence the noise was reaching more than one reader.
 
 - 📋 [ANTS-3863] **Move the roadmap read seam's dispatch ahead of the file read, so a migrated project stops loading ROADMAP.md at all.**
   Split out of ANTS-3815 by user decision (2026-08-07). ANTS-3815 stores the

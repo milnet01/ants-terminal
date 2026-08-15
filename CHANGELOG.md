@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **`build_target_for` — which build target owns a source file** (ANTS-3745)
+  New read-only MCP verb. Parses CMakeLists.txt and answers with the
+  owning target, the `cmake --build --target` line, and the `ctest -R`
+  filter for the source's gtest suites. Replaces an awk over
+  CMakeLists.txt and a `--gtest_list_tests` launch per bundle; the
+  bundle mapping is not guessable from the path.
+  **Layman:** Ask "which test program do I rebuild after editing this
+  file?" and get the exact build and test commands back.
+
 - **spec_lint falls back to the global spec-format standard** (ANTS-4080)
   A project carrying only a delta was linted against nothing, and the skip
   read as a clean structural result. The four candidate paths are now

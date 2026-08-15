@@ -2,6 +2,7 @@
 #include "remotecontrol.h"
 #include "mutationprobe.h"   // ANTS-4398
 #include "remotecontrol_internal.h"
+#include "buildtargets.h"        // ANTS-3745 — build_target_for engine
 #include "fileoutline.h"
 #include "readlog.h"
 #include "readregion.h"
@@ -2832,5 +2833,136 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     out[QStringLiteral("truncated")]   = res.truncated || run.hardKilled;
     // `etag` is NOT emitted here: the dispatcher injects it (mcp-tools.md
     // step 7), and a handler-written one would be overwritten or doubled.
+    return QJsonDocument(out);
+}
+
+// ANTS-3745: build_target_for — which build target owns this file, and what
+// would I run after editing it.
+//
+// The gap it closes is narrow and was hit four times in one session: after
+// editing a `tests/features/<x>/test_<x>.cpp` you must know its bundle to
+// build anything narrower than everything, and nothing in the toolkit said.
+// The fallbacks were an `awk` walking backwards to the nearest bundle call,
+// and running every `build/test_*` with `--gtest_list_tests` to find which one
+// carried the suite. Both are the grep-happy shelling the MCP exists to
+// replace, and the answer is static — it is in CMakeLists.txt.
+//
+// It returns the two things the answer is FOR — the `cmake --build --target`
+// line and the `ctest -R` filter — rather than only the target name, because
+// a caller that has to assemble those from the name is one CLAUDE.md lookup
+// short of where it started.
+//
+// Read-only, opens two files at most (the CMake file, and the source when
+// suites are wanted). The parse lives in buildtargets.cpp.
+QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] = QStringLiteral(
+            "build_target_for: no focused project");
+        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+
+    const QString pathRaw = req.value(QStringLiteral("path")).toString();
+    if (pathRaw.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] = QStringLiteral(
+            "build_target_for: `path` is required");
+        o[QStringLiteral("code")]  = QStringLiteral("missing_field");
+        return QJsonDocument(o);
+    }
+    const auto pathCheck = PathValidation::validatePath(
+        pathRaw, rootCanonical, QStringLiteral("build_target_for"),
+        QStringLiteral("path"));
+    if (pathCheck.bad) return QJsonDocument(pathCheck.err);
+
+    const QDir root(rootCanonical);
+    // The path as CMakeLists.txt would spell it: project-relative, forward
+    // slashes, no leading `./`. A caller passing an absolute path or a
+    // `./`-prefixed one must get the same answer as one passing the bare
+    // relative form, or the verb is a lookup that only works when you already
+    // know the convention.
+    QString rel = pathCheck.resolved.isEmpty()
+                      ? pathRaw
+                      : root.relativeFilePath(pathCheck.resolved);
+    while (rel.startsWith(QLatin1String("./"))) rel = rel.mid(2);
+
+    const QString cmakeRel = req.value(QStringLiteral("cmake_path")).toString(
+        QStringLiteral("CMakeLists.txt"));
+    QFile cf(root.filePath(cmakeRel));
+    if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] = QStringLiteral(
+            "build_target_for: cannot read %1").arg(cmakeRel);
+        o[QStringLiteral("code")]  = QStringLiteral("not_found");
+        return QJsonDocument(o);
+    }
+    const QList<BuildTargets::Target> all =
+        BuildTargets::parse(QString::fromUtf8(cf.readAll()));
+    cf.close();
+
+    const QString buildDir =
+        req.value(QStringLiteral("build_dir")).toString(QStringLiteral("build"));
+
+    QJsonArray targets;
+    const QList<BuildTargets::Target> owners = BuildTargets::ownersOf(all, rel);
+    for (const BuildTargets::Target &t : owners) {
+        QJsonObject o;
+        o[QStringLiteral("name")]          = t.name;
+        o[QStringLiteral("kind")]          = t.kind;
+        o[QStringLiteral("command")]       = t.command;
+        o[QStringLiteral("line")]          = t.line;
+        o[QStringLiteral("source_count")]  = int(t.sources.size());
+        o[QStringLiteral("build_command")] =
+            QStringLiteral("cmake --build %1 --target %2").arg(buildDir, t.name);
+        targets.append(o);
+    }
+
+    QJsonObject out;
+    out[QStringLiteral("ok")]             = true;
+    out[QStringLiteral("path")]           = rel;
+    out[QStringLiteral("cmake_path")]     = cmakeRel;
+    out[QStringLiteral("targets")]        = targets;
+    out[QStringLiteral("targets_parsed")] = int(all.size());
+    // `found:false` is a real answer, not a refusal: a header, a doc, or a
+    // source reached only through a variable is genuinely owned by no target
+    // this parser resolves, and saying so beats naming the wrong one.
+    out[QStringLiteral("found")]          = !targets.isEmpty();
+    if (targets.isEmpty()) {
+        out[QStringLiteral("hint")] = QStringLiteral(
+            "no target's SOURCES names this path. A header is usually not "
+            "listed (build the target owning its .cpp); a new test source is "
+            "not listed until it is added to a bundle's SOURCES, which is the "
+            "ANTS-3745 trap — the build then succeeds silently and runs the "
+            "old binary. Sources named through a CMake variable or "
+            "target_sources() are not resolved.");
+    }
+
+    // The gtest suites, so `ctest -R` is usable straight from the answer
+    // instead of costing a `--gtest_list_tests` launch per bundle. Skipped for
+    // a non-source path and suppressible for a caller that only wants the
+    // target.
+    if (req.value(QStringLiteral("suites")).toBool(true)) {
+        QFile sf(root.filePath(rel));
+        if (sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QStringList suites =
+                BuildTargets::gtestSuites(QString::fromUtf8(sf.readAll()));
+            if (!suites.isEmpty()) {
+                out[QStringLiteral("suites")] =
+                    QJsonArray::fromStringList(suites);
+                // ctest -R is a REGEX and is case-sensitive, so the filter is
+                // built rather than left to the caller to spell.
+                out[QStringLiteral("ctest_filter")] =
+                    QStringLiteral("^(%1)\\.").arg(suites.join(QLatin1Char('|')));
+                out[QStringLiteral("ctest_command")] = QStringLiteral(
+                    "ctest --test-dir %1 -R '^(%2)\\.' --output-on-failure")
+                        .arg(buildDir, suites.join(QLatin1Char('|')));
+            }
+        }
+    }
     return QJsonDocument(out);
 }

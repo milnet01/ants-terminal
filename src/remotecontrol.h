@@ -502,6 +502,10 @@ public:
     // the pathInRepoRoot helper with cmdWorkspaceSearch.
     // See docs/specs/ANTS-1249.md.
     QJsonDocument cmdFileOutline(const QJsonObject &req);
+    // ANTS-3745 — build_target_for: which build target owns a source, plus
+    // the `cmake --build --target` and `ctest -R` lines that answer follows
+    // from. Static, from CMakeLists.txt; engine in buildtargets.cpp.
+    QJsonDocument cmdBuildTargetFor(const QJsonObject &req);
     // ANTS-4398 — mutation_probe: mutate, run, restore.
     QJsonDocument cmdMutationProbe(const QJsonObject &req);
     // ANTS-1855 — read_log: filter a log file (Ants debug log by

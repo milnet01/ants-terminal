@@ -7280,6 +7280,95 @@ void ClaudeIntegration::onMcpConnection() {
                     tools.append(t);
                 }
 
+                // ANTS-3745 — build_target_for: which target owns a file,
+                // and the two commands that answer is for.
+                {
+                    QJsonObject t;
+                    t["name"] = "build_target_for";
+                    t["description"] = QStringLiteral(
+                        "[build] Which build target owns this source file, "
+                        "read statically from CMakeLists.txt — plus the "
+                        "`cmake --build --target` line and, for a gtest "
+                        "source, the `ctest -R` filter its suites imply. "
+                        "Replaces the two fallbacks this project kept "
+                        "reaching for: an awk walking backwards to the "
+                        "nearest ants_add_*_bundle, and running every "
+                        "build/test_* with --gtest_list_tests to find which "
+                        "binary carried a suite. The mapping is NOT "
+                        "guessable from the path — tests/features/"
+                        "cold_eyes_engine builds into test_audit, and "
+                        "tests/features/spec_conformance into test_claude — "
+                        "so recall does not substitute. Returns {ok, path, "
+                        "cmake_path, targets:[{name, kind, command, line, "
+                        "source_count, build_command}], targets_parsed, "
+                        "found, suites?, ctest_filter?, ctest_command?, "
+                        "hint?}. `found:false` is a real answer rather than "
+                        "a refusal: a header is usually not listed (build "
+                        "the target owning its .cpp), and a NEW test source "
+                        "is not listed until it is added to a bundle's "
+                        "SOURCES — the trap where the build then succeeds "
+                        "silently and runs the old binary, so check `found` "
+                        "after adding one. A source named through a CMake "
+                        "variable, a generator expression or "
+                        "target_sources() is not resolved and reports "
+                        "unowned rather than being attributed to the wrong "
+                        "target. Multiple owners are possible and all are "
+                        "returned. Read-only; opens the CMake file and (for "
+                        "suites) the source. caller_cwd required.");
+                    t["selection_hint"] = QStringLiteral(
+                        "Use right after editing or adding a test source and "
+                        "before building — it answers what to build and what "
+                        "to run in one call.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Project-relative (or absolute in-root) source "
+                            "path to look up. Required.");
+                        props["path"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "CMake file to parse, project-relative "
+                            "(default \"CMakeLists.txt\").");
+                        props["cmake_path"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Build dir used when composing build_command / "
+                            "ctest_command (default \"build\"). Nothing is "
+                            "run and the directory is not probed.");
+                        props["build_dir"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"]    = "boolean";
+                        p["default"] = true;
+                        p["description"] = QStringLiteral(
+                            "Read the source for TEST/TEST_F/TEST_P suite "
+                            "names and emit suites[] + ctest_filter. Pass "
+                            "false to skip the second file read when only "
+                            "the target name is wanted.");
+                        props["suites"] = p;
+                    }
+                    schema["properties"] = props;
+                    QJsonArray req2;
+                    req2.append("caller_cwd");
+                    req2.append("path");
+                    schema["required"]             = req2;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-1303 — find_definition: tree-wide regex scan for
                 // a symbol's definition/declaration line(s).
                 {
@@ -11673,6 +11762,9 @@ void ClaudeIntegration::onMcpConnection() {
                         {QStringLiteral("project_conventions"),{400,  1500}},
                         // Focused test runner (ANTS-1302).
                         {QStringLiteral("focused_test"),       {800,  4000}},
+                        // ANTS-3745 — build_target_for: one small envelope,
+                        // a CMake parse and at most two file reads.
+                        {QStringLiteral("build_target_for"),   {300,  1200}},
                     };
                     const auto it = kCosts.find(name);
                     if (it != kCosts.end()) return it.value();
@@ -11813,7 +11905,12 @@ void ClaudeIntegration::onMcpConnection() {
                         name == QLatin1String("feedback_log"))
                         return QStringLiteral("feedback");
                     // ANTS-1299 — build_status cache.
-                    if (name == QLatin1String("build_status"))
+                    if (name == QLatin1String("build_status") ||
+                        // ANTS-3745 — build_target_for: which target owns a
+                        // source. A build question answered statically, so it
+                        // sits with build_status rather than with the test
+                        // runners below.
+                        name == QLatin1String("build_target_for"))
                         return QStringLiteral("build");
                     // ANTS-1300 — test_results cache.
                     if (name == QLatin1String("test_results"))
@@ -13298,6 +13395,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("test_results"))       return C::Required;
     // ANTS-1302 — focused_test reads/runs under the caller's project root.
     if (toolName == QStringLiteral("focused_test"))       return C::Required;
+    // ANTS-3745 — build_target_for parses the caller's own CMakeLists.txt.
+    if (toolName == QStringLiteral("build_target_for"))   return C::Required;
     // ANTS-1303 — symbol queries scan the project tree under the
     // caller's root; Required matches sibling project-scoped readers.
     if (toolName == QStringLiteral("find_definition"))    return C::Required;

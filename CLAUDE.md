@@ -204,10 +204,14 @@ SIGTERM a push mid-ninja.
   Building the wrong target succeeds silently and runs the old binary, so
   the new test neither compiles nor appears — and a green run reads as
   success. `ctest -N -R <name>` before and after is the check; the count,
-  not the pass rate, is the signal. (Bundles are not guessable from the
-  path: `tests/features/spec_conformance/` builds into `test_claude`, not
-  `test_core`. `grep -n <feature> CMakeLists.txt`, then read upward for the
-  enclosing `ants_add_*_bundle(`.)
+  not the pass rate, is the signal. **Ask `build_target_for` which bundle
+  owns the file** (ANTS-3745): it returns the target, the `cmake --build
+  --target` line and the `ctest -R` filter for that source's suites in one
+  call, and `found:false` is exactly the not-yet-wired state above. Bundles
+  are not guessable from the path — `tests/features/spec_conformance/` builds
+  into `test_claude`, not `test_core`. The old recipe (`grep -n <feature>
+  CMakeLists.txt`, then read upward for the enclosing `ants_add_*_bundle(`)
+  still works and is the fallback outside an Ants session.
 - **E2E harness** (`tools/e2e/`, label `e2e`, ANTS-2049) — drive a
   throwaway `--e2e` instance as a user (inject-key/click, resize-window,
   grab-image over its socket via `--remote-json`) and observe it. Opt-in:

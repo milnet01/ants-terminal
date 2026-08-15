@@ -396,6 +396,10 @@ add_library(ants_core_lib STATIC
     # contract (missing sections, untested invariants, id gaps, loop-log rows,
     # command test clauses with no expectation); Qt6::Core-only.
     src/speclint.cpp
+    # ANTS-3745 — build_target_for engine: which target owns a source, read
+    # from this file's own add_library / add_executable / bundle blocks.
+    # Qt6::Core-only; opens nothing.
+    src/buildtargets.cpp
     # ANTS-4108 — spec_conformance engine: the EXECUTABLE half. Runs the
     # patterns a spec prescribes against the expectation table beside them.
     # Patterns only, never fenced code (spec § 2.2); no subprocess and no
@@ -1502,6 +1506,7 @@ if(ANTS_TESTS)
                 # and its verb layer (candidate contract + refusal minimums).
                 tests/features/spec_lint/test_spec_lint.cpp
                 tests/features/spec_lint_verb/test_spec_lint_verb.cpp
+                tests/features/build_target_for/test_build_target_for.cpp
                 # ANTS-3660 — doc_dedup engine (segmentation, threshold,
                 # exclusions, clustering) and its verb layer (report-only
                 # contract + refusal minimums).

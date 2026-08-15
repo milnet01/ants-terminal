@@ -5387,6 +5387,14 @@ void MainWindow::setupClaudeMcpProviders() {
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdFocusedTest));
 
+    // ANTS-3745 — build_target_for. Which target owns a source, read from
+    // CMakeLists.txt, plus the build and ctest lines that follow. Read-only
+    // and static — the opposite cost profile to focused_test above, which is
+    // why it is its own verb rather than an op on it.
+    m_claudeIntegration->registerToolProvider("build_target_for",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdBuildTargetFor));
+
     // ANTS-1303 — find_definition + find_caller. Tree-wide regex symbol
     // scanner (no LSP). Both take {symbol, caller_cwd, lang?,
     // max_results?} and delegate to SymbolQuery via RemoteControl.
