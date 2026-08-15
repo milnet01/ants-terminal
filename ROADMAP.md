@@ -43578,6 +43578,42 @@ here.)
   Source: in-session-2026-08-15.
   Lanes: mcp, roadmap.
 
+- 📋 [ANTS-4409] **The corpus survey silently omits a whole project, and roadmap-data-model.md's figures rest on it.**
+  `tools/roadmap-corpus-survey.py` probes each project for `ROADMAP.md` at
+  its root. RetroArch keeps its roadmap at `docs/private/ROADMAP.md`, so the
+  tool prints `no ROADMAP.md found under: …/RetroArch` and the project is
+  absent from every figure it produces.
+
+  Measured 2026-08-15 by direct scan: **162 emoji bullets, 0 carrying an
+  `[ID]` bracket, 20 open items with no `Layman:` line.** None of that
+  reaches the survey.
+
+  Why it matters beyond one project: the tool's own docstring says "Every
+  figure that standard quotes is produced here, so a reader can re-derive it
+  instead of trusting a hand count", and `roadmap-data-model.md` § 7.4 quotes
+  those figures. So the corpus totals — items, id-less share, `Kind:` absence,
+  `Layman:` absence — are all short by one project, and the survey reports
+  "15 projects" while the corpus has 16 roadmaps.
+
+  It is also the same class of defect the tool was written to fix: its
+  docstring records that the first hand survey under-counted by ~14% because
+  its regex could not express some id shapes. This is that again at the
+  file-discovery layer rather than the parse layer.
+
+  Fix: discover the roadmap the way the rest of the system does rather than
+  by a hard-coded basename — `.ants/project.json`'s `roadmap` key
+  (ANTS-2160) when present, else the `project_layout` probe set, which
+  already finds `docs/private/ROADMAP.md`. RetroDB's lowercase `roadmap.md`
+  is found today only because the probe is case-insensitive on this
+  filesystem; that is luck rather than design and the same fix settles it.
+
+  Then re-run and re-state the figures the data model quotes, noting which
+  moved.
+  **Layman:** The tool that counts every project's roadmap items cannot find RetroArch's, so 162 items are missing from figures that claim to cover everything.
+  Kind: fix.
+  Source: in-session-2026-08-15 (found while writing ANTS-3807's migration briefs).
+  Lanes: roadmap, audit.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
