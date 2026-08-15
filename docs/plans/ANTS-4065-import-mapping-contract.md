@@ -4,15 +4,35 @@
 (accepted 2026-08-08). The reasoning lives there; this file is the order of
 operations and how each step is checked.
 
-**Where we are.** This project is migrated and the store is primary, but the
-import that produced it loses declared fields and invents others, and the
-markdown it renders no longer round-trips. So the current store is not a
-trustworthy base, and the current `ROADMAP.md` is not a trustworthy source —
-the render has already written the import's mistakes back into it.
+> ## ⚠ THIS PLAN IS EXECUTED. DO NOT RUN PHASES A–D AGAINST THIS PROJECT.
+>
+> **Phases A, B, C and D are complete and Phase E1 is done, as of 2026-08-15.**
+> Everything below A is a RECORD of what was run, not a list of steps to run.
+> **The only live step is E2** — migrating the remaining 13 projects — and it
+> is at the end of the file.
+>
+> Three steps are actively destructive if replayed here, and each says so in
+> place: **A1** reverts the three roadmap files to `6d9e743d`, discarding the
+> current render; **A2** `rm`s the live store, which now holds 2,046 items and
+> which **Phase D will not rebuild, because Phase D is closed**; **C1** tells
+> you a green fixture run means the fixtures are wrong, which was true before
+> C2–C5 landed and is the opposite of true now.
+>
+> Added 2026-08-15 after a cold review found the header below written in the
+> present tense, A2 and C carrying no completion marker while every other
+> executed step carried one, and all three lanes independently reporting that
+> an executor would work the file top-to-bottom.
 
-**The ordering rule everything else follows:** *fix the source, then the code,
-then re-import.* Re-importing today's file would reproduce today's losses,
-because nothing about the file or the parser has changed.
+**Where we were (2026-08-08), and this paragraph is history.** This project was
+migrated and the store primary, but the import that produced it lost declared
+fields and invented others, and the markdown it rendered no longer
+round-tripped. So the store was not a trustworthy base, and `ROADMAP.md` was
+not a trustworthy source — the render had already written the import's
+mistakes back into it. **None of that is the state today**: see E2.
+
+**The ordering rule everything else followed:** *fix the source, then the code,
+then re-import.* Re-importing the file as it stood would have reproduced those
+losses, because nothing about the file or the parser had changed yet.
 
 ---
 
@@ -22,9 +42,11 @@ because nothing about the file or the parser has changed.
 `git checkout 6d9e743d -- ROADMAP.md docs/roadmap/0.6.md docs/roadmap/0.5.md`
 
 That commit is the last state before the first store render: it **keeps** the
-101 Layman lines and the two malformed-bullet repairs, and **drops** the 180
+101 Layman lines and the two malformed-bullet repairs, and **drops** the 183
 materialised ids, the 363 rendered `Source: planned.` lines and the 123 rewritten
-`Kind` values.
+`Kind` values. (183, not 180: the verify table below reads 1,888 → 1,705, and an
+independent count of the 2026-08-15 render measured 183 too. The prose said 180
+until 2026-08-15, which left the table and the sentence disagreeing by three.)
 
 > **Verify** — and note which checks actually discriminate, because the obvious
 > one does not:
@@ -50,13 +72,17 @@ materialised ids, the 363 rendered `Source: planned.` lines and the 123 rewritte
 > from their own commit diffs rather than retyped. Final id count is 1,709, not
 > 1,705. Done 2026-08-08 in `2143afed`.
 
-**A2. Wipe the store.**
+**A2. Wipe the store. DONE 2026-08-08 — DO NOT RE-RUN.**
 `rm ~/.local/share/ants-terminal/roadmap.sqlite` — **and its `-wal` and `-shm`
 siblings**, which the first draft of this step omitted. The WAL alone was 5 MB
 and would have restored the store on the next open.
 
-Safe and reversible: it is derived, gitignored and machine-local, and Phase D
-rebuilds it.
+**It was safe and reversible WHEN IT RAN, and it is neither now.** The
+argument was "derived, gitignored, machine-local, and Phase D rebuilds it" —
+and Phase D is closed (see D4). Re-running this today deletes a live store
+holding 2,046 items with nothing left in the plan to rebuild it. The stamp is
+the fix: this step had no completion marker while every other executed step
+had one.
 
 > **A running Ants instance keeps the deleted store alive, and this is the trap
 > to plan around.** SQLite holds the inode open, so `rm` unlinks the name and
@@ -71,9 +97,19 @@ rebuilds it.
 > E2 to every project whose store is wiped or rebuilt while Ants is open.
 
 > **Verify (after the relaunch):** no `roadmap.sqlite` fd in
-> `/proc/<pid>/fd`; `roadmap_query` agrees with the file; and
-> `roadmap_log op:"annotate"` succeeds without a `render_gate_unmet` refusal —
-> proving the project is back on the markdown backend.
+> `/proc/<pid>/fd`; `roadmap_query` agrees with the file; and **`roadmap_query`
+> reports `source: "markdown"`** (ANTS-4402 puts the backend on every roadmap
+> read).
+>
+> **The third check used to be "`roadmap_log op:"annotate"` succeeds without a
+> `render_gate_unmet` refusal — proving the project is back on the markdown
+> backend", and it proved no such thing.** `mcp-error-codes.md` defines that
+> code as a **store-backed** write refusal, so a store-backed project whose
+> gate passes also succeeds without it: the absence of the refusal is
+> consistent with the ghost store still answering. An executor would accept a
+> live ghost as wiped and the next write would re-render all three files from
+> it — the exact trap the note above warns about. The backend label
+> discriminates; the refusal does not.
 
 ---
 
@@ -196,16 +232,26 @@ priority) as least urgent.
 
 ## Phase C — Implement the contract
 
-Test-first throughout: the spec names six cases that **must red** on today's
-source (§ 6). Write them, watch them fail, then fix.
+**PHASE C IS DONE (2026-08-13). The red-run expectations below are
+authoring-time statements — they described the source before C2–C5 landed, and
+they are now inverted.** `tests/features/roadmap_import_mapping/` is green at
+21/21 (E1 records it). A green run today means the phase shipped, NOT that the
+fixtures are wrong. Stamped 2026-08-15: C was the one executed phase carrying
+no completion marker, so an executor reading top-to-bottom would have rewritten
+21 passing fixtures on the strength of C1's verify clause.
+
+Test-first throughout: the spec named six cases that **had to red** on the
+source as it then stood (§ 6). Write them, watch them fail, then fix.
 
 **C1. `tests/features/roadmap_import_mapping/` — the fixtures.**
 Cover INV-1…INV-11. Construct `RoadmapStore` with an **explicit path**; the
 default resolves under `XDG_DATA_HOME` and would run the suite against the live
 store.
 
-> **Verify:** INV-2, INV-5, INV-9, INV-1, INV-7 and INV-10's equal-value fixture
-> all fail. A green run here means the fixtures are wrong, not the code.
+> **Verify (AT AUTHORING TIME, before C2–C5):** INV-2, INV-5, INV-9, INV-1,
+> INV-7 and INV-10's equal-value fixture all fail. A green run *then* meant the
+> fixtures were wrong, not the code. **Today the reverse holds** — see the
+> phase stamp above.
 
 **C2. Parser — un-anchor `rxKind()`, add the backtick guard, drop
 `CaseInsensitiveOption`, and take the last match** (§ 2.2).
@@ -346,12 +392,26 @@ acceptance test, just not that test.)
 >
 > **`headline` and `lanes` are NOT expected to fail** — the earlier text said
 > they were, and the D3 run below measured both at 0. Earlier phases fixed them
-> and § 4 of the spec was never corrected.
+> and § 2.6 of the spec was never corrected (**not § 4**, which this line cited
+> until 2026-08-15 and which is "RAM / build cost").
 
 **D3/D4 result, 2026-08-13 — run, and the prediction above was wrong in both
-directions.** Method: snapshot the store's governed columns, drive a real
-render through `roadmap_log`, re-import, diff the store against its own
-snapshot, then restore the files with `git checkout` and re-import to resync.
+directions.**
+
+**Method, numbered — because the criterion is read off CYCLE 2 and the earlier
+wording described one cycle followed by a restore, which makes cycle 2
+unobtainable.** Restore ONCE, at the end, after both cycles; a `git checkout`
+between them resets the tree and makes cycle 2 a repeat of cycle 1, so a gate
+read off it rejects every project on the outcome D4 calls a pass.
+
+> 1. `roadmap-roundtrip-diff.py snap` → snapshot 0.
+> 2. Drive a real render through any `roadmap_log` write op; `roadmap_migrate`
+>    to re-import. `snap` → snapshot 1. **`diff 0 1` is cycle 1.**
+> 3. Render again; re-import again. `snap` → snapshot 2.
+>    **`diff 1 2` is cycle 2 — this is the one the gate reads.**
+> 4. Teardown, once: `git checkout` the roadmap files, then `roadmap_migrate`
+>    to resync the store, or it keeps the rendered values.
+
 Cycle 1 over 1,980 items:
 
 | column | moved |
@@ -360,11 +420,13 @@ Cycle 1 over 1,980 items:
 | layman | 1 |
 | body | 363 |
 
-**Two of the three columns the spec named as expected failures do not fail
-at all.** `headline` and `lanes` round-trip exactly; earlier phases fixed them
-and the spec was never corrected. The spec states that expectation in § 2.6 and
-defers `headline`/`layman` in § 5 — **not § 4**, which this paragraph cited
-until 2026-08-15 and which is "RAM / build cost". `layman` moves on exactly one
+**Two of the FOUR columns the spec named as expected failures do not fail at
+all.** § 2.6 names `headline`, `layman`, `lanes` **and `extras`** — this
+paragraph said "three" until 2026-08-15 and dropped `extras`, which the
+instrument does not read either (see the riders above), so nothing was checking
+it. `headline` and `lanes` round-trip exactly; earlier phases fixed them and the
+spec was never corrected. The spec states that expectation in § 2.6 and defers
+`headline`/`layman` in § 5 — **not § 4**, which is "RAM / build cost". `layman` moves on exactly one
 item — `ANTS-1861`, whose layman text *quotes the markup pattern the
 renderer emits*, so it is self-referential rather than a class.
 
@@ -425,9 +487,19 @@ round-trip check.
 > before starting; `git checkout` to restore; `roadmap_migrate` re-run
 > afterwards. The render deletes bullets the store has not imported.
 >
-> **Expect the render gate first** — 2,141 corpus items carry no `Layman:`
-> line, and a public open item without one refuses every write on that project
-> until it is filled.
+> **Expect the render gate first, and clear it BEFORE attempting the
+> round-trip** — cycle 1 is driven by a `roadmap_log` write, so a project whose
+> gate is unmet cannot start the procedure at all. 2,141 corpus items carry no
+> `Layman:` line across all projects.
+>
+> **The remedy, because the count to fill is not 2,141:** the refusal carries
+> `gate_failures[]`. Fill only the ids it names, via `annotate` / `amend_body`,
+> and record the per-project count. `mcp-error-codes.md` scopes
+> `render_gate_unmet` per project and to **public open** items, so a project's
+> real list is a small fraction of the corpus figure. This step said "until it
+> is filled" and named no remedy until 2026-08-15, which left an executor on
+> project 1 of 13 inventing a policy — bulk-filling prose, flipping items
+> non-public, or bypassing — each writing different content into 13 roadmaps.
 
 **E2 is UNBLOCKED as of 2026-08-15, and the blocker was never a policy
 question.** The 446 orphans this phase stalled on were an artifact of
@@ -437,8 +509,9 @@ have matched was reported unmatched. With the fence rule taken from
 `MarkdownScan`, a dry run reports **0 orphaned**.
 
 **This project is re-imported and current as of 2026-08-15** — 0 orphaned, 61
-inserted, 1,969 unchanged, 12 updated, 0 ids allocated; the store now holds
-2,042 items to `ANTS-4404`. That closes the read-side divergence [ANTS-4402]
+inserted, 1,969 unchanged, 12 updated, 0 ids allocated. The store held 2,042
+items at that run and holds **2,046** after the four items filed later the same
+day (`ANTS-4405`…`4408`). That closes the read-side divergence [ANTS-4402]
 named and clears the precondition [ANTS-4141] set for `roadmap_log`: the
 divergence guard passes, so the verb writes rather than refusing, and the
 hand-edit workaround is no longer required on this project.
@@ -470,3 +543,4 @@ prose will hit it on a binary older than that fix.
 | Loop | Date | Lanes | Q1/Q2/Q3/Q4 | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-08-15 | 3, cold — genre pinned `plan`, cap 2. Packet carried INV-12, ANTS-3758 § 2.6, roadmap-format § 3.5.3 and ANTS-4065 § 2.6 verbatim, plus the day's measured migration state | **Q1 1 · Q2 3 · Q3 2 · Q4 1** — verified 7, fixed 7, dismissed 1, out-of-scope 1 | **First gate on this plan, run because ANTS-4344 amended Phase D's acceptance criterion and said so rather than doing it unilaterally. All three lanes independently found the same three defects**, which is the run's strongest signal. **[Q2] "Keep editing the file by hand" was permanently live**: it was conditioned on "Until D3 closes the render drift", and D4 closes by ACCEPTING that drift, so the condition could never discharge — while E2 and "What this plan deliberately does not do" both say the file is generated output. An implementer reading Phase D in order would hand-edit and lose it to the next render. **[Q4] The criterion I had just written was unfalsifiable** — "cycle 2 must move only items whose movement is individually explained". Lane B produced the proof: `ANTS-1861` moves on cycle 1 *and* cycle 2, so it is a permanent oscillator, and it passed because its movement was explained. A criterion that cannot separate canonicalisation from oscillation is not the one this step needs. Now mechanical (only the write that drove the render), with `ANTS-1861` as a bounded exception filed as [ANTS-4405] rather than a standing note. **[Q2] 48 vs 99 inline-`Kind:` bullets** — D1's spot-check was sized at 48, the spec says 99 (§ 7, "1,435 own-line against 99 inline"), and B1 of this very plan establishes that every pre-fix `Kind:` figure is an undercount. Sized at 48 the check skips 51 bullets and reads clean. **[Q2] E2 gated on "INV-6 green"**, which is the identity bar ANTS-4344 deleted; the instrument exits 1 whenever anything moved, so a gate wired to it blocks all 13 projects on the outcome D3 now calls a pass. **[Q3] Three different column sets** were in play — spec § 2.6's nine, the instrument's different nine, and the D3 table's seven — with no statement of which the gate uses; `evidence` is governed but not read by the tool, and `id_origin` movement is ANTS-4343. **[Q3] E2 carried none of D3's destructive preconditions** (committed clean tree, `git checkout` restore, `roadmap_migrate` re-run), though the render deletes bullets the store has not imported and E2 runs it against 13 projects. **[Q1, found by the orchestrator while building the packet]** the plan cited "the spec's § 4" for the expected-drift statement; the spec states it in § 2.6 and defers in § 5, and § 4 is "RAM / build cost". **Dismissed, unverified:** lane A predicted `roadmap_log op:append` would reissue a live id because `id_prefix.high_water` (4342) trails the store's max item (4404). Re-run rather than reasoned — a dry-run append allocated `ANTS-4405`, correctly, because the floor is `max(counter, corpusHighWater)` and the corpus scan sees 4404. The packet fact invited the inference; the allocator is not reading that column. **Out of scope, fixed in place:** `tools/roadmap-roundtrip-diff.py` attributed its governed-column list to "ANTS-3765 § 2.4", which is that spec's list of nineteen store methods and defines no columns at all (both lanes B and C raised it as an open question). Doc 406 → 472 lines, this log included. |
+| 2 | 2026-08-15 | 3, cold — identical brief, packet rebuilt whole from disk, loop-1 row scrubbed | **Q1 4 · Q2 2 · Q3 3 · Q4 1** — verified 10, fixed 10, dismissed 0 | **Cap reached (2 for a plan); the run files its tail and exits. There is no tail — all ten are fixed.** Unlike loop 1, most of this loop is NOT the previous loop's collateral: it is pre-existing structure loop 1 read past. **The severe finding is that the plan still read as a live instruction sheet, and all three lanes reported it independently.** The header said "Where we are … the current store is not a trustworthy base" in the present tense; **A2 — `rm ~/.local/share/ants-terminal/roadmap.sqlite` — carried no completion marker** while B1, B2, B3, D2, D4 and E1 all did; and **Phase C carried none either**, with C1's verify reading "A green run here means the fixtures are wrong, not the code" against a suite that is now 21/21 green. So an executor working top-to-bottom would revert three roadmap files, delete a live 2,046-item store that **Phase D can no longer rebuild because Phase D is closed**, and then rewrite 21 passing fixtures. Fixed with a banner at the head naming all three, plus stamps on A2 and C. **[Q3] Cycle 2 had no procedure.** The only method stated was "snapshot, render, re-import, diff, then restore with `git checkout` and re-import to resync" — one cycle ending in a restore — while the gate is read off cycle 2. An executor would `git checkout` between the cycles, making cycle 2 a repeat of cycle 1, and reject all 13 projects on the outcome D4 calls a pass. Now numbered, with the teardown moved after both cycles. **[Q1] A2's third verify check did not discriminate** — "`annotate` succeeds without a `render_gate_unmet` refusal, proving the project is back on the markdown backend". That code is defined as a **store-backed** refusal, so a store-backed project whose gate passes also succeeds; the check was consistent with the ghost store still answering, which is the trap the paragraph above it warns about. Replaced with `roadmap_query`'s backend label (ANTS-4402), which is exactly what that verb was given this week. **[Q3] E2 predicted the render gate would refuse and named no remedy**, leaving an executor on project 1 of 13 to invent one; the remedy is `gate_failures[]`, and the count to fill is that list rather than the corpus's 2,141. **[Q1] "Two of the three columns the spec named"** — § 2.6 names four, and the dropped one is `extras`, which the instrument does not read either, so nothing was checking it. **[Q2] A loop-1 fix left its other half in place**: `§ 4 of the spec was never corrected` survived at D3's verify while the paragraph 18 lines below carried the correction — the delete-first failure, caught by the sweep rule that exists for it. **[Q1] 180 vs 183** materialised ids, prose against its own verify table. **[Q1] 2,042 items** was a run tally read as a current-state claim; it is 2,046 after ANTS-4405…4408. **A brief defect, recorded rather than fixed in the document:** the packet asserted both that a dry-run append "allocates `ANTS-4405` (the next free id)" and that `ANTS-4405` is a real filed item. Both were true at different moments of the session and cannot be true together; two lanes caught it. Doc 472 → 546 lines, this log included. |
