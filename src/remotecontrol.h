@@ -1166,6 +1166,15 @@ private:
     // `duplicate_ids` only when non-empty so a clean roadmap stays at
     // its existing envelope shape.
     mutable QJsonArray m_roadmapCacheDuplicateIds;
+    // ANTS-4402 — which backend answered the last refill, and the two
+    // high-water marks that say whether ROADMAP.md holds ids the store has
+    // never seen. Cached beside the bullets they describe: the id scan is one
+    // regex pass over the roadmap, so it is paid once per mtime change rather
+    // than per query, and it is reset in lockstep with m_roadmapCacheBullets
+    // (mcp-caches.md — same key, never a second shadowing cache).
+    mutable QString m_roadmapCacheSource;
+    mutable qint64 m_roadmapCacheFileMaxId = 0;
+    mutable qint64 m_roadmapCacheStoreHighWater = 0;
     // ANTS-3533 — changelog_query parse cache (mtime+TTL, same shape as
     // the roadmap cache; single-slot + path-keyed so it never shadows
     // across projects — docs/standards/mcp-caches.md). Holds the parsed

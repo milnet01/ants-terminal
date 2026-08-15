@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_query` now says which backend answered — `source: "store" | "markdown"`** (ANTS-4402)
+  The store has been primary for roadmap reads since ANTS-3793, while ANTS-4141's
+  standing workaround has roadmap edits made by hand to ROADMAP.md — so a hand
+  edit lands in a file no reader reads, and the envelope gave no way to tell: it
+  named ROADMAP.md as its `path`, returned ok:true, and served the store.
+  `file_ahead_of_store` (with `file_highest_id` and `store_high_water`) fires when
+  the file holds ids the store has never seen. One-directional by design: it
+  proves staleness, never freshness, because a status flip or a body edit moves no
+  id. Reconciling the two backends remains ANTS-4141.
+
 - **`co_change_family` — every edit site of one settings field, in one call** (ANTS-3368)
   Adding a setting by copying an existing one is a ten-file lockstep
   change, and the easiest sites to miss are the ones that are not

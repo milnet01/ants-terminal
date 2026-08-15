@@ -41596,7 +41596,7 @@ here.)
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (hit while recording the cross-session feedback batch).
 
-- 📋 [ANTS-4402] **The same store divergence has a READ side, and it is silent: `roadmap_query` serves the store while echoing `ROADMAP.md` as its path, so every hand edit is invisible.**
+- ✅ [ANTS-4402] **The same store divergence has a READ side, and it is silent: `roadmap_query` serves the store while echoing `ROADMAP.md` as its path, so every hand edit is invisible.**
   ANTS-4141 documents the WRITE side and prescribes the workaround this
   project has followed since — "make roadmap edits BY HAND". ANTS-3793 cut
   the reads over to the store (`roadmapsource.h`: "The store has been primary
@@ -41639,6 +41639,26 @@ here.)
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-15 (hit while acting on a briefing the defect had made stale).
+
+  Resolved (2026-08-15) as the visibility half only — the divergence itself is
+  still ANTS-4141's. `roadmap_query` now emits `source` ("store" | "markdown")
+  on every envelope, plus `file_ahead_of_store` + `file_highest_id` +
+  `store_high_water` when the file holds ids the store has never seen. The
+  witness is cached beside the bullets on the same (path, mtime) key, so the id
+  scan is one regex pass per ROADMAP.md change rather than per query, and it is
+  cleared in lockstep on a refused refill.
+  Deliberately NOT `RoadmapFoldIn::corpusHighWater()`, which re-reads
+  CHANGELOG.md and every `docs/roadmap/*.md` archive: several MB of regex is
+  affordable once at id-allocation time and not on a read verb.
+  Tests `tests/features/roadmap_source_witness/` INV-1..3, INV-3 reproducing
+  the real defect (migrate, then append a bullet by hand exactly as ANTS-4141's
+  workaround instructs). Both mutants killed with the right blast radius:
+  dropping `source` fails all three, dropping the warning fails only INV-3.
+  One cost worth recording: adding `source` to the tools/list description broke
+  `mcp_tool_detail_field` INV-5, the 800 B wire budget every session pays — the
+  fix was to move the `query=` and `id`/`ids[]` glosses into `detail`, which is
+  stripped from the wire and served by `tool_info`. The wire keeps the names,
+  `detail` keeps the semantics; nothing was dropped.
 
 - ✅ [ANTS-4142] **A migration re-run aborted on an id the store and the file both claimed, and both halves of why are fixed.**
   ANTS-4141 called the collision before it happened — "this bullet's own id

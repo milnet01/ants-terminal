@@ -1530,6 +1530,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         m_roadmapCacheMtimeMs = 0;
         m_roadmapCacheStampMs = 0;
         m_roadmapCacheBullets = QJsonArray();
+        // ANTS-4402 — lockstep with the bullets cache: a witness left behind by
+        // a refused refill would describe a backend this call never reached.
+        m_roadmapCacheSource.clear();
+        m_roadmapCacheFileMaxId = 0;
+        m_roadmapCacheStoreHighWater = 0;
         rcRoadmapSourceRefused(out, srcWhy, srcErr);
         return QJsonDocument(out);
     };
@@ -1538,6 +1543,33 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                        (m_roadmapCacheMtimeMs == mtime) &&
                        (mtime != 0) &&
                        (nowMs - m_roadmapCacheStampMs <= kRoadmapCacheTtlMs);
+
+    // ANTS-4402 — say which backend answered. ANTS-3793 made the store primary
+    // for reads; ANTS-4141's standing workaround has this project editing
+    // ROADMAP.md BY HAND. A hand edit therefore lands in a file no reader
+    // reads, and the envelope gave no way to tell: it named ROADMAP.md as its
+    // `path`, returned ok:true, and served the store. Measured 2026-08-15 on
+    // this project — 59 ids present in the file and absent from the store, a
+    // bullet filed by hand returned in `missing_ids`, and two `✅` headlines
+    // reported as `📋`.
+    //
+    // `file_ahead_of_store` is ONE-DIRECTIONAL: an id above the store's mark
+    // proves the read is stale, but its absence proves nothing, because a
+    // status flip or a body edit moves no id. Reconciling the two backends is
+    // ANTS-4141's job and needs the render fixed first.
+    auto stampRoadmapSource = [&]() {
+        if (m_roadmapCacheSource.isEmpty())
+            return;
+        out[QStringLiteral("source")] = m_roadmapCacheSource;
+        if (m_roadmapCacheFileMaxId > m_roadmapCacheStoreHighWater) {
+            out[QStringLiteral("file_ahead_of_store")] = true;
+            out[QStringLiteral("file_highest_id")] = m_roadmapCacheFileMaxId;
+            out[QStringLiteral("store_high_water")] = m_roadmapCacheStoreHighWater;
+        }
+    };
+    if (fresh)
+        stampRoadmapSource();
+
     if (!fresh) {
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -1559,6 +1591,45 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         m_roadmapCachePath = path;
         m_roadmapCacheMtimeMs = mtime;
         m_roadmapCacheStampMs = nowMs;
+
+        // ANTS-4402 — refill the backend witness in lockstep with the bullets.
+        // The id scan runs over `markdown` alone, NOT RoadmapFoldIn::
+        // corpusHighWater(), which re-reads CHANGELOG.md and every
+        // docs/roadmap/*.md archive: several MB of regex is affordable once at
+        // allocation time and not on a read verb.
+        m_roadmapCacheSource = QStringLiteral("markdown");
+        m_roadmapCacheFileMaxId = 0;
+        m_roadmapCacheStoreHighWater = 0;
+        if (!callerCanonical.isEmpty()) {
+            RoadmapSource::ReadError witnessWhy = RoadmapSource::ReadError::None;
+            if (RoadmapStore *store = roadmapStoreOrNull(&witnessWhy, nullptr)) {
+                const auto pid = RoadmapSource::migratedProject(
+                    *store, callerCanonical, markdown, nullptr, &witnessWhy);
+                if (pid) {
+                    m_roadmapCacheSource = QStringLiteral("store");
+                    const QString pfx = rcdetail::rlStoreCounterPrefix(
+                        *store, *pid, QString(), markdown, callerCanonical);
+                    QString hwErr;
+                    if (const auto hw = store->idHighWater(*pid, pfx, &hwErr))
+                        m_roadmapCacheStoreHighWater = *hw;
+                    if (!pfx.isEmpty()) {
+                        const QRegularExpression idRe(
+                            QStringLiteral("\\b")
+                            + QRegularExpression::escape(pfx)
+                            + QStringLiteral("-([0-9]{1,8})\\b"));
+                        auto it = idRe.globalMatch(markdown);
+                        while (it.hasNext()) {
+                            bool okN = false;
+                            const qint64 n =
+                                it.next().captured(1).toLongLong(&okN);
+                            if (okN && n > m_roadmapCacheFileMaxId)
+                                m_roadmapCacheFileMaxId = n;
+                        }
+                    }
+                }
+            }
+        }
+        stampRoadmapSource();
 
         if (section.isEmpty()) {  // ANTS-1287-INV-6 — full-file path
             // ANTS-3793 — the store when this project is migrated, `markdown`
