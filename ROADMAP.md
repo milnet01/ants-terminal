@@ -28601,9 +28601,16 @@ against current source before filing.
   **But `roadmap_migrate dry_run` says the operation is not safe unattended:
   24 inserted, 9 updated, 1,526 unchanged, and 446 ORPHANED.** An orphan is a
   store row the plan matched to no source bullet, and 446 of 1,981 is a
-  quarter of the store. That number needs a human decision before any live
-  run — it is exactly the "what happens to rows the file no longer explains?"
-  question the mapping contract exists to answer, and it is unanswered.
+  quarter of the store.
+  **Superseded 2026-08-15 — that was a defect, not a decision (ANTS-4403).**
+  This paragraph went on to call the number a question needing a human answer
+  before any live run: "what happens to rows the file no longer explains?".
+  The file explained every one of them. A hand-rolled fence test in
+  `walkSource()` read one line of prose at ROADMAP.md:31081 as a fence opener
+  and masked the rest of the file, so 481 bullets never reached the plan and
+  the rows they would have matched were reported as orphans. With that fixed,
+  the same dry run reports **0 orphaned** (59 inserted, 12 updated, 1,969
+  unchanged). Nothing here needs a policy call.
   Counter state at measurement: `.roadmap-counter` 4392, store
   `id_prefix.high_water` 4342, store max item 4343, file max 4400. The
   counter is now AHEAD of the store (this session hand-allocated 4345-4400),
@@ -28680,6 +28687,17 @@ against current source before filing.
   cycle 2 = 0), which is a plan edit and owes CLAUDE.md rule 14's gate, plus a
   confirming re-run. The D3 numbers already satisfy the corrected criterion in
   substance. Phase E2 is unchanged and is the real remaining work.
+
+  Update (2026-08-15, second): **E2's stated blocker is gone.** The 446
+  orphans were ANTS-4403, a fence-masking defect that dropped 481 of 2,040
+  bullets from every plan built from this ROADMAP.md; the dry run now reports
+  0 orphaned. The measurement recorded above under "Phase E measurement" is
+  still right about the DIVERGENCE (57 file-only, 197 synthesised store-only
+  whose content is present) and was wrong only about the orphans. E2 — the
+  other 13 projects — is now unblocked and needs no decision first. Note that
+  each of those projects must be re-measured rather than assumed clean: a
+  qualifying backtick line is a property of a project's own prose, so a
+  project whose roadmap never discusses fences was never affected.
 
   The 0.7.105 release notes no longer cite this id (2026-08-14). What
   shipped in that cycle is Phases A–C, which are attributed to their own
@@ -41670,6 +41688,81 @@ here.)
   fix was to move the `query=` and `id`/`ids[]` glosses into `detail`, which is
   stripped from the wire and served by `tool_info`. The wire keeps the names,
   `detail` keeps the semantics; nothing was dropped.
+
+- ✅ [ANTS-4403] **One line of prose silently deleted a quarter of the roadmap from every migration: the walk's hand-rolled fence test read a multi-backtick inline span as a fence opener.**
+  `walkSource()` decided fence extents with
+  `line.trimmed().startsWith("```")` — its own rule, not `MarkdownScan`'s,
+  although the shared primitive has lived in the same library since ANTS-3603
+  and lists six consumers in its header. The migration was never one of them.
+
+  The hand-rolled test is wrong twice. It ignores CommonMark § 4.5, which
+  forbids a backtick inside a BACKTICK fence's info string precisely so that
+  ```` ```python ```` — the standard way to write *about* fences — stays a
+  paragraph (ANTS-3655 states this and fixes it, for other callers). And it
+  accepts any indent, where the allowance is three spaces past the enclosing
+  list item's content column (ANTS-3638).
+
+  **Measured on this project's own ROADMAP.md, 43,816 lines / 2,030 top-level
+  bullets.** One qualifying line at 31,081 — prose explaining why some specs
+  fence their patterns as `python` — opened a fence nothing closed, so every
+  line below it masked as fence content. Bullets were never recorded, headings
+  never opened a section, and the plan simply ended early:
+
+  | | items | sections |
+  |---|---|---|
+  | before | 1,559 | 135 |
+  | after  | 2,040 | 218 |
+
+  **481 items, 24% of the roadmap, lost with no note** — a well-formed plan
+  that was merely short. Proven by neutralising that one line on a throwaway
+  copy before any code changed, and the last kept bullet (31,067) and first
+  dropped one (31,103) bracket it exactly, with zero kept bullets after.
+
+  **This is where the 446 orphans came from, and they were never a policy
+  question.** An orphan is a store row no plan item matched
+  (`roadmapmigrateload.cpp:694`), so the 446 were the rows whose source
+  bullets never reached the plan. ANTS-4065's Phase E measurement read them as
+  "what happens to rows the file no longer explains?" and called it a decision
+  needing a human before any live run. Dry-run load against a copy of the real
+  store, with the fix: **446 orphaned → 0**, 1,526 → 1,969 unchanged, and 24 →
+  59 inserted, which is exactly the hand-filed ids ANTS-4141's workaround
+  produced. **Phase E2 is unblocked.**
+
+  Fixed by deleting the local rule rather than repairing it: the walk now takes
+  `MarkdownScan::fenceMask()` and derives its opener→closer extents from the
+  mask, so the fence rule is stated once. Tests
+  `tests/features/roadmap_migrate_fence_span/` INV-1..5 — INV-1 and INV-3 fail
+  on assertions against the pre-fix walk, and INV-2/4/5 passed before and after,
+  which is what pins that the fix was not bought by weakening masking: INV-4
+  covers the indent-5 and indent-6 fences this ROADMAP.md really carries under
+  bullets, the exact regression a naive tightening of the rule would cause.
+  **Layman:** A single sentence in the roadmap that quoted some code formatting was mistaken for the start of a code block, so everything after it — a quarter of the whole roadmap — was invisible to the tool that copies the roadmap into the database, with no warning.
+  Kind: fix.
+  Lanes: roadmap, mcp.
+  Source: in-session-2026-08-15 (found while characterising ANTS-4065 Phase E's 446 orphans).
+
+- 📋 [ANTS-4404] **Four more markdown walkers hand-roll the same fence test ANTS-4403 just removed from the migration.**
+  ANTS-4403 fixed `walkSource()` by adopting `MarkdownScan`. The identical
+  naive predicate — `trimmed().startsWith("```")` toggling a bool — is still
+  live at `remotecontrol.cpp:1595` (`walkGfmBullets`),
+  `remotecontrol.cpp:1772` (`walkAntsV1Bullets`), `testauditengine.cpp:1604`
+  and `changelogquery.cpp:151`. Each has the same two faults: no info-string
+  rule, so a multi-backtick inline span opens a fence that never closes, and no
+  indent bound.
+
+  The two in `remotecontrol.cpp` are the ones to measure first: they are the
+  markdown-side roadmap walkers, so they read the same ROADMAP.md that
+  ANTS-4403 proved carries a qualifying line at 31,081. Whether they truncate
+  it the same way is NOT yet measured and must not be assumed — that is this
+  item's first step, not its premise.
+
+  Not folded into ANTS-4403 deliberately: that fix is one function and is
+  proven against the real roadmap, and widening it to four call sites in three
+  subsystems would have made a surgical repair a sweep.
+  **Layman:** The same code-block misreading that hid a quarter of the roadmap may still exist in four other places that read documents; each needs checking.
+  Kind: fix.
+  Lanes: mcp, roadmap, audit.
+  Source: in-session-2026-08-15 (found while fixing ANTS-4403).
 
 - ✅ [ANTS-4142] **A migration re-run aborted on an id the store and the file both claimed, and both halves of why are fixed.**
   ANTS-4141 called the collision before it happened — "this bullet's own id

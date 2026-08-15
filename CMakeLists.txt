@@ -2512,6 +2512,11 @@ if(ANTS_TESTS)
                 # roadmaps + the survey's expectation file; no interpreter
                 # joins the features;fast path.
                 tests/features/roadmap_migrate_read/test_roadmap_migrate_read.cpp
+                # ANTS-4403 — the walk's fence rule is MarkdownScan's, not a
+                # hand-rolled startsWith("```"). Inline documents: a
+                # multi-backtick inline span used to open a fence that never
+                # closed, silently dropping every bullet below it.
+                tests/features/roadmap_migrate_fence_span/test_roadmap_migrate_fence_span.cpp
                 # ANTS-3765 — the migration load half. Behavioural, against a
                 # real store in a QTemporaryDir, and the plans are BUILT rather
                 # than parsed: INV-1 needs an off-enum status, which no real

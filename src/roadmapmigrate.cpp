@@ -4,6 +4,7 @@
 
 #include "roadmapmigrate.h"
 
+#include "markdownscan.h"
 #include "roadmapindex.h"
 #include "roadmapparse.h"
 
@@ -389,28 +390,41 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan) {
     for (const BulletRecord &rec : records)
         if (rec.firstLine >= 1) recordAt.insert(rec.firstLine, &rec);
 
-    // Fence extents, matched by their own delimiters. This is the one place
-    // the walk must not read a line at face value: a `##` inside a fence is
-    // not a heading (§ 2.11).
+    // Fence extents. This is the one place the walk must not read a line at
+    // face value: a `##` inside a fence is not a heading (§ 2.11).
+    //
+    // ANTS-4403 — the rule is MarkdownScan's (ANTS-3603), not a local
+    // `trimmed().startsWith("```")`. That hand-rolled test was wrong twice:
+    // it ignored CommonMark § 4.5, which forbids a backtick in a BACKTICK
+    // fence's info string precisely so that ```` ```python ```` — how a
+    // document quotes fence syntax — stays a paragraph (ANTS-3655); and it
+    // accepted any indent, where the allowance is three spaces past the
+    // enclosing list item's content column (ANTS-3638).
+    //
+    // The first cost this project its own roadmap: one such line at
+    // ROADMAP.md:31081 opened a fence nothing closed, masking the last 12,700
+    // lines of the file. The plan silently lost 481 of 2,040 items and 83 of
+    // 218 sections — no note, a well-formed plan that simply ended early — and
+    // every store row those bullets would have matched was then reported as an
+    // orphan (446 of them, read for a day as a policy question about rows the
+    // file no longer explains).
     QVector<bool> inFence(n + 2, false);
     QHash<int, int> fenceEnd;      // opening line -> closing line
     {
-        int openedAt = 0;
+        const QVector<bool> mask = MarkdownScan::fenceMask(lines);
+        for (int i = 0; i < n; ++i) inFence[i + 1] = mask.value(i);
+        // A maximal masked run is one fenced block, opener .. closer — and an
+        // unterminated opener runs to end-of-input, the same leniency the local
+        // scanner had. Derived from the mask rather than re-scanned, so the
+        // opener rule is stated once; two blocks separated by no line at all
+        // would merge into one extent, which no real document produces.
         for (int i = 0; i < n; ++i) {
-            const int ln = i + 1;
-            if (lines.at(i).trimmed().startsWith(QStringLiteral("```"))) {
-                inFence[ln] = true;
-                if (openedAt == 0) {
-                    openedAt = ln;
-                } else {
-                    fenceEnd.insert(openedAt, ln);
-                    openedAt = 0;
-                }
-            } else {
-                inFence[ln] = openedAt != 0;
-            }
+            if (!mask.value(i)) continue;
+            int j = i;
+            while (j + 1 < n && mask.value(j + 1)) ++j;
+            fenceEnd.insert(i + 1, j + 1);
+            i = j;
         }
-        if (openedAt != 0) fenceEnd.insert(openedAt, n);   // unterminated
     }
 
     // ANTS-3766 § 2.3 — uniquing runs PER SOURCE, over this source's own set,

@@ -82,6 +82,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap migration no longer loses a quarter of the roadmap to a line of prose that quotes fence syntax** (ANTS-4403)
+  The migration walk decided code-fence extents with its own
+  `startsWith("```")` test instead of the shared `MarkdownScan` rule, so a
+  multi-backtick inline span — the standard way to write *about* fences —
+  opened a fence nothing closed and masked the rest of the file. Bullets below
+  it were never recorded and headings never opened a section, with no note: the
+  plan was well-formed and simply short. On this project's own ROADMAP.md one
+  such line at 31,081 dropped the plan from 2,040 items to 1,559 and from 218
+  sections to 135 — 481 items, 24% of the roadmap. It was also the whole of the
+  446 "orphaned" store rows that had been read as a policy question about rows
+  the file no longer explains; the dry run now reports 0. The walk takes
+  `MarkdownScan::fenceMask()`, so the fence rule is stated once.
+
 - **roadmap_log no longer deletes bullets the store has never imported** (ANTS-4141)
   The store-backed write path renders the whole roadmap from the store
   on every op, which assumes the store holds everything the file does.
