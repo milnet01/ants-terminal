@@ -2225,6 +2225,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
                 tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
                 tests/features/roadmap_dialog_cards/test_roadmap_dialog_cards.cpp
+                tests/features/roadmap_filter_bar/test_roadmap_filter_bar.cpp
                 # ANTS-3793 § 2.3 — the per-project stored legend. HERE and not
                 # in roadmap_read_seam/ beside its five siblings: that directory
                 # compiles into test_core, which does not link ants_dialogs_lib

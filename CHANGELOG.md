@@ -96,6 +96,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap dialog — the filter bar collapses to three controls** (ANTS-4412)
+  Sixteen checkboxes across two rows became `Status: all ▾`,
+  `Kind: all ▾` and `Reset filters`, with the density combo moved up to
+  the search row. The reset button is enabled exactly when something
+  narrows the list, so a collapsed control cannot hide why the list looks
+  short. Keyboard access is unchanged.
+  **Layman:** The cluttered row of options at the top of the roadmap
+  window is now three tidy buttons.
+
 - **Audit: the Contract-Doc ↔ Code Drift lane no longer reports any `head:value` citation** (ANTS-3849)
   The 2026-08-13 guard covered a path-shaped head only (`remotecontrol.cpp:2540`);
   it now covers any head, so a `symbol:line` citation (`applyTheme:3118`) and a

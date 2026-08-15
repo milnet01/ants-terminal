@@ -41,6 +41,8 @@
 #include <QStringBuilder>
 #include <QShowEvent>
 #include <QTabBar>
+#include <QToolButton>      // ANTS-4412 — collapsed filter controls
+#include <QWidgetAction>    // ANTS-4412 — checkboxes hosted inside a QMenu
 #include <QTextBlock>
 #include <QTextBrowser>
 #include <QTextDocument>
@@ -1979,12 +1981,38 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     m_filterCurrent->setAccessibleName(
         tr("Show only items currently being worked on"));
     m_filterCurrent->setChecked(true);
-    filterRow->addWidget(m_filterDone);
-    filterRow->addWidget(m_filterPlanned);
-    filterRow->addWidget(m_filterInProgress);
-    filterRow->addWidget(m_filterConsidered);
-    filterRow->addWidget(m_filterCurrent);
-    filterRow->addStretch(1);
+    // ANTS-4412 — the five status boxes go into a popup instead of edge to
+    // edge. They are the SAME widgets, re-parented: every connect() above and
+    // below, every objectName, every accessibleName and the whole persistence
+    // path are untouched, and `findChild<QCheckBox*>("roadmap-filter-done")`
+    // still resolves because a QMenu owned by the dialog is in its object
+    // tree. That is the whole reason this is a re-parent and not a rewrite —
+    // the busy row was chrome, and only chrome should change.
+    auto *statusMenu = new QMenu(this);
+    statusMenu->setObjectName(QStringLiteral("roadmap-filter-status-menu"));
+    const auto addToMenu = [](QMenu *menu, QCheckBox *cb) {
+        auto *wa = new QWidgetAction(menu);
+        wa->setDefaultWidget(cb);
+        menu->addAction(wa);
+    };
+    addToMenu(statusMenu, m_filterDone);
+    addToMenu(statusMenu, m_filterPlanned);
+    addToMenu(statusMenu, m_filterInProgress);
+    addToMenu(statusMenu, m_filterConsidered);
+    addToMenu(statusMenu, m_filterCurrent);
+
+    m_statusFilterBtn = new QToolButton(this);
+    m_statusFilterBtn->setObjectName(QStringLiteral("roadmap-filter-status-button"));
+    m_statusFilterBtn->setPopupMode(QToolButton::InstantPopup);
+    m_statusFilterBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_statusFilterBtn->setMenu(statusMenu);
+    // Keyboard parity with the checkbox row it replaces: the button takes tab
+    // focus, Space/Enter/Down opens the menu, and the boxes inside are
+    // reachable with the arrow keys. A collapse that costs keyboard access
+    // would be a regression dressed as tidying.
+    m_statusFilterBtn->setFocusPolicy(Qt::StrongFocus);
+    m_statusFilterBtn->setAccessibleName(tr("Status filter"));
+    filterRow->addWidget(m_statusFilterBtn.data());
     // ANTS-1238 — density combo at trailing edge of filterRow.
     // Order matches the Density enum (Compact=0, Cozy=1,
     // Comfortable=2). m_density is the live source of truth;
@@ -2016,8 +2044,10 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                 if (m_lastHtml) m_lastHtml->clear();  // bust dedup cache
                 rebuild();
             });
-    filterRow->addWidget(m_densityCombo.data());
-    root->addLayout(filterRow);
+    // ANTS-4412 — density moves to the SEARCH row's trailing edge. It is a
+    // view preference, not a filter, and sitting inside the filter row is
+    // what made that row read as an unbounded list of toggles.
+    searchRow->addWidget(m_densityCombo.data());
 
     // ANTS-1106 — Kind-faceted secondary filter. Empty by default
     // (no narrowing). Each checkbox toggles a Kind value in
@@ -2025,10 +2055,15 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // visual cues — `audit-fix` ought to pop visually vs
     // `implement` so the user can distinguish at a glance which
     // categories of work are queued.
-    auto *kindRow = new QHBoxLayout();
+    // ANTS-4412 — eleven always-visible boxes become one summarising button,
+    // by the same re-parent as the status set above. `kindLabel` is kept and
+    // hidden rather than deleted: its objectName is a documented handle and
+    // the button carries the label's text now.
+    auto *kindMenu = new QMenu(this);
+    kindMenu->setObjectName(QStringLiteral("roadmap-filter-kind-menu"));
     auto *kindLabel = new QLabel(tr("Kind:"), this);
     kindLabel->setObjectName(QStringLiteral("roadmap-filter-kind-label"));
-    kindRow->addWidget(kindLabel);
+    kindLabel->hide();
     // KindEntry table is at file scope (see kKinds in the anon
     // namespace) so the ctor's build loop and the ANTS-1150
     // persisted-Kind-filter restore iterate the same source-of-
@@ -2053,10 +2088,59 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                     }
                     rebuild();
                 });
-        kindRow->addWidget(cb);
+        addToMenu(kindMenu, cb);
     }
-    kindRow->addStretch(1);
-    root->addLayout(kindRow);
+
+    m_kindFilterBtn = new QToolButton(this);
+    m_kindFilterBtn->setObjectName(QStringLiteral("roadmap-filter-kind-button"));
+    m_kindFilterBtn->setPopupMode(QToolButton::InstantPopup);
+    m_kindFilterBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_kindFilterBtn->setMenu(kindMenu);
+    m_kindFilterBtn->setFocusPolicy(Qt::StrongFocus);
+    m_kindFilterBtn->setAccessibleName(tr("Kind filter"));
+    filterRow->addWidget(m_kindFilterBtn.data());
+
+    // ANTS-4412 — the affordance the collapse OWES. Two summarising buttons
+    // can hide why a list looks short in a way sixteen visible checkboxes
+    // never could, so a one-click restore ships in the same pass rather than
+    // as a follow-up. Disabled while nothing is filtered, which doubles as
+    // the at-a-glance "no filters active" signal.
+    m_resetFiltersBtn = new QToolButton(this);
+    m_resetFiltersBtn->setObjectName(QStringLiteral("roadmap-filter-reset-button"));
+    m_resetFiltersBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_resetFiltersBtn->setText(tr("Reset filters"));
+    m_resetFiltersBtn->setFocusPolicy(Qt::StrongFocus);
+    m_resetFiltersBtn->setAccessibleName(tr("Clear all roadmap filters"));
+    m_resetFiltersBtn->setToolTip(
+        tr("Show every status and every kind again"));
+    connect(m_resetFiltersBtn.data(), &QToolButton::clicked, this, [this] {
+        // Drive the checkboxes rather than the model: each one's own toggled
+        // handler owns the filter set, the config write and the rebuild, and
+        // reaching past them is how a reset and a click stop agreeing.
+        for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
+                              m_filterInProgress.data(),
+                              m_filterConsidered.data(),
+                              m_filterCurrent.data()})
+            if (cb) cb->setChecked(true);
+        for (QCheckBox *cb : std::as_const(m_kindCheckboxes))
+            if (cb) cb->setChecked(false);   // empty kind set = show all
+        if (m_searchBox) m_searchBox->clear();
+        updateFilterSummaries();
+    });
+    filterRow->addWidget(m_resetFiltersBtn.data());
+    filterRow->addStretch(1);
+    root->addLayout(filterRow);
+
+    // Keep the summaries honest on every toggle, whichever control moved.
+    for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
+                          m_filterInProgress.data(), m_filterConsidered.data(),
+                          m_filterCurrent.data()})
+        if (cb) connect(cb, &QCheckBox::toggled, this,
+                        [this] { updateFilterSummaries(); });
+    for (QCheckBox *cb : std::as_const(m_kindCheckboxes))
+        if (cb) connect(cb, &QCheckBox::toggled, this,
+                        [this] { updateFilterSummaries(); });
+    updateFilterSummaries();
 
     // Body: TOC list (left) + rendered viewer (right) inside a
     // QSplitter so the user can resize the sidebar. QTextBrowser
@@ -2283,6 +2367,11 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     connect(&m_searchDebounce, &QTimer::timeout, this, &RoadmapDialog::rebuild);
     connect(m_searchBox, &QLineEdit::textChanged, this,
             [this]() { m_searchDebounce.start(); });
+    // ANTS-4412 — the reset button reflects search too, and NOT through the
+    // debounce: the button says whether the list is narrowed, and lagging
+    // that by 120 ms would make it briefly lie about the state on screen.
+    connect(m_searchBox, &QLineEdit::textChanged, this,
+            [this]() { updateFilterSummaries(); });
 
     m_watcher.addPath(roadmapPath);
     if (!m_changelogPath.isEmpty()) m_watcher.addPath(m_changelogPath);
@@ -2782,6 +2871,54 @@ void RoadmapDialog::refreshLastTouchDatesIfStale() {
         && !m_lastTouchDates.isEmpty()) return;
     m_lastTouchDates = parseLastTouchDates(m_roadmapPath);
     m_lastTouchDatesMtime = mtime;
+}
+
+// ANTS-4412 — the honesty half of the collapse. Sixteen visible checkboxes
+// told you what was filtered by being visible; two buttons have to say it.
+//
+// The status set counts DOWN from all-on (its default is everything checked),
+// the kind set counts UP from empty (an empty set means no narrowing, per
+// ANTS-1106), so "all" is the right word for opposite states and neither
+// summary can be derived from the other's shape.
+void RoadmapDialog::updateFilterSummaries() {
+    int statusOn = 0, statusTotal = 0;
+    for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
+                          m_filterInProgress.data(), m_filterConsidered.data(),
+                          m_filterCurrent.data()}) {
+        if (!cb) continue;
+        ++statusTotal;
+        if (cb->isChecked()) ++statusOn;
+    }
+    const bool statusAll = statusOn == statusTotal;
+    if (m_statusFilterBtn) {
+        m_statusFilterBtn->setText(
+            statusAll ? tr("Status: all ▾")
+                      : tr("Status: %1 of %2 ▾").arg(statusOn).arg(statusTotal));
+        m_statusFilterBtn->setToolTip(
+            statusAll ? tr("Every status is shown")
+                      : tr("%1 of %2 statuses hidden — click to change")
+                            .arg(statusTotal - statusOn).arg(statusTotal));
+    }
+
+    const int kindOn    = int(m_kindFilter.size());
+    const int kindTotal = int(m_kindCheckboxes.size());
+    const bool kindAll  = kindOn == 0;   // empty set = no narrowing
+    if (m_kindFilterBtn) {
+        m_kindFilterBtn->setText(
+            kindAll ? tr("Kind: all ▾")
+                    : tr("Kind: %1 of %2 ▾").arg(kindOn).arg(kindTotal));
+        m_kindFilterBtn->setToolTip(
+            kindAll ? tr("Every kind is shown")
+                    : tr("Showing only %1 of %2 kinds — click to change")
+                          .arg(kindOn).arg(kindTotal));
+    }
+
+    // Enabled EXACTLY when something is narrowing the list, so the control
+    // doubles as the at-a-glance answer to "why is this list short?". Search
+    // counts: it narrows as hard as any checkbox and the reset clears it.
+    const bool searching = m_searchBox && !m_searchBox->text().isEmpty();
+    if (m_resetFiltersBtn)
+        m_resetFiltersBtn->setEnabled(!statusAll || !kindAll || searching);
 }
 
 void RoadmapDialog::applyPreset(Preset p) {

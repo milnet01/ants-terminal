@@ -566,6 +566,20 @@ private:
     // don't have to walk findChildren<QCheckBox*>() and parse
     // objectName prefixes. Same-life as the dialog.
     QHash<QString, QCheckBox *> m_kindCheckboxes;
+    // ANTS-4412 — the filter chrome collapsed to three controls. The
+    // checkboxes above are UNCHANGED and still own the state; they are
+    // re-parented into these buttons' popup menus rather than laid out
+    // edge to edge, so every existing signal, objectName, accessibleName
+    // and persistence path keeps working and `findChild` still reaches
+    // them. Sixteen always-visible boxes became two summarising buttons.
+    QPointer<class QToolButton> m_statusFilterBtn;
+    QPointer<class QToolButton> m_kindFilterBtn;
+    QPointer<class QToolButton> m_resetFiltersBtn;
+    // Recomputes both buttons' text and the reset button's enabled state
+    // from the live checkboxes. A collapsed control that hides WHY the
+    // list is short is worse than the busy row it replaces, so this is
+    // called from every filter toggle and is not optional.
+    void updateFilterSummaries();
     std::shared_ptr<QString> m_lastHtml;
     Config *m_config = nullptr;
     SortOrder m_sortOrder = SortOrder::Document;

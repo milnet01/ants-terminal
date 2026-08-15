@@ -34912,6 +34912,7 @@ defect from different angles.
   recall. Caveat this measurement is Ants-only; the verb resolves paths
   under caller_cwd, so another project's corpus could differ and is
   unmeasured from here.
+  Progress (2026-08-15): re-checked, and the remaining work is exactly what the 2026-08-12 measurement left — the `docs/standards/specs.md` § 3.5 amendment making fence+table the recommended way to state a pattern invariant. Still absent. NOT taken this session: that is a standards edit, which re-arms CLAUDE.md rule 14's gate, and this session carries an explicit instruction not to dispatch subagents — so the independent cold read the gate requires cannot be run, and reading it myself does not satisfy the rule. Blocked on the dispatch rather than on the work; the amendment is a short one and the measurement that justifies it is already written above.
 
 - ✅ [ANTS-4129] **mcp-tools.md step 7 states an absolute the spec_conformance verb has to break.**
   Step 7 of docs/standards/mcp-tools.md says a read verb opts into ETag by
@@ -36178,6 +36179,7 @@ shipped.
   Kind: feature.
   Lanes: feedbackfile, claudeintegration.
   Source: user-request-2026-07-25.
+  Progress (2026-08-15): blocked on the same gate as ANTS-4128, and for the reason this bullet already names — `docs/standards/mcp-feedback-files.md` § 2.2 defines the delta rule and must be amended before the parser, which re-arms CLAUDE.md rule 14. This session is instructed not to dispatch subagents, so the independent cold read cannot be run and a self-read does not substitute. The design above is unchanged and still looks right; what is missing is the gate, not the plan.
 
 - ✅ [ANTS-3632] **Review Changes dialog: show each touched file's total line count in the Status list.**
   User request: the Status list names each touched file but gives no
@@ -43789,7 +43791,7 @@ here.)
   Source: in-session-2026-08-15 (found while writing ANTS-3807's migration briefs).
   Lanes: roadmap, audit.
 
-- 📋 [ANTS-4412] **Roadmap dialog — the filter bar is three dense rows of checkboxes and needs collapsing.**
+- ✅ [ANTS-4412] **Roadmap dialog — the filter bar is three dense rows of checkboxes and needs collapsing.**
   User request 2026-08-15, with a screenshot of the "Next" tab. The
   companion to ANTS-3762 (which aligns the ROWS on a column grid) —
   this one is the CHROME above them, and it is deliberately a separate
@@ -43841,6 +43843,15 @@ here.)
   Not in scope: the colour theme, the tab strip's membership, and where
   the rows get their data (the dialog already reads through the store
   seam; the leftover file read is ANTS-3863).
+  Resolved (2026-08-15). Sixteen always-visible checkboxes across two rows became two summarising buttons plus a reset: `Status: all ▾`, `Kind: all ▾`, `Reset filters`. Density moved to the search row's trailing edge — it is a view preference, and sitting inside the filter row is what made that row read as unbounded.
+
+  The implementation is a RE-PARENT, not a rewrite: the same QCheckBox widgets are hosted in the buttons' popup menus via QWidgetAction, so every connect(), objectName, accessibleName and persistence path is untouched and `findChild` still reaches them. That is why ANTS-1106's kind facets, ANTS-1150's persisted filter set and ANTS-1238's density all keep working with no edit.
+
+  Both risks the item named are answered in the same pass. The filters-active affordance is the reset button's enabled state — enabled EXACTLY when something narrows the list, search text included, so a collapsed control can never hide why the list looks short. Keyboard parity is kept: all three buttons take strong focus and the menus' checkboxes are arrow-reachable.
+
+  5 tests (tests/features/roadmap_filter_bar/). The first is the load-bearing one — it asserts every box is still reachable by objectName with its accessibleName and its ORIGINAL default, since a re-parent that quietly became a rewrite would leave the sibling tests green (they scrape source strings, not the live tree). Writing it surfaced a real isolation trap worth recording: `XdgGuard::setTestMode(true)` makes QStandardPaths IGNORE XDG_CONFIG_HOME for one shared per-binary location, so a sibling test's persisted kind filter was restored into this dialog and the defaults came back as whatever ran before. Test mode is now explicitly set false.
+
+  Not done, and still open: ANTS-3863 (the dialog reads ROADMAP.md it no longer needs) and the stale window title.
   **Layman:** The row of options at the top of the roadmap window is cluttered and hard to scan; it should collapse into a few tidy controls.
   Kind: ux.
   Source: user-request-2026-08-15.
