@@ -545,6 +545,18 @@ that is the whole edit:
    the removal", this standard annotates its own removals throughout on § 2.3's
    authority, and a maintainer could either strip every one of them or write
    them freely with nothing to settle which.
+5. **A note naming a broken passage is not a fix — change the passage.**
+   Where a correction records that some *other* line is wrong, that line
+   changes in the same edit, or the note documents the defect instead of
+   repairing it. **It reads as a fix and answers the same search**, which is
+   what makes it expensive: a later reviewer greps the marker, finds the note,
+   and stops. Measured 2026-08-15 (ROADMAP CFG-0129) on `security.md` § 3 — a
+   gate loop added *"which found the opener and the bullet prescribing
+   opposite code"* and left the bullet prescribing it. Five of six cold lanes
+   across two later loops confirmed that section sound, never reading the
+   bullet the note was about. **This is item 4's limit**: a dated record of
+   what a rule *used to say* is fine, and a note about a line you did not
+   change is not.
 
 ### 2.9 A rule with no check is a wish
 
@@ -821,17 +833,16 @@ is called done.**
 
 **`check-doc-facts` is what runs them**, and naming it here is the point of
 this paragraph: the `pre-commit` hook below **overlaps that list rather than
-being a subset of it**. Two of its five classes sit on the list above
-(`path`, `section`); the other three — deleted text surviving elsewhere, tool
-grants, citations to renamed paths — are this repository's own and appear on
-no `check-doc-facts` list at all. It read *"a blocking subset of that list"*
+being a subset of it**. `path`, `section` and `table` sit on the list above;
+the rest — deleted text surviving elsewhere, tool grants, citations to renamed
+paths, unresolved provenance ids — are this repository's own and appear on no
+`check-doc-facts` list at all. It read *"a blocking subset of that list"*
 until 2026-08-14 (ROADMAP CFG-0107), which invited the reverse error: treating
 a clean `check-doc-facts` run as covering the hook, and so dropping the
 survivor class, which the § 2.1 row below names as its only catcher. A commit that passes **this repository's** hook has had
-its **five blocking classes** run over it — asserted paths, deleted text, tool
-grants, citations to renamed paths, and section pointers — and its quoted
-fragments, counts and tables not checked at all. **A project scaffolded from
-the skeleton has two, not five**: that copy carries `path` and `survivor` only,
+**every blocking class the table below lists** run over it — and its quoted
+fragments and census counts not checked at all. **A project scaffolded from
+the skeleton has fewer**: that copy carries `path` and `survivor` only,
 for the reason given below. Scoped 2026-08-14 (ROADMAP CFG-0107) — this
 standard governs every project, and unscoped the sentence told a scaffolded
 project its citations and section pointers had been checked when nothing had
@@ -858,8 +869,11 @@ shipped in `skeleton/files/`) runs the decidable half in **blocking** classes
 only.
 
 **Read the table, not a paragraph.** Three loops of cold review each found an
-error in this section and few anywhere else, because five classes described in
-prose get four right and drift on the fifth — a different fifth each time.
+error in this section and few anywhere else, because classes described in prose
+drift — one of them is always slightly wrong, and a different one each time.
+**That is also why no sentence here counts them.** A prose count beside a table
+is a second copy of the same fact (§2.1), and it goes stale the moment a class
+is added — which it did on 2026-08-15, when two were.
 Three properties vary per class and none of them is optional, so an omission
 has to show as an empty cell rather than as a sentence nobody wrote.
 
@@ -870,6 +884,8 @@ has to show as an empty cell rather than as a sentence nobody wrote.
 | **allowed-tools** | a skill, command or agent file instructing an `mcp__ants__*` verb its own grant list omits | `review-agent-rules` itself; `*/templates/*`; a sentence that negates the call (*never*, *not*, *don't*, *cannot*, *without*, *no*) | the staged file, plus the grant list in its own or its skill's frontmatter |
 | **citation** | a document citing a path this change renames or deletes, where no candidate resolves | **`docs/` and `draft/`**; removed paths under `*/templates/`; the removed file itself | the tracked index, `--cached`, across documents *not* in the commit |
 | **section** | `` `<doc>.md` § N.N `` naming a heading that document does not have | a line carrying a `YYYY-MM-DD` date; `*/templates/*`; a document name resolving to zero files or to several | the staged file, plus the tracked `*.md` list |
+| **roadmap-id** | a **parenthesised** provenance marker — `(CFG-0108)`, `(ROADMAP CFG-0108)` — whose id has no bullet in `ROADMAP.md`. The prefix is sniffed from the file, never hardcoded | a **bare** id in prose, which it never extracts at all; `ROADMAP.md` itself; a checkout with no `ROADMAP.md` or no ids, where it skips silently | the staged file, plus the bullet ids in `ROADMAP.md` |
+| **table** | a table row whose unescaped-pipe count differs from its header row's | anything inside a fence, which is a specimen; an escaped `\|`, masked before counting; a `\|` line that is not part of a table | the staged file only |
 
 **Two different things are both called a `docs/` skip, and conflating them
 misreads the table.** A class either declines to *run on* a staged file, or
