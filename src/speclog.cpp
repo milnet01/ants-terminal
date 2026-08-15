@@ -57,6 +57,30 @@ int findSectionHeading(const QStringList &lines, const QString &keyword) {
     return -1;
 }
 
+// ANTS-3651 — how MANY level-2 headings carry the keyword. Same fence-aware
+// walk as findSectionHeading, which returns only the first: a file that
+// already holds two is ambiguous, and appending to the first silently deepens
+// a structural defect its author has not noticed. Counting is the cheapest way
+// for the caller to tell "found it" from "found several".
+int countSectionHeadings(const QStringList &lines, const QString &keyword) {
+    QChar openFence;
+    int n = 0;
+    for (const QString &line : lines) {
+        if (!openFence.isNull()) {
+            const QChar c = fenceOpenerChar(line);
+            if (!c.isNull() && c == openFence) openFence = QChar();
+            continue;
+        }
+        const QChar opener = fenceOpenerChar(line);
+        if (!opener.isNull()) { openFence = opener; continue; }
+        if (isLevel2Heading(line) &&
+            line.contains(keyword, Qt::CaseInsensitive)) {
+            ++n;
+        }
+    }
+    return n;
+}
+
 // Given the heading index `hdrIdx`, find the end of that section: the
 // first `## ` boundary after it (fence-skipped, `###`+ inert) or EOF.
 // Returns the 0-based index of the boundary line (== lines.size() at EOF).
@@ -197,6 +221,24 @@ EditResult appendLoop(const QString &content, const QString &label,
     QStringList lines = toLines(content, ewn);
     const QString bullet = QStringLiteral("- **") + label +
                            QStringLiteral("** — ") + body;
+
+    // ANTS-3651 — refuse an ambiguous file rather than guessing at it. Two
+    // loop-log sections means an earlier write already went wrong (that is
+    // how ANTS-3636 ended up with loops ordered 1-6, 8, 9, then 7 under a
+    // duplicate heading), and appending to whichever comes first buries the
+    // problem one row deeper. The author has to see it to repair it.
+    if (countSectionHeadings(lines,
+                             QStringLiteral("Cold-eyes loop log")) > 1) {
+        return fail(QStringLiteral("unrecognised_format"),
+                    QStringLiteral(
+                        "spec_log: this file holds more than one "
+                        "\"## Cold-eyes loop log\" section, so append_loop "
+                        "cannot tell which one the row belongs in. Merge them "
+                        "into a single section (keeping the loops in order) "
+                        "and retry — appending to one of them would leave the "
+                        "log split and out of order."));
+    }
+
     const int hdr = findSectionHeading(
         lines, QStringLiteral("Cold-eyes loop log"));
     if (hdr >= 0) {

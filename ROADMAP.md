@@ -36860,7 +36860,7 @@ that needs them.
   Kind: enhancement.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 4 lane C.
 
-- 📋 [ANTS-3650] **`spec_log op:set_status` strands the continuation of a multi-line Status block.**
+- ✅ [ANTS-3650] **`spec_log op:set_status` strands the continuation of a multi-line Status block.**
   `specs.md` § 3 permits a Status block that wraps onto continuation lines,
   and the corpus contains them. `op:set_status` rewrites only the single
   line matching `^\*\*Status:\*\*`, so a wrapped status leaves its tail
@@ -36885,8 +36885,9 @@ that needs them.
   **Layman:** A tool that updates a spec's status line only replaces the first line, so any extra lines underneath survive and start contradicting the new status.
   Kind: fix.
   Source: in-session-2026-07-26 (ANTS-3636 cold-eyes loop 8).
+  Resolved (2026-08-15, status reconciliation): already fixed by ANTS-3785, which replaced the field's WHOLE extent rather than its first line, delegating the end-of-field decision to `SpecParse::headerField` so the reader and the writer cannot disagree about where a wrapped Status stops. That work also measured the shape this item reported as an edge case: a wrapping Status is the COMMON case, 49 of 172 specs. Covered by `McpSpecLog.SetStatusReplacesWholeWrappedExtent` and `SetStatusWrappedPreservesSurroundingBytes`, both green, so the `dry_run` two-line fixture this item asked for exists. Flipped after reading the code and the tests rather than the comment. NOTE the item's wider suggestion — "same treatment likely needed for any other `**Field:**` line the verb rewrites" — was not separately audited here; `set_status` is the only op that rewrites a header field today.
 
-- 📋 [ANTS-3651] **`spec_log op:append_loop` can create a SECOND `## Cold-eyes loop log` section instead of appending to the existing one.**
+- ✅ [ANTS-3651] **`spec_log op:append_loop` can create a SECOND `## Cold-eyes loop log` section instead of appending to the existing one.**
   Observed on `docs/specs/ANTS-3636.md`: after appending loop 7 the file
   carried TWO `## Cold-eyes loop log` H2 headings, with loop 7 alone under
   the trailing one. Loops 8 and 9 then matched the FIRST heading, so the
@@ -36913,6 +36914,13 @@ that needs them.
   **Layman:** A tool that adds a review-round entry to a spec sometimes starts a whole new section at the bottom instead of adding to the one already there, so the rounds end up out of order under two identical headings.
   Kind: fix.
   Source: in-session-2026-07-26 (ANTS-3636 cold-eyes loop 10).
+  Resolved (2026-08-15), in two halves that turned out to have different states.
+
+  The CAUSE was already gone. The item suspected the section matcher required the loop log to be the LAST section; `findSectionHeading` now scans the whole file for any level-2 heading carrying the keyword, fence-aware, so a loop log with sections after it is found and appended to. Verified rather than assumed with a new test whose fixture deliberately places `## 7. Open questions` AFTER the loop log — the shape that used to fail — asserting exactly one heading survives and that the new row lands INSIDE the section rather than past it. It passed on the first run, which is the evidence the cause is fixed.
+
+  The SECOND half was genuinely missing, and I implemented it: a file that ALREADY holds two loop-log sections now refuses `unrecognised_format` instead of appending to the first. That is what the item asked for, and it matters because a duplicate means an earlier write already went wrong — exactly how ANTS-3636 ended up with loops ordered 1-6, 8, 9, then 7 under a second heading. Appending to whichever comes first buries the defect one row deeper; the author has to see it to repair it. The refusal names the section and says to merge them in order. New `countSectionHeadings` shares `findSectionHeading`'s fence-aware walk rather than re-deriving it.
+
+  Tests: `McpSpecLog.Ants3651AppendsToLoopLogThatIsNotTheLastSection` (green before the change — it locks the fixed cause) and `Ants3651RefusesWhenTheLoopLogSectionIsDuplicated` (red before, green after). Suite 3526/3526.
 
 - ✅ [ANTS-3653] **Citation scan — the `path:line` grammar and scrape rule as a standalone contract, split out of ANTS-3636.**
   Split out of ANTS-3636 (2026-07-27) after twelve cold-eyes loops failed to

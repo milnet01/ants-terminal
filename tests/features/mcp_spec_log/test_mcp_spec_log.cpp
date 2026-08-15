@@ -541,3 +541,82 @@ TEST(McpSpecLog, Ants4364TableFormAnd4353DirectionInference) {
     EXPECT_EQ(d.rowShape, QStringLiteral("bullet"));
     EXPECT_TRUE(d.content.contains(QStringLiteral("- **Loop 2** — 0 findings.")));
 }
+
+// ANTS-3651 — append_loop must append to the EXISTING loop-log section,
+// wherever it sits, and must never create a second one.
+//
+// Observed on docs/specs/ANTS-3636.md: after appending loop 7 the file carried
+// TWO `## Cold-eyes loop log` headings, loop 7 alone under the trailing one.
+// Loops 8 and 9 then matched the FIRST, so the rendered order became
+// 1-6, 8, 9, then 7 under a duplicate heading, and the repair was by hand.
+//
+// The absent-detection is what was wrong: the section was present and the verb
+// created another anyway. `findSectionHeading` now scans the whole file for any
+// level-2 heading carrying the keyword, so the section no longer has to be
+// last. This locks that in — the fixture deliberately puts a section AFTER the
+// loop log, which is the shape that used to fail.
+TEST(McpSpecLog, Ants3651AppendsToLoopLogThatIsNotTheLastSection) {
+    const QString before = QStringLiteral(
+        "# ANTS-9999 — Fixture\n"
+        "\n"
+        "**Status:** draft\n"
+        "\n"
+        "## Cold-eyes loop log\n"
+        "\n"
+        "- **Loop 1** — 3 findings, 3 fixed.\n"
+        "\n"
+        "## 7. Open questions\n"
+        "\n"
+        "Something that follows the loop log.\n");
+
+    const SpecLog::EditResult r = SpecLog::appendLoop(
+        before, QStringLiteral("Loop 2"),
+        QStringLiteral("0 findings; converged."), {});
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+
+    EXPECT_EQ(r.content.count(QStringLiteral("## Cold-eyes loop log")), 1)
+        << "ANTS-3651: appending must not create a SECOND loop-log heading";
+    EXPECT_TRUE(r.content.contains(QStringLiteral("- **Loop 2** — 0 findings")));
+
+    // Loop 2 must land INSIDE the loop-log section — above the section that
+    // follows it — not after the whole document.
+    const int loop2  = r.content.indexOf(QStringLiteral("- **Loop 2**"));
+    const int nextH2 = r.content.indexOf(QStringLiteral("## 7. Open questions"));
+    ASSERT_GE(loop2, 0);
+    ASSERT_GE(nextH2, 0);
+    EXPECT_LT(loop2, nextH2)
+        << "ANTS-3651: the new row belongs in the existing section, not "
+           "appended past the section that follows it";
+}
+
+// ANTS-3651, the other half — a file that ALREADY carries two loop-log
+// headings is ambiguous, and the item asked for a refusal rather than a guess.
+// Appending to the first silently deepens a structural defect the author has
+// not noticed; refusing names it.
+TEST(McpSpecLog, Ants3651RefusesWhenTheLoopLogSectionIsDuplicated) {
+    const QString before = QStringLiteral(
+        "# ANTS-9999 — Fixture\n"
+        "\n"
+        "**Status:** draft\n"
+        "\n"
+        "## Cold-eyes loop log\n"
+        "\n"
+        "- **Loop 1** — 3 findings.\n"
+        "\n"
+        "## 7. Open questions\n"
+        "\n"
+        "Prose.\n"
+        "\n"
+        "## Cold-eyes loop log\n"
+        "\n"
+        "- **Loop 7** — stranded under a duplicate heading.\n");
+
+    const SpecLog::EditResult r = SpecLog::appendLoop(
+        before, QStringLiteral("Loop 8"), QStringLiteral("body"), {});
+    EXPECT_FALSE(r.ok)
+        << "ANTS-3651: two loop-log sections is ambiguous — appending to the "
+           "first silently deepens the defect";
+    EXPECT_EQ(r.code, QStringLiteral("unrecognised_format"));
+    EXPECT_TRUE(r.error.contains(QStringLiteral("Cold-eyes loop log")))
+        << "the refusal must name what it found: " << r.error.toStdString();
+}
