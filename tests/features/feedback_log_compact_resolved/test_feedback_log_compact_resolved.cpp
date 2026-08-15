@@ -717,3 +717,28 @@ TEST(FeedbackCompactResolved, Ants3802RefusalNamesWhatWasSearched) {
         << "refusal does not say the sibling projects were searched: "
         << msg.toStdString();
 }
+
+// ANTS-3631 — an awaiting marker is not shippable, and the guard is NOT
+// redundant with the empty-ids arm. `compactResolved` harvests ids across the
+// WHOLE value, so a question quoting an id fills `ids` and would sail through
+// gate 1 — collapsing the write-up under a question nobody answered.
+TEST(FeedbackCompactResolved, Ants3631AwaitingIsNeverShippable) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "\n"
+        "### Waiting on the reporter\n"
+        "- **Proposed ID:** _(awaiting reporter \xE2\x80\x94 is this the same as "
+        "ANTS-1234?)_\n"
+        "- **What:** x.\n";
+    FeedbackFile::ResolveOptions o;
+    o.shippedIds.insert(QStringLiteral("ANTS-1234"));
+    const FeedbackFile::ResolveResult r =
+        FeedbackFile::compactResolved(QString::fromUtf8(fix), o);
+
+    // ANTS-1234 is SHIPPED, so every other gate would wave this through. Only
+    // the awaiting precedence stops it.
+    ASSERT_EQ(r.findings.size(), 1);
+    EXPECT_FALSE(r.findings.at(0).collapsed)
+        << "a question quoting a shipped id must not collapse the write-up";
+    EXPECT_EQ(r.findings.at(0).code, QStringLiteral("no_shippable_id"));
+}

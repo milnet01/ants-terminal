@@ -5791,16 +5791,39 @@ void ClaudeIntegration::onMcpConnection() {
                         idsProp["description"] = QStringLiteral(
                             "assign_id: the ANTS-NNNN ids to assign (each "
                             "^ANTS-[0-9]+$; rendered comma-joined, de-duplicated). "
-                            "Supply EITHER ids OR closure, never both.");
+                            "Supply EXACTLY ONE of ids / closure / awaiting.");
                     QJsonObject closureProp; closureProp["type"] = "string";
                         closureProp["description"] = QStringLiteral(
                             "assign_id: a closure reason → writes "
                             "`n/a — <reason>` (empty string → bare `n/a`). "
-                            "Supply EITHER ids OR closure, never both.");
+                            "Supply EXACTLY ONE of ids / closure / awaiting.");
                     props["heading"]       = headingProp;         // ANTS-3447
                     props["heading_line"]  = headingLineProp;     // ANTS-3447
                     props["ids"]           = idsProp;             // ANTS-3447
+                    // ANTS-3631 — the third disposition. A QUESTION for the
+                    // reporting session, rendered `_(awaiting reporter —
+                    // <question>)_` and deliberately UN-TRIAGED, so the
+                    // finding stays in that session's feedback_query delta
+                    // carrying the question. Every other way of attaching one
+                    // fills the slot, which is what removes the finding from
+                    // the one surface its reader looks at.
+                    QJsonObject awaitingProp; awaitingProp["type"] = "string";
+                        awaitingProp["description"] = QStringLiteral(
+                            "assign_id: a question for the reporting session "
+                            "→ writes `_(awaiting reporter — <question>)_`. "
+                            "UN-TRIAGED on purpose: the finding stays in their "
+                            "feedback_query delta so they see the question, and "
+                            "it is classified BEFORE the id and closure tests, "
+                            "so a question quoting an id ('same as ANTS-1234?') "
+                            "is not mistaken for an assignment. It contributes "
+                            "no ids to mapped_ids and compact_resolved refuses "
+                            "it (no_shippable_id). The reporter answers by "
+                            "appending a new finding whose heading quotes the "
+                            "original — never by editing the slot; you clear "
+                            "the marker when you triage their answer. Supply "
+                            "EXACTLY ONE of ids / closure / awaiting.");
                     props["closure"]       = closureProp;         // ANTS-3447
+                    props["awaiting"]      = awaitingProp;        // ANTS-3631
                     // ANTS-3474 — migrate_v2 tracking-table backfill opt-in.
                     QJsonObject backfillProp; backfillProp["type"] = "boolean";
                         backfillProp["default"] = false;

@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **Feedback v2 gains an "awaiting reporter" triage state** (ANTS-3631)
+  `assign_id` takes a third disposition, `awaiting`, writing
+  `_(awaiting reporter — <question>)_`. It stays un-triaged on purpose so
+  the question reaches the reporting session's `feedback_query` delta, and
+  it is classified before the id and closure tests so a question quoting
+  an id is not mistaken for an assignment. `feedback_query` emits
+  `awaiting[]`; `session_orient` separates the maintainer's outbox from
+  their inbox.
+  **Layman:** When I triage another project's bug report and need to ask
+  them something, there is now a way to ask it that they will actually
+  see.
+
 - **`build_target_for` — which build target owns a source file** (ANTS-3745)
   New read-only MCP verb. Parses CMakeLists.txt and answers with the
   owning target, the `cmake --build --target` line, and the `ctest -R`

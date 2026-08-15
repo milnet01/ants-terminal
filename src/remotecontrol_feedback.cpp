@@ -366,6 +366,23 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     }
     out["suspected_untagged"]    = suspected;
 
+    // ANTS-3631 — the awaiting subset. ALWAYS emitted, empty array included,
+    // for the reason `sections_checked` is never omitted when false: a caller
+    // cannot tell an absent key from "no outstanding questions", and this one
+    // is the maintainer's outstanding-question list. It is a SUBSET of the
+    // delta, not a partition of it — an awaiting finding appears in both,
+    // because the reporter must see the question and the maintainer must see
+    // that it is still unanswered.
+    QJsonArray awaiting;
+    for (const FeedbackFile::AwaitingFinding &af : pr.awaiting) {
+        QJsonObject o;
+        o[QStringLiteral("heading")]  = af.heading;
+        o[QStringLiteral("line")]     = af.line;
+        o[QStringLiteral("question")] = af.question;
+        awaiting.append(o);
+    }
+    out["awaiting"]              = awaiting;
+
     // ANTS-3371 — opt-in maintainer tracking rows. The recurring
     // "mark my prior suggestions that shipped" workflow needs per-item
     // status, which `mapped_ids` (a flat ID list) can't give. When
@@ -1016,12 +1033,21 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const bool hasIds = !idsArr.isEmpty();
         const bool hasClosure = req.contains(QStringLiteral("closure")) &&
                                 req.value(QStringLiteral("closure")).isString();
-        if (hasIds == hasClosure) {   // neither, or both → invalid
+        // ANTS-3631 — a THIRD disposition, so the guard becomes exactly-one-of
+        // three. It is counted rather than written as another equality: the
+        // two-way form was `hasIds == hasClosure`, and that shape does not
+        // generalise — extending it by conjunction admits "all three".
+        const bool hasAwaiting = req.contains(QStringLiteral("awaiting")) &&
+                                 req.value(QStringLiteral("awaiting")).isString();
+        const int dispositions =
+            int(hasIds) + int(hasClosure) + int(hasAwaiting);
+        if (dispositions != 1) {
             return QJsonDocument(fbErr(
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: assign_id needs exactly one of a "
-                               "non-empty \"ids\" array OR a \"closure\" string "
-                               "(hasIds XOR hasClosure)")));
+                               "non-empty \"ids\" array, a \"closure\" string, "
+                               "or an \"awaiting\" question string (got %1)")
+                    .arg(dispositions)));
         }
 
         // Compose the id-line value the helper will write.
@@ -1042,6 +1068,23 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 if (!idList.contains(id)) idList.append(id);
             }
             value = idList.join(QStringLiteral(", "));
+        } else if (hasAwaiting) {
+            // ANTS-3631 — the awaiting marker. Same control-char fold as the
+            // closure below, for the same reason: the id line is one line.
+            //
+            // An EMPTY question still writes a marker rather than refusing.
+            // The disposition's job is to keep the finding in the reporter's
+            // delta; the question is the payload, and a marker with no text is
+            // less wrong than a slot that silently reverts to "nobody looked".
+            QString q = req.value(QStringLiteral("awaiting")).toString();
+            static const QRegularExpression awCtrlRe(
+                QStringLiteral("[\\x00-\\x1F]"));
+            q.replace(awCtrlRe, QStringLiteral(" "));
+            q = q.trimmed();
+            value = q.isEmpty()
+                        ? QStringLiteral("_(awaiting reporter)_")
+                        : QString::fromUtf8("_(awaiting reporter \xE2\x80\x94 ")
+                              + q + QStringLiteral(")_");
         } else {
             // Closure: fold any newline / control char to a space so the written
             // line stays single-line (spec § 2.2 step 2 / INV-3), then compose

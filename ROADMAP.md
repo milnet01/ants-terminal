@@ -36160,7 +36160,7 @@ shipped.
   Source: cold-eyes ANTS-1397 loop 6 (2026-07-25).
   Resolved (2026-07-25) via option (b) — REMOVED, not implemented. Option (a) in this bullet was wrong and I verified it before acting: it proposed making `quick` skip the pre-pass scan, but the live skill (~/.claude/skills/test-audit/SKILL.md:112,142) defines --quick as "the grep pre-pass IS the audit" with only the subagent phase skipped. Implementing (a) would have deleted the very output --quick exists to produce. The schema string ("Quick mode — skip pre-pass regex scan") carried the same wrong semantics, so it was drift too, not a contract. Removed the property from the audit schema, `req.quick` from the dispatch lambda (mainwindow.cpp) and `bool quick` from PartitionRequest. Because the schema is additionalProperties:false, a stale caller now gets a LOUD refusal instead of a silent no-op. --quick stays caller-side, which the skill already does correctly.
 
-- 📋 [ANTS-3631] **Feedback v2 has no "needs info" state — a maintainer question to the reporting session is invisible in their delta.**
+- ✅ [ANTS-3631] **Feedback v2 has no "needs info" state — a maintainer question to the reporting session is invisible in their delta.**
   Triage is not always id-or-drop: some findings need a round-trip
   ("which project layout?", "paste the failing envelope"). v2 has no
   state for that.
@@ -36200,6 +36200,17 @@ shipped.
   Lanes: feedbackfile, claudeintegration.
   Source: user-request-2026-07-25.
   Progress (2026-08-15): blocked on the same gate as ANTS-4128, and for the reason this bullet already names — `docs/standards/mcp-feedback-files.md` § 2.2 defines the delta rule and must be amended before the parser, which re-arms CLAUDE.md rule 14. This session is instructed not to dispatch subagents, so the independent cold read cannot be run and a self-read does not substitute. The design above is unchanged and still looks right; what is missing is the gate, not the plan.
+  Resolved (2026-08-15) — contract gated first (8f534f21), then built. `assign_id` gains an `awaiting` argument writing `_(awaiting reporter — <question>)_`, un-triaged on purpose so the finding stays in the reporting session's `feedback_query` delta carrying the question.
+
+  Ordering is the contract, not an implementation detail: awaiting is tested BEFORE the closure and id tests. A question naturally quotes an id, and an id-first classifier reads the finding as triaged, drops it from the delta, adds a never-assigned id to `mapped_ids`, and hands `compact_resolved` a shippable-looking finding. Mutation-verified — removing that one ordering reddens exactly one test and no other.
+
+  Two guards, and they are independent rather than redundant: `parse()`'s classifier, and `compactResolved()`'s gate 1. The second is needed because the id harvest scans the WHOLE value, so a question quoting a SHIPPED id fills `ids` and would otherwise sail through every gate. Its test proves it by shipping ANTS-1234 in the fixture.
+
+  `feedback_query` always emits `awaiting[]` (`{heading, line, question}`), empty array included — a caller cannot tell an absent key from "no outstanding questions". `session_orient`'s `feedback_pending` now splits outbox from inbox: a file is counted in `files_with_pending` only when it holds un-triaged findings that are NOT awaiting markers, an awaiting-only file still gets a row carrying `awaiting_count` and no `delta_line_count`, and the block gains `total_awaiting`. Without that split a maintainer's own unanswered questions sit in their session-start to-do forever.
+
+  The reply channel changed during the gate and that is the substantive design decision: the reporter answers with an ordinary `op:append_finding` whose heading quotes the original, never by editing the slot. The first draft had them overwrite the value, which leaves the ANSWER unprotected — "yes, same as ANTS-1234" matches the id test and reproduces the whole defect one step later. The append needs no contributor-don'ts exception, no banner change and no new verb.
+
+  6 tests (3544 → 3550, all green). Correction to this bullet's own citation: the standard has zero numbered sections, so the `§ 2.2` it and `src/feedbackfile.cpp:260` cite is `docs/specs/ANTS-3448.md` § 2.2.
 
 - ✅ [ANTS-3632] **Review Changes dialog: show each touched file's total line count in the Status list.**
   User request: the Status list names each touched file but gives no

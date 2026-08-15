@@ -1834,6 +1834,7 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
             QDir::Files | QDir::Readable, QDir::Name);
 
         QJsonArray pendingFiles;
+        int totalAwaiting = 0, filesWithInbox = 0;
         int filesScanned = 0;
         int totalPendingLines = 0;
         // Bound the transient working set (largest corpus file ~150 KB
@@ -1849,19 +1850,55 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
             f.close();
             ++filesScanned;
             const FeedbackFile::ParseResult pr = FeedbackFile::parse(content);
-            if (!pr.deltaPresent) continue;  // fully-triaged → not surfaced
+            const int awaitingHere = int(pr.awaiting.size());
+            totalAwaiting += awaitingHere;
+            // ANTS-3631 — an awaiting marker is the MAINTAINER'S OUTBOX, not
+            // their inbox: it is un-triaged so the question reaches the
+            // reporter, and counting it here would put a permanently non-zero
+            // to-do at every session start that clears only when someone else
+            // replies. So a file is LISTED only when it holds un-triaged
+            // findings that are not awaiting markers.
+            //
+            // The outbox stays visible as a number rather than a row: an
+            // awaiting-only file still gets a minimal entry carrying its count
+            // and NO `delta_line_count`, and the absence of that key is what
+            // marks it as outbox. Dropping it entirely would leave the count
+            // with no carrier in the one case the field exists for.
+            // "Does the delta hold anything that is NOT an awaiting marker?"
+            // The delta is a `\n`-joined concatenation of finding blocks, so
+            // its heading count is the finding count; every awaiting finding
+            // contributes exactly one. Equal counts mean awaiting-only.
+            const int deltaFindings = pr.deltaPresent
+                ? int(pr.delta.count(QStringLiteral("\n### "))
+                      + (pr.delta.startsWith(QStringLiteral("### ")) ? 1 : 0))
+                : 0;
+            const bool inboxOnlyAwaiting =
+                pr.deltaPresent && awaitingHere > 0 &&
+                deltaFindings > 0 && deltaFindings == awaitingHere;
+            if (!pr.deltaPresent && awaitingHere == 0) continue;
             QJsonObject entry;
-            entry[QStringLiteral("file")]             = name;
-            entry[QStringLiteral("delta_line_count")] = pr.deltaLineCount;
+            entry[QStringLiteral("file")] = name;
+            if (awaitingHere > 0)
+                entry[QStringLiteral("awaiting_count")] = awaitingHere;
+            if (pr.deltaPresent && !inboxOnlyAwaiting) {
+                entry[QStringLiteral("delta_line_count")] = pr.deltaLineCount;
+                totalPendingLines += pr.deltaLineCount;
+                ++filesWithInbox;
+            }
             pendingFiles.append(entry);
-            totalPendingLines += pr.deltaLineCount;
         }
 
         QJsonObject fp;
         fp[QStringLiteral("shared_root")]        = sharedRoot;
         fp[QStringLiteral("files_scanned")]      = filesScanned;
-        fp[QStringLiteral("files_with_pending")] = pendingFiles.size();
+        // ANTS-3631 — `files_with_pending` counts INBOX files only. An
+        // awaiting-only file is now a row (it carries the maintainer's own
+        // outstanding-question count) but is not work anyone owes them, and
+        // the standard pins these two to the listed-inbox set so a count can
+        // never disagree with the rows a reader is looking at.
+        fp[QStringLiteral("files_with_pending")]  = filesWithInbox;
         fp[QStringLiteral("total_pending_lines")] = totalPendingLines;
+        fp[QStringLiteral("total_awaiting")]      = totalAwaiting;
         fp[QStringLiteral("files")]              = pendingFiles;
         result[QStringLiteral("feedback_pending")] = fp;
     }

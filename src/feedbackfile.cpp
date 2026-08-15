@@ -100,6 +100,47 @@ const QRegularExpression &closureRe() {
     return re;
 }
 
+// ANTS-3631 — the awaiting marker: a `**Proposed ID:**` value the maintainer
+// filled with a QUESTION for the reporting session. Un-triaged on purpose, so
+// the finding stays in that session's `feedback_query` delta carrying the
+// question — every other way of attaching one also fills the slot, which is
+// exactly what removes the finding from the surface its reader looks at.
+//
+// Hoisted beside closureRe() for the same reason it was: three call sites
+// (parse()'s classifier, compactResolved()'s gate 1, and the question
+// extractor) must not drift on what counts as a marker.
+//
+// TESTED BEFORE THE CLOSURE AND ID TESTS, and that ordering is the contract
+// rather than an implementation detail. A question naturally quotes an id —
+// "is this the same as ANTS-1234?" — so an id-first classifier reads the
+// finding as triaged, drops it from the delta, adds a never-assigned id to
+// mapped_ids, and hands compact_resolved a shippable-looking finding. The
+// question is then silently lost, which is the whole defect this disposition
+// exists to prevent.
+//
+// The classifier deliberately anchors on the PREFIX only, not on the em-dash
+// or the closing `)_`: classification is the safety property and must fail
+// toward "still un-triaged", while question extraction is display text and may
+// fail soft to an empty string (standard § Maintainer triage).
+const QRegularExpression &awaitingRe() {
+    static const QRegularExpression re(
+        QStringLiteral("^_\\(awaiting reporter\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    return re;
+}
+
+// The question inside `_(awaiting reporter — <question>)_`: the span between
+// the em-dash and the trailing `)_`, trimmed. Empty when either is absent,
+// which the marker's classification does not depend on.
+QString awaitingQuestion(const QString &value) {
+    if (!awaitingRe().match(value).hasMatch()) return {};
+    static const QRegularExpression re(
+        QString::fromUtf8("^_\\(awaiting reporter\\s*\xE2\x80\x94\\s*(.*?)\\)_\\s*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto m = re.match(value.trimmed());
+    return m.hasMatch() ? m.captured(1).trimmed() : QString();
+}
+
 // ANTS-3448 — finding-bullet arm: a `- **What/Repro/Impact:**` (or `**What**:`)
 // body bullet. Hoisted from migrateV2's function-local static so migrateV2()'s
 // finding-shaped discriminator and parse()'s suspected_untagged scan share one
@@ -294,17 +335,29 @@ ParseResult parse(const QString &fileContent) {
                 continue;
             }
             const QString val = fb.idValue.trimmed();
+            // ANTS-3631 — the three tests, in this order. Awaiting FIRST,
+            // before the id test, because a question quoting an id would
+            // otherwise classify as triaged: see awaitingRe()'s header for the
+            // loss that produces. It contributes no ids for the same reason a
+            // closure does not — an id inside a question was never assigned.
+            const bool isAwaiting = awaitingRe().match(val).hasMatch();
+            if (isAwaiting)
+                r.awaiting.append({ fb.heading, fb.headingLine0 + 1,
+                                    awaitingQuestion(val) });
             const bool isClosure = closureRe().match(val).hasMatch();
             const bool hasId = idRe.match(val).hasMatch();
-            if (!isClosure && hasId) {
+            if (!isAwaiting && !isClosure && hasId) {
                 // Triaged with real id(s): contribute them to mappedIds.
                 auto it = idRe.globalMatch(val);
                 while (it.hasNext()) v2ids.insert(it.next().captured(0));
                 continue;   // triaged → not in the delta
             }
-            if (isClosure) continue;  // closure → triaged, contributes no ids
-            // Un-triaged (empty / placeholder / any non-id, non-n/a text): the
-            // finding's block, all trailing blank lines stripped per block.
+            if (!isAwaiting && isClosure)
+                continue;  // closure → triaged, contributes no ids
+            // Un-triaged: empty, the placeholder, any non-id non-n/a text, or
+            // an awaiting marker — which is un-triaged DELIBERATELY, so the
+            // question reaches the reporter in the surface they already read.
+            // The finding's block, all trailing blank lines stripped per block.
             int end0 = fb.extentEnd0;
             while (end0 > fb.headingLine0 + 1 &&
                    lines.at(end0 - 1).trimmed().isEmpty())
@@ -988,8 +1041,16 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
             if (!f.ids.contains(id)) f.ids.append(id);
         }
 
-        const bool closure = closureRe().match(fb.idValue.trimmed()).hasMatch();
-        if (closure || f.ids.isEmpty()) {                       // gate 1
+        const QString gateVal = fb.idValue.trimmed();
+        const bool closure  = closureRe().match(gateVal).hasMatch();
+        // ANTS-3631 — an awaiting marker is not shippable, and the check is
+        // NOT redundant with `f.ids.isEmpty()`. The id harvest above scans the
+        // WHOLE value, so a question quoting an id ("is this the same as
+        // ANTS-1234?") fills `f.ids` and would sail through gate 1 — the
+        // write-up then gets collapsed under a question nobody answered.
+        // Same precedence as the closure, for a sharper reason.
+        const bool awaiting = awaitingRe().match(gateVal).hasMatch();
+        if (closure || awaiting || f.ids.isEmpty()) {           // gate 1
             f.code = QStringLiteral("no_shippable_id");
         } else if (hasStub(fb.headingLine0 + 1, fb.extentEnd0)) { // gate 2
             f.code = QStringLiteral("already_compacted");

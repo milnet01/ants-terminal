@@ -432,3 +432,101 @@ TEST(FeedbackV2Delta, DispatchWired) {
     EXPECT_NE(rc.find("out[\"format_version\"]"), std::string::npos);
     EXPECT_NE(rc.find("out[\"suspected_untagged\"]"), std::string::npos);
 }
+
+// ANTS-3631 — the third `**Proposed ID:**` disposition. A maintainer's
+// question to the reporting session must stay in THAT session's delta, because
+// every other way of attaching one also fills the slot — and a filled slot is
+// exactly what removes the finding from the surface its reader looks at.
+TEST(FeedbackV2Delta, Ants3631AwaitingMarkerStaysUnTriaged) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "\n"
+        "### A question was asked\n"
+        "- **Proposed ID:** _(awaiting reporter \xE2\x80\x94 which project layout?)_\n"
+        "- **What:** x.\n"
+        "\n"
+        "### Properly triaged\n"
+        "- **Proposed ID:** ANTS-4242\n"
+        "- **What:** y.\n";
+    const FeedbackFile::ParseResult r =
+        FeedbackFile::parse(QString::fromUtf8(fix));
+
+    ASSERT_TRUE(r.deltaPresent)
+        << "an awaiting finding is un-triaged, so the delta is not empty";
+    EXPECT_TRUE(r.delta.contains(QStringLiteral("A question was asked")));
+    EXPECT_FALSE(r.delta.contains(QStringLiteral("Properly triaged")))
+        << "a real id is still triaged and still leaves the delta";
+
+    // The awaiting set is a SUBSET of the delta, not a partition of it: the
+    // reporter must see the question and the maintainer must see it is open.
+    ASSERT_EQ(r.awaiting.size(), 1);
+    EXPECT_EQ(r.awaiting.at(0).heading,
+              QStringLiteral("### A question was asked"));
+    EXPECT_EQ(r.awaiting.at(0).question,
+              QStringLiteral("which project layout?"));
+    EXPECT_EQ(r.awaiting.at(0).line, 3);
+
+    // An id-assigned finding contributes to mapped_ids; the awaiting one does
+    // not appear there at all.
+    EXPECT_EQ(r.mappedIds, QStringList{QStringLiteral("ANTS-4242")});
+}
+
+// THE row this disposition exists for. A question naturally quotes an id, and
+// an id-first classifier would read the finding as triaged, drop it from the
+// delta, add a never-assigned id to mapped_ids, and hand compact_resolved a
+// shippable-looking finding — silently losing the question.
+TEST(FeedbackV2Delta, Ants3631AQuotedIdInsideAQuestionIsNotAnAssignment) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "\n"
+        "### Is this a duplicate\n"
+        "- **Proposed ID:** _(awaiting reporter \xE2\x80\x94 is this the same as "
+        "ANTS-1234?)_\n"
+        "- **What:** x.\n";
+    const FeedbackFile::ParseResult r =
+        FeedbackFile::parse(QString::fromUtf8(fix));
+
+    EXPECT_TRUE(r.deltaPresent)
+        << "the quoted id must not classify the finding as triaged";
+    EXPECT_TRUE(r.delta.contains(QStringLiteral("Is this a duplicate")));
+    ASSERT_EQ(r.awaiting.size(), 1);
+    EXPECT_TRUE(r.awaiting.at(0).question.contains(QStringLiteral("ANTS-1234")))
+        << "the question keeps its text: " 
+        << r.awaiting.at(0).question.toStdString();
+    EXPECT_TRUE(r.mappedIds.isEmpty())
+        << "an id quoted in a QUESTION was never assigned, so it must not "
+           "reach mapped_ids — the reporter would read mapped_id_status for "
+           "an id their finding never had";
+}
+
+// Classification anchors on the PREFIX only, so it fails toward "still
+// un-triaged"; question extraction is display text and fails soft.
+TEST(FeedbackV2Delta, Ants3631MalformedMarkerStillClassifies) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "\n"
+        "### Malformed marker\n"
+        "- **Proposed ID:** _(awaiting reporter)_\n"
+        "- **What:** x.\n";
+    const FeedbackFile::ParseResult r =
+        FeedbackFile::parse(QString::fromUtf8(fix));
+    EXPECT_TRUE(r.deltaPresent);
+    ASSERT_EQ(r.awaiting.size(), 1);
+    EXPECT_TRUE(r.awaiting.at(0).question.isEmpty())
+        << "no em-dash, so no question — but the marker still classified";
+}
+
+// Without this arm every assertion above is satisfied by a parser that calls
+// everything un-triaged. A closure is still triaged and still leaves the delta.
+TEST(FeedbackV2Delta, Ants3631ClosureIsStillTriaged) {
+    const char *fix =
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "\n"
+        "### Closed\n"
+        "- **Proposed ID:** n/a \xE2\x80\x94 out of scope\n"
+        "- **What:** x.\n";
+    const FeedbackFile::ParseResult r =
+        FeedbackFile::parse(QString::fromUtf8(fix));
+    EXPECT_FALSE(r.deltaPresent);
+    EXPECT_TRUE(r.awaiting.isEmpty());
+}

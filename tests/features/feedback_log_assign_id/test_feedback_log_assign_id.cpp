@@ -480,3 +480,63 @@ TEST(FeedbackAssignId, DispatchWired) {
     EXPECT_NE(rc.find("op == QStringLiteral(\"assign_id\")"), std::string::npos);
     EXPECT_NE(rc.find("FeedbackFile::assignId("), std::string::npos);
 }
+
+// ANTS-3631 — the guard becomes exactly-one-of THREE. It is counted rather
+// than written as another equality: the two-way form was `hasIds ==
+// hasClosure`, and extending that shape by conjunction admits "all three".
+TEST(FeedbackAssignId, Ants3631ExactlyOneOfThreeDispositions) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = dir.path() + "/TEST_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeStr(p, v2()));
+    RemoteControl rc(nullptr);
+    auto base = [&]() {
+        QJsonObject req;
+        req["op"] = "assign_id";
+        req["path"] = p;
+        req["caller_cwd"] = dir.path();
+        req["heading"] = kH2;
+        return req;
+    };
+
+    // All three at once — the case a conjunction of two-way tests admits.
+    QJsonObject req = base();
+    req["ids"]      = QJsonArray{QStringLiteral("ANTS-1")};
+    req["closure"]  = QStringLiteral("folded");
+    req["awaiting"] = QStringLiteral("which layout?");
+    EXPECT_EQ(rc.cmdFeedbackLog(req).object().value("code").toString(),
+              QStringLiteral("bad_args"));
+
+    // Awaiting paired with each other disposition.
+    req = base();
+    req["ids"]      = QJsonArray{QStringLiteral("ANTS-1")};
+    req["awaiting"] = QStringLiteral("which layout?");
+    EXPECT_EQ(rc.cmdFeedbackLog(req).object().value("code").toString(),
+              QStringLiteral("bad_args"));
+    req = base();
+    req["closure"]  = QStringLiteral("folded");
+    req["awaiting"] = QStringLiteral("which layout?");
+    EXPECT_EQ(rc.cmdFeedbackLog(req).object().value("code").toString(),
+              QStringLiteral("bad_args"));
+
+    // Awaiting ALONE is valid, and writes the marker. Without this arm every
+    // assertion above is satisfied by a guard that refuses everything.
+    req = base();
+    req["awaiting"] = QStringLiteral("which project layout?");
+    QJsonObject env = rc.cmdFeedbackLog(req).object();
+    EXPECT_TRUE(env.value("ok").toBool()) << QJsonDocument(env).toJson().toStdString();
+    const QString after = readStr(p);
+    EXPECT_TRUE(after.contains(QString::fromUtf8(
+        "- **Proposed ID:** _(awaiting reporter \xE2\x80\x94 which project layout?)_")))
+        << after.toStdString();
+
+    // An EMPTY question still writes a marker rather than refusing: the
+    // disposition's job is to keep the finding in the reporter's delta, and a
+    // marker with no text beats a slot that reverts to "nobody looked".
+    ASSERT_TRUE(writeStr(p, v2()));
+    req = base();
+    req["awaiting"] = QStringLiteral("");
+    env = rc.cmdFeedbackLog(req).object();
+    EXPECT_TRUE(env.value("ok").toBool());
+    EXPECT_TRUE(readStr(p).contains(
+        QStringLiteral("- **Proposed ID:** _(awaiting reporter)_")));
+}

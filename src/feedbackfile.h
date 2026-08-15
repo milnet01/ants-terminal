@@ -45,6 +45,19 @@ struct SuspectedFinding {
     int     line = -1;    // 1-based heading line
 };
 
+// ANTS-3631 — a finding the maintainer answered with a QUESTION rather than an
+// id or a closure. Un-triaged on purpose, so it is BOTH in `delta` (where the
+// reporter reads it) and here (where the maintainer sees which of their own
+// questions are still outstanding). Two un-triaged values are not the same
+// thing: a placeholder means nobody has looked, a marker means the maintainer
+// looked and is waiting — and a caller that treats them alike reports the
+// maintainer's outbox as their inbox.
+struct AwaitingFinding {
+    QString heading;
+    int     line = -1;
+    QString question;   // may be empty; the marker classifies without it
+};
+
 struct ParseResult {
     QString     delta;               // v1: text from the first contributor
                                      // heading after the last maintainer
@@ -74,6 +87,11 @@ struct ParseResult {
                                      // `<!-- ants-mcp-feedback: N -->` marker
                                      // (0 when absent/malformed). >= 2 ⟹ the v2
                                      // delta rule was applied.
+    // ANTS-3631 — the awaiting subset, in document order. A SUBSET of what
+    // `delta` carries, never a partition of it: an awaiting finding is in both,
+    // because the reporter must see the question and the maintainer must see
+    // that it is unanswered.
+    QVector<AwaitingFinding> awaiting;
     QVector<SuspectedFinding> suspectedUntagged;  // ANTS-3448: v2-only; `### `
                                      // finding-shaped blocks with no id line.
                                      // Always empty under v1.
