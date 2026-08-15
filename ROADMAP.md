@@ -32062,6 +32062,27 @@ finbreak re-verified it.
   Lanes: mcp, testing.
   Source: cc-feedback-2026-08-14 (LocalWebServerManager), corroborated in-session.
 
+- 📋 [ANTS-4401] **`mutation_probe`'s `require_green_baseline` does not refuse when it CANNOT READ the baseline — unparsable output passes the gate.**
+  Hit 2026-08-15 running ANTS-3849's red-before-green proof. Called with
+  `require_green_baseline:true` and a `test_command` whose runner output the
+  parser could not read; the reply carried `baseline_passed:-1,
+  baseline_failed:-1` and the batch **ran anyway**. ANTS-4398 chose `-1` for
+  unparsed output deliberately and for a good reason — "a run whose output
+  could not be read has not said that nothing passed" — but the green-baseline
+  guard then treats that same value as not-red. So the one flag whose whole job
+  is "refuse when the suite is already red" silently stands down in exactly the
+  case where the verb does not know, which is the three-silences shape: could
+  not tell, did not fail, reads as a pass. The mutant here was genuinely
+  `killed`, so nothing was lost this time — that is luck, not the design.
+  Fix: refuse with its own code (`baseline_unreadable`) when
+  `require_green_baseline` is set and either count is -1. A caller who asked to
+  be gated on a green baseline is better served by a refusal naming the reason
+  than by a run whose premise was never checked.
+  **Layman:** A safety check that means "stop if the tests are already broken" quietly does nothing when it can't tell whether they are.
+  Kind: fix.
+  Lanes: mcp, testing.
+  Source: in-session-2026-08-15 (hit while proving ANTS-3849's test red).
+
 - ✅ [ANTS-4399] **`session_orient`'s `active_bullets` slice is capped at 20 with no prominence, so a session plans from the first 20 of 95 ordered by document position.**
   The fields are all present and correct — `count:20, total:95,
   truncated:true, next_offset:20`. What is missing is prominence: the bundle
@@ -42937,6 +42958,45 @@ contributors don't duplicate research.
   spellings, 17 `scoped::names`, 8 trailing-colon labels. The 712 is where
   the next pass has to look, and it needs a true-positive read rather than
   another shape rule.
+
+  Progress (2026-08-15): the true-positive read was done, and it OVERTURNS
+  this bullet's premise. Measured against the shipped lane itself (a probe
+  linking `ants_audit_lib` and calling `runContractDocDriftCheck`, not a
+  Python replica): 1,175 findings live, 94.6% in `docs/specs/` and only 5.4%
+  in `docs/standards/`. A 40-finding hand-read of the plain-identifier bucket
+  split roughly evenly three ways — false by construction (git SHAs, example
+  strings, cross-project ids), self-negating prose (the doc itself says the
+  name is old / rejected / hypothetical), and **genuinely absent identifiers
+  asserted as fact**. The third class is real signal and was verified, not
+  assumed: `Ants1583MaxDriftClamp`, `Ants1576NullOrOmitRunAt` and
+  `every_descriptor_has_hint` each have exactly ONE occurrence in the repo —
+  the accepted spec naming them as an INV's test — and
+  `tests/features/mcp_selection_hint_coverage/` does not exist. ANTS-1253
+  states "verified counts" for twelve `m_*Provider` members, none of which
+  survive today. So the measured true-positive rate here is NOT Fin Break's
+  0/947: the category is unreadable because real findings sit under
+  by-construction noise, not because it is all noise. **Do not drop this lane
+  below the reporting threshold** — that was the bullet's own fallback
+  proposal and the measurement rules it out.
+  Shipped this pass: the citation guard widened from a path-shaped head to
+  any `<head>:<line-or-json-literal>` — 175 findings, 14.9%, 1,175 → 1,000.
+  Verdicts diffed old-vs-new over the whole corpus: 175 suppressed, 0 newly
+  firing. Signal loss measured before shipping, not assumed: of the 129
+  distinct heads reaching the guard, 128 resolve in source, so the finding
+  carried no information about its head. Spec ANTS-3600 § 2.4 + INV-11; test
+  ContractDocDrift.PathLineCitationsSkipped, proven red against the pre-fix
+  guard via `mutation_probe` (outcome `killed`).
+  NOT taken, measured first: reporting the head when it fails to resolve —
+  it recovers exactly one finding (`no_truncate:true`), which sits in an open
+  design question and is itself a false positive.
+  STILL OPEN at 1,000. The residual is two populations and they want
+  opposite treatment: references to `~/.claude` global standards that this
+  repo does not mirror (`releases.md`, `languages/cpp.md`) — kept on purpose,
+  that is ANTS-4138's signal — and stale prose in accepted specs, which is
+  the real signal and has no owner. The next pass should stop filtering and
+  instead SPLIT the lane by directory: `docs/standards/` (64 findings, a
+  readable category today) from `docs/specs/` (1,111, where a spec's design
+  vocabulary and its factual claims are not separable by token shape).
 
 - 📋 [ANTS-3850] **cppcheck: 24 structs with uninitialised POD members, plus 8 by-value/by-reference nits.**
   From the 2026-08-06 audit. cppcheck reports, on the post-split tree:

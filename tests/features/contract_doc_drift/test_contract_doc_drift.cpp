@@ -173,11 +173,13 @@ TEST(ContractDocDrift, NoOpAndPartialDir) {
     }
 }
 
-// INV-11 (ANTS-3849) — a `path:line` / `path:line-range` citation is not
-// extracted: the path manifest carries no line suffix, so the shape can never
-// resolve and was 49.5% of this lane's findings on the Ants corpus. The bare
-// path is still in scope (INV-5), and a non-path `head:N` (a JSON fragment)
-// stays in scope too — the guard is the path shape, not the colon.
+// INV-11 (ANTS-3849) — a `<head>:<line|json-literal>` citation is not
+// extracted: source spells the head and the literal separately, so the joined
+// form can never resolve. Path-shaped heads were 49.5% of this lane's findings
+// on the Ants corpus; widening to any head took a further 14.9%, measured at
+// 128 of 129 residual heads resolving in source. The bare path is still in
+// scope (INV-5), and a head carrying a colon (`Qt::CaseSensitive`) is not a
+// citation.
 TEST(ContractDocDrift, PathLineCitationsSkipped) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -187,14 +189,18 @@ TEST(ContractDocDrift, PathLineCitationsSkipped) {
     ASSERT_TRUE(writeFile(root + "/docs/standards/doc.md",
                           "Cites `src/gone.cpp:2540` (citation, skipped).\n"
                           "Cites `gone.cpp:39-49` (range citation, skipped).\n"
+                          "Cites `applyGone:3118` (symbol:line, skipped).\n"
+                          "Cites `gone_checked:false` (field:value, skipped).\n"
                           "Cites `src/gone.cpp` (bare path, still flags).\n"
-                          "Cites `limit:10` (not a path, still flags).\n"));
+                          "Cites `Gone::method` (scoped name, still flags).\n"));
 
     const QString out = FeatureCoverage::runContractDocDriftCheck(root);
     EXPECT_EQ(countMentions(out, "src/gone.cpp:2540"), 0);
     EXPECT_EQ(countMentions(out, "gone.cpp:39-49"), 0);
+    EXPECT_EQ(countMentions(out, "applyGone:3118"), 0);
+    EXPECT_EQ(countMentions(out, "gone_checked:false"), 0);
     EXPECT_EQ(countMentions(out, "`src/gone.cpp`"), 1);
-    EXPECT_EQ(countMentions(out, "limit:10"), 1);
+    EXPECT_EQ(countMentions(out, "Gone::method"), 1);
 }
 
 // INV-10 — the registered audit check leaves the output filter uncapped

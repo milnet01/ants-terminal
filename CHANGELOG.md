@@ -58,6 +58,18 @@ for security-relevant changes.
   `~global` / `~claude-config` root that search and outline already
   take, which is what lets it read the skill tree at all.
 
+### Changed
+
+- **Audit: the Contract-Doc ↔ Code Drift lane no longer reports any `head:value` citation** (ANTS-3849)
+  The 2026-08-13 guard covered a path-shaped head only (`remotecontrol.cpp:2540`);
+  it now covers any head, so a `symbol:line` citation (`applyTheme:3118`) and a
+  JSON field-and-value fragment (`sections_checked:false`) are skipped too.
+  Source spells the head and the literal separately, so the joined form can never
+  resolve. Measured before shipping: 128 of the 129 distinct heads still reaching
+  the guard resolve in source, so the finding carried no information about its
+  head. 175 of 1,175 findings, 14.9%; verdicts diffed old-vs-new over the whole
+  corpus with 0 newly firing.
+
 ### Fixed
 
 - **roadmap_log no longer deletes bullets the store has never imported** (ANTS-4141)
