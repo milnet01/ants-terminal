@@ -736,6 +736,23 @@ QJsonObject compute(const QString &absPath,
             const bool endsWithSemicolon =
                 lastCodeIdx >= 0 && line.at(lastCodeIdx) == QLatin1Char(';');
 
+            // ANTS-3738 — the same `lastCodeIdx`, reused as a comment-stripped
+            // view for MATCHING. The three function anchors all end-anchor, so
+            // a trailing comment sat in the way of every one of them:
+            // rxCppFuncOpen anchors `\s*$`, rxCppFunc needs `[{;]` right after
+            // the qualifier run, and rxCppFuncHeaderOpen needs `\([^)]*$` — so
+            // `void CreateInstance()   // set up` matched NONE and the symbol
+            // vanished. Same family as ANTS-3735 (raw-line matching against a
+            // comment-aware brace scan), one site further on.
+            //
+            // Deliberately used for matching ONLY. `offer()` is still handed
+            // the raw `line`, because `signature` carries the source text
+            // including its trailing comment and changing that is an
+            // output-shape decision, not a side effect of this fix. The
+            // ANTS-3738 test asserts both halves.
+            const QString codeLine =
+                lastCodeIdx >= 0 ? line.left(lastCodeIdx + 1) : QString();
+
             if (inFuncArgs) {
                 // Folding continuation lines of a wrapped parameter list into
                 // the signature until the parens balance; then emit at the
@@ -796,10 +813,10 @@ QJsonObject compute(const QString &absPath,
                 }
                 offer("func", name, line);
                 funcDefOpensBody = !endsWithSemicolon;
-            } else if (!inFuncBody && (m = rxCppFunc().match(line)).hasMatch()) {
+            } else if (!inFuncBody && (m = rxCppFunc().match(codeLine)).hasMatch()) {
                 offer("func", m.captured(2), line);
                 funcDefOpensBody = !endsWithSemicolon;
-            } else if (!inFuncBody && (m = rxCppFuncOpen().match(line)).hasMatch()) {
+            } else if (!inFuncBody && (m = rxCppFuncOpen().match(codeLine)).hasMatch()) {
                 offer("func", m.captured(2), line);    // ReturnType name(args), body '{' next line
                 funcDefOpensBody = true;
             } else if (!inFuncBody && !prevPendingType.isEmpty()
@@ -807,7 +824,7 @@ QJsonObject compute(const QString &absPath,
                 offer("func", m.captured(1), line);    // old-style: return type on the prior line
                 funcDefOpensBody = true;
             } else if (!inFuncBody
-                       && (m = rxCppFuncHeaderOpen().match(line)).hasMatch()) {
+                       && (m = rxCppFuncHeaderOpen().match(codeLine)).hasMatch()) {
                 // ANTS-2148 follow-up — `ReturnType name(` opens a parameter
                 // list that does not close on this line. Start collecting; the
                 // closing line emits the symbol at funcArgStartLine.

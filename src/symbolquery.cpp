@@ -188,7 +188,23 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // confident wrong answer rather than an empty one. The slot also
             // takes `static`/`inline`/`__declspec(...)` later without another
             // change. Measured by DOOM: 48 such definitions in one file.
-            add(QStringLiteral("^[ \\t]*(?:extern\\s*\"C(?:\\+\\+)?\"\\s+)?(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)(?:[\\w:<>~]+[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
+            // ANTS-3746 — an optional template argument list per return-type
+            // token. A COMMA is neither in `[\w:<>~]` nor a separator, so the
+            // group could not span `QMap<QString, QStringList>` and the
+            // definition was reported absent — indistinguishable from "no such
+            // symbol", so the caller designs around a function that is there.
+            // Measured on this tree: `detectorsByCategory`, declared at
+            // debtsweepengine.h:264 and defined at debtsweepengine.cpp:1344,
+            // returned definitions_count:0 over 911 files.
+            // `[^();{]*` is deliberately blind to `<>` balance rather than
+            // counting it: the trailing `SYMBOL\s*\(` anchors where the list
+            // ends, so arbitrary nesting (`map<K, vector<pair<A, B>>>`) works
+            // with no recursion. Excluding `(`/`)`/`;`/`{` is what stops it
+            // reaching across a statement boundary into a later template.
+            // The base class keeps `<>`, so every pre-ANTS-3746 line still
+            // matches by the same path it did; the new group is only reached
+            // by backtracking, when the greedy token stops at a comma.
+            add(QStringLiteral("^[ \\t]*(?:extern\\s*\"C(?:\\+\\+)?\"\\s+)?(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)(?:[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
             // Out-of-line constructor / destructor definitions carry no
             // return type (`Foo::Foo(` / `Foo::~Foo(`); match them
             // explicitly so a class query still resolves its ctor/dtor.

@@ -404,3 +404,72 @@ TEST(FileOutlineCppScanner, EmptyParseOfARecognisedFileIsFlagged) {
         FileOutline::compute(ok, FileOutline::Mode::Cpp, false, 1000);
     EXPECT_FALSE(good.contains(QStringLiteral("parse_empty")));
 }
+
+// ANTS-3738 — a definition HEADER carrying a trailing comment is not detected
+// at all. The C++ regexes match the raw line, so the comment sits in the way
+// of their end anchors: rxCppFuncOpen anchors `\s*$`, rxCppFunc needs `[{;]`
+// right after the qualifier run, and rxCppFuncHeaderOpen needs `\([^)]*$`.
+//
+// Same family as ANTS-3735 (the scanner matches raw lines while only
+// netBraceDelta is comment-aware), different site. ANTS-3735 fixed the
+// declaration/definition discriminator, whose failure suppressed 5,742 lines;
+// this one drops the single symbol whose header carries the comment, and was
+// deliberately left out of that fix rather than widening its blast radius.
+TEST(FileOutlineCppScanner, Ants3738DefinitionHeaderWithTrailingComment) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        // Form 1 — brace on the next line, `//` comment (rxCppFuncOpen).
+        "void CreateInstance()   // set up the instance\n"
+        "{\n"
+        "    int x = 1;\n"
+        "}\n"
+        // Form 2 — brace on the next line, block comment (rxCppFuncOpen).
+        "static int helper(int a)  /* note */\n"
+        "{\n"
+        "    return a;\n"
+        "}\n"
+        // Form 3 — parameter list opens and does not close, plus a comment
+        // that itself contains a ')' (rxCppFuncHeaderOpen's `\\([^)]*$`).
+        "int wrapped(int a,   // first (of two)\n"
+        "            int b)\n"
+        "{\n"
+        "    return a + b;\n"
+        "}\n"
+        // Control from the item: a comment AFTER the brace already worked.
+        "void braceThenComment() {   // already fine\n"
+        "    int z = 3;\n"
+        "}\n"
+        // Control: no comment at all.
+        "void plainDefinition()\n"
+        "{\n"
+        "    int y = 2;\n"
+        "}\n"));
+
+    const QStringList names = funcNames(path);
+    EXPECT_TRUE(names.contains(QStringLiteral("CreateInstance")))
+        << "ANTS-3738: `void f()   // c` with the brace on the next line";
+    EXPECT_TRUE(names.contains(QStringLiteral("helper")))
+        << "ANTS-3738: a /* block */ trailing comment behaves the same";
+    EXPECT_TRUE(names.contains(QStringLiteral("wrapped")))
+        << "ANTS-3738: a wrapped parameter list whose comment contains ')'";
+    EXPECT_TRUE(names.contains(QStringLiteral("braceThenComment")))
+        << "control: a comment after the brace was always fine";
+    EXPECT_TRUE(names.contains(QStringLiteral("plainDefinition")))
+        << "control: no comment at all";
+
+    // The item flags this explicitly: `signature` deliberately carries the RAW
+    // line including the trailing comment. Matching against a stripped view
+    // must not change the emitted output shape as a side effect.
+    const QJsonObject out =
+        FileOutline::compute(path, FileOutline::Mode::Cpp, false, 1000);
+    QString sig;
+    for (const QJsonValue &v : out.value(QStringLiteral("symbols")).toArray()) {
+        const QJsonObject o = v.toObject();
+        if (o.value(QStringLiteral("name")).toString()
+            == QLatin1String("CreateInstance"))
+            sig = o.value(QStringLiteral("signature")).toString();
+    }
+    EXPECT_TRUE(sig.contains(QStringLiteral("set up the instance")))
+        << "ANTS-3738: the signature keeps the raw line, comment included — "
+           "stripping is for MATCHING only, not for output";
+}

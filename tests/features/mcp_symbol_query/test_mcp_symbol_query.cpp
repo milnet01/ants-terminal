@@ -802,3 +802,78 @@ TEST(SymbolQueryCppForms, NamespaceResolvesAndStemHintIsCaseInsensitive) {
         << "no symbol `Seam`, but src/seam.cpp exists — the ANTS-1950 rescue "
            "must fire across case or it never fires on this codebase";
 }
+
+// ANTS-3746 — a C++ return type carrying a template argument list with a
+// COMMA. The return-type group is `(?:[\w:<>~]+[\s*&]+)+`: a comma is neither
+// in the token class nor a separator, so the group can never span
+// `QMap<QString, QStringList>` and the definition is reported as absent.
+//
+// The cost is not a retry. A zero from find_definition is byte-identical to
+// "no such symbol", so the caller's next move is to design around a function
+// that is plainly there. Measured on the live tree: `detectorsByCategory`,
+// declared at src/debtsweepengine.h:264 and defined at
+// src/debtsweepengine.cpp:1344, returned definitions_count:0 over 911 files.
+TEST(McpSymbolQuery, Ants3746CommaBearingTemplateReturnType) {
+    expect_reset();
+
+    QTemporaryDir tmp;
+    expect(tmp.isValid(), "setup: QTemporaryDir valid");
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    writeFile(root, QStringLiteral("src/registry.h"),
+              QStringLiteral(
+                  "#pragma once\n"
+                  "const QMap<QString, QStringList> &twoArgRef();\n"
+                  "QMap<QString, QStringList> *twoArgPtr();\n"
+                  "std::pair<int, int> pairByValue();\n"
+                  "std::map<QString, std::vector<int>> nestedTemplate();\n"));
+    writeFile(root, QStringLiteral("src/registry.cpp"),
+              QStringLiteral(
+                  "#include \"registry.h\"\n"
+                  "const QMap<QString, QStringList> &twoArgRef() {\n"
+                  "    static QMap<QString, QStringList> m;\n"
+                  "    return m;\n"
+                  "}\n"
+                  "QMap<QString, QStringList> *twoArgPtr() {\n"
+                  "    return nullptr;\n"
+                  "}\n"
+                  "std::pair<int, int> pairByValue() {\n"
+                  "    return {0, 0};\n"
+                  "}\n"
+                  "std::map<QString, std::vector<int>> nestedTemplate() {\n"
+                  "    return {};\n"
+                  "}\n"));
+
+    SymbolQuery::Options o;
+
+    // The exact shape measured on the live tree: `const T<A, B> &name()`.
+    const auto ref = SymbolQuery::findDefinition(
+        root, QStringLiteral("twoArgRef"), o);
+    expect(hasDef(ref, QStringLiteral("src/registry.cpp"),
+                  QStringLiteral("definition")),
+           "ANTS-3746: `const QMap<QString, QStringList> &f()` is a definition");
+    expect(hasDef(ref, QStringLiteral("src/registry.h"),
+                  QStringLiteral("declaration")),
+           "ANTS-3746: its header prototype is a declaration");
+
+    // Pointer and by-value variants of the same defect.
+    expect(hasDef(SymbolQuery::findDefinition(
+                      root, QStringLiteral("twoArgPtr"), o),
+                  QStringLiteral("src/registry.cpp"),
+                  QStringLiteral("definition")),
+           "ANTS-3746: the `*` variant resolves too");
+    expect(hasDef(SymbolQuery::findDefinition(
+                      root, QStringLiteral("pairByValue"), o),
+                  QStringLiteral("src/registry.cpp"),
+                  QStringLiteral("definition")),
+           "ANTS-3746: `std::pair<int, int> f()` by value resolves");
+
+    // One level of nesting, which is what makes a naive `<[^>]*>` wrong.
+    expect(hasDef(SymbolQuery::findDefinition(
+                      root, QStringLiteral("nestedTemplate"), o),
+                  QStringLiteral("src/registry.cpp"),
+                  QStringLiteral("definition")),
+           "ANTS-3746: a nested template argument list resolves");
+
+    EXPECT_EQ(0, expect_failures());
+}
