@@ -15,6 +15,7 @@
 #include "resolvedroot.h"
 #include "roadmapdialog.h"
 #include "roadmapindex.h"
+#include "markdownscan.h"    // ANTS-4404 — fence extents, shared with the walk
 #include "verifyengine.h"
 #include "verifytrust.h"
 #include "debuglog.h"
@@ -1585,18 +1586,47 @@ constexpr const char *kAdapterEmojiPlanned    = "\xF0\x9F\x93\x8B";    // 📋
 constexpr const char *kAdapterEmojiInProgress = "\xF0\x9F\x9A\xA7";    // 🚧
 constexpr const char *kAdapterEmojiConsidered = "\xF0\x9F\x92\xAD";    // 💭
 
+// ANTS-4404 — fence extents are MarkdownScan's (ANTS-3603), never a local
+// `trimmed().startsWith("```")` toggle. The hand-rolled test both walkers
+// carried was wrong the same two ways ANTS-4403 removed from the migration
+// walk: it ignored CommonMark § 4.5, which forbids a backtick in a BACKTICK
+// fence's info string precisely so that ```` ```python ```` — how a document
+// quotes fence syntax — stays a paragraph (ANTS-3655); and it bounded the
+// indent nowhere.
+//
+// Unlike the migration's, these two feed `insideFenced`, which every
+// roadmap_log write op consults. So the cost here was not a short read but a
+// WRITE OUTAGE: one qualifying line at this project's own ROADMAP.md:31099
+// opened a fence nothing closed, and flip / flip_batch / annotate /
+// amend_body / amend_headline then refused anchor_unsafe_context on every
+// bullet below it — naming that innocent line as the cause.
+QVector<bool> rcFenceExtents(const QStringList &lines) {
+    return MarkdownScan::fenceMask(lines);
+}
+
+// Opening line of the masked run each line belongs to, -1 outside a fence.
+// A maximal masked run is one fenced block, opener .. closer; an unterminated
+// opener runs to end-of-input, the same leniency the local scanners had.
+// Derived from the mask rather than re-scanned, so the opener rule is stated
+// once — the shape ANTS-4403 settled on in roadmapmigrate.cpp's walkSource().
+QVector<int> rcFenceOpenerOf(const QVector<bool> &fenced) {
+    QVector<int> openerOf(fenced.size(), -1);
+    for (int i = 0; i < fenced.size(); ++i) {
+        if (!fenced.at(i)) continue;
+        int j = i;
+        while (j + 1 < fenced.size() && fenced.at(j + 1)) ++j;
+        for (int k = i; k <= j; ++k) openerOf[k] = i;
+        i = j;
+    }
+    return openerOf;
+}
+
 QVector<GfmBullet> walkGfmBullets(const QStringList &lines) {
     QVector<GfmBullet> out;
-    bool insideFence = false;
-    int  fenceOpenLine = -1;
+    const QVector<bool> fenced = rcFenceExtents(lines);
+    const QVector<int>  openerOf = rcFenceOpenerOf(fenced);
     for (int i = 0; i < lines.size(); ++i) {
         const QString &ln = lines.at(i);
-        const QString trimmed = ln.trimmed();
-        if (trimmed.startsWith(QStringLiteral("```"))) {
-            insideFence = !insideFence;
-            fenceOpenLine = insideFence ? i : -1;
-            continue;
-        }
         if (!ln.startsWith(QStringLiteral("- [ ]")) &&
             !ln.startsWith(QStringLiteral("- [x]")) &&
             !ln.startsWith(QStringLiteral("- [X]"))) {
@@ -1605,8 +1635,8 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines) {
         GfmBullet b;
         b.firstLine     = i;
         b.headlineLine  = i;
-        b.insideFenced  = insideFence;
-        b.fenceOpenLine = insideFence ? fenceOpenLine : -1;
+        b.insideFenced  = fenced.value(i);
+        b.fenceOpenLine = fenced.value(i) ? openerOf.value(i, -1) : -1;
 
         // Parse status from checkbox char.
         const QChar cb = ln.size() > 3 ? ln.at(3) : QChar(' ');
@@ -1754,8 +1784,8 @@ static const QRegularExpression rxAntsV1IdBracket(
 
 QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     QVector<AntsV1Bullet> out;
-    bool insideFence = false;
-    int  fenceOpenLine = -1;
+    const QVector<bool> fenced = rcFenceExtents(lines);
+    const QVector<int>  openerOf = rcFenceOpenerOf(fenced);
     auto matchEmojiAt = [](const QString &line, int pos) -> QString {
         const QString done = QString::fromUtf8(kAdapterEmojiDone);
         const QString plan = QString::fromUtf8(kAdapterEmojiPlanned);
@@ -1769,11 +1799,6 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     };
     for (int i = 0; i < lines.size(); ++i) {
         const QString &ln = lines.at(i);
-        if (ln.trimmed().startsWith(QStringLiteral("```"))) {
-            insideFence = !insideFence;
-            fenceOpenLine = insideFence ? i : -1;
-            continue;
-        }
         if (!ln.startsWith(QStringLiteral("- "))) continue;
         // Status emoji sits at position 2 (just past "- ").
         const QString emoji = matchEmojiAt(ln, 2);
@@ -1786,8 +1811,8 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
         }
         AntsV1Bullet b;
         b.firstLine     = i;
-        b.insideFenced  = insideFence;
-        b.fenceOpenLine = insideFence ? fenceOpenLine : -1;
+        b.insideFenced  = fenced.value(i);
+        b.fenceOpenLine = fenced.value(i) ? openerOf.value(i, -1) : -1;
         // ANTS-2059 — the id bracket is OPTIONAL. A fully id-less bullet
         // (`- 📋 **Headline.**`, no bracket at all) is still a real
         // ants-v1 bullet: the READ path (parseBullets) synthesises an id

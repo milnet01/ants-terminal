@@ -1717,6 +1717,10 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
                 # ANTS-3406 roadmap_log op:amend_body (exact single-line body patch).
                 tests/features/roadmap_log_amend_body/test_roadmap_log_amend_body.cpp
+                # ANTS-4404 — the write path's fence extents come from
+                # MarkdownScan, so prose QUOTING fence syntax cannot make the
+                # bullets below it unwritable.
+                tests/features/roadmap_log_fence_span/test_roadmap_log_fence_span.cpp
                 # ANTS-1690 roadmap_log op:flip_batch (N bullets, one commit).
                 tests/features/roadmap_log_flip_batch/test_roadmap_log_flip_batch.cpp
                 # ANTS-3809 — the write half: every op mutates the store and
