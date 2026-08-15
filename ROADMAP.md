@@ -34830,7 +34830,7 @@ defect from different angles.
   shipped: fixture execution is a permanent exclusion, and so is Python `re`.
   Read the spec's title, not this bullet's.
 
-- 📋 [ANTS-4128] **spec_conformance: recognise the `re.search(pattern, input)` CALL form, not only the fence+table convention.**
+- ✅ [ANTS-4128] **spec_conformance: recognise the `re.search(pattern, input)` CALL form, not only the fence+table convention.**
   Found by building ANTS-4108's engine and pointing it at this repo, which is
   the one check no amount of reading the spec could perform:
 
@@ -34913,6 +34913,15 @@ defect from different angles.
   under caller_cwd, so another project's corpus could differ and is
   unmeasured from here.
   Progress (2026-08-15): re-checked, and the remaining work is exactly what the 2026-08-12 measurement left — the `docs/standards/specs.md` § 3.5 amendment making fence+table the recommended way to state a pattern invariant. Still absent. NOT taken this session: that is a standards edit, which re-arms CLAUDE.md rule 14's gate, and this session carries an explicit instruction not to dispatch subagents — so the independent cold read the gate requires cannot be run, and reading it myself does not satisfy the rule. Blocked on the dispatch rather than on the work; the amendment is a short one and the measurement that justifies it is already written above.
+  Resolved (2026-08-15) — the precondition is delivered and the reopen test, re-run rather than recalled, still refuses the ask.
+
+  **The `docs/standards/specs.md` amendment this bullet said was outstanding has landed.** The 2026-08-12 note read "Verified absent … Being taken now"; it was taken, in commit 6dda6fbb (*ANTS-4108: close the two cross-doc items § 9 left undone*), and § 3.5 now carries the fence+table convention in full — the info-string rule, the three `expected` outcomes, the engine tag, the top-level-fences-only rule, and the "run spec_conformance on your own draft" habit, closing with "this is a recommendation, not a requirement". So my earlier annotation today, which said this was still to do and was blocked on the gate, was wrong; corrected here rather than left standing.
+
+  **Adoption tripled: 3 specs now carry a `` ```regex `` fence** (ANTS-4108, ANTS-4127, ANTS-3368), against 1 when the item was written. The convention route is working.
+
+  **Re-ran the bullet's own grep over all 882 tracked markdown files.** Still exactly ONE distinct call-form site with a literal input — `re.search(r"\d{1,5}(?![0-9])", " 123456")` — and every hit is that same call: three in ANTS-4108's own spec (its worked evidence) and three in ROADMAP (this bullet and its neighbour quoting it). Note for a future re-run: the raw hit count is 6 rather than the original 5 only because this ROADMAP entry grew, so count DISTINCT calls, not lines. Zero new call-form sites appeared in three days while the fence+table form gained two.
+
+  So route (a) would still extract one case — the example ANTS-4108 wrote about itself — while emitting false candidates over the eleven variable-input utility-script lines, and route (b) still has nothing to convert. Closed as **refuted by measurement, precondition delivered**, not as done. The reopen test is unchanged and is the grep above: if authors start writing pattern contracts in the call form, recognising it becomes worth building.
 
 - ✅ [ANTS-4129] **mcp-tools.md step 7 states an absolute the spec_conformance verb has to break.**
   Step 7 of docs/standards/mcp-tools.md says a read verb opts into ETag by
