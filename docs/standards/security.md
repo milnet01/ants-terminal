@@ -35,7 +35,10 @@
 provable.**
 
 Every rule here traces to that sentence. A rule that hardens something
-which is not a boundary, or that cannot be checked, does not belong.
+which is not a boundary does not belong. Nor does one nothing could ever
+catch — but **"checked" includes checked by a person.** The rules marked
+*nothing mechanical* below are real rules with no tool behind them, and
+the table says which they are.
 
 Security is not a coding topic. Most of what follows happens outside a
 source file — in the repo, the release, the config, the dependency
@@ -72,6 +75,12 @@ first.
 `CLAUDE.md`.** A boundary nobody has named is a boundary nobody is
 defending.
 
+**A project with no trust boundary records that instead, in one line.** A
+local single-user tool that reads nothing it did not write and talks to
+nothing may genuinely have none. That sentence satisfies this section; an
+empty boundary section does not, because it reads as a list nobody filled
+in.
+
 ## 2. Secrets
 
 - **Never in the repository.** Not in source, not in config, not in a
@@ -104,9 +113,9 @@ which found the opener and the bullet prescribing opposite code.
 - **Validate the shape, not the absence of known-bad content.** Accept
   what matches the expected form; reject the rest. Blocklists enumerate
   the attacks somebody already thought of.
-- **Resolve paths before opening them**, then confirm the result is
-  inside the directory you intended. A path that resolves outside it is
-  rejected, not sanitised.
+- **Resolve and confirm containment inside every open**, not once at the
+  edge — the exception stated above. A path that resolves outside the
+  directory you intended is rejected, not sanitised.
 - **Pass arguments as a list, never a shell string.** No shell
   interpolation of user data, in any language.
 - **A filename that can begin with `-`** is an argument-injection risk
@@ -155,19 +164,30 @@ decision.
 - **Log the security-relevant events** — authentication attempts,
   privilege changes, validation rejections at a boundary. An attack
   nobody can reconstruct afterwards is an attack nobody can learn from.
-- **Log identifiers, not payloads.** A record id is enough to
-  investigate with; the record's contents are a leak in waiting.
+- **Log record identifiers, not payloads.** A record id is enough to
+  investigate with; the record's contents are a leak in waiting. The
+  identifiers the first bullet names are not among them — a session id is
+  a credential, not a handle.
 
 ## 7. Privilege
 
 - **Least privilege, acquired late and dropped early.** Escalate for the
   operation, not for the session.
 - **Say who is asking and why.** A prompt for elevated rights that does
-  not name the requesting operation trains the user to approve blindly.
-- **One authentication per run.** Repeated prompts train the same
-  reflex.
+  not say what it is being acquired for trains the user to approve
+  blindly. Where one authentication covers the run, it names that scope
+  rather than a single operation.
+- **One authentication per run — the elevated right is still per
+  operation.** Authenticate once and cache that credential; acquire and drop
+  the right around each operation against it. Repeated prompts train the same
+  reflex. Proving who you are and holding a right are different things, and
+  only the first is once per run.
 - **Never re-check a permission you have already crossed a boundary on.**
   Decide at the boundary; downstream code trusts that decision.
+  **Except where the thing decided about can change underneath you.** §3's
+  path rule is that case, and its containment check is re-confirmed inside
+  every open. A decision about *who is asking* holds for the run; a decision
+  about *what a path points at* does not.
 
 ## 8. Supply chain
 
@@ -201,8 +221,11 @@ a real advisory hands it here.
   advisory there is no behaviour of yours to lock down** — the check is
   the version floor in the manifest, and no test is owed. Scoped
   2026-08-14 (ROADMAP CFG-0108): this section was widened that morning to
-  cover an advisory naming a version you ship, and the bullets below it
-  were written for your own code only.
+  cover an advisory naming a version you ship, and only this bullet was
+  scoped for it. **The two below bind on both** — rotate whatever an
+  advisory says may have been exposed, and say so in the CHANGELOG either
+  way, because a user on the old version needs to upgrade whoever wrote
+  the hole.
 - **Assume exploitation where you cannot rule it out**, and rotate
   anything that may have been exposed.
 - **Say so in the CHANGELOG.** Users of a released version need to know
@@ -222,12 +245,19 @@ a real advisory hands it here.
 ## What checks this
 
 Named by **kind of check**, not by tool. Tools are replaced; the kind of
-check outlives them. The project's own audit configuration names which
-tool currently fills each row.
+check outlives them. **Which tool fills a row is the project's to record**,
+alongside its boundary list (§1). An audit configuration names the tools a
+project runs; it does not say which row each one answers. Where nothing
+records the mapping, the row's tool is unnamed — a gap, not a silence to
+read past.
+
+**The table names the rules something catches, not every rule here.** A
+rule with no row has no mechanical check and no reviewer assigned. Treat
+it as *nothing mechanical* by default rather than as covered.
 
 | Rule | Kind of check that catches a breach |
 |---|---|
-| Secrets in the repo (§2) | a secret scanner, running in CI on every push |
+| Secrets in the repo (§2) | a secret scanner, on every commit or push — in CI where there is CI, otherwise a pre-commit hook. The venue moves; the check does not |
 | Injection and unsafe calls (§3) | static analysis for the project's languages |
 | Dependency vulnerabilities (§8) | the ecosystem's own advisory check, on the `dependencies.md` cadence |
 | Lockfile committed (§8) | the repository — a missing lockfile is visible |
@@ -236,13 +266,17 @@ tool currently fills each row.
 | TLS with verification on (§5) | static analysis, where the language has a rule for a disabled-verification flag — **`Partial:`**, since a verification disabled through config rather than code is invisible to it |
 | No credentials in a URL (§5) | a secret scanner, if its rules cover URL userinfo — otherwise **nothing** |
 | Late-acquire, early-drop privilege (§7) | **nothing mechanical** — the shape of an escalation is a design question |
-| Anti-patterns (§10) | **nothing of its own** — each restates a rule above and is caught, or not, by that rule's row |
+| Anti-patterns restating a rule above (§10) | **nothing of its own** — caught, or not, by that rule's row. Three do: blocklist-over-allowlist, logging a whole request object, committing a secret and removing it next commit |
+| Anti-patterns restating nothing above (§10) | **nothing mechanical** — rolling your own crypto, token format or password hashing; disabling a security check to pass a test; "it's only internal"; validating in the user interface only. These four are stated only in §10, so no row above covers them |
 | Boundary list exists (§1) | **nothing mechanical** — a human reads it |
 | What may be logged (§6) | **nothing mechanical** — reviewed at the boundary |
 | Fix-now discipline (§9) | **nothing mechanical** — social |
 
-The rows marked *nothing mechanical* are this standard's honest error
-budget: the surface where a breach can still pass unseen. When a review
+This standard's honest error budget is every row admitting a surface where
+a breach can pass unseen. That is the rows marked *nothing mechanical* —
+and also the two that qualify their coverage rather than deny it:
+`Partial:` on TLS verification, and *otherwise nothing* on credentials in a
+URL. Counting only the marked rows understates it. When a review
 catches the same class twice, the answer is a new rule for the analyser
 so the row moves up — not a longer standard.
 
@@ -251,4 +285,6 @@ so the row moves up — not a longer standard.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
 | 1 | 2026-08-14 | 1, cold — **first gate ever**, three weeks after this standard shipped. Packet carried `dependencies.md` § 5, `coding.md` § 7 and `database.md`'s citation of § 3 | 0 | 1 | 2 | n/a | **Three verified, three fixed.** **The Q3 that matters: the What-checks-this table covers §§ 1, 2, 3, 6, 8 and 9 and has no row for § 4 (data at rest), § 5 (data in transit), § 7 (privilege) or § 10** — while its closing sentence calls the three `nothing mechanical` rows "the surface where a breach can still pass unseen". A project writing its audit configuration from this table, which the preamble tells it to do, configures a secret scanner and static analysis and configures **nothing** for TLS verification or privilege, believing the budget is three rows. **§ 3 prescribed opposite code inside one section:** the opener says validate where data arrives and never at the point of use, and the path bullet says resolve and confirm containment at the open — which is a point-of-use check, and correctly so, because resolution is only meaningful against the filesystem at open time. Stated as the deliberate exception. **The third is this morning's own collateral:** § 9 was widened at 09:00 to cover an upstream advisory naming a version you ship, and its bullets — *"write the regression test first"* — were written for holes in your own code. There is no behaviour of yours to lock down against a third-party CVE; the check is the version floor. |
+| 2 | 2026-08-15 | 3, cold — identical brief, packet rebuilt from disk; carried `coding.md` §§ 5 and 7 in full, `dependencies.md` § 5, `database.md` § 4, `documentation.md` § 5.3, `README.md`'s public-repo mirror and the `SECURITY.md` skeleton | 1 | 4 | 0 | n/a | **Five verified, five fixed; two open questions dismissed.** **Three of the five landed in text loop 1 added** — the 4a-min pattern for the fourth consecutive gate on this machine, and again never in what loop 1 deleted. **All three lanes independently found the same one**, the strongest signal in the run: loop 1 wrote § 3's path-rule exception as an exception to § 3's *own* arrival rule, and § 7's *"Never re-check a permission you have already crossed a boundary on"* carries no carve-out for it. A path containment check **is** a decision taken at the filesystem boundary, so an implementer reading § 7 resolves once at the edge and trusts it downstream — reintroducing exactly the symlink swap CFG-0108 was filed for. § 7 now states the principle rather than the instance: the exception is where *the thing decided about* can change underneath you, and who is asking cannot. **Loop 1's other two fixes both broke the coverage map they were fixing.** It added § 5's two rows and left the closing sentence calling *"the rows marked `nothing mechanical`"* the whole error budget — so the `Partial:` TLS row and the *otherwise nothing* URL-credentials row admitted an unseen surface that nobody counted. And it added a § 10 row claiming each anti-pattern *"restates a rule above"*: **four of the seven restate nothing above** — rolling your own crypto, token format or password hashing; disabling a check to pass a test; "it's only internal"; UI-only validation. Grepped, and `crypto`, `internal`, `user interface` and `make a test` occur nowhere in §§ 1–9. The row is now two rows and the four are marked. **Two pre-existing findings.** § 7 said *"escalate for the operation, not for the session"* and *"one authentication per run"* four lines apart, which are two different privilege lifetimes; a builder either prompts per operation or caches the right for the run, and nothing separated proving who you are from holding a right. And the Q1: *"The project's own audit configuration names which tool currently fills each row"* — `check-code`'s config carries scope, per-tool flags, presets, suppressions and calibration, and **no field maps a standard's row to a tool**, so a conformer asking what catches § 3 is sent to a file that cannot answer. Dismissed after checking: the § 2 row's *"running in CI on every push"* names a placement a project without CI satisfies with a hook, and nothing there leaves a conformer unable to tell they breached — no scanner running is the breach. And § 9's regression-test-first agrees with `testing.md` §§ 1 and 8 rather than contradicting them. |
+| 3 | 2026-08-15 | 3, cold — identical brief, packet rebuilt from disk | 0 | 6 | 2 | n/a | **Eight verified, eight fixed. Cap reached (3 for a standard); the run files its tail and exits.** **The run's finding, and it undoes loop 1's headline: loop 1 never fixed the defect it described.** It added § 3's exception paragraph, ending *"which found the opener and the bullet prescribing opposite code"* — and left the bullet alone. So § 3 still read *"**Resolve paths before opening them**, then confirm the result is inside the directory you intended"*: resolve, confirm, **then** open, which is the edge check the paragraph three lines above rejects and the exact symlink-swap race CFG-0108 was filed for. **One lane of six across two loops caught it.** The other five all *confirmed* § 3 against § 7 as properly reconciled — they verified the reconciliation loop 2 wrote and never read the bullet it was about. A note recording a defect reads like a fix and satisfies the same grep. The bullet now prescribes the point-of-use check itself. **A loop-2 dismissal is reversed.** The § 2 row read *"a secret scanner, running in CI on every push"*; two lanes raised it in loop 2 as an open question, I ruled a hook obviously satisfied it, and two more raised it here — four raisings across two loops. Their argument beat mine: the row is the only one fixing a **venue** rather than a kind of check, the preamble says rows are named by kind, and a project with no CI — this repo included — is left unable to say whether it has breached. The venue now moves and the check does not. **Three defects had survived since the file shipped on 2026-08-08.** The Purpose gate said *"a rule … that cannot be checked, does not belong"* while the table keeps nine rules nothing mechanical catches and defends them as the honest error budget — so an editor applying the gate deletes them and a conformer reads them as non-binding; "checked" now explicitly includes checked by a person. § 6 forbids logging *"session identifiers"* and four bullets later says *"Log identifiers, not payloads"*, so an implementer logging § 6's own required authentication attempts writes the session id as the correlating handle. And § 1 had no provision for a project with **no** boundary, while `skeleton/files/SECURITY.md` opens *"Delete this file if this project has no trust boundary"* and calls an empty policy worse than none — such a project wrote an empty section and the *Boundary list exists* row read it as a pass. **Two more of loop 1's and loop 2's own text.** § 9's scoping note claimed *"the bullets below it were written for your own code only"* when only the regression-test bullet was scoped, so an upstream CVE could ship as a silent version bump with no CHANGELOG line; the rotate and CHANGELOG bullets now bind on both. And the table enumerates some rules while the error-budget paragraph loop 2 rewrote reads as total — two lanes listed the rules with no row at all, among them *not on a command line*, *not in CI logs* and *pin, and know what you pinned*. Coverage is now total by construction: a rule with no row is *nothing mechanical* by default. |
 <!-- MIRROR END -->
