@@ -35442,7 +35442,7 @@ defect from different angles.
   Lanes: specs, speclint, docs.
   Source: in-session-2026-08-14 (measured while closing ANTS-4345).
 
-- 📋 [ANTS-4135] **23 specs cite feature-test directories that do not exist.**
+- ✅ [ANTS-4135] **23 specs cite feature-test directories that do not exist.**
   Measured 2026-08-12 over docs/specs/ (excluding ANTS-4127's own spec):
   266 distinct `tests/features/<name>` directories are named, and 26 are
   absent from disk. Three are truncation artefacts of a wildcard
@@ -35485,6 +35485,13 @@ defect from different angles.
   14's gate on that document.
 
   Measured count is therefore 24 specs / 26 spec-surface pairs, not 23 / 25.
+  Resolved (2026-08-15). Re-measured first, and the measurement reproduces: 18 specs, 25 (spec, surface) pairs, 23 distinct absent directories — the bullet's own figures. What did NOT hold is the framing. Only FOUR are false claims; the other 14 specs are drafts, accepted-pending-implementation, shelved or superseded, and a document that has not been built naming the directory its tests will live in is a PLAN, not a defect. Checked each status individually rather than assuming.
+
+  The four, all amended to record what was actually built: **ANTS-1897** (implemented) — INV-6/INV-7 shipped as `McpOrientation_Inv6.SelectionHintCoverage` / `…Inv7.SelectionHintFormat` in `tests/features/mcp_orientation_install/` plus `tests/features/mcp_selection_hint/`, and INV-14 as `…Inv14.MainWindowExportsSocket`; neither `mcp_selection_hint_coverage/` nor the planned `/dev/ptmx` dir was ever created. **ANTS-3810** (implemented) — the round-trip suites live in `tests/features/roadmap_export_roundtrip/`, not `roadmap_round_trip/`. **ANTS-3504** (implemented) — the ship-date rows landed inside `feedback_log_compact_resolved/` rather than a new bundle, which is the better home. **ANTS-1111** — not a false claim after all: its Status already defers steps 4/6/7 to v2, and the "Since baseline" pill later shipped under ANTS-1257; the build-order table now says so, since `New` beside a missing directory reads as an omission.
+
+  Two second-order findings. ANTS-1897 and ANTS-3810 were both still stamped `accepted` with the work long shipped, which is why the detector reported their real defects as `test_surface_unresolved` CANDIDATES rather than findings — status corrected on both. And that is general: 52 of 243 specs carry no Status line at all, filed as ANTS-4413.
+
+  Nothing deferred from the 25 pairs: 4 fixed, 21 are correct as written.
 
 - ✅ [ANTS-4136] **spec_log op:set_status replaces a multi-line Status value wholesale, with no way to keep its prose.**
   Hit while shipping ANTS-4127. A spec's `**Status:**` value is a wrapped
@@ -35644,6 +35651,40 @@ defect from different angles.
   Kind: doc-fix.
   Lanes: specs, remotecontrol.
   Source: in-session-2026-08-14 (surfaced by the ANTS-3368 spec's mechanical pass).
+
+- 📋 [ANTS-4413] **52 of 243 specs carry no Status line, so every status-gated check reads them as unknown rather than as shipped.**
+  Measured 2026-08-15 over docs/specs/: 52 of 243 documents have no
+  line matching `^\*\*Status`. Found while closing ANTS-4135, and it is
+  the reason that item's detector under-reported.
+
+  Two separate costs, and the second is the one that bites.
+
+  A reader cannot tell a live contract from an abandoned draft. That
+  is annoying but survivable.
+
+  `spec_lint`'s test-surface check keys on status: a spec claiming
+  delivery gets `test_surface_absent` (a FINDING), anything else gets
+  `test_surface_unresolved` (a CANDIDATE). So a shipped spec with no
+  status — or with a stale `accepted` — has its false claims
+  downgraded to candidates, and `review-contract` Phase 1d routes
+  findings straight into its verified list while candidates go to a
+  lane. ANTS-1897 and ANTS-3810 were exactly this: both implemented,
+  both still reading `accepted`, both citing test directories that do
+  not exist. Their statuses were corrected under ANTS-4135; the other
+  50 were not looked at.
+
+  Not a bulk edit. The status is a claim about whether code exists,
+  and the honest answer per document needs the code checked — which
+  is the same shape as ANTS-4135 and took four investigations to
+  settle four documents there.
+
+  Cheaper first step available: `spec_lint` could report the
+  missing-status count as an envelope observation, the way it reports
+  `line_count`, so the number is visible without a walk. That does
+  not fix a document but it stops the gap being invisible.
+  **Layman:** A fifth of our design documents never say whether the work is done, so the automatic checkers cannot tell a finished document from a draft.
+  Kind: doc-fix.
+  Source: in-session-2026-08-15 (measured while closing ANTS-4135).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 

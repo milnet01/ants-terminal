@@ -1,6 +1,9 @@
 # ANTS-3810 — the round-trip oracle, and whole-store relationship acyclicity
 
-**Status:** accepted (2026-08-04) — rule-14 gate run to its 3-loop cap, no
+**Status:** **implemented** (status corrected 2026-08-15, ANTS-4135 — the
+suites in `tests/features/roadmap_export_roundtrip/` are green and cover
+INV-1/2/5/18/19; the document had stayed at `accepted`, which weakens every
+status-gated check that reads it). Accepted (2026-08-04) — rule-14 gate run to its 3-loop cap, no
 deferred tail. Two caveats a reader should have: **loop 3's own fixes were not
 themselves cold-read**, which is what the cap means; and collateral outran draft
 defects for two loops, so a further split is available and is the user's call.
@@ -722,6 +725,15 @@ production TU at all. The feature test directory joins the `test_core` bundle's
 
 ## 6. Tests
 
+**Amended 2026-08-15 (ANTS-4135): the tests landed in
+`tests/features/roadmap_export_roundtrip/`, not the directory named below** —
+the suites are `RoadmapExportRoundtrip.*` and `RoadmapExportCanonical.*`, and
+they cover INV-1, INV-2, INV-5, INV-18 and INV-19 as § 6 requires. Only the
+name differs, and it differs because the surface merged with the export
+round-trip tests already in that bundle rather than opening a second one. The
+paragraph is left standing with this correction above it, since it is also the
+build-wiring record.
+
 `tests/features/roadmap_round_trip/` — carrying a `spec.md` beside the test, per
 the per-feature convention `CLAUDE.md` states. Label `features`, compiled into the
 **`test_core` bundle** per `tests/features/README.md` (no `add_executable`) —
@@ -891,7 +903,8 @@ Which `Access` each store opens on is § 2.1's rule 1.
   as **ANTS-3825**, not fixed here; this spec adds its own entry only.
   `CLAUDE.md` is unaffected — ANTS-1292 moved the per-file catalogue out of it.
 - **`CMakeLists.txt`** gains `src/roadmapcheck.cpp` in `ants_roadmapstore_lib`
-  and `tests/features/roadmap_round_trip/test_roadmap_round_trip.cpp` in the
+  and `tests/features/roadmap_round_trip/test_roadmap_round_trip.cpp` — shipped
+  as `tests/features/roadmap_export_roundtrip/`, see § 6's amendment — in the
   `test_core` bundle's `SOURCES`. The directory's `spec.md` (§ 6) is a new file
   too, and is listed here because it is the artifact a build-wiring checklist
   most easily forgets — nothing in CMake references it.
