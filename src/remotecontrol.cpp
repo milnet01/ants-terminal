@@ -1266,7 +1266,38 @@ int amendBodyExact(QStringList &lines, int headlineLine,
         total += c;
     }
     if (total != 1) return total;   // 0 → not found, >1 → ambiguous
-    lines[hitLine].replace(oldText, newText);
+
+    // ANTS-3752 — a multi-line `newText` must not land flush-left. This is a
+    // plain `QString::replace` into ONE list element, so an embedded newline
+    // becomes a real line at column 0 when the list is joined. Every such
+    // line stops being body (roadmap-format.md § 3.5 requires the
+    // continuation indent), which cuts the bullet in two — silently, because
+    // the envelope still returns {ok:true, amended:true} and only the NEXT
+    // reader discovers it. Measured at filing: 16 lines detached from one
+    // bullet, after which amend_body could no longer locate text it had
+    // itself just written, and roadmap_query include_body stopped at the
+    // break.
+    //
+    // Give each continuation line the matched line's own indent, which is the
+    // same normalisation op:append already applies to `body` — that is why
+    // appending a long body works and amending one did not. Relative
+    // indentation the caller supplied is PRESERVED (prefix, not replace), so
+    // a deeper nested sub-bullet still nests. Genuinely empty lines are left
+    // empty rather than being filled with trailing whitespace.
+    QString patch = newText;
+    if (patch.contains(QLatin1Char('\n'))) {
+        const QString &target = lines.at(hitLine);
+        int w = 0;
+        while (w < target.size() && target.at(w).isSpace()) ++w;
+        const QString indent = target.left(w);
+        if (!indent.isEmpty()) {
+            QStringList parts = patch.split(QLatin1Char('\n'));
+            for (int i = 1; i < parts.size(); ++i)
+                if (!parts.at(i).isEmpty()) parts[i].prepend(indent);
+            patch = parts.join(QLatin1Char('\n'));
+        }
+    }
+    lines[hitLine].replace(oldText, patch);
     if (matchedLine) *matchedLine = hitLine;
     return 1;
 }

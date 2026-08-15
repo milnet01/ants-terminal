@@ -584,3 +584,77 @@ TEST(roadmap_log_amend_body, Ants4372AmendHeadline) {
     EXPECT_FALSE(rc.cmdRoadmapLogAmendHeadlineForTest(cross)
                      .object().value(QStringLiteral("ok")).toBool());
 }
+
+// ANTS-3752 — a multi-line `new_text` must not land flush-left.
+//
+// `amendBodyExact` does `lines[hitLine].replace(oldText, newText)`. A newText
+// carrying newlines injects them into ONE list element, so on join every line
+// after the first starts at column 0. roadmap-format.md § 3.5 requires a
+// 2-space continuation indent, so those lines stop being body — the bullet is
+// silently cut in two at the write, with `{ok:true, amended:true}` returned.
+//
+// Measured consequence at filing: 16 lines detached from ANTS-3749, after
+// which the very next amend_body against that bullet refused
+// `body_match_not_found` with "occurs in ROADMAP.md but outside the located
+// bullet's body block" — the verb could no longer see text it had itself just
+// written — and `roadmap_query include_body` stopped at the break.
+TEST(roadmap_log_amend_body, Ants3752MultiLineNewTextKeepsBodyIndent) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = tmp.path();
+    r[QStringLiteral("op")]         = QStringLiteral("amend_body");
+    r[QStringLiteral("id")]         = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("old_text")]   = QStringLiteral("pinned in the spec here");
+    r[QStringLiteral("new_text")]   =
+        QStringLiteral("replaced across\nthree separate\nphysical lines");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "amend_body with a multi-line new_text should succeed";
+
+    QFile f(roadmapPath(tmp.path()));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QStringList after =
+        QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+
+    // Every line of the replacement is body, so every one must be indented.
+    // Pre-fix, lines 2 and 3 sat at column 0.
+    for (const char *needle : {"replaced across", "three separate",
+                               "physical lines"}) {
+        bool seen = false;
+        for (const QString &ln : after) {
+            if (!ln.contains(QLatin1String(needle))) continue;
+            seen = true;
+            EXPECT_TRUE(ln.startsWith(QLatin1String("  ")))
+                << "ANTS-3752: \"" << needle << "\" landed flush-left — a body "
+                   "continuation line must keep its indent or it stops being "
+                   "body: " << ln.toStdString();
+        }
+        EXPECT_TRUE(seen) << "ANTS-3752: \"" << needle << "\" was not written";
+    }
+
+    // The trailing fields must still be part of the SAME bullet body, not
+    // orphaned below a break. This is what actually broke at filing.
+    bool kindStillIndented = false;
+    for (const QString &ln : after)
+        if (ln.contains(QLatin1String("Kind: feature")))
+            kindStillIndented = ln.startsWith(QLatin1String("  "));
+    EXPECT_TRUE(kindStillIndented)
+        << "ANTS-3752: the rest of the bullet body must stay attached";
+
+    // And the verb must still be able to LOCATE text inside the region it
+    // just wrote — the exact failure that made this discoverable.
+    QJsonObject r2;
+    r2[QStringLiteral("caller_cwd")] = tmp.path();
+    r2[QStringLiteral("op")]         = QStringLiteral("amend_body");
+    r2[QStringLiteral("id")]         = QStringLiteral("ANTS-0042");
+    r2[QStringLiteral("old_text")]   = QStringLiteral("three separate");
+    r2[QStringLiteral("new_text")]   = QStringLiteral("3 separate");
+    const QJsonObject resp2 = rc.cmdRoadmapLogAmendBodyForTest(r2).object();
+    EXPECT_TRUE(resp2.value(QStringLiteral("ok")).toBool())
+        << "ANTS-3752: a second amend must still find text the first wrote — "
+           "pre-fix this refused body_match_not_found";
+}
