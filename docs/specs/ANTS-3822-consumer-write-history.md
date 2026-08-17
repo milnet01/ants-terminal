@@ -184,41 +184,93 @@ string — and its comment records that comparing `historyBytes()` against the
 cap alone is wrong, because at the moment of refusal the stored bytes are still
 below the cap in every case but an exact landing.
 
-**The discriminator gets one home on `RoadmapStore`, and this spec names it
-rather than leaving "reuse it" to be interpreted.** Today it is four lines
-inside a private method of `Loader`, unreachable from the consumer write path,
-so "reuse" without a named home means one builder promotes it and another
-copies it:
+**A cap refusal skips the op's history ENTIRELY — never part of it.** The
+store's predicate is per row, so writing row by row until one is refused would
+leave a revision holding some of its fields and not others: `appendHistory()`
+compares `historyBytes() + incoming` per call, and a long `old_value` can be
+refused while a shorter later row for the same item still fits. § 2.1 defines a
+revision as its member rows, so a half-written one is a revision that lies.
+
+So the op sums its rows' `field + old_value + new_value` sizes, asks **once**,
+and either writes all of them or none.
+
+### 2.3.1 The three things this needs named
+
+Two invariants and three call sites bind to these, so leaving any of them as
+"reuse it" or "a note" is an invention with consumers.
+
+**1 — the cap predicate, on `RoadmapStore`.** Today it is four lines inside a
+private method of `Loader`, unreachable from the consumer write path.
 
 ```cpp
-// Would appendHistory(field, oldValue, newValue) refuse on the cap?
+// Would writing `bytes` more history bytes cross the cap? `bytes` is the SUM
+// over the op's rows of field+old_value+new_value, because § 2.3 asks once for
+// the whole op rather than per row.
 // Public because two writers need the same answer: the migration loader and
-// the consumer write path. The three terms are already public; what was not
-// public is the comparison, which is the part that is easy to get wrong.
-bool historyWouldExceedCap(const QString &field, const QString &oldValue,
-                           const QString &newValue) const;
+// the consumer write path. Both terms were already public; the comparison was
+// not, and it is the part that is easy to get wrong.
+bool historyWouldExceedCap(qint64 bytes) const;
 ```
 
 `Loader::recordHistory()` is refactored onto it in the same change, so there is
 one implementation rather than two agreeing by inspection.
 
-**The note is a response-envelope field, so this spec pins its name and shape.**
-Leaving it as "a note" means the implementer invents a key that the test, any
-MCP consumer and `ANTS-3756`'s amendment all then bind to:
+**2 — a per-op context, because the state has to reach a helper the handler does
+not own.** § 2.1's worked example — a body plus five re-derived trailer columns,
+six rows, one revision — cannot be built by the handler alone: the handler writes
+`status` / `body` through `setItemField()` and delegates the five trailer columns
+to `rcdetail::rlDeriveTrailerColumns()` (`src/remotecontrol_internal.h`), which
+three call sites share (`cmdRoadmapLogFlip`, `cmdRoadmapLogAmendBody`,
+`cmdRoadmapLogFlipBatch`). That helper has no parameter for the stamp, the `seq`
+cursor or the skip count, so without a carrier the trailer rows either go
+unwritten — one row for an `amend_body`, failing INV-2 — or land under a second
+stamp, which splits one write into two revisions and breaks the last-touch
+reader this spec exists to unblock.
+
+```cpp
+// One per op, created at the top of mutate(). Threaded into
+// rlDeriveTrailerColumns() — a signature change its three call sites bind to.
+struct HistoryContext {
+    QString changedAt;              // § 2.5: computed once for the whole op
+    QHash<qint64, int> nextSeq;     // per item_pk, primed from maxHistorySeq()
+    int skippedRows = 0;            // what history_note reports
+};
+```
+
+**3 — the note, which is a response-envelope contract.**
 
 ```json
-"history_note": "history cap reached (262144000 bytes); 3 revision(s) not recorded"
+"history_note": "history cap reached (262144000 bytes); 6 history row(s) not recorded"
 ```
 
 - **Key `history_note`, a string, absent when nothing was skipped.** Absent
   rather than empty, matching how this project's envelopes carry optional
   advisories.
-- **One per op, not one per item.** A `flip_batch` that crosses the cap emits
-  one note carrying the count, because the caller's decision — the history is
-  full, go raise the cap — is the same whichever item tripped it.
+- **The count is of skipped ROWS, not of revisions or items.** Named because
+  § 2.1 makes "revision" a group of rows, so the same capped `amend_body` is
+  1 revision, 1 item and 6 rows — three defensible numbers for one event, and a
+  consumer binding to the string needs to know which it gets. Rows, because that
+  is what `HistoryContext::skippedRows` counts and what the cap is measured in.
+- **One note per op, not per item.** A `flip_batch` crossing the cap emits one
+  note summing its items' rows: the caller's decision — the history is full, go
+  raise the cap — is the same whichever item tripped it.
 - **It is an advisory on a SUCCESSFUL envelope, not a refusal.** So it is not a
   `code` from `mcp-error-codes.md`; that taxonomy is for refusals, and this op
   did not refuse.
+
+### 2.3.2 The cap must be injectable on the verb path
+
+`storeFor()` (`src/roadmapsource.cpp`) constructs the verb path's store with
+`kDefaultHistoryCapBytes` and takes no cap argument, so **nothing above it can
+reach the cap in a test** — 250 MiB of real history is the only route, which is
+the cost `ANTS-3756`'s INV-14 already refuses for its own legs ("a cap reachable
+only in production is a cap nothing exercises", which is why the store takes the
+bound as a constructor parameter).
+
+**`storeFor()` gains an optional cap, defaulted to `kDefaultHistoryCapBytes`.**
+One parameter, and it is what makes INV-5 a single verb-level test instead of two
+legs that cannot both run: the envelope is built only by the handler, and the cap
+can otherwise only be tripped below it.
 
 ### 2.4 Creation writes no history
 
@@ -239,8 +291,10 @@ The op computes `changed_at` once, at the top of `mutate()`, as
 op writes shares it.
 
 Computing it per row would let a batch straddle a second boundary and split one
-logical write across two revisions, for no benefit — and on `append_batch`,
-which is N items in one transaction, it would do so routinely.
+logical write across two revisions, for no benefit — and on `flip_batch`, which
+is N items in one transaction, it would do so routinely. (`append_batch` is the
+other N-item op and is unaffected, because § 2.4 gives it no history rows to
+split.)
 
 **A batch shares the stamp across items too.** `seq` is scoped per
 `(item_pk, changed_at)`, so each item's rows number from their own base and the
@@ -260,9 +314,13 @@ UNIQUE constraint is satisfied without coordination between items.
   base. *Test:* same suite, two legs, because one cannot separate the readings:
   an `amend_body` that re-derives trailer columns writes ≥ 2 rows for one item —
   assert one distinct `changed_at` and a contiguous `seq` set; then a
-  `flip_batch` over two items that each already carry a revision at that stamp —
-  assert each item's rows resume from **its own** maximum. A single-item leg is
-  green against an op-wide counter, which is why the batch leg is required.
+  `flip_batch` over **two items with no prior history** — assert **both** items'
+  rows start at `seq` 0. An op-wide counter gives the second item 2, 3, …; a
+  per-item cursor gives it 0, 1. **Deliberately not pre-seeded rows at the op's
+  own stamp:** `changed_at` is second-resolution and the op computes its own
+  (§ 2.5), so a seeded row only shares the stamp if the clock does not tick
+  between seeding and the call — a test that flakes at second boundaries. Two
+  fresh items separate the readings with no timing dependency at all.
 - **INV-3** — A `dry_run` write leaves the `history` table byte-identical.
   *Test:* same suite — count rows and `SUM(length(...))` before and after a
   `dry_run:true` flip; assert both unchanged. Rests on
@@ -271,8 +329,8 @@ UNIQUE constraint is satisfied without coordination between items.
   history write outside that transaction.
 - **INV-4** — A rolled-back transaction leaves no history rows. *Test:* same
   suite, driven at the **store** level: `begin()`, `setItemField()` plus its
-  history row, `rollback()`, then assert zero rows for that `item_pk` and that
-  `maxHistorySeq()` is unchanged. **Deliberately not driven through the render
+  history row, `rollback()`, then assert zero rows for that `item_pk`.
+  **Deliberately not driven through the render
   gate:** `commitAndRender()`'s gate is *project*-scoped — its own message is
   "the roadmap render refuses this project: %1 open item(s) carry no `Layman:`
   line" — so while the offending item is still open every later write in that
@@ -283,30 +341,35 @@ UNIQUE constraint is satisfied without coordination between items.
   aborted attempt burned anything — the assertion would pass against both a
   correct and an incorrect implementation.
 - **INV-5** — At the history cap the item write still succeeds, the op returns
-  success, and the envelope carries `history_note`. *Test:* same suite, two
-  legs, because the cap and the envelope are reachable from different places.
-  **The cap leg calls `RoadmapWrite::commitAndRender()` directly**, handing it a
-  `RoadmapStore` built with a deliberately tiny `historyCapBytes` — a
-  constructor parameter, so no 250 MiB fixture is needed. A verb-driven test
-  cannot do this: `src/roadmapsource.cpp` constructs the verb path's store with
-  `kDefaultHistoryCapBytes` and takes no injection, so `commitAndRender()` is
-  the outermost seam that accepts a store. Assert the item's field changed and
-  the call returned `Result::Ok`. **The envelope leg** asserts the verb emits
-  `history_note` when the write helper reports a skip — without it an
-  implementation that silently drops the revision passes, which is the exact
-  failure INV-14's "fails *and reports*" forbids.
-- **INV-8** — A non-cap `appendHistory()` failure aborts the op. *Test:* same
-  suite — force a failure that is not the cap (write a history row for an
-  `item_pk` no `item` row has, violating the foreign key), assert
-  `commitAndRender()` does **not** return `Result::Ok` and that the item column
-  is unchanged. Without this leg § 2.3's two branches have one test between
-  them, and the dangerous branch is the untested one.
+  success, and the envelope carries `history_note` with the skipped **row**
+  count. *Test:* same suite, ONE leg at verb level — drive a `flip` with the
+  store's cap injected small through § 2.3.2's `storeFor()` argument, then assert
+  all three: the item's status changed, the op did not refuse, and
+  `history_note` is present with the row count. **All three in one assertion
+  block on purpose.** Asserting only the first two passes against an
+  implementation that drops the revision silently, which is precisely what
+  INV-14's "fails *and reports*" forbids; and the envelope is built only by the
+  handler, so a leg below the verb cannot see it. § 2.3.2 exists to make this one
+  test reachable — without it the cap is reachable only below the verb and the
+  envelope only above, and no single test can hold both.
 - **INV-6** — `append` and `append_batch` write no history rows. *Test:* same
   suite — append an item, assert zero rows for its `item_pk`.
 - **INV-7** — The export round-trips consumer-written rows unchanged. *Test:*
   the existing `roadmap_export_roundtrip` suite, extended with an item carrying
   a consumer-written revision; its byte-identity assertion is what fails if the
   two producers disagree on row shape.
+- **INV-8** — A non-cap `appendHistory()` failure aborts the op. *Test:* same
+  suite — call the § 2.3.1 write helper directly, inside a `commitAndRender()`
+  whose `mutate` the test supplies, for an `item_pk` no `item` row has. That
+  violates `history.item_pk`'s foreign key, which refuses rather than inserts
+  (`PRAGMA foreign_keys = ON` is in `src/roadmapstore.cpp`'s pragma list;
+  confirmed against SQLite directly, since the pragma is per-connection and
+  defaults OFF). Assert `commitAndRender()` does **not** return `Result::Ok` and
+  the item column is unchanged. **It must drive the real helper, not the test's
+  own `mutate` returning false** — the latter asserts that `commitAndRender()`
+  aborts on a false, which is already true and says nothing about the
+  discriminator. Without this leg § 2.3's two branches have one test between
+  them, and the dangerous branch is the untested one.
 
 ## 4. RAM / build cost
 
@@ -373,12 +436,17 @@ verb tests live in `test_claude`, and this drives the verb rather than the
 dialog.
 
 **Two invariants are driven below the verb, and that is a requirement rather
-than a convenience.** INV-4 and INV-5's cap leg call
-`RoadmapWrite::commitAndRender()` directly, because it is the outermost entry
-point that accepts a caller's `RoadmapStore` — the verb path builds its own with
-`kDefaultHistoryCapBytes` and offers no injection point. An implementer who
-writes both at verb level will find INV-5's precondition unreachable and INV-4's
-recipe blocked by the project-scoped gate.
+than a convenience.** INV-4 exercises `RoadmapStore`'s transaction directly,
+because `commitAndRender()`'s gate is project-scoped and blocks the two-phase
+recipe a verb-level test would need. INV-8 calls § 2.3.1's write helper inside a
+test-supplied `mutate`, because a production op never presents an unresolvable
+`item_pk`.
+
+**INV-5, by contrast, runs at verb level and needs § 2.3.2 to do it.** It is the
+one invariant whose three assertions span the seam — the cap is set below the
+verb, the envelope is built above it — so without the injectable cap it would
+have to split into two legs, and the envelope leg would have no way to reach a
+skip at all.
 
 INV-7 extends `tests/features/roadmap_export_roundtrip/` rather than adding a
 second round-trip harness.
@@ -407,9 +475,17 @@ migration's own rows are visible to it, then assert the consumer's absence.
   since, and § 1 records the recount.
 - `docs/specs/ANTS-3756-roadmap-store-schema.md` — INV-14's cap now has a
   second writer subject to it, and its public surface gains
-  `historyWouldExceedCap()` (§ 2.3), which is the twenty-fifth method on the
-  surface that spec's § 2.4 enumerates. § 2.3's note-and-continue rule is
-  stated here and should be cross-referenced there rather than restated.
+  `historyWouldExceedCap()` (§ 2.3.1), which is the twenty-fifth method on the
+  surface that spec's § 2.4 enumerates (twenty-four after ANTS-3782 added
+  `setSectionSource()`; that spec's own § 9 note carries the recount). § 2.3's
+  note-and-continue rule is stated here and should be cross-referenced there
+  rather than restated.
+- `src/remotecontrol_internal.h` — `rlDeriveTrailerColumns()` gains a
+  `HistoryContext &` (§ 2.3.1). Three call sites in
+  `src/remotecontrol_roadmap_log.cpp` bind to it, so it is a surface change
+  rather than a local edit.
+- `src/roadmapsource.cpp` — `storeFor()` gains an optional cap argument
+  (§ 2.3.2). Defaulted, so no existing caller changes.
 - ROADMAP.md ANTS-3822 — its "blocked by ANTS-3809" line is stale; ANTS-3809
   shipped.
 - CHANGELOG.md — on ship.
@@ -419,3 +495,4 @@ migration's own rows are visible to it, then assert the consumer's absence.
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-08-17 | 3, cold — genre pinned `spec`; one byte-stable shared packet carrying the `history` DDL, `appendHistory()`, `historyBytes()`, `Loader::recordHistory()` + its seq priming, `commitAndRender()` lines 43–100, INV-14's declaration, ANTS-3809 § 2.2's table and every `history` mention in `roadmap-data-model.md` | **Q1 1 · Q2 4 · Q3 3 · Q4 3** (11 verified / 0 dismissed) | **Eleven verified, eleven fixed. First gate on this document.** **All three lanes independently found the same defect**, which is the strongest signal in the run: § 2.3 said *"A `false` from `appendHistory()` must not abort the op"* unqualified, under a heading reading *"never fail the op"*, while the same section told the implementer to reuse a discriminator that exists only to treat the two classes differently. One reading swallows a constraint violation and reports a successful write — the silently-dropped revision INV-14 exists to forbid; the other aborts every roadmap write when the table fills. Now two explicit branches plus **INV-8**, added because the dangerous branch had no test. **All three also found the note was unspecified** — INV-5 asserted "the envelope carries a note" and nothing named the key, its type or its text, which is a response-envelope contract the test, the MCP consumers and ANTS-3756's amendment all bind to; pinned as `history_note`, one per op, absent when nothing was skipped, explicitly not an `mcp-error-codes.md` code. **Two lanes found INV-4's recipe unreachable**: it forced a rollback through the render gate, and that gate is *project*-scoped, so while the offending item is open every later write in the project also refuses and the two-phase test can never reach phase two — INV-4 now drives the store directly. **Three Q4s were tests that could not fail**: INV-4's "burns no `seq`" is green against a correct *and* an incorrect implementation because each op stamps its own second, so the retry starts at 0 either way (dropped rather than patched); INV-5's injected cap is unreachable from a verb-driven test because `src/roadmapsource.cpp` builds the verb path's store with `kDefaultHistoryCapBytes` and takes no injection (re-aimed at `commitAndRender()`, the outermost seam accepting a caller's store); and INV-2's single-item leg cannot distinguish a per-item `seq` from an op-wide counter (batch leg added). **Two Q2s were internal contradictions I had written**: § 1 listed `append_batch` among the writes whose invisibility is the defect while § 2.4 and INV-6 require it to stay invisible, and § 7 told a sibling spec to document a history write on all eight rows when two of them are excluded by § 2.4 and two more cannot hold a revision at all. **One Q3**: an absent prior value could be `NULL` or `''`, a distinction `appendHistory()` preserves deliberately and the export's byte-identity would expose — now pinned to `NULL`. **The one Q1 was mine, found while verifying the lanes' open questions rather than by a lane**: "eight write ops" is `ANTS-3809`'s count and is stale — there are nine call sites for ten ops, `ANTS-4070` having added two section-only ops. Mapping every site to its handler also **refuted my own first repair**, which guessed that one of the new ops shared a handler; the sharing is `flip`/`annotate`. **Three lane open questions resolved clean and are not in the tally** — `commitAndRender()` does roll back under `dryRun` (`abort(Result::Ok)`, step 5), every op does route through it (9 of 9 sites), and INV-8's foreign-key trigger does refuse (`PRAGMA foreign_keys = ON` at `roadmapstore.cpp:135`, confirmed against SQLite directly). All three lanes could not verify the first of those **because my packet window stopped at step 4b** — a packet defect, not a document one. |
+| 2 | 2026-08-17 | 3, cold — identical brief shape, no mention of loop 1; packet rebuilt from disk with the COMPLETE `commitAndRender()`, the pragma list and the nine call-site→handler map, all three being loop 1's packet gaps | **Q1 0 · Q2 2 · Q3 3 · Q4 2** (7 verified / 0 dismissed) | **Seven verified, seven fixed. Cap reached (2 for a spec); the run files no tail and exits.** **Every one of the seven landed on text loop 1 ADDED** — zero pre-existing defects, which is the fix-pass-generates-defects pattern at its clearest and is the evidence the cap is the right exit rather than a third loop. **All three lanes independently found the same two.** First: INV-5's two legs were mutually exclusive by construction — the envelope is built only by the handler, the cap was injectable only below it, and the spec named no other way to provoke a skip, so the leg guarding INV-14's "fails *and reports*" could be neither red nor green. Fixed by § 2.3.2 giving `storeFor()` an optional cap, which collapses INV-5 to one verb-level test holding all three assertions; the argument for that seam is `ANTS-3756`'s own INV-14, which already refuses a cap reachable only in production. Second: `history_note`'s count had no unit, and § 2.1 had just made "revision" a group of rows — so one capped `amend_body` is 1 revision, 1 item or 6 rows, three defensible numbers for a string the spec itself says consumers bind to. Pinned to rows. **Lane E found the run's most consequential defect, and it is one no reading of my draft alone would surface**: § 2.1's worked example (a body plus five re-derived trailer columns, six rows, one revision) is unbuildable by the handler, because five of those columns are written by `rcdetail::rlDeriveTrailerColumns()` — a helper shared by three call sites with no parameter for the stamp, the `seq` cursor or the skip count. Without a carrier the trailer rows go unwritten (one row for an `amend_body`, failing INV-2) or land under a second stamp, splitting one write into two revisions and breaking the very last-touch reader this spec exists to unblock. § 2.3.1 now names a `HistoryContext` and records that threading it is a signature change three call sites bind to. **Lane F found that a revision could land PARTIALLY**: the store's predicate is per row, so a long `old_value` can be refused while a shorter later row for the same item still fits, leaving a revision holding some of its fields — a revision that lies, under a § 2.1 that defines one as its member rows. The op now sums its rows and asks once, all-or-none. **Two Q2s were loop 1's own repairs arguing with themselves:** INV-4's recipe asserted `maxHistorySeq()` unchanged while the same invariant declared that assertion vacuous five lines later (recipe half deleted, rationale kept), and § 2.5 justified one-stamp-per-op by the harm of splitting `append_batch`'s revisions when § 2.4 gives it none (now `flip_batch`). **One Q4 was a test that would flake rather than fail:** INV-2's batch leg pre-seeded rows at the op's own stamp, which is second-resolution and computed inside `mutate()`, so it only shares the stamp if the clock does not tick — replaced by two fresh items asserting both start at `seq` 0, which separates a per-item cursor from an op-wide counter with no timing dependency. Also tightened: INV-8 must drive the real write helper, since a test-supplied `mutate` returning false only re-proves that `commitAndRender()` aborts on a false and says nothing about the discriminator. **Three lane open questions resolved clean and are not in the tally** — `rotate_minor` / `retitle_section` are section-only (`setItemField` appears only in `flip`, `amend_body` and `flip_batch`), the 98% figure recomputes from ANTS-4414's measurements (3710 of 3785 ms), and the twenty-fifth-method count is ANTS-3782's own recount. The document grew 261 → 497 lines across the two loops; **the growth is concentrated in § 2.3, which is where both loops' findings clustered**, and it is worth a splitting decision if this spec is ever amended rather than implemented. |
