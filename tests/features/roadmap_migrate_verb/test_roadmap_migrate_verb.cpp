@@ -627,7 +627,10 @@ TEST(RoadmapMigrateVerb, Inv8ResolvesThroughTheConsumerDispatch) {
         auto store = openStore(storePath, RoadmapStore::Access::Interactive);
         ASSERT_NE(store, nullptr);
         QString err;
-        EXPECT_FALSE(RoadmapSource::migratedProject(*store, root, markdown, &err)
+        // ANTS-3863 — the seam takes a provider; fromMemory reads no disk, so
+        // this case exercises exactly what it did before.
+        auto text = RoadmapSource::RoadmapText::fromMemory(markdown);
+        EXPECT_FALSE(RoadmapSource::migratedProject(*store, root, text, &err)
                          .has_value())
             << "no project row yet";
         EXPECT_TRUE(err.isEmpty()) << err.toStdString();
@@ -641,7 +644,8 @@ TEST(RoadmapMigrateVerb, Inv8ResolvesThroughTheConsumerDispatch) {
         auto store = openStore(storePath, RoadmapStore::Access::Interactive);
         ASSERT_NE(store, nullptr);
         QString err;
-        const auto resolved = RoadmapSource::migratedProject(*store, root, markdown, &err);
+        auto text = RoadmapSource::RoadmapText::fromMemory(markdown);
+        const auto resolved = RoadmapSource::migratedProject(*store, root, text, &err);
         ASSERT_TRUE(resolved.has_value()) << err.toStdString();
         EXPECT_EQ(*resolved, qint64(env.value(QStringLiteral("project_id")).toInt()));
     }

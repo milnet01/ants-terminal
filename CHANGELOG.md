@@ -127,6 +127,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **Roadmap reads dispatch before loading the file, so a migrated project no longer pulls 3 MiB of `ROADMAP.md` to ask which backend serves it (ANTS-3863)**
+  The read seam's `markdown` parameter became `RoadmapSource::RoadmapText`, a
+  move-only provider that reads lazily and only as far as the caller's path
+  needs: the dispatch spends the detector's window — at most 300 non-blank
+  lines or 1 MiB, whichever comes first — and the whole body is read only on
+  the unmigrated path that was always going to parse it. Thirty call sites
+  converted; no verb's response shape, refusal code or message changes.
+
 - **the session startup tool list now spells out that read_regions batches** (ANTS-4422)
   It read as a plural of read_region, so sessions made several calls where one
   would do.

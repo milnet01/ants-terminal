@@ -92,16 +92,19 @@ QHash<QString, QJsonObject> RemoteControl::rlResolveForeignFeedbackIds(
             sf.close();
             continue;
         }
-        sf.seek(0);
-        const QString sibMd = QString::fromUtf8(sf.readAll());
         sf.close();
+        // ANTS-3863 — the sibling's text as a provider rather than a readAll().
+        // This resolver wants ids, so a migrated sibling costs the detector's
+        // window and not its 3 MiB body; the head sniff above already had its
+        // own bounded read and is untouched.
+        auto sibText = RoadmapSource::RoadmapText::fromFile(sibRoadmap);
         const QString sibLeaf = QFileInfo(subCanon).fileName();
         // ANTS-3793 — the sibling's own store when IT is migrated. A refusal
         // skips this sibling rather than parsing its markdown: INV-1's "served
         // neither" is a skip here, and this resolver is best-effort by design.
         RoadmapSource::ReadError sibWhy = RoadmapSource::ReadError::None;
         QString sibErr;
-        const auto sibBullets = roadmapBullets(subCanon, sibMd,
+        const auto sibBullets = roadmapBullets(subCanon, sibText,
                                                /*includeArchive=*/false,
                                                &sibWhy, &sibErr);
         if (sibWhy != RoadmapSource::ReadError::None)
@@ -246,10 +249,10 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         const QString roadmapPath = callerCanonical.isEmpty()
             ? QString() : findRoadmapUnder(callerCanonical);
         if (!roadmapPath.isEmpty()) {
-            QFile rmf(roadmapPath);
-            if (rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString rmMarkdown = QString::fromUtf8(rmf.readAll());
-                rmf.close();
+            auto rmText = RoadmapSource::RoadmapText::fromFile(roadmapPath);
+            // ANTS-3863 — openFailed() forces the open, so this guard is the
+            // QFile::open() one it replaces, in the same place.
+            if (!rmText.openFailed()) {
                 // ANTS-3793 — the caller project's store when it is migrated.
                 // Best-effort like the rest of this block: a refusal leaves
                 // every mapped id "unknown", which is what an unreadable
@@ -258,7 +261,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                     RoadmapSource::ReadError::None;
                 QString srcErr;
                 const auto rmBullets = roadmapBullets(callerCanonical,
-                                                      rmMarkdown,
+                                                      rmText,
                                                       /*includeArchive=*/false,
                                                       &srcWhy, &srcErr);
                 for (const auto &b : rmBullets) {
@@ -769,10 +772,10 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         // project's, so the cross-repo pass below is the path that matters and
         // refusing before reaching it is what made this verb a no-op.
         if (!roadmapPath.isEmpty()) {
-            QFile rmf(roadmapPath);
-            if (rmf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString rmMarkdown = QString::fromUtf8(rmf.readAll());
-                rmf.close();
+            auto rmText = RoadmapSource::RoadmapText::fromFile(roadmapPath);
+            // ANTS-3863 — openFailed() forces the open, so this guard is the
+            // QFile::open() one it replaces, in the same place.
+            if (!rmText.openFailed()) {
                 // ANTS-3793 — the caller project's store when it is migrated.
                 // A refusal leaves the id sets empty, which this verb already
                 // handles (every finding reads roadmap_unresolved_ids); it
@@ -781,7 +784,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                     RoadmapSource::ReadError::None;
                 QString srcErr;
                 const auto rmBullets = roadmapBullets(callerCanonical,
-                                                      rmMarkdown,
+                                                      rmText,
                                                       /*includeArchive=*/false,
                                                       &srcWhy, &srcErr);
                 for (const auto &b : rmBullets) {

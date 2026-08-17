@@ -21,9 +21,12 @@
 
 #include <QHash>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <memory>
 #include <optional>
+
+class QFile;
 
 namespace RoadmapSource {
 
@@ -51,6 +54,112 @@ enum class ReadError {
 // deliberately a COUNT rather than a byte total — the gate has to decide before
 // materialising, which is the thing it exists to guard.
 inline constexpr int kItemCeiling = 3500;
+
+// ANTS-3863 § 2.1 — the detector's window, in both of its units.
+//
+// kDetectorLineCap counts NON-BLANK lines, which is detectRoadmapFormat()'s own
+// rule: blank lines are kept in the list and are not counted. That alone bounds
+// neither the read nor the list — a file of blank lines, or one with no '\n' at
+// all, reaches EOF with the count never rising — so kDetectorByteCap bounds the
+// bytes. 1 MiB is ~50x the largest prefix this corpus produces, so no real
+// roadmap reaches it, and a pathological one costs a bounded read rather than
+// the whole file.
+//
+// BOTH producers get both caps (§ 2.1). Capping only the file reader would fork
+// it from the in-memory helper on exactly the input this item is about, and
+// INV-2 — the two return the same QStringList — would be false by construction
+// on an all-blank file. They are here rather than in the .cpp because the tests
+// assert against them, which is why kItemCeiling above is here too.
+inline constexpr int    kDetectorLineCap = 300;
+inline constexpr qint64 kDetectorByteCap = 1 << 20;   // 1 MiB
+
+// ANTS-3863 § 2.1 — the roadmap text, read as late as the caller's path needs.
+//
+// The dispatch needs only the detector's window; the unmigrated path needs the
+// whole text. Splitting them behind one object is what lets the dispatch run
+// BEFORE any body read, without each of the call sites having to know which of
+// the two it will end up needing.
+//
+// The read contract, stated because three invariants rest on it: a file-backed
+// text opens its file ONCE, with ReadOnly | Text — the mode every call site
+// this replaced used, and the one that decides CRLF handling, so INV-5's
+// byte-identity claim is meaningless without pinning it. It RETAINS the handle
+// until full() has run or the object dies. detectionPrefix() reads forward to
+// whichever cap it reaches first and stops; full() continues from where the
+// prefix stopped and appends rather than seeking back. Hence every byte is read
+// at most once (INV-6), prefix and body come from one file description, and a
+// mid-read error leaves openFailed() true with full() returning what was read
+// before it — which is what QFile::readAll() already does.
+class RoadmapText {
+public:
+    // Move-only: a file-backed text owns an open handle, so a copy would either
+    // read the file twice — breaking INV-6 — or double-close it.
+    RoadmapText(const RoadmapText &) = delete;
+    RoadmapText &operator=(const RoadmapText &) = delete;
+    RoadmapText(RoadmapText &&) noexcept;
+    RoadmapText &operator=(RoadmapText &&) noexcept;
+    ~RoadmapText();
+
+    // Nothing is read at construction. `path` is the project's LIVE roadmap.
+    static RoadmapText fromFile(QString path);
+
+    // The caller already holds the text: RoadmapDialog's archive concatenation,
+    // every roadmap_log op that walks the file to locate a bullet, and every
+    // test. Costs nothing and reads nothing — full() hands back what it was
+    // given.
+    static RoadmapText fromMemory(QString text);
+
+    // At most kDetectorLineCap non-blank lines OR kDetectorByteCap bytes,
+    // whichever comes first, in the detector's own shape. Memoised — INV-6
+    // forbids a second read. On a text whose open failed this is an empty
+    // QStringList, which is what INV-4's refusal chain (empty prefix ->
+    // sawSignal false -> SourceUnrecognised) rests on.
+    const QStringList &detectionPrefix();
+
+    // The whole text, memoised. Only the unmigrated path calls it. Empty on a
+    // text whose open failed — what today's sites already hand the seam when
+    // their own QFile::open() fails.
+    const QString &full();
+
+    // True when a file-backed text's file would not open, or when a read that
+    // did open failed part-way. FORCES the open if it has not happened yet, and
+    // that is load-bearing rather than incidental: every consumer branches on
+    // this exactly where it used to branch on QFile::open(), which is BEFORE
+    // any accessor has run. Merely reporting a flag some earlier accessor set
+    // would return false on the first call and silently lose op:append's
+    // roadmap_read_failed refusal. The open it forces is the SAME open
+    // detectionPrefix() would have done, so it consumes no bytes of its own.
+    //
+    // ALWAYS false for a fromMemory() text: it has no file to fail on, so a
+    // site that branches on it takes its success path unconditionally.
+    bool openFailed();
+
+    // Bytes consumed from the file so far — DISK bytes, not the QString's
+    // UTF-16 in-memory size (§ 4 prices that separately, and in different
+    // units). ALWAYS 0 for a fromMemory() text, which reads no disk at all, so
+    // INV-1's assertion is trivially satisfied there rather than undefined.
+    // Exists so INV-1 is assertable rather than argued.
+    qint64 bytesRead() const { return m_bytesRead; }
+
+private:
+    RoadmapText() = default;
+    void ensureOpen();
+    void readHead();
+
+    QString m_path;                    // empty ⇒ memory-backed
+    bool    m_fileBacked   = false;
+    std::unique_ptr<QFile> m_file;
+    bool    m_openAttempted = false;
+    bool    m_openFailed    = false;
+    qint64  m_bytesRead     = 0;
+
+    QByteArray  m_head;                // the bytes detectionPrefix() consumed
+    bool        m_headDone   = false;
+    QString     m_text;                // memoised body
+    bool        m_fullDone   = false;
+    QStringList m_prefix;
+    bool        m_prefixDone = false;
+};
 
 // Stat `defaultPath()`, and construct-and-open only if it is there. Returns an
 // owned open store, or nullptr with `*why` set to None (no store on this
@@ -120,8 +229,16 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId,
 // refuses "a file that no longer looks like what the store says it is"; with one
 // witness that could only reach the UNRECOGNISABLE case, because an
 // unrecognisable file is the only disagreement a lone witness can have with
-// itself. ANTS-3863 owns removing the file read, and owes this comparison a
-// second witness if it does.
+// itself.
+//
+// ANTS-3863 BOUNDED that file read rather than removing it, and its § 6 makes
+// the distinction permanent: removing the open outright would leave this
+// comparison with one witness again and make ANTS-3815 INV-6 unenforceable, so
+// a store-only dispatch is rejected rather than deferred. What it costs now is
+// the detector's window — at most kDetectorLineCap non-blank lines or
+// kDetectorByteCap bytes — instead of the whole file. This function must never
+// call `text.full()`, and neither may any of its four callers; that is the
+// whole of ANTS-3863's saving (its § 2.2 table binds all five).
 //
 // `why` is defaulted here and required on the two functions above, and the
 // asymmetry is deliberate rather than an oversight. This function's refusals
@@ -132,7 +249,7 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId,
 // not" may still drop it.
 std::optional<qint64> migratedProject(RoadmapStore &store,
                                       const QString &projectRoot,
-                                      const QString &markdown,
+                                      RoadmapText &text,
                                       QString *error = nullptr,
                                       ReadError *why = nullptr);
 
@@ -146,11 +263,14 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
 //                           common case and it is not an error.
 //   nullopt, *why != None → REFUSE and surface it. Never parse.
 //
-// `markdown` is the caller's existing text, used by the gate above and by the
-// caller on the unmigrated path. It is never re-read from disk here.
+// `text` is the caller's roadmap text provider, used by the gate above and by
+// the caller on the unmigrated path. ANTS-3863: it is READ here, lazily and
+// under both caps, rather than arriving already read — but only ever through
+// detectionPrefix(). This function never calls full(), so an unmigrated
+// caller's own text.full() is the first and only body read on that path.
 std::optional<QVector<BulletRecord>>
 bulletsFor(RoadmapStore &store, const QString &projectRoot,
-           const QString &markdown, bool includeArchive, ReadError *why,
+           RoadmapText &text, bool includeArchive, ReadError *why,
            QString *error = nullptr);
 
 // § 2.3 — a project's stored legend, re-keyed from the lifecycle WORDS the

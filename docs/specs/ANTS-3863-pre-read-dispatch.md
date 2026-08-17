@@ -777,6 +777,65 @@ Existing cases that must stay green unedited but for the new argument type:
 - **`CLAUDE.md`** — no change. The module map describes subsystems, not
   signatures, and the roadmap lane's entry stays true.
 
+## 9. Implementation notes (folded back 2026-08-17)
+
+Written after the item shipped, per § 8's rule that implementation folds back
+what it proves false. **Nothing here reopens the gate**: every correction is
+inventory or a consequence of code that landed *after* this document converged
+on 2026-08-08.
+
+**The site count is 30, not 28, and § 2.4's per-file table is superseded.**
+Re-running § 2.4's own command on 2026-08-17 returns **29**, not 27 — plus the
+in-file 28th it cannot see, so 30. The two new ones are consumers added since:
+`remotecontrol_roadmap_log.cpp` is 8 (was 7) and `remotecontrol_roadmap_query.cpp`
+is 9 (was 8). INV-7's before-figure was re-measured and **is still exactly 12**,
+so the *seam* did not move — only the consumer count.
+
+**§ 2.4's `fromFile`-everywhere prescription for `roadmap_log` is wrong, and
+following it would have been a regression.** That row rests on "the other five
+take their text as a function parameter and own no read block to delete". They
+do not: `cmdRoadmapLogFlip`, `FlipBatch`, `CreateSection`, `BundleRow`,
+`RotateMinor` and `RetitleSection` each read the whole file into a local
+`markdown` (lines 1107, 2038, 2568, 3426, 3816, 5080 as of this commit) and then
+**walk it to locate the bullet, on the migrated path too** — deliberately, since
+"on a migrated project the file is the render's own output, so the same walk
+finds the same bullet". A `fromFile` provider there opens and reads the same
+file a *second* time. They take `fromMemory`, which reads no disk and preserves
+behaviour exactly. INV-1 is scoped to file-backed texts, so it is unaffected.
+
+**The rule the implementation actually followed**, and the one to state if this
+is ever redone: `fromFile` where the read exists *only* to feed the dispatch;
+`fromMemory` where the whole text is needed on the path anyway. By that rule
+`RoadmapDialog::rebuild()` also takes `fromMemory` rather than § 2.4's
+`includeArchive` branch — `renderCardsHtml()` needs the same text on both
+backends. The branch is right for the two scroll-anchor sites, which is where
+it now lives.
+
+**§ 1 consequence 2 undercounts `storeMarkdown`'s consumers.** It has a second
+one this document never found: the ANTS-2043 near-duplicate advisory
+(`rcComputePossibleDuplicates(parseBullets(storeMarkdown), …)`), which needs the
+**pre-write** text — `commitAndRender()` rewrites `ROADMAP.md`, so a lazy
+`full()` below it would read the new bullet back and report it as a duplicate of
+itself. The read is therefore *forced* immediately before the write rather than
+deferred onto `rlStoreCounterPrefix()`'s fallback. What `op:append` still saves
+is every refusal above that point, and the whole unmigrated path. Tracked as
+**ANTS-4426**, with the two other consumers in the same class.
+
+**INV-1's byte-cap leg asserts `bytesRead() <= kDetectorByteCap + 1`.** The
+reader looks **one byte past** the cap so `detectionPrefixOf()` can see that the
+crossing line crosses; handed exactly the cap it would read that line's
+truncated head as a line that fitted, while the same helper over the whole file
+would drop it — and INV-2 would be false. Measured: capping the read at exactly
+`kDetectorByteCap` made the all-blank fixture return **1,048,577** lines from
+the file and **1,048,576** from memory.
+
+**Two implementation defects were caught by these invariants and by nothing
+else**, which is the evidence they earned their place. The off-by-one above
+(INV-2), and `detectionPrefix()` on an unopenable file returning a one-element
+list holding `""` rather than an empty list — `detectionPrefixOf("")` appends
+the empty line before the byte check, and INV-4's refusal chain is stated in
+terms of an *empty* prefix. Both were red first and green after.
+
 ## Cold-eyes loop log
 
 <!-- /cold-eyes writes one row per review loop as it closes. -->

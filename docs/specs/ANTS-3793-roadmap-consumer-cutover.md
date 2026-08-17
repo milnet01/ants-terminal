@@ -159,6 +159,12 @@ namespace RoadmapSource {
                                           const QString &projectRoot,
                                           const QString &markdown,
                                           QString *error = nullptr);
+    // AMENDED by ANTS-3863 (2026-08-17): the third parameter is now
+    // `RoadmapSource::RoadmapText &text`, a lazy provider, and the gate calls
+    // `text.detectionPrefix()`. The read is BOUNDED, not removed — ANTS-3863
+    // § 6 rejects removing it outright, because the open is what keeps
+    // ANTS-3815 INV-6's second witness. The signatures above are the shipped
+    // v1 shape and are kept as the record of it.
 
     // The library seam the two owner wrappers call — the two above are its
     // halves, exposed because the tests drive them separately.
@@ -172,6 +178,10 @@ namespace RoadmapSource {
     //
     // `markdown` is the caller's existing text, used by the gate above and by
     // the caller on the unmigrated path. It is never re-read from disk here.
+    // AMENDED by ANTS-3863: `RoadmapText &text`, and the text IS read here —
+    // lazily, and only ever as far as detectionPrefix()'s two caps. This
+    // function still never calls full(); the unmigrated caller's own full() is
+    // the first and only body read on that path.
     std::optional<QVector<BulletRecord>>
     bulletsFor(RoadmapStore &store, const QString &projectRoot,
                const QString &markdown, bool includeArchive, ReadError *why,
@@ -197,6 +207,9 @@ QVector<BulletRecord> roadmapBullets(const QString &projectRoot,
                                      bool includeArchive,
                                      RoadmapSource::ReadError *why,
                                      QString *error);
+// AMENDED by ANTS-3863: `RoadmapSource::RoadmapText &text` in place of
+// `markdown`, on both owner wrappers.
+
 ```
 
 and each of the 26 sites calls **that**. Two things follow, and both are why

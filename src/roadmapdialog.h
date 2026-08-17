@@ -59,7 +59,9 @@
 // PRIVATE, and this header is included by widgets that have no Sql include path.
 class QTextDocument;
 class RoadmapStore;
-namespace RoadmapSource { enum class ReadError; }
+// ANTS-3863 — RoadmapText joins them, and by declaration for the same reason:
+// roadmapBullets() takes it by reference, so no definition is needed here.
+namespace RoadmapSource { enum class ReadError; class RoadmapText; }
 
 class Config;
 class QCheckBox;
@@ -538,7 +540,7 @@ private:
     // renders as a notice instead of an empty roadmap. That is the dialog's
     // half of "never fall back silently": the markdown is right there and the
     // wrapper deliberately does not read it.
-    QVector<BulletRecord> roadmapBullets(const QString &markdown,
+    QVector<BulletRecord> roadmapBullets(RoadmapSource::RoadmapText &text,
                                          bool includeArchive) const;
 
     // The project root ANTS-3756 INV-8 keys a project on, derived from

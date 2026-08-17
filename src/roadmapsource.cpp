@@ -5,6 +5,7 @@
 #include "roadmapindex.h"    // RoadmapIndex::uniqueSlug() — the stateful slugger
 #include "roadmaprender.h"   // bulletText() — ANTS-3808 § 2.4's export
 
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,6 +16,28 @@ namespace RoadmapSource {
 
 namespace {
 
+// UTF-8 length of a QString without materialising the QByteArray. The byte cap
+// is a cap on DISK bytes, so the in-memory producer has to measure in the same
+// unit as the file reader or the two cut at different places — which is INV-2's
+// "applies kDetectorByteCap to one producer and not the other" break clause.
+qint64 utf8Len(QStringView s) {
+    qint64 n = 0;
+    for (qsizetype i = 0; i < s.size(); ++i) {
+        const char16_t c = s[i].unicode();
+        if (c < 0x80)
+            n += 1;
+        else if (c < 0x800)
+            n += 2;
+        else if (QChar::isHighSurrogate(c) && i + 1 < s.size()
+                 && QChar::isLowSurrogate(s[i + 1].unicode())) {
+            n += 4;
+            ++i;   // the pair is one code point
+        } else
+            n += 3;
+    }
+    return n;
+}
+
 // § 4 — detectRoadmapFormat() takes a QStringList while this seam holds a
 // QString, so a naive markdown.split('\n') of a 3 MiB roadmap materialises
 // another ~6 MiB plus ~34k QString headers for lines nothing reads. The
@@ -24,16 +47,37 @@ namespace {
 // Blank lines are kept but not counted, which is the detector's own rule
 // (`if (ln.trimmed().isEmpty()) continue;` sits above `if (++seen >= 300)`), so
 // the prefix and the whole file classify identically.
-QStringList detectionPrefix(const QString &markdown) {
-    constexpr int kDetectorLineCap = 300;
+//
+// ANTS-3863 § 2.1 — the byte cap joins it, because the line cap bounds neither
+// the read nor this list: blank lines are kept and not counted, so an all-blank
+// file walks to EOF with `nonBlank` never rising. This is the ONE producer of
+// the prefix — RoadmapText::detectionPrefix() feeds its bounded head straight
+// back through here — so the two cannot cut at different places (INV-2).
+//
+// Capping here changes no classification: detectRoadmapFormat() skips blank
+// lines and breaks at its own `++seen >= 300` (roadmapparse.cpp), so it never
+// examines a line these caps would drop. The helper has been returning list
+// elements no consumer reads.
+QStringList detectionPrefixOf(const QString &markdown) {
     QStringList lines;
     int nonBlank = 0;
+    qint64 bytes = 0;
     qsizetype start = 0;
     while (nonBlank < kDetectorLineCap) {
         const qsizetype nl = markdown.indexOf(QLatin1Char('\n'), start);
         const QString line = (nl < 0) ? markdown.mid(start)
                                       : markdown.mid(start, nl - start);
+        // Truncation lands on the last COMPLETE line at or before the cap, so
+        // the detector is never handed a half-line — it sees a short list,
+        // which is the case it already handles. A first line that alone exceeds
+        // the cap therefore yields an empty list, which is § 5's recorded
+        // refusal class (sawSignal false -> SourceUnrecognised) rather than an
+        // unbounded read.
+        const qint64 lineBytes = utf8Len(line) + (nl < 0 ? 0 : 1);
+        if (bytes + lineBytes > kDetectorByteCap)
+            break;
         lines.append(line);
+        bytes += lineBytes;
         if (!line.trimmed().isEmpty())
             ++nonBlank;
         if (nl < 0)
@@ -78,6 +122,150 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
 
 } // namespace
 
+// ── ANTS-3863 § 2.1 — RoadmapText ────────────────────────────────────────────
+//
+// The header carries the contract; what is worth saying here is why each of the
+// three reads below is shaped the way it is.
+
+RoadmapText::RoadmapText(RoadmapText &&) noexcept = default;
+RoadmapText &RoadmapText::operator=(RoadmapText &&) noexcept = default;
+RoadmapText::~RoadmapText() = default;
+
+RoadmapText RoadmapText::fromFile(QString path) {
+    RoadmapText t;
+    t.m_path       = std::move(path);
+    t.m_fileBacked = true;
+    return t;   // nothing is read here — that is the whole point of the type
+}
+
+RoadmapText RoadmapText::fromMemory(QString text) {
+    RoadmapText t;
+    t.m_text     = std::move(text);
+    // It IS the whole text, so full() has nothing to do and detectionPrefix()
+    // derives from it. No file, therefore openFailed() is always false and
+    // bytesRead() is always 0.
+    t.m_fullDone = true;
+    return t;
+}
+
+void RoadmapText::ensureOpen() {
+    if (!m_fileBacked || m_openAttempted)
+        return;
+    m_openAttempted = true;
+    m_file = std::make_unique<QFile>(m_path);
+    // ReadOnly | Text — the mode every call site this replaced used, and the
+    // one that decides CRLF translation, which is what INV-5 compares against.
+    if (!m_file->open(QIODevice::ReadOnly | QIODevice::Text)) {
+        m_openFailed = true;
+        m_file.reset();
+    }
+}
+
+void RoadmapText::readHead() {
+    if (m_headDone)
+        return;
+    m_headDone = true;
+    ensureOpen();
+    if (!m_file)
+        return;   // unopenable: an empty head, hence an empty prefix (INV-4)
+
+    // The loop runs while the head is at or under the cap, so it exits having
+    // read at least ONE BYTE PAST it — and that overshoot is load-bearing
+    // rather than slack. detectionPrefixOf() cuts at the last COMPLETE line at
+    // or before the cap, so it has to be able to see that the next line
+    // crosses. Handed exactly the cap it would read the crossing line's
+    // truncated head as a line that fitted and keep it, while the same helper
+    // over the whole file would drop it — the two producers disagreeing, which
+    // is INV-2. (Measured: capping the read at exactly the cap made the
+    // all-blank fixture return 1048577 lines from the file and 1048576 from
+    // memory, because the head then ended on a newline and the helper appended
+    // the empty line that follows it.)
+    int nonBlank = 0;
+    while (nonBlank < kDetectorLineCap && m_head.size() <= kDetectorByteCap) {
+        // A line at a time rather than a fixed chunk: a chunk overshoots the
+        // 300th non-blank line by up to its own size, and INV-1's bound is
+        // stated against that line's end plus one line. The per-call ceiling
+        // bounds the OTHER pathological input — a file with no '\n' at all — so
+        // the overshoot past the cap is one capped line and not the file.
+        const QByteArray line = m_file->readLine(kDetectorByteCap + 2);
+        if (line.isEmpty())
+            break;   // EOF, or a read that failed — m_file->error() below
+        m_head += line;
+        // Decoded rather than byte-scanned, so "blank" means the same thing
+        // here as in detectionPrefixOf()'s QString::trimmed(): a line of
+        // U+00A0 is blank to one and not the other, and a reader that stops
+        // early cuts the head before the helper's own cut point.
+        if (!QString::fromUtf8(line).trimmed().isEmpty())
+            ++nonBlank;
+    }
+    m_bytesRead = m_head.size();
+    if (m_file->error() != QFileDevice::NoError)
+        m_openFailed = true;
+}
+
+const QStringList &RoadmapText::detectionPrefix() {
+    if (m_prefixDone)
+        return m_prefix;
+    m_prefixDone = true;
+    if (m_fullDone) {
+        // Accessor order is free in BOTH directions: with the body already in
+        // hand the prefix comes from it through the same helper, reading no
+        // disk at all. That is the half of INV-6 a prefix-then-body test never
+        // reaches.
+        m_prefix = detectionPrefixOf(m_text);
+        return m_prefix;
+    }
+    readHead();
+    if (m_fileBacked && !m_file) {
+        // The open failed. An EMPTY list, explicitly — detectionPrefixOf("")
+        // would return a one-element list holding "", and INV-4's refusal
+        // chain is stated in terms of an empty prefix. A file that opens and
+        // is empty still takes the line below, where it agrees with
+        // fromMemory("") and INV-2 holds.
+        m_prefix.clear();
+        return m_prefix;
+    }
+    m_prefix = detectionPrefixOf(QString::fromUtf8(m_head));
+    return m_prefix;
+}
+
+const QString &RoadmapText::full() {
+    if (m_fullDone)
+        return m_text;
+    m_fullDone = true;
+    ensureOpen();
+    if (!m_file) {
+        m_text.clear();   // what today's sites hand the seam on a failed open
+        return m_text;
+    }
+    // Continue from where the prefix stopped rather than seeking back and
+    // re-reading: that is what lets full() return the whole text (INV-5)
+    // without reading the head twice (INV-6). A mid-read error leaves
+    // openFailed() true and the partial bytes in hand, which is what
+    // QFile::readAll() already does and what no current site checks for.
+    const QByteArray rest = m_file->readAll();
+    if (m_file->error() != QFileDevice::NoError)
+        m_openFailed = true;
+    m_bytesRead = m_head.size() + rest.size();
+    // Decoded ONCE over the joined bytes, so a multi-byte sequence straddling
+    // the prefix boundary is not split into two replacement characters.
+    m_text = QString::fromUtf8(m_head + rest);
+    m_head.clear();
+    m_headDone = true;   // the handle has moved past it; it is never re-read
+    m_file.reset();      // the retained handle is retained only until here
+    return m_text;
+}
+
+bool RoadmapText::openFailed() {
+    // FORCES the open. Consumers branch on this exactly where they used to
+    // branch on QFile::open(), which is before any accessor has run, so a
+    // version that merely reported a flag set by an earlier accessor would
+    // answer false on the first call — and op:append would silently lose the
+    // roadmap_read_failed refusal INV-4 says is preserved.
+    ensureOpen();
+    return m_openFailed;
+}
+
 std::unique_ptr<RoadmapStore> storeFor(const QString &defaultPath,
                                        ReadError *why, QString *error,
                                        qint64 historyCapBytes) {
@@ -119,7 +307,7 @@ std::unique_ptr<RoadmapStore> storeFor(const QString &defaultPath,
 
 std::optional<qint64> migratedProject(RoadmapStore &store,
                                       const QString &projectRoot,
-                                      const QString &markdown,
+                                      RoadmapText &text,
                                       QString *error, ReadError *why) {
     if (why)
         *why = ReadError::None;
@@ -162,7 +350,7 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
     // detectRoadmapFormat() answers "ants-v1" for input it does not recognise.
     bool sawSignal = false;
     const QString format =
-        RoadmapParse::detectRoadmapFormat(detectionPrefix(markdown), &sawSignal);
+        RoadmapParse::detectRoadmapFormat(text.detectionPrefix(), &sawSignal);
     if (!sawSignal) {
         // A migrated project whose ROADMAP.md is absent, empty or mangled. Not
         // StoreFailed: the store is fine and the FILE is not, and the two send
@@ -331,7 +519,7 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
 
 std::optional<QVector<BulletRecord>>
 bulletsFor(RoadmapStore &store, const QString &projectRoot,
-           const QString &markdown, bool includeArchive, ReadError *why,
+           RoadmapText &text, bool includeArchive, ReadError *why,
            QString *error) {
     if (why)
         *why = ReadError::None;
@@ -340,10 +528,11 @@ bulletsFor(RoadmapStore &store, const QString &projectRoot,
 
     ReadError markerWhy = ReadError::None;
     const auto projectId =
-        migratedProject(store, projectRoot, markdown, error, &markerWhy);
+        migratedProject(store, projectRoot, text, error, &markerWhy);
     if (!projectId) {
-        // None here is the unmigrated project — the caller parses `markdown`
-        // itself. Anything else is a refusal that must never fall back.
+        // None here is the unmigrated project — the caller parses `text.full()`
+        // itself, which is the first body read on that path. Anything else is a
+        // refusal that must never fall back.
         if (why)
             *why = markerWhy;
         return std::nullopt;

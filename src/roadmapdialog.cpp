@@ -566,13 +566,16 @@ QString RoadmapDialog::storeProjectRoot() const {
 // RemoteControl's, presented differently: a refusal has no envelope to fill, so
 // it lands in m_sourceError for rebuild() to render.
 QVector<RoadmapDialog::BulletRecord>
-RoadmapDialog::roadmapBullets(const QString &markdown,
+RoadmapDialog::roadmapBullets(RoadmapSource::RoadmapText &text,
                               bool includeArchive) const {
     m_sourceError.clear();
     m_lastReadFromStore = false;
     const QString root = storeProjectRoot();
+    // ANTS-3863 — three separate exits reach the same "not migrated, parse the
+    // text" outcome and all three convert identically. Each is a full() and the
+    // dispatch above them is not, which is the whole of the saving here.
     if (root.isEmpty())
-        return RoadmapParse::parseBullets(markdown);
+        return RoadmapParse::parseBullets(text.full());
 
     if (!m_roadmapStore) {
         // § 2.2 rules 1 and 2: absent → markdown (the common case, and no
@@ -587,11 +590,11 @@ RoadmapDialog::roadmapBullets(const QString &markdown,
         }
     }
     if (!m_roadmapStore)
-        return RoadmapParse::parseBullets(markdown);
+        return RoadmapParse::parseBullets(text.full());
 
     RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
     QString err;
-    auto records = RoadmapSource::bulletsFor(*m_roadmapStore, root, markdown,
+    auto records = RoadmapSource::bulletsFor(*m_roadmapStore, root, text,
                                              includeArchive, &why, &err);
     if (records) {
         m_lastReadFromStore = true;
@@ -601,7 +604,7 @@ RoadmapDialog::roadmapBullets(const QString &markdown,
         m_sourceError = err;
         return {};   // INV-1 — never the markdown behind the store's back
     }
-    return RoadmapParse::parseBullets(markdown);
+    return RoadmapParse::parseBullets(text.full());
 }
 
 // ANTS-3793 § 2.3 — the stored legend, or nothing.
@@ -613,9 +616,13 @@ QHash<QString, QString> RoadmapDialog::storeLegend() const {
 
     // The dispatch again, because migratedProject() yields only the id and
     // bulletsFor() does not hand it back — § 2.3 prices this second lookup.
-    const QString markdown = loadRoadmapMarkdown(/*includeArchive=*/false);
+    // ANTS-3863 — the dispatch alone, so the live file is read only as far as
+    // the detector's window. loadMarkdown()'s own 8 MiB kPerFileCap is not lost
+    // by the swap: kDetectorByteCap is stricter than the cap it replaces here,
+    // and this function never calls full().
+    auto text = RoadmapSource::RoadmapText::fromFile(m_roadmapPath);
     const auto projectId =
-        RoadmapSource::migratedProject(*m_roadmapStore, root, markdown);
+        RoadmapSource::migratedProject(*m_roadmapStore, root, text);
     if (!projectId) return out;
     const auto row = m_roadmapStore->readProject(*projectId);
     if (!row || row->legendText.isEmpty()) return out;
@@ -2702,9 +2709,16 @@ void RoadmapDialog::captureScrollAnchor() {
         QString slug;
         // ANTS-3793 — through the owner wrapper, like the render. INV-2 keeps
         // sectionSlug — the anchor's fallback key — identical either way.
+        // ANTS-3863 — includeArchive is a runtime value, so this branches
+        // rather than picks. false (the common case) is the live file alone, so
+        // the dispatch reads only the detector's window; true genuinely needs
+        // every archive byte concatenated before anything can parse them, and
+        // keeps today's cost.
         const bool includeArchive = wantsHistoryLoad();
-        const QVector<BulletRecord> recs =
-            roadmapBullets(loadRoadmapMarkdown(includeArchive), includeArchive);
+        auto text = includeArchive
+            ? RoadmapSource::RoadmapText::fromMemory(loadRoadmapMarkdown(true))
+            : RoadmapSource::RoadmapText::fromFile(m_roadmapPath);
+        const QVector<BulletRecord> recs = roadmapBullets(text, includeArchive);
         for (const BulletRecord &r : recs) {
             if (r.id == topId) {
                 slug = r.sectionSlug;
@@ -2745,10 +2759,12 @@ void RoadmapDialog::restoreScrollAnchor() {
     }
     QHash<QString, QString> slugById;
     QSet<QString> presentSlugs;
-    // ANTS-3793 — same swap as captureScrollAnchor's.
+    // ANTS-3793 — same swap as captureScrollAnchor's, ANTS-3863 included.
     const bool includeArchive = wantsHistoryLoad();
-    const QVector<BulletRecord> recs =
-        roadmapBullets(loadRoadmapMarkdown(includeArchive), includeArchive);
+    auto text = includeArchive
+        ? RoadmapSource::RoadmapText::fromMemory(loadRoadmapMarkdown(true))
+        : RoadmapSource::RoadmapText::fromFile(m_roadmapPath);
+    const QVector<BulletRecord> recs = roadmapBullets(text, includeArchive);
     for (const BulletRecord &r : recs) {
         if (!presentIds.contains(r.id)) continue;
         slugById.insert(r.id, r.sectionSlug);
@@ -3407,7 +3423,11 @@ void RoadmapDialog::rebuild() {
     opts.density = m_density;  // ANTS-1238
     // ANTS-3793 — resolve the records here, once per render, through the owner
     // wrapper. § 2.3's legend follows the same backend.
-    opts.bullets = roadmapBullets(markdown, includeArchive);
+    // ANTS-3863 — fromMemory, NOT fromFile: renderCardsHtml() below needs this
+    // same text on every backend, so it is already in hand and a file-backed
+    // provider here would read the roadmap twice.
+    auto text = RoadmapSource::RoadmapText::fromMemory(markdown);
+    opts.bullets = roadmapBullets(text, includeArchive);
     opts.legendFromStore = m_lastReadFromStore;
     if (m_lastReadFromStore) opts.legend = storeLegend();
     if (!m_sourceError.isEmpty()) {

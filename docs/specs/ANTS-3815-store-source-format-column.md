@@ -678,12 +678,20 @@ column, which discards data to satisfy a binary the user is about to replace.
   all three goldens, to persist a value that one re-migration recomputes from
   the file it describes. Stated rather than left implicit because "the goldens
   are not touched" reads as having no consequence, and this is the consequence.
-- **ANTS-3863 owes INV-6 a second witness.** That item removes the live read on
-  a migrated project; § 2.4's rows 2 and 4, and INV-6 with them, exist *because*
-  two witnesses disagree. So ANTS-3863 must either keep a bounded detection read
-  (its bullet already names a cheap existence/size stat as the candidate) or
-  supersede INV-6 explicitly with its own spec. It may not simply drop the
-  comparison and leave the invariant standing.
+- **ANTS-3863 owed INV-6 a second witness — DISCHARGED (shipped 2026-08-17).**
+  § 2.4's rows 2 and 4, and INV-6 with them, exist *because* two witnesses
+  disagree, so that item had to either keep a detection read or supersede INV-6
+  explicitly. It kept one: `RoadmapSource::RoadmapText` makes the read LAZY and
+  BOUNDED rather than removing it, and `docs/specs/ANTS-3863-pre-read-dispatch.md`
+  INV-3 is the second witness this bullet is owed — it asserts this invariant
+  still holds through the new signature. **Two corrections to the paragraph above
+  this one, both inventory ANTS-3863 supersedes.** It is not "a signature change
+  across `bulletsFor()`'s two call sites plus `RemoteControl::roadmapStoreServes()`":
+  ANTS-3863 § 2.1 makes it six seam functions plus one helper below them, and its
+  § 2.4 counts thirty sites (twenty-eight as drafted; two more consumers landed
+  before implementation). And the **cheap existence/size stat is REJECTED**, not
+  adopted — ANTS-3863 § 6 rules it strictly weaker than the bounded read for the
+  same cost class, so it is not a live option to leave standing here.
 - **Back-filling `''` rows** — permanent exclusion. A rung is SQL and cannot
   classify a roadmap (ANTS-3781 § 2.1); re-running the migration is the existing
   route and § 2.4 makes `''` a first-class value rather than a defect to sweep.

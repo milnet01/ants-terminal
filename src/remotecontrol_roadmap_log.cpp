@@ -252,19 +252,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // pass-headings gate above already pays, for the same reason and at the
     // same low frequency.
     {
-        QFile sf(roadmapPath);
-        if (!sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // ANTS-3863 § 1 — the near-miss site. This text has exactly ONE other
+        // consumer, rlStoreCounterPrefix()'s last fallback below, which fires
+        // only after an explicit id_prefix and the store's own idPrefixFor()
+        // have both come up empty — and a migrated project normally has a
+        // stored prefix. So the provider moves the body read onto that rare
+        // fallback instead of paying 3 MiB for it at the top of the block.
+        // openFailed() forces the open, which is what keeps this refusal here.
+        auto storeText = RoadmapSource::RoadmapText::fromFile(roadmapPath);
+        if (storeText.openFailed()) {
             return rlErr(QStringLiteral("roadmap_read_failed"),
                 QStringLiteral("roadmap_log: could not read \"%1\"")
                     .arg(roadmapPath));
         }
-        const QString storeMarkdown = QString::fromUtf8(sf.readAll());
-        sf.close();
 
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
         QString seamErr;
         const auto target =
-            roadmapWriteTarget(callerCanonical, storeMarkdown, &why, &seamErr);
+            roadmapWriteTarget(callerCanonical, storeText, &why, &seamErr);
         QJsonObject refusal;
         if (rcRoadmapSourceRefused(refusal, why, seamErr))
             return QJsonDocument(refusal);
@@ -303,7 +308,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             qint64 allocated = 0;
             if (!useStablePrefix) {
                 prefix = rlStoreCounterPrefix(store, projectId, idPrefixArg,
-                                              storeMarkdown, callerCanonical);
+                                              storeText, callerCanonical);
                 // The corpus floor lives inside rlStoreIdHighWater(); it is
                 // keyed on the roadmap's own directory, as the markdown path
                 // keys it on .roadmap-counter's, because caller_cwd may be a
@@ -386,6 +391,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 return store.raiseIdHighWater(projectId, prefix, allocated, err);
             };
 
+            // ANTS-3863 — the read is FORCED here, and the position is the
+            // whole of it. The near-duplicate advisory at the foot of this
+            // block parses this text, and its own comment turns on the text
+            // being the PRE-write file ("it was read BEFORE the write so the
+            // new bullet cannot match itself"). commitAndRender() rewrites
+            // ROADMAP.md, so a lazy full() down there would read the new
+            // bullet back and report it as a duplicate of itself. Kept as late
+            // as it can be: every refusal above — the dispatch,
+            // section_not_found, the id_hint and body_shadowed gates — now
+            // answers without it, and the unmigrated path never reaches this
+            // block at all.
+            const QString preWriteMarkdown = storeText.full();
+
             RoadmapRender::Outcome outcome;
             QString writeErr;
             const auto r = RoadmapWrite::commitAndRender(
@@ -410,7 +428,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // render's own output, so its bullets are the store's items, and it
             // was read BEFORE the write so the new bullet cannot match itself.
             const QJsonArray possibleDuplicates = rcComputePossibleDuplicates(
-                RoadmapDialog::parseBullets(storeMarkdown), headline);
+                RoadmapDialog::parseBullets(preWriteMarkdown), headline);
             if (!possibleDuplicates.isEmpty())
                 env[QStringLiteral("possible_duplicates")] = possibleDuplicates;
             if (!scrubbedNames.isEmpty()) {
@@ -1147,8 +1165,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         {
             RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
             QString seamErr;
+            // ANTS-3863 — fromMemory, NOT fromFile: this op locates its bullet
+            // by walking `markdown`, on the store path too (the file is the
+            // render's own output), so the whole text is already in hand and a
+            // file-backed provider here would read the roadmap a second time.
+            auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
             const auto target =
-                roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+                roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
             QJsonObject refusal;
             if (rcRoadmapSourceRefused(refusal, why, seamErr))
                 return QJsonDocument(refusal);
@@ -2213,8 +2236,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     if (format == QStringLiteral("ants-v1")) {
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
         QString seamErr;
+        // ANTS-3863 — fromMemory: `markdown` is already read and this op needs
+        // all of it regardless of backend.
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
         const auto target =
-            roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+            roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
         // ANTS-4372 — headline mode does NOT write through the store yet, and
         // refuses rather than patching markdown a migrated project renders
         // FROM. A headline is the store's own column and its join key for the
@@ -2611,8 +2637,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     // § 2.4 requires.
     RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
     QString srcErr;
+    // ANTS-3863 — fromMemory: the batch walks `markdown` to locate every
+    // bullet, so it is already read and needed on both backends.
+    auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
     const auto writeTarget =
-        roadmapWriteTarget(callerCanonical, markdown, &srcWhy, &srcErr);
+        roadmapWriteTarget(callerCanonical, seamText, &srcWhy, &srcErr);
     {
         QJsonObject refusal;
         if (rcRoadmapSourceRefused(refusal, srcWhy, srcErr))
@@ -3585,8 +3614,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     {
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
         QString seamErr;
+        // ANTS-3863 — fromMemory: `markdown` is already read and spliced below.
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
         const auto target =
-            roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+            roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
         QJsonObject refusal;
         if (rcRoadmapSourceRefused(refusal, why, seamErr))
             return QJsonDocument(refusal);
@@ -3852,8 +3883,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     {
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
         QString seamErr;
+        // ANTS-3863 — fromMemory: `markdown` is already read and spliced below.
+        auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
         const auto target =
-            roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+            roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
         QJsonObject refusal;
         if (rcRoadmapSourceRefused(refusal, why, seamErr))
             return QJsonDocument(refusal);
@@ -4327,12 +4360,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // shared with the markdown path. Only allocation and the write differ.
     std::optional<RoadmapWriteTarget> writeTarget;
     {
-        QFile sf(roadmapPath);
-        QString probe;
-        if (sf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            probe = QString::fromUtf8(sf.readAll());
-            sf.close();
-        }
+        // ANTS-3863 § 1 — this read had NO consumer at all: `probe` was filled,
+        // handed to the seam, and fell out of scope at the closing brace, so on
+        // a migrated project 3 MiB was read and discarded unexamined. The block
+        // does NOT branch on the open today — a failed open simply left `probe`
+        // empty and let it reach the seam — and an unopenable RoadmapText
+        // yields exactly that empty prefix, so the behaviour survives without a
+        // guard being added. (op:append above DOES branch; the two differ, and
+        // INV-4 keeps both.)
+        auto probe = RoadmapSource::RoadmapText::fromFile(roadmapPath);
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
         QString seamErr;
         writeTarget = roadmapWriteTarget(callerCanonical, probe, &why, &seamErr);
@@ -4544,9 +4580,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // fallback for a fresh / id-less roadmap).
     // ANTS-3809 § 2.3 — on the store path idPrefixFor() takes the place of the
     // markdown sniff step; an explicit id_prefix argument still wins.
+    // ANTS-3863 — fromMemory: `markdown` is the batch's own already-read text,
+    // spliced below on the markdown path, so the provider costs nothing here.
+    auto counterText = RoadmapSource::RoadmapText::fromMemory(markdown);
     const QString counterPfx = writeTarget
         ? rlStoreCounterPrefix(*writeTarget->store, writeTarget->projectId,
-                               idPrefixArg, markdown, callerCanonical)
+                               idPrefixArg, counterText, callerCanonical)
         : rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
 
     // ANTS-2179 — reconcile the (possibly lagging) .roadmap-counter against
@@ -5082,8 +5121,10 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
 
     RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
     QString seamErr;
+    // ANTS-3863 — fromMemory: `markdown` is already read and spliced below.
+    auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
     const auto target =
-        roadmapWriteTarget(callerCanonical, markdown, &why, &seamErr);
+        roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
     QJsonObject seamRefusal;
     if (rcRoadmapSourceRefused(seamRefusal, why, seamErr)) {
         *refusal = QJsonDocument(seamRefusal);

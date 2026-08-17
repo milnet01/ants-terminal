@@ -29856,7 +29856,7 @@ against current source before filing.
   Source: in-session-2026-08-07 (found by /doc-lint during ANTS-3781 implementation).
   Resolved (2026-08-15): duplicate of ANTS-3784, same eleven findings on the same document, filed from a different session. Both are closed by the `invariant-id-base` declaration shipped in 2f2c2c61 — ANTS-3782 now declares a floor of 26 beside the argument its § 3 already made, and the corpus went 39 gap findings to 28 with all eleven becoming suppressions. Kept as its own row rather than merged: the two reports arrived independently and the second is evidence the noise was reaching more than one reader.
 
-- 📋 [ANTS-3863] **Move the roadmap read seam's dispatch ahead of the file read, so a migrated project stops loading ROADMAP.md at all.**
+- ✅ [ANTS-3863] **Move the roadmap read seam's dispatch ahead of the file read, so a migrated project stops loading ROADMAP.md at all.**
   Split out of ANTS-3815 by user decision (2026-08-07). ANTS-3815 stores the
   format on `project` and has the gate read it; it does NOT remove the read,
   because the seam's shape makes the read unconditional and earlier than the
@@ -29945,6 +29945,33 @@ against current source before filing.
   its § 6 is owed a corrected inventory, recorded in this spec's § 8.
 
   Status stays `spec draft` until implementation; ready for an implementer.
+  Resolved (2026-08-17): shipped. `RoadmapSource::RoadmapText` is a move-only,
+  lazily-reading provider that replaces `const QString &markdown` on the six seam
+  functions plus `rlStoreCounterPrefix()`; `migratedProject()` now spends only
+  `detectionPrefix()`, bounded by kDetectorLineCap (300 non-blank lines) AND the
+  new kDetectorByteCap (1 MiB), both applied to BOTH producers so INV-2 holds.
+  Thirty call sites converted. INV-7 measured 12 before and 0 after. Seven new
+  `Ants3863*` cases in tests/features/roadmap_read_seam (three perf-labelled);
+  suite 3594/3594 green, zero warnings.
+
+  The inventory this bullet and the spec carried is superseded — spec § 9 folds
+  back the corrections. Three: the command returns 29 sites now, not 27 (two
+  consumers landed after the spec converged); § 2.4's `fromFile`-everywhere rule
+  for roadmap_log is wrong, because six of those ops walk an already-read
+  `markdown` to locate their bullet and a file-backed provider there would read
+  the file twice (they take `fromMemory`); and `storeMarkdown` has a second
+  consumer the spec missed, the ANTS-2043 duplicate advisory, which needs the
+  PRE-write text and so pins the read immediately before commitAndRender().
+
+  Not the whole saving § 1 projected, and the shortfall is attributable rather
+  than lost: ANTS-4426 tracks the three migrated-path consumers that still call
+  full() (ANTS-4402's id scan, the ANTS-2043 advisory, the ANTS-1907 section
+  etag). Each predates or postdates this item and none was ANTS-3863's to change.
+
+  ANTS-3815 § 6's "ANTS-3863 owes INV-6 a second witness" is DISCHARGED: the read
+  is bounded, not removed, and this spec's INV-3 is the witness. That bullet's two
+  stale claims (the caller list, and the existence/size stat as a candidate) are
+  corrected there.
 
 - 📋 [ANTS-3864] **Give `specs.md` § 5.6 a status for a spec that is built but not yet released.**
   `docs/standards/specs.md` § 5.6 fixes the lifecycle as `spec draft` →
@@ -31629,6 +31656,65 @@ against current source before filing.
   **Layman:** Two of the eight rules in the roadmap-history feature shipped without a test; one of them guards the dangerous case.
   Kind: test.
   Source: in-session-2026-08-17 (ANTS-3822 implementation — named rather than left implicit).
+
+- 📋 [ANTS-4426] **Three migrated-path consumers still read the whole ROADMAP.md body, so ANTS-3863's saving does not reach them.**
+  ANTS-3863 made the dispatch lazy and bounded, and the saving lands wherever
+  the roadmap text feeds nothing but the seam. Three sites still call full()
+  on the migrated path, each for a reason that predates that item and none of
+  which ANTS-3863 may change unilaterally:
+
+  1. `remotecontrol_roadmap_query.cpp`, the main cache-miss block. ANTS-4402's
+     backend-witness runs `idRe.globalMatch()` over the whole markdown to fill
+     `file_ahead_of_store`, and it runs exactly on the migrated path. Landed
+     2026-08-15, after ANTS-3863's spec converged, so § 2.4 never saw it.
+     Candidate fix: source the file-max-id scan from the store, or make the
+     witness lazy so it only fires when the caller asks for it.
+
+  2. `remotecontrol_roadmap_log.cpp`, `op:append`. The ANTS-2043 near-duplicate
+     advisory parses the whole PRE-write markdown on every successful migrated
+     append, so the read cannot simply move later — the implementation pins it
+     immediately before `commitAndRender()` with a comment saying why. Candidate
+     fix: compute `possible_duplicates` from the store's own items, which is
+     what the migrated path's records already are.
+
+  3. `remotecontrol_roadmap_query.cpp`, the `section=` miss block. The
+     ANTS-1907 per-section etag is computed from `sliceSection(full())` on BOTH
+     backends, before the dispatch, so the branch cannot go lazy without
+     changing when a cached etag is produced.
+
+  None is a regression: each is behaviour that already existed and that
+  ANTS-3863 preserved deliberately. What is new is that the cost is now
+  attributable to a named consumer rather than to the seam. ANTS-3863 § 1's
+  "every dispatch reads the whole file" is true of these three after the item,
+  and its § 2.4 table implies otherwise for sites 1 and 3.
+  **Layman:** The roadmap tools now avoid opening the big 3 MB file just to ask "is this project in the database?" — but three places still read the whole thing straight afterwards for their own reasons, so those three got no faster.
+  Kind: perf.
+  Source: in-session-2026-08-17 (found implementing ANTS-3863).
+
+- 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
+  Hit 2026-08-17 converting six call sites in one `apply_edits` call. All six
+  ranges were computed from one read; the first edit added five lines, and the
+  other five refused `range_mismatch` — correctly, since `expect_first_line` /
+  `expect_last_line` caught the shift, so nothing was silently damaged. The
+  guard works; the DIAGNOSIS is what is missing.
+
+  The envelope says `range_mismatch` and stops. It does not say that an
+  EARLIER edit in the same batch moved the file, which is the actual cause and
+  is knowable at that point: the server applied edit N-1 and knows its line
+  delta. Two cheap improvements, either alone sufficient:
+
+  - On a `range_mismatch` whose skipped range sits BELOW an applied edit in the
+    same call, add `shifted_by:<delta>` and a `hint` naming the applied edit —
+    the same shape ANTS-4418 gave `not_found` with `candidates`/`near_miss_line`.
+  - Or resolve every range edit in one batch against the ORIGINAL file, which
+    is what a caller who computed them from one read actually means, and is how
+    the `old`-string form already behaves.
+
+  Workaround in the meantime: order range edits BOTTOM-UP, or re-read between
+  batches. Neither is discoverable from the refusal.
+  **Layman:** When I ask the editing tool to change six places at once by line number, the first change shifts the lines under the rest, and they all fail with a message that doesn't explain the cause.
+  Kind: enhancement.
+  Source: in-session-2026-08-17 (found implementing ANTS-3863).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

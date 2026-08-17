@@ -1462,7 +1462,7 @@ QString rcdetail::rcExtractGateNote(const QString &body) {
 // the two rules discharged here are § 2.2's first and second, in that order.
 QVector<RoadmapParse::BulletRecord>
 RemoteControl::roadmapBullets(const QString &projectRoot,
-                              const QString &markdown,
+                              RoadmapSource::RoadmapText &text,
                               bool includeArchive,
                               RoadmapSource::ReadError *why,
                               QString *error) const {
@@ -1489,7 +1489,7 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
         if (store) {
             RoadmapSource::ReadError seamWhy = RoadmapSource::ReadError::None;
             auto records = RoadmapSource::bulletsFor(
-                *store, projectRoot, markdown, includeArchive,
+                *store, projectRoot, text, includeArchive,
                 &seamWhy, error);
             if (why)
                 *why = seamWhy;
@@ -1501,6 +1501,9 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
                 return {};
         }
     }
-    return RoadmapParse::parseBullets(markdown);
+    // ANTS-3863 — the line that makes the laziness pay. It is reached only when
+    // the project is NOT migrated, which is the one case where the whole file
+    // was always going to be needed.
+    return RoadmapParse::parseBullets(text.full());
 }
 

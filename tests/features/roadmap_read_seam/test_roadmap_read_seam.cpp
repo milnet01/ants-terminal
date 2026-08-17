@@ -20,10 +20,12 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QTemporaryDir>
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -196,7 +198,8 @@ TEST(RoadmapReadSeam, Inv1DispatchMarker) {
     {
         ReadError why = ReadError::TooLarge;
         QString err;
-        const auto before = RoadmapSource::bulletsFor(*store, root, markdown,
+        auto text = RoadmapSource::RoadmapText::fromMemory(markdown);
+        const auto before = RoadmapSource::bulletsFor(*store, root, text,
                                                       /*includeArchive=*/false,
                                                       &why, &err);
         EXPECT_FALSE(before.has_value()) << "no project row yet";
@@ -210,7 +213,8 @@ TEST(RoadmapReadSeam, Inv1DispatchMarker) {
     {
         ReadError why = ReadError::TooLarge;
         QString err;
-        const auto after = RoadmapSource::bulletsFor(*store, root, markdown,
+        auto text = RoadmapSource::RoadmapText::fromMemory(markdown);
+        const auto after = RoadmapSource::bulletsFor(*store, root, text,
                                                      /*includeArchive=*/false,
                                                      &why, &err);
         ASSERT_TRUE(after.has_value()) << err.toStdString();
@@ -225,8 +229,9 @@ TEST(RoadmapReadSeam, Inv1DispatchMarker) {
     // through the one door the invariant does not otherwise watch.
     {
         QString err;
+        auto text = RoadmapSource::RoadmapText::fromMemory(markdown);
         const auto viaDotted = RoadmapSource::migratedProject(
-            *store, root + QStringLiteral("/."), markdown, &err);
+            *store, root + QStringLiteral("/."), text, &err);
         ASSERT_TRUE(viaDotted.has_value()) << err.toStdString();
         EXPECT_EQ(*viaDotted, projectId);
     }
@@ -239,7 +244,8 @@ TEST(RoadmapReadSeam, Inv1DispatchMarker) {
     {
         ReadError why = ReadError::None;
         QString err;
-        const auto empty = RoadmapSource::bulletsFor(*store, root, QString(),
+        auto text = RoadmapSource::RoadmapText::fromMemory(QString());
+        const auto empty = RoadmapSource::bulletsFor(*store, root, text,
                                                      /*includeArchive=*/false,
                                                      &why, &err);
         EXPECT_FALSE(empty.has_value());
@@ -279,7 +285,8 @@ TEST(RoadmapReadSeam, Inv1DispatchMarker) {
 
         ReadError why = ReadError::TooLarge;
         QString err;
-        const auto served = RoadmapSource::bulletsFor(*store, passRoot, passMarkdown,
+        auto text = RoadmapSource::RoadmapText::fromMemory(passMarkdown);
+        const auto served = RoadmapSource::bulletsFor(*store, passRoot, text,
                                                       /*includeArchive=*/false,
                                                       &why, &err);
         EXPECT_FALSE(served.has_value()) << "a foreign dialect is markdown-served";
@@ -327,7 +334,8 @@ TEST(RoadmapReadSeam, Ants3815Inv5UnrecordedFormatDispatchesAsBefore) {
     {
         ReadError why = ReadError::TooLarge;
         err.clear();
-        const auto served = RoadmapSource::migratedProject(*store, root, markdown,
+        auto text = RoadmapSource::RoadmapText::fromMemory(markdown);
+        const auto served = RoadmapSource::migratedProject(*store, root, text,
                                                            &err, &why);
         ASSERT_TRUE(served.has_value()) << err.toStdString();
         EXPECT_EQ(*served, projectId);
@@ -339,7 +347,8 @@ TEST(RoadmapReadSeam, Ants3815Inv5UnrecordedFormatDispatchesAsBefore) {
     {
         ReadError why = ReadError::None;
         err.clear();
-        const auto refused = RoadmapSource::migratedProject(*store, root, QString(),
+        auto text = RoadmapSource::RoadmapText::fromMemory(QString());
+        const auto refused = RoadmapSource::migratedProject(*store, root, text,
                                                             &err, &why);
         EXPECT_FALSE(refused.has_value());
         EXPECT_EQ(why, ReadError::SourceUnrecognised);
@@ -374,8 +383,9 @@ TEST(RoadmapReadSeam, Ants3815Inv5UnrecordedFormatDispatchesAsBefore) {
 
         ReadError why = ReadError::TooLarge;
         err.clear();
+        auto text = RoadmapSource::RoadmapText::fromMemory(passMarkdown);
         const auto served = RoadmapSource::migratedProject(*store, passRoot,
-                                                           passMarkdown, &err, &why);
+                                                           text, &err, &why);
         EXPECT_FALSE(served.has_value()) << "a foreign dialect is markdown-served";
         EXPECT_EQ(why, ReadError::None) << "recognisably foreign is not a refusal";
         EXPECT_TRUE(err.isEmpty()) << err.toStdString();
@@ -444,7 +454,8 @@ TEST(RoadmapReadSeam, Ants3815Inv6StoredFormatDisagreeingWithTheFileRefuses) {
 
     ReadError why = ReadError::None;
     err.clear();
-    const auto served = RoadmapSource::migratedProject(*store, root, rewritten,
+    auto driftText = RoadmapSource::RoadmapText::fromMemory(rewritten);
+    const auto served = RoadmapSource::migratedProject(*store, root, driftText,
                                                        &err, &why);
     EXPECT_FALSE(served.has_value())
         << "INV-6: breaks when the disagreement falls through to the markdown "
@@ -460,7 +471,8 @@ TEST(RoadmapReadSeam, Ants3815Inv6StoredFormatDisagreeingWithTheFileRefuses) {
     // And no records come back through the seam either.
     why = ReadError::None;
     err.clear();
-    const auto records = RoadmapSource::bulletsFor(*store, root, rewritten,
+    auto recordsText = RoadmapSource::RoadmapText::fromMemory(rewritten);
+    const auto records = RoadmapSource::bulletsFor(*store, root, recordsText,
                                                    /*includeArchive=*/false, &why, &err);
     EXPECT_FALSE(records.has_value()) << "neither backend may serve a drifted project";
     EXPECT_EQ(why, ReadError::SourceUnrecognised);
@@ -480,7 +492,8 @@ TEST(RoadmapReadSeam, Ants3815Inv6StoredFormatDisagreeingWithTheFileRefuses) {
     }
     why = ReadError::TooLarge;
     err.clear();
-    const auto after = RoadmapSource::migratedProject(*store, root, rewritten,
+    auto afterText = RoadmapSource::RoadmapText::fromMemory(rewritten);
+    const auto after = RoadmapSource::migratedProject(*store, root, afterText,
                                                       &err, &why);
     EXPECT_FALSE(after.has_value())
         << "a GFM project is markdown-served, not store-served";
@@ -919,4 +932,447 @@ TEST(RoadmapReadSeam, Inv3Latency) {
         << " warm reads of a " << kCorpusItems << "-item project. § 4's remedy "
            "if this reds is a batched RoadmapStore::readItems() (ANTS-3816) — "
            "not a cache and not a relaxed budget.";
+}
+
+// ============================================================================
+// ANTS-3863 — dispatch before reading.
+//
+// Contract: docs/specs/ANTS-3863-pre-read-dispatch.md. Every case here is
+// prefixed `Ants3863` because the existing `Inv2…`/`Inv3…` cases above carry
+// ANTS-3793's invariant numbering, which collides with this document's INV-2
+// and INV-3 in a file now serving three specs (§ 7).
+// ============================================================================
+
+namespace {
+
+using RoadmapSource::RoadmapText;
+
+QByteArray readAllBytes(const QString &path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return QByteArray();
+    return f.readAll();
+}
+
+// The byte offset at which `bytes`' kDetectorLineCap'th non-blank line ends,
+// and the length of the line after it. INV-1's bound is DERIVED from the
+// fixture rather than chosen: the reader may overshoot to finish the line it is
+// on, and may not overshoot further.
+struct PrefixBound {
+    qint64 end = 0;        // offset just past the 300th non-blank line
+    qint64 nextLine = 0;   // length of the line that follows it
+    bool   reached = false;
+};
+
+PrefixBound prefixBoundOf(const QByteArray &bytes) {
+    PrefixBound b;
+    int nonBlank = 0;
+    qsizetype pos = 0;
+    while (pos < bytes.size()) {
+        const qsizetype nl = bytes.indexOf('\n', pos);
+        const qsizetype lineEnd = (nl < 0) ? bytes.size() : nl + 1;
+        if (!QString::fromUtf8(bytes.mid(pos, lineEnd - pos)).trimmed().isEmpty())
+            ++nonBlank;
+        pos = lineEnd;
+        if (nonBlank >= RoadmapSource::kDetectorLineCap) {
+            b.end     = pos;
+            b.reached = true;
+            const qsizetype nl2 = bytes.indexOf('\n', pos);
+            b.nextLine = ((nl2 < 0) ? bytes.size() : nl2 + 1) - pos;
+            break;
+        }
+    }
+    if (!b.reached)
+        b.end = bytes.size();
+    return b;
+}
+
+// A rendered-looking ants-v1 roadmap head, then `bullets` further valid items.
+QByteArray antsV1Roadmap(int bullets) {
+    QByteArray out =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n";
+    for (int i = 1; i <= bullets; ++i) {
+        out += "- \xF0\x9F\x93\x8B [DEMO-"
+             + QByteArray::number(i).rightJustified(4, '0')
+             + "] **Item " + QByteArray::number(i) + ".**\n"
+               "  Layman: A thing.\n"
+               "  Kind: implement.\n";
+    }
+    return out;
+}
+
+}  // namespace
+
+// --------------------------------------------------------- ANTS-3863 INV-1 --
+// A dispatch against a MIGRATED project through a FILE-BACKED RoadmapText reads
+// at most kDetectorLineCap non-blank lines or kDetectorByteCap bytes — never
+// the body.
+//
+// perf-labelled (§ 7): the fixture has to be multi-megabyte for the assertion
+// to mean anything, and that is also what makes it too slow for `fast`.
+TEST(RoadmapReadSeam, Ants3863Inv1DispatchReadsOnlyTheDetectorWindow) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    const QString rm   = root + QStringLiteral("/ROADMAP.md");
+
+    ASSERT_TRUE(writeFile(rm, antsV1Roadmap(4)));
+    auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
+                           RoadmapStore::Access::Bulk);
+    ASSERT_NE(store, nullptr);
+    qint64 projectId = 0;
+    ASSERT_TRUE(migrateInto(*store, root, &projectId));
+
+    // A multi-megabyte tail of VALID ants-v1 bullets: the file still detects as
+    // ants-v1 and still agrees with the stored source_format, so the dispatch
+    // must succeed — the only question is how much of it was read.
+    QByteArray big = antsV1Roadmap(4);
+    while (big.size() < 3 * 1024 * 1024)
+        big += antsV1Roadmap(200);
+    ASSERT_TRUE(writeFile(rm, big));
+
+    const qint64 fileSize = QFileInfo(rm).size();
+    const PrefixBound bound = prefixBoundOf(readAllBytes(rm));
+    ASSERT_TRUE(bound.reached)
+        << "the fixture must be long enough to reach the line cap, or this "
+           "case bounds nothing";
+
+    QString err;
+    ReadError why = ReadError::TooLarge;
+    auto text = RoadmapText::fromFile(rm);
+    const auto served =
+        RoadmapSource::migratedProject(*store, root, text, &err, &why);
+
+    ASSERT_TRUE(served.has_value()) << err.toStdString();
+    EXPECT_EQ(*served, projectId);
+    EXPECT_EQ(why, ReadError::None);
+
+    EXPECT_LE(text.bytesRead(), bound.end + bound.nextLine)
+        << "the dispatch read past the 300th non-blank line (ends at byte "
+        << bound.end << ") by more than the line it was on";
+    // Cap-independent, and the leg that fails loudly if the LINE cap is lost.
+    EXPECT_LT(text.bytesRead(), fileSize / 100)
+        << "read " << text.bytesRead() << " of " << fileSize << " bytes";
+}
+
+// The BYTE cap's own leg: a file where the non-blank cap is never reached, so
+// the line cap bounds nothing at all. Sized ABOVE kDetectorByteCap on purpose —
+// a 1,000,000-byte fixture is under a 1 MiB cap and would pass whether or not
+// the cap existed, which is the one shape a cap test must not have.
+TEST(RoadmapReadSeam, Ants3863Inv1ByteCapBoundsAnAllBlankRoadmap) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    const QString rm   = root + QStringLiteral("/ROADMAP.md");
+
+    ASSERT_TRUE(writeFile(rm, antsV1Roadmap(4)));
+    auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
+                           RoadmapStore::Access::Bulk);
+    ASSERT_NE(store, nullptr);
+    qint64 projectId = 0;
+    ASSERT_TRUE(migrateInto(*store, root, &projectId));
+
+    ASSERT_TRUE(writeFile(rm, QByteArray(2 * 1024 * 1024, '\n')));
+    const qint64 fileSize = QFileInfo(rm).size();
+    ASSERT_GT(fileSize, RoadmapSource::kDetectorByteCap);
+
+    QString err;
+    ReadError why = ReadError::None;
+    auto text = RoadmapText::fromFile(rm);
+    const auto served =
+        RoadmapSource::migratedProject(*store, root, text, &err, &why);
+
+    // It RETURNS — a blank file classifies as unrecognisable rather than
+    // hanging or draining the file.
+    EXPECT_FALSE(served.has_value());
+    EXPECT_EQ(why, ReadError::SourceUnrecognised);
+
+    // +1 byte: the reader looks one byte past the cap so detectionPrefixOf()
+    // can see that the crossing line crosses (see readHead()'s comment) — that
+    // lookahead is what keeps the two producers in agreement for INV-2.
+    EXPECT_LE(text.bytesRead(), RoadmapSource::kDetectorByteCap + 1);
+    // The assertion that gives the leg something to be wrong about: without a
+    // byte cap this is the whole 2 MiB.
+    EXPECT_LT(text.bytesRead(), fileSize);
+}
+
+// --------------------------------------------------------- ANTS-3863 INV-2 --
+// The bounded file reader and the in-memory helper produce the SAME
+// QStringList, so swapping one for the other cannot change a classification.
+//
+// This is READER equivalence, not prefix-versus-whole-file equivalence: both
+// sides are capped, so on the late-signal fixture both correctly MISS the
+// signal and agree. That a capped prefix classifies a whole file the same way
+// is detectionPrefixOf()'s own pre-existing property, untouched here.
+TEST(RoadmapReadSeam, Ants3863Inv2BothProducersAgree) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    struct Fixture { const char *name; QByteArray body; };
+    std::vector<Fixture> fixtures;
+
+    fixtures.push_back({"ants-v1", antsV1Roadmap(6)});
+
+    fixtures.push_back({"github-task-list",
+        QByteArray("# Demo — Roadmap\n\n## Work\n\n"
+                   "- [ ] An open item\n"
+                   "- [x] A done item\n"
+                   "- [ ] Another open item\n")});
+
+    fixtures.push_back({"pass-headings",
+        QByteArray("# Demo — Roadmap\n\n"
+                   "#### Pass 1.1 First\n- **Status**: done\n\n"
+                   "#### Pass 1.2 Second\n- **Status**: todo\n\n"
+                   "#### Pass 1.3 Third\n- **Status**: todo\n")});
+
+    {   // The dialect signal sits AFTER 300 non-blank lines, so both sides must
+        // miss it — and must miss it identically.
+        QByteArray late = "# Demo — Roadmap\n\n";
+        for (int i = 0; i < 400; ++i)
+            late += "Plain prose line " + QByteArray::number(i) + ".\n";
+        late += antsV1Roadmap(3);
+        fixtures.push_back({"late-signal", late});
+    }
+
+    // Entirely blank AND larger than kDetectorByteCap. Below the cap it would
+    // test only the line cap, and the byte cap is the newer of the two and the
+    // one that could be applied to one producer and not the other.
+    fixtures.push_back({"all-blank-2MiB", QByteArray(2 * 1024 * 1024, '\n')});
+
+    int n = 0;
+    for (const Fixture &fx : fixtures) {
+        SCOPED_TRACE(fx.name);
+        const QString path =
+            dir.filePath(QStringLiteral("fx%1.md").arg(n++));
+        ASSERT_TRUE(writeFile(path, fx.body));
+
+        auto fileText = RoadmapText::fromFile(path);
+        auto memText  = RoadmapText::fromMemory(QString::fromUtf8(readAllBytes(path)));
+
+        const QStringList fromFilePrefix = fileText.detectionPrefix();
+        const QStringList fromMemPrefix  = memText.detectionPrefix();
+
+        EXPECT_EQ(fromFilePrefix, fromMemPrefix)
+            << "the two producers cut at different places: file gave "
+            << fromFilePrefix.size() << " lines, memory gave "
+            << fromMemPrefix.size();
+
+        bool sawFile = false, sawMem = false;
+        const QString fmtFile =
+            RoadmapParse::detectRoadmapFormat(fromFilePrefix, &sawFile);
+        const QString fmtMem =
+            RoadmapParse::detectRoadmapFormat(fromMemPrefix, &sawMem);
+        EXPECT_EQ(fmtFile, fmtMem);
+        EXPECT_EQ(sawFile, sawMem);
+
+        // A fromMemory text reads no disk at all, so INV-1's bound holds
+        // trivially there rather than being claimed of a path that cannot
+        // meet it.
+        EXPECT_EQ(memText.bytesRead(), 0);
+    }
+}
+
+// --------------------------------------------------------- ANTS-3863 INV-4 --
+// A migrated project whose live roadmap is ABSENT or unopenable still refuses,
+// through the chain the header pins: empty prefix → sawSignal false →
+// SourceUnrecognised. openFailed() must answer BEFORE any accessor has run,
+// which is where every converted consumer branches on it.
+TEST(RoadmapReadSeam, Ants3863Inv4UnopenableRoadmapStillRefuses) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    const QString rm   = root + QStringLiteral("/ROADMAP.md");
+
+    ASSERT_TRUE(writeFile(rm, antsV1Roadmap(4)));
+    auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
+                           RoadmapStore::Access::Bulk);
+    ASSERT_NE(store, nullptr);
+    qint64 projectId = 0;
+    ASSERT_TRUE(migrateInto(*store, root, &projectId));
+
+    {   // Absent.
+        auto text = RoadmapText::fromFile(root + QStringLiteral("/gone.md"));
+        // Forced, not reported: this is the FIRST call on the object.
+        EXPECT_TRUE(text.openFailed());
+        EXPECT_TRUE(text.detectionPrefix().isEmpty());
+        EXPECT_TRUE(text.full().isEmpty());
+
+        auto fresh = RoadmapText::fromFile(root + QStringLiteral("/gone.md"));
+        QString err;
+        ReadError why = ReadError::None;
+        const auto served =
+            RoadmapSource::migratedProject(*store, root, fresh, &err, &why);
+        EXPECT_FALSE(served.has_value());
+        EXPECT_EQ(why, ReadError::SourceUnrecognised);
+        EXPECT_TRUE(err.contains(QStringLiteral("unrecognisable")))
+            << err.toStdString();
+    }
+
+    {   // Present and unreadable.
+        ASSERT_TRUE(QFile::setPermissions(rm, QFile::Permissions()));
+        auto text = RoadmapText::fromFile(rm);
+        EXPECT_TRUE(text.openFailed());
+        EXPECT_TRUE(text.detectionPrefix().isEmpty());
+        QFile::setPermissions(rm, QFile::ReadOwner | QFile::WriteOwner);
+    }
+
+    // A fromMemory text has no file to fail on, so a site that branches on
+    // openFailed() takes its success path unconditionally.
+    auto mem = RoadmapText::fromMemory(QStringLiteral("anything"));
+    EXPECT_FALSE(mem.openFailed());
+}
+
+// --------------------------------------------------------- ANTS-3863 INV-5 --
+// full() is byte-identical to a QFile::readAll() of the same path opened
+// ReadOnly | Text. The MODE is named in the assertion rather than assumed,
+// because Text is exactly what decides the CRLF case — a comparison against a
+// bare ReadOnly read would fail on a correct implementation.
+//
+// A NEW case, deliberately not an extension of Inv2BackendsAgree, which § 7
+// requires to stay unedited but for its argument type.
+TEST(RoadmapReadSeam, Ants3863Inv5FullMatchesReadAll) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    const std::vector<std::pair<const char *, QByteArray>> cases = {
+        {"trailing-newline",    antsV1Roadmap(5)},
+        {"no-trailing-newline", QByteArray("# Demo\n\n## Work\n\nlast line, no newline")},
+        {"crlf",                QByteArray("# Demo\r\n\r\n## Work\r\n\r\n- [ ] An item\r\n")},
+        {"empty",               QByteArray()},
+    };
+
+    int n = 0;
+    for (const auto &c : cases) {
+        SCOPED_TRACE(c.first);
+        const QString path = dir.filePath(QStringLiteral("inv5_%1.md").arg(n++));
+        ASSERT_TRUE(writeFile(path, c.second));
+
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text));
+        const QString expected = QString::fromUtf8(f.readAll());
+        f.close();
+
+        // Cold: full() with no prefix read before it.
+        auto cold = RoadmapText::fromFile(path);
+        EXPECT_EQ(cold.full(), expected);
+
+        // Warm: full() CONTINUING from where the prefix stopped. This is the
+        // half that fails if the bounded reader's line splitting leaks into
+        // full(), or if full() returns only the bytes after the prefix.
+        auto warm = RoadmapText::fromFile(path);
+        (void)warm.detectionPrefix();
+        EXPECT_EQ(warm.full(), expected);
+    }
+}
+
+// --------------------------------------------------------- ANTS-3863 INV-6 --
+// No RoadmapText reads any byte of its file more than once, whichever order its
+// accessors are called in. TWO legs, one per order, because § 2.1 satisfies the
+// two by different mechanisms — continue the retained handle, versus derive the
+// prefix from the memoised body — and a single-order test leaves one of them
+// unexercised.
+TEST(RoadmapReadSeam, Ants3863Inv6ReadsEveryByteAtMostOnce) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("inv6.md"));
+    // Long enough that the prefix is a genuine proper prefix of the file.
+    ASSERT_TRUE(writeFile(path, antsV1Roadmap(400)));
+    const qint64 fileSize = QFileInfo(path).size();
+
+    {   // Leg 1 — prefix, then body.
+        SCOPED_TRACE("detectionPrefix() then full()");
+        auto text = RoadmapText::fromFile(path);
+        (void)text.detectionPrefix();
+        const qint64 afterPrefix = text.bytesRead();
+        EXPECT_GT(afterPrefix, 0);
+        EXPECT_LT(afterPrefix, fileSize) << "the prefix drained the file";
+
+        (void)text.full();
+        EXPECT_EQ(text.bytesRead(), fileSize)
+            << "file size plus the prefix means the head was read twice";
+
+        // Both again: memoised, so nothing grows.
+        (void)text.detectionPrefix();
+        (void)text.full();
+        EXPECT_EQ(text.bytesRead(), fileSize);
+    }
+
+    {   // Leg 2 — body, then prefix. The prefix is derived from the memoised
+        // body through the same helper, so no disk is touched at all.
+        SCOPED_TRACE("full() then detectionPrefix()");
+        auto text = RoadmapText::fromFile(path);
+        (void)text.full();
+        EXPECT_EQ(text.bytesRead(), fileSize);
+
+        (void)text.detectionPrefix();
+        EXPECT_EQ(text.bytesRead(), fileSize)
+            << "deriving the prefix from the body re-read the file";
+
+        (void)text.full();
+        (void)text.detectionPrefix();
+        EXPECT_EQ(text.bytesRead(), fileSize);
+    }
+
+    // And the two orders agree on what the prefix IS.
+    auto a = RoadmapText::fromFile(path);
+    (void)a.detectionPrefix();
+    const QStringList prefixFirst = a.detectionPrefix();
+    auto b = RoadmapText::fromFile(path);
+    (void)b.full();
+    EXPECT_EQ(b.detectionPrefix(), prefixFirst);
+}
+
+// --------------------------------------------------------- ANTS-3863 INV-7 --
+// No dispatch-taking entry point keeps a `const QString &markdown` overload.
+//
+// The matcher is MULTILINE on purpose: C++ parameter lists wrap, and seven of
+// the twelve pre-change occurrences put `const QString &markdown,` on a line of
+// its own — including migratedProject() and bulletsFor(), the two functions the
+// whole item is about. A line-based grep saw only 5 of the 12, so reaching 0
+// under one would have proved nothing about those two.
+TEST(RoadmapReadSeam, Ants3863Inv7NoQStringMarkdownOverloadSurvives) {
+    const QStringList files = {
+        QStringLiteral("roadmapsource.h"),
+        QStringLiteral("roadmapsource.cpp"),
+        QStringLiteral("remotecontrol.h"),
+        QStringLiteral("remotecontrol_internal.h"),
+        QStringLiteral("remotecontrol_terminal.cpp"),
+        QStringLiteral("remotecontrol_roadmap_query.cpp"),
+        QStringLiteral("roadmapdialog.h"),
+        QStringLiteral("roadmapdialog.cpp"),
+    };
+    QRegularExpression re(
+        QStringLiteral("(roadmapBullets|roadmapWriteTarget|roadmapStoreServes"
+                       "|bulletsFor|migratedProject)\\s*\\([^)]*QString\\s*&\\s*markdown"),
+        QRegularExpression::DotMatchesEverythingOption);
+    ASSERT_TRUE(re.isValid()) << re.errorString().toStdString();
+
+    int total = 0;
+    QStringList offenders;
+    for (const QString &name : files) {
+        const QString path =
+            QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/") + name;
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly))
+            << "cannot read " << path.toStdString()
+            << " — the file list has drifted and this case is scanning nothing";
+        const QString text = QString::fromUtf8(f.readAll());
+        auto it = re.globalMatch(text);
+        while (it.hasNext()) {
+            it.next();
+            ++total;
+            offenders << name;
+        }
+    }
+    EXPECT_EQ(total, 0)
+        << "a dispatch-taking entry point still takes `const QString &markdown` "
+           "in: " << offenders.join(QStringLiteral(", ")).toStdString()
+        << ". A compatibility overload is the half-migrated seam — two ways to "
+           "ask one question, free to disagree — that § 2.4's all-sites scope "
+           "exists to prevent.";
 }

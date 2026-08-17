@@ -52,7 +52,7 @@ void RemoteControl::setRoadmapHistoryCapForTest(qint64 bytes) {
 // ANTS-3793 § 2.2 — the dispatch on its own. See remotecontrol.h for the one
 // site that needs it and why it cannot ask by reading.
 bool RemoteControl::roadmapStoreServes(const QString &projectRoot,
-                                       const QString &markdown,
+                                       RoadmapSource::RoadmapText &text,
                                        RoadmapSource::ReadError *why,
                                        QString *error) const {
     if (why)
@@ -66,7 +66,7 @@ bool RemoteControl::roadmapStoreServes(const QString &projectRoot,
     RoadmapSource::ReadError localWhy = RoadmapSource::ReadError::None;
     RoadmapStore *store = roadmapStoreOrNull(&localWhy, error);
     const bool served =
-        store && RoadmapSource::migratedProject(*store, projectRoot, markdown,
+        store && RoadmapSource::migratedProject(*store, projectRoot, text,
                                                 error, &localWhy).has_value();
     if (why)
         *why = localWhy;
@@ -79,7 +79,7 @@ bool RemoteControl::roadmapStoreServes(const QString &projectRoot,
 // project is migrated.
 std::optional<RemoteControl::RoadmapWriteTarget>
 RemoteControl::roadmapWriteTarget(const QString &projectRoot,
-                                  const QString &markdown,
+                                  RoadmapSource::RoadmapText &text,
                                   RoadmapSource::ReadError *why,
                                   QString *error) const {
     if (why)
@@ -106,7 +106,7 @@ RemoteControl::roadmapWriteTarget(const QString &projectRoot,
         return std::nullopt;
 
     const auto projectId = RoadmapSource::migratedProject(
-        *store, projectRoot, markdown, error, &localWhy);
+        *store, projectRoot, text, error, &localWhy);
     if (why)
         *why = localWhy;
     if (!projectId)
@@ -567,7 +567,7 @@ qint64 rcdetail::rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
 // resolution applies unchanged.
 QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
                                     const QString &idPrefixArg,
-                                    const QString &markdown,
+                                    RoadmapSource::RoadmapText &text,
                                     const QString &callerCanonical) {
     if (!idPrefixArg.isEmpty())
         return idPrefixArg;
@@ -576,7 +576,10 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
         if (!pfx->isEmpty())
             return *pfx;
     }
-    return rlResolveCounterPrefix(idPrefixArg, markdown, callerCanonical);
+    // ANTS-3863 — the ONE full() below the seam, and it is deliberately here:
+    // sniffing the prefix out of the corpus needs every byte, and a migrated
+    // project normally has a stored prefix and never reaches this line.
+    return rlResolveCounterPrefix(idPrefixArg, text.full(), callerCanonical);
 }
 
 // § 2.5 and § 2.6 for the two ops that carry column arguments — `append` and
@@ -1676,15 +1679,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         stampRoadmapSource();
 
     if (!fresh) {
-        QFile f(path);
-        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // ANTS-3863 — one provider for the whole miss block. The dispatch below
+        // spends only the detector's window; the branches that genuinely need
+        // every byte say so by calling full(), and each such call is annotated
+        // with why.
+        auto text = RoadmapSource::RoadmapText::fromFile(path);
+        if (text.openFailed()) {
             out["ok"] = false;
             out["error"] = QStringLiteral(
                 "could not open %1 for reading").arg(path);
             out["code"] = QStringLiteral("read_failed");
             return QJsonDocument(out);
         }
-        const QString markdown = QString::fromUtf8(f.readAll());
         // ANTS-1287-INV-5: stale cache → wipe both bullet caches AND
         // the heading index. Both regenerate lazily below.
         m_roadmapIndex.clear();
@@ -1709,11 +1715,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             RoadmapSource::ReadError witnessWhy = RoadmapSource::ReadError::None;
             if (RoadmapStore *store = roadmapStoreOrNull(&witnessWhy, nullptr)) {
                 const auto pid = RoadmapSource::migratedProject(
-                    *store, callerCanonical, markdown, nullptr, &witnessWhy);
+                    *store, callerCanonical, text, nullptr, &witnessWhy);
                 if (pid) {
                     m_roadmapCacheSource = QStringLiteral("store");
                     const QString pfx = rcdetail::rlStoreCounterPrefix(
-                        *store, *pid, QString(), markdown, callerCanonical);
+                        *store, *pid, QString(), text, callerCanonical);
                     QString hwErr;
                     if (const auto hw = store->idHighWater(*pid, pfx, &hwErr))
                         m_roadmapCacheStoreHighWater = *hw;
@@ -1722,7 +1728,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                             QStringLiteral("\\b")
                             + QRegularExpression::escape(pfx)
                             + QStringLiteral("-([0-9]{1,8})\\b"));
-                        auto it = idRe.globalMatch(markdown);
+                        // ANTS-4402's id scan needs every byte, so this is a
+                        // full() and ANTS-3863's saving does not reach this
+                        // branch — on a migrated project the body is read here
+                        // whatever the dispatch cost. Tracked separately; the
+                        // scan is this witness's contract, not this item's.
+                        auto it = idRe.globalMatch(text.full());
                         while (it.hasNext()) {
                             bool okN = false;
                             const qint64 n =
@@ -1742,7 +1753,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // untouched (roadmap_query_section_index INV-7 scrapes its shape).
             RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
             QString srcErr;
-            const auto bullets = roadmapBullets(callerCanonical, markdown,
+            const auto bullets = roadmapBullets(callerCanonical, text,
                                                 /*includeArchive=*/false,
                                                 &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)
@@ -1796,7 +1807,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // full bullets cache; that path is taken lazily on the
             // next no-section call. Build the index once.
             m_roadmapCacheBullets = QJsonArray();
-            m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
+            // Built from lines, so this branch needs every byte — and it is
+            // the branch the dispatch above did NOT take (ANTS-3863 § 2.4).
+            m_roadmapIndex = RoadmapIndex::buildIndex(text.full());
         }
     }
 
@@ -1810,14 +1823,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (m_roadmapCacheBullets.isEmpty() &&
             (m_roadmapCachePath == path) &&
             (m_roadmapCacheMtimeMs == mtime)) {
-            QFile f(path);
-            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString markdown = QString::fromUtf8(f.readAll());
+            // ANTS-3863 — a pure dispatch site: the text feeds nothing but the
+            // seam, so a migrated project never reaches the body here.
+            auto text = RoadmapSource::RoadmapText::fromFile(path);
+            if (!text.openFailed()) {
                 // ANTS-3793 — same swap as the full-file pre-fill above.
                 RoadmapSource::ReadError srcWhy =
                     RoadmapSource::ReadError::None;
                 QString srcErr;
-                const auto bullets = roadmapBullets(callerCanonical, markdown,
+                const auto bullets = roadmapBullets(callerCanonical, text,
                                                     /*includeArchive=*/false,
                                                     &srcWhy, &srcErr);
                 if (srcWhy != RoadmapSource::ReadError::None)
@@ -2124,14 +2138,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (m_roadmapCacheBullets.isEmpty() &&
             (m_roadmapCachePath == path) &&
             (m_roadmapCacheMtimeMs == mtime)) {
-            QFile f(path);
-            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString markdown = QString::fromUtf8(f.readAll());
+            // ANTS-3863 — a pure dispatch site; no body read on the store path.
+            auto text = RoadmapSource::RoadmapText::fromFile(path);
+            if (!text.openFailed()) {
                 // ANTS-3793 — store-or-markdown, then the same builder.
                 RoadmapSource::ReadError srcWhy =
                     RoadmapSource::ReadError::None;
                 QString srcErr;
-                const auto bullets = roadmapBullets(callerCanonical, markdown,
+                const auto bullets = roadmapBullets(callerCanonical, text,
                                                     /*includeArchive=*/false,
                                                     &srcWhy, &srcErr);
                 if (srcWhy != RoadmapSource::ReadError::None)
@@ -2206,16 +2220,19 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             m_roadmapSectionLru.removeOne(sec->slug);
             m_roadmapSectionLru.prepend(sec->slug);
         } else {
-            QFile f(path);
-            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            auto text = RoadmapSource::RoadmapText::fromFile(path);
+            if (text.openFailed()) {
                 out["ok"] = false;
                 out["error"] = QStringLiteral(
                     "could not open %1 for reading").arg(path);
                 out["code"] = QStringLiteral("read_failed");
                 return QJsonDocument(out);
             }
-            const QString markdown = QString::fromUtf8(f.readAll());
-            const QString slice = RoadmapIndex::sliceSection(markdown, *sec);
+            // ANTS-3863 — full() before the dispatch, deliberately: the section
+            // etag below is computed from the slice on BOTH backends, so this
+            // branch needs every byte whatever the dispatch decides. Converting
+            // it keeps one seam rather than saving a read that is not there.
+            const QString slice = RoadmapIndex::sliceSection(text.full(), *sec);
             // ANTS-1907 — compute the per-section etag from the sliced
             // bytes once, cache by slug. Skips dispatch-layer's whole-
             // file etag; the per-section value is invariant under edits
@@ -2240,11 +2257,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             QString srcErr;
             QVector<RoadmapDialog::BulletRecord> bullets;
             const bool fromStore =
-                roadmapStoreServes(callerCanonical, markdown, &srcWhy, &srcErr);
+                roadmapStoreServes(callerCanonical, text, &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)
                 return refuseRoadmapSource(srcWhy, srcErr);
             if (fromStore) {
-                const auto whole = roadmapBullets(callerCanonical, markdown,
+                const auto whole = roadmapBullets(callerCanonical, text,
                                                   /*includeArchive=*/false,
                                                   &srcWhy, &srcErr);
                 if (srcWhy != RoadmapSource::ReadError::None)
@@ -2276,7 +2293,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // § 5 scopes the store backend to ants-v1, which is not the
             // pass-headings dialect this fallback exists for.
             if (!fromStore && bullets.empty()) {
-                const auto whole = RoadmapDialog::parseBullets(markdown);
+                const auto whole = RoadmapDialog::parseBullets(text.full());
                 QVector<RoadmapDialog::BulletRecord> filtered;
                 for (const auto &b : whole)
                     if (b.sectionSlug == sec->slug) filtered.append(b);
@@ -2567,13 +2584,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // an earlier hit took the section path.
     if (m_roadmapCacheBullets.isEmpty() && (m_roadmapCachePath == path) &&
         (m_roadmapCacheMtimeMs == mtime)) {
-        QFile f(path);
-        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            const QString markdown = QString::fromUtf8(f.readAll());
+        // ANTS-3863 — a pure dispatch site; no body read on the store path.
+        auto text = RoadmapSource::RoadmapText::fromFile(path);
+        if (!text.openFailed()) {
             // ANTS-3793 — same swap as the other two fill sites.
             RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
             QString srcErr;
-            const auto bullets = roadmapBullets(callerCanonical, markdown,
+            const auto bullets = roadmapBullets(callerCanonical, text,
                                                 /*includeArchive=*/false,
                                                 &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)

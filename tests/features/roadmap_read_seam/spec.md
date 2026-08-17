@@ -1,9 +1,16 @@
 # roadmap_read_seam — feature contract
 
 **Covers:** ANTS-3793 (`docs/specs/ANTS-3793-roadmap-consumer-cutover.md`),
-INV-1 / INV-2 / INV-3.
+INV-1 / INV-2 / INV-3; ANTS-3815 INV-5 / INV-6; and ANTS-3863
+(`docs/specs/ANTS-3863-pre-read-dispatch.md`), INV-1 through INV-7.
 **Bundle:** `test_core` — the only bundle linking both `ants_core_lib` and
 `ants_roadmapstore_lib`.
+
+**Case names carry the id of the spec they serve, not a bare `InvN`.** This file
+serves three specs whose invariant numbering collides — ANTS-3793's INV-2 and
+INV-3 are unrelated to ANTS-3863's — so everything after the original five is
+prefixed `Ants3815` / `Ants3863`. The bare `Inv1…`/`Inv2…`/`Inv3…` names are
+ANTS-3793's and stay as they are.
 
 ## What this pins
 
@@ -18,6 +25,18 @@ changing what a record contains.
 | `Inv2Membership` | INV-2's membership half | `dropped` excluded, `internal` kept, unfiled kept and last |
 | `Inv3Ceiling` | INV-3's refusal | 3,501 items refuse, 3,500 do not |
 | `Inv3Latency` | INV-3's budget | p95 < 50 ms on a corpus-sized project |
+| `Ants3863Inv1DispatchReadsOnlyTheDetectorWindow` | 3863 INV-1 | a migrated dispatch over a 3 MiB roadmap reads only the detector's window (`perf`) |
+| `Ants3863Inv1ByteCapBoundsAnAllBlankRoadmap` | 3863 INV-1 | `kDetectorByteCap` bounds a 2 MiB all-blank file the line cap cannot (`perf`) |
+| `Ants3863Inv2BothProducersAgree` | 3863 INV-2 | file reader and in-memory helper return the same `QStringList` over five fixtures (`perf`) |
+| `Ants3863Inv4UnopenableRoadmapStillRefuses` | 3863 INV-4 | absent / unreadable → empty prefix → `SourceUnrecognised`; `openFailed()` forces the open |
+| `Ants3863Inv5FullMatchesReadAll` | 3863 INV-5 | `full()` equals a `ReadOnly \| Text` `readAll()`, cold and after a prefix read |
+| `Ants3863Inv6ReadsEveryByteAtMostOnce` | 3863 INV-6 | `bytesRead()` equals the file size in both accessor orders |
+| `Ants3863Inv7NoQStringMarkdownOverloadSurvives` | 3863 INV-7 | multiline source scrape: no `const QString &markdown` seam overload remains |
+
+ANTS-3863's INV-3 has no case of its own by design: it asserts that ANTS-3815
+INV-6 still holds through the new signature, and
+`Ants3815Inv6StoredFormatDisagreeingWithTheFileRefuses` staying green — unedited
+but for its argument type — *is* that assertion.
 
 ## Cases
 

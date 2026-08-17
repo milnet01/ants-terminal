@@ -1380,21 +1380,22 @@ QJsonDocument RemoteControl::cmdRoadmapBranchDrift(const QJsonObject &req) {
     // Read + parse the ROADMAP. Use the same parseBullets entry point
     // the rest of the file uses; it auto-detects ants-v1 / GFM-task-list
     // / pass-headings.
-    QFile rf(roadmapPath);
-    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    // ANTS-3863 — the provider reads only as far as this path needs; on a
+    // migrated project the classification comes from the store and the body is
+    // never touched.
+    auto text = RoadmapSource::RoadmapText::fromFile(roadmapPath);
+    if (text.openFailed()) {
         return QJsonDocument(rbdErr(QStringLiteral("read_failed"),
             QStringLiteral("roadmap_branch_drift: could not open %1")
                 .arg(roadmapPath)));
     }
-    const QString markdown = QString::fromUtf8(rf.readAll());
-    rf.close();
-    // ANTS-3793 — the store when this project is migrated, `markdown` when it
-    // is not. This verb refuses rather than degrading: its whole output is a
+    // ANTS-3793 — the store when this project is migrated, the file's text when
+    // it is not. This verb refuses rather than degrading: its whole output is a
     // per-bullet classification, and one built from the wrong source is worse
     // than none.
     RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
     QString srcErr;
-    const auto bullets = roadmapBullets(rootCanonical, markdown,
+    const auto bullets = roadmapBullets(rootCanonical, text,
                                         /*includeArchive=*/false,
                                         &srcWhy, &srcErr);
     if (srcWhy != RoadmapSource::ReadError::None) {

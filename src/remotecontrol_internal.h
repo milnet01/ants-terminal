@@ -236,7 +236,12 @@ bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapSto
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
 qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &projectRoot, const QString &prefix);
-QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId, const QString &idPrefixArg, const QString &markdown, const QString &callerCanonical);
+// ANTS-3863 § 2.4 — the one helper BELOW the seam this item touches. `text` is
+// consulted only on the last fallback, after an explicit id_prefix and the
+// store's own idPrefixFor() have both come up empty, so the common migrated
+// op:append pays no body read while the rare prefix-sniff still gets the whole
+// file.
+QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId, const QString &idPrefixArg, RoadmapSource::RoadmapText &text, const QString &callerCanonical);
 bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error);
 QString changelogMalformedAdvisory(int line, bool plural, bool applied);
 QStringList rcShortBareAltTerms(const QString &pattern);

@@ -33,7 +33,10 @@ namespace VerifyTrust { class Client; }
 // consumer of this header (mainwindow.cpp, claudeintegration.cpp, the test
 // bundles) has no Sql include path, so including it here would break them all.
 class RoadmapStore;
-namespace RoadmapSource { enum class ReadError; }
+// ANTS-3863 — RoadmapText joins ReadError here, and by declaration for the same
+// reason: the three seam wrappers take it by reference, so no definition is
+// needed to declare them.
+namespace RoadmapSource { enum class ReadError; class RoadmapText; }
 
 // Remote-control server for Ants Terminal. Kitty-style JSON envelopes
 // over a Unix domain socket — unlocks scripting, IDE integration, CI.
@@ -1087,8 +1090,13 @@ private:
     // a root it cannot resolve, so a caller that could not name a project must
     // not reach it. Every roadmap verb resolves one from `caller_cwd`; the
     // focused-tab back-compat path has none.
+    //
+    // ANTS-3863 — `text` is a provider rather than the text: the dispatch reads
+    // only the detector's window through it, and full() is reached ONLY on the
+    // unmigrated fall-through below, which is the one case that was always
+    // going to need the whole file.
     QVector<RoadmapParse::BulletRecord>
-    roadmapBullets(const QString &projectRoot, const QString &markdown,
+    roadmapBullets(const QString &projectRoot, RoadmapSource::RoadmapText &text,
                    bool includeArchive, RoadmapSource::ReadError *why,
                    QString *error) const;
 
@@ -1099,7 +1107,8 @@ private:
     // to know which backend answers BEFORE it decides how to read — and
     // answering by calling roadmapBullets() would read the whole project, which
     // is exactly what ANTS-1287 INV-9 keeps section mode away from.
-    bool roadmapStoreServes(const QString &projectRoot, const QString &markdown,
+    bool roadmapStoreServes(const QString &projectRoot,
+                            RoadmapSource::RoadmapText &text,
                             RoadmapSource::ReadError *why,
                             QString *error) const;
 
@@ -1121,7 +1130,8 @@ private:
         qint64 projectId = 0;
     };
     std::optional<RoadmapWriteTarget>
-    roadmapWriteTarget(const QString &projectRoot, const QString &markdown,
+    roadmapWriteTarget(const QString &projectRoot,
+                       RoadmapSource::RoadmapText &text,
                        RoadmapSource::ReadError *why, QString *error) const;
 
     // ANTS-4070 — the prologue rotate_minor and retitle_section share:

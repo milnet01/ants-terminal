@@ -761,21 +761,23 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                                "needs a ROADMAP.md under \"%1\"")
                     .arg(callerCanonical));
         }
-        QFile rf(rmPath);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // ANTS-3863 — the read is the provider's now, and it happens only as
+        // far as the path needs: this site wants a bullet's id, so on a
+        // migrated project it never reaches the body at all. openFailed()
+        // forces the open, which is what keeps this refusal where it was.
+        auto rmText = RoadmapSource::RoadmapText::fromFile(rmPath);
+        if (rmText.openFailed()) {
             return clErr(QStringLiteral("roadmap_read_failed"),
                 QStringLiteral("changelog_log: could not read \"%1\"")
                     .arg(rmPath));
         }
-        const QString rmMarkdown = QString::fromUtf8(rf.readAll());
-        rf.close();
-        // ANTS-3793 — the store when this project is migrated, `rmMarkdown`
+        // ANTS-3793 — the store when this project is migrated, the file's text
         // when it is not. A refusal is surfaced rather than served from
         // markdown: citing a bullet resolved from a source we were told not to
         // trust is how a wrong id reaches the CHANGELOG.
         RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
         QString srcErr;
-        const auto bullets = roadmapBullets(callerCanonical, rmMarkdown,
+        const auto bullets = roadmapBullets(callerCanonical, rmText,
                                             /*includeArchive=*/false,
                                             &srcWhy, &srcErr);
         if (srcWhy != RoadmapSource::ReadError::None) {
@@ -1127,17 +1129,17 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     if (roadmapNeeded) {
         const QString rmPath = findRoadmapUnder(callerCanonical);
         if (!rmPath.isEmpty()) {
-            QFile rf(rmPath);
-            if (rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString rmMarkdown = QString::fromUtf8(rf.readAll());
-                rf.close();
+            auto rmText = RoadmapSource::RoadmapText::fromFile(rmPath);
+            // ANTS-3863 — the same shape the QFile::open() guard had: this
+            // block is entered only when the roadmap is readable.
+            if (!rmText.openFailed()) {
                 // ANTS-3793 — store-or-markdown. `this->` because the local
                 // above shadows the member with the same name.
                 RoadmapSource::ReadError srcWhy =
                     RoadmapSource::ReadError::None;
                 QString srcErr;
                 roadmapBullets = this->roadmapBullets(
-                    callerCanonical, rmMarkdown, /*includeArchive=*/false,
+                    callerCanonical, rmText, /*includeArchive=*/false,
                     &srcWhy, &srcErr);
                 if (srcWhy != RoadmapSource::ReadError::None) {
                     QJsonObject srcOut;

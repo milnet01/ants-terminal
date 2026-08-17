@@ -42,3 +42,13 @@ set_tests_properties(mcp_audit_run.Ants3605InProcessLanesDispatchedHeadless
 # below would quietly put the benchmark back in the default suite.
 set_tests_properties(RoadmapReadSeam.Inv3Latency
                      PROPERTIES LABELS "perf" TIMEOUT 300)
+
+# ANTS-3863 § 7 — three multi-megabyte fixtures, same convention. Sizing them at
+# megabytes is what makes them meaningful and also what makes them too slow for
+# `fast`: INV-1's 3 MiB ants-v1 tail, INV-1's 2 MiB all-blank byte-cap leg, and
+# INV-2's own 2 MiB all-blank producer-equivalence fixture. A labelled-`fast`
+# multi-megabyte case would be the same mistake in the other direction.
+set_tests_properties(RoadmapReadSeam.Ants3863Inv1DispatchReadsOnlyTheDetectorWindow
+                     RoadmapReadSeam.Ants3863Inv1ByteCapBoundsAnAllBlankRoadmap
+                     RoadmapReadSeam.Ants3863Inv2BothProducersAgree
+                     PROPERTIES LABELS "perf" TIMEOUT 300)
