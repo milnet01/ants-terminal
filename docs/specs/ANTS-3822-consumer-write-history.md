@@ -9,17 +9,40 @@
 ## 1. Problem
 
 `RoadmapStore` has a `history` table and an `appendHistory()` writer, and
-**`roadmap_log`'s eight write ops populate neither.** They change the item
+**not one `roadmap_log` write op populates either.** They change the item
 column and move on, so the audit trail has a hole that opens the moment a
 project migrates.
 
-Eight is `ANTS-3809` § 2.2's table, counted rather than recalled:
+**"Eight ops" is `ANTS-3809` § 2.2's count and is already stale — there are
+nine write paths.** Counted rather than recalled, 2026-08-17:
 
 ```
 $ awk '/^### 2.2 The eight ops/,/^### 2.3/' \
     docs/specs/ANTS-3809-roadmap-write-half.md | grep -cE '^\| `[a-z_]+` \|'
 8
+$ rg -n 'commitAndRender' src/remotecontrol_roadmap_log.cpp | grep -v '^\S*: *//' | wc -l
+9
 ```
+
+`ANTS-4070` added `rotate_minor` and `retitle_section` after that table was
+written. **Both are section-only** — they write `section` rows through
+`setSectionSlug()` / `setSectionSource()` / `updateSection()` — so § 5 puts them
+out of scope by schema rather than by choice.
+
+Nine call sites for ten ops because **`flip` and `annotate` share
+`cmdRoadmapLogFlip`**, which `ANTS-3809` § 2.2 states outright; the two
+`ANTS-4070` ops each have their own. Resolved by mapping every site to its
+handler rather than inferring which pair shared:
+
+```
+391 cmdRoadmapLogAppend   1207 cmdRoadmapLogFlip (+annotate)  2297 cmdRoadmapLogAmendBody
+2979 cmdRoadmapLogFlipBatch   3606 cmdRoadmapLogCreateSection  3955 cmdRoadmapLogBundleRow
+4741 cmdRoadmapLogAppendBatch  5275 cmdRoadmapLogRotateMinor   5400 cmdRoadmapLogRetitleSection
+```
+
+**This spec therefore governs the four ops that write an ITEM column —
+`flip`, `annotate`, `flip_batch`, `amend_body` — and the total count is not the
+load-bearing fact**; § 2.4 and § 5 name every exclusion by op.
 
 Measured 2026-08-17:
 
@@ -37,10 +60,23 @@ the export's rebuild inserts them directly rather than through the writer
 export, so it creates no history that did not already exist.
 
 The consequence is that **a migrated project's history is frozen at migration
-time.** Every `flip`, `annotate`, `amend_body` and `append_batch` since is
+time.** Every `flip`, `flip_batch`, `annotate` and `amend_body` since is
 invisible. A field's previous value is recoverable for a migrated write and
 not for a consumer one, which inverts the usual expectation that recent
 changes are the best-recorded.
+
+**That list is the four ops this spec makes visible, and it deliberately
+excludes `append` / `append_batch`** — a creation has no previous value to
+lose, so its absence from `history` is correct rather than a hole. § 2.4 owns
+the reasoning.
+
+**The data model already says the store is where this history is supposed to
+live**, which is what makes the gap a defect rather than an unbuilt feature.
+`roadmap-data-model.md` § 6: *"git currently carries the history of every
+roadmap edit because the roadmap is a tracked file, and under this model the
+store is untracked and the render lossy, so that history would otherwise have
+nowhere to live."* The store being untracked is already true. So the history
+does have nowhere to live, for every edit since migration.
 
 **This is not hypothetical, and ANTS-4414 measured the bill.** The roadmap
 dialog wants one fact — when was this item last touched — for its in-progress
@@ -60,9 +96,11 @@ history up to the day the project moved into it, and nothing since.
 ### 2.1 What a revision is — one row per changed field, grouped by stamp
 
 **The shape is already decided; this spec adopts it rather than choosing.**
-`Loader::applyPlanFields()` writes one `history` row **per changed column**,
-all sharing one `changed_at`, with `seq` incrementing across them. The table's
-`UNIQUE (item_pk, changed_at, seq)` is what makes that addressable.
+`roadmap-data-model.md` § 6 defines the record type as **"one row per field
+change"**, and `Loader::applyPlanFields()` implements exactly that: one row per
+changed column, all sharing one `changed_at`, with `seq` incrementing across
+them. The table's `UNIQUE (item_pk, changed_at, seq)` is what makes that
+addressable.
 
 So a revision is **the `(item_pk, changed_at)` group**, and its member rows are
 its changed fields. An op that writes a body plus five re-derived trailer
@@ -85,6 +123,14 @@ to unblock, nothing needs to.
 0 for a stamp that already has rows. The migration's comment gives the reason
 and it applies unchanged here: a restart collides on the UNIQUE constraint and
 aborts the whole write.
+
+**An absent prior value is SQL `NULL`, never `''`.** `old_value` and `new_value`
+are nullable and `appendHistory()` preserves the distinction deliberately — it
+binds a null `QVariant` when the `QString` `isNull()`. So a column that held
+nothing before the write records `NULL`, which is what the migration's rows
+carry. Writing `''` instead would be a second convention visible in the export
+record, and INV-7's byte-identity assertion would fail without saying which
+producer was wrong.
 
 ### 2.2 Where it hooks — inside the existing transaction, not beside it
 
@@ -110,30 +156,69 @@ by a rule this spec invents:
 closed by ANTS-3809 shipping `commitAndRender()` afterwards.** Recorded so a
 reader does not go looking for the decision.
 
-### 2.3 The cap — note and continue, never fail the op
+### 2.3 The cap — note and continue; every OTHER failure still aborts
 
 `appendHistory()` refuses when `historyBytes() + incoming > m_historyCap`
 (default `kDefaultHistoryCapBytes` = 250 MiB, `src/roadmapstore.h`), returning
 `false` with an error. INV-14 makes that refusal deliberate: below the bound
 nothing is evicted, at the bound the write fails and reports.
 
-**A `false` from `appendHistory()` must not abort the op.** `mutate()`
-returning false makes `commitAndRender()` roll the whole transaction back, so
-a full history table would turn every roadmap write into a refusal — the audit
-trail taking the roadmap down with it, which is the opposite of what an audit
-trail is for.
+**A CAP refusal must not abort the op. Every other `false` must.** Both halves
+are required and neither is the default:
 
-The migration already faced this and its answer is the one to copy: record a
-note and carry on, with the item write standing. `Loader::recordHistory()`
-distinguishes the cap refusal from any other failure by **re-evaluating the
-store's own predicate** rather than matching the error string — and its
-comment records that comparing `historyBytes()` against the cap alone is
-wrong, because at the moment of refusal the stored bytes are still below the
-cap in every case but an exact landing.
+- **Cap refusal** → record a note, carry on, item write stands. `mutate()`
+  returning false makes `commitAndRender()` roll the whole transaction back, so
+  treating a full history table as a failure would turn every roadmap write
+  into a refusal — the audit trail taking the roadmap down with it, which is
+  the opposite of what an audit trail is for.
+- **Any other `false`** — a constraint violation, a closed database, disk
+  failure — **fails `mutate()` and aborts the write**, exactly as
+  `Loader::recordHistory()` does. Swallowing these is the silently-dropped
+  revision INV-14 exists to forbid, and it would be reported as a successful
+  write.
 
-**Reuse that discriminator; do not re-derive it.** It is three public terms and
-one comparison, and getting it wrong fails open in the direction that aborts
-writes.
+**That is why a discriminator is needed at all**, and why it must be exact: the
+two branches do opposite things. `Loader::recordHistory()` tells them apart by
+**re-evaluating the store's own predicate** rather than matching the error
+string — and its comment records that comparing `historyBytes()` against the
+cap alone is wrong, because at the moment of refusal the stored bytes are still
+below the cap in every case but an exact landing.
+
+**The discriminator gets one home on `RoadmapStore`, and this spec names it
+rather than leaving "reuse it" to be interpreted.** Today it is four lines
+inside a private method of `Loader`, unreachable from the consumer write path,
+so "reuse" without a named home means one builder promotes it and another
+copies it:
+
+```cpp
+// Would appendHistory(field, oldValue, newValue) refuse on the cap?
+// Public because two writers need the same answer: the migration loader and
+// the consumer write path. The three terms are already public; what was not
+// public is the comparison, which is the part that is easy to get wrong.
+bool historyWouldExceedCap(const QString &field, const QString &oldValue,
+                           const QString &newValue) const;
+```
+
+`Loader::recordHistory()` is refactored onto it in the same change, so there is
+one implementation rather than two agreeing by inspection.
+
+**The note is a response-envelope field, so this spec pins its name and shape.**
+Leaving it as "a note" means the implementer invents a key that the test, any
+MCP consumer and `ANTS-3756`'s amendment all then bind to:
+
+```json
+"history_note": "history cap reached (262144000 bytes); 3 revision(s) not recorded"
+```
+
+- **Key `history_note`, a string, absent when nothing was skipped.** Absent
+  rather than empty, matching how this project's envelopes carry optional
+  advisories.
+- **One per op, not one per item.** A `flip_batch` that crosses the cap emits
+  one note carrying the count, because the caller's decision — the history is
+  full, go raise the cap — is the same whichever item tripped it.
+- **It is an advisory on a SUCCESSFUL envelope, not a refusal.** So it is not a
+  `code` from `mcp-error-codes.md`; that taxonomy is for refusals, and this op
+  did not refuse.
 
 ### 2.4 Creation writes no history
 
@@ -168,25 +253,54 @@ UNIQUE constraint is satisfied without coordination between items.
   `tests/features/roadmap_write_history` — flip an item's status through the
   verb, then `SELECT` the `history` rows for that `item_pk` and assert one row
   whose `field` is `status`, carrying the pre-flip value in `old_value`.
-- **INV-2** — All rows one op writes share one `changed_at` and carry
-  contiguous `seq` starting from `maxHistorySeq()+1` for that stamp (0 when
-  none exists). *Test:* same suite — an `amend_body` that re-derives trailer
-  columns writes ≥ 2 rows; assert one distinct `changed_at` and that the `seq`
-  set is contiguous with no gap.
+- **INV-2** — All rows one op writes **for one `item_pk`** share one
+  `changed_at` and carry contiguous `seq` from `maxHistorySeq()+1` for that
+  stamp (0 when none exists). **`seq` is scoped per `(item_pk, changed_at)`, so
+  a batch does NOT carry one op-wide counter** — each item numbers from its own
+  base. *Test:* same suite, two legs, because one cannot separate the readings:
+  an `amend_body` that re-derives trailer columns writes ≥ 2 rows for one item —
+  assert one distinct `changed_at` and a contiguous `seq` set; then a
+  `flip_batch` over two items that each already carry a revision at that stamp —
+  assert each item's rows resume from **its own** maximum. A single-item leg is
+  green against an op-wide counter, which is why the batch leg is required.
 - **INV-3** — A `dry_run` write leaves the `history` table byte-identical.
   *Test:* same suite — count rows and `SUM(length(...))` before and after a
-  `dry_run:true` flip; assert both unchanged. Breaks if a future refactor
-  moves the history write outside `commitAndRender()`'s transaction.
-- **INV-4** — A rolled-back op leaves no history rows and burns no `seq`.
-  *Test:* same suite — force a rollback via the render gate (an item with no
-  `Layman:` line makes `commitAndRender()` return `GateUnmet`), assert zero
-  rows added, then let a successful write proceed and assert its first row is
-  the `seq` the aborted one would have used.
-- **INV-5** — At the history cap the item write still succeeds, the op still
-  returns success, and the envelope carries a note. *Test:* same suite —
-  construct a `RoadmapStore` with a deliberately tiny `historyCapBytes` (it is
-  a constructor parameter, so no 250 MiB fixture is needed), perform a flip,
-  assert the item's status changed and the op did not refuse.
+  `dry_run:true` flip; assert both unchanged. Rests on
+  `commitAndRender()` returning `abort(Result::Ok)` under `dryRun`
+  (`src/roadmapwrite.cpp`, step 5), so it breaks if a future refactor moves the
+  history write outside that transaction.
+- **INV-4** — A rolled-back transaction leaves no history rows. *Test:* same
+  suite, driven at the **store** level: `begin()`, `setItemField()` plus its
+  history row, `rollback()`, then assert zero rows for that `item_pk` and that
+  `maxHistorySeq()` is unchanged. **Deliberately not driven through the render
+  gate:** `commitAndRender()`'s gate is *project*-scoped — its own message is
+  "the roadmap render refuses this project: %1 open item(s) carry no `Layman:`
+  line" — so while the offending item is still open every later write in that
+  project also refuses, and a two-phase recipe through the verb cannot reach its
+  second phase. **The "burns no `seq`" half is dropped rather than asserted:**
+  `seq` is scoped per `(item_pk, changed_at)` and each op stamps its own second,
+  so a retry normally gets a fresh stamp and starts at 0 whether or not the
+  aborted attempt burned anything — the assertion would pass against both a
+  correct and an incorrect implementation.
+- **INV-5** — At the history cap the item write still succeeds, the op returns
+  success, and the envelope carries `history_note`. *Test:* same suite, two
+  legs, because the cap and the envelope are reachable from different places.
+  **The cap leg calls `RoadmapWrite::commitAndRender()` directly**, handing it a
+  `RoadmapStore` built with a deliberately tiny `historyCapBytes` — a
+  constructor parameter, so no 250 MiB fixture is needed. A verb-driven test
+  cannot do this: `src/roadmapsource.cpp` constructs the verb path's store with
+  `kDefaultHistoryCapBytes` and takes no injection, so `commitAndRender()` is
+  the outermost seam that accepts a store. Assert the item's field changed and
+  the call returned `Result::Ok`. **The envelope leg** asserts the verb emits
+  `history_note` when the write helper reports a skip — without it an
+  implementation that silently drops the revision passes, which is the exact
+  failure INV-14's "fails *and reports*" forbids.
+- **INV-8** — A non-cap `appendHistory()` failure aborts the op. *Test:* same
+  suite — force a failure that is not the cap (write a history row for an
+  `item_pk` no `item` row has, violating the foreign key), assert
+  `commitAndRender()` does **not** return `Result::Ok` and that the item column
+  is unchanged. Without this leg § 2.3's two branches have one test between
+  them, and the dangerous branch is the untested one.
 - **INV-6** — `append` and `append_batch` write no history rows. *Test:* same
   suite — append an item, assert zero rows for its `item_pk`.
 - **INV-7** — The export round-trips consumer-written rows unchanged. *Test:*
@@ -253,9 +367,18 @@ project ever reaches it.
 
 ## 6. Tests
 
-Feature test: `tests/features/roadmap_write_history/`. Covers INV-1..INV-6.
-Label `features;fast`. Bundle per `build_target_for` — the roadmap_log verb
-tests live in `test_claude`, and this drives the verb rather than the dialog.
+Feature test: `tests/features/roadmap_write_history/`. Covers INV-1..INV-6 and
+INV-8. Label `features;fast`. Bundle per `build_target_for` — the roadmap_log
+verb tests live in `test_claude`, and this drives the verb rather than the
+dialog.
+
+**Two invariants are driven below the verb, and that is a requirement rather
+than a convenience.** INV-4 and INV-5's cap leg call
+`RoadmapWrite::commitAndRender()` directly, because it is the outermost entry
+point that accepts a caller's `RoadmapStore` — the verb path builds its own with
+`kDefaultHistoryCapBytes` and offers no injection point. An implementer who
+writes both at verb level will find INV-5's precondition unreachable and INV-4's
+recipe blocked by the project-scoped gate.
 
 INV-7 extends `tests/features/roadmap_export_roundtrip/` rather than adding a
 second round-trip harness.
@@ -275,12 +398,18 @@ migration's own rows are visible to it, then assert the consumer's absence.
 - `docs/standards/roadmap-data-model.md` — its history section describes rows
   the migration writes; it gains the consumer-write case and § 2.1's
   definition of a revision.
-- `docs/specs/ANTS-3809-roadmap-write-half.md` — § 2.2's eight-op table gains
-  the history write per row. An amendment recording what was built, not a
-  change of direction.
+- `docs/specs/ANTS-3809-roadmap-write-half.md` — § 2.2's table gains the history
+  write on **the four item-column rows only** (`flip`, `flip_batch`,
+  `annotate`, `amend_body`). Not "per row": `append` / `append_batch` are
+  excluded by § 2.4, and `create_section` / `bundle_row` cannot hold a revision
+  at all per § 5, so instructing a history write on all eight would instruct one
+  the schema refuses. Its heading is also stale — `ANTS-4070` added two ops
+  since, and § 1 records the recount.
 - `docs/specs/ANTS-3756-roadmap-store-schema.md` — INV-14's cap now has a
-  second writer subject to it; § 2.3's note-and-continue rule is stated here
-  and should be cross-referenced there rather than restated.
+  second writer subject to it, and its public surface gains
+  `historyWouldExceedCap()` (§ 2.3), which is the twenty-fifth method on the
+  surface that spec's § 2.4 enumerates. § 2.3's note-and-continue rule is
+  stated here and should be cross-referenced there rather than restated.
 - ROADMAP.md ANTS-3822 — its "blocked by ANTS-3809" line is stale; ANTS-3809
   shipped.
 - CHANGELOG.md — on ship.
@@ -289,3 +418,4 @@ migration's own rows are visible to it, then assert the consumer's absence.
 
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
+| 1 | 2026-08-17 | 3, cold — genre pinned `spec`; one byte-stable shared packet carrying the `history` DDL, `appendHistory()`, `historyBytes()`, `Loader::recordHistory()` + its seq priming, `commitAndRender()` lines 43–100, INV-14's declaration, ANTS-3809 § 2.2's table and every `history` mention in `roadmap-data-model.md` | **Q1 1 · Q2 4 · Q3 3 · Q4 3** (11 verified / 0 dismissed) | **Eleven verified, eleven fixed. First gate on this document.** **All three lanes independently found the same defect**, which is the strongest signal in the run: § 2.3 said *"A `false` from `appendHistory()` must not abort the op"* unqualified, under a heading reading *"never fail the op"*, while the same section told the implementer to reuse a discriminator that exists only to treat the two classes differently. One reading swallows a constraint violation and reports a successful write — the silently-dropped revision INV-14 exists to forbid; the other aborts every roadmap write when the table fills. Now two explicit branches plus **INV-8**, added because the dangerous branch had no test. **All three also found the note was unspecified** — INV-5 asserted "the envelope carries a note" and nothing named the key, its type or its text, which is a response-envelope contract the test, the MCP consumers and ANTS-3756's amendment all bind to; pinned as `history_note`, one per op, absent when nothing was skipped, explicitly not an `mcp-error-codes.md` code. **Two lanes found INV-4's recipe unreachable**: it forced a rollback through the render gate, and that gate is *project*-scoped, so while the offending item is open every later write in the project also refuses and the two-phase test can never reach phase two — INV-4 now drives the store directly. **Three Q4s were tests that could not fail**: INV-4's "burns no `seq`" is green against a correct *and* an incorrect implementation because each op stamps its own second, so the retry starts at 0 either way (dropped rather than patched); INV-5's injected cap is unreachable from a verb-driven test because `src/roadmapsource.cpp` builds the verb path's store with `kDefaultHistoryCapBytes` and takes no injection (re-aimed at `commitAndRender()`, the outermost seam accepting a caller's store); and INV-2's single-item leg cannot distinguish a per-item `seq` from an op-wide counter (batch leg added). **Two Q2s were internal contradictions I had written**: § 1 listed `append_batch` among the writes whose invisibility is the defect while § 2.4 and INV-6 require it to stay invisible, and § 7 told a sibling spec to document a history write on all eight rows when two of them are excluded by § 2.4 and two more cannot hold a revision at all. **One Q3**: an absent prior value could be `NULL` or `''`, a distinction `appendHistory()` preserves deliberately and the export's byte-identity would expose — now pinned to `NULL`. **The one Q1 was mine, found while verifying the lanes' open questions rather than by a lane**: "eight write ops" is `ANTS-3809`'s count and is stale — there are nine call sites for ten ops, `ANTS-4070` having added two section-only ops. Mapping every site to its handler also **refuted my own first repair**, which guessed that one of the new ops shared a handler; the sharing is `flip`/`annotate`. **Three lane open questions resolved clean and are not in the tally** — `commitAndRender()` does roll back under `dryRun` (`abort(Result::Ok)`, step 5), every op does route through it (9 of 9 sites), and INV-8's foreign-key trigger does refuse (`PRAGMA foreign_keys = ON` at `roadmapstore.cpp:135`, confirmed against SQLite directly). All three lanes could not verify the first of those **because my packet window stopped at step 4b** — a packet defect, not a document one. |
