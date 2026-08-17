@@ -794,6 +794,19 @@ void Config::setRoadmapDensity(const QString &name) {
     save();
 }
 
+// ANTS-4415 — is the roadmap dialog's table-of-contents pane shown? Default
+// TRUE: the pane has been visible since the dialog shipped, so an absent key
+// means "nobody has chosen", and hiding a pane a user never asked to lose is
+// the worse of the two wrong answers.
+bool Config::roadmapTocVisible() const {
+    return m_data.value("roadmap_toc_visible").toBool(true);
+}
+
+void Config::setRoadmapTocVisible(bool visible) {
+    if (!storeIfChanged("roadmap_toc_visible", visible)) return;
+    save();
+}
+
 QJsonObject Config::auditSeverityFilters() const {
     return m_data.value("audit_severity_filters").toObject();
 }

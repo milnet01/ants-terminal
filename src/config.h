@@ -243,6 +243,11 @@ public:
     QString roadmapDensity() const;
     void setRoadmapDensity(const QString &name);
 
+    // ANTS-4415 — roadmap dialog table-of-contents pane visibility.
+    // Missing / non-bool → true (the pane's shipped state).
+    bool roadmapTocVisible() const;
+    void setRoadmapTocVisible(bool visible);
+
     // AuditDialog severity-filter pills. JSON shape:
     //   { "blocker", "critical", "major", "minor", "info" }
     // each value bool. Empty/missing → all 5 on.

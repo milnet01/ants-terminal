@@ -1763,38 +1763,29 @@ RoadmapDialog::parseShippedDates(const QString &changelogPath) {
     return out;
 }
 
-QHash<QString, qint64>
-RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
-    QHash<QString, qint64> out;
-    const QFileInfo fi(roadmapPath);
-    if (!fi.exists()) return out;
+// ANTS-4414 — the blame ARGUMENTS, in one place so the synchronous helper below
+// and the dialog's asynchronous path cannot drift into blaming different things.
+QStringList RoadmapDialog::lastTouchBlameArgs(const QString &fileName) {
+    // --line-porcelain repeats header fields (incl. author-time) for every
+    // source line — easy to index by line number. QProcess pipes already
+    // suppress git's stderr progress, so no --no-progress needed.
+    //
+    // Deliberately NOT -L-restricted to the 🚧 blocks. Measured 2026-08-17 on
+    // this project: whole-file 3.71 s, four -L ranges 3.12 s — 16%. The cost is
+    // history traversal, not line count, so restricting the range buys almost
+    // nothing and costs the ability to blame one file in one call.
+    return {QStringLiteral("blame"), QStringLiteral("--line-porcelain"),
+            QStringLiteral("--"), fileName};
+}
 
-    // One blame call. --line-porcelain repeats header fields
-    // (incl. author-time) for every source line — easy to index by
-    // line number. QProcess pipes already suppress git's stderr
-    // progress, so no --no-progress needed.
-    QProcess git;
-    git.setWorkingDirectory(fi.absolutePath());
-    git.start(QStringLiteral("git"),
-              {QStringLiteral("blame"),
-               QStringLiteral("--line-porcelain"),
-               QStringLiteral("--"),
-               fi.fileName()});
-    if (!git.waitForStarted(2000)) return out;
-    // ANTS-1661 — runs synchronously on the GUI thread; cap the budget at 5 s
-    // (was 30 s) so a slow/large blame can't freeze the dialog for half a
-    // minute on open / Refresh / search-debounce rebuild. Off-thread move via
-    // QtConcurrent is the longer-term fix tracked separately.
-    if (!git.waitForFinished(5000)) {
-        git.kill();
-        return out;
-    }
-    if (git.exitStatus() != QProcess::NormalExit
-        || git.exitCode() != 0) {
-        // Not a git repo, file not tracked, etc. — graceful.
-        return out;
-    }
-    const QByteArray blameOut = git.readAllStandardOutput();
+// ANTS-4414 — the PARSE half, split out of parseLastTouchDates() so the
+// synchronous helper (which tests drive directly) and the dialog's async path
+// share one implementation. A second copy here would be a copy of the block
+// walk, which is the part with the rules in it.
+QHash<QString, qint64>
+RoadmapDialog::lastTouchFromBlame(const QByteArray &blameOut,
+                                  const QString &roadmapPath) {
+    QHash<QString, qint64> out;
 
     // Build a 1-indexed vector of author-times per source line.
     QVector<qint64> lineAuthorTime;
@@ -1867,6 +1858,34 @@ RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
         if (maxTime > 0) out.insert(id, maxTime);
     }
     return out;
+}
+
+QHash<QString, qint64>
+RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
+    QHash<QString, qint64> out;
+    const QFileInfo fi(roadmapPath);
+    if (!fi.exists()) return out;
+
+    QProcess git;
+    git.setWorkingDirectory(fi.absolutePath());
+    git.start(QStringLiteral("git"), lastTouchBlameArgs(fi.fileName()));
+    if (!git.waitForStarted(2000)) return out;
+    // ANTS-1661 capped this at 5 s (was 30 s) because it ran on the GUI thread.
+    // ANTS-4414 moved the DIALOG off this path entirely — startLastTouchRefresh()
+    // is what the dialog calls now, and it blocks on nothing. This synchronous
+    // form survives for the tests that drive it directly and for any caller
+    // that genuinely wants the answer before returning; the budget stays
+    // because such a caller still cannot afford an unbounded blame.
+    if (!git.waitForFinished(5000)) {
+        git.kill();
+        return out;
+    }
+    if (git.exitStatus() != QProcess::NormalExit
+        || git.exitCode() != 0) {
+        // Not a git repo, file not tracked, etc. — graceful.
+        return out;
+    }
+    return lastTouchFromBlame(git.readAllStandardOutput(), roadmapPath);
 }
 
 RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
@@ -1957,6 +1976,21 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     root->addLayout(searchRow);
 
     auto *filterRow = new QHBoxLayout();
+
+    // ANTS-4415 — the contents pane's own switch, first in the row because it
+    // controls the pane immediately below-left of it. Checkable rather than a
+    // two-label toggle: the pressed state IS "the pane is showing", so the
+    // control cannot disagree with what it controls.
+    m_tocToggleBtn = new QToolButton(this);
+    m_tocToggleBtn->setObjectName(QStringLiteral("roadmap-toc-toggle-button"));
+    m_tocToggleBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    m_tocToggleBtn->setText(tr("Contents"));
+    m_tocToggleBtn->setCheckable(true);
+    m_tocToggleBtn->setFocusPolicy(Qt::StrongFocus);
+    m_tocToggleBtn->setAccessibleName(tr("Show or hide the contents pane"));
+    m_tocToggleBtn->setToolTip(tr("Show or hide the table of contents"));
+    filterRow->addWidget(m_tocToggleBtn.data());
+
     // ANTS-1235 — visible label is "Shipped" (not "Done") to align
     // with the rest of the roadmap-format vocabulary; accessibleName
     // is what Orca / NVDA speak, kept terse and verb-led.
@@ -2239,6 +2273,36 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     splitter->setSizes({260, 940});
     root->addWidget(splitter, 1);
 
+    // ANTS-4415 — wire the toggle now the pane it hides exists. setCollapsible
+    // as well as the explicit hide: without it the splitter refuses to drag the
+    // pane below m_toc's 180px minimum, so the handle and the button would
+    // disagree about whether the pane can go away.
+    splitter->setCollapsible(0, true);
+    m_tocVisible = m_config ? m_config->roadmapTocVisible() : true;
+    m_toc->setVisible(m_tocVisible);
+    m_tocToggleBtn->setChecked(m_tocVisible);
+    connect(m_tocToggleBtn.data(), &QToolButton::toggled, this,
+            [this](bool on) {
+        m_tocVisible = on;
+        if (m_toc) m_toc->setVisible(on);
+        if (m_config) m_config->setRoadmapTocVisible(on);
+        // Showing it again has to fill it: rebuild() skips the TOC walk while
+        // hidden, so the pane's contents are whatever the last visible render
+        // left — stale, or empty if it started hidden.
+        //
+        // Dropping the cached HTML is what makes that re-render actually run.
+        // rebuild() returns early when the HTML it just built equals the last
+        // one, and that guard sits BEFORE the TOC block — so with the viewer
+        // unchanged (which is the normal case here, since showing a pane
+        // changes no card) the re-render would skip the very work it was
+        // scheduled for and the pane would come back empty. Caught by
+        // roadmap_toc_toggle's HiddenPaneCostsNothingAndRefillsOnReturn.
+        if (on) {
+            if (m_lastHtml) m_lastHtml->clear();
+            scheduleRebuild();
+        }
+    });
+
     connect(m_toc, &QListWidget::itemActivated, this,
             [this](QListWidgetItem *item) {
                 if (!item || !m_viewer) return;
@@ -2500,7 +2564,29 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     applyPreset(persisted);
 }
 
-RoadmapDialog::~RoadmapDialog() = default;
+// ANTS-4414 — was `= default`, and had to stop being.
+//
+// The last-touch blame is a QProcess parented to this dialog, so ~QWidget's
+// deleteChildren() destroys it. ~QProcess on a RUNNING process kills it and
+// waits — and that wait pumps the finished signal, which reaches a lambda that
+// calls scheduleRebuild() on a dialog whose derived half has already been
+// destructed. Measured as heap corruption inside deleteChildren(), not as a
+// clean null deref, which is what makes it worth this comment: closing the
+// dialog while a blame was in flight aborted the process.
+//
+// Tear it down here, where `this` is still whole: disconnect first so nothing
+// can call back, then kill.
+RoadmapDialog::~RoadmapDialog() {
+    if (m_lastTouchProc) {
+        QProcess *git = m_lastTouchProc;
+        m_lastTouchProc = nullptr;
+        git->disconnect(this);
+        git->kill();
+        // Reap it, so the child does not outlive us as a zombie. Short budget:
+        // the process has already been signalled and this runs on close.
+        git->waitForFinished(2000);
+    }
+}
 
 void RoadmapDialog::closeEvent(QCloseEvent *event) {
     // Size is persisted by DialogChrome on close (D3, "RoadmapDialog"
@@ -2863,14 +2949,75 @@ void RoadmapDialog::refreshShippedDatesIfStale() {
     m_shippedDatesMtime = mtime;
 }
 
+// ANTS-4414 — starts the blame and returns immediately.
+//
+// This used to BE the blame: parseLastTouchDates() ran `git blame` over the
+// whole roadmap synchronously, from rebuild(), on the GUI thread. Measured
+// 2026-08-17 on this project it took 3.71 s of a 3.79 s open, and it ran on
+// every open rather than once, because mainwindow.cpp constructs the dialog
+// with WA_DeleteOnClose — so the mtime guard below was born stale every time
+// and never survived a close.
+//
+// The dates decorate 🚧 cards only (4 of 2,031 items here), so there is nothing
+// to wait for: the dialog renders without them and re-renders when they land.
 void RoadmapDialog::refreshLastTouchDatesIfStale() {
     if (m_roadmapPath.isEmpty()) return;
     const qint64 mtime = QFileInfo(m_roadmapPath).lastModified()
                              .toMSecsSinceEpoch();
-    if (mtime == m_lastTouchDatesMtime
-        && !m_lastTouchDates.isEmpty()) return;
-    m_lastTouchDates = parseLastTouchDates(m_roadmapPath);
+    // m_lastTouchRan and not `!m_lastTouchDates.isEmpty()`: an EMPTY result is
+    // a real answer here — a roadmap with no 🚧 bullets, or a directory that is
+    // not a git repo — and keying the guard on the hash being non-empty means
+    // those two cases never satisfy it, so every render starts another blame.
+    // The synchronous version had the same hole and it cost one re-parse; async
+    // it would be a process storm during a typing burst.
+    if (mtime == m_lastTouchDatesMtime && m_lastTouchRan) return;
+    // One in flight at a time. rebuild() runs on every filter toggle and every
+    // debounced search keystroke, so without this a typing burst would spawn a
+    // blame per keystroke — the ANTS-2012 failure, one layer down.
+    if (m_lastTouchProc) return;
+
+    const QFileInfo fi(m_roadmapPath);
+    if (!fi.exists()) return;
+
+    auto *git = new QProcess(this);
+    m_lastTouchProc = git;
+    git->setWorkingDirectory(fi.absolutePath());
+    // Claim the mtime up front, not on completion. A blame reads the working
+    // tree as it is NOW, so the answer belongs to the file this run saw; a
+    // later edit bumps the mtime and the next rebuild() starts a fresh run.
+    // The public accessor documents itself as the mtime that last TRIGGERED a
+    // refresh, which is what this is.
     m_lastTouchDatesMtime = mtime;
+    m_lastTouchRan = false;
+
+    connect(git, &QProcess::finished, this,
+            [this, git](int code, QProcess::ExitStatus status) {
+        m_lastTouchProc = nullptr;
+        m_lastTouchRan = true;   // answered, even if the answer is "nothing"
+        git->deleteLater();
+        if (status != QProcess::NormalExit || code != 0) {
+            // Not a git repo, file not tracked — the same graceful empty the
+            // synchronous path returns. No re-render: nothing moved.
+            return;
+        }
+        const auto dates = lastTouchFromBlame(git->readAllStandardOutput(),
+                                              m_roadmapPath);
+        if (dates == m_lastTouchDates) return;   // nothing to repaint
+        m_lastTouchDates = dates;
+        // Re-render through the debounce rather than calling rebuild()
+        // directly, so a blame landing mid-typing coalesces with the keystroke
+        // rebuild instead of racing it.
+        scheduleRebuild();
+    });
+    connect(git, &QProcess::errorOccurred, this, [this, git] {
+        m_lastTouchProc = nullptr;
+        // Also "answered". git missing from PATH will not fix itself mid-
+        // session, so retrying on every render would spawn a doomed process
+        // per keystroke. A roadmap edit bumps the mtime and re-arms it.
+        m_lastTouchRan = true;
+        git->deleteLater();
+    });
+    git->start(QStringLiteral("git"), lastTouchBlameArgs(fi.fileName()));
 }
 
 // ANTS-4412 — the honesty half of the collapse. Sixteen visible checkboxes
@@ -3298,7 +3445,11 @@ void RoadmapDialog::rebuild() {
     // anchor indices line up with what renderHtml just emitted.
     // When the active sort reorders sections, the TOC must walk the
     // post-reorder markdown so anchor indices match.
-    if (m_toc) {
+    // ANTS-4415 — skip the whole walk while the pane is hidden. This runs on
+    // every render, not just on open: a filter toggle and each debounced search
+    // keystroke both land here, and populating a widget nobody can see is work
+    // with no observer. The toggle's own handler re-renders when it comes back.
+    if (m_toc && m_tocVisible) {
         const QString prevAnchor =
             m_toc->currentItem()
                 ? m_toc->currentItem()->data(Qt::UserRole).toString()

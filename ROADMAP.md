@@ -31247,6 +31247,92 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-13 (ANTS-4073 review-contract loop 2, both lanes).
 
+- ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
+  Measured 2026-08-17 on this project, after the user reported the dialog
+  "takes quite some time to open".
+
+  `RoadmapDialog::parseLastTouchDates()` runs `git blame --line-porcelain`
+  over the WHOLE of ROADMAP.md synchronously on the GUI thread, from
+  `rebuild()`, on every open. Timed directly: **3.71 s** on a 45,832-line /
+  3.6 MB file. The 5 s budget ANTS-1661 installed is the only thing between
+  that and a longer freeze, and 3.71 s is uncomfortably close to it — past
+  the cap the call is killed and every date silently disappears.
+
+  Three measurements that decide the fix, all taken before changing
+  anything:
+
+  1. **The blame is the whole cost.** The rest of the open path is 75 ms
+     total — loadMarkdown 3 ms (3.59 MB, page-cached), renderCardsHtml
+     57 ms, extractToc 4 ms, setHtml 11 ms, layout 0 ms. Measured by
+     linking a throwaway against build/lib*.a and calling the real
+     statics, not a replica. So ANTS-3863's 3.3 MB read is NOT this
+     bottleneck; it is 3 ms of the 3,790.
+
+  2. **The payload is four cards.** The blame result is consumed only for
+     `- 🚧 [ID]` bullets. This roadmap has 4 in-progress bullets out of
+     2,031. 45,832 lines are blamed to date four cards.
+
+  3. **Restricting the blame to the lines we need does NOT fix it.**
+     `git blame -L` over just the four blocks is 3.12 s against 3.71 s —
+     16%. The cost is history traversal, not line count, so the obvious
+     optimisation is worthless and is recorded here so nobody tries it
+     again.
+
+  What makes it fire on EVERY open rather than once: `mainwindow.cpp` does
+  `new RoadmapDialog(...)` with `WA_DeleteOnClose`, so the in-memory
+  `m_lastTouchDatesMtime` guard is born stale every time and never survives
+  a close.
+
+  Fix is the off-thread move ANTS-1661 named as its long-term half and left
+  undone. Qt6::Concurrent is NOT a dependency of this project, so the route
+  is the async QProcess signals the code already half-uses — drop
+  `waitForFinished()`, parse in the `finished` handler, then re-render. A
+  persistent cache is NOT the fix: blame reflects working-tree state, and
+  every roadmap_log write re-renders ROADMAP.md, so any mtime-keyed cache is
+  busted on essentially every open.
+  Resolved (2026-08-17). refreshLastTouchDatesIfStale() now dispatches an async `git blame` and returns; the dates land later and trigger a re-render through the existing debounce. Dialog open drops from ~3.79 s to ~75 ms on this project.
+
+  Three things the implementation added that the bullet did not anticipate, each from a defect found while building it:
+
+  (a) A DESTRUCTOR. ~RoadmapDialog was `= default`. The QProcess is parented to the dialog, so ~QWidget's deleteChildren() destroys it, and ~QProcess on a RUNNING process kills-and-waits — a wait that pumps the finished signal into a lambda calling scheduleRebuild() on a dialog whose derived half is already gone. It surfaced as HEAP CORRUPTION inside deleteChildren() (SIGABRT, "corrupted double-linked list"), not a clean null deref, and it aborted the existing RoadmapInProgressAge test. The destructor now disconnects, kills and reaps before the base class runs.
+
+  (b) A separate `ran` flag instead of keying the re-run guard on the dates hash being non-empty. An empty hash is a real answer — no in-progress bullets, or not a git repo — so the old condition never short-circuited in either case. Synchronously that cost one wasted re-parse; asynchronously it would have been one process per keystroke.
+
+  (c) The parse half split out as lastTouchFromBlame(), a pure function of (blame output, roadmap file). ANTS-1237's INV-7/INV-8 block-walk rules are now testable without spawning git, which is what the new suite's first test does.
+
+  Tests: tests/features/roadmap_last_touch_async/ (4 tests, test_dialogs bundle). INV-1 is asserted structurally — the hash is empty when the call returns and populated after the event loop — because a timing bound would be flaky and cannot distinguish slow-machine from synchronous. Suite 3550 -> 3559, all green. Docs: docs/specs/ANTS-1237.md carries a dated amendment (its "~175 ms, each session pays once" estimate was wrong 20x and wrong about the caching), and tests/features/roadmap_inprogress_age/spec.md's INV-5 is amended where it named parseLastTouchDates as the function refresh calls.
+  **Layman:** Opening the Roadmap window freezes for about four seconds because it asks git who last edited every line of a 45,000-line file — to put a date on four cards.
+  Kind: perf.
+  Source: user-request-2026-08-17.
+
+- ✅ [ANTS-4415] **The roadmap dialog's table-of-contents pane should be collapsible, and cost nothing while hidden.**
+  User request 2026-08-17: "I have actually barely used the contents on the
+  left pane, can we make that collapsible?"
+
+  The pane is `m_toc`, a QListWidget at index 0 of `roadmap-splitter`
+  (index 1 is the viewer). Wanted: a toggle that hides it, persisted across
+  sessions like `roadmap_density` is, so it stays hidden once chosen.
+
+  The second half is not cosmetic. `rebuild()` clears and repopulates the
+  TOC on EVERY render — not just on open, but on every filter toggle and
+  every search keystroke's debounced rebuild — walking the markdown through
+  `extractToc()` and constructing one QListWidgetItem per entry (245 on this
+  project). While the pane is hidden that work has no observer, so the
+  toggle should skip it outright rather than populate a widget nobody can
+  see. Measured as part of ANTS-4414: extractToc is 4 ms of a 75 ms render,
+  so this is a real but small saving — the user-visible win is the pane
+  itself, and the skip is what keeps a hidden pane honest.
+  Resolved (2026-08-17). A checkable `Contents` QToolButton at the head of the filter row hides and shows the pane; the choice persists through a new Config::roadmapTocVisible() key (absent -> true, the pane's shipped state). splitter->setCollapsible(0, true) so a drag can reach zero past m_toc's 180px minimum, and the handle and the button agree.
+
+  rebuild() skips the whole TOC walk while the pane is hidden — the half that is not cosmetic, since that walk runs per filter toggle and per debounced keystroke, not just on open.
+
+  One defect found by the test rather than by hand, and it would have shipped otherwise: rebuild() returns early when the HTML it just built equals the last one, and that guard sits BEFORE the TOC block. Showing the pane changes no card, so the re-render scheduled by the toggle hit the guard and skipped the only work it was scheduled for — the pane came back permanently EMPTY. Needs exactly the hide-then-show sequence to reproduce. Fixed by dropping the cached HTML in the show branch.
+
+  Tests: tests/features/roadmap_toc_toggle/ (5 tests, test_dialogs bundle), including the invariant that a hidden pane's item count is untouched across a render — the only way to tell a skipped walk from a performed one, since both look identical from outside.
+  **Layman:** Let the contents list on the left of the Roadmap window be hidden, and remember that choice.
+  Kind: ux.
+  Source: user-request-2026-08-17.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).

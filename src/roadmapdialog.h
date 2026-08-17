@@ -313,11 +313,23 @@ public:
     static QHash<QString, qint64>
     parseLastTouchDates(const QString &roadmapPath);
 
+    // ANTS-4414 — the two halves parseLastTouchDates() was split into, so the
+    // synchronous form above and the dialog's asynchronous path share one
+    // argument list and one parser rather than drifting apart.
+    static QStringList lastTouchBlameArgs(const QString &fileName);
+    static QHash<QString, qint64>
+    lastTouchFromBlame(const QByteArray &blameOut, const QString &roadmapPath);
+
     // ANTS-1237 — refresh m_lastTouchDates from m_roadmapPath when
     // its mtime has changed since the last call. Public (diverges
     // from `refreshShippedDatesIfStale` which is private) so the
     // feature test can drive it directly. Idempotent and cheap
     // when mtime is unchanged. See spec § 3.a.3.
+    //
+    // ANTS-4414 — now STARTS the blame and returns; it no longer holds the GUI
+    // thread for the 3.71 s the blame takes on this project. The hash is
+    // populated when the process finishes and the dialog re-renders itself.
+    // A test wanting the value synchronously should call parseLastTouchDates().
     void refreshLastTouchDatesIfStale();
 
     // ANTS-1237 INV-5 test hook — returns the file mtime
@@ -325,6 +337,25 @@ public:
     // refresh. -1 before the first refresh.
     qint64 lastTouchDatesMtime() const noexcept {
         return m_lastTouchDatesMtime;
+    }
+
+    // ANTS-4414 test hooks. The async move made "has the answer arrived yet?"
+    // the whole question, and none of it was observable: the hash had no
+    // accessor and the in-flight process none either, so a test could not tell
+    // a non-blocking refresh from a blocking one. Siblings of the mtime hook
+    // above, which ANTS-1237 added for the same reason.
+    const QHash<QString, qint64> &lastTouchDates() const noexcept {
+        return m_lastTouchDates;
+    }
+    bool lastTouchBlameInFlight() const noexcept {
+        return !m_lastTouchProc.isNull();
+    }
+    // Re-arms the guard so a test can observe a dispatch it owns, rather than
+    // racing the one the constructor's first rebuild() already started.
+    void resetLastTouchForTest() {
+        m_lastTouchDates.clear();
+        m_lastTouchDatesMtime = -1;
+        m_lastTouchRan = false;
     }
 
     // ANTS-1235 — return the screen-reader-readable label
@@ -575,6 +606,12 @@ private:
     QPointer<class QToolButton> m_statusFilterBtn;
     QPointer<class QToolButton> m_kindFilterBtn;
     QPointer<class QToolButton> m_resetFiltersBtn;
+    // ANTS-4415 — the contents pane's switch, and the state it drives.
+    // m_tocVisible is held rather than read back from m_toc->isVisible()
+    // because a widget inside a not-yet-shown dialog reports false regardless,
+    // which would make the first rebuild() skip a pane the user wants.
+    QPointer<class QToolButton> m_tocToggleBtn;
+    bool m_tocVisible = true;
     // Recomputes both buttons' text and the reset button's enabled state
     // from the live checkboxes. A collapsed control that hides WHY the
     // list is short is worse than the busy row it replaces, so this is
@@ -607,6 +644,17 @@ private:
     // first refresh.
     QHash<QString, qint64> m_lastTouchDates;
     qint64 m_lastTouchDatesMtime = -1;
+    // ANTS-4414 — the in-flight blame, or null. Non-owning: the QProcess is
+    // parented to this dialog and deleteLater()s itself on finish, so closing
+    // the dialog mid-blame destroys it with the parent. Guards against
+    // rebuild() — which fires per filter toggle and per debounced keystroke —
+    // starting a second blame while the first is still running.
+    QPointer<class QProcess> m_lastTouchProc;
+    // ANTS-4414 — has a blame COMPLETED for m_lastTouchDatesMtime? Distinct
+    // from m_lastTouchDates being non-empty, because "no 🚧 bullets" and "not a
+    // git repo" are both real answers that produce an empty hash, and a guard
+    // keyed on the hash would re-run forever on either.
+    bool m_lastTouchRan = false;
     // ANTS-2012 — collectCurrentBullets() shells out to `git log` (blocking).
     // rebuild() runs per search keystroke, so cache the external signals with
     // a short TTL to kill the per-keystroke git jank (mutable: filled from a

@@ -29,11 +29,24 @@ These mirror `docs/specs/ANTS-1237.md` § 4. IDs are qualified
   (<14·86400, N∈[2,13]), `Nw ago` (<60·86400, N∈[2,8]),
   `Nmo ago` (<365·86400, N∈[2,12]), `Ny ago` (otherwise, N≥1).
   `1d ago` / `1w ago` / `1mo ago` are unreachable.
-- **ANTS-1237-INV-5.** `refreshLastTouchDatesIfStale` re-runs
-  `parseLastTouchDates` only when ROADMAP.md's mtime
-  (ms-resolution) differs from `m_lastTouchDatesMtime`. Public
-  `lastTouchDatesMtime()` accessor exposes the cache mtime for
-  observation.
+- **ANTS-1237-INV-5.** `refreshLastTouchDatesIfStale` re-runs the blame only
+  when ROADMAP.md's mtime (ms-resolution) differs from
+  `m_lastTouchDatesMtime`. Public `lastTouchDatesMtime()` accessor exposes the
+  cache mtime for observation.
+
+  **Amended by ANTS-4414 (2026-08-17).** This read "re-runs
+  `parseLastTouchDates`", and that is no longer the function it calls:
+  `refreshLastTouchDatesIfStale` now dispatches an asynchronous `git blame` and
+  returns, because the synchronous call was 3.71 s of a 3.79 s dialog open on
+  the Ants roadmap. The mtime rule above is unchanged and still what this suite
+  asserts. Two consequences for a reader of this file:
+  `lastTouchDatesMtime()` reports the mtime a refresh was **dispatched** for,
+  not one it completed for (which is what its own doc comment always said);
+  and the re-run guard is now a separate "ran" flag rather than the dates hash
+  being non-empty, since an empty hash is a real answer. The async contract is
+  `tests/features/roadmap_last_touch_async/spec.md`; the synchronous
+  `parseLastTouchDates` this suite drives directly is unchanged and still
+  budget-capped.
 - **ANTS-1237-INV-6.** `parseLastTouchDates` returns an empty
   `QHash` on every failure path: not a git repo, file not
   tracked, git not on PATH, file does not exist, or blame stdout
