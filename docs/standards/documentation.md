@@ -337,7 +337,12 @@ because neither passage cited the other.
 
 **A "What checks this" row about machinery another document owns cites
 that document, never restates its coverage.** This is the same rule
-applied to the one place it kept being missed, and it is worth stating
+applied to the one place it kept being missed. **"Another document" means one
+that states its own coverage answer — a sibling standard, a format standard.
+A check catalogue is machinery, not an answer**, so a row naming a
+`check-doc-facts` check writes the named-check form § 2.9 requires and does
+not point. Scoped 2026-08-17: unscoped, this rule and § 2.9 prescribed
+different rows for the same rule. It is worth stating
 separately because such a row does not read like a copy — it reads like
 a helpful summary, written once, by whoever wrote *this* document, about
 machinery owned by a *different* one. Nothing re-reads it when the
@@ -565,9 +570,14 @@ failing — not by how firmly it is written.
 
 **Every standard, reference and spec carries a `## What checks this`
 section** as its last content section: one table, each rule against what
-catches a breach. (A spec numbers it, per the note below; `spec-format.md` § 3.12 delegates the
-*cell forms* here and adds two rules of its own — how a spec's rows are keyed,
-and that a spec numbers the section — so read that section too.)
+catches a breach. **A `## Cold-eyes loop log` sits after it** and does not
+displace it — a loop log is a record rather than content, which is why § 9.1
+puts it at the end of the document. Stated 2026-08-17; two cold readers in
+one loop could not tell which section went last. (A spec numbers it, per the
+note below. `spec-format.md` § 3.12 delegates **all** of the table's rules
+back here — the cell forms, which rules are owed a row, and why a wrong row is
+worse than a missing one — and shows a worked spec table. It states no rule of
+its own. This said it adds two until 2026-08-17.)
 
 Each right-hand cell says one of four things and never blurs them: a
 **named check**; **`nothing`** in bold plus why; **`Partial:`** a named check
@@ -833,11 +843,14 @@ tell whether to trust it even when it is out of date.
 
 **A document is not finished until the deterministic checks have run
 over it** — links, paths, quoted fragments, census counts, required
-sections. Not once it reaches a reviewer: **before it is called done.**
+sections, `§` pointers. Not once it reaches a reviewer: **before it is called
+done.**
 
 **`check-doc-facts` is what runs them**, and naming it here is the point of
 this paragraph: the `pre-commit` hook below **overlaps that list rather than
-being a subset of it**. `path` and `section` sit on the list above; the rest —
+being a subset of it**. `path` and `section` sit on the list above — `section`
+against `section-exists`, **not** `sections`, which is the different check for
+a *required* section being present. The rest —
 deleted text surviving elsewhere, tool grants, citations to renamed paths,
 unresolved provenance ids, and **every** table's row shape — are this
 repository's own. **`check-doc-facts` has no general table check.** Its
@@ -849,8 +862,8 @@ a clean `check-doc-facts` run as covering the hook, and so dropping the
 survivor class, which the § 2.1 row below names as its only catcher. A commit that passes **this repository's** hook has had
 **every blocking class the table below lists** run over it — and its quoted
 fragments and census counts not checked at all — **and, where the staged file
-is under `docs/` or `skeleton/files/`, not the three classes whose `Skips`
-column excludes it either.** **A project scaffolded from
+is under `docs/` or `skeleton/files/`, not the classes whose `Skips` column
+excludes it either.** **A project scaffolded from
 the skeleton has fewer**: that copy carries `survivor` and a `link` class,
 for the reason given below. **`link` is not `path`** — the paragraph below the
 table says how they differ. Scoped 2026-08-14 (ROADMAP CFG-0107) — this
@@ -941,14 +954,16 @@ nothing**, and that is a fourth shape beside the three below. It is left
 unhandled on purpose: the scope rule that would admit it cannot be written
 without admitting real breaches too, and rewording costs one sentence.
 
-**These classes are this repository's own and are deliberately not in the
-skeleton** — `allowed-tools`, `citation`, `section`, `roadmap-id` and `table`.
-`allowed-tools` (CFG-0065) generalises nowhere, since grant lists are a Claude
-Code convention rather than a documentation one. `citation` (CFG-0067),
-`section` (CFG-0023), `roadmap-id` and `table` (both CFG-0129) are out for
-CFG-0028's reason: each is measured here and nowhere else, and an unmeasured
-check shipped to every new project is the warning channel in a different
-costume.
+**Every class the table lists except `survivor` is absent from the skeleton,
+and each is absent on purpose.** `allowed-tools` (CFG-0065) generalises
+nowhere, since grant lists are a Claude Code convention rather than a
+documentation one. `citation` (CFG-0067), `section` (CFG-0023), `roadmap-id`
+and `table` (both CFG-0129) are out for CFG-0028's reason: each is measured
+here and nowhere else, and an unmeasured check shipped to every new project is
+the warning channel in a different costume. **`path` is absent too**, and it
+is the one with a substitute rather than a gap — the skeleton ships the weaker
+`link` class in its place. This named five classes until 2026-08-17 and read
+as the complete set, so `path` looked already shipped.
 
 **The skeleton copy carries `survivor` and a `link` class of its own.** The
 `link` class fires on a markdown link target that does not resolve. **It is
@@ -1015,8 +1030,10 @@ made an earlier version unusable.
 fix that adds a structure — a table, a section, a list — is checked as
 that structure, not merely swept for stale references. In the same run,
 a repair introduced a table whose first row named a check that does not
-exist; the existing table-integrity check would have said so
-immediately, and it was never pointed at the new table.
+exist; `check-doc-facts`' `what-checks-this` check resolves every name a
+cell gives, and it was never pointed at the new table. That check takes
+only the `What checks this` table, so this works for that one structure
+and for no other.
 
 ### 9.1 The gate
 
@@ -1091,6 +1108,7 @@ is a process failure, not a review success.**
 | §9.0 checks run before done | **`Partial:`** the `pre-commit` hook blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
 | `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). This row read "the parsers that read them" until 2026-08-14, where `changelog-format.md` says nothing validates a `CHANGELOG.md` at rest |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
+| §3.1 / §3.3 filename form | **nothing** — the ID prefix and the `SHOUTING.md` / `lowercase-kebab.md` split are both greppable, so this is a check worth adding |
 | §2.1 one fact one home | **`Partial:`** the `pre-commit` hook's survivor class (§9.0) blocks when a change deletes text that still exists in another tracked `*.md` **outside `docs/`** — so it catches the copy you *edited past*, only at the moment you edit it, and **never a copy living in a spec, plan or ADR.** Nothing finds a rule sitting in two documents that nobody is touching: a cold read sees "these two passages disagree" within one document only, and **a rule copied into a second document is invisible to a single-document review** unless that document is in the review's packet. `review-contract-set` owns that half and is **live since 2026-08-14** — but it is a review, not a check, so this row stays `Partial:` |
 | §2.2 the claim is *true* | **nothing** — resolution proves a symbol exists, not that the description of it is right |
 | §2.7 nothing documented before it ships | **nothing** — forward-reference versus defect is a judgement |
@@ -1116,4 +1134,5 @@ says about it is true.
 | 5 | 2026-08-14 | 1, cold — identical brief, packet rebuilt from disk with the § 3.5.1 window loop 4 had left empty now cut by its real heading level | 0 | 3 | 0 | n/a | **Three verified, three fixed, one dismissed.** **One of the three is loop 4's own collateral, and it is the shape 4a-min exists to stop:** loop 4 rewrote § 2.9 to require a cell to *name the check and say what kind it is*, and left five rows of this document's own table giving a bare kind — `structural check against the format standard`, `loop-log tally check`. The rule indicted its own instances for a loop. All five now name a `check-doc-facts` sub-check. **§ 9.0 called the hook "a *blocking subset*" of the six-item deterministic list, and it is not a subset of it:** two of the five classes are on that list and three — survivor, allowed-tools, citation — appear on no `check-doc-facts` list at all, so a clean run there reads as covering the hook and drops the survivor class, which the § 2.1 row names as its only catcher. Now stated as an overlap. **Third: the hook's header claims this section delegates the hook's scope to it**, while this section says to read the table — two homes for one rule, so a sixth class would be added to the header and this table left stale. The table is now stated as the home. **Dismissed, and the direction is the point:** a lane reported the `survivor` row's `docs/` skip as unsupported by the hook header. The row is **correct** — `git grep … ':!docs/'` is in the implementation at the survivor class — and the *header* is wrong, calling the exclusions "two, both measured, neither optional" where there are three. Right defect, wrong location; the header is a code-side item, not a change to this document. **Packet: the § 3.5.1 window was repaired and both this loop and the last confirmed § 3.3's attribution against it.** A second packet defect was reported and is real — the "class definitions / pathspecs" block matched only the hook's comment header, so no cell of the § 9.0 table was corroborable from the packet on either loop. |
 | 6 | 2026-08-17 | 3, cold — genre pinned `standard`, first loop of a new run, gating the CFG-0129 edits. Packet carried both hooks' class comments verbatim, the skeleton hook's link regex, and `check-doc-facts`' complete catalogue heading list | 6 | 1 | 0 | n/a | **Seven verified, seven fixed; two more fixed in the hook.** **All three lanes independently found four of the seven**, and the worst is a class named for a class it is not. § 9.0 told a scaffolded project its hook carries `path`; `skeleton/files/.githooks/pre-commit` carries a **`link`** class extracting markdown link targets only — and the paragraph below the table says those two differ *in both directions*. So a conformer left a bare `~/.claude/…` path unchecked believing it was caught, and reworded a plain `](docs/x.md)` link believing it was not. **The CFG-0129 edit added a rule and then broke it three lines later.** It wrote *"no sentence here counts them"* and left *"Three of the five"* and *"two of the five"* standing, both stale at seven classes, both breaching § 2.8 item 3 — *never summarise a structure you are standing next to* — in the document that states it. A third count survived in prose: *"the three that read the staged file"*, where the table's `Reads` column names five. `roadmap-id` and `table` read the staged file and do **not** skip `docs/`, verified against the implementation's guards, so a spec's tables and provenance ids are checked where the prose said nothing fires. **Two What-checks-this rows cited checks that do not do the job.** § 2.8 length pointed at `check-doc-facts` `size`, **dropped 2026-08-10** — the row is now `nothing`, per this document's own *a wrong row is worse than a missing one*. § 2.9 required-sections pointed at `structure`, which is fences, id gaps and parse; the check is `sections`. **A third overlap claim was false in the same direction**: `table` was named as sitting on `check-doc-facts`' list, and that catalogue has no general table check — only `what-checks-this`, scoped by its own name. A project without this repo's hook read a clean run as covering table integrity, which is the exact reverse error the paragraph says it was rewritten to prevent. **Blast radius, both collateral of the same commit and both fixed here:** the hook's header still enumerated *"the other four"* and claimed the failure message *"names all five"* when it names seven — the undercount § 9.0 predicts of a header that enumerates — and the `roadmap-id` comment claimed its check ships in `skeleton/files/.githooks/`, where no such copy was ever shipped. **One fix reintroduced the defect it was removing** and was caught before commit: the replacement for *"Three of the five"* opened *"Five classes are…"*. Filed rather than fixed: four other live documents cite the dropped `size` check, one of them a size gate resting entirely on it. Two lane open questions settled as non-findings — classes 6 and 7 do carry per-class measurements, and `check-doc-facts` exposes no `size` observation outside its catalogue. |
 | 7 | 2026-08-17 | 3, cold — identical brief, packet rebuilt from disk and carrying the hook's failure-message class list, its `docs/` guards read from the implementation, and `checks.md`' entries for `structure`, `sections` and the dropped `size` | 2 | 5 | 1 | n/a | **Eight verified, eight fixed. Not one dismissed.** **All three lanes independently found two**, and one of them is loop 6's own fix — the pattern this log has recorded in every multi-loop run. Loop 6 replaced *"it is two of the five"* with *"the two carrying it are `path` and `section`"*, which is the same prose count of the table it was deleting, three lines below the rule forbidding one. **The other unanimous finding is older and worse**: *"`.githooks/pre-commit`'s header records the measurement for each"* was false — every class carries its measurement in its own comment at the point it is implemented, verified across all seven. Someone adding a class would have written it into the header, which is precisely the enumeration drift the header was corrected on 2026-08-17 to stop. **Two lanes found the table failing this section's own instruction.** The staged-file `docs/` / `skeleton/files/` skip lived only in a prose bullet while §9.0 says *"Read the table, not a paragraph"* and *"an omission has to show as an empty cell rather than as a sentence nobody wrote"* — and `survivor`'s cell already carried a `docs/` entry meaning the other thing. The three cells now carry it, spelled *a staged file under…* so the two senses stay distinguishable. Its knock-on, also found by two lanes: *"every blocking class the table below lists run over it"* is false for a staged file under `docs/`, where three classes never run — the same false assurance that was scoped out for scaffolded projects in 2026-08-14 and left live for this repo. **Two What-checks-this rows over-credited their checks**, one of them loop 6's: §9.1 credited `loop-log` with detecting the log's *presence*, which that check does not do — its two halves are the outcome cell and the tally, and presence is `sections`. And two rows named a check without its kind, against §2.9's own rule; one was loop 6's `sections` row. **One collision had two right answers**: §2.1 requires a row about another document's machinery to point and stop, §2.9 requires `Partial:` wherever coverage is incomplete, and §2.9's list calls the forms exclusive. §2.9 now says to write the `Partial:` and cite inside it. **The Q3 is this standard breaching its own anti-pattern** — §9.0's rule had no row at all, while §10 forbids *"a rule with nothing checking it and no row admitting so"* and §9.0 itself says passing the hook does not satisfy it. **One fix broke the table it was fixing**: three `Skips` edits dropped the leading cell separator, caught by running the hook's own `table` class before committing. Two lane open questions settled as non-findings — `spec-format.md` § 3.12 delegates the cell forms rather than restating them, and no `size` observation exists outside the catalogue. |
+| 8 | 2026-08-17 | 3, cold — identical brief, packet rebuilt from disk and now carrying `loop-log`'s real scope, `standard-skeleton.md`'s required sections, and `spec-format.md` § 3.12's delegation sentence | 2 | 5 | 1 | n/a | **Eight verified, eight fixed. Cap reached (3 for a standard); the run files its tail and exits.** **All three lanes found the same two, and both were loop 7's own fixes** — the third consecutive loop where that is the largest class, and the third consecutive loop where a count reappeared in the sentence written to remove one. Loop 7 replaced *"the three that read the staged file"* with *"not the three classes whose `Skips` column excludes it either"*. And loop 7's repair of the skeleton paragraph named five classes as absent from the skeleton while `path` is absent too — so after the correction `path` sat in neither list, and someone porting the hook would have left it unported believing it already shipped. That is the same class of defect the loop-6 fix was written to remove, one indirection further out. **The Q1 with the widest reach is a check named for its neighbour.** `path` and `section` were said to sit on `check-doc-facts`' list; `section` fires on a dead `§ N.N` pointer, which is the catalogue's `section-exists` — while `sections`, the check on that list, is *required sections present*. Two different checks, adjacent names. A session reading a clean run as covering the hook would have dropped the `section` class. The section adjacent to this one had already been bitten by the same genus a loop earlier, when a row named `structure` for `sections`' job. **The second Q1 came from settling a lane's open question rather than from a finding**: this document said `spec-format.md` § 3.12 *"adds two rules of its own"*, and § 3.12 delegates every rule back here and states none. **Two more contradictions, one of them loop 7's incomplete fix.** § 2.1 tells a row about another document's machinery to point and stop, and § 2.9 requires a named check — loop 7 settled only the `Partial:` half, so a row naming a `check-doc-facts` check still had two right answers; § 2.1 now scopes *another document* to one that states a coverage answer, which a check catalogue does not. And § 9.0 still said *"the existing table-integrity check"* unqualified, three hundred lines below the sentence recording that there is no general one. **The Q3 is the filename rules**: § 3.1 and § 3.3 are mechanically decidable and had no row at all, which § 10 forbids by name — the same shape as loop 7's § 9.0 finding, in a different section. **Also fixed**: two lanes independently could not tell whether `## What checks this` or the loop log goes last, § 2.9 requiring the first *"as its last content section"* while § 9.1 puts the second at the end of the document. Filed rather than fixed: `check-doc-facts`' `what-checks-this` entry still says § 2.9 has three cell forms and encodes them, where § 2.9 has four (CFG-0136) — it would flag a conforming pointer row, in the bucket callers act on without re-verifying. |
 <!-- MIRROR END -->
