@@ -28378,6 +28378,58 @@ against current source before filing.
   **Layman:** Record who changed each roadmap field and when, so the edit history has no gaps once the tools write to the database.
   Kind: implement.
   Source: in-session-2026-08-04 (ANTS-3809 cold-eyes loop 1, lane A).
+  Spec accepted (2026-08-17): docs/specs/ANTS-3822-consumer-write-history.md.
+  Gate converged at its 2-loop cap — 6 cold lanes, 18 verified findings, 18
+  fixed, no deferred tail. 261 -> 497 lines.
+
+  **This bullet's "Blocked by ANTS-3809" line is STALE — ANTS-3809 shipped.**
+  That is what unblocked this item, and the same shipping answered two of the
+  three open questions the bullet raised: `RoadmapWrite::commitAndRender()` wraps
+  every op in one store transaction, so a `dry_run` writes no history (it rolls
+  back already) and a rolled-back `seq` is not burned (the rows roll back with
+  the item change). Neither needed a decision in the end.
+
+  The third — "what counts as one revision when one op writes body plus five
+  re-derived trailer columns?" — was already answered by
+  `roadmap-data-model.md` § 6, which defines the record as "one row per field
+  change". Six rows, one revision, keyed `(item_pk, changed_at)`.
+
+  **What the gate found that the bullet did not anticipate, and what makes this
+  more than a hook-up job:**
+
+  (a) § 2.1's own worked example is unbuildable by the handler. Five of the six
+  columns are written by `rcdetail::rlDeriveTrailerColumns()`
+  (`src/remotecontrol_internal.h`), shared by three call sites, with no parameter
+  for the stamp, the `seq` cursor or the skip count. Without a carrier the
+  trailer rows go unwritten (one row for an `amend_body`) or land under a SECOND
+  stamp, splitting one write into two revisions — which breaks the last-touch
+  reader this item exists to unblock. § 2.3.1 names a `HistoryContext`; threading
+  it is a signature change three call sites bind to.
+
+  (b) A revision could land PARTIALLY. `appendHistory()` checks the cap per row,
+  so a long `old_value` can be refused while a shorter later row for the same
+  item still fits, leaving a revision holding some of its fields under a § 2.1
+  that defines one as its member rows. The op now sums its rows and asks once.
+
+  (c) The cap is not injectable on the verb path — `storeFor()`
+  (`src/roadmapsource.cpp`) hard-codes `kDefaultHistoryCapBytes` — while the
+  response envelope is built only by the handler. So the invariant guarding
+  INV-14's "fails AND reports" could be made neither red nor green. § 2.3.2 gives
+  `storeFor()` an optional cap; the argument is ANTS-3756's own INV-14, which
+  already refuses a cap reachable only in production.
+
+  (d) A cap refusal must NOT abort the op; every other `appendHistory()` failure
+  must. All three loop-1 lanes found that stated as one unqualified rule, which
+  reads as "swallow everything" — losing a revision silently while reporting a
+  successful write. Two branches now, plus INV-8, because the dangerous branch
+  had no test.
+
+  Surface changes the spec names, none of them local: `historyWouldExceedCap()`
+  on RoadmapStore, `HistoryContext`, `rlDeriveTrailerColumns()`'s signature,
+  `storeFor()`'s optional cap. Tests: `tests/features/roadmap_write_history/`
+  (INV-1..6, INV-8) plus an extension to `roadmap_export_roundtrip` for INV-7.
+
+  Ready for an implementer.
 
 - ✅ [ANTS-3823] **`bad_op_combo` is used 23 times and documented nowhere.**
   `grep -o 'bad_op_combo' src/remotecontrol.cpp src/claudeintegration.cpp |
