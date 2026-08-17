@@ -1,6 +1,27 @@
 # ANTS-3863 — dispatch before reading, so a migrated project never loads its `ROADMAP.md` body to dispatch
 
-**Status:** spec draft (2026-08-08).
+**Status:** accepted (2026-08-08) — rule-14 gate run to its 3-loop cap,
+converged, nothing verified left unfixed and no deferred tail. Ready to
+implement; no further review gate is owed.
+
+<!--
+ANTS-3863: this line read "spec draft (2026-08-08)" until 2026-08-17, while the
+review-loop log at the foot of this file recorded three completed cold-eyes
+loops closing that same day. A session picking the item up read the status,
+applied CLAUDE.md rule 14 ("a contract document runs through review-contract
+before anyone builds under it"), and stopped — correctly, on the evidence it
+had. The gate had in fact run.
+
+Corrected to the sibling convention (see ANTS-3793 and ANTS-3808, both
+"accepted (2026-08-04) — …"). No new gate is owed for this edit: it makes the
+header agree with the log already in the document, and the gate whose absence
+it implied is the one that demonstrably ran.
+
+Worth noting that loop 3 listed "a stale `Status:` date" among its own MEDIUM
+findings — so this field has drifted here before, and the drift is what a
+reader keys on first.
+-->
+
 **Kind:** refactor.
 **Source:** ROADMAP.md ANTS-3863 (split from ANTS-3815 § 6 by user decision,
 2026-08-07; scope confirmed by the user the same day after the call-site
