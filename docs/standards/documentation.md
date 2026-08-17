@@ -576,8 +576,11 @@ puts it at the end of the document. Stated 2026-08-17; two cold readers in
 one loop could not tell which section went last. (A spec numbers it, per the
 note below. `spec-format.md` § 3.12 delegates **all** of the table's rules
 back here — the cell forms, which rules are owed a row, and why a wrong row is
-worse than a missing one — and shows a worked spec table. It states no rule of
-its own. This said it adds two until 2026-08-17.)
+worse than a missing one — and shows a worked spec table. **Its one addition
+is spec-side: rows are keyed by `INV-N`, or by a section number for a
+non-invariant rule.** This said it adds two until 2026-08-17, then that it
+states none until later the same day; the second of its two was the numbering
+rule, which this section already owns two paragraphs down.)
 
 Each right-hand cell says one of four things and never blurs them: a
 **named check**; **`nothing`** in bold plus why; **`Partial:`** a named check
@@ -621,7 +624,10 @@ value is being trustable without re-deriving it.
 
 An unchecked rule recorded as unchecked gets fixed. An unchecked rule
 left silent reads as covered. **The `nothing` rows are the document's
-honest error budget — watch the count fall.**
+honest error budget — watch their share of the table fall.** The share,
+never the raw count: splitting a blurred row into two is what the cell-form
+rule above requires, and it raises the count while moving nothing. This said
+*watch the count fall* until 2026-08-17.
 
 In a standard or reference this section is **unnumbered**, so adding it
 to an existing document renumbers nothing and every cross-reference
@@ -1030,8 +1036,12 @@ made an earlier version unusable.
 fix that adds a structure — a table, a section, a list — is checked as
 that structure, not merely swept for stale references. In the same run,
 a repair introduced a table whose first row named a check that does not
-exist; `check-doc-facts`' `what-checks-this` check resolves every name a
-cell gives, and it was never pointed at the new table. That check takes
+exist; `check-doc-facts`' `what-checks-this` check resolves the names a cell
+gives for things that exist — a skill, a hook, a command, a verb — and it
+was never pointed at the new table. **It does not resolve a sub-check name
+inside `check-doc-facts`**, which is how three cells of `spec-format.md`
+naming a check dropped on 2026-08-10 survived a week. This said it resolves
+*every* name a cell gives, until 2026-08-17. That check takes
 only the `What checks this` table, so this works for that one structure
 and for no other.
 
