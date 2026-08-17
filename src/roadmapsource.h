@@ -61,9 +61,20 @@ inline constexpr int kItemCeiling = 3500;
 // RemoteControl or RoadmapDialog is not reachable from § 6's bundle. The
 // wrapper still OWNS the decision — it is the only caller — but the decision is
 // testable on its own.
+// ANTS-3822 § 2.3.2 — `historyCapBytes` is injectable, defaulted to production.
+//
+// Not a testing convenience: without it the history cap is reachable only BELOW
+// this function, while the response envelope carrying `history_note` is built
+// only ABOVE it, so the invariant guarding INV-14's "fails AND reports" could be
+// made neither red nor green — the only honest route being 250 MiB of real
+// history. ANTS-3756's INV-14 already refuses that trade for its own legs, which
+// is why the store takes the bound as a constructor parameter; this passes the
+// same choice one layer up. Defaulted, so no existing caller changes.
 std::unique_ptr<RoadmapStore> storeFor(const QString &defaultPath,
                                        ReadError *why,
-                                       QString *error = nullptr);
+                                       QString *error = nullptr,
+                                       qint64 historyCapBytes =
+                                           RoadmapStore::kDefaultHistoryCapBytes);
 
 // The records a consumer would have got from parsing this project's rendered
 // markdown, sourced from the store instead. Document order (§ 2.1.3), in the

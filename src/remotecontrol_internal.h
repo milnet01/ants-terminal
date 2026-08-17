@@ -159,7 +159,80 @@ bool rcRoadmapIdLess(const QString &a, const QString &b);
 QString rcExtractGateNote(const QString &body);
 bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, const QString &err);
 bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QString &err, const RoadmapRender::Outcome &outcome);
-bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, QString *error);
+// ANTS-3822 § 2.3.1 — one operation's history state, created at the top of
+// mutate() and threaded through everything that writes an item column.
+//
+// It exists because the six rows of § 2.1's worked example (a body plus five
+// re-derived trailer columns) are written from TWO places: the handler sets
+// status/body directly, and rlDeriveTrailerColumns() below sets the rest. That
+// helper is shared by three call sites and had no way to receive the stamp, so
+// without a carrier the trailer rows either go unwritten — one row for an
+// amend_body, when § 2.1 requires six — or land under a SECOND stamp, splitting
+// one write into two revisions and breaking the last-touch reader ANTS-3822
+// exists to unblock.
+//
+// Rows are COLLECTED and flushed once, never written as they are recorded.
+// § 2.3: the store's cap predicate is per row, so writing eagerly lets a long
+// old_value be refused while a shorter later row for the same item still fits,
+// leaving a revision holding some of its fields and claiming all of them.
+struct HistoryContext {
+    struct Row {
+        qint64  itemPk = 0;
+        QString field;
+        // Null (not empty) where the column held or holds nothing: appendHistory()
+        // binds a null QVariant on isNull(), and ANTS-3761's column diff reads
+        // '' and NULL as different values.
+        QString oldValue, newValue;
+    };
+
+    QString        changedAt;      // § 2.5 — one stamp for the whole op
+    QVector<Row>   pending;
+    int            skippedRows = 0;   // what history_note reports
+
+    void record(qint64 itemPk, const QString &field,
+                const QString &oldValue, const QString &newValue) {
+        pending.push_back({itemPk, field, oldValue, newValue});
+    }
+    qint64 pendingBytes() const {
+        qint64 n = 0;
+        for (const Row &r : pending)
+            n += r.field.size() + r.oldValue.size() + r.newValue.size();
+        return n;
+    }
+};
+
+// ANTS-3822 § 2.5 — one operation's changed_at, in the shape the history DDL's
+// CHECK ... GLOB pins (YYYY-MM-DDThh:mm:ssZ). Deliberately the SAME expression
+// the migration's stamp uses (remotecontrol_roadmap_migrate.cpp), so the two
+// producers of history rows cannot format one column two ways; verified against
+// the GLOB rather than assumed.
+QString rlHistoryStamp();
+
+// ANTS-3822 § 2.3 — write the op's collected rows, or none of them.
+//
+// Asks historyWouldExceedCap() ONCE for the whole batch. Over the cap: writes
+// nothing, sets hist.skippedRows, and returns TRUE — the item write stands and
+// the op reports success with a history_note, because an audit trail that takes
+// the roadmap down with it is the opposite of an audit trail.
+//
+// Returns FALSE only on a failure that is NOT the cap (a constraint violation, a
+// closed database), which aborts the op. Both branches are required: swallowing
+// the second is the silently-dropped revision INV-14 forbids, and refusing on
+// the first turns a full table into a broken roadmap.
+bool rlFlushHistory(RoadmapStore &store, HistoryContext &hist, QString *error);
+
+// ANTS-3822 § 2.3.1 — attach `history_note` when the flush skipped rows, and
+// nothing at all otherwise (absent, never empty).
+//
+// A helper rather than three spellings of the key: the note is a response-
+// envelope contract that the feature test and any MCP consumer bind to, and
+// three sites each formatting their own string is how they stop agreeing. The
+// count is of ROWS — § 2.3.1 pins the unit, because § 2.1 makes "revision" a
+// group of rows and the same capped amend_body is 1 revision, 1 item or 6 rows.
+void rlAttachHistoryNote(QJsonObject &env, const RoadmapStore &store,
+                         const HistoryContext &hist);
+
+bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, HistoryContext *hist, QString *error);
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
 qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &projectRoot, const QString &prefix);

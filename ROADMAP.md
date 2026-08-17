@@ -28360,7 +28360,7 @@ against current source before filing.
   Kind: chore.
   Source: in-session-2026-08-04 (ANTS-3809 spec grounding).
 
-- 📋 [ANTS-3822] **Consumer writes should append a `history` row, not just change the column.**
+- ✅ [ANTS-3822] **Consumer writes should append a `history` row, not just change the column.**
   `RoadmapStore::appendHistory()` + `maxHistorySeq()` exist and ANTS-3756
   INV-14 governs the cap, and ANTS-3765's migration writes history rows.
   ANTS-3809's eight write ops change item columns via `setItemField()` and
@@ -28430,6 +28430,55 @@ against current source before filing.
   (INV-1..6, INV-8) plus an extension to `roadmap_export_roundtrip` for INV-7.
 
   Ready for an implementer.
+  Resolved (2026-08-17). Consumer writes now append history rows. Suite 3559 ->
+  3566, all green; nothing existing broke despite four signature changes.
+
+  Built: `RoadmapStore::historyWouldExceedCap()` (the cap comparison, with
+  `appendHistory()` and the migration loader both refactored onto it, so one
+  implementation replaces three copies of a predicate that is easy to get
+  backwards); a `HistoryContext` carrier threaded through
+  `rlDeriveTrailerColumns()` and its three call sites; `rlFlushHistory()`, which
+  asks the cap ONCE for the op and writes all rows or none; `history_note` on the
+  three envelopes via one helper; and an injectable cap reaching the verb path.
+
+  **What is NOT proven, filed as ANTS-4416 rather than left silent: INV-7 and
+  INV-8 have no test.** INV-8 is the dangerous one — a CAP refusal must not abort
+  the op and every OTHER failure must, and only the cap branch is tested. Writing
+  a cheap version would have been worse than none: a test supplying its own
+  failing `mutate` re-proves that `commitAndRender()` aborts on a false, which was
+  already true, while reading as coverage.
+
+  **Mutation-proved rather than asserted**, which bounds what green means here:
+  disabling the history writes at their choke point turns INV-1, both INV-2 legs
+  and INV-5 RED. INV-3, INV-4 and INV-6 stay GREEN, because they assert the
+  ABSENCE of rows — so those three are sensitive to different mutations and are
+  not evidence the feature works.
+
+  Four clauses the code corrected, each folded back into the spec (see its `impl`
+  loop-log row):
+
+  (a) The carrier could not hold a primed `seq` cursor — the cap is asked once for
+  the whole op, so nothing may be written until every row is known, and five of
+  six are unknown until the trailer helper has run. It accumulates rows and
+  computes `seq` at flush.
+
+  (b) The injectable cap needed a second half, and its absence fails SILENTLY:
+  `RemoteControl` caches its store, so a cap set afterwards never takes effect and
+  the test runs at 250 MiB and PASSES. The seam discards the cached store, and
+  must be called on the instance doing the write — INV-5 first failed exactly
+  that way, and would have passed had its assertion been one clause weaker.
+
+  (c) The test suite's own fixture guard fired on a false premise of mine: a FIRST
+  migration writes no history at all, because `Loader::recordHistory()` is reached
+  only from `applyPlanFields()`, which runs for items that already exist. The live
+  store's 804 rows come from re-migrations. The guard catching its own premise is
+  the guard working — without it, three cases' "zero rows" would have been an
+  ambiguous pass.
+
+  (d) `op:append`'s envelope key is `id`, not `ids`.
+
+  Next in this chain: the store-backed last-touch reader, which is what finally
+  retires ANTS-4414's 3.71 s `git blame` for a migrated project.
 
 - ✅ [ANTS-3823] **`bad_op_combo` is used 23 times and documented nowhere.**
   `grep -o 'bad_op_combo' src/remotecontrol.cpp src/claudeintegration.cpp |
@@ -31384,6 +31433,47 @@ against current source before filing.
   **Layman:** Let the contents list on the left of the Roadmap window be hidden, and remember that choice.
   Kind: ux.
   Source: user-request-2026-08-17.
+
+- 📋 [ANTS-4416] **ANTS-3822's two untested invariants — the export round-trip, and the branch that must ABORT a write.**
+  Filed 2026-08-17 as ANTS-3822 shipped, so the gap is a tracked item rather
+  than a silence. Six of its eight invariants are tested and green; these two
+  are not.
+
+  **INV-8 is the one that matters — the dangerous branch of § 2.3 is built and
+  unproven.** The rule: a CAP refusal must not abort the op, and every OTHER
+  `appendHistory()` failure must. All three loop-1 review lanes independently
+  found that stated as one unqualified rule, because getting it wrong loses a
+  revision silently while reporting a successful write — exactly what INV-14
+  exists to forbid. The cap branch is tested (INV-5). The abort branch is not.
+
+  Why it was not written rather than written badly: reaching it needs the real
+  write helper (`rcdetail::rlFlushHistory`) driven with an unresolvable
+  `item_pk`, so the foreign key refuses. A test that instead supplies its own
+  `mutate` returning false only re-proves that `commitAndRender()` aborts on a
+  false — which was already true before ANTS-3822 and says nothing about the
+  discriminator. That cheaper test would be worse than none, because it would
+  read as coverage. Lane F predicted this precisely.
+
+  Wanted: either a seam that makes the helper callable from the test bundle, or
+  a store-level case that drives `rlFlushHistory()` directly with a bad pk.
+
+  **INV-7 is the export round-trip** — that consumer-written rows survive the
+  export byte-identically. It belongs in
+  `tests/features/roadmap_export_roundtrip/` rather than the history suite, per
+  ANTS-3822 § 6. Lower risk: the rows go through `appendHistory()`, the same
+  writer the migration uses, so the shapes agree by construction — but "by
+  construction" is what INV-7 exists to check rather than assume.
+
+  **Also worth recording, because it bounds what the green suite proves.**
+  Mutation-proved by disabling the history writes at their choke point: INV-1,
+  both INV-2 legs and INV-5 turn RED. INV-3, INV-4 and INV-6 stay GREEN,
+  because they assert the ABSENCE of rows — so they are sensitive to different
+  mutations (a dry run that commits, a rollback that leaks, a creation that
+  starts recording) and are not evidence the feature works. Those three are
+  not mutation-proved either.
+  **Layman:** Two of the eight rules in the roadmap-history feature shipped without a test; one of them guards the dangerous case.
+  Kind: test.
+  Source: in-session-2026-08-17 (ANTS-3822 implementation — named rather than left implicit).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

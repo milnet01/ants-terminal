@@ -277,6 +277,28 @@ public:
     qint64 historyBytes() const;
     qint64 historyCapBytes() const { return m_historyCap; }
 
+    // ANTS-3822 § 2.3.1 — would writing `bytes` more history bytes cross the
+    // cap? THE comparison appendHistory() makes, exposed so two writers can ask
+    // it in advance instead of each re-deriving it.
+    //
+    // Both terms were already public and the predicate still could not be
+    // reproduced safely: comparing historyBytes() against the cap alone is
+    // wrong, because at the moment of a refusal the STORED bytes are still
+    // below the cap in every case except an exact landing — so the naive form
+    // reads a genuine cap refusal as "some other failure", which is the branch
+    // that aborts the caller's whole write. The migration loader carried that
+    // reasoning in a comment on a private method; ANTS-3822's consumer path
+    // needs the same answer, and a second copy of a comparison this easy to get
+    // backwards is the wrong way to give it one.
+    //
+    // `bytes` is a SUM over an operation's rows, not one row's: ANTS-3822 § 2.3
+    // asks once for the whole op, because a per-row question lets a long
+    // old_value be refused while a shorter later row for the same item still
+    // fits — leaving a revision holding some of its fields and claiming all.
+    bool historyWouldExceedCap(qint64 bytes) const {
+        return historyBytes() + bytes > m_historyCap;
+    }
+
     // --- ANTS-3765 § 2.4 — what the migration load half needs -----------------
     // Every method here is traceable to the section that needs it, and that
     // traceability is the contract: an operation a later section names with no

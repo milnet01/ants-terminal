@@ -992,6 +992,14 @@ public:
     // See tests/features/roadmap_rotate_minor/spec.md.
     QJsonDocument cmdRoadmapLogRotateMinorForTest(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogRetitleSectionForTest(const QJsonObject &req);
+    // ANTS-3822 § 2.3.2 — lower the history cap this instance opens its store
+    // with, so a test can reach the cap without 250 MiB of real history. Must be
+    // called BEFORE the first verb, since the store is opened lazily and cached.
+    // See tests/features/roadmap_write_history/spec.md.
+    // Defined in remotecontrol_roadmap_query.cpp, not inline: it discards the
+    // cached store, and ~unique_ptr<RoadmapStore> needs the complete type, which
+    // this header does not have (see m_roadmapStore's comment).
+    void setRoadmapHistoryCapForTest(qint64 bytes);
 
 private slots:
     void onNewConnection();
@@ -1154,6 +1162,21 @@ private:
     // forward-declared type — ~RemoteControl() is defined in the .cpp, which is
     // where the complete type is.
     mutable std::unique_ptr<RoadmapStore> m_roadmapStore;
+
+    // ANTS-3822 § 2.3.2 — the history cap this instance opens its store with.
+    // Production always uses the default; a test lowers it so the cap is
+    // reachable at all.
+    //
+    // Without this the cap can only be set BELOW the verb (RoadmapStore's
+    // constructor) while `history_note` is only built ABOVE it (the handler's
+    // envelope), so the invariant guarding INV-14's "fails AND reports" could be
+    // made neither red nor green — the only honest route being 250 MiB of real
+    // history, which ANTS-3756's INV-14 already refuses for its own legs.
+    // -1 means "not overridden — use RoadmapStore::kDefaultHistoryCapBytes".
+    // A sentinel rather than the constant itself because RoadmapStore is only
+    // forward-declared here (see m_roadmapStore's comment above), so its static
+    // cannot be named in this header.
+    qint64 m_roadmapHistoryCap = -1;
 
     // Cached parse of `m_main->roadmapPathForRemote()` content. Refreshed
     // on `roadmap-query` when EITHER the mtime advances OR the wall-clock

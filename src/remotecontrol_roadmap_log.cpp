@@ -1183,23 +1183,38 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                         ? before->body
                         : rlAppendBodyNote(before->body, note);
 
+                // ANTS-3822 § 2.5 — one stamp for the whole op, computed before
+                // mutate() runs rather than per row, so a write that straddles a
+                // second boundary is still one revision.
+                HistoryContext hist;
+                hist.changedAt = rlHistoryStamp();
+
                 const auto mutate = [&](QString *err) -> bool {
-                    if (!annotateMode &&
-                        !store.setItemField(*itemPk, QStringLiteral("status"),
-                                            targetStatusWord,
-                                            QStringLiteral("asserted"), err))
-                        return false;
+                    if (!annotateMode) {
+                        if (!store.setItemField(*itemPk, QStringLiteral("status"),
+                                                targetStatusWord,
+                                                QStringLiteral("asserted"), err))
+                            return false;
+                        hist.record(*itemPk, QStringLiteral("status"),
+                                    before->status, targetStatusWord);
+                    }
                     if (newBody == before->body)
-                        return true;
+                        return rlFlushHistory(store, hist, err);
                     if (!store.setItemField(*itemPk, QStringLiteral("body"),
                                             newBody, QStringLiteral("asserted"), err))
                         return false;
+                    hist.record(*itemPk, QStringLiteral("body"), before->body, newBody);
                     // § 2.6 — a body write re-derives every trailer column the
                     // request did not supply, which for flip/annotate is all
                     // five. This is what keeps `Layman:` from being a body line
                     // the render's gate can never see.
-                    return rlDeriveTrailerColumns(store, *itemPk, *before,
-                                                  newBody, {}, err);
+                    if (!rlDeriveTrailerColumns(store, *itemPk, *before,
+                                                newBody, {}, &hist, err))
+                        return false;
+                    // ANTS-3822 — flushed here, after every column this op
+                    // writes has been recorded, because the cap is asked once
+                    // for the whole set (§ 2.3).
+                    return rlFlushHistory(store, hist, err);
                 };
 
                 RoadmapRender::Outcome outcome;
@@ -1210,6 +1225,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 QJsonObject env;
                 if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
                     return QJsonDocument(env);
+                rlAttachHistoryNote(env, store, hist);   // ANTS-3822 § 2.3.1
 
                 env[QStringLiteral("ok")]          = true;
                 env[QStringLiteral("op")]          = annotateMode
@@ -2283,13 +2299,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             // ANTS-4097 — echo the paragraph the edit landed in.
             const QString amendedPara = rcAmendedParagraph(bodyLines, hitLine);
 
+            HistoryContext hist;              // ANTS-3822 § 2.5 — one op, one stamp
+            hist.changedAt = rlHistoryStamp();
+
             const auto mutate = [&](QString *err) -> bool {
                 if (!store.setItemField(*itemPk, QStringLiteral("body"), newBody,
                                         QStringLiteral("asserted"), err))
                     return false;
+                hist.record(*itemPk, QStringLiteral("body"), before->body, newBody);
                 // § 2.6 — all five keys, since amend_body supplies none.
-                return rlDeriveTrailerColumns(store, *itemPk, *before, newBody,
-                                              {}, err);
+                if (!rlDeriveTrailerColumns(store, *itemPk, *before, newBody,
+                                            {}, &hist, err))
+                    return false;
+                return rlFlushHistory(store, hist, err);
             };
 
             RoadmapRender::Outcome outcome;
@@ -2300,6 +2322,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             QJsonObject env;
             if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
                 return QJsonDocument(env);
+            rlAttachHistoryNote(env, store, hist);   // ANTS-3822 § 2.3.1
 
             env[QStringLiteral("ok")]      = true;
             env[QStringLiteral("op")]      = opName;
@@ -2954,24 +2977,37 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 return a.t->firstLine < b.t->firstLine;
             });
 
+        // ANTS-3822 § 2.5 — ONE stamp for the whole batch, not one per item: the
+        // items share a revision timestamp, while `seq` stays scoped per
+        // (item_pk, changed_at) so each item still numbers from its own base.
+        HistoryContext hist;
+        hist.changedAt = rlHistoryStamp();
+
         const auto mutate = [&](QString *err) -> bool {
             for (const StoreTarget &st : resolved) {
                 if (!store.setItemField(st.itemPk, QStringLiteral("status"),
                                         targetStatusWord,
                                         QStringLiteral("asserted"), err))
                     return false;
+                hist.record(st.itemPk, QStringLiteral("status"),
+                            st.before.status, targetStatusWord);
                 if (st.newBody == st.before.body)
                     continue;
                 if (!store.setItemField(st.itemPk, QStringLiteral("body"),
                                         st.newBody, QStringLiteral("asserted"), err))
                     return false;
+                hist.record(st.itemPk, QStringLiteral("body"),
+                            st.before.body, st.newBody);
                 // § 2.6 — a body write re-derives every trailer column the
                 // request did not supply, which for flip_batch is all five.
                 if (!rlDeriveTrailerColumns(store, st.itemPk, st.before,
-                                            st.newBody, {}, err))
+                                            st.newBody, {}, &hist, err))
                     return false;
             }
-            return true;
+            // Flushed once for the whole batch, outside the loop: § 2.3 asks the
+            // cap once per OP, so a per-item flush would let item 1's rows land
+            // and item 2's be refused — a batch half recorded.
+            return rlFlushHistory(store, hist, err);
         };
 
         RoadmapRender::Outcome outcome;
@@ -2982,6 +3018,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         QJsonObject env;
         if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
             return QJsonDocument(env);
+        rlAttachHistoryNote(env, store, hist);   // ANTS-3822 § 2.3.1
 
         const bool echoHeadline = rcReturnHeadlineOnly(req);
         QJsonArray flipped, postBullets;

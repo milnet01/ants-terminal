@@ -1736,6 +1736,7 @@ if(ANTS_TESTS)
                 # a bullet the store never imported refuses instead. Same
                 # harness as roadmap_write_half, same seam.
                 tests/features/roadmap_divergence_guard/test_roadmap_divergence_guard.cpp
+                tests/features/roadmap_write_history/test_roadmap_write_history.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through
                 # the verbs, against stores the migration actually built.

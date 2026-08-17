@@ -79,7 +79,8 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
 } // namespace
 
 std::unique_ptr<RoadmapStore> storeFor(const QString &defaultPath,
-                                       ReadError *why, QString *error) {
+                                       ReadError *why, QString *error,
+                                       qint64 historyCapBytes) {
     if (why)
         *why = ReadError::None;
     if (error)
@@ -92,7 +93,9 @@ std::unique_ptr<RoadmapStore> storeFor(const QString &defaultPath,
         return nullptr;
 
     auto store = std::make_unique<RoadmapStore>(
-        defaultPath, RoadmapStore::kDefaultHistoryCapBytes,
+        // ANTS-3822 § 2.3.2 — from the caller, defaulted to
+        // kDefaultHistoryCapBytes. The header says why it is injectable.
+        defaultPath, historyCapBytes,
         // § 2.2's sixth rule — named, never defaulted. Interactive is a 5 s
         // busy deadline and SQLite's 2 MiB page cache; Bulk's 30 s is right for
         // a corpus load and reads as a freeze on a verb call.

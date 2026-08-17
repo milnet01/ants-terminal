@@ -1000,8 +1000,13 @@ bool RoadmapStore::appendHistory(qint64 itemPk, const QString &changedAt, int se
                                  const QString &newValue, QString *error) {
     // Below the bound nothing is ever evicted. AT the bound the write fails and
     // reports — never retried silently, never dropped.
+    //
+    // Through historyWouldExceedCap() rather than inline since ANTS-3822: that
+    // accessor IS this comparison, and two other callers ask it in advance. A
+    // second spelling here is how the in-advance answer and the actual refusal
+    // drift apart.
     const qint64 incoming = field.size() + oldValue.size() + newValue.size();
-    if (historyBytes() + incoming > m_historyCap) {
+    if (historyWouldExceedCap(incoming)) {
         if (error)
             *error = QStringLiteral("history cap reached (%1 bytes); revision refused")
                          .arg(m_historyCap);

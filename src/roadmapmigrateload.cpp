@@ -520,10 +520,15 @@ bool Loader::recordHistory(qint64 itemPk, const QString &field, const QString &o
     // still below the cap in every case except an exact landing — the first
     // refusal on an empty history compares 0 against the cap and reads as "some
     // other failure", which would abort the project the exception exists to
-    // save. Both terms are public and all three strings are in hand, so the
-    // predicate is reproducible exactly, with no error text parsed.
+    // save.
+    //
+    // ANTS-3822 § 2.3.1 moved that predicate onto the store as
+    // historyWouldExceedCap(), so this is now the store's own comparison rather
+    // than a faithful copy of it. The reasoning above is kept because it is why
+    // the accessor exists at all — the naive form is the one a reader reaches
+    // for, and it is backwards.
     const qint64 incoming = field.size() + oldValue.size() + newValue.size();
-    if (store.historyBytes() + incoming > store.historyCapBytes()) {
+    if (store.historyWouldExceedCap(incoming)) {
         note("history_capped", QStringLiteral("%1: %2").arg(itemPk).arg(field));
         return true;
     }

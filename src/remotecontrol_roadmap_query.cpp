@@ -7,6 +7,7 @@
 #include "mcpprojection.h"
 #include "paginationengine.h"
 #include "roadmapfoldin.h"
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 
@@ -26,8 +27,11 @@ RoadmapStore *RemoteControl::roadmapStoreOrNull(RoadmapSource::ReadError *why,
         return m_roadmapStore.get();
     RoadmapSource::ReadError openWhy = RoadmapSource::ReadError::None;
     QString openErr;
-    m_roadmapStore = RoadmapSource::storeFor(RoadmapStore::defaultPath(),
-                                             &openWhy, &openErr);
+    m_roadmapStore = RoadmapSource::storeFor(
+        RoadmapStore::defaultPath(), &openWhy, &openErr,
+        // ANTS-3822 § 2.3.2 — production takes the default; only a test lowers it.
+        m_roadmapHistoryCap < 0 ? RoadmapStore::kDefaultHistoryCapBytes
+                                : m_roadmapHistoryCap);
     if (openWhy != RoadmapSource::ReadError::None) {
         if (why)
             *why = openWhy;
@@ -36,6 +40,13 @@ RoadmapStore *RemoteControl::roadmapStoreOrNull(RoadmapSource::ReadError *why,
         return nullptr;
     }
     return m_roadmapStore.get();
+}
+
+// ANTS-3822 § 2.3.2 — here rather than inline in the header, because discarding
+// the cached store needs RoadmapStore complete.
+void RemoteControl::setRoadmapHistoryCapForTest(qint64 bytes) {
+    m_roadmapHistoryCap = bytes;
+    m_roadmapStore.reset();
 }
 
 // ANTS-3793 § 2.2 — the dispatch on its own. See remotecontrol.h for the one
@@ -320,7 +331,8 @@ static bool rlBodyShadows(const RoadmapParse::TrailerValues &tv,
 bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
                                    const RoadmapStore::ItemWrite &before,
                                    const QString &newBody,
-                                   const QSet<QString> &supplied, QString *error) {
+                                   const QSet<QString> &supplied,
+                                   HistoryContext *hist, QString *error) {
     const RoadmapParse::TrailerValues oldTv = RoadmapParse::trailerValuesIn(before.body);
     const RoadmapParse::TrailerValues newTv = RoadmapParse::trailerValuesIn(newBody);
     for (const RlTrailerKey &k : kRlTrailerKeys) {
@@ -341,6 +353,13 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
             if (!store.setItemField(itemPk, field, newValue,
                                     QStringLiteral("asserted"), error))
                 return false;
+            // ANTS-3822 — recorded AFTER the write succeeds, so a refused write
+            // leaves no revision claiming it happened. `current` may be empty
+            // where the column held nothing; normalise that to a null QString so
+            // the row stores SQL NULL rather than '' (§ 2.1).
+            if (hist)
+                hist->record(itemPk, field,
+                             current.isEmpty() ? QString() : current, newValue);
         } else {
             // The body carried it and the write removed it. clearItemField(),
             // never an empty setItemField(): putItem() binds an empty value as
@@ -353,8 +372,72 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
                 continue;
             if (!store.clearItemField(itemPk, field, QStringLiteral("asserted"), error))
                 return false;
+            // A clear IS a change, and its new value is absence — a null
+            // QString, so the row stores SQL NULL (§ 2.1). Recording it as ""
+            // would claim the column now holds an empty string, which is a
+            // different stored value.
+            if (hist)
+                hist->record(itemPk, field, current, QString());
         }
     }
+    return true;
+}
+
+void rcdetail::rlAttachHistoryNote(QJsonObject &env, const RoadmapStore &store,
+                                   const HistoryContext &hist) {
+    if (hist.skippedRows <= 0)
+        return;
+    env[QStringLiteral("history_note")] =
+        QStringLiteral("history cap reached (%1 bytes); %2 history row(s) not recorded")
+            .arg(store.historyCapBytes())
+            .arg(hist.skippedRows);
+}
+
+QString rcdetail::rlHistoryStamp() {
+    return QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+}
+
+// ANTS-3822 § 2.3 — the all-or-nothing flush. Header carries the contract.
+bool rcdetail::rlFlushHistory(RoadmapStore &store, HistoryContext &hist,
+                              QString *error) {
+    if (hist.pending.isEmpty())
+        return true;
+
+    // Asked ONCE for the whole op, which is what stops a revision landing with
+    // some of its fields. Over the cap: nothing is written, the count is
+    // reported, and the op still succeeds.
+    if (store.historyWouldExceedCap(hist.pendingBytes())) {
+        hist.skippedRows += int(hist.pending.size());
+        hist.pending.clear();
+        return true;
+    }
+
+    // seq is scoped per (item_pk, changed_at), so each item numbers from its own
+    // stored maximum — never one counter across the op, which on a batch would
+    // give the second item's rows the first item's numbering.
+    QHash<qint64, int> nextSeq;
+    for (const HistoryContext::Row &r : std::as_const(hist.pending)) {
+        if (!nextSeq.contains(r.itemPk)) {
+            QString seqErr;
+            const auto stored = store.maxHistorySeq(r.itemPk, hist.changedAt, &seqErr);
+            if (!seqErr.isEmpty()) {
+                if (error) *error = seqErr;
+                return false;
+            }
+            nextSeq.insert(r.itemPk, stored.value_or(-1) + 1);
+        }
+        int &seq = nextSeq[r.itemPk];
+        if (!store.appendHistory(r.itemPk, hist.changedAt, seq, r.field,
+                                 r.oldValue, r.newValue, error)) {
+            // Not the cap — the batch was measured against it above and fit. So
+            // this is a real failure and it aborts the op, per § 2.3's second
+            // branch. Swallowing it is the silently-dropped revision INV-14
+            // forbids, reported as a successful write.
+            return false;
+        }
+        ++seq;
+    }
+    hist.pending.clear();
     return true;
 }
 
