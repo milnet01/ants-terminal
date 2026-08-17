@@ -3580,13 +3580,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
                 const auto all = store.listSections(projectId, err);
                 if (!all)
                     return false;
+                // listSections() and not listSectionsOrdered(): a renumber keys
+                // each row by its own id and reads no order, so it would pay for
+                // a sort it never looks at (ANTS-3818).
                 for (const auto &s : *all) {
                     if (s.position < newPos)
                         continue;
-                    const auto sid = store.findSection(projectId, s.slug, err);
-                    if (!sid)
-                        return false;
-                    if (!store.updateSection(*sid, s.title, s.level,
+                    if (!store.updateSection(s.sectionId, s.title, s.level,
                                              s.position + 1, s.parentId, err))
                         return false;
                 }
@@ -4951,9 +4951,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     out["skipped"]       = skipped;
     out["skipped_count"] = skipped.size();
     out["bytes_written"] = totalBytes;
-    if (counterReconciled)            // ANTS-2179 — self-healed high-water
+    if (counterReconciled) {          // ANTS-2179 — self-healed high-water
         out["counter_advanced_to"] = nextId - 1;
-        if (counterReconciled) rlExplainCounterFloor(out, counter, maxFileId);
+        rlExplainCounterFloor(out, counter, maxFileId);
+    }
     if (!possibleDuplicates.isEmpty()) {
         out["possible_duplicates"] = possibleDuplicates;
     }
@@ -5114,20 +5115,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
         return rcSectionOpErr(QStringLiteral("store_failed"), err);
     const QVector<RoadmapStore::SectionRow> all = *allOpt;
 
-    // SectionRow does not carry its own id, so resolve one per slug — the only
-    // handle setSectionSlug() / setSectionSource() take.
+    // The id arrives on the row (ANTS-3817) — it is the handle
+    // setSectionSlug() / setSectionSource() take. This was a findSection() per
+    // section with a "vanished mid-read" path for the row disappearing between
+    // the two queries; one read cannot race itself, so both are gone.
     QHash<QString, qint64> idBySlug;
     QHash<qint64, RoadmapStore::SectionRow> rowById;
     QHash<qint64, QVector<qint64>> childrenOf;
     for (const auto &s : all) {
-        const auto id = store.findSection(projectId, s.slug, &err);
-        if (!id)
-            return rcSectionOpErr(QStringLiteral("store_failed"),
-                err.isEmpty() ? QStringLiteral("roadmap_log: section \"%1\" "
-                                               "vanished mid-read").arg(s.slug)
-                              : err);
-        idBySlug.insert(s.slug, *id);
-        rowById.insert(*id, s);
+        idBySlug.insert(s.slug, s.sectionId);
+        rowById.insert(s.sectionId, s);
     }
     for (auto it = rowById.cbegin(); it != rowById.cend(); ++it)
         if (it.value().parentId)

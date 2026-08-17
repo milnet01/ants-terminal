@@ -251,7 +251,12 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
     // Step 1 — sections, scoped by the caller's archive flag. SectionRow::
     // sourcePath is nullopt for the live roadmap and set for an archive, which
     // is the same distinction ANTS-3758's render routes files by.
-    const auto sections = store.listSections(projectId, error);
+    // Step 2 — document order comes from the store surface (ANTS-3818), which
+    // sorts with a C++ comparator and not an ORDER BY: QString::compare() is
+    // UTF-16 code-unit order while SQLite's BINARY collation is UTF-8 byte
+    // order, and the two disagree on the supplementary-plane characters an emoji
+    // heading slug reaches. Filtering below preserves the order.
+    const auto sections = store.listSectionsOrdered(projectId, error);
     if (!sections)
         return fail(ReadError::StoreFailed,
                     QStringLiteral("could not list sections for project %1").arg(projectId));
@@ -262,11 +267,6 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
         if (includeArchive || !s.sourcePath)
             ordered.append(s);
     }
-    // Step 2 — a C++ comparator and not an ORDER BY, because QString::compare()
-    // is UTF-16 code-unit order while SQLite's BINARY collation is UTF-8 byte
-    // order, and the two disagree on the supplementary-plane characters an
-    // emoji heading slug reaches. This is render()'s own sort.
-    std::sort(ordered.begin(), ordered.end(), sectionOrderLess);
 
     QVector<BulletRecord> out;
     // Step 4 — accumulated across the WHOLE walk and never per section: the
@@ -287,13 +287,11 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
             slug    = RoadmapIndex::uniqueSlug(seenSlugs, s.title);
         }
 
-        // Step 3 — SectionRow carries no section_id (ANTS-3817), so the id
-        // comes back through the slug lookup, exactly as render() does it.
-        const auto sectionId = store.findSection(projectId, s.slug, error);
-        if (!sectionId)
-            return fail(ReadError::StoreFailed,
-                        QStringLiteral("section '%1' vanished between reads").arg(s.slug));
-        const auto elements = store.listElements(*sectionId, error);
+        // Step 3 — the id arrives on the row (ANTS-3817). This was a
+        // findSection() per section, with a "vanished between reads" error path
+        // for the row disappearing between the two queries; one read cannot race
+        // itself, so both are gone.
+        const auto elements = store.listElements(s.sectionId, error);
         if (!elements)
             return fail(ReadError::StoreFailed,
                         QStringLiteral("could not list elements of section '%1'").arg(s.slug));

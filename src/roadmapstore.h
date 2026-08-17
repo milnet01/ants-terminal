@@ -471,6 +471,14 @@ public:
     // declared as counting the sections that CHANGED — was not computable
     // through the declared surface.
     struct SectionRow {
+        // ANTS-3817 — the row's own primary key. Absent until 2026-08-17 because
+        // the struct was shaped as readSection()'s OUTPUT and readSection()
+        // takes the id, so within that one caller it was already known. Every
+        // other caller arrives through listSections(), which knew the id and
+        // dropped it: all four then re-resolved it with findSection() per
+        // section — an extra query each, plus a "vanished between reads" error
+        // path for the row disappearing between the two reads.
+        qint64  sectionId = 0;
         QString slug, title, intro;
         int     level = 0;
         std::optional<qint64> parentId;
@@ -497,6 +505,24 @@ public:
     // Shaped after listItems() directly above, and for the same reason.
     std::optional<QVector<SectionRow>> listSections(qint64 projectId,
                                                     QString *error = nullptr) const;
+
+    // ANTS-3818 — listSections() in DOCUMENT order, which is what a caller
+    // rendering or walking the roadmap always wants.
+    //
+    // listSections() deliberately returns rowid order and leaves the real order
+    // to sectionOrderLess() in C++, for the collation reason its comment gives.
+    // That is correct and stays. The hazard is that the unsorted enumerator is
+    // the obvious call and a consumer that simply iterates it gets a plausible
+    // order, no error, and a wrong file — so the mistake is invisible at the
+    // call site and survives review. Both order-dependent consumers do sort
+    // correctly today; this exists so the next one cannot get it wrong by
+    // omission rather than to repair a live fault.
+    //
+    // Order-INDEPENDENT callers should keep using listSections(): roadmap_log's
+    // create_section renumber and rotate_minor's parent/child index both key by
+    // id and would pay for a sort they do not read.
+    std::optional<QVector<SectionRow>> listSectionsOrdered(qint64 projectId,
+                                                           QString *error = nullptr) const;
 
     // ANTS-3758 § 2.1 — the ordered contents of one section. The render's
     // per-section input, and the reader roadmapexport.cpp's writeElements()

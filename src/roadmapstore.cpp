@@ -16,6 +16,7 @@
 #include <QStringList>
 #include <QVariant>
 
+#include <algorithm>
 #include <atomic>
 
 namespace {
@@ -1622,22 +1623,17 @@ std::optional<qint64> RoadmapStore::findSection(qint64 projectId, const QString 
     return q.value(0).toLongLong();
 }
 
-std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 sectionId,
-                                                                  QString *error) const {
-    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
-    q.prepare(QStringLiteral(
-        "SELECT slug, title, level, intro, parent_id, source_path, position "
-        "FROM section WHERE section_id = ?"));
-    q.addBindValue(sectionId);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return std::nullopt;
-    }
-    if (!q.next())
-        return std::nullopt;
+// The column list both section readers select, and the hydration both apply.
+// One shape rather than two byte-identical copies: ANTS-3817 added section_id
+// to SectionRow, and with the copies in place a field populated in readSection()
+// and forgotten in listSections() reads back as 0 — a valid-looking id that
+// points at nothing. Mirrors itemFromRow() above.
+static const char kSectionColumns[] =
+    "SELECT slug, title, level, intro, parent_id, source_path, position, section_id "
+    "FROM section ";
 
-    SectionRow s;
+static RoadmapStore::SectionRow sectionFromRow(const QSqlQuery &q) {
+    RoadmapStore::SectionRow s;
     s.slug = q.value(0).toString();
     s.title = q.value(1).toString();
     s.level = q.value(2).toInt();
@@ -1651,7 +1647,23 @@ std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 section
     if (!q.value(5).isNull())
         s.sourcePath = q.value(5).toString();
     s.position = q.value(6).toInt();
+    s.sectionId = q.value(7).toLongLong();
     return s;
+}
+
+std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 sectionId,
+                                                                  QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QLatin1String(kSectionColumns) + QStringLiteral("WHERE section_id = ?"));
+    q.addBindValue(sectionId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+    return sectionFromRow(q);
 }
 
 std::optional<QVector<RoadmapStore::SectionRow>>
@@ -1660,10 +1672,9 @@ RoadmapStore::listSections(qint64 projectId, QString *error) const {
     // ORDER BY section_id, not by position: the ordering this enumeration feeds
     // is sectionOrderLess()'s, applied in C++ for the collation reason its
     // comment gives. A rowid order here is only for determinism between two
-    // reads of the same store.
-    q.prepare(QStringLiteral(
-        "SELECT slug, title, level, intro, parent_id, source_path, position "
-        "FROM section WHERE project_id = ? ORDER BY section_id"));
+    // reads of the same store. listSectionsOrdered() below is the sorted one.
+    q.prepare(QLatin1String(kSectionColumns)
+              + QStringLiteral("WHERE project_id = ? ORDER BY section_id"));
     q.addBindValue(projectId);
     if (!q.exec()) {
         if (error)
@@ -1672,20 +1683,23 @@ RoadmapStore::listSections(qint64 projectId, QString *error) const {
     }
 
     QVector<SectionRow> out;
-    while (q.next()) {
-        SectionRow s;
-        s.slug = q.value(0).toString();
-        s.title = q.value(1).toString();
-        s.level = q.value(2).toInt();
-        s.intro = q.value(3).toString();
-        if (!q.value(4).isNull())
-            s.parentId = q.value(4).toLongLong();
-        if (!q.value(5).isNull())
-            s.sourcePath = q.value(5).toString();
-        s.position = q.value(6).toInt();
-        out.push_back(s);
-    }
+    while (q.next())
+        out.push_back(sectionFromRow(q));
     return out;
+}
+
+// ANTS-3818. A wrapper and not a second query: the sort key is (position, slug)
+// and slug ordering must be QString::compare()'s UTF-16 code-unit order, which
+// an ORDER BY cannot express — SQLite's BINARY collation is UTF-8 byte order and
+// the two disagree on the supplementary-plane characters an emoji heading slug
+// reaches.
+std::optional<QVector<RoadmapStore::SectionRow>>
+RoadmapStore::listSectionsOrdered(qint64 projectId, QString *error) const {
+    auto rows = listSections(projectId, error);
+    if (!rows)
+        return std::nullopt;
+    std::sort(rows->begin(), rows->end(), sectionOrderLess);
+    return rows;
 }
 
 // ANTS-3758 § 2.1. ORDER BY position and not by rowid: unlike listSections(),

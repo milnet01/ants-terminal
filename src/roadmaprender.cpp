@@ -284,7 +284,7 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         return std::nullopt;
     }
 
-    const auto sections = store.listSections(projectId, error);
+    const auto sections = store.listSectionsOrdered(projectId, error);
     if (!sections)
         return std::nullopt;
     const auto itemRefs = store.listItems(projectId, error);
@@ -323,9 +323,9 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         return out;   // engaged, filesWritten empty — INV-5
     }
 
-    // § 2.2 — document order is sectionOrderLess()'s (position, slug).
-    QVector<RoadmapStore::SectionRow> ordered = *sections;
-    std::sort(ordered.begin(), ordered.end(), sectionOrderLess);
+    // § 2.2 — document order is sectionOrderLess()'s (position, slug), now
+    // applied by listSectionsOrdered() at the store surface (ANTS-3818).
+    const QVector<RoadmapStore::SectionRow> &ordered = *sections;
 
     // § 2.3 — route each section to its file, preserving the order above.
     QStringList fileOrder;
@@ -384,16 +384,10 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
             }
             ++out.sectionsRendered;
 
-            // SectionRow carries no section_id (§ 2.1), so the id comes back
-            // through the existing slug lookup rather than by widening a struct
-            // ANTS-3765 § 2.4 fixed for the migration's compare-before-write.
-            const auto sectionId = store.findSection(projectId, s.slug, error);
-            if (!sectionId) {
-                if (error && error->isEmpty())
-                    *error = QStringLiteral("section '%1' vanished between reads").arg(s.slug);
-                return std::nullopt;
-            }
-            const auto elements = store.listElements(*sectionId, error);
+            // ANTS-3817 widened SectionRow with its own id, so the per-section
+            // findSection() and its "vanished between reads" error path are both
+            // gone — one read cannot race itself.
+            const auto elements = store.listElements(s.sectionId, error);
             if (!elements)
                 return std::nullopt;
 
