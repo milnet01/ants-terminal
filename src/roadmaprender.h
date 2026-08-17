@@ -61,6 +61,30 @@ struct Outcome {
 // `BulletRecord::body` is defined as this text and which cannot reach a
 // file-local function; the alternative is a second renderer that has to be kept
 // in step by hand.
+//
+// PRECONDITION (ANTS-3820): `it.status` is a RENDERABLE status. A `dropped` item
+// has no markdown form at all, and the round trip is worse than a missing glyph:
+// emojiFor("dropped") returns an empty string by design (§ 3.11 makes a fifth
+// emoji an anti-pattern), so the head line emitted here carries NO status
+// marker — and parseBullets()' native path then fails stripInlineEmoji() and
+// SKIPS THE BULLET ENTIRELY. A dropped item rendered to markdown re-parses to
+// nothing.
+//
+// This function does NOT enforce the precondition, and that is deliberate rather
+// than an omission — both callers already exclude a dropped item, by two
+// different mechanisms, and neither wants a refusal here:
+//   - render()'s loop drops it at isRenderable() before reaching renderBullet(),
+//     so the pairing holds by CALL ORDER.
+//   - bulletsFromStore()'s appendRecord() (roadmapsource.cpp) relies on the
+//     marker-less text failing parseAntsV1Bullet(), and skips the nullopt — it
+//     wants exactly the text this produces, and its own comment says so.
+// Making this refuse would break the second, which uses the unparseable output
+// AS its exclusion signal.
+//
+// So the precondition is stated rather than asserted, and it is TESTED instead:
+// see tests/features/roadmap_render's Ants3820 case, which pins both the
+// unparseable-text property and both callers' exclusion. A third caller must
+// pick one of those two mechanisms; it cannot rely on this function to stop it.
 QString bulletText(const RoadmapStore::ItemWrite &it);
 
 // roadmap-format.md § 3.3's four status emojis, by lifecycle word. `dropped`

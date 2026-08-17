@@ -174,3 +174,84 @@ TEST(RoadmapStoreIdentity, Inv4SynthesisedIsDistinctFromQuarantined) {
     q.addBindValue(p);
     EXPECT_FALSE(q.exec()) << "id_origin must be a closed enum at the storage layer";
 }
+
+// ANTS-3816 second half — projectBodyBytes() answers "how big is this project"
+// without materialising it, and answers in BYTES.
+//
+// The byte-vs-character distinction is the whole reason this has a test.
+// SQLite's LENGTH() over TEXT counts CHARACTERS; it counts bytes only for a
+// BLOB. The item's own sketch was `SUM(LENGTH(body))`, which would have shipped
+// a character count under a name promising bytes — correct on ASCII, wrong by up
+// to 4x on anything else, and silent either way. So the case uses a body whose
+// UTF-8 length differs from its character count, which is what separates the two
+// implementations. An ASCII-only fixture passes against both.
+TEST(RoadmapStoreIdentity, Ants3816ProjectBodyBytesCountsBytesNotCharacters) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.open(&err)) << err.toStdString();
+    const qint64 p = f.project(QStringLiteral("alpha"));
+    const qint64 s = f.section(p);
+
+    // 4 ASCII (1 byte each) + 2 CJK (3 bytes each in UTF-8) = 6 chars, 10 bytes.
+    const QString body = QStringLiteral("abcd") + QString::fromUtf8("\xE6\x97\xA5\xE6\x9C\xAC");
+    ASSERT_EQ(body.size(), 6);
+    ASSERT_EQ(body.toUtf8().size(), 10);
+
+    auto w = f.item(p, s, QStringLiteral("SZ-1"), 0);
+    w.body = body;
+    ASSERT_TRUE(f.store.putItem(w, &err).has_value()) << err.toStdString();
+
+    const auto bytes = f.store.projectBodyBytes(p, &err);
+    ASSERT_TRUE(bytes.has_value()) << err.toStdString();
+    EXPECT_EQ(*bytes, 10)
+        << "expected UTF-8 BYTES; got " << *bytes
+        << ". A value of 6 means LENGTH() counted characters — the CAST(body AS "
+           "BLOB) was dropped, and the reader is lying about its unit";
+}
+
+// ANTS-3816 second half — an empty project reports 0, not a failure, and not a
+// value indistinguishable from one. SUM() over zero rows is NULL in SQL, so
+// without the COALESCE this returns 0 only by what toLongLong() makes of a null
+// QVariant — the right answer by luck, and the same 0 a caller cannot separate
+// from a query that failed. nullopt is reserved for "could not ask".
+TEST(RoadmapStoreIdentity, Ants3816ProjectBodyBytesEmptyProjectIsZeroNotFailure) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.open(&err)) << err.toStdString();
+    const qint64 p = f.project(QStringLiteral("empty"));
+
+    const auto bytes = f.store.projectBodyBytes(p, &err);
+    ASSERT_TRUE(bytes.has_value())
+        << "a project with no items must be answerable, not a failure: "
+        << err.toStdString();
+    EXPECT_EQ(*bytes, 0);
+}
+
+// ANTS-3816 second half — the aggregate sums across items and is scoped to ONE
+// project. Scoping is asserted because the failure mode is a missing WHERE
+// clause, which on a single-project fixture is invisible.
+TEST(RoadmapStoreIdentity, Ants3816ProjectBodyBytesSumsAndScopesToOneProject) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.open(&err)) << err.toStdString();
+    const qint64 a = f.project(QStringLiteral("alpha"));
+    const qint64 sa = f.section(a);
+    const qint64 b = f.project(QStringLiteral("bravo"));
+    const qint64 sb = f.section(b);
+
+    auto a1 = f.item(a, sa, QStringLiteral("A-1"), 0);
+    a1.body = QStringLiteral("12345");            // 5
+    auto a2 = f.item(a, sa, QStringLiteral("A-2"), 1);
+    a2.body = QStringLiteral("678");              // 3
+    auto b1 = f.item(b, sb, QStringLiteral("B-1"), 0);
+    b1.body = QStringLiteral("xxxxxxxxxxxxxxxxxxxx");  // 20 — must NOT be counted
+    ASSERT_TRUE(f.store.putItem(a1, &err).has_value()) << err.toStdString();
+    ASSERT_TRUE(f.store.putItem(a2, &err).has_value()) << err.toStdString();
+    ASSERT_TRUE(f.store.putItem(b1, &err).has_value()) << err.toStdString();
+
+    const auto bytes = f.store.projectBodyBytes(a, &err);
+    ASSERT_TRUE(bytes.has_value()) << err.toStdString();
+    EXPECT_EQ(*bytes, 8)
+        << "expected 5+3 for project alpha only; 28 means the WHERE project_id "
+           "clause is missing and the aggregate spans the whole store";
+}

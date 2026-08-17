@@ -1577,6 +1577,30 @@ RoadmapStore::readItems(qint64 projectId, QString *error) const {
     return out;
 }
 
+std::optional<qint64>
+RoadmapStore::projectBodyBytes(qint64 projectId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    // CAST(... AS BLOB) is load-bearing: SQLite's LENGTH() over TEXT counts
+    // CHARACTERS and counts BYTES only for a BLOB. See the header for why that
+    // distinction, and the separate UTF-16 resident-size one, are called out
+    // rather than left to the reader.
+    //
+    // COALESCE because SUM() over zero rows is NULL, not 0 — an empty project
+    // would otherwise return whatever toLongLong() makes of a null QVariant,
+    // which is 0 by luck rather than by contract, and indistinguishable from
+    // the failure this function reports as nullopt.
+    q.prepare(QStringLiteral(
+        "SELECT COALESCE(SUM(LENGTH(CAST(body AS BLOB))), 0) "
+        "FROM item WHERE project_id = ?"));
+    q.addBindValue(projectId);
+    if (!q.exec() || !q.next()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    return q.value(0).toLongLong();
+}
+
 std::optional<QVector<RoadmapStore::ItemRef>>
 RoadmapStore::listItems(qint64 projectId, QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));

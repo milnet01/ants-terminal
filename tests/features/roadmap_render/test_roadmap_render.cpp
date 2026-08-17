@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapexport.h"
+#include "roadmapparse.h"   // ANTS-3820 — parseAntsV1Bullet()
 #include "roadmaprender.h"
 #include "roadmapstore.h"
 
@@ -463,6 +464,120 @@ TEST(RoadmapRender, Inv11SingleElementReader) {
     }
     EXPECT_TRUE(offenders.isEmpty())
         << "a second element/project reader survives in: " << offenders.join(QStringLiteral(", ")).toStdString();
+}
+
+// ANTS-3818 — no NEW consumer reaches for the unsorted section enumerator.
+//
+// Document order is (position, slug), applied in C++ by sectionOrderLess()
+// rather than in SQL, for the collation reason listSections()' own comment
+// gives: QString::compare() is UTF-16 code-unit order while SQLite BINARY is
+// UTF-8 byte order, and they disagree on the supplementary-plane characters an
+// emoji heading slug reaches. That is correct and stays.
+//
+// The hazard the item names is that a consumer which simply iterates
+// listSections() gets a PLAUSIBLE order, no error, and a wrong file.
+// listSectionsOrdered() (ANTS-3818) makes the sorted call the obvious one, but
+// "obvious" is not a guarantee — so this is the item's own stated alternative
+// remedy, an invariant asserting each consumer remembered. INV-2 above pins
+// render()'s ORDER behaviourally; this pins that no future consumer bypasses
+// the sorted surface at all, which no behaviour of the render can observe.
+//
+// Lives here rather than with the store because this directory already carries
+// the ANTS_SRC_DIR scrape machinery and INV-11, which is the same guard class
+// ("no second reader survives under src/") one level down.
+//
+// The two exempt files are exempt for stated reasons, verified 2026-08-17:
+//   roadmapstore.cpp        — the enumerator's own home, plus
+//                             listSectionsOrdered()'s single call to it.
+//   remotecontrol_roadmap_log.cpp — THREE order-independent callers, each
+//                             checked: create_section's renumber keys every row
+//                             by its own id; rotate_minor builds QHash indexes
+//                             and iterates a QHash, which has no order to lose;
+//                             and retitle's slug-collision scan is a membership
+//                             test. roadmapstore.h's own comment names the first
+//                             two as the order-independent users.
+//
+// A NEW name appearing here is not automatically a defect — it is a consumer
+// that must be read, and either moved to listSectionsOrdered() or added here
+// with the reason it does not read order.
+// ANTS-3820 — a `dropped` item has no markdown form, and the pairing that keeps
+// the render from emitting one is now TESTED rather than merely true.
+//
+// The round trip is worse than a missing glyph. emojiFor("dropped") returns an
+// empty string by design (§ 3.11 makes a fifth emoji an anti-pattern), so
+// bulletText() emits a head line with NO status marker — and the native parse
+// then fails stripInlineEmoji() and skips the bullet entirely. A dropped item
+// rendered to markdown re-parses to NOTHING, so a round-trip oracle would see a
+// vanished item rather than a malformed one.
+//
+// SCOPE — this case asserts ONLY the producer-side property, deliberately.
+// The two callers exclude a dropped item by two different mechanisms:
+//   - render() never emits one. **Already covered by Inv4Membership above**
+//     ("internal and dropped never appear; shipped does"), so re-asserting it
+//     here would duplicate a shipped case and pay a second full render for it.
+//   - bulletsFromStore()'s appendRecord() (roadmapsource.cpp) relies on the
+//     produced text FAILING to parse, and skips the nullopt. Nothing tested
+//     that, and it is the half ANTS-3820 actually asks for — "state the
+//     precondition on bulletText() and assert it".
+//
+// bulletText() deliberately does not refuse — see its header. Making it refuse
+// would break appendRecord(), which wants exactly this output.
+TEST(RoadmapRender, Ants3820DroppedItemHasNoMarkdownForm) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+
+    auto gone = mkItem(f->projectId, QStringLiteral("ANTS-2"),
+                       QStringLiteral("A dropped item."), f->rootSection, 2);
+    gone.status = QStringLiteral("dropped");
+
+    EXPECT_TRUE(RoadmapRender::emojiFor(QStringLiteral("dropped")).isEmpty())
+        << "a fifth status emoji would silently give dropped a markdown form, "
+           "and § 3.11 makes that an anti-pattern";
+
+    // The property appendRecord() uses AS its exclusion signal. If a future
+    // change gave dropped a glyph, this text would parse, the reader would
+    // admit a dropped item, and ANTS-3793's INV-2 membership rule would break
+    // somewhere far from the edit that caused it.
+    const QString text = RoadmapRender::bulletText(gone);
+    EXPECT_FALSE(RoadmapParse::parseAntsV1Bullet(text).has_value())
+        << "a dropped item's bulletText() must NOT re-parse — bulletsFromStore() "
+           "uses that failure as its exclusion. It produced: "
+        << text.toStdString();
+}
+
+TEST(RoadmapRender, Ants3818NoUnsortedSectionConsumer) {
+    const QDir srcDir(QStringLiteral(ANTS_SRC_DIR));
+    ASSERT_TRUE(srcDir.exists()) << srcDir.absolutePath().toStdString();
+
+    // Case-sensitive, comments stripped — INV-11's measured lesson, for the
+    // same reason: this identifier is discussed in prose in roadmapstore.h at
+    // length, and a scrape that fires on prose proves nothing about calls.
+    // `listSectionsOrdered(` must NOT match, hence the negative lookahead on
+    // the character that distinguishes them.
+    const QRegularExpression rx(QStringLiteral("listSections\\s*\\((?!.*Ordered)"));
+    const QStringList exempt{QStringLiteral("roadmapstore.cpp"),
+                             QStringLiteral("roadmapstore.h"),
+                             QStringLiteral("remotecontrol_roadmap_log.cpp")};
+    QStringList offenders;
+    const QStringList files = srcDir.entryList(
+        {QStringLiteral("*.cpp"), QStringLiteral("*.h")}, QDir::Files, QDir::Name);
+    for (const QString &name : files) {
+        if (exempt.contains(name)) continue;
+        QFile fh(srcDir.filePath(name));
+        if (!fh.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        const QStringList lines = QString::fromUtf8(fh.readAll()).split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            const int comment = line.indexOf(QStringLiteral("//"));
+            const QString code = comment < 0 ? line : line.left(comment);
+            if (rx.match(code).hasMatch()) { offenders.append(name); break; }
+        }
+    }
+    EXPECT_TRUE(offenders.isEmpty())
+        << "these files call the UNSORTED listSections(): "
+        << offenders.join(QStringLiteral(", ")).toStdString()
+        << " — use listSectionsOrdered() if the caller reads document order, or "
+           "add the file to this test's exempt list with the reason it does not";
 }
 
 // INV-1 — the render loses nothing and invents nothing, over the facts markdown

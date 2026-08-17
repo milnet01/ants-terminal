@@ -464,6 +464,35 @@ public:
     std::optional<QHash<qint64, ItemWrite>> readItems(qint64 projectId,
                                                       QString *error = nullptr) const;
 
+    // ANTS-3816's second half — how big is this project, WITHOUT materialising
+    // it. One aggregate query; the point is that asking costs no rows.
+    //
+    // Exists because ANTS-3793's INV-3 gates a whole-project read on ITEM COUNT
+    // as an over-inclusive proxy for a 16 MiB record budget, and says why: at
+    // the time, "resident size is knowable only after materialising, which is
+    // the thing being guarded". That is the sentence this reader retires.
+    //
+    // TWO TRAPS, and both are the kind that ship as a silent factor-of-two.
+    //
+    // (1) SQLite's LENGTH(text) counts CHARACTERS, not bytes — it returns bytes
+    //     only for a BLOB. The item's own sketch said `SUM(LENGTH(body))`, which
+    //     would have returned characters under a name promising bytes. The query
+    //     casts to BLOB so the number is genuinely UTF-8 bytes.
+    //
+    // (2) UTF-8 bytes are NOT resident bytes. A materialised body is a QString,
+    //     i.e. UTF-16: roughly 2 x the CHARACTER count, plus per-object
+    //     overhead. So on ASCII this figure is about half the resident cost, and
+    //     on CJK it can exceed it. **Do not read this as a RAM figure.** It is
+    //     the stored size — exact, cheap, and the right input for an on-disk or
+    //     wire budget. A resident-RAM gate needs its own conversion and should
+    //     say which it is using.
+    //
+    // Returns 0 for a project with no items (SUM over no rows is NULL in SQL and
+    // is normalised here), and nullopt only on a query failure — so a caller can
+    // tell "nothing stored" from "could not ask".
+    std::optional<qint64> projectBodyBytes(qint64 projectId,
+                                           QString *error = nullptr) const;
+
     // One enumeration serving BOTH § 2.7's orphan detection (a set complement)
     // and § 2.6.1's id-less re-run matching (a search by natural key). Neither
     // is expressible as a point lookup however many times it is called.

@@ -28216,7 +28216,7 @@ against current source before filing.
   would answer collateral with a cold dispatch — do NOT re-run the gate
   on this spec unless a contract clause is amended.
 
-- 📋 [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
+- ✅ [ANTS-3816] **RoadmapStore needs a batched full-item reader and a cheap size aggregate.**
   Verified 2026-08-04. The store has exactly three enumerators —
   `listItems()`, `listSections()`, `listElements()` — and `listItems()`
   returns the NARROW `ItemRef` (itemPk, idFold, headline, sectionId,
@@ -28238,8 +28238,47 @@ against current source before filing.
   **Layman:** Reading a whole project out of the roadmap database currently costs one query per item; make it one query.
   Kind: perf.
   Source: ANTS-3793 spec § 4 (2026-08-04) — surfaced while pricing the read seam's latency budget..
+  Resolved (2026-08-17) — the SECOND half. The batched `readItems()` shipped
+  2026-08-04 once ANTS-3793's p95 budget red (83.4 ms of 101 ms was the N+1);
+  this closes the aggregate reader, so the item is now whole.
 
-- 📋 [ANTS-3817] **SectionRow should carry its own section_id.**
+  `RoadmapStore::projectBodyBytes(projectId)` — one query, no rows materialised.
+  It retires the sentence ANTS-3793's INV-3 rests on: "resident size is knowable
+  only after materialising, which is the thing being guarded."
+
+  TWO TRAPS, both documented in the header and both pinned by tests, because each
+  ships as a silent factor-of-N:
+
+  1. THE ITEM'S OWN SKETCH WAS WRONG. It says `SELECT SUM(LENGTH(body))`, and
+     SQLite's LENGTH() over TEXT counts CHARACTERS — bytes only for a BLOB. That
+     query returns a character count under a name promising bytes: correct on
+     ASCII, wrong by up to 4x otherwise, silent either way. The shipped query
+     casts to BLOB. The test fixture deliberately mixes ASCII and CJK (6 chars /
+     10 bytes) because an ASCII-only fixture passes against both implementations.
+  2. UTF-8 bytes are NOT resident bytes. A materialised body is a QString, i.e.
+     UTF-16 — roughly 2x the CHARACTER count. So this figure is about half the
+     resident cost on ASCII and can exceed it on CJK. The header says outright not
+     to read it as a RAM number.
+
+  DELIBERATELY NOT DONE: rewiring INV-3's gate from item count to bytes. The
+  aggregate makes that possible, and the item says it "would make that budget
+  exact instead of indicative" — but INV-3 asserts the COUNT, names 3,500 as the
+  refusal point, and pins `>` vs `>=` with 3,500/3,501 cases. Changing it is a
+  spec amendment plus a behaviour change to a shipped refusal (projects currently
+  accepted could start being refused), which wants its own gate and its own
+  decision. The enabling reader is this item; the rewiring is not.
+
+  Tests: three in tests/features/roadmap_store_identity (count 5 -> 8) — the
+  byte-vs-character case, an empty project returning 0 rather than a failure (SUM
+  over zero rows is NULL, hence the COALESCE, and 0-by-luck is indistinguishable
+  from the nullopt this reserves for "could not ask"), and a two-project case
+  pinning the WHERE scope, whose absence is invisible on a single-project fixture.
+  Both mutations verified red: dropping the CAST returned 6 instead of 10;
+  removing the scope returned 28 instead of 8.
+
+  Full suite 3587/3587.
+
+- ✅ [ANTS-3817] **SectionRow should carry its own section_id.**
   Verified 2026-08-04. `listSections()` selects
   `slug, title, level, intro, parent_id, source_path, position` and
   `SectionRow` has no `section_id` field, so every caller that wants a
@@ -28258,8 +28297,20 @@ against current source before filing.
   **Layman:** Reading the database's section list leaves out each section's ID, so callers have to look it up again one by one.
   Kind: refactor.
   Source: ANTS-3793 spec § 2.1.3 (2026-08-04) — surfaced while stating the document-order walk..
+  Resolved (2026-08-17): shipped earlier the same day as groundwork for ANTS-3822
+  and never flipped — this closes the bookkeeping rather than doing the work.
+  Verified against current source before claiming it: `SectionRow` carries
+  `sectionId` (roadmapstore.h:496), `kSectionColumns` selects `section_id` and
+  `sectionFromRow()` populates it, and all four consumers now take the id off the
+  row. The per-section `findSection()` and BOTH "section vanished between reads"
+  error paths are gone (roadmapsource.cpp:293, roadmaprender.cpp:387,
+  remotecontrol_roadmap_log.cpp:5155 all say so in place).
 
-- 📋 [ANTS-3818] **Document order is a C++ comparator a consumer can silently forget.**
+  One shape, not two copies: roadmapstore.cpp:1632 records why — with the SELECT
+  duplicated, a field populated in readSection() and forgotten in listSections()
+  reads back as 0, a valid-looking id pointing at nothing.
+
+- ✅ [ANTS-3818] **Document order is a C++ comparator a consumer can silently forget.**
   Verified 2026-08-04. `listSections()` deliberately returns
   `ORDER BY section_id` — rowid order, "only for determinism between two reads
   of the same store" per its own comment — and real document order is the free
@@ -28281,6 +28332,36 @@ against current source before filing.
   **Layman:** The order sections appear in is applied by hand after reading them; anyone who forgets gets the wrong order with no warning.
   Kind: refactor.
   Source: ANTS-3793 spec § 2.1.3 (2026-08-04) — surfaced while stating the document-order walk..
+  Resolved (2026-08-17): `listSectionsOrdered()` shipped earlier the same day
+  (roadmapstore.h:531, .cpp:1702) as a WRAPPER, not a second query — the sort key
+  stays (position, slug) applied in C++ by sectionOrderLess(), for the collation
+  reason listSections()' own comment gives: QString::compare() is UTF-16
+  code-unit order while SQLite BINARY is UTF-8 byte order, and they disagree on
+  the supplementary-plane characters an emoji heading slug reaches. That was
+  correct and is untouched.
+
+  BUT THE ITEM ASKED FOR MORE THAN THE WRAPPER, and that is why this was not just
+  a flip. Its stated risk is "a consumer which simply iterates listSections() gets
+  a plausible order, no error, and a wrong file", and "nothing tests that a
+  CONSUMER remembered". A more obvious call is not a guarantee. So its own
+  alternative remedy shipped too: `Ants3818NoUnsortedSectionConsumer`, a source
+  scrape in tests/features/roadmap_render (count 16 -> 17) asserting that no file
+  under src/ reaches for the unsorted enumerator.
+
+  The two exemptions were verified rather than assumed, and all three of the
+  second file's callers were read: create_section's renumber keys every row by its
+  own id; rotate_minor builds QHash indexes and iterates a QHash, which has no
+  order to lose; retitle's slug-collision scan is a membership test. So no live
+  fault existed — the risk was real and unrealised, which is exactly the state
+  worth freezing.
+
+  Modelled on this directory's Inv11SingleElementReader, including its measured
+  lesson (case-sensitive, comments stripped: a loose scrape matched English prose
+  in three unrelated files). Verified red by reverting roadmapsource.cpp to the
+  unsorted call — the guard named the offending file. Recorded in the dir's
+  spec.md "What each case locks" table.
+
+  Full suite 3587/3587.
 
 - 📋 [ANTS-3819] **RoadmapStore::db() hands out a mutable QSqlDatabase, past the typed reader surface.**
   Verified 2026-08-04. Alongside the typed readers, `RoadmapStore` exposes
@@ -28306,8 +28387,52 @@ against current source before filing.
   So the narrowing turns entirely on the three export sites, and they are the one caller a typed reader does not yet serve — the export streams the whole store, which is exactly ANTS-3816's "batched full-item reader and cheap size aggregate". Until that lands there is nothing to give them, and making the accessor private today would either break the export or need a `friend`, which is the same hole with a narrower name.
 
   Two things worth recording so the next session does not re-derive them. Constness buys nothing here: `QSqlQuery` takes a non-const `QSqlDatabase`, and two of the three sites already take a COPY (`QSqlDatabase db = store.db()`), which shares the same connection — so a `const &` accessor would not close the hole. And the honest sequencing is ANTS-3816 first, then this item's narrowing becomes a small mechanical change to three call sites plus an access-specifier move.
+  CORRECTION (2026-08-17) — the 2026-08-15 progress note above names the wrong
+  blocker, and its size estimate follows from that error. ANTS-3816 shipped in
+  full today (batched `readItems()` earlier, `projectBodyBytes()` now), so on that
+  note's own reasoning this item should be ready. It is not. The three `db()`
+  sites were re-read rather than re-derived, and here is what they actually need:
 
-- 📋 [ANTS-3820] **A dropped item has no markdown form, and nothing asserts that the render never tries.**
+  - `writeAll()` (roadmapexport.cpp:678) binds `QSqlDatabase &db` and threads it
+    into five helpers — `writeIdPrefixes`, `loadSections`, `writeSections`,
+    `loadItems`, `writeItems` — each running its own bespoke SELECT. Only
+    `loadItems`/`writeItems` are plausibly served by `readItems()`; the rest are
+    not item reads at all.
+  - `writeProject()` (:746) needs TRANSACTION CONTROL: `db.transaction()` then
+    `db.rollback()`. Its own comment says why it must be DEFERRED — "this path
+    only reads, and taking the write lock would block every other writer for the
+    whole run".
+  - `rebuildProject()` (:794) needs `BEGIN IMMEDIATE` + `ROLLBACK` plus raw
+    INSERTs for the import path.
+
+  So the real blocker is the store's transaction surface, not its readers.
+  `RoadmapStore` exposes `begin()` / `commit()` / `rollback()` / `inTransaction()`
+  (roadmapstore.h:94-97) and `begin()` is BEGIN IMMEDIATE, which "refuses to
+  nest". Routing `writeProject()` through it would take the write lock for the
+  duration of an export — the exact regression that site is written to avoid. The
+  store has no deferred read-only transaction to offer it.
+
+  REVISED BLOCKER, replacing "blocked on ANTS-3816":
+    (a) a deferred read-only transaction on the store surface, for the export;
+    (b) typed readers for the four non-item helper SELECTs;
+    (c) a bulk-write path for `rebuildProject()`, or an explicit decision that the
+        rebuild keeps raw SQL as the import's own privileged seam.
+
+  And (c) may be the honest answer for the whole item: the export/import pair is
+  the store's rebuild path, so it is arguably the one caller that SHOULD hold the
+  raw handle, the way `roadmapstore.cpp` does. If that is accepted, this item
+  becomes "make `db()` private and `friend` the export" — which the note above
+  correctly calls "the same hole with a narrower name" — or it becomes a WONTFIX
+  with the reasoning recorded. That is a design decision, not a mechanical change,
+  and it wants deciding before anyone starts.
+
+  What still stands from the 2026-08-15 note: the caller enumeration (three
+  production sites, all in roadmapexport.cpp; the test callers in
+  roadmap_store_schema are legitimate and stay), and that constness buys nothing
+  here because `QSqlQuery` takes a non-const `QSqlDatabase` and two sites already
+  take a copy sharing the connection.
+
+- ✅ [ANTS-3820] **A dropped item has no markdown form, and nothing asserts that the render never tries.**
   Verified 2026-08-04, and the round trip is worse than "no glyph":
   `emojiFor()` returns an EMPTY string for `dropped` by design
   (roadmap-format.md § 3.11 makes a fifth emoji an anti-pattern), so
@@ -28327,6 +28452,36 @@ against current source before filing.
   **Layman:** Items marked 'dropped' can't be written to the roadmap file at all; add a guard so a future change can't quietly try.
   Kind: fix.
   Source: ANTS-3793 spec § 2.1.2 (2026-08-04) — found while deciding what the store read path returns..
+  Resolved (2026-08-17): the precondition is now STATED at the producer
+  (roadmaprender.h) and TESTED, which is what the item asked for.
+
+  The item's premise had partly moved on and the correction matters. It says
+  "today `isRenderable()` excludes it before `renderBullet()` is reached, so the
+  pairing holds by call order and by nothing else" — true of the render, but the
+  second consumer now handles it explicitly: `appendRecord()`
+  (roadmapsource.cpp:57) relies on the marker-less text FAILING
+  `parseAntsV1Bullet()` and skips the nullopt, and says so in place. So there are
+  two exclusion mechanisms, not one gap.
+
+  That changed the fix. The item's literal ask — assert the precondition inside
+  `bulletText()` — would BREAK the second caller, which wants exactly the
+  unparseable output as its exclusion signal. So the precondition is documented
+  rather than enforced, the header says why enforcing it is wrong, and the
+  property is pinned by a test instead.
+
+  `Ants3820DroppedItemHasNoMarkdownForm` (tests/features/roadmap_render, count
+  17 -> 18) asserts the producer side only: `emojiFor("dropped")` is empty, and a
+  dropped item's `bulletText()` does not re-parse. The render's own exclusion is
+  ALREADY covered by `Inv4Membership` ("internal and dropped never appear; shipped
+  does"), so re-asserting it here was cut rather than shipped as duplicate
+  coverage paying for a second full render.
+
+  Verified red by giving `dropped` a glyph — the § 3.11 anti-pattern the item
+  names. Both assertions fired, and the output showed the danger exactly:
+  `- 📋 [ANTS-2] **A dropped item.**`, a dropped item with a valid markdown form
+  the reader would then admit. Recorded in the dir's spec.md table.
+
+  Full suite 3587/3587.
 
 - ✅ [ANTS-3821] **Backfill the missing `Layman:` lines so the render gate can pass.**
   ANTS-3758's render refuses to write ANY file for a project holding an
