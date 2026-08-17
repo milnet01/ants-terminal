@@ -63,7 +63,17 @@ constexpr const char *kOrientationScriptBody =
     "  • roadmap_log        → ROADMAP.md append / status flip / annotate\n"
     "  • changelog_log      → CHANGELOG.md append (Keep-a-Changelog aware)\n"
     "  • workspace_search   → project-wide code search (saves 250–4500 tokens vs grep)\n"
-    "  • file_outline       → outline a file; read_region(s) fetch its slices\n"
+    // ANTS-4422 — "read_region(s) fetch its slices" read as though
+    // read_regions were a minor plural of read_region rather than a distinct
+    // batching win, so a session reached for N read_region calls where one
+    // read_regions would do — the exact token waste this prelude exists to
+    // prevent. Reported by a Charls_Site session that used it well once it
+    // noticed. BYTE-NEUTRAL by construction (77 bytes before and after): the
+    // prelude is capped at 1400 bytes by INV-10 of
+    // tests/features/mcp_orientation_install, `•` and `→` are 3 bytes each,
+    // and that assertion measures a QByteArray. Verified by computing both
+    // encodings rather than by counting characters.
+    "  • file_outline       → outline a file; read_regions = N slices, 1 call\n"
     "  • find_definition    → \"where is foo defined?\" (C++/Python/Lua/sh/GLSL)\n"
     // ANTS-3619 — the language qualifier has to be HERE, pre-call. The
     // post-call envelope already explains the C/C++ limit, but by then a

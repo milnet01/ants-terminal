@@ -72,3 +72,39 @@ TEST(WorkspaceSearchPhraseHint, Ants3466MetacharRegexFalseHint) {
     EXPECT_TRUE(has(src, "pattern.contains(QChar('|'))"))
         << "alternation must be a detected metacharacter";
 }
+
+// ANTS-4420 — a pattern carrying HTML entities where the caller meant the
+// literal characters returns zero matches and, before this, no hint at all:
+// neither the ANTS-2045 branch (the pattern has no whitespace) nor ANTS-3466's
+// (it was regex:true) could fire. Reported by a Charls_Site session:
+// `&lt;h[123][^&gt;]*&gt;` found nothing and read as "this file has no
+// headings", while the literal `<h[123][ >]` found 11 in the same file.
+//
+// Source-scraped for the reason the three tests above are: the envelope
+// builder needs a live RemoteControl. So this pins the WIRING — that the
+// detector exists, that it gates the hint, that it runs first, and that the
+// hint names the literal characters. It does NOT exercise the matcher against
+// a real pattern; rcContainsHtmlEntity lives in remotecontrol_internal.h,
+// which no test includes, and making it test-facing is a wider change than
+// this item earns.
+TEST(WorkspaceSearchPhraseHint, Ants4420HtmlEntityHint) {
+    const std::string src = ants_test::slurpRemoteControl();
+    ASSERT_FALSE(src.empty());
+    EXPECT_TRUE(has(src, "rcContainsHtmlEntity"))
+        << "the HTML-entity detector must exist";
+    EXPECT_TRUE(has(src, "matches.isEmpty() && rcContainsHtmlEntity(pattern)"))
+        << "the hint must gate on zero matches + an entity-bearing pattern";
+    // Ordered FIRST: an entity-bearing pattern that ALSO has whitespace must
+    // be diagnosed as an entity problem, not sent to fix its spacing. The
+    // ANTS-2045 branch is therefore an else-if off this one.
+    EXPECT_TRUE(has(src, "else if (matches.isEmpty() && pattern.trimmed()"))
+        << "the phrase branch must chain off the entity branch, so the more "
+           "specific diagnosis wins and `hint` is still set at most once";
+    EXPECT_TRUE(has(src, "did you \"\n            \"mean the literal characters")
+                || has(src, "mean the literal characters"))
+        << "the advisory must point at the literal characters";
+    // Narrow by construction: `&` + a name + `;`. A bare `&` is ubiquitous in
+    // real code (`a && b`) and carries no terminator, so it must not qualify.
+    EXPECT_TRUE(has(src, "&(lt|gt|amp|quot|apos|nbsp|#[0-9]+|#x[0-9A-Fa-f]+);"))
+        << "the detector must require a terminated entity, not a bare &";
+}

@@ -512,6 +512,38 @@ TEST(McpPathAnchor, FeedbackSuffixElsewhereRefused) {
     EXPECT_TRUE(check.bad)
         << "the carve-out must be bounded to the project root's parent, "
            "not granted to the suffix anywhere on the filesystem";
+
+    // ANTS-4421 — the refusal stays, and now names the call that WOULD work.
+    // A session whose project lives outside the shared corpus dir entirely
+    // (~/.claude, reading a report under /mnt/Games/Scripts/Linux) is
+    // legitimately outside the ancestor chain, so no widening can serve it and
+    // the route out is all that was missing. The reporting session found the
+    // working form by guessing; the envelope already knows the rejected path.
+    const QString hint = check.err.value(QStringLiteral("hint")).toString();
+    EXPECT_FALSE(hint.isEmpty())
+        << "a refused feedback-file path must name a workable caller_cwd; "
+           "bad_path alone is a dead end and sends the session to Bash cat";
+    EXPECT_TRUE(hint.contains(QStringLiteral("caller_cwd")))
+        << "the hint must name the arg to change; got: " << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("Evil_Ants_MCP_Feedback.md")))
+        << "the hint must name the bare relative filename to pass alongside "
+           "it; got: " << hint.toStdString();
+}
+
+// ANTS-4421 — the hint is scoped to feedback files. An ordinary out-of-root
+// path is a genuine traversal refusal with no legitimate route, so inventing
+// a caller_cwd for it would read as an invitation to re-issue and escape.
+TEST(McpPathAnchor, Ants4421HintOnlyForFeedbackPaths) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+    ASSERT_TRUE(fx.write(QStringLiteral("elsewhere/deep/secrets.md")));
+
+    const auto check = PathValidation::validatePath(
+        QStringLiteral("../elsewhere/deep/secrets.md"),
+        fx.root, QStringLiteral("read_region"));
+    ASSERT_TRUE(check.bad);
+    EXPECT_FALSE(check.err.contains(QStringLiteral("hint")))
+        << "a non-feedback escape must not be handed a working caller_cwd";
 }
 
 TEST(McpPathAnchor, FeedbackFileReachableFromProjectSubdirectory) {

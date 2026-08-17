@@ -9,6 +9,62 @@
 
 namespace ApplyEdits {
 
+namespace {
+
+// ANTS-4418 — collapse runs of horizontal whitespace to one space and drop
+// trailing whitespace, so two spellings that differ only in spacing compare
+// equal. Deliberately NOT a full normalisation: newlines are left alone, since
+// they are what the line split below is keyed on.
+QString wsNormalised(const QString &s) {
+    QString out;
+    out.reserve(s.size());
+    bool pendingSpace = false;
+    for (const QChar c : s) {
+        if (c == QLatin1Char(' ') || c == QLatin1Char('\t')) {
+            pendingSpace = !out.isEmpty();
+            continue;
+        }
+        if (pendingSpace) { out.append(QLatin1Char(' ')); pendingSpace = false; }
+        out.append(c);
+    }
+    return out;
+}
+
+// ANTS-4418 — locate the single line whose whitespace-normalised form equals
+// the normalised `oldStr`. Sets the near-miss fields only on a UNIQUE hit:
+// two candidate lines cannot tell the caller which to retry, and naming one
+// arbitrarily is worse than naming none.
+//
+// SCOPE, and it is the reported case rather than the general one: a
+// SINGLE-LINE `oldStr`. A multi-line old string whose interior spacing drifted
+// needs a windowed alignment over the file, which is a different piece of work
+// and not what the round-trip cost was measured on — the report's own repro is
+// one line differing by two spaces in a trailing-comment alignment column.
+// A multi-line miss therefore reports no near miss, which is honest; the
+// alternative is a confident wrong line.
+void findWhitespaceNearMiss(const QString &contents, const QString &oldStr,
+                            EditOutcome &r) {
+    if (oldStr.contains(QLatin1Char('\n'))) return;
+    const QString needle = wsNormalised(oldStr);
+    if (needle.isEmpty()) return;
+
+    int hitLine = -1;
+    QString hitText;
+    const QStringList lines = contents.split(QLatin1Char('\n'));
+    for (int i = 0; i < lines.size(); ++i) {
+        if (wsNormalised(lines.at(i)) != needle) continue;
+        if (hitLine >= 0) return;          // ambiguous → report nothing
+        hitLine = i + 1;                   // 1-based, matching read_region
+        hitText = lines.at(i);
+    }
+    if (hitLine < 0) return;
+    r.nearMissLine = hitLine;
+    r.nearMissText = hitText;
+    r.nearMissKind = QStringLiteral("whitespace");
+}
+
+}  // namespace
+
 EditOutcome applyToContent(const QString &contents, const QString &oldStr,
                            const QString &newStr, bool replaceAll) {
     EditOutcome r;
@@ -21,6 +77,7 @@ EditOutcome applyToContent(const QString &contents, const QString &oldStr,
     const int count = contents.count(oldStr);
     if (count == 0) {
         r.skipReason = QStringLiteral("not_found");
+        findWhitespaceNearMiss(contents, oldStr, r);
         return r;
     }
     if (count > 1 && !replaceAll) {

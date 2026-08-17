@@ -60,5 +60,25 @@ source-scrapes the MCP wiring sites. It maps to the spec invariants:
   `tests/`-prefix detection misses a `./tests/…` path. Retroactively repairs
   shipped ANTS-3393's `["."]` keys.
 
+- **INV-21** — (ANTS-4419) an `empty` summary also carries `empty_reason`,
+  `empty_hint` and `empty_detail`, and the reason distinguishes three
+  conditions: `project_not_registered` (indexable source exists but not under
+  `src/`/`tests/`, and no `.ants/project.json` declares where it lives),
+  `declared_roots_hold_no_source` (a settings file is present but its
+  `source_roots` hold nothing indexable), and `no_indexable_source` (the tree
+  genuinely has none). Completes INV-17, whose boolean told a caller the map
+  was empty but not whether it was *inapplicable* — a Charls_Site session read
+  `empty:true` as "there is no code here" and fell back to grep on a real
+  tree. Reuses ANTS-2161's `ProjectSettings::detect()` rather than adding a
+  second layout analysis, and runs only on the already-empty path.
+  **The branch ORDER is part of the invariant**: `detect()` performs no walk
+  when the settings file is present, so `totalSourceCount` is `0` there by
+  construction, and a gate testing the count before `present` reports a
+  registered project as `no_indexable_source`. A **non-empty** summary gains
+  none of these fields, so every already-working project's response stays
+  byte-identical; the gate is `query()`'s own `empty` flag, which is set only
+  on the summary path. Every field is a deterministic function of the tree, so
+  a warm re-serve stays 304-stable.
+
 The test must fail against pre-implementation source (no `codebaseindex.*`,
 no `codebase_index` wiring) and pass after the feature lands.

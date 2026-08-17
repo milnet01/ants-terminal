@@ -78,6 +78,82 @@ TEST(CodebaseIndex, BuildShapeAndEmptyRoot) {
     EXPECT_EQ(env.value("file_count").toInt(), 0);
 }
 
+// ANTS-4419 — an empty index says WHY it is empty, and the three reasons are
+// distinguishable. ANTS-2148 added the `empty` boolean and stopped there, so a
+// caller could not tell "this project was never registered" from "there is no
+// code here" and reasonably concluded the latter — reported by a Charls_Site
+// session that fell back to grep on a real tree.
+//
+// All three branches are asserted because the ORDER is the load-bearing part.
+// ProjectSettings::detect() does not walk when .ants/project.json is present,
+// so totalSourceCount is 0 there by construction; a gate testing the count
+// before `present` would label a registered project no_indexable_source. That
+// is the same class of mistake as the missing-.git diagnosis this item exists
+// to correct, which is why it gets its own case rather than a comment.
+TEST(CodebaseIndex, Ants4419EmptyReasonNamesTheCondition) {
+    // (a) source exists, but not under src/ or tests/, and nothing declares
+    // where it lives — the reported case.
+    {
+        QTemporaryDir dir;
+        writeFile(dir.path() + "/site/app.js", QStringLiteral("function f() {}\n"));
+        const QString cache = dir.path() + "/cache.json";
+        const QJsonObject env = serve(dir.path(), 1000, summaryQ(), Options{}, cache);
+        EXPECT_EQ(env.value("file_count").toInt(), 0);
+        ASSERT_TRUE(env.value("empty").toBool());
+        EXPECT_EQ(env.value("empty_reason").toString(),
+                  QStringLiteral("project_not_registered"))
+            << "source outside src//tests/ with no .ants/project.json must say "
+               "the project is unregistered, not that the tree is empty";
+        EXPECT_FALSE(env.value("empty_hint").toString().isEmpty())
+            << "the hint is the whole point — it names the one-step remedy";
+        EXPECT_FALSE(env.value("empty_detail").toString().isEmpty())
+            << "detect()'s measured counts must ride along";
+    }
+    // (b) genuinely nothing indexable anywhere.
+    {
+        QTemporaryDir dir;
+        writeFile(dir.path() + "/notes.txt", QStringLiteral("prose\n"));
+        const QString cache = dir.path() + "/cache.json";
+        const QJsonObject env = serve(dir.path(), 1000, summaryQ(), Options{}, cache);
+        ASSERT_TRUE(env.value("empty").toBool());
+        EXPECT_EQ(env.value("empty_reason").toString(),
+                  QStringLiteral("no_indexable_source"))
+            << "a tree with no indexable suffix anywhere is accurately empty";
+    }
+    // (c) registered, but the declared roots hold no source. This is the case
+    // detect()'s no-walk short-circuit would misreport if the count were
+    // tested first.
+    {
+        QTemporaryDir dir;
+        writeFile(dir.path() + "/declared/keep.txt", QStringLiteral("x\n"));
+        writeFile(dir.path() + "/.ants/project.json",
+                  QStringLiteral("{\"source_roots\":[\"declared\"]}\n"));
+        const QString cache = dir.path() + "/cache.json";
+        const QJsonObject env = serve(dir.path(), 1000, summaryQ(), Options{}, cache);
+        ASSERT_TRUE(env.value("empty").toBool());
+        EXPECT_EQ(env.value("empty_reason").toString(),
+                  QStringLiteral("declared_roots_hold_no_source"))
+            << "a present settings file must be reported as such; detect() "
+               "skips the walk here, so a count-first gate reads 0 and says "
+               "no_indexable_source";
+    }
+}
+
+// ANTS-4419 — a NON-empty index gains no new fields, so the response shape is
+// byte-identical for every project that was already working. The diagnostic is
+// gated on query()'s own `empty` flag, which is set only on the summary path.
+TEST(CodebaseIndex, Ants4419NonEmptyIndexIsUnannotated) {
+    QTemporaryDir dir;
+    writeFile(dir.path() + "/src/alpha.cpp", cppWith("Alpha", "run"));
+    const QString cache = dir.path() + "/cache.json";
+    const QJsonObject env = serve(dir.path(), 1000, summaryQ(), Options{}, cache);
+    ASSERT_GT(env.value("file_count").toInt(), 0);
+    EXPECT_FALSE(env.value("empty").toBool());
+    EXPECT_FALSE(env.contains("empty_reason"));
+    EXPECT_FALSE(env.contains("empty_hint"));
+    EXPECT_FALSE(env.contains("empty_detail"));
+}
+
 // INV-2 — refresh: changed re-outlined, removed pruned (files + laneToFiles),
 // added gets its lane; refreshedOut == changed+added.
 TEST(CodebaseIndex, RefreshDeltaAddedRemoved) {

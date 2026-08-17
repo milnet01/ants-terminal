@@ -14,6 +14,25 @@ for security-relevant changes.
 
 ### Added
 
+- **a refused cross-project feedback-file read now names the call that works** (ANTS-4421)
+  The refusal is correct — the file lives outside the project — but it was a
+  dead end. It now names the folder to use as the working directory.
+
+- **searching with HTML entities now warns instead of silently finding nothing** (ANTS-4420)
+  A pattern written as `&lt;h1&gt;` rather than `<h1>` found nothing and read
+  as a confident answer; it now asks whether the literal characters were
+  meant.
+
+- **a failed text edit now points at the line that nearly matched** (ANTS-4418)
+  When an edit misses only because of spacing, apply_edits reports the line
+  number and that line's exact text, so the retry needs no re-reading and no
+  guessing at the whitespace.
+
+- **an empty code map now explains why it is empty** (ANTS-4419)
+  Instead of a bare "empty" flag, codebase_index says whether the project was
+  never registered, whether its declared source folders hold no code, or
+  whether there genuinely is none — and names the folders that do hold code.
+
 - **Feedback v2 gains an "awaiting reporter" triage state** (ANTS-3631)
   `assign_id` takes a third disposition, `awaiting`, writing
   `_(awaiting reporter — <question>)_`. It stays un-triaged on purpose so
@@ -108,6 +127,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **the session startup tool list now spells out that read_regions batches** (ANTS-4422)
+  It read as a plural of read_region, so sessions made several calls where one
+  would do.
+
+- **the roadmap write refusal now says where backticks must go** (ANTS-4424)
+  "Wrap the key in backticks" was true only if they sit immediately around the
+  key; a key inside a longer code span is still read as metadata, so a caller
+  who already had backticks was refused twice with the same advice.
+
 - **Roadmap dialog — the filter bar collapses to three controls** (ANTS-4412)
   Sixteen checkboxes across two rows became `Status: all ▾`,
   `Kind: all ▾` and `Reset filters`, with the density combo moved up to
@@ -128,6 +156,19 @@ for security-relevant changes.
   corpus with 0 newly firing.
 
 ### Fixed
+
+- **a section search that matches nothing now says the search emptied it** (ANTS-4423)
+  It previously reported that no item carried an ID and suggested two settings
+  that cannot help. The same fix shipped for whole-file searches in July and
+  had never been applied to single-section ones.
+
+- **roadmap_query no longer returns a body fragment as a bullet's headline** (ANTS-4417)
+  On the `**ID** headline` bullet shape (id bolded, headline plain), the
+  headline search ran past the bullet's first line and adopted whatever the
+  body bolded next — so a listing could read "already received" or "fixed
+  2026-08-02" for open items. Also stopped a latent migration fault: the same
+  offset is the boundary the roadmap import strips at, so importing such a
+  project would have dropped real text.
 
 - **`mutation_probe`'s green-baseline gate no longer passes when it cannot tell** (ANTS-4401)
   `require_green_baseline` tested for red and read everything else as

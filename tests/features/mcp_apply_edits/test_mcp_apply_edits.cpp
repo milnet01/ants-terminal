@@ -89,6 +89,76 @@ TEST(McpApplyEdits, UniqueAbsentDuplicate) {
     EXPECT_EQ(d.skipReason, "ambiguous");
 }
 
+// ANTS-4418 — a `not_found` caused by whitespace-only drift names the line.
+// The reported case verbatim: `old` was copied from a workspace_search result
+// and differed from the file only in the run-length of interior spaces, because
+// the file aligns a trailing-comment column. `not_found` alone is equally
+// consistent with "the text is gone", "wrong file" and "you are one space out",
+// and this is the verb where the third is most likely — while its siblings
+// (read_region section-mode, roadmap_log bullet locators) already return
+// `candidates` on a miss.
+TEST(McpApplyEdits, Ants4418WhitespaceNearMissNamesTheLine) {
+    const QString file =
+        QStringLiteral("#!/bin/sh\n"
+                       "python3 tools/verify_watch.py     # INV-32: check\n"
+                       "echo done\n");
+    // Three interior spaces where the file has five.
+    const auto r = ApplyEdits::applyToContent(
+        file,
+        QStringLiteral("python3 tools/verify_watch.py   # INV-32: check"),
+        QStringLiteral("python3 tools/verify_watch.py   # INV-33: check"),
+        false);
+    EXPECT_FALSE(r.applied);
+    EXPECT_EQ(r.skipReason, "not_found");
+    EXPECT_EQ(r.nearMissLine, 2)
+        << "the whitespace-only near miss must be located, 1-based, so the "
+           "start_line/end_line form is usable as the immediate retry";
+    EXPECT_EQ(r.nearMissKind, "whitespace");
+    EXPECT_EQ(r.nearMissText,
+              QStringLiteral("python3 tools/verify_watch.py     # INV-32: check"))
+        << "the reported text must be the FILE's bytes, so a caller can retry "
+           "with it verbatim rather than guessing the spacing again";
+}
+
+// ANTS-4418 — the near miss is reported only when it is UNIQUE, and only for a
+// whitespace difference. Two candidates cannot tell the caller which to retry,
+// so naming one arbitrarily is worse than naming none; and a genuinely absent
+// string must not acquire a spurious "did you mean" line.
+TEST(McpApplyEdits, Ants4418NearMissOnlyWhenUniqueAndWhitespace) {
+    // Two lines normalise to the same thing → no near miss.
+    const auto ambiguous = ApplyEdits::applyToContent(
+        QStringLiteral("a  b\na    b\n"), QStringLiteral("a b"),
+        QStringLiteral("c"), false);
+    EXPECT_EQ(ambiguous.skipReason, "not_found");
+    EXPECT_EQ(ambiguous.nearMissLine, -1)
+        << "two whitespace-equal candidates must report none";
+
+    // Genuinely absent → no near miss.
+    const auto absent = ApplyEdits::applyToContent(
+        QStringLiteral("alpha\nbeta\n"), QStringLiteral("gamma"),
+        QStringLiteral("g"), false);
+    EXPECT_EQ(absent.skipReason, "not_found");
+    EXPECT_EQ(absent.nearMissLine, -1)
+        << "an absent string must not acquire a spurious near miss";
+
+    // A difference that is NOT whitespace must not be reported as one.
+    const auto typo = ApplyEdits::applyToContent(
+        QStringLiteral("value = 42\n"), QStringLiteral("value = 43"),
+        QStringLiteral("value = 44"), false);
+    EXPECT_EQ(typo.nearMissLine, -1)
+        << "a value difference is not a whitespace near miss; claiming it is "
+           "would send the caller to re-copy text that is genuinely different";
+
+    // A multi-line `old` reports nothing rather than a confident wrong line —
+    // the documented scope limit.
+    const auto multi = ApplyEdits::applyToContent(
+        QStringLiteral("one  two\nthree\n"),
+        QStringLiteral("one two\nthree"), QStringLiteral("x"), false);
+    EXPECT_EQ(multi.nearMissLine, -1)
+        << "multi-line near-miss alignment is out of scope and must report "
+           "nothing rather than guess";
+}
+
 // B2 — replace_all (INV-2).
 TEST(McpApplyEdits, ReplaceAll) {
     auto r = ApplyEdits::applyToContent("a.a.a", "a", "b", true);

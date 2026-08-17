@@ -323,7 +323,16 @@ server-controllable beyond this per-tool hint.
   repo-committed `<root>/.ants/project.json` may declare
   `source_roots`/`test_roots` (arrays of dirs); when present the walk
   uses them instead of the default `src/`+`tests/` (each must be an
-  existing dir; an all-dropped key falls back). The same file's
+  existing dir; an all-dropped key falls back). **An empty summary says WHY
+  (ANTS-4419):** alongside `empty:true`, an `empty_reason` of
+  `project_not_registered` (indexable source exists but not under the walked
+  roots, and no `.ants/project.json` declares where it lives) /
+  `declared_roots_hold_no_source` / `no_indexable_source`, plus an
+  `empty_hint` and an `empty_detail` carrying `ProjectSettings::detect()`'s
+  measured per-directory counts. On the first two reasons the index is
+  INAPPLICABLE rather than authoritative — ANTS-2148's bare boolean was read
+  as "no code here" and answered with a grep fallback. A non-empty summary
+  gains none of these fields. The same file's
   `docs_dir` / `roadmap` / `changelog` / `specs_dir` keys redirect
   `docs_index` / `roadmap_query`+`roadmap_log` / `changelog_log` /
   `spec_query`+`spec_log`+`current_state` / `project_layout`
@@ -383,7 +392,17 @@ which heading you expect it under.
   files in one atomic-per-file call (pure `ApplyEdits::applyToContent` +
   `QSaveFile` + `fsyncParentDir`); per-edit `skipped[]` (not_found /
   ambiguous / too_large / commit_failed); fail-closed `bad_path` on root
-  escape; caller_cwd-Required (ANTS-2022).
+  escape; caller_cwd-Required (ANTS-2022). **Near miss on `not_found`
+  (ANTS-4418):** when the file's text differs from `old` only in spacing, the
+  skip row also carries `candidates:[{line,text}]`, `near_miss_line` and a
+  `hint` — the same field names `read_region` section-mode and `roadmap_log`'s
+  bullet locators already use, so one caller path handles all three. Bare
+  `not_found` is equally consistent with "the text is gone", "wrong file" and
+  "you are one space out", and this is the verb where the third is commonest.
+  Reported only on a UNIQUE whitespace-class miss for a SINGLE-LINE `old`: two
+  candidates cannot say which to retry, and a multi-line alignment would be a
+  confident guess. Retry with the reported `text` verbatim, or with the
+  `start_line`/`end_line` form for that line.
 - **`project_settings`** — detect a non-standard layout + create/update
   `<root>/.ants/project.json` (the ANTS-2160 reader's source). Ops:
   `detect` (read-only — `{present, suggestion:{source_roots?, reason,

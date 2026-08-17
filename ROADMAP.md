@@ -33776,7 +33776,7 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   Kind: fix.
   Source: LottoTracker_Ants_MCP_Feedback.md (2026-08-17) — reported against a 105 KB ants-v1 roadmap..
 
-- 📋 [ANTS-4418] **apply_edits `not_found` should name the near miss, as read_region and roadmap_log already do.**
+- ✅ [ANTS-4418] **apply_edits `not_found` should name the near miss, as read_region and roadmap_log already do.**
   A failed `old` match reports `{index, path, reason:"not_found"}` and nothing
   more. Sibling verbs already do better: read_region section-mode returns
   `candidates` on section_not_found/section_ambiguous, and roadmap_log returns
@@ -33793,11 +33793,46 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   horizontal whitespace, ignore trailing) and, on a unique hit, `candidates:[{line,
   text}]` plus a hint naming the difference class. Same field name and shape as
   the two sibling verbs so one caller path handles all three.
+  Resolved (2026-08-17): a `not_found` whose text differs from the file only in
+  spacing now carries `candidates:[{line,text}]`, `near_miss_line` and a `hint` —
+  the field names read_region section-mode and roadmap_log's bullet locators
+  already use, so one caller path handles all three.
+
+  Detection lives in the pure ApplyEdits helper (EditOutcome gains nearMissLine /
+  nearMissText / nearMissKind), which is Qt6::Core-only and therefore genuinely
+  unit-testable — unlike the other hints shipped today, this one got behavioural
+  tests rather than a source scrape.
+
+  Reported only on a UNIQUE whitespace-class miss for a SINGLE-LINE `old`, and each
+  bound is deliberate. Two candidate lines cannot tell the caller which to retry,
+  so naming one arbitrarily is worse than naming none. A multi-line old string
+  whose interior spacing drifted needs a windowed alignment over the file — a
+  different piece of work, and not what the measured cost was about; the report's
+  repro is one line differing by two spaces in a trailing-comment alignment column.
+  A multi-line miss reports nothing, which is honest, against a confident wrong
+  line.
+
+  The wrapper gets a separate addSkipNearMiss lambda rather than a widened addSkip:
+  the other four skip sites (absent file, too_large, open failure, commit failure)
+  have no EditOutcome to carry and stay byte-identical.
+
+  Why it was worth doing: bare `not_found` is equally consistent with "the text is
+  gone", "wrong file" and "you are one space out", and this is the verb where the
+  third is commonest. Worst in a PARTIALLY-APPLIED batch, where the file has
+  already moved under the caller so the natural recovery (re-read and retry) is
+  also the riskiest.
+
+  Tests: two in tests/features/mcp_apply_edits (count 9 -> 11), the first
+  reproducing the reporter's scenario verbatim and asserting the reported text is
+  the FILE's bytes so a retry can be verbatim; the second pinning all four
+  negative cases (ambiguous, absent, non-whitespace difference, multi-line).
+  Verified red by removing the detector call. Documented in apply_edits' tool
+  description and in mcp-behavioural-notes.md.
   **Layman:** When a text edit does not match, the error does not say why, so the fix takes an extra round-trip.
   Kind: enhancement.
   Source: LottoTracker_Ants_MCP_Feedback.md (2026-08-17)..
 
-- 📋 [ANTS-4419] **codebase_index returns empty:true with no reason — the discriminator is .ants/project.json, not .git.**
+- ✅ [ANTS-4419] **codebase_index returns empty:true with no reason — the discriminator is .ants/project.json, not .git.**
   On a real tree (~1300 .html, 4 .py) codebase_index returns
   `{ok:true, empty:true, file_count:0, lane_count:0}`. Nothing distinguishes
   "genuinely no indexable code" from "could not be indexed", so a session
@@ -33815,11 +33850,56 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   plus a hint naming `.ants/project.json` — the one thing the caller could fix in
   a single step if it were told. An unregistered-but-real tree is the common case
   for client folders and scratch sites.
+  Resolved (2026-08-17): an empty codebase_index summary now carries
+  `empty_reason` + `empty_hint` + `empty_detail`, distinguishing
+  project_not_registered / declared_roots_hold_no_source / no_indexable_source.
+  Completes ANTS-2148, which added the `empty` boolean for exactly this reason
+  ("a consuming session can't tell 'no source admitted' from 'nothing here'") and
+  stopped at a boolean.
+
+  ATTRIBUTION: the reporter filed a missing-.git hypothesis, then ran the A/B test
+  that DISPROVED it and filed the correction. I built to the correction. Verified
+  against source: candidates() walks only src/ + tests/ unless
+  .ants/project.json declares source_roots, so the real condition is "the roots
+  walked hold no indexable source" and .ants/project.json is a proxy for it.
+
+  Reuses ANTS-2161's ProjectSettings::detect() rather than adding a second layout
+  analysis, and runs only on the already-empty path (the posture ANTS-3560's
+  id-bearing scan takes). Annotated in serve() rather than query(), which has no
+  rootCanonical — avoiding a signature change and a call-site sweep. Gated on
+  query()'s own `empty` flag so a symbol/lane/file_path response is byte-identical.
+
+  THE BRANCH ORDER IS THE LOAD-BEARING PART: detect() performs no walk when the
+  settings file is present, so totalSourceCount is 0 there BY CONSTRUCTION, and a
+  gate testing the count before `present` labels a registered project
+  no_indexable_source — the same class of mistake as the missing-.git diagnosis
+  this item exists to correct.
+
+  Verified against the real tree by linking CodebaseIndex::serve() in a throwaway
+  harness: Charls_Site -> project_not_registered with empty_detail "default
+  src/+tests/ walk indexed 0 of 9 source files; _reference, 18_Down,
+  _dark_preview, _work, tools hold(s) 9" — actionable in one step. LottoTracker
+  (17 files) and Ants Terminal (871) unchanged, no new fields.
+
+  FILED WHILE VERIFYING, NOT FIXED: ANTS-4425. isIndexableSuffix admits no html or
+  css though file_outline has outlined HTML since ANTS-4361 — the same drift
+  ANTS-4096 fixed for shaders. So detect() counted 9 files on a tree the reporter
+  describes as mostly HTML, and registering that project buys only those 9. This
+  item's ask was a diagnostic and that is delivered; making an HTML site indexable
+  is a different ask, widens the indie_review partition walk, and needs a css
+  decision.
+
+  Tests: two in tests/features/mcp_codebase_index (count 20 -> 22) — all three
+  reasons, because the ordering is the invariant, plus a non-empty control
+  asserting the response gains nothing. INV-21 added to that dir's spec.md.
+  codebase_index's tool description now documents the fields, since a diagnostic
+  nobody knows about does not help. Verified red by disabling the `present`
+  branch: only the registered-project case failed, naming the trap.
   **Layman:** On an unregistered project the code map comes back empty with no explanation, so a session concludes there is no code.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md (2026-08-15/17) — filed, then self-corrected by the same session's A/B test..
 
-- 📋 [ANTS-4420] **workspace_search finds nothing when the pattern carries HTML entities, and the zero-match hint does not fire.**
+- ✅ [ANTS-4420] **workspace_search finds nothing when the pattern carries HTML entities, and the zero-match hint does not fire.**
   `pattern:'&lt;h[123][^&gt;]*&gt;'` with regex:true returns a clean zero-match
   reply and no hint; the literal `<h[123][ >]` returns 11 matches in the same
   file. Arguably caller error, but the failure is silent and self-confirming, and
@@ -33835,11 +33915,33 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   Wanted: when matches is empty AND the pattern contains `&lt;`, `&gt;`, `&amp;`
   or `&quot;`, emit a hint suggesting the literal characters. Fires only on an
   already-empty result, so it costs nothing on the hot path.
+  Resolved (2026-08-17): a third zero-match branch in cmdWorkspaceSearch, ordered
+  FIRST among the three. An entity-bearing pattern is the most specific diagnosis
+  available, so when one also carries whitespace the entity wins rather than the
+  caller being sent to fix its spacing; the chain still sets `hint` at most once.
+
+  Detector `rcContainsHtmlEntity` requires `&` + a name + `;`
+  (lt|gt|amp|quot|apos|nbsp|#NNN|#xHH), so a bare `&` in real code (`a && b`,
+  `&ref`) cannot reach it. Fires only on an already-empty result, so a legitimate
+  search for the literal text `&amp;` that genuinely finds nothing gets an
+  advisory phrased as a question.
+
+  The reporter's own positive report was the argument for the shape: they filed
+  separately that `regex_advisory` caught a short-bare-alternation trap unprompted
+  and read well, and cited it as precedent. Same channel, same trigger — a pattern
+  that is probably not what the caller meant.
+
+  Test: Ants4420HtmlEntityHint in tests/features/workspace_search_phrase_hint
+  (count 3 -> 4), source-scraped for the reason its three siblings are (the
+  envelope builder needs a live RemoteControl). It pins the wiring and the
+  ordering, and the test says outright that it does NOT exercise the matcher —
+  rcContainsHtmlEntity sits in remotecontrol_internal.h, which no test includes,
+  and making it test-facing is wider than this item earns.
   **Layman:** Searching HTML with escaped brackets silently finds nothing and looks like a confident answer.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md (2026-08-17)..
 
-- 📋 [ANTS-4421] **file_outline / read_region refuse bad_path on a cross-project feedback file and name no way out.**
+- ✅ [ANTS-4421] **file_outline / read_region refuse bad_path on a cross-project feedback file and name no way out.**
   Every session carries a standing instruction to read
   /mnt/Games/Scripts/Linux/<project>_Ants_MCP_Feedback.md via Ants MCP. But
   file_outline and read_region resolve `path` against the caller's project root,
@@ -33858,11 +33960,36 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   Cheapest fix, and the reporter's own first choice: put the working call in the
   bad_path envelope, which already knows the path it rejected and can name its
   parent as a caller_cwd. Same shape as ANTS-4373's skipped_hint.
+  Resolved (2026-08-17): the bad_path envelope now names the call that would work,
+  via an optional absPath argument to PathValidation's makeErr at both refusal
+  sites.
+
+  The refusal itself is CORRECT and stays, exactly as the reporter judged. What
+  changed is my understanding of why no widening could help: ANTS-3430/3616's
+  exception already names read_region, file_outline, read_regions,
+  workspace_search and apply_edits, but bounds them to a feedback file sitting in
+  an ANCESTOR of the project root. The reporting session's project is ~/.claude,
+  whose ancestors are /home/ants and /, while the file lives under
+  /mnt/Games/Scripts/Linux — legitimately outside. So extending the carve-out was
+  never an option and the route out was the whole of what was missing.
+
+  Scoped to feedback files by basename suffix: an ordinary out-of-root path is a
+  genuine traversal refusal with no legitimate route, and handing it a working
+  caller_cwd would read as an invitation to escape.
+
+  Also recorded in the code, because it is what made this surprising: feedback_log
+  takes an absolute path happily, so the WRITE verb works where the READ verbs
+  refuse.
+
+  Tests: FeedbackSuffixElsewhereRefused extended to assert the hint names both
+  `caller_cwd` and the bare filename, plus a new Ants4421HintOnlyForFeedbackPaths
+  asserting a non-feedback escape gets none (count 23 -> 24). Verified red by
+  suppressing the hint.
   **Layman:** Reading another project's feedback file is refused with no hint about the call that would work.
   Kind: doc.
   Source: claude_config_Ants_MCP_Feedback.md (2026-08-17)..
 
-- 📋 [ANTS-4422] **The hook catalogue reads read_regions as a plural of read_region rather than a batching win.**
+- ✅ [ANTS-4422] **The hook catalogue reads read_regions as a plural of read_region rather than a batching win.**
   The SessionStart catalogue line reads `file_outline → outline a file;
   read_region(s) fetch its slices`, which presents read_regions as a minor plural
   rather than a distinct batching win. The reporter used it to pull two unrelated
@@ -33872,6 +33999,24 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   Minor and discovery-only, but it is exactly the token waste the catalogue exists
   to prevent. Wanted: a one-line wording change making the batching explicit —
   e.g. "several slices across several files in ONE call".
+  Resolved (2026-08-17): the prelude line now reads `outline a file;
+  read_regions = N slices, 1 call`, making the batching explicit instead of
+  presenting read_regions as a plural of read_region.
+
+  BYTE-NEUTRAL BY CONSTRUCTION, and that mattered: the prelude is capped at 1400
+  bytes by INV-10 of tests/features/mcp_orientation_install, `•` and `→` are three
+  bytes each, and the assertion measures a QByteArray rather than characters. Both
+  encodings were computed — 77 bytes before, 77 after — rather than counting
+  characters and hoping. The roadmap's last recorded figure (1372 of 1400, from
+  ANTS-3619) left only 28 bytes of headroom, so a character-counted change could
+  have breached the cap on a multi-byte glyph.
+
+  docs/specs/ANTS-1897.md's illustrative prelude block synced in the same commit —
+  the same pairing ANTS-3619 recorded doing, and a pair no test enforces.
+
+  No new test: the wording is not a contract, and INV-10 already guards the one
+  thing that can break (the byte cap). Saying so rather than adding a test that
+  asserts a sentence.
   **Layman:** A useful multi-file read tool is easy to miss, so sessions make several calls where one would do.
   Kind: doc.
   Source: Charls_Site_Ants_MCP_Feedback.md (2026-08-17) — discovery-only, no code change implied..
@@ -33918,7 +34063,7 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   Kind: fix.
   Source: in-session 2026-08-17 — hit while attributing this triage batch to its filing projects..
 
-- 📋 [ANTS-4424] **roadmap_log's body_shadowed refusal advises backticks, which do not prevent the shadowing.**
+- ✅ [ANTS-4424] **roadmap_log's body_shadowed refusal advises backticks, which do not prevent the shadowing.**
   Filing the batch above, one bullet was refused `body_shadowed` because its body
   quoted a trailer-column keyword inside an example query. The refusal is CORRECT
   and caught a real ambiguity — no complaint about the gate itself.
@@ -33933,9 +34078,67 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   the backtick clause from the message so it stops prescribing a non-remedy. The
   mask already existing on the parse side is what makes the first option cheap and
   the current message hard to defend.
+  Resolved (2026-08-17): the mid-prose branch of the body_shadowed message now
+  says where the backticks must go.
+
+  MY FILED DIAGNOSIS WAS WRONG ON THE MECHANISM and the correction is the useful
+  part. I filed this as "the detector does not honour inline code spans". It
+  partly does: ANTS-3722 added a backtick guard to the trailer matchers and
+  ANTS-4077 widened it, and rxSource carries it — but it is a negative LOOKBEHIND
+  for an ADJACENT backtick, `(?<!`)(?<!`\*)(?<!`\*\*)`, not a code-span parse. So
+  `` `Source:` `` is exempt while a key nested inside a LONGER span is not: my own
+  body wrote `` `query:'Source:'` ``, where the backtick sits eight characters
+  before the key. The advice was therefore true-as-stated and unactionable as
+  read — a caller who already had backticks sees "you did this", re-issues, and
+  is refused identically.
+
+  So the fix is precision, not a new capability: the message now says to put
+  backticks IMMEDIATELY around the key and warns that a key nested inside a longer
+  code span is still read as a trailer.
+
+  The proper repair — masking code spans before matching, the way ANTS-4066's
+  length-preserving backtick mask already does for rxBold — is a grammar change
+  across five matchers and 2,000+ bullets, owed a corpus verdict diff. Deliberately
+  NOT done here; it is this item's follow-on and the code comment says so.
+
+  No new test: the change is a refusal's prose, and no existing test asserts that
+  string. Recording that rather than pretending coverage.
   **Layman:** A write refusal suggests a fix that does not work, so following it fails a second time.
   Kind: fix.
-  Source: in-session 2026-08-17 — hit while filing this very triage batch..
+
+- 📋 [ANTS-4425] **codebase_index cannot see HTML or CSS, though file_outline has outlined HTML since ANTS-4361.**
+  `CodebaseIndex::isIndexableSuffix()` admits the C/C++ family, py, the brace
+  family, rb and GLSL. It does NOT admit `html` or `css`. Meanwhile
+  `FileOutline` has had an `html` mode since ANTS-4361 and outlines a page to
+  structural landmarks, and the reporting session used it successfully on four
+  files in the very tree whose index came back empty.
+
+  THIS IS THE SAME DRIFT ANTS-4096 FIXED FOR SHADERS, and that item's own
+  comment names the pattern: find_definition and file_outline both admitted GLSL
+  and "this gate was the one left behind". The function's header comment states
+  the standing rule it is breaching — kept in step with
+  `FileOutline::pickModeByExt` / `genericLangName` and `SymbolQuery::langForExt`
+  "so count -> outline -> symbol query cover the same files".
+
+  Measured 2026-08-17 while verifying ANTS-4419 on Charls_Site: `detect()`
+  counts 9 source files across five directories on a tree the reporter
+  describes as ~40 HTML/CSS/JS files (and ~1300 tracked .html after a later
+  commit). The 9 are the .js and .py; every page is invisible.
+
+  Consequence for ANTS-4419, which is why this was found: that item now tells
+  such a project "you hold indexable source, register it". True, but registering
+  buys only the 9 files — the index stays near-empty for a site whose content IS
+  html. So the diagnostic is honest and still not sufficient for this project
+  class until this lands.
+
+  Fix: admit `html` (and `css`, which has no outline mode and would need one or
+  an explicit decision to count-but-not-outline). Delegate to FileOutline rather
+  than re-listing, the way the GLSL line already does. Note `isIndexableSuffix`
+  also gates the indie_review computed partition, so widening it widens that
+  walk too — ANTS-4096 recorded the same coupling.
+  **Layman:** A website project's pages are invisible to the code map, so it looks almost empty even once registered.
+  Kind: fix.
+  Source: in-session 2026-08-17 — found while verifying ANTS-4419's diagnostic against the reporting tree..
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

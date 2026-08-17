@@ -18,6 +18,18 @@ struct EditOutcome {
     int     replacements = 0;      // substitutions made (1, or N under replaceAll)
     QString skipReason;            // "" iff applied; else "not_found" | "ambiguous"
                                    // | "range_mismatch" | "range_out_of_bounds"
+    // ANTS-4418 — the near miss behind a `not_found`, when there is exactly
+    // one. `not_found` alone is equally consistent with "the text is gone",
+    // "you have the wrong file" and "you are one space out", and this verb is
+    // the one where a miss is most often whitespace-only — so it was the verb
+    // saying least while its siblings (read_region section-mode,
+    // roadmap_log bullet locators) already return `candidates`.
+    //
+    // -1 / empty when there is no unique near miss, which is the normal case;
+    // a caller reads the line number and retries with a line range.
+    int     nearMissLine = -1;     // 1-based line in `contents`
+    QString nearMissText;          // that line, verbatim, as the file has it
+    QString nearMissKind;          // why it differed, e.g. "whitespace"
 };
 
 // Apply one old→new edit to `contents`. Without replaceAll, `oldStr` must

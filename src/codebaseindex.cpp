@@ -675,7 +675,70 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
         }
     }
 
-    return query(idx, params, refreshed, cachePath, opts);
+    QJsonObject env = query(idx, params, refreshed, cachePath, opts);
+
+    // ANTS-4419 — say WHY an empty index is empty. ANTS-2148 added the `empty`
+    // boolean for exactly this reason ("a consuming session can't tell 'no
+    // source admitted' from 'nothing here'") and stopped at a boolean, so a
+    // caller still had nothing to act on. Reported by a Charls_Site session
+    // that concluded "there is no code here" on a tree of ~1300 .html + 4 .py
+    // files and fell back to grep — against the SessionStart hook's own advice
+    // to query the index first.
+    //
+    // The condition is NOT the missing .git that report first proposed: the
+    // same session's A/B test disproved it (the tree became a git repo, 1426
+    // files tracked, and the index stayed empty). candidates() walks src/ +
+    // tests/ unless .ants/project.json declares source_roots, so the real
+    // condition is "the roots that were walked hold no indexable source".
+    //
+    // Reuses ANTS-2161's detector rather than adding a second layout analysis
+    // — one owner for the question. Cost is bounded and paid only on the
+    // already-empty path (the posture ANTS-3560's id-bearing scan takes), and
+    // detect() short-circuits with no walk at all when the settings file
+    // exists. Every field is a deterministic function of the tree, so
+    // session_orient's 304 ETag stays stable (unlike generated_at_ms).
+    //
+    // Gated on query()'s own `empty` rather than on idx.files.isEmpty(), so
+    // this fires exactly where ANTS-2148's flag does — the summary path — and
+    // a symbol / lane / file_path response keeps its byte-identical shape.
+    if (env.value(QStringLiteral("empty")).toBool()) {
+        const ProjectSettings::Suggestion sug =
+            ProjectSettings::detect(rootCanonical);
+        // ORDER IS LOAD-BEARING. detect() does not walk when the settings file
+        // is present, so totalSourceCount is 0 there BY CONSTRUCTION — testing
+        // the count first would report a registered project as genuinely
+        // empty, which is the same class of mistake as the missing-.git
+        // diagnosis this item exists to correct.
+        if (sug.present) {
+            env[QStringLiteral("empty_reason")] =
+                QStringLiteral("declared_roots_hold_no_source");
+            env[QStringLiteral("empty_hint")] = QStringLiteral(
+                "an .ants/project.json is present, but the source_roots it "
+                "declares hold no indexable file. Check them against the "
+                "tree with project_settings op:detect.");
+        } else if (sug.totalSourceCount > 0) {
+            env[QStringLiteral("empty_reason")] =
+                QStringLiteral("project_not_registered");
+            env[QStringLiteral("empty_hint")] = QStringLiteral(
+                "this tree holds indexable source, but not under src/ or "
+                "tests/, and no .ants/project.json says where it lives. Run "
+                "project_settings op:detect then op:init to register it. The "
+                "index is INAPPLICABLE here, not authoritative — do not read "
+                "this as \"no code here\".");
+        } else {
+            env[QStringLiteral("empty_reason")] =
+                QStringLiteral("no_indexable_source");
+            env[QStringLiteral("empty_hint")] = QStringLiteral(
+                "no file with an indexable suffix was found anywhere in this "
+                "tree, so the empty index is accurate.");
+        }
+        // detect()'s own sentence, which carries the measured counts. Always
+        // non-empty after a walk or a short-circuit (ANTS-3369), so a caller
+        // gets the numbers without a second call.
+        if (!sug.reason.isEmpty())
+            env[QStringLiteral("empty_detail")] = sug.reason;
+    }
+    return env;
 }
 
 }  // namespace CodebaseIndex

@@ -241,6 +241,7 @@ bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QS
 QString changelogMalformedAdvisory(int line, bool plural, bool applied);
 QStringList rcShortBareAltTerms(const QString &pattern);
 bool rcLooksLikeRegexButLiteral(const QString &pattern);
+bool rcContainsHtmlEntity(const QString &pattern);
 
 // ---- functions (definitions stay in the .cpp) ----
 QString resolveRootCanonical(MainWindow *main);

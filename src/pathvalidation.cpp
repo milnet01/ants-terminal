@@ -23,12 +23,44 @@ bool hasControlOrBackslash(const QString &s) {
 }
 
 QJsonObject makeErr(const QString &toolName, const QString &paramName,
-                    const QString &reason) {
+                    const QString &reason,
+                    const QString &absPath = QString()) {
     QJsonObject o;
     o[QStringLiteral("ok")]    = false;
     o[QStringLiteral("error")] =
         QStringLiteral("%1: \"%2\" %3").arg(toolName, paramName, reason);
     o[QStringLiteral("code")]  = QStringLiteral("bad_path");
+    // ANTS-4421 — name the call that WOULD work when the rejected path is a
+    // cross-session feedback file. The refusal itself is correct and stays:
+    // ANTS-3430's exception admits such a file only from an ANCESTOR of the
+    // project root, and a session whose project lives elsewhere entirely
+    // (~/.claude, whose parent is /home/ants, reading a report under
+    // /mnt/Games/Scripts/Linux) is legitimately outside it. No widening can
+    // serve that session, so what was missing was the route out.
+    //
+    // Every session on this machine carries a standing instruction to read
+    // these files via Ants MCP, and the workflow is cross-project BY
+    // CONSTRUCTION — the file never lives under the project it is about. The
+    // reporting session found the working form (caller_cwd at the file's own
+    // directory, plus a bare relative filename) by guessing; the envelope
+    // already knows the path it rejected, so it can just say so. Same shape
+    // as ANTS-4373's skipped_hint.
+    //
+    // The asymmetry that made this surprising is real and worth the words:
+    // feedback_log takes an absolute path happily, so the WRITE verb works
+    // where the READ verbs refuse.
+    if (!absPath.isEmpty()
+        && QFileInfo(absPath).fileName().endsWith(
+               QStringLiteral("_Ants_MCP_Feedback.md"))) {
+        const QString dir = QFileInfo(absPath).absolutePath();
+        if (!dir.isEmpty())
+            o[QStringLiteral("hint")] = QStringLiteral(
+                "this is a cross-session feedback file outside your project "
+                "root. Re-issue with caller_cwd:\"%1\" and path:\"%2\" (a "
+                "bare relative filename). feedback_query / feedback_log "
+                "accept the absolute path directly.")
+                    .arg(dir, QFileInfo(absPath).fileName());
+    }
     return o;
 }
 
@@ -147,7 +179,7 @@ Check validatePath(const QString &rawPath,
                 && !isFeedbackFile(resolved, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
-                    QStringLiteral("escapes project root"));
+                    QStringLiteral("escapes project root"), resolved);
                 return pc;
             }
             pc.resolved = resolved;
@@ -157,7 +189,7 @@ Check validatePath(const QString &rawPath,
                 && !isFeedbackFile(cleaned, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
-                    QStringLiteral("escapes project root"));
+                    QStringLiteral("escapes project root"), cleaned);
                 return pc;
             }
         }

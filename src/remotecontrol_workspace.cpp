@@ -869,7 +869,25 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // each word exists. When a whitespace-bearing query hits zero matches,
     // surface an advisory hint (pure response-shaping; search semantics
     // unchanged). Reproduced across four CC sessions.
-    if (matches.isEmpty() && pattern.trimmed().contains(QChar(' '))) {
+    // ANTS-4420 — ordered FIRST among the zero-match hints, and deliberately.
+    // An entity-bearing pattern is the most specific diagnosis available: when
+    // one also carries whitespace, the entity is the actual defect and the
+    // phrase advisory below would send the caller to fix the wrong thing. The
+    // chain still sets `hint` at most once.
+    //
+    // The machinery this uses already exists and already works — the same
+    // session that reported this filed a POSITIVE report that `regex_advisory`
+    // caught a short-bare-alternation trap unprompted, and cited it as
+    // precedent for exactly this case. Same channel, same trigger shape: a
+    // pattern that is probably not what the caller meant.
+    if (matches.isEmpty() && rcContainsHtmlEntity(pattern)) {
+        out["hint"] = QStringLiteral(
+            "pattern contains HTML entities (e.g. &lt; &gt; &amp;) — did you "
+            "mean the literal characters (< > & \") ? Searching HTML/XML "
+            "source is where this slip happens, and a zero-match reply is the "
+            "one case with no other signal to re-examine the pattern.");
+    }
+    else if (matches.isEmpty() && pattern.trimmed().contains(QChar(' '))) {
         out["hint"] = isRegex
             ? QStringLiteral("query matched as one regex pattern (its spaces "
                 "are literal); for a phrase search pass a single token, or "
@@ -2233,6 +2251,29 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         QJsonObject s; s["index"] = index; s["path"] = path; s["reason"] = reason;
         skipped.append(s); ++editsSkipped;
     };
+    // ANTS-4418 — addSkip plus the optional near-miss annotation. A separate
+    // lambda rather than a widened addSkip: the other four call sites
+    // (not_found for an absent file, too_large, open failure, commit failure)
+    // have no EditOutcome to carry and must stay byte-identical.
+    auto addSkipNearMiss = [&](int index, const QString &path,
+                               const QString &reason,
+                               const ApplyEdits::EditOutcome &oc) {
+        QJsonObject s; s["index"] = index; s["path"] = path; s["reason"] = reason;
+        if (oc.nearMissLine > 0) {
+            QJsonObject cand;
+            cand["line"] = oc.nearMissLine;
+            cand["text"] = oc.nearMissText;
+            QJsonArray cands; cands.append(cand);
+            s["candidates"]     = cands;
+            s["near_miss_line"] = oc.nearMissLine;
+            s["hint"] = QStringLiteral(
+                "%1-only mismatch at line %2 — the file's text differs from "
+                "`old` only in spacing. Retry with that line's exact text, or "
+                "use the start_line/end_line form for line %2.")
+                    .arg(oc.nearMissKind).arg(oc.nearMissLine);
+        }
+        skipped.append(s); ++editsSkipped;
+    };
 
     QVector<QString> fileOrder;
     QHash<QString, QVector<int>> byFile;  // resolved → indices into es
@@ -2286,7 +2327,23 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
                 fileReplacements += oc.replacements;
                 appliedIdx.push_back(k);
             } else {
-                addSkip(es[k].index, rawPath, oc.skipReason);
+                // ANTS-4418 — carry the near miss onto this skip row when the
+                // helper found exactly one. `not_found` alone is equally
+                // consistent with "the text is gone", "wrong file" and "you
+                // are one space out", and this is the verb where the third is
+                // most likely: the reported case differed only in the
+                // run-length of interior spaces in a trailing-comment
+                // alignment column. Costs one wasted round-trip per miss, and
+                // is worst in a PARTIALLY-APPLIED batch — the file has already
+                // moved under the caller, so the natural recovery (re-read and
+                // retry) is also the riskiest one.
+                //
+                // Field names match the siblings a caller already handles:
+                // read_region section-mode and roadmap_log's bullet locators
+                // both return `candidates` on a miss, so one code path covers
+                // all three. `near_miss_line` alone makes the line-range form
+                // (ANTS-3711) usable as the immediate retry.
+                addSkipNearMiss(es[k].index, rawPath, oc.skipReason, oc);
             }
         }
         if (appliedIdx.isEmpty()) continue;  // nothing applied → don't touch

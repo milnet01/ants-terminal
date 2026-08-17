@@ -303,8 +303,30 @@ static bool rlBodyShadows(const RoadmapParse::TrailerValues &tv,
                       m.anchored
                           ? QStringLiteral("Delete or correct that stale trailer "
                                            "line in the body")
-                          : QStringLiteral("Reword that mention, or wrap the key "
-                                           "in backticks"),
+                          // ANTS-4424 — "wrap the key in backticks" was true
+                          // but not actionable as read. The guard on each
+                          // trailer matcher is a negative LOOKBEHIND for an
+                          // ADJACENT backtick — `(?<!`)(?<!`\*)(?<!`\*\*)`,
+                          // added by ANTS-3722 and widened by ANTS-4077 — not
+                          // a code-span parse. So `` `Source:` `` is exempt
+                          // while a key nested inside a LONGER span is not:
+                          // hit in-session by a body writing
+                          // `` `query:'Source:'` ``, where the backtick sits
+                          // eight characters before the key. A caller who
+                          // already had backticks read the advice as "you did
+                          // this", saw the same refusal, and had no next move.
+                          //
+                          // Say where the backticks must go. The proper repair
+                          // is to mask code spans before matching, the way
+                          // ANTS-4066's length-preserving backtick mask
+                          // already does for rxBold; that is a grammar change
+                          // owed a corpus verdict diff, so it stays ANTS-4424's
+                          // follow-on rather than riding along here.
+                          : QStringLiteral("Reword that mention, or put "
+                                           "backticks IMMEDIATELY around the "
+                                           "key itself (`Kind:`) — a key "
+                                           "nested inside a longer code span "
+                                           "is still read as a trailer"),
                       quoted);
     return true;
 }

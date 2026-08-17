@@ -5560,3 +5560,21 @@ bool rcdetail::rcLooksLikeRegexButLiteral(const QString &pattern) {
     return escClass.match(pattern).hasMatch();                  // \d \w \s \b …
 }
 
+// ANTS-4419's sibling, ANTS-4420 — a pattern carrying HTML entities where the
+// caller meant the literal characters. Searching an HTML file for heading tags
+// as `&lt;h[123][^&gt;]*&gt;` returns a clean zero-match reply and reads as a
+// confident "this file has no headings"; the literal `<h[123][ >]` found 11 in
+// the same file. The slip is easiest to make precisely when searching HTML/XML,
+// because the surrounding conversation is full of escaped markup.
+//
+// Narrow on purpose: a NAMED or numeric entity, i.e. `&` + name + `;`. A bare
+// `&` is ubiquitous in real code (`a && b`, `&ref`) and carries no `;`
+// terminator, so it cannot reach this. Fires only on an already-empty result,
+// so a legitimate search for the literal text `&amp;` that genuinely finds
+// nothing gets an advisory phrased as a question rather than an assertion.
+bool rcdetail::rcContainsHtmlEntity(const QString &pattern) {
+    static const QRegularExpression ent(
+        QStringLiteral("&(lt|gt|amp|quot|apos|nbsp|#[0-9]+|#x[0-9A-Fa-f]+);"));
+    return ent.match(pattern).hasMatch();
+}
+
