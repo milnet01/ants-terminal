@@ -1018,10 +1018,40 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         // (LOTTO-0029 was filed for work LOTTO-0010 already covered).
         if (!boldId.isEmpty() &&
             (h == boldId || h == boldId + QLatin1Char('.'))) {
-            // Find the next bold token after the bold-ID.
+            // Find the next bold token after the bold-ID — on the HEAD LINE
+            // only.
+            //
+            // ANTS-4417 — the search was body-wide, and on the
+            // `**ID** plain headline` shape (id bolded, headline NOT bolded,
+            // so the head line carries no second bold run) it walked into the
+            // continuation lines and adopted the body's first bold span. Two
+            // consequences, and the reported one is the milder:
+            //
+            //   1. `headline` became a body fragment. Measured on the
+            //      reporting project, 18 of 31 bullets — "already received",
+            //      "empty body", "202 = accepted" — each reading as a
+            //      statement ABOUT the item, so headline_only (the mode used
+            //      to pick the next item) returned fiction with nothing to
+            //      signal it.
+            //   2. `consumedEnd` becomes ANTS-3808 § 2.1's strip boundary, so
+            //      the boundary pointed INTO the body and the migration would
+            //      have deleted real text: 2,331 characters on one bullet of
+            //      that project, which is not yet migrated. INV-5 ("no bullet
+            //      text is lost across migrate-then-render") was live-but-
+            //      unreachable here only because this project's own roadmap
+            //      writes `[ID] **headline**` and never enters this branch.
+            //
+            // ANTS-3808 § 2.1's table sanctions `m2.capturedEnd()`, but its
+            // Shape column reads `[id] **headline** <prose>` — the second bold
+            // run was always assumed to be on the head line. This restores
+            // that assumption rather than widening the table.
+            //
+            // The test is the match's START, not its end, so ANTS-1561's
+            // soft-wrapped bold headline — opens on the head line, closes on
+            // the next — still qualifies.
             const int after = boldMatch.capturedEnd();
             const auto m2 = rxBold.match(maskedBody, after);   // ANTS-4066
-            if (m2.hasMatch()) {
+            if (m2.hasMatch() && m2.capturedStart() < headLineEnd(body)) {
                 h = boldText(m2);
                 consumedEnd = m2.capturedEnd();
             } else {

@@ -165,3 +165,101 @@ TEST(roadmap_query_emoji_bold_id, Ants4378UndottedBoldIdKeepsItsHeadline) {
     ASSERT_NE(bracket, nullptr);
     EXPECT_EQ(bracket->id, QStringLiteral("LOTTO-0001"));
 }
+
+// ANTS-4417 — the `**ID** plain headline` shape keeps its headline even when
+// the bullet HAS A CONTINUATION BODY CARRYING BOLD, and the recorded strip
+// boundary stays on the head line.
+//
+// Why this is a separate case from ANTS-4378 above, rather than an assertion
+// added to it: that fixture is three single-line bullets with no continuation
+// body at all. With no bold run anywhere after the bold-id, the next-bold
+// search never matches and the prose fallback fires — the correct answer, by
+// the only route the fixture can reach. The defect needs a second bold run
+// LATER IN THE BODY to appear, so the fixture could not express the breach it
+// was written to catch, and the search escaping the head line shipped green.
+//
+// Measured on the reporting project (2026-08-17): 18 of 31 bullets returned a
+// body fragment as the headline — "already received", "empty body",
+// "fixed 2026-08-02." — each reading as a statement ABOUT the item.
+//
+// The second assertion is the half nobody reported. `headlineEnd` is
+// ANTS-3808 § 2.1's strip boundary, so a boundary past the head line makes the
+// migration cut INTO the body: 2,331 characters on one bullet of that project,
+// which has not migrated yet. INV-5 ("no bullet text is lost across
+// migrate-then-render") was reachable here all along; this project's own
+// roadmap writes `[ID] **headline**` and never enters the branch, which is why
+// 2,052 local bullets showed nothing.
+TEST(roadmap_query_emoji_bold_id, Ants4417NextBoldStaysOnTheHeadLine) {
+    // The trailer keys are what a real bullet's body always carries, and they
+    // are bold — so the body-wide search had something to find on every item.
+    const QString withBody = QString::fromUtf8(
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B **LOTTO-0011** Stop saying \"still claimable\".\n"
+        "  The bank pays automatically, so the wording is wrong.\n"
+        "  **Layman:** the page claims money is owed when it already "
+        "arrived.\n"
+        "  Kind: fix.\n");
+    const auto bullets = RoadmapDialog::parseBullets(withBody);
+    ASSERT_EQ(bullets.size(), 1);
+    const auto &b = bullets[0];
+
+    EXPECT_EQ(b.id, QStringLiteral("LOTTO-0011"));
+
+    // Asserted as EQUALITY, deliberately. ANTS-4378's `EXPECT_FALSE(
+    // startsWith(id))` is satisfied by a body fragment just as well as by the
+    // real headline, so it could not separate this defect from a pass.
+    EXPECT_EQ(b.headline,
+              QStringLiteral("Stop saying \"still claimable\"."))
+        << "the headline must be the prose on the ID's OWN line; a body "
+           "fragment here is the ANTS-4417 defect. got: "
+        << b.headline.toStdString();
+
+    // The strip boundary must not reach past the head line.
+    const int headLineLen = int(b.body.indexOf(QLatin1Char('\n')));
+    ASSERT_GT(headLineLen, 0) << "fixture must have a continuation body";
+    EXPECT_LE(b.headlineEnd, headLineLen)
+        << "ANTS-3808 § 2.1's strip boundary escaped the head line, so "
+           "migration would delete body text. headlineEnd="
+        << b.headlineEnd << " headLineLen=" << headLineLen;
+}
+
+// ANTS-4417 control — the DOTTED two-bold form `**Sh4.** **Headline.**`, whose
+// real headline IS the second bold run on the head line, must keep working.
+// This is the shape the next-bold search was written for, and the case a
+// head-line clamp would break if it tested the match's END instead of its
+// START.
+TEST(roadmap_query_emoji_bold_id, Ants4417SecondBoldOnHeadLineStillAdopted) {
+    const QString twoBold = QString::fromUtf8(
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B **Sh4.** **The real headline.**\n"
+        "  **Layman:** body bold that must not be adopted.\n");
+    const auto bullets = RoadmapDialog::parseBullets(twoBold);
+    ASSERT_EQ(bullets.size(), 1);
+    EXPECT_EQ(bullets[0].id, QStringLiteral("Sh4"));
+    EXPECT_EQ(bullets[0].headline, QStringLiteral("The real headline."))
+        << "a second bold run ON THE HEAD LINE is still the headline; got: "
+        << bullets[0].headline.toStdString();
+}
+
+// ANTS-4417 control — ANTS-1561's soft-wrapped bold headline. The bold span
+// OPENS on the head line and CLOSES on the next, so its match END is past the
+// head line while its START is not. Testing the start is what keeps this
+// working; testing the end would truncate every soft-wrapped headline in the
+// corpus. Five projects on this machine carry this shape (verified 2026-08-17
+// by a verdict diff: 0 rows moved in any of them).
+TEST(roadmap_query_emoji_bold_id, Ants4417SoftWrappedBoldHeadlineSurvives) {
+    const QString wrapped = QString::fromUtf8(
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [MC-1065] **Test-audit dedup nits beyond\n"
+        "  [MC-1054].**\n"
+        "  Kind: test.\n");
+    const auto bullets = RoadmapDialog::parseBullets(wrapped);
+    ASSERT_EQ(bullets.size(), 1);
+    EXPECT_TRUE(bullets[0].headline.contains(QStringLiteral("MC-1054")))
+        << "a soft-wrapped bold headline must be captured whole across the "
+           "line break (ANTS-1561); got: "
+        << bullets[0].headline.toStdString();
+}

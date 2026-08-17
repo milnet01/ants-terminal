@@ -33711,7 +33711,7 @@ Charls_Site's three codebase_index entries collapse to one item — its own fina
 entry retracts the missing-.git diagnosis and proves the discriminator is
 .ants/project.json, so only the corrected attribution is filed.
 
-- 📋 [ANTS-4417] **roadmap_query returns a BODY fragment as the headline — ANTS-4378's next-bold search escapes the head line.**
+- ✅ [ANTS-4417] **roadmap_query returns a BODY fragment as the headline — ANTS-4378's next-bold search escapes the head line.**
   Reported by LottoTracker: on the `- <emoji> **LOTTO-000N** Headline text.`
   shape (id bolded, headline PLAIN), headline_only returned body fragments for
   4 of 5 active items — "already received", "fixed 2026-08-02." — which read as
@@ -33730,6 +33730,48 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   Fix: constrain the next-bold search to the head line — `headLineEnd(body)`
   (roadmapparse.cpp:177) already computes the boundary. Test the match's START,
   not its end, so ANTS-1561's soft-wrapped headline still qualifies.
+  Resolved (2026-08-17): one condition in roadmapparse.cpp — the next-bold
+  search after a bold-ID is now confined to the head line
+  (`m2.capturedStart() < headLineEnd(body)`). Regression from ANTS-4378, which
+  widened the branch to the undotted `**ID** headline` form but left the search
+  body-wide.
+
+  VERDICT DIFF over every ROADMAP.md on this machine (14 projects, 4,621
+  bullets), old parser vs new, linked against the real
+  ants_roadmapparse_lib: 18 rows moved, all in LottoTracker — exactly the 18
+  the reporter measured. Zero moved anywhere else, including the five projects
+  whose bullets legitimately carry a soft-wrapped bold headline
+  (MAME_Curator, LocalWebServerManager, finbreak, Ants_Projects_Hub_Website,
+  Games_Hub) and zero in this project's own 2,052.
+
+  A SECOND CONSEQUENCE NOBODY REPORTED, and the more dangerous one.
+  `consumedEnd` becomes ANTS-3808 § 2.1's strip boundary, so a body-wide match
+  pointed that boundary INTO the body and the migration would have deleted real
+  text — 2,331 characters on LOTTO-0009 alone. ANTS-3808's own table sanctions
+  `m2.capturedEnd()`, but its Shape column reads `[id] **headline** <prose>`:
+  the second bold run was always assumed to be on the head line. This restores
+  that assumption rather than widening the table. So the fix is also a
+  prerequisite for migrating any project in this shape — INV-5 ("no bullet text
+  is lost across migrate-then-render") was reachable all along and only looked
+  safe because this project writes `[ID] **headline**` and never enters the
+  branch.
+
+  Why ANTS-4378's test did not catch it: its fixture is three single-line
+  bullets with no continuation body, so with no bold run after the bold-id the
+  prose fallback always fired — the right answer by the only route the fixture
+  could reach. Verified by mutation: with the guard removed, that test still
+  PASSES while the new one fails.
+
+  Tests: three added to tests/features/roadmap_query_emoji_bold_id (count
+  7 -> 10). Ants4417NextBoldStaysOnTheHeadLine asserts the headline by EQUALITY
+  (ANTS-4378's `EXPECT_FALSE(startsWith(id))` is satisfied by a body fragment
+  just as well as by the real headline) plus `headlineEnd <= headLineLen`, and
+  goes red on both assertions under mutation ("Layman:", headlineEnd=111 vs 45).
+  Two controls pin the shapes a careless clamp would break: the dotted
+  two-bold-on-head-line form, and ANTS-1561's soft-wrapped bold headline —
+  which is why the test is on the match's START and not its end.
+
+  Full suite 3576/3576 (4 disabled by design).
   **Layman:** The cheap roadmap listing shows text pulled from the wrong place, so items can read as finished when they are not.
   Kind: fix.
   Source: LottoTracker_Ants_MCP_Feedback.md (2026-08-17) — reported against a 105 KB ants-v1 roadmap..
