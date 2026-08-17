@@ -1,6 +1,6 @@
 # ANTS-3822 — consumer writes append a history row
 
-**Status:** spec draft (2026-08-17).
+**Status:** accepted (2026-08-17) — review-contract converged at its 2-loop cap, 18 verified findings fixed, no deferred tail.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3822 (in-session-2026-08-04, ANTS-3809 cold-eyes loop 1 lane A; picked up 2026-08-17 on user request after ANTS-4414 measured what its absence costs).
 **Blocked by:** none — ANTS-3809 shipped, which is the write path this hooks into.
