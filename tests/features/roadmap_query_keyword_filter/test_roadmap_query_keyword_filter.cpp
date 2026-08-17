@@ -110,6 +110,36 @@ TEST(RoadmapQueryKeywordFilter, Inv8QueryEmptyWarningIsQueryAware) {
            "the query, not claim every entry lacks a [PROJ-NNNN] id";
 }
 
+// INV-9 (ANTS-4423) — the SECTION path carries INV-8's query-aware warning
+// too. ANTS-3560 fixed the text on the full-file branch and left `section=`
+// with the bare ANTS-1538 wording, so half its own surface kept the defect:
+// a section query that matched nothing still claimed every bullet lacked a
+// [PROJ-NNNN] id and prescribed include_narrator_bullets /
+// include_section_headers, neither of which can help.
+//
+// Reproduced in-session on this project's own ROADMAP.md (2026-08-17):
+// 40 bullets in the target section, every one id-bearing, count 0, and the
+// warning blamed the ID filter. A control query on a keyword that DOES occur
+// returned 37 of the 40, which is what proves the keyword filter — not the
+// ID filter — emptied the set.
+//
+// Scraped rather than driven for the same reason INV-8 is: the warning is
+// composed inside cmdRoadmapQuery's section branch, which no unit seam
+// reaches. Both anchors are needed — the count alone could exist unused, and
+// the text alone could be the full-file literal INV-8 already pins.
+TEST(RoadmapQueryKeywordFilter, Inv9SectionPathWarningIsQueryAware) {
+    const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
+    ASSERT_FALSE(rc.isEmpty());
+    EXPECT_TRUE(rc.contains(QStringLiteral("postIdPruneCountSec")))
+        << "the section= branch must measure its own id-bearing count before "
+           "the query filter; postIdPruneCountFull is the full-file path's "
+           "and says nothing about a section query";
+    EXPECT_TRUE(rc.contains(QStringLiteral(
+        "no bullet in this section matched query")))
+        << "a zero-match query on an id-bearing SECTION must warn about the "
+           "query, not claim every entry lacks a [PROJ-NNNN] id";
+}
+
 // INV-6 — the inputSchema declares the `query` property so the dispatch
 // layer recognises it (no longer flagged in ignored_args).
 TEST(RoadmapQueryKeywordFilter, Inv6SchemaDeclaresQuery) {

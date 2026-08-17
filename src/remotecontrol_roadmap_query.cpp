@@ -2376,6 +2376,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
             filtered = pruned;
         }
+        // ANTS-4423 — the id-bearing count, captured after the ID-prune and
+        // BEFORE the keyword filter, so an empty result can say which of the
+        // two emptied it. The full-file path has carried this since ANTS-3560
+        // (`postIdPruneCountFull`); the section= path did not, so that fix
+        // reached only half its own surface.
+        const int postIdPruneCountSec = filtered.size();
         // ANTS-3391 — keyword filter composes after status + section, before
         // pagination (so count / next_offset reflect the narrowed set).
         applyQueryFilter(filtered);
@@ -2460,11 +2466,28 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                         .toInt();
             }
         }
-        // ANTS-1538 — if every bullet got pruned by the default
-        // ID-filter, name the opt-ins so the caller can re-issue
-        // with the correct flag instead of misreading the empty
-        // result as "section is genuinely empty".
-        if (preIdPruneCountSec > 0 && filtered.isEmpty() &&
+        // ANTS-4423 — the keyword query, not the ID-mandate, emptied the
+        // set. Mirrors the full-file branch (ANTS-3560, 2026-07-17), which
+        // fixed this text on its own path and left the section= path
+        // unchanged; a section query that matched nothing therefore still
+        // claimed every bullet lacked a [PROJ-NNNN] id and prescribed two
+        // flags that cannot help. Reproduced in-session on THIS roadmap:
+        // 40 bullets, every one id-bearing, count 0, and the warning blamed
+        // the ID filter. A wrong reason is worse than none — it sends the
+        // reader to re-issue with flags that change nothing and invites the
+        // conclusion that the section is full of narrator prose.
+        //
+        // Ordered before the ANTS-1538 gate for the same reason it is there:
+        // whichever branch fires, exactly one warning is emitted.
+        if (!queryArg.isEmpty() && postIdPruneCountSec > 0 &&
+            filtered.isEmpty()) {
+            out["warning"] = QStringLiteral(
+                "no bullet in this section matched query \"%1\" (%2 "
+                "id-bearing bullet(s) searched). If you passed multiple "
+                "space/comma-separated ids, use ids:[...] or query one id "
+                "at a time.")
+                    .arg(queryArg).arg(postIdPruneCountSec);
+        } else if (preIdPruneCountSec > 0 && filtered.isEmpty() &&
             !includeNarratorBullets && !includeSectionHeaders) {
             out["warning"] = QStringLiteral(
                 "default ID-filter dropped all %1 bullet(s) in this "

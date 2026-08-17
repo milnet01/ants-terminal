@@ -33876,7 +33876,7 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   Kind: doc.
   Source: Charls_Site_Ants_MCP_Feedback.md (2026-08-17) — discovery-only, no code change implied..
 
-- 📋 [ANTS-4423] **roadmap_query blames its ID filter when a `query` match returns nothing.**
+- ✅ [ANTS-4423] **roadmap_query blames its ID filter when a `query` match returns nothing.**
   A section query narrowed by `query` returned count 0 with this warning:
 
     "default ID-filter dropped all 40 bullet(s) in this section (every entry was
@@ -33893,6 +33893,27 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   flags that cannot help, and invites the false conclusion that the section is
   full of narrator prose. Fix: evaluate the warning against the count BEFORE the
   keyword filter is applied, or name which filter emptied the set.
+  Resolved (2026-08-17): the diagnosis changed on contact with the source, and
+  the change matters. This is not a new bug — ANTS-3560 shipped exactly this fix
+  on 2026-07-17, on the FULL-FILE path only. The `section=` branch kept the bare
+  ANTS-1538 wording, so that fix reached half its own surface and the other half
+  went on misdiagnosing for a month.
+
+  Two edits in remotecontrol_roadmap_query.cpp, mirroring the shipped branch
+  rather than inventing a second one: a `postIdPruneCountSec` captured after the
+  ID-prune and before applyQueryFilter (the section twin of
+  `postIdPruneCountFull`), and a query-aware warning ordered ahead of the
+  ANTS-1538 gate so exactly one warning still fires.
+
+  Test: INV-9 in tests/features/roadmap_query_keyword_filter (count 8 -> 9),
+  alongside ANTS-3560's INV-8 — same invariant, second surface. Scraped rather
+  than driven for INV-8's reason: the warning is composed inside
+  cmdRoadmapQuery's section branch and no unit seam reaches it. Both anchors are
+  asserted, since the count could exist unused and the text alone could be the
+  full-file literal INV-8 already pins. Verified red by mutating the message
+  literal (INV-8 stayed green, correctly — it pins the other path).
+
+  Full suite 3576/3576 (4 disabled by design).
   **Layman:** A search that finds nothing reports the wrong reason, sending the reader to fix something that is not broken.
   Kind: fix.
   Source: in-session 2026-08-17 — hit while attributing this triage batch to its filing projects..

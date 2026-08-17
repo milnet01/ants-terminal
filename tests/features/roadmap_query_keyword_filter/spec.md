@@ -37,6 +37,19 @@ It is a list-path filter, not a targeted selector.
   `postIdPruneCountFull` (the id-bearing count) after the ID-prune but
   before `applyQueryFilter`. Reported by Rolodex (2026-07-16): a
   space-separated multi-id `query` hit the misleading ANTS-1538 warning.
+- **INV-9** (ANTS-4423) — INV-8 holds on the `section=` path as well, with
+  its own `postIdPruneCountSec` count and its own message (`no bullet in
+  this section matched query "<q>"`). ANTS-3560 shipped the query-aware
+  branch on the full-file path only, so a section query that matched
+  nothing kept the ANTS-1538 text and kept prescribing
+  `include_narrator_bullets` / `include_section_headers` — two flags that
+  cannot affect a keyword miss. Found in-session on this project's own
+  `ROADMAP.md` (2026-08-17): 40 bullets in the target section, all
+  id-bearing, `count:0`, warning blaming the ID filter; a control query on a
+  keyword that does occur returned 37, which is what identifies the keyword
+  filter as the cause. **A wrong reason is worse than no reason** — it sends
+  the reader to re-issue with flags that change nothing and invites the
+  conclusion that the section is full of narrator prose.
 - **INV-7** (ANTS-3420 → ANTS-3422) — the `mainwindow.cpp` `roadmap_query`
   provider forwards `query` (and the ANTS-3402 `max_body_bytes` /
   ANTS-1907 `include_section_etags` / `section_etag_match` companions) to
