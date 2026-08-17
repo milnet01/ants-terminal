@@ -33703,6 +33703,177 @@ finbreak re-verified it.
   Kind: fix.
   Source: in-session-2026-08-15 AI_Prompts cutover.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-17 triage
+
+Triage of the 100 un-triaged lines standing in three feedback files on
+2026-08-17: Charls_Site (58), LottoTracker (35), claude_config (7).
+Charls_Site's three codebase_index entries collapse to one item — its own final
+entry retracts the missing-.git diagnosis and proves the discriminator is
+.ants/project.json, so only the corrected attribution is filed.
+
+- 📋 [ANTS-4417] **roadmap_query returns a BODY fragment as the headline — ANTS-4378's next-bold search escapes the head line.**
+  Reported by LottoTracker: on the `- <emoji> **LOTTO-000N** Headline text.`
+  shape (id bolded, headline PLAIN), headline_only returned body fragments for
+  4 of 5 active items — "already received", "fixed 2026-08-02." — which read as
+  if the work were done. The `[ID] **headline**` shape parses correctly, so both
+  shapes coexist and only one works.
+
+  VERIFIED against current source, and it is a REGRESSION from ANTS-4378
+  (shipped 2026-08-14 for this same project). roadmapparse.cpp:1019 widened the
+  condition to accept the undotted `**ID** headline` form. Inside that branch
+  line 1023 runs `rxBold.match(maskedBody, after)` over the WHOLE BODY, so when
+  the head line carries no second bold run the search walks into the
+  continuation lines and adopts the body's first bold span. The `else` branch at
+  1029 already does the right thing (take the prose after the id, trim to one
+  line) but fires only when the body has no bold anywhere, which is rare.
+
+  Fix: constrain the next-bold search to the head line — `headLineEnd(body)`
+  (roadmapparse.cpp:177) already computes the boundary. Test the match's START,
+  not its end, so ANTS-1561's soft-wrapped headline still qualifies.
+  **Layman:** The cheap roadmap listing shows text pulled from the wrong place, so items can read as finished when they are not.
+  Kind: fix.
+  Source: LottoTracker_Ants_MCP_Feedback.md (2026-08-17) — reported against a 105 KB ants-v1 roadmap..
+
+- 📋 [ANTS-4418] **apply_edits `not_found` should name the near miss, as read_region and roadmap_log already do.**
+  A failed `old` match reports `{index, path, reason:"not_found"}` and nothing
+  more. Sibling verbs already do better: read_region section-mode returns
+  `candidates` on section_not_found/section_ambiguous, and roadmap_log returns
+  `candidates` on bullet_not_found. apply_edits is the verb where a miss is most
+  likely to be whitespace-only and says the least.
+
+  Reported case: the `old` differed from the file only in the run-length of
+  interior spaces (a trailing-comment alignment column). `not_found` is equally
+  consistent with "the text is gone", "wrong file" and "one space out". Worst in
+  a partially-applied batch, where the file has already moved and the natural
+  recovery is the riskiest one.
+
+  Wanted: on not_found, a cheap whitespace-normalised re-match (collapse runs of
+  horizontal whitespace, ignore trailing) and, on a unique hit, `candidates:[{line,
+  text}]` plus a hint naming the difference class. Same field name and shape as
+  the two sibling verbs so one caller path handles all three.
+  **Layman:** When a text edit does not match, the error does not say why, so the fix takes an extra round-trip.
+  Kind: enhancement.
+  Source: LottoTracker_Ants_MCP_Feedback.md (2026-08-17)..
+
+- 📋 [ANTS-4419] **codebase_index returns empty:true with no reason — the discriminator is .ants/project.json, not .git.**
+  On a real tree (~1300 .html, 4 .py) codebase_index returns
+  `{ok:true, empty:true, file_count:0, lane_count:0}`. Nothing distinguishes
+  "genuinely no indexable code" from "could not be indexed", so a session
+  reasonably concludes there is no code here and falls back to grep — against
+  the SessionStart hook's own advice to query the index first.
+
+  ATTRIBUTION MATTERS HERE. The reporting session first blamed a missing `.git`
+  and then ran the A/B test that DISPROVED it: Charls_Site has been a git repo
+  since 2026-08-15 (1426 tracked files) and still returns empty. Its three-project
+  table shows the discriminator is `.ants/project.json` — LottoTracker (has it)
+  17 files, Ants_Projects_Hub_Website (has it) 13 files, Charls_Site (lacks it)
+  zero. Do NOT add a `no_git_repo` reason; the report says so explicitly.
+
+  Wanted: on a zero-file response, `empty_reason` (e.g. project_not_registered)
+  plus a hint naming `.ants/project.json` — the one thing the caller could fix in
+  a single step if it were told. An unregistered-but-real tree is the common case
+  for client folders and scratch sites.
+  **Layman:** On an unregistered project the code map comes back empty with no explanation, so a session concludes there is no code.
+  Kind: enhancement.
+  Source: Charls_Site_Ants_MCP_Feedback.md (2026-08-15/17) — filed, then self-corrected by the same session's A/B test..
+
+- 📋 [ANTS-4420] **workspace_search finds nothing when the pattern carries HTML entities, and the zero-match hint does not fire.**
+  `pattern:'&lt;h[123][^&gt;]*&gt;'` with regex:true returns a clean zero-match
+  reply and no hint; the literal `<h[123][ >]` returns 11 matches in the same
+  file. Arguably caller error, but the failure is silent and self-confirming, and
+  the slip is easiest to make precisely when searching HTML/XML, where the
+  surrounding conversation is full of escaped markup. A zero-match reply is the
+  one case where the caller has no signal to re-examine the pattern.
+
+  The same session filed a POSITIVE report that the existing `regex_advisory`
+  (short bare alternation terms) fired unprompted and read well — cited as
+  precedent that the advisory channel already exists and works. This is the same
+  class of problem and slots into the same mechanism.
+
+  Wanted: when matches is empty AND the pattern contains `&lt;`, `&gt;`, `&amp;`
+  or `&quot;`, emit a hint suggesting the literal characters. Fires only on an
+  already-empty result, so it costs nothing on the hot path.
+  **Layman:** Searching HTML with escaped brackets silently finds nothing and looks like a confident answer.
+  Kind: enhancement.
+  Source: Charls_Site_Ants_MCP_Feedback.md (2026-08-17)..
+
+- 📋 [ANTS-4421] **file_outline / read_region refuse bad_path on a cross-project feedback file and name no way out.**
+  Every session carries a standing instruction to read
+  /mnt/Games/Scripts/Linux/<project>_Ants_MCP_Feedback.md via Ants MCP. But
+  file_outline and read_region resolve `path` against the caller's project root,
+  so the natural call (caller_cwd=/home/ants/.claude, absolute feedback path)
+  refuses `bad_path`. The documented `~global` sentinel covers ~/.claude only.
+  The call that works — caller_cwd=/mnt/Games/Scripts/Linux plus a bare relative
+  filename — is stated in neither description; the reporter found it by guessing.
+
+  The refusal is CORRECT; what is missing is the route out. The asymmetry is the
+  surprising part: feedback_log takes an absolute path happily, so the write verb
+  works where the read verbs refuse. Recurs in every project because the workflow
+  is cross-project by construction — the file never lives under the project it is
+  about. A session that does not think of re-pointing caller_cwd falls back to
+  Bash cat/sed, which is what the standing instruction exists to prevent.
+
+  Cheapest fix, and the reporter's own first choice: put the working call in the
+  bad_path envelope, which already knows the path it rejected and can name its
+  parent as a caller_cwd. Same shape as ANTS-4373's skipped_hint.
+  **Layman:** Reading another project's feedback file is refused with no hint about the call that would work.
+  Kind: doc.
+  Source: claude_config_Ants_MCP_Feedback.md (2026-08-17)..
+
+- 📋 [ANTS-4422] **The hook catalogue reads read_regions as a plural of read_region rather than a batching win.**
+  The SessionStart catalogue line reads `file_outline → outline a file;
+  read_region(s) fetch its slices`, which presents read_regions as a minor plural
+  rather than a distinct batching win. The reporter used it to pull two unrelated
+  slices (an HTML section and a CSS :root block) in one call, and three regions
+  across three files in another, saving two round-trips each time.
+
+  Minor and discovery-only, but it is exactly the token waste the catalogue exists
+  to prevent. Wanted: a one-line wording change making the batching explicit —
+  e.g. "several slices across several files in ONE call".
+  **Layman:** A useful multi-file read tool is easy to miss, so sessions make several calls where one would do.
+  Kind: doc.
+  Source: Charls_Site_Ants_MCP_Feedback.md (2026-08-17) — discovery-only, no code change implied..
+
+- 📋 [ANTS-4423] **roadmap_query blames its ID filter when a `query` match returns nothing.**
+  A section query narrowed by `query` returned count 0 with this warning:
+
+    "default ID-filter dropped all 40 bullet(s) in this section (every entry was
+    either a rollup-summary or narrator-prose line with no [PROJ-NNNN] id).
+    Re-issue with include_narrator_bullets:true ..."
+
+  Every one of those 40 bullets HAS an id — the same call without the keyword
+  filter returns all 40 with ids populated. A control run using a keyword that
+  does occur in the bodies returned 37 of the 40. So the zero came from the
+  keyword filter, and the warning attributed it to the ID filter while prescribing
+  two flags that change nothing.
+
+  A wrong reason is worse than no reason: it sends the reader to re-issue with
+  flags that cannot help, and invites the false conclusion that the section is
+  full of narrator prose. Fix: evaluate the warning against the count BEFORE the
+  keyword filter is applied, or name which filter emptied the set.
+  **Layman:** A search that finds nothing reports the wrong reason, sending the reader to fix something that is not broken.
+  Kind: fix.
+  Source: in-session 2026-08-17 — hit while attributing this triage batch to its filing projects..
+
+- 📋 [ANTS-4424] **roadmap_log's body_shadowed refusal advises backticks, which do not prevent the shadowing.**
+  Filing the batch above, one bullet was refused `body_shadowed` because its body
+  quoted a trailer-column keyword inside an example query. The refusal is CORRECT
+  and caught a real ambiguity — no complaint about the gate itself.
+
+  The remedy it names is what fails: it says "Reword that mention, or wrap the key
+  in backticks", and the offending text was ALREADY inside a backticked inline
+  code span. So a caller who follows the second half of the advice gets the same
+  refusal, and the only route that works is the first half (rewording).
+
+  Either make the detector honour inline code spans — roadmapparse.cpp already has
+  a length-preserving backtick mask for exactly this purpose (ANTS-4066) — or drop
+  the backtick clause from the message so it stops prescribing a non-remedy. The
+  mask already existing on the parse side is what makes the first option cheap and
+  the current message hard to defend.
+  **Layman:** A write refusal suggests a fix that does not work, so following it fails a second time.
+  Kind: fix.
+  Source: in-session 2026-08-17 — hit while filing this very triage batch..
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
