@@ -31944,7 +31944,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
 
-- 📋 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
+- 💭 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
   ANTS-4402's witness compares `file_highest_id` against `store_high_water`, and the high water comes from the `id_prefix` table. Migration does not write a row there — only an id-allocating append does. So a migrated-but-never-appended project reports `store_high_water: 0`, and any id in the file makes `file_ahead_of_store` true forever.
 
   Measured 2026-08-18: only 6 of 14 projects have an `id_prefix` row (ANTS, AIPR, 3D_E, MUSI, LWSM, ONEUP). The other 8 report the warning permanently.
@@ -31954,6 +31954,7 @@ against current source before filing.
   This is not cosmetic. The finbreak session read that witness — correctly, on its face — as evidence the store was a stale partial copy, and concluded on that basis that a render could destroy its 600 KB file. It then hand-edited two roadmap changes rather than risk it. A witness that cries wolf on 8 of 14 projects costs more trust than it buys.
 
   Fix is to write the high water at migration from the highest id imported.
+  Closed 2026-08-18 as a DUPLICATE of ANTS-4430, filed earlier the same day from the E2 rollout. Same defect, same two proposed fixes (suppress the field when the row is absent, or seed it at migration from the highest id imported). I filed this from the finbreak report without checking the E2 items first — my error, not a second finding. The new evidence is folded into ANTS-4430 rather than kept here.
   **Layman:** The tools warn that your roadmap file is ahead of their copy even when the copy was just built from that exact file.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
@@ -45171,6 +45172,15 @@ here.)
   Absent should not report as 0. Either return the row as null/absent and
   suppress `file_ahead_of_store`, or seed `id_prefix` at migration time
   from the highest id actually imported.
+  Progress (2026-08-18): this has now cost a real session, which raises it above cosmetic. ANTS-4436 was filed as a duplicate from the finbreak report and is closed to here.
+
+  The finbreak session read `store_high_water: 0` with `file_ahead_of_store: true` as proof the store was a stale partial copy, and concluded on that basis that letting a write render could destroy its 600 KB roadmap. It stopped and hand-wrote two roadmap changes instead. The store was in fact healthy for those fields. So the false signal did exactly what the item predicts, on a second project, against a session that reasoned correctly from what it was shown.
+
+  Count correction: the body says 10 of 14 projects carry no id_prefix row. Re-measured today it is 8 of 14 — ants-projects-hub-website, contact-list, doom-ants, finbreak, games-hub, lottotracker, mame-curator, rolodex. Six have a row (ANTS, AIPR, 3D_E, MUSI, LWSM, ONEUP).
+
+  Stronger evidence than Rolodex for the absent-not-stale reading: a throwaway project migrated from finbreak's exact file still reported file_ahead_of_store true with store_high_water 0 seconds after the import, with nothing whatever ahead of it. A re-import of finbreak proper (0 orphaned) did not clear it either, because migration allocates no ids and so still writes no row.
+
+  That points at the second of the two proposed fixes — seeding at migration — since the first leaves a project with no way to acquire the row short of an append.
   **Layman:** Ten projects look like their saved roadmap is out of date when it is perfectly in sync.
   Kind: fix.
   Source: in-session-2026-08-18 (ANTS-4065 Phase E2 rollout).
