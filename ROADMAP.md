@@ -35292,6 +35292,22 @@ happen.
   says — the gate is about renderability, this is about currency.
   The write-vs-query status disagreement is itself the detection signal: if the
   write path compared them it would catch exactly this case.
+  Progress (2026-08-18) — diagnosis done, not started. Three findings, all verified this session; a later session should not re-derive them.
+
+  (1) The store has NO currency signal AT ALL. Read live from ~/.local/share/ants-terminal/roadmap.sqlite: the `project` table is (project_id, root, name, export_slug, legend, source_format) and there is no mtime, no synced_at, no source hash — on `project` or anywhere else. So staleness is not merely unreported, it is UNREPRESENTABLE. Fix (1) in the body ("make the staleness observable") therefore cannot be a reporting change; it needs a column.
+
+  (2) The column is a schema-ladder rung, and the precedent is exact. RoadmapStore::kSchemaVersion is 2 and upgradeLadder() (src/roadmapstore.cpp ~:241) holds one rung — ANTS-3815's `ALTER TABLE project ADD COLUMN source_format ... DEFAULT ''`. A currency column is the same move at version 3. Read that rung's comment before writing one: DEFAULT is load-bearing, because SQLite refuses `ADD COLUMN ... NOT NULL` with no default on a table that HAS ROWS and accepts it on an empty one — so a defaultless rung passes every empty test store and fails every real one. ANTS-3781 INV-4 makes a bump without a rung a red test.
+
+  (3) The work SPLITS, and the cheap half is worth doing first. The dangerous half of this item is silent data loss on the WRITE path, and that needs no schema change: roadmap_log already renders the whole file, so comparing the render against the file's current bytes before replacing them is nearly free, and it closes ANTS-4465 (hand-edits outside a bullet discarded silently) COMPLETELY as well as this item's data-loss half — one guard, two items. What still needs the column is the READ path — roadmap_query reporting store_stale / store_synced_at — because a per-query render is far too expensive. Suggested sequencing: write-path guard first (no schema, closes 4465 + the data loss), column second.
+
+  Do NOT reach for raw mtime comparison as a substitute. roadmap_log writes the store and THEN renders the file, so after any normal write the file is newer than the store and a naive mtime check reports stale on every healthy project. The signal has to be the store's record of the file it last ingested, which is exactly why it needs a column.
+
+  Blast radius (user, 2026-08-18): finbreak and OneUp have now migrated too. finbreak is the project that REPORTED this, so its store is live on the defect rather than hypothetically exposed.
+  Blast radius, corrected upward (user, 2026-08-18, same session): the migration wave is wider than the line above says. Already migrated: finbreak, OneUp, plus the 14 done 2026-08-18. Instructed to migrate now: LocalWebServerManager, Claude Code Config (claude_config), Vestige, and AI Prompts.
+
+  Read that against this section's contributor list, because the overlap is total: finbreak, OneUp, LocalWebServerManager, claude_config and Vestige are the FIVE projects whose feedback this section was built from, and all five are now on the store. This defect only fires on a migrated project. So every project that reported an MCP problem this cycle is now inside the blast radius of the worst item they reported, and finbreak — which reported THIS one — is already live on it.
+
+  That moves the sequencing note above from a preference to a priority: the write-path guard needs no schema change, closes ANTS-4465 outright, and stops the silent data loss on every one of these projects. It should land before any further work in this section, and before the read-path column.
   **Layman:** The roadmap tool can answer from an out-of-date copy without saying so, and saving over the file from that copy would wipe out hand-written notes.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-18.
@@ -35363,6 +35379,9 @@ happen.
   store's model is reverted, naming the preamble specifically since it is the
   part with no verb to edit it. A preamble verb is the larger third option and
   is explicitly NOT requested.
+  Progress (2026-08-18): do this WITH ANTS-4462, not separately — one guard closes both. roadmap_log already renders the whole file on every write, so comparing that render against the file's current bytes before replacing them costs almost nothing, and it is the same check both items need: this item wants to know that a hand-edit outside a bullet was overwritten, and ANTS-4462's dangerous half is a render from a stale store overwriting hand-edits it never saw. Same comparison, same envelope field (the body's option (a), `discarded_external_edits` plus a count).
+
+  Neither needs a schema change; ANTS-4462's read-path half does, and is separate. See ANTS-4462's progress notes for the store schema finding and the sequencing.
   **Layman:** Editing the top of the roadmap file by hand looks like it worked, and the next roadmap command quietly puts it back.
   Kind: fix.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
@@ -35636,6 +35655,44 @@ happen.
   Kind: enhancement.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: roadmapparse.
+
+- 📋 [ANTS-4477] **Commit ee33b664 is mislabelled — a chore message carrying the 2026-08-18 triage, and the decision to rewrite it is the user's.**
+  ee33b664 reads "chore: re-copy the commits.md mirror after CFG-0143 loop 2
+  upstream" and contains that one-line mirror re-copy PLUS 381 lines of
+  ROADMAP.md — the whole ANTS-4462..4476 triage. The content is correct and
+  pushed; only the message is wrong.
+
+  Cause, because it is a repeatable trap rather than a slip: the pre-commit
+  mirror gate REFUSED a commit whose files were already `git add`-ed, and a
+  refused commit leaves the index staged. The next commit — the mirror
+  re-copy — therefore swallowed everything still sitting in the index. It
+  happened TWICE in one session; the first time it was caught before pushing
+  and unwound with `git reset --mixed HEAD~1`, the second time the push had
+  already gone out. The long triage commit message that was meant to carry
+  this content was never written to history at all (the follow-up commit
+  reported "nothing to commit, working tree clean").
+
+  Mitigation for a future session, and this is the durable part: after a
+  hook-refused commit, run `git reset` (or `git status`) BEFORE staging
+  anything else. Do not assume a failed commit left the index clean.
+
+  Nothing is lost in substance — the triage rationale lives in ROADMAP.md's
+  section intro and the fifteen bullet bodies, which is where it belongs and
+  where it would be read from anyway. What is wrong is only that git log
+  misdescribes one commit.
+
+  Two options, and the choice is the user's because one of them rewrites
+  published history on a public repo:
+    (a) leave it, and let this bullet be the record of what that commit
+        actually contains;
+    (b) `git commit --amend` the message and `git push --force-with-lease`.
+        Low risk here (sole author, no collaborators) but it is still a
+        rewrite of history that is already public.
+
+  Filed rather than decided, so the fact survives the session that noticed it.
+  **Layman:** One saved change in the project history has the wrong description attached; fixing it means editing history that is already published, so it needs a decision first.
+  Kind: chore.
+  Source: in-session-2026-08-18.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
