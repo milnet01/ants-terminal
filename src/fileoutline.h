@@ -77,6 +77,14 @@ Mode parseMode(const QString &s);
 // rather than a fourth copy that can drift out of step with them.
 bool isGlslExt(const QString &ext);
 
+// True for an HTML extension (lowercase, no dot).
+// ANTS-4425 — exported for the same reason isGlslExt is: this verb has outlined
+// HTML since ANTS-4361 while CodebaseIndex::isIndexableSuffix did not admit it,
+// so a site project's pages were invisible to the index and to the
+// indie_review computed partition that walks by that predicate. Shared rather
+// than re-listed, so the two cannot drift.
+bool isHtmlExt(const QString &ext);
+
 // Compute the outline for a single file. `absPath` MUST be a
 // canonical filesystem path under the project root (the caller is
 // responsible for the path-escape check; ANTS-1249-INV-1 lives at

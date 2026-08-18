@@ -643,3 +643,37 @@ TEST(CodebaseIndex, WiringRegistered) {
     // atomic cache write (INV-12).
     EXPECT_TRUE(has(ants_test::slurpFile(srcPath("src/codebaseindex.cpp")), "QSaveFile"));
 }
+
+// ANTS-4425 — the same drift ANTS-4096 fixed for shaders, one verb later.
+// `FileOutline` has outlined HTML since ANTS-4361, and `isIndexableSuffix` did
+// not admit it, so a site project's pages were invisible to codebase_index AND
+// to the indie_review computed partition, which walks by this predicate.
+// Measured on Charls_Site 2026-08-17: detect() counted 9 source files (the .js
+// and .py) on a tree of ~40 HTML/CSS/JS files.
+TEST(CodebaseIndex, Ants4425HtmlIsIndexable) {
+    EXPECT_TRUE(CodebaseIndex::isIndexableSuffix(QStringLiteral("html")));
+    EXPECT_TRUE(CodebaseIndex::isIndexableSuffix(QStringLiteral("htm")))
+        << "pickModeByExt has always accepted both spellings; the index gate "
+           "must key on the same predicate, not a second list";
+}
+
+// The standing rule this file's predicate comment opens with is that
+// count -> outline -> symbol query cover the SAME files. `css` has no outline
+// mode, so admitting it would be the same drift in the opposite direction:
+// counting files the outline cannot read. It needs a mode first, or an explicit
+// decision to count-but-not-outline. Asserted so the choice is deliberate and a
+// later widening has to come here and change it on purpose.
+TEST(CodebaseIndex, Ants4425CssIsNotIndexableWhileItHasNoOutlineMode) {
+    EXPECT_FALSE(CodebaseIndex::isIndexableSuffix(QStringLiteral("css")))
+        << "admitting css would count files file_outline cannot read, breaking "
+           "the count/outline/symbol-query in-step rule in the other direction";
+}
+
+// The predicate is shared rather than copied, which is the whole point of
+// ANTS-4096's precedent: a second list is the defect with an extra step.
+TEST(CodebaseIndex, Ants4425IndexGateDelegatesToFileOutline) {
+    const std::string ci = ants_test::slurpFile(srcPath("src/codebaseindex.cpp"));
+    EXPECT_TRUE(has(ci, "FileOutline::isHtmlExt"))
+        << "the html gate must delegate to FileOutline, the way the GLSL line "
+           "above it already does";
+}

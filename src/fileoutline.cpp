@@ -35,6 +35,12 @@ bool isGlslExt(const QString &ext) {
     return kGlsl.contains(ext);
 }
 
+// ANTS-4425 — see the header. `.htm` is the DOS-era spelling of the same thing
+// and pickModeByExt has always accepted both.
+bool isHtmlExt(const QString &ext) {
+    return ext == QLatin1String("html") || ext == QLatin1String("htm");
+}
+
 namespace {
 
 constexpr int kMaxLineBytes      = 1024;   // ANTS-1249-INV-8
@@ -456,8 +462,7 @@ Mode pickModeByExt(const QString &absPath) {
         ext == QLatin1String("txt")) return Mode::Md;
     if (ext == QLatin1String("json")) return Mode::Json;
     if (isGlslExt(ext)) return Mode::Glsl;        // ANTS-3800 shader stages
-    if (ext == QLatin1String("html") || ext == QLatin1String("htm"))
-        return Mode::Html;                       // ANTS-4361
+    if (isHtmlExt(ext)) return Mode::Html;       // ANTS-4361 / ANTS-4425
     if (isGenericExt(ext)) return Mode::Generic;  // ANTS-2150 brace family
     return Mode::Auto;  // sentinel meaning "unknown" downstream
 }

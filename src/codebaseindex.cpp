@@ -58,7 +58,21 @@ bool isIndexableSuffix(const QString &suffixLower) {
     // sources were invisible to codebase_index AND to the indie_review
     // computed partition, which walks by this predicate. Delegated rather
     // than re-listed, per the in-step rule the comment above states.
-        || FileOutline::isGlslExt(suffixLower);
+        || FileOutline::isGlslExt(suffixLower)
+    // ANTS-4425 — the same drift ANTS-4096 fixed for shaders, one verb later.
+    // FileOutline has outlined HTML since ANTS-4361, so this gate was again the
+    // one left behind: a site project's pages were invisible to codebase_index
+    // AND to the indie_review computed partition, which walks by this
+    // predicate. Measured on Charls_Site 2026-08-17 — detect() counted 9 source
+    // files (the .js and .py) on a tree of ~40 HTML/CSS/JS files, so the index
+    // read as near-empty for a project whose content IS html.
+    //
+    // `css` is deliberately NOT admitted. The in-step rule this comment block
+    // opens with is that count → outline → symbol query cover the SAME files,
+    // and FileOutline has no CSS mode — admitting it here would count files the
+    // outline cannot read, which is the drift in the other direction. It needs
+    // an outline mode first, or an explicit decision to count-but-not-outline.
+        || FileOutline::isHtmlExt(suffixLower);
 }
 
 namespace {
