@@ -522,6 +522,44 @@ predicate, which made 391 of this roadmap's 2,032 bullets refuse
 `anchor_unsafe_context`. Any project whose roadmap quotes fence syntax in
 prose will hit it on a binary older than that fix.
 
+**E2 migration half is DONE, 2026-08-18 — all 14 corpus projects are in the
+store.** Every one reports `items_orphaned` 0, and `roadmap-import-verify.py`
+reports **0 kind mismatches on all 14**. Counts: Ants_Terminal 2,066 ·
+Vestige 1,024 (565 ids allocated) · Music_Production 357 (357 allocated) ·
+DOOM_Ants 345 · finbreak 270 · LocalWebServerManager 125 · OneUp 107 ·
+MAME_Curator 75 · Contact_List 62 · Rolodex 36 · Games_Hub 31 ·
+LottoTracker 31 · AI_Prompts 28 · Ants_Projects_Hub_Website 9.
+
+**One project refused, and the refusal was the run's finding.** Vestige aborted
+on `UNIQUE constraint failed: item.project_id, item.id_fold` with 2,973 notes
+naming nothing — two `**Photo mode**` bullets, the prose-lead-in class
+`roadmapparse.cpp` documents and ANTS-3771 exists to end. Fixed on both sides:
+[ANTS-4428] refuses a duplicate id before the insert naming both `path:line`
+sites, and Vestige's own repo renamed the second label. **A migration refusal
+is the expected shape of a per-project surprise here, so read `error` before
+assuming the project is unmigratable.**
+
+**The round-trip half is per-project and only two projects have run it.**
+Ants_Terminal is the reference; Rolodex ran the full procedure on 2026-08-18
+and PASSES — cycle 1 moved 1 item and cycle 2 moved 1, both of them the marker
+annotate that drove that cycle's render, which is exactly what the corrected
+criterion permits. Its first render was **+3 lines**, not the large one-time
+normalisation Ants_Terminal saw, because its roadmap was already close to
+canonical form. Two things a per-project run should carry from it: the
+instrument **exits 1 whenever anything moved**, so cycle 2 exits 1 on a PASS
+and the exit status is not the gate — read which items moved; and the teardown
+`roadmap_migrate` reverts the marker in the store too (2 items updated back),
+so a run that skips it leaves the markers behind.
+
+**The remaining 11 are deliberately left to their own sessions.** Migration
+writes only the store and touches no repo file, which is why it was safe to do
+centrally; the round-trip rewrites that project's `ROADMAP.md` and archives and
+needs a clean tree, a `git checkout` restore and a re-migrate. More to the
+point, the first `roadmap_log` write in each project renders its roadmap from
+the store from now on, and the session that owns the repo is the one that
+should see that diff. Music_Production is the one to warn: 357 bullets carry no
+id, so its first render mints 357 new ones into the file at once.
+
 ---
 
 ## What this plan deliberately does not do
