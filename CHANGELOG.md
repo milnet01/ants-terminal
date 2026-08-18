@@ -179,6 +179,26 @@ for security-relevant changes.
 
 ### Fixed
 
+- **SARIF export labels suppressions with `status`, the v2.1.0 field name** (ANTS-4454)
+  The suppression object wrote `state`, an earlier-draft spelling that
+  no v2.1.0 validator accepts — strict consumers rejected the object and
+  lenient ones read no status at all. The feature spec and its
+  conformance test carried the same error and are corrected with it.
+
+- **`doc_symbols` now reports its `qualified` unresolved-span count** (ANTS-4443)
+  The classifier tested the scope-stripped needle for `::`, which it can
+  never contain, so every qualified non-call span was filed as `bare`
+  and the counter was structurally always zero. It tests the span.
+
+- **Lua: registering an event handler from inside a handler no longer corrupts memory** (ANTS-4441)
+  `LuaEngine::fireEvent` iterated the live handler vector inside
+  `m_handlers` while `lua_pcall` ran a handler, so a plugin calling
+  `ants.on()` from a handler could reallocate that vector (same event)
+  or rehash the QHash (new event) out from under the loop. It now
+  iterates a copy taken before the dispatch begins — which also fixes
+  the contract: a handler registered during a dispatch runs from the
+  next dispatch, never the current one.
+
 - **A duplicate id_fold refused a whole project as a bare SQL constraint, naming neither bullet.** (ANTS-4428)
   `roadmap_migrate` now refuses a duplicate id before the insert, naming
   both `path:line` sites and the folded identity, instead of aborting the

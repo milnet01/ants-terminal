@@ -34714,7 +34714,7 @@ performance claim is a reading of an algorithm, not a measurement), and the
 three `claude-mcp-*` lanes read line ranges inside one function rather than
 whole files.
 
-- 📋 [ANTS-4441] **Use-after-free in `LuaEngine::fireEvent` when a handler registers another handler.**
+- ✅ [ANTS-4441] **Use-after-free in `LuaEngine::fireEvent` when a handler registers another handler.**
   `fireEvent` (`src/luaengine.cpp:488`) range-iterates `it.value()` — a
   `std::vector<int>` living inside `QHash<PluginEvent, std::vector<int>>
   m_handlers` (`src/luaengine.h:272`). The loop body runs `lua_pcall`, so a
@@ -34726,6 +34726,7 @@ whole files.
   Registering a handler from a handler is an ordinary idiom with no documented
   restriction, and the component is the one SECURITY.md scopes as the sandbox.
   Fix: take a copy of the handler list before the loop and iterate that.
+  Resolved (2026-08-18): fireEvent takes `const std::vector<int> handlers = it.value()` before the loop and iterates that copy (src/luaengine.cpp:485-492). Regression test tests/features/lua_handler_reentrancy (spec + LuaHandlerReentrancy.Ants4441RegisterFromHandlerIsSafe, bundle test_lua). Red run confirmed under ASan: build-asan reports `heap-use-after-free ... in LuaEngine::fireEvent`, READ of size 4, against the pre-fix source. In Release the pre-fix code PASSES the same test — the range-for keeps its stale begin/end and re-reads the original three refs from the freed buffer, so the observable behaviour is identical; the sanitized leg is what locks this one. The test also pins the snapshot contract (a handler registered during a dispatch runs from the next dispatch, not the current one), which is deterministic in every build.
   **Layman:** A plugin that adds a new event handler while an event is running can corrupt the terminal's memory and crash it.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane lua-sandbox (VERIFIED in-session).
@@ -34749,7 +34750,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lane lua-sandbox (VERIFIED in-session).
   Lanes: luaengine.
 
-- 📋 [ANTS-4443] **`doc_symbols` `qualified` counter is structurally always zero.**
+- ✅ [ANTS-4443] **`doc_symbols` `qualified` counter is structurally always zero.**
   `src/docsymbols.cpp:259` classifies an unresolved span as `qualified` by
   testing `c.needle.contains("::")`. But the needle had its scope stripped at
   `:137-138` — `lastIndexOf("::")` then `mid(scope + 2)` — so it can never
@@ -34760,6 +34761,7 @@ whole files.
   it currently guarantees.
   Fix: test `c.span`, not `c.needle` — `span` retains the scope, and the
   sibling `call` test on the same line already reads `c.span`.
+  Resolved (2026-08-18): the qualified test reads `c.span` rather than `c.needle` (src/docsymbols.cpp:259), matching the sibling `call` test on the same line. Regression case added to the existing DocSymbols.Ants4359UnresolvedIsClassifiedByShape (bundle test_claude): a `Widget::alsoGone` span must classify `qualified`, and `unresolvedQualified >= 1`. Red run confirmed — pre-fix the assertion fails with "structurally unreachable before ANTS-4443".
   **Layman:** A counter in the docs-checking tool can never be anything but zero, so a whole class of broken documentation reference is filed in the wrong bucket.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane doclint-engines (VERIFIED in-session).
@@ -34957,7 +34959,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lane vt-core (VERIFIED in-session, plus one site the sweep missed).
   Lanes: terminalgrid, terminalwidget.
 
-- 📋 [ANTS-4454] **SARIF suppression uses `state`, which is not a v2.1.0 property — the field is `status`.**
+- ✅ [ANTS-4454] **SARIF suppression uses `state`, which is not a v2.1.0 property — the field is `status`.**
   `src/auditdialog.cpp:5753` writes `sup["state"] = "accepted"`. The SARIF
   v2.1.0 `suppression` object defines `guid`, `kind`, `status`,
   `justification`, `location`, `properties` — there is no `state`. The
@@ -34965,6 +34967,7 @@ whole files.
   viewers", so a strict validator rejects the object and a lenient one reads
   no status at all. `kind` beside it is correct.
   One-word fix; worth a conformance assertion so it cannot regress.
+  Resolved (2026-08-18): `sup["status"] = "accepted"` (src/auditdialog.cpp:5754). The existing audit_sarif_suppressions feature test carried the SAME error — its INV-4 accepted `"state"` OR `"accepted"`, so it passed either way, and its spec.md documented `state` as the contract. Both corrected: the spec now names `status` and cites SARIF v2.1.0 §3.35, and INV-4 requires `"status"` AND forbids `"state"`. Red run confirmed — pre-fix the test now fails on both halves.
   **Layman:** The exported audit file labels suppressed findings with the wrong tag name, so other tools either reject the file or ignore the label.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane audit-dialog (VERIFIED in-session).

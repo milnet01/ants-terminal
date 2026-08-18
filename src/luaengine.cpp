@@ -482,10 +482,15 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
     auto it = m_handlers.find(event);
     if (it == m_handlers.end()) return true;
 
+    // A handler may call ants.on(), which can rehash m_handlers (new event ->
+    // every value relocates) or reallocate this vector (same event); either
+    // dangles the range-for's cached begin/end. Iterate a copy (ANTS-4441).
+    const std::vector<int> handlers = it.value();
+
     bool allow = true;
     QByteArray dataUtf8 = data.toUtf8();
 
-    for (int ref : it.value()) {
+    for (int ref : handlers) {
         lua_rawgeti(m_state, LUA_REGISTRYINDEX, ref);
         lua_pushstring(m_state, dataUtf8.constData());
 

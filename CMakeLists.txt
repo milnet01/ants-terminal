@@ -2315,6 +2315,7 @@ if(ANTS_TESTS)
         ants_add_gui_bundle(test_lua
             LIBS    ants_lua_lib ants_core_lib
             SOURCES tests/features/lua_sandbox_hardening/test_lua_sandbox_hardening.cpp
+                    tests/features/lua_handler_reentrancy/test_lua_handler_reentrancy.cpp
                     tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp
                     tests/features/lua_threading/test_lua_threading.cpp
                     tests/features/plugin_manifest_safety/test_plugin_manifest_safety.cpp)
