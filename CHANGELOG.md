@@ -202,6 +202,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`project_layout` finds an AppStream metainfo file kept one level under `packaging/` or `pkg/`.** (ANTS-4439)
+  Every probe was single-level, so a project packaging for more than one distro — `packaging/obs/` beside `packaging/flatpak/` — reported no AppStream metadata at all, and a release path keyed on that field silently skipped its release-notes sync. The legacy `*.appdata.xml` spelling is now accepted too, probed after every `*.metainfo.xml` candidate so the current name always wins. Flat candidates are still tried first, so no project whose file already resolved resolves differently.
+
 - **`changelog_log op:"add_subsection"` no longer refuses a dated changelog because of a legacy category tail at the bottom.** (ANTS-4489)
   The guard classified `## [Unreleased]` by first match, so any Keep-a-Changelog category heading anywhere in the section made the whole section "flat" — refusing a section of ~500 dated topics on the strength of six legacy headings 10,000 lines below them. It now classifies by position: a dated topic above the first flat heading means a dated section with a legacy tail, and the insert (which lands at the top) is accepted. The refusal that remains reports what it found — MIXED, with both populations and their line ranges — instead of asserting the section is flat, and no longer advises the op that created the mixture.
 

@@ -31999,12 +31999,40 @@ against current source before filing.
   Kind: enhancement.
   Source: finbreak-feedback-2026-08-18 (maintainer-measured).
 
-- 📋 [ANTS-4439] **project_layout's appstream_metainfo probe is single-level, so it misses the standard packaging/<distro>/ layout.**
+- ✅ [ANTS-4439] **project_layout's appstream_metainfo probe is single-level, so it misses the standard packaging/<distro>/ layout.**
   The probe set is `(root)/*.metainfo.xml`, `packaging/*.metainfo.xml`, `pkg/*.metainfo.xml`, `data/*.metainfo.xml`, `share/applications/*.metainfo.xml` — all single-level globs. finbreak keeps its file at `packaging/obs/io.github.milnet01.finbreak.metainfo.xml`, beside `packaging/flatpak/`, because a project packaging for more than one distro puts each recipe in its own directory.
 
   The field comes back as an empty string, which is indistinguishable from a project shipping no AppStream metadata at all — and the two want opposite behaviour. A release path keyed on it silently skips the release-notes sync, so an app store shows a version with no notes and nobody learns why.
 
   Reporter's suggested fix, which looks right: add `packaging/*/*.metainfo.xml` and `pkg/*/*.metainfo.xml` rather than naming directories one at a time, and also accept the older `*.appdata.xml`. Same widening already granted to the docs tree in ANTS-1493. Emitting absent-versus-not-found instead of an empty string would let a caller tell the two apart.
+  Resolved (2026-08-18), commit afb63e05. scanAppStream now probes one level under
+  packaging/ and pkg/ as well as the five flat dirs, and accepts the legacy
+  *.appdata.xml spelling. The pattern loop is the outer one, so every
+  *.metainfo.xml candidate is tried before any *.appdata.xml and the current name
+  wins; and all five flat metainfo probes still run first, so this can only turn
+  an empty answer into a found one — it cannot move an answer that already
+  resolved. A test asserts that specifically and is the one case in the set that
+  passes both before and after.
+
+  Scoped to the two packaging dirs rather than recursing: data/ and
+  share/applications/ are install-image layouts with fixed shapes, and an
+  arbitrary-depth walk is a different probe from the one this function promises.
+
+  kProbeSetVersion 6 → 7, without which cached envelopes keep the empty answer and
+  the narrow probed_paths[] echo until 7-day TTL expiry. That is the exact failure
+  ANTS-1620 paid for once already, on the ANTS-1493 widening of this same set.
+
+  The reporter's third suggestion — absent-versus-not-found instead of an empty
+  string — is NOT done. probed_paths[] does now list every nested candidate tried,
+  so a caller can distinguish the two by reading it, but the field itself is still
+  an empty string. Left as an envelope-shape question rather than folded in here.
+
+  Collateral fixed rather than suppressed: spec_query_phases_layout's
+  Inv5ProbeSetVersionBumped whitelisted the literals 4, 5 and 6 while calling
+  itself "≥4" — twice extended already, and it reddens in an unrelated suite
+  whenever this constant is bumped. It now parses the value.
+
+  Six tests, five red-first. Suite 3618/3618.
   **Layman:** The tool looks for the app-store description file in five places, none of them the folder where projects that package for several distros actually keep it.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18.
