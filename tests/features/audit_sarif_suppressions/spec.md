@@ -12,7 +12,7 @@ Per spec, each suppression object MUST include:
   (read from `~/.audit_suppress` JSONL), the value MUST be
   `"external"` because the suppression is recorded outside the
   source artifact.
-- `state`: one of `"accepted"`, `"underReview"`, `"rejected"` —
+- `status`: one of `"accepted"`, `"underReview"`, `"rejected"` —
   current implementation always emits `"accepted"` because the
   audit dialog has no review-workflow concept.
 - `justification` (optional but emitted when available): the
@@ -46,7 +46,7 @@ The fix needs:
 3. Save path (`saveSuppression`) updates the map on insert.
 4. SARIF export iterates ALL findings (no `m_suppressedKeys.contains`
    filter), and for each suppressed one appends the
-   `suppressions[]` array with kind/state/justification.
+   `suppressions[]` array with kind/status/justification.
 
 ## Invariants
 
@@ -71,8 +71,10 @@ least one assignment / insert into `m_suppressionReasons`.
 inside the `exportSarif` function body: the body must contain the
 literal string `"suppressions"` (a JSON property name being inserted
 into a `QJsonObject`). Furthermore, the body must contain the SARIF
-suppression-state literals `"external"` AND (`"accepted"` OR
-`"state"`).
+suppression literals `"external"` AND `"status"`, and must NOT
+contain `"state"` — SARIF v2.1.0 §3.35 names the field `status`;
+`state` was an earlier-draft spelling that no v2.1.0 validator
+accepts (ANTS-4454).
 
 **INV-5 — SARIF export NO LONGER unconditionally skips suppressed
 findings.** The exportSarif body MUST iterate findings without an
@@ -88,7 +90,7 @@ warnings is allowed and unaffected.
 ### In scope
 - Map declaration + load/save mirror.
 - SARIF export emits suppressions[] + iterates suppressed findings.
-- `kind: external`, `state: accepted` semantics.
+- `kind: external`, `status: accepted` semantics.
 
 ### Out of scope
 - Surfacing inline-source markers (NOLINT, noqa, nosec) as

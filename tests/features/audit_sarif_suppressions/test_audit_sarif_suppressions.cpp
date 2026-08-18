@@ -130,13 +130,18 @@ TEST(AuditSarifSuppressions, Main) {
             fail("INV-4: exportSarif body does not emit `kind: \"external\"` — "
                  "required so SARIF consumers know the suppression came "
                  "from outside the source artifact.");
-        const bool hasState =
-            sarifBody.find("\"state\"") != std::string::npos ||
-            sarifBody.find("\"accepted\"") != std::string::npos;
-        if (!hasState)
-            fail("INV-4: exportSarif body emits neither a `state` field "
-                 "nor a value matching the SARIF state vocabulary "
+        if (sarifBody.find("\"status\"") == std::string::npos ||
+            sarifBody.find("\"accepted\"") == std::string::npos)
+            fail("INV-4: exportSarif body does not emit a `status` field "
+                 "carrying a value from the SARIF suppression vocabulary "
                  "(`accepted`/`underReview`/`rejected`).");
+        // ANTS-4454: `state` is an earlier-draft spelling. SARIF v2.1.0
+        // §3.35 names the field `status`; a strict validator rejects the
+        // suppression object and a lenient one reads no status at all.
+        if (sarifBody.find("\"state\"") != std::string::npos)
+            fail("INV-4: exportSarif body emits a `state` field. SARIF "
+                 "v2.1.0 defines no `state` on a suppression object — the "
+                 "field is `status`.");
 
         // INV-5 — exportSarif body does NOT skip findings unconditionally
         // on suppression — it must include them so the suppressions[]

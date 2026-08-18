@@ -5751,7 +5751,7 @@ QString AuditDialog::exportSarif() const {
             if (isSuppressed(f.dedupKey)) {
                 QJsonObject sup;
                 sup["kind"]  = "external";
-                sup["state"] = "accepted";
+                sup["status"] = "accepted";
                 const QString reason =
                     m_suppressionReasons.value(f.dedupKey,
                         m_suppressionReasons.value(f.dedupKey.left(16)));
