@@ -28,23 +28,26 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     ASSERT_NE(pos, std::string::npos)
         << "INV-1: roadmap_log name literal missing from "
            "claudeintegration.cpp";
-    // 44 KiB window — the schema block keeps growing (ANTS-1428 added
-    // op / to_status / id / anchor / prefix_hint; ANTS-1717/1793 added
-    // the annotate op prose + the `note` property; ANTS-1690 added the
-    // flip_batch op prose + the `locators` array block; ANTS-1878/1879
-    // added create_section + append_batch ops with their bullets[] +
-    // after_section / level / title / intro_body property surface;
-    // ANTS-2078/2080 added per-bullet stable_id + the `return` prop;
-    // ANTS-2126 added the `pass` property + pass-headings op prose, which
-    // pushed `section` ~69 bytes past the old 32 KiB window — bumped to
-    // 40 KiB; ANTS-3432 declared the bundle_row props
-    // cells/header/position/sort_col (~2 KiB of prose), pushing the
-    // `props["caller_cwd"]`/`props["section"]` assignments to ~40.7 KiB —
-    // bumped to 44 KiB; ANTS-4097/4117 added ~1 KiB of descriptor prose to
-    // `old_text` and `pass`, pushing `props["section"]` past 44 KiB —
-    // bumped to 48 KiB). Window sized to outrun the next couple of
-    // additions; trim if it grows unnecessarily.
-    const std::string region = ci.substr(pos, 48000);
+    // ANTS-4463 — the region ends where roadmap_log's schema ends, not at a
+    // fixed byte count.
+    //
+    // This was a 32 KiB window, then 40, then 44, then 48, bumped each time a
+    // property or a paragraph of descriptor prose pushed `props["section"]`
+    // past the end (ANTS-2126, ANTS-3432, ANTS-4097/4117). Four bumps for one
+    // cause is a statement about the measurement rather than about the schema:
+    // the window was never trying to be 48 KiB, it was trying to be "this
+    // verb's block", and a byte count is a proxy that goes stale every time
+    // the thing it proxies for grows.
+    //
+    // `tools.append(t);` is the real terminator — every verb's descriptor ends
+    // with it — so the region is now exactly this verb's block however long it
+    // becomes, and a property that genuinely goes MISSING still fails. Falls
+    // back to the rest of the file if the terminator is not found, which keeps
+    // a refactor of the builder from turning this into a silent pass.
+    const auto endPos = ci.find("tools.append(t);", pos);
+    const std::string region =
+        endPos == std::string::npos ? ci.substr(pos)
+                                    : ci.substr(pos, endPos - pos);
     expect(contains(region, "\"caller_cwd\""),
            "INV-1: caller_cwd schema property present");
     expect(contains(region, "\"section\""),

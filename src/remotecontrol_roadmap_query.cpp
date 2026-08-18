@@ -167,6 +167,21 @@ bool rcdetail::rcRoadmapSourceRefused(QJsonObject &out,
 // missing Layman lines, import what the store is missing (ANTS-4141), fix the
 // store's contents, fix the store file, re-run the render — which is why they
 // are five codes and not one.
+void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
+                                    const RoadmapRender::Outcome &outcome,
+                                    bool dryRun) {
+    // ANTS-4463 — see remotecontrol_internal.h for why the tense matters.
+    if (dryRun) {
+        out[QStringLiteral("dry_run")]    = true;
+        out[QStringLiteral("would_write")] =
+            QJsonArray::fromStringList(outcome.filesWritten);
+    } else {
+        out[QStringLiteral("files_written")] =
+            QJsonArray::fromStringList(outcome.filesWritten);
+    }
+    out[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+}
+
 bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
                                   const QString &err,
                                   const RoadmapRender::Outcome &outcome) {

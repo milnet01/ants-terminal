@@ -159,6 +159,22 @@ bool rcRoadmapIdLess(const QString &a, const QString &b);
 QString rcExtractGateNote(const QString &body);
 bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, const QString &err);
 bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QString &err, const RoadmapRender::Outcome &outcome);
+// ANTS-4463 — the dry-run field policy, in ONE place because nine sites emit
+// these fields and nine copies of a rule is nine chances to miss one.
+//
+// A dry run writes nothing, and the envelope said `files_written:[...]` and
+// `note_appended:true` anyway — field names whose tense IS the assertion. The
+// only signal that nothing happened was the `dry_run` flag beside them, so a
+// caller branching on `files_written` (the obvious field) read a preview as a
+// completed write. Reported by LocalWebServerManager, who verified three ways
+// that nothing was written.
+//
+// On a dry run the past-tense names are ABSENT — their reporter's argument,
+// that an absent field cannot be misread while a renamed one still has to be
+// noticed — and the same information is carried under `would_write`, matching
+// what changelog_log's dry_run already documents for `bytes`. Callers get both
+// properties: the misleading name is gone, and the useful value is kept.
+void rcRoadmapWriteFields(QJsonObject &out, const RoadmapRender::Outcome &outcome, bool dryRun);
 // ANTS-3822 § 2.3.1 — one operation's history state, created at the top of
 // mutate() and threaded through everything that writes an item column.
 //

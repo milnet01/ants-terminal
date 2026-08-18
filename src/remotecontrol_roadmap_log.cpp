@@ -430,11 +430,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // No `line` / `bytes_written` / `counter_advanced_to`: a store has
             // no lines (ANTS-3793 INV-2's declared field difference), the render
             // decides placement, and .roadmap-counter is not the carrier here.
-            env[QStringLiteral("files_written")] =
-                QJsonArray::fromStringList(outcome.filesWritten);
-            env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
-            if (dryRun)
-                env[QStringLiteral("dry_run")] = true;
+            rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
             // ANTS-2043 — the near-duplicate advisory, kept: the records are
             // the store's own items, read BEFORE the write so the new bullet
             // cannot match itself (ANTS-4426).
@@ -1280,11 +1276,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 // decides placement. anchor_injected stays, and stays false —
                 // ants-v1 never injects one.
                 env[QStringLiteral("anchor_injected")] = false;
-                env[QStringLiteral("files_written")] =
-                    QJsonArray::fromStringList(outcome.filesWritten);
-                env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+                rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
                 if (!note.isEmpty()) {
-                    env[QStringLiteral("note_appended")] = !alreadyPresent;
+                    // ANTS-4463 — same rule as the file list: on a dry run the
+                    // note was NOT appended, so the past-tense key is absent.
+                    env[dryRun ? QStringLiteral("note_would_append")
+                               : QStringLiteral("note_appended")] =
+                        !alreadyPresent;
                     if (alreadyPresent)
                         env[QStringLiteral("note_already_present")] = true;
                 }
@@ -2375,9 +2373,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 env[QStringLiteral("id")] = matchedId;
             // No `line` / `body_line` / `bytes` — a store has no lines
             // (ANTS-3793 INV-2), and `body_line` was an index into the file.
-            env[QStringLiteral("files_written")] =
-                QJsonArray::fromStringList(outcome.filesWritten);
-            env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+            rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
             if (!newTextScrubbedNames.isEmpty()) {
                 QJsonArray dropped;
                 for (const QString &n : newTextScrubbedNames) dropped.append(n);
@@ -3105,8 +3101,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         }
         env["skipped"]        = skipped;
         env["skipped_count"]  = skipped.size();
-        env["files_written"]  = QJsonArray::fromStringList(outcome.filesWritten);
-        env["items_rendered"] = outcome.itemsRendered;
+        rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
         // No `counter`: anchor injection is a GFM concern and ants-v1 never
         // injects one, so nothing here consumes the counter.
         if (echoHeadline) env["post_bullets"] = postBullets;
@@ -3700,11 +3695,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
             // field difference — and the render, not this op, decides placement.
             // The render's own result is what a caller can act on, and under
             // dry_run it is the non-empty preview INV-7 requires.
-            env[QStringLiteral("files_written")] =
-                QJsonArray::fromStringList(outcome.filesWritten);
-            env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
-            if (dryRun)
-                env[QStringLiteral("dry_run")] = true;
+            rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
             return QJsonDocument(env);
         }
     }
@@ -4050,10 +4041,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
             env[QStringLiteral("row_index")]     = rowIndex;
             env[QStringLiteral("columns")]       = columns;
             env[QStringLiteral("created_table")] = createdTable;
-            env[QStringLiteral("files_written")] =
-                QJsonArray::fromStringList(outcome.filesWritten);
-            if (dryRun)
-                env[QStringLiteral("dry_run")] = true;
+            rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
             return QJsonDocument(env);
         }
     }
@@ -4851,9 +4839,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         }
         env[QStringLiteral("skipped")]        = skipped;
         env[QStringLiteral("skipped_count")]  = skipped.size();
-        env[QStringLiteral("files_written")]  =
-            QJsonArray::fromStringList(outcome.filesWritten);
-        env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+        rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
 
         // ANTS-2043 — the per-bullet near-duplicate advisory, kept: the file is
         // the render's own output and was parsed BEFORE the write, so a
@@ -5380,10 +5366,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
     // idempotent re-run it would be non-zero while nothing moved.
     env[QStringLiteral("sections")]       = QJsonArray::fromStringList(movedSlugs);
     env[QStringLiteral("sections_moved")] = movedSlugs.size();
-    env[QStringLiteral("files_written")] =
-        QJsonArray::fromStringList(outcome.filesWritten);
-    env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
-    if (dryRun) env[QStringLiteral("dry_run")] = true;
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
     return QJsonDocument(env);
 }
 
@@ -5502,10 +5485,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req)
     // discovering it at the next call that fails.
     env[QStringLiteral("previous_slug")] = sectionSlug;
     env[QStringLiteral("title")]         = title;
-    env[QStringLiteral("files_written")] =
-        QJsonArray::fromStringList(outcome.filesWritten);
-    env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
-    if (dryRun) env[QStringLiteral("dry_run")] = true;
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
     return QJsonDocument(env);
 }
 

@@ -665,3 +665,65 @@ TEST(RoadmapWriteHalf, Ants3838ProvenanceIdPerBranch) {
               QStringLiteral("synthesised"));
     EXPECT_EQ(idOriginOf(batchId), QStringLiteral("synthesised"));
 }
+
+
+// ------------------------------------------------------------- ANTS-4463 ----
+
+// A dry run emits NO past-tense field.
+//
+// Reported by LocalWebServerManager, who verified three ways that nothing was
+// written — git status clean, a grep for the note text returning 0, the bullet
+// still planned — while the envelope said `files_written:["…/ROADMAP.md"]` and
+// `note_appended:true`. The only signal that nothing happened was the `dry_run`
+// flag beside them, so a caller branching on `files_written` (the obvious field
+// to check) read a preview as a completed write. On a phase close that is a
+// bullet silently left open while the session reports it shipped.
+//
+// The fix keeps both properties they asked for: the misleading NAME is gone, so
+// it cannot be misread, and the useful VALUE survives under `would_write` —
+// matching what changelog_log's dry_run already documents for `bytes`.
+TEST(RoadmapWriteHalf, Ants4463DryRunEmitsNoPastTenseFields) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+
+    QJsonObject req = appendReq(root, QStringLiteral("A dry-run only bullet."));
+    req[QStringLiteral("dry_run")] = true;
+    const QJsonObject dry = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool())
+        << "precondition: the dry run itself must succeed; got code="
+        << dry.value(QStringLiteral("code")).toString().toStdString()
+        << " error=" << dry.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(dry.value(QStringLiteral("dry_run")).toBool());
+
+    EXPECT_FALSE(dry.contains(QStringLiteral("files_written")))
+        << "ANTS-4463: `files_written` is an assertion that the write "
+           "happened. On a preview it is absent, not merely accompanied by a "
+           "flag — an absent field cannot be misread";
+    EXPECT_FALSE(dry.contains(QStringLiteral("note_appended")))
+        << "ANTS-4463: the same defect in a boolean — the past tense IS the "
+           "claim";
+
+    // The information is not lost, only honestly named.
+    ASSERT_TRUE(dry.contains(QStringLiteral("would_write")))
+        << "ANTS-4463: dropping the misleading name must not cost the caller "
+           "the list of files the write would touch";
+    EXPECT_FALSE(dry.value(QStringLiteral("would_write")).toArray().isEmpty());
+
+    // And the real write is unchanged — the past-tense field is correct there
+    // precisely because the action did happen.
+    QJsonObject realReq = appendReq(root, QStringLiteral("A real bullet."));
+    const QJsonObject real = rc.cmdRoadmapLogAppendForTest(realReq).object();
+    ASSERT_TRUE(real.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(real.contains(QStringLiteral("dry_run")));
+    EXPECT_TRUE(real.contains(QStringLiteral("files_written")))
+        << "the real path keeps the past-tense name — this fix narrows the "
+           "claim to the path where it is true, it does not remove it";
+    EXPECT_FALSE(real.contains(QStringLiteral("would_write")));
+}

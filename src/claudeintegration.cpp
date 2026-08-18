@@ -10778,7 +10778,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "insertion line(s), append_batch reporting "
                         "applied_count:0 + would_apply_count; bundle_row adds "
                         "the rendered `row` plus the row_index / columns / "
-                        "created_table the write would have produced.");
+                        "created_table the write would have produced. "
+                        // ANTS-4463 — the past-tense fields are ABSENT on a
+                        // dry run rather than carrying would-be values under
+                        // a name that asserts the write happened.
+                        "ANTS-4463 — on a store-backed project a dry run emits "
+                        "`would_write:[...]` and (where a note was supplied) "
+                        "`note_would_append`; the past-tense `files_written` "
+                        "and `note_appended` are ABSENT, so a caller that "
+                        "branches on either cannot read a preview as a "
+                        "completed write.");
 
                     // ANTS-2126 — pass designator for op:"append" on a
                     // `#### Pass N.M` heading roadmap.
