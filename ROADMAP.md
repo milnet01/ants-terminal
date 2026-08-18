@@ -34682,6 +34682,561 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   Kind: fix.
   Source: in-session 2026-08-17 — found while verifying ANTS-4419's diagnostic against the reporting tree..
 
+### 🧊 Cold-sweep fold-in — 25 lanes (2026-08-18)
+
+A 25-lane cold review, one subsystem per lane, no shared brief. Report archived
+at `.audit_cache/cold-sweep-2026-08-18.md` (gitignored) and at
+https://claude.ai/code/artifact/50e9684e-db56-4e1b-a882-362f65bb93e7
+
+Published counts: 5 critical / 47 high / 115 medium. The document actually
+renders 5 critical + 43 high + ~52 enumerated medium, so 4 high and ~63 medium
+exist only in the lane transcripts and are NOT folded in here.
+
+Every item below marked VERIFIED was re-checked against current source in this
+session before filing; the mechanism, the cited line and the quoted contract
+were each confirmed. Items marked UNVERIFIED are the reviewer's claim carried
+forward as-is and need triage before work starts — the report itself states no
+calibration was applied.
+
+What the sweep could not see, by its own account: no static-analysis run
+accompanied it, no lane opened the test tree, nothing was executed (so every
+performance claim is a reading of an algorithm, not a measurement), and the
+three `claude-mcp-*` lanes read line ranges inside one function rather than
+whole files.
+
+- 📋 [ANTS-4441] **Use-after-free in `LuaEngine::fireEvent` when a handler registers another handler.**
+  `fireEvent` (`src/luaengine.cpp:488`) range-iterates `it.value()` — a
+  `std::vector<int>` living inside `QHash<PluginEvent, std::vector<int>>
+  m_handlers` (`src/luaengine.h:272`). The loop body runs `lua_pcall`, so a
+  Lua handler may call `ants.on`, which reaches
+  `LuaEngine::lua_ants_on` (`:626`): `engine->m_handlers[event]` can rehash
+  the QHash (new event -> every value relocates) and `handlers.push_back(ref)`
+  can reallocate the vector (same event). Either dangles the range-for's
+  cached begin/end. The 64-handler cap bounds growth but not reallocation.
+  Registering a handler from a handler is an ordinary idiom with no documented
+  restriction, and the component is the one SECURITY.md scopes as the sandbox.
+  Fix: take a copy of the handler list before the loop and iterate that.
+  **Layman:** A plugin that adds a new event handler while an event is running can corrupt the terminal's memory and crash it.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane lua-sandbox (VERIFIED in-session).
+  Lanes: luaengine.
+
+- 📋 [ANTS-4442] **A plugin at its documented heap budget can `abort()` the terminal from unprotected Lua pushes.**
+  `src/luaengine.cpp:489-490` runs `lua_rawgeti` + `lua_pushstring` OUTSIDE
+  any protected call — `lua_pcall` only starts at `:492`. `lua_pushstring`
+  allocates, the custom allocator returns NULL at the cap, Lua raises a memory
+  error with no protected frame to catch it, and `luaPanicHandler` (`:42`)
+  logs and returns. Its own comment concedes the outcome: "Lua treats a
+  non-jump return from atpanic as fatal anyway, so the process still aborts".
+  PLUGINS.md documents the 10 MiB budget as a state a plugin lives in
+  ("allocations return `NULL`", "The plugin is not unloaded"), so this is an
+  EXPECTED condition, not an error path. It breaches PLUGINS.md's stated
+  invariant: "The terminal will never crash because of your plugin."
+  The panic-handler comment assumed no unprotected allocation sites existed
+  ("today: rare"); these two are exactly that.
+  **Layman:** A plugin that has used up its allowed memory can take the whole terminal down with it — which the plugin docs promise can never happen.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane lua-sandbox (VERIFIED in-session).
+  Lanes: luaengine.
+
+- 📋 [ANTS-4443] **`doc_symbols` `qualified` counter is structurally always zero.**
+  `src/docsymbols.cpp:259` classifies an unresolved span as `qualified` by
+  testing `c.needle.contains("::")`. But the needle had its scope stripped at
+  `:137-138` — `lastIndexOf("::")` then `mid(scope + 2)` — so it can never
+  contain `::` by the time the test runs. Every unresolved `Foo::bar` span is
+  therefore filed as `bare` and `res.unresolvedQualified` is always 0.
+  The ANTS-4359 comment directly above states the split exists precisely to
+  stop a real qualified claim landing in the junk bucket, which is the outcome
+  it currently guarantees.
+  Fix: test `c.span`, not `c.needle` — `span` retains the scope, and the
+  sibling `call` test on the same line already reads `c.span`.
+  **Layman:** A counter in the docs-checking tool can never be anything but zero, so a whole class of broken documentation reference is filed in the wrong bucket.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane doclint-engines (VERIFIED in-session).
+  Lanes: docsymbols.
+
+- 📋 [ANTS-4444] **Learned false positives are still rendered, exported and re-sent to the AI.**
+  `AuditEngine::applyLearnedFpSuppressions` (called at
+  `src/auditdialog.cpp:4513`) sets `f.suppressed = true` on a fingerprint
+  match. But the render / export paths filter on `isSuppressed(f.dedupKey)`
+  (`:3085`), which consults `m_suppressedKeys` only and never a fingerprint —
+  seven call sites: `:2567 :4725 :4797 :4973 :5356 :5751 :5814`. So a learned
+  FP is still listed, counted, SARIF-exported and offered to the ROADMAP fold,
+  and because the engine leaves `aiVerdict` empty it is re-sent to the AI on
+  every triage click.
+  CORRECTION to the source report, which said the subsystem "changes nothing a
+  user sees": `f.suppressed` IS honoured in two places — auto-fix skips
+  suppressed findings (`:3448`) and the quality tracker skips them (`:4578`).
+  The defect is real; its blast radius is the seven render/export paths.
+  Note `:5743-5749` deliberately prefers the live `isSuppressed` lookup over
+  the cached flag, so a fix must decide whether the fingerprint set joins that
+  lookup or the paths start reading `f.suppressed`.
+  **Layman:** Marking an audit finding as a false positive teaches the system to ignore it, but it keeps showing up anyway in almost every place you'd look.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane audit-dialog (VERIFIED in-session).
+  Lanes: auditdialog, auditengine.
+
+- 📋 [ANTS-4445] **Test-audit "Per-finding (allocate ROADMAP IDs)" fold-in fails on every attempt.**
+  `TestAuditDialog::setActionable` (`src/testauditdialog.h:60`) is the only
+  writer of `m_actionable`, and its only caller in the tree is
+  `tests/features/test_audit_dialog/test_test_audit_dialog.cpp:196` — there is
+  no production caller and nothing parses the collected reports into findings.
+  In non-Narrative mode `src/testauditdialog.cpp:379-380` assigns
+  `fr.actionable = m_actionable` (always empty) and `fr.rawFindings = 0`, and
+  `TestAuditEngine::foldIn` rejects it, surfacing as
+  "Fold-in failed (...)" at `:386-388`.
+  Either wire a production parser into `setActionable` or remove the radio
+  option; a shipped control that fails every time is the worse of the two.
+  **Layman:** One of the two buttons in the test-audit dialog has never worked — it always reports a failure.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane review-dialogs (VERIFIED in-session).
+  Lanes: testauditdialog.
+
+- 📋 [ANTS-4446] **ETag 304 short-circuit turns a repeated MCP refusal into `ok:true`.**
+  `ClaudeIntegration::applyEtagPattern` (`src/claudeintegration.cpp:13590`)
+  builds `{ok:true, unchanged:true, etag}` at `:13598-13606` BEFORE it parses
+  `responseText`, so it never learns the body was a refusal. And the tail of
+  the same function attaches `obj["etag"]` to any JSON object regardless of
+  `ok`, so refusal envelopes ARE etag-eligible — while the verb descriptions
+  actively instruct agents to cache the etag and send it back.
+  This is a written contract violation, not a judgement call.
+  `docs/standards/mcp-tools.md:281` reads verbatim: "a refusal envelope is
+  never short-circuited."
+  The sibling cache already has the guard —
+  `maybeInsertIdempotentReadCache` (`:13652`) refuses to store an empty or
+  `kMcpRcUnavailable` result under INV-5(a)/(b). `applyEtagPattern` has no
+  equivalent.
+  **Layman:** If an MCP tool refuses a request and the agent asks again the cheap way, the second answer says it succeeded.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lanes claude-mcp-infra + claude-mcp-b (VERIFIED in-session).
+  Lanes: claudeintegration.
+
+- 📋 [ANTS-4447] **`findRoadmapUnder` ancestor walk is unbounded for a non-git `caller_cwd`, on a WRITE verb.**
+  `src/remotecontrol.cpp:129-135` walks up to 64 ancestors probing for a
+  roadmap. The `.git` bound is checked AFTER the probe:
+  `probeDir(dir)` -> return hit; `if (.git exists) break;` -> parent.
+  Inside a git repo that is correct. But when NO ancestor holds a `.git`, the
+  loop runs toward the filesystem root probing every level, so a caller whose
+  `caller_cwd` is a non-git directory can land an append in an unrelated
+  ancestor's roadmap — the cross-project mutation the gate header says every
+  mutating verb must prevent.
+  The ANTS-3350 comment above it asserts the walk is "bounded by the enclosing
+  git repo (.git) so the search never escapes the project", which is true only
+  for the git case and is what stops anyone looking.
+  Check the sibling resolvers (`findChangelogUnder` at `:140`) for the same
+  ordering while fixing.
+  **Layman:** If you run a roadmap command from a folder that isn't a git project, it can quietly write into a different project's roadmap higher up the disk.
+  Kind: security.
+  Source: cold-sweep-2026-08-18 lane ipc-core (VERIFIED in-session).
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4448] **Credentials can leave the machine in SARIF exports and AI-triage POSTs.**
+  Two paths, one theme. The tree ships `src/secretredact.h` and neither calls
+  it.
+  (a) `src/auditengine.cpp:1482-1489` reads `git config --get
+  remote.origin.url` and writes it verbatim into SARIF
+  `versionControlProvenance[].repositoryUri`. `https://user:token@host/...` is
+  an ordinary remote form, and SARIF is the shareable artifact. The same value
+  goes out over the wire via `last_audit_summary`.
+  (b) AI triage (`src/auditdialog.cpp:5254`) hand-builds its JSON body and
+  POSTs it through a raw `QNetworkAccessManager`. `auditdialog.cpp` contains
+  ZERO references to `SecretRedact` (measured), while the sibling debt-triage
+  path goes through `LlmClient`, which scrubs both prompts by default
+  (`llmclient.h:28`, `:104-105`). The payload includes the finding's ±5-line
+  snippet — and for a `secrets_scan` or `gitleaks` finding that snippet IS the
+  credential. The `:5230` comment claims it enforces "the FULL LlmClient
+  egress policy" via `LlmClient::endpointEgressError(endpointUrl, apiKey)`,
+  which validates the DESTINATION, not the body. The 0.6.22 hardening just
+  above escapes backtick fences against prompt injection; it is not a scrub.
+  **Layman:** Two ways a password or access token in your code or git settings could be sent out or written into a file you share.
+  Kind: security.
+  Source: cold-sweep-2026-08-18 lanes audit-engine + audit-dialog (VERIFIED in-session).
+  Lanes: auditengine, auditdialog.
+
+- 📋 [ANTS-4449] **`MarkdownScan::fenceMask` matches a fence closer on character alone, never run length.**
+  `src/markdownscan.cpp:86` closes an open fence on
+  `!c.isNull() && c == openFence` — the opener CHARACTER only. CommonMark
+  requires the closing fence to be at least as long as the opening one, so a
+  four-backtick block is closed by the first inner triple and the mask is
+  inverted for everything after it.
+  This is live in this repo and is self-demonstrating:
+  `docs/standards/specs.md:220-232` opens a four-backtick fence whose own prose
+  says it "is nested inside a four-backtick fence so this standard does not
+  itself become a case", and the inner ``` closes it anyway.
+  Fix: record the opener's run length and require the closer to be >= it.
+  Check `fenceOpenerChar`'s callers — `rcEscapeUnclosedFence` in
+  `remotecontrol.cpp` is a separate hand-rolled scanner with its own filed
+  defect, so both need to agree afterwards.
+  **Layman:** The markdown reader closes a long code block on the first short one inside it, so it loses track of what is code and what is text.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane ipc-workspace-docs (VERIFIED in-session).
+  Lanes: markdownscan.
+
+- 📋 [ANTS-4450] **`rcEscapeUnclosedFence` kept a hand-rolled fence toggle and splices a backslash into user prose.**
+  `src/remotecontrol.cpp:1001-1022` still uses its own toggle
+  (`openAt = (openAt < 0) ? i : -1`) after the walkers moved to
+  `MarkdownScan::fenceMask` — while its comment at `:1005-1006` promises
+  "Toggle exactly as the walkers do, so 'balanced' means the same thing to
+  this guard as it does to the code that would later refuse."
+  Three measured divergences from `fenceMask`:
+  • it calls `.trimmed()`, so ANY indent counts as a fence, where `fenceMask`
+    applies a CommonMark 3-space / list-content-column allowance;
+  • it does not track the opener CHARACTER, so a ``` opener is "closed" by a
+    \~~~ line, which `fenceMask` rejects;
+  • it ignores run length (`fenceMask` does too — see the sibling item — but
+    the two must agree after that fix, not merely both be wrong).
+  When it wrongly concludes there is an unclosed opener it INSERTS a
+  backslash into the caller's text at `:1020`. Fix by routing it through
+  `MarkdownScan::fenceMask`, after the run-length fix lands there.
+  **Layman:** A roadmap note that talks about code blocks can get a stray backslash inserted into it without warning.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane ipc-core (VERIFIED in-session).
+  Lanes: remotecontrol, markdownscan.
+
+- 📋 [ANTS-4451] **The `PostToolUse` hook branch is a permanent no-op — wrong JSON keys.**
+  `ClaudeIntegration::updateChangedFiles` (`src/claudeintegration.cpp:975`)
+  reads `toolUse.value("name")` and `toolUse.value("input")`. The hook event it
+  is handed from the `PostToolUse` branch (`:1225`) carries `tool_name` and
+  `tool_input` — the surrounding code extracts exactly those at `:1129-1130`.
+  So `name` is always empty, no branch matches, `filePath` stays empty, and
+  `m_changedFiles` never grows / `fileChanged` never fires from the hook path.
+  The `name`/`input` spelling is the TRANSCRIPT content-block shape, so this
+  looks like a copy from the transcript parser.
+  Fix: pass the already-extracted `toolName`/`toolInput` rather than the raw
+  event, or read the `tool_*` keys. Then check whether the transcript path
+  still needs the old spelling.
+  **Layman:** The feature that notices which files Claude just changed has never worked for anyone who installed the hooks.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane claude-session (VERIFIED in-session).
+  Lanes: claudeintegration.
+
+- 📋 [ANTS-4452] **Two comments invert Qt's `.arg()` semantics, keying both suppression ledgers.**
+  `src/auditengine.cpp:317-321` (`computeDedup`) says: "Chained single-arg
+  calls walk left-to-right and skip already-substituted regions." Qt documents
+  the OPPOSITE — `arg(a1, a2)` exists precisely because it replaces in one
+  pass, whereas `str.arg(a1).arg(a2)` will substitute into a1's own text if a1
+  contains a `%N`. The multi-arg form is the safe one; the comment recommends
+  the unsafe one for the stated reason.
+  `src/auditfpledger.cpp:48` (`computeFingerprint`) mirrors it by name: "The
+  single-arg .arg() chain mirrors computeDedup's escape-safety note".
+  Consequence: two distinct findings can collide onto one `dedupKey` /
+  fingerprint, so suppressing one learned false positive silences an unrelated
+  finding.
+  CALIBRATION: the collision needs a literal `%2`/`%3`/`%4` in an argument
+  that is NOT last — in practice the FILE PATH (legal, rare). `title` and
+  `message` are last in their format strings and cannot trigger it. Real, but
+  lower-probability than the report's theme framing implies. Fix the comments
+  either way, since they will be copied again.
+  **Layman:** Two notes in the code say a string-building trick is safe when Qt's manual says it is the unsafe one — so two different audit findings can be mistaken for the same one.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lanes audit-engine + audit-ledgers (VERIFIED in-session).
+  Lanes: auditengine, auditfpledger.
+
+- 📋 [ANTS-4453] **Two places claim the URI allowlist includes `ftp`/`file`; the code allows three schemes.**
+  `SECURITY.md:132-134` says OSC 8 and `make_hyperlink` are "restricted to
+  http/https/ftp/file/mailto". The code allows THREE:
+  `src/terminalgrid.cpp:1142-1143` (`http`/`https`/`mailto`), `:2237`
+  (same), `:2361-2362` (same list). `ftp`/`file` were dropped in 0.7.52 as
+  RCE-adjacent, so the doc overstates what is accepted.
+  ADDITION not in the source report: `src/terminalwidget.cpp:4257` carries the
+  SAME stale claim in a code comment — "http/https/ftp/file/mailto at
+  ingestion" — AND a stale line reference to `terminalgrid.cpp:616`. Fix both
+  sites, and check the line reference resolves after.
+  **Layman:** The security document promises we accept five kinds of link. We accept three — the other two were removed as risky and the docs never caught up.
+  Kind: doc-fix.
+  Source: cold-sweep-2026-08-18 lane vt-core (VERIFIED in-session, plus one site the sweep missed).
+  Lanes: terminalgrid, terminalwidget.
+
+- 📋 [ANTS-4454] **SARIF suppression uses `state`, which is not a v2.1.0 property — the field is `status`.**
+  `src/auditdialog.cpp:5753` writes `sup["state"] = "accepted"`. The SARIF
+  v2.1.0 `suppression` object defines `guid`, `kind`, `status`,
+  `justification`, `location`, `properties` — there is no `state`. The
+  export declares the 2.1.0 schema and the button offers it "for CI / IDE
+  viewers", so a strict validator rejects the object and a lenient one reads
+  no status at all. `kind` beside it is correct.
+  One-word fix; worth a conformance assertion so it cannot regress.
+  **Layman:** The exported audit file labels suppressed findings with the wrong tag name, so other tools either reject the file or ignore the label.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 lane audit-dialog (VERIFIED in-session).
+  Lanes: auditdialog.
+
+- 📋 [ANTS-4455] **The module map presents two subsystems as peers when each is an order of magnitude larger.**
+  `docs/subsystems.md` lists its subsystems as comparable units, one bullet
+  each. Measured this session:
+  • `src/remotecontrol*` = 30,349 lines across 16 files (14 `.cpp` + 2 `.h`);
+  • `src/claudeintegration.cpp` = 14,140 lines, of which ONE function,
+    `onMcpConnection`, spans `:1570`–`:13007` = 11,438 lines.
+  `indie_review_partition` derives one review lane per entry, so it hands a
+  single reviewer 30k lines and calls it a lane; the verb's `too_coarse` flag
+  keys on FILE COUNT, so neither tripped it.
+  CORRECTION to the source report: it says the map lists 50 subsystems — the
+  file has 48 `- \`name\`` bullets — and attributes 30,349 lines to 14 files
+  when that total spans 16.
+  Two separable fixes: split the oversized entries in the map, and give
+  `too_coarse` a line-count signal alongside file count.
+  **Layman:** The file that says how the codebase is divided up treats a 30,000-line chunk as one small unit, so any tool that splits work by it hands one reviewer far too much.
+  Kind: doc-fix.
+  Source: cold-sweep-2026-08-18 structural finding, found while partitioning (VERIFIED in-session).
+  Lanes: remotecontrol, claudeintegration.
+
+- 📋 [ANTS-4456] **Triage: terminal-core and render/PTY findings from the cold sweep.**
+  Reviewer claims carried forward as-is. NOT re-verified in this session —
+  check each against source before starting. Full text:
+  `.audit_cache/cold-sweep-2026-08-18.md`.
+  HIGH:
+  • `terminalgrid.cpp:3180` — Sixel `!` repeat defeats the 4 MiB payload cap:
+    `count` clamped per group only and `$` resets `x`, so ~700k repeats of a
+    6-byte group passes the dimension check and the byte budget while running
+    ~4e9 `setPixelColor()` calls. Claimed to pin the VT parse thread for
+    minutes on a 4 MiB `cat`.
+  • `terminalwidget.cpp:5856` — `sendScratchpad` writes `\r` synchronously
+    after the asynchronous `pasteToTerminal`, so the shell gets a bare Enter
+    first and the command with none; claimed to submit the Enter even if the
+    user cancels the confirmation.
+  MEDIUM: RIS discards theme colours + configured scrollback · OSC 0/2 window
+  title is the one attacker-supplied OSC payload with no length cap and is
+  persisted to the session file · fatal PTY write error never disables the
+  write notifier (unbounded CPU spin) · same site drops queued bytes without
+  the `writeLost` signal its two siblings emit · wide char adds three cell
+  widths to a background run (CJK/emoji selection highlights one column too
+  far) · per-style font setters never clear the shaped-run cache ·
+  `m_childPid` written on the worker thread, read unsynchronised on the GUI
+  thread against a comment asserting it never changes · session log and
+  asciicast created without owner-only permissions · search runs the whole
+  scrollback per keystroke with no debounce.
+  Note: no lane could execute anything, so every performance claim here is a
+  reading of an algorithm, not a measurement.
+  **Layman:** A list of possible problems in the terminal display and keyboard plumbing that still need checking before anyone fixes them.
+  Kind: investigate.
+  Source: cold-sweep-2026-08-18 lanes vt-core + render-pty (UNVERIFIED — triage before work).
+  Lanes: terminalgrid, terminalwidget, vtparser, ptyhandler.
+
+- 📋 [ANTS-4457] **Triage: Claude-integration findings from the cold sweep.**
+  Reviewer claims carried forward as-is. NOT re-verified — check each against
+  source first. Filed separately as VERIFIED: ANTS-4446 (ETag 304),
+  ANTS-4451 (`PostToolUse` keys).
+  HIGH:
+  • `:302` — transcript lookup sits only inside the PID-changed branch, so on
+    the ordinary launch path `m_transcriptPath` stays empty for the life of
+    the process and every hook is dropped as cold-start; the retry backstop is
+    itself gated on it being non-empty. Only a tab switch recovers it. (The
+    cold-start drop at `:1185-1194` is real; the latch claim is what needs
+    checking.)
+  • `:1236` — `PermissionRequest` has no producer: the installer wires five
+    events and this is not among them, yet it has a header contract, a live
+    consumer in the status widgets and a hardening pass (ANTS-2190).
+    `PostToolUseFailure` claimed to be the same shape.
+  • `:14002` — session-metadata `cwd` bypasses `isSafeAbsolutePath` while the
+    transcript-derived twin is gated; session metadata is tried FIRST, and
+    `decodeProjectPath` is ungated too and can emit `..`.
+  • `:13026` — close-tag scrub tolerates less than the open-tag scrub
+    (`[^>]*` on the open form only), so `</ants_mcp_data foo>` passes.
+  • `:1701`, `:3648` — shared `caller_cwd` schema promises a focused-tab
+    fallback ANTS-1415 removed (six verbs), and `workspace_search`'s `query`
+    alias is unreachable because `pattern` sits in `required[]`.
+  • `:12791`, `:12306` — `token_usage` wrong in both directions: a 304 books
+    as a failed call, and a handler returning its own `ok:false` never updates
+    `dispatchResult`.
+  • `claudestatuswidgets.cpp:2044` — ~8 config open+parse per second on the
+    default configuration, re-adding the cost ANTS-2116 removed.
+  • `docs/subsystems.md` vs `modelautoswitch` — map describes a deliberately
+    parked feature as live (`kAutoSwitchActuatorParked` returns before
+    injection and before the ledger append).
+  MEDIUM: 32 KB tail window where the sibling grew to 4 MiB · sibling tab's
+  `SessionStart` mutates singleton state during cold start · 2 s `/proc` scan
+  pays full cost when Claude is not running · hook socket path is
+  `QDir::tempPath()` while the installed script hardcodes `/tmp` · every hook
+  failure path silent · full session id logged where the sibling truncates ·
+  `recentSessions()` returns first 20 by directory name · rate-limit bucket
+  eviction is a budget reset · four timers use the wall clock where the rate
+  limiter is monotonic · `decodeProjectPath` probes two separators where the
+  encoder folds three · `projectMemory` reads whole files with no size guard.
+  **Layman:** A list of possible problems in the part of Ants that talks to Claude Code, still to be checked.
+  Kind: investigate.
+  Source: cold-sweep-2026-08-18 lanes claude-session + claude-mcp-infra + claude-chips + model-switcher (UNVERIFIED — triage before work).
+  Lanes: claudeintegration, claudestatuswidgets, modelautoswitch.
+
+- 📋 [ANTS-4458] **Triage: LLM client/dispatcher and review-dialog findings from the cold sweep.**
+  Reviewer claims carried forward as-is. NOT re-verified — check each against
+  source first. Filed separately as VERIFIED: ANTS-4445 (test-audit fold-in).
+  HIGH:
+  • `llmclient.cpp:38` — destructor aborts while `m_reply` is still set, so
+    `finished()` fires synchronously into `onFinished` from a dying object,
+    which emits and nulls the pointer, returning into a `deleteLater()`
+    through null. The `abort()` method nulls first for exactly this reason.
+  • `llmclient.cpp:333` — non-streaming fallback cannot fire because `drain()`
+    already consumed the reply, making the OWASP LLM06 error-scrub unreachable
+    and returning a silent blank answer for a genuinely non-streaming
+    provider.
+  • `llmdispatcher.cpp:17` — the "production" runner has no production caller,
+    so `m_activeClients` is never appended to, `cancelAll()`'s abort block is
+    inert and spec INV-9 is unmet on the only shipping path.
+  • `reviewdialogbase.cpp:262`, `:237` — a failed dispatch is
+    indistinguishable from a clean review and the Dispatch button is never
+    disabled, so re-clicking wipes collected reports and doubles API spend.
+  • `coldeyesdialog.cpp:354` — the "previously fixed, do not re-raise" block
+    never appears in a production brief; `markFindingFixed` has no non-test
+    caller while the header advertises the review→fix→re-review loop as
+    shipped.
+  MEDIUM: cleartext refusal protects the key, not the payload (no API key +
+  `http://` to a remote host sends the whole brief unencrypted) · SSE line
+  split is O(N) per line over a 10 MiB buffer · hitting the cap clears the
+  buffer but never aborts the reply · `enqueue({})` emits `allFinished` for a
+  batch that never existed, and the two call sites have diverged on guarding
+  it.
+  **Layman:** A list of possible problems in the code that calls AI services and in the review dialogs, still to be checked.
+  Kind: investigate.
+  Source: cold-sweep-2026-08-18 lanes llm-network + review-dialogs (UNVERIFIED — triage before work).
+  Lanes: llmclient, llmdispatcher, reviewdialogbase, coldeyesdialog.
+
+- 📋 [ANTS-4459] **Triage: audit-subsystem findings from the cold sweep.**
+  Reviewer claims carried forward as-is. NOT re-verified — check each against
+  source first. Filed separately as VERIFIED: ANTS-4444 (learned-FP ledger),
+  ANTS-4448 (credential egress), ANTS-4452 (`.arg()` comments),
+  ANTS-4453 (SARIF `state`).
+  HIGH:
+  • `auditdialog.cpp:6232` — `plainTextResults()` has no suppression filter,
+    so every suppressed finding goes into the "Review with Claude" file while
+    the report's own preamble asserts the filter ran; the consumer is an agent
+    instructed to fix what it is handed.
+  • `auditdialog.cpp:2056` — the documented cppcheck / semgrep passthrough
+    markers never suppress: the previous-line check is gated on three tokens,
+    none of which appear in `// cppcheck-suppress <id>` or `# nosemgrep`.
+    (Note `AuditEngine::commentSuppresses` DOES recognise both forms — the
+    claim is that the gate never lets them reach it.)
+  • `auditautofix.cpp:106` — auto-fix claimed 100% non-functional on any CRLF
+    file: `applyRepair` opens with `QIODevice::Text` where its only caller does
+    not, so the stale-plan guard refuses every repair, and the UI advises
+    re-running the audit, which cannot help.
+  MEDIUM: the 100-per-check cap counts suppressed findings, pushing real ones
+  into `omittedCount` · noise-floor denominator counts lines in
+  `.audit_suppress` rather than findings suppressed this run · every write
+  failure in `saveSuppression` swallowed while the UI confirms success · a v1
+  baseline loads silently as v2, making every finding "NEW" · six sites
+  construct a fresh `Config` where ANTS-2003 already fixed one to use the live
+  member.
+  **Layman:** A list of possible problems in the code-audit feature, still to be checked.
+  Kind: investigate.
+  Source: cold-sweep-2026-08-18 lanes audit-dialog + audit-engine + audit-ledgers (UNVERIFIED — triage before work).
+  Lanes: auditdialog, auditengine, auditautofix, falseposledger.
+
+- 📋 [ANTS-4460] **Triage: MCP verb and IPC findings from the cold sweep.**
+  Reviewer claims carried forward as-is. NOT re-verified — check each against
+  source first. Filed separately as VERIFIED: ANTS-4447
+  (`findRoadmapUnder`), ANTS-4449 (`fenceMask`), ANTS-4450
+  (`rcEscapeUnclosedFence`).
+  HIGH:
+  • `remotecontrol_terminal.cpp:1243`, `:1352` — uncapped `note` into a
+    backtracking scrub on both pass-headings routes; the GFM twin caps it
+    first citing "a same-UID slow-regex DoS via `roadmap_log
+    op:flip_batch / annotate`". Claimed unreachable rather than skipped,
+    because an earlier gate returns before the guard; dispatch is on the GUI
+    thread.
+  • `remotecontrol_state.cpp:2679` — `task_priors` still hardcodes
+    `ANTS-*.md` and ignores `specs_dir`, the identical defect fixed ~200 lines
+    above in `invariant_check`. Non-Ants projects get `specs_count: 0` with
+    `ok:true`.
+  • `remotecontrol_state.cpp:2999` — `project_conventions` emits a five-row
+    table for any caller, signalling absence only via a per-row `false` that
+    `compact:true` drops. (Matches a behaviour already observed on
+    `write-code`'s first run.)
+  • `remotecontrol_changelog.cpp:866` — every write path is an unlocked
+    read-modify-write; `QSaveFile` makes the replacement atomic and does
+    nothing about the read→commit window. Two concurrent same-project sessions
+    lose one side's entry. `SessionMemoryEngine::mutateLocked` is named as the
+    existing answer.
+  • `remotecontrol_changelog.cpp:822` — the one-line fold is applied to one
+    branch of a two-branch assignment; three more unfolded sites feed the same
+    renderer.
+  • `remotecontrol_feedback.cpp:198` — O(n²) clamp under a comment calling it
+    cheap; re-encodes the whole prefix to UTF-8 every 64 characters.
+  • `remotecontrol_workspace.cpp:1780`, `:1651` — `mutation_probe` writes and
+    restores the caller's source with plain `QFile` + `Truncate` where
+    `apply_edits` uses `QSaveFile`, against a header advertising the restore as
+    "guaranteed, INCLUDING on a failed or timed-out run".
+  • `remotecontrol_roadmap_log.cpp:1745`, `:3139`, `:4362` — the ANTS-3350
+    counter-path fix landed in `op:append` only; `flip`, `flip_batch` and
+    `append_batch` still resolve `.roadmap-counter` under `caller_cwd`, so
+    from a subdirectory `append_batch` can reissue a shipped id.
+  • `remotecontrol_roadmap_query.cpp:2167` — `mode:"bundles"` discards the
+    `source` / `file_ahead_of_store` witness on four exits.
+  • `remotecontrol_docs.cpp:926` — `doc_dedup` is the only doc verb with no
+    `docs_digest` and is ETag-eligible, so it can answer a false 304 exactly
+    when re-run after a fix batch.
+  • `focusedtest.cpp:117`, `:124` — two routes to a false green: a coverage-map
+    value that is a string rather than an array counts as mapped and
+    contributes no patterns; and patterns validated as PCRE2 are handed to
+    `ctest -R`, whose engine is ERE.
+  • `featurecoverage.cpp:481` — the `.`-tail fallback disables the
+    contract-doc drift lane for every path literal with a 4+-letter extension
+    (`.json`, `.yaml`, `.toml`) — the class ANTS-3600 widened the tokeniser to
+    catch.
+  • `speclint.h:17` + 3 siblings — four documents state a shipping default
+    false since ANTS-4345; `docs/standards/specs.md` now carries the
+    required-sections block, so `sections_checked` is true here and
+    `missing_section` fires against a backlog the standard measures at 139 of
+    243 specs.
+  MEDIUM: three pass-headings write paths collect the scrub report and never
+  emit it · a failed per-locator note vanishes with the flip reported
+  successful · `focused_test` blocks the GUI thread up to 30 min ·
+  `invariant_check` uncapped O(N²) dedup · `get_text` refuses with no `code`
+  field · forensic log names a stripped-bytes axis it does not carry, and logs
+  unbounded attacker-supplied `cmd` with no newline stripping (log forging) ·
+  `findYamlChangelogUnder` never got the ancestor walk its siblings received ·
+  module map lists an MCP-only verb among IPC dispatch verbs · seventeen
+  unused includes against a comment claiming the sweep was done · `date`
+  interpolated into a heading unvalidated while `version` beside it is
+  hardened · a `runGit` timeout is indistinguishable from "no commits",
+  producing fabricated drift entries · unresolvable `reports_dir` makes
+  `QDir("")` scan the process working directory · third copy of the
+  corroborate envelope dropped its truncation fields · two of four write paths
+  silently alter caller text without reporting it.
+  **Layman:** A list of possible problems in the tools Claude calls into Ants with, still to be checked.
+  Kind: investigate.
+  Source: cold-sweep-2026-08-18 lanes ipc-state-terminal + ipc-review + ipc-workspace-docs + ipc-roadmap-log/query + speclint-tools + doclint-engines (UNVERIFIED — triage before work).
+  Lanes: remotecontrol, focusedtest, featurecoverage, speclint, docdedup.
+
+- 📋 [ANTS-4461] **Triage: roadmap store/export and plugin-manager findings from the cold sweep.**
+  Reviewer claims carried forward as-is. NOT re-verified — check each against
+  source first. Relevant given the store is now the live backend for every
+  project (2026-08-18 migration).
+  HIGH:
+  • `roadmapexport.cpp:937` — the only durable backup claimed unrestorable on
+    some inputs: the rebuild indexes items with Qt's Unicode `toLower()` while
+    every reference in the export uses SQLite's ASCII-only `lower()` from the
+    generated `id_fold` column. For an id with a non-ASCII uppercase letter
+    every reference misses the hash, binds 0, and the FK pragma aborts the
+    whole load — and INV-1's round trip cannot catch it, because it fails
+    before the re-export.
+  • `roadmapstore.cpp:462` — the ID prefix is a case-sensitive key against
+    `roadmap-data-model.md:579`, which requires the opposite by name: "both
+    fold the prefix, or `Sh` and `SH` become two allocators over one
+    namespace". Item ids ARE folded, so the two allocators eventually collide
+    on the unique constraint and roll back the whole project.
+  • `roadmapstore.cpp:909`, `:1581` — two documented readers with no
+    production caller: the relationship writers the data model promises as
+    built, and the byte reader whose header claims it "retires" an item-count
+    ceiling still in force.
+  • `pluginmanager.cpp:223` — a load-time wedge is invisible to the watchdog:
+    `m_execStart` is populated only from event dispatch, so a plugin whose
+    `init.lua` enters one uninterruptible C call is never demoted and every
+    broadcast keeps posting to a queue nothing drains. INV-3 promises the
+    opposite.
+  MEDIUM: the divergence guard compares ids case-sensitively, so one
+  case-variant hand edit bricks all eight write ops with a remedy that cannot
+  clear it · the history cap counts characters while calling them bytes, where
+  the sibling six lines away was fixed · `historyBytes()` is a full aggregate
+  per appended row · the store and both WAL sidecars exist world-readable for
+  the whole DDL run · the dry render creates directories, so a validation pass
+  that rolls back leaves them behind · `m_lastHtml.reset()` where five
+  siblings say `clear()`, permanently disabling the identical-render skip.
+  Cross-check the first two against ANTS-4403 and the 2026-08-18 migration
+  work before treating them as new.
+  **Layman:** A list of possible problems in the roadmap database and the plugin loader, still to be checked.
+  Kind: investigate.
+  Source: cold-sweep-2026-08-18 lanes roadmap-write + roadmap-read + plugin lane (UNVERIFIED — triage before work).
+  Lanes: roadmapstore, roadmapexport, pluginmanager.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
