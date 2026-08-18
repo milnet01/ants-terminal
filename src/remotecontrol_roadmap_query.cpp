@@ -1678,12 +1678,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (fresh)
         stampRoadmapSource();
 
+    // ANTS-4431 — ONE provider for the whole call, not one per branch. The
+    // dispatch spends only the detector's window; the branches that genuinely
+    // need every byte say so by calling full(), and each such call is annotated
+    // with why (ANTS-3863). Construction reads nothing, so a cache hit that
+    // reaches no branch below still opens no file, and openFailed() forces the
+    // open exactly where each branch checks it today. Sharing is also the more
+    // consistent answer than a second provider: the cache key was stamped from
+    // one stat, so every branch sees the snapshot that stat described.
+    auto text = RoadmapSource::RoadmapText::fromFile(path);
+
     if (!fresh) {
-        // ANTS-3863 — one provider for the whole miss block. The dispatch below
-        // spends only the detector's window; the branches that genuinely need
-        // every byte say so by calling full(), and each such call is annotated
-        // with why.
-        auto text = RoadmapSource::RoadmapText::fromFile(path);
         if (text.openFailed()) {
             out["ok"] = false;
             out["error"] = QStringLiteral(
@@ -1825,7 +1830,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             (m_roadmapCacheMtimeMs == mtime)) {
             // ANTS-3863 — a pure dispatch site: the text feeds nothing but the
             // seam, so a migrated project never reaches the body here.
-            auto text = RoadmapSource::RoadmapText::fromFile(path);
+            // ANTS-4431 — the call's shared provider. Unopened on this path (a
+            // cache hit skipped the miss block), so openFailed() opens it here.
             if (!text.openFailed()) {
                 // ANTS-3793 — same swap as the full-file pre-fill above.
                 RoadmapSource::ReadError srcWhy =
@@ -2139,7 +2145,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             (m_roadmapCachePath == path) &&
             (m_roadmapCacheMtimeMs == mtime)) {
             // ANTS-3863 — a pure dispatch site; no body read on the store path.
-            auto text = RoadmapSource::RoadmapText::fromFile(path);
+            // ANTS-4431 — the call's shared provider (see the hoist above).
             if (!text.openFailed()) {
                 // ANTS-3793 — store-or-markdown, then the same builder.
                 RoadmapSource::ReadError srcWhy =
@@ -2220,7 +2226,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             m_roadmapSectionLru.removeOne(sec->slug);
             m_roadmapSectionLru.prepend(sec->slug);
         } else {
-            auto text = RoadmapSource::RoadmapText::fromFile(path);
+            // ANTS-4431 — the call's shared provider, NOT a second one. This
+            // branch used to construct its own and read ROADMAP.md a second
+            // time in the same call, through an object the miss block's could
+            // not reach.
             if (text.openFailed()) {
                 out["ok"] = false;
                 out["error"] = QStringLiteral(
@@ -2230,8 +2239,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
             // ANTS-3863 — full() before the dispatch, deliberately: the section
             // etag below is computed from the slice on BOTH backends, so this
-            // branch needs every byte whatever the dispatch decides. Converting
-            // it keeps one seam rather than saving a read that is not there.
+            // branch needs every byte whatever the dispatch decides.
+            // ANTS-4431 — but it is no longer a SECOND read: on a cold call the
+            // miss block above already memoised the body through this same
+            // provider, and on a cache hit this is the call's only read.
             const QString slice = RoadmapIndex::sliceSection(text.full(), *sec);
             // ANTS-1907 — compute the per-section etag from the sliced
             // bytes once, cache by slug. Skips dispatch-layer's whole-
@@ -2585,7 +2596,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (m_roadmapCacheBullets.isEmpty() && (m_roadmapCachePath == path) &&
         (m_roadmapCacheMtimeMs == mtime)) {
         // ANTS-3863 — a pure dispatch site; no body read on the store path.
-        auto text = RoadmapSource::RoadmapText::fromFile(path);
+        // ANTS-4431 — the call's shared provider (see the hoist above).
         if (!text.openFailed()) {
             // ANTS-3793 — same swap as the other two fill sites.
             RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;

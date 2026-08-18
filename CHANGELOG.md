@@ -127,6 +127,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_query` reads `ROADMAP.md` once per call, not once per branch** (ANTS-4431)
+  A cold `section=` query opened and read the whole roadmap twice — the
+  heading index and the per-section ETag each built their own file
+  reader, in the same function, so neither could reuse the other's
+  memoised body. One reader is now created per call and every branch
+  shares it, folding five readers into one.
+
 - **`roadmap_log op:append` no longer reads ROADMAP.md to check for near-duplicates** (ANTS-4426)
   On a migrated project the ANTS-2043 advisory took its records from the
   whole 3.8 MiB file; it now takes them from the roadmap store, so the

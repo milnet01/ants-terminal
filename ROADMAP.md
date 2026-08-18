@@ -31764,7 +31764,7 @@ against current source before filing.
   Kind: enhancement.
   Source: in-session-2026-08-17 (found implementing ANTS-3863).
 
-- 📋 [ANTS-4431] **A cold `roadmap_query section=` reads ROADMAP.md twice, through two RoadmapText objects that never meet.**
+- ✅ [ANTS-4431] **A cold `roadmap_query section=` reads ROADMAP.md twice, through two RoadmapText objects that never meet.**
   On a cache miss in section mode, `cmdRoadmapQuery` reads the whole file
   twice:
 
@@ -31796,6 +31796,40 @@ against current source before filing.
   NOT the same as ANTS-4426 site 3, which is about the etag needing the
   slice on the store path. This one is true on BOTH backends and is
   cheaper to fix; site 3 is still open after it.
+  Resolved (2026-08-18): the hoist landed as specified. One provider is
+  now constructed above `if (!fresh)` and every branch of
+  cmdRoadmapQuery shares it — the miss block, the section branch, and
+  the three lazy bullet-cache fills (section_index, bundles, full-file).
+  Five constructions became one.
+
+  The three fill sites were not in this item's scope and were converted
+  anyway, because -Wshadow=local is on (CMakeLists.txt:254) and a
+  hoisted `text` makes each of their locals a shadow. Behaviour is
+  identical: each is the only read on its own path, and on the paths
+  where the shared provider has already read, none of them runs.
+
+  Two corrections to the analysis above. The section branch's
+  construction is at :2223, not :2224 — :2224 is its openFailed() check.
+  And this item counted two providers; there were five in the function.
+
+  One behaviour change, and it is the one the item asked for: if the
+  file is replaced between the miss block and the section branch, the
+  section branch now serves the snapshot the cache key was stamped from
+  instead of re-reading a different file under a key that no longer
+  describes it.
+
+  Witness: roadmap_read_seam.Ants4431RoadmapQueryConstructsOneProvider,
+  a comment-stripped scrape of the function slice, anchored on the
+  definition line and the next top-level definition rather than a byte
+  window. Seen RED against HEAD's source (reported 5) before green.
+  Build clean, zero warnings; ctest exit 0, `fast` label 3598 -> 3599.
+
+  Not measured, deliberately, like ANTS-4426 site 2: no perf-labelled
+  case produces a number, so no document claims one.
+
+  Found while closing this: the two index lazy-fills at :1881 and :2176
+  read the whole file with a raw QFile, outside the seam entirely. Filed
+  as its own item.
   **Layman:** Asking the roadmap tools for one section of the roadmap opens and reads the whole 3.8 MB file twice instead of once.
   Kind: perf.
   Source: in-session-2026-08-18 (found closing ANTS-4426 site 2).
@@ -31832,6 +31866,48 @@ against current source before filing.
   **Layman:** Writing a roadmap note that mentions certain code names gets rejected as if the note were trying to overwrite a field, when it plainly is not.
   Kind: fix.
   Source: in-session-2026-08-18 (hit filing ANTS-4431).
+
+- 📋 [ANTS-4433] **cmdRoadmapQuery's two heading-index lazy fills read ROADMAP.md with a raw QFile, outside the read seam.**
+  Two sites in `cmdRoadmapQuery` build the heading index from a raw
+  `QFile` + `readAll()` rather than from the call's shared text provider:
+
+  1. `remotecontrol_roadmap_query.cpp:1881` — the section_index branch's
+     "lazy-fill the index" block.
+  2. `remotecontrol_roadmap_query.cpp:2176` — the section branch's INV-9
+     "ensure we have an index" block.
+
+  Both predate ANTS-3863 and neither was converted by it, so they are
+  invisible to the seam: they read the body unconditionally, on the
+  store backend as well as the markdown one, which is the read that item
+  exists to remove.
+
+  Site 1 is a second whole-file read on a COLD call, not just a warm
+  one. The miss block's full-file branch fills the bullet cache and does
+  NOT build the index — only its section-mode `else` branch does — so a
+  cold `mode=section_index` call leaves `m_roadmapIndex` empty and this
+  block fires. Same shape as ANTS-4431, in the mode that item did not
+  look at. Site 2 fires only on a warm cache whose index was cleared by
+  an earlier section-less call, because a cold section= call has just
+  had its index built by the miss block.
+
+  ANTS-4431's scrape does not cover this: it counts constructions of the
+  file-backed text provider, and a raw `QFile` is not one. So a second
+  whole-file read can be reintroduced here with that case still green.
+  Whatever fixes this should widen that scrape, or add its own.
+
+  The fix looks like `text.full()` in place of both `readAll()` calls,
+  which is behaviour-identical on the markdown backend and a memo hit
+  wherever the miss block already read. It is filed rather than folded
+  into ANTS-4431 because the store backend deserves a real answer first:
+  `buildIndex` wants heading text, and whether a migrated project can
+  derive its section list from records it already holds — instead of
+  reading the render back to find the headings it just wrote — is a
+  design question, not a hoist.
+
+  Not measured. No perf-labelled case produces a number for either site.
+  **Layman:** Two more places in the roadmap query code still open and read the whole 3.8 MB roadmap file directly, skipping the machinery built to avoid exactly that.
+  Kind: perf.
+  Source: in-session-2026-08-18 (found closing ANTS-4431).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

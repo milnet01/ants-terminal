@@ -1410,3 +1410,74 @@ TEST(RoadmapReadSeam, Ants4426AppendAdvisoryReadsNoBody) {
            "records from the store (ANTS-4426); a body read here spends the "
            "whole of ANTS-3863's saving on this verb.";
 }
+
+// --------------------------------------------------------------- ANTS-4431 --
+//
+// A cold `roadmap_query section=` used to read ROADMAP.md TWICE. The miss
+// block's provider built the heading index from full(); the section branch then
+// constructed a SECOND file-backed RoadmapText — in the same function, so it
+// could not reach the first's memo — and called full() again to slice the
+// section for the ANTS-1907 etag. 7.6 MiB of read and two 3.8 MiB QStrings per
+// cold section query on this project.
+//
+// Like ANTS-4426's case above, the cost invariant has no behavioural witness,
+// and that is the point: both providers read the same path at the same mtime,
+// so they could never disagree. What a second provider costs is the read. So
+// the invariant is that cmdRoadmapQuery constructs exactly ONE, and every
+// branch shares it.
+//
+// The slice is anchored on the function's own definition line and the next
+// top-level definition, NOT on a byte window — a comment added above the
+// function must not slide the window off the body.
+TEST(RoadmapReadSeam, Ants4431RoadmapQueryConstructsOneProvider) {
+    const QString path = QStringLiteral(ANTS_SRC_DIR)
+                       + QStringLiteral("/remotecontrol_roadmap_query.cpp");
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly))
+        << "cannot read " << path.toStdString()
+        << " — the TU has moved and this case is scanning nothing";
+
+    const QStringList lines =
+        QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+
+    const QString opener =
+        QStringLiteral("QJsonDocument RemoteControl::cmdRoadmapQuery(");
+    const QString anyDefn = QStringLiteral("QJsonDocument RemoteControl::");
+    int begin = -1;
+    int end   = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (begin < 0) {
+            if (lines.at(i).startsWith(opener))
+                begin = i;
+            continue;
+        }
+        if (lines.at(i).startsWith(anyDefn)) {
+            end = i;
+            break;
+        }
+    }
+    ASSERT_GE(begin, 0)
+        << "cmdRoadmapQuery's definition line has changed shape — this case is "
+           "scanning nothing";
+    ASSERT_GT(end, begin)
+        << "no top-level definition follows cmdRoadmapQuery — the slice ran to "
+           "EOF and is not the function";
+
+    // Comments are stripped before counting so the prose explaining the hoist
+    // cannot satisfy the scrape it is explaining.
+    int providers = 0;
+    for (int i = begin; i < end; ++i) {
+        const QString &line = lines.at(i);
+        const int slashes   = line.indexOf(QStringLiteral("//"));
+        const QString code  = (slashes >= 0 ? line.left(slashes) : line);
+        providers += static_cast<int>(
+            code.count(QStringLiteral("RoadmapText::fromFile")));
+    }
+
+    EXPECT_EQ(providers, 1)
+        << "cmdRoadmapQuery constructs " << providers << " RoadmapText "
+           "providers. Each opens and reads ROADMAP.md on its own, and one "
+           "cannot reuse another's memo, so a second is a second whole-file "
+           "read in one call (ANTS-4431). Hoist it above `if (!fresh)` and let "
+           "every branch share it.";
+}
