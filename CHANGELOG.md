@@ -127,6 +127,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log op:append` no longer reads ROADMAP.md to check for near-duplicates** (ANTS-4426)
+  On a migrated project the ANTS-2043 advisory took its records from the
+  whole 3.8 MiB file; it now takes them from the roadmap store, so the
+  append path reads no document body at all. No answer changes — a file
+  carrying a bullet the store has never imported is refused outright, and
+  that is the only input on which the two sources could differ.
+
 - **Roadmap reads dispatch before loading the file, so a migrated project no longer pulls 3 MiB of `ROADMAP.md` to ask which backend serves it (ANTS-3863)**
   The read seam's `markdown` parameter became `RoadmapSource::RoadmapText`, a
   move-only provider that reads lazily and only as far as the caller's path

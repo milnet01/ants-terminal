@@ -31657,7 +31657,7 @@ against current source before filing.
   Kind: test.
   Source: in-session-2026-08-17 (ANTS-3822 implementation — named rather than left implicit).
 
-- 📋 [ANTS-4426] **Three migrated-path consumers still read the whole ROADMAP.md body, so ANTS-3863's saving does not reach them.**
+- 🚧 [ANTS-4426] **Three migrated-path consumers still read the whole ROADMAP.md body, so ANTS-3863's saving does not reach them.**
   ANTS-3863 made the dispatch lazy and bounded, and the saving lands wherever
   the roadmap text feeds nothing but the seam. Three sites still call full()
   on the migrated path, each for a reason that predates that item and none of
@@ -31687,9 +31687,46 @@ against current source before filing.
   attributable to a named consumer rather than to the seam. ANTS-3863 § 1's
   "every dispatch reads the whole file" is true of these three after the item,
   and its § 2.4 table implies otherwise for sites 1 and 3.
+  Progress (2026-08-18): site 2 SHIPPED (c3537e91). The ANTS-2043
+  advisory now takes its records from RoadmapSource::bulletsFromStore()
+  instead of parsing storeText.full(), so op:append's migrated path
+  reads no body at all. The candidate fix in this item's body was the
+  right one. What was not written down anywhere, and is what makes the
+  swap invisible rather than merely cheaper: commitAndRender() REFUSES
+  when the file carries a bullet the store never imported, which is the
+  only input on which a file-sourced advisory and a store-sourced one
+  could differ — so no successful append ever saw a difference. Pinned
+  by roadmap_log_possible_duplicates INV-6/INV-7 and the cost by
+  roadmap_read_seam.Ants4426AppendAdvisoryReadsNoBody; all three seen
+  red by mutation.
+
+  Sites 1 and 3 stay open, and NEITHER candidate fix in this body
+  survives contact:
+
+  Site 1 (the ANTS-4402 witness). "Source the file-max-id scan from the
+  store" cannot work — the witness IS a file-vs-store comparison, so a
+  store-sourced number answers a different question and file_ahead_of_store
+  becomes unfalsifiable. "Make the witness lazy so it only fires when the
+  caller asks for it" contradicts ANTS-4402's stated purpose: that item
+  exists to turn a silent wrong answer into a loud one, and an opt-in
+  warning is silent again. Detecting "no id in the file exceeds N" needs
+  every id in the file; there is no bound. What WOULD work is a render
+  fingerprint — the store has no record of what its last render wrote
+  (the `project` table carries project_id/root/name/export_slug/legend/
+  source_format and nothing else), so a file provably byte-identical to
+  the render's own output cannot be recognised and the scan cannot be
+  skipped. That is a schema change and its own item, not this one.
+
+  Site 3 (the ANTS-1907 section etag). Removing the full() at
+  remotecontrol_roadmap_query.cpp:2235 saves nothing on a cold cache,
+  because the section-mode miss block at :1812 already reads the whole
+  file to build the heading index — and it does so through a DIFFERENT
+  RoadmapText, so a cold section= query reads ROADMAP.md twice. The
+  duplicate read is filed separately. Removing the first read needs the
+  heading index sourced from the store's `section` table, which is a
+  larger change than this item scopes.
   **Layman:** The roadmap tools now avoid opening the big 3 MB file just to ask "is this project in the database?" — but three places still read the whole thing straight afterwards for their own reasons, so those three got no faster.
   Kind: perf.
-  Source: in-session-2026-08-17 (found implementing ANTS-3863).
 
 - 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
   Hit 2026-08-17 converting six call sites in one `apply_edits` call. All six
@@ -31715,6 +31752,75 @@ against current source before filing.
   **Layman:** When I ask the editing tool to change six places at once by line number, the first change shifts the lines under the rest, and they all fail with a message that doesn't explain the cause.
   Kind: enhancement.
   Source: in-session-2026-08-17 (found implementing ANTS-3863).
+
+- 📋 [ANTS-4431] **A cold `roadmap_query section=` reads ROADMAP.md twice, through two RoadmapText objects that never meet.**
+  On a cache miss in section mode, `cmdRoadmapQuery` reads the whole file
+  twice:
+
+  1. `remotecontrol_roadmap_query.cpp:1812` — the miss block's `else`
+  branch builds the heading index with
+  `RoadmapIndex::buildIndex(text.full())`, where `text` is the provider
+  constructed at :1686.
+
+  2. `remotecontrol_roadmap_query.cpp:2224` — the section branch
+  constructs a SECOND file-backed `RoadmapText` and calls `full()` on it
+  at :2235 to slice the section for the ANTS-1907 etag.
+
+  Both are in `cmdRoadmapQuery`, so the second object cannot reuse the
+  first's memoised body. That is 7.6 MiB of read and two 3.8 MiB QStrings
+  per cold section query on this project.
+
+  Pre-existing rather than an ANTS-3863 regression: both sites did their
+  own `QFile` read before that item, which converted each to a provider
+  without noticing they were in the same function.
+
+  The fix is a hoist, not a redesign: construct one `RoadmapText` above
+  `if (!fresh)` and let both branches share it. Construction reads
+  nothing, so a cache hit that never reaches either branch still opens no
+  file, and `openFailed()` keeps forcing the open exactly where each
+  branch checks it today. The shared text is also the more consistent
+  answer — the cache key was stamped from the earlier stat, so re-reading
+  a file that changed in between is what the current code does wrong.
+
+  NOT the same as ANTS-4426 site 3, which is about the etag needing the
+  slice on the store path. This one is true on BOTH backends and is
+  cheaper to fix; site 3 is still open after it.
+  **Layman:** Asking the roadmap tools for one section of the roadmap opens and reads the whole 3.8 MB file twice instead of once.
+  Kind: perf.
+  Source: in-session-2026-08-18 (found closing ANTS-4426 site 2).
+
+- 📋 [ANTS-4432] **`roadmap_log`'s body-shadow gate fires on a trailer key buried mid-line inside a code span, refusing bodies that only mention a C++ namespace.**
+  Filing ANTS-4431 refused with `body_shadowed`, claiming the body
+  shadowed the `source` column. The body contained no trailer line. What
+  it contained was a namespace-qualified C++ name whose namespace ends in
+  the six letters of that column — inside a code span, mid-sentence,
+  mid-line — and the trailer scan matched the key inside it.
+
+  Then the item filing THAT defect refused for the same reason, because
+  naming the offending symbol is unavoidable in a report about it. Both
+  had to be reworded to describe the token instead of writing it.
+
+  Two things make this worse than a false positive on an unusual string.
+  The refusal's own advice does not work here: it says to "put backticks
+  IMMEDIATELY around the key itself", but the key is already inside
+  backticks — that is where it was found. And the shadowing text it
+  quotes starts mid-token, which is the tell: a trailer key is a
+  LINE-INITIAL construct (roadmap-format.md § 3.5.2), and nothing in the
+  gate requires the match to start a line.
+
+  Cost as measured: every roadmap body on this project naming a symbol
+  under the roadmap read seam's namespace is refused, and the author has
+  to work out that the culprit is a namespace rather than a trailer. That
+  namespace covers a whole subsystem here.
+
+  Candidate fix: anchor the trailer scan to line start (optionally after
+  leading whitespace), which is what the format actually specifies, and
+  skip matches inside a code span. Keep the gate — it catches a real
+  class of mistake — but stop it firing on prose that could never be
+  re-parsed as a trailer.
+  **Layman:** Writing a roadmap note that mentions certain code names gets rejected as if the note were trying to overwrite a field, when it plainly is not.
+  Kind: fix.
+  Source: in-session-2026-08-18 (hit filing ANTS-4431).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
