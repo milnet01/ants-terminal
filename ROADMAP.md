@@ -31909,6 +31909,90 @@ against current source before filing.
   Kind: perf.
   Source: in-session-2026-08-18 (found closing ANTS-4431).
 
+- 📋 [ANTS-4434] **The render gate bricks roadmap_log: no op can write the layman column it refuses on.**
+  roadmaprender.cpp:315 gates the render on `isOpen(it->status) && it->layman.isEmpty()` — the store's `layman` COLUMN. Every roadmap_log op renders to validate, so one offending open item refuses EVERY op on that project, `dry_run` included.
+
+  No op writes that column. `annotate` and `amend_body` write `body`; `append` takes a layman argument but only for a NEW item. So a project in this state cannot be repaired with the verb that the state blocks. It is a bootstrap deadlock, not a content check.
+
+  Measured 2026-08-18 across the store's 14 projects — open public items with an empty layman column:
+    vestige 585, finbreak 13, music-production 4, mame-curator 2.
+  For vestige, music-production and mame-curator a re-import changes nothing (`items_updated: 0` on a dry run) because their FILES genuinely carry no layman line. Those three are blocked with no in-tool escape today; the only remedy is a hand edit plus roadmap_migrate, which is exactly the hand-editing the verb exists to remove.
+
+  The design question to settle before coding: should the gate fire on the whole project, or only on the items a write actually touched? The second keeps the invariant that matters (no NEW open item ships without a layman line) without holding legacy debt against every future write. The first is what INV-5 says today.
+
+  Not a regression — the gate has always read the column.
+  Progress (2026-08-18): the gate is dialect-blind, and for one dialect it contradicts the format standard outright. roadmap-format.md:830 makes the layman line OPTIONAL on a github-task-list roadmap (\"Required Kind metadata line per bullet; optional Source / Layman metadata\"), while roadmaprender.cpp:315 refuses on an empty layman column whatever the project's source_format is.
+
+  Vestige is that case: source_format github-task-list, 585 open items with no layman line, every roadmap_log op refused. It is being held to a requirement its own dialect does not impose, and the remedy the refusal implies is 585 hand-authored summaries. Vestige should NOT be asked to write them; the gate should not fire on that dialect.
+
+  roadmap-format.md:877-894 already records the deadlock for a project mid-conversion to ants-v1 — step 4 fills the lines and the store path is \"unusable ... its publish gate being unmet until step 4\". That is documented for a conversion in flight. Nothing covers a project not converting at all, which is what Vestige, MAME_Curator and Music_Production are.
+
+  So the fix has two halves that can land separately: (a) do not fire on a dialect whose format does not require the line; (b) give a project that does require it a way out that is not a hand edit plus a re-import.
+  **Layman:** Three projects cannot use the roadmap tools at all, and the tools offer no way to fix the thing they are complaining about.
+  Kind: fix.
+  Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
+
+- 📋 [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
+  The `render_gate_unmet` row says: "Remedy is to fill in the named layman lines, which `annotate` / `amend_body` can do one at a time."
+
+  Both write the item's `body`. The gate reads the `layman` column (roadmaprender.cpp:315). So neither clears it — and both are refused by the same gate before they run at all. A caller following the table one item at a time gets a byte-identical refusal every time, which is what the finbreak session reported after doing exactly that.
+
+  The true remedy today: put the layman line in the roadmap file, then re-import with roadmap_migrate. Verified 2026-08-18 on finbreak — 13 offenders to 0.
+
+  The refusal MESSAGE has the same defect: it names a file-level fault while the reader is the store, so it sends the caller to edit bullets that are already correct.
+  **Layman:** The error table tells you to fix the problem with two commands that cannot touch the thing that is broken.
+  Kind: doc-fix.
+  Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
+
+- 📋 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
+  ANTS-4402's witness compares `file_highest_id` against `store_high_water`, and the high water comes from the `id_prefix` table. Migration does not write a row there — only an id-allocating append does. So a migrated-but-never-appended project reports `store_high_water: 0`, and any id in the file makes `file_ahead_of_store` true forever.
+
+  Measured 2026-08-18: only 6 of 14 projects have an `id_prefix` row (ANTS, AIPR, 3D_E, MUSI, LWSM, ONEUP). The other 8 report the warning permanently.
+
+  Proved it is spurious rather than merely stale: a throwaway project migrated from finbreak's exact file still returned `file_ahead_of_store: true, store_high_water: 0` seconds later, with nothing whatever ahead.
+
+  This is not cosmetic. The finbreak session read that witness — correctly, on its face — as evidence the store was a stale partial copy, and concluded on that basis that a render could destroy its 600 KB file. It then hand-edited two roadmap changes rather than risk it. A witness that cries wolf on 8 of 14 projects costs more trust than it buys.
+
+  Fix is to write the high water at migration from the highest id imported.
+  **Layman:** The tools warn that your roadmap file is ahead of their copy even when the copy was just built from that exact file.
+  Kind: fix.
+  Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
+
+- 📋 [ANTS-4437] **roadmap_query drops the headline entirely when the stored headline contains a newline.**
+  A store row is re-rendered to a markdown bullet and re-parsed to build the record. Where the stored headline itself holds a newline, the rendered line has no closing `**` on it, the parse fails, and the record comes back with an EMPTY headline and a body holding only that first line.
+
+  Observed on finbreak FIBR-0016, against a store migrated moments earlier:
+    mode headline_only -> {id, status, section_slug} and NO headline field at all
+    include_body true  -> body is the single line `[FIBR-0016] **P13: ...` (48 chars)
+  while the store row holds the full headline and a 2257-char body. 18 of finbreak's 270 items have a newline in the headline.
+
+  Two consequences. The data is invisible to any caller listing headlines — `headline_only` exists for exactly that and returns nothing for these items. And the short body reads as a short bullet rather than as a failed parse, which is how the finbreak session diagnosed the store as holding truncated bodies. It does not; the round trip loses them.
+
+  The render to FILE is unaffected — a full round-trip diff lost 0 ids and 0 word tokens (checked with a deliberately mutated control that reported 887). This is the query path only.
+  **Layman:** Items whose title was wrapped over two lines come back with no title at all, even from the mode whose only job is titles.
+  Kind: fix.
+  Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
+
+- 📋 [ANTS-4438] **The first store-backed write re-wraps the whole roadmap file, producing a large diff unrelated to the edit.**
+  Measured 2026-08-18 on a throwaway copy of finbreak: one `annotate` adding a single note line rewrote 1238 lines and shrank the file by 1455 bytes.
+
+  Content is preserved — 275 ids in and 275 out, and a token-multiset comparison under a verified C-locale sort reported zero tokens lost, with a mutated control (200 lines deleted) correctly reporting 887. The churn is re-wrapping: hand-wrapped body paragraphs come back as single long lines.
+
+  So it is safe but startling, and it lands on the first write after migration with no warning. A caller reviewing that diff cannot see their own edit in it. Worth either preserving the wrap on import, or saying up front that the first write normalises the file so it can be committed on its own.
+  **Layman:** The first time the tools write your roadmap they also re-flow every paragraph, so a one-line change shows up as a thousand-line diff.
+  Kind: enhancement.
+  Source: finbreak-feedback-2026-08-18 (maintainer-measured).
+
+- 📋 [ANTS-4439] **project_layout's appstream_metainfo probe is single-level, so it misses the standard packaging/<distro>/ layout.**
+  The probe set is `(root)/*.metainfo.xml`, `packaging/*.metainfo.xml`, `pkg/*.metainfo.xml`, `data/*.metainfo.xml`, `share/applications/*.metainfo.xml` — all single-level globs. finbreak keeps its file at `packaging/obs/io.github.milnet01.finbreak.metainfo.xml`, beside `packaging/flatpak/`, because a project packaging for more than one distro puts each recipe in its own directory.
+
+  The field comes back as an empty string, which is indistinguishable from a project shipping no AppStream metadata at all — and the two want opposite behaviour. A release path keyed on it silently skips the release-notes sync, so an app store shows a version with no notes and nobody learns why.
+
+  Reporter's suggested fix, which looks right: add `packaging/*/*.metainfo.xml` and `pkg/*/*.metainfo.xml` rather than naming directories one at a time, and also accept the older `*.appdata.xml`. Same widening already granted to the docs tree in ANTS-1493. Emitting absent-versus-not-found instead of an empty string would let a caller tell the two apart.
+  **Layman:** The tool looks for the app-store description file in five places, none of them the folder where projects that package for several distros actually keep it.
+  Kind: fix.
+  Source: finbreak-feedback-2026-08-18.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
