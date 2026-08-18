@@ -853,6 +853,25 @@ and extends the table by amendment.
 
 ### 7.5 Priority and visibility
 
+> **The `Priority:` harvest described below is SPECIFIED, NOT IMPLEMENTED.**
+> Nothing reads a `Priority:` line: `Priority:` does not occur anywhere under
+> `src/`, and `roadmapmigrateload.cpp`'s reconciled field list deliberately
+> omits `priority` (INV-3 there — a re-run must never clear a value a human set
+> through `roadmap_log`). So on a migrated item `priority` is left empty
+> **whether or not the source carries the line**, and the mapping below states
+> what a harvest would mean rather than what one does.
+>
+> **Do not build the harvest from this section alone.** Implementing it as
+> written re-derives `priority` on every re-run and overwrites values set
+> through `roadmap_log`, which is exactly what INV-3 exists to prevent — so an
+> implementation owes INV-3 a first-write-wins or source-vs-store rule that
+> neither document currently states. Tracked as ANTS-4440.
+>
+> Note also that INV-3's own stated *reason* — "a source file cannot express
+> them" — is inaccurate for `priority` specifically: `roadmap-format.md`
+> § 3.5.2 defines the carrier. The behaviour it protects is right; the
+> rationale needs narrowing to the other four fields.
+
 `priority` is `1` (highest) to `5` (lowest), required on open items **written
 after cutover**. On a migrated item § 3.3 leaves it empty **only where the
 source declares no `Priority:` line**; where one exists it is harvested by the
@@ -870,8 +889,9 @@ its § 3.5.2 is the carrier that puts one in a `Priority:` body line. The
 vocabulary maps CRITICAL → 1, HIGH → 2, MEDIUM → 3, LOW → 4. Band 5 is reserved
 for someday-maybe work that no severity word expresses.
 
-**The `Priority:` line is the only carrier migration reads. A severity word in
-the headline does not set `priority`.** § 3.8 requires that word on every
+**The `Priority:` line is the only carrier migration would read — see the
+not-implemented note at the top of this section. A severity word in the
+headline does not set `priority`.** § 3.8 requires that word on every
 fold-in finding, so harvesting it would assign a priority to a large class of
 items from a value *inherited* from whichever review raised them — where the
 `Priority:` line is one an author set deliberately. It would also be an

@@ -31529,6 +31529,11 @@ against current source before filing.
   **Layman:** Our copy of the roadmap standard and the global copy disagree in seven places nobody has written down, and three of our statements about the code are simply wrong.
   Kind: doc-fix.
   Source: in-session-2026-08-13 (ANTS-4073 review-contract loop 2, both lanes).
+  Progress (2026-08-18): one of the seven is closed. The Q1 sub-item "3.10.4 cites rxPrefix in remotecontrol.cpp; it lives in remotecontrol_roadmap_log.cpp" is fixed in this repo's copy — re-verified today, the symbol occurs only at remotecontrol_roadmap_log.cpp:1735 and :3131 and nowhere in remotecontrol.cpp. Closed as part of the CFG-0064 return leg (global-findings-for-ants-terminal-2026-08-12 item 2), not as part of the gate this item asks for.
+
+  The other six remain exactly as filed, including both items marked "Needs a decision". The priority vocabulary split named here (a 1-5 band globally, a severity word in this copy) is now also referenced from ANTS-4440, which cannot be settled without it.
+
+  Nothing else in that return leg overlapped this item.
 
 - ✅ [ANTS-4414] **The roadmap dialog blocks 3.7 s on a whole-file git blame every single open.**
   Measured 2026-08-17 on this project, after the user reported the dialog
@@ -31993,6 +31998,24 @@ against current source before filing.
   **Layman:** The tool looks for the app-store description file in five places, none of them the folder where projects that package for several distros actually keep it.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18.
+
+- 📋 [ANTS-4440] **Decide whether the specified-but-unbuilt priority harvest is implemented or dropped.**
+  roadmap-data-model.md 7.5 described the harvest in the present tense while nothing implements it. Verified 2026-08-18: the trailer key does not occur anywhere under `src/`, and `roadmapmigrateload.cpp`'s reconciled field list omits `priority` on purpose (its INV-3 comment).
+
+  7.5 now carries a SPECIFIED-NOT-IMPLEMENTED note, so the immediate hazard is closed — a migration author can no longer build the harvest believing it exists. This item is the decision the note defers.
+
+  Two ways out, and they are not equivalent.
+
+  Build it. Then INV-3 needs a rule neither document states: the harvest re-derives the field from the source on every re-run, and INV-3 exists to stop a re-run clearing what a human set through the write verb. Something has to say which wins — first-write, source-wins, or store-wins-once-set. That rule is the actual work; the parse is trivial.
+
+  Drop it. Then 7.5's mapping section goes, and the format standard's carrier (3.5.2) becomes a line written for the reader and read by nothing — which is a legitimate outcome but should be stated rather than left implicit.
+
+  Two facts bearing on the choice. The corpus already carries 88 such lines, so dropping discards real authored data. And ANTS-4140 records that the two copies of the format standard disagree on the value vocabulary — a 1-5 band globally, a severity word here — so a build would have to settle that first.
+
+  Not urgent: nothing reads the field today, so neither path fixes a live defect.
+  **Layman:** Our data standard describes reading an item's priority out of the roadmap file, but no code does it — we need to decide whether to build it or delete the description.
+  Kind: investigate.
+  Source: global-findings-2026-08-12 item 1 (CFG-0064), maintainer-verified 2026-08-18.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 

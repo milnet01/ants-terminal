@@ -191,12 +191,24 @@ Required pieces:
     no longer parses — accepted because once a project is on the
     roadmap store the render is the sole writer of this file.
 
-  Two guards limit what un-anchoring admits. A label inside
-  backticks does not declare anything (a bullet *quoting* `Kind:` is
-  writing about the format), and where a bullet carries more than
-  one match the **last** wins — that is the one the render authored,
-  and taking the first would let stale prose overwrite the canonical
-  value on every regeneration.
+  Two guards limit what un-anchoring admits, and **their scopes
+  differ.** Both are stated here because both were settled by the same
+  spec, but only the first generalises — do not implement the second
+  for the other labels.
+
+  - **A label inside backticks declares nothing** (a bullet *quoting*
+    `Kind:` is writing about the format). **General**: `Kind:`,
+    `Lanes:` and `Source:` are all un-anchored and all carry it.
+  - **Where a bullet carries more than one match, the last wins** —
+    that is the one the render authored, and taking the first would let
+    stale prose overwrite the canonical value on every regeneration.
+    **`Kind:` ONLY.** `Lanes:`, `Source:`, `Layman:` and `Evidence:`
+    take the FIRST match. The render re-emits `Kind:` into a body that
+    may already discuss it, which is what makes precedence load-bearing
+    there; it does not do so for the other four, so changing their
+    precedence would be a behaviour change with no defect behind it.
+    (`matchLastIn()` for `kind`, `matchIn()` for the rest —
+    `src/roadmapparse.cpp`.)
 
 Optional pieces:
 
@@ -525,9 +537,14 @@ entry before updating the roadmap.
 
 #### 3.6.3 Tertiary — recent commit subjects
 
-The last 5 non-merge / non-revert / non-release-bump commit
-subjects on the current branch are fuzzy-matched against bullet
-headlines. A match adds the highlight.
+`git log -n 5 --format=%s` is read from the current branch, and the
+merge, revert and release-bump subjects are then dropped **from those
+five** — the limit is applied before the filter, not after. So the set
+matched is *at most* five subjects and is usually smaller; after a
+release, or after a merge-heavy stretch, it can be empty, and the signal
+then says nothing rather than reaching further back. The survivors are
+fuzzy-matched against bullet headlines; a match adds the highlight.
+(`readRecentCommitSubjects`, `src/roadmapdialog.cpp`.)
 
 Useful for "I just committed this; mark it as in-progress before
 I write the changelog" workflows.
@@ -934,7 +951,7 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
   directly.
 - **The lone uppercase-only rule — `op:flip`'s `prefix_hint`.**
   That argument is validated `^[A-Z][A-Z0-9_-]{0,15}$` (`rxPrefix`
-  in `remotecontrol.cpp`), but it is used *only* when injecting a
+  in `remotecontrol_roadmap_log.cpp`), but it is used *only* when injecting a
   caret anchor onto a GFM bullet that has no id — it never
   constrains id allocation.
 
@@ -942,9 +959,17 @@ The single-prefix rule is convention because it keeps
 `.roadmap-counter` unambiguous: the file holds a single integer and
 has no per-prefix form. **No per-prefix counter filename is defined,
 by this standard or by any tool** — so a multi-prefix project that
-is *not* store-migrated has no working counter carrier for its
-second and later prefixes, and allocates them from the
-committed-corpus high-water mark alone (§ 3.5.1). Do not invent a
+is *not* store-migrated has no **per-prefix** counter carrier: every
+prefix shares the one un-prefixed integer. It does **not** follow that
+the counter is skipped. Allocation is `max(shared counter, per-prefix
+corpus floor) + 1` — the counter supplies the candidate and
+`corpusHighWater()` only floors it, the same `max()` shape § 3.5.1
+states for the store-migrated row (`remotecontrol_roadmap_log.cpp`,
+`effCounter`). The consequence worth keeping is about the FLOOR, not
+the source: the shared counter tracks the dominant prefix's
+allocations, so a non-dominant prefix skips numbers and floors to
+another prefix's mark. Neither reissues a live id, which is what the
+floor is for. Do not invent a
 name for one: two tools inventing different names each read zero for
 the other's prefix, which reissues live IDs, and that is a worse
 failure than the slower corpus scan.
