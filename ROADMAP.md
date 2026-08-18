@@ -31725,6 +31725,17 @@ against current source before filing.
   duplicate read is filed separately. Removing the first read needs the
   heading index sourced from the store's `section` table, which is a
   larger change than this item scopes.
+  Not measured (2026-08-18). Site 2's saving is asserted STRUCTURALLY —
+  the 3.8 MiB read and the whole-file parse are gone, which the scrape
+  pins — and no before/after timing was taken. The substitute is a store
+  read of ~2,070 items on this project, and nothing here proves it is
+  cheaper than the parse it replaced. Two reasons it is very likely to
+  be: the render inside commitAndRender() reads the same rows from the
+  same store on the same call, so the marginal cost is one more query
+  over warm pages; and ANTS-3816 batched that read after ANTS-3793's
+  INV-3 measured the N+1 at 83.4 ms of a 101.5 ms whole-project read.
+  If a number is ever wanted, the honest place is a perf-labelled case
+  beside roadmap_read_seam's Inv3Latency, not a claim in this body.
   **Layman:** The roadmap tools now avoid opening the big 3 MB file just to ask "is this project in the database?" — but three places still read the whole thing straight afterwards for their own reasons, so those three got no faster.
   Kind: perf.
 
