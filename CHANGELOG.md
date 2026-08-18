@@ -202,6 +202,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`codebase_index` can see HTML pages, so a website project's code map is no longer near-empty.** (ANTS-4425)
+  `file_outline` has outlined HTML since ANTS-4361 while the index gate did not admit it, so on a site of ~40 HTML/CSS/JS files the index counted 9 — the `.js` and `.py` — and every page was invisible, to `codebase_index` and to the `indie_review` computed partition alike. Both now key on one shared predicate. CSS stays out until it has an outline mode, because counting files the outline cannot read is the same drift in the other direction.
+
 - **`project_layout` finds an AppStream metainfo file kept one level under `packaging/` or `pkg/`.** (ANTS-4439)
   Every probe was single-level, so a project packaging for more than one distro — `packaging/obs/` beside `packaging/flatpak/` — reported no AppStream metadata at all, and a release path keyed on that field silently skipped its release-notes sync. The legacy `*.appdata.xml` spelling is now accepted too, probed after every `*.metainfo.xml` candidate so the current name always wins. Flat candidates are still tried first, so no project whose file already resolved resolves differently.
 

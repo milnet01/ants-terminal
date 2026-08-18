@@ -34686,7 +34686,7 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   **Layman:** A write refusal suggests a fix that does not work, so following it fails a second time.
   Kind: fix.
 
-- 📋 [ANTS-4425] **codebase_index cannot see HTML or CSS, though file_outline has outlined HTML since ANTS-4361.**
+- ✅ [ANTS-4425] **codebase_index cannot see HTML or CSS, though file_outline has outlined HTML since ANTS-4361.**
   `CodebaseIndex::isIndexableSuffix()` admits the C/C++ family, py, the brace
   family, rb and GLSL. It does NOT admit `html` or `css`. Meanwhile
   `FileOutline` has had an `html` mode since ANTS-4361 and outlines a page to
@@ -34716,6 +34716,26 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
   than re-listing, the way the GLSL line already does. Note `isIndexableSuffix`
   also gates the indie_review computed partition, so widening it widens that
   walk too — ANTS-4096 recorded the same coupling.
+  Resolved (2026-08-18), commit 30a2e90e. `isIndexableSuffix` now admits html and
+  htm via a new exported `FileOutline::isHtmlExt`, used by BOTH the index gate and
+  pickModeByExt — shared rather than re-listed, which is exactly what ANTS-4096's
+  precedent is for; its comment warns that a second list is the defect with an
+  extra step.
+
+  css is deliberately NOT admitted, and a test pins the decision so a later
+  widening has to come and change it on purpose. The in-step rule the predicate's
+  comment opens with is that count → outline → symbol query cover the same files,
+  and FileOutline has no CSS mode — admitting css would count files the outline
+  cannot read, which is the same drift in the opposite direction. It needs an
+  outline mode first, or an explicit decision to count-but-not-outline. That is
+  the "explicit decision" this item asked for, taken and recorded rather than left
+  implicit.
+
+  Closes the ANTS-4419 follow-on the item was found from: that diagnostic told
+  such a project "you hold indexable source, register it", which was true and
+  bought only the 9 non-html files until this landed.
+
+  Three tests, two red-first. Suite 3621/3621.
   **Layman:** A website project's pages are invisible to the code map, so it looks almost empty even once registered.
   Kind: fix.
   Source: in-session 2026-08-17 — found while verifying ANTS-4419's diagnostic against the reporting tree..
