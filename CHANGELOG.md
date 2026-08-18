@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log` and `changelog_log` accept each other's word for "add an entry"** (ANTS-4475)
+  One spells it `append` and the other `add`, and each already accepted the
+  other's word for the batch version. Both now accept both. Error messages
+  still name the canonical form.
+
+- **`section_index` can return just the slugs, which no longer overflow on a large roadmap** (ANTS-4467)
+  Pass `slugs_only:true` to get a flat list of section slugs. On roadmaps
+  big enough to overflow the reply budget the full form returned only the
+  first handful of sections — and slugs are exactly what `roadmap_log`
+  needs to file a bullet.
+
 - **a refused cross-project feedback-file read now names the call that works** (ANTS-4421)
   The refusal is correct — the file lives outside the project — but it was a
   dead end. It now names the folder to use as the working directory.
@@ -127,6 +138,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **`focused_test` now points at `mutation_probe`** (ANTS-4472)
+  Three sessions in a row hand-wrote the mutation loop that verb replaces,
+  because nothing surfaced it. The session-start list is full to within 10
+  bytes of its cap, so the pointer lives on `focused_test` instead — which
+  is where a session running tests will be looking anyway.
+
 - **`roadmap_query` reads `ROADMAP.md` once per call, not once per branch** (ANTS-4431)
   A cold `section=` query opened and read the whole roadmap twice — the
   heading index and the per-section ETag each built their own file
@@ -178,6 +195,24 @@ for security-relevant changes.
   corpus with 0 newly firing.
 
 ### Fixed
+
+- **`file_outline` says how many symbols a `max_symbols` cut left out** (ANTS-4469)
+  Truncation reported only that it had happened, so there was no way to
+  tell one missing symbol from four hundred. It now emits
+  `symbols_dropped`, the same field the byte cap already used.
+
+- **`spec_query` declares its `mode` argument, and rejects a misspelled one** (ANTS-4468)
+  `mode` was accepted but never declared, so every call passing it was
+  reported as having an ignored argument. A misspelled mode also fell
+  through to the list behaviour and answered a drift question with a spec
+  list; it now refuses and names the valid values.
+
+- **`roadmap_log` dry runs no longer report the write as done** (ANTS-4463)
+  A preview returned `files_written` and `note_appended:true` for a write
+  that did not happen, so a caller checking either field read a dry run as
+  a completed one. Those names are now absent on a dry run and the values
+  arrive as `would_write` / `note_would_append`, matching what
+  `changelog_log` already documents.
 
 - **SARIF export labels suppressions with `status`, the v2.1.0 field name** (ANTS-4454)
   The suppression object wrote `state`, an earlier-draft spelling that

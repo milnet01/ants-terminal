@@ -35297,7 +35297,7 @@ happen.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: roadmapstore, roadmapsource, remotecontrol_roadmap_query.
 
-- 📋 [ANTS-4463] **roadmap_log `dry_run` returns `files_written` and `note_appended:true` — both assert an action that did not happen.**
+- ✅ [ANTS-4463] **roadmap_log `dry_run` returns `files_written` and `note_appended:true` — both assert an action that did not happen.**
   A dry-run flip returns `files_written:["…/ROADMAP.md"]` and
   `note_appended:true`. Neither is true — the schema says dry_run previews
   WITHOUT writing, and it does not write. Contributor verified three ways:
@@ -35313,6 +35313,7 @@ happen.
   strictly safer — an absent field cannot be misread, a renamed one still has
   to be noticed. Check every op's dry_run path; dry_run is supported on all of
   them and only flip was exercised.
+  Resolved (2026-08-18): the policy now lives in one place, rcRoadmapWriteFields() (src/remotecontrol_roadmap_query.cpp, declared in remotecontrol_internal.h), and all nine emission sites route through it. On a dry run `files_written` and `note_appended` are ABSENT and the values are carried as `would_write` / `note_would_append` — taking the reporter's drop-not-rename argument for the NAMES while keeping the information, which also brings the envelope into line with what changelog_log's dry_run documents for `bytes`. Found while doing it: the nine sites already disagreed, one emitting files_written with no items_rendered. Regression test RoadmapWriteHalf.Ants4463DryRunEmitsNoPastTenseFields (bundle test_claude), verified red pre-fix. Collateral fix folded in: the added descriptor prose pushed props["section"] past mcp_roadmap_log_verb's fixed-byte scrape window, which had already been bumped 32→40→44→48 KiB for that same cause; it now ends at the real terminator `tools.append(t);` and needs no fifth bump. Verified non-vacuous by renaming the property and watching the test fail.
   **Layman:** The "preview only" mode of the roadmap tool reports that it saved the file, so a session can think a change landed when nothing was written.
   Kind: fix.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
@@ -35386,7 +35387,7 @@ happen.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_roadmap_log.
 
-- 📋 [ANTS-4467] **roadmap_query mode:"section_index" spills on a large roadmap and drops the slugs — the one field the mode exists to return.**
+- ✅ [ANTS-4467] **roadmap_query mode:"section_index" spills on a large roadmap and drops the slugs — the one field the mode exists to return.**
   On an 84-section ROADMAP.md the section_index reply exceeded the inline
   budget and offloaded. The spill returned `rows_preview` as 84 SHAPE rows
   ({index, bytes}) with `rows_preview_heads_omitted:true`, plus a `head`
@@ -35408,12 +35409,13 @@ happen.
   (ANTS-3543), which re-caps to lean rows instead of truncating the set — the
   same idea here would have returned all 84 slugs inline. Honouring dotted
   `fields:["sections.slug"]` is a cheap interim.
+  Resolved (2026-08-18) by option (a): `slugs_only:true` on mode:"section_index" returns a flat `slugs` array instead of the section objects (src/remotecontrol_roadmap_query.cpp, schema in claudeintegration.cpp). Under 2 KB at 84 sections, so it does not spill. Deliberately a projection rather than a mode — same status filter, same drop rules, same order — and the tests assert it against the OBJECT form's output rather than a hand-written list, so the two shapes cannot drift apart. New feature dir tests/features/roadmap_query_slugs_only (spec + 3 tests, bundle test_claude); the two substantive ones verified red pre-fix, the inertness test passes either way by design. STILL OPEN, and it is your option (b): making the spiller degrade by dropping FIELDS rather than ROWS. That is the better answer for every index-shaped reply and the argument from workspace_search's `downshifted` path (ANTS-3543) stands — it is a wider change than this projection and wants its own item. This closes the pain on the reported path; it does not close the general defect.
   **Layman:** On a big roadmap, the tool that lists the section names runs out of room and returns almost none of them, which is the only thing it is for.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_roadmap_query, paginationengine.
 
-- 📋 [ANTS-4468] **`spec_query mode:"gate_drift"` reports `ignored_args:["mode"]` in the same envelope that honours `mode`.**
+- ✅ [ANTS-4468] **`spec_query mode:"gate_drift"` reports `ignored_args:["mode"]` in the same envelope that honours `mode`.**
   The gate_drift call succeeds and returns the full payload — stale / current /
   ungated, counts, commits_since — while the same response carries
   `"ignored_args":["mode"]` AND `"mode":"gate_drift"`. The envelope asserts
@@ -35431,12 +35433,13 @@ happen.
   intent is instead "arguments not used by THIS branch", the field is misnamed
   for that job and callers cannot tell the two meanings apart — then it wants
   to be `unused_args`, with `ignored_args` kept strictly for unrecognised keys.
+  Resolved (2026-08-18): `mode` is declared in spec_query's inputSchema (src/claudeintegration.cpp) with an enum of gate_drift / list. The reporter's hypothesis was branch-order validation; the actual cause was that the handler honoured an argument the schema never declared, so the ANTS-2175 checker — which diffs call keys against declared properties — was correct and the schema was wrong. Declaring it rather than suppressing the advisory follows their own severity argument. It also closed a latent strict-client break: that schema sets additionalProperties:false, so an undeclared `mode` was not merely flagged, it was rejectable. Second half fixed with it: once `mode` is a known key the name-diff says nothing about a typo, and `mode:"gate-drift"` used to fall through to the LIST branch and answer a drift question with a spec list under ok:true — it now refuses bad_args naming what was accepted. Behavioural test McpSpecQuery.Ants4468ModeIsDeclaredAndUnknownModeRefuses (bundle test_claude), verified red pre-fix.
   **Layman:** A tool says it ignored the setting you gave it while visibly obeying that setting, which trains you to stop trusting the warning.
   Kind: fix.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: spec_query, remotecontrol.
 
-- 📋 [ANTS-4469] **`file_outline`'s `max_symbols` truncation reports `truncated:true` with no count of what was dropped.**
+- ✅ [ANTS-4469] **`file_outline`'s `max_symbols` truncation reports `truncated:true` with no count of what was dropped.**
   On the `max_symbols` path the envelope carries `truncated:true` and nothing
   else — no `symbols_dropped`, no pre-cap total. So a caller that hits the cap
   cannot tell whether it missed one symbol or four hundred, which is exactly
@@ -35453,6 +35456,7 @@ happen.
   max_bytes path's field name so one caller branch handles both. Verified this
   session by the contributor in both the `path` and `paths` forms, so it is the
   cap path rather than the envelope shape.
+  Resolved (2026-08-18): `symbols_dropped` is emitted on both max_symbols paths — the engine cap in src/fileoutline.cpp and the filtered-set budget in src/remotecontrol_workspace.cpp. Reused the max_bytes path's field name as the reporter asked, so one caller branch handles both. The count is exact rather than estimated: `seenSymbols` was already incremented on every regex match whether or not the symbol was kept, so the number existed and simply was not emitted. Absent on an untruncated outline, because a zero there would read as "the cap bit and dropped nothing", which is a different claim. Schema description updated. Regression test McpFileOutline.Ants4469MaxSymbolsReportsDroppedCount (bundle test_claude), verified red pre-fix.
   **Layman:** When the file-outline tool cuts the list short it will not say how many entries it left out, so you cannot tell whether you missed one or four hundred.
   Kind: fix.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
@@ -35503,7 +35507,7 @@ happen.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_feedback.
 
-- 📋 [ANTS-4472] **`mutation_probe` is absent from the SessionStart hook's verb list — three consecutive sessions hand-rolled the loop it replaces.**
+- ✅ [ANTS-4472] **`mutation_probe` is absent from the SessionStart hook's verb list — three consecutive sessions hand-rolled the loop it replaces.**
   Filed three times by LocalWebServerManager: the 7th, 8th and a further
   hand-roll of the mutation loop, each in a session AFTER mutation_probe
   (ANTS-4398) shipped at that project's own request. Each session found the
@@ -35526,6 +35530,7 @@ happen.
   description as the sibling for "prove the test would have caught this", so it
   surfaces from a verb sessions already reach for at exactly the moment they
   need it.
+  Resolved (2026-08-18) by the contributor's fallback rather than their first choice, and the measurement is why. The SessionStart prelude is 1390 bytes against the 1400-byte INV-10 cap in tests/features/mcp_orientation_install — 10 bytes of headroom against a ~78-byte line — so the named-verb list is genuinely full and could not take mutation_probe without either evicting a verb or raising a cap that costs every session. Took the cheaper variant they left open instead: the substantive sentence is in focused_test's `description` (uncapped) and a short pointer in its `selection_hint`, which has its own 240-char cap under ANTS-1453 HINT-3 — hit while doing this, and the reason the pointer is four words rather than a sentence. focused_test is the right host: a session running tests is the session that needs to know whether those tests would CATCH anything. Noting for whoever revisits: the prelude has no room for the NEXT verb either, so the eviction-or-raise decision is deferred, not avoided.
   **Layman:** A tool built at a project's request keeps going unused because nothing tells a new session it exists.
   Kind: doc.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18 (filed three times).
@@ -35578,7 +35583,7 @@ happen.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: paginationengine, remotecontrol.
 
-- 📋 [ANTS-4475] **roadmap_log spells its append op `append` and changelog_log spells the same act `add` — accept each other's spelling.**
+- ✅ [ANTS-4475] **roadmap_log spells its append op `append` and changelog_log spells the same act `add` — accept each other's spelling.**
   Both sibling write verbs append an entry to a Markdown record and name the op
   differently: roadmap_log's is `append` (default), changelog_log's is `add`
   (default). Each accepts a batch variant under the OTHER convention's stem —
@@ -35597,6 +35602,7 @@ happen.
   `status` (ANTS-3698). The refusal message keeps naming the canonical form.
   If aliasing is unwanted, the alternative is one line in each description
   naming the sibling's spelling, turning a round trip into a read.
+  Resolved (2026-08-18): roadmap_log accepts `add`/`add_batch` and changelog_log accepts `append`/`append_batch`, aliased before op validation on the ANTS-3698 precedent you cited. Every refusal still names the canonical form and each envelope echoes the canonical op, so the alias is a way in rather than a second name to learn. Tests both sides (RoadmapWriteHalf.Ants4475..., changelog_log_writer.Ants4475...), both verified red pre-fix. Worth recording because it nearly shipped a false green: the first cut of the roadmap-side test drove the cmdRoadmapLogAppendForTest seam, which enters BELOW the op dispatch — it passed against pre-fix source and proved nothing. Caught by running the red check rather than by review. It now drives cmdRoadmapLog, using add_batch for the assertable path because append_batch is the one that completes without a main window.
   **Layman:** Two sister commands use different words for the same action, so the word you learn from one is refused by the other.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
