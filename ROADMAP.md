@@ -44851,6 +44851,54 @@ here.)
   Source: in-session-2026-08-18 (ANTS-4065 Phase E2 pre-flight).
   Lanes: roadmap-store, mcp.
 
+- 📋 [ANTS-4429] **roadmap_migrate emits thousands of per-line notes with no summary and no way to ask for less.**
+  Measured across the 14-project rollout: Vestige emitted 3,535 notes and
+  Music_Production 1,428, both `notes_truncated: true`, on runs that
+  SUCCEEDED. The notes are one per line per defaulted field, so a project
+  with no `Kind:` lines pays three notes per bullet. Cost is roughly 8k
+  tokens per call for information that is a histogram, and truncation
+  means it is not even a complete one.
+
+  `defaulted_fields` already carries the counts ({kind: 357, source: 357}),
+  which is what a caller actually reads. What is missing is the same
+  treatment for the rest: a `notes_summary` of {code: count} alongside a
+  bounded sample, and the `fields=` / `compact` args nearly every other
+  verb takes. The verb's schema is `additionalProperties: false` and lists
+  neither, so a caller cannot opt out today.
+
+  The per-line detail is worth keeping for the codes that name ONE thing
+  (`quarantined_id`, `unresolved_path` — a handful each). It is the
+  per-bullet codes (`field_defaulted`, `id_allocation_owed`) that should
+  collapse.
+  **Layman:** A successful roadmap import prints thousands of lines of detail nobody reads.
+  Kind: enhancement.
+  Source: in-session-2026-08-18 (ANTS-4065 Phase E2 rollout).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4430] **A project that allocated no ids reports store_high_water 0 and file_ahead_of_store true, which reads as the divergence that means "do not write".**
+  After the E2 rollout, 10 of the 14 migrated projects carry NO `id_prefix`
+  row, because every bullet already declared an id and nothing was
+  allocated. `roadmap_query` on such a project returns
+  `store_high_water: 0` with `file_ahead_of_store: true` and
+  `file_highest_id: 36` — measured on Rolodex, whose store is exactly in
+  sync (36 items, 0 orphaned, 0 kind mismatches).
+
+  That is the same signal ANTS-4141 and ANTS-4402 taught every session to
+  read as "the store has diverged from the file, do not let roadmap_log
+  render". Here it means the opposite: nothing has been allocated, so
+  there is no counter, so the comparison has no left-hand side. A session
+  following the ANTS-4141 rule would refuse to use roadmap_log on a
+  project where it is safe — and Rolodex's own round-trip run proved it
+  safe the same day.
+
+  Absent should not report as 0. Either return the row as null/absent and
+  suppress `file_ahead_of_store`, or seed `id_prefix` at migration time
+  from the highest id actually imported.
+  **Layman:** Ten projects look like their saved roadmap is out of date when it is perfectly in sync.
+  Kind: fix.
+  Source: in-session-2026-08-18 (ANTS-4065 Phase E2 rollout).
+  Lanes: mcp, roadmap-store.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
