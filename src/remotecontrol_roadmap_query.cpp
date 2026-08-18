@@ -1992,6 +1992,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // caller doesn't need the etag yet).
         const bool includeSectionEtags =
             req.value(QStringLiteral("include_section_etags")).toBool(false);
+        // ANTS-4467 — see the emission site below for why this exists.
+        const bool slugsOnly =
+            req.value(QStringLiteral("slugs_only")).toBool(false);
         QString sectionEtagsMarkdown;   // lazy-loaded once per call
         bool sectionEtagsMarkdownLoaded = false;
         // ANTS-2052 — legacy-roadmap fallback for the lean status filter.
@@ -2101,6 +2104,38 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // many-section roadmap stops busting the compact-index budget;
         // explicit offset/limit let a caller page. legacy_format_sections
         // stays the full-roadmap hint (a small slug list, not per-page).
+        // ANTS-4467 — `slugs_only:true`: a flat array of slug strings instead
+        // of the section objects.
+        //
+        // Reported by Vestige. On an 84-section roadmap the section_index reply
+        // exceeded the inline budget and offloaded, and the spill kept whole
+        // bodies for a prefix of rows and shape-only {index, bytes} stubs for
+        // the rest — the worst split for an index-shaped reply whose caller
+        // needs ONE key from EVERY row. They got slugs for 8 of 84 from a
+        // ~20 KB call, and fell back to grepping the headings, which rule 18
+        // asks sessions to avoid and which was strictly cheaper here.
+        //
+        // It lands squarely on the append path: roadmap_log's `section`
+        // argument documentation tells callers to get their slugs from this
+        // mode, so the spill broke the documented prerequisite for exactly the
+        // projects big enough to need an index. `fields:["sections"]` did not
+        // help, because the spill is driven by row bodies rather than by
+        // sibling top-level keys.
+        //
+        // 84 slugs is comfortably under 2 KB, so this never spills. It is
+        // deliberately a projection rather than a new mode: same filter, same
+        // drop rules, same ordering — only the row shape changes. Their more
+        // general fix (make the spiller shed FIELDS before it sheds ROWS, as
+        // workspace_search's `downshifted` path does) is the better answer for
+        // every index-shaped reply and is left open on the item.
+        if (slugsOnly) {
+            QJsonArray slugs;
+            for (const QJsonValue &v : std::as_const(sections))
+                slugs.append(v.toObject().value(QStringLiteral("slug")));
+            out["slugs"]       = slugs;
+            out["slugs_only"]  = true;
+            out["total"]       = slugs.size();
+        } else {
         const auto secPage =
             PaginationEngine::pageBullets(sections, offsetArg, limitArg);
         out["sections"] = secPage.slice;
@@ -2112,6 +2147,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             out["truncated"] = secPage.truncated;
             if (secPage.truncated) out["next_offset"] = secPage.nextOffset;
         }
+        }   // ANTS-4467 — end of the !slugsOnly branch
         // ANTS-1622 — top-level legacy-format hint. Only emitted
         // when at least one section's direct bullets all lack
         // [PROJ-NNNN] ids — staying absent on well-tagged roadmaps
@@ -3190,9 +3226,22 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     // adapter-mode locator + surgery path below. Flip is m_main-
     // independent (operates only on caller_cwd + filesystem) so the
     // m_main guard only fires on the append path.
-    const QString op =
+    QString op =
         req.value(QStringLiteral("op")).toString(
             QStringLiteral("append"));
+    // ANTS-4475 — accept changelog_log's spelling for the same act. The two
+    // sibling write verbs both append an entry to a Markdown record and name
+    // the op differently (`append` here, `add` there), and each already takes
+    // a batch variant under the OTHER convention's stem — append_batch here,
+    // add_batch there — which is what makes reaching for the wrong one
+    // natural rather than careless. Reported by a LocalWebServerManager
+    // session that wrote both calls in one message. Aliasing on the ANTS-3698
+    // precedent, where roadmap_query accepts `filter` for `status`; every
+    // refusal below still names the canonical form, so the alias is a way in
+    // and never a second name to learn.
+    if (op == QStringLiteral("add"))        op = QStringLiteral("append");
+    else if (op == QStringLiteral("add_batch"))
+                                           op = QStringLiteral("append_batch");
     // ANTS-1717 — op:"annotate" shares the flip handler's locator +
     // file-surgery machinery; it appends a body note and leaves the
     // status untouched (the emoji-swap is skipped inside the handler).

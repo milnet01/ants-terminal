@@ -1618,6 +1618,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_filter_section_headers/test_roadmap_query_filter_section_headers.cpp
                 # ANTS-1437 roadmap_query section_index mode.
                 tests/features/roadmap_query_section_index/test_roadmap_query_section_index.cpp
+                tests/features/roadmap_query_slugs_only/test_roadmap_query_slugs_only.cpp
                 # ANTS-1881 roadmap_query mode:"headline_only".
                 tests/features/roadmap_query_headline_only/test_roadmap_query_headline_only.cpp
                 # ANTS-1922 roadmap_query mode:"bundles".

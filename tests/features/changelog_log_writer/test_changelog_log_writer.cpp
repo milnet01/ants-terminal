@@ -749,3 +749,54 @@ TEST(changelog_log_writer, Ants4363CloseUnreleasedIntoAVersionBlock) {
     EXPECT_FALSE(bracketed.ok);
     EXPECT_EQ(bracketed.code, QStringLiteral("bad_args"));
 }
+
+
+// ANTS-4475 — changelog_log accepts roadmap_log's spelling of the same act.
+//
+// The mirror of the alias on the roadmap side. These two verbs are siblings
+// that append an entry to a Markdown record, and they named the op
+// differently: `add` here, `append` there. Each already took a batch variant
+// under the other's stem (add_batch / append_batch), which is precisely what
+// makes the cross-spelling the one a caller reaches for.
+//
+// The alias runs before the op validation, so the canonical name is what every
+// downstream branch and every refusal message sees — the alias is a way in,
+// not a second vocabulary.
+TEST(changelog_log_writer, Ants4475OpAliasAcceptsTheSiblingSpelling) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("append");
+    req[QStringLiteral("summary")]    = QStringLiteral("Filed under append.");
+    req[QStringLiteral("kind")]       = QStringLiteral("feature");
+    req[QStringLiteral("id")]         = QStringLiteral("ANTS-4475");
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "ANTS-4475: `append` is roadmap_log's spelling of this same act "
+           "and must not be refused; got code="
+        << resp.value(QStringLiteral("code")).toString().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("category")).toString(),
+              QStringLiteral("Added"));
+
+    const std::string md = readFileStd(clPath(tmp.path()));
+    EXPECT_TRUE(contains(md, "- **Filed under append.** (ANTS-4475)"))
+        << "the alias must reach the same writer, not merely pass validation";
+
+    // A genuinely unknown op is still refused, so the alias widened the door
+    // by exactly two names rather than removing the lock.
+    QJsonObject bogus = req;
+    bogus[QStringLiteral("op")] = QStringLiteral("appendish");
+    const QJsonObject refused = rc.cmdChangelogLog(bogus).object();
+    EXPECT_FALSE(refused.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(refused.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_op_combo"));
+    EXPECT_NE(refused.value(QStringLiteral("error")).toString()
+                  .indexOf(QStringLiteral("\"add\"")), -1)
+        << "the refusal keeps naming the CANONICAL form, so a caller learns "
+           "`add` rather than the alias it happened to try";
+}

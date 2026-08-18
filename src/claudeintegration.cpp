@@ -2608,6 +2608,26 @@ void ClaudeIntegration::onMcpConnection() {
                             "a one-time per-section slicing cost).");
                         props["include_section_etags"] = p;
                     }
+                    // ANTS-4467 — the slug projection for section_index.
+                    {
+                        QJsonObject p; p["type"] = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "mode:\"section_index\" only (ANTS-4467). Return "
+                            "a flat `slugs` array of slug strings instead of "
+                            "the section objects. section_index exists to hand "
+                            "back the slugs roadmap_log's `section` argument "
+                            "requires, and on a large roadmap the full objects "
+                            "overflow the inline budget and spill — which "
+                            "keeps whole bodies for a PREFIX of rows and "
+                            "shape-only stubs for the rest, the worst split "
+                            "for a reply whose caller needs one key from every "
+                            "row. Measured: 84 sections returned slugs for 8. "
+                            "The flat array is well under 2 KB at that size "
+                            "and does not spill. Same filter, same drop rules, "
+                            "same order — only the row shape changes.");
+                        props["slugs_only"] = p;
+                    }
                     props["encoding"] = makeEncodingProp();      // ANTS-2090
                     schema["properties"] = props;
                     roadmapTool["inputSchema"] = schema;

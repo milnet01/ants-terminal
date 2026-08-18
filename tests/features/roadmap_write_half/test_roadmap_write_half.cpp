@@ -727,3 +727,79 @@ TEST(RoadmapWriteHalf, Ants4463DryRunEmitsNoPastTenseFields) {
            "claim to the path where it is true, it does not remove it";
     EXPECT_FALSE(real.contains(QStringLiteral("would_write")));
 }
+
+
+// ------------------------------------------------------------- ANTS-4475 ----
+
+// roadmap_log accepts changelog_log's spelling of the same act.
+//
+// The two sibling write verbs both append an entry to a Markdown record and
+// name the op differently — `append` here, `add` there — and each already
+// takes a batch variant under the OTHER convention's stem (append_batch /
+// add_batch), which is what makes reaching for the wrong one natural rather
+// than careless. A LocalWebServerManager session wrote both calls in one
+// message and was refused on the spelling alone.
+//
+// Aliased on the ANTS-3698 precedent (roadmap_query takes `filter` for
+// `status`). The reporter was explicit that the refusal itself was a GOOD one
+// — it named the op, said it was unknown, and enumerated every valid value —
+// so this is filed as cheap-to-fix, not as a defect in the error path.
+//
+// Driven through cmdRoadmapLog, NOT through the *ForTest seam: the alias lives
+// in the op dispatch, and the seam enters BELOW it. A first cut of this test
+// used the seam, passed against pre-fix source, and proved nothing — the
+// dispatch it was meant to exercise was never reached.
+TEST(RoadmapWriteHalf, Ants4475OpAliasAcceptsTheSiblingSpelling) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+
+    // `add_batch` is the half that can be asserted all the way to a write:
+    // append_batch is main-window-independent, so it completes under a
+    // headless RemoteControl.
+    QJsonObject one = appendReq(root, QStringLiteral("Filed under add_batch."));
+    one.remove(QStringLiteral("op"));
+    one.remove(QStringLiteral("caller_cwd"));
+    one.remove(QStringLiteral("section"));
+    QJsonArray bullets;
+    bullets.append(one);
+
+    QJsonObject batch;
+    batch[QStringLiteral("caller_cwd")] = root;
+    batch[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    batch[QStringLiteral("section")]    = QStringLiteral("work");
+    batch[QStringLiteral("bullets")]    = bullets;
+    const QJsonObject resp = rc.cmdRoadmapLog(batch).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "ANTS-4475: `add_batch` is changelog_log's spelling of this same "
+           "act and must not be refused; got code="
+        << resp.value(QStringLiteral("code")).toString().toStdString()
+        << " error=" << resp.value(QStringLiteral("error")).toString()
+                            .toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("applied_count")).toInt(), 1);
+
+    // The alias is a way IN, never a second name to learn: the envelope keeps
+    // reporting the canonical op, so nothing downstream learns the alias.
+    EXPECT_EQ(resp.value(QStringLiteral("op")).toString(),
+              QStringLiteral("append_batch"))
+        << "ANTS-4475: echoing the alias back would teach it as a primary "
+           "name and split the vocabulary this fix exists to converge";
+
+    // The singular `add` reaches the append path too. It cannot complete under
+    // a headless RemoteControl (that path needs a main window), so what is
+    // asserted is that it is no longer turned away at the DISPATCH — pre-fix
+    // this was bad_op_combo.
+    QJsonObject single = appendReq(root, QStringLiteral("Filed under add."));
+    single[QStringLiteral("op")] = QStringLiteral("add");
+    const QJsonObject singleResp = rc.cmdRoadmapLog(single).object();
+    EXPECT_NE(singleResp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_op_combo"))
+        << "ANTS-4475: `add` must route to the append path rather than being "
+           "refused as an unknown op";
+}

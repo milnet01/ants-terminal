@@ -373,8 +373,20 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         return clErr(QStringLiteral("missing_field"),
             QStringLiteral("changelog_log: caller_cwd is required"));
     }
-    const QString op =
+    QString op =
         req.value(QStringLiteral("op")).toString(QStringLiteral("add"));
+    // ANTS-4475 — accept the sibling verb's spelling. roadmap_log calls this
+    // act `append` and this verb calls it `add`, and each already accepts a
+    // batch variant under the OTHER convention's stem (append_batch /
+    // add_batch) — which is exactly what makes the cross-spelling feel
+    // natural. A LocalWebServerManager session wrote both calls in one message
+    // and was refused on the spelling alone. Aliasing on the ANTS-3698
+    // precedent (roadmap_query accepts `filter` for `status`); the refusal
+    // below keeps naming the canonical form, so nothing learns the alias as
+    // the primary name.
+    if (op == QStringLiteral("append"))       op = QStringLiteral("add");
+    else if (op == QStringLiteral("append_batch"))
+                                              op = QStringLiteral("add_batch");
     // ANTS-2136 — dry_run preview: compute the would-be insert without
     // touching CHANGELOG.md (parity with roadmap_log dry_run).
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
