@@ -171,8 +171,9 @@ declared by the ROADMAP item's `Kind:` field, not the commit
 subject. This avoids the awkward `PROJ-1234: feat: …` double
 prefix.
 
-**This mandate assumes the repo has a ROADMAP.** Where none does, there
-is no ID to lead with and §1.2's last row replaces it.
+**This mandate assumes the repo has a roadmap.** Where none does, there
+is no ID to lead with and §1.2's last row replaces it — and that row
+owns the test for which repos those are.
 
 ### 1.2 Exception — commits without a ROADMAP item
 
@@ -185,17 +186,22 @@ use a category prefix instead:
 | Chore (debt sweep, gitignore tweak, dep bump) | `chore: short summary` | `chore: post-0.7.55 debt sweep` |
 | Doc-only (typo, README tweak not tracked on roadmap) | `docs: short summary` | `docs: fix typo in PLUGINS.md OSC 8 section` |
 | Hotfix whose ROADMAP bullet cannot be written yet — the ID is allocated, the bullet back-filled | `fix: short summary` + `Refs: PROJ-NNNN` trailer | see §1.5 |
-| **Repo with no roadmap at all** | `<component>: short summary` | `foundation: adopt workflow.md and skeleton/` |
+| **Repo with no roadmap at all** — neither `ROADMAP.md` nor `.roadmap-counter` | `<component>: short summary` | `foundation: adopt workflow.md and skeleton/` |
 
 **The last row was added 2026-08-10, and a hook found the gap.** A
-config or tooling repo can have no `ROADMAP.md` and no ID prefix, so
-§1.1's mandate cannot apply to it — and the four rows above force every
+config or tooling repo can have neither file, and so no ID prefix, so
+§1.1's mandate cannot apply to it. The four rows above then force every
 commit into `chore:` or `docs:`, which discards the one thing a reader
 of `git log --oneline` wants: *which part of the repo changed*. The
 component name carries that. Measured on `~/.claude` itself: twelve
 consecutive commits used this form before it was permitted, because it
 is what the standard's own §1.1 rationale asks for once you remove the
 roadmap.
+
+**Both files decide it, and §1.1, §3.2 and the `commit-msg` hook key on
+that one test.** A repo carrying a `.roadmap-counter` and no
+`ROADMAP.md` has a roadmap for this purpose, and `<component>:` is
+refused there.
 
 **`<component>` is a directory or an artefact in the repo**, lowercase,
 matching what the change touched — `foundation`, `standards`,
@@ -208,10 +214,24 @@ A change that genuinely spans two parts names both, joined by ` + ` —
 Measured on `~/.claude`: five commits needed it. More than two parts is
 usually a commit holding more than one concern (§2.1).
 
+**Where it genuinely is §2.1's cross-cutting exception, name the two
+largest parts and say so in the body.** The ` + ` list never runs past
+two — a longer one stops being readable in `git log --oneline`, which is
+the whole reason the component name is there. §2.1 sends this case here
+for repos with no roadmap, and without this sentence it went back and
+forth between the two sections.
+
 The release, chore, docs and fix forms stay available in such a repo,
-and the two do not compete: a change that touches an identifiable part
-takes that part's name, a repo-wide sweep or a release stays on its
-category prefix.
+and the two do not compete: **a change one of those rows names keeps its
+category prefix, and everything else takes the part's name.** So a
+gitignore tweak or a dependency bump is still `chore:` and a typo fix is
+still `docs:`, as their rows show.
+
+**`fix:` comes without its trailer there.** Its row pairs the form with
+a `Refs: PROJ-NNNN` naming an allocated ID, and a repo with no roadmap
+has none — §5 makes inventing one an anti-pattern. So the form stays and
+the trailer does not apply. A hotfix touching an identifiable part still
+reads better as that part's name.
 
 In a repo that has a roadmap: if the work was substantive enough to
 be tracked on it (any feature, any non-trivial fix, any refactor), it
@@ -219,7 +239,12 @@ gets a ROADMAP item with an ID *first*, then the commit references
 that ID. Don't ship code that should have been planned.
 
 git's own generated subjects — `Merge …`, `Revert "…"`, `fixup!` and
-`squash!` — are kept verbatim and take no prefix.
+`squash!` — are kept verbatim. **That means no prefix and no §1.3 limit:
+neither the 72 characters nor the trailing period applies**, and §5's
+anti-pattern list reads under this exemption. Shortening a reverted
+subject to fit would break the link to what it reverts, which is the
+whole value of keeping it. The `commit-msg` hook exits before every
+§1.3 check for these four forms.
 
 ### 1.3 Subject line constraints
 
@@ -253,22 +278,29 @@ Wrap at 72 columns, except a token that cannot be broken — a URL, a
 pasted log line. Use the body to explain WHY; the diff shows WHAT.
 
 **A release commit body and a release tag body are exempt.** Both are
-the changelog section for that version, copied verbatim
-([releases.md](releases.md) §2–3), and changelog bullets routinely run
-past 72. Re-wrapping makes the tag stop matching the published notes,
-which is the one disagreement that standard exists to prevent — and a
-manual re-wrap is a step someone skips, so two people cutting the same
-release produce two different tags. Added 2026-08-14 (ROADMAP
-CFG-0098).
+the changelog section for that version, copied verbatim.
+[releases.md](releases.md) §§2–3 says that of the commit body. **The tag
+half is this section's own rule, by decision** (ROADMAP CFG-0098 item 9),
+so do not read the citation as covering it: §2 there enumerates the
+commit body, the published notes and any announcement, and §4 requires
+the tag be annotated without saying what it carries. CFG-0143 asks
+`releases.md` to name the tag body among what carries the changelog
+text; the wrap exemption stays here either way.
+
+Changelog bullets routinely run past 72, and re-wrapping makes the tag
+stop matching the published notes — the one disagreement that standard
+exists to prevent. A manual re-wrap is also a step someone skips, so two
+people cutting the same release produce two different tags. Added
+2026-08-14 (ROADMAP CFG-0098).
 
 ### 1.5 Trailers
 
 | Trailer | When |
 |---------|------|
 | `Co-Authored-By:` | Anyone who contributed materially (humans, AI agents) |
-| `Reviewed-by:` | After a `/code-quality-review` pass |
+| `Reviewed-by:` | After a `review-code` pass |
 | `Fixes:` | When the commit closes a tracker issue (Fixes: #42) |
-| `Refs:` | Cross-references — a related ROADMAP item (`Refs: PROJ-1235`), or the back-filled ID of a hotfix (§1.2). The ID is allocated when the commit is made; only the ROADMAP bullet is written later |
+| `Refs:` | Cross-references — a related ROADMAP item (`Refs: PROJ-1235`), or the back-filled ID of a hotfix (§1.2). The ID is allocated when the commit is made; only the ROADMAP bullet is written later, and **before the change is pushed** — after that the history cites a bullet no reader can open. Nothing checks it |
 | `Signed-off-by:` | DCO-required projects |
 
 For AI-assisted commits, credit the agent in `Co-Authored-By:` as you
@@ -309,8 +341,12 @@ commit. If a hook fails, investigate and fix the underlying issue
 (per [coding § 1.2](coding.md) — no workarounds).
 
 A hook whose own failure message prescribes a bypass for a named
-case authorises that case; say why in the commit body. Every other
-bypass still needs the user.
+case authorises that case. Every other bypass still needs the user.
+
+**Every bypass says why in the commit body, whichever it was.**
+[coding § 1.2](coding.md) requires the reason on every workaround and
+names `--no-verify` in its list, so a user-authorised skip owes one too.
+The body note is the only trace either leaves.
 
 ### 2.4 Commit only files you mean to
 
@@ -338,8 +374,13 @@ Build artifacts (`build/`, `dist/`, `*.o`, `node_modules/`,
 ### 3.1 Trunk-based default
 
 `main` is the integration branch. Short-lived feature branches
-fork from `main`, ship via PR (or direct push for solo
-development), get rebased + merged in days, not weeks.
+fork from `main`, get rebased + merged in days, not weeks.
+
+**Whether they ship via PR is the project's to say, not this
+section's.** The default is a direct push to `main`; a project opts into
+PR-based feature work, and on this machine the user's global `CLAUDE.md`
+§7 owns that opt-in and its signals. Same hand-back §4.1 makes for push
+cadence.
 
 ### 3.2 Branch names
 
@@ -347,6 +388,11 @@ development), get rebased + merged in days, not weeks.
 `feature/<id>-<topic>` for shared work. The ID lets a reviewer
 find the ROADMAP context at a glance. Where the repo has no roadmap
 (§1.2), the component name takes the `<id>` slot.
+
+**A two-part component collapses its ` + ` join to `-` here** —
+`standards + skeleton` becomes `alice/standards-skeleton-two-tables`. A
+git refname cannot contain a space, so the §1.2 spelling is not a legal
+branch name and every author would invent a different collapse.
 
 ### 3.3 Don't force-push to shared branches
 
@@ -435,7 +481,12 @@ push that changes only documentation may skip the local run **if both
 hold**:
 
 1. The last push's CI run on the remote succeeded —
-   `gh run list --limit 1 --json conclusion,headBranch`.
+   `gh run list --branch "$(git branch --show-current)" --event push
+   --limit 1 --json conclusion`. **Both filters are load-bearing.** `gh
+   run list` scopes by neither branch nor event, so `--limit 1` alone
+   returns the most recent run of any kind on any branch — a green
+   scheduled run while the last push went red is exactly the case this
+   condition excludes.
 2. **No job in the pipeline acts on the paths you changed.** Check the
    workflow rather than assuming.
 
@@ -460,9 +511,9 @@ the bulk push this rules out.** `--follow-tags` sends only the annotated
 tags reachable from the commits being pushed, so the branch you named
 decides what leaves the machine. `--tags` sends every local tag,
 including ones never meant to leave it. Pushing the tag by name in a
-second command is explicit too. On a metered repository it buys a second
-CI run for nothing, and for a release tag [releases.md](releases.md) §4
-rules it out by name. Settled 2026-08-18 (ROADMAP CFG-0133): this
+second command is explicit too. Where the project's workflows trigger on
+tags it buys a second CI run for nothing, and for a release tag
+[releases.md](releases.md) §4 rules it out by name. Settled 2026-08-18 (ROADMAP CFG-0133): this
 section said "explicitly" and named no command, while `releases.md` §4
 and the global `CLAUDE.md` §6 both prescribe `--follow-tags`. A
 conformer running the prescribed command could not tell whether it
@@ -475,9 +526,12 @@ release tag's own push rule rather than deferring it back here.
 
 `reset --hard`, `branch -D`, `clean -f`, `push --force` — pause and
 confirm with the user, unless the user has explicitly authorised the
-specific operation in advance. §3.3 owns the force-push cases and
+specific operation in advance. §3.3 owns the branch force-push cases and
 overrides this list for them: on a shared branch it is refused rather
-than confirmed, on a personal branch it needs neither.
+than confirmed, on a personal branch it needs neither. §4.3 owns the tag
+case: a force-push is refused there, in advance or at the time. On a
+collision §4.3 sends you to the user to pick a different tag or to
+abandon the release — forcing it is not on the menu.
 
 A user approving an action once does NOT approve it in all
 contexts.
@@ -520,16 +574,17 @@ the rows below say so.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| §1.1–1.3 subject shape — the prefix forms, ≤72 characters, no trailing period, no ID repeated in the description | The `commit-msg` hook (`skeleton/files/.githooks/commit-msg`, installed with `git config core.hooksPath .githooks`). Roadmap-aware: it accepts an ID, `X.Y.Z:` or a category prefix in any repo, and *additionally* accepts `<component>: ` where no `ROADMAP.md` and no `.roadmap-counter` exists |
+| §1.1–1.3 subject shape — the prefix forms, ≤72 characters, no trailing period, no ID repeated in the description | The `commit-msg` hook (`.githooks/commit-msg`, enabled via `core.hooksPath`; `skeleton/files/` ships an identical copy). Roadmap-aware: it accepts an ID, `X.Y.Z:` or a category prefix in any repo, and *additionally* accepts `<component>: ` where no `ROADMAP.md` and no `.roadmap-counter` exists |
+| §1.3 single line | **nothing**, and it defeats the length check too. The hook reads `head -1`; git's subject is the whole first paragraph, joined. Measured: a 70-character line 1 with a second line under it passes the hook and produces a 134-character subject in `git log --oneline` |
 | §1.3 present tense, and the description's capitalisation | **nothing** — both are judgements about wording rather than shape, and a hook cannot make them |
-| §9.0 of `documentation.md` — the mechanical checks ran while writing | The `pre-commit` hook (`skeleton/files/.githooks/pre-commit`). **What it blocks on is [documentation.md](documentation.md) §9.0's to state, not this table's** — that section owns the hook's path class and gives it in both directions. A restatement lived here until 2026-08-14 and had already drifted from it (ROADMAP CFG-0098) |
+| §9.0 of `documentation.md` — the mechanical checks ran while writing | Partial: the `pre-commit` hook (`.githooks/pre-commit`, enabled via `core.hooksPath`). **Passing it is not §9.0 satisfied** — that section says so, and names quoted fragments and census counts as not checked at all. `check-doc-facts` runs the rest. **What it blocks on is [documentation.md](documentation.md) §9.0's to state, not this table's** — that section owns the class list, and says which classes the weaker copy in `skeleton/files/` does not carry. A restatement lived here until 2026-08-14 and had already drifted from it (ROADMAP CFG-0098) |
 | §1.2 `<component>` names a directory or artefact that exists | **nothing** — the hook matches the component's shape, never that it is real |
 | §1.1 and §5 — the ID names a ROADMAP item that exists | **nothing** — the hook matches the ID's shape, never that it was assigned |
 | §1.4 body wrapped at 72 columns | **nothing** — the hook checks the subject only. Wrapping is decidable and was left out deliberately: a pasted log line or a URL legitimately exceeds it, and a hook that cries wolf gets bypassed with `--no-verify`, which §2.3 has no check for either |
 | §1.5 trailers, and naming the model that did the work | **nothing** — and the failure is silent: a trailer copied from an older commit names a superseded model and reads as correct |
 | §2.1 one concern per commit | **nothing** — a judgement about the diff's contents, not its shape |
-| §2.2 don't amend | **nothing** for the case §2.2 leads with — an amend after a failed hook is local and leaves no trace. Once a commit is published, `git push` rejects the non-fast-forward |
-| §2.3 don't skip hooks | **nothing** — `--no-verify` leaves no trace in the commit |
+| §2.2 don't amend | **nothing** for the case §2.2 leads with — an amend after a failed hook is local and leaves no trace. On a published commit it depends on the branch: on a shared one `git push` rejects the non-fast-forward and §3.3 refuses the force-push, but on a **personal** branch §3.3 permits it and §4.4 asks for no confirmation, so there it is **nothing** as well — and that is where most amending happens |
+| §2.3 don't skip hooks | **nothing mechanical** — `--no-verify` leaves no trace in the commit itself, so §2.3's required body note is the only one there is, and nothing checks that it was written |
 | §2.4 commit only files you mean to | Partial: a well-maintained `.gitignore` catches the common cases. An allowlist-style ignore file catches more and creates the opposite failure — a file silently never committed (`draft/README.md` records seven lost that way) |
 | §2.5 don't commit half-finished work | CI, where the project has it — and `commits.md` §4.2's local run catches it earlier and cheaper |
 | §2.6 don't commit generated files | The same `.gitignore`, when it has patterns for that project's build outputs. **Nothing** catches a generated file the ignore file does not name |
@@ -547,4 +602,7 @@ the rows below say so.
 | 1 | 2026-08-11 | 3 | 2 | 4 | 2 | 0 | 8 findings, 6 verified / 2 dismissed. All 6 fixed; 1 cross-doc item surfaced (`CLAUDE.md` §6 tag push) and 1 code-side question (the hook's `a + b: ` form). Loop 2 dispatched. |
 | 2 | 2026-08-11 | 3 | 2 | 4 | 2 | 0 | 8 findings, 7 verified / 1 dismissed. All 7 fixed; 2 of them were loop 1's own repairs. Loop 3 dispatched. |
 | 3 | 2026-08-11 | 3 | 1 | 5 | 2 | 0 | 10 findings, 8 verified / 2 dismissed. All 8 fixed; 2 were loop 2's own repairs. **Cap reached, not converged** — see the tail in `docs/reviews/commits-md-review-2026-08-11.md`. |
+| 4 | 2026-08-18 | 3, cold — genre pinned `standard`, first loop of a NEW run, gating the CFG-0133 edit. Packet carried both hooks in full, `releases.md` §§4 and 6, `documentation.md` §9.0, `CLAUDE.md` § Git push, and `git push --help`'s `--follow-tags` text verbatim | 2 | 4 | 0 | n/a | **Six verified, six fixed; none dismissed. Two more found by the orchestrator's own sweep.** **All three lanes independently found two defects.** The first is the sharpest: the What-checks-this table named `skeleton/files/.githooks/pre-commit` as what enforces `documentation.md` §9.0 — and that copy has two classes where the installed hook has seven. §9.0 says so itself ("**`path` is absent too** … the skeleton ships the weaker `link` class in its place"), so a scaffolded project was told its commits were checked for something nothing checks. Both hook rows now name the installed `.githooks/` path. The second: §4.4 carved force-pushes out to §3.3, which covers branches only — so a tag force-push fell back to §4.4's *confirm, unless pre-authorised*, where §4.3 refuses it outright. Two lanes found §1.2's roadmap test keying on `ROADMAP.md` alone while the hook sets `has_roadmap=yes` on `.roadmap-counter` too; a repo mid-setup was refused a form the standard granted it. **One lane alone found the run's quietest defect**: §1.2 exempts `Merge`/`Revert`/`fixup!`/`squash!` subjects from the *prefix* rule and says nothing about §1.3, while the hook exits before the length and trailing-period checks as well — measured here, a 102-character `Revert "…"` with a trailing period passes and the same length without the prefix fails. And §3.1 mandated PR-based feature work where `CLAUDE.md` §7 makes direct-to-`main` the default; §3.1 now hands that answer back the way §4.1 hands back cadence. **Both orchestrator findings came from settling a lane's open question rather than from a lane**: `gh run list` is not branch-scoped, so §4.2 condition 1's `--limit 1` returned the most recent run on *any* branch and answered a different question than the condition asks; and fixing the pre-commit row left its `commit-msg` sibling still naming the skeleton tree. **One dismissed as code-side and filed**: the hook counts subject length with `wc -m`, which returns characters under the user's UTF-8 locale and bytes under `LC_ALL=C` — measured 29 vs 31 on the standard's own em-dash release example. |
+| 5 | 2026-08-18 | 3, cold — identical brief, packet rebuilt from disk and extended with the INSTALLED `.githooks/pre-commit` class header, which loop 4's fixes now point at | 0 | 6 | 4 | n/a | **Ten verified, ten fixed; none dismissed. Not one Q1 from a lane** — every lane defect was two passages disagreeing or a conformer with no way to tell. **Three of the ten landed on loop 4's own text, and two of those were mine rather than a lane's.** The sharpest lane finding is one loop 4 half-fixed: the §9.0 row's file path was corrected and its *coverage* claim was left standing, where `documentation.md` §9.0 says outright **"Passing the hook is not this rule satisfied"** and names quoted fragments and census counts as unchecked — so a green hook read as §9.0 discharged. The row is now `Partial:`. **The best pre-existing finding needed no cross-reference at all**: §1.2 offered the `fix:` form to a repo with no roadmap, and that form is *defined* by a `Refs: PROJ-NNNN` trailer naming an allocated id — which such a repo cannot allocate, while §5 makes inventing one an anti-pattern. A conformer hot-fixing a config repo had no conforming option. **Two rows of the What-checks-this table were overstating their catcher.** §2.2's said `git push` rejects a published amend; §3.3 permits the force-push on a personal branch and §4.4 asks for no confirmation, which is where most amending happens. And §1.3's *single line* was covered by no row — **measured here, a 70-character first line with a second line under it passes the hook and yields a 134-character subject**, because the hook reads `head -1` and git's subject is the whole first paragraph joined. **That measurement refuted my own first draft of the fix**, which said `git log --oneline` truncates it; it does not, it joins, and the defect is worse than the row I nearly shipped. Also fixed: §1.2's prose reserved category prefixes for *a repo-wide sweep or a release* while its own table's chore and docs examples name single artefacts; §3.2 had no legal spelling for §1.2's two-part ` + ` component, a git refname having no space (`git check-ref-format` refuses it); §1.5's back-fill deadline was unbounded, now the push; and §2.3 required a written reason for the hook-prescribed bypass only, where `coding.md` §1.2 requires one for every workaround and names `--no-verify`. **My own two:** loop 4 asserted a second tag push *"buys a second CI run"* with no `on:` condition, and left §4.4's tag refusal ambiguous about approval given live at a collision. |
+| 6 | 2026-08-18 | 3, cold — identical brief, packet rebuilt from disk and extended with the four facts loop 5's lanes could not settle without `Bash` | 2 | 2 | 1 | n/a | **Five verified, five fixed; one dismissed. Cap reached (3 for a standard); the run files its tail and exits.** **A VIOLENT cap, and the run is oscillating: three of the five landed on text THIS RUN wrote** — checked against the earlier loops' ledger rows, not recall. **All three lanes independently found the one substantial pre-existing defect**, and it is one loop 5 DISMISSED as immaterial: § 1.4 attributes the release *tag* body's content to `releases.md` §§ 2–3, and § 2's enumeration names the commit body, the published notes and any announcement — not the tag; § 4 requires it be annotated without saying what it carries. A lane named the build difference loop 5 could not: a release tool written from § 4 tags with `-m "Release 0.7.55"`, one written from § 1.4 pastes the changelog section, and both are conformant. **The self-inflicted three share one shape — each was a fix that solved half of a two-half defect.** Loop 4 added `--branch` to § 4.2's command and not `--event`, so a green *scheduled* run still answered for a red push (`gh run list` scopes by neither). Loop 5 corrected the § 9.0 row's file path and left its coverage claim. And loop 5 resolved the unusable `fix:` form by PROHIBITING it in a roadmap-less repo — where `commit-msg` tests `category_form` before the `has_roadmap` branch and accepts `fix:` everywhere, so the prohibition enforced nothing and no row listed it; the form is restored and only its trailer withdrawn. **The second pre-existing finding was a mutual deferral neither section closed**: § 2.1 sends a cross-cutting refactor to § 1.2 *"where the repo has one"*, and § 1.2 caps its ` + ` guidance at two parts and sends anything wider back to § 2.1 as *"usually"* more than one concern — so a genuine cross-cutting rename in a roadmap-less repo had no prescribed subject and `component_form` accepts every spelling. **One finding was the sweep catching the same loop's own fix**: the § 1.4 repair implied CFG-0143 would relocate the wrap exemption, which CFG-0098 item 9 had already decided belongs here. **Size is not the reason the cap bound** — 456 lines, well inside what two cold reads finish, and the lanes reached § 5 and the closing table every loop. |
 <!-- MIRROR END -->
