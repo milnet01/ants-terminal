@@ -1314,3 +1314,69 @@ TEST(roadmap_migrate_load, DISABLED_CorpusArchiveRun) {
         printf("stored: %-40s <- %s\n", q.value(0).toString().toUtf8().constData(),
                q.value(1).toString().toUtf8().constData());
 }
+
+// ANTS-4428 — two plan items claiming one id_fold are refused BY NAME, before
+// the insert turns it into a bare SQL constraint message.
+//
+// The load is one transaction, so this refusal costs every item in the plan;
+// the whole point of the check is that the envelope then says which two bullets
+// to edit. Both sources are asserted: the message names the id and both
+// `path:line` sites, and nothing is committed.
+TEST(RoadmapMigrateLoad, DuplicateIdFoldRefusesWithBothSites) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    // Case-folded, because that is the store's identity — `UNIQUE
+    // (project_id, id_fold)` is over `lower(id)`, so a case-only difference
+    // is a collision and not a distinct id.
+    QVector<PlannedItem> items{
+        item(QStringLiteral("Photo mode"), QStringLiteral("first"), QStringLiteral("s"), 0),
+        item(QStringLiteral("A-2"), QStringLiteral("unrelated"), QStringLiteral("s"), 1),
+        item(QStringLiteral("photo MODE"), QStringLiteral("second"), QStringLiteral("s"), 2),
+    };
+    items[0].firstLine = 2850;
+    items[2].firstLine = 2903;
+    items[2].idOrigin = QStringLiteral("quarantined");
+
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts());
+    EXPECT_FALSE(out.ok) << "a duplicate id_fold must refuse";
+    const std::string msg = out.error.toStdString();
+    // Each site with its OWN spelling: the fold is case-insensitive, so a
+    // message quoting one spelling twice sends the reader after a string that
+    // occurs once.
+    EXPECT_NE(msg.find("'Photo mode' at"), std::string::npos)
+        << "the refusal must quote the FIRST claimant as written: " << msg;
+    EXPECT_NE(msg.find("'photo MODE' at"), std::string::npos)
+        << "the refusal must quote the SECOND claimant as written: " << msg;
+    EXPECT_NE(msg.find(":2850"), std::string::npos)
+        << "the refusal must name the FIRST claimant's line: " << msg;
+    EXPECT_NE(msg.find(":2903"), std::string::npos)
+        << "the refusal must name the SECOND claimant's line: " << msg;
+    // The bare SQL abort this replaces. Seeing it again means the check was
+    // bypassed and the constraint caught the collision at putItem() instead.
+    EXPECT_EQ(msg.find("UNIQUE constraint failed"), std::string::npos) << msg;
+    EXPECT_EQ(f.count(QStringLiteral("item")), 0) << "the transaction must roll back";
+}
+
+// The same check must not fire on ids that merely look similar — it keys on the
+// case-folded id and nothing else, so a shared prefix or a shared headline is
+// not a collision.
+TEST(RoadmapMigrateLoad, DistinctIdsAreNotTreatedAsDuplicates) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    QVector<PlannedItem> items{
+        item(QStringLiteral("Photo mode"), QStringLiteral("same headline"),
+             QStringLiteral("s"), 0),
+        item(QStringLiteral("Photo mode 2"), QStringLiteral("same headline"),
+             QStringLiteral("s"), 1),
+        item(QString(), QStringLiteral("id-less"), QStringLiteral("s"), 2),
+        item(QString(), QStringLiteral("id-less"), QStringLiteral("s"), 3),
+    };
+
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts());
+    EXPECT_TRUE(out.ok) << out.error.toStdString();
+    EXPECT_EQ(f.count(QStringLiteral("item")), 4);
+}

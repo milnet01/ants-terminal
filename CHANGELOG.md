@@ -165,6 +165,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A duplicate id_fold refused a whole project as a bare SQL constraint, naming neither bullet.** (ANTS-4428)
+  `roadmap_migrate` now refuses a duplicate id before the insert, naming
+  both `path:line` sites and the folded identity, instead of aborting the
+  whole project with a bare `UNIQUE constraint failed: item.project_id,
+  item.id_fold`.
+
 - **a section search that matches nothing now says the search emptied it** (ANTS-4423)
   It previously reported that no item carried an ID and suggested two settings
   that cannot help. The same fix shipped for whole-file searches in July and

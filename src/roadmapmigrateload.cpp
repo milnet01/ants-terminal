@@ -349,6 +349,58 @@ bool Loader::resolveSections() {
 }
 
 bool Loader::matchItems() {
+    // Two plan items claiming one id_fold is refused HERE, with both line
+    // numbers, rather than at step 3's putItem() as a bare
+    // `UNIQUE constraint failed: item.project_id, item.id_fold`. The SQL abort
+    // says which constraint broke and never which bullets broke it, and it
+    // rolls back the whole project — so on Vestige (2026-08-18) one duplicate
+    // label refused all 461 items with nothing in the envelope naming it, and
+    // pinning it took a hand-written replica of the parser's id rules.
+    //
+    // Not demoted to id-less, which is the other available repair: the GFM
+    // em-dash split (roadmapparse.cpp) puts the post-separator prose in the
+    // headline and leaves the bold lead-in in the id ALONE, so dropping the id
+    // deletes that label from the record. Inventing an identity to get past a
+    // source the reader cannot disambiguate is also what ANTS-3771 exists to
+    // stop doing. The duplicate is evidence the lead-in was prose, and only
+    // the author can say which bullet keeps the name.
+    QHash<QString, qsizetype> claimedBy;
+    for (qsizetype i = 0; i < plan.items.size(); ++i) {
+        const PlannedItem &it = plan.items.at(i);
+        if (it.id.isEmpty())
+            continue;
+        const QString fold = it.id.toLower();
+        // value() with a sentinel rather than constFind(): dereferencing the
+        // iterator trips -Wnull-dereference here, and an index is all this
+        // needs.
+        const qsizetype prior = claimedBy.value(fold, -1);
+        if (prior < 0) {
+            claimedBy.insert(fold, i);
+            continue;
+        }
+        const PlannedItem &first = plan.items.at(prior);
+        // Each site carries ITS OWN spelling, because the fold is
+        // case-insensitive and the two need not be spelled alike — quoting one
+        // spelling for both sends the reader grepping for a string that occurs
+        // once.
+        const auto site = [&](const PlannedItem &p) {
+            const QString path = p.sourceIndex < plan.sources.size()
+                                     ? plan.sources.at(p.sourceIndex).path
+                                     : QStringLiteral("<source %1>").arg(p.sourceIndex);
+            return QStringLiteral("'%1' at %2:%3").arg(p.id, path).arg(p.firstLine);
+        };
+        return fail(QStringLiteral(
+                        "two bullets claim one id — %1 and %2 — which the store folds "
+                        "to the single identity '%3'. %4Give one of them a distinct id.")
+                        .arg(site(first), site(it), fold,
+                             it.idOrigin == QLatin1String("quarantined")
+                                 ? QStringLiteral(
+                                       "Neither is an id-shaped token, so both were "
+                                       "adopted from a leading bold label that is "
+                                       "prose in at least one of them (ANTS-3771). ")
+                                 : QString()));
+    }
+
     const auto items = store.listItems(projectId, &err);
     if (!items)
         return fail(err);

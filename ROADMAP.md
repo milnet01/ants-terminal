@@ -44807,6 +44807,50 @@ here.)
   Kind: ux.
   Source: user-request-2026-08-15.
 
+- ✅ [ANTS-4428] **A duplicate id_fold refused a whole project as a bare SQL constraint, naming neither bullet.**
+  Found by the E2 pre-flight: 13 of 14 corpus projects plan and load
+  clean, and Vestige refused with
+  `UNIQUE constraint failed: item.project_id, item.id_fold Unable to
+  fetch row` plus 2,973 notes naming nothing. The load is one
+  transaction, so one collision costs all 1,024 items — and the envelope
+  said neither which id collided nor where. Pinning it took a
+  hand-written replica of the parser's id rules.
+
+  The cause is the class `roadmapparse.cpp` already documents and
+  declines to solve: with no declared id format a GFM bold lead-in is
+  adopted as an id, and Vestige has two `**Photo mode**` bullets
+  (ROADMAP.md:2850 open-world, :2903 vehicle-focused). The trailing-colon
+  guard drops `**Phase 9E-2:**` and nothing separates a real multi-word
+  id (`Terrain System`) from prose. ANTS-3771 is the real fix.
+
+  So this refuses EARLIER and BY NAME instead: `Loader::matchItems()`
+  walks the plan for a repeated case-folded id before matching and fails
+  with both `path:line` sites, each quoted as written, plus the folded
+  identity. Nothing is committed either way; what changes is that the
+  operator can act on it.
+
+  NOT demoted to id-less, which was the other candidate. The GFM em-dash
+  split puts the post-separator prose in the headline and leaves the bold
+  lead-in in the id alone, so dropping the id deletes that label from the
+  record — and inventing an identity to get past a source the reader
+  cannot disambiguate is what ANTS-3771 exists to stop. A duplicate is
+  evidence the lead-in was prose; only the author can say which bullet
+  keeps the name.
+
+  Verified by linking a throwaway against `build/*.a` and running the
+  real discovery+plan+load over each project into a temp store: 13 ok,
+  Vestige refused naming both lines. No project that passed before can
+  fail now — a plan-internal duplicate always hit the constraint.
+  Tests: `RoadmapMigrateLoad.DuplicateIdFoldRefusesWithBothSites` and
+  `.DistinctIdsAreNotTreatedAsDuplicates` (17/17 green).
+
+  Vestige still needs a one-line label edit in its own repo before E2 can
+  migrate it; that is an authoring call, not this project's.
+  **Layman:** When two roadmap lines accidentally share a name, the import now says which two lines instead of failing with a database error.
+  Kind: fix.
+  Source: in-session-2026-08-18 (ANTS-4065 Phase E2 pre-flight).
+  Lanes: roadmap-store, mcp.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
