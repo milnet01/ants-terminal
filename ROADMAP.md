@@ -35250,6 +35250,387 @@ whole files.
   Source: cold-sweep-2026-08-18 lanes roadmap-write + roadmap-read + plugin lane (UNVERIFIED — triage before work).
   Lanes: roadmapstore, roadmapexport, pluginmanager.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 triage
+
+Five files carried un-triaged input: LocalWebServerManager (254 lines), OneUp
+(60), finbreak (22), claude_config (14), Vestige (9). Nothing here duplicates an
+existing bullet — checked by regex against the whole roadmap before filing.
+
+Two themes run across three of the five contributors and are worth naming once.
+The first is STORE-VS-FILE AUTHORITY: roadmap_query answers from the store,
+roadmap_log reads status from the file, a write re-renders the whole file from
+the store, and nothing in any envelope says which view a caller is looking at.
+finbreak, LocalWebServerManager and this project's own notes all hit a face of
+it. The second is PAST-TENSE FIELDS ON A PREVIEW OR A REFUSAL: a field whose
+name asserts a completed action, emitted on a path where the action did not
+happen.
+
+- 📋 [ANTS-4462] **roadmap_query answers from a store snapshot that does not track file edits, and the staleness is unobservable.**
+  HIGHEST severity of this triage, and it is the guard-removed-hazard-remains
+  shape. finbreak previously refused every roadmap_log op with
+  `render_gate_unmet`; that refusal is now gone, but the stale store behind it
+  is not. Observed in one session: FIBR-0277 and FIBR-0278 hand-edited in
+  ROADMAP.md from 📋 to ✅ with ~15-line Resolved notes, committed — and
+  roadmap_query still returned 📋 and the pre-resolution body, indefinitely.
+  Bullets edited BEFORE that session are correctly ✅, so the snapshot is real
+  and frozen at some earlier point.
+  The two verbs disagree about one bullet in one minute: roadmap_log's dry_run
+  reported from_status ✅ for FIBR-0278 (reading the FILE) while roadmap_query
+  reported 📋 (reading the STORE).
+  Why the loud failure became a silent one: on a migrated project a roadmap_log
+  write re-renders ROADMAP.md from the store. Rendering from a snapshot older
+  than the file silently reverts every hand-edit since. In that session it
+  would have destroyed two flips and ~40 lines of prose from a 616 KB file with
+  an ok:true envelope. `items_rendered` matching the file's bullet count reads
+  as reassurance and is not — it counts items, not content, so a stale-bodied
+  store passes that check exactly as a fresh one does.
+  Three fixes, in order of what they buy: (1) make staleness observable —
+  roadmap_query already reports source:"store"; add store_synced_at + file_mtime
+  or a plain store_stale:true; (2) re-ingest on mtime change, or refuse with a
+  code naming the staleness, which is the old gate's fail-safe shape; (3) never
+  re-render from a snapshot older than the file, regardless of what the gate
+  says — the gate is about renderability, this is about currency.
+  The write-vs-query status disagreement is itself the detection signal: if the
+  write path compared them it would catch exactly this case.
+  **Layman:** The roadmap tool can answer from an out-of-date copy without saying so, and saving over the file from that copy would wipe out hand-written notes.
+  Kind: fix.
+  Source: finbreak_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: roadmapstore, roadmapsource, remotecontrol_roadmap_query.
+
+- 📋 [ANTS-4463] **roadmap_log `dry_run` returns `files_written` and `note_appended:true` — both assert an action that did not happen.**
+  A dry-run flip returns `files_written:["…/ROADMAP.md"]` and
+  `note_appended:true`. Neither is true — the schema says dry_run previews
+  WITHOUT writing, and it does not write. Contributor verified three ways:
+  `git status --short` clean, a grep for the note text returned 0, and the
+  bullet was still 📋. The only signal that nothing happened is the `dry_run`
+  flag itself, so a caller branching on `files_written` — the obvious field to
+  check — reads a dry run as a real write.
+  The sibling verb already gets this right: changelog_log's dry_run documents
+  that it reports `bytes` (would-be) IN PLACE OF `bytes_written`. roadmap_log's
+  flip path keeps the past-tense field and adds a flag beside it.
+  Fix: on the dry_run path drop the past-tense fields, or rename to would-be
+  equivalents (`would_write[]`, `note_would_append`). Dropping is cheaper and
+  strictly safer — an absent field cannot be misread, a renamed one still has
+  to be noticed. Check every op's dry_run path; dry_run is supported on all of
+  them and only flip was exercised.
+  **Layman:** The "preview only" mode of the roadmap tool reports that it saved the file, so a session can think a change landed when nothing was written.
+  Kind: fix.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: remotecontrol_roadmap_log.
+
+- 📋 [ANTS-4464] **`op:flip` lost `line`, `note_line` and `bytes_written` when the render path became the only path.**
+  Three identical `op:flip` calls in one session returned two different sets of
+  fields. The first carried `line`, `note_line`, `bytes_written` and
+  `file_bytes`; the second and third dropped all four and carried
+  `files_written[]` + `items_rendered:125` instead. A follow-up entry from a
+  fresh session confirms the later shape is now the steady state, which narrows
+  the diagnosis: this is not two paths with two contracts, it is one path that
+  dropped four fields the other supplied.
+  `note_line` is the one worth restoring — it is what lets a caller cite the
+  bullet it just wrote (`ROADMAP.md:1461`) with no follow-up read. A caller
+  reading it unconditionally now gets null on an otherwise successful write,
+  with no `ok:false` and nothing saying the field was withheld.
+  Fix: return the same keys whichever path runs. If a re-render cannot resolve
+  `line`/`note_line` cheaply, return them as null AND add a field naming the
+  path taken (`path:"render"`/`"patch"`), so absence is a statement rather than
+  a silence — the argument mutation_probe's `inert` field is built on. If
+  `items_rendered` applies to one path only it should be absent on the other
+  rather than present-and-meaningless.
+  **Layman:** The roadmap tool used to tell you which line it just wrote, so you could point at it; that information silently disappeared.
+  Kind: fix.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: remotecontrol_roadmap_log.
+
+- 📋 [ANTS-4465] **roadmap_log's re-render silently discards hand-edits outside a bullet, including the whole preamble.**
+  On a store-backed ROADMAP.md a hand-edit to the file PREAMBLE (line 4,
+  `> **Current version:** …`, outside any bullet) was reverted by the next
+  `op:flip`, with nothing in the envelope saying so.
+  The verb's own docs anticipate this for exactly one field: `op:amend_headline`
+  warns it is "NOT supported on a migrated project: the headline is a store
+  column … a markdown-only patch would be reverted by the next render." That
+  warning is correct and it is scoped to headlines. The same hazard applies to
+  EVERY byte the store owns, the preamble included, and nothing says so.
+  Impact is not just the lost edit. The contributor was writing a
+  `.claude/bump.json` release recipe whose ROADMAP pattern targeted that line.
+  The edit made the pattern correct; the silent revert made it match nothing;
+  the recipe would have failed at release time with a "pattern not found"
+  pointing at the recipe rather than the cause.
+  Fix, either is enough: (a) the write envelope reports what the render
+  overwrote — `discarded_external_edits:true` or a byte-diff count; (b)
+  generalise the amend_headline warning in roadmap_log's description — on a
+  migrated project the WHOLE file is rendered, so any hand-edit outside the
+  store's model is reverted, naming the preamble specifically since it is the
+  part with no verb to edit it. A preamble verb is the larger third option and
+  is explicitly NOT requested.
+  **Layman:** Editing the top of the roadmap file by hand looks like it worked, and the next roadmap command quietly puts it back.
+  Kind: fix.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: roadmaprender, remotecontrol_roadmap_log.
+
+- 📋 [ANTS-4466] **`op:annotate` reports `to_status` from the stale file read, not from the rendered result.**
+  After a `git checkout --` reverted ROADMAP.md while the store kept a flip,
+  the two disagreed: roadmap_query said ✅ from source:"store", the file said
+  📋. The subsequent `op:annotate` returned `from_status:"📋", to_status:"📋"` —
+  yet the re-render it performed correctly restored ✅ to the file along with
+  both notes. The envelope described the stale INPUT rather than the committed
+  RESULT. Nothing was lost; the report was wrong.
+  A caller confirming a write from the envelope gets the wrong answer in
+  exactly the divergence case where confirming matters most.
+  Fix: report `to_status` from the rendered result rather than the pre-read
+  file state — or, if the file read is genuinely that field's input, add
+  `store_status` beside it so a divergence is visible instead of being resolved
+  silently in one direction. Same family as the store-vs-file authority item at
+  the head of this section.
+  **Layman:** After a roadmap note is added, the tool can report the old status even though it just wrote the new one correctly.
+  Kind: fix.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: remotecontrol_roadmap_log.
+
+- 📋 [ANTS-4467] **roadmap_query mode:"section_index" spills on a large roadmap and drops the slugs — the one field the mode exists to return.**
+  On an 84-section ROADMAP.md the section_index reply exceeded the inline
+  budget and offloaded. The spill returned `rows_preview` as 84 SHAPE rows
+  ({index, bytes}) with `rows_preview_heads_omitted:true`, plus a `head`
+  truncated mid-object after 8 sections. So the call cost ~20 KB and returned
+  slugs for 8 of 84.
+  That lands squarely on the append path: roadmap_log's own `section` argument
+  description says "Get valid slugs from roadmap_query mode:section_index", so
+  the spill breaks the documented prerequisite for exactly the projects big
+  enough to need an index. The contributor fell back to
+  `grep -n '^## \|^### ' ROADMAP.md`, the raw-tool fallback rule 18 asks
+  sessions to avoid — and it was strictly cheaper, which is the part worth
+  fixing. `fields:["sections"]` does not help: it keeps whole section objects,
+  and the spill is driven by row bodies rather than sibling top-level keys.
+  Fix (a): a `slugs_only:true` projection returning a flat array of strings —
+  under 2 KB for 84 sections, never spills. Fix (b), which generalises: make
+  the spiller degrade by DROPPING FIELDS rather than dropping rows, so an
+  over-budget section_index sheds `headline` and the four counts and still
+  returns every slug. Compare workspace_search's `downshifted` path
+  (ANTS-3543), which re-caps to lean rows instead of truncating the set — the
+  same idea here would have returned all 84 slugs inline. Honouring dotted
+  `fields:["sections.slug"]` is a cheap interim.
+  **Layman:** On a big roadmap, the tool that lists the section names runs out of room and returns almost none of them, which is the only thing it is for.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: remotecontrol_roadmap_query, paginationengine.
+
+- 📋 [ANTS-4468] **`spec_query mode:"gate_drift"` reports `ignored_args:["mode"]` in the same envelope that honours `mode`.**
+  The gate_drift call succeeds and returns the full payload — stale / current /
+  ungated, counts, commits_since — while the same response carries
+  `"ignored_args":["mode"]` AND `"mode":"gate_drift"`. The envelope asserts
+  both that the argument was applied and that it was discarded; the payload
+  proves it was applied.
+  Cosmetic in isolation, but `ignored_args` is a CORRECTNESS signal (ANTS-2175
+  built it as one): it is how a caller learns it passed an argument the verb
+  does not support, which is the check you run when a call returns something
+  unexpected. Firing it on an argument that WAS honoured trains callers to
+  disregard the field, costing the next session the one signal that would have
+  caught a genuine typo (`mode:"gate-drift"`, `mode:"gatedrift"`).
+  Likely cause: the arg is validated against the id/path-routed branch's
+  accepted set before the mode branch claims it. Fix: drop `mode` from
+  ignored_args on the paths that consume it (gate_drift and list mode). If the
+  intent is instead "arguments not used by THIS branch", the field is misnamed
+  for that job and callers cannot tell the two meanings apart — then it wants
+  to be `unused_args`, with `ignored_args` kept strictly for unrecognised keys.
+  **Layman:** A tool says it ignored the setting you gave it while visibly obeying that setting, which trains you to stop trusting the warning.
+  Kind: fix.
+  Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: spec_query, remotecontrol.
+
+- 📋 [ANTS-4469] **`file_outline`'s `max_symbols` truncation reports `truncated:true` with no count of what was dropped.**
+  On the `max_symbols` path the envelope carries `truncated:true` and nothing
+  else — no `symbols_dropped`, no pre-cap total. So a caller that hits the cap
+  cannot tell whether it missed one symbol or four hundred, which is exactly
+  the fact that decides whether to re-call with a higher cap or accept the
+  outline as effectively complete.
+  The asymmetry is INSIDE the same verb: the `max_bytes` path is documented to
+  carry `truncated:true` plus `symbols_dropped:<n>`, and `filter` echoes
+  `symbols_considered` + `symbols_filtered_out` specifically so zero matches is
+  distinguishable from a file with no symbols. `max_symbols` is the one
+  narrowing mechanism of the three that reports no number — and the one with a
+  non-zero DEFAULT (200), so it is also the one most likely to fire without the
+  caller having asked for it.
+  Fix: emit `symbols_dropped:<n>` on the max_symbols path too, reusing the
+  max_bytes path's field name so one caller branch handles both. Verified this
+  session by the contributor in both the `path` and `paths` forms, so it is the
+  cap path rather than the envelope shape.
+  **Layman:** When the file-outline tool cuts the list short it will not say how many entries it left out, so you cannot tell whether you missed one or four hundred.
+  Kind: fix.
+  Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: docsymbols, remotecontrol_workspace.
+
+- 📋 [ANTS-4470] **roadmap_log has `append_batch` and `flip_batch` but no `annotate_batch`.**
+  `op:"annotate"` is the only bullet-writing op with no batch form, and
+  `append_batch` (ANTS-1879) and `flip_batch` (ANTS-1690) were each filed to
+  remove exactly this cost — so this is an asymmetry rather than a feature
+  request in the abstract. Closing one roadmap item routinely means annotating
+  two or three neighbours: the item it partly closes, the sibling whose twin it
+  discharged, the open item whose territory it touched.
+  Measured this session: `op:flip` CFG-0138 then `op:annotate` three times
+  (CFG-0140, CFG-0139, CFG-0132) — three calls, three reads of a 289 KB
+  ROADMAP.md, three commits, where one batch would have done. It also races the
+  file watcher the same way N separate flips did before flip_batch existed,
+  which is the exact justification recorded for ANTS-1690.
+  Fix: `op:"annotate_batch"` taking `locators[]` in flip_batch's existing shape
+  — {id|anchor|headline|line_range} plus a per-locator `note`, single read,
+  single atomic commit, per-locator failures into `skipped[]`. The parameter
+  shape is already implemented: flip_batch's locators[] carries an optional
+  per-locator `note` today, so annotate_batch is that path with the status flip
+  omitted — which is also exactly how annotate relates to flip.
+  **Layman:** Adding a note to three roadmap items takes three separate saves of a large file, where one batched save already exists for the other two kinds of edit.
+  Kind: feature.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: remotecontrol_roadmap_log.
+
+- 📋 [ANTS-4471] **`feedback_query`'s derived-path miss returns `found:false` with no `candidates`, where its sibling verb offers them.**
+  On a derived-path miss feedback_query returns {found:false, reason} and
+  nothing else. `feedback_log op:"append_tracking"` in the same family already
+  answers a missing file with `candidates` + `hint` listing sibling
+  *_Ants_MCP_Feedback.md files (ANTS-3366). feedback_query is usually the FIRST
+  call a session makes, so it is where the hint would pay most.
+  Repro: `feedback_query {caller_cwd:"/home/ants/.claude"}` with no path
+  derives `/home/ants/.claude_Ants_MCP_Feedback.md`, which does not exist — the
+  real file is `/mnt/Games/Scripts/Linux/claude_config_Ants_MCP_Feedback.md`.
+  Two mismatches at once: the shared root is not that project's parent, and the
+  leaf ".claude" is not the file's "claude_config". The session fell back to a
+  shell `ls`.
+  The derivation rule itself is documented and correct — this is only about
+  what the miss returns. Fix: emit the same `candidates` + `hint` fields on a
+  derived-path miss, scanning the conventional shared root as well as the
+  parent of caller_cwd. Same field names as the sibling so one caller path
+  handles both, following ANTS-4418 and ANTS-4350.
+  **Layman:** When the feedback tool cannot find a project's file it says only "not found", instead of listing the nearby files it could have meant.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: remotecontrol_feedback.
+
+- 📋 [ANTS-4472] **`mutation_probe` is absent from the SessionStart hook's verb list — three consecutive sessions hand-rolled the loop it replaces.**
+  Filed three times by LocalWebServerManager: the 7th, 8th and a further
+  hand-roll of the mutation loop, each in a session AFTER mutation_probe
+  (ANTS-4398) shipped at that project's own request. Each session found the
+  verb only by reading the feedback file at the end of its work.
+  The hook names twelve-odd verbs (session_orient, codebase_index,
+  roadmap_query, roadmap_log, changelog_log, workspace_search, file_outline,
+  read_regions, find_definition, find_sources, git_state, read_log,
+  model_switch_stats, spec_log). mutation_probe is not among them and its
+  schema is deferred, so nothing in a fresh session surfaces it — while that
+  project's CLAUDE.md mandates mutation testing in four separate trap
+  paragraphs.
+  What the gap costs, measured: one session ran six mutants across two items,
+  all hand-rolled in ~35 lines of throwaway bash, and the hand-rolled loop had
+  NO inert-mutation guard — the exact false reading `inert_reason` exists to
+  prevent, and which that project's CLAUDE.md records being bitten by. Another
+  session's mutants found three of six new tests were vacuous.
+  Fix: name it in the hook's list — "mutation_probe → mutate a file, run tests,
+  restore; refuses an inert mutation". If the list is deliberately capped, the
+  contributor's cheaper variant stands: mention it in `focused_test`'s
+  description as the sibling for "prove the test would have caught this", so it
+  surfaces from a verb sessions already reach for at exactly the moment they
+  need it.
+  **Layman:** A tool built at a project's request keeps going unused because nothing tells a new session it exists.
+  Kind: doc.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18 (filed three times).
+  Lanes: antshelper, claudeintegration.
+
+- 📋 [ANTS-4473] **`apply_edits`' `ambiguous` skip names no candidate lines, where `amend_body`'s refusal already diagnoses its own cause.**
+  Filed off the back of a WORKED WELL report, and the contrast is the finding.
+  `roadmap_log op:amend_body` refused an `old_text` spanning a hard-wrapped
+  line break with a hint naming the cause and the retry — "`old_text` appears
+  to span a hard-wrapped line break (bodies wrap at ~70 cols); amend_body
+  matches within one physical line — pass a substring that fits on a single
+  line" — and the session recovered in one more call with no re-read.
+  In the same session `apply_edits` returned an `ambiguous` skip for a
+  two-occurrence `old`. Correct, but it said nothing about WHERE the
+  occurrences were, so recovery needed a read.
+  Fix: fire the near-miss `candidates[]` machinery ANTS-4418 already built for
+  apply_edits whitespace misses on the `ambiguous` skip as well, listing the
+  lines that matched. Same field, same shape, and it closes on the write verb
+  the gap amend_body has already closed on the roadmap one.
+  **Layman:** When an edit matches in two places the tool refuses without saying where, so you have to go hunting; a sister tool already tells you.
+  Kind: enhancement.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18 (WORKED WELL entry).
+  Lanes: remotecontrol_workspace.
+
+- 📋 [ANTS-4474] **`rows_preview` should SHRINK the per-row heads rather than drop them when the budget binds.**
+  Residual on ANTS-4397, which shipped and fired on exactly the reported shape:
+  the contributor hit `.claude/workflow.md` cold, got 48,607 bytes offloaded
+  with `rows_preview` covering all 60 rows as {index, bytes} plus
+  `rows_preview_heads_omitted:true`, and the bytes column did its job — rows
+  6-9 at 1.9/7.7/13.7/11.1 KB against a 25-90 byte tail told them which rows to
+  page.
+  The residual: with heads omitted they could see WHICH rows were large but not
+  WHAT any row was. The status header is a Markdown table whose row label is
+  its first ~25 characters (`| **Active item ID** |`), so the one thing needed
+  to route by lived in the first 25 bytes of every row and was invisible. They
+  fell back to `sed | grep -o` to recover the labels, then two more read calls.
+  Explicitly NOT a request to reverse ANTS-4397's design decision — complete
+  coverage over a prefix of rows is right and the contributor says so.
+  Fix is a constant, not a redesign: when the head budget will not fit full
+  per-row samples, SHRINK the heads instead of dropping them. A 40-character
+  head keeps complete coverage at 40×N bytes — 2.4 KB for this 60-row file
+  against a 48 KB body. A row label, a Markdown heading, a table cell name and
+  a function signature all live in the first 40 characters. The degradation
+  order that preserves the most signal is: full heads → truncated heads (all
+  rows) → bytes only (all rows); today it jumps from the first to the third.
+  The shape recurs: any project whose .claude/workflow.md § 1 is a status table
+  has ~6 rows of 2-14 KB and ~54 rows under 100 bytes.
+  **Layman:** When a preview runs short of room it throws away every row's first few words — usually the only part that says what the row is.
+  Kind: enhancement.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: paginationengine, remotecontrol.
+
+- 📋 [ANTS-4475] **roadmap_log spells its append op `append` and changelog_log spells the same act `add` — accept each other's spelling.**
+  Both sibling write verbs append an entry to a Markdown record and name the op
+  differently: roadmap_log's is `append` (default), changelog_log's is `add`
+  (default). Each accepts a batch variant under the OTHER convention's stem —
+  `append_batch` and `add_batch` respectively, which is what makes the
+  cross-spelling feel natural.
+  The contributor wrote both calls in one message, used `op:"add"` for
+  roadmap_log, and was refused. Same class as the argument-name traps this
+  family already documents (`files` not `paths`, `task_type` not `kind`,
+  `old`/`new` not `old_text`/`new_text`) — except here the natural spelling is
+  natural precisely BECAUSE the sibling verb uses it.
+  The contributor is explicit that the refusal itself is a GOOD one: it named
+  the op, said it was unknown, and enumerated every valid value, so no time was
+  lost beyond the round trip. Filed because it is cheap to fix.
+  Fix: accept `add` as an alias for `append` on roadmap_log and `append` as an
+  alias for `add` on changelog_log, the way roadmap_query accepts `filter` for
+  `status` (ANTS-3698). The refusal message keeps naming the canonical form.
+  If aliasing is unwanted, the alternative is one line in each description
+  naming the sibling's spelling, turning a round trip into a read.
+  **Layman:** Two sister commands use different words for the same action, so the word you learn from one is refused by the other.
+  Kind: enhancement.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: remotecontrol_roadmap_log, remotecontrol_changelog.
+
+- 💭 [ANTS-4476] **A body line that exactly equals one of the verb's own enum argument values is a near-zero-false-positive corruption signal.**
+  Recorded as CONSIDERED because the write-path defect is already fixed and the
+  contributor asks for nothing on it.
+  History: four OneUp bullets carried a bare indented line reading
+  `headline_only` between the `Test:` block and the `**Layman:**` line — the
+  literal value of roadmap_log's `return:"headline_only"` argument, written
+  into the body the verb emitted. All four landed 2026-08-03 across three
+  commits, which is what identifies it as the verb rather than a typo. It does
+  NOT reproduce on the current build. The contributor swept every sibling
+  ROADMAP.md under the shared root, found OneUp was the only one affected, and
+  removed the lines (their commit ba1fb81) — so there is no residue on this
+  machine.
+  Why it is worth a bullet at all: the corruption was self-concealing.
+  roadmap_query echoes the stray line back inside the bullet `body`, so a
+  session reading through the MCP cannot tell whether it is in the file or
+  added by the verb; OneUp's own documentation gate passed over it because a
+  stray body line breaks no citation, link or tally; and their first detection
+  grep missed it by anchoring at column 0 when the line is indented to the
+  two-space continuation depth (`grep -n '^\s*headline_only\s*$'` is the
+  working pattern).
+  The optional idea: flag on READ a body line that exactly equals one of the
+  verb's own enum argument values. Near-zero false positives, and it is the
+  only thing that would have surfaced this without a manual grep. Decide
+  whether it earns its keep before building it.
+  **Layman:** An old bug wrote a stray setting name into roadmap entries; nothing would catch it happening again except noticing by eye.
+  Kind: enhancement.
+  Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
+  Lanes: roadmapparse.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

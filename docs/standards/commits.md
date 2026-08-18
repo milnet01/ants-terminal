@@ -281,11 +281,10 @@ pasted log line. Use the body to explain WHY; the diff shows WHAT.
 the changelog section for that version, copied verbatim.
 [releases.md](releases.md) §§2–3 says that of the commit body. **The tag
 half is this section's own rule, by decision** (ROADMAP CFG-0098 item 9),
-so do not read the citation as covering it: §2 there enumerates the
-commit body, the published notes and any announcement, and §4 requires
-the tag be annotated without saying what it carries. CFG-0143 asks
-`releases.md` to name the tag body among what carries the changelog
-text; the wrap exemption stays here either way.
+so do not read the citation as covering it. §2 there now enumerates the
+tag body too, added 2026-08-18 (ROADMAP CFG-0143) so this citation has a
+source rather than resting on the sentence above; the wrap exemption
+itself stays here, which is what CFG-0098 item 9 decided.
 
 Changelog bullets routinely run past 72, and re-wrapping makes the tag
 stop matching the published notes — the one disagreement that standard
