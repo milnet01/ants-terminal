@@ -3881,6 +3881,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject maxSymProp;   maxSymProp["type"]   = "integer";
                                               maxSymProp["default"] = 200;
                                               maxSymProp["maximum"] = 1000;
+                    // ANTS-4469 — the cap now says how much it withheld, so a
+                    // caller can tell "I missed one" from "I missed four
+                    // hundred" without a second call at a raised cap.
+                                              maxSymProp["description"] =
+                        QStringLiteral("Cap on symbols[] (default 200). When "
+                            "it bites, the envelope carries truncated:true + "
+                            "symbols_dropped:<n> — the same field the "
+                            "max_bytes cap emits, so one caller branch "
+                            "handles both.");
                     // ANTS-1293 — response byte cap. max_symbols bounds the
                     // count; this bounds total size. Trims symbols[] from
                     // the tail and sets truncated + symbols_dropped.
@@ -6681,6 +6690,37 @@ void ClaudeIntegration::onMcpConnection() {
                         "the basename-derived one). Must not start "
                         "with '/' or contain '..' (ANTS-1906).");
                     props["path"]       = pathProp;
+                    // ANTS-4468 — `mode` was HONOURED by the handler and never
+                    // DECLARED here, so the ANTS-2175 checker (which diffs the
+                    // call's args against inputSchema.properties) correctly
+                    // flagged it — and the envelope then asserted both that the
+                    // argument was applied and that it was discarded, with the
+                    // gate_drift payload proving the first. The reporter read
+                    // it as a branch-ordering bug; the cause is the missing
+                    // declaration, so the fix is to declare it rather than to
+                    // suppress the advisory. Suppressing would have cost the
+                    // signal its meaning, which is the harm they named: an
+                    // ignored_args that fires on honoured arguments trains
+                    // callers to disregard it, and then a genuine typo
+                    // (mode:"gate-drift") reports nothing. Declaring it also
+                    // makes both non-default modes discoverable from the
+                    // schema instead of only from the description prose.
+                    QJsonObject modeProp; modeProp["type"] = "string";
+                    {
+                        QJsonArray en;
+                        en.append("gate_drift");
+                        en.append("list");
+                        modeProp["enum"] = en;
+                    }
+                    modeProp["description"] = QStringLiteral(
+                        "Optional response mode. Omit (with `id` or `path`) "
+                        "to parse one spec — the default. \"gate_drift\" "
+                        "takes NEITHER id nor path and reports which gated "
+                        "specs were edited since their last review loop "
+                        "{stale, current, ungated}. \"list\" is the explicit "
+                        "spelling of the enumerate-the-specs-dir behaviour "
+                        "that omitting id AND path already selects.");
+                    props["mode"]       = modeProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
@@ -7281,12 +7321,32 @@ void ClaudeIntegration::onMcpConnection() {
                         "rebuild). Refusals: no_project, no_build_dir "
                         "(no configured build/ with CMakeCache.txt), "
                         "focused_test_in_flight, bad_args, ctest_missing, "
-                        "ctest_failed (timeout/crash), unrecognised_output.");
+                        "ctest_failed (timeout/crash), unrecognised_output. "
+                        "ANTS-4472 — SIBLING VERB: this one answers \"do the "
+                        "tests pass?\". `mutation_probe` answers the other "
+                        "half, \"would they CATCH the defect?\" — it mutates "
+                        "a file, runs a selector, restores it, and REFUSES a "
+                        "mutation that changed nothing, so a green run cannot "
+                        "be misread as coverage the suite does not have. "
+                        "Reach for it before believing a passing test holds "
+                        "an invariant; it is deferred, so nothing surfaces it "
+                        "at session start.");
+                    // ANTS-4472 — the SessionStart prelude is at 1390 of its
+                    // 1400-byte cap, so mutation_probe cannot be named there.
+                    // It is named here instead — the contributor's own cheaper
+                    // variant — because a session running tests is exactly the
+                    // session that needs it: three consecutive sessions
+                    // hand-rolled the loop in bash, one of them without an
+                    // inert guard, because nothing surfaced the verb. The
+                    // substantive sentence lives in `description`, which has no
+                    // cap; `selection_hint` is capped at 240 chars by
+                    // ANTS-1453 HINT-3 and takes the short pointer only.
                     t["selection_hint"] = QStringLiteral(
                         "Use instead of a full `ctest` to verify a focused "
                         "change (5x-50x faster on mapped files). Build "
                         "FIRST — focused_test does not rebuild. Omit "
-                        "`changed_files` to use git status, or pass a set.");
+                        "`changed_files` to use git status, or pass a set. "
+                        "Sibling mutation_probe: would tests CATCH it?");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;

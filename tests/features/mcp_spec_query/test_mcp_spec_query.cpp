@@ -10,6 +10,18 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+// ANTS-4468 — this file is otherwise a source-scrape suite, but the bundle
+// (test_claude) links RemoteControl, so the mode contract is tested by CALLING
+// the verb. A scrape would only prove the refusal string is present in the
+// source; the defect being closed is about which branch actually runs.
+#include "remotecontrol.h"
+
+#include <QDir>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QTemporaryDir>
+
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
@@ -263,4 +275,74 @@ TEST(McpSpecQuery, Ants4352GateDriftMode) {
     EXPECT_NE(rcCpp.find("git_error"), std::string::npos)
         << "a spec whose git history could not be read must say so rather "
            "than land in `current`";
+}
+
+
+// ANTS-4468 — `mode` is DECLARED, and an unrecognised value is REFUSED.
+//
+// Two halves of one defect, reported by OneUp. The handler honoured
+// mode:"gate_drift" while the inputSchema declared only id/path/caller_cwd,
+// so the generic ANTS-2175 arg checker — which diffs a call's keys against
+// the declared properties — correctly flagged `mode` as ignored. The envelope
+// then asserted both that the argument was applied and that it was discarded,
+// with the gate_drift payload proving the first.
+//
+// The reporter's own severity argument is why the fix is to DECLARE the
+// property rather than to suppress the advisory: ignored_args is a
+// correctness signal, and one that fires on honoured arguments trains callers
+// to disregard it — costing the next session the one signal that would catch
+// a genuine typo. Which is the second half: with `mode` now a known key, the
+// name-diff checker says nothing about `mode:"gate-drift"`, and that value
+// used to fall through to the LIST branch and return ok:true with a spec list.
+// A list returned in answer to a drift question is a confident wrong answer,
+// so it refuses.
+TEST(McpSpecQuery, Ants4468ModeIsDeclaredAndUnknownModeRefuses) {
+    // The schema half is declared in ClaudeIntegration's tools/list builder,
+    // which this bundle does not link, so it is not asserted here. Worth
+    // recording why declaring it mattered beyond the advisory: spec_query's
+    // schema sets additionalProperties:false, so an undeclared `mode` was not
+    // merely reported as ignored — a strict MCP client was entitled to reject
+    // the call outright. What IS asserted here is the branch that runs.
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir().mkpath(root + QStringLiteral("/docs/specs"));
+
+    RemoteControl rc(nullptr);
+    auto call = [&](const QString &mode) {
+        QJsonObject r;
+        r[QStringLiteral("caller_cwd")] = root;
+        if (!mode.isEmpty()) r[QStringLiteral("mode")] = mode;
+        return rc.cmdSpecQuery(r).object();
+    };
+
+    // Half 2 — a typo refuses instead of silently listing.
+    const QJsonObject typo = call(QStringLiteral("gate-drift"));
+    EXPECT_FALSE(typo.value(QStringLiteral("ok")).toBool())
+        << "ANTS-4468: a misspelled mode used to fall through to the list "
+           "branch and answer a drift question with a spec list";
+    EXPECT_EQ(typo.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+    EXPECT_NE(typo.value(QStringLiteral("error")).toString()
+                  .indexOf(QStringLiteral("gate_drift")), -1)
+        << "the refusal must name what WAS accepted, so the caller "
+           "self-corrects in one round trip rather than guessing";
+
+    // Both declared values still work, so the refusal is not over-broad.
+    const QJsonObject drift = call(QStringLiteral("gate_drift"));
+    EXPECT_TRUE(drift.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(drift.value(QStringLiteral("mode")).toString(),
+              QStringLiteral("gate_drift"));
+
+    const QJsonObject listed = call(QStringLiteral("list"));
+    EXPECT_TRUE(listed.value(QStringLiteral("ok")).toBool())
+        << "\"list\" is the explicit spelling of what omitting id AND path "
+           "already selects — declaring it in the enum must not make it a "
+           "value the handler rejects";
+    EXPECT_EQ(listed.value(QStringLiteral("mode")).toString(),
+              QStringLiteral("list"));
+
+    // Omitting mode entirely is unchanged.
+    const QJsonObject bare = call(QString());
+    EXPECT_TRUE(bare.value(QStringLiteral("ok")).toBool());
 }

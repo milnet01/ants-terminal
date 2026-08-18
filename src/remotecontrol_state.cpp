@@ -2216,9 +2216,25 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         }
         // ANTS-4352 — mode:"gate_drift" answers "has this gated document been
         // edited since its last review loop?", which nothing could answer.
-        if (req.value(QStringLiteral("mode")).toString()
-                == QLatin1String("gate_drift")) {
+        const QString mode = req.value(QStringLiteral("mode")).toString();
+        if (mode == QLatin1String("gate_drift")) {
             return QJsonDocument(specGateDriftEnvelope(rootCanonical));
+        }
+        // ANTS-4468 — an unrecognised mode used to fall through to the list
+        // branch, so `mode:"gate-drift"` returned a spec LIST with ok:true and
+        // nothing saying the requested mode had not run. That is the failure
+        // the reporter said ignored_args exists to catch and could no longer
+        // catch, now that `mode` is a declared property: the name-diff checker
+        // sees a known key and says nothing, and the value is never validated.
+        // Refuse instead, naming what was accepted — a list returned in answer
+        // to a drift question is a confident wrong answer.
+        if (!mode.isEmpty() && mode != QLatin1String("list")) {
+            return QJsonDocument(sqErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("spec_query: unknown mode \"%1\" — expected "
+                               "\"gate_drift\", \"list\", or omit it with an "
+                               "`id`/`path` to parse one spec")
+                    .arg(mode)));
         }
         return QJsonDocument(specListEnvelope(rootCanonical));
     }

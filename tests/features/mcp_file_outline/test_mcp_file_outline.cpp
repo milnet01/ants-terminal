@@ -1096,3 +1096,63 @@ TEST(McpFileOutline, Ants3839SymbolNameFilter) {
     EXPECT_TRUE(capped.value(QStringLiteral("truncated")).toBool())
         << "ANTS-3839: a filtered list cut by max_symbols is flagged";
 }
+
+// ANTS-4469 — a `max_symbols` truncation says HOW MANY it withheld.
+//
+// The asymmetry this closes was inside one verb: the max_bytes cap has
+// emitted `symbols_dropped` since ANTS-1293 and `filter` has emitted
+// symbols_considered / symbols_filtered_out since ANTS-4374, while
+// max_symbols — the only one of the three with a non-zero DEFAULT, so the
+// one most likely to fire without the caller asking — reported a bare
+// `truncated:true`. A caller could not tell whether it had missed one symbol
+// or four hundred, which is the fact that decides whether to re-call at a
+// raised cap or accept the outline as effectively complete.
+TEST(McpFileOutline, Ants4469MaxSymbolsReportsDroppedCount) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    QString body;
+    for (int i = 0; i < 50; ++i)
+        body += QStringLiteral("void filler%1() {\n}\n").arg(i);
+
+    const QString rel = QStringLiteral("src/many.cpp");
+    QDir().mkpath(root + QStringLiteral("/src"));
+    {
+        QFile f(root + QLatin1Char('/') + rel);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(body.toUtf8());
+    }
+
+    RemoteControl rc(nullptr);
+    auto call = [&](const QJsonObject &extra) {
+        QJsonObject r;
+        r[QStringLiteral("caller_cwd")] = root;
+        r[QStringLiteral("path")]       = rel;
+        for (auto it = extra.begin(); it != extra.end(); ++it)
+            r[it.key()] = it.value();
+        return rc.cmdFileOutline(r).object();
+    };
+
+    const QJsonObject capped =
+        call({{QStringLiteral("max_symbols"), 3}});
+    ASSERT_TRUE(capped.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(capped.value(QStringLiteral("truncated")).toBool())
+        << "precondition: 50 symbols against a cap of 3 must truncate";
+    EXPECT_EQ(capped.value(QStringLiteral("symbols")).toArray().size(), 3);
+    ASSERT_TRUE(capped.contains(QStringLiteral("symbols_dropped")))
+        << "ANTS-4469: a bare truncated:true cannot distinguish missing one "
+           "symbol from missing four hundred";
+    EXPECT_EQ(capped.value(QStringLiteral("symbols_dropped")).toInt(), 47)
+        << "the count is exact, not an estimate — seenSymbols increments on "
+           "every regex match whether or not the symbol was kept";
+
+    // An UNtruncated outline must not carry the field: a zero would read as
+    // "the cap bit and dropped nothing", which is a different claim.
+    const QJsonObject whole = call({});
+    ASSERT_TRUE(whole.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(whole.value(QStringLiteral("truncated")).toBool());
+    EXPECT_FALSE(whole.contains(QStringLiteral("symbols_dropped")))
+        << "ANTS-4469: the field is a truncation report, not a always-present "
+           "counter";
+}

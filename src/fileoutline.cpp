@@ -1028,6 +1028,20 @@ QJsonObject compute(const QString &absPath,
     out["header_doc"]  = headerDoc;
     out["symbols"]     = symbols;
     out["truncated"]   = truncated;
+    // ANTS-4472's sibling, ANTS-4469 — a bare `truncated:true` cannot tell a
+    // caller whether it missed one symbol or four hundred, which is exactly
+    // the fact that decides whether to re-call with a raised cap or accept the
+    // outline as effectively complete. The asymmetry was inside this one verb:
+    // the max_bytes path already emits `symbols_dropped` (ANTS-1293) and
+    // `filter` already emits symbols_considered / symbols_filtered_out
+    // (ANTS-4374), leaving max_symbols as the only narrowing mechanism of the
+    // three reporting no number — and the only one with a non-zero DEFAULT
+    // (200), so also the one most likely to fire unasked. `seenSymbols` is
+    // incremented on every regex match whether or not the symbol was kept, so
+    // the count is exact rather than an estimate; the field name is reused
+    // from the max_bytes path deliberately, so one caller branch handles both.
+    if (truncated)
+        out["symbols_dropped"] = seenSymbols - symbols.size();
     out["total_bytes"] = static_cast<double>(totalBytes);
     out["total_lines"] = totalLines;
     // ANTS-4366 — "this file genuinely has no top-level symbols" and "the

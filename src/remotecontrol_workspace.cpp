@@ -1376,8 +1376,13 @@ static QJsonObject outlineOneFile(const QString &rawPath,
         // if it bit — otherwise a capped list reads as the complete set of
         // matches, which is the "cap with no flag" failure.
         if (kept.size() > maxSymbols) {
+            // ANTS-4469 — same rule as the engine's own cap: say how many.
+            // Here the drop is against the FILTERED set, so it is not the same
+            // number as symbols_filtered_out below and both are needed.
+            const int dropped = kept.size() - maxSymbols;
             while (kept.size() > maxSymbols) kept.removeLast();
-            result[QStringLiteral("truncated")] = true;
+            result[QStringLiteral("truncated")]       = true;
+            result[QStringLiteral("symbols_dropped")] = dropped;
         }
         result[QStringLiteral("symbols")] = kept;
         // ANTS-4374's invariant — a zero has to say what was looked at.
