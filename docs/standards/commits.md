@@ -455,6 +455,19 @@ no tagger. Push them explicitly rather than relying on a bulk push, and
 update for them, so the name comes to mean two different commits. On a
 collision, stop and ask.
 
+**`git push --follow-tags` is the explicit form; `git push --tags` is
+the bulk push this rules out.** `--follow-tags` sends only the annotated
+tags reachable from the commits being pushed, so the branch you named
+decides what leaves the machine. `--tags` sends every local tag,
+including ones never meant to leave it. Pushing the tag by name in a
+second command is explicit too. On a metered repository it buys a second
+CI run for nothing, and for a release tag [releases.md](releases.md) §4
+rules it out by name. Settled 2026-08-18 (ROADMAP CFG-0133): this
+section said "explicitly" and named no command, while `releases.md` §4
+and the global `CLAUDE.md` §6 both prescribe `--follow-tags`. A
+conformer running the prescribed command could not tell whether it
+breached this rule.
+
 Release tagging is [releases.md](releases.md) §4, which states the
 release tag's own push rule rather than deferring it back here.
 
