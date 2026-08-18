@@ -518,29 +518,90 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
                 break;
             }
         }
+        // ANTS-4489 (reported by Vestige) — classify by POSITION, not by
+        // first match. This scan used to refuse on any canonical `### `
+        // heading anywhere in the section. Vestige's `[Unreleased]` spans
+        // lines 23-10970: ~500 newest-first dated topics, then a six-heading
+        // Keep-a-Changelog tail left from before that project converted. So a
+        // dated-majority section was refused on the strength of its tail — and
+        // told to "use op:add", which appends INTO that tail ~10,800 lines
+        // below the newest entry, i.e. the very act that produced the mixture.
+        // The guard was self-perpetuating: each session that obeyed it added
+        // another flat heading.
+        //
+        // Position settles it, and is the whole test. This verb inserts at the
+        // TOP of the section (see below). So when a dated topic already sits
+        // ABOVE the first flat heading, the new entry lands among its own kind
+        // and provably never touches the tail — nothing is made worse, because
+        // the mixture is already there and the insert does not go near it.
+        // Refuse only when no dated topic precedes the flat heading, which is
+        // the genuinely flat section ANTS-4356 was protecting.
+        //
+        // A dated topic is `### YYYY-MM-DD …`, which is what the block below
+        // emits. QDate parses it rather than a regex matching its shape, so a
+        // `### 2026-13-45 Added — …` is not mistaken for one.
+        const auto isDatedTopic = [](const QString &t) {
+            return QDate::fromString(t.mid(4, 10),
+                                     QStringLiteral("yyyy-MM-dd")).isValid();
+        };
         int flatCategoryLine = -1;
+        int datedTopicLine   = -1;
+        int flatCount = 0, datedCount = 0;
         for (int i = unrel + 1; i < sectionEnd && i < lines.size(); ++i) {
             const QString t = lines.at(i).trimmed();
             if (!t.startsWith(QStringLiteral("### "))) continue;
             if (canonicalCategories().contains(t.mid(4).trimmed(),
                                                Qt::CaseInsensitive)) {
-                flatCategoryLine = i + 1;   // 1-based, for humans
-                break;
+                ++flatCount;
+                if (flatCategoryLine < 0)
+                    flatCategoryLine = i + 1;   // 1-based, for humans
+            } else if (isDatedTopic(t)) {
+                ++datedCount;
+                if (datedTopicLine < 0) datedTopicLine = i + 1;
             }
         }
-        if (flatCategoryLine > 0) {
+        // A dated topic ABOVE the first flat heading = a dated section with a
+        // legacy tail. The top insert is safe there, so allow it.
+        const bool datedLeads =
+            datedTopicLine > 0 &&
+            (flatCategoryLine < 0 || datedTopicLine < flatCategoryLine);
+        if (flatCategoryLine > 0 && !datedLeads) {
+            const QString firstFlat =
+                lines.at(flatCategoryLine - 1).trimmed().mid(4).trimmed();
             r.code = QStringLiteral("flat_section");
-            r.error = QStringLiteral(
-                "changelog_log: `## [Unreleased]` is FLAT — it carries "
-                "Keep-a-Changelog category headings (first `### %1` at line "
-                "%2), not dated topics. Writing a dated topic here produces a "
-                "MIXED section, after which op:\"add\" and op:\"normalize\" "
-                "both refuse `feature_grouped_section` and the flat write path "
-                "is gone for good. Use op:\"add\" for this layout. To convert "
-                "the project to dated topics, empty `[Unreleased]` first — "
-                "which is what converting means.")
-                    .arg(lines.at(flatCategoryLine - 1).trimmed().mid(4).trimmed())
-                    .arg(flatCategoryLine);
+            // Say what was FOUND rather than asserting a shape. The old message
+            // read "is FLAT" at a section that was 99% dated, which sent the
+            // reporter looking for a formatting error at the top of the file
+            // that did not exist.
+            r.error =
+                datedCount > 0
+                    ? QStringLiteral(
+                          "changelog_log: `## [Unreleased]` is MIXED — %1 flat "
+                          "Keep-a-Changelog category heading(s) (first `### %2` "
+                          "at line %3) sit ABOVE %4 dated topic(s) (first at "
+                          "line %5). A dated topic inserted at the top of the "
+                          "section would land inside the flat block, so this is "
+                          "refused. Move the dated topics above the category "
+                          "headings, or use op:\"add\" for the flat layout.")
+                          .arg(flatCount)
+                          .arg(firstFlat)
+                          .arg(flatCategoryLine)
+                          .arg(datedCount)
+                          .arg(datedTopicLine)
+                    : QStringLiteral(
+                          "changelog_log: `## [Unreleased]` is FLAT — it "
+                          "carries %1 Keep-a-Changelog category heading(s) "
+                          "(first `### %2` at line %3) and no dated topic. "
+                          "Writing a dated topic here produces a MIXED "
+                          "section, after which op:\"add\" and op:\"normalize\" "
+                          "both refuse `feature_grouped_section` and the flat "
+                          "write path is gone for good. Use op:\"add\" for this "
+                          "layout. To convert the project to dated topics, "
+                          "empty `[Unreleased]` first — which is what "
+                          "converting means.")
+                          .arg(flatCount)
+                          .arg(firstFlat)
+                          .arg(flatCategoryLine);
             return r;
         }
     }

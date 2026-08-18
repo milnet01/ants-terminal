@@ -324,3 +324,133 @@ TEST(changelog_log_subsection, Ants4356RefusesAGenuinelyFlatSection) {
         QString(), {});
     EXPECT_TRUE(fresh.ok) << fresh.error.toStdString();
 }
+
+// ANTS-4489 (reported by Vestige) — the guard above classified by FIRST
+// MATCH, so any canonical `### ` heading anywhere under `## [Unreleased]`
+// made the whole section "flat". Vestige's section is ~500 newest-first dated
+// topics followed by a six-heading Keep-a-Changelog tail left over from before
+// that project converted, and it was refused on the strength of the tail.
+//
+// Two things made that worse than a false negative. The refusal ASSERTED the
+// section was flat, which sent the reporter looking for a formatting error at
+// the top of a file that did not have one. And it advised op:"add", which
+// appends into the legacy tail ~10,800 lines below the newest entry — the very
+// act that produced the mixture, so obeying the guard fed it.
+//
+// The insert lands at the TOP of the section, so where a dated topic already
+// leads, it goes among its own kind and cannot touch the tail.
+TEST(changelog_log_subsection, Ants4489DatedMajorityWithALegacyTailIsAccepted) {
+    // Dated topics first, legacy category tail last — Vestige's shape.
+    const char *datedWithLegacyTail =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### 2026-08-17 Fixed — A recent dated topic.\n\n"
+        "- **Something recent.** (PROJ-2)\n\n"
+        "### 2026-08-16 Added — An older dated topic.\n\n"
+        "- **Something older.** (PROJ-1)\n\n"
+        "### Added\n\n"
+        "- **A legacy flat entry nobody has migrated.**\n\n"
+        "### Fixed\n\n"
+        "- **Another legacy flat entry.**\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n";
+
+    const auto r = ChangelogLog::insertUnreleasedSubsection(
+        QString::fromUtf8(datedWithLegacyTail), QStringLiteral("2026-08-18"),
+        QStringLiteral("Fixed"), QStringLiteral("A new dated topic (PROJ-9)"),
+        QString(), {});
+    EXPECT_TRUE(r.ok)
+        << "a dated-majority section with a legacy category tail must accept a "
+           "dated topic — the insert goes at the TOP and never touches the "
+           "tail: "
+        << r.error.toStdString();
+
+    // The entry landed at the top, ABOVE the previously-newest dated topic —
+    // not appended into the legacy tail, which is where the old advice sent it.
+    const QStringList out = r.markdown.split(QLatin1Char('\n'));
+    int newTopic = -1, oldTopic = -1, legacyAdded = -1;
+    for (int i = 0; i < out.size(); ++i) {
+        const QString t = out.at(i).trimmed();
+        if (newTopic < 0 && t.startsWith(QStringLiteral("### 2026-08-18 ")))
+            newTopic = i;
+        if (oldTopic < 0 && t.startsWith(QStringLiteral("### 2026-08-17 ")))
+            oldTopic = i;
+        if (legacyAdded < 0 && t == QStringLiteral("### Added"))
+            legacyAdded = i;
+    }
+    ASSERT_GE(newTopic, 0) << "the new dated topic was not written at all";
+    ASSERT_GE(oldTopic, 0);
+    ASSERT_GE(legacyAdded, 0) << "the legacy tail must survive untouched";
+    EXPECT_LT(newTopic, oldTopic)
+        << "newest-first: the new topic must sit above the previous newest";
+    EXPECT_LT(newTopic, legacyAdded)
+        << "the new topic must not land inside the legacy category tail";
+}
+
+// The other half of the position test, and the one that keeps ANTS-4356's
+// guard real: a flat section that has ALREADY been mixed — category headings
+// first, a dated topic below them — still refuses, because an insert at the
+// top would land inside the flat block. The refusal now says MIXED and names
+// both populations rather than asserting the section is flat.
+TEST(changelog_log_subsection, Ants4489FlatLeadingAMixedSectionStillRefuses) {
+    const char *flatThenDated =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **A flat Keep-a-Changelog entry.**\n\n"
+        "### 2026-08-17 Fixed — A dated topic written in below it.\n\n"
+        "- **Something.** (PROJ-2)\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n";
+
+    const auto r = ChangelogLog::insertUnreleasedSubsection(
+        QString::fromUtf8(flatThenDated), QStringLiteral("2026-08-18"),
+        QStringLiteral("Fixed"), QStringLiteral("A new dated topic (PROJ-9)"),
+        QString(), {});
+    EXPECT_FALSE(r.ok)
+        << "a flat heading ABOVE the dated topics means a top insert lands "
+           "inside the flat block — that must still refuse";
+    EXPECT_EQ(r.code, QStringLiteral("flat_section"));
+    // `is MIXED`, not bare `MIXED`. The pre-ANTS-4489 message asserted the
+    // section "is FLAT" and went on to warn that writing here "produces a
+    // MIXED section" — so a `contains("MIXED")` assertion passes against the
+    // very message this test exists to replace. Verified: it did, on the
+    // red-first run. Assert the claim, and assert the old claim is gone.
+    EXPECT_TRUE(r.error.contains(QStringLiteral("is MIXED")))
+        << "the refusal must say what it FOUND, not assert the section is "
+           "flat when it demonstrably carries dated topics: "
+        << r.error.toStdString();
+    EXPECT_FALSE(r.error.contains(QStringLiteral("is FLAT")))
+        << "a section carrying dated topics must not be described as flat: "
+        << r.error.toStdString();
+    EXPECT_TRUE(r.error.contains(QStringLiteral("1 dated topic")))
+        << "the refusal must name both populations it found: "
+        << r.error.toStdString();
+    EXPECT_TRUE(r.markdown.isEmpty() ||
+                r.markdown == QString::fromUtf8(flatThenDated))
+        << "a refusal must not have written anything";
+}
+
+// A date-SHAPED heading that is not a real date must not be read as a dated
+// topic — otherwise a typo silently converts the guard into a no-op for that
+// section. QDate parsing rather than a shape regex is what makes this hold.
+TEST(changelog_log_subsection, Ants4489AnInvalidDateIsNotADatedTopic) {
+    const char *bogusDate =
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### 2026-13-45 Fixed — Not a real date.\n\n"
+        "- **Something.** (PROJ-2)\n\n"
+        "### Added\n\n"
+        "- **A flat entry.**\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n";
+
+    const auto r = ChangelogLog::insertUnreleasedSubsection(
+        QString::fromUtf8(bogusDate), QStringLiteral("2026-08-18"),
+        QStringLiteral("Fixed"), QStringLiteral("A new dated topic (PROJ-9)"),
+        QString(), {});
+    EXPECT_FALSE(r.ok)
+        << "`### 2026-13-45 …` is not a dated topic, so this section is flat "
+           "and the guard must still fire";
+    EXPECT_EQ(r.code, QStringLiteral("flat_section"));
+}

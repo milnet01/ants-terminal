@@ -10994,17 +10994,41 @@ void ClaudeIntegration::onMcpConnection() {
                         "validated verbatim, never rewritten, and must match "
                         "[a-z0-9][a-z0-9-]*. Re-running over an unchanged project "
                         "is idempotent; re-running with a different name or slug "
-                        "is refused rather than silently applied. Refusals: "
+                        "is refused rather than silently applied. ANTS-4482 — it "
+                        "NEVER writes ROADMAP.md, it only reads: the file is "
+                        "first re-rendered by the next roadmap_log write, so a "
+                        "byte-identical file and a clean `git status` right after "
+                        "a migration are EXPECTED and are not a sign it did not "
+                        "run (query the store to confirm). ANTS-4490 — and only "
+                        "an `ants-v1` roadmap is SERVED from the store "
+                        "afterwards: a github-task-list or pass-headings project "
+                        "migrates ok:true and roadmap_query keeps answering "
+                        "source:\"markdown\". The store is machine-global "
+                        "(~/.local/share/ants-terminal/roadmap.sqlite), not "
+                        "per-project. Refusals: "
                         "no_project, no_roadmap, case_ambiguous, not_utf8, "
                         "format_mismatch, bad_args, slug_collision, store_failed, "
                         "migrate_failed. caller_cwd Required.");
                     // ANTS-1453 — selection_hint: one sentence on WHEN to
                     // reach for this verb rather than what it does.
+                    // ANTS-4480 (reported by AI Prompts and Fin Break, the same
+                    // day, having each lost most of a session to it) — this read
+                    // "Use ONCE per project", which is the line a session reads
+                    // when deciding whether to call the verb at all. Both read it
+                    // as one-shot-and-dangerous and did not re-run: one nearly
+                    // stopped at "already migrated, nothing to do" (the re-run it
+                    // almost skipped reconciled 3 drifted items), the other hand-
+                    // edited a 616 KB generated ROADMAP.md instead. Re-ingesting
+                    // IS the routine drift repair and the hint now says so.
+                    // Two house rules bind this string and both are tested:
+                    // ≤ 240 chars (McpSelectionHint HINT-3) and it must open
+                    // with "Use " (McpOrientation_Inv7.SelectionHintFormat).
                     t["selection_hint"] = QStringLiteral(
-                        "Use ONCE per project to move it off hand-edited "
-                        "markdown onto the roadmap store — roadmap_query / "
-                        "roadmap_log then serve it from the store, no restart. "
-                        "Run dry_run:true first for the counts and notes.");
+                        "Use it once to move a project onto the roadmap store, "
+                        "and AGAIN any time to reconcile a store that has "
+                        "drifted behind ROADMAP.md — re-ingesting is routine and "
+                        "idempotent. dry_run:true previews the counts. It never "
+                        "writes ROADMAP.md.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;

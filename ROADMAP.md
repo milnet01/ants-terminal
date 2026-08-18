@@ -35521,6 +35521,39 @@ happen.
   derived-path miss, scanning the conventional shared root as well as the
   parent of caller_cwd. Same field names as the sibling so one caller path
   handles both, following ANTS-4418 and ANTS-4350.
+  Investigated 2026-08-18, not implemented: the fix as written cannot be built,
+  and the reason is worth having before someone tries.
+
+  Mechanism confirmed. `fbNotFound` (remotecontrol_workspace.cpp:2506) already
+  emits `candidates` + `hint` — that half shipped with ANTS-3366 and the
+  ANTS-4104 comment says it was carried over deliberately. What it calls is
+  `feedbackSiblingCandidates` (:2445), and that function scans exactly ONE
+  directory: `QFileInfo(candidatePath).absoluteDir()`. So on the reported repro
+  the derived path is /home/ants/.claude_Ants_MCP_Feedback.md, the scanned
+  directory is /home/ants, there are no feedback files in it, `cands` is empty
+  and fbNotFound returns before it can attach either field. The verb is not
+  missing the feature; the feature has nothing to find.
+
+  The blocker: "scan the conventional shared root as well" presumes a shared root
+  the code can derive, and there isn't one. For every other project the shared
+  root IS the parent of caller_cwd, which is already scanned. For ~/.claude it is
+  /mnt/Games/Scripts/Linux — a different filesystem branch entirely, connected to
+  the caller by nothing in the path. Hardcoding that constant into the source
+  would be wrong on any other machine.
+
+  Three routes, none free, and picking one is a decision rather than an
+  implementation detail:
+    1. A config key naming the shared root (mcp-config-keys.md), defaulting to
+       the parent of caller_cwd. Explicit, portable, one more key to document.
+    2. Derive it from the roadmap store's `project` table, which holds every
+       registered project's root — real data, already maintained, but it couples
+       the feedback verbs to the roadmap store for a hint.
+    3. Widen the scan to the parent of each *tab's* cwd. Cheap, and it fails for
+       exactly the single-tab case where the hint is most wanted.
+
+  Route 1 is the recommendation. Filed here rather than guessed at, because all
+  three change what the verb's contract promises and route 2 changes what it
+  depends on.
   **Layman:** When the feedback tool cannot find a project's file it says only "not found", instead of listing the nearby files it could have meant.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-18.
@@ -35715,6 +35748,27 @@ are closed inline in the feedback files rather than filed here.
   If it genuinely cannot be resolved under rollback, OMIT the field rather than emitting 0, so
   absent is distinguishable from zero. A caller scripting "migrate only if not already present"
   on `project_id != 0` gets it backwards on every dry run.
+  Blocked on a spec amendment, found 2026-08-18 while implementing. ANTS-3855
+  § 2.4 SPECIFIES this behaviour — "Under `dry_run` it is `0`" — and INV-3 tests
+  it by name ("`project_id` is `0` on the dry run and non-zero on the real one").
+  So the code is conforming and the contract is what is wrong.
+
+  The spec's stated reason is sound but over-general: `registerProject()`'s rowid
+  is provisional inside a transaction about to roll back. That holds for a project
+  this run is REGISTERING. It does not hold for one already in the store, whose id
+  is durable, pre-existing, and the very thing the same envelope's
+  items_unchanged / items_updated counts were diffed against — which is the case
+  all three reporters hit.
+
+  The fix is two lines and the value is already in hand: roadmapmigrateverb.cpp
+  reads `owner = store.readProjectByRoot(...)` at :243, BEFORE the transaction
+  opens, purely to check for a re-slug. Report `owner->projectId` when it exists,
+  omit the field when it does not.
+
+  Sequence: amend ANTS-3855 § 2.4 and INV-3, run the rule-14 gate (a conformer
+  reading `project_id: 0` as "not registered" would do something different, so it
+  is a change of direction), then implement. Attempted and reverted rather than
+  shipped against a live tested invariant.
   **Layman:** The migration preview says "no such project" even when it found the project, so a pre-flight check looks like a failure.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (AI Prompts, OneUp, Local Web Server Manager — three files, same finding).
@@ -36199,6 +36253,39 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4495] **ANTS-4065 INV-7 names a note code the source has never emitted, and its own test pins the other spelling.**
+  Found while checking whether ANTS-4481 was spec-governed. Three places, two
+  spellings, and the test sides with the code so the divergence is invisible.
+
+  - `docs/specs/ANTS-4065-import-mapping-contract.md` INV-7 requires "a note whose
+    code is exactly **path_unresolved**", and its loop-4 row records the amendment
+    deliberately: "INV-7's note code was unnamed, alone among this spec's five
+    notes, so its clause could not fail — now path_unresolved".
+  - `src/roadmapmigrate.cpp` validatePaths emits `unresolved_path`.
+  - `tests/features/roadmap_import_mapping/` asserts `unresolved_path`.
+
+  So the loop-4 amendment named a code, and neither the source nor the test
+  followed it. The invariant reads as tested and is not: the shipped test would
+  pass with the spec deleted.
+
+  Note the `extras` KEY is `unresolved_path` in all three and is not in question —
+  the spec uses that spelling itself at § 2.5. Only the note code differs, which
+  is what makes it easy to read past.
+
+  Which way to resolve is a maintainer call and this item does not presume it. The
+  argument for changing the SPEC: `unresolved_path` is what shipped, what two
+  reporting sessions observed in the wild this week (ANTS-4481), and what keeps
+  the note code and the extras key spelled alike. The argument for changing the
+  CODE: `mcp-error-codes.md` is the canonical taxonomy and the spec is the
+  contract. Either way the test must assert whichever wins, because today it
+  asserts the loser and reports green.
+
+  Do this before ANTS-4481, which edits exactly this note's construction.
+  **Layman:** A rule document and the code it governs disagree about the name of one error label, and the test agrees with the code, so nothing catches it.
+  Kind: fix.
+  Source: in-session-2026-08-18, found while implementing ANTS-4481.
+  Lanes: mcp, roadmap-store, docs.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
