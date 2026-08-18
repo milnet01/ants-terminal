@@ -433,7 +433,7 @@ a version is bumped, committed and tagged, the release is half-cut
 until it is pushed and its checks have run — and a half-cut release is
 worse than the minutes it saves: the tag exists on one machine, nothing
 is published, and the next session cannot tell a queued release from a
-failed one. So [releases.md](releases.md) §6 step 7 pushes without
+failed one. So [releases.md](releases.md) §6 step 8 pushes without
 asking, and this section's batch rule does not apply to it. Everything
 else on a metered repository still queues. Written down 2026-08-14
 (ROADMAP CFG-0098) because the two standards had said opposite things
