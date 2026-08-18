@@ -40,7 +40,8 @@ constexpr int kFormatSniffBytes = 4096;
 //   v4 = ANTS-1880 widened to docs/{,private/,internal/,fork/}phases (phasesDir field) — per-phase design docs (Vestige and similar projects keep phase_<NN>_<topic>_design.md outside docs/specs/)
 //   v5 = ANTS-1903 — body-scan fallback resolves the false-unknown case (a long preamble + first-bullet beyond the 4 KB sniff budget); invalidates pre-1903 caches that returned format:"unknown" + bullet_count_estimate:0 on a clearly-structured file
 //   v6 = ANTS-2138 — standardsFiles now enumerates the *.md INSIDE a resolved canonical standards/ dir (previously populated only by the no-canonical-dir name-glob fallback, so a project with docs/standards/ reported standards_files:[]); invalidates pre-2138 caches that stored the empty list
-constexpr int kProbeSetVersion  = 6;
+//   v7 = ANTS-4439 — the AppStream probe was single-level, so a project packaging for more than one distro (packaging/obs/, packaging/flatpak/) reported appstream_metainfo:"", indistinguishable from shipping no AppStream metadata at all. Widened to one level under packaging/ and pkg/, and to the legacy *.appdata.xml spelling (probed after every *.metainfo.xml candidate, so the current name still wins). Same widening-needs-a-bump case ANTS-1620 already paid for once on the ANTS-1493 set: without it, cached envelopes keep the empty answer and the narrow probed_paths[] echo until 7-day TTL expiry
+constexpr int kProbeSetVersion  = 7;
 
 // ANTS-1903 — per-branch trace of the format sniffer's decision.
 // Surfaces which branches scored a hit vs miss on each pass so a

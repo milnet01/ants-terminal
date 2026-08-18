@@ -120,6 +120,85 @@ TEST(ProjectLayoutEngine, ScanFindsAppStreamMetainfo) {
               QString("packaging/com.example.app.metainfo.xml"));
 }
 
+// ANTS-4439 (reported by Fin Break) — every probe was SINGLE-LEVEL, and a
+// project packaging for more than one distro puts each recipe in its own
+// directory. finbreak's file is at packaging/obs/…metainfo.xml, beside
+// packaging/flatpak/, and came back as an empty string — indistinguishable from
+// a project shipping no AppStream metadata at all, which is the opposite
+// behaviour. A release path keyed on the field silently skips the release-notes
+// sync and nobody learns why.
+TEST(ProjectLayoutEngine, Ants4439FindsMetainfoOneLevelUnderPackaging) {
+    QTemporaryDir td;
+    // The reported layout: two distro recipes side by side, nothing flat.
+    writeFile(td.path() + "/packaging/flatpak/flatpak-build.yaml", "x: 1\n");
+    writeFile(td.path() + "/packaging/obs/io.github.milnet01.finbreak.metainfo.xml",
+              "<component></component>");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.appstreamMetainfo,
+              QString("packaging/obs/io.github.milnet01.finbreak.metainfo.xml"));
+}
+
+TEST(ProjectLayoutEngine, Ants4439FindsMetainfoOneLevelUnderPkg) {
+    QTemporaryDir td;
+    writeFile(td.path() + "/pkg/arch/com.example.app.metainfo.xml",
+              "<component></component>");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.appstreamMetainfo,
+              QString("pkg/arch/com.example.app.metainfo.xml"));
+}
+
+// Probe ORDER is the guarantee that this widening cannot change an answer that
+// already resolved: every flat *.metainfo.xml candidate is tried before any
+// nested one. Without it a project carrying both would start reporting the
+// nested file, which is a silent behaviour change for projects that were fine.
+TEST(ProjectLayoutEngine, Ants4439FlatMetainfoStillBeatsANestedOne) {
+    QTemporaryDir td;
+    writeFile(td.path() + "/packaging/com.example.flat.metainfo.xml",
+              "<component></component>");
+    writeFile(td.path() + "/packaging/obs/com.example.nested.metainfo.xml",
+              "<component></component>");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.appstreamMetainfo,
+              QString("packaging/com.example.flat.metainfo.xml"))
+        << "a flat candidate must still win, or the widening silently moves "
+           "the answer for projects that already resolved";
+}
+
+// The pre-2016 AppStream spelling. Probed after EVERY *.metainfo.xml candidate,
+// so a project carrying both keeps the current name.
+TEST(ProjectLayoutEngine, Ants4439FindsLegacyAppdataXml) {
+    QTemporaryDir td;
+    writeFile(td.path() + "/packaging/com.example.app.appdata.xml",
+              "<component></component>");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.appstreamMetainfo,
+              QString("packaging/com.example.app.appdata.xml"));
+}
+
+TEST(ProjectLayoutEngine, Ants4439MetainfoBeatsAppdataEvenWhenNested) {
+    QTemporaryDir td;
+    // appdata flat, metainfo nested — the current name must still win, which is
+    // only true because the pattern loop is the OUTER one.
+    writeFile(td.path() + "/packaging/com.example.legacy.appdata.xml",
+              "<component></component>");
+    writeFile(td.path() + "/packaging/obs/com.example.current.metainfo.xml",
+              "<component></component>");
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.appstreamMetainfo,
+              QString("packaging/obs/com.example.current.metainfo.xml"))
+        << "*.metainfo.xml is the current spelling and must be preferred over "
+           "a legacy *.appdata.xml wherever either sits";
+}
+
+// A widening that does not bump kProbeSetVersion leaves cached envelopes
+// serving the old empty answer until 7-day TTL expiry. ANTS-1620 already paid
+// for that once, on the ANTS-1493 widening of this same probe set.
+TEST(ProjectLayoutEngine, Ants4439ProbeSetVersionWasBumped) {
+    EXPECT_GE(PLE::kProbeSetVersion, 7)
+        << "widening the AppStream probe set requires a kProbeSetVersion bump, "
+           "or pre-existing caches keep the narrow answer until TTL";
+}
+
 // INV-3 — mtime invalidation: cache fresh when nothing changed;
 // advance a probed path's mtime → isStale returns true.
 TEST(ProjectLayoutEngine, IsStaleOnMtimeAdvance) {

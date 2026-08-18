@@ -88,14 +88,31 @@ TEST(spec_query_phases_layout, Inv4LayoutEnvelopeCarriesPhasesDir) {
 TEST(spec_query_phases_layout, Inv5ProbeSetVersionBumped) {
     expect_reset();
     const std::string h = ants_test::slurpFile(SRC_PROJECTLAYOUTENGINE_H_PATH);
-    const bool ge4 =
-        contains(h, "kProbeSetVersion  = 4") ||
-        contains(h, "kProbeSetVersion = 4") ||
-        contains(h, "kProbeSetVersion  = 5") ||
-        contains(h, "kProbeSetVersion = 5") ||
-        contains(h, "kProbeSetVersion  = 6") ||
-        contains(h, "kProbeSetVersion = 6");
-    expect(ge4, "INV-5: kProbeSetVersion bumped (≥4)");
+    // ANTS-4439 — this was a whitelist of the literals 4, 5 and 6 while calling
+    // itself "≥4", so bumping a constant whose entire purpose is to be bumped
+    // reddened it, at a distance, in an unrelated suite. It had already been
+    // extended twice for that reason. Parse the value instead: the assertion the
+    // name states is the one it now makes, and no future bump touches this file.
+    int version = -1;
+    const std::string decl = "constexpr int kProbeSetVersion";
+    const size_t at = h.find(decl);
+    if (at != std::string::npos) {
+        const size_t eq = h.find('=', at + decl.size());
+        if (eq != std::string::npos) {
+            size_t i = eq + 1;
+            while (i < h.size() && (h[i] == ' ' || h[i] == '\t')) ++i;
+            int acc = 0;
+            bool any = false;
+            while (i < h.size() && h[i] >= '0' && h[i] <= '9') {
+                acc = acc * 10 + (h[i] - '0');
+                any = true;
+                ++i;
+            }
+            if (any) version = acc;
+        }
+    }
+    expect(version >= 4, "INV-5: kProbeSetVersion bumped (≥4)",
+           std::string("parsed ") + std::to_string(version));
     EXPECT_EQ(0, expect_failures());
 }
 #endif

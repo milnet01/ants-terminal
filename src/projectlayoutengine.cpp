@@ -412,21 +412,64 @@ void scanAppStream(const QString &cwd, QString &out,
         QStringLiteral("data"),
         QStringLiteral("share/applications"),
     };
-    for (const QString &rel : kDirs) {
+    // ANTS-4439 (reported by Fin Break) — every probe above is SINGLE-LEVEL, and
+    // a project packaging for more than one distro puts each recipe in its own
+    // directory: finbreak's file is at packaging/obs/…metainfo.xml, beside
+    // packaging/flatpak/. The field then comes back as an empty string, which is
+    // indistinguishable from a project shipping no AppStream metadata at all —
+    // and the two want opposite behaviour, so a release path keyed on it
+    // silently skips the release-notes sync and nobody learns why.
+    //
+    // One level under the two PACKAGING dirs only. `data` and
+    // `share/applications` are install-image layouts with fixed shapes, and a
+    // recursive walk of an arbitrary tree is a different (and much more
+    // expensive) probe than this function promises.
+    static const QStringList kNestedDirs = {
+        QStringLiteral("packaging"),
+        QStringLiteral("pkg"),
+    };
+
+    // Probe ORDER is load-bearing: every existing flat *.metainfo.xml probe runs
+    // before anything added here, so no project that resolved before resolves
+    // differently now — this can only turn an empty answer into a found one.
+    // `*.appdata.xml` is the pre-2016 AppStream spelling, still shipped by older
+    // projects, and it runs last for the same reason: where a project carries
+    // both, the current name wins.
+    const auto probeDir = [&](const QString &rel, const QString &pattern) {
         probed.append(rel == QStringLiteral(".")
-                      ? QStringLiteral("(root)/*.metainfo.xml")
-                      : (rel + QStringLiteral("/*.metainfo.xml")));
+                      ? (QStringLiteral("(root)/") + pattern)
+                      : (rel + QLatin1Char('/') + pattern));
         const QString full = cwd + QLatin1Char('/') + rel;
-        QDirIterator it(full, QStringList{QStringLiteral("*.metainfo.xml")},
-                        QDir::Files);
-        if (it.hasNext()) {
-            it.next();
-            out = (rel == QStringLiteral("."))
-                ? it.fileName()
-                : (rel + QLatin1Char('/') + it.fileName());
-            discovered.append(out);
-            return;
-        }
+        QDirIterator it(full, QStringList{pattern}, QDir::Files);
+        if (!it.hasNext()) return false;
+        it.next();
+        out = (rel == QStringLiteral("."))
+            ? it.fileName()
+            : (rel + QLatin1Char('/') + it.fileName());
+        discovered.append(out);
+        return true;
+    };
+
+    // Immediate subdirectories of a packaging dir, in name order so the answer
+    // is stable across runs rather than filesystem-order dependent.
+    const auto nestedRelsOf = [&](const QString &rel) {
+        QStringList rels;
+        QDir parent(cwd + QLatin1Char('/') + rel);
+        if (!parent.exists()) return rels;
+        const QStringList subs =
+            parent.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QString &s : subs)
+            rels.append(rel + QLatin1Char('/') + s);
+        return rels;
+    };
+
+    for (const QString &pattern : {QStringLiteral("*.metainfo.xml"),
+                                   QStringLiteral("*.appdata.xml")}) {
+        for (const QString &rel : kDirs)
+            if (probeDir(rel, pattern)) return;
+        for (const QString &parentRel : kNestedDirs)
+            for (const QString &rel : nestedRelsOf(parentRel))
+                if (probeDir(rel, pattern)) return;
     }
 }
 

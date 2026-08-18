@@ -11663,9 +11663,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "work). ANTS-1493: probe set widened to also "
                         "cover docs/private/, docs/internal/, "
                         "docs/fork/ (fork-only doc trees) and "
-                        "*.metainfo.xml at repo root + pkg/ + data/ + "
-                        "share/applications/ — first hit per field "
-                        "wins.");
+                        "*.metainfo.xml at repo root + packaging/ + pkg/ + "
+                        "data/ + share/applications/ — first hit per field "
+                        "wins. ANTS-4439: also one level UNDER packaging/ and "
+                        "pkg/ (packaging/obs/, packaging/flatpak/ — the "
+                        "multi-distro layout), and the legacy *.appdata.xml "
+                        "spelling, which is probed after every *.metainfo.xml "
+                        "candidate so the current name always wins.");
                     t["selection_hint"] = QStringLiteral(
                         "Use as first call when you need to locate "
                         "ROADMAP/CHANGELOG/specs/standards in an "
