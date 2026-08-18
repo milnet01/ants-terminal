@@ -35694,6 +35694,512 @@ happen.
   Kind: chore.
   Source: in-session-2026-08-18.
 
+## 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 second triage
+
+Twenty-seven un-triaged findings across six feedback files (AI Prompts 3, Claude
+Code config 3, Fin Break 5, Local Web Server Manager 3, OneUp 4, Vestige 9).
+Almost every one lands on the roadmap store: the migrate verb, the
+markdown-to-store round trip, and what the envelopes do and do not say about
+which of the two answered. Nine were duplicates of live items or retractions and
+are closed inline in the feedback files rather than filed here.
+
+- 📋 [ANTS-4478] **roadmap_migrate's dry run reports project_id:0 while the same envelope's counts prove the project resolved.**
+  Three sessions reported the same shape independently: `roadmap_migrate {dry_run:true}` returns
+  `project_id:0` while the identical real call returns the real id (2 on AI Prompts, 6 on OneUp,
+  8 on LWSM). Every other field matches between the two runs, so the preview is faithful except
+  for this one. 0 is the natural sentinel for "no project row", and the same envelope's
+  `items_unchanged` is a diff computed AGAINST that project's real rows — so the counts prove the
+  lookup succeeded while the id says it did not.
+
+  Fix: resolve and report the real project_id on the dry path; it is known before the rollback.
+  If it genuinely cannot be resolved under rollback, OMIT the field rather than emitting 0, so
+  absent is distinguishable from zero. A caller scripting "migrate only if not already present"
+  on `project_id != 0` gets it backwards on every dry run.
+  **Layman:** The migration preview says "no such project" even when it found the project, so a pre-flight check looks like a failure.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (AI Prompts, OneUp, Local Web Server Manager — three files, same finding).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4479] **roadmap_migrate reports items_updated:N without naming the items, so a re-ingest cannot be reviewed before it runs.**
+  A dry run reporting `items_updated:3` gives no ids and no field names. The reporter could not
+  tell whether those 3 writes would reconcile real drift or flatten good store rows with a lossy
+  re-parse — and backed ROADMAP.md up to a scratchpad and diffed afterwards to prove it was safe.
+  The only available confirmation is to re-run dry_run and watch it converge to 0, which is an
+  inference rather than a report.
+
+  Fix: add `updated_ids[]` (and ideally the changed field names per id) to the envelope, the way
+  flip_batch reports `skipped[]`. Under dry_run that turns a count into a reviewable plan.
+  `items_updated_governed` hints the fields are store-governed but does not say which.
+
+  Gates ANTS-4468's sibling concern and is the cheap half of the same problem the LWSM
+  field_defaulted item reports: a re-migration that can overwrite good rows must be inspectable.
+  **Layman:** The migration says "3 items will change" but not which three, so you cannot check whether the change is a repair or damage.
+  Kind: enhancement.
+  Source: cc-feedback-2026-08-18 (AI Prompts).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4480] **roadmap_migrate's selection_hint says "Use ONCE per project", so sessions avoid the re-run that reconciles drift.**
+  `tool_info`'s selection_hint reads "Use ONCE per project to move it off hand-edited markdown
+  onto the roadmap store". The description body says the opposite is safe: "Re-running over an
+  unchanged project is idempotent." Both are true; the hint is the line a session reads when
+  deciding whether to call the verb at all.
+
+  Cost, measured twice. AI Prompts nearly reported the project as already-done and stopped — the
+  re-run it almost skipped is what reconciled 3 drifted items, and drift is invisible (ROADMAP.md
+  was byte-identical before and after). Fin Break spent most of a session hand-editing a 616 KB
+  file before finding that a re-run was the fix, and named the three lines that compose into "do
+  not touch this verb": the word "migrate", the description's one-time-sounding opener, and this
+  machine's own standing warning about a migrated project's re-render.
+
+  Fix: say re-running is the ROUTINE refresh for a drifted store, that it does NOT write the
+  markdown, and that dry_run's counters are the pre-flight. Consider `roadmap_sync` /
+  `roadmap_reingest` as the primary name with roadmap_migrate as the alias — the verb's job
+  outgrew its name.
+  **Layman:** The tool's own one-line summary makes re-running sound dangerous, so the routine repair nobody runs.
+  Kind: doc-fix.
+  Source: cc-feedback-2026-08-18 (AI Prompts, Fin Break — two files, same finding).
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4481] **unresolved_path fires on a path that resolves, because sentence punctuation is kept — and the note points at the bullet, not the line.**
+  Two halves, both reported twice.
+
+  (a) A `Source:` trailer ending a sentence yields a token like
+  `docs/specs/CFG-0052-cold-eyes-name-retention.md.` or `docs/standards/files-and-naming.md).` —
+  with the full stop, or the closing parenthesis and full stop, captured as part of the path. The
+  file exists; the note is false. roadmap-format.md's own examples end trailers with a full stop,
+  so this fires on CONFORMING prose. Self-concealing, too: the note's `detail` field prints the
+  path WITHOUT the trailing character, so the reader opens the cited file, finds it present, and
+  has to diff the note against the raw line to see the one character the detail does not show.
+
+  (b) The reported `line` is the BULLET's start line, not the line carrying the path — 1152 vs
+  1166, 1168 vs 1180 on OneUp's 3373-line roadmap. A note whose job is to locate a problem should
+  point at it.
+
+  Fix: strip trailing `.` `,` `;` `:` `)` `"` from a candidate path token before resolving, or
+  resolve the trimmed form as a fallback and report only if both fail. Report the line the
+  candidate came from. Failing the first, print the token VERBATIM in `detail` — a one-line
+  change that would have made this self-diagnosing.
+
+  Noise in the notes channel costs out of proportion to its size: that channel is the only output
+  a caller reads to decide whether a migration needs follow-up.
+  **Layman:** The migration warns that a file is missing when it is not; the warning keeps the full stop at the end of the sentence as part of the filename.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Claude Code config, OneUp — two files, same finding).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4482] **roadmap_migrate does not render ROADMAP.md and does not say so, so the reflow lands days later in an unrelated commit.**
+  Verified by three sessions with md5/sha256 before and after: a successful migration leaves
+  ROADMAP.md byte-identical and `git status` clean. The rewrite happens on the first LATER
+  roadmap_log write, which then reports `files_written:[ROADMAP.md]` and re-renders the whole
+  file. Nothing in the migrate envelope says this.
+
+  Two costs. "Nothing changed" is indistinguishable from "the migration did not run" without
+  querying the store — and on a project where store_high_water is also 0 (ANTS-4410) BOTH
+  available signals point at failure after a clean success. And the first re-render arrives days
+  later inside an unrelated commit carrying a whole-file reflow diff nobody is expecting to
+  review, which is ANTS-4438 seen from the other end.
+
+  Fix, if the behaviour is intended: state it in the description — migration does not re-render,
+  the first write will, and ROADMAP.md becomes generated output that a hand edit will lose — and
+  add a field to the envelope saying so. Also worth one line that the store is machine-global
+  (`~/.local/share/ants-terminal/roadmap.sqlite`) rather than per-project: OneUp could not tell
+  from the schema, and it means a project's roadmap is no longer fully contained in its repo.
+
+  If it is NOT intended, rendering at the end of a successful non-dry migration puts the change
+  in the commit that causes it, which is where a reviewer can still connect the reflow to its
+  cause.
+  **Layman:** After migrating, nothing in the repo changes — so it looks like the migration did not run, and the big file rewrite arrives later attached to something else.
+  Kind: enhancement.
+  Source: cc-feedback-2026-08-18 (Claude Code config, OneUp, Vestige — three files, same finding).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4483] **The render gate is knowable at migrate time but first fires at the next write, on whoever did not run the migration.**
+  A migrated project is subject to a render gate a hand-edited one is not: roadmap_log refuses
+  `{code: render_gate_unmet, error: "the roadmap render refuses this project: 1 open item(s)
+  carry no Layman: line"}`. That condition is a property of the roadmap as a whole, fully
+  knowable at migrate time, and it is first surfaced at the next write — landing on whoever next
+  files an item, who did not perform the migration and has no reason to connect the two.
+
+  Fix: evaluate the render gate during roadmap_migrate and return the failing ids as notes.
+  dry_run already shares the real write path, so a project could learn it is un-renderable BEFORE
+  committing to the store rather than after. A migration that succeeds into a state where no
+  write is possible is worth a warning at migrate time.
+
+  Related: ANTS-4434 (no op can write the layman column the gate refuses on) and ANTS-4435 (the
+  error taxonomy names a remedy that cannot work). This item is the third leg — the gate is
+  evaluated at the wrong moment. Fixing 4434 makes this a warning rather than a trap; it is still
+  worth reporting at migrate time.
+  **Layman:** A project can migrate successfully into a state where nobody can add a roadmap item — and the person who hits the wall is not the one who built it.
+  Kind: enhancement.
+  Source: cc-feedback-2026-08-18 (Claude Code config).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4484] **The renderer emits a wrapped bold headline's continuation at column 0, where markdown reads it as a new list item.**
+  Fin Break's hand-written ROADMAP.md had 18 of 274 bullets whose `**bold headline**` spanned two
+  source lines with a two-space continuation indent. On render the closing half came back at
+  column 0:
+
+      - ✅ [FIBR-0001] **P01: project skeleton + lint + format
+      + test + security-scan harness.**
+        `pyproject.toml` (Python
+
+  A line beginning `+ ` at column 0 IS a new markdown list item, so the bullet visibly splits.
+  Another produced a bare `guard.**` at column 0. The store keeps the newline inside the headline
+  column and the renderer neither re-indents nor re-joins it.
+
+  Because the file is generated, the damage returns on every subsequent write. Anyone adopting
+  the store write path on an existing hand-written roadmap hits it in proportion to how much
+  their headlines wrap.
+
+  Fix: join a multi-line headline into one line at INGEST — a headline is a single logical string
+  and a newline inside it has no meaning. That is the workaround Fin Break applied by hand (un-
+  wrapping all 18 before the first render), and it was durable precisely because the store then
+  held each headline on one line. The alternative — preserve the two-space continuation indent on
+  render — leaves the newline in the column and therefore leaves ANTS-4437 and the LWSM re-parse
+  item still standing. Fix it at ingest and all three close together.
+  **Layman:** When a roadmap headline is too long, the second half is written flush to the left margin — and markdown then draws it as a separate bullet, visibly splitting the item in two.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Fin Break).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4485] **roadmap_log locates against ROADMAP.md while roadmap_query answers from the store, so an item can be queryable and unwritable.**
+  roadmap_query answers from the store (`source:"store"`). roadmap_log locates its target by
+  matching bullets in ROADMAP.md — its refusal is literally "locator matched zero ants-v1
+  bullets". For an item in the store but not in the file (an orphan, or anything added while the
+  file is behind) the query returns it happily while `op:annotate` refuses `bullet_not_found`.
+
+  Fin Break hit this on FIBR-0281: the query showed it, the write could not reach it, and the
+  only way out was to hand-write the bullet back into the GENERATED file and re-ingest — the
+  exact hand-editing the store was adopted to eliminate. The same session saw roadmap_log's
+  dry_run report `from_status:"✅"` for FIBR-0278 while roadmap_query reported 📋 for the same id
+  in the same minute.
+
+  The addressing model is invisible from outside and only shows up as a contradiction. Worse, it
+  removes the escape hatch: when store and file disagree, the verb that could fix the store is
+  the one that refuses, because it reads the file.
+
+  Fix: on a project whose file is generated, locate against the STORE — the file is the wrong
+  index there. Failing that, make the disagreement legible: when the id is absent from the file
+  but present in the store, say so ("present in store, absent from file — re-ingest or render")
+  instead of `bullet_not_found` plus unrelated suggestions. Consider flagging store-only items in
+  roadmap_query so a caller can see the divergence without a write attempt.
+
+  Related: ANTS-4462 (staleness unobservable), ANTS-4143 (envelope names the wrong source).
+  **Layman:** Two tools disagree about what exists: one reads the database, the other reads the file — so an item you can look up cannot be edited.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Fin Break).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4486] **roadmap_migrate cannot re-parse its own renderer's wrapped headline, and defaults kind/source over correct stored values.**
+  The round trip is lossy in the destructive direction, and the correlation is exact rather than
+  approximate. LWSM has 136 bullets; 100 have a one-line headline and 36 wrap. dry_run reported
+  `field_defaulted` for `kind` and `source` at 36 source lines — all 36 are wrapped-headline
+  bullets, no unwrapped bullet flagged and no wrapped bullet unflagged. Those fields are
+  demonstrably PRESENT in the file (137 `Kind:` lines, 136 `Source:` lines against 140 bullets;
+  LWSM-1069's own sit 23 lines below the bullet the dry run says has neither).
+
+  So `field_defaulted` here does not mean "the source omitted this field". It means "the parser
+  stopped reading before it got there", and the two are reported identically.
+
+  What makes it destructive: the store holds the CORRECT values for all 136 items, verified row
+  by row. `items_updated:47` with `items_inserted:0` means the migration would replace 47 good
+  rows with mis-parsed ones. The markdown is not a more-current source needing re-import; it is
+  the store's own output being fed back in worse than it came out. The reporter stopped short of
+  running it.
+
+  Worst property: it is silent, idempotent-looking, and fires on the projects that are already
+  DONE. `ok:true` either way, notes advisory rather than refusals, top-line counts reading like a
+  healthy sync. And it compounds — the more a project uses roadmap_log, the more headlines the
+  renderer wraps, so the blast radius grows with normal use.
+
+  Fix, in order.
+  1. Teach the parser the renderer's own output: a bold headline continues until the closing `**`
+     across as many lines as it takes. This is the actual defect. Note the Fin Break item fixes
+     the same disagreement from the renderer's side, at ingest; either one closes this, and the
+     ingest-side join is the smaller change.
+  2. Never default a field over a non-empty stored value. Where the parse yields nothing and the
+     store holds something, keep the store's value and report it — a migration that can only ADD
+     information is one nobody has to be brave to run.
+  3. Distinguish "absent from source" from "parser did not reach it": they need opposite
+     responses and today share one code. Emit `parse_incomplete` with the line it stopped at, and
+     refuse the batch rather than defaulting.
+  4. Independent of the bug: roadmap_migrate overwrites rows in a store with no undo and no
+     snapshot. Take a pre-migration backup automatically, or accept a `backup_to` path. Trap
+     worth documenting — the store runs in WAL mode (2.7 MB `-wal` alongside a 12.8 MB
+     `.sqlite`), so a plain `cp` of the `.sqlite` is an INCONSISTENT backup that silently loses
+     the most recent writes. sqlite3's backup API is the correct route.
+  **Layman:** The migration cannot read what the roadmap writer wrote: a long headline breaks the parse, and the migration then overwrites good database rows with blanks.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Local Web Server Manager).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4487] **There is no way to remove an item from the roadmap store: orphaning is a label, and the next render re-injects it.**
+  Fin Break appended two items by mistake, reverted ROADMAP.md with git, and re-ran
+  roadmap_migrate — which reported `items_orphaned:2` and named both in notes as `orphaned_item`.
+  That reads as "handled". It is not. Both were still returned by roadmap_query as ordinary 📋
+  bullets, and one unrelated roadmap_log write rendered BOTH straight back into ROADMAP.md
+  (items_rendered 274 → 276).
+
+  So orphaning is a label, not a removal. Reverting the file cannot undo an append, because the
+  store outlives the revert — counter-intuitive precisely BECAUSE the file is the thing under
+  version control. roadmap_log has no delete op, and its `to_status` enum (planned /
+  in-progress / shipped / considered) cannot reach the `dropped` status the item table's own
+  CHECK constraint already allows.
+
+  The only route left was a direct DELETE against the shared machine-global sqlite file, which
+  the reporter's sandbox correctly blocked until the user approved it explicitly.
+
+  Second-order cost, and the reason this is filed as a feature rather than a wart: a session that
+  knows one wrong append is permanent will keep hand-editing.
+
+  Asked for, in the reporter's order.
+  1. A guarded delete/drop op on roadmap_log — require the id verbatim, refuse if the item has
+     relationships or history, dry_run previewable. This is the missing verb.
+  2. Failing that, expose the `dropped` status the schema already allows in `to_status`, and
+     exclude dropped items from render and from default roadmap_query results.
+  3. Make orphaning mean something: either exclude orphaned items from render (so removing the
+     bullet and re-ingesting IS the removal path), or stop calling it orphaned — the word implies
+     detachment while the behaviour is retention.
+  4. Add a pre-write duplicate check to op:append. It already computes `possible_duplicates` and
+     scored the reporter's at 100 — but AFTER writing. Refusing a score-100 duplicate unless a
+     force flag is passed would have prevented the second bad item outright.
+
+  Needs a spec before implementation: this is a new destructive verb surface on a shared,
+  machine-global store with no undo, and (3) changes what an existing word means.
+  **Layman:** A roadmap item added by mistake cannot be undone — deleting it from the file does not remove it, and the next save writes it straight back.
+  Kind: feature.
+  Source: cc-feedback-2026-08-18 (Fin Break).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4488] **No cheap read-only way to ask whether a project is in the store and in sync — dry_run answers it by side effect at 181 notes.**
+  The question a session actually has when handed "migrate this project" is whether it is already
+  migrated, and if so whether store and markdown agree. Nothing answers it directly.
+
+  `roadmap_migrate {dry_run:true}` is the closest and answers by side effect: `items_inserted:0`
+  with a non-zero `items_unchanged` is the tell. That is an inference from a WRITE PLAN, not a
+  status report, and it arrives inside a 181-note ~12 KB envelope enumerating every field
+  defaulted and conflicted. The reporter paid for the full plan to learn a yes/no.
+
+  The verb's own description also notes dry_run "still OPENS the store, and creates an EMPTY
+  schema if none exists" — defensible, but it means the read-only-sounding option is not entirely
+  read-only, which a caller should know before reaching for it on a machine with no store yet.
+
+  Asked for: a read-only `op:"status"` returning `{present, project_id, items_in_store,
+  items_in_markdown, in_sync, differing_ids[]}` and nothing else — no notes array, no write plan,
+  no schema creation. That is the call a session should be told to make FIRST.
+
+  Why it matters beyond cost: it sits directly upstream of the wrapped-headline corruption item.
+  A session that could ask "already migrated, in sync?" in one cheap call would get "yes, but 47
+  items differ" and would never reach for the destructive path. The absence of that call is part
+  of why the natural response to "please migrate this" is to run the migration.
+
+  Needs a spec: it is a new op with a response contract other sessions will build pre-flight
+  gates on, and `in_sync` has to be defined against the same comparison ANTS-4406 found was
+  comparing two different quantities.
+  **Layman:** To find out whether a project has already been migrated you have to run the full migration preview, which costs a wall of output to learn one yes-or-no.
+  Kind: feature.
+  Source: cc-feedback-2026-08-18 (Local Web Server Manager).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4489] **changelog_log add_subsection calls a section FLAT on one legacy heading, and its remedy entrenches the mixture.**
+  VERIFIED against src/changeloglog.cpp:520-545. The guard scans from `## [Unreleased]` for the
+  FIRST `### <canonical category>` heading ANYWHERE in the section and refuses, with no weighing
+  of how many headings are of each kind.
+
+  On Vestige `## [Unreleased]` spans lines 23-10970: lines 25-10511 are ~500 newest-first DATED
+  topics, lines 10664-10970 a small legacy Keep-a-Changelog tail from before the project switched
+  conventions. Six flat headings in the whole section, all contiguous at the bottom. The refusal
+  asserts "`## [Unreleased]` is FLAT", which sent the reporter looking for a formatting error at
+  the top of the file that does not exist.
+
+  The advice is worse than the diagnosis. "Use op:add for this layout" would append a
+  Keep-a-Changelog bullet into the legacy tail 10,800 lines below the newest entry — which is
+  exactly the mistake that created the mixed state (3D_E-0042's 2026-08-13 entry sits at line
+  10831 under a flat `### Added` surrounded by April dated topics). The guard is
+  self-perpetuating: each session that obeys it adds another flat heading, moving the file
+  further from the layout add_subsection wants.
+
+  And the stated remedy is unreachable: "empty `[Unreleased]` first" is not an option for a
+  section holding a release's worth of unreleased history. The reporter fell back to a hand Edit,
+  which is the raw-tool path CLAUDE.md rule 18 exists to avoid.
+
+  Note what the guard is protecting against (ANTS-4356): a dated topic written into a flat
+  section produces a mixture from which op:add and op:normalize both start refusing. That
+  rationale does not reach a section that is ALREADY mixed and dated-majority — and the insert
+  point is the TOP of the section, immediately under the heading, so it never touches the tail.
+
+  Fix, in order of value.
+  1. Decide the layout by POSITION, not first-match: if a dated topic appears above the first
+     flat category heading, the section is dated-with-a-legacy-tail and the top insert is
+     unambiguously safe. Refuse only when the section is genuinely flat.
+  2. Where it still refuses, say what it FOUND — "section is MIXED: 512 dated topics at lines
+     25-10511, 6 flat category headings at lines 10664-10970" — rather than asserting FLAT.
+  3. Drop or invert the "use op:add" advice for this shape; on a dated-majority section that
+     advice is the thing producing the mixture.
+  A narrower interim that would have unblocked the reporter: an explicit `allow_mixed:true`.
+  **Layman:** The changelog writer refuses a whole file because of six old headings at the very bottom, then tells you to do the thing that made the mess.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Vestige).
+  Lanes: mcp, changelog.
+
+- 📋 [ANTS-4490] **roadmap_migrate accepts a github-task-list project, then never serves or renders it, and says nothing.**
+  VERIFIED against src/roadmapsource.cpp:387 — `if (format != "ants-v1") return std::nullopt; //
+  legitimately markdown-served (§ 5)`. So this is DESIGNED behaviour, not a broken switch, and
+  the reporter's hypothesis ("the serve path silently no-ops") names the wrong mechanism. What is
+  real is everything downstream of it: the outcome is illegible.
+
+  On Vestige roadmap_migrate returns ok:true with a healthy envelope (project_id 13, 1026 items,
+  236 sections, no duplicate ids, body capture faithful) and then roadmap_query still answers
+  `source:"markdown"` with none of the store-backed fields present — no `file_ahead_of_store`, no
+  `store_high_water`. It is not a staleness fallback; the store path is never taken. ROADMAP.md
+  is byte-identical, `git status` clean. Control: the same call against DOOM_Ants (ants-v1)
+  returns `source:"store"`. Vestige is the only row of 15 with `source_format` =
+  'github-task-list', which the schema CHECK accepts as legal.
+
+  The failure is indistinguishable from success. ok:true plus correct-looking counts is exactly
+  what a session is told to expect, so the reasonable conclusion is "migrated, done" — after
+  which every roadmap_log write goes to markdown only while a full copy sits in the store
+  drifting, with no reader able to tell which is authoritative.
+
+  Fix — the legibility half, which is cheap and is what prevents the false confidence.
+  1. Either REFUSE with a specific code (`unsupported_source_format`, naming the format and the
+     supported set), or return an explicit `store_backed:true|false` / `served_from` field on the
+     migrate response AND on every roadmap_query response. Today the only tell is the ABSENCE of
+     unrelated fields, which no caller will notice.
+  2. `sections_written:0` on every run despite 236 section rows existing reads as a bug or at
+     best a misleading counter. If it means "no sections changed", report an unchanged count
+     alongside, as the item counters already do.
+
+  The capability half — converting such a project to ants-v1 — is filed separately.
+  **Layman:** A project in the older checklist format migrates with a clean success message, but the database is never actually used for it — and nothing says so.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Vestige).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4491] **A one-time convert path: migrate a github-task-list roadmap and render it back out as canonical ants-v1.**
+  The capability half of the github-task-list finding. Since the goal is one standard across all
+  projects and 14 of 15 are already ants-v1, the useful operation is: migrate a github-task-list
+  project, then RENDER it back out as canonical ants-v1 and set source_format accordingly. That
+  single operation both standardises the project and produces the ROADMAP.md rewrite the rollout
+  expects.
+
+  The reporter's own reasoning for asking the tool rather than doing it by hand, quoted because
+  it is the argument: a hand conversion of Vestige would assign ~989 ids, take .roadmap-counter
+  from 47 to ~1035, and rewrite ~590 KB of history in one commit. Under a one-standard goal that
+  conversion belongs in the tool, once, not in each project by hand.
+
+  Hard prerequisites, both of which must land first:
+  - The id-namespace item below — otherwise the render stamps 566 unstable synthesised ids into a
+    public repo's roadmap permanently.
+  - ANTS-3771 (declare the project's id format) — otherwise the 427 bold-span pseudo-ids get
+    written back as ids. See the id-provenance item for why the parser cannot be narrowed instead.
+
+  Needs a spec: it is a one-way bulk rewrite of a version-controlled file, it allocates ids in
+  bulk from a counter other documents already cite, and its ordering constraints against the two
+  prerequisites are the part most likely to be got wrong.
+  **Layman:** Give the older checklist-format projects a single command that converts them to the standard format, instead of asking each one to rewrite its roadmap by hand.
+  Kind: feature.
+  Source: cc-feedback-2026-08-18 (Vestige).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
+  Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
+  `- [ ]`, the historical bulk) and 36 ants-v1 emoji bullets (`- 📋 [3D_E-0046] **...**`, the ones
+  roadmap_log itself writes). roadmap_migrate reported a single `sources:[{format:
+  "github-task-list"}]` and proceeded, with no note anywhere in 2982 saying a second format was
+  present.
+
+  The majority call is defensible; the silence is not, because the 36-bullet minority is the ONLY
+  part carrying real [PREFIX-NNNN] ids — and it is the part roadmap_log authored. A file that the
+  store's own writer is steadily converting is exactly the case worth naming.
+
+  Fix: emit a first-class note (not one of 2982) when a source file contains more than one bullet
+  format, with the per-format counts. `sources` returning a single format for a demonstrably
+  mixed file is the root of several other surprises in this batch.
+
+  Related and worth doing with it: `defaulted_fields:{kind:989, source:989}` is reported as a
+  count beside 2982 notes, which reads as bookkeeping rather than as "989 items were given
+  invented metadata". Surface it prominently. A `--strict` mode that refuses rather than defaults
+  would let an operator fix the source file first — see also ANTS-4429 on the note volume.
+  **Layman:** When a roadmap is written in two styles at once, the migration silently picks the more common one and never mentions the other.
+  Kind: enhancement.
+  Source: cc-feedback-2026-08-18 (Vestige).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4493] **Id synthesis draws from the project's live id space and the allocator never consults the store, so the first post-migration append collides.**
+  VERIFIED against src/remotecontrol_roadmap_log.cpp:717-745. The reporter diagnosed an
+  off-by-one — "advances to the high-water mark and then issues that same number" — and the
+  mechanism is different, which matters because the fix is different. The allocator computes
+  `maxFileId` from `rlMaxExistingIdForPrefix(preflightBullets, pfx)` (ROADMAP.md) floored to
+  `RoadmapFoldIn::corpusHighWater(...)` (the committed docs/roadmap corpus), then
+  `newId = maxFileId + 1`. The +1 is correct. What it never reads is the STORE.
+
+  So on Vestige: the file's max was 3D_E-0611, the allocator correctly issued 0612 and reported
+  `counter_advanced_to:612` — and the store already held 3D_E-0612 as a SYNTHESISED id on an
+  unrelated shipped bullet ("Spatial audio — 3D positioned sound sources..."). Two different
+  items, one id, in the two stores that are supposed to become one. The reporter worked around it
+  by renumbering to 0613.
+
+  Two defects, and the first causes the second.
+
+  1. Id synthesis draws from the project's LIVE id space without reserving it. Synthesised ids
+     reach 3D_E-0611 while .roadmap-counter sat at 47, so the next ~565 allocations each collide.
+     It had already happened once before the reporter noticed: 3D_E-0046 was synthesised onto an
+     audio bullet before being allocated for a real item; re-migration resolved it (the parsed
+     0046 kept the id, the audio bullet moved to 0047) but only after the fact, and it silently
+     renumbers items other documents may already cite. A synthesised id therefore cannot be
+     quoted in a commit message or a spec — it is a positional artefact, and this session watched
+     one move.
+     Fix: never synthesise into the live id space. Reserve above the counter's high-water mark,
+     or use a visibly non-allocatable namespace (`3D_E-S0001`) or a separate synthetic_id column.
+     If synthesis must share the space, bump .roadmap-counter past the high-water mark as part of
+     the migration and say so in the response.
+
+  2. The allocator's high-water floor does not include the store. Fix: floor `maxFileId` to the
+     store's max id for the prefix as well as the file's and the corpus's. Cheap guard worth
+     adding alongside — before returning, assert the issued id is absent from the store for that
+     project and refuse or retry at +1; the store is already open at that moment.
+
+  The collision is silent (ok:true, a normal-looking id), fires exactly once per project at the
+  boundary, and is therefore easy to miss in testing and guaranteed to hit every migrated
+  project's first append. Once the store is source of truth a duplicate id is not cosmetic: `id`
+  is the locate key for flip/annotate/amend.
+
+  Also: `counter_advanced_to` should say what it advanced PAST as well as what it advanced TO —
+  "advanced to 612" reads as safe until you know 612 was the occupied high-water mark rather than
+  the first free slot.
+
+  Related: ANTS-4343 (a row keeps id_origin='synthesised' after the file starts declaring it).
+  **Layman:** The migration invents placeholder item numbers using the same numbering the project hands out for real, so the next item you file reuses a number already taken.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Vestige).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4494] **On the GFM path `source` is written as the status word and `kind` is defaulted, on every bullet.**
+  Two parse defects in the same data, both silent, both on the GFM task-list path only.
+
+  `source` is the literal string "planned" on 989 of Vestige's items — a lifecycle word in a
+  provenance column. Confirmed as a bad default rather than a convention by comparing project 9
+  (DOOM_Ants, ants-v1), whose sources read 'user-request-2026-06-29', 'in-session-2026-06-25'.
+  Writing the status word into the provenance column on 989 rows suggests a positional field
+  mix-up rather than a missing value.
+
+  `kind` was defaulted to 'implement' on the same 989. The column is NOT NULL with a 21-value
+  CHECK, so it could not be left blank — but an invented value is indistinguishable from a
+  declared one once written, and 989 items now assert a work category nobody chose. It is
+  reported only inside `defaulted_fields`.
+
+  Fix: correct the GFM `source` capture — leave it empty rather than writing 'planned'. For
+  `kind`, prefer NULL or an explicit 'unspecified' enum member over a defaulted real value;
+  relaxing NOT NULL or adding the member is the smaller lie.
+
+  Related: ANTS-4062 covers the 62 bullets whose declared work category falls outside the
+  taxonomy — the same column seen from the other direction.
+  **Layman:** For older-format roadmaps the migration files the word "planned" as the item's origin, and invents a work category for every single item.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Vestige).
+  Lanes: mcp, roadmap-store.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
