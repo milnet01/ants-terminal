@@ -35792,7 +35792,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (AI Prompts).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4480] **roadmap_migrate's selection_hint says "Use ONCE per project", so sessions avoid the re-run that reconciles drift.**
+- ✅ [ANTS-4480] **roadmap_migrate's selection_hint says "Use ONCE per project", so sessions avoid the re-run that reconciles drift.**
   `tool_info`'s selection_hint reads "Use ONCE per project to move it off hand-edited markdown
   onto the roadmap store". The description body says the opposite is safe: "Re-running over an
   unchanged project is idempotent." Both are true; the hint is the line a session reads when
@@ -35809,6 +35809,7 @@ are closed inline in the feedback files rather than filed here.
   markdown, and that dry_run's counters are the pre-flight. Consider `roadmap_sync` /
   `roadmap_reingest` as the primary name with roadmap_migrate as the alias — the verb's job
   outgrew its name.
+  Resolved (2026-08-18), commit 591c1c52. selection_hint now opens "Use it once to move a project onto the roadmap store, and AGAIN any time to reconcile a store that has drifted behind ROADMAP.md — re-ingesting is routine and idempotent", names dry_run as the preview, and states it never writes ROADMAP.md. Two house rules bind the string and both are tested: 240 chars (McpSelectionHint HINT-3) and an opening "Use " (McpOrientation_Inv7.SelectionHintFormat) — the first draft breached both and the suite caught it. The rename half (roadmap_sync / roadmap_reingest as the primary name) is NOT done and is left open for a maintainer call; the wording change is what removes the cost the two reporters actually paid.
   **Layman:** The tool's own one-line summary makes re-running sound dangerous, so the routine repair nobody runs.
   Kind: doc-fix.
   Source: cc-feedback-2026-08-18 (AI Prompts, Fin Break — two files, same finding).
@@ -35862,6 +35863,25 @@ are closed inline in the feedback files rather than filed here.
   If it is NOT intended, rendering at the end of a successful non-dry migration puts the change
   in the commit that causes it, which is where a reviewer can still connect the reflow to its
   cause.
+  Progress (2026-08-18), commit 591c1c52 — the DOCUMENTATION half is done, the
+  envelope half is not, and the item stays open for it.
+
+  Done: roadmap_migrate's tool description now states that it never writes
+  ROADMAP.md, that the file is first re-rendered by the next roadmap_log write,
+  and that a byte-identical file with a clean `git status` immediately after a
+  migration is EXPECTED rather than a sign it did not run. Also that the store is
+  machine-global (~/.local/share/ants-terminal/roadmap.sqlite) rather than
+  per-project, which OneUp asked for by name.
+
+  Answering OneUp's question directly while implementing: the current behaviour IS
+  intended — the verb reads the markdown and never writes it — so this took the
+  "if intended, say so" branch rather than adding a render.
+
+  Still open: the envelope field saying the same thing on the response, so a
+  caller can branch on it rather than read prose. That is worth doing with
+  ANTS-4490's `store_backed` / `served_from` field, since both are the same
+  question about the same envelope, and ANTS-3855 § 2.4 enumerates that envelope
+  — so the pair needs a spec amendment first, the same gate ANTS-4478 hit.
   **Layman:** After migrating, nothing in the repo changes — so it looks like the migration did not run, and the big file rewrite arrives later attached to something else.
   Kind: enhancement.
   Source: cc-feedback-2026-08-18 (Claude Code config, OneUp, Vestige — three files, same finding).
@@ -36055,7 +36075,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4489] **changelog_log add_subsection calls a section FLAT on one legacy heading, and its remedy entrenches the mixture.**
+- ✅ [ANTS-4489] **changelog_log add_subsection calls a section FLAT on one legacy heading, and its remedy entrenches the mixture.**
   VERIFIED against src/changeloglog.cpp:520-545. The guard scans from `## [Unreleased]` for the
   FIRST `### <canonical category>` heading ANYWHERE in the section and refuses, with no weighing
   of how many headings are of each kind.
@@ -36091,6 +36111,7 @@ are closed inline in the feedback files rather than filed here.
   3. Drop or invert the "use op:add" advice for this shape; on a dated-majority section that
      advice is the thing producing the mixture.
   A narrower interim that would have unblocked the reporter: an explicit `allow_mixed:true`.
+  Resolved (2026-08-18), commit 591c1c52. The guard now classifies by POSITION: a dated topic above the first flat category heading means a dated section with a legacy tail, and the top insert is accepted because it provably cannot reach the tail. Refusal kept for the genuinely flat case and for flat-above-dated, and it now reports what it FOUND (MIXED, both populations, both line ranges) instead of asserting the section is flat. Dated topics are parsed with QDate, so a date-shaped non-date does not silently disable the guard. Three tests, proven red first; the MIXED-wording assertion had to be tightened after its first draft passed against the old message, which already contained the word. Suite 3612/3612.
   **Layman:** The changelog writer refuses a whole file because of six old headings at the very bottom, then tells you to do the thing that made the mess.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige).
@@ -36125,6 +36146,30 @@ are closed inline in the feedback files rather than filed here.
      alongside, as the item counters already do.
 
   The capability half — converting such a project to ants-v1 — is filed separately.
+  Progress (2026-08-18), commit 591c1c52 — the DOCUMENTATION half is done, the
+  envelope half is not, and the item stays open for it.
+
+  Done: roadmap_migrate's description now says outright that only an `ants-v1`
+  roadmap is SERVED from the store afterwards, and that a github-task-list or
+  pass-headings project migrates ok:true while roadmap_query keeps answering
+  source:"markdown". That removes the specific false confidence Vestige reported —
+  the selection_hint's old promise that "roadmap_query / roadmap_log then serve it
+  from the store" was unconditional and is now qualified.
+
+  Mechanism re-confirmed while editing: roadmapsource.cpp:387 is
+  `if (format != "ants-v1") return std::nullopt;  // legitimately markdown-served
+  (§ 5)`. Deliberate, not a switch that fails to engage.
+
+  Still open, and it is the part that makes this self-diagnosing rather than
+  merely documented: a `store_backed` / `served_from` field on the migrate
+  response AND on every roadmap_query response. Today the only tell is the ABSENCE
+  of unrelated fields, which no caller will notice. Blocked the same way ANTS-4478
+  is — ANTS-3855 § 2.4 enumerates the migrate envelope, so adding a field to it is
+  a spec amendment plus a rule-14 gate. Pair it with ANTS-4482's half; they are
+  one question about one envelope.
+
+  Also still open: `sections_written:0` while 236 section rows exist for the
+  project, which Vestige flagged as a bug in its own right.
   **Layman:** A project in the older checklist format migrates with a clean success message, but the database is never actually used for it — and nothing says so.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige).

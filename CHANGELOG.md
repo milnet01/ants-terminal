@@ -138,6 +138,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_migrate`'s description now states that it never writes ROADMAP.md, and which roadmaps are served from the store.** (ANTS-4482)
+  A byte-identical file and a clean `git status` immediately after a migration are expected — the file is first re-rendered by the next `roadmap_log` write — and only an `ants-v1` roadmap is served from the store afterwards, so a github-task-list project migrates successfully while `roadmap_query` keeps answering from markdown. The description also records that the store is machine-global rather than per-project. (ANTS-4490)
+
+- **`roadmap_migrate`'s selection hint says that re-running is the routine way to reconcile a drifted store.** (ANTS-4480)
+  It read "Use ONCE per project", which two sessions read as one-shot-and-dangerous — one nearly skipped the re-run that reconciled its drift, the other hand-edited a 616 KB generated ROADMAP.md instead. The hint now says re-ingesting is routine and idempotent, names `dry_run` as the preview, and states that the verb never writes ROADMAP.md.
+
 - **`focused_test` now points at `mutation_probe`** (ANTS-4472)
   Three sessions in a row hand-wrote the mutation loop that verb replaces,
   because nothing surfaced it. The session-start list is full to within 10
@@ -195,6 +201,9 @@ for security-relevant changes.
   corpus with 0 newly firing.
 
 ### Fixed
+
+- **`changelog_log op:"add_subsection"` no longer refuses a dated changelog because of a legacy category tail at the bottom.** (ANTS-4489)
+  The guard classified `## [Unreleased]` by first match, so any Keep-a-Changelog category heading anywhere in the section made the whole section "flat" — refusing a section of ~500 dated topics on the strength of six legacy headings 10,000 lines below them. It now classifies by position: a dated topic above the first flat heading means a dated section with a legacy tail, and the insert (which lands at the top) is accepted. The refusal that remains reports what it found — MIXED, with both populations and their line ranges — instead of asserting the section is flat, and no longer advises the op that created the mixture.
 
 - **`file_outline` says how many symbols a `max_symbols` cut left out** (ANTS-4469)
   Truncation reported only that it had happened, so there was no way to
