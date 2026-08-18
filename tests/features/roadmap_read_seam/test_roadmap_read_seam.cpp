@@ -1376,3 +1376,37 @@ TEST(RoadmapReadSeam, Ants3863Inv7NoQStringMarkdownOverloadSurvives) {
            "ask one question, free to disagree — that § 2.4's all-sites scope "
            "exists to prevent.";
 }
+
+// --------------------------------------------------------------- ANTS-4426 --
+//
+// The cost invariant has no behavioural witness, and that is the point: the two
+// backends cannot disagree on a successful op:append (`roadmap_log_possible_
+// duplicates.Ants4426FileAheadRefusesSoBackendsCannotDiffer` pins why), so
+// re-introducing the file read would change no answer and no assertion. What it
+// would change is 3.8 MiB of read-and-parse per append on this project.
+//
+// Comments are stripped before matching so the prose explaining the removal
+// cannot satisfy the scrape it is explaining.
+TEST(RoadmapReadSeam, Ants4426AppendAdvisoryReadsNoBody) {
+    const QString path = QStringLiteral(ANTS_SRC_DIR)
+                       + QStringLiteral("/remotecontrol_roadmap_log.cpp");
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly))
+        << "cannot read " << path.toStdString()
+        << " — the TU has moved and this case is scanning nothing";
+
+    QStringList code;
+    const QStringList lines =
+        QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const int slashes = line.indexOf(QStringLiteral("//"));
+        code << (slashes >= 0 ? line.left(slashes) : line);
+    }
+    const QString stripped = code.join(QLatin1Char('\n'));
+
+    EXPECT_FALSE(stripped.contains(QStringLiteral("storeText.full()")))
+        << "roadmap_log's store path reads the whole of ROADMAP.md again. The "
+           "near-duplicate advisory was its last consumer and now takes its "
+           "records from the store (ANTS-4426); a body read here spends the "
+           "whole of ANTS-3863's saving on this verb.";
+}

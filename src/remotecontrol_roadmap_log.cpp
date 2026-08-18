@@ -391,18 +391,29 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 return store.raiseIdHighWater(projectId, prefix, allocated, err);
             };
 
-            // ANTS-3863 — the read is FORCED here, and the position is the
-            // whole of it. The near-duplicate advisory at the foot of this
-            // block parses this text, and its own comment turns on the text
-            // being the PRE-write file ("it was read BEFORE the write so the
-            // new bullet cannot match itself"). commitAndRender() rewrites
-            // ROADMAP.md, so a lazy full() down there would read the new
-            // bullet back and report it as a duplicate of itself. Kept as late
-            // as it can be: every refusal above — the dispatch,
-            // section_not_found, the id_hint and body_shadowed gates — now
-            // answers without it, and the unmigrated path never reaches this
-            // block at all.
-            const QString preWriteMarkdown = storeText.full();
+            // ANTS-4426 — the advisory's records, taken from the STORE and not
+            // from the file. This was `storeText.full()` + parseBullets over
+            // the whole of ROADMAP.md, which is 3 MiB on this project and was
+            // the one consumer keeping ANTS-3863's saving off op:append.
+            //
+            // Still PRE-write, and the position is still the whole of it:
+            // `mutate` puts the new item inside commitAndRender(), so reading
+            // the store after it would find the new bullet and report it as a
+            // duplicate of itself — the same trap the file read had.
+            //
+            // ANTS-3793 INV-2 is what makes the swap invisible: the store's
+            // records equal the rendered file's record-for-record, and
+            // includeArchive=false is the membership ROADMAP.md itself carries.
+            // rcComputePossibleDuplicates reads only `id` and `headline`, both
+            // of which INV-2 covers.
+            //
+            // A read that refuses drops the advisory rather than the append.
+            // StoreFailed is moot — commitAndRender() is about to refuse on the
+            // same store — and TooLarge means a project over kItemCeiling, for
+            // which roadmap_query's own store path already refuses outright.
+            RoadmapSource::ReadError dupWhy = RoadmapSource::ReadError::None;
+            const auto preWriteBullets = RoadmapSource::bulletsFromStore(
+                store, projectId, /*includeArchive=*/false, &dupWhy);
 
             RoadmapRender::Outcome outcome;
             QString writeErr;
@@ -424,13 +435,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             env[QStringLiteral("items_rendered")] = outcome.itemsRendered;
             if (dryRun)
                 env[QStringLiteral("dry_run")] = true;
-            // ANTS-2043 — the near-duplicate advisory, kept: the file is the
-            // render's own output, so its bullets are the store's items, and it
-            // was read BEFORE the write so the new bullet cannot match itself.
-            const QJsonArray possibleDuplicates = rcComputePossibleDuplicates(
-                RoadmapDialog::parseBullets(preWriteMarkdown), headline);
-            if (!possibleDuplicates.isEmpty())
-                env[QStringLiteral("possible_duplicates")] = possibleDuplicates;
+            // ANTS-2043 — the near-duplicate advisory, kept: the records are
+            // the store's own items, read BEFORE the write so the new bullet
+            // cannot match itself (ANTS-4426).
+            if (preWriteBullets) {
+                const QJsonArray possibleDuplicates =
+                    rcComputePossibleDuplicates(*preWriteBullets, headline);
+                if (!possibleDuplicates.isEmpty())
+                    env[QStringLiteral("possible_duplicates")] =
+                        possibleDuplicates;
+            }
             if (!scrubbedNames.isEmpty()) {
                 QJsonArray names;
                 for (const QString &n : scrubbedNames) names.append(n);

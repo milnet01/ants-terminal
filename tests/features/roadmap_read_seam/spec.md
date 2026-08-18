@@ -32,6 +32,7 @@ changing what a record contains.
 | `Ants3863Inv5FullMatchesReadAll` | 3863 INV-5 | `full()` equals a `ReadOnly \| Text` `readAll()`, cold and after a prefix read |
 | `Ants3863Inv6ReadsEveryByteAtMostOnce` | 3863 INV-6 | `bytesRead()` equals the file size in both accessor orders |
 | `Ants3863Inv7NoQStringMarkdownOverloadSurvives` | 3863 INV-7 | multiline source scrape: no `const QString &markdown` seam overload remains |
+| `Ants4426AppendAdvisoryReadsNoBody` | ANTS-4426 | source scrape: `roadmap_log`'s store path no longer reads `ROADMAP.md` in full |
 
 ANTS-3863's INV-3 has no case of its own by design: it asserts that ANTS-3815
 INV-6 still holds through the new signature, and
@@ -157,6 +158,20 @@ Naming a test that does not exist in that file is **silently ignored**, so a
 rename of `Inv3Latency` would quietly put a timing assertion back into the
 pre-push gate. `Ants3793LatencyCaseIsPerfLabelled` is the guard for that.
 
+### `Ants4426AppendAdvisoryReadsNoBody`
+
+ANTS-3863 bounded the dispatch; ANTS-4426 is the follow-on that removes the one
+remaining body read on `roadmap_log op:append`'s migrated path — the ANTS-2043
+near-duplicate advisory, which parsed the whole of `ROADMAP.md` and now takes
+its records from the store.
+
+It is a **scrape rather than a behavioural case, and deliberately so**: the two
+backends cannot disagree on a successful append, so re-introducing the file read
+would change no answer and no assertion — only 3.8 MiB of read-and-parse per
+append. `roadmap_log_possible_duplicates` INV-6 and INV-7 own the behaviour;
+this owns the cost. Comments are stripped before matching, so the prose
+explaining the removal cannot satisfy the scrape it is explaining.
+
 ## Mutations these fail against
 
 Per this project's convention every case is verified RED against its *Breaks
@@ -168,3 +183,4 @@ when* mutation before the implementation is restored.
 | `Inv2BackendsAgree` | order by `item_pk` instead of § 2.1.3's walk; return `item.body` raw; fill `id`/`idToken` from the `id` column; copy `status` verbatim instead of the emoji; drop `headline`'s 120-character ellipsis; copy a `level == 0` root's title into `sectionHeading`; slug sections statelessly |
 | `Inv2Membership` | return `dropped` items; filter `internal` ones; drop unfiled items, or emit them before the filed ones |
 | `Inv3Ceiling` | test `>=` instead of `>`; test the ceiling after the item bodies are already resident |
+| `Ants4426AppendAdvisoryReadsNoBody` | re-introduce a `storeText.full()` read in `roadmap_log`'s store block — verified red 2026-08-18 |

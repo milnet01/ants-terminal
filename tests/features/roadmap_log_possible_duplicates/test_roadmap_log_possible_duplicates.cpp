@@ -11,6 +11,13 @@
 #include <QString>
 #include <QTemporaryDir>
 #include "remotecontrol.h"
+// ANTS-4426 — the migrated-path cases below drive the store backend.
+#include "roadmapmigrate.h"
+#include "roadmapmigrateload.h"
+#include "roadmapstore.h"
+#include "../../_support/xdg_guard.h"
+#include <QDir>
+#include <QFileInfo>
 
 namespace {
 
@@ -82,6 +89,81 @@ bool setup(QTemporaryDir &dir) {
     return dir.isValid()
         && writeRoadmap(dir.path(), roadmapWith())
         && writeCounter(dir.path(), 9100);
+}
+
+// ---- ANTS-4426 — the migrated-project fixture -------------------------------
+//
+// The cases above run against an UNMIGRATED project, so every one of them takes
+// roadmap_log's markdown path. The advisory's records come from somewhere else
+// on the store path, and nothing here reached it.
+
+// The ants-v1 marker is load-bearing: RoadmapSource::migratedProject() serves
+// the store for that dialect only, so a fixture without it would carry a store
+// row and still exercise the markdown branch.
+QString migratedRoadmap() {
+    return QString::fromUtf8(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **The widget cache grows without "
+        "bound during long sessions.**\n"
+        // The render refuses a project whose open items carry no Layman line,
+        // so the fixture supplies one; nothing here turns on its text.
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n");
+}
+
+// A bullet filed BY HAND after the migration — ANTS-4141's documented
+// workaround. It is in the file and has never been in the store.
+QString handFiledBullet() {
+    return QString::fromUtf8(
+        "\n- \xF0\x9F\x93\x8B [DEMO-4242] **The audio resampler drops "
+        "frames on device change.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n");
+}
+
+// findRoadmaps -> planFrom -> load, the migration as a consumer runs it. Bulk,
+// because RoadmapMigrateLoad::load() refuses an Interactive connection
+// (ANTS-3765 INV-12).
+bool migrateDefaultStore(const QString &root) {
+    const QString dbPath = RoadmapStore::defaultPath();
+    QDir().mkpath(QFileInfo(dbPath).path());
+    RoadmapStore store(dbPath, RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    if (!store.open(&err)) {
+        ADD_FAILURE() << "store open: " << err.toStdString();
+        return false;
+    }
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    if (!disc) {
+        ADD_FAILURE() << "findRoadmaps: " << err.toStdString();
+        return false;
+    }
+    const auto plan = RoadmapMigrate::planFrom(*disc, QStringLiteral("Demo"),
+                                               QStringLiteral("demo"));
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = QStringLiteral("2026-08-18T10:00:00Z");
+    opts.projectRoot = root;
+    const auto out = RoadmapMigrateLoad::load(store, plan, opts);
+    if (!out.ok) {
+        ADD_FAILURE() << "migration load: " << out.error.toStdString();
+        return false;
+    }
+    return true;
+}
+
+QJsonObject migratedAppendReq(const QString &dir, const QString &headline) {
+    QJsonObject r = appendReq(dir, headline);
+    r["section"] = QStringLiteral("work");
+    r["layman"]  = QStringLiteral("A thing.");
+    return r;
 }
 
 }  // namespace
@@ -228,4 +310,76 @@ TEST(roadmap_log_possible_duplicates, Ants4377NoteOnAppendRefusesInsteadOfDroppi
         QStringLiteral("A bullet whose body was sent under the right key."));
     good["body"] = QStringLiteral("Body prose.");
     EXPECT_TRUE(rc.cmdRoadmapLogAppendForTest(good).object()["ok"].toBool());
+}
+
+// ANTS-4426 — on a migrated project the advisory's records come from the STORE.
+//
+// The advisory used to parse `storeText` in full — the whole of ROADMAP.md,
+// 3.8 MiB on this project — and that read was the one consumer keeping
+// ANTS-3863's bounded dispatch from reaching op:append at all.
+//
+// This case pins the premise that makes the swap invisible rather than merely
+// cheaper: **the two backends cannot disagree on a SUCCESSFUL append.** A file
+// carrying a bullet the store has never imported is exactly the input on which
+// a file-sourced advisory and a store-sourced one differ — and on that input
+// commitAndRender() refuses outright, before any envelope is built. So every
+// append that reaches the advisory has a file that IS the render's own output,
+// which is what the ANTS-2043 comment claimed and nothing checked.
+TEST(roadmap_log_possible_duplicates, Ants4426FileAheadRefusesSoBackendsCannotDiffer) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    ants_test::XdgGuard xdg;
+    xdg.setEnv("XDG_DATA_HOME",
+               dir.filePath(QStringLiteral("xdg")).toLocal8Bit());
+
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(QDir().mkpath(root));
+    ASSERT_TRUE(writeRoadmap(root, migratedRoadmap()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    // ANTS-4141's documented workaround, performed literally.
+    ASSERT_TRUE(writeRoadmap(root, migratedRoadmap() + handFiledBullet()));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
+        migratedAppendReq(root,
+            QStringLiteral("The audio resampler drops frames on device "
+                           "change."))).object();
+
+    EXPECT_FALSE(out["ok"].toBool())
+        << "a file ahead of the store must not be re-rendered away";
+    EXPECT_TRUE(out["error"].toString().contains(QStringLiteral("DEMO-4242")))
+        << "the refusal names the bullet the render would have deleted";
+    EXPECT_FALSE(out.contains(QStringLiteral("possible_duplicates")))
+        << "a refused append builds no advisory, from either backend — which "
+           "is why sourcing it from the store changes no answer";
+}
+
+// The control for the case above: a headline duplicating an item the store DOES
+// hold must still score 100. Without this, deleting the advisory outright would
+// pass.
+TEST(roadmap_log_possible_duplicates, Ants4426StoreItemStillSurfaces) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    ants_test::XdgGuard xdg;
+    xdg.setEnv("XDG_DATA_HOME",
+               dir.filePath(QStringLiteral("xdg")).toLocal8Bit());
+
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(QDir().mkpath(root));
+    ASSERT_TRUE(writeRoadmap(root, migratedRoadmap()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(
+        migratedAppendReq(root,
+            QStringLiteral("The widget cache grows without bound during long "
+                           "sessions."))).object();
+
+    ASSERT_TRUE(out["ok"].toBool()) << "append refused: "
+        << out["error"].toString().toStdString();
+    ASSERT_TRUE(out.contains(QStringLiteral("possible_duplicates")))
+        << "DEMO-0001 is in the store and says the same thing";
+    const QJsonArray dups = out["possible_duplicates"].toArray();
+    ASSERT_EQ(dups.size(), 1);
+    EXPECT_EQ(dups[0].toObject()["id"].toString(), QStringLiteral("DEMO-0001"));
+    EXPECT_EQ(dups[0].toObject()["score"].toInt(), 100)
+        << "an exact normalised match, whichever backend supplied it";
 }

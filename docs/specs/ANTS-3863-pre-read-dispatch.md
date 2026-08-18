@@ -816,10 +816,22 @@ one this document never found: the ANTS-2043 near-duplicate advisory
 (`rcComputePossibleDuplicates(parseBullets(storeMarkdown), …)`), which needs the
 **pre-write** text — `commitAndRender()` rewrites `ROADMAP.md`, so a lazy
 `full()` below it would read the new bullet back and report it as a duplicate of
-itself. The read is therefore *forced* immediately before the write rather than
-deferred onto `rlStoreCounterPrefix()`'s fallback. What `op:append` still saves
-is every refusal above that point, and the whole unmigrated path. Tracked as
+itself. The read was therefore *forced* immediately before the write rather than
+deferred onto `rlStoreCounterPrefix()`'s fallback. What `op:append` saved was
+every refusal above that point, and the whole unmigrated path. Tracked as
 **ANTS-4426**, with the two other consumers in the same class.
+
+**ANTS-4426 closed that site on 2026-08-18, and the read is gone rather than
+moved.** The advisory takes its records from `RoadmapSource::bulletsFromStore()`
+instead of parsing the file, so `op:append`'s migrated path now reads no body at
+all. The pre-write requirement is unchanged and now bites on the store — the
+call sits above `commitAndRender()`, whose `mutate` puts the new item. The swap
+is invisible rather than merely cheaper: `commitAndRender()` refuses outright
+when the file carries a bullet the store never imported, which is the only input
+on which the two backends could disagree, so no successful append ever saw a
+difference (`roadmap_log_possible_duplicates` INV-6 / INV-7; the cost is pinned
+by `roadmap_read_seam.Ants4426AppendAdvisoryReadsNoBody`). The other two
+consumers stay open under ANTS-4426.
 
 **INV-1's byte-cap leg asserts `bytesRead() <= kDetectorByteCap + 1`.** The
 reader looks **one byte past** the cap so `detectionPrefixOf()` can see that the
