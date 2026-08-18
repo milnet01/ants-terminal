@@ -256,7 +256,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
             const QString shape =
                 c.span.contains(QStringLiteral("()"))
                     ? QStringLiteral("call")
-                    : (c.needle.contains(QStringLiteral("::"))
+                    : (c.span.contains(QStringLiteral("::"))
                            ? QStringLiteral("qualified")
                            : QStringLiteral("bare"));
             f.extra[QStringLiteral("shape")] = shape;

@@ -457,6 +457,7 @@ TEST(DocSymbols, Ants4359UnresolvedIsClassifiedByShape) {
 The canonical bypass list is `isControlPlaneTool()`.
 An enum value `SomeEnumValue` and a CMake variable `ANTS_TESTS`.
 A qualified miss `Widget::gone()`.
+A qualified non-call `Widget::alsoGone`.
 )MD");
 
     DocSymbols::Options opts;
@@ -481,6 +482,12 @@ A qualified miss `Widget::gone()`.
     EXPECT_EQ(shapeOf("gone"), QStringLiteral("call"))
         << "a qualified CALL is still a call — parens win over `::`, because "
            "the claim being made is about a function either way";
+    // ANTS-4443: the qualified test must read `span`, not `needle` — the
+    // needle has had its scope stripped by then, so `::` can never appear in
+    // it and every qualified non-call span silently fell into `bare`.
+    EXPECT_EQ(shapeOf("alsoGone"), QStringLiteral("qualified"))
+        << "a scoped span with no parens is a claim about a MEMBER, and it "
+           "belongs in its own bucket rather than the benign bare pile";
 
     // The counters agree with the per-finding labels, and nothing was dropped.
     EXPECT_EQ(r.unresolvedCall + r.unresolvedQualified + r.unresolvedBare,
@@ -489,4 +496,6 @@ A qualified miss `Widget::gone()`.
            "loses one is worse than the flat list it replaced";
     EXPECT_GE(r.unresolvedCall, 2);
     EXPECT_GE(r.unresolvedBare, 2);
+    EXPECT_GE(r.unresolvedQualified, 1)
+        << "structurally unreachable before ANTS-4443";
 }
