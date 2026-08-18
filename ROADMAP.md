@@ -31933,6 +31933,16 @@ against current source before filing.
   roadmap-format.md:877-894 already records the deadlock for a project mid-conversion to ants-v1 — step 4 fills the lines and the store path is \"unusable ... its publish gate being unmet until step 4\". That is documented for a conversion in flight. Nothing covers a project not converting at all, which is what Vestige, MAME_Curator and Music_Production are.
 
   So the fix has two halves that can land separately: (a) do not fire on a dialect whose format does not require the line; (b) give a project that does require it a way out that is not a hand edit plus a re-import.
+  Ready-to-paste unblock prompts for the three still-blocked projects are saved
+  at `.audit_cache/roadmap-unblock-prompts-2026-08-18.md` (gitignored, local to
+  this machine). MAME_Curator (2 items) and Music_Production (4 items) are
+  fixable today by hand-adding Layman lines then re-running `roadmap_migrate`.
+  Vestige (585 items) must NOT be asked to do that: its roadmap is the
+  `github-task-list` dialect, where `roadmap-format.md:830` makes the Layman
+  line OPTIONAL — the gate does not check the dialect, so it is enforcing an
+  ants-v1 rule against a roadmap that is not ants-v1. That is this item's fix,
+  not Vestige's debt. finbreak needed nothing: its store was a stale snapshot,
+  re-imported, 13 gate failures -> 0, verified live.
   **Layman:** Three projects cannot use the roadmap tools at all, and the tools offer no way to fix the thing they are complaining about.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
