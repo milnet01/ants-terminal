@@ -40949,6 +40949,32 @@ assistant suggestions, accepted by the user for filing.
   (the render emits it from a project-level version field), or to drop
   ROADMAP.md from the bump recipe and have the render derive it. Do not
   "fix" it by telling people to re-apply the edit.
+  Progress (2026-08-19): hit three more times in one session, and the
+  new evidence NARROWS the fix.
+
+  The original write-up observed it on `op:annotate`. Today it fired on
+  `op:create_section` and on `op:flip` as well, each reporting
+  `discarded_external_edits:true, discarded_edit_lines:2` and each
+  putting the banner back to 0.7.105. Between them, `op:append` and
+  `op:amend_body` reported `false` -- not because those ops are safe,
+  but because the banner had already been reverted and there was
+  nothing left to discard.
+
+  So the trigger is not a particular op. It is the FIRST write of any
+  kind after someone repairs the banner, because every op re-renders
+  the whole file. That rules out fixing this per-op and points at the
+  two directions the item already names: make the banner store-owned,
+  or drop ROADMAP.md from the bump recipe and let the render derive
+  it.
+
+  What made it survivable rather than silent: packaging/check-version-
+  drift.sh reads ROADMAP.md and fails, so gating on it after roadmap
+  writes catches the revert every time. That is the workaround, not
+  the fix -- it depends on a human remembering to run it.
+
+  Working sequence used today, four times, if the fix is deferred
+  again: do ALL roadmap_log writes first, repair the banner last,
+  then gate on check-version-drift.sh before committing.
   **Layman:** After a release, the version shown at the top of the roadmap file can silently go back to the old number.
   Kind: fix.
   Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle..
@@ -47384,6 +47410,35 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   **Layman:** Flathub requires the app's ID to use a web domain you actually own. The old ID (org.ants.Terminal) implied you owned ants.org, which isn't registered — Flathub would reject it. Switched to your live domain antsprojectshub.co.za, so the ID is now za.co.antsprojectshub.AntsTerminal.
   Kind: refactor.
   Source: user-request-2026-07-02 (Flathub submission prep).
+
+- 📋 [ANTS-4538] **The three shipped screenshots are four months old and predate the status-bar chips every store page shows.**
+  docs/screenshots/{01-main-terminal,02-review-changes,03-project-
+  audit}.png are dated 2026-04-20 and were last touched by the Flathub
+  prep (e899727b) and the app-ID rename (ceff753a). They are not
+  decoration: packaging/linux/za.co.antsprojectshub.AntsTerminal.
+  metainfo.xml references all three by raw.githubusercontent URL, so
+  GNOME Software, KDE Discover and the Flathub tile render them, and
+  as of 2026-08-19 README.md leads with 01 as well.
+
+  What has changed in the status bar since April, and so is missing
+  from every one of them: the Claude model + thinking-level badge, and
+  the tokens-saved counter. Both are headline reasons to use the
+  terminal and neither is visible in the pictures a prospective user
+  sees first.
+
+  Scope note: this is a capture-and-replace job, not a design one.
+  docs/screenshots/README.md already owns the replacement policy --
+  numeric NN-name.png prefixes, ~1920px width, and the metainfo
+  <screenshots> block updated in the SAME commit as any rename,
+  because the URLs are baked in literally.
+
+  Worth considering while recapturing: whether a fourth shot of the
+  Roadmap dialog belongs in the set, since ANTS-4412 reworked its
+  filter bar and it is a substantial surface no store image shows.
+  **Layman:** The pictures of Ants on its app-store pages are from April and no longer match what the app looks like.
+  Kind: doc.
+  Source: in-session-2026-08-19, noticed during the README pass.
+  Lanes: packaging, docs.
 
 ### 🔌 Plugins — marketplace
 
