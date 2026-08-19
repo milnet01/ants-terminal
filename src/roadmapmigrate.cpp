@@ -226,6 +226,13 @@ QString bodyWithoutHeadPrefix(const BulletRecord &rec) {
 
 // One reader record as migration will file it. § 2.1.1 accounts for the fields
 // left empty; the notes this raises are § 2.10's.
+// ANTS-4484 — collapse a soft-wrapped headline to one line. Whitespace runs
+// (the newline plus the continuation indent) become a single space, so nothing
+// is lost and nothing is glued together.
+QString joinWrapped(const QString &headline) {
+    return headline.simplified();
+}
+
 // ANTS-4481 — the 1-based line a trailer label sits on. `rec.body` starts at
 // `rec.firstLine`, so counting newlines before the label is the whole job. 0
 // means "not found", and the caller falls back to the bullet's first line.
@@ -250,7 +257,19 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
                      int position, int sourceIndex, QVector<Note> &notes) {
     PlannedItem it;
     it.sourceIndex = sourceIndex;
-    it.headline = rec.headlineFull.isEmpty() ? rec.headline : rec.headlineFull;
+    // ANTS-4484 / ANTS-4486 — a bold headline that soft-wraps across source
+    // lines is ONE logical string, and the newline inside it means nothing. The
+    // PARSER keeps it, deliberately (ANTS-1561 INV-2 pins that, with
+    // headline_oneline as the collapsed form), so the join belongs here, at the
+    // migration's ingest, where it closes both reported failures at once: the
+    // renderer emits `**` + headline + `**` verbatim, so a stored newline comes
+    // back at COLUMN 0 where markdown reads it as a new list item and the
+    // bullet visibly splits; and the re-parse of that output then attributes
+    // the trailers below the split to a different bullet, so a re-migration
+    // reports kind/source as `field_defaulted` and overwrites correct rows with
+    // invented ones.
+    it.headline = joinWrapped(rec.headlineFull.isEmpty() ? rec.headline
+                                                         : rec.headlineFull);
     it.body        = bodyWithoutHeadPrefix(rec);   // ANTS-3808 § 2.1
     it.layman      = rec.layman;
     it.lanes       = rec.lanes;

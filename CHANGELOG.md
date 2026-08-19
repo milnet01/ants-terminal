@@ -214,6 +214,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A long roadmap headline no longer splits its item in two when the file is rewritten** (ANTS-4484)
+  A headline that wrapped across two lines was stored with the line break
+  inside it, and written back out with the second half flush against the left
+  margin — where markdown reads it as a new bullet, so the item visibly split
+  and the trailers below it were then read as belonging to the fragment. The
+  headline is now joined into one line both when it is read into the store and
+  when it is written back, so an existing roadmap with the damage in it is
+  repaired by the next write.
+
 - **roadmap_migrate's preview reports the real project id instead of 0** (ANTS-4478)
   A dry run over an already-migrated project answered `project_id: 0` beside counts that could only have been computed against that project's real rows. It now reports the store's id for that root on both paths; 0 means only that the root is not registered yet, so a preview answering `project_id > 0` reads as "already migrated".
 

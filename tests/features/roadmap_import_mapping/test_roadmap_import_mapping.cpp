@@ -905,3 +905,76 @@ TEST(RoadmapImportMapping, RenderThenImportIsIdentityOverGovernedColumns) {
         << "the round trip is drifting rather than settled: "
         << late.join(QStringLiteral(", ")).toStdString();
 }
+
+// -------------------------------------------------- ANTS-4484 / ANTS-4486 ---
+// A bold headline that soft-wraps across source lines is ONE logical string,
+// and the newline inside it has no meaning. The parser keeps it (ANTS-1561
+// INV-2 pins that, and headline_oneline is the collapsed form), so the join
+// belongs at the migration's ingest — which is also where it closes both
+// reported failures at once:
+//
+//   - the renderer emits `**` + headline + `**` verbatim, so a stored newline
+//     comes back at COLUMN 0, where markdown reads `+ …` or `guard.**` as a new
+//     list item and the bullet visibly splits (18 of 274 bullets, Fin Break);
+//   - and the re-parse of that output cannot find the trailers below it, so a
+//     re-migration reports kind/source as `field_defaulted` and would overwrite
+//     136 correct stored rows with invented ones (36 of 136, LWSM).
+
+TEST(RoadmapImportMapping, Ants4484WrappedHeadlineIsJoinedAtIngest) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), doc(QStringLiteral(
+        "- \U0001F4CB [DEMO-0050] **P01: project skeleton + lint + format\n"
+        "  + test + security-scan harness.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"))));
+
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    ASSERT_TRUE(disc) << err.toStdString();
+    const MigrationPlan plan =
+        RoadmapMigrate::planFrom(*disc, QStringLiteral("Demo"), QStringLiteral("demo"));
+
+    const PlannedItem *it = itemById(plan, "DEMO-0050");
+    ASSERT_NE(it, nullptr) << "the wrapped headline was not parsed as a bullet at all";
+    EXPECT_FALSE(it->headline.contains(QLatin1Char('\n')))
+        << "a newline in the stored headline is what the renderer emits at "
+           "column 0: [" << it->headline.toStdString() << "]";
+    EXPECT_EQ(it->headline,
+              QStringLiteral("P01: project skeleton + lint + format "
+                             "+ test + security-scan harness."))
+        << "the two halves must join with ONE space and lose nothing";
+
+    // The trailers below the wrap are still read: this is the half that makes a
+    // re-migration destructive, because a defaulted kind/source overwrites the
+    // correct stored value.
+    EXPECT_EQ(it->kind, QStringLiteral("implement"));
+    EXPECT_EQ(provOf(*it, "kind"), QStringLiteral("asserted"));
+    EXPECT_EQ(it->source, QStringLiteral("test"));
+    EXPECT_EQ(provOf(*it, "source"), QStringLiteral("asserted"));
+}
+
+// The row is the one an EXISTING store already holds: every store migrated
+// before the ingest join keeps the newline, so the render must not be able to
+// split a file on it either. Two different failure paths, one line of fix each.
+TEST(RoadmapImportMapping, Ants4484RenderedWrappedHeadlineIsOneLine) {
+    RoadmapStore::ItemWrite it = renderableItem();
+    it.headline = QStringLiteral("P01: project skeleton + lint + format\n"
+                                 "+ test + security-scan harness.");
+    const QString text = RoadmapRender::bulletText(it);
+
+    // Every line after the first is a continuation and must be indented. A line
+    // at column 0 starting `+ ` IS a new markdown list item, which is exactly
+    // how the bullet visibly split.
+    const QStringList lines = text.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    ASSERT_FALSE(lines.isEmpty());
+    for (int i = 1; i < lines.size(); ++i) {
+        EXPECT_TRUE(lines.at(i).startsWith(QStringLiteral("  ")))
+            << "line " << i << " is flush left, so markdown reads it as a new "
+            << "item: [" << lines.at(i).toStdString() << "]\n" << text.toStdString();
+    }
+    EXPECT_TRUE(lines.first().endsWith(QStringLiteral("harness.**")))
+        << "the headline did not render on one line: " << text.toStdString();
+}

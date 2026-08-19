@@ -81,7 +81,15 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     QString head = QStringLiteral("- ") + emojiFor(it.status);
     if (!it.id.isEmpty())
         head += QStringLiteral(" [") + it.id + QLatin1Char(']');
-    head += QStringLiteral(" **") + it.headline + QStringLiteral("**");
+    // ANTS-4484 — simplified(), not verbatim. A newline inside the stored
+    // headline would emit its continuation at COLUMN 0, where markdown reads
+    // `+ …` as a new list item and the bullet visibly splits; the next parse
+    // then attributes that bullet's trailers to the fragment. The migration's
+    // ingest stops NEW rows carrying one, but every store migrated before that
+    // still holds them — so the render refuses to emit one rather than trusting
+    // the column, and an already-poisoned row is repaired by the next write
+    // instead of corrupting the file again.
+    head += QStringLiteral(" **") + it.headline.simplified() + QStringLiteral("**");
     lines.append(head);
 
     // One accessor call per bullet, reused across all five comparisons: calling

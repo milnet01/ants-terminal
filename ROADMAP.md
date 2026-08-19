@@ -36096,7 +36096,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Claude Code config).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4484] **The renderer emits a wrapped bold headline's continuation at column 0, where markdown reads it as a new list item.**
+- ✅ [ANTS-4484] **The renderer emits a wrapped bold headline's continuation at column 0, where markdown reads it as a new list item.**
   Fin Break's hand-written ROADMAP.md had 18 of 274 bullets whose `**bold headline**` spanned two
   source lines with a two-space continuation indent. On render the closing half came back at
   column 0:
@@ -36119,6 +36119,36 @@ are closed inline in the feedback files rather than filed here.
   held each headline on one line. The alternative — preserve the two-space continuation indent on
   render — leaves the newline in the column and therefore leaves ANTS-4437 and the LWSM re-parse
   item still standing. Fix it at ingest and all three close together.
+  Resolved (2026-08-19). Fixed on BOTH sides, because they are two
+  different failure paths and each costs one line.
+
+  Ingest (makeItem): a soft-wrapped bold headline is joined with
+  simplified() before it reaches the store, so no NEW row can carry a
+  newline. This is where the item asked for it, and it is right: the parser
+  keeps the newline deliberately — ANTS-1561 INV-2 pins that, with
+  headline_oneline as the collapsed form — so joining in the parser would
+  have broken a shipped tested invariant, which is the ANTS-4478 shape all
+  over again.
+
+  Render (bulletText): the headline is simplified() on the way out too.
+  Every store migrated before today still holds newline-bearing headlines,
+  and the ingest fix only repairs those on the next migration — so without
+  this half an already-poisoned row keeps splitting the file on every write.
+  With it, the next write repairs the file.
+
+  Measured while writing the test, and it corrects the reported mechanism
+  for the sibling item: a HAND-wrapped headline with a two-space
+  continuation parses its trailers correctly — kind and source both came
+  back `asserted`. The trailer loss ANTS-4486 reported comes from the
+  RENDERER's column-0 continuation, which markdown reads as a new list item,
+  so the trailers below the split belong to a different bullet. That is why
+  the correlation there was exact.
+
+  Tests: one on the plan (no newline, both halves joined with one space,
+  trailers still asserted) and one on the render (no line after the first is
+  flush left, headline ends on line 1). The render test uses a
+  newline-bearing row on purpose — the row an existing store already holds.
+  Full suite 3625/3625.
   **Layman:** When a roadmap headline is too long, the second half is written flush to the left margin — and markdown then draws it as a separate bullet, visibly splitting the item in two.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Fin Break).
@@ -36152,7 +36182,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Fin Break).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4486] **roadmap_migrate cannot re-parse its own renderer's wrapped headline, and defaults kind/source over correct stored values.**
+- ✅ [ANTS-4486] **roadmap_migrate cannot re-parse its own renderer's wrapped headline, and defaults kind/source over correct stored values.**
   The round trip is lossy in the destructive direction, and the correlation is exact rather than
   approximate. LWSM has 136 bullets; 100 have a one-line headline and 36 wrap. dry_run reported
   `field_defaulted` for `kind` and `source` at 36 source lines — all 36 are wrapped-headline
@@ -36190,6 +36220,30 @@ are closed inline in the feedback files rather than filed here.
      worth documenting — the store runs in WAL mode (2.7 MB `-wal` alongside a 12.8 MB
      `.sqlite`), so a plain `cp` of the `.sqlite` is an INCONSISTENT backup that silently loses
      the most recent writes. sqlite3's backup API is the correct route.
+  Resolved (2026-08-19) — the root defect. The other three asks are filed:
+  ANTS-4498 (a defaulted value must not overwrite a stored one) and
+  ANTS-4499 (pre-migration backup). Ask 3 is subsumed: `parse_incomplete`
+  existed to distinguish "absent from source" from "the parser stopped
+  before it got there", and after this fix the second case no longer occurs
+  on this path.
+
+  Ask 1 is done, at ingest and at render — see ANTS-4484, which the item
+  itself named as the smaller change that closes this one.
+
+  The reported mechanism was wrong in an instructive way, and it is worth
+  recording because it changes where the defect lives. "The parser stopped
+  reading before it got there" is not what happens to a hand-wrapped
+  headline: a two-space continuation parses fine, and the test proves it —
+  kind and source both come back `asserted`. What actually happened is that
+  the RENDERER emitted the stored newline at column 0, where markdown reads
+  `+ …` as a NEW list item; the trailers below that point then belong to the
+  fragment rather than to the original bullet. So the corruption enters
+  through the write path and is only observed on the read — which is exactly
+  why the correlation with wrapped headlines was exact, and why it fires on
+  the projects that are already done.
+
+  That also explains the compounding the item describes: the more a project
+  uses roadmap_log, the more headlines the renderer wraps.
   **Layman:** The migration cannot read what the roadmap writer wrote: a long headline breaks the parse, and the migration then overwrites good database rows with blanks.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager).
@@ -36494,7 +36548,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4494] **On the GFM path `source` is written as the status word and `kind` is defaulted, on every bullet.**
+- 💭 [ANTS-4494] **On the GFM path `source` is written as the status word and `kind` is defaulted, on every bullet.**
   Two parse defects in the same data, both silent, both on the GFM task-list path only.
 
   `source` is the literal string "planned" on 989 of Vestige's items — a lifecycle word in a
@@ -36514,6 +36568,43 @@ are closed inline in the feedback files rather than filed here.
 
   Related: ANTS-4062 covers the 62 bullets whose declared work category falls outside the
   taxonomy — the same column seen from the other direction.
+  Closed no-change (2026-08-19): both halves are the format standard's own
+  reader-side fallback, and the reported mechanism is wrong.
+
+  docs/standards/roadmap-format.md § 3.5.3, verbatim:
+
+    | `planned` | On the roadmap from project design (default; usually
+    omitted) |
+
+  and, below the two tables:
+
+    "A bullet with no `Kind:` / `Source:` reads as implementation work for
+    the planned roadmap (`Kind: implement`, `Source: planned`) — and that
+    is a reader-side fallback for pre-v1.1 bullets"
+
+  So `source: "planned"` on 989 GFM bullets is not a status word landing in
+  a provenance column by positional mix-up: `planned` IS a Source value in
+  this project's vocabulary, and it is the declared default for an item
+  with no stated provenance. `isRecognisedSourceForm()` carries it as an
+  exact match alongside `static-analysis` and `regression`. The comparison
+  against DOOM_Ants shows only that a project USING the field looks
+  different from one that never declared it.
+
+  `kind: implement` is the same fallback from the same paragraph, and the
+  standard states the reason: the field was introduced against a corpus
+  that predates it, two in five items carry no `Kind:`, and "dropping those
+  items or refusing to read them was never an option". Writing NULL or an
+  `unspecified` enum member would contradict that and break the round-trip
+  gate, which compares the governed columns.
+
+  The residue is real and is legibility, not correctness: 989 defaulted
+  fields are reported only as a count inside `defaulted_fields`, which
+  reads as bookkeeping rather than "989 items were given invented
+  metadata". That half is ANTS-4492's, which asks for the same thing about
+  the same run and is still open.
+
+  Recorded as considered rather than shipped: nothing was built, and a
+  later session should not re-open this without reading § 3.5.3 first.
   **Layman:** For older-format roadmaps the migration files the word "planned" as the item's origin, and invents a work category for every single item.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige).
@@ -36675,6 +36766,69 @@ are closed inline in the feedback files rather than filed here.
   **Layman:** If a roadmap item's title happens to contain the provenance label, the migration reads the rest of the title as the item's provenance instead of the real line further down.
   Kind: fix.
   Source: in-session-2026-08-19, found while writing ANTS-4481's test.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4498] **A defaulted field can overwrite a correct stored value, so a migration can only be run bravely.**
+  ANTS-4486 asked for four things. Its root defect — the wrapped-headline
+  round trip — shipped 2026-08-19. This is its safety half, which stands on
+  its own and needs a contract change rather than a bug fix.
+
+  Today a plan field carrying an INVENTED value overwrites a correct stored
+  one. roadmapmigrate.cpp defaults `kind` to `implement` and `source` to
+  `planned` when the source declares neither (which roadmap-format.md
+  § 3.5.3 requires — see ANTS-4494), records `provenance: defaulted`, and
+  raises a `field_defaulted` note. applyPlanFields then treats that value
+  like any other and writes it over whatever the row held.
+
+  ANTS-4065 § 2.6 rule 3 already carries the sibling rule — an EMPTY plan
+  value does not overwrite a non-empty stored one — and the argument is
+  identical: the source did not say this, so it is not evidence. A defaulted
+  value is the source not saying it, wearing a real value's clothes.
+
+  Asked for: a plan field whose provenance is `defaulted` never overwrites a
+  non-empty stored value; where it would, keep the store's and report it.
+  The data is already in hand — `it.provenance[column]` is set at plan time
+  and `provenanceFor()` is already consulted in the same loop. The effect is
+  that a migration can only ADD information, which is what makes it safe to
+  re-run without a backup.
+
+  Gate: this changes ANTS-4065 § 2.6's stated update rules, so it owes the
+  rule-14 gate. Worth batching with the note-vocabulary changes ANTS-4483
+  and ANTS-4492 need — one amendment, one gate, three items.
+
+  Why it still matters with the root defect fixed: defaulting happens
+  whenever a source genuinely omits a field, not only when a parse fails. On
+  a GFM corpus that is every bullet.
+  **Layman:** When the migration invents a missing value, it writes it over the good value already in the database instead of leaving that one alone.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Local Web Server Manager), split from ANTS-4486 on 2026-08-19.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4499] **roadmap_migrate overwrites rows in a machine-global store with no snapshot and no undo.**
+  ANTS-4486's fourth ask, filed separately because it is a capability rather
+  than a fix and is independent of the parse bug that prompted it.
+
+  roadmap_migrate can update hundreds of rows in a store shared by every
+  project on the machine, and there is no snapshot and no undo. ANTS-4487
+  reports the same gap from the other end (no way to remove one item).
+
+  Asked for: take a pre-migration backup automatically, or accept a
+  `backup_to` path.
+
+  The trap the reporter documented, and it is the part worth keeping: the
+  store runs in WAL mode — a 2.7 MB `-wal` alongside a 12.8 MB `.sqlite` —
+  so a plain `cp` of the `.sqlite` is an INCONSISTENT backup that silently
+  loses the most recent writes. Anyone reaching for the obvious workaround
+  gets a file that looks right. sqlite3's own backup API is the correct
+  route, and Qt exposes no wrapper for it, so this needs the C API against
+  the QSqlDatabase handle.
+
+  Decide alongside it whether the backup is per-call (cheap on a 12.8 MB
+  file, but N copies) or one rolling snapshot, and where it lives — the
+  store is machine-global, so a per-project path is the wrong home.
+  **Layman:** The migration can rewrite hundreds of database rows and there is no way back — and copying the database file by hand does not capture the most recent writes.
+  Kind: feature.
+  Source: cc-feedback-2026-08-18 (Local Web Server Manager), split from ANTS-4486 on 2026-08-19.
   Lanes: mcp, roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
