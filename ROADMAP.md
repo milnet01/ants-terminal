@@ -1218,6 +1218,84 @@ for the rotation contract.
   [§0.6.39](CHANGELOG.md#0639--2026-04-18).
   Kind: implement.
 
+- 📋 [ANTS-4541] **Scrub a stale Claude session's environment from every new shell tab.**
+  Observed 2026-08-19. Claude Code started in a fresh tab reported
+  "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker"
+  and wrote no .jsonl, so the session could not be resumed.
+
+  Traced, not inferred: /proc/<pid>/environ on the whole chain. The live
+  ants-terminal (pid 2509587) carried a COMPLETE set of a foreign Claude
+  session's variables — CLAUDE_CODE_CHILD_SESSION=1, CLAUDECODE=1,
+  CLAUDE_CODE_SESSION_ID=09e6652d-..., CLAUDE_PID=1373714,
+  CLAUDE_CODE_MESSAGING_SOCKET=/run/user/1000/cc-socks/1373714.sock,
+  CLAUDE_CODE_EXECPATH=.../2.1.235 — and passed them to every tab shell
+  and thence to every `claude` launched in one. Both pid 1373714 and its
+  socket are GONE, so the inherited values name nothing.
+
+  Root cause is upstream of Ants: plasmashell was restarted at 17:53 from
+  inside a Claude session and inherited its environment, so every app the
+  launcher starts since then is poisoned. Ants Terminal is a victim, not
+  the cause.
+
+  Proposed fix anyway, because a terminal emulator handing a fresh shell a
+  DEAD session's identity is wrong on its own terms: strip the inherited
+  CLAUDE_*/CLAUDECODE/AI_AGENT set from the environment given to a new PTY
+  child. Claude Code sets its own variables when it starts inside the tab,
+  so nothing legitimate is lost; what is removed is only what leaked in
+  from whatever launched the terminal.
+
+  Open question for design: strip unconditionally, or only when the named
+  CLAUDE_PID is no longer alive. Unconditional is simpler and matches the
+  "a tab is a fresh shell" model.
+  **Layman:** A new terminal tab can inherit a dead Claude session's identity, which silently switches off transcript saving in the Claude you start there.
+  Kind: fix.
+  Source: in-session-2026-08-19.
+
+- 📋 [ANTS-4542] **Line-initial trailer suppression duplicates every INLINE trailer run — 201 bullets, and it truncates the value.**
+  Regression from ANTS-4505/4506 (commit 2fa895d0, 19:12 today), first
+  observed live at 23:45 because the binary carrying it was only promoted
+  by launch.sh at 23:40 — the 22:27 write (ANTS-4538) predates it and was
+  clean. That timing is why nothing caught it earlier.
+
+  Symptom, measured not inferred: one roadmap_log op:append produced a
+  323-line diff, 0 deletions, 203 hunks, of which ~283 lines are duplicate
+  trailers injected into unrelated bullets. dry_run reported
+  discarded_edit_lines:290 with discarded_external_edits:true, which is
+  ALSO wrong — nothing was discarded (git diff: 0 deletions), so that
+  counter is a false alarm sitting on top of the real defect.
+
+  Mechanism. Suppression now requires a trailer to be LINE-INITIAL. 201
+  bullets in ROADMAP.md write their trailer run INLINE and hard-wrapped —
+  a `Kind:` key mid-sentence, then a `Source:` key whose value runs past
+  the wrap onto the next line, then `Lanes:`. That run is not line-initial,
+  so it is neither suppressed nor stripped from the body; the renderer
+  leaves it in place AND re-emits the same three columns beneath it.
+
+  Two defects, not one. (a) Duplication — the same trailer twice.
+  (b) TRUNCATION — the stored value stops at the line wrap and gains a
+  period: a source reading `in-session-2026-05-21 (noticed integrating
+  ANTS-1722)` is stored as `in-session-2026-05-21 (noticed integrating.`
+  with the closing reference lost. So the store's column data for these
+  rows is itself lossy, which a render fix alone will not repair.
+
+  Count: grep -cE for a line-initial-indent bullet body carrying an inline
+  trailer key after a sentence end returns 201 in ROADMAP.md.
+
+  Impact: BLOCKING. Every roadmap_log write corrupts ROADMAP.md, so no
+  roadmap change can be committed until this is fixed. ANTS-4541 and this
+  item both live in the store only; their markdown render was reverted.
+
+  Fix direction: suppression must recognise a wrapped inline trailer run,
+  not only a line-initial one — and the parser must not truncate a trailer
+  value at a soft line wrap. Check ANTS-4506/4507 before assuming this is
+  a new class rather than the same one seen from another angle.
+
+  Verified guard, incidentally: this very body was first refused with
+  `body_shadowed` because it quoted the keys unfenced. That guard works.
+  **Layman:** Every roadmap write now adds duplicate trailer lines to 201 existing entries and mangles one of them, so ROADMAP.md cannot be regenerated until this is fixed.
+  Kind: fix.
+  Source: in-session-2026-08-19.
+
 ### 🔒 Security
 
 - ✅ [ANTS-4157] **Plugin capability audit UI**
