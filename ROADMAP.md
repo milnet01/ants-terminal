@@ -35377,6 +35377,33 @@ happen.
   A per-query render is far too expensive, which is why the read half needs the column and the write half did not.
 
   Blast radius is unchanged for the read half but no longer includes silent data loss: the five reporting projects can now see an overwrite in the envelope, they just cannot see a stale answer from roadmap_query.
+  Progress (2026-08-19): write half VERIFIED LIVE after relaunch, not
+  just in the fixture. Clean arm: dry-run annotate reports
+  would_discard_external_edits:false on this project (2,153 items) and on
+  finbreak (278) and OneUp (115) — all three migrated, all quiet, so the
+  guard does not cry wolf on a healthy store. True arm: appending two
+  lines to this project's ROADMAP.md by hand made the same call report
+  would_discard_edit_lines:3, and `git diff --numstat` independently
+  returned `3 0`. The count is exact against git, not approximate. Probe
+  reverted; tree clean. Both arms used dry_run, so nothing was published.
+
+  Finding that may REMOVE the schema rung from the read half. This item's
+  notes specced store_stale / store_synced_at as needing kSchemaVersion
+  2 -> 3 (a currency column on `project`, ANTS-3815's source_format rung as
+  precedent). The write half now shows a cheaper route: the pre-image
+  render already computes drift with no stored state at all, because it
+  derives currency by COMPARING rather than by remembering. roadmap_query
+  could expose the same number read-only and answer "is my file in sync?"
+  without a migration, without a column, and without a write op — which is
+  what a caller actually wants, and today the only way to ask is to dry-run
+  a write. A stored synced_at also has a failure mode the comparison does
+  not: it records what the store BELIEVES it last published, so an edit
+  made after that stamp is invisible to it, and it goes stale silently on
+  any path that writes the file without updating the column. Cost is a
+  render per query; ETag-304 and the existing 100 ms TTL cache blunt that,
+  but it is real on a 616 KB roadmap and should be measured before
+  committing. Decide between the two before building — do not assume the
+  column is required just because these notes said so first.
 
 - ✅ [ANTS-4463] **roadmap_log `dry_run` returns `files_written` and `note_appended:true` — both assert an action that did not happen.**
   A dry-run flip returns `files_written:["…/ROADMAP.md"]` and
