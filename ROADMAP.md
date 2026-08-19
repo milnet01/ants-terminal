@@ -38608,6 +38608,33 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-20.
   Lanes: roadmap-store, roadmaprender.
 
+- 📋 [ANTS-4544] **Silence 2 GCC -Wnull-dereference false-positives from roadmapdialog.cpp's TOC-toggle lambda — ANTS-1554/3358/3505 class.**
+  Noticed 2026-08-20 during an ordinary `cmake --build build`: two
+  identical `warning: potential null pointer dereference
+  [-Wnull-dereference]` at src/roadmapdialog.cpp:2294, which is the
+  ANTS-4415 TOC-toggle lambda's `if (m_toc) m_toc->setVisible(on);` --
+  guarded on the line it warns about.
+
+  Same class as ANTS-1554, ANTS-3358 and ANTS-3505, all closed the same
+  way: at -O3 GCC inlines the Qt accessor and cannot prove the guard
+  forecloses the deref. Not ANTS-3514, which is a GENUINE unchecked
+  pointer in test code.
+
+  Remedy is the one those three settled on: a GCC-only
+  (`#if defined(__GNUC__) && !defined(__clang__)`) tightly scoped
+  `#pragma GCC diagnostic push / ignored "-Wnull-dereference" / pop`
+  around the lambda, with a comment naming the guard it is covering for.
+  Verify first that it still reproduces on a clean single-TU -O3 compile,
+  as ANTS-3358 and ANTS-3505 both did -- the warning appears only under
+  inlining and a plain incremental build may not show it.
+
+  Small and mechanical. Filed rather than fixed inline because it is
+  orthogonal to the work that surfaced it (ANTS-4501).
+  **Layman:** The compiler prints a scary "possible crash here" warning about code that already checks for the thing it is warning about. Harmless, but it clutters every build.
+  Kind: fix.
+  Source: in-session-2026-08-20.
+  Lanes: RoadmapDialog, build.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
