@@ -37525,7 +37525,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-19 (finbreak).
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4508] **roadmap_log dry_run returns the next id under the same key the real write uses, so it reads as a reservation.**
+- ✅ [ANTS-4508] **roadmap_log dry_run returns the next id under the same key the real write uses, so it reads as a reservation.**
   A dry_run probe reported it would allocate CFG-0145. It does not bump the
   counter, which is correct. But the id was carried into a commit message
   written before the real write, on the reading that the probe had reserved
@@ -37541,6 +37541,14 @@ are closed inline in the feedback files rather than filed here.
   between-probe-and-write mistake, because anything written against that id
   is wrong if any other write intervenes -- wrong in a way nothing detects,
   since the id simply names a different item or none.
+  Resolved (2026-08-19): took the rename rather than the `id` +
+  `reserved:false` alternative — keeping `id` leaves the single-field
+  reader misreading it, which is the whole defect. dry_run on op:append
+  now reports `would_be_id` and op:append_batch `would_be_ids`, and
+  neither emits `id`/`ids`, so an existing single-field reader fails loudly
+  instead of reading a stale id. Matches ANTS-4463's `would_write` naming
+  on the same envelope. Real writes are untouched, asserted in the same
+  test.
   **Layman:** The preview tells you which number your entry will get, but does not hold it — and the wording makes it look held.
   Kind: fix.
   Source: cc-feedback-2026-08-19 (Claude Code config).

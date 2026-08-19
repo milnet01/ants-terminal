@@ -170,8 +170,8 @@ TEST(roadmap_log_prefix, Inv4AppendDryRunNoWrite) {
     ASSERT_TRUE(out["ok"].toBool())
         << QJsonDocument(out).toJson().toStdString();
     EXPECT_TRUE(out["dry_run"].toBool());
-    EXPECT_EQ(out["id"].toString(), QStringLiteral("DOOM-0001"))
-        << "INV-4: preview reports the would-be id";
+    EXPECT_EQ(out["would_be_id"].toString(), QStringLiteral("DOOM-0001"))
+        << "INV-4: preview reports the would-be id (ANTS-4508 renamed it)";
     EXPECT_TRUE(out.contains("bullet"));
     EXPECT_EQ(readRoadmap(dir), before)
         << "INV-4: ROADMAP.md must be untouched by a dry_run";
@@ -202,7 +202,7 @@ TEST(roadmap_log_prefix, Inv5BatchDryRunNoWrite) {
     EXPECT_TRUE(out["dry_run"].toBool());
     EXPECT_EQ(out["applied_count"].toInt(), 0);
     EXPECT_EQ(out["would_apply_count"].toInt(), 2);
-    const QJsonArray ids = out["ids"].toArray();
+    const QJsonArray ids = out["would_be_ids"].toArray();
     ASSERT_EQ(ids.size(), 2);
     EXPECT_EQ(ids[0].toString(), QStringLiteral("DOOM-0001"));
     EXPECT_EQ(ids[1].toString(), QStringLiteral("DOOM-0002"));
@@ -237,4 +237,56 @@ TEST(roadmap_log_prefix, Inv6BatchLeafPrefix) {
     EXPECT_EQ(ids[1].toString(), QStringLiteral("DOOM-0002"));
     EXPECT_EQ(readCounter(dir), 2)
         << "INV-6: a real batch must bump the counter to the last id";
+}
+
+// ANTS-4508 — a preview's id must not be reported under the key a real write
+// uses, because that reads as a RESERVATION.
+//
+// Measured: a dry_run probe reported it would allocate CFG-0145. It does not
+// bump the counter, which is correct — but the id was carried into a commit
+// message written before the real write, and two commits had to be amended.
+//
+// The defect is the key, not the behaviour. The envelope does carry
+// dry_run:true, and a caller reading a single field does not see it. Anything
+// written against a previewed id is wrong if any other write intervenes, and
+// wrong in a way nothing detects: the id simply names a different item or
+// none. `would_be_*` is the naming ANTS-4463 already established on this
+// verb's preview envelope (`would_write`, `would_apply_count`).
+TEST(roadmap_log_prefix, Ants4508PreviewIdIsNotReportedAsAnAllocation) {
+    QTemporaryDir base;
+    const QString dir = makeProject(base, freshRoadmap(), 0);
+    ASSERT_FALSE(dir.isEmpty());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req = appendReq(dir, QStringLiteral("Preview only."));
+    req["dry_run"] = true;
+    const QJsonObject dry = rc.cmdRoadmapLogAppendForTest(req).object();
+    ASSERT_TRUE(dry["ok"].toBool());
+    EXPECT_EQ(dry["would_be_id"].toString(), QStringLiteral("DOOM-0001"));
+    EXPECT_FALSE(dry.contains("id"))
+        << "the real write's key must not appear on a preview — a caller "
+           "reading one field would see an allocation";
+
+    QJsonArray bs;
+    bs.append(batchBullet(QStringLiteral("First batch item.")));
+    QJsonObject breq;
+    breq["caller_cwd"] = dir;
+    breq["op"]         = QStringLiteral("append_batch");
+    breq["section"]    = QStringLiteral("backlog");
+    breq["bullets"]    = bs;
+    breq["dry_run"]    = true;
+    const QJsonObject dryBatch =
+        rc.cmdRoadmapLogAppendBatchForTest(breq).object();
+    ASSERT_TRUE(dryBatch["ok"].toBool());
+    EXPECT_EQ(dryBatch["would_be_ids"].toArray().size(), 1);
+    EXPECT_FALSE(dryBatch.contains("ids"));
+
+    // And the REAL write is unchanged — the rename is preview-only, so the
+    // two envelopes stay distinguishable by the key that carries the id.
+    const QJsonObject real = rc.cmdRoadmapLogAppendForTest(
+        appendReq(dir, QStringLiteral("A real item."))).object();
+    ASSERT_TRUE(real["ok"].toBool());
+    EXPECT_EQ(real["id"].toString(), QStringLiteral("DOOM-0001"))
+        << "a real append still allocates under `id`";
+    EXPECT_FALSE(real.contains("would_be_id"));
 }

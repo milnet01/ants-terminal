@@ -858,11 +858,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // bullet and 1-based insertion line WITHOUT writing ROADMAP.md or
     // bumping .roadmap-counter. Lets a caller verify prefix / format /
     // section for free instead of a write-then-correct round-trip.
+    //
+    // ANTS-4508 — the id is `would_be_id`, NOT `id`. A preview that reports it
+    // under the key a real write uses reads as a RESERVATION: measured, a
+    // probe's id went into a commit message written before the real write and
+    // two commits had to be amended. The envelope does carry dry_run:true, and
+    // a caller reading a single field does not see it. Anything written
+    // against a previewed id is wrong if any other write intervenes — wrong in
+    // a way nothing detects, since the id then names a different item or none.
+    // Same `would_*` naming as ANTS-4463's `would_write` on this envelope.
     if (dryRun) {
         QJsonObject out;
-        out["ok"]      = true;
-        out["dry_run"] = true;
-        out["id"]      = idStr;
+        out["ok"]          = true;
+        out["dry_run"]     = true;
+        out["would_be_id"] = idStr;
         out["file"]    = QStringLiteral("ROADMAP.md");
         out["line"]    = insertAt + 1;  // 1-based for humans
         out["bullet"]  = bulletNoTrailNl;
@@ -5024,7 +5033,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         out["op"]                = QStringLiteral("append_batch");
         out["dry_run"]           = true;
         out["file"]              = QStringLiteral("ROADMAP.md");
-        out["ids"]               = ids;
+        out["would_be_ids"]      = ids;   // ANTS-4508 — not `ids`: a preview
+                                          // must not read as a reservation
         out["lines"]             = emittedLines;
         out["bullets"]           = previewBullets;
         out["applied_count"]     = 0;

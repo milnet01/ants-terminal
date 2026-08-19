@@ -21,10 +21,20 @@ got `ANTS-0001` instead of a project-shaped prefix) + idea B (`dry_run`).
   ANTS-3492 a digit-led prefix is fine *if* it contains a letter (`3D_E`);
   only a letter-free prefix is rejected.
 - **INV-4** — `dry_run:true` on `op:append` returns
-  `{ok:true, dry_run:true, id, bullet, line}` and leaves ROADMAP.md and
-  `.roadmap-counter` byte-for-byte unchanged.
+  `{ok:true, dry_run:true, would_be_id, bullet, line}` and leaves
+  ROADMAP.md and `.roadmap-counter` byte-for-byte unchanged.
 - **INV-5** — `dry_run:true` on `op:append_batch` returns the would-be
-  `ids[]` with `applied_count:0` + `would_apply_count:N`, and leaves both
-  files unchanged.
+  `would_be_ids[]` with `applied_count:0` + `would_apply_count:N`, and
+  leaves both files unchanged.
+- **INV-7** — (ANTS-4508) a preview reports its id under `would_be_id` /
+  `would_be_ids` and **never** under `id` / `ids`; a real write is the
+  mirror image. Measured: a probe reported it would allocate CFG-0145,
+  the id went into a commit message written before the real write, and
+  two commits had to be amended. The envelope does carry `dry_run:true`,
+  and a caller reading a single field does not see it — while anything
+  written against a previewed id is wrong if any other write intervenes,
+  in a way nothing detects, because the id then names a different item or
+  none. Same `would_*` naming as ANTS-4463's `would_write` on this
+  envelope. *Test:* `roadmap_log_prefix.Ants4508PreviewIdIsNotReportedAsAnAllocation`
 - **INV-6** — `op:append_batch` on a fresh / id-less roadmap derives the
   leaf prefix for every bullet (`DOOM-0001`, `DOOM-0002`, …).

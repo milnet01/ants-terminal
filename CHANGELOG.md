@@ -225,6 +225,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log dry_run returns the next id under the same key the real write uses, so it reads as a reservation.** (ANTS-4508)
+  The preview tells you which number your entry will get, but does not hold it — and the wording makes it look held.
+
 - **read_region section= and file_outline cannot see a heading inside a blockquote.** (ANTS-4520)
   A heading written inside a quoted block is invisible to the tool, so the one section you were told to read cannot be addressed by name.
 
