@@ -40658,6 +40658,46 @@ assistant suggestions, accepted by the user for filing.
   Source: cold-eyes ANTS-3609 (2026-07-24).
   Resolved (2026-07-25) — decision: (a), wire both, sharing one implementation. (1) `suppressions` is now honoured or refused, never ignored: "auto"/absent applies both headless suppression sources, "none" applies neither, "path:<file>" reads the allowlist from the named file, and any other value refuses bad_args. A `path:` target that does not canonicalise under the project root refuses bad_path — without that the field is an arbitrary-file-read oracle (a malformed-JSON qWarning confirms existence). The gate sits after the cheap argument validation and before any tool is resolved or spawned. (2) `.audit_allowlist.json` filtering now applies headless: AllowlistEntry + loadAllowlist + allowlisted + globToRegex moved from AuditDialog into AuditEngine (Qt6::Core-only, so ants_audit_lib links them), AuditDialog delegates, and AuditDialog::AllowlistEntry is an alias — one implementation, two callers, per the reuse-before-rewriting rule. runAudit compiles the allowlist once per run and matches each finding at the same drop point as the ANTS-1820 learned-FP ledger, so rawCount keeps the true raw total while afterFilterCount / samples / the SARIF finding set drop the match. Regex hardening (isCatastrophicRegex + hardenUserRegex) came along and now covers both callers. `.audit_suppress` deliberately stays GUI-only: it is keyed by the line-grain dedupKey the runner never materialises, and the drift-resilient fingerprint ledger supersedes it headless — recorded in INV-7 rather than left implicit. New feature contract tests/features/audit_run_allowlist/ (9 tests, INV-1..6, hermetic QTemporaryDir). Also repointed the audit_regex_dos_watchdog scrape at the engine body (the guard must live wherever the loader does) and updated the verb's schema description, which had described the never-implemented v1 design. ANTS-1351.md INV-6/INV-7/§2.1/§4 and mcp-error-codes.md reconciled. 2888 tests green.
 
+- 📋 [ANTS-4526] **A trailer key on a FENCED line still parses as a declaration.**
+  ANTS-4504 masks inline code SPANS only. trailerValuesIn() computes a
+  fence mask because MarkdownScan::codeSpans() requires one, and
+  deliberately does not blank fenced lines. So a bullet body carrying a
+  fenced block with a `Kind:` or `Lanes:` line in it still declares that
+  value.
+
+  Same defect class as ANTS-4504 -- a quoted key is not a declaration --
+  and the fix is one line in maskCodeSpans(). It was left out because
+  nothing measures how many corpus bullets carry a fenced block with a
+  trailer key in it, and ANTS-4504 already moves corpus values once.
+
+  Measure first, then decide: count bullets whose body has a fence
+  containing a trailer key, and check whether any of them is the bullet's
+  ONLY declaration of that key -- masking those would lose a real value.
+  ANTS-4065 section 5 carries the same entry.
+  **Layman:** A roadmap entry that shows its own format inside a code block can still have that example read as real data.
+  Kind: fix.
+  Source: in-session-2026-08-19, filed by ANTS-4504 as its own out-of-scope half..
+  Lanes: roadmap.
+
+- 📋 [ANTS-4527] **Evidence: values that are prose are reported as unresolved paths, and the repair belongs at the write side.**
+  ANTS-4065 section 2.5 gives `Evidence:` no predicate, because
+  roadmap-format.md section 3.5 defines every element as a path. The
+  corpus disagrees: DOOM Ants' clean migration reports `user screenshot`
+  and `E1M1 outdoor courtyard` as unresolved paths, and both are prose an
+  author wrote into the field.
+
+  Applying ANTS-4502's separator predicate here would silently drop real
+  single-token evidence paths (`shot.png` at the root is legitimate), so
+  the import is the wrong place. The repair is at the WRITE side -- a
+  roadmap_log refusal, or a note, when an `Evidence:` element is not
+  path-shaped -- which tells the author at the moment they can fix it.
+
+  ANTS-4065 section 5 carries the same entry, filed rather than folded in.
+  **Layman:** When someone writes a note instead of a filename in a roadmap entry's Evidence line, the import complains it cannot find a file of that name.
+  Kind: fix.
+  Source: in-session-2026-08-19, from the corroborating DOOM Ants report on ANTS-4502..
+  Lanes: roadmap.
+
 ### 🔌 Ants-MCP feedback from CC sessions (triage 2026-07-25)
 
 Triage of the 13 `*_Ants_MCP_Feedback.md` files under /mnt/Games/Scripts/Linux.
