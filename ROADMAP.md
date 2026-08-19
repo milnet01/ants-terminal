@@ -37476,6 +37476,28 @@ are closed inline in the feedback files rather than filed here.
   Repairing ANTS-3808's three columns is part of the fix, not a
   prerequisite: hand-editing ROADMAP.md is reverted by the next render,
   so the store is what has to move.
+  Progress (2026-08-19): CONTRACT DONE, CODE NOT WRITTEN. The user chose
+  the rule -- suppression moves from value equality to a LINE-INITIAL
+  declaration, whatever the value -- and ANTS-3808 section 2.3 is amended
+  and gated (review-contract, 2 loops, 20 verified, 20 fixed, cap reached).
+  Implementation deliberately held out of the 0.7.106 RC cut the same day:
+  it rewrites the roadmap parser and renderer and moves stored data, and
+  landing that hours before a cut is how a release goes red. Next cycle.
+
+  What the implementer must not miss, because loop 2 found it and it is
+  NOT visible from either item alone: this item and ANTS-4506 JOINTLY open
+  a corruption path. 4506's trailing-trailer strip makes the residual an
+  INFIX of the full body, so a bullet with a stale line-initial `Kind: bug`
+  in a continuation and its canonical `Kind: implement.` at the tail
+  migrates with column implement, has the tail stripped, then suppresses on
+  bug -- and the next migration adopts bug. A migrated item rewriting its
+  own column with no consumer write, and the kind vocabulary rider does not
+  help because bug is recognised. Section 2.1 closes it with a condition:
+  strip a line ONLY when it is the only line-initial declaration of its key
+  in the body. Build both items together or neither.
+
+  Read docs/specs/ANTS-3808-item-body-and-trailer-suppression.md sections
+  2.1, 2.3, 2.3.1 and INV-6, plus loop-log rows 3 and 4.
   **Layman:** Once a roadmap entry's metadata is read wrong, re-importing can never fix it -- the wrong value keeps winning.
   Kind: fix.
   Source: in-session-2026-08-19, found re-migrating after ANTS-4498.
@@ -37517,6 +37539,27 @@ are closed inline in the feedback files rather than filed here.
   verbatim source or residual prose. ANTS-3808 chose residual; direction 2
   shows the render does not maintain that choice across a cycle. Worth a
   spec pass rather than a patch.
+  Progress (2026-08-19): CONTRACT DONE for the accretion half, CODE NOT
+  WRITTEN. ANTS-3808 section 2.1 is amended and gated with ANTS-4505 (one
+  review-contract run, 2 loops, 20 verified, 20 fixed, cap reached). Rule:
+  a TRAILING run of trailer-only lines is metadata, not body -- but a line
+  is stripped ONLY when it is the only line-initial declaration of its key
+  in the body, and that condition is what stops a migrated item rewriting
+  its own column. See ANTS-4505's note for the joint corruption path; build
+  both together or neither. Held out of the 0.7.106 RC cut deliberately.
+
+  The INDENTATION half is SPLIT OUT as ANTS-4528 and is not in that
+  contract. Its stated cause here names the renderer and that is only half
+  right: parseBullets() destroys the indent at parse time
+  (body.append(cont.trimmed())), so the render can only put a uniform two
+  spaces back. Restoring it makes stored bodies indented, and ANTS-3809
+  records that TrailerMatch::anchored is exact precisely because they are
+  not -- and ANTS-4505 has now made anchored load-bearing for render
+  suppression too. That is a coupled pass over ANTS-3757, 3808 and 3809,
+  which is why it is its own item.
+
+  Read docs/specs/ANTS-3808-item-body-and-trailer-suppression.md sections
+  2.1 and 2.3, INV-6, and loop-log rows 3 and 4.
   **Layman:** Saving the roadmap and reading it back does not give you what you started with — nested lists lose their shape and metadata lines pile up inside entries.
   Kind: fix.
   Source: cc-feedback-2026-08-19 (Claude Code config + finbreak), corroborated in-session.
@@ -40749,6 +40792,54 @@ assistant suggestions, accepted by the user for filing.
   Kind: fix.
   Source: in-session-2026-08-19, split out of ANTS-4506 during its contract pass..
   Lanes: roadmap, roadmaprender.
+
+- 📋 [ANTS-4529] **The bump recipe hand-edits ROADMAP.md's version banner, and the next roadmap_log write reverts it.**
+  `.claude/bump.json` lists ROADMAP.md among its version-bearing files and
+  rewrites `**Current version:** {OLD}` in the markdown. On a
+  store-backed project that edit lives outside the store, so the next
+  roadmap_log write re-renders the whole file and discards it --
+  ANTS-4462's `discarded_external_edits` behaviour working as designed.
+
+  OBSERVED, not theorised: during this cycle the bump set 0.7.106, an
+  `op:annotate` minutes later reported `discarded_external_edits:true,
+  discarded_edit_lines:2` and the banner was back to 0.7.105. Restored by
+  hand in the same session.
+
+  What makes it more than a nuisance: `check-version-drift.sh` reads
+  ROADMAP.md, so the revert also re-opens version drift -- and it happens
+  silently, at whatever later moment someone appends a bullet, long after
+  the release commit looked clean.
+
+  The fix is to make the banner store-owned rather than markdown-owned
+  (the render emits it from a project-level version field), or to drop
+  ROADMAP.md from the bump recipe and have the render derive it. Do not
+  "fix" it by telling people to re-apply the edit.
+  **Layman:** After a release, the version shown at the top of the roadmap file can silently go back to the old number.
+  Kind: fix.
+  Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle..
+  Lanes: roadmap-store, packaging.
+
+- 📋 [ANTS-4530] **CLAUDE.md and .claude/bump.json both route the version bump to /bump, which no longer exists.**
+  The project CLAUDE.md says to bump with `/bump`, and
+  `.claude/bump.json`'s `$comment` says the recipe is "consumed by
+  ~/.claude/skills/bump/SKILL.md". Neither exists: the global rules
+  record that `cut-release` replaced both `/release` and `/bump` on
+  2026-08-13, and `~/.claude/skills/bump/` is absent.
+
+  This cycle applied the `files` recipe directly and gated on
+  `check-version-drift.sh`, which is what actually enforces completeness,
+  and the release was correct. But the next session re-derives that.
+
+  Note the layering rule before editing: the project CLAUDE.md governs
+  where it contradicts the global one, so this is a stale-fact fix rather
+  than a policy change -- and CLAUDE.md is in rule 14's scope, so decide
+  whether naming a different bump route changes what a conformer does
+  before editing. The `$tag_note` in bump.json also still credits tagging
+  to "the /release skill (step 9)" when packaging/cut-rc.sh does it.
+  **Layman:** The project's own instructions name a command that was removed, so a new session has to work out the bump by itself.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle..
+  Lanes: docs.
 
 ### 🔌 Ants-MCP feedback from CC sessions (triage 2026-07-25)
 
