@@ -155,6 +155,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **A spilled read_region emits a headless rows_preview that costs ~1k tokens and conveys nothing.** (ANTS-4519)
+  A big read sends back a long list of empty rows that tells you nothing but still costs money.
+
 - **`roadmap_migrate`'s description now states that it never writes ROADMAP.md, and which roadmaps are served from the store.** (ANTS-4482)
   A byte-identical file and a clean `git status` immediately after a migration are expected — the file is first re-rendered by the next `roadmap_log` write — and only an `ants-v1` roadmap is served from the store afterwards, so a github-task-list project migrates successfully while `roadmap_query` keeps answering from markdown. The description also records that the store is machine-global rather than per-project. (ANTS-4490)
 

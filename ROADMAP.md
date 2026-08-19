@@ -37805,7 +37805,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-19, while surveying the store for migration candidates.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-4519] **A spilled read_region emits a headless rows_preview that costs ~1k tokens and conveys nothing.**
+- ✅ [ANTS-4519] **A spilled read_region emits a headless rows_preview that costs ~1k tokens and conveys nothing.**
   When the row bodies fit, rows_preview is genuinely useful and OneUp says
   so -- they picked rows straight off the head snippets. When they do not,
   the server sets rows_preview_heads_omitted and emits the SAME array with
@@ -37830,6 +37830,13 @@ are closed inline in the feedback files rather than filed here.
   array must stay for schema stability, cap it at ~10 rather than scaling
   it with row count -- a headless preview conveys the same amount at any
   length.
+  Resolved (2026-08-19): mcpspill.cpp emits `rows_preview_omitted:true` +
+  `row_count` instead of the headless array when a text sample cannot fit
+  for every row. Measured on the reporter's shape (168 rows): envelope
+  8418 B -> 4013 B; what remains is the 2048 B head and one head_rows row,
+  both pre-existing. The ANTS-4397 with-heads path is untouched and its
+  test now covers that case alone (12 wide rows); the headless half moved
+  to a new behavioural test, red before the fix.
   **Layman:** A big read sends back a long list of empty rows that tells you nothing but still costs money.
   Kind: perf.
   Source: cc-feedback-2026-08-19 (OneUp).

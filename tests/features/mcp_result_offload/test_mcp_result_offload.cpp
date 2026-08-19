@@ -802,9 +802,11 @@ TEST_F(McpResultOffload, Ants4375ShortSpillIsFlaggedNotSilent) {
 // of complete rows is genuinely the right preview for many SMALL rows, which
 // is what ANTS-3538 was built for. It is the opposite shape that fails.
 TEST_F(McpResultOffload, Ants4397ShapeSummaryForLongRows) {
-    // The reporter's shape: 80 rows, each ~1.9 KB.
+    // Wide rows, few enough that a text sample still fits for EVERY one —
+    // the case the summary was built for and answers well. The opposite
+    // case (too many rows for any head to fit) is ANTS-4519's below.
     QJsonArray arr;
-    for (int i = 0; i < 80; ++i)
+    for (int i = 0; i < 12; ++i)
         arr.append(QStringLiteral("| %1 | ").arg(i) +
                    QString(1900, QLatin1Char('x')));
     QJsonObject b; b["lines"] = arr;
@@ -821,35 +823,84 @@ TEST_F(McpResultOffload, Ants4397ShapeSummaryForLongRows) {
 
     // The point of the summary: it covers EVERY row, where the prefix covered
     // one. That is what lets a caller pick which rows to page.
-    EXPECT_EQ(shape.size(), 80)
-        << "80 shape rows must fit where 1 body row did — got " << shape.size();
+    EXPECT_EQ(shape.size(), 12)
+        << "12 shape rows must fit where 1 body row did — got " << shape.size();
     EXPECT_FALSE(o.value("rows_preview_truncated").toBool());
+    EXPECT_FALSE(o.value("rows_preview_heads_omitted").toBool())
+        << "12 rows leave room for a sample on each — if this ever fires, the "
+           "budget shrank and this test no longer covers the WITH-HEADS case";
 
     // Each entry says how big its row is, which is the field that decides
-    // what to fetch.
-    const bool headsOmitted = o.value("rows_preview_heads_omitted").toBool();
+    // what to fetch, plus a sample of what is in it.
     for (int i = 0; i < shape.size(); ++i) {
         const QJsonObject r = shape.at(i).toObject();
         EXPECT_EQ(r.value("index").toInt(), i);
         EXPECT_GT(r.value("bytes").toInt(), 1900);
-        if (headsOmitted) {
-            EXPECT_FALSE(r.contains("head"));
-        } else {
-            EXPECT_LT(r.value("head").toString().size(), 100)
-                << "the head is a SAMPLE, not the row — duplicating the row "
-                   "is the defect being fixed";
-        }
+        EXPECT_LT(r.value("head").toString().size(), 100)
+            << "the head is a SAMPLE, not the row — duplicating the row "
+               "is the defect being fixed";
     }
-    // Covering every row at this width means the heads had to give way, and
-    // the envelope must SAY so rather than leaving a caller to notice a
-    // missing field. `bytes` is what decides where to page; the head is a
-    // convenience, so the head is what gives way.
-    EXPECT_TRUE(headsOmitted)
-        << "80 rows of 1.9 KB cannot carry text samples within the budget — "
-           "if this ever passes with heads intact, the budget grew and the "
-           "fallback is no longer exercised here";
 
     // And the whole envelope still beats the body (INV-9), which is the
     // constraint the old preview was spending its budget against.
     EXPECT_LT(compact(o).toUtf8().size(), body.toUtf8().size());
+}
+
+// ANTS-4519 — when the per-row heads cannot fit, the shape array conveys
+// NOTHING and must be omitted rather than emitted headless.
+//
+// ANTS-4397's fallback dropped the text samples so that every row could still
+// be covered, on the reasoning that a summary of SOME rows has the same defect
+// as a prefix of some rows. That reasoning is sound for the heads — and it does
+// not justify what is left: 168 entries of bare {index, bytes}, ~3.7 KB / ~1k
+// tokens, which is neither a summary nor a prefix but a list of row lengths.
+// A per-row byte count cannot tell a caller which row they want, and
+// `row_count` + `bytes` already carry that in two integers. It lands on
+// exactly the calls that are already the session's most expensive, and it
+// misleads on first read — 168 entries look like content until you notice
+// every one is empty.
+TEST_F(McpResultOffload, Ants4519HeadlessShapePreviewIsOmittedNotEmitted) {
+    // The reporter's shape: one read_region start_line:42 end_line:400.
+    QJsonArray arr;
+    for (int i = 0; i < 168; ++i)
+        arr.append(QStringLiteral("| %1 | ").arg(i) +
+                   QString(1200, QLatin1Char('x')));
+    QJsonObject b; b["lines"] = arr;
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), 16384);
+
+    const QJsonObject o = offloadEnv(QStringLiteral("read_region"), body);
+    ASSERT_TRUE(o.value("offloaded").toBool());
+
+    EXPECT_FALSE(o.contains("rows_preview"))
+        << "a headless shape array is a list of row lengths — it must not be "
+           "emitted at all; got " << o.value("rows_preview").toArray().size()
+        << " entries";
+    EXPECT_FALSE(o.contains("rows_preview_heads_omitted"))
+        << "nothing is left for that flag to qualify";
+    EXPECT_FALSE(o.contains("rows_preview_truncated"));
+
+    // What replaces it: the two integers that carried the same information,
+    // and one flag saying the preview was considered and dropped — so the
+    // absence reads as a decision rather than as a verb that forgot.
+    EXPECT_TRUE(o.value("rows_preview_omitted").toBool());
+    EXPECT_EQ(o.value("row_count").toInt(), 168)
+        << "row_count must survive the omission — it is half of what the "
+           "headless array was conveying";
+    EXPECT_GT(o.value("bytes").toInt(), 0);
+
+    // The route out is unchanged: the ANTS-3545 hint still names row paging
+    // and the array to page over.
+    const QString hint = o.value("hint").toString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("row_offset"))) << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("lines"))) << hint.toStdString();
+
+    // The saving is the point, and it is measurable against what is left.
+    // The envelope's remaining bulk is the 2048-byte `head` and the single
+    // complete `head_rows` row (~1.2 KB) — both pre-existing ANTS-3538 fields
+    // this item does not touch. The 168-entry array cost ~4.4 KB on top of
+    // that: measured 8418 B before the fix, 4013 B after.
+    EXPECT_LT(compact(o).toUtf8().size(), 4500)
+        << "head (2048 B) + one head_row + pointer + two integers — if this "
+           "grows past the bound the shape array is back";
 }

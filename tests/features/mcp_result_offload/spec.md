@@ -21,6 +21,8 @@ dispatch-site and verb-wiring invariants.
 | `Inv9OffloadPrecedesRecordDispatch` | INV-9 — `mcp::offloadBody(` precedes `recordDispatch(` in the dispatch body; `read_spill` schema registered. |
 | `Inv10ReadSpillWiring` | INV-10 — `registerToolProvider("read_spill"` with `CallerCwdContract::Optional` + `cmdReadSpill`; handler validates `^[0-9a-f]{64}$`. |
 | `Inv11FailOpenWiring` | INV-11 — `offloadBody` returns the body on `ensurePrivateDir`/`commit` failure. |
+| `Ants4397ShapeSummaryForLongRows` | ANTS-4397 — a body of few, very WIDE rows carries `rows_preview`: one `{index, bytes, head}` row per row, covering every row where the body prefix covered one. |
+| `Ants4519HeadlessShapePreviewIsOmittedNotEmitted` | ANTS-4519 — when a text sample cannot fit for every row, `rows_preview` is omitted entirely (`rows_preview_omitted:true`, `row_count` kept) rather than emitted headless. A bare list of row LENGTHS conveys nothing `row_count` + `bytes` do not, and cost ~1k tokens on the session's most expensive calls. |
 
 ## Pre-fix expectation
 

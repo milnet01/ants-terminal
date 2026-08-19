@@ -318,13 +318,31 @@ QString offloadBody(const QString &toolName, const QString &body) {
                             headsDropped = true;
                         }
                     }
-                    if (!shape.isEmpty()) {
+                    // ANTS-4519 — a HEADLESS shape array is omitted, not
+                    // emitted. Dropping the heads to cover every row is sound
+                    // reasoning about the HEADS; it does not justify what is
+                    // left. {index, bytes} per row is neither a summary nor a
+                    // prefix but a list of row lengths, and a row length
+                    // cannot tell a caller which row they want — `row_count`
+                    // and `bytes` already carry that in two integers.
+                    // Measured on the reporting call: 168 entries, ~3.7 KB /
+                    // ~1k tokens, on the kind of call that is already the
+                    // session's most expensive. It also misleads: the entries
+                    // read as content until you notice every one is empty.
+                    if (headsDropped) {
+                        o[QStringLiteral("row_count")] = domCount;
+                        o[QStringLiteral("rows_preview_omitted")] = true;
+                        o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
+                            "no per-row preview: the row bodies do not fit and "
+                            "neither do per-row text samples, and a bare list "
+                            "of row LENGTHS says no more than `row_count` + "
+                            "`bytes` already do. Page the \"%1\" array with "
+                            "read_spill row_offset/row_count.").arg(domKey);
+                    } else if (!shape.isEmpty()) {
                         o[QStringLiteral("rows_preview_key")] = domKey;
                         o[QStringLiteral("rows_preview")]     = shape;
                         o[QStringLiteral("rows_preview_truncated")] =
                             shape.size() < domCount;
-                        if (headsDropped)
-                            o[QStringLiteral("rows_preview_heads_omitted")] = true;
                         o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
                             "one SHAPE row per row — {index, bytes, head} — "
                             "because the row BODIES do not all fit. Use "
@@ -332,11 +350,7 @@ QString offloadBody(const QString &toolName, const QString &body) {
                             "read_spill row_offset/row_count; a prefix of "
                             "bodies would show you the first row (possibly "
                             "cut off, and duplicating `head`) and say nothing "
-                            "about the rest. When "
-                            "`rows_preview_heads_omitted` is set, the per-row "
-                            "text samples were dropped so that EVERY row could "
-                            "be covered — a summary of some rows has the same "
-                            "defect as a prefix of some rows.");
+                            "about the rest.");
                     }
                 }
             }
