@@ -528,6 +528,23 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
 
         const QString prov = provenanceFor(it, f.column);
 
+        // § 2.6 "defaulted does not overwrite" (ANTS-4498). Import's own guess
+        // is not evidence, so it never replaces a value the source once
+        // declared — the effect being that a re-run can only ADD information,
+        // which is what makes it safe to re-run without a backup. Same
+        // `field_conflict` note as the sibling rule below: the cause is
+        // identical (the source did not say this) and so is the remedy.
+        //
+        // Disjoint from that rule rather than overlapping it: every defaulted
+        // value is a non-empty literal (`implement`, `planned`, and
+        // statusFromMarker()'s unconditional `planned`), so no field satisfies
+        // both. Checked BEFORE the write, not after, or the note would report a
+        // suppression that had already happened.
+        if (prov == QLatin1String("defaulted") && !f.storedEmpty) {
+            note("field_conflict", QStringLiteral("%1: %2").arg(chg->id, f.column));
+            continue;
+        }
+
         if (f.planEmpty && !f.storedEmpty) {
             // "Empty does not overwrite" — with one exception. `body` is the
             // only field whose emptiness in source is meaningful (a bullet

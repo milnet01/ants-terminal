@@ -1380,3 +1380,103 @@ TEST(RoadmapMigrateLoad, DistinctIdsAreNotTreatedAsDuplicates) {
     EXPECT_TRUE(out.ok) << out.error.toStdString();
     EXPECT_EQ(f.count(QStringLiteral("item")), 4);
 }
+
+// INV-16 — a defaulted plan value never overwrites a non-empty stored value.
+//
+// Both plans are constructed rather than parsed, for INV-1's reason applied to
+// a different field: `kind` and `source` are trailer LINES, so a source bullet
+// that drops them also changes `body`, and a markdown-driven recipe would move
+// two columns while claiming to move one.
+//
+// The two plans differ in BOTH text and provenance, never provenance alone:
+// applyPlanFields() opens each iteration with `f.planText == f.storedText` ->
+// continue, BEFORE provenanceFor() is consulted, so a plan flipping only the
+// provenance map short-circuits on every field, never reaches the rule, and
+// raises zero notes while itemsUpdated == 0 passes vacuously.
+namespace {
+
+int noteCount(const RoadmapMigrateLoad::Outcome &o, const char *code) {
+    int n = 0;
+    for (const RoadmapMigrate::Note &note : o.notes) {
+        if (note.code == QLatin1String(code))
+            ++n;
+    }
+    return n;
+}
+
+// `item()` leaves kind/source provenance unset, which provenanceFor() reads as
+// `asserted`. This spells both halves out so the contrast is on the page.
+PlannedItem itemWithProv(const QString &id, const QString &kind, const QString &source,
+                         const QString &prov) {
+    PlannedItem it = item(id, QStringLiteral("headline"), QStringLiteral("s"), 0);
+    it.kind = kind;
+    it.source = source;
+    it.provenance.insert(QStringLiteral("kind"), prov);
+    it.provenance.insert(QStringLiteral("source"), prov);
+    return it;
+}
+
+}  // namespace
+
+TEST(RoadmapMigrateLoad, Inv16DefaultedDoesNotOverwriteAStoredValue) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const MigrationPlan asserted =
+        planOf({itemWithProv(QStringLiteral("A-1"), QStringLiteral("fix"),
+                             QStringLiteral("a-real-source"), QStringLiteral("asserted"))});
+    const auto first = RoadmapMigrateLoad::load(f.store, asserted, f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    ASSERT_EQ(f.scalar(QStringLiteral("SELECT kind FROM item")), QStringLiteral("fix"));
+
+    // The imported defaults, exactly as makeItem() supplies them when a bullet
+    // declares neither: `implement` / `planned`, provenance `defaulted`.
+    const MigrationPlan defaulted =
+        planOf({itemWithProv(QStringLiteral("A-1"), QStringLiteral("implement"),
+                             QStringLiteral("planned"), QStringLiteral("defaulted"))});
+    const auto second = RoadmapMigrateLoad::load(f.store, defaulted, f.opts());
+    ASSERT_TRUE(second.ok) << second.error.toStdString();
+
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT kind FROM item")), QStringLiteral("fix"));
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT source FROM item")),
+              QStringLiteral("a-real-source"));
+    EXPECT_EQ(noteCount(second, "field_conflict"), 2);
+
+    // The leg that matters: a rule suppressing the write but still counting the
+    // item reports a change it did not make, which makes INV-2's idempotence
+    // claim false on every corpus carrying an undeclared field.
+    EXPECT_EQ(second.itemsUpdated, 0);
+    EXPECT_EQ(second.itemsUnchanged, 1);
+}
+
+// Second leg — the rule constrains UPDATES only, never inserts, so a migration
+// can still ADD information. This is the reachable form of that guarantee.
+//
+// The obvious recipe — a matched item whose stored `source` is empty — is
+// UNBUILDABLE and was specified before it was run. `item.source`, `item.kind`
+// and `item.status` are all TEXT NOT NULL, and both writers (`putItem()` and
+// `setItemField()`) bind an empty QString as SQL NULL, so every attempt to
+// seed one aborts on the constraint. Those three are exactly the columns the
+// defaulted rule can fire on, so `f.storedEmpty` is unreachable for all of
+// them and the empty-stored branch is vacuous on the update path. The ADD that
+// actually occurs is a new item, which never reaches applyPlanFields().
+TEST(RoadmapMigrateLoad, Inv16DefaultedIsStoredOnAnInsert) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const MigrationPlan defaulted =
+        planOf({itemWithProv(QStringLiteral("A-1"), QStringLiteral("implement"),
+                             QStringLiteral("planned"), QStringLiteral("defaulted"))});
+    const auto out = RoadmapMigrateLoad::load(f.store, defaulted, f.opts());
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+
+    // A rule applied to the insert path too would leave these unset or refuse
+    // the row outright; the migration would then lose information rather than
+    // decline to overwrite it.
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT kind FROM item")), QStringLiteral("implement"));
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT source FROM item")), QStringLiteral("planned"));
+    EXPECT_EQ(out.itemsInserted, 1);
+    EXPECT_EQ(noteCount(out, "field_conflict"), 0);
+}
