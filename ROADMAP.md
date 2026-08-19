@@ -5766,6 +5766,64 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Kind: perf.
   Source: in-session-2026-07-09.
 
+## Memory-efficiency sweep (user request 2026-08-19)
+
+The speed sweeps above ask how fast Ants is. This one asks how much it costs to
+keep open. Baseline measured 2026-08-19: 366.4 MiB RSS, 14 tabs, 7h11m uptime.
+The named candidates below each become their own id when picked up — they are
+filed together because they share one measurement and one budget, not because
+they are one change.
+
+- 📋 [ANTS-4534] **Cut Ants Terminal's resident memory, starting with the 64-byte Cell that sets every scrollback ceiling.**
+  Measured 2026-08-19, not estimated. The live instance was 366.4 MiB
+  RSS across 14 tabs after 7h11m uptime. That is what it costs today;
+  the number worth acting on is the ceiling, and it comes from one
+  struct.
+
+  `sizeof(Cell)` is 64 bytes — compiled and printed against
+  src/terminalgrid.h rather than read off the source. 48 of those 64
+  are three QColor members (fg, bg, underlineColor) stored PER CELL,
+  when in practice a run of cells shares one attribute set. A
+  scrollback line at 200 columns is 88 + 200x64 = ~12.6 KiB, so the
+  50,000-line default is ~630 MiB per tab and the 1,000,000-line
+  maximum is ~12.6 GiB per tab. Neither ceiling is reached today
+  because scrollback is rarely full — which is why this went
+  unnoticed, not why it is acceptable.
+
+  Three candidates, cheapest first. Each needs its own measurement
+  before it becomes a work item, and its own id.
+
+  (a) TermLine.combining is a std::unordered_map costing 56 of the
+  struct's 88-byte header even when empty. Its comment claims "zero
+  overhead when absent" — true of heap allocation, false of the
+  header. A unique_ptr (8 bytes, null when absent) makes the comment
+  true and saves 48 bytes per line. Surgical, low risk.
+
+  (b) Scrollback lines keep the full screen width.
+  terminalgrid.cpp:2095 moves the whole m_cols-wide row in, so a
+  five-character `ls` line costs what a full one does. Trimming
+  trailing default cells on push is the obvious fix and is not
+  obviously safe: it fights returnCellsRow()'s recycling pool (:2108)
+  and the reflow path (:2615-2712) that rebuilds every scrollback line
+  on a column resize.
+
+  (c) Cell itself, 64 bytes to ~8-16, via an index into a small
+  attribute table or packed RGBA in place of QColor. Biggest win by
+  far and the widest blast radius — it touches every read of a cell.
+
+  Not measured, so not claimed either way: inline images, session
+  persistence, the MCP caches, and Qt's own QTextLayout shaping
+  caches. A first pass should establish which terms actually dominate
+  before (c) is attempted.
+
+  What this sets as a rule: state a per-tab scrollback memory ceiling
+  the default configuration honours, and make it checkable rather than
+  asserted.
+  **Layman:** Ants keeps a lot of your scrolled-back text in memory, and each character costs far more than it needs to — this is the plan to shrink that.
+  Kind: perf.
+  Source: user-request-2026-08-19.
+  Lanes: terminalgrid, performance.
+
 ### ⚡ Local-subagent framework — Claude offloads to the local machine (user request 2026-04-30)
 
 > **Strategic theme.** Inverse of ANTS-1108..ANTS-1114 (which
