@@ -36427,7 +36427,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-18, found while implementing ANTS-4481.
   Lanes: mcp, roadmap-store, docs.
 
-- 📋 [ANTS-4496] **ANTS-2022 still describes the apply_edits skipped row as three fields, two shipped extensions later.**
+- ✅ [ANTS-4496] **ANTS-2022 still describes the apply_edits skipped row as three fields, two shipped extensions later.**
   Found while checking whether ANTS-4473 was safe to build. It was, and this is
   the thing that made me check twice.
 
@@ -36460,6 +36460,33 @@ are closed inline in the feedback files rather than filed here.
   documented as extensible, so it is a change of direction and owes the gate.
   Worth doing as one pass rather than two, which is why it is filed rather than
   folded into ANTS-4473's commit.
+  Resolved (2026-08-19): ANTS-2022 now describes the skip row as
+  EXTENSIBLE, with a table of the diagnostic keys each outcome adds, read
+  off the source rather than off the tool description.
+
+    - § 2.3 gains the table: `not_found` adds candidates / near_miss_line /
+      hint when `old` is single-line and exactly one line matches under
+      whitespace normalisation; `ambiguous` always adds candidates /
+      match_count / hint, with candidates_truncated only when the list is
+      shorter than the count. Cap is 10 (kMaxReported, applyedits.cpp).
+      Absence is stated as the normal case, with the four skip sites that
+      carry no EditOutcome named.
+    - § 2.5's worked example shows both shapes — a three-field floor row
+      and an extended one.
+    - § 2.5 restated the reason set and had drifted to four of the six
+      values; the restatement is deleted rather than corrected (§ 2.3 owns
+      the set), which is what stopped it drifting again.
+    - § 2.1's EditOutcome sketch had a comment enumerating two of the four
+      skipReason values. The enumeration is deleted, not extended, and the
+      block is now labelled as the original shape with src/applyedits.h
+      named as the live one.
+
+  No rule-14 gate. The item's own body expected one; on reading it, this
+  amendment records what already shipped (ANTS-3711, ANTS-4418, ANTS-4473
+  are all live), which is rule 14's named instance for that case — the
+  build was the review. Nothing here changes what anyone would build next.
+
+  spec_lint and doc_integrity both zero over the amended file.
   **Layman:** The design document for the edit tool lists three pieces of information in its failure report; the tool has been sending more than that for a while, and the document was never updated.
   Kind: doc-fix.
   Source: in-session-2026-08-19, found while implementing ANTS-4473.
