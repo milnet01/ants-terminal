@@ -37100,6 +37100,37 @@ are closed inline in the feedback files rather than filed here.
   Kind: feature.
   Source: user-request-2026-08-19.
   Lanes: mcp, roadmap-store.
+  Spec ACCEPTED (2026-08-19): docs/specs/ANTS-4501-roadmap-report.md.
+  Rule-14 gated, 2 loops x 3 cold lanes, 21 verified / 21 fixed / 1
+  dismissed, converged by cap. Status here deliberately unchanged -- no
+  work has started.
+
+  The design question this bullet flagged is SETTLED, and not the way the
+  bullet leaned. Two date sources, not three:
+
+  - Stamp created / last_modified / shipped going forward, through one
+    injectable "today" seam that both the write paths and the report
+    builder read. The seam is a contract, not a convenience -- without it
+    the two invariants that matter cannot fail.
+  - Backfill the past from git, as roadmap_log op:"backfill_dates". The
+    walk is ~17 s over 1496 revisions (re-measured; the first figure of
+    23 s had read one file where the walk reads three).
+  - REJECTED: deriving from the history table. It covers 67 of 3337
+    closures -- 2.0% -- and it is a change log, so a reopened-and-reclosed
+    item has several rows and no single answer.
+
+  Three things the gate settled that a reader of this bullet would get
+  wrong. The bullet's citation of ANTS-4065 INV-3 for the never-clear rule
+  is wrong; the owner is ANTS-3765 INV-3. `open` is an enumeration
+  (planned + in-progress + considered), never `status != 'shipped'`,
+  because the schema admits a fifth value `dropped` and this corpus has
+  none, so no sample can catch the difference. And the backfill must skip
+  the `shipped` COLUMN, not the id, for anything not currently shipped --
+  otherwise every open item stays undated and `added` is unanswerable for
+  the backlog this request is about.
+
+  Not yet built. Next step is implementation, which is the third reviewer
+  a spec's cap hands off to.
 
 - 📋 [ANTS-4502] **A bare filename in trailer prose is reported unresolved_path, though the file exists one directory down.**
   Measured, not inferred — `roadmap_migrate dry_run` against
