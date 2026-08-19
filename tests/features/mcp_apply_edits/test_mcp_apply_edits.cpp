@@ -439,7 +439,12 @@ TEST(McpApplyEdits, Ants4473MatchCountIsTrueTotalWhenTheListIsCapped) {
                                                QStringLiteral("X"), false);
     EXPECT_EQ(oc.skipReason, "ambiguous");
     EXPECT_EQ(oc.matchCount, 25) << "the total must not be the capped size";
-    EXPECT_EQ(oc.matchLines.size(), 10) << "capped at 10";
+    // ASSERT, not EXPECT: the .at() calls below index this vector, so a
+    // non-fatal check here lets a regression that empties it run straight off
+    // the end. Caught by a SEGV in the red run of this very item — the crash
+    // replaced the clear assertion failure the red run existed to produce, and
+    // a test that dumps core instead of failing is worse than no test.
+    ASSERT_EQ(oc.matchLines.size(), 10) << "capped at 10";
     EXPECT_EQ(oc.matchLines.at(0), 1);
     EXPECT_EQ(oc.matchLines.at(9), 10);
 }
