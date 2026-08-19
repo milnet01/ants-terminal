@@ -50319,6 +50319,44 @@ contributors don't duplicate research.
   Kind: refactor.
   Source: in-session-2026-08-12 (clangd, during ANTS-4124).
 
+- 📋 [ANTS-4533] **CI's build-asan job times out at its 30-minute cap on nearly every run, and a timeout reads as cancelled rather than red.**
+  Measured 2026-08-19 over the last 30 ci.yml runs: build-asan was
+  cancelled on 28 of them, going back to at least 2026-08-18T14:14. Two
+  runs squeaked through (06:46 and 11:05 today), which is the tell -- the
+  job is sitting AT its budget and cache warmth decides it, rather than
+  something being broken.
+
+  Always the same place: `timeout-minutes: 30` (ci.yml), configure and
+  Build both success, then step 8 `Run audit-rule tests under sanitizers`
+  cancelled. Run duration 30m20s, 30m24s, ... i.e. the cap exactly.
+
+  Two reasons this went unnoticed for two days, and the second is the one
+  worth fixing first:
+
+  1. A timed-out job's conclusion is `cancelled`, not `failure`, so the
+  run does not read as red and no notification fires. `gh run list` shows
+  `completed cancelled` beside a genuinely superseded run and the two are
+  indistinguishable at a glance.
+
+  2. The pre-push hook's ASan leg is cost-gated (ANTS-4118) and SKIPS when
+  the build-asan tree is cold. So local and remote can both decline the
+  sanitizer suite on the same push and nothing says the coverage was zero
+  -- observed on the ANTS-4505/4506 push, which was sanitized nowhere.
+
+  Candidate fixes, cheapest first: raise the cap (measure the real cost
+  first -- if the suite has simply grown past 30 min, a bigger number is
+  the honest answer); or split the sanitized suite so the audit-rule tests
+  are not last behind everything else; or shard it. Whatever the remedy,
+  the run must end RED when the sanitizer leg does not complete, or the
+  next two-day outage is invisible again.
+
+  Not caused by ANTS-4505/4506 -- the run immediately before it (a version
+  bump touching no test logic) failed identically.
+  **Layman:** The safety-checking half of our automated build has been quietly giving up part-way through for two days, and it does not look like a failure.
+  Kind: fix.
+  Source: in-session-2026-08-19, found checking CI after the ANTS-4505/4506 push.
+  Lanes: ci, tests.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
