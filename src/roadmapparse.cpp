@@ -401,6 +401,35 @@ const QRegularExpression &rxTrailerKey() {
     return rx;
 }
 
+// ANTS-4506 — the two patterns stripTrailingTrailerLines() asks. They are here,
+// not in `makeItem()`, because INV-2 makes RoadmapParse the only bullet grammar
+// in `src/` and its test scrapes for a trailer-key literal inside a
+// QRegularExpression construction anywhere else: writing this regex at the
+// strip's call site would fail ANTS-3808's own invariant on its own deliverable.
+//
+// CASE-SENSITIVE, all five keys. The lines this strips are the render's own
+// output (§ 2.4), whose spelling is fixed, so tolerance buys nothing and costs
+// the `Lanes:`-versus-`lanes:` ambiguity ANTS-4065 § 2.2 removed from rxKind() /
+// rxLanes() / rxSource() for the same reason. NO MultilineOption either: the
+// pattern is matched against ONE line at a time, so `^` is the line start by
+// construction.
+const QRegularExpression &rxTrailerLineLabel() {
+    static const QRegularExpression rx(
+        QStringLiteral("^(?:\\*\\*)?(Kind|Lanes|Layman|Evidence|Source):(?:\\*\\*)?"));
+    return rx;
+}
+// The same label ANYWHERE, which is what pins the strip's right edge to a
+// SINGLE-key line: 10 corpus lines write two keys on one line
+// (`Source: regression. Lanes: packaging.`), and such a line is not "nothing but
+// one trailer declaration". Unlike rxTrailerKey() above this one carries
+// `Source` and needs no leading `\s`, because it is searched from the end of a
+// label already matched rather than used to truncate a value.
+const QRegularExpression &rxTrailerLabelAnywhere() {
+    static const QRegularExpression rx(
+        QStringLiteral("(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence|Source):"));
+    return rx;
+}
+
 // ANTS-4065 § 2.2 / INV-11 — the same fill, taking the LAST occurrence.
 //
 // Match precedence became load-bearing the moment rxKind() lost its anchor.
@@ -1383,6 +1412,64 @@ TrailerValues trailerValuesIn(const QString &body) {
     }
 
     return out;
+}
+
+// ANTS-3808 § 2.1, amended by ANTS-4506 — a TRAILING run of trailer-only lines
+// is metadata, not body. § 2.4's render appends its trailer block at the END of
+// the bullet; the next parse has no way to tell that block from prose and files
+// it into `body`, so the stored body is no longer the residual § 2.1 defines.
+// Measured on this project 2026-08-19: one re-migration moved 599 bodies, +458
+// gaining a `Kind:` line and +97 a `Source:` line. Stripping the run is what
+// makes migrate-then-render an identity on the first cycle rather than a fixed
+// point reached on the second.
+//
+// Three conditions, and each is load-bearing:
+//
+//  - The TRAILING RUN, not every trailer line. A trailer in the middle of a
+//    body is authored prose about the item and stays; the walk stops at the
+//    first line that is not a trailer-only line (INV-6's second fixture).
+//  - ONE declaration per line. A line carrying a second key is not "nothing but
+//    one trailer declaration", and truncating it would lose the second value.
+//  - The ONLY line-initial declaration of its key in the body. Without this the
+//    residual becomes an INFIX rather than a suffix and § 2.3.1's guarantee
+//    fails: a bullet with a stale `Kind: bug` in a continuation and its
+//    canonical `Kind: implement.` at the tail would keep only the stale one,
+//    § 2.3's presence suppression would fire on it, and the NEXT migration
+//    would adopt `bug` — a migrated item rewriting its own column with no
+//    consumer write. The `kind` vocabulary rider is no help there, because
+//    `bug` is recognised.
+//
+// The columns are extracted from the FULL body, before this runs: it changes
+// what is STORED, never what is read.
+QString stripTrailingTrailerLines(const QString &body) {
+    if (body.isEmpty())
+        return body;
+    const QStringList lines = body.split(QLatin1Char('\n'));
+
+    // Line-initial declarations per key, over the WHOLE body — the input to the
+    // only-declaration condition. A mid-sentence mention is not one, and does
+    // not count: it cannot outrank the column on a re-parse either.
+    QHash<QString, int> declarations;
+    for (const QString &line : lines) {
+        const auto m = rxTrailerLineLabel().match(line);
+        if (m.hasMatch())
+            declarations[m.captured(1)] += 1;
+    }
+
+    qsizetype end = lines.size();
+    for (; end > 0; --end) {
+        const QString &line = lines.at(end - 1);
+        const auto m = rxTrailerLineLabel().match(line);
+        if (!m.hasMatch())
+            break;
+        if (declarations.value(m.captured(1)) != 1)
+            break;
+        if (rxTrailerLabelAnywhere().match(line, m.capturedEnd(0)).hasMatch())
+            break;
+    }
+    if (end == lines.size())
+        return body;
+    return lines.mid(0, end).join(QLatin1Char('\n'));
 }
 
 QVector<BulletRecord>

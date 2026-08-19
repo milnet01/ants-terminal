@@ -207,6 +207,16 @@ bool isRecognisedKind(const QString &raw);
 // returned raw, so makeItem()'s unmapped branch still sees it.
 TrailerValues trailerValuesIn(const QString &body);
 
+// ANTS-3808 § 2.1 (ANTS-4506) — `body` with its TRAILING run of trailer-only
+// lines removed: the block § 2.4's render appends, which the next parse would
+// otherwise file back into the body. Owned here rather than at the migration's
+// call site because INV-2 makes this namespace the only bullet grammar in
+// `src/`. A line is dropped only when it is one whole trailer declaration AND
+// the only LINE-INITIAL declaration of its key in `body` — that second
+// condition is what stops a migrated item rewriting its own column (§ 2.3.1).
+// Case-sensitive: these lines are the render's own output.
+QString stripTrailingTrailerLines(const QString &body);
+
 // Pure helper: parse `markdownText` into top-level status-emoji bullets.
 // Dispatches on detectRoadmapFormat(). Result is read-only; used by the
 // `roadmap-query` IPC verb to feed Claude a structured snapshot without

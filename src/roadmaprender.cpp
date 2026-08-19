@@ -62,20 +62,28 @@ void appendIndented(QStringList *out, const QString &text) {
 
 // One bullet in full § 3.5 form.
 //
-// ANTS-3808 § 2.3 — each trailer key is emitted from its column UNLESS the
-// body would already re-parse to that same value. Value equality and not mere
-// presence: a body line reading `Kind: refactor` — stale prose, or a key the
-// author typed into the body — has the key present and a value the store
-// disagrees with, and suppressing on presence would drop the canonical column
-// line and leave the STALE value as the only one in the file, which the next
-// migration would read back and adopt. Comparing values means a mismatch always
-// emits from the column, which is canonical.
+// ANTS-3808 § 2.3, amended by ANTS-4505 — each trailer key is emitted from its
+// column UNLESS the body already DECLARES that key line-initially, WHATEVER the
+// value. Presence, not value equality, and the reversal is a change in the
+// world rather than a change of mind. Value equality was one-directional: the
+// render appends its block at the END of the bullet and the parser takes the
+// last line-initial match, so once a column held a wrong value it wrote that
+// value to the tail, the next migration read it back, and a human correcting
+// the real trailer line in place was silently ignored, permanently. The file is
+// the authoring surface; an edit to it that can never take effect is a defect
+// however canonical the column is.
 //
-// INV-12 still holds as written: it asserts against the RENDERED TEXT, and
-// whichever branch the test takes, the required `Kind:` piece is in the output
-// exactly once. `offset >= 0` is what keeps that true — an ABSENT key must
-// never suppress, or an item with an empty `kind` would compare equal to an
-// empty body and the required line would vanish.
+// What made presence unsafe has been closed since: `rlBodyShadows()` refuses
+// the only two ops that set a column independently of the body they ship with
+// (append / append_batch), ANTS-4504 masks inline code spans so a QUOTED key
+// declares nothing, and `anchored` keeps a mid-sentence mention from
+// suppressing at all. Stored bodies carry no indent (§ 2.1), so `anchored` is
+// exact for all five keys.
+//
+// INV-12 still holds as written on either rule: it asserts against the RENDERED
+// TEXT, and whichever branch the test takes, the required `Kind:` piece is in
+// the output exactly once. `offset >= 0` is what keeps that true — an ABSENT
+// key must never suppress, or the required line would vanish.
 QString bulletText(const RoadmapStore::ItemWrite &it) {
     QStringList lines;
     QString head = QStringLiteral("- ") + emojiFor(it.status);
@@ -95,17 +103,28 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     // One accessor call per bullet, reused across all five comparisons: calling
     // it per key would be five passes and up to thirty matches per bullet.
     const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(it.body);
-    const auto shadows = [](const RoadmapParse::TrailerMatch &m, const QString &v) {
-        return m.offset >= 0 && m.value == v;
+    const auto shadows = [](const RoadmapParse::TrailerMatch &m) {
+        return m.offset >= 0 && m.anchored;
     };
 
     if (!it.body.isEmpty())
         appendIndented(&lines, it.body);
-    if (!it.layman.isEmpty() && !shadows(tv.layman, it.layman))
+    if (!it.layman.isEmpty() && !shadows(tv.layman))
         appendIndented(&lines, QStringLiteral("**Layman:** ") + it.layman);
     // Required piece (INV-12) — emitted whenever the body does not already
-    // carry this exact value.
-    if (!shadows(tv.kind, it.kind))
+    // declare this key at a line start.
+    //
+    // The `kind` rider, and it is not symmetry-breaking for its own sake:
+    // matchLastIn() takes `kind` only among candidates the vocabulary
+    // recognises, but when NO capture is recognised it returns the last match
+    // RAW, so that makeItem()'s unmapped branch still sees it. Under presence
+    // that raw capture would suppress — a residual whose only line-initial
+    // `Kind:` is an unrecognised fragment would drop the recognised column
+    // line, leave the fragment as the file's only `Kind:`, and the next parse
+    // would adopt it, degrading the column one migration at a time with nothing
+    // reporting it. The other four keys have no closed value set, so there is no
+    // "unrecognised" state for them to be in.
+    if (!(shadows(tv.kind) && RoadmapParse::isRecognisedKind(tv.kind.value)))
         appendIndented(&lines, QStringLiteral("Kind: ") + it.kind + QLatin1Char('.'));
     // ANTS-4065 § 2.4 — a `source` the IMPORT supplied is not written back into
     // the file. `roadmap-format.md` § 3.5.3 makes `planned` the default, so
@@ -126,17 +145,19 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     const bool assertedSource =
         it.provenance.value(QStringLiteral("source")).toString()
             != QLatin1String("defaulted");
-    if (!it.source.isEmpty() && !shadows(tv.source, it.source) && assertedSource)
+    if (!it.source.isEmpty() && !shadows(tv.source) && assertedSource)
         appendIndented(&lines, QStringLiteral("Source: ") + it.source + QLatin1Char('.'));
-    // The two list-valued keys compare ELEMENT BY ELEMENT, never as a join:
-    // comparing a pre-split string against a joined column diverges on
-    // separator spacing alone, so suppression would never fire for them and
-    // half the duplication would survive a passing test.
-    if (!it.lanes.isEmpty() && !(tv.lanes.offset >= 0 && tv.lanesList == it.lanes))
+    // ANTS-4505 — one rule for all five, where the two list-valued keys used to
+    // need their own. They compared ELEMENT BY ELEMENT because comparing a
+    // pre-split string against a joined column diverges on separator spacing
+    // alone — a hazard of comparing values at all. Presence compares none, so
+    // `tv.lanesList` / `tv.evidenceList` are no longer read here; they stay on
+    // the accessor for their other consumers.
+    if (!it.lanes.isEmpty() && !shadows(tv.lanes))
         appendIndented(&lines, QStringLiteral("Lanes: ") + it.lanes.join(QStringLiteral(", ")) + QLatin1Char('.'));
     // Rendered WITHOUT a trailing period: paths contain dots, so a sentence
     // period would read as part of the last path (roadmap-format.md § 3.5).
-    if (!it.evidence.isEmpty() && !(tv.evidence.offset >= 0 && tv.evidenceList == it.evidence))
+    if (!it.evidence.isEmpty() && !shadows(tv.evidence))
         appendIndented(&lines, QStringLiteral("Evidence: ") + it.evidence.join(QStringLiteral(", ")));
 
     return lines.join(QLatin1Char('\n'));

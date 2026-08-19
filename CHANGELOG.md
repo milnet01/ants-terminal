@@ -12,6 +12,30 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Re-importing the roadmap no longer piles metadata lines up inside entries** (ANTS-4506)
+  The migration now drops the trailing run of trailer-only lines from what
+  it stores, because that block is the renderer's own output rather than
+  anything an author wrote. Measured before the fix: one re-import moved
+  599 entry bodies, 458 gaining a `Kind:` line and 97 a `Source:` line. A
+  trailer line sitting ABOVE authored prose is the author's and stays, and
+  a line is only dropped when it is the sole declaration of its key — the
+  condition that stops an entry rewriting its own metadata. The
+  indentation half of the round-trip report is ANTS-4528 and is still
+  open.
+
+- **A roadmap entry's metadata can now be corrected by editing the file** (ANTS-4505)
+  The renderer used to keep a trailer line (`Kind:`, `Source:`, `Layman:`,
+  `Lanes:`, `Evidence:`) out of its own output only when the entry's text
+  repeated that value exactly. Because the renderer appends its block at
+  the END of an entry and the reader takes the last declaration, a value
+  read wrong once won for ever: correcting the real line in ROADMAP.md was
+  silently ignored. Suppression is now presence at the start of a line —
+  whatever the value — so the file wins and the store follows on the next
+  import. A mid-sentence mention still declares nothing, and an
+  unrecognised `Kind:` value cannot displace a recognised one.
+
 ## [0.7.106] — unreleased (Patron RC preview)
 ### Added
 

@@ -217,11 +217,16 @@ QString bodyWithoutHeadPrefix(const BulletRecord &rec) {
     // indented line from renderBullet()'s `if (!it.body.isEmpty())` guard.
     const QString firstLine = (nl < 0 ? rest : rest.left(nl)).trimmed();
     const QString continuations = nl < 0 ? QString() : rest.mid(nl + 1);
+    // ANTS-4506 — and then the TRAILING run of trailer-only lines, which is the
+    // block the render appends from the columns rather than anything the author
+    // wrote. The predicate is RoadmapParse's (INV-2: one bullet grammar), and
+    // it runs on the residual, after the prefix strip.
     if (firstLine.isEmpty())
-        return continuations;
+        return RoadmapParse::stripTrailingTrailerLines(continuations);
     if (nl < 0)
-        return firstLine;
-    return firstLine + QLatin1Char('\n') + continuations;
+        return RoadmapParse::stripTrailingTrailerLines(firstLine);
+    return RoadmapParse::stripTrailingTrailerLines(
+        firstLine + QLatin1Char('\n') + continuations);
 }
 
 // One reader record as migration will file it. § 2.1.1 accounts for the fields

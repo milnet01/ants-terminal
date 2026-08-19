@@ -48,10 +48,11 @@ the third is the acceptance test for the other two.
 2. **It invents a field.** `makeItem()` assigns `source = "planned"` when the
    bullet declares none, marking `provenance.source = "defaulted"`.
    `bulletText()` (`src/roadmaprender.cpp`) then emits it under
-   `if (!it.source.isEmpty() && !shadows(tv.source, it.source))` — two
+   `if (!it.source.isEmpty() && !shadows(tv.source))` — two
    conditions, **neither of which a default fails**: a defaulted value is never
    empty, and ANTS-3808's `shadows()` suppresses only a trailer the *body*
-   already repeats. So a default that existed only as an absence renders as an
+   already declares at a line start. (The predicate lost its value argument
+   under ANTS-4505; the reasoning here is unaffected.) So a default that existed only as an absence renders as an
    assertion, and the next import reads it back as one — the loss is
    self-amplifying. `roadmap-format.md` § 3.5.3 is explicit that this is
    backwards: `planned` is "(default; usually omitted)".
@@ -270,12 +271,19 @@ and § 7 records it against the standard.
 
 **`rxKind()` is shared with the render, so this is not a parse-only change.**
 `bulletText()` reads the same matchers through `trailerValuesIn(it.body)` to
-compute ANTS-3808's `shadows()` suppression, which is **value equality**, not
-presence — `m.offset >= 0 && m.value == v`, and its own comment says so. So
-un-anchoring does *not* make a body that merely discusses the label shadow the
-trailer; it changes behaviour only where a mid-prose `Kind:` carries a value
-**equal to** the column's, which previously went unseen and now suppresses the
-trailer line. INV-10 covers exactly that case.
+compute ANTS-3808's `shadows()` suppression. **AMENDED 2026-08-19 (ANTS-4505):
+that predicate is now LINE-INITIAL PRESENCE — `m.offset >= 0 && m.anchored`,
+with a recognised-vocabulary rider for `kind` — where it used to be value
+equality.** It reversed because value equality was one-directional: the render
+appends its block at the END of the bullet and the parser takes the last
+line-initial match, so a wrong column wrote itself back to the tail and a human
+correcting the real trailer line was silently ignored, permanently. ANTS-3808
+§ 2.3 owns the rule and the argument; do not restate it here.
+
+**Un-anchoring therefore changes render suppression not at all**, which is a
+narrowing of what this section used to claim. `anchored` is what suppression
+reads, and un-anchoring moves only whether a MID-LINE match is found — so a
+mid-prose `Kind:` never suppresses now, whatever its value. INV-10 pins that.
 
 **Match precedence becomes load-bearing the moment the anchor goes, and it must
 be stated.** `bulletText()` appends `it.body` *before* the trailer lines, so in
@@ -980,15 +988,21 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   `CaseInsensitiveOption` is restored alongside the un-anchored pattern, which
   re-admits the prose match ("…changed the kind: of work…") that dropping the
   anchor exposes.
-- **INV-10** — Un-anchoring changes render suppression **only** where a
-  mid-prose `Kind:` value equals the column's. *Test:* three fixtures rendered —
-  body with no `Kind:` text (trailer emitted), body whose mid-prose `Kind:`
-  value **differs** from the column (trailer emitted, since `shadows()` is value
-  equality), body whose mid-prose `Kind:` value **equals** it (trailer
-  suppressed). `rxKind()` is shared with `bulletText()` via `trailerValuesIn()`
-  (§ 2.2), so the parser change reaches the render. *Breaks when:* the widened
-  match is treated as presence rather than equality, which would drop a required
-  trailer from any bullet whose body happens to discuss the label.
+- **INV-10** — **Amended 2026-08-19 (ANTS-4505): un-anchoring changes render
+  suppression NOT AT ALL.** Suppression is line-initial presence (ANTS-3808
+  § 2.3, which owns the rule), so a mid-prose `Kind:` never suppresses whatever
+  its value, and un-anchoring moves only which mid-line matches are *found*.
+  The invariant read *only where a mid-prose `Kind:` value equals the column's*,
+  which is now false in the one direction it named. *Test:* four fixtures
+  rendered — body with no `Kind:` text (emitted), body whose mid-prose `Kind:`
+  value **differs** from the column (emitted), body whose mid-prose `Kind:`
+  value **equals** it (**emitted too** — this is the fixture the amendment
+  flips), and body declaring `Kind:` **line-initially** (suppressed, which is
+  the only shape that does). `rxKind()` is shared with `bulletText()` via
+  `trailerValuesIn()` (§ 2.2), so the parser change still reaches the render —
+  it simply no longer changes its outcome. *Breaks when:* suppression is keyed
+  on the match rather than on `anchored`, which drops a required trailer from
+  any bullet whose body happens to discuss the label mid-sentence.
 - **INV-11** — When a bullet contains more than one match for a trailer key, a
   **line-initial** match beats a mid-line one; the resolver takes the last
   line-initial match, and falls back to the last mid-line match only when there

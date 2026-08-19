@@ -37443,7 +37443,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-19, found re-migrating after ANTS-4498.
   Lanes: roadmap.
 
-- 📋 [ANTS-4505] **A render-written trailer at a bullet's tail outranks the true trailer, so a mis-parsed value can never be corrected.**
+- ✅ [ANTS-4505] **A render-written trailer at a bullet's tail outranks the true trailer, so a mis-parsed value can never be corrected.**
   RoadmapRender::bulletText() emits the head line, then body, THEN the
   four trailer keys re-derived from the store columns -- at the END of the
   bullet. The parser's trailer match is un-anchored and last-match-wins.
@@ -37498,12 +37498,13 @@ are closed inline in the feedback files rather than filed here.
 
   Read docs/specs/ANTS-3808-item-body-and-trailer-suppression.md sections
   2.1, 2.3, 2.3.1 and INV-6, plus loop-log rows 3 and 4.
+  Resolved (2026-08-19): shipped with ANTS-4506, as the contract required. renderBullet()'s shadows() is now `m.offset >= 0 && m.anchored` for all five keys -- line-initial PRESENCE, whatever the value -- with a recognised-vocabulary rider for `kind` alone (an unrecognised fragment must not suppress the recognised column). The two list rows collapsed into that one, so lanesList/evidenceList are no longer read by the render. A human correcting a trailer line in the file now moves the column: Inv3RenderReaderAgree's third fixture asserts the re-parse yields the BODY's value where the two disagree, and it was verified red against the value-equality rule first. ANTS-4065's INV-10 asserted the rule this reverses and went red against the conforming build -- amended with its test (a mid-prose mention now emits, a fourth line-initial fixture pins the shape that suppresses); ANTS-3808 section 7 records that reconciliation, which neither gate loop found. Suite 3668/3668.
   **Layman:** Once a roadmap entry's metadata is read wrong, re-importing can never fix it -- the wrong value keeps winning.
   Kind: fix.
   Source: in-session-2026-08-19, found re-migrating after ANTS-4498.
   Lanes: roadmap.
 
-- 📋 [ANTS-4506] **The render then re-parse round trip is lossy both ways: indentation is flattened and trailer lines accrete into the body.**
+- ✅ [ANTS-4506] **The render then re-parse round trip is lossy both ways: indentation is flattened and trailer lines accrete into the body.**
   THREE independent reports, and the third is a measurement on this
   project's own corpus.
 
@@ -37560,6 +37561,7 @@ are closed inline in the feedback files rather than filed here.
 
   Read docs/specs/ANTS-3808-item-body-and-trailer-suppression.md sections
   2.1 and 2.3, INV-6, and loop-log rows 3 and 4.
+  Resolved (2026-08-19): the ACCRETION half only -- the indentation half is ANTS-4528 and stays open. RoadmapParse::stripTrailingTrailerLines() drops the trailing run of trailer-only lines from the stored body; makeItem() calls it after the prefix strip. The predicate lives in RoadmapParse, not at the call site, because INV-2 makes it the only bullet grammar in src/. Three conditions, each load-bearing: the trailing RUN (a trailer above authored prose is the author's and stays), ONE key per line, and the ONLY line-initial declaration of its key -- that last is what stops a migrated item rewriting its own column via the infix path ANTS-4505's note describes. Inv6RoundTripAddsNothing, five fixtures, verified red twice: with the strip omitted (fixture 4, the accretion discriminator) and with the only-declaration condition dropped (fixture 5). Suite 3668/3668.
   **Layman:** Saving the roadmap and reading it back does not give you what you started with — nested lists lose their shape and metadata lines pile up inside entries.
   Kind: fix.
   Source: cc-feedback-2026-08-19 (Claude Code config + finbreak), corroborated in-session.

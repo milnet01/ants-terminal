@@ -638,10 +638,12 @@ TEST(RoadmapImportMapping, LowercaseKindLabelIsNotADeclaration) {
 }
 
 // --------------------------------------------------------------- INV-10 ---
-// Un-anchoring changes render suppression ONLY where a mid-prose `Kind:` value
-// equals the column's. shadows() is value equality, not presence.
+// AMENDED 2026-08-19 (ANTS-4505). Un-anchoring changes render suppression NOT
+// AT ALL: shadows() is now LINE-INITIAL presence, so a mid-prose `Kind:` never
+// suppresses whatever its value, and un-anchoring moves only which mid-line
+// matches are found. ANTS-3808 § 2.3 owns the rule.
 
-TEST(RoadmapImportMapping, UnAnchoringChangesSuppressionOnlyOnValueEquality) {
+TEST(RoadmapImportMapping, UnAnchoringDoesNotChangeRenderSuppression) {
     RoadmapStore::ItemWrite base = renderableItem();
     base.kind = QStringLiteral("refactor");
 
@@ -660,14 +662,26 @@ TEST(RoadmapImportMapping, UnAnchoringChangesSuppressionOnlyOnValueEquality) {
                     .contains(QStringLiteral("Kind: refactor.")))
         << RoadmapRender::bulletText(differs).toStdString();
 
-    // (c) mid-prose value EQUALS the column — suppressed, so the bullet does
-    // not carry the same statement twice. This is the case the anchor hid.
+    // (c) mid-prose value EQUALS the column — emitted TOO, and this is the
+    // fixture ANTS-4505 flips. Under value equality it was suppressed; under
+    // presence a mid-sentence mention declares nothing, so the key literal
+    // appears twice and the rendered VALUE once, which is what INV-1 counts.
     RoadmapStore::ItemWrite equals = base;
     equals.body = QStringLiteral("Body text. Kind: refactor.");
     const QString text = RoadmapRender::bulletText(equals);
-    EXPECT_EQ(text.count(QStringLiteral("Kind: refactor.")), 1)
-        << "the body's own declaration was duplicated by the trailer:\n"
+    EXPECT_EQ(text.count(QStringLiteral("Kind: refactor.")), 2)
+        << "a mid-sentence mention suppressed the column line — suppression "
+           "must read `anchored`, not the bare match:\n"
         << text.toStdString();
+
+    // (d) LINE-INITIAL declaration — the one shape that does suppress, and the
+    // reason (c) is not simply "suppression stopped working".
+    RoadmapStore::ItemWrite declared = base;
+    declared.body = QStringLiteral("Kind: refactor.");
+    const QString dt = RoadmapRender::bulletText(declared);
+    EXPECT_EQ(dt.count(QStringLiteral("Kind: refactor.")), 1)
+        << "a line-initial declaration must suppress the column line:\n"
+        << dt.toStdString();
 }
 
 // --------------------------------------------------------------- INV-11 ---

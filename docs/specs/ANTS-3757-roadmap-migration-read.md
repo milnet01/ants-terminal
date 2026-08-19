@@ -227,7 +227,7 @@ plan; § 7 records that obligation.
 | `projectId` | not knowable here — a plan names a project, it does not create one. **Landed** (ANTS-3765, 2026-08-01): its `load()` calls `registerProject()` (get-or-create, from `projectName` / `exportSlug` and the root it was given) inside the transaction and fills this in |
 | `id`, `idOrigin` | § 2.5 / § 2.6, or synthesised (§ 2.9) |
 | `status` | § 2.7 |
-| `headline`, `body` | the reader's `headline`, and its `body` **with the render's own head-line PREFIX stripped** (ANTS-3808 § 2.1, shipped) — see below. The `headline` half is unchanged |
+| `headline`, `body` | the reader's `headline`, and its `body` **with the render's own head-line PREFIX stripped, and its TRAILING run of trailer-only lines dropped** (ANTS-3808 § 2.1, shipped; the trailing-run half by ANTS-4506, 2026-08-19) — see below. The `headline` half is unchanged |
 | `kind`, `source` | § 2.8, defaulted when absent |
 | `layman` | the `Layman:` line; empty when absent, no default |
 | `provenance` | per field, § 2.7 / § 2.8 / § 2.9 |

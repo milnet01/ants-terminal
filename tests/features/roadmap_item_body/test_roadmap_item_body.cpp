@@ -25,6 +25,7 @@
 #include <QTemporaryDir>
 
 #include <memory>
+#include <optional>
 
 namespace {
 
@@ -189,6 +190,66 @@ const RoadmapMigrate::PlannedItem *itemWithHeadline(const RoadmapMigrate::Migrat
     return nullptr;
 }
 
+// ANTS-4506 — one migrate-then-render cycle over a single-bullet document.
+// The store write carries `provenance` verbatim: § 2.4 gates the `Source:`
+// line on `provenance.source != "defaulted"`, so dropping it here would make
+// every fixture lose its Source line for a reason that has nothing to do with
+// the strip.
+RoadmapStore::ItemWrite writeOf(const RoadmapMigrate::PlannedItem &p) {
+    RoadmapStore::ItemWrite w;
+    w.id         = p.id;
+    w.idOrigin   = p.idOrigin;
+    w.status     = p.status;
+    w.headline   = p.headline;
+    w.kind       = p.kind;
+    w.source     = p.source;
+    w.layman     = p.layman;
+    w.body       = p.body;
+    w.lanes      = p.lanes;
+    w.evidence   = p.evidence;
+    w.extras     = p.extras;
+    w.provenance = p.provenance;
+    return w;
+}
+
+// The ONE bullet a fixture document declares, as the migration would file it.
+std::optional<RoadmapMigrate::PlannedItem> planOne(const QString &markdown) {
+    const auto plan = RoadmapMigrate::planFrom(discoveryOf(QStringLiteral("ROADMAP.md"), markdown),
+                                               QStringLiteral("Demo"), QStringLiteral("demo"));
+    if (plan.items.size() != 1) {
+        ADD_FAILURE() << "expected exactly one planned item, got " << plan.items.size();
+        return std::nullopt;
+    }
+    return plan.items.at(0);
+}
+
+// The bullet's own lines out of a rendered file — its `- ` line plus every
+// indented continuation. INV-6's byte-identity clause is about the BULLET; the
+// fixture store synthesises its own preamble and headings around it.
+QString bulletBlock(const QString &fileText) {
+    QStringList out;
+    const QStringList lines = fileText.split(QLatin1Char('\n'));
+    for (const QString &l : lines) {
+        if (out.isEmpty()) {
+            if (l.startsWith(QStringLiteral("- ")))
+                out.append(l);
+            continue;
+        }
+        if (!l.startsWith(QStringLiteral("  ")))
+            break;
+        out.append(l);
+    }
+    return out.join(QLatin1Char('\n'));
+}
+
+// migrate → store → render, returning the rendered file.
+QString cycleOnce(const QString &markdown) {
+    const auto p = planOne(markdown);
+    if (!p)
+        return QString();
+    return renderOne(writeOf(*p));
+}
+
 } // namespace
 
 // INV-1 — a rendered bullet contains its headline exactly once and each trailer
@@ -226,14 +287,19 @@ TEST(RoadmapItemBody, Inv1NoDuplication) {
     EXPECT_EQ(occurrences(bt, QStringLiteral("Bravo stays put")), 1) << bt.toStdString();
     EXPECT_EQ(occurrences(bt, QStringLiteral("docs/bravo.png")), 1) << bt.toStdString();
 
-    // (c) the two-value case. The residual says one thing, the column another,
-    // so the CANONICAL value is emitted and the key LITERAL appears twice —
+    // (c) the two-value case, and the shadowing mention is MID-LINE. ANTS-4505
+    // moved suppression to presence, so a LINE-INITIAL `Source:` in the body
+    // now suppresses whatever its value — the fixture would stop
+    // discriminating, because the key literal would appear once and a
+    // key-counting assertion would pass too. § 2.3.1's third branch (present
+    // only mid-line) is the one shape that still reaches the no-suppression
+    // branch, so the column is emitted and the key LITERAL appears twice —
     // correct output that a key-counting invariant would reject.
     RoadmapStore::ItemWrite c = baseItem(QStringLiteral("DEMO-0003"),
                                          QStringLiteral("Charlie headline sentinel"));
     c.source = QStringLiteral("charlie-current-note");
     c.layman = QStringLiteral("Charlie stays put");
-    c.body   = QStringLiteral("Source: charlie-earlier-note.");
+    c.body   = QStringLiteral("Filed after the audit; Source: charlie-earlier-note.");
     const QString ct = renderOne(c);
     ASSERT_FALSE(ct.isEmpty());
     EXPECT_EQ(occurrences(ct, QStringLiteral("charlie-current-note")), 1) << ct.toStdString();
@@ -337,7 +403,9 @@ TEST(RoadmapItemBody, Inv2SingleGrammar) {
 }
 
 // INV-3 — re-parsing a rendered bullet yields the same five trailer values the
-// store holds, in BOTH branches of the value-equality test.
+// store holds, for every item reachable without a shadowing consumer write.
+// Fixture 3 is deliberately OUTSIDE that scope and asserts the opposite
+// direction: where a column and its body have been separated, the FILE wins.
 TEST(RoadmapItemBody, Inv3RenderReaderAgree) {
     struct Case {
         const char *what;
@@ -374,6 +442,35 @@ TEST(RoadmapItemBody, Inv3RenderReaderAgree) {
         EXPECT_EQ(rec->lanes, c.item.lanes) << text.toStdString();
         EXPECT_EQ(rec->evidence, c.item.evidence) << text.toStdString();
     }
+
+    // Fixture 3 — the ANTS-4505 discriminator. The body declares `Kind:`
+    // line-initially with a value the column disagrees with; suppression fires
+    // anyway, so the body's line is the only `Kind:` in the file and the
+    // re-parse adopts it. Asserting store-equality here reds against a correct
+    // implementation: the file is the authoring surface, so where the two have
+    // been separated the file wins and the store follows. Written straight into
+    // the store, because `roadmap_log` refuses this shape (`body_shadowed`).
+    RoadmapStore::ItemWrite split = baseItem(QStringLiteral("DEMO-0010"),
+                                             QStringLiteral("Echo headline sentinel"));
+    split.layman = QStringLiteral("Echo stays put");
+    split.kind   = QStringLiteral("implement");
+    split.source = QStringLiteral("in-session-echo");
+    split.body   = QStringLiteral("Kind: fix.");
+    const QString st = renderOne(split);
+    ASSERT_FALSE(st.isEmpty());
+    EXPECT_EQ(occurrences(st, QStringLiteral("Kind:")), 1)
+        << "presence suppression did not fire on a line-initial declaration:\n"
+        << st.toStdString();
+    const QVector<RoadmapParse::BulletRecord> back = RoadmapParse::parseBullets(st);
+    const RoadmapParse::BulletRecord *rec = nullptr;
+    for (const RoadmapParse::BulletRecord &r : back)
+        if (r.id == split.id)
+            rec = &r;
+    ASSERT_TRUE(rec) << st.toStdString();
+    EXPECT_EQ(rec->kind, QStringLiteral("fix"))
+        << "the body's own declaration must be what the re-parse yields — a "
+           "human correcting the file has to be able to move the column:\n"
+        << st.toStdString();
 }
 
 // INV-4 — trailerValuesIn(body) equals what parseBullets() assigns from the same
@@ -483,6 +580,7 @@ TEST(RoadmapItemBody, Inv5NoBodyLoss) {
         "\n"
         "- 📋 [DEMO-0001] **Headline only.**\n"
         "- 📋 [DEMO-0002] **Has continuations.**\n"
+        "  Continuation prose line.\n"
         "  Kind: implement.\n"
         "  Layman: A sentence.\n"
         "- 📋 [DEMO-0003] **Has trailing prose.** ROW3-TAIL-TEXT stays.\n"
@@ -502,9 +600,12 @@ TEST(RoadmapItemBody, Inv5NoBodyLoss) {
     // start with '\n', which is non-empty, so renderBullet()'s
     // `if (!it.body.isEmpty())` guard passes and emits a stray indented line on
     // nearly every bullet.
+    // ANTS-4506 amended this row: the continuations LESS any stripped trailing
+    // run, so the two trailer lines below the prose are gone and the prose is
+    // what remains.
     const auto *r2 = itemWithHeadline(plan, QStringLiteral("Has continuations."));
     ASSERT_TRUE(r2);
-    EXPECT_EQ(r2->body, QStringLiteral("Kind: implement.\nLayman: A sentence."));
+    EXPECT_EQ(r2->body, QStringLiteral("Continuation prose line."));
     EXPECT_FALSE(r2->body.startsWith(QLatin1Char('\n')));
 
     // Row 3 — the case the naive "drop the first line" rule LOSES. The reader
@@ -516,7 +617,7 @@ TEST(RoadmapItemBody, Inv5NoBodyLoss) {
     ASSERT_TRUE(r3);
     EXPECT_TRUE(r3->body.contains(QStringLiteral("ROW3-TAIL-TEXT stays.")))
         << "post-`**` text was deleted by the strip: " << r3->body.toStdString();
-    EXPECT_EQ(r3->body, QStringLiteral("ROW3-TAIL-TEXT stays.\nKind: implement."));
+    EXPECT_EQ(r3->body, QStringLiteral("ROW3-TAIL-TEXT stays."));
 
     // Row 4 — GFM, where the headline IS the whole first line. A GFM bullet
     // writes neither `[id]` nor `**`, so an implementation recording the offset
@@ -536,4 +637,160 @@ TEST(RoadmapItemBody, Inv5NoBodyLoss) {
     ASSERT_TRUE(r4) << "the GFM bullet did not plan as an item";
     EXPECT_EQ(r4->body, QStringLiteral("ROW4-CONT line."))
         << "the GFM head line was not stripped — headlineEnd is unset on that branch";
+}
+
+// INV-6 — migrate-then-render is an identity on the FIRST cycle and the stored
+// body gains nothing. The general assertion is over the BODY; byte identity is
+// the narrower clause and holds only where the bullet is already written in
+// § 2.4's emission order and spelling, with two-space continuations and no text
+// after the closing `**`.
+TEST(RoadmapItemBody, Inv6RoundTripAddsNothing) {
+    const auto docWith = [](const QString &bullet) {
+        return QStringLiteral("<!-- ants-roadmap-format: 1 -->\n"
+                              "\n"
+                              "# Demo — Roadmap\n"
+                              "\n"
+                              "## Work\n"
+                              "\n")
+               + bullet + QLatin1Char('\n');
+    };
+
+    // (1) Trailers last — the conforming shape. The trailing run is the
+    // render's own output, so the strip moves exactly the lines § 2.4 puts
+    // back and the bullet round-trips BYTE for byte.
+    //
+    // The `**Layman:**` line carries NO trailing period, which is the render's
+    // own spelling: `rec.layman` is period-stripped by ANTS-1154 INV-4, so a
+    // Layman line written with one cannot round-trip byte-identically and a
+    // fixture in author style would red against a correct implementation.
+    {
+        const QString bullet = QStringLiteral(
+            "- 📋 [DEMO-0011] **Trailers last.**\n"
+            "  Residual prose line.\n"
+            "  **Layman:** It stays put\n"
+            "  Kind: implement.\n"
+            "  Source: in-session-one.\n"
+            "  Lanes: chrome, tests.\n"
+            "  Evidence: docs/one.png");
+        const QString doc = docWith(bullet);
+        const auto before = planOne(doc);
+        ASSERT_TRUE(before);
+        EXPECT_EQ(before->body, QStringLiteral("Residual prose line."))
+            << "the trailing trailer run was not stripped from the stored body: "
+            << before->body.toStdString();
+        const QString rendered = cycleOnce(doc);
+        ASSERT_FALSE(rendered.isEmpty());
+        EXPECT_EQ(bulletBlock(rendered), bullet) << rendered.toStdString();
+        const auto after = planOne(rendered);
+        ASSERT_TRUE(after);
+        EXPECT_EQ(after->body, before->body) << rendered.toStdString();
+    }
+
+    // (2) Prose BELOW the trailers — the run stops at the prose, so the trailer
+    // lines stay in the body and § 2.3's suppression keeps the render from
+    // adding a second copy. This is the fixture an implementation fails by
+    // stripping every trailer line rather than the trailing run, and it reds
+    // silently: the body still round-trips, it has just lost an authored line.
+    {
+        const QString bullet = QStringLiteral(
+            "- 📋 [DEMO-0012] **Prose below the trailers.**\n"
+            "  **Layman:** It keeps its authored line.\n"
+            "  Kind: implement.\n"
+            "  Authored prose after the trailers.");
+        const QString doc = docWith(bullet);
+        const auto before = planOne(doc);
+        ASSERT_TRUE(before);
+        EXPECT_EQ(before->body,
+                  QStringLiteral("**Layman:** It keeps its authored line.\n"
+                                 "Kind: implement.\n"
+                                 "Authored prose after the trailers."))
+            << "a trailer line ABOVE authored prose is the author's, not the "
+               "render's: " << before->body.toStdString();
+        const QString rendered = cycleOnce(doc);
+        ASSERT_FALSE(rendered.isEmpty());
+        const auto after = planOne(rendered);
+        ASSERT_TRUE(after);
+        EXPECT_EQ(after->body, before->body) << rendered.toStdString();
+    }
+
+    // (3) A body that is ENTIRELY trailer lines strips to empty — a normal
+    // outcome (§ 2.1), not an error, and every column is then emitted.
+    {
+        const QString bullet = QStringLiteral(
+            "- 📋 [DEMO-0013] **All trailer lines.**\n"
+            "  **Layman:** Nothing but metadata\n"
+            "  Kind: implement.");
+        const QString doc = docWith(bullet);
+        const auto before = planOne(doc);
+        ASSERT_TRUE(before);
+        EXPECT_EQ(before->body, QString()) << before->body.toStdString();
+        const QString rendered = cycleOnce(doc);
+        ASSERT_FALSE(rendered.isEmpty());
+        EXPECT_EQ(bulletBlock(rendered), bullet) << rendered.toStdString();
+    }
+
+    // (4) The DISCRIMINATOR, and the only fixture that reds against the
+    // *Breaks when* mutation. The first three keep their trailing trailer
+    // lines with the strip omitted, those lines DECLARE their keys, § 2.3
+    // suppresses every column line, and identity holds anyway. Here the
+    // residual declares nothing line-initially — the trailers sit mid-sentence
+    // — so the render emits its block, the next parse files it into `body`,
+    // and the stored body grows. That is the +458 / +97 accretion measured on
+    // this project's own corpus on 2026-08-19.
+    {
+        const QString bullet = QStringLiteral(
+            "- 📋 [DEMO-0014] **Accretion discriminator.**\n"
+            "  **Layman:** It grows.\n"
+            "  Filed after the audit; Kind: implement. Source: in-session-four.");
+        const QString doc = docWith(bullet);
+        const auto before = planOne(doc);
+        ASSERT_TRUE(before);
+        EXPECT_EQ(before->body,
+                  QStringLiteral("**Layman:** It grows.\n"
+                                 "Filed after the audit; Kind: implement. "
+                                 "Source: in-session-four."));
+        const QString rendered = cycleOnce(doc);
+        ASSERT_FALSE(rendered.isEmpty());
+        const auto after = planOne(rendered);
+        ASSERT_TRUE(after);
+        EXPECT_EQ(after->body, before->body)
+            << "the stored body gained the render's own trailer block:\n"
+            << rendered.toStdString();
+    }
+
+    // (5) § 2.1's ONLY-DECLARATION condition. A stale line-initial `Kind: bug`
+    // in a continuation and the canonical `Kind: implement.` at the tail: the
+    // tail line must NOT be stripped, or the residual's last line-initial
+    // `Kind:` becomes `bug`, presence suppression drops the canonical column
+    // line, and the next migration adopts `bug` — a migrated item rewriting its
+    // own column with no consumer write. The `kind` vocabulary rider is no help
+    // here, because `bug` is recognised (it maps to `fix`).
+    {
+        const QString bullet = QStringLiteral(
+            "- 📋 [DEMO-0015] **Only-declaration guard.**\n"
+            "  **Layman:** It keeps its column.\n"
+            "  Kind: bug\n"
+            "  More prose about this item.\n"
+            "  Kind: implement.");
+        const QString doc = docWith(bullet);
+        const auto before = planOne(doc);
+        ASSERT_TRUE(before);
+        EXPECT_EQ(before->kind, QStringLiteral("implement"));
+        EXPECT_TRUE(before->body.contains(QStringLiteral("Kind: implement.")))
+            << "the tail line is NOT the only line-initial Kind: declaration, "
+               "so stripping it hands the column to the stale one: "
+            << before->body.toStdString();
+        const QString cycle1 = cycleOnce(doc);
+        ASSERT_FALSE(cycle1.isEmpty());
+        const auto after1 = planOne(cycle1);
+        ASSERT_TRUE(after1);
+        EXPECT_EQ(after1->kind, QStringLiteral("implement")) << cycle1.toStdString();
+        const QString cycle2 = cycleOnce(cycle1);
+        ASSERT_FALSE(cycle2.isEmpty());
+        const auto after2 = planOne(cycle2);
+        ASSERT_TRUE(after2);
+        EXPECT_EQ(after2->kind, QStringLiteral("implement"))
+            << "the column was rewritten by its own body across two cycles:\n"
+            << cycle2.toStdString();
+    }
 }

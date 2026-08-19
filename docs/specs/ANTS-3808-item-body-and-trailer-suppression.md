@@ -1,8 +1,17 @@
 # ANTS-3808 — `item.body`: what the migration stores and what the render re-derives
 
 **Status:** accepted (2026-08-04) — cold-eyes loops 1–3 folded, converged by
-cap; the loop-3 tail folded in post-cap and § 4's build decision settled. Ready
-to implement; no further review gate is owed.
+cap; the loop-3 tail folded in post-cap and § 4's build decision settled. The
+two 2026-08-19 amendments (ANTS-4505, ANTS-4506) ran their own gate — loop-log
+rows 3 and 4, dated 2026-08-19 — converged by cap. No further review gate is owed.
+**SHIPPED 2026-08-19.** The whole surface is now built: § 2.2's accessor and
+§ 2.4's export under ANTS-4497 / ANTS-4504, § 2.1's prefix strip with it, and
+§ 2.1's trailing-trailer strip plus § 2.3's presence suppression under
+ANTS-4506 / ANTS-4505. Tests: `tests/features/roadmap_item_body/`, six cases.
+The two the amendments touch were verified red before the fix and against each
+*Breaks when* mutation: `Inv3RenderReaderAgree`'s third fixture (value equality
+restored) and `Inv6RoundTripAddsNothing` (the strip omitted, then the
+only-declaration condition dropped).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3808, found while verifying ANTS-3806 (2026-08-03);
 split out of ANTS-3793 at that spec's cold-eyes cap the same day.
@@ -244,6 +253,26 @@ body is authored prose about the item and stays; only the block at the tail is
 the render's. And the strip is per-line-shape, never a count: a body that is
 *entirely* trailer lines strips to empty, which § 2.1 already calls a normal
 outcome.
+
+**And a line is stripped ONLY when it is the ONLY LINE-INITIAL DECLARATION of
+its key in the body.** This is the condition § 2.3.1 and INV-6's fifth fixture
+both name, stated here because this is where it is owned; it was added to both
+citing passages at loop 4 and to this one only on ship. Without it the residual
+is an INFIX of the full body rather than a suffix, and § 2.3.1's migrated-item
+guarantee rests on it being a suffix. Worked: a bullet with a stale line-initial
+`Kind: bug` in a continuation and its canonical `Kind: implement.` at the tail
+migrates with the column `implement`, has the tail stripped, and then suppresses
+on `bug` — so `bug` is the file's only `Kind:` and the next migration adopts it.
+**A migrated item silently rewriting its own column, with no consumer write, and
+the `kind` vocabulary rider is no help because `bug` is recognised.** The column
+is `matchLastIn()` over the full body; with the condition, the residual's last
+line-initial declaration is still the one the column took.
+
+**A mid-sentence mention does not count as a declaration for this test**, for
+the same reason it does not suppress: it cannot outrank the column on a
+re-parse either (ANTS-4065 INV-11 — a line-initial match beats a mid-line one).
+**And the line must carry ONE key**: 10 corpus lines write two on one line, and
+such a line is not "nothing but one trailer declaration".
 
 ANTS-3757 § 2.1.1's `body` row is amended on ship; § 7 owns that obligation and
 its caveat.
@@ -738,7 +767,11 @@ only place either is argued.**
   `render(parse(x)) == x` holds only where x's trailing run is already in
   § 2.4's emission order (`Layman`, `Kind`, `Source`, `Lanes`, `Evidence`) and
   its exact spelling — `**Layman:** `, a trailing period on `Kind:`/`Source:`/
-  `Lanes:` and none on `Evidence:`, lanes joined `", "`. **Two further
+  `Lanes:` and none on `Evidence:` **or on `**Layman:**`, whose value the reader
+  period-strips (ANTS-1154 INV-4), so a Layman line written in author style with
+  its period cannot round-trip byte-identically** (added on ship, 2026-08-19,
+  after a fixture written that way reddened against a correct build), lanes
+  joined `", "`. **Two further
   preconditions come from the reader, not the render** (added 2026-08-19): every
   continuation must be indented **exactly two spaces**, because `parseBullets()`
   stores `cont.trimmed()` and `appendIndented()` puts two back; and the head
@@ -960,6 +993,18 @@ case would write into it. Always
   change is the *body assembly* — the local pre-walk re-implements
   `parseBullets()`'s continuation join — and that is the grammar duplication
   INV-2 forbids, which is reason enough on its own. § 4 carries what it costs.
+- **ANTS-4065's INV-10 asserts the rule § 2.3 reversed, and is amended on ship**
+  (added 2026-08-19, during implementation — neither gate loop found it). It read
+  *un-anchoring changes render suppression only where a mid-prose `Kind:` value
+  equals the column's*, with a shipped ctest case asserting that the column line
+  is **suppressed** there. Under presence that case is false in the one direction
+  it names — a mid-sentence mention declares nothing, so the column is emitted —
+  and the test went red against a conforming build. ANTS-4065's INV-10 now defers
+  to § 2.3 for the rule, its equal-value fixture asserts the trailer is emitted,
+  and a fourth line-initial fixture pins the one shape that does suppress. Its
+  two prose passages describing `shadows()` as value equality are corrected with
+  it; its *must-fail-first* table is left as the historical record of that spec's
+  own red run.
 - **ANTS-3809 depends on § 2.2's `TrailerMatch`**; its `body_shadowed` refusal is
   unimplementable without `offset` / `anchored`.
 - **ANTS-3793's `BulletRecord::body`** is defined in terms of § 2.4's export.

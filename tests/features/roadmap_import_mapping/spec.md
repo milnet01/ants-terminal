@@ -40,6 +40,13 @@ either the test or the code:
 | INV-7 | § 2.5's path validation does not exist in current source at all |
 | INV-9 | `CaseInsensitiveOption` is still set, so `kind:` parses |
 | INV-10 (equal-value) | the anchor leaves `offset == -1`, so `shadows()` is false and the trailer is emitted |
+
+**INV-10's rule was reversed on 2026-08-19 by ANTS-4505**, and the row above is
+kept as the record of ANTS-4065's own red run rather than rewritten. Suppression
+is now line-initial presence (ANTS-3808 § 2.3), so the equal-value fixture
+asserts the trailer is **emitted**, a fourth line-initial fixture asserts the one
+shape that suppresses, and the case is named
+`UnAnchoringDoesNotChangeRenderSuppression`.
 | **INV-4 (the four § 2.1 additions)** | **not in § 6's list.** `bug`, `performance`, `process + tooling` and `audit` are § 2.1's four mechanical map additions, which by construction cannot pass before C3 adds them. § 6 enumerates the six *named invariants* that red and does not claim to be exhaustive over cases; recorded here rather than silently absorbed |
 
 INV-3, INV-6, INV-8 and INV-11 pass on pre-change source and must keep passing
