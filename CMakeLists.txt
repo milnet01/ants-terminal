@@ -344,6 +344,11 @@ set(ANTS_RC_SOURCES_REL
     # every existing TU's `TU N/12` ordinal, and every two-anchor scrape window
     # between them, exactly where it was.
     src/remotecontrol_roadmap_migrate.cpp
+    # ANTS-4501 — op:"backfill_dates"'s handler. Appended LAST for the same
+    # reason as the line above: a member that never existed in the pre-split
+    # file, so appending violates no pre-split relative order and leaves every
+    # existing TU's ordinal and every two-anchor scrape window where it was.
+    src/remotecontrol_roadmap_backfill.cpp
 )
 list(TRANSFORM ANTS_RC_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_rc_abs)
@@ -1758,6 +1763,10 @@ if(ANTS_TESTS)
                 # cases, but builds HERE: the stamps live in the roadmap_log
                 # callers, so the clauses can only be driven through the verbs.
                 tests/features/roadmap_report/test_roadmap_stamp.cpp
+                # ANTS-4501 § 2.3 — the git backfill (INV-2/INV-3). Builds a
+                # real repository with controlled author dates: the subject IS
+                # a history walk, so a fake would assert against the harness.
+                tests/features/roadmap_backfill_dates/test_roadmap_backfill_dates.cpp
                 tests/features/roadmap_alloc_store_floor/test_roadmap_alloc_store_floor.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through

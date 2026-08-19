@@ -557,6 +557,28 @@ public:
     std::optional<DaySpread> timeToClose(std::optional<qint64> projectId,
                                          QString *error = nullptr) const;
 
+    // ANTS-4501 § 2.3 — the backfill's target set: every item of one project
+    // with the three facts its write rules turn on. `status` decides whether a
+    // `shipped` date may be written at all — § 2.3 skips that COLUMN, not the
+    // id, for anything not currently shipped, because git still holds the
+    // commit where a since-reopened item's marker was ✅ and a walk reasoning
+    // only from git would re-close it on every run. The two NULL flags are
+    // INV-2's never-overwrite guard, which is what makes the op re-runnable.
+    //
+    // A reader here rather than raw SQL in the verb, for § 7's reason: every
+    // other reader on this surface is a store method, and a verb issuing its
+    // own SQL against these tables would be the second place that knows the
+    // schema. One query rather than 2143 readItem() calls for the same answer.
+    struct DateTarget {
+        qint64  itemPk = 0;
+        QString id;
+        QString status;
+        bool    createdIsNull = true;
+        bool    shippedIsNull = true;
+    };
+    std::optional<QVector<DateTarget>> itemsForDateBackfill(
+        qint64 projectId, QString *error = nullptr) const;
+
     // One enumeration serving BOTH § 2.7's orphan detection (a set complement)
     // and § 2.6.1's id-less re-run matching (a search by natural key). Neither
     // is expressible as a point lookup however many times it is called.

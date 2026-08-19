@@ -221,6 +221,37 @@ every reopened item, silently, on every run.
 **It is per-project**, because the walk needs that project's git repository,
 and the store is machine-global across 15 of them.
 
+**Amended 2026-08-20, at implementation (write-spec Step 8). The walk reads
+DIFFS, not the content of every revision, and the cost model above is a lower
+bound rather than the figure.** Reading each revision's content for real is
+49 s of `git show` alone on this repository (1525 revisions × 3 files, measured)
+before one bullet is parsed — and the MCP bridge times out at 60 s (ANTS-3444),
+so the op as costed could not complete through its own surface. One
+`git log --reverse -p -U0` over the same pathspecs is 3.9 s end to end,
+including the parse.
+
+The semantics are the same because only a FIRST sighting is ever recorded: an id
+first appears in the `+` line that added its bullet, and first carries a shipped
+marker in the `+` line that flipped it. A later re-addition — an archive rotation
+re-emitting a ✅ bullet into a new file — is already seen and changes nothing,
+which is the first-wins rule a content walk applies too. Merges are diffed
+against their first parent (`--diff-merges=first-parent`), or a bullet reaching a
+branch only through one would be invisible; this repository has no such commit
+and other projects on this store do. Each commit's added bullet lines go to
+`RoadmapParse::parseBullets()` as a document, so ANTS-3808 INV-2's one grammar
+still holds and no second regex learns the bullet shape.
+
+Measured against this project 2026-08-20 by the suite's own dry run: 1525
+revisions in 3.9 s, 2179 of 2179 items dated, **0 undated** — and the 1754
+`shipped` writes equal the store's own `status='shipped'` count exactly, which is
+the walk agreeing with the store rather than approximating it.
+
+**A third refusal, `git_failed`**, joins the two above: git failed to start,
+exited non-zero, or ran past the wall budget. A partial walk is
+indistinguishable from a complete one at the caller, and every id whose commit
+had not been reached would be reported undated — so a failed run refuses and
+nothing is written.
+
 ### 2.4 Bucket semantics
 
 The periods are a contract: two callers asking the same question of the same

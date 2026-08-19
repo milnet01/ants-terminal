@@ -234,6 +234,23 @@ server-controllable beyond this per-tool hint.
   **Scans the whole repo** (minus `.gitignore`), unlike `find_sources`,
   because a config key's `docs/` and `CLAUDE.md` mentions are co-change
   sites. Spec `docs/specs/ANTS-3368-co-change-family.md`.
+- **`roadmap_query` `mode:"report"` (ANTS-4501)** — the roadmap's totals,
+  lifecycle split and throughput per day / week / month / year, over the
+  STORE and not the markdown. Read-only: it writes no row, no file, no
+  migration and allocates no id, so it can never freshen the rows it
+  summarises. **Every bucketed figure ships a `coverage` block over the same
+  population, and reading it is not optional** — the period figures are
+  computed from the `created` / `shipped` columns, which are stamped only
+  from 2026-08-20 and are NULL on every row filed before that, so on a
+  corpus that has not been backfilled a "closed this month" is a count over
+  a few percent of the items and would otherwise read as a total.
+  `roadmap_log op:"backfill_dates"` is what fills the rest. `open` is an
+  ENUMERATION — planned + in-progress + considered — never
+  `status != 'shipped'`: the schema admits a fifth value `dropped`, so the
+  two disagree on any project that has one. Every median carries the
+  `sample` it was computed from, which is smaller than the population it
+  looks like. `scope:"all"` sums every registered project — the one view no
+  single ROADMAP.md can give.
 - **`roadmap_query`** — recognises ants-v1 / github-task-list /
   pass-headings formats (ANTS-1530). `mode:"bundles"` (ANTS-1922)
   groups the active subset (📋/🚧, id-bearing) into thematic
@@ -500,6 +517,23 @@ which heading you expect it under.
   not restated here); and `op:"bundle_row"` **writes normally** — it appends to a
   Markdown table under a named section and never parses bullets, so the
   roadmap's bullet format never reaches it (ANTS-1691).
+- **`roadmap_log op:"backfill_dates"` (ANTS-4501)** — a ONE-OFF that walks
+  the project's git history and fills the `created` / `shipped` columns for
+  the rows predating forward stamping. Not a `roadmap_query` mode, and
+  deliberately: it writes, and that verb's report is pinned read-only. Per
+  project (`caller_cwd`, like `roadmap_migrate`), because it needs that
+  project's repository while the store is machine-global. Dates come from
+  each commit's AUTHOR date — the committer date moves under every rebase,
+  so a rewritten history would otherwise change every figure downstream.
+  **It never overwrites a non-NULL date**, so it is re-runnable and a hand
+  correction survives; it never invents one for an id no commit showed (those
+  are counted in `undated_count`); it skips the `shipped` COLUMN for any id
+  whose current status is not shipped, so a reopened item is not silently
+  re-closed from the ✅ still sitting in its history; and it does not touch
+  `last_modified` at all. `dry_run` reports the counts the real run would
+  write. Measured on Ants Terminal 2026-08-20: 1525 revisions in 3.9 s,
+  2179 of 2179 items dated, 0 undated. Refusals: `not_a_git_repo`,
+  `project_not_registered`, `git_failed`.
 - **`roadmap_log` on a store-migrated project (ANTS-3809)** — all eight ops
   (`append`, `append_batch`, `flip`, `flip_batch`, `annotate`,
   `amend_body`, `create_section`, `bundle_row`) **mutate the store and

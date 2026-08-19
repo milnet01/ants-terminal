@@ -1795,6 +1795,32 @@ RoadmapStore::timeToClose(std::optional<qint64> projectId, QString *error) const
                        /*wantOldestAndOver90=*/false, error);
 }
 
+// ANTS-4501 § 2.3 — see the header for why `status` and the two NULL flags are
+// the columns, and why this is a reader rather than SQL in the verb.
+std::optional<QVector<RoadmapStore::DateTarget>>
+RoadmapStore::itemsForDateBackfill(qint64 projectId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT item_pk, id, status, created IS NULL, shipped IS NULL "
+        "FROM item WHERE project_id = ? ORDER BY item_pk"));
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        return std::nullopt;
+    }
+    QVector<DateTarget> out;
+    while (q.next()) {
+        DateTarget t;
+        t.itemPk        = q.value(0).toLongLong();
+        t.id            = q.value(1).toString();
+        t.status        = q.value(2).toString();
+        t.createdIsNull = q.value(3).toBool();
+        t.shippedIsNull = q.value(4).toBool();
+        out.push_back(t);
+    }
+    return out;
+}
+
 std::optional<QVector<RoadmapStore::ItemRef>>
 RoadmapStore::listItems(qint64 projectId, QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));

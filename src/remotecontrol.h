@@ -1005,6 +1005,9 @@ public:
     // See tests/features/roadmap_rotate_minor/spec.md.
     QJsonDocument cmdRoadmapLogRotateMinorForTest(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogRetitleSectionForTest(const QJsonObject &req);
+    // ANTS-4501 § 2.3 — drive the git backfill against a synthetic caller_cwd
+    // without a MainWindow. See tests/features/roadmap_backfill_dates/spec.md.
+    QJsonDocument cmdRoadmapLogBackfillDatesForTest(const QJsonObject &req);
     // ANTS-3822 § 2.3.2 — lower the history cap this instance opens its store
     // with, so a test can reach the cap without 250 MiB of real history. Must be
     // called BEFORE the first verb, since the store is opened lazily and cached.
@@ -1069,6 +1072,13 @@ private:
     // docs/specs/ANTS-4070-rotation-and-section-title.md.
     QJsonDocument cmdRoadmapLogRotateMinor(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogRetitleSection(const QJsonObject &req);
+    // ANTS-4501 § 2.3 — backfill_dates: walk this project's git history over
+    // its roadmap files and fill `created` / `shipped` for the rows that
+    // predate § 2.2's forward stamping. One-off and opt-in; never a side
+    // effect of a read, because INV-10 forbids the report from writing at all.
+    // Store-only, like the two above: `project_not_registered` on a project the
+    // migration has not taken over. See docs/specs/ANTS-4501-roadmap-report.md.
+    QJsonDocument cmdRoadmapLogBackfillDates(const QJsonObject &req);
     // ANTS-1879 INV-10 — shared bullet-formatting helper extracted from
     // cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
     // can format each bullet through the same code path. scrubbedNames

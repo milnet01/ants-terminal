@@ -1,4 +1,4 @@
-// ANTS-3833 TU 5/12 — Roadmap write ops.
+// ANTS-3833 TU 5/13 — Roadmap write ops.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "roadmapfoldin.h"
@@ -5830,4 +5830,3 @@ bool rcdetail::rcContainsHtmlEntity(const QString &pattern) {
         QStringLiteral("&(lt|gt|amp|quot|apos|nbsp|#[0-9]+|#x[0-9A-Fa-f]+);"));
     return ent.match(pattern).hasMatch();
 }
-

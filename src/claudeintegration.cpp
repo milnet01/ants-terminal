@@ -10514,6 +10514,7 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("amend_headline");  // ANTS-4372
                     opEnum.append("create_section");
                     opEnum.append("bundle_row");
+                    opEnum.append("backfill_dates");  // ANTS-4501
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
@@ -10562,7 +10563,36 @@ void ClaudeIntegration::onMcpConnection() {
                         "single-line `old_text` with `new_text` (unique-match "
                         "guarded; status/headline out of scope; dry_run "
                         "previewable). Use it to fix a stale phrase inside an "
-                        "existing bullet's body without a raw text edit.");
+                        "existing bullet's body without a raw text edit. "
+                        "\"backfill_dates\" (ANTS-4501) is the ONE-OFF that "
+                        "makes roadmap_query mode:\"report\" answer anything "
+                        "about the PAST. The item table's `created` / `shipped` "
+                        "columns are stamped going forward from 2026-08-20 and "
+                        "are NULL on every row filed before it, so every "
+                        "period figure is computed over that empty population "
+                        "and the report's `coverage` block says so. This walks "
+                        "the project's git history over its roadmap files "
+                        "(author dates, oldest first) and fills them: an id's "
+                        "`created` is the first commit its bullet appears in, "
+                        "its `shipped` the first commit the bullet carries ✅. "
+                        "Takes `caller_cwd` (one project per call, like "
+                        "roadmap_migrate) and `dry_run`; returns "
+                        "`revisions_walked`, `created_written`, "
+                        "`shipped_written`, `undated_count` and a capped "
+                        "`undated[]` sample of the ids it could not date. It "
+                        "NEVER overwrites a non-NULL date, so it is "
+                        "re-runnable and a hand correction survives; it never "
+                        "invents one for an id no commit showed; it skips the "
+                        "`shipped` COLUMN for any id not currently shipped, so "
+                        "a reopened item is not silently re-closed from git; "
+                        "and it does not touch `last_modified` at all. "
+                        "Refusals: `not_a_git_repo` (no history to walk), "
+                        "`project_not_registered` (the store holds no row for "
+                        "that root — run roadmap_migrate first), `git_failed` "
+                        "(the walk could not complete; nothing was written). "
+                        "~4 s over 1525 revisions on Ants Terminal — a one-off, "
+                        "not a per-query cost, which is why it is an explicit "
+                        "op and never a side effect of a read.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
                     QJsonArray toStatusEnum;
