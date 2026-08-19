@@ -35811,7 +35811,7 @@ markdown-to-store round trip, and what the envelopes do and do not say about
 which of the two answered. Nine were duplicates of live items or retractions and
 are closed inline in the feedback files rather than filed here.
 
-- 📋 [ANTS-4478] **roadmap_migrate's dry run reports project_id:0 while the same envelope's counts prove the project resolved.**
+- ✅ [ANTS-4478] **roadmap_migrate's dry run reports project_id:0 while the same envelope's counts prove the project resolved.**
   Three sessions reported the same shape independently: `roadmap_migrate {dry_run:true}` returns
   `project_id:0` while the identical real call returns the real id (2 on AI Prompts, 6 on OneUp,
   8 on LWSM). Every other field matches between the two runs, so the preview is faithful except
@@ -35844,12 +35844,35 @@ are closed inline in the feedback files rather than filed here.
   reading `project_id: 0` as "not registered" would do something different, so it
   is a change of direction), then implement. Attempted and reverted rather than
   shipped against a live tested invariant.
+  Resolved (2026-08-19). Spec first, as the item required: ANTS-3855 § 2.4
+  and INV-3 amended, rule-14 gate run (cold-eyes loops 4-5, 16 verified and
+  16 fixed, capped), then the code.
+
+  project_id is now the store's id for this ROOT on both paths whenever a
+  row already exists — step 6 has it in `owner` before the transaction
+  opens. 0 means one thing only: this root is not registered yet, which
+  under dry_run is the truthful answer. So `project_id > 0` on a preview
+  reads as "already migrated", which is the question the three reporting
+  sessions were asking.
+
+  Omitting the field when unresolvable was considered and rejected in the
+  spec: 0 is unambiguous once the pre-existing case is handled, and an
+  absent key costs every caller a second branch to tell it from a zero.
+
+  INV-3 now runs three project_id legs, because one dry run cannot exhibit
+  both cases: dry over an empty store (0), the real run (non-zero), then a
+  dry run over the now-migrated root (the same id the real run reported).
+  The third leg was proved red against the shipped code first — it answered
+  0 where the real id was expected — and the other two passed throughout,
+  which is what makes it the leg that matters.
+
+  Full suite 3623/3623.
   **Layman:** The migration preview says "no such project" even when it found the project, so a pre-flight check looks like a failure.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (AI Prompts, OneUp, Local Web Server Manager — three files, same finding).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4479] **roadmap_migrate reports items_updated:N without naming the items, so a re-ingest cannot be reviewed before it runs.**
+- ✅ [ANTS-4479] **roadmap_migrate reports items_updated:N without naming the items, so a re-ingest cannot be reviewed before it runs.**
   A dry run reporting `items_updated:3` gives no ids and no field names. The reporter could not
   tell whether those 3 writes would reconcile real drift or flatten good store rows with a lossy
   re-parse — and backed ROADMAP.md up to a scratchpad and diffed afterwards to prove it was safe.
@@ -35862,6 +35885,32 @@ are closed inline in the feedback files rather than filed here.
 
   Gates ANTS-4468's sibling concern and is the cheap half of the same problem the LWSM
   field_defaulted item reports: a re-migration that can overwrite good rows must be inspectable.
+  Resolved (2026-08-19). The envelope carries
+  `updated_items:[{id, fields}]` — both halves the item asked for, the ids
+  and the changed field names, since the field names turned out to be free:
+  Loader::applyPlanFields() already holds each written column and the row's
+  id at the point it decides "changed".
+
+    - Outcome gains updatedItems, capped at 200 where the entries are
+      COLLECTED so nothing unbounded accumulates. items_updated stays the
+      true total, so the array needs no count of its own and a truncated
+      list cannot read as a complete one; updated_items_truncated is
+      derived by the verb from the two, not stored.
+    - `id` is the STORED id — it.id.isEmpty() ? cur->id : it.id, the form
+      the field_conflict note already used. A matched item whose source
+      bullet carries no id is a real state, and reporting an empty id would
+      name nothing a caller can act on.
+    - applyPlanFields' four out-params became one FieldChanges struct.
+
+  The gate caught the assertion that mattered, and all three lanes found
+  it: the parity leg as first written could not fail. INV-3's runs are all
+  over a store with no prior rows or an unchanged root, so updated_items is
+  [] on both sides — an implementation collecting the array on the
+  committed path only would have passed every leg and shipped the empty
+  preview this item exists to prevent. INV-3 gained a fourth run over an
+  EDITED source, and it asserts the arrays are equal AND non-empty.
+
+  Full suite 3623/3623.
   **Layman:** The migration says "3 items will change" but not which three, so you cannot check whether the change is a repair or damage.
   Kind: enhancement.
   Source: cc-feedback-2026-08-18 (AI Prompts).
@@ -35958,7 +36007,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Claude Code config, OneUp — two files, same finding).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4482] **roadmap_migrate does not render ROADMAP.md and does not say so, so the reflow lands days later in an unrelated commit.**
+- ✅ [ANTS-4482] **roadmap_migrate does not render ROADMAP.md and does not say so, so the reflow lands days later in an unrelated commit.**
   Verified by three sessions with md5/sha256 before and after: a successful migration leaves
   ROADMAP.md byte-identical and `git status` clean. The rewrite happens on the first LATER
   roadmap_log write, which then reports `files_written:[ROADMAP.md]` and re-renders the whole
@@ -35998,6 +36047,29 @@ are closed inline in the feedback files rather than filed here.
   ANTS-4490's `store_backed` / `served_from` field, since both are the same
   question about the same envelope, and ANTS-3855 § 2.4 enumerates that envelope
   — so the pair needs a spec amendment first, the same gate ANTS-4478 hit.
+  Resolved (2026-08-19) — the envelope half, which is all that was left
+  after 591c1c52 did the documentation half.
+
+  `markdown_rewritten` is on every success envelope and is always false. A
+  constant is the right shape: a caller branches on the field and never has
+  to know which release changed it, and INV-11 is what makes the value
+  true rather than a promise. That invariant hashes every file under the
+  project root before and after a committed run and asserts no pre-existing
+  file changed and the only new path is the store.
+
+  Stated as that rather than "every hash unchanged", which is how it was
+  first written and which all three gate lanes caught: § 6's fixture puts
+  the store UNDER the project root and has the verb create it, so the flat
+  form reds against a correct implementation. Excluding *.sqlite* instead
+  would have hidden a regression in the store's own location, which is what
+  INV-6 and INV-9 rest on.
+
+  The test also asserts the KEY is present, not just that it reads false —
+  a missing JSON key comes back false through toBool(), so the value
+  assertion alone passed against an envelope that never carried the field.
+  It was green for that wrong reason until the presence check went in.
+
+  Full suite 3623/3623.
   **Layman:** After migrating, nothing in the repo changes — so it looks like the migration did not run, and the big file rewrite arrives later attached to something else.
   Kind: enhancement.
   Source: cc-feedback-2026-08-18 (Claude Code config, OneUp, Vestige — three files, same finding).
@@ -36233,7 +36305,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, changelog.
 
-- 📋 [ANTS-4490] **roadmap_migrate accepts a github-task-list project, then never serves or renders it, and says nothing.**
+- ✅ [ANTS-4490] **roadmap_migrate accepts a github-task-list project, then never serves or renders it, and says nothing.**
   VERIFIED against src/roadmapsource.cpp:387 — `if (format != "ants-v1") return std::nullopt; //
   legitimately markdown-served (§ 5)`. So this is DESIGNED behaviour, not a broken switch, and
   the reporter's hypothesis ("the serve path silently no-ops") names the wrong mechanism. What is
@@ -36286,6 +36358,38 @@ are closed inline in the feedback files rather than filed here.
 
   Also still open: `sections_written:0` while 236 section rows exist for the
   project, which Vestige flagged as a bug in its own right.
+  Resolved (2026-08-19). Both open halves closed; the capability half was
+  always ANTS-4491's.
+
+  `store_backed` is on every success envelope: plan.sources[0].format ==
+  "ants-v1", index 0 being the live roadmap and what project.source_format
+  records (ANTS-3815 INV-2). So a github-task-list project migrates ok:true
+  with faithful counts and says outright that it will still be answered
+  from markdown. INV-12 pins it against the consumer dispatch itself — leg
+  (b) asserts ok:true with non-zero counts, store_backed false, AND
+  migratedProject() nullopt, which is the state Vestige could only detect
+  by noticing which fields a later roadmap_query did not carry.
+
+  Under dry_run it stays the format answer, deliberately, and INV-12 leg
+  (c) pins that. It is the opposite posture to project_id in the same
+  amendment, and the two differ because their subjects do: a rolled-back
+  row does not exist, while a dialect on disk is unchanged by a rollback.
+  A preview whose value flipped on commit would answer nothing a caller
+  could act on before committing.
+
+  `sections_written: 0` was the second half, and it was not a bug — it was
+  INV-7's proof of idempotence, unreadable. `sections_unchanged` now
+  accompanies it, so a re-run reports "0 written, N unchanged". Every plan
+  section takes one branch or the other, so the two sum to the plan's
+  section count on every run; INV-7 asserts the re-run's unchanged count
+  equals the first run's written count rather than a literal.
+
+  The "on every roadmap_query response" clause needed nothing: that verb
+  already returns source:"store" | "markdown" on every envelope, verified
+  against live responses this session. The gap was the migrate envelope
+  alone.
+
+  Full suite 3623/3623.
   **Layman:** A project in the older checklist format migrates with a clean success message, but the database is never actually used for it — and nothing says so.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige).

@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate states that it never rewrites ROADMAP.md** (ANTS-4482)
+  `markdown_rewritten` is on every response and is always false. The file being byte-identical after a migration is expected, not a sign it did not run.
+
+- **roadmap_migrate says whether the project will be served from the store** (ANTS-4490)
+  `store_backed` answers it on every response: only an ants-v1 roadmap is served from the store afterwards, so a github-task-list project migrating successfully now says so rather than leaving the caller to notice which fields a later query does not carry. `sections_unchanged` accompanies `sections_written`, so `0 written` reads as an idempotent re-run rather than as a dead counter.
+
+- **roadmap_migrate names which items it would update, and which fields** (ANTS-4479)
+  `updated_items` lists the id and the changed column names for each item `items_updated` counted, capped at 200 with `updated_items_truncated`. Under `dry_run` that turns a bare count into a plan you can review before running it.
+
 - **`apply_edits` says where the occurrences are when an edit matches more than once.** (ANTS-4473)
   An `ambiguous` skip was correct and silent about location, so recovering from it meant re-reading the file. It now carries `candidates:[{line,text}]` — the same field a `not_found` near-miss already returns — plus `match_count` for the true total and `candidates_truncated` when the ten-entry list is capped. Recover by extending `old` with surrounding context, by naming the occurrence with the `start_line`/`end_line` form, or with `replace_all:true`.
 
@@ -204,6 +213,9 @@ for security-relevant changes.
   corpus with 0 newly firing.
 
 ### Fixed
+
+- **roadmap_migrate's preview reports the real project id instead of 0** (ANTS-4478)
+  A dry run over an already-migrated project answered `project_id: 0` beside counts that could only have been computed against that project's real rows. It now reports the store's id for that root on both paths; 0 means only that the root is not registered yet, so a preview answering `project_id > 0` reads as "already migrated".
 
 - **roadmap_migrate no longer reports a resolvable path as missing when the provenance is a sentence** (ANTS-4481)
   A `Source:` value is prose far more often than a bare path, and the whole

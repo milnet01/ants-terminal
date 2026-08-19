@@ -73,6 +73,27 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes) {
     env[QStringLiteral("notes_truncated")] = notes.size() > kMaxNoteEntries;
 }
 
+// ANTS-4479 — WHICH items `items_updated` counted, and which columns moved.
+// Under dry_run this turns a count into a reviewable plan, which is the whole
+// value of a preview: `items_updated: 3` alone could not distinguish a
+// reconciliation of real drift from a lossy re-parse flattening good rows.
+//
+// The cap is applied in the load, where the entries are collected, so this only
+// reports it. `items_updated` stays the TRUE total — no count of its own is
+// needed, and a truncated array therefore cannot read as a complete one.
+void setUpdatedItems(QJsonObject &env, const RoadmapMigrateLoad::Outcome &out) {
+    QJsonArray arr;
+    for (const RoadmapMigrateLoad::Outcome::UpdatedItem &u : out.updatedItems) {
+        QJsonObject o;
+        o[QStringLiteral("id")]     = u.id;
+        o[QStringLiteral("fields")] = QJsonArray::fromStringList(u.fields);
+        arr.append(o);
+    }
+    env[QStringLiteral("updated_items")] = arr;
+    env[QStringLiteral("updated_items_truncated")] =
+        out.itemsUpdated > out.updatedItems.size();
+}
+
 // ANTS-4065 § 2.3 — the run-level tally, beside `notes_count`. A per-FIELD
 // count, and it must be complete: `notes[]` is capped at kMaxNoteEntries, so a
 // reader counting `field_defaulted` entries in the array would under-report
@@ -294,10 +315,20 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     }
 
     env[QStringLiteral("ok")] = true;
-    // Under dry_run the rowid registerProject() allocated is inside a
-    // transaction that is about to roll back, and a provisional id a later real
-    // run need not reuse is worse than no id, because it looks durable.
-    env[QStringLiteral("project_id")]   = req.dryRun ? 0 : out.projectId;
+    // ANTS-4478 — the store's project_id for this ROOT, on both paths whenever
+    // a row for it already exists: step 6 read it into `owner` before the
+    // transaction opened, and that id is durable, pre-existing, and the very
+    // thing this envelope's items_updated / items_unchanged counts were diffed
+    // against.
+    //
+    // So 0 means one thing only: this root has no project row yet. Under
+    // dry_run that is the truthful answer — the rowid registerProject() would
+    // allocate is inside a transaction about to roll back, and a provisional id
+    // a later real run need not reuse is worse than no id, because it looks
+    // durable. Three projects read the old unconditional 0 as "not registered"
+    // beside counts that proved the opposite.
+    env[QStringLiteral("project_id")] =
+        req.dryRun ? (owner ? owner->projectId : 0) : out.projectId;
     env[QStringLiteral("project_name")] = name;
     env[QStringLiteral("export_slug")]  = slug;
     env[QStringLiteral("store_path")]   = storePath;
@@ -316,6 +347,28 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     }
     env[QStringLiteral("sources")] = sources;
 
+    // ANTS-4490 — will roadmap_query and roadmap_log serve this project from
+    // the store after this call? RoadmapSource::migratedProject() returns
+    // nullopt for every dialect but ants-v1 ("legitimately markdown-served"),
+    // so a github-task-list project migrates ok:true with faithful counts and
+    // is still answered from markdown. Vestige could detect that only by
+    // noticing which fields a LATER roadmap_query response did not carry.
+    //
+    // Index 0 is the live roadmap and is what project.source_format records
+    // (ANTS-3815 INV-2). Unchanged by dry_run on purpose: this answers a
+    // question about the source DIALECT, which a rollback cannot change.
+    env[QStringLiteral("store_backed")] =
+        !plan.sources.isEmpty()
+        && plan.sources.first().format == QLatin1String("ants-v1");
+
+    // ANTS-4482 — always false, and a field rather than a sentence because a
+    // caller cannot branch on prose. This verb reads the roadmap and never
+    // writes it: the file is byte-identical afterwards and `git status` is
+    // clean, which three sessions verified with checksums and read as a
+    // migration that had not run. The first re-render is the next roadmap_log
+    // write.
+    env[QStringLiteral("markdown_rewritten")] = false;
+
     env[QStringLiteral("items_inserted")]   = out.itemsInserted;
     env[QStringLiteral("items_updated")]    = out.itemsUpdated;
     // ANTS-4065 § 2.6 — both figures, because INV-6 reads the governed one and
@@ -325,9 +378,14 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     env[QStringLiteral("items_orphaned")]   = out.itemsOrphaned;
     env[QStringLiteral("ids_allocated")]    = out.idsAllocated;
     env[QStringLiteral("sections_written")] = out.sectionsWritten;
+    // ANTS-4490 — sections_written's partner. "0 written, 236 unchanged" says
+    // what happened; `0` alone reads as a broken counter, which is how Vestige
+    // reported it.
+    env[QStringLiteral("sections_unchanged")] = out.sectionsUnchanged;
     env[QStringLiteral("elements_written")] = out.elementsWritten;
     env[QStringLiteral("history_rows")]     = out.historyRows;
     setNotes(env, out.notes);
+    setUpdatedItems(env, out);
     env[QStringLiteral("defaulted_fields")] = defaultedFieldTally(plan);
     return env;
 }

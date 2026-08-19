@@ -19,6 +19,12 @@ using RoadmapMigrate::PlannedSection;
 
 namespace {
 
+// ANTS-4479 — the same bound `notes[]` carries, for the same reason: one entry
+// per updated item, and a corpus re-parse can update thousands. One bound and
+// not `notes[]`'s two, because an entry here is an id and a short list of
+// column names, so capping the entries caps the bytes.
+constexpr int kMaxUpdatedItems = 200;
+
 // The same SHAPE `history.changed_at` CHECKs, and deliberately no stricter: the
 // DDL's GLOB accepts a 13th month too, and a validator that refused one here
 // would refuse a stamp the store would have taken.
@@ -169,8 +175,16 @@ struct Loader {
     bool writeTail();
 
     bool allocateId(QString *allocated);
-    bool applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed,
-                         bool *changedGoverned);
+    // ANTS-4479 — one out-param instead of four: the caller now needs the
+    // resolved id and the changed columns as well as the two flags, and only
+    // this function is holding the stored row they come from.
+    struct FieldChanges {
+        bool        changed = false;
+        bool        changedGoverned = false;
+        QString     id;          // the STORED id: the plan's, else the row's
+        QStringList fields;      // columns written, in write order
+    };
+    bool applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges *chg);
     bool recordHistory(qint64 itemPk, const QString &field, const QString &oldValue,
                        const QString &newValue, int *seq);
     RoadmapStore::ItemWrite itemWriteFor(const PlannedItem &it, const QString &id,
@@ -342,8 +356,13 @@ bool Loader::resolveSections() {
             changed = true;
         }
         sectionIds.insert(s->slug, *found);
+        // ANTS-4490 — the else branch is the whole point: `sectionsWritten: 0`
+        // on an idempotent re-run is indistinguishable from a counter that
+        // never moved, and "0 written, 236 unchanged" says what happened.
         if (changed)
             ++out.sectionsWritten;
+        else
+            ++out.sectionsUnchanged;
     }
     return true;
 }
@@ -489,16 +508,19 @@ bool Loader::matchItems() {
     return true;
 }
 
-bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed,
-                             bool *changedGoverned) {
+bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges *chg) {
     const auto cur = store.readItem(itemPk, &err);
     if (!cur)
         return fail(err.isEmpty() ? QStringLiteral("no such item %1").arg(itemPk) : err);
 
     int seq = 0;
     bool seqPrimed = false;
-    *changed = false;
-    *changedGoverned = false;
+    *chg = FieldChanges{};
+    // The plan's id when it carries one, the row's when it does not — the form
+    // the `field_conflict` note below already uses. A matched item whose source
+    // bullet has no id is a real state (§ 2.6.1 pairs by headline and order),
+    // and reporting an empty id names nothing a caller can act on.
+    chg->id = it.id.isEmpty() ? cur->id : it.id;
 
     for (const Field &f : fieldsOf(it, *cur)) {
         if (f.planText == f.storedText)
@@ -539,14 +561,15 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, bool *changed
         }
         if (!recordHistory(itemPk, f.column, f.storedText, f.planText, &seq))
             return false;
-        *changed = true;
+        chg->changed = true;
+        chg->fields.append(f.column);
         // ANTS-4065 § 2.6 — `extras` is the one field here outside the governed
         // set. Phrased as an exclusion rather than a list of the eight, so a
         // column added to fieldsOf() is governed by default: a new source-backed
         // column that silently escaped the round-trip gate would be the exact
         // failure this counter exists to catch.
         if (f.column != QLatin1String("extras"))
-            *changedGoverned = true;
+            chg->changedGoverned = true;
     }
     return true;
 }
@@ -709,11 +732,17 @@ bool Loader::updateMatched() {
     for (qsizetype i = 0; i < plan.items.size(); ++i) {
         if (!matchPk.at(i))
             continue;
-        bool changed = false, changedGoverned = false;
-        if (!applyPlanFields(plan.items.at(i), matchPk.at(i), &changed, &changedGoverned))
+        FieldChanges chg;
+        if (!applyPlanFields(plan.items.at(i), matchPk.at(i), &chg))
             return false;
-        changed ? ++out.itemsUpdated : ++out.itemsUnchanged;
-        if (changedGoverned) ++out.itemsUpdatedGoverned;
+        chg.changed ? ++out.itemsUpdated : ++out.itemsUnchanged;
+        if (chg.changedGoverned) ++out.itemsUpdatedGoverned;
+        // ANTS-4479 — capped HERE, where the entries are collected, so a
+        // project with thousands of updates accumulates nothing unbounded in
+        // the Outcome. `itemsUpdated` above is the true total either way, so a
+        // capped list can never be read as the complete one.
+        if (chg.changed && out.updatedItems.size() < kMaxUpdatedItems)
+            out.updatedItems.append({chg.id, chg.fields});
     }
     return true;
 }

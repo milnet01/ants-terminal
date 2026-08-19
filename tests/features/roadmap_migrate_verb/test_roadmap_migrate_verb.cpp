@@ -18,11 +18,14 @@
 #include "roadmapsource.h"
 #include "roadmapstore.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSqlError>
@@ -34,6 +37,7 @@
 #include <sys/stat.h>
 
 #include <memory>
+#include <utility>
 
 #ifndef ANTS_SRC_DIR
 #  error "ANTS_SRC_DIR compile definition required"
@@ -211,6 +215,10 @@ QStringList countFields() {
         QStringLiteral("items_updated_governed"),
         QStringLiteral("items_unchanged"), QStringLiteral("items_orphaned"),
         QStringLiteral("ids_allocated"),   QStringLiteral("sections_written"),
+        // ANTS-4490 — sections_written's partner. `0 written` alone is
+        // illegible: it is INV-7's proof of idempotence and reads as a counter
+        // that never moved.
+        QStringLiteral("sections_unchanged"),
         QStringLiteral("elements_written"), QStringLiteral("history_rows"),
     };
 }
@@ -366,8 +374,9 @@ TEST(RoadmapMigrateVerb, Inv3DryRunCommitsNothingAndPreviewsTruly) {
             << "dry_run committed " << rowTables().at(i).toStdString() << " rows";
     }
 
-    // A provisional rowid a later real run need not reuse is worse than no id,
-    // because it looks durable.
+    // 0 means ONE thing: this root has no project row yet. That is the truthful
+    // answer here, and a provisional rowid a later real run need not reuse is
+    // worse than no id, because it looks durable.
     EXPECT_EQ(dry.value(QStringLiteral("project_id")).toInt(), 0);
 
     req.dryRun = false;
@@ -391,6 +400,66 @@ TEST(RoadmapMigrateVerb, Inv3DryRunCommitsNothingAndPreviewsTruly) {
         EXPECT_EQ(sources.at(0).toObject().value(QStringLiteral("format")).toString(),
                   QStringLiteral("ants-v1"));
     }
+
+    // ANTS-4478, the third run: a dry run over an ALREADY-MIGRATED root reports
+    // the real id. Three projects reported `project_id: 0` here, beside counts
+    // that could only have been diffed against that project's real rows — so
+    // the envelope proved the lookup had succeeded while the id said it had
+    // not. The pre-amendment code fails this leg and passes the other two.
+    auto again = request(root);
+    again.dryRun = true;
+    const QJsonObject dryAgain = RoadmapMigrateVerb::run(storePath, again);
+    ASSERT_TRUE(dryAgain.value(QStringLiteral("ok")).toBool())
+        << dryAgain.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(dryAgain.value(QStringLiteral("project_id")).toInt(),
+              real.value(QStringLiteral("project_id")).toInt())
+        << "a preview of an already-migrated project must name its real id: a "
+           "caller scripting \"migrate only if not already present\" reads "
+           "project_id > 0 as \"already migrated\"";
+}
+
+// ANTS-4479 / ANTS-4490 — INV-3's fourth run. The three runs above are all over
+// a store with no prior rows or an unchanged root, so `items_updated` is 0 and
+// `updated_items` is [] on both sides of every comparison there — and two empty
+// arrays agreeing is not evidence. This pair is the only one in which either
+// value is non-empty, and an implementation collecting them on the committed
+// path alone passes every other leg. INV-5's pattern, for INV-5's reason.
+
+TEST(RoadmapMigrateVerb, Inv3DryRunPreviewsAnEditedReRunTruly) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
+                    .value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"),
+                          demoRoadmap(QStringLiteral("An edited item."))));
+
+    auto req = request(root);
+    req.changedAt = QStringLiteral("2026-08-06T11:00:00Z");
+    req.dryRun    = true;
+    const QJsonObject dry = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool())
+        << dry.value(QStringLiteral("error")).toString().toStdString();
+    ASSERT_EQ(dry.value(QStringLiteral("items_updated")).toInt(), 1)
+        << "the fixture edited nothing, so this case measures nothing";
+
+    req.dryRun = false;
+    const QJsonObject real = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(real.value(QStringLiteral("ok")).toBool())
+        << real.value(QStringLiteral("error")).toString().toStdString();
+
+    for (const QString &field : countFields()) {
+        EXPECT_EQ(dry.value(field).toInt(), real.value(field).toInt())
+            << "the preview and the real run disagree on " << field.toStdString();
+    }
+    EXPECT_EQ(dry.value(QStringLiteral("updated_items")).toArray(),
+              real.value(QStringLiteral("updated_items")).toArray())
+        << "the preview named different items from the run it previews";
+    EXPECT_FALSE(dry.value(QStringLiteral("updated_items")).toArray().isEmpty())
+        << "both are empty, so their equality is not evidence";
 }
 
 // ---------------------------------------------------------------- INV-4 -----
@@ -601,6 +670,21 @@ TEST(RoadmapMigrateVerb, Inv7ReRunIsIdempotent) {
     EXPECT_EQ(second.value(QStringLiteral("project_id")).toInt(),
               first.value(QStringLiteral("project_id")).toInt());
 
+    // ANTS-4490 — what makes `sections_written: 0` readable as idempotence
+    // rather than as a counter that never moved. Vestige reported the 0 as a
+    // bug in its own right; it was not one, it was unreadable.
+    // Against the FIRST run's sections_written rather than a literal: the plan
+    // carries a synthetic section for the content above the first heading as
+    // well as `## Work`, so a hard-coded 1 asserts the fixture's shape instead
+    // of the invariant. What is being pinned is that the two counters partition
+    // the plan's sections — all written on the first run, all unchanged on the
+    // second.
+    EXPECT_EQ(second.value(QStringLiteral("sections_unchanged")).toInt(),
+              first.value(QStringLiteral("sections_written")).toInt())
+        << "an unchanged re-run must match every section the first run wrote";
+    EXPECT_GT(first.value(QStringLiteral("sections_written")).toInt(), 0)
+        << "the fixture planned no sections, so this leg measures nothing";
+
     const QList<int> counts = rowCounts(storePath);
     ASSERT_EQ(counts.size(), rowTables().size());
     EXPECT_EQ(counts.at(0), 1) << "a re-run must not add a second project row";
@@ -772,4 +856,291 @@ TEST(RoadmapMigrateVerb, Inv10NotesAreBoundedOnBothAxes) {
         EXPECT_TRUE(sawClipped)
             << "the fixture raised no over-long note, so the cap is untested";
     }
+}
+
+// --------------------------------------------------------------- INV-11 -----
+//
+// The verb writes no SOURCE file under req.projectRoot, and markdown_rewritten
+// says so. Asserted as "no pre-existing file changed and the only new path is
+// the store", never as "every hash unchanged": § 6's fixture puts the store
+// under that same root and has the verb create it, so the flat form would red
+// against a correct implementation. Excluding *.sqlite* from the hash set
+// instead would hide a regression in the store's own location, which is what
+// INV-6 and INV-9 rest on.
+
+namespace {
+
+// path -> sha256 of its contents, for every file under `dir`.
+QHash<QString, QByteArray> hashTree(const QString &dir) {
+    QHash<QString, QByteArray> out;
+    QDirIterator it(dir, QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString path = it.next();
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly))
+            continue;
+        QCryptographicHash h(QCryptographicHash::Sha256);
+        h.addData(&f);
+        out.insert(QDir(dir).relativeFilePath(path), h.result());
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST(RoadmapMigrateVerb, Inv11WritesNoSourceFileUnderTheProjectRoot) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = root + QStringLiteral("/store.sqlite");
+
+    const QHash<QString, QByteArray> before = hashTree(root);
+    ASSERT_FALSE(before.isEmpty()) << "the fixture wrote nothing to hash";
+
+    auto req = request(root);
+    req.dryRun = true;
+    const QJsonObject dry = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool())
+        << dry.value(QStringLiteral("error")).toString().toStdString();
+
+    req.dryRun = false;
+    const QJsonObject real = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(real.value(QStringLiteral("ok")).toBool())
+        << real.value(QStringLiteral("error")).toString().toStdString();
+
+    // PRESENCE first, then the value. A missing key reads as false through
+    // toBool(), so asserting the value alone passes against an envelope that
+    // never carried the field — the whole point of it being a field rather
+    // than a sentence in the description.
+    for (const auto &leg : {std::make_pair("dry", dry), std::make_pair("real", real)}) {
+        EXPECT_TRUE(leg.second.contains(QStringLiteral("markdown_rewritten")))
+            << leg.first << " envelope carries no markdown_rewritten";
+        EXPECT_FALSE(leg.second.value(QStringLiteral("markdown_rewritten")).toBool());
+    }
+
+    const QHash<QString, QByteArray> after = hashTree(root);
+    for (auto i = before.constBegin(); i != before.constEnd(); ++i) {
+        ASSERT_TRUE(after.contains(i.key()))
+            << "the verb deleted " << i.key().toStdString();
+        EXPECT_EQ(after.value(i.key()), i.value())
+            << "the verb rewrote " << i.key().toStdString();
+    }
+
+    // The store is the ONE new path. Its -wal/-shm sidecars are gone by now:
+    // SQLite removes both when run() closes its connection (INV-9).
+    QStringList appeared;
+    for (auto i = after.constBegin(); i != after.constEnd(); ++i)
+        if (!before.contains(i.key()))
+            appeared.append(i.key());
+    appeared.sort();
+    EXPECT_EQ(appeared, QStringList{QStringLiteral("store.sqlite")})
+        << "new paths under the project root: "
+        << appeared.join(QStringLiteral(", ")).toStdString();
+}
+
+// --------------------------------------------------------------- INV-12 -----
+//
+// store_backed agrees with the consumer dispatch on a COMMITTED run, and stays
+// the format answer on a dry one. Leg (b) is the one that matters: a successful
+// migration whose project is not store-backed says so in the envelope, which is
+// the state Vestige could only detect by noticing which fields a later
+// roadmap_query response did not carry.
+
+namespace {
+
+// A github-task-list roadmap, the shape
+// tests/features/roadmap_migrate_read/fixtures/archives/declaredformat/ carries.
+// The schema CHECK accepts the dialect, so this migrates ok:true — and is then
+// served from markdown, by design (roadmapsource.cpp, "legitimately
+// markdown-served").
+QByteArray gfmRoadmap() {
+    return "# Roadmap\n"
+           "\n"
+           "## 0.7.0 — in flight\n"
+           "\n"
+           "- [x] A github-task-list live bullet.\n"
+           "- [ ] Another live one.\n";
+}
+
+}  // namespace
+
+TEST(RoadmapMigrateVerb, Inv12StoreBackedAgreesWithTheConsumerDispatch) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString antsRoot = makeProjectRoot(dir, QStringLiteral("ants"), demoRoadmap());
+    const QString gfmRoot  = makeProjectRoot(dir, QStringLiteral("gfm"), gfmRoadmap());
+    ASSERT_FALSE(antsRoot.isEmpty());
+    ASSERT_FALSE(gfmRoot.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    // (a) ants-v1 — store_backed, and the dispatch resolves it afterwards.
+    const QJsonObject a =
+        RoadmapMigrateVerb::run(storePath, request(antsRoot, QStringLiteral("ants"),
+                                                   QStringLiteral("Ants")));
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << a.value(QStringLiteral("error")).toString().toStdString();
+    ASSERT_TRUE(a.contains(QStringLiteral("store_backed")))
+        << "the envelope carries no store_backed, so every assertion on it "
+           "below would pass by reading a missing key as false";
+    EXPECT_TRUE(a.value(QStringLiteral("store_backed")).toBool());
+
+    // (b) github-task-list — ok:true with real counts, and NOT store-backed.
+    const QJsonObject b =
+        RoadmapMigrateVerb::run(storePath, request(gfmRoot, QStringLiteral("gfm"),
+                                                   QStringLiteral("Gfm")));
+    ASSERT_TRUE(b.value(QStringLiteral("ok")).toBool())
+        << b.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_GT(b.value(QStringLiteral("items_inserted")).toInt(), 0)
+        << "the fixture produced no items, so this leg measures nothing";
+    ASSERT_TRUE(b.contains(QStringLiteral("store_backed")));
+    EXPECT_FALSE(b.value(QStringLiteral("store_backed")).toBool());
+
+    {
+        auto store = openStore(storePath, RoadmapStore::Access::Interactive);
+        ASSERT_TRUE(store);
+        auto antsText = RoadmapSource::RoadmapText::fromMemory(
+            readAll(antsRoot + QStringLiteral("/ROADMAP.md")));
+        auto gfmText = RoadmapSource::RoadmapText::fromMemory(
+            readAll(gfmRoot + QStringLiteral("/ROADMAP.md")));
+        EXPECT_TRUE(RoadmapSource::migratedProject(*store, antsRoot, antsText)
+                        .has_value())
+            << "an ants-v1 project did not resolve through the consumer dispatch";
+        EXPECT_FALSE(RoadmapSource::migratedProject(*store, gfmRoot, gfmText)
+                         .has_value())
+            << "a github-task-list project resolved from the store";
+    }
+
+    // (c) Both roots again under dry_run, asserting store_backed ALONE.
+    // migratedProject() is deliberately not asserted here: nothing commits, so
+    // it is nullopt for both while store_backed stays true for the first — the
+    // two disagree on purpose, and a leg written as "the same values as (a) and
+    // (b)" would red against a correct implementation.
+    for (const auto &leg : {std::make_pair(antsRoot, true), std::make_pair(gfmRoot, false)}) {
+        auto req = request(leg.first, leg.first == antsRoot ? QStringLiteral("ants")
+                                                            : QStringLiteral("gfm"),
+                           leg.first == antsRoot ? QStringLiteral("Ants")
+                                                 : QStringLiteral("Gfm"));
+        req.dryRun = true;
+        const QJsonObject env = RoadmapMigrateVerb::run(storePath, req);
+        ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+            << env.value(QStringLiteral("error")).toString().toStdString();
+        ASSERT_TRUE(env.contains(QStringLiteral("store_backed")));
+        EXPECT_EQ(env.value(QStringLiteral("store_backed")).toBool(), leg.second)
+            << "a dry run changed store_backed, which answers a question about "
+               "the source DIALECT — a rollback cannot change that";
+    }
+}
+
+// --------------------------------------------------------------- INV-13 -----
+//
+// updated_items names exactly the items items_updated counted, with the fields
+// that changed. Breaks when the array is filled from the plan rather than from
+// the write path: every matched item would appear, and the array would say
+// nothing the count does not.
+
+namespace {
+
+// N items, each headline suffixed so a second render can change all of them.
+QByteArray manyItemRoadmap(int n, const QString &headlineSuffix) {
+    QByteArray md =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n";
+    for (int i = 1; i <= n; ++i) {
+        md += "- \xF0\x9F\x93\x8B [DEMO-";
+        md += QStringLiteral("%1").arg(i, 4, 10, QLatin1Char('0')).toUtf8();
+        md += "] **Item ";
+        md += QByteArray::number(i);
+        md += " ";
+        md += headlineSuffix.toUtf8();
+        md += "**\n"
+              "  Layman: A thing.\n"
+              "  Kind: implement.\n"
+              "  Source: test.\n";
+    }
+    return md;
+}
+
+}  // namespace
+
+TEST(RoadmapMigrateVerb, Inv13UpdatedItemsNamesWhatChanged) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"),
+                                         manyItemRoadmap(3, QStringLiteral("first")));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    const QJsonObject first = RoadmapMigrateVerb::run(storePath, request(root));
+    ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool())
+        << first.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(first.value(QStringLiteral("updated_items")).toArray().isEmpty())
+        << "a first migration inserts; it updates nothing";
+
+    // Change two of the three: one headline, one status.
+    QByteArray edited = manyItemRoadmap(3, QStringLiteral("first"));
+    edited.replace("**Item 2 first**", "**Item 2 second**");
+    edited.replace("- \xF0\x9F\x93\x8B [DEMO-0003]", "- \xE2\x9C\x85 [DEMO-0003]");
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), edited));
+
+    auto req2 = request(root);
+    req2.changedAt = QStringLiteral("2026-08-06T11:00:00Z");
+    const QJsonObject second = RoadmapMigrateVerb::run(storePath, req2);
+    ASSERT_TRUE(second.value(QStringLiteral("ok")).toBool())
+        << second.value(QStringLiteral("error")).toString().toStdString();
+
+    EXPECT_EQ(second.value(QStringLiteral("items_updated")).toInt(), 2);
+    const QJsonArray updated = second.value(QStringLiteral("updated_items")).toArray();
+    ASSERT_EQ(updated.size(), 2)
+        << QString::fromUtf8(QJsonDocument(updated).toJson()).toStdString();
+
+    QHash<QString, QStringList> byId;
+    for (const QJsonValue &v : updated) {
+        const QJsonObject o = v.toObject();
+        QStringList fields;
+        for (const QJsonValue &f : o.value(QStringLiteral("fields")).toArray())
+            fields.append(f.toString());
+        fields.sort();
+        byId.insert(o.value(QStringLiteral("id")).toString(), fields);
+    }
+    ASSERT_TRUE(byId.contains(QStringLiteral("DEMO-0002"))) << "the edited headline is missing";
+    ASSERT_TRUE(byId.contains(QStringLiteral("DEMO-0003"))) << "the edited status is missing";
+    EXPECT_EQ(byId.value(QStringLiteral("DEMO-0002")),
+              QStringList{QStringLiteral("headline")});
+    EXPECT_EQ(byId.value(QStringLiteral("DEMO-0003")),
+              QStringList{QStringLiteral("status")});
+    EXPECT_TRUE(second.contains(QStringLiteral("updated_items_truncated")));
+    EXPECT_FALSE(second.value(QStringLiteral("updated_items_truncated")).toBool());
+}
+
+TEST(RoadmapMigrateVerb, Inv13UpdatedItemsIsBoundedAt200) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const int kItems = 205;
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"),
+                                         manyItemRoadmap(kItems, QStringLiteral("first")));
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
+                    .value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"),
+                          manyItemRoadmap(kItems, QStringLiteral("second"))));
+
+    auto req2 = request(root);
+    req2.changedAt = QStringLiteral("2026-08-06T11:00:00Z");
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, req2);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+
+    // One bound, not notes[]'s two: an entry here is an id and a short column
+    // list, so capping the entries bounds the bytes.
+    EXPECT_EQ(env.value(QStringLiteral("updated_items")).toArray().size(), 200);
+    EXPECT_TRUE(env.value(QStringLiteral("updated_items_truncated")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("items_updated")).toInt(), kItems)
+        << "items_updated must stay the TRUE total, not the clipped one";
 }

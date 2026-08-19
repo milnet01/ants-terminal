@@ -41,6 +41,21 @@ struct Outcome {
     // make the acceptance test fail for reasons unrelated to the contract.
     int     itemsUpdatedGoverned = 0;
     int     itemsUnchanged = 0;  // matched, nothing to write (§ 2.6)
+    // ANTS-4479 (ANTS-3855 § 2.4) — WHICH items `itemsUpdated` counted, and
+    // which columns moved. A dry run reporting `items_updated: 3` named no ids
+    // and no fields, so a caller could not tell a reconciliation of real drift
+    // from a lossy re-parse flattening good rows — and the only confirmation
+    // available was to back the file up and diff afterwards.
+    //
+    // Capped at kMaxUpdatedItems where the entries are COLLECTED, so nothing
+    // unbounded accumulates here; `itemsUpdated` stays the true total, so a
+    // capped list can never read as the complete one. `id` is the STORED id,
+    // which is the plan's when it carries one and the row's when it does not.
+    struct UpdatedItem {
+        QString     id;
+        QStringList fields;      // store column names, in write order
+    };
+    QVector<UpdatedItem> updatedItems;
     int     itemsOrphaned = 0;   // in the store, absent from source (§ 2.7)
     int     idsAllocated = 0;    // § 2.8
     // INSERTED-or-UPDATED rows, not attempted ones: `sectionsWritten` counts a
@@ -52,6 +67,11 @@ struct Outcome {
     // is non-zero even on an unchanged re-run), `historyRows` the rows § 2.9
     // appended. INV-13 compares all three between a dry run and the real one.
     int     sectionsWritten = 0, elementsWritten = 0, historyRows = 0;
+    // ANTS-4490 (ANTS-3855 § 2.4) — `sectionsWritten`'s partner. `0 written`
+    // alone is illegible: it is the proof of an idempotent re-run and reads as
+    // a counter that never moved. Every plan section takes one branch or the
+    // other, so the two sum to the plan's section count on every run.
+    int     sectionsUnchanged = 0;
 
     // Every note the plan carried, plus the ones only the load can raise
     // (§ 2.11's codes). Never a SUBSET of the plan's notes — a plan note is

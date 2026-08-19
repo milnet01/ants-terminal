@@ -735,8 +735,12 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   twice over one fixture root. (`elements_written` is the ONE count deliberately
   excluded — `roadmapmigrateload.h` states it "is non-zero even on an unchanged
   re-run" because § 2.6 rebuilds element rows wholesale.)
-  <br>**`sections_unchanged` is asserted on that same second run** and equals the
-  number of sections the fixture carries. It is what makes `sections_written: 0`
+  <br>**`sections_unchanged` is asserted on that same second run** and equals
+  the FIRST run's `sections_written` — not a literal, because the plan carries a
+  synthetic section for the content above the first heading as well as each
+  real one, so a hard-coded number asserts the fixture's shape rather than the
+  invariant. What is pinned is that the two counters partition the plan's
+  sections: all written on the first run, all unchanged on the second. It is what makes `sections_written: 0`
   readable as idempotence rather than as a counter that never moved (§ 2.4), and
   asserting it here rather than in an invariant of its own is deliberate: the two
   figures are one statement about one run.
