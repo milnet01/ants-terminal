@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ROADMAP.md's version banner no longer silently reverts after a release** (ANTS-4529)
+  The bump recipe hand-edited a version number into ROADMAP.md, which is
+  generated from the roadmap store — so the next roadmap write of any kind
+  re-rendered the file and discarded the edit, putting the banner back to
+  the previous release and re-opening version drift long after the release
+  commit had looked clean. The banner now states no version at all: the
+  number duplicated CMakeLists.txt's `project(VERSION)`, and the sentence
+  carrying it already links CHANGELOG.md, which lists every shipped version
+  with its date. ROADMAP.md leaves both the bump recipe and the version-drift
+  gate, so there is nothing left to keep in step.
+
 - **The sanitizer CI job finishes again, and a timeout now reads as a failure** (ANTS-4533)
   The memory-safety half of CI had been quietly giving up part-way
   through for two days — cancelled at its 30-minute cap on 36 of the

@@ -1,9 +1,9 @@
 <!-- ants-roadmap-format: 1 -->
 # Ants Terminal — Roadmap
 
-> **Current version:** 0.7.106. See [CHANGELOG.md](CHANGELOG.md)
-> for what's shipped; see [PLUGINS.md](PLUGINS.md) for plugin-author
-> standards; this document covers what's **planned**.
+> **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
+> [PLUGINS.md](PLUGINS.md) for plugin-author standards; this document
+> covers what's **planned**.
 >
 > **Format:** v1 — see
 > [docs/standards/roadmap-format.md](docs/standards/roadmap-format.md).
@@ -40928,7 +40928,7 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-08-19, split out of ANTS-4506 during its contract pass..
   Lanes: roadmap, roadmaprender.
 
-- 📋 [ANTS-4529] **The bump recipe hand-edits ROADMAP.md's version banner, and the next roadmap_log write reverts it.**
+- ✅ [ANTS-4529] **The bump recipe hand-edits ROADMAP.md's version banner, and the next roadmap_log write reverts it.**
   `.claude/bump.json` lists ROADMAP.md among its version-bearing files and
   rewrites `**Current version:** {OLD}` in the markdown. On a
   store-backed project that edit lives outside the store, so the next
@@ -40975,6 +40975,38 @@ assistant suggestions, accepted by the user for filing.
   Working sequence used today, four times, if the fix is deferred
   again: do ALL roadmap_log writes first, repair the banner last,
   then gate on check-version-drift.sh before committing.
+  Resolved (2026-08-19): fixed by removing the duplicate rather than
+  synchronising it.
+
+  ROADMAP.md left `.claude/bump.json`'s `files` list and
+  `packaging/check-version-drift.sh`'s checks, and the banner no longer
+  states a version at all. The number duplicated CMakeLists.txt's
+  `project(... VERSION X.Y.Z)` -- the single source of truth -- and the
+  sentence carrying it already links CHANGELOG.md, which holds every
+  shipped version, dated. Nothing is left to sync, revert or re-check.
+
+  Why not direction (a), the store-owned version field: it needs a
+  schema column, a store setter, an MCP verb to write it and a render
+  change, and STILL leaves a duplicate someone must bump at release
+  time, through a mechanism bump.json -- a pattern/replace-on-file
+  recipe -- cannot express. It turns a silent revert into a manual
+  step. And having the render derive it needs RoadmapRender (Qt6 Core
+  + Sql only, deliberately generic, called from a headless publish
+  path) to learn each project's version source: machinery for one line
+  of one document.
+
+  The banner text lives in the store's root-section intro, which the
+  render replays verbatim, so the correction was applied there --
+  equivalent to RoadmapStore::setSectionIntro (src/roadmapstore.cpp:
+  1134), a plain UPDATE of section.intro with no other side effect.
+  Proven by this very write: it re-rendered ROADMAP.md and the banner
+  did not revert.
+
+  Locked by tests/features/bump_recipe_no_generated_files/ -- three
+  tests in test_chrome: the bump recipe names no render-generated
+  file, the drift gate checks none, and the rendered banner states no
+  version. The third was RED against the pre-render file and green
+  after.
   **Layman:** After a release, the version shown at the top of the roadmap file can silently go back to the old number.
   Kind: fix.
   Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle..
@@ -41001,6 +41033,62 @@ assistant suggestions, accepted by the user for filing.
   Kind: doc-fix.
   Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle..
   Lanes: docs.
+
+- 📋 [ANTS-4539] **No MCP op can set a section's intro, so every roadmap preamble edit is discarded.**
+  ROADMAP.md's preamble -- the banner, the format note, the legend
+  intro -- lives in the store as the root section's `intro`, replayed
+  verbatim by `RoadmapRender::render()`. `roadmap_log` has no op that
+  writes it: append / flip / annotate / amend_body / amend_headline all
+  target a bullet, and create_section takes `intro_body` only while
+  creating a section. So hand-editing the markdown is the only route,
+  and every op re-renders the file and discards it
+  (`discarded_external_edits`). `tests/features/roadmap_write_half`
+  says so outright: "the preamble is outside every bullet, so no verb
+  can write it and a hand-edit is the ONLY way to change it."
+
+  ANTS-4529 was one instance -- a version number in the banner -- and
+  is fixed by deleting the duplicated fact rather than by giving it a
+  write path. The general hole stands: a typo in the preamble, a
+  changed link, a reworded legend intro all have no supported writer.
+  The ANTS-4529 fix itself needed a direct SQL UPDATE of
+  `section.intro`, equivalent to `RoadmapStore::setSectionIntro()`
+  (src/roadmapstore.cpp:1134) -- which exists and is tested, but has
+  no MCP surface.
+
+  Direction: `roadmap_log op:set_section_intro`, taking `section` +
+  `intro_body` and reusing create_section's wrapping and validation --
+  `src/remotecontrol_roadmap_log.cpp:3648` already hands
+  `setSectionIntro()` the same wrapped text a splice would have. The
+  root section is addressable by its empty slug, which needs deciding:
+  `section:""` is indistinguishable from an omitted argument, so it
+  likely needs an explicit sentinel.
+  **Layman:** There is no supported way to fix a typo in the text at the top of the roadmap — every attempt is silently undone.
+  Kind: implement.
+  Source: in-session-2026-08-19, found while fixing ANTS-4529..
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4540] **CLAUDE.md and CONTRIBUTING.md both describe README's version banner with wording it does not use.**
+  `CLAUDE.md` § Versioning &amp; release says every bump touches
+  `README.md` ("Current version"), and `CONTRIBUTING.md` § Versioning +
+  release item 3 calls it the `"Current version: **X.Y.Z**" line`.
+  README.md line 20 reads `Version <strong>0.7.106</strong>`. The
+  phrase "Current version:" appears nowhere in it.
+
+  Small, but this is the exact shape of the defect ANTS-2163 spent
+  three releases on: `.claude/bump.json` and
+  `packaging/check-version-drift.sh` both searched README for `Current
+  version:`, matched nothing, and silently no-op'd through two stale
+  releases. Both were realigned to `Version <strong>` then; these two
+  prose descriptions were not, so the wrong wording is still what a
+  reader is told to look for.
+
+  Fix: quote the real banner in both files. Neither is load-bearing
+  for tooling -- the recipe and the gate carry the live patterns -- so
+  this is a readability fix, not a drift risk.
+  **Layman:** Two guide documents quote the version line in the README using words the README does not actually use.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19, spotted while fixing ANTS-4529..
+  Lanes: docs, packaging.
 
 ### 🔌 Ants-MCP feedback from CC sessions (triage 2026-07-25)
 

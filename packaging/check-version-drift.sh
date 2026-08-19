@@ -89,12 +89,14 @@ check README.md \
       'Version <strong>[0-9]+\.[0-9]+\.[0-9]+' \
       'README'
 
-# ROADMAP header banner reads `> **Current version:** X.Y.Z.` (line ~4).
-# Added in ANTS-2163 — it had drifted two releases stale unnoticed because
-# nothing validated it.
-check ROADMAP.md \
-      'Current version:.*[0-9]+\.[0-9]+\.[0-9]+' \
-      'ROADMAP'
+# ROADMAP.md is deliberately NOT checked, and must not be re-added
+# (ANTS-4529). It is generated from the roadmap store, whose render replays
+# the root section's stored intro verbatim — so the bump's markdown edit was
+# discarded by the next roadmap_log write and this check then re-opened drift
+# on a release that had looked clean. The banner no longer states a version:
+# the number duplicated CMakeLists.txt's project(VERSION), and the sentence
+# that held it already links CHANGELOG.md. ANTS-2163 added the check when the
+# banner was hand-maintained; nothing hand-maintains it now.
 
 # POSIX exit codes max at 255; we also reserve 126/127/128+ for shell errors.
 # Cap to 125 so even a repo with more than 125 drifted files still returns
