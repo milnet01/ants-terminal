@@ -824,10 +824,10 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   when it is, the fixture grows to cover the diagnosed cause and the case stays
   green for a reason rather than by omission.
 - **INV-7** — A `Source:`/`Evidence:` value naming a path that does not exist
-  imports successfully, with a **`path_unresolved`** note and
+  imports successfully, with a **`unresolved_path`** note and
   `extras.unresolved_path`. *Test:* **two** fixtures — one citing
   `Source: docs/gone.md`, one citing `Evidence: docs/gone.md, docs/also-gone.md`
-  — asserting `ok`, a note whose code is exactly `path_unresolved`, and the
+  — asserting `ok`, a note whose code is exactly `unresolved_path`, and the
   extras key, which is an **array** and carries both elements in the second
   case. *Breaks when:* validation is written as a refusal, which would make a
   historical roadmap unimportable, **or** when only the `Source:` half is

@@ -36374,7 +36374,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4495] **ANTS-4065 INV-7 names a note code the source has never emitted, and its own test pins the other spelling.**
+- ✅ [ANTS-4495] **ANTS-4065 INV-7 names a note code the source has never emitted, and its own test pins the other spelling.**
   Found while checking whether ANTS-4481 was spec-governed. Three places, two
   spellings, and the test sides with the code so the divergence is invisible.
 
@@ -36402,6 +36402,26 @@ are closed inline in the feedback files rather than filed here.
   asserts the loser and reports green.
 
   Do this before ANTS-4481, which edits exactly this note's construction.
+  Resolved (2026-08-19): the SPEC changed, and the maintainer call was
+  settled by evidence rather than taste. INV-7 now names `unresolved_path`
+  in both of its clauses; source, test and the extras key already did.
+
+  What decided it: the argument for changing the code rested on
+  `mcp-error-codes.md` being the canonical taxonomy, and that standard's
+  own scope line says it is "the canonical home for the `code` field that
+  Ants MCP refusal envelopes carry" — every tool returning
+  `{ok:false, error, code}`. A migration note is `RoadmapMigrate::Note`,
+  carried INSIDE an `ok:true` response, so the taxonomy does not reach it
+  and never had a claim on this spelling. That leaves `unresolved_path`,
+  which is what shipped, what two sessions observed in the wild, and what
+  the extras key is called.
+
+  No test change: the fixture asserted `unresolved_path` already, so it now
+  asserts the winner rather than the loser and INV-7 is tested for real.
+
+  No rule-14 gate, deliberately. The amendment records what was built —
+  rule 14's own instance for that case — and the build was the review.
+  ANTS-4481 is now unblocked; it edits this note's construction.
   **Layman:** A rule document and the code it governs disagree about the name of one error label, and the test agrees with the code, so nothing catches it.
   Kind: fix.
   Source: in-session-2026-08-18, found while implementing ANTS-4481.
