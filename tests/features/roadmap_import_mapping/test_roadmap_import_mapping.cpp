@@ -978,3 +978,45 @@ TEST(RoadmapImportMapping, Ants4484RenderedWrappedHeadlineIsOneLine) {
     EXPECT_TRUE(lines.first().endsWith(QStringLiteral("harness.**")))
         << "the headline did not render on one line: " << text.toStdString();
 }
+
+// ------------------------------------------------ INV-11, all five keys ---
+// INV-11 says the rule "holds for all five keys — `kind`, `source`, `layman`,
+// `lanes`, `evidence` — not for `Kind:` alone", and § 2.2 spells out why: on the
+// first-match keys the defect is WORSE, because first-match is beaten by any
+// EARLIER mention rather than only a later one.
+//
+// Only `kind` was built. The spec's own worked case is this project's ANTS-3808,
+// whose body embeds an illustrative sample bullet above its real trailers — so
+// the illustration's values win. Found again independently 2026-08-19 from the
+// other direction (ANTS-4497): a HEADLINE mentioning the key captures the rest
+// of the headline as the value, because the headline is the first line of the
+// body.
+
+TEST(RoadmapImportMapping, Inv11LastMatchWinsForEveryTrailerKey) {
+    const auto plan = planText(doc(QStringLiteral(
+        "- 📋 [DEMO-0070] **A bullet quoting a sample above its own trailers.**\n"
+        "  It was filed like this:\n"
+        "  Layman: The illustration's layman line.\n"
+        "  Lanes: illustration\n"
+        "  Evidence: docs/illustration.md\n"
+        "  Source: illustration-2026-01-01\n"
+        "  — and none of those four is this bullet's own.\n"
+        "  Layman: The real layman line.\n"
+        "  Lanes: core, tests\n"
+        "  Evidence: docs/real.md\n"
+        "  Kind: implement.\n"
+        "  Source: real-2026-08-19.\n")));
+
+    const PlannedItem *it = itemById(plan, "DEMO-0070");
+    ASSERT_NE(it, nullptr);
+    EXPECT_EQ(it->source, QStringLiteral("real-2026-08-19"))
+        << "the illustration's provenance won over the bullet's own";
+    EXPECT_EQ(it->layman, QStringLiteral("The real layman line"))
+        << "the illustration's layman line won";
+    EXPECT_EQ(it->lanes, (QStringList{QStringLiteral("core"), QStringLiteral("tests")}))
+        << "the illustration's lanes won";
+    EXPECT_EQ(it->evidence, QStringList{QStringLiteral("docs/real.md")})
+        << "the illustration's evidence won";
+    // The one key that was already built, as a regression guard.
+    EXPECT_EQ(it->kind, QStringLiteral("implement"));
+}

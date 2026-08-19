@@ -1283,18 +1283,30 @@ TrailerValues trailerValuesIn(const QString &body) {
     out.kind   = matchLastIn(rxKind(), body, &isRecognisedKind);
     out.kind.value = out.kind.value.trimmed();
 
-    out.layman = matchIn(rxLayman(), body);
+    // ANTS-4065 INV-11 — "this holds for all five keys — `kind`, `source`,
+    // `layman`, `lanes`, `evidence` — not for `Kind:` alone". Only `kind` was
+    // built; the other four took matchIn()'s FIRST match until 2026-08-19, and
+    // § 2.2 says the defect is WORSE on them, because first-match is beaten by
+    // any EARLIER mention rather than only a later one. A bullet quoting a
+    // sample above its own trailers imported the illustration's values, and a
+    // headline naming a key captured the rest of the headline (ANTS-4497).
+    //
+    // No predicate on these four: the vocabulary filter is `kind`'s alone,
+    // because only that column has a closed value set. matchLastIn() still
+    // prefers a LINE-INITIAL match and falls back to the last mid-line one,
+    // which is the half of INV-11 that does the work here.
+    out.layman = matchLastIn(rxLayman(), body);
     out.layman.value = out.layman.value.trimmed();
 
     // `lanes.value` is the RAW capture: parseBullets() applies neither a trim
     // nor a period chop before splitting it.
-    out.lanes     = matchIn(rxLanes(), body);
+    out.lanes     = matchLastIn(rxLanes(), body);
     out.lanesList = splitTrailerList(out.lanes.value);
 
     // ANTS-3382 — `evidence.value` is the text the split is applied TO, which
     // for this key is trimmed and period-chopped first. Dots inside paths are
     // kept, so only ONE trailing period goes, and not when the value ends `..`.
-    out.evidence = matchIn(rxEvidence(), body);
+    out.evidence = matchLastIn(rxEvidence(), body);
     if (out.evidence.offset >= 0) {
         QString evRaw = out.evidence.value.trimmed();
         if (evRaw.endsWith(QLatin1Char('.')) && !evRaw.endsWith(QStringLiteral("..")))
@@ -1306,7 +1318,7 @@ TrailerValues trailerValuesIn(const QString &body) {
     // ANTS-3764 — Source: stops at a following trailer key (10 corpus lines
     // write two keys on one line), then trims, drops one trailing period, and
     // trims again.
-    out.source = matchIn(rxSource(), body);
+    out.source = matchLastIn(rxSource(), body);
     if (out.source.offset >= 0) {
         QString srcRaw = out.source.value;
         const auto keyAt = rxTrailerKey().match(srcRaw);

@@ -214,6 +214,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap item that quotes an example above its own details no longer imports the example's values** (ANTS-4497)
+  Four of the five detail lines an item carries were read from the FIRST place
+  they appeared in the item, so an item quoting a sample block — or whose title
+  happened to contain one of the labels — was filed under the sample's values
+  instead of its own. All five now take the last one written, which is the rule
+  the import contract already specified and which only one of them followed.
+
 - **The first roadmap item filed after a migration no longer reuses an id the database already holds** (ANTS-4493)
   When a project is migrated, items with no id of their own are given one.
   Those ids live only in the database, and the code that hands out the next id

@@ -36767,7 +36767,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-19, found while implementing ANTS-4473.
   Lanes: docs, mcp.
 
-- 📋 [ANTS-4497] **A bullet whose headline mentions the provenance key in prose loses its real provenance to the headline.**
+- ✅ [ANTS-4497] **A bullet whose headline mentions the provenance key in prose loses its real provenance to the headline.**
   Found the expensive way: ANTS-4481's first fixture used headlines that
   mentioned the `Source:` key in prose, and the test measured nothing while
   looking plausible. The parsed provenance came back as the tail of the
@@ -36802,6 +36802,36 @@ are closed inline in the feedback files rather than filed here.
   are wrong TOGETHER rather than separately. If the capture moves to
   last-match, move `trailerLine()` in the same commit or the note will start
   pointing at the wrong line.
+  Resolved (2026-08-19), and it turned out to be a CONFORMANCE gap rather
+  than a new decision — which is why it needed no gate.
+
+  ANTS-4065 INV-11 already says it, verbatim: "This holds for all five keys
+  — `kind`, `source`, `layman`, `lanes`, `evidence` — not for `Kind:`
+  alone." Its § 2.2 goes further and says the defect is WORSE on the
+  first-match keys, "because first-match is beaten by any earlier mention
+  rather than only a later one". Only `kind` was ever built; the other four
+  still called matchIn() and took the FIRST match.
+
+  So the fix is four call sites: layman, lanes, evidence and source now use
+  matchLastIn(), which prefers a LINE-INITIAL match and falls back to the
+  last mid-line one. No predicate on those four — the vocabulary filter is
+  `kind`'s alone, because only that column has a closed value set.
+
+  This closes more than the reported case. The spec's own worked example is
+  this project's ANTS-3808 bullet, whose body embeds an illustrative sample
+  above its real trailers: the spec states it "imports FOUR wrong values
+  today", and it no longer does. The headline case I hit while writing
+  ANTS-4481's fixture is the same defect from the other direction — the
+  headline is the first line of the body, so a key named there won.
+
+  Test: a bullet quoting a sample block above its own trailers, asserting
+  all four keys take the real values, with `kind` kept as a regression
+  guard. Proved red first on exactly those four. Full suite 3628/3628 —
+  switching four keys parser-wide broke nothing.
+
+  Not verified against the live corpus yet: the MCP verb serves from the
+  running binary, so re-checking ANTS-3808's imported values needs a
+  relaunch.
   **Layman:** If a roadmap item's title happens to contain the provenance label, the migration reads the rest of the title as the item's provenance instead of the real line further down.
   Kind: fix.
   Source: in-session-2026-08-19, found while writing ANTS-4481's test.
