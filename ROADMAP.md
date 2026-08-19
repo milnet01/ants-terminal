@@ -38033,6 +38033,41 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: in-session-2026-08-19 (found fixing ANTS-4523).
 
+- 📋 [ANTS-4525] **ignored_args is suppressed on refusals, so a wrong-argument call never learns its args were wrong.**
+  tests/features/mcp_ignored_args INV-6 gates the advisory to a freshly
+  dispatched call and states it "never annotates a refusal (ok:false)".
+
+  That is backwards for the case it matters most in. A caller holding a
+  wrong mental model of a verb passes wrong ARGUMENTS and gets a refusal;
+  the refusal explains the failure it hit, while the advisory that would
+  correct the model is suppressed precisely because it refused.
+
+  Measured, and it is what made ANTS-4510 cost a round trip. DOOM Ants
+  called read_log {max_commits:3, body:true} believing it read git log.
+  Both args are unknown to the verb. Nothing said so. The reply was
+  not_found on the Ants debug-log path -- which explains the file, not the
+  misconception, and the reporter singled this out: "it ACCEPTED
+  max_commits and body without an argument error, which confirms the wrong
+  mental model before the file-open contradicts it."
+
+  The suppression is defensible for a refusal CAUSED by the unknown args,
+  where the error already says everything. It is wrong for a refusal that
+  happened for an unrelated reason and left the wrong args unmentioned.
+
+  Fix: attach ignored_args to refusals as well. The one thing to preserve
+  is that it must not crowd out the refusal floor (ok/code/error/
+  retry_after_ms) that ANTS-2112 protects in projectFields for the same
+  reason -- a caller who cannot see the error is worse off than one who
+  cannot see the advisory.
+
+  Amends INV-6, so the spec and the dispatch site move together; INV-6 as
+  written is not a bug to route around. Related: ANTS-4524, the sibling
+  case where an argument is accepted, dropped, and barred from being
+  reported.
+  **Layman:** When a call fails, the tool stops telling you that you also used the wrong option names.
+  Kind: enhancement.
+  Source: in-session-2026-08-19 (found closing ANTS-4510).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
