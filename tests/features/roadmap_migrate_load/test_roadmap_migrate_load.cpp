@@ -1480,3 +1480,56 @@ TEST(RoadmapMigrateLoad, Inv16DefaultedIsStoredOnAnInsert) {
     EXPECT_EQ(out.itemsInserted, 1);
     EXPECT_EQ(noteCount(out, "field_conflict"), 0);
 }
+
+// ANTS-4501 INV-4 — a re-migration never clears a stamped date.
+// Contract: docs/specs/ANTS-4501-roadmap-report.md § 2.2, § 3.
+//
+// The same shape as Inv3ReRunKeepsFieldsThePlanDoesNotCarry above, and here for
+// the same reason: `created`, `last_modified` and `shipped` are outside
+// Loader::fieldsOf() because a source file cannot express them, so a re-run must
+// never clear one (ANTS-3765 INV-3). This locks that. It breaks the moment the
+// three columns are added to the plan's field set — the plan cannot fill them,
+// so every one would arrive empty and the empty-does-not-overwrite rule would be
+// the only thing between a stamp and its deletion.
+//
+// It also pins the loader's INSERT half: a fresh load leaves all three NULL. A
+// stamp placed inside RoadmapStore::setItemField() or putItem() rather than in
+// the roadmap_log callers would date every migrated row to the migration day,
+// and INV-2's never-overwrite guard would then make that false date permanent.
+TEST(roadmap_migrate_load, Ants4501Inv4ReMigrationKeepsStampedDates) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const MigrationPlan p =
+        planOf({item(QStringLiteral("A-1"), QStringLiteral("one"), QStringLiteral("s"), 0)});
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, p, f.opts()).ok);
+
+    // The insert half: migration stamps nothing.
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                  "SELECT COUNT(*) FROM item WHERE id = 'A-1' AND created IS NULL "
+                  "AND last_modified IS NULL AND shipped IS NULL")),
+              QStringLiteral("1"))
+        << "the migration loader stamped a date column on insert";
+
+    const qint64 pk =
+        f.scalar(QStringLiteral("SELECT item_pk FROM item WHERE id = 'A-1'")).toLongLong();
+    ASSERT_TRUE(f.store.setItemField(pk, QStringLiteral("created"),
+                                     QStringLiteral("2026-01-02"), &err)) << err.toStdString();
+    ASSERT_TRUE(f.store.setItemField(pk, QStringLiteral("last_modified"),
+                                     QStringLiteral("2026-02-03"), &err)) << err.toStdString();
+    ASSERT_TRUE(f.store.setItemField(pk, QStringLiteral("shipped"),
+                                     QStringLiteral("2026-03-04"), &err)) << err.toStdString();
+
+    const auto again = RoadmapMigrateLoad::load(f.store, p, f.opts());
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT created FROM item WHERE id = 'A-1'")),
+              QStringLiteral("2026-01-02"));
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT last_modified FROM item WHERE id = 'A-1'")),
+              QStringLiteral("2026-02-03"));
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT shipped FROM item WHERE id = 'A-1'")),
+              QStringLiteral("2026-03-04"))
+        << "a re-migration cleared a stamped date, so every report figure it "
+           "feeds is silently re-derived from an emptier corpus on each run";
+}

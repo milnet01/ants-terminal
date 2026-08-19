@@ -4,9 +4,15 @@
 // Covers the invariants the aggregate reader owns: INV-1 (coverage beside every
 // bucketed figure), INV-7 (totals equal the store's own counts), INV-8
 // (half-open buckets), INV-9 (a median ships the sample it came from) and
-// INV-10 (the report writes nothing). INV-2/3 (backfill) and INV-4/5/6
-// (stamping) belong to slices not yet built and are not asserted here — a test
-// asserting them today would pass against an unwritten feature.
+// INV-10 (the report writes nothing).
+//
+// The stamping clauses are NOT here. INV-5 and INV-6 need the verb path, since
+// § 2.2 puts the stamp in the roadmap_log callers — they live in
+// test_roadmap_stamp.cpp beside this file, which builds into the GUI bundle for
+// that reason. INV-4 extends tests/features/roadmap_migrate_load/, whose
+// fixture already drives the loader this exemption is about. INV-2/3 (backfill)
+// belong to a slice not yet built and are not asserted here — a test asserting
+// them today would pass against an unwritten feature.
 #include <gtest/gtest.h>
 
 #include "roadmapclock.h"

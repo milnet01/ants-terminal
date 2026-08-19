@@ -2,6 +2,7 @@
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "roadmapfoldin.h"
+#include "roadmapclock.h"   // ANTS-4501 § 2.2 — the injectable "today"
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -11,6 +12,57 @@
 #include <algorithm>   // ANTS-4070 — std::sort over the rotation's move set
 
 using namespace rcdetail;  // ANTS-3833
+
+// ---------------------------------------------------------------- ANTS-4501 --
+// The date stamps. Spec: docs/specs/ANTS-4501-roadmap-report.md § 2.2.
+//
+// They live HERE, in the callers, and deliberately not inside
+// RoadmapStore::setItemField(): Loader::rebuildElements() reaches that method
+// too, so a stamp placed there would date every migrated row to the migration
+// day on the next re-run — the `last_modified` rewrite § 5 rejects, and INV-4
+// with it. The migration loader is exempt by construction, because it never
+// comes through this TU.
+//
+// Every one reads "today" through RoadmapClock rather than QDate::currentDate()
+// so INV-5 and INV-6 can advance the day between two writes; on one real clock
+// both writes land on the same date and those clauses pass against exactly the
+// build they exist to catch.
+
+// The local calendar date, formatted to satisfy the item table's GLOB CHECK.
+// Local and not UTC: a user asking "what did I close today?" means their day.
+static QString rlStampToday() {
+    return RoadmapClock::today().toString(QStringLiteral("yyyy-MM-dd"));
+}
+
+// `last_modified`, once per op rather than once per column: the value is the
+// same date either way, and the column records when the item last changed, not
+// how many of its columns moved. Provenance is `store-generated`
+// (roadmap-data-model.md § 7.7) — no author supplied this value.
+static bool rlStampModified(RoadmapStore &store, qint64 itemPk, QString *err) {
+    return store.setItemField(itemPk, QStringLiteral("last_modified"),
+                              rlStampToday(),
+                              QStringLiteral("store-generated"), err);
+}
+
+// `shipped` moves ONLY on a transition: set entering `shipped`, cleared leaving
+// it. A write to an item that was already shipped and still is moves nothing
+// (INV-5) — that is what stops one re-render dating the whole backlog to today,
+// after which every throughput figure is wrong in the same direction. A
+// reopened item carries no closure date (INV-6).
+static bool rlStampShipped(RoadmapStore &store, qint64 itemPk,
+                           const QString &oldStatus, const QString &newStatus,
+                           QString *err) {
+    const bool was = oldStatus == QLatin1String("shipped");
+    const bool now = newStatus == QLatin1String("shipped");
+    if (was == now)
+        return true;
+    if (now)
+        return store.setItemField(itemPk, QStringLiteral("shipped"),
+                                  rlStampToday(),
+                                  QStringLiteral("store-generated"), err);
+    return store.clearItemField(itemPk, QStringLiteral("shipped"),
+                                QStringLiteral("store-generated"), err);
+}
 
 // ANTS-1424 — append path, split out of cmdRoadmapLog (ANTS-1433) so a
 // test can drive it without the m_main guard. op-dispatch + m_main
@@ -371,6 +423,25 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 {QStringLiteral("status"),   QStringLiteral("asserted")},
                 {QStringLiteral("headline"), QStringLiteral("asserted")},
             };
+
+            // ANTS-4501 § 2.2 — `created` and `last_modified` at insert, on the
+            // store-write path only. § 2.2's `shipped` rule is a transition
+            // INTO shipped, and an insert whose status IS shipped is that
+            // transition: there is no earlier value that was already shipped,
+            // so INV-5's re-stamp trap cannot fire here. Left NULL the row
+            // would be shipped-with-no-date on the one path where the date is
+            // known exactly, and only an opt-in backfill would ever repair it.
+            w.created      = rlStampToday();
+            w.lastModified = w.created;
+            if (w.status == QLatin1String("shipped"))
+                w.shipped = w.created;
+            w.provenance.insert(QStringLiteral("created"),
+                                QStringLiteral("store-generated"));
+            w.provenance.insert(QStringLiteral("last_modified"),
+                                QStringLiteral("store-generated"));
+            if (!w.shipped.isEmpty())
+                w.provenance.insert(QStringLiteral("shipped"),
+                                    QStringLiteral("store-generated"));
 
             // § 2.5 / § 2.6 — body, the five trailer columns, and the refusal
             // for a column the body would out-vote.
@@ -1324,6 +1395,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 hist.changedAt = rlHistoryStamp();
 
                 const auto mutate = [&](QString *err) -> bool {
+                    // ANTS-4501 § 2.2 — `wrote` is what decides the
+                    // `last_modified` stamp. An annotate whose note is already
+                    // present writes nothing at all, and an item nothing
+                    // touched must not read as modified today.
+                    bool wrote = false;
                     if (!annotateMode) {
                         if (!store.setItemField(*itemPk, QStringLiteral("status"),
                                                 targetStatusWord,
@@ -1331,9 +1407,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                             return false;
                         hist.record(*itemPk, QStringLiteral("status"),
                                     before->status, targetStatusWord);
+                        // ANTS-4501 § 2.2 — set entering shipped, cleared
+                        // leaving it; a same-status write moves nothing.
+                        if (!rlStampShipped(store, *itemPk, before->status,
+                                            targetStatusWord, err))
+                            return false;
+                        wrote = true;
                     }
-                    if (newBody == before->body)
+                    if (newBody == before->body) {
+                        if (wrote && !rlStampModified(store, *itemPk, err))
+                            return false;
                         return rlFlushHistory(store, hist, err);
+                    }
                     if (!store.setItemField(*itemPk, QStringLiteral("body"),
                                             newBody, QStringLiteral("asserted"), err))
                         return false;
@@ -1344,6 +1429,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                     // the render's gate can never see.
                     if (!rlDeriveTrailerColumns(store, *itemPk, *before,
                                                 newBody, {}, &hist, err))
+                        return false;
+                    // ANTS-4501 § 2.2 — after every column this op writes,
+                    // including the trailer columns above.
+                    if (!rlStampModified(store, *itemPk, err))
                         return false;
                     // ANTS-3822 — flushed here, after every column this op
                     // writes has been recorded, because the cap is asked once
@@ -2450,6 +2539,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 if (!rlDeriveTrailerColumns(store, *itemPk, *before, newBody,
                                             {}, &hist, err))
                     return false;
+                // ANTS-4501 § 2.2 — a body edit is a modification. No
+                // `shipped` stamp: amend_body cannot move the status.
+                if (!rlStampModified(store, *itemPk, err))
+                    return false;
                 return rlFlushHistory(store, hist, err);
             };
 
@@ -3131,8 +3224,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                     return false;
                 hist.record(st.itemPk, QStringLiteral("status"),
                             st.before.status, targetStatusWord);
-                if (st.newBody == st.before.body)
+                // ANTS-4501 § 2.2 — per item, from that item's OWN prior
+                // status: a batch flipping ten to shipped may hold one that
+                // was already shipped, and that one's date must not move.
+                if (!rlStampShipped(store, st.itemPk, st.before.status,
+                                    targetStatusWord, err))
+                    return false;
+                if (st.newBody == st.before.body) {
+                    if (!rlStampModified(store, st.itemPk, err))
+                        return false;
                     continue;
+                }
                 if (!store.setItemField(st.itemPk, QStringLiteral("body"),
                                         st.newBody, QStringLiteral("asserted"), err))
                     return false;
@@ -3142,6 +3244,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 // request did not supply, which for flip_batch is all five.
                 if (!rlDeriveTrailerColumns(store, st.itemPk, st.before,
                                             st.newBody, {}, &hist, err))
+                    return false;
+                if (!rlStampModified(store, st.itemPk, err))
                     return false;
             }
             // Flushed once for the whole batch, outside the loop: § 2.3 asks the
@@ -4900,6 +5004,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                                   : QStringLiteral("store-generated"));
             provenance.insert(QStringLiteral("status"), QStringLiteral("asserted"));
             provenance.insert(QStringLiteral("headline"), QStringLiteral("asserted"));
+            // ANTS-4501 § 2.2 — same insert stamps as the single-append path.
+            w.created      = rlStampToday();
+            w.lastModified = w.created;
+            if (w.status == QLatin1String("shipped"))
+                w.shipped = w.created;
+            provenance.insert(QStringLiteral("created"),
+                              QStringLiteral("store-generated"));
+            provenance.insert(QStringLiteral("last_modified"),
+                              QStringLiteral("store-generated"));
+            if (!w.shipped.isEmpty())
+                provenance.insert(QStringLiteral("shipped"),
+                                  QStringLiteral("store-generated"));
             w.provenance = provenance;
             writes.append(w);
         }

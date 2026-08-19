@@ -1753,6 +1753,11 @@ if(ANTS_TESTS)
                 # harness as roadmap_write_half, same seam.
                 tests/features/roadmap_divergence_guard/test_roadmap_divergence_guard.cpp
                 tests/features/roadmap_write_history/test_roadmap_write_history.cpp
+                # ANTS-4501 § 2.2 — forward stamping (INV-5/INV-6). Lives in
+                # tests/features/roadmap_report/ beside slice 1's core-bundle
+                # cases, but builds HERE: the stamps live in the roadmap_log
+                # callers, so the clauses can only be driven through the verbs.
+                tests/features/roadmap_report/test_roadmap_stamp.cpp
                 tests/features/roadmap_alloc_store_floor/test_roadmap_alloc_store_floor.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through
