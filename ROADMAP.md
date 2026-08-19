@@ -37171,6 +37171,39 @@ are closed inline in the feedback files rather than filed here.
   **Layman:** The migration warns that a file is missing when it is really just in a subfolder.
   Kind: fix.
   Source: in-session-2026-08-19, verifying ANTS-4481 against the live corpus.
+  Corroborated independently by DOOM Ants (cc-feedback-2026-08-19), which
+  widens the population and adds one case the recommended rule would NOT
+  catch.
+
+  DOOM's clean migration returned 16 notes, 15 of them this class, and not
+  one names a path. The detail strings: "§4.4", "§1.4", "~7.2ms", "#8/#9",
+  "(0.6.0", "Ultra", "user screenshot", "E1M1 outdoor courtyard",
+  "a save written by the PRE-change binary loads clean under the", and
+  "DOOM-0057/0081". Section marks, a duration, issue numbers, a
+  parenthesised version, a render-tier name, and two fragments of an
+  English sentence. ~94% false, and the one genuinely interesting note
+  (a single field_conflict) is buried among them.
+
+  So this item's population is larger than its own write-up implies. Here
+  the tokens were real filenames the resolver could not find; there they
+  are not filenames at all. Same note, two distinct causes, and the second
+  is the commoner one.
+
+  WHAT THE RECOMMENDED RULE MISSES. This item proposes treating a token
+  with no directory separator as a prose mention. That kills "§4.4",
+  "~7.2ms", "Ultra" and the sentence fragments outright. It does NOT kill
+  "DOOM-0057/0081", which carries a separator and reads as a two-segment
+  path -- an id PAIR is the specific trap. Excluding a token matching the
+  project's own roadmap-id regex removes that one and, on DOOM's corpus,
+  two more.
+
+  So the rule wants both halves: no-separator means prose, AND a token
+  matching the project id pattern is never a path. Fold both into the
+  ANTS-4065 § 2.5 contract change this item already says is needed.
+
+  Also worth taking from DOOM's report: splitting notes by confidence, so
+  a field_conflict is not drowned by path noise, is a cheaper mitigation
+  than the detector fix and is independent of it.
 
 - 📋 [ANTS-4503] **The roadmap store's history byte cap counts characters, so a UTF-8 store can exceed it several-fold.**
   Found by a cold review lane while gating ANTS-4498; verified against
@@ -37277,6 +37310,318 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: in-session-2026-08-19, found re-migrating after ANTS-4498.
   Lanes: roadmap.
+
+- 📋 [ANTS-4506] **The render then re-parse round trip is lossy both ways: indentation is flattened and trailer lines accrete into the body.**
+  THREE independent reports, and the third is a measurement on this
+  project's own corpus.
+
+  Direction 1 -- INDENT LOST (Claude Code config). The renderer emits every
+  continuation line of a body at exactly two spaces. A numbered sub-list
+  written at four spaces with six-space continuations comes back flat, so
+  the numbered item and its own prose sit at the same level and the
+  continuation breaks out of the list. One added bullet produced a 404-line
+  diff, 188 of those lines re-indentations of surviving text. It also trips
+  that repo's own pre-commit SURVIVOR check, so the commit needed
+  --no-verify.
+
+  Direction 2 -- TRAILER LINES GAINED (measured here, 2026-08-19). A single
+  re-migration of this project moved 599 bodies. Sampled ANTS-1111: the
+  stored body gained a `Kind` trailer line it did not have, +17 bytes.
+  Across the corpus, bodies containing a `Kind` trailer went 1605 -> 2063
+  (+458) and a `Source` trailer 1493 -> 1590 (+97), from ONE migration.
+  The mechanism is ANTS-3808's suppression working as designed in one
+  direction only: the render emits the trailer from the column when the
+  body lacks it, and the next parse files that emitted line into the body.
+  It converges after one cycle rather than growing without bound, so this
+  is accretion and not a leak -- but the store's body is no longer the
+  residual prose ANTS-3808 defined it as.
+
+  Neither direction loses information. Both mean parse(render(x)) != x,
+  which is the premise every diff-derived counter rests on -- see the
+  sibling filed alongside this one.
+
+  NOT the same as ANTS-4486, which shipped: that was the wrapped-headline
+  parse, and it was destructive. This is lossless-but-unstable.
+
+  Needs a decision before implementation: whether the store's body is
+  verbatim source or residual prose. ANTS-3808 chose residual; direction 2
+  shows the render does not maintain that choice across a cycle. Worth a
+  spec pass rather than a patch.
+  **Layman:** Saving the roadmap and reading it back does not give you what you started with — nested lists lose their shape and metadata lines pile up inside entries.
+  Kind: fix.
+  Source: cc-feedback-2026-08-19 (Claude Code config + finbreak), corroborated in-session.
+  Lanes: roadmap-store, roadmaprender.
+
+- 📋 [ANTS-4507] **items_updated measures round-trip noise rather than drift, so it has no zero point and acting on it is destructive.**
+  Reported by finbreak, and it RETRACTS an accepted suggestion -- ANTS-4480
+  suggestion 3 recommended the dry_run counters as the staleness
+  pre-flight, and the reporting session had already written that advice
+  into its own project instructions before measuring it.
+
+  Measured state: tree clean, 0 ahead of origin, the last change to
+  ROADMAP.md made entirely through roadmap_log -- so store and file were in
+  sync by construction. dry_run still reported items_updated:10, the same
+  10 every run, indefinitely.
+
+  So the number is measuring the round trip's own instability (the sibling
+  item filed alongside this one), not drift. Two consequences:
+
+  - The signal has no zero point, so it is unusable in BOTH directions: it
+  cries wolf at 10, and a genuine drift of 2 hides inside that baseline.
+  - Acting on it is destructive. Running the real migrate writes the
+  re-parsed bodies over the correct stored ones. The reporter did not run
+  it; the dry run is what stopped them.
+
+  Fix, in order:
+  1. Make the round trip lossless. Until parse(render(x)) == x no
+  diff-derived counter means anything.
+  2. Until then, withdraw or gate ANTS-4480 suggestion 3 -- a session
+  followed it and it was wrong.
+  3. Separable and cheap: have updated_items[] distinguish a field that
+  changed VALUE from one that merely re-parsed differently, or emit a
+  round_trip_noise count beside items_updated. Either turns one unusable
+  number into two usable ones.
+
+  ANTS-4462's freshness pair (store last-ingest vs file mtime) is derived
+  from state rather than from a diff, so it does not inherit this noise --
+  which makes it the only reliable staleness signal until 1 lands.
+  **Layman:** The check that tells you whether the database is out of date reports problems on a database that is perfectly up to date.
+  Kind: fix.
+  Source: cc-feedback-2026-08-19 (finbreak).
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4508] **roadmap_log dry_run returns the next id under the same key the real write uses, so it reads as a reservation.**
+  A dry_run probe reported it would allocate CFG-0145. It does not bump the
+  counter, which is correct. But the id was carried into a commit message
+  written before the real write, on the reading that the probe had reserved
+  it; two commits had to be amended.
+
+  The defect is the key, not the behaviour. dry_run returns the value under
+  the same `id` name the real write returns, so a caller reading one field
+  sees an allocation. The envelope does carry dry_run:true, but a caller
+  reading a single field does not see it.
+
+  Fix: name it for what it is -- `would_be_id`, or keep `id` beside a
+  sibling `reserved:false`. Cheap, and it removes a whole class of
+  between-probe-and-write mistake, because anything written against that id
+  is wrong if any other write intervenes -- wrong in a way nothing detects,
+  since the id simply names a different item or none.
+  **Layman:** The preview tells you which number your entry will get, but does not hold it — and the wording makes it look held.
+  Kind: fix.
+  Source: cc-feedback-2026-08-19 (Claude Code config).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4509] **No supported way to materialise the store's canonical ROADMAP.md, so normalisation requires inventing an unrelated write.**
+  roadmap_migrate never writes ROADMAP.md by design (ANTS-4482), and the
+  file is re-rendered by the next roadmap_log write. Sound, but it leaves a
+  gap: there is no supported route to the store's canonical rendering short
+  of inventing a write -- an annotate, say -- whose only purpose is the side
+  effect.
+
+  Two costs the reporter names. A caller who expects migration to normalise
+  the markdown sees a clean tree and cannot tell success from a no-op
+  without a follow-up query. And enforcing a house format across projects,
+  one of the store's stated reasons for existing, has no enforcement point:
+  you cannot render the standard form on demand.
+
+  Fix: an explicit op that writes the canonical ROADMAP.md and reports
+  bytes plus a changed/unchanged flag, with dry_run support. It makes
+  normalisation intentional rather than a side effect.
+
+  NOT ANTS-4483, which asks for the render GATE to be evaluated earlier;
+  this asks for the render itself as a command. The reporter's companion
+  suggestion, a markdown_in_sync flag on the envelope, is ANTS-4488.
+
+  Gate this behind the round-trip fix filed in this same batch: rendering
+  on demand from a store whose bodies re-parse differently would make the
+  churn easier to trigger, not harder.
+  **Layman:** After importing a roadmap there is no command that just writes the tidied-up file — you have to make some other change to trigger it.
+  Kind: feature.
+  Source: cc-feedback-2026-08-19 (DOOM Ants).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4510] **read_log is advertised in the session bootstrap between two git verbs and is not a git-log reader.**
+  The SessionStart hook lists `read_log -> filtered log tail (vs full
+  Read)` between `git_state` and `model_switch_stats`, both git/session
+  verbs. In that company it reads plainly as `git log`. Called that way it
+  fails, trying to open the Ants Terminal debug log.
+
+  Observed: read_log {max_commits:3, body:true} -> {ok:false,
+  code:"not_found", error:"cannot open .../ants-terminal/debug.log"}.
+
+  The sharper half: it ACCEPTED `max_commits` and `body` without an
+  argument error, which confirms the wrong mental model before the
+  file-open contradicts it.
+
+  Fix, either or both: reword the bootstrap line to name the log (`Ants
+  Terminal debug-log tail`) or rename the verb; and reject unknown
+  arguments so the wrong reading fails loudly at the argument layer rather
+  than at file-open. The cost is a wasted call plus a fallback to Bash git
+  log on what looked like the cheaper indexed path -- the opposite of what
+  the bootstrap list is for, on the first verb a session reaches for when
+  orienting.
+  **Layman:** A tool listed as "read the recent log" sits next to the git tools and reads a completely different log.
+  Kind: doc-fix.
+  Source: cc-feedback-2026-08-19 (DOOM Ants).
+  Lanes: mcp, claude-integration.
+
+- 📋 [ANTS-4511] **roadmap_query refuses the natural by_id mode without naming the id/ids route that replaces it.**
+  Looking up one bullet, mode:"by_id" is the obvious first guess. It
+  refuses with bad_mode and lists the accepted modes -- which is good
+  behaviour -- but none of those names says "this is how you fetch one item
+  by id", and the real route is an `id` / `ids[]` argument on an existing
+  mode rather than a mode at all.
+
+  One wasted round-trip on what is plausibly the single most common roadmap
+  lookup, and it recurs for every new session that guesses the same way.
+  The store making per-item queries the recommended pattern is what makes
+  it worth closing.
+
+  Fix, cheapest first: extend the bad_mode refusal with a hint naming the
+  route it is withholding -- `to fetch specific items pass id/ids[] with
+  mode bullets or headline_only`. Or accept `by_id` as an alias for
+  mode:"bullets" when an id/ids argument is present, on the ANTS-3698
+  precedent where `filter` aliases `status`.
+
+  The refusal already carries an `accepted` array, so the hint has an
+  obvious home beside it.
+  **Layman:** Guessing the obvious name for "look up one entry" fails, and the error does not say what to use instead.
+  Kind: enhancement.
+  Source: cc-feedback-2026-08-19 (DOOM Ants).
+  Lanes: mcp.
+
+- 📋 [ANTS-4512] **read_regions picks one of two alias arrays silently, then reports the missing key against the array the caller got right.**
+  `paths` and `regions` are both documented aliases for `items`. When a
+  call sends BOTH, `paths` wins silently. The reporter sent `paths` as bare
+  filename strings and `regions` as properly-shaped {path, start_line,
+  end_line} objects; every object in `regions` carried its key, and the
+  reply was three copies of `bad_args: item missing "path"`.
+
+  The message is true of the array the verb chose and false of the array
+  the caller meant, and it never says which key the items came from -- so
+  the natural next move is to re-inspect the array where nothing is wrong.
+
+  Fix, either suffices:
+  1. Name the source key in the message -- `item 0 of "paths" missing
+  "path"` -- the shape apply_edits already uses for its not_found skips.
+  2. Accept a bare string in the alias arrays as shorthand for a
+  whole-file read. `paths: ["a.cpp"]` is the most natural reading of a
+  parameter called paths, and a whole-file read is a legitimate request.
+
+  And where both keys are sent and disagree in SHAPE, a bad_op_combo-style
+  refusal naming both beats picking one silently -- the same rule
+  roadmap_query already applies to id vs section.
+  **Layman:** Send the same information two ways and the tool quietly uses one, then complains about a mistake in the other.
+  Kind: fix.
+  Source: cc-feedback-2026-08-19 (Games Hub).
+  Lanes: mcp.
+
+- 📋 [ANTS-4513] **Migrate the cross-session feedback corpus into the roadmap store, where the schema already has a stub table waiting for it.**
+  Recommended after measuring the corpus rather than from taste. 19 files
+  at /mnt/Games/Scripts/Linux/, 349 KB total, largest 98 KB, written by 19
+  independent sessions.
+
+  WHAT SETTLES IT: those files are in NO git repository. There is no repo
+  at that path. The standard objection to a database -- you lose version
+  history -- is moot, because there is none today. A store would ADD it.
+
+  Four more, in order of weight:
+
+  - 19 sessions append to plain text files. Interleaved or lost writes is
+  the classic failure and nothing today prevents it; SQLite in WAL mode
+  does.
+  - The write path is ALREADY a verb. Contributors call feedback_log, never
+  a hand edit -- the same property that made the roadmap migration
+  invisible to its callers.
+  - The un-triaged tail is currently DERIVED by parsing for an unfilled
+  Proposed-ID line. In a table it is one exact predicate.
+  - compact_resolved exists solely to stop the files growing. A store
+  deletes that op rather than reimplementing it.
+
+  THE SCHEMA ALREADY ANTICIPATED THIS. `feedback_ref` exists today with
+  columns (item_pk, file) and 0 rows -- a link from a roadmap item to a
+  feedback FILENAME. The join was foreseen; the table is a stub that stores
+  a path where it wants a finding.
+
+  The prize is the cross-file view. "What is un-triaged everywhere" is 19
+  calls today and becomes one query, as do "which project reports the
+  most" and "how long from filing to shipped" -- the last needing the same
+  date columns ANTS-4501 is adding to items.
+
+  ONE REAL LOSS: markdown is readable when the MCP is down, and a database
+  is not. The mitigation already exists in the roadmap store's export
+  (ANTS-3761); this needs the same, and the spec should say so rather than
+  leaving it implied.
+
+  NEEDS A SPEC. This is a contract 19 sessions bind to, so it goes through
+  write-spec and the review gate rather than being built directly. Two
+  questions the spec must settle: whether the markdown files remain as a
+  rendered export or are retired, and whether an un-migrated project can
+  still append. Do NOT start before ANTS-4506 -- shipping a second
+  markdown-rendering surface while the roadmap's own render/parse round
+  trip is unstable would duplicate that defect rather than avoid it.
+  **Layman:** Move the 19 shared feedback files into the same database as the roadmap, so all of them can be asked one question instead of nineteen.
+  Kind: feature.
+  Source: user-request-2026-08-19.
+  Lanes: roadmap-store, mcp.
+
+- 💭 [ANTS-4514] **Consider centralising the per-project audit suppression and false-positive ledgers into the store.**
+  CONSIDERED, not planned -- the win is real but modest, and it is filed so
+  the reasoning is on record rather than re-derived.
+
+  Today `.audit_suppress` (JSONL v2) and `.ants_review_falsepos.jsonl` are
+  per-project, gitignored, and already structured. So the usual argument
+  for a store -- imposing structure on prose -- does not apply; they are
+  structured already.
+
+  The actual argument is CROSS-PROJECT. A false positive dismissed with a
+  reason in one project says nothing to the other 14, though the rule that
+  produced it is often the same rule from the same tool. A shared table
+  keyed on (rule, normalised finding) would let one dismissal inform the
+  rest, which no per-project file can do.
+
+  Against: these ledgers are deliberately local and gitignored (the audit
+  artifact posture), a project's dismissal is sometimes right only for
+  that project, and a shared table invites a wrong dismissal to propagate.
+  That is the question a spec would have to answer, and it is why this is
+  considered rather than planned.
+
+  Measure before building: count how many dismissals across the 15
+  registered projects share a (rule, message) pair. If the overlap is
+  small the whole idea is not worth a table, and that count is cheap to
+  get.
+  **Layman:** Each project separately remembers which code warnings it has dismissed; one shared memory would let all of them benefit.
+  Kind: feature.
+  Source: user-request-2026-08-19.
+  Lanes: roadmap-store, audit.
+
+- 💭 [ANTS-4515] **Two store tables have never been written to, so a third should not be added before they are explained.**
+  Measured 2026-08-19 across the whole machine-global store: project 15,
+  item 4824, section 640, element 5180, history 1807, id_prefix 10 --
+  and `citation` 0, `relationship` 0, `feedback_ref` 0.
+
+  Three tables with no rows. `feedback_ref` has a live plan (the feedback
+  migration filed alongside this). The other two do not, and they have been
+  empty since the schema shipped.
+
+  This is the ANTS-3767 shape one level up. There, `lanes`, `evidence` and
+  `extras` each had a column and no writer, so every call reported success
+  while the columns held their DDL defaults -- the defect was invisible
+  precisely because nothing failed. A table with no writer is the same
+  thing at table granularity, and the same invisibility applies.
+
+  Three possible answers and they need different actions: the feature was
+  descoped and the table should be dropped; the writer exists but nothing
+  calls it, which is a live gap; or it is genuinely for later, which is
+  fine and should be recorded so the next survey does not re-ask.
+
+  Worth answering BEFORE adding tables for the feedback migration --
+  not as a blocker, but because whatever explains two empty tables probably
+  applies to the third.
+  **Layman:** The database has two tables that were built and never used — worth understanding why before building more.
+  Kind: investigate.
+  Source: in-session-2026-08-19, while surveying the store for migration candidates.
+  Lanes: roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
