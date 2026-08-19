@@ -1,4 +1,5 @@
 <!-- ants-roadmap-format-spec: 1.1 -->
+<!-- OWNED-HERE roadmap-format.md - this project's parser, store and migration live here, so this copy governs and ~/.claude/standards/ is the downstream one; decided 2026-08-12 (ANTS-4073) -->
 # ROADMAP.md & CHANGELOG.md format spec (v1.1)
 
 > Detailed format spec for the two files the Ants Terminal Roadmap
