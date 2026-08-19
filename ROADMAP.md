@@ -37566,6 +37566,31 @@ are closed inline in the feedback files rather than filed here.
   Not yet built. Next step is implementation, which is the third reviewer
   a spec's cap hands off to.
   Resolved (2026-08-20): all three slices shipped. Slice 1 was the report mode; slice 2 stamps created / last_modified / shipped in the roadmap_log callers, with the migration loader exempt by construction; slice 3 is roadmap_log op:"backfill_dates". Suite 3684/3684. Two implementation notes worth keeping. The backfill reads DIFFS rather than each revision's content: the spec's ~17 s cost model was a lower bound, a real content walk is 49 s of git show alone, and the MCP bridge times out at 60 s — so the op as costed could not complete through its own surface. One `git log --reverse -p -U0` is 3.9 s, and first-wins makes the semantics identical. Spec § 2.3 amended to record it (write-spec Step 8). And remotecontrol_roadmap_log.cpp crossed ANTS-3833 INV-6's 6000-line cap, so the handler is its own TU (13/13). Measured on this project: 1525 revisions, 2179 of 2179 items dated, 0 undated, and the 1754 shipped writes equal the store's own shipped count exactly.
+  Follow-up (2026-08-20), two items, neither blocking:
+
+  1. NOT YET RUN FOR REAL. The backfill has only ever been dry-run. The
+  live store still reads 2181 items / 0 created / 0 shipped, so
+  mode:"report" still answers every period question over an empty
+  population and says so in its coverage block. Running it needs a RELAUNCH
+  first: the live binary is the home copy under
+  ~/.local/share/ants-terminal/bin/, and it predates this build, so the MCP
+  it serves has no backfill_dates op and no stamping. After relaunch, one
+  call finishes it -- roadmap_log op:"backfill_dates" caller_cwd:<root>,
+  dry_run first to confirm the numbers still read 2181/0.
+
+  2. ONE CLAUSE THE SPEC DID NOT SETTLE, decided in implementation and open
+  to reversal. section 2.2 words the shipped rule as a STATUS WRITE whose
+  new value is shipped and whose old value is not -- an INSERT is not a
+  status write, so op:"append" filing an item already shipped is not
+  literally covered. It stamps `shipped` at insert. Reasoning: the guard
+  that rule exists for (never re-stamp an item that was ALREADY shipped)
+  cannot fire when there is no prior value, and leaving it NULL would
+  produce a shipped-with-no-date row on the one path where the date is
+  known exactly. The alternative is defensible: leave it NULL, let coverage
+  report it, let the backfill date it from the commit that renders it.
+  Reversing it is a three-line change in cmdRoadmapLogAppend and
+  cmdRoadmapLogAppendBatch (both carry the reasoning in a comment) plus a
+  test. Surfaced to the user 2026-08-20; no answer yet.
 
 - ✅ [ANTS-4502] **A bare filename in trailer prose is reported unresolved_path, though the file exists one directory down.**
   Measured, not inferred — `roadmap_migrate dry_run` against
