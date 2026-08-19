@@ -36499,7 +36499,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4493] **Id synthesis draws from the project's live id space and the allocator never consults the store, so the first post-migration append collides.**
+- ✅ [ANTS-4493] **Id synthesis draws from the project's live id space and the allocator never consults the store, so the first post-migration append collides.**
   VERIFIED against src/remotecontrol_roadmap_log.cpp:717-745. The reporter diagnosed an
   off-by-one — "advances to the high-water mark and then issues that same number" — and the
   mechanism is different, which matters because the fix is different. The allocator computes
@@ -36543,6 +36543,45 @@ are closed inline in the feedback files rather than filed here.
   the first free slot.
 
   Related: ANTS-4343 (a row keeps id_origin='synthesised' after the file starts declaring it).
+  Resolved (2026-08-19) — the collision, which is the half that loses data.
+  Defect 1 (synthesis spending the live id space) is filed as ANTS-4500: it
+  changes what an id MEANS and needs a spec.
+
+  The item's diagnosis was right and worth restating, because it is not the
+  off-by-one the reporter first suspected: the `+1` is correct, and the
+  markdown allocator simply never read the store. It floored to
+  max(ROADMAP.md, committed corpus). The store path floors to
+  max(corpus, idHighWater). Each covered two of the three places an id can
+  live, and the third is where the synthesised ids are.
+
+  Which path a project takes is the whole mechanism, and it explains why
+  this fires where it does: roadmapWriteTarget() resolves through
+  migratedProject(), which returns nullopt for every dialect but ants-v1 —
+  so a MIGRATED project that is not SERVED from the store takes the markdown
+  path, and its synthesised ids exist in the store and in no file.
+
+  Fix: the markdown path also floors to the store's high-water for the
+  resolved prefix, looked up by readProjectByRoot() rather than
+  migratedProject() — the question is whether the store holds ids for this
+  root, which is true whatever dialect the file is in, and migratedProject()
+  answers nullopt for exactly the projects that reach the branch. A store
+  that will not open is not this verb's failure: the path behaves as before.
+
+  Also shipped: `counter_advanced_past` beside `counter_advanced_to`, which
+  the item asked for by name. "Advanced to 612" reads as safe until you know
+  612 was the OCCUPIED high-water rather than the first free slot, and that
+  reading is what made the collision look like a normal allocation.
+
+  Tests: a new feature dir, tests/features/roadmap_alloc_store_floor/, with
+  a MIXED github-task-list fixture — the reported shape, so the write target
+  really is null and the markdown path really is taken. INV-1 proved red
+  first, issuing DEMO-0002 where the store already held it; INV-2 is the
+  control, an unmigrated project allocating unchanged, so the floor is
+  additive rather than a replacement. Full suite 3627/3627.
+
+  Found while writing it: without a .roadmap-counter the verb refuses
+  `stable_prefix_unsupported`, reading a DEMO-0001 as a stable-string id.
+  The fixture seeds a lagging counter, which is the reported state anyway.
   **Layman:** The migration invents placeholder item numbers using the same numbering the project hands out for real, so the next item you file reuses a number already taken.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige).
@@ -36829,6 +36868,46 @@ are closed inline in the feedback files rather than filed here.
   **Layman:** The migration can rewrite hundreds of database rows and there is no way back — and copying the database file by hand does not capture the most recent writes.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager), split from ANTS-4486 on 2026-08-19.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4500] **Id synthesis draws from the project's live id space, so a synthesised id cannot be cited.**
+  ANTS-4493's first defect, filed separately because its second shipped
+  2026-08-19 and this one is a design change rather than a missing floor.
+
+  `Loader::allocateId()` issues the next value in the project's OWN counter
+  space for an id-less bullet. So a synthesised id is indistinguishable from
+  an allocated one once written, and it is POSITIONAL: it depends on where
+  the bullet sits and on what the plan carried that run.
+
+  Vestige watched one move. `3D_E-0046` was synthesised onto an audio bullet
+  before being allocated to a real item; a later re-migration resolved the
+  clash by keeping the parsed 0046 and moving the audio bullet to 0047. The
+  resolution is correct and the consequence is that a synthesised id cannot
+  be quoted in a commit message, a spec or another item, because the thing
+  it names may be renumbered by an unrelated re-run.
+
+  The collision half is fixed — the markdown allocator now floors to the
+  store's high-water, so the two allocators can no longer issue the same
+  number. What is left is that synthesis SPENDS the live id space: 565
+  allocations on Vestige, none of them a decision anyone made.
+
+  Asked for, in the reporter's order:
+  1. Reserve above the counter's high-water rather than inside it.
+  2. Or use a visibly non-allocatable namespace (`3D_E-S0001`), so a reader
+     can tell a synthesised id at sight and no tool mistakes it for a
+     citation target.
+  3. Or a separate synthetic_id column, leaving `id` NULL until a real one
+     is allocated — the cleanest model and the largest change, since `id` is
+     the locate key for flip / annotate / amend.
+  4. If synthesis must keep sharing the space, bump .roadmap-counter past
+     the high-water as part of the migration and say so in the response.
+
+  Needs a spec: it changes what an id MEANS, ANTS-3765 § 2.8 owns the
+  allocation rules, and option 3 touches the schema. Related: ANTS-4343 (a
+  row keeps id_origin='synthesised' after the file starts declaring it).
+  **Layman:** When the migration invents a number for an item that has none, it takes it from the same pool real items use — so the number can move later, and nothing that quoted it still points at the right item.
+  Kind: fix.
+  Source: cc-feedback-2026-08-18 (Vestige), split from ANTS-4493 on 2026-08-19.
   Lanes: mcp, roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage

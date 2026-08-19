@@ -704,6 +704,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // ANTS-NNNN string allocated from .roadmap-counter.
     QString idStr;
     bool counterReconciled = false;   // ANTS-2179 — counter lagged the file
+    qint64 counterAdvancedPast = 0;   // ANTS-4493 — the occupied high-water
     if (useStablePrefix) {
         idStr = stableId;
     } else {
@@ -725,6 +726,34 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             rlMaxExistingIdForPrefix(preflightBullets, pfx);
         maxFileId = std::max(maxFileId, RoadmapFoldIn::corpusHighWater(
             QFileInfo(counterPath).absolutePath(), pfx));
+        // ANTS-4493 — and floor to the STORE's high-water for this prefix.
+        // A project that has been MIGRATED but is not SERVED from the store
+        // reaches this path: roadmapWriteTarget() resolves through
+        // migratedProject(), which returns nullopt for every dialect but
+        // ants-v1. The ids that project's migration SYNTHESISED live in the
+        // store and in no file, so neither term above can see them — and the
+        // next append reissues one, once per migrated project, silently, with
+        // ok:true and a normal-looking id. Reported against a
+        // github-task-list project whose file max was 0611: this path issued
+        // 0612, which the store had already given to an unrelated bullet.
+        //
+        // readProjectByRoot(), NOT migratedProject(): the question here is
+        // whether the store holds ids for this ROOT, which is true whatever
+        // dialect the file is in — and migratedProject() answers nullopt for
+        // exactly the projects that reach this branch.
+        //
+        // A store that will not open is not this verb's failure: the markdown
+        // path is what it was before, and refusing an append because an
+        // unrelated store is unreadable would be a regression.
+        if (RoadmapStore *store = roadmapStoreOrNull(nullptr, nullptr)) {
+            QString storeErr;
+            if (const auto row =
+                    store->readProjectByRoot(callerCanonical, &storeErr)) {
+                QString hwErr;
+                if (const auto hw = store->idHighWater(row->projectId, pfx, &hwErr))
+                    maxFileId = std::max(maxFileId, *hw);
+            }
+        }
         if (req.contains(QStringLiteral("id_hint"))) {
             // An explicit hint already cleared the counter (above); also
             // refuse when it collides with a live id the lagging counter
@@ -742,6 +771,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // write a duplicate, and let the counter rewrite below self-heal.
             newId = maxFileId + 1;
             counterReconciled = true;
+            // ANTS-4493 — report what it advanced PAST as well as what it
+            // advanced TO. "advanced to 612" reads as safe until you know 612
+            // was the OCCUPIED high-water rather than the first free slot, and
+            // that is exactly the reading that made the reported collision look
+            // like a normal allocation.
+            counterAdvancedPast = maxFileId;
         }
         idStr = QStringLiteral("%1-%2").arg(pfx).arg(newId, 4, 10,
                                                      QLatin1Char('0'));
@@ -781,7 +816,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         out["line"]    = insertAt + 1;  // 1-based for humans
         out["bullet"]  = bulletNoTrailNl;
         out["bytes"]   = static_cast<qint64>(bullet.toUtf8().size());
-        if (counterReconciled) out["counter_advanced_to"] = newId;  // ANTS-2179
+        if (counterReconciled) {
+            out["counter_advanced_to"]   = newId;          // ANTS-2179
+            out["counter_advanced_past"] = counterAdvancedPast;  // ANTS-4493
+        }
         const QJsonArray possibleDuplicates =
             rcComputePossibleDuplicates(preflightBullets, headline);
         if (!possibleDuplicates.isEmpty()) {
@@ -858,7 +896,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     out["file"]          = QStringLiteral("ROADMAP.md");
     out["line"]          = insertAt + 1;  // 1-based for humans
     out["bytes_written"] = static_cast<qint64>(bullet.toUtf8().size());
-    if (counterReconciled) out["counter_advanced_to"] = newId;  // ANTS-2179
+    if (counterReconciled) {
+        out["counter_advanced_to"]   = newId;                // ANTS-2179
+        out["counter_advanced_past"] = counterAdvancedPast;  // ANTS-4493
+    }
     // ANTS-2043 — non-blocking near-duplicate advisory. preflightBullets
     // was parsed BEFORE the splice, so the just-appended bullet can't
     // match itself. Surfaced only when there's at least one candidate.

@@ -214,6 +214,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The first roadmap item filed after a migration no longer reuses an id the database already holds** (ANTS-4493)
+  When a project is migrated, items with no id of their own are given one.
+  Those ids live only in the database, and the code that hands out the next id
+  was reading only the roadmap file — so the next item filed took a number
+  already in use. It now checks the database too. `counter_advanced_past` is
+  reported alongside `counter_advanced_to`, so the response says what the
+  number was skipped over rather than only where it landed.
+
 - **A long roadmap headline no longer splits its item in two when the file is rewritten** (ANTS-4484)
   A headline that wrapped across two lines was stored with the line break
   inside it, and written back out with the second half flush against the left
