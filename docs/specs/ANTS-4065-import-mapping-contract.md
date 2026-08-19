@@ -284,14 +284,12 @@ an unspecified precedence lets a re-import adopt the stale prose value — the
 same read-back hazard ANTS-3808 names, arriving from the parse side and
 breaking INV-6 on a governed column.
 
-**Current state, corrected 2026-08-10.** An earlier draft of this paragraph
-said `trailerValuesIn()` resolves `kind` through `matchIn()`, taking the first
-occurrence. It does not, and the distinction decides *which function is
-edited*: `trailerValuesIn()` calls **`matchLastIn()` for `kind` only**, which
-takes the last match unconditionally, while **`layman`, `lanes`, `evidence` and
-`source` all use `matchIn()`**, which takes the first. So the two halves of the
-corpus fail in opposite directions, and an implementer who edits `matchIn()` to
-add precedence changes four fields and not the one this section is about.
+**Current state, re-read 2026-08-19.** `trailerValuesIn()` resolves **all five
+keys** through `matchLastIn()`, and `matchIn()` no longer exists. ANTS-4497
+moved the remaining four on the measurement below; ANTS-4504 deleted the
+function once it had no callers. Two earlier drafts of this paragraph described
+a `kind`-only split and both are superseded — read the source, not this
+history.
 
 **The trailer wins, and a LINE-INITIAL match is what "the trailer" means.**
 A trailer key at the start of a line in the bullet's collected body, in either
@@ -330,10 +328,10 @@ sample above them, and `kind`, which loses to the prose below it.
 `collectBulletBody()` builds `body` by appending `'\n'` followed by
 `cont.trimmed()` for each continuation line, so the body **preserves line breaks
 and carries no leading whitespace** — a source line `   Kind: test.` reaches the
-matcher as `Kind: test.` at a line start. `TrailerMatch::anchored`, computed
-identically in `matchIn()` and `matchLastIn()` as `(at == 0) || body.at(at - 1)
-== '\n'` over `capturedStart(0)`, is therefore exactly this test and is the
-predicate to use. `matchLastIn()` already computes it on every global match and
+matcher as `Kind: test.` at a line start. `TrailerMatch::anchored`, computed in
+`matchLastIn()` as `(at == 0) || body.at(at - 1) == '\n'` over
+`capturedStart(0)`, is therefore exactly this test and is the predicate to
+use. `matchLastIn()` already computes it on every global match and
 simply never consults it: today it overwrites its result each iteration and
 returns the last match unconditionally. **The change is which match it keeps,
 not a new predicate.**
@@ -393,14 +391,15 @@ whose `anchored` is true, else the last candidate seen — plus an optional
 `isCandidate` predicate defaulting to accept-everything, which `kind` supplies
 as the recognised-vocabulary test above.
 
-**Built 2026-08-13, and narrower than this paragraph used to ask.** It said to
-route all five keys through the resolver and delete `matchIn()`. Only `kind`
-was moved. The measured defect is `kind`'s alone, and the comment on
-`matchLastIn()` gives a standing reason against the rest: none of the other
-four is re-emitted by the render into a body that may already discuss it, so
-changing their precedence is a behaviour change with no defect behind it.
-`matchIn()` stays. Revisit if ANTS-3808's `source`/`layman` case is measured
-rather than asserted. **Order matters within the resolver:** the predicate filters first
+**Built in two steps, and the narrowing was reversed.** The 2026-08-13 build
+moved `kind` alone, on the reasoning that only `kind` is re-emitted by the
+render into a body that may already discuss it. That reasoning was wrong about
+the other four rather than merely cautious: first-match is displaced by any
+*earlier* mention, so a bullet quoting a sample above its own trailers imported
+the illustration's values — ANTS-3808 imported `source = "test."` and
+`layman = "An older thing."` **ANTS-4497 moved all five on 2026-08-19**, and
+ANTS-4504 deleted `matchIn()` with its last caller. **Order matters within the
+resolver:** the predicate filters first
 and `anchored` decides among what survives, never the reverse. **ANTS-3754 is
 TWO line-initial matches, not one of each** — `collectBulletBody()` trims every
 continuation line, so its wrapped `Kind:), § 3.1's …` is line-initial exactly
@@ -412,13 +411,9 @@ There it cannot cause a clear: that function clears only when the old body
 carried a value and the new one does not, and an off-taxonomy `Kind:` is empty
 on both sides. It fixes a live defect instead — today `op:annotate` appending
 prose that mentions `Kind:` overwrites the stored value. Adding
-precedence inside `matchIn()` instead would be wrong, because it would leave
-`kind` — which does not route through it — unchanged, fixing four fields and
-not the one this section is about.
-
-**`matchIn()` keeps its four callers** — `layman`, `lanes`, `evidence` and
-`source`. An earlier draft had it deleted, on the plan to move all five keys;
-that plan was narrowed at build time (above), so it stays referenced.
+precedence to a second helper instead would be wrong: one resolver serves all
+five keys, so a rule added anywhere else is a rule two functions can disagree
+about.
 
 Two consequences to carry, neither optional. `rxSource()` captures to
 end-of-line (`([^\n]+)`) rather than to the first period, so a first-match hit
@@ -623,9 +618,14 @@ Two ways out, and this spec takes the second:
 
 `Source:` names a path far more often than the standard anticipates: **93
 distinct path tokens across 150 occurrences** in this project's pre-render
-roadmap and archives, applying the predicate below
+roadmap and archives, under the **PRE-amendment** predicate — the one that
+accepted a bare filename. Its four worked examples
 (`*_Ants_MCP_Feedback.md`, `remotecontrol.cpp`, `terminalwidget.h`,
-`rpmlint.log`). Meanwhile `Evidence:` — the field `roadmap-format.md` § 3.5
+`rpmlint.log`) carry no separator and are therefore **prose** under the rule
+below, not path tokens; they are kept as evidence of how often the field is
+used this way, never as cases the predicate accepts. **Nobody has re-measured
+the corpus under the amended predicate**, so treat 93/150 as an upper bound on
+the population and do not size a fixture from it. Meanwhile `Evidence:` — the field `roadmap-format.md` § 3.5
 designates for paths — is used **22 times** across all 4,378 corpus items, in
 three projects. (An earlier draft said "once"; that came from a line-anchored
 count, which sees only the 4 own-line declarations and none of the inline
@@ -642,17 +642,21 @@ convention.
 `external-CVE-NNNN-NNNN`) that must not be mistaken for filenames. A `Source:`
 value is a path reference when:
 
-> **Split the value on whitespace. A TOKEN is a path reference when it
-> contains `/` AND is not an ID CITATION. The value is a path reference when
-> any of its tokens is.**
+> **A value that is a recognised source form carries no path reference at all
+> — test that FIRST, on the whole value, and stop.** Otherwise split the value
+> on whitespace: a TOKEN is a path reference when it contains `/` AND is not an
+> ID CITATION, and the value is a path reference when any of its tokens is.
 >
 > **An ID CITATION** is a token matching the roadmap id grammar
-> (`RoadmapParse::idTokenPattern()`), optionally followed by one or more
-> `/`-separated numeric continuations — the form a bullet uses to cite a pair
-> of sibling ids, `DOOM-0057/0081`.
+> (`RoadmapParse::idTokenPattern()`) **in full**, optionally followed by one or
+> more `/`-separated numeric continuations — the form a bullet uses to cite a
+> pair of sibling ids, `DOOM-0057/0081`. Anchor it:
+> `\A(?:<idTokenPattern()>)(?:/\d+)*\z`.
 
-**The unit is the whitespace-delimited token, not the value** — corrected
-2026-08-10, having twice been left undefined. A `Source:` value is frequently a
+**The unit of the SPLIT is the whitespace-delimited token, not the value** —
+corrected 2026-08-10, having twice been left undefined. The recognised-form
+gate above is the one deliberate exception, and it is measured rather than
+inherited (below). A `Source:` value is frequently a
 sentence (`in-session-2026-05-16`, but also `ROADMAP.md ANTS-4065` and
 `rpmlint.log warnings`), so "its final segment" had no referent whenever the
 value contained no `/`: it could mean the whole value, the last whitespace
@@ -685,6 +689,18 @@ So the note class runs at 92–94% false on both, which buries the one
 `field_conflict` that mattered — the signal-to-noise failure ANTS-4481 was
 filed for, one layer down.
 
+**Three causes, not one, and the deletion below reaches only the first.** The
+DOOM tally is the useful case to split, because the tokens arrive by different
+routes: `§4.4`, `~7.2ms` and `(0.6.0` end in a dot plus alphanumerics and are
+the extension disjunct's, so deleting it removes them; `DOOM-0057/0081` carries
+a separator and survives the deletion, which is what the id-citation clause is
+for; and `Ultra`, `user screenshot` and `E1M1 outdoor courtyard` match
+**neither** disjunct, so they cannot be `Source:` tokens at all — they reach
+the notes through `Evidence:`, which has no predicate (§ 5, ANTS-4527). An
+implementer verifying this change against DOOM should therefore expect fewer
+than 15 of the 16 notes to go, and should attribute the remainder before
+concluding the predicate is wrong.
+
 **A bare filename in a sentence is a MENTION, not a claim that the file sits at
 the project root**, and that premise is the only thing the old disjunct rested
 on. `Source:` is provenance prose by design (§ 3.5.3's vocabulary is
@@ -710,6 +726,16 @@ two-segment path, and it is the specific trap a roadmap sets. The grammar is
 already stated once, in `RoadmapParse::idTokenPattern()`; this reuses it rather
 than writing a second id regex that would drift.
 
+**Anchoring is load-bearing, and getting it wrong disables most of the check
+silently.** That pattern is a bare, unanchored fragment — its own comment says
+so, and its existing callers splice their own anchors
+(`roadmapmigrate.cpp:182` uses `\A(?:` + the fragment). Matched unanchored,
+`docs/specs/ANTS-3863-pre-read-dispatch.md` — the qualifying example three
+paragraphs above — hits on its embedded `ANTS-3863` and is excluded as an id
+citation. Every spec path naming an id would then go unvalidated, and no INV-7
+fixture would red, because INV-7's control carries no id. Hence the `\A`/`\z`
+in the rule.
+
 **`Evidence:` is deliberately untouched, and its own noise is filed
 separately.** DOOM's `user screenshot` and `E1M1 outdoor courtyard` reach the
 notes through `Evidence:`, which has no predicate because the standard defines
@@ -717,29 +743,48 @@ every element as a path. That corpus writes prose there anyway. Suppressing it
 here would silently drop real evidence paths that carry no separator, and the
 right repair is at the WRITE side, so it is out of scope for this section.
 
-**Apply the predicate AFTER `trailerValuesIn()`'s trailing-period chop, not
-before.** The regex anchors on `$`, so a token ending in a sentence period —
-`rpmlint.log.` — does not match, and a value tested before the chop is
-classified as prose. `trailerValuesIn()` already drops one trailing period from
-`source` (and from `evidence`, keeping `..`), so the ordering exists; it simply
-has to be relied on rather than re-implemented. Verified by running the
-predicate over the corpus's real `Source:` shapes: every § 3.5.3 form is
-correctly rejected, `ROADMAP.md ANTS-4065` and `rpmlint.log warnings` are
-correctly accepted, and `in-session-2026-08-03, found verifying ANTS-3806.` is
-correctly rejected.
+**The trailing-period ordering no longer decides classification, and the
+paragraph that said it did is deleted.** It rested on the extension regex's
+`$` anchor: a token ending `rpmlint.log.` failed to match, so a value tested
+before `trailerValuesIn()`'s period chop was classified as prose. With the
+disjunct gone the separator test is indifferent to a trailing period —
+`docs/gone.md.` contains a `/` either way — and `withoutTrailingPunctuation()`
+already retries a trimmed form at RESOLUTION time. So the chop matters to
+whether a path is found, never to whether a token is one.
 
-**The "not a recognised source form" conjunct is deleted, not relocated.** It
-read as a predicate and was a judgement: § 3.5.3 gives *templates with
-placeholders* (`upstream-<dep>`, `external-CVE-NNNN-NNNN`), not literals, so
-membership needed a pattern set this spec never supplied — leaving the
-implementer to invent one. It also earned nothing: **no recognised source form
-in § 3.5.3 contains a `/` or ends in an extension**, so no such form can reach
-the first conjunct, and the exclusion could never fire. The earlier claim that
-the parentheses mattered because "any recognised source form containing a slash
-would be treated as a path" named no such form because there is none. A
-false-positive here costs a note and an `extras` key on a value that resolves
-to nothing — not a refusal (below) — which is the right price for dropping an
-unbuildable clause.
+**The "not a recognised source form" test is KEPT, applying to the whole value.
+The claim that it could never fire was false, and so was the instruction to
+delete it** — both corrected 2026-08-19 (ANTS-4502), having stood since
+2026-08-10.
+
+`isRecognisedSourceForm()` is a whole-VALUE test: three exact strings plus
+seven `startsWith` prefixes (`user-`, `audit-`, `indie-review-`,
+`debt-sweep-`, `doc-review-`, `external-CVE-`, `upstream-`), and
+`pathTokensIn()` returns an empty list, before tokenising anything, when it
+matches. So it fires on any value merely *beginning* with a prefix, and it
+exempts every token in that value. **Measured against the shipped migrator on
+2026-08-19:** `Source: upstream-qt6, see docs/gone.md.` emits no note, while
+the same missing path under `Source: in-session-2026-08-19, see docs/gone.md.`
+emits one. It fires, and it fires often.
+
+**Whether to keep it was settled by measuring, and the measurement reversed the
+first answer.** Applying the test per TOKEN instead — the tidier rule, matching
+§ 2.5's own unit — was drafted and then withdrawn. Ten `Source:` values in this
+project's roadmap and archives begin with a recognised prefix **and** carry a
+`/`, resolved through `RoadmapParse::parseBullets()` over `ROADMAP.md` and
+`docs/roadmap/*.md` rather than by grepping the lines (the value is truncated
+at a following trailer key, and a line-level count returns eleven). **Not one
+of the ten names a path**: they are `ANTS-1721/1722`, `medium/low`,
+`RC/release`, `green/red`, `L1/L2`, `vt-parser/grid` and their kin — prose
+slashes inside a parenthetical. A per-token rule reports every one of them, so
+the tidier rule costs ten new false notes and recovers nothing.
+
+So the whole-value form stays, and the *reason* is the corpus rather than
+elegance. **The accepted cost:** a genuinely missing path inside a prefix-led
+value goes unreported. Measured instances of that on this corpus: zero. A false
+positive here would cost a note and an `extras` key on a value that resolves to
+nothing — not a refusal (below) — but ten of them is the noise class this
+amendment exists to remove.
 
 **`Evidence:` needs no predicate — every element is a path by definition**
 (`roadmap-format.md` § 3.5 defines the field as file paths), and it is
@@ -962,13 +1007,14 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   (`Kind:), § 3.1's format marker,`) → `kind='doc'`, `extras.source_kind`
   absent. Ordering alone returns `), § 3`.
   *Breaks when:* precedence is dropped back to plain positional resolution.
-  That fails in **opposite directions** per key, which is why one rule is
-  stated for all five: `kind` routes through `matchLastIn()` and is displaced
-  by a *later* prose mention, while `source`, `layman`, `lanes` and `evidence`
-  route through `matchIn()` and are displaced by an *earlier* one. Neither is
-  hypothetical — five bullets in this project's roadmap carry a corrupt `kind`
-  and ANTS-3808 carries a wrong `source` and `layman`, at the time this
-  invariant was written.
+  **Before ANTS-4497 that failed in opposite directions per key**, which is why
+  one rule is stated for all five: `kind` was on last-match and displaced by a
+  *later* prose mention, while `source`, `layman`, `lanes` and `evidence` were
+  on first-match and displaced by an *earlier* one. Neither was hypothetical —
+  five bullets in this project's roadmap carried a corrupt `kind` and ANTS-3808
+  a wrong `source` and `layman` when this invariant was written. All five now
+  route through `matchLastIn()`, so the surviving failure direction is the
+  `later` one alone.
   **The boundary, re-measured 2026-08-10 against `collectBulletBody()`'s real
   stop conditions.** 16 bullets carry a second line-initial `Kind:`, each
   exactly two. In **13** the two values are identical, so the choice cannot be
@@ -992,27 +1038,39 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   fragment now lands in `extras.source_kind` and the field defaults to
   `implement`, which reads as a real answer. The remaining risk is the case with
   no marker at all — a prose capture that happens to BE a taxonomy word, silently
-  taken. And an
-  implementer should treat it as a guard against a shape that may not occur
-  rather than as a repair with known targets. Nor did this invariant cover a
+  taken. Nor did this invariant cover a
   backtick span crossing a line break, which defeated the guard entirely and
   was a separate mechanism — **closed 2026-08-19 by ANTS-4504**, which matches
   every key through a length-preserving mask built from
   `MarkdownScan::codeSpans()`.
 - **INV-12** — A `Source:` token carrying no directory separator is prose, and
   an id citation is never a path: neither yields a `unresolved_path` note nor
-  an `extras.unresolved_path` element. *Test:* four fixtures, each a bullet
-  whose `Source:` is otherwise unresolvable — (a) a bare filename that exists
-  one directory down (`Source: in-session, per roadmap-format.md.`), (b) a bare
+  an `extras.unresolved_path` element. *Test:* six fixtures, each a bullet whose
+  `Source:` is otherwise unresolvable — (a) a bare filename that exists one
+  directory down (`Source: in-session, per roadmap-format.md.`), (b) a bare
   filename that exists nowhere, (c) a token that is not a filename at all but
   ends in a dot plus alphanumerics (`§4.4`, `~7.2ms`, `(0.6.0`), (d) an id pair
   (`DOOM-0057/0081`) → in every case `notes` carries no `unresolved_path` and
   `extras` no such key, while a control bullet citing `docs/gone.md` in the
   same import still does (INV-7 unchanged).
-  *Breaks when:* the extension disjunct is restored, or when the id-citation
-  clause is dropped and the no-separator rule kept alone — (d) is the case that
+  **(e) the recognised-form fixture, a regression guard rather than a must-red**
+  — `Source: upstream-qt6, see docs/gone.md.` → **no** note, because the
+  whole-value recognised-form test exempts the value before tokenising. That is
+  today's behaviour and § 2.5 keeps it deliberately; the fixture exists so a
+  later tidying pass cannot move the test to the token without reding.
+  **(f) the anchoring fixture** —
+  `Source: in-session, see docs/specs/ANTS-3863-pre-read-dispatch.md.` against a
+  root where that file does NOT exist → one note. Must-red against an
+  implementation that splices `idTokenPattern()` unanchored, which matches the
+  embedded `ANTS-3863` and drops the token.
+  *Breaks when:* the extension disjunct is restored; or the id-citation clause
+  is dropped and the no-separator rule kept alone — (d) is the case that
   distinguishes them, since an id pair carries a separator and reads as a
-  two-segment path.
+  two-segment path; or the recognised-form test is moved from the value to the
+  token — (e); or the id grammar is matched unanchored — (f).
+  **(f) is the one an implementation fails silently**, which is why it is named
+  separately rather than folded into (d): no INV-7 fixture catches it, because
+  INV-7's control path carries no id.
   **Fixture (a) is the one that must not be "fixed" by a tree walk.** Resolving
   a bare filename by searching the project is undefined on the corpus that
   motivates it (§ 2.5), and the accepted cost is stated there: a `Source:`
@@ -1039,8 +1097,9 @@ concern, and § 2.3's value is the count *falling* on the next run.
 `extras.source_kind` and `extras.unresolved_path` add at most one short string
 per affected item: **61** items carry `source_kind` today
 (`SELECT COUNT(*) FROM item WHERE json_extract(extras,'$.source_kind') IS NOT
-NULL`), and the path population is § 2.5's 150 occurrences. Both are bounded by
-the corpus, not by usage over time.
+NULL`), and the path population is at most § 2.5's 150 occurrences — an upper
+bound taken under the pre-amendment predicate, so the amended one validates
+fewer. Both are bounded by the corpus, not by usage over time.
 
 ## 5. Out of scope
 
@@ -1099,7 +1158,7 @@ the corpus, not by usage over time.
   `codeSpans()` requires one, and deliberately does not blank fenced lines:
   there is no measurement of how many corpus bullets carry a fenced block with
   a trailer key in it, and that change moves corpus values in a second way on
-  top of the one already shipped. Filed rather than folded in.
+  top of the one already shipped. Filed as **ANTS-4526**, not folded in.
 - **`Evidence:` values that are not paths.** § 2.5 gives `Evidence:` no
   predicate, because `roadmap-format.md` § 3.5 defines every element as a
   path. The corpus disagrees: DOOM Ants' clean migration reports
@@ -1107,7 +1166,8 @@ the corpus, not by usage over time.
   are prose an author wrote into the field. Applying § 2.5's separator
   predicate here would silently drop real single-token evidence paths, so the
   repair belongs at the WRITE side — a `roadmap_log` refusal or a note when an
-  `Evidence:` element is not path-shaped — and not in this contract.
+  `Evidence:` element is not path-shaped — and not in this contract. Filed as
+  **ANTS-4527**.
 - **Re-migrating the other 13 projects.** ANTS-3853 owns the rollout; this is
   the gate it waits on.
 
@@ -1145,19 +1205,37 @@ against **post-Phase-C** source:
   label mid-line. Today's implementation takes the last match anywhere for
   `kind`, so it reds; that is the ANTS-4086 defect and its must-fail-first
   proof.
-- **INV-11 fixture (e)** — the same shape for a **first-match** key: a
-  line-initial `Source:` / `Layman:` trailer *preceded* by an indented sample
-  carrying those labels. `matchIn()` takes the earlier one, so it reds, and it
-  is the must-fail-first proof for extending the rule beyond `Kind:`. It fails
-  for the opposite reason to (b), which is why both are needed: a resolver that
-  fixed only one direction would pass one and red the other.
-- **INV-11 fixture (f)** — the predicate's only must-red proof. (b) and (e) are
-  both satisfied by `anchored` ordering alone, so without (f) the predicate
-  could be omitted and the suite would stay green.
+- **INV-11 fixture (e)** — the same shape for `Source:` / `Layman:`: a
+  line-initial trailer *preceded* by an indented sample carrying those labels.
+  **It was the must-fail-first proof for extending the rule beyond `Kind:`, and
+  ANTS-4497 built that extension, so it is GREEN today and is now a regression
+  guard.** Measured 2026-08-19 against the live parser: that body resolves to
+  `source = "in-session-2026-08-19"` and `layman = "The bullet's own summary"`,
+  the bullet's own values. An implementer must not read it as a must-red case
+  and widen it until it fails.
+- **INV-11 fixture (f)** — the predicate's only must-red proof. (b) is
+  satisfied by `anchored` ordering alone, so without (f) the predicate could be
+  omitted and the suite would stay green.
 
-Fixtures (a), (c) and (d) are expected **green**, since plain last-match
-already satisfies them — they are regression guards, not discriminators. (b)
-and (e) are what distinguish the new rule from the old.
+Fixtures (a), (c), (d) and (e) are expected **green**. (a), (c) and (d) always
+were — plain last-match satisfies them, so they are regression guards rather
+than discriminators. **(e) joined them on 2026-08-19**: it was the must-red
+proof for extending the rule beyond `Kind:`, and ANTS-4497 built the extension,
+so only (b) and (f) still red.
+
+**Amended 2026-08-19 (ANTS-4502).** INV-12 adds its own must-red set against
+**post-ANTS-4497** source, and it is the § 2.5 half rather than the § 2.2 half:
+
+- **INV-12 (a), (b), (c)** — red on today's extension disjunct, which reports a
+  bare filename and a dot-plus-alphanumerics token as paths.
+- **INV-12 (d)** — red on today's `/` disjunct, which reports an id pair.
+- **INV-12 (f)** — red only against an implementation that splices
+  `idTokenPattern()` unanchored. It cannot red on today's source, which has no
+  id clause at all, so it is a guard against the *wrong build* rather than
+  against the current one. Named because that build passes every other fixture.
+- **INV-12 (e)** — expected **green** both before and after: the whole-value
+  recognised-form gate is kept, so it is a regression guard against a later
+  tidying pass, and it is the one INV-12 fixture that is not a discriminator.
 
 **INV-8 gains no new test.** `tests/features/roadmap_import_mapping/` already
 asserts the verified behaviour (no item, the line carried as narration, no
@@ -1214,6 +1292,7 @@ construct `RoadmapStore` with an **explicit path**; the default resolves under
 
 | Loop | Date | Lanes | C/H/M/L/I | Dimensions | Outcome |
 |---|---|---|---|---|---|
+| 8 | 2026-08-19 | 3, cold — genre pinned `spec`, cap 2; packet rebuilt from disk with nine bounded source windows and an explicit note that the code still carries the OLD predicate | **Q1 5 · Q2 2 · Q3 1 · Q4 1** — verified 9, fixed 9, dismissed 0 | (Q-counts) | **The gate on ANTS-4502's § 2.5 amendment, run before any code. All three lanes independently found the same three defects**, which is the strongest signal the run produced. **The most consequential was not the amendment's**: § 2.2 and INV-11 still routed four keys through `matchIn()`, a function ANTS-4497 emptied and ANTS-4504 deleted *the same day, hours earlier* — so an implementer would have opened a function that no longer exists, and § 6's must-fail-first list said fixture (e) reds when it is green. Measured against the live parser rather than argued: that body resolves to the bullet's own `source` and `layman`. Collateral from a sibling item, landing in a document neither item names. **Three were the amendment's own 4a-min failure — a fix that did not delete the sentence it made wrong.** The census (`93 distinct path tokens across 150 occurrences`) is the OLD predicate's and its four worked examples carry no separator; a verification sentence still said `rpmlint.log warnings` is `correctly accepted` where the new rule four paragraphs above calls it prose; and an ordering paragraph rested on `the regex anchors on `$`` after the amendment deleted the only `$`-anchored regex. **The run's best finding was a false claim the amendment INHERITED and repeated**: § 2.5 has said since 2026-08-10 that the `not a recognised source form` conjunct `could never fire`. It fires constantly — `isRecognisedSourceForm()` is a whole-VALUE `startsWith` test and `pathTokensIn()` returns empty before tokenising. Proved by linking a probe against the shipped migrator: `Source: upstream-qt6, see docs/gone.md.` emits no note while the same path under a plain source emits one. **And then 4a step 3 reversed my own fix.** I had rewritten the rule to apply the test per TOKEN — tidier, and matching § 2.5's own unit. Running the refuting case first: ten `Source:` values in this corpus begin with a recognised prefix AND carry a `/`, and **not one names a path** (`ANTS-1721/1722`, `medium/low`, `RC/release`, `vt-parser/grid`), so the tidier rule costs ten new false notes and recovers nothing. The whole-value form is kept, on the corpus rather than on elegance. That measurement also corrected my own figure — a line-level grep said eleven, and the value is truncated at a following trailer key. **One Q3 that would have disabled the check silently:** `idTokenPattern()` is a bare unanchored fragment whose callers splice their own anchors, and the amendment said only `a token matching` it. Unanchored it matches inside `docs/specs/ANTS-3863-pre-read-dispatch.md` — the section's own qualifying example — so every spec path naming an id would go unvalidated with no fixture reding, INV-7's control carrying no id. Verified by running both forms; the rule now states `\A(?:…)(?:/\d+)*\z` and INV-12 gained fixture (f). **Two pre-existing:** the DOOM tally attributed all 15 notes to the extension disjunct when three causes produce them (`Ultra` and the sentence fragments match neither disjunct and reach the notes through `Evidence:`, now ANTS-4527), and a sentence called the `kind` corruption `a shape that may not occur` nine lines below four named confirmed-wrong items. Doc 1223 → 1301 lines; invariants 11 → 12. **Not converged; loop 2 owed, and the cap is 2.** |
 | 7 | 2026-08-13 | 2, cold — genre pinned `spec`, cap 2. First run under the materiality gate (would the implementer build something different?) and the widened Q3, both mid-run corrections sent to the lanes | **Q1 1 · Q2 1 · Q3 1 · Q4 2** — verified 5, fixed 5, dismissed 2 | (Q-counts) | **The gate on ANTS-4086's settled resolver, and four of the five were that amendment's own collateral.** **The Q2 is the one that mattered:** § 2.2's new reject path said an unrecognised capture defaults "with the raw capture in `extras.source_kind`, which is what an absent field already does" — and an absent field does no such thing. `makeItem()`'s empty-`rawKind` branch emits `field_defaulted` alone and writes no `extras`; only the unmapped branch preserves the value and emits `kind_unmapped`. Left as written, the predicate would have made that branch unreachable for every parsed-but-unrecognised value, killing the `kind_unmapped` signal corpus-wide and reddening the shipped `BoldAndPlainKindLabelsAgree`. Settled the way § 2.4's discriminator and the shipped tests already require: the resolver returns the last match seen, raw, and the existing branch runs unchanged — **the predicate chooses among candidates, it never destroys evidence.** **Both Q4s say the amendment was unfalsifiable.** INV-11's five fixtures are all decided by the `anchored` ordering, so a resolver hard-wiring `isCandidate` to accept-everything passed every clause in the spec — fixture (f) is added as the predicate's only must-red proof. Lane A sharpened it decisively: § 2.2 described the case as an unrecognised line-initial capture losing to a recognised **non**-line-initial one, but ANTS-3754 is TWO line-initial matches, because `collectBulletBody()` trims continuation lines and the wrapped `Kind:), § 3.1's …` is line-initial exactly as the real `Kind: doc.` is. A fixture built from the old sentence would have tested a case ordering already handles and left the only measured instance uncovered. The second Q4: INV-3's plain fixture asserted `kind != 'trailer'`, which cannot fail in the state its own *Breaks when* names — with the lookbehind dropped the capture is `` ` trailer``, unrecognised, so the item defaults anyway; the discriminator is the absent `extras.source_kind`, which the shipped test already asserts, so the spec was weaker than the code it governs. **The Q3 is the widened form earning its keep**, and its mechanism was wrong as filed: lane A said the predicate would make `roadmap_log op:annotate` **clear** a stored `kind`. Verified against `rlDeriveTrailerColumns()` and it cannot — the clear is guarded by `oldValue.isEmpty() && newValue.isEmpty()`, and an off-taxonomy value is empty on both sides. The finding survives re-framed: the seam was *delegated* ("whoever implements the resolver owns this"), and a decision twelve migrating projects must agree on cannot be left per-builder. Answered instead — every consumer takes the predicate, and there it is a strict improvement, since today an appended note mentioning `Kind:` overwrites the stored value on a live user write. **Two dismissed, both already-fixed:** both lanes reported § 2.2 naming four `mappedKind()` inputs where there are fifteen, and lane A queried the value's case-folding. Both were caught by 4a step 3 before dispatch and fixed in `7c9d888f` — the lanes read a packet copy built one edit earlier, which is my error, corrected mid-run. Doc 1091 → 1163 lines. |
 | 6 | 2026-08-10 | 1, cold — packet rebuilt from disk after loop 5, line count refreshed; no mention of loops 4–5 | **Q1 3 · Q2 0 · Q3 2 · Q4 2** — verified 7, dismissed 0 | (Q-counts) | **Exited at the 3-loop cap for this run. The loop found a defect in the rule loop 4 introduced, and falsified this document's own measurements.** (1) **The population figures were wrong, and so were the two bullets the carve-out rested on.** The scan behind "1,414 / 52 / 42 / 187" and "~20 nested-list bullets" ran bullet-to-bullet and did not reproduce `collectBulletBody()`'s other stop conditions — a col-0 heading, and any other col-0 content — so it attributed later sections' trailers to whichever bullet preceded them. Re-measured against the real conditions: **1,453 / 55 / 26 / 189**, and **16** bullets with a second line-initial `Kind:`, every one carrying exactly two. ANTS-3573 (one `Kind:`, body ends at a col-0 heading) and ANTS-3780 (short bullet, inline trailer, no nested entries) are **not** instances and were named in error; the below-the-trailer case now has **no demonstrated instance in this corpus**. (2) **[Q1, and the run's real finding] Line-initial is not a sufficient test for "is a trailer."** `collectBulletBody()` trims each continuation line, so a prose sentence that happens to **wrap immediately before the label** becomes line-initial. ANTS-3754's body line 86 is `Kind:), § 3.1's format marker…` because the source wrapped after `(emoji, ID, bold headline,`; its real `Kind: doc.` is 22 body lines earlier, so last-line-initial returns `), § 3`. Wrapping is arbitrary and re-wraps on any reflow, so this is not a source fix. **Surfaced, not applied** — a candidate tightening (require the captured value to begin with a letter) is a parser-behaviour decision, and the section now tells an implementer not to build the resolver until it is settled. (3) **[Q1] § 2.1 said four canonical mappings were still missing from `mappedKind()`.** They shipped in this spec's own Phase C: the function carries **fifteen** rows, the last four being `bug`, `performance`, `process + tooling`, `audit`. An implementer following § 2.1 re-opens shipped work. The table is kept as the evidence that justified them. (4) **[Q2, folded] The three compounds** were "deferred, § 5 carries the ruling" in § 2.1 and "closed in Phase B3, **not** deferred" in § 5 — the table's three "ruling needed" cells now read "no rule — closed". (5) **[Q3] `trailerValuesIn()` has four consumers, not two**, and `rlDeriveTrailerColumns()` **writes or clears store trailer columns** on `roadmap_log` append/annotate/amend_body — a live user-facing write path the section had not named. (6) **[Q4] INV-3's bold fixture** demanded "imports with a defaulted kind" **and** `kind != 'implement'` — jointly unsatisfiable, since a defaulted kind *is* `implement`; the discriminator has to be `provenance.kind`. (7) **[Q4] INV-1's fixture passes while the branch it guards stays silent**: a bullet declaring no `Kind:` usually declares no `Source:` either, so a `field_defaulted` note naming `source` satisfies it verbatim — the same hole INV-7 had repaired one loop earlier, never applied back. **Items 6 and 7 were fixed in this loop after all** — both are one-clause corrections with no design question in them. Doc 960 → 1053 lines. |
 | 5 | 2026-08-10 | 1, cold — same shared-context file rebuilt from disk after loop 4's fixes, line count refreshed; no mention of loop 4 | **Q1 2 · Q2 3 · Q3 1 · Q4 0** — verified 5, dismissed 0 | (Q-counts) | **Four of the five were loop 4's own collateral, which is the loop working exactly as intended — and one is the sharpest kind: a fact loop 4 INVENTED.** § 2.2's new paragraph argued against editing `matchIn()` partly because it "is the first-match helper other callers rely on". It has no such callers: its only four call sites are inside `trailerValuesIn()`, so once they move it is unreferenced dead code. Loop 4 asserted a claim about the codebase from plausibility instead of opening the file — the exact failure the verify-before-writing rule exists to stop — and the correction now also tells the implementer to delete it. **Three more were repairs loop 4 made in one place and not the other:** § 6 still carried the inverted "INV-6 is expected to red and stay red … it is the measurement, not a regression" after INV-6 itself was corrected to the opposite, so the two passages were a word-for-word inversion prescribing opposite actions (land a permanently-red ctest case, or don't); INV-11 grew fixture (e) while its own exclusion clause still said the indented-sample shape was not covered, so the invariant tested what it declared out of scope; and § 2.2 called ANTS-3808 "three wrong values" with "its `kind` survives only by accident" while the amendment 40 lines below listed that same bullet among five with a corrupt `kind`. It is four, and the bullet carries **both directions** of the defect — which is what makes it the worked case, so the correction strengthens the argument rather than weakening it. **One genuine draft defect:** `defaulted_fields` was described as a "run-level tally … beside `notes_count`" (scalar) and as a per-field complete count in the next sentence — two different JSON shapes for one key, with no invariant pinning either. Resolved against shipped code rather than by preference: `roadmapmigrateverb.cpp` assigns `defaultedFieldTally(plan)` and the shipped test reads it with `.toObject()`, so the spec was ambiguous where the code was not. **Blast-radius sweep before this dispatch caught three further self-inflicted breaks** loop 4 had left — § 2.5 and § 2.2 both cited § 5 for items § 5 did not contain (the `Evidence:` anchored loss and the line-break guard gap, both now written there), and § 6 accounted for four INV-11 fixtures after it grew to five, missing that (e) is a must-red failing in the OPPOSITE direction to (b). Doc 896 → 959 lines. **Not converged; loop 6 owed, and the collateral share is the reason to expect it to be short.** |
