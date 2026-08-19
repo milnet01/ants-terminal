@@ -11,6 +11,7 @@
 #include <QHash>
 
 #include "roadmapindex.h"      // ANTS-1287 — canonical heading/slug helpers
+#include "markdownscan.h"     // ANTS-4504 — CommonMark inline-code-span boundaries
 
 #include <QByteArray>
 #include <QRegularExpression>
@@ -400,22 +401,6 @@ const QRegularExpression &rxTrailerKey() {
     return rx;
 }
 
-// ANTS-3808 § 2.2.1 — fill one TrailerMatch from a match of `rx` against
-// `body`. `offset` is the CAPTURE's start, which is what a consumer quoting
-// the value needs; `anchored` is computed off the MATCH's start, because every
-// pattern puts literal text between the line start and group 1.
-TrailerMatch matchIn(const QRegularExpression &rx, const QString &body) {
-    TrailerMatch out;
-    const QRegularExpressionMatch m = rx.match(body);
-    if (!m.hasMatch())
-        return out;
-    out.value    = m.captured(1);
-    out.offset   = m.capturedStart(1);
-    const int at = m.capturedStart(0);
-    out.anchored = (at == 0) || (at > 0 && body.at(at - 1) == QLatin1Char('\n'));
-    return out;
-}
-
 // ANTS-4065 § 2.2 / INV-11 — the same fill, taking the LAST occurrence.
 //
 // Match precedence became load-bearing the moment rxKind() lost its anchor.
@@ -425,9 +410,10 @@ TrailerMatch matchIn(const QRegularExpression &rx, const QString &body) {
 // break § 2.6's round trip on `kind`, a governed column. The trailer wins
 // because it is the occurrence the render authored.
 //
-// Only `kind` uses this. The other four keys stay on matchIn(): none of them is
-// re-emitted by the render into a body that may already discuss it, so changing
-// their precedence would be a behaviour change with no defect behind it.
+// ANTS-4497 — all five keys route through this now. The comment here read
+// "only `kind` uses this; the other four stay on matchIn()" until 2026-08-19,
+// which had been false since that item shipped: first-match is beaten by any
+// EARLIER mention, so on those four the defect was worse, not absent.
 //
 // ANTS-4086 — plain last-match was not enough. `roadmap_log op:annotate`
 // appends notes to the END of a body, below the trailer, so a later note
@@ -446,20 +432,75 @@ TrailerMatch matchIn(const QRegularExpression &rx, const QString &body) {
 // The predicate chooses among candidates; it never discards evidence.
 using CandidatePred = bool (*)(const QString &);
 
+// ANTS-4504 — a length-preserving view of `body` in which every inline code
+// span, its delimiters included, is blanked to spaces. Newlines are left in
+// place, so `anchored` still sees a real line start and every match offset
+// indexes the ORIGINAL string unchanged.
+//
+// Span boundaries are MarkdownScan::codeSpans()' — the one place this project
+// states CommonMark's pairing rules: a run pairs only with an equal-length run,
+// an unpartnered run is literal text and opens nothing, and a span may cross a
+// newline but never a blank line or a fence line. The per-bullet mask
+// parseBullets() carries for the bold headline (ANTS-4066) pairs backticks one
+// at a time and documents that as a known miss; it is not the thing to copy.
+//
+// Fenced lines are NOT blanked. The fence mask exists because codeSpans()
+// requires one, and a key on a fenced line keeps parsing exactly as it does
+// today: that is a sibling defect with no measurement behind it, and this
+// change already moves corpus values.
+QString maskCodeSpans(const QString &body) {
+    if (!body.contains(QLatin1Char('`')))
+        return body;
+    const QStringList  lines = body.split(QLatin1Char('\n'));
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    const auto spans = MarkdownScan::codeSpans(lines, fence);
+    if (spans.isEmpty())
+        return body;
+
+    // Offset of each line's first character in `body`; +1 for the '\n' split
+    // removed. The last line has no trailing newline, which costs nothing —
+    // the entry past it is never read.
+    QVector<int> lineStart(lines.size(), 0);
+    int acc = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        lineStart[i] = acc;
+        acc += static_cast<int>(lines.at(i).size()) + 1;
+    }
+
+    QString out = body;
+    for (const MarkdownScan::CodeSpan &sp : spans) {
+        if (sp.startLine < 0 || sp.startLine >= lines.size()
+            || sp.endLine < 0 || sp.endLine >= lines.size())
+            continue;
+        const int from = qMax(0, lineStart.at(sp.startLine) + sp.startCol - sp.delimLen);
+        const int to   = qMin(static_cast<int>(out.size()),
+                              lineStart.at(sp.endLine) + sp.endCol + sp.delimLen);
+        for (int k = from; k < to; ++k)
+            if (out.at(k) != QLatin1Char('\n'))
+                out[k] = QLatin1Char(' ');
+    }
+    return out;
+}
+
+// `masked` is maskCodeSpans(body): the matching runs against it, every captured
+// value is sliced from `body` at the same offsets. That split is the whole
+// contract — the mask decides WHERE a declaration is, never what it says, so a
+// value legitimately carrying backticks is stored verbatim.
 TrailerMatch matchLastIn(const QRegularExpression &rx, const QString &body,
+                         const QString &masked,
                          CandidatePred isCandidate = nullptr) {
     TrailerMatch best;      // last candidate, anchored preferred
     TrailerMatch lastSeen;  // last match of any kind
     bool haveAnchored = false;
 
-    auto i = rx.globalMatch(body);
+    auto i = rx.globalMatch(masked);
     while (i.hasNext()) {
         const QRegularExpressionMatch m = i.next();
         const int at = m.capturedStart(0);
         TrailerMatch cur;
-        cur.value    = m.captured(1);
+        cur.value    = body.mid(m.capturedStart(1), m.capturedLength(1));
         cur.offset   = m.capturedStart(1);
-        cur.anchored = (at == 0) || (at > 0 && body.at(at - 1) == QLatin1Char('\n'));
+        cur.anchored = (at == 0) || (at > 0 && masked.at(at - 1) == QLatin1Char('\n'));
         lastSeen = cur;
 
         if (isCandidate && !isCandidate(cur.value))
@@ -1278,9 +1319,17 @@ bool isRecognisedKind(const QString &raw) {
 TrailerValues trailerValuesIn(const QString &body) {
     TrailerValues out;
 
+    // ANTS-4504 — every matcher below runs against this length-preserving
+    // MASKED view, in which an inline code span is blanked. A bullet that
+    // QUOTES a trailer key is documenting the format, not declaring a value,
+    // and the three fixed-length lookbehinds the patterns carry can only see a
+    // span that opened one to three characters earlier. Captures are sliced
+    // from `body`, never from the mask.
+    const QString masked = maskCodeSpans(body);
+
     // ANTS-4065 INV-11 — LAST match, not first. ANTS-4086 — and only among
     // captures the kind vocabulary recognises. See matchLastIn().
-    out.kind   = matchLastIn(rxKind(), body, &isRecognisedKind);
+    out.kind   = matchLastIn(rxKind(), body, masked, &isRecognisedKind);
     out.kind.value = out.kind.value.trimmed();
 
     // ANTS-4065 INV-11 — "this holds for all five keys — `kind`, `source`,
@@ -1295,18 +1344,18 @@ TrailerValues trailerValuesIn(const QString &body) {
     // because only that column has a closed value set. matchLastIn() still
     // prefers a LINE-INITIAL match and falls back to the last mid-line one,
     // which is the half of INV-11 that does the work here.
-    out.layman = matchLastIn(rxLayman(), body);
+    out.layman = matchLastIn(rxLayman(), body, masked);
     out.layman.value = out.layman.value.trimmed();
 
     // `lanes.value` is the RAW capture: parseBullets() applies neither a trim
     // nor a period chop before splitting it.
-    out.lanes     = matchLastIn(rxLanes(), body);
+    out.lanes     = matchLastIn(rxLanes(), body, masked);
     out.lanesList = splitTrailerList(out.lanes.value);
 
     // ANTS-3382 — `evidence.value` is the text the split is applied TO, which
     // for this key is trimmed and period-chopped first. Dots inside paths are
     // kept, so only ONE trailing period goes, and not when the value ends `..`.
-    out.evidence = matchLastIn(rxEvidence(), body);
+    out.evidence = matchLastIn(rxEvidence(), body, masked);
     if (out.evidence.offset >= 0) {
         QString evRaw = out.evidence.value.trimmed();
         if (evRaw.endsWith(QLatin1Char('.')) && !evRaw.endsWith(QStringLiteral("..")))
@@ -1318,10 +1367,15 @@ TrailerValues trailerValuesIn(const QString &body) {
     // ANTS-3764 — Source: stops at a following trailer key (10 corpus lines
     // write two keys on one line), then trims, drops one trailing period, and
     // trims again.
-    out.source = matchLastIn(rxSource(), body);
+    out.source = matchLastIn(rxSource(), body, masked);
     if (out.source.offset >= 0) {
         QString srcRaw = out.source.value;
-        const auto keyAt = rxTrailerKey().match(srcRaw);
+        // ANTS-4504 — the stop-marker scan runs on the MASKED slice for the
+        // same reason the match did: a key quoted inside a `Source:` value is
+        // a mention, and truncating there would silently drop the rest of a
+        // real value.
+        const auto keyAt =
+            rxTrailerKey().match(masked.mid(out.source.offset, srcRaw.size()));
         if (keyAt.hasMatch()) srcRaw = srcRaw.left(keyAt.capturedStart());
         srcRaw = srcRaw.trimmed();
         if (srcRaw.endsWith(QLatin1Char('.'))) srcRaw.chop(1);

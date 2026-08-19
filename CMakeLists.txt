@@ -306,6 +306,13 @@ add_library(ants_roadmapparse_lib STATIC
     # because both the stamping paths and the report builder read it, and this
     # is the leaf both their libraries already link.
     src/roadmapclock.cpp
+    # ANTS-3603 — shared CommonMark fence primitives (Qt6::Core-only), hoisted
+    # from the verbatim copies in feedbackfile.cpp + speclog.cpp. Moved down
+    # here from ants_core_lib by ANTS-4504: the bullet grammar needs
+    # codeSpans() to mask a quoted trailer key, and this library is a LEAF that
+    # core links PUBLIC, so it could not reach up. Every previous consumer
+    # keeps it transitively and no call site changed.
+    src/markdownscan.cpp
 )
 target_link_libraries(ants_roadmapparse_lib
     PUBLIC  Qt6::Core
@@ -384,9 +391,6 @@ add_library(ants_core_lib STATIC
     # sharing an object with RemoteControl::cmdRoadmapMigrate would drag
     # MainWindow into test_core, which links ants_core_lib alone.
     src/roadmapmigrateverb.cpp
-    # ANTS-3603 — shared CommonMark fence primitives (Qt6::Core-only), hoisted
-    # from the verbatim copies in feedbackfile.cpp + speclog.cpp.
-    src/markdownscan.cpp
     # ANTS-3664 — one finding shape for the doc-lint verbs (Qt6::Core-only).
     # Blocker for ANTS-3660/3661/3662, composed by ANTS-3663.
     src/docfinding.cpp
@@ -2584,6 +2588,10 @@ if(ANTS_TESTS)
                 # not emphasis. Drives parseBullets() on hand-written markdown,
                 # which is the level the truncation happens at.
                 tests/features/roadmap_headline_code_span/test_roadmap_headline_code_span.cpp
+                # ANTS-4504 — a trailer key inside an inline code span is a
+                # mention, not a declaration. Drives trailerValuesIn(), which
+                # is where the fixed-length lookbehind guard lived.
+                tests/features/roadmap_trailer_code_span/test_roadmap_trailer_code_span.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the

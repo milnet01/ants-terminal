@@ -197,19 +197,27 @@ Required pieces:
   spec, but only the first generalises — do not implement the second
   for the other labels.
 
-  - **A label inside backticks declares nothing** (a bullet *quoting*
-    `Kind:` is writing about the format). **General**: `Kind:`,
-    `Lanes:` and `Source:` are all un-anchored and all carry it.
+  - **A label inside an inline code span declares nothing** (a bullet
+    *quoting* `Kind:` is writing about the format). **General** — it
+    holds for all five keys, and it holds however far ahead of the label
+    the span opened, across a line break included. The body is matched
+    through a length-preserving mask built from
+    `MarkdownScan::codeSpans()`; captured values are sliced from the
+    unmasked text, so a value that itself carries backticks is stored
+    verbatim (ANTS-4504, `src/roadmapparse.cpp`). A backtick run with no
+    equal-length partner is literal text and masks nothing. A key on a
+    *fenced* line is still read — that gap is known and unmeasured.
   - **Where a bullet carries more than one match, the last wins** —
     that is the one the render authored, and taking the first would let
     stale prose overwrite the canonical value on every regeneration.
-    **`Kind:` ONLY.** `Lanes:`, `Source:`, `Layman:` and `Evidence:`
-    take the FIRST match. The render re-emits `Kind:` into a body that
-    may already discuss it, which is what makes precedence load-bearing
-    there; it does not do so for the other four, so changing their
-    precedence would be a behaviour change with no defect behind it.
-    (`matchLastIn()` for `kind`, `matchIn()` for the rest —
-    `src/roadmapparse.cpp`.)
+    **All five keys**, since ANTS-4497: `Kind:`, `Lanes:`, `Source:`,
+    `Layman:` and `Evidence:` all take the last match, preferring a
+    LINE-INITIAL one and falling back to the last mid-line one. This
+    paragraph said `Kind:` only until 2026-08-19, which had been wrong
+    since that item shipped — on the other four, first-match is beaten
+    by any *earlier* mention, so a bullet quoting a sample above its own
+    trailers imported the illustration's values. (`matchLastIn()` for
+    all five — `src/roadmapparse.cpp`.)
 
 Optional pieces:
 
