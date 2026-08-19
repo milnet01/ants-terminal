@@ -397,8 +397,23 @@ TEST(mcp_roadmap_bundles, Inv6ComboGuards) {
     // a single kModes list (so the bad_mode refusal can echo `accepted`).
     // Same invariant — bundles is in the allow-list — scraped at its new
     // spelling, inside that list rather than in a comparison.
-    expect(contains(cpp, "QStringLiteral(\"bundles\") };"),
-           "INV-6: bundles in the kModes allow-list");
+    // ANTS-4501 — scraped as MEMBERSHIP of the kModes initialiser, not as
+    // `QStringLiteral("bundles") };`. That older spelling pinned bundles as the
+    // LAST entry, so adding a fifth mode reddened this row while the invariant
+    // it states — "bundles is in the allow-list" — still held. Slicing the
+    // initialiser asserts the same thing and survives both a reorder and a new
+    // mode, which the position-encoded form did not.
+    {
+        const auto ks = cpp.find("static const QStringList kModes");
+        const auto ke = ks == std::string::npos
+                            ? std::string::npos : cpp.find("};", ks);
+        const std::string modes =
+            ks == std::string::npos || ke == std::string::npos
+                ? std::string() : cpp.substr(ks, ke - ks);
+        expect(!modes.empty(), "INV-6: kModes initialiser must be locatable");
+        expect(modes.find("QStringLiteral(\"bundles\")") != std::string::npos,
+               "INV-6: bundles in the kModes allow-list");
+    }
     EXPECT_EQ(0, expect_failures());
 }
 

@@ -302,6 +302,10 @@ target_compile_options(ants_warnings INTERFACE
 add_library(ants_roadmapparse_lib STATIC
     src/roadmapindex.cpp
     src/roadmapparse.cpp
+    # ANTS-4501 § 2.2 — the "today" seam. Here rather than beside either caller
+    # because both the stamping paths and the report builder read it, and this
+    # is the leaf both their libraries already link.
+    src/roadmapclock.cpp
 )
 target_link_libraries(ants_roadmapparse_lib
     PUBLIC  Qt6::Core
@@ -2504,6 +2508,7 @@ if(ANTS_TESTS)
                 # bundles to bound build-time RAM.
                 tests/features/roadmap_store_identity/test_roadmap_store_identity.cpp
                 tests/features/roadmap_store_schema/test_roadmap_store_schema.cpp
+    tests/features/roadmap_report/test_roadmap_report.cpp   # ANTS-4501
                 # INV-15 forks two openers; the fork lives INSIDE the bundle,
                 # so no separate target is needed for process isolation.
                 tests/features/roadmap_store_concurrency/test_roadmap_store_concurrency.cpp

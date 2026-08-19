@@ -1601,6 +1601,200 @@ RoadmapStore::projectBodyBytes(qint64 projectId, QString *error) const {
     return q.value(0).toLongLong();
 }
 
+// ---------------------------------------------------------------- ANTS-4501 --
+// The report's aggregate reader. See roadmapstore.h for why this lives on the
+// store rather than as raw SQL in the envelope builder.
+namespace {
+
+// scope:"all" is std::nullopt, which is one project_id predicate rather than
+// two query strings. Written as a fragment + a bind rather than string
+// interpolation of the id: the id is trusted here, but a reader should not have
+// to establish that, and the two forms cost the same.
+QString rsScopeClause(const std::optional<qint64> &projectId,
+                      const QString &alias = QString()) {
+    const QString col = alias.isEmpty() ? QStringLiteral("project_id")
+                                        : alias + QStringLiteral(".project_id");
+    return projectId ? QStringLiteral(" AND %1 = ?").arg(col) : QString();
+}
+
+void rsBindScope(QSqlQuery &q, const std::optional<qint64> &projectId) {
+    if (projectId) q.addBindValue(*projectId);
+}
+
+// The open set, spelled as an enumeration and never as `status != 'shipped'`
+// (ANTS-4501 § 2.5). The schema's CHECK admits a fifth value, `dropped`, and a
+// dropped item is not outstanding work — the two forms disagree about it, and
+// no corpus with zero dropped rows can tell them apart.
+const char *kOpenStatusIn = " AND status IN ('planned','in-progress','considered')";
+
+}  // namespace
+
+std::optional<RoadmapStore::ReportCounts>
+RoadmapStore::reportCounts(std::optional<qint64> projectId, QString *error) const {
+    ReportCounts out;
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+
+    // Pass 1 — status tally. `1=1` so the scope fragment can start with AND on
+    // every branch; the alternative is assembling the WHERE keyword
+    // conditionally, which is where this shape usually goes wrong.
+    q.prepare(QStringLiteral("SELECT status, COUNT(*) FROM item WHERE 1=1%1 "
+                             "GROUP BY status").arg(rsScopeClause(projectId)));
+    rsBindScope(q, projectId);
+    if (!q.exec()) { if (error) *error = lastErr(q); return std::nullopt; }
+    while (q.next()) {
+        const int n = q.value(1).toInt();
+        out.byStatus.insert(q.value(0).toString(), n);
+        out.items += n;                 // totals.items is the sum of by_status
+    }
+
+    // Pass 2 — kind tally.
+    q.prepare(QStringLiteral("SELECT kind, COUNT(*) FROM item WHERE 1=1%1 "
+                             "GROUP BY kind").arg(rsScopeClause(projectId)));
+    rsBindScope(q, projectId);
+    if (!q.exec()) { if (error) *error = lastErr(q); return std::nullopt; }
+    while (q.next())
+        out.byKind.insert(q.value(0).toString(), q.value(1).toInt());
+
+    // Pass 3 — coverage. INV-1: every bucketed figure ships beside the count of
+    // rows that could NOT be bucketed, so a caller can never read a figure
+    // computed over dated rows as a total. `shipped_*` counts only rows whose
+    // status is actually shipped — an undated PLANNED row is not a missing
+    // closure and must not inflate the gap.
+    q.prepare(QStringLiteral(
+        "SELECT "
+        " SUM(CASE WHEN status='shipped' AND shipped IS NOT NULL THEN 1 ELSE 0 END), "
+        " SUM(CASE WHEN status='shipped' AND shipped IS     NULL THEN 1 ELSE 0 END), "
+        " SUM(CASE WHEN created IS NOT NULL THEN 1 ELSE 0 END), "
+        " SUM(CASE WHEN created IS     NULL THEN 1 ELSE 0 END) "
+        "FROM item WHERE 1=1%1").arg(rsScopeClause(projectId)));
+    rsBindScope(q, projectId);
+    if (!q.exec() || !q.next()) { if (error) *error = lastErr(q); return std::nullopt; }
+    out.shippedDated   = q.value(0).toInt();
+    out.shippedUndated = q.value(1).toInt();
+    out.createdDated   = q.value(2).toInt();
+    out.createdUndated = q.value(3).toInt();
+    return out;
+}
+
+std::optional<RoadmapStore::WindowCounts>
+RoadmapStore::countInWindow(std::optional<qint64> projectId, const QDate &from,
+                            const QDate &untilExclusive, QString *error) const {
+    // Half-open [from, untilExclusive) — INV-8. The columns are YYYY-MM-DD TEXT
+    // and that format sorts lexicographically as it does chronologically, so a
+    // string comparison IS a date comparison here; no julianday() needed, and
+    // the CHECK constraint is what guarantees the format.
+    const QString lo = from.toString(QStringLiteral("yyyy-MM-dd"));
+    const QString hi = untilExclusive.toString(QStringLiteral("yyyy-MM-dd"));
+
+    WindowCounts out;
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT "
+        " SUM(CASE WHEN shipped IS NOT NULL AND shipped >= ? AND shipped < ? "
+        "          THEN 1 ELSE 0 END), "
+        " SUM(CASE WHEN created IS NOT NULL AND created >= ? AND created < ? "
+        "          THEN 1 ELSE 0 END) "
+        "FROM item WHERE 1=1%1").arg(rsScopeClause(projectId)));
+    q.addBindValue(lo); q.addBindValue(hi);
+    q.addBindValue(lo); q.addBindValue(hi);
+    rsBindScope(q, projectId);
+    if (!q.exec() || !q.next()) { if (error) *error = lastErr(q); return std::nullopt; }
+    out.closed = q.value(0).toInt();
+    out.added  = q.value(1).toInt();
+    return out;
+}
+
+namespace {
+
+// Median without loading the population. Two queries: count, then the middle
+// row by LIMIT/OFFSET. O(1) memory rather than O(n) — ANTS-4501 § 4 makes that
+// the rule for the backfill and the same discipline is free here.
+//
+// `dayExpr` is a SQL expression yielding a day count; `whereExtra` narrows the
+// population. Both are internal literals, never caller text.
+std::optional<RoadmapStore::DaySpread>
+rsDaySpread(const QSqlDatabase &db, const std::optional<qint64> &projectId,
+            const QString &dayExpr, const QVariantList &dayExprBinds,
+            const QString &whereExtra, bool wantOldestAndOver90, QString *error) {
+    auto lastErrLocal = [](const QSqlQuery &q) {
+        return q.lastError().text().trimmed();
+    };
+    RoadmapStore::DaySpread out;
+    QSqlQuery q(const_cast<QSqlDatabase &>(db));
+    const QString scope = projectId ? QStringLiteral(" AND project_id = ?") : QString();
+    const QString base  = QStringLiteral("FROM item WHERE 1=1%1%2")
+                              .arg(whereExtra, scope);
+
+    // `dayExprBinds` belong to dayExpr, which appears in the SELECT list — so
+    // they are bound ONLY by the queries that carry it, and `nDayExpr` says how
+    // many times. Binding them on the COUNT query, which has no placeholder,
+    // is a parameter-count mismatch that makes every call return nullopt: the
+    // defect this helper shipped with, and it failed uniformly rather than on
+    // an edge case, which is what made it cheap to find.
+    auto bindFor = [&](int nDayExpr) {
+        for (int i = 0; i < nDayExpr; ++i)
+            for (const QVariant &v : dayExprBinds) q.addBindValue(v);
+        if (projectId) q.addBindValue(*projectId);
+    };
+
+    q.prepare(QStringLiteral("SELECT COUNT(*) %1").arg(base));
+    bindFor(0);
+    if (!q.exec() || !q.next()) { if (error) *error = lastErrLocal(q); return std::nullopt; }
+    out.sample = q.value(0).toInt();
+    if (out.sample == 0)
+        return out;              // -1 medians stand: no sample, not zero days
+
+    // Lower median on an even sample. Stated rather than left to the reader:
+    // interpolating between two integers would report a half-day nobody can
+    // point at a row for.
+    const int offset = (out.sample - 1) / 2;
+    q.prepare(QStringLiteral("SELECT %1 AS d %2 ORDER BY d LIMIT 1 OFFSET %3")
+                  .arg(dayExpr, base, QString::number(offset)));
+    bindFor(1);
+    if (!q.exec() || !q.next()) { if (error) *error = lastErrLocal(q); return std::nullopt; }
+    out.medianDays = q.value(0).toInt();
+
+    if (wantOldestAndOver90) {
+        // dayExpr twice — MAX() and the >90 CASE — so its binds go in twice.
+        q.prepare(QStringLiteral(
+            "SELECT MAX(%1), SUM(CASE WHEN %2 > 90 THEN 1 ELSE 0 END) %3")
+                      .arg(dayExpr, dayExpr, base));
+        bindFor(2);
+        if (!q.exec() || !q.next()) { if (error) *error = lastErrLocal(q); return std::nullopt; }
+        out.oldestDays = q.value(0).toInt();
+        out.over90     = q.value(1).toInt();
+    }
+    return out;
+}
+
+}  // namespace
+
+std::optional<RoadmapStore::DaySpread>
+RoadmapStore::ageOfOpen(std::optional<qint64> projectId, const QDate &today,
+                        QString *error) const {
+    // julianday() over the two YYYY-MM-DD strings, floored to whole days. The
+    // date column is date-only, so there is no time-of-day component to round.
+    const QString dayExpr =
+        QStringLiteral("CAST(julianday(?) - julianday(created) AS INTEGER)");
+    return rsDaySpread(m_db, projectId, dayExpr,
+                       {today.toString(QStringLiteral("yyyy-MM-dd"))},
+                       QStringLiteral(" AND created IS NOT NULL%1")
+                           .arg(QLatin1String(kOpenStatusIn)),
+                       /*wantOldestAndOver90=*/true, error);
+}
+
+std::optional<RoadmapStore::DaySpread>
+RoadmapStore::timeToClose(std::optional<qint64> projectId, QString *error) const {
+    // BOTH dates known. That population is smaller than the shipped count, and
+    // `sample` reporting it rather than the population is INV-9.
+    return rsDaySpread(m_db, projectId,
+                       QStringLiteral("CAST(julianday(shipped) - julianday(created) "
+                                      "AS INTEGER)"),
+                       {},
+                       QStringLiteral(" AND shipped IS NOT NULL AND created IS NOT NULL"),
+                       /*wantOldestAndOver90=*/false, error);
+}
+
 std::optional<QVector<RoadmapStore::ItemRef>>
 RoadmapStore::listItems(qint64 projectId, QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));

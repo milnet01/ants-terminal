@@ -2091,7 +2091,7 @@ void ClaudeIntegration::onMcpConnection() {
                     "ids[] (by [PROJ-NNNN]). mode: "
                     "bullets (default) | section_index (slug discovery) | "
                     "headline_only (~10x smaller) | bundles (thematic "
-                    "work-bundles). Opt-in: include_body, "
+                    "groups) | report. Opt-in: include_body, "
                     "compact, fields, etag_match. Refusals: bad_case, "
                     "bad_section, bad_mode_combo. caller_cwd Required. "
                     "`source` = the backend that answered, not `path` "
@@ -2488,8 +2488,62 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1922 — fourth mode value. Groups active items
                     // into thematic work-bundles for session triage.
                     modeEnum.append("bundles");
+                    // ANTS-4501 — fifth mode value. One aggregate over the
+                    // store: totals, lifecycle, and throughput per period.
+                    modeEnum.append("report");
                     modeProp["enum"] = modeEnum;
                     modeProp["default"] = "bullets";
+                    // ANTS-4501 — the report's gloss lives HERE and not in the
+                    // wire description, which is byte-capped at 800
+                    // (mcp_tool_detail_field INV-5) and had 52 B less headroom
+                    // than this needs. This property carries no cap.
+                    modeProp["description"] = modeProp["description"].toString()
+                        + QStringLiteral(
+                        " ANTS-4501 — \"report\" returns ONE aggregate over the "
+                        "store and no bullets[]: totals (items / open / "
+                        "in_progress / shipped), by_status, by_kind, throughput "
+                        "per day / week / month / year, age_open and "
+                        "time_to_close. `open` is planned + in-progress + "
+                        "considered — an enumeration, NOT status != shipped, "
+                        "because a `dropped` item is not outstanding work. "
+                        "Every bucketed figure ships beside a `coverage` block "
+                        "counting the rows that could not be bucketed, so a "
+                        "figure computed over dated rows can never read as a "
+                        "total — on an unbackfilled store that is most of them. "
+                        "Refuses section / id / ids with bad_mode_combo, and "
+                        "writes nothing.");
+                    // ANTS-4501 § 2.4 — the report's own arguments. `scope`
+                    // opts into the cross-project view; `since`/`until` replace
+                    // the four standard buckets with one half-open window.
+                    QJsonObject scopeProp;
+                    scopeProp["type"] = "string";
+                    QJsonArray scopeEnum;
+                    scopeEnum.append("project");
+                    scopeEnum.append("all");
+                    scopeProp["enum"] = scopeEnum;
+                    scopeProp["default"] = "project";
+                    scopeProp["description"] = QStringLiteral(
+                        "mode:\"report\" only. \"project\" (default) reports "
+                        "the project at caller_cwd; \"all\" sums every "
+                        "registered project in the machine-global store — the "
+                        "one view no single ROADMAP.md can give.");
+                    props["scope"] = scopeProp;
+                    QJsonObject sinceProp;
+                    sinceProp["type"] = "string";
+                    sinceProp["description"] = QStringLiteral(
+                        "mode:\"report\" only. YYYY-MM-DD. Replaces the four "
+                        "standard buckets with a single `periods.since` entry "
+                        "over [since, until) — half-open at the top like every "
+                        "standard bucket, so two adjacent windows tile without "
+                        "overlapping.");
+                    props["since"] = sinceProp;
+                    QJsonObject untilProp;
+                    untilProp["type"] = "string";
+                    untilProp["description"] = QStringLiteral(
+                        "mode:\"report\" only. YYYY-MM-DD, exclusive upper "
+                        "bound for `since`. Defaults to tomorrow's boundary, "
+                        "so the default window includes today.");
+                    props["until"] = untilProp;
                     modeProp["description"] = QStringLiteral(
                         "Response mode. \"bullets\" (default) returns "
                         "bullets[]. \"section_index\" returns "

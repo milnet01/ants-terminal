@@ -7,6 +7,7 @@
 #include "mcpprojection.h"
 #include "paginationengine.h"
 #include "roadmapfoldin.h"
+#include "roadmapclock.h"   // ANTS-4501 § 2.2 — the report reads "today" through the seam
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
@@ -1081,6 +1082,158 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
 // ("all"/"active"/"shipped", case-insensitive). The cache continues
 // to hold the FULL unfiltered array; filtering happens at response
 // build time over the cached entries (sub-ms walk).
+// ---------------------------------------------------------------- ANTS-4501 --
+// roadmap_query mode:"report". Spec: docs/specs/ANTS-4501-roadmap-report.md.
+//
+// Its own builder rather than an arm inside cmdRoadmapQuery(), on the
+// mode:"bundles" precedent above and for the same reason: that function is
+// already past two thousand lines. It returns QJsonObject, as the bundles
+// builder does — cmdRoadmapQuery wraps it.
+//
+// INV-10: this writes nothing. No row, no file, no migration, no id
+// allocation — every call below is a const reader on the store.
+namespace {
+
+// § 2.4 — every bucket is half-open [start, next_start), so an item falls in
+// exactly one at each granularity (INV-8). Returned as the pair rather than a
+// width, because a month and a year have no fixed width and computing one is
+// where an off-by-one day enters.
+struct RcBucket { QDate from, untilExclusive; };
+
+RcBucket rcDayBucket(const QDate &d)   { return {d, d.addDays(1)}; }
+RcBucket rcWeekBucket(const QDate &d)  {
+    // ISO-8601, Monday-start. Qt's dayOfWeek() is already 1=Monday..7=Sunday,
+    // so this needs no remapping — stated because the C library's tm_wday is
+    // 0=Sunday and mixing the two is the usual defect here.
+    return {d.addDays(-(d.dayOfWeek() - 1)), d.addDays(-(d.dayOfWeek() - 1) + 7)};
+}
+RcBucket rcMonthBucket(const QDate &d) {
+    const QDate first(d.year(), d.month(), 1);
+    return {first, first.addMonths(1)};
+}
+RcBucket rcYearBucket(const QDate &d)  {
+    const QDate first(d.year(), 1, 1);
+    return {first, first.addYears(1)};
+}
+
+QJsonObject rcWindowObj(const RoadmapStore::WindowCounts &w) {
+    QJsonObject o;
+    o[QStringLiteral("closed")] = w.closed;
+    o[QStringLiteral("added")]  = w.added;
+    o[QStringLiteral("net")]    = w.net();     // § 2.4 — added - closed
+    return o;
+}
+
+// -1 medians mean "no sample" and must not serialise as a number a caller
+// would read as zero days. Null is the honest JSON for it, and `sample` beside
+// it is what INV-9 requires either way.
+QJsonValue rcDaysOrNull(int days) {
+    return days < 0 ? QJsonValue(QJsonValue::Null) : QJsonValue(days);
+}
+
+QJsonObject rcSpreadObj(const RoadmapStore::DaySpread &s, bool withOldest) {
+    QJsonObject o;
+    o[QStringLiteral("median_days")] = rcDaysOrNull(s.medianDays);
+    if (withOldest) {
+        o[QStringLiteral("oldest_days")] = rcDaysOrNull(s.oldestDays);
+        o[QStringLiteral("over_90")]     = s.over90;
+    }
+    o[QStringLiteral("sample")] = s.sample;    // INV-9 — never the population
+    return o;
+}
+
+}  // namespace
+
+QJsonObject RemoteControl::buildRoadmapReportEnvelope(
+        RoadmapStore &store, std::optional<qint64> projectId, const QDate &today,
+        const QDate &since, const QDate &until, QString *error) {
+    QJsonObject out;
+
+    const auto counts = store.reportCounts(projectId, error);
+    if (!counts)
+        return {};
+
+    QJsonObject byStatus;
+    for (auto it = counts->byStatus.constBegin(); it != counts->byStatus.constEnd(); ++it)
+        byStatus[it.key()] = it.value();
+    QJsonObject byKind;
+    for (auto it = counts->byKind.constBegin(); it != counts->byKind.constEnd(); ++it)
+        byKind[it.key()] = it.value();
+
+    // § 2.5 — `open` is an ENUMERATION (planned + in-progress + considered),
+    // never `status != 'shipped'`. The schema's CHECK admits `dropped`, and the
+    // two forms disagree about it: a dropped item is not outstanding work.
+    // `dropped` appears in totals.items and by_status and in no other figure,
+    // so totals.items is the sum of by_status and open is that sum less
+    // `shipped` and `dropped`.
+    const int openCount = counts->byStatus.value(QStringLiteral("planned"))
+                        + counts->byStatus.value(QStringLiteral("in-progress"))
+                        + counts->byStatus.value(QStringLiteral("considered"));
+
+    QJsonObject totals;
+    totals[QStringLiteral("items")]       = counts->items;
+    totals[QStringLiteral("open")]        = openCount;
+    totals[QStringLiteral("in_progress")] = counts->byStatus.value(
+                                                QStringLiteral("in-progress"));
+    totals[QStringLiteral("shipped")]     = counts->byStatus.value(
+                                                QStringLiteral("shipped"));
+
+    // § 2.4 — `since` replaces the whole periods object with one entry, so a
+    // caller never has to tell an absent bucket from an empty one. The window
+    // is [since, until), half-open at the top like every standard bucket, and
+    // `until` defaults to tomorrow's boundary so the default window includes
+    // today.
+    QJsonObject periods;
+    if (since.isValid()) {
+        const QDate hi = until.isValid() ? until : today.addDays(1);
+        const auto w = store.countInWindow(projectId, since, hi, error);
+        if (!w) return {};
+        periods[QStringLiteral("since")] = rcWindowObj(*w);
+    } else {
+        const struct { const char *key; RcBucket b; } buckets[] = {
+            {"day",   rcDayBucket(today)},
+            {"week",  rcWeekBucket(today)},
+            {"month", rcMonthBucket(today)},
+            {"year",  rcYearBucket(today)},
+        };
+        for (const auto &e : buckets) {
+            const auto w = store.countInWindow(projectId, e.b.from,
+                                               e.b.untilExclusive, error);
+            if (!w) return {};
+            periods[QLatin1String(e.key)] = rcWindowObj(*w);
+        }
+    }
+
+    // INV-1 — a periods block is NEVER emitted without the coverage block over
+    // the same population. Written next to the emission rather than documented
+    // elsewhere: the natural SQL is `WHERE shipped IS NOT NULL`, which reports
+    // the survivors as the answer and turns a 2% sample into a confident total.
+    QJsonObject coverage;
+    coverage[QStringLiteral("shipped_dated")]   = counts->shippedDated;
+    coverage[QStringLiteral("shipped_undated")] = counts->shippedUndated;
+    coverage[QStringLiteral("created_dated")]   = counts->createdDated;
+    coverage[QStringLiteral("created_undated")] = counts->createdUndated;
+
+    const auto age = store.ageOfOpen(projectId, today, error);
+    if (!age) return {};
+    const auto ttc = store.timeToClose(projectId, error);
+    if (!ttc) return {};
+
+    out[QStringLiteral("ok")]            = true;
+    out[QStringLiteral("mode")]          = QStringLiteral("report");
+    out[QStringLiteral("scope")]         = projectId ? QStringLiteral("project")
+                                                     : QStringLiteral("all");
+    out[QStringLiteral("generated_for")] = today.toString(QStringLiteral("yyyy-MM-dd"));
+    out[QStringLiteral("totals")]        = totals;
+    out[QStringLiteral("by_status")]     = byStatus;
+    out[QStringLiteral("by_kind")]       = byKind;
+    out[QStringLiteral("periods")]       = periods;
+    out[QStringLiteral("coverage")]      = coverage;
+    out[QStringLiteral("age_open")]      = rcSpreadObj(*age, /*withOldest=*/true);
+    out[QStringLiteral("time_to_close")] = rcSpreadObj(*ttc, /*withOldest=*/false);
+    return out;
+}
+
 QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-1247-INV-1
     QJsonObject out;
 
@@ -1406,7 +1559,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     static const QStringList kModes = { QStringLiteral("bullets"),
                                         QStringLiteral("section_index"),
                                         QStringLiteral("headline_only"),
-                                        QStringLiteral("bundles") };  // ANTS-1922
+                                        QStringLiteral("bundles"),   // ANTS-1922
+                                        QStringLiteral("report") };  // ANTS-4501
     if (!kModes.contains(mode)) {
         QString verbatim = req.value(QStringLiteral("mode")).toString();
         if (verbatim.size() > 64) verbatim.truncate(64);
@@ -1502,6 +1656,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["ok"] = false;
         out["error"] = QStringLiteral(
             "id selector does not combine with mode:bundles");
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    // ANTS-4501 § 2.5 — report is an aggregate over the whole project, so a
+    // row selector is meaningless against it. Same three refusals bundles
+    // carries, and for the same reason.
+    if (mode == QLatin1String("report") &&
+        (!section.isEmpty() || !idArg.isEmpty() || !idsArg.isEmpty())) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "report mode does not accept section=, id or ids selectors");
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
@@ -1615,6 +1780,84 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const QString callerCanonical =
         callerRaw.isEmpty() ? QString()
                             : QFileInfo(callerRaw).canonicalFilePath();
+    // ANTS-4501 — mode:"report" dispatches HERE, before the roadmap-file
+    // search below, because it reads the store and never the markdown. A
+    // project whose ROADMAP.md has moved still has a store row and still has a
+    // truthful report; refusing no_roadmap_loaded for it would be wrong.
+    if (mode == QLatin1String("report")) {
+        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        QString storeErr;
+        RoadmapStore *store = roadmapStoreOrNull(&why, &storeErr);
+        if (rcdetail::rcRoadmapSourceRefused(out, why, storeErr))
+            return QJsonDocument(out);
+        if (!store) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral("roadmap store unavailable");
+            out["code"] = QStringLiteral("store_unavailable");
+            return QJsonDocument(out);
+        }
+
+        // scope:"all" is nullopt — every registered project summed (§ 2.4).
+        // Default is the project you are standing in.
+        const QString scopeArg =
+            req.value(QStringLiteral("scope")).toString(QStringLiteral("project"));
+        if (scopeArg != QLatin1String("project") && scopeArg != QLatin1String("all")) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral("unknown scope: %1 — expected "
+                                          "\"project\" or \"all\"").arg(scopeArg);
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+        std::optional<qint64> projectId;
+        if (scopeArg == QLatin1String("project")) {
+            // ANTS-3756 INV-8 keys a project on its CANONICAL root, so the
+            // lookup canonicalises too — a raw path misses on every symlinked
+            // root and would read as "not migrated".
+            if (callerCanonical.isEmpty()) {
+                out["ok"] = false;
+                out["error"] = QStringLiteral(
+                    "report mode needs caller_cwd to resolve the project");
+                out["code"] = QStringLiteral("caller_cwd_required");
+                return QJsonDocument(out);
+            }
+            QString sqlErr;
+            const auto row = store->readProjectByRoot(callerCanonical, &sqlErr);
+            if (!row) {
+                out["ok"] = false;
+                out["error"] = sqlErr.isEmpty()
+                    ? QStringLiteral("project is not in the roadmap store: %1 "
+                                     "— run roadmap_migrate first").arg(callerCanonical)
+                    : sqlErr;
+                out["code"] = QStringLiteral("project_not_registered");
+                return QJsonDocument(out);
+            }
+            projectId = row->projectId;
+        }
+
+        // § 2.2's seam, read here and not from QDate::currentDate(): the
+        // report's own bucket boundaries are a read-path clock, and a seam
+        // wired into stamping alone leaves INV-1 and INV-8 flaking at every
+        // period boundary.
+        const QDate today = RoadmapClock::today();
+        const QDate since = QDate::fromString(
+            req.value(QStringLiteral("since")).toString(),
+            QStringLiteral("yyyy-MM-dd"));
+        const QDate until = QDate::fromString(
+            req.value(QStringLiteral("until")).toString(),
+            QStringLiteral("yyyy-MM-dd"));
+        QString repErr;
+        const QJsonObject env = buildRoadmapReportEnvelope(
+            *store, projectId, today, since, until, &repErr);
+        if (env.isEmpty()) {
+            out["ok"] = false;
+            out["error"] = repErr.isEmpty() ? QStringLiteral("report failed")
+                                            : repErr;
+            out["code"] = QStringLiteral("store_error");
+            return QJsonDocument(out);
+        }
+        return QJsonDocument(env);
+    }
+
     if (!callerRaw.isEmpty()) {
         // ANTS-1459 — shared findRoadmapUnder() helper widens the
         // search to docs/, docs/private/, docs/internal/, .github/.

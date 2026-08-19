@@ -18,8 +18,10 @@
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
 #include "roadmapparse.h"  // ANTS-3793 — BulletRecord, roadmapBullets()'s return
 
+#include <QDate>       // ANTS-4501 — buildRoadmapReportEnvelope's window args
 #include <functional>  // ANTS-3543 — downshiftMatches lean-projector callback
 #include <memory>
+#include <optional>   // ANTS-4501 — scope:"all" is a nullopt project id
 
 class QLocalServer;
 class QLocalSocket;
@@ -426,6 +428,14 @@ public:
     // on m_roadmapCacheBullets). softCapBytes bounds the emitted
     // bundles[]; truncation drops whole trailing bundles. See
     // docs/specs/ANTS-1922.md.
+    // ANTS-4501 — roadmap_query mode:"report". Its own builder, on the
+    // buildRoadmapBundlesEnvelope precedent directly below: cmdRoadmapQuery is
+    // already past 2000 lines. Returns {} on a store error, with `error` set.
+    // Reads only — INV-10.
+    static QJsonObject buildRoadmapReportEnvelope(
+        RoadmapStore &store, std::optional<qint64> projectId, const QDate &today,
+        const QDate &since, const QDate &until, QString *error);
+
     static QJsonObject buildRoadmapBundlesEnvelope(
         const QJsonArray &cacheBullets, int softCapBytes);
     // ANTS-1922 — test-only soft-cap override for the bundles branch

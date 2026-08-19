@@ -6,8 +6,10 @@
 // why it is created with synchronous=FULL and mode 0600.
 #pragma once
 
+#include <QDate>          // ANTS-4501 — the report's window + age readers
 #include <QHash>
 #include <QJsonObject>
+#include <QMap>           // ANTS-4501 — ReportCounts' by-status / by-kind tallies
 #include <QJsonValue>
 #include <QSqlDatabase>
 #include <QString>
@@ -492,6 +494,68 @@ public:
     // tell "nothing stored" from "could not ask".
     std::optional<qint64> projectBodyBytes(qint64 projectId,
                                            QString *error = nullptr) const;
+
+    // ---------------------------------------------------------------- ANTS-4501
+    // The report's aggregate reader. Spec: docs/specs/ANTS-4501-roadmap-report.md
+    // § 2.5 — one store method rather than raw SQL in the envelope builder,
+    // because every other reader on this surface is a store method and a verb
+    // issuing its own SQL against these tables would be the second place that
+    // knows the schema.
+    //
+    // `projectId` is std::nullopt for scope:"all" — every registered project
+    // summed. The store is machine-global, so the cross-project view is the one
+    // thing no single roadmap file can give (§ 2.4).
+
+    // Point-in-time shape, plus the coverage counts INV-1 requires alongside
+    // every bucketed figure. `byStatus` carries every status present INCLUDING
+    // `dropped`, and `totals.items` is its sum; `open` is that sum less
+    // `shipped` and `dropped` and is computed by the caller, never here — §2.5
+    // pins it as an enumeration and this struct is what it enumerates over.
+    struct ReportCounts {
+        int items = 0;
+        QMap<QString, int> byStatus;      // status  -> count
+        QMap<QString, int> byKind;        // kind    -> count
+        // Coverage. The undated halves are the whole point: a bucketed figure
+        // computed over dated rows alone reads as a total, and on this corpus
+        // that would turn a 2% sample into a confident answer.
+        int shippedDated = 0, shippedUndated = 0;
+        int createdDated = 0, createdUndated = 0;
+    };
+    std::optional<ReportCounts> reportCounts(std::optional<qint64> projectId,
+                                             QString *error = nullptr) const;
+
+    // One half-open window [from, untilExclusive) — § 2.4. Half-open is what
+    // makes an item fall in exactly one bucket at each granularity (INV-8);
+    // inclusive on both ends double-counts every boundary date.
+    struct WindowCounts {
+        int closed = 0;   // rows whose `shipped` falls in the window
+        int added  = 0;   // rows whose `created` falls in the window
+        int net() const { return added - closed; }   // § 2.4: positive = grew
+    };
+    std::optional<WindowCounts> countInWindow(std::optional<qint64> projectId,
+                                              const QDate &from,
+                                              const QDate &untilExclusive,
+                                              QString *error = nullptr) const;
+
+    // A day-count spread. `sample` is the count the median was computed FROM,
+    // never the population (INV-9) — a median over four items must not read as
+    // a trend across two thousand. -1 means "no sample", which is distinct from
+    // a genuine 0 days.
+    struct DaySpread {
+        int sample     = 0;
+        int medianDays = -1;
+        int oldestDays = -1;
+        int over90     = 0;
+    };
+    // Age of every open item (planned + in-progress + considered) with a known
+    // `created`, measured against `today`.
+    std::optional<DaySpread> ageOfOpen(std::optional<qint64> projectId,
+                                       const QDate &today,
+                                       QString *error = nullptr) const;
+    // `shipped - created` over items where BOTH are known. That population is
+    // smaller than the shipped count, which is exactly why `sample` ships.
+    std::optional<DaySpread> timeToClose(std::optional<qint64> projectId,
+                                         QString *error = nullptr) const;
 
     // One enumeration serving BOTH § 2.7's orphan detection (a set complement)
     // and § 2.6.1's id-less re-run matching (a search by natural key). Neither
