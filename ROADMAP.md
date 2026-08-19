@@ -35890,7 +35890,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (AI Prompts, Fin Break — two files, same finding).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4481] **unresolved_path fires on a path that resolves, because sentence punctuation is kept — and the note points at the bullet, not the line.**
+- ✅ [ANTS-4481] **unresolved_path fires on a path that resolves, because sentence punctuation is kept — and the note points at the bullet, not the line.**
   Two halves, both reported twice.
 
   (a) A `Source:` trailer ending a sentence yields a token like
@@ -35912,6 +35912,47 @@ are closed inline in the feedback files rather than filed here.
 
   Noise in the notes channel costs out of proportion to its size: that channel is the only output
   a caller reads to decide whether a migration needs follow-up.
+  Resolved (2026-08-19). Both halves fixed, and the reported CAUSE was
+  wrong — worth recording, because the right fix is bigger than the
+  reported one.
+
+  Measured before coding, by dry-running the live verb against ~/.claude:
+  one note on the whole roadmap and it was false, with detail
+  "in-session-2026-08-14, found while drafting docs/specs/CFG-0052-…md".
+  The trailing period had already been chopped upstream. The false note
+  came from the WHOLE `Source:` value being resolved as one path, where
+  ANTS-4065 § 2.5 says the unit is the whitespace-delimited TOKEN. Prose
+  provenance carrying a real path was the failing case, not punctuation.
+
+    - `looksLikePath()` → `pathTokensIn()`: returns the qualifying tokens
+      rather than a bool, because the caller needs the path to resolve and
+      to name, not just to know one is in there. Evidence is deliberately
+      NOT tokenised — each comma-separated element is already one path,
+      spaces included.
+    - Trailing punctuation is stripped as a FALLBACK after the verbatim
+      attempt fails, never unconditionally, so a path whose name really
+      ends in one of `.,;:)]"'` still resolves on the first try. This is
+      what the reported `…files-and-naming.md).` case needed.
+    - The note now reports the TRIMMED token, which also closes the
+      "self-concealing" half: a trailing period at the end of a
+      sentence-shaped detail is invisible to a reader.
+    - PlannedItem gains sourceLine / evidenceLine, computed in makeItem by
+      counting newlines before the label in rec.body (which starts at
+      rec.firstLine). The note points at the path's line; 0 falls back to
+      firstLine. Measured in the test: 18 rather than 15.
+
+  Test: tests/features/roadmap_import_mapping — three fixture bullets
+  (prose+resolvable, parenthesised, prose+missing). Proved red first: it
+  reproduced all three defects exactly, then green. Full suite 3618/3618.
+
+  Filed while doing it: ANTS-4497 — the first fixture used headlines that
+  named the provenance key in prose, and the parser took that as the
+  provenance. rxSource/rxEvidence use first-match where rxKind was moved
+  to last-match by ANTS-4065 INV-11.
+
+  NOT done, and it is not part of this item: nothing here re-runs the live
+  MCP verb, which serves from the running binary. The false note against
+  ~/.claude persists until Ants is relaunched.
   **Layman:** The migration warns that a file is missing when it is not; the warning keeps the full stop at the end of the sentence as part of the filename.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Claude Code config, OneUp — two files, same finding).
@@ -36491,6 +36532,46 @@ are closed inline in the feedback files rather than filed here.
   Kind: doc-fix.
   Source: in-session-2026-08-19, found while implementing ANTS-4473.
   Lanes: docs, mcp.
+
+- 📋 [ANTS-4497] **A bullet whose headline mentions the provenance key in prose loses its real provenance to the headline.**
+  Found the expensive way: ANTS-4481's first fixture used headlines that
+  mentioned the `Source:` key in prose, and the test measured nothing while
+  looking plausible. The parsed provenance came back as the tail of the
+  headline.
+
+  Mechanism, verified in src/roadmapparse.cpp: `rxSource()` is applied with
+  `matchIn()`, which takes the FIRST match in the bullet, and its capture is
+  `([^\n]+)` — the rest of that line. A headline (or any body prose) that
+  names the key therefore wins over the real trailer further down.
+  `rxEvidence()` has the same shape.
+
+  `rxKind()` does NOT: ANTS-4065 INV-11 moved it to `matchLastIn()` with a
+  vocabulary predicate, precisely because an earlier mention beat the real
+  trailer. The same argument applies to the other two and was never carried
+  across — one key got the fix, two did not.
+
+  The WRITE side already guards this, which is the strongest argument that
+  the read side should. Filing this very item was refused by `roadmap_log`
+  with `body_shadowed`: "the body shadows the `source` column … and a
+  re-parse reaches the body first", and it named the shadowing text. So the
+  project has already decided this is a real hazard and has a working
+  detector for it; only the importer is unprotected.
+
+  Fix: move both to `matchLastIn()`. Neither has a vocabulary to predicate
+  on (both values are free text), so last-match is the whole fix rather than
+  last-recognised-match. The trade is the mirror case — a body legitimately
+  quoting the key AFTER its own trailer — which is the trade `matchLastIn()`
+  already makes for the third key.
+
+  Carry with it: ANTS-4481's `trailerLine()` uses `indexOf` (first
+  occurrence) deliberately, so today the reported line and the captured value
+  are wrong TOGETHER rather than separately. If the capture moves to
+  last-match, move `trailerLine()` in the same commit or the note will start
+  pointing at the wrong line.
+  **Layman:** If a roadmap item's title happens to contain the provenance label, the migration reads the rest of the title as the item's provenance instead of the real line further down.
+  Kind: fix.
+  Source: in-session-2026-08-19, found while writing ANTS-4481's test.
+  Lanes: mcp, roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

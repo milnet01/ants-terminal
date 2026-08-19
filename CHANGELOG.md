@@ -205,6 +205,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_migrate no longer reports a resolvable path as missing when the provenance is a sentence** (ANTS-4481)
+  A `Source:` value is prose far more often than a bare path, and the whole
+  value was being resolved as one filename — so every item whose provenance
+  mentioned a real file was reported unresolved. The unit is now the
+  whitespace-delimited token, as the import contract always said. A token
+  that ends a sentence also gets its punctuation stripped on a retry, and
+  the note points at the line carrying the path rather than at the bullet's
+  first line.
+
 - **`codebase_index` can see HTML pages, so a website project's code map is no longer near-empty.** (ANTS-4425)
   `file_outline` has outlined HTML since ANTS-4361 while the index gate did not admit it, so on a site of ~40 HTML/CSS/JS files the index counted 9 — the `.js` and `.py` — and every page was invisible, to `codebase_index` and to the `indie_review` computed partition alike. Both now key on one shared predicate. CSS stays out until it has an outline mode, because counting files the outline cannot read is the same drift in the other direction.
 

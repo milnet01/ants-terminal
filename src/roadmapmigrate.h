@@ -57,6 +57,13 @@ struct PlannedItem {
     bool        idAllocationOwed = false;
     bool        closed = false;         // roadmap-data-model.md § 3.4's sense
     int         firstLine = 0, lastLine = 0;   // 1-based, inclusive
+    // ANTS-4481 — the 1-based line each path-bearing trailer sits on, so an
+    // `unresolved_path` note points at the path rather than at the bullet's
+    // first line (measured 1152 vs 1166 on a real 3373-line roadmap). 0 means
+    // the label was not found and the note falls back to `firstLine`. Carried
+    // on the ITEM for ANTS-3765 § 2.9's reason: a note keyed on a line number
+    // cannot be correlated back to the item it belongs to.
+    int         sourceLine = 0, evidenceLine = 0;
     // ANTS-3766 § 2.4 — which source the two line numbers above index.
     // 0 = the live roadmap.
     int         sourceIndex = 0;

@@ -400,6 +400,96 @@ TEST(RoadmapImportMapping, UnresolvedPathsAreNotedNotRefused) {
         << "a recognised source form was treated as a path";
 }
 
+// ------------------------------------------------- INV-7, ANTS-4481 -------
+// NOTE on the fixture: no headline here contains the literal `Source:`.
+// `rxSource()` takes the FIRST match in the bullet, so a headline carrying that
+// word captures the rest of the headline as the provenance and this test
+// silently measures nothing (observed while writing it; filed as ANTS-4497).
+//
+// § 2.5's unit is the whitespace-delimited TOKEN, and a `Source:` value is a
+// SENTENCE far more often than it is a bare path. Resolving the whole value
+// reports every prose `Source:` carrying a real path as unresolved. Measured
+// 2026-08-19 against ~/.claude: one note on the whole roadmap, and it was
+// false — "in-session-2026-08-14, found while drafting
+// docs/specs/CFG-0052-cold-eyes-name-retention.md", a file that exists.
+
+TEST(RoadmapImportMapping, Ants4481SourceProseIsTokenisedBeforeResolving) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/here.md"), QStringLiteral("x\n")));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/standards/named.md"),
+                          QStringLiteral("x\n")));
+
+    const QString body = doc(QStringLiteral(
+        "- \U0001F4CB [DEMO-0040] **A prose provenance whose path token resolves.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-14, found while drafting docs/here.md.\n"
+        "- \U0001F4CB [DEMO-0041] **A path token wearing a closing parenthesis.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-14 (see docs/standards/named.md).\n"
+        "- \U0001F4CB [DEMO-0042] **A prose provenance whose path token really is missing.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-14, found while drafting docs/gone.md.\n"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), body));
+
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    ASSERT_TRUE(disc) << err.toStdString();
+    MigrationPlan plan = RoadmapMigrate::planFrom(*disc, QStringLiteral("Demo"),
+                                                  QStringLiteral("demo"));
+    RoadmapMigrate::validatePaths(plan, root);
+
+    for (const char *id : {"DEMO-0040", "DEMO-0041"}) {
+        const PlannedItem *fine = itemById(plan, id);
+        ASSERT_NE(fine, nullptr);
+        EXPECT_FALSE(fine->extras.contains(QStringLiteral("unresolved_path")))
+            << id << " cites a file that EXISTS. source=["
+            << fine->source.toStdString() << "] notes: "
+            << notesDump(plan.notes).toStdString();
+    }
+
+    // The genuinely missing path is still reported, and the note names the
+    // TOKEN — so a reader can open what it names instead of diffing the note
+    // against the raw line.
+    const PlannedItem *miss = itemById(plan, "DEMO-0042");
+    ASSERT_NE(miss, nullptr);
+    const QJsonArray unresolved =
+        miss->extras.value(QStringLiteral("unresolved_path")).toArray();
+    ASSERT_EQ(unresolved.size(), qsizetype(1))
+        << "source=[" << miss->source.toStdString() << "] notes: "
+        << notesDump(plan.notes).toStdString();
+    EXPECT_EQ(unresolved.at(0).toString(), QStringLiteral("docs/gone.md"));
+
+    // … and points at the line carrying the path, not at the bullet's first
+    // line. Computed from the fixture rather than hard-coded, so an edit above
+    // cannot silently move what this asserts.
+    const QStringList lines = body.split(QLatin1Char('\n'));
+    int wantLine = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).contains(QStringLiteral("docs/gone.md"))) {
+            wantLine = i + 1;
+            break;
+        }
+    }
+    ASSERT_GT(wantLine, 0);
+    const Note *found = nullptr;
+    for (const Note &cand : plan.notes) {
+        if (cand.code == QLatin1String("unresolved_path")
+            && cand.detail.contains(QStringLiteral("docs/gone.md"))) {
+            found = &cand;
+            break;
+        }
+    }
+    ASSERT_NE(found, nullptr) << notesDump(plan.notes).toStdString();
+    EXPECT_EQ(found->line, wantLine)
+        << "the note points at the bullet's first line (" << miss->firstLine
+        << ") rather than at line " << wantLine << ", which carries the path";
+}
+
 // ------------------------------------------------------ § 2.3's tally ---
 // The run-level `defaulted_fields` report. Not an invariant of its own, but
 // § 2.3 makes it normative and it is the figure a migration is READ from — the

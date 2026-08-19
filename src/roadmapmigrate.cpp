@@ -226,6 +226,26 @@ QString bodyWithoutHeadPrefix(const BulletRecord &rec) {
 
 // One reader record as migration will file it. § 2.1.1 accounts for the fields
 // left empty; the notes this raises are § 2.10's.
+// ANTS-4481 — the 1-based line a trailer label sits on. `rec.body` starts at
+// `rec.firstLine`, so counting newlines before the label is the whole job. 0
+// means "not found", and the caller falls back to the bullet's first line.
+//
+// FIRST occurrence, deliberately: `rxSource()` / `rxEvidence()` also take the
+// first match, so a headline carrying the literal `Source:` captures the rest
+// of the headline as the provenance AND is the line reported — wrong together
+// rather than wrong separately, which is the only way a reader can see it
+// (ANTS-4497).
+int trailerLine(const BulletRecord &rec, QLatin1String label) {
+    const qsizetype at = rec.body.indexOf(label);
+    if (at < 0)
+        return 0;
+    int line = rec.firstLine;
+    for (qsizetype i = 0; i < at; ++i)
+        if (rec.body.at(i) == QLatin1Char('\n'))
+            ++line;
+    return line;
+}
+
 PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
                      int position, int sourceIndex, QVector<Note> &notes) {
     PlannedItem it;
@@ -239,6 +259,10 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
     it.position    = position;
     it.firstLine   = rec.firstLine;
     it.lastLine    = rec.lastLine;
+    // ANTS-4481. The bold `**Source:**` form contains the plain label, so one
+    // search covers both spellings.
+    it.sourceLine   = trailerLine(rec, QLatin1String("Source:"));
+    it.evidenceLine = trailerLine(rec, QLatin1String("Evidence:"));
 
     const bool isPass = rec.format == QLatin1String("pass-headings");
 
@@ -998,13 +1022,45 @@ bool isRecognisedSourceForm(const QString &v) {
 // NOT validated. That is the literal contract and the safe direction: a missed
 // note costs nothing, a note invented against a word that merely contains a dot
 // would be noise on real prose.
-bool looksLikePath(const QString &value) {
+// ANTS-4481 — the unit is the whitespace-delimited TOKEN, which is what § 2.5
+// says and what this returns. A `Source:` value is a SENTENCE far more often
+// than a bare path (`in-session-2026-08-14, found while drafting docs/x.md`),
+// so testing and then CITING the whole value reported every prose provenance
+// carrying a real path as unresolved. Measured 2026-08-19 against ~/.claude:
+// one note on a 2500-line roadmap, and it was false.
+//
+// Returns the qualifying tokens rather than a bool, because the caller needs
+// the path to resolve and to name, not merely to know one is in there.
+QStringList pathTokensIn(const QString &value) {
+    QStringList out;
     if (value.isEmpty() || isRecognisedSourceForm(value))
-        return false;
-    if (value.contains(QLatin1Char('/')))
-        return true;
+        return out;
     static const QRegularExpression ext(QStringLiteral("\\.[A-Za-z0-9]{1,5}$"));
-    return ext.match(value).hasMatch();
+    const QStringList tokens =
+        value.simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    for (const QString &t : tokens)
+        if (t.contains(QLatin1Char('/')) || ext.match(t).hasMatch())
+            out.append(t);
+    return out;
+}
+
+// ANTS-4481 — a token that ends a sentence keeps its punctuation. The trailer
+// parse drops ONE trailing period, so `…files-and-naming.md).` arrives here as
+// `…files-and-naming.md)` and resolves to nothing. Stripped as a FALLBACK, never
+// unconditionally: a path whose name really ends in one of these still resolves
+// on the verbatim attempt, and only a failure buys the second try.
+QString withoutTrailingPunctuation(const QString &token) {
+    QString t = token;
+    while (!t.isEmpty()) {
+        const QChar c = t.back();
+        if (c == QLatin1Char('.') || c == QLatin1Char(',') || c == QLatin1Char(';')
+            || c == QLatin1Char(':') || c == QLatin1Char(')') || c == QLatin1Char(']')
+            || c == QLatin1Char('"') || c == QLatin1Char('\''))
+            t.chop(1);
+        else
+            break;
+    }
+    return t;
 }
 
 // Resolves under the project root only. A value escaping the root — absolute,
@@ -1023,26 +1079,47 @@ bool resolvesUnderRoot(const QString &root, const QString &rel) {
 }  // namespace
 
 void validatePaths(MigrationPlan &plan, const QString &projectRoot) {
+    // ANTS-4481 — each candidate carries the line it came from, so a note can
+    // point at the path rather than at the bullet's first line.
+    struct Candidate {
+        QString path;
+        int     line;
+    };
     for (PlannedItem &it : plan.items) {
-        QStringList cited;
+        QVector<Candidate> cited;
         // `Evidence:` needs no predicate — roadmap-format.md § 3.5 defines the
         // field AS file paths — and it is comma-separated, so each element is
-        // validated independently.
-        cited += it.evidence;
-        if (looksLikePath(it.source))
-            cited.append(it.source);
+        // validated independently. It is NOT tokenised for that reason: every
+        // element is already one path, spaces in a filename included.
+        const int evLine = it.evidenceLine > 0 ? it.evidenceLine : it.firstLine;
+        for (const QString &e : std::as_const(it.evidence))
+            cited.append({e, evLine});
+        const int srcLine = it.sourceLine > 0 ? it.sourceLine : it.firstLine;
+        for (const QString &t : pathTokensIn(it.source))
+            cited.append({t, srcLine});
 
         QJsonArray unresolved;
-        for (const QString &p : std::as_const(cited)) {
-            if (resolvesUnderRoot(projectRoot, p))
+        for (const Candidate &c : std::as_const(cited)) {
+            if (resolvesUnderRoot(projectRoot, c.path))
                 continue;
-            unresolved.append(p);
+            const QString trimmed = withoutTrailingPunctuation(c.path);
+            if (trimmed != c.path && !trimmed.isEmpty()
+                && resolvesUnderRoot(projectRoot, trimmed))
+                continue;
+            // Report the TRIMMED form: it is what the reader should go looking
+            // for, and printing the raw token made the note self-concealing —
+            // a trailing period at the end of a sentence-shaped detail is
+            // invisible, so the reader opens the file, finds it present, and
+            // has to diff the note against the source line to see the one
+            // character that differs.
+            const QString cite = trimmed.isEmpty() ? c.path : trimmed;
+            unresolved.append(cite);
             addNote(plan.notes, "unresolved_path",
                     QStringLiteral("%1: %2").arg(it.id.isEmpty()
                                                      ? QStringLiteral("<no id>")
                                                      : it.id,
-                                                 p),
-                    it.firstLine, it.sourceIndex);
+                                                 cite),
+                    c.line, it.sourceIndex);
         }
         // An ARRAY, not a scalar: one item can cite several paths and lose more
         // than one. Written only when something is actually unresolved, so an
