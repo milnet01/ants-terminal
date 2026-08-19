@@ -214,6 +214,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap migration no longer overwrites a stored field with a value it invented** (ANTS-4498)
+  Where a roadmap file does not declare an item's `Kind:` or `Source:`,
+  the import supplies a default. Re-running a migration then wrote that
+  invented value over whatever the database already held, so re-importing
+  a project could quietly replace real information with placeholders — on
+  this project's own roadmap, 384 items were exposed to it. A defaulted
+  value is now withheld from any field that already holds one, and the
+  migration reports each withheld write. The effect is that a re-run can
+  only add information, which is what makes it safe to run without taking
+  a backup first.
+
 - **The roadmap's id counter cache no longer drifts behind the database** (ANTS-4141)
   Filing an item on a migrated project allocates its number from the database
   and left the on-disk counter untouched, so the counter fell further behind

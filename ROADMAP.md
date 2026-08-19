@@ -36843,7 +36843,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-19, found while writing ANTS-4481's test.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4498] **A defaulted field can overwrite a correct stored value, so a migration can only be run bravely.**
+- ✅ [ANTS-4498] **A defaulted field can overwrite a correct stored value, so a migration can only be run bravely.**
   ANTS-4486 asked for four things. Its root defect — the wrapped-headline
   round trip — shipped 2026-08-19. This is its safety half, which stands on
   its own and needs a contract change rather than a bug fix.
@@ -36885,6 +36885,47 @@ are closed inline in the feedback files rather than filed here.
   cleanup after it — the parser fixes cannot be applied to the store until
   a defaulted value is known not to overwrite a stored one. Verified by
   dry run only; nothing was written.
+  Resolved (2026-08-19): shipped. One guard in applyPlanFields() — a field
+  whose plan provenance is `defaulted` is not written over a non-empty
+  stored value — raising the same `field_conflict` note as the sibling
+  "empty does not overwrite" rule, because the cause and the remedy are
+  identical. § 2.11's code count stays at eight; no new vocabulary.
+
+  THE ITEM'S OWN CITATION WAS WRONG and is corrected in the spec: it named
+  "ANTS-4065 § 2.6 rule 3". Both specs carry a § 2.6, and the sibling rule
+  has always lived in ANTS-3765 § 2.6 — ANTS-4065's is "Round-trip
+  identity is the gate". That also retires the batching suggestion: this
+  needed no note-vocabulary change, so ANTS-4483 and ANTS-4492 are
+  separate work rather than one shared amendment.
+
+  Contract: ANTS-3765 § 2.6 gains a fifth NAMED rule (the list is cited by
+  name, not ordinal, precisely so a fifth renumbers nothing), plus INV-16.
+  Gated per rule 14 over two loops, 4 cold lanes: 11 verified, 11 fixed, 1
+  dismissed, 1 filed (ANTS-4503). Calm cap — 1 of loop 2's 3 findings
+  landed on text the run wrote.
+
+  TWO THINGS THE NEXT SESSION SHOULD KNOW, neither a defect:
+
+  1. INV-16's originally specified second leg was UNBUILDABLE, and running
+  it is what found that. `item.status`, `item.kind` and `item.source` are
+  all TEXT NOT NULL, and BOTH writers bind an empty QString as SQL NULL,
+  so neither putItem() nor setItemField() can seed an empty stored value.
+  Those three are exactly the columns this rule fires on, so
+  `f.storedEmpty` is unreachable for all of them and the empty-stored
+  branch is VACUOUS on the update path. The leg is now the insert-path
+  form, which is the reachable statement of the same guarantee — and it is
+  green before and after the fix by design, because it guards WHERE the
+  rule is put rather than the rule itself.
+
+  2. The corpus-scale effect is NOT yet measured. The dry run that
+  motivated this (defaulted_fields {source: 384, kind: 1} against 598
+  items_updated) went through the MCP server, which is the running binary
+  and predates this commit. Re-measure after a relaunch: field_conflict
+  notes should appear and items_updated should fall. Until then the fix
+  rests on the two feature tests, not on the corpus.
+
+  Unblocks the re-migration that carries the ANTS-4481 / 4484 / 4497
+  parser fixes into the store.
   **Layman:** When the migration invents a missing value, it writes it over the good value already in the database instead of leaving that one alone.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager), split from ANTS-4486 on 2026-08-19.
