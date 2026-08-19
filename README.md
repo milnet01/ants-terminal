@@ -22,6 +22,12 @@
   <a href="ROADMAP.md">What's planned</a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/01-main-terminal.png"
+       alt="Ants Terminal running a shell, with the tab bar and status bar visible"
+       width="900">
+</p>
+
 ---
 
 ## What is this?
@@ -32,9 +38,10 @@ that it works hand-in-hand with [Claude Code](https://claude.ai/claude-code),
 Anthropic's AI coding assistant, to **save you money** and make sessions
 smoother.
 
-It's built from scratch (the only thing it needs to run is Qt6), so it's
-quick and light, and everything it does for Claude happens **on your own
-machine** — nothing is sent anywhere.
+It's built from scratch, and the only thing it needs to run is Qt6 (a
+graphics toolkit most Linux desktops already have), so it's quick and light.
+Everything it does for Claude happens **on your own machine** — nothing is
+sent anywhere.
 
 ## Why use it with Claude Code
 
@@ -71,8 +78,8 @@ Each tool replaces a slow, token-hungry command with one quick answer:
 | reading a whole spec to learn the rules | just that spec's checklist |
 
 You don't have to memorise any of this — Claude picks the right tool on its
-own once Ants Terminal is connected. There's even a counter
-(`token_usage`) that shows how many tokens the tools have saved you so far.
+own once Ants Terminal is connected. A small counter in the bottom bar keeps
+a running total of what the tools have saved you this session.
 
 ### Living alongside Claude
 
@@ -82,6 +89,9 @@ own once Ants Terminal is connected. There's even a counter
   session, with a one-click resume, continue, or fork.
 - **Edit permissions visually** (Ctrl+Shift+L) — manage what Claude is
   allowed to do without hand-editing a settings file.
+- **See what changed before you keep it** — a **Review Changes** button in
+  the bottom bar opens a file-by-file view of every edit Claude made, so you
+  can read it over first.
 - **Paste a screenshot** (Ctrl+Shift+V) — it's saved automatically and the
   file path is dropped into the prompt, so you can paste-and-send an image
   to Claude in one move.
@@ -106,7 +116,8 @@ Even with Claude out of the picture, it's a fast, capable terminal:
 
 - Opens your normal shell (bash, zsh, …) with full colour and Unicode, and
   handles full-screen programs like `vim`, `htop`, and `less`.
-- **Programming-font ligatures**, italics, fancy underlines, and emoji.
+- **Programming-font ligatures** — pairs like `!=` and `=>` drawn as one
+  neat symbol — plus italics, fancy underlines, and emoji.
 - **Inline images** — show pictures and charts right in the terminal.
 - **Find things fast** — search your history (Ctrl+Shift+F), a command
   palette to run any action (Ctrl+Shift+P), and a "hint mode" that lets you
@@ -114,7 +125,8 @@ Even with Claude out of the picture, it's a fast, capable terminal:
 - **Click links and file paths** to open them.
 - **Handy editors** — a pop-out box for writing long multi-line commands,
   and a saved-snippets library for ones you reuse.
-- **Remembers your session** — your scrollback can be restored next launch.
+- **Remembers your session** — your history can be brought back next time
+  you open it.
 - **Looks the way you like** — 11 built-in colour themes, adjustable
   see-through background, and automatic dark/light switching.
 - **Plugins** — extend it with small Lua scripts ([PLUGINS.md](PLUGINS.md)).
@@ -205,7 +217,8 @@ directly (it's saved so only you can read it). Common things to change:
 
 - Your settings file and any saved keys are readable only by you.
 - It makes **no network connections** unless you set up the optional AI chat.
-- The link Claude Code talks to is locked to your user account.
+- The private channel Claude Code talks to can only be reached by your own
+  user account.
 - Plugins run in a locked-down sandbox and can't freeze the terminal.
 - Full details in [SECURITY.md](SECURITY.md).
 
