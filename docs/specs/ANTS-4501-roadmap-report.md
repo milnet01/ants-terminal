@@ -97,8 +97,14 @@ disagree, the column governs, because the column is what the report reads.
 
 Three rules, each on a different write path:
 
-- **`created`** — set at row insert, when `putItem()` creates a row that did
-  not exist. Never rewritten.
+- **`created`** — set at row insert on the **store-write path only**; the
+  migration loader is exempt, as it is for `last_modified`. Never rewritten.
+  The exemption is load-bearing rather than tidy: `Loader::rebuildElements()` reaches
+  `RoadmapStore::putItem()` too, so a rule phrased as "set at every insert"
+  would stamp the migration day onto all 4816 existing rows — and INV-2's
+  never-overwrite guard would then make that false date permanent. A
+  pre-existing item gets its `created` from the backfill (§ 2.3) or not at
+  all.
 - **`last_modified`** — set on every successful `setItemField()` /
   `clearItemField()`, and at insert. **The stamp lives in the callers, not
   inside `setItemField()`, and the migration loader and the backfill are both
@@ -120,18 +126,25 @@ obvious only at corpus scale.
 column's existing `GLOB` CHECK. Not UTC: a user asking "what did I close
 today?" means their day. § 2.4 owns the boundary rule that follows.
 
-**Every write path reads "today" through one injectable seam, not from
-`QDate::currentDate()` directly.** This is a contract rather than a convenience:
+**Every path that needs "today" reads it through one injectable seam, not from
+`QDate::currentDate()` directly — the stamping paths AND the report builder.**
+The report's half is easy to overlook and just as load-bearing: `generated_for`
+and every bucket boundary in § 2.4 are computed on the read path, so a seam
+wired only into stamping leaves INV-1's and INV-8's fixtures dependent on
+whatever real year the suite runs in, and flaking at every period boundary. This is a contract rather than a convenience:
 INV-5 and INV-6 both assert that a *later* write does or does not move a date,
 and with a single real clock both writes land on the same day, so those tests
 pass against the broken build they exist to catch. The seam is a static
-test-only setter in the stamping path — the shape `RemoteControl` already uses
-for `setRoadmapHistoryCapForTest()` — and is never reachable from a request.
+test-only setter — the shape `RemoteControl` already uses for
+`setRoadmapHistoryCapForTest()` — and is never reachable from a request.
 
-**Migration does not stamp.** The three columns stay outside the plan's field
-set, exactly as today — `Loader::fieldsOf()` in `src/roadmapmigrateload.cpp`
+**Migration does not stamp — on an update or an insert.** The three columns
+stay outside the plan's field set, exactly as today — `Loader::fieldsOf()` in `src/roadmapmigrateload.cpp`
 omits them, and its comment names the reason: a source file cannot express
-them, so a re-run must never clear one. That is **ANTS-3765 INV-3**. *(The
+them, so a re-run must never clear one. That is **ANTS-3765 INV-3**. That
+argument covers an *update* only; the insert half is § 2.2's `created` bullet,
+which exempts the loader by name — without both, `Loader::rebuildElements()`
+would stamp today onto every row it creates. *(The
 roadmap bullet cites `ANTS-4065 INV-3` for this rule; that INV is the backtick
 guard against a quoted trailer label. The correct owner is ANTS-3765.)*
 
@@ -149,13 +162,17 @@ Cost, measured on this project rather than estimated:
 ```
 $ git rev-list --count HEAD -- ROADMAP.md docs/roadmap/
 1496
-$ start=$(date +%s%N); for sha in $(git rev-list -n 20 HEAD -- ROADMAP.md); do \
-    git show "$sha:ROADMAP.md" | grep -c '^- . \[ANTS-'; done >/dev/null; \
+$ start=$(date +%s%N); for sha in $(git rev-list -n 20 HEAD -- ROADMAP.md docs/roadmap/); do \
+    for f in ROADMAP.md docs/roadmap/0.6.md docs/roadmap/0.5.md; do \
+      git show "$sha:$f" 2>/dev/null | grep -c '^- . \[ANTS-'; done; done >/dev/null; \
   end=$(date +%s%N); echo "$(( (end-start)/1000000 )) ms"
-302 ms
+228 ms
 ```
 
-1496 revisions at that rate is roughly 23 seconds — a one-off, not a query-time
+The sample reads all three roadmap files per revision, which is what the walk
+does; `git rev-list` returns 1496 for `ROADMAP.md` alone and for the three
+together, so the sample and the population are the same revision set. 1496
+revisions at that rate is roughly 17 seconds — a one-off, not a query-time
 cost. This is why the backfill is a **separate explicit operation and never a
 side effect of a read.**
 
@@ -188,8 +205,12 @@ $ sqlite3 ~/.local/share/ants-terminal/roadmap.sqlite \
 
 Four properties the backfill must have, each an invariant below: it never
 overwrites a non-NULL date (INV-2), it never invents one for an id it did not
-observe (INV-3), it is re-runnable to the same result (INV-2), and **it skips
-any id whose current status is not `shipped`** (INV-3).
+observe (INV-3), it is re-runnable to the same result (INV-2), and **it skips the `shipped`
+stamp — that column alone — for any id whose current status is not `shipped`**
+(INV-3). `created` is still written for every id the walk observes, whatever
+its status. Stated at column granularity because skipping the whole id would
+leave every open item undated, and `added` and `age_open` are then unanswerable
+for exactly the backlog the request asks about.
 
 That fourth one is not obvious and is the reason it is written down. § 2.2
 *clears* `shipped` when an item is reopened — so its column is NULL, the
@@ -210,14 +231,26 @@ data must get the same number.
 - **Month**, **Year** — calendar, local.
 - Every bucket is **half-open**, `[start, next_start)`, so an item belongs to
   exactly one bucket at each granularity (INV-8).
+- **`net` is `added - closed`.** Positive means the backlog grew over the
+  bucket. The sign is pinned because both readings are natural and a caller
+  seeing `net: -12` cannot otherwise tell a shrinking backlog from a growing
+  one.
 - `since:"YYYY-MM-DD"` requests one explicit window instead of the four
   standard ones. It replaces the whole `periods` object with a single
   `periods.since` entry of the same `{closed, added, net}` shape, so a caller
-  never has to tell an absent bucket from an empty one.
+  never has to tell an absent bucket from an empty one. It takes an optional
+  `until`, and the window is `[since, until)` — half-open at the top like every
+  standard bucket, so two adjacent windows tile without overlapping. `until`
+  defaults to tomorrow's boundary, which makes the default window include
+  today.
 - `scope:"project"` (default) or `scope:"all"` selects one project or every
   registered one. The store is machine-global over 15 projects, so the
   cross-project view is the one thing no single roadmap file can give; it is
   opt-in because the default question is about the project you are standing in.
+  **`scope:"all"` returns the same flat envelope with every figure summed
+  across projects** — not a per-project array. The per-project breakdown the
+  roadmap bullet also asks for is a different response shape and is deferred
+  in § 5.
 
 ### 2.5 The report surface
 
@@ -353,9 +386,13 @@ one's id.
   visibility default — so two verbs describe one roadmap differently.
 
 - **INV-8** — **Buckets are half-open, so an item falls in exactly one at each
-  granularity.** *Test:* `roadmap_report` dates one item to the last day of a
-  month and one to the first of the next, asserts each is counted once and that
-  the two month buckets sum to the pair. *Breaks when:* both ends are
+  granularity.** *Test:* `roadmap_report` dates one item to the last day
+  of a month and one to the first of the next, then takes **two `since`/`until`
+  windows** covering those two months and asserts each item falls in exactly one
+  and that the two windows sum to the pair. Two windows rather than two month
+  buckets: the envelope emits a single `periods.month`, so the standard buckets
+  cannot express the boundary at all and the clause would be unfalsifiable
+  against them. *Breaks when:* both ends are
   inclusive, double-counting every boundary date.
 
 - **INV-9** — **Every median ships the sample it was computed from.**
@@ -389,7 +426,7 @@ at a time — roughly 2000 short strings at this project's largest revision —
 plus two accumulating maps, `id → first-seen date` and `id → first-shipped
 date`, bounded by the project's item count (2143 here, 4816 store-wide). It
 must **not** retain each revision's file contents: that is 1496 × ~4 MB and is
-the shape that turns a 23-second job into an OOM kill on this host. The
+the shape that turns a 17-second job into an OOM kill on this host. The
 accumulating maps are the only structure that grows with the walk, and they are
 bounded by item count rather than by revision count.
 
@@ -400,6 +437,9 @@ bounded by item count rather than by revision count.
 - **Blocked-by-format counts** (open items missing a kind or layman line) —
   doubles as a pre-flight for ANTS-4483's render gate and belongs with that
   gate. Tracked by ANTS-4483.
+- **A per-project breakdown under `scope:"all"`** — a different response shape
+  from the flat summed envelope § 2.4 specifies, so it is a second contract
+  rather than a field. No id; file one if it is wanted.
 - **Per-lane counts** — `lanes` is a JSON array column; counting by lane needs
   a join table or JSON extraction over every row, which is a schema question
   rather than a report one. No id; file one if it is wanted.
@@ -440,6 +480,10 @@ fixtures must assert a *value*, not merely that nothing moved.
   `milestone`, `resolution`, `visibility` and `priority` but not the three
   dates, while `Loader::fieldsOf()`'s comment does name them. Widen the
   invariant's list; its claim already covers them.
+- `docs/standards/mcp-error-codes.md` — gains `not_a_git_repo` and
+  `project_not_registered`. Both are **new**: neither appears in that file
+  today, and it is the canonical taxonomy, so a verb minting a code without a
+  row there is a refusal nothing else can recognise.
 - `CHANGELOG.md` — a user-visible new mode.
 - `CLAUDE.md` — no change; the live verb catalogue is `tool_info {catalog:true}`.
 
@@ -448,3 +492,4 @@ fixtures must assert a *value*, not merely that nothing moved.
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
 | 1 | 2026-08-19 | 3, cold — genre pinned `spec`, cap 2; one byte-stable shared packet carrying the live `item`/`history` schemas, `isWritableItemField()`, `Loader::fieldsOf()`, ANTS-3765 INV-3, the `roadmap_query` mode dispatch and every measurement re-run that morning | **Q1 1 · Q2 3 · Q3 6 · Q4 2** (12 verified / 1 dismissed) | **Twelve verified, twelve fixed; one dismissed as immaterial.** **Three defects were found independently by ALL THREE lanes**, the strongest signal this gate produces, and all three were gaps rather than errors. **The backfill had no surface at all** — § 2.3 specified the walk, its cost, its memory budget and two invariants, and no passage said how it is invoked; INV-10 forbids the report mode from writing, so the one place a reader might have inferred was closed off. Now `roadmap_log op:"backfill_dates"`, with its arguments and two refusal codes, and § 7's behavioural-notes line split in two because the fix made its single-verb routing wrong. **INV-5's test could not fail.** It asked for a write on "a later simulated day" while § 2.2 pinned the date to the local calendar and named no seam — so both writes land on one date and the clause passes against exactly the broken build it targets. § 2.2 now requires an injectable "today" on every write path, modelled on `setRoadmapHistoryCapForTest()`, and INV-5/INV-6 drive it. **`open` was defined twice in one sentence**: the rule said `status != 'shipped'` and the enumeration said planned + in-progress + considered, which disagree about the schema's fifth value `dropped` — and this project has none, so the sample envelope could not disambiguate. Now an enumeration with a stated `totals.items` identity. **The best single-lane finding was a live contradiction between two of my own rules**: § 2.2 clears `shipped` when an item is reopened, so its column is NULL, the never-overwrite rule does not protect it, and git still holds the commit where its marker was ✅ — a backfill reasoning only from git re-closes every reopened item on every run. § 2.3 gained a fourth property and INV-3 a second fixture row. **Two findings were collateral from fixes made earlier the same session**: the `open` sentence and the `by_kind` sample were both written during the author-side pass. **One was found by the orchestrator while verifying, not by a lane** — INV-10 hashed the store file, and the store opens in WAL, so a write lands in the `-wal` sidecar and the hash goes green over a report that wrote rows. Now a row-count and `max(history_id)` check. **Dismissed as true but immaterial:** the 302 ms sample scanned `ROADMAP.md` alone while the walk reads three files, so ~23 s is a lower bound — the command is quoted beside the figure, and nothing built changes. **Three lane open questions resolved clean:** `git rev-list` returns 1496 for `ROADMAP.md` and for `ROADMAP.md docs/roadmap/` alike, so the sample and the population are the same revision set; `putItem()` is public but absent from ANTS-3756 § 7's census because that census counts what ANTS-3765 *added*; and the store's journal mode is `wal`, which became the INV-10 finding above. Doc 382 → 449 lines. |
+| 2 | 2026-08-19 | 3, cold — identical brief, packet rebuilt from disk (no source changed between loops), scrubbed copy regenerated so loop 1's row was withheld | **Q1 1 · Q2 2 · Q3 4 · Q4 2** (9 verified / 0 dismissed) | **Nine verified, nine fixed. Cap reached (2 for a spec); the run ships.** **All three lanes independently found the same defect, and it is the most consequential of the whole run** — one loop 1 missed entirely. § 2.2 said `created` is "set at row insert, when `putItem()` creates a row that did not exist", and § 2.2 also said "Migration does not stamp". The migration loader **is** the insert path (`Loader::rebuildElements()` calls `RoadmapStore::putItem()`), so the two rules covered one event and answered it oppositely. One builder dates all 4816 existing rows to migration day — which INV-2's never-overwrite guard would then make permanent — and the other leaves `created` NULL forever, so `added`, an explicitly requested metric, reads 0 in perpetuity. Fixed by exempting the loader in the `created` bullet by name, and by extending the migration paragraph, whose argument reached updates only. **Five of the nine landed on text loop 1 wrote — a 56% collateral share, which is a run doing real work and some oscillating.** The clearest: loop 1's own repair "it skips any id whose current status is not `shipped`" was column-ambiguous, and all three lanes caught it; read as skipping the whole id it leaves every open item undated, killing `added` and `age_open` for exactly the backlog the request is about. Now scoped to the `shipped` column. Loop 1's clock seam said "every **write** path", and the report's own `generated_for` and bucket boundaries are read-path — so INV-1 and INV-8 would have been clock-dependent and flaked at period boundaries. And loop 1's new `scope:"all"` argument had no response shape, leaving the per-project breakdown neither taken nor deferred. **Four were pre-existing draft defects.** `net` was emitted in six places and defined in none, so two builders sign it oppositely. INV-8's clause asked a fixture to sum "the two month buckets" when the envelope emits one — unfalsifiable as written; now two `since`/`until` windows, which is also why `since` gained a paired bound and a stated half-open rule. **The Q1 was a figure I dismissed in loop 1 as immaterial and three lanes queried across both loops** — the 302 ms sample read one file where the walk reads three. Re-measured properly: 228 ms for 20 revisions over all three, so the walk is **17 s, not 23 s**, and § 4's OOM sentence carried the stale figure too. Dismissing it was the wrong call; a number three cold readers stumble on is not inert. **One fix was caught by 4a step 3, not by a lane:** the `created` repair cited `Loader::insertNew()`, which does not exist — the caller is `Loader::rebuildElements()`. Executing the claim is what found it. **Also settled:** `not_a_git_repo` and `project_not_registered` appear nowhere in `mcp-error-codes.md`, so § 7 now names that file as one this spec amends. Doc 449 → 494 lines. |
