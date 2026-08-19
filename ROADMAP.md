@@ -37377,7 +37377,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: in-session-2026-08-19, ANTS-4498's review-contract gate loop 2.
 
-- 📋 [ANTS-4504] **A backticked trailer mention that soft-wraps escapes the guard, so its second key parses as a declaration.**
+- ✅ [ANTS-4504] **A backticked trailer mention that soft-wraps escapes the guard, so its second key parses as a declaration.**
   rxSource()/rxLanes() guard a quoted key with THREE FIXED-LENGTH negative
   lookbehinds (src/roadmapparse.cpp, rxSource()). Each sees only the 1-3
   characters immediately before the label, so a backtick that OPENED the
@@ -37403,6 +37403,20 @@ are closed inline in the feedback files rather than filed here.
   path has no equivalent.
 
   Not yet sized. Pairs with the sibling filed alongside it.
+  Resolved (2026-08-19). trailerValuesIn() now matches against a
+  length-preserving MASKED view of the body in which every inline code span,
+  delimiters included, is blanked; captured values are sliced from the
+  original at the same offsets, so a value carrying its own backticks is
+  stored verbatim. Span boundaries are MarkdownScan::codeSpans()' rather
+  than a fourth hand-rolled pairing, which brings CommonMark's real rules:
+  equal-length run pairing, an unpartnered run is literal text, a span may
+  cross a newline but never a blank line or a fence. markdownscan.cpp moved
+  from ants_core_lib down to ants_roadmapparse_lib so the leaf grammar can
+  reach it; core links that PUBLIC, so no call site changed. Fenced lines
+  are deliberately NOT masked -- a sibling defect with no measurement behind
+  it. Also deleted matchIn(), dead since ANTS-4497. Test:
+  tests/features/roadmap_trailer_code_span (test_core), 8 cases, red on the
+  four defect cases before the fix. Full suite 3666/3666.
   **Layman:** A roadmap entry that quotes an example of its own format has the example read as real data.
   Kind: fix.
   Source: in-session-2026-08-19, found re-migrating after ANTS-4498.
