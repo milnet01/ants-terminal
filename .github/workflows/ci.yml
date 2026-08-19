@@ -164,13 +164,13 @@ jobs:
   build-asan:
     runs-on: ubuntu-24.04
     # ANTS-4533 — this cap is a BACKSTOP, not the gate. It must stay above
-    # the sum of the per-step `timeout` guards below (20m + 12m), because a
+    # the sum of the per-step `timeout` guards below (24m + 16m), because a
     # job killed by timeout-minutes concludes `cancelled` rather than
     # `failure`: the run does not read as red and nothing notifies. That is
     # how this job went 36-of-40 cancelled over two days unnoticed. The step
     # guards exit 124 and go red; tests/features/ci_asan_budget/ locks the
     # ordering so a later bump cannot quietly undo it.
-    timeout-minutes: 35
+    timeout-minutes: 42
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
@@ -217,8 +217,12 @@ jobs:
 
       - name: Build
         # Guarded rather than left to timeout-minutes: `timeout` exits 124, so
-        # an overrun FAILS the step. Measured 11m29s / 11m38s / 12m15s warm.
-        run: timeout 20m cmake --build build-asan --parallel
+        # an overrun FAILS the step. Measured 11m29s / 11m38s / 12m15s warm,
+        # and 16m40s against a cache nine hours stale — 24m is ~1.4x that
+        # worst observed case. A genuinely cold build (cache evicted after
+        # 7 days) is slower still and SHOULD go red: that is a real signal,
+        # not a false alarm.
+        run: timeout 24m cmake --build build-asan --parallel
 
       - name: Save ccache (asan)
         # `always()` is the point of the split: this must survive the overrun
@@ -243,7 +247,14 @@ jobs:
         # test. -j2 matches the pre-push hook (ANTS-3761) and the workstation
         # preset's caution; --timeout 300 turns a hung test into one failed
         # test instead of the whole budget.
-        run: timeout 12m ctest -j2 --output-on-failure --timeout 300
+        #
+        # MEASURED, first green run: 922s serial -> 704s at -j2. That is
+        # 1.31x, not the ~2x a halving would predict, so this suite does not
+        # parallelise cleanly and raising -j further is unproven rather than
+        # obviously better. The first budget here was 12m and finished with
+        # 16s to spare, which is a coin flip rather than a gate; 16m is ~1.4x
+        # the measured cost. Re-measure before narrowing it again.
+        run: timeout 16m ctest -j2 --output-on-failure --timeout 300
 
       - name: Smoke-test binary init paths
         working-directory: build-asan

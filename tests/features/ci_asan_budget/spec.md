@@ -17,6 +17,7 @@ where `build-asan` completed, against the run that did not:
 | 32224813130 (success) | 11m38s | 16m17s |
 | 32245859518 (success) | 11m29s | 15m22s |
 | 32280374403 (cancelled) | 16m42s | >13m16s, killed |
+| 32294768761 (after the fix) | 16m40s | 11m44s at `-j2` |
 
 1. **The suite has not outgrown 30 minutes — it sits exactly on it.** A
    completing run spent 27–28 minutes against a 30-minute cap, so cache
@@ -35,12 +36,20 @@ where `build-asan` completed, against the run that did not:
    pre-push hook has run this suite at `-j2` with a per-test `--timeout 300`
    since ANTS-3761; `ci.yml` never picked either up.
 
+   **What the first green run then measured: 922s -> 704s at `-j2`.** That is
+   1.31x, not the 2x a halving predicts — so this suite does NOT parallelise
+   cleanly, and raising `-j` further is unproven rather than obviously
+   better. The first ctest budget was set from the 2x projection, and
+   finished with 16 seconds to spare. Budgets are now set from the measured
+   cost, at ~1.4x.
+
 ## The invariants
 
 **INV-1 — the sanitized `ctest` runs in parallel and caps each test.** The
 `build-asan` job's `ctest` invocation carries `-j` and `--timeout`. Parallelism
-is the only lever that matters at this test count; the per-test cap converts
-"one hung test eats the whole budget" into one failed test.
+is the largest single lever measured so far (1.31x), though not the decisive
+one the serial figure suggested; the per-test cap converts "one hung test eats
+the whole budget" into one failed test.
 
 **INV-2 — a step that overruns exits non-zero.** The `build-asan` job's Build
 and ctest commands are wrapped in `timeout`, so an overrun exits 124 and the
@@ -64,7 +73,9 @@ INV-2 true after someone raises a number.
   both numbers together.
 - **It does not verify `-j2` is the right width, or that it is safe.** The
   number is inherited from the pre-push hook and from the `workstation`
-  preset's caution, not derived here.
+  preset's caution, not derived here. The measured 1.31x says the suite has
+  contention `-j` alone will not remove; finding it is separate work, and
+  guessing a bigger `-j` is not a substitute for measuring one.
 - **It does not parse YAML.** It slices the `build-asan` job by its heading
   and scrapes that slice. A restructuring that renames the job defeats it —
   which surfaces as this test failing, not as a silent pass.
