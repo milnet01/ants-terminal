@@ -169,7 +169,7 @@ Four shapes, all determinate:
 | Bullet shape | Stored `body` |
 |---|---|
 | `[id] **headline**`, no continuation | empty |
-| `[id] **headline**` + continuations | the continuations only — **no leading newline** |
+| `[id] **headline**` + continuations | the continuations only, **less any stripped trailing run** — **no leading newline** |
 | `[id] **headline** <prose>` | `<prose>`, then any continuations — the case the naive rule loses |
 | GFM, where the headline **is** the whole first line | the continuations only; the recorded offset is what makes this row work, with no `[id]` or `**` token to match |
 
@@ -195,9 +195,15 @@ spec's own invariant on this spec's own deliverable. `makeItem()` calls it;
 **Case-sensitive, all five keys.** The lines this strips are the render's own
 output (§ 2.4), whose spelling is fixed, so tolerance buys nothing and costs the
 `Lanes:`-versus-`lanes:` ambiguity ANTS-4065 § 2.2 removed from `rxKind()` /
-`rxLanes()` / `rxSource()` for the same reason. A hand-typed `kind:` at a
-bullet's tail therefore stays in the body and is suppressed by § 2.3 rather than
-stripped — one copy either way.
+`rxLanes()` / `rxSource()` for the same reason. **Verified 2026-08-19 against
+`src/roadmapparse.cpp`: `rxKind`, `rxLanes` and `rxSource` carry
+`MultilineOption` alone; `rxLayman` and `rxEvidence` still carry
+`CaseInsensitiveOption`.** So a hand-typed `layman:` at a bullet's tail is
+matched by § 2.3 and suppressed; a hand-typed `kind:` is matched by neither the
+strip nor the matcher, stays in the body, and the render appends its own
+`Kind:` line beside it. That second copy is ANTS-4065 § 2.2's accepted cost of
+dropping case tolerance, not a new one — and § 1's premise limits it to
+pre-migration files.
 
 **Why: without it the round trip is not stable, and the instability is
 measurable.** § 2.4's render appends its trailer block at the END of the
@@ -511,9 +517,13 @@ So the honest statement is a **direction**, not an identity:
 Both branches land on exactly one occurrence of the value that REACHES THE FILE,
 which is what INV-1 and INV-3 assert. Reaching the second branch's divergence
 needs a residual carrying the key with a value the column disagrees with, and
-for a MIGRATED item that cannot happen: the column is `matchLastIn()` over the
-full body and the residual is a suffix of it, so any line-initial declaration in
-the residual is the last one and is exactly what the column took. It takes a
+for a MIGRATED item that cannot happen — **but only because § 2.1's strip
+refuses to remove a line when the body carries another line-initial declaration
+of the same key.** The column is `matchLastIn()` over the full body; with that
+condition the residual's last line-initial declaration is still the one the
+column took. Drop the condition and the residual becomes an infix rather than a
+suffix, the guarantee fails, and a migrated item can rewrite its own column —
+§ 2.1 works the case. It takes a
 consumer write — an `append` or `append_batch` under ANTS-3809 § 2.5, the two
 ops that set a column independently of their body — and that is the write
 `rlBodyShadows()` refuses.
@@ -583,9 +593,14 @@ only place either is argued.**
   implementation.
 
   **It counts values, not key literals, and the difference is a state § 2.3.1
-  calls correct.** In the no-suppression branch the residual carries
-  `Source: B` while the column emits `Source: A.` — the key *literal* appears
-  twice, the canonical value once. That output is correct (the column is
+  calls correct.** In the no-suppression branch the residual mentions
+  `Source: B` **mid-line** while the column emits `Source: A.` — the key
+  *literal* appears twice, the rendered value once. **Mid-line is now the whole
+  of it** (corrected 2026-08-19): under ANTS-4505 a *line-initial* `Source: B`
+  suppresses, so only `B` reaches the file, the key literal appears once, and a
+  key-counting assertion would pass too — the fixture would stop discriminating
+  for the reason it exists. § 2.3.1's third branch is the only shape that still
+  reaches the no-suppression branch. That output is correct (the column is
   canonical and wins), so an invariant counting key literals would fail on legal
   output and a test author following it would write a case that fails against a
   correct implementation. The value-counting form is strictly weaker than a key
@@ -684,9 +699,19 @@ only place either is argued.**
   shadowing the canonical value on a re-parse (§ 2.3.1), and only a consumer
   write can create that. ANTS-3809 owns making it refuse, and carries the
   fixture for it. Asserting the unscoped form here would ship this invariant red
-  against a state this spec cannot reach. Both of this invariant's own fixtures
-  are inside the scope — a post-cutover item is only excluded when it is
-  *shadowed*, not for being post-cutover.
+  against a state this spec cannot reach. **The first two** of this invariant's
+  fixtures are inside the scope — a post-cutover item is only excluded when it
+  is *shadowed*, not for being post-cutover.
+
+  **Fixture 3 is deliberately OUTSIDE that scope, and asserts the opposite
+  direction** — corrected 2026-08-19, when the scope clause and the fixture the
+  ANTS-4505 amendment added contradicted each other. It is constructed by
+  writing the store directly, not through `roadmap_log` (which refuses it), and
+  what it asserts is that **the re-parse yields the BODY's value and the column
+  is not the expected result**. That is the amendment's whole point: the file is
+  the authoring surface, so where the two have been separated the file wins and
+  the store follows. Asserting store-equality there reds against a correct
+  implementation.
 - **INV-4** — **`trailerValuesIn(body)` equals what `parseBullets()` assigns from
   the same body**, over all five keys and § 2.2.1's normalisation table. Without
   the accessor is what both the render and the reader ask, so a divergence would
@@ -713,9 +738,16 @@ only place either is argued.**
   `render(parse(x)) == x` holds only where x's trailing run is already in
   § 2.4's emission order (`Layman`, `Kind`, `Source`, `Lanes`, `Evidence`) and
   its exact spelling — `**Layman:** `, a trailing period on `Kind:`/`Source:`/
-  `Lanes:` and none on `Evidence:`, lanes joined `", "`. *Trailers last* alone
-  does not give byte identity, and a fixture written in author style reds
-  against a correct implementation. *Breaks when:* § 2.1's
+  `Lanes:` and none on `Evidence:`, lanes joined `", "`. **Two further
+  preconditions come from the reader, not the render** (added 2026-08-19): every
+  continuation must be indented **exactly two spaces**, because `parseBullets()`
+  stores `cont.trimmed()` and `appendIndented()` puts two back; and the head
+  line must carry **no text after the closing `**`**, because § 2.1 stores that
+  text as a body line the render then emits on its own indented line — so the
+  241-of-1646 shape cannot round-trip byte-identically at all, and
+  **ANTS-4528** owns the indent half. *Trailers last* alone does not give byte
+  identity, and a fixture written in author style reds against a correct
+  implementation. *Breaks when:* § 2.1's
   trailing-trailer strip is omitted, which is the state measured on 2026-08-19:
   one re-migration moved **599** bodies, **+458** gaining a `Kind:` line they
   never carried and **+97** a `Source:` line, because the render's own appended
@@ -727,6 +759,22 @@ only place either is argued.**
   **The middle fixture is the one an implementation fails by stripping every
   trailer line rather than the trailing run**, and it reds silently: the body
   still round-trips, it has just lost an authored line.
+
+  **A FOURTH fixture is the only one that reds against the *Breaks when*
+  mutation, and without it the red run cannot be produced** (added 2026-08-19).
+  With the strip omitted, the first three bodies keep their trailing trailer
+  lines, which under § 2.3 *declare* those keys, so every column line is
+  suppressed and the render emits head + body verbatim — identity holds and the
+  body is unchanged, for all three. The discriminator is **a bullet whose
+  residual declares NO trailer key**: there the render emits its block, the next
+  parse files it into `body`, and the stored body grows — the +458 / +97
+  accretion this invariant exists for.
+
+  **A FIFTH fixture pins § 2.1's only-declaration condition** — a body with a
+  stale line-initial `Kind: bug` in a continuation and a canonical
+  `Kind: implement.` at the tail. The tail line must NOT be stripped, the column
+  must still read `implement` after a second cycle, and an implementation that
+  strips it rewrites a migrated item's own column (§ 2.1).
 - **INV-5** — **No bullet text is lost across migrate-then-render.** For every
   bullet, whatever of the head line the reader did **not** consume — on a native
   bullet, the text after the closing `**` — survives into the rendered output.
@@ -899,15 +947,19 @@ case would write into it. Always
   render's first exported per-bullet surface.
 - **`src/roadmapdialog.cpp`'s kind-filter pre-walk** moves onto
   `RoadmapParse::trailerValuesIn()` as part of INV-2 — an edit to a *rendering*
-  path no other section would lead a reader to expect. **It is not
-  behaviour-preserving, and the change is user-visible**: the dialog's local
-  `rxKind` carries `MultilineOption` only, while `roadmapparse.cpp`'s adds
-  `CaseInsensitiveOption` (ANTS-3407), so after the swap a hand-edited
-  `kind:` / `KIND:` bullet starts matching the kind filter it is silently
-  skipped by today. That is a **widening and almost certainly the correct
-  behaviour** — ANTS-3407 case-folded the anchored labels precisely so a
-  hand-edited roadmap parses — but it is a behaviour change, so it is declared
-  here rather than discovered in a filter fixture. § 4 carries what it costs.
+  path no other section would lead a reader to expect. **Corrected 2026-08-19:
+  the swap is behaviour-preserving on case.** This bullet said the dialog's
+  local `rxKind` carries `MultilineOption` only while `roadmapparse.cpp`'s adds
+  `CaseInsensitiveOption` (ANTS-3407), and declared the resulting widening —
+  a hand-edited `kind:` / `KIND:` bullet starting to match the kind filter. It
+  no longer holds: **ANTS-4065 § 2.2 removed `CaseInsensitiveOption` from
+  `rxKind`, `rxLanes` and `rxSource`**, re-read against
+  `src/roadmapparse.cpp` on 2026-08-19, so both patterns are case-sensitive and
+  the filter's behaviour on a hand-edited label is unchanged by the swap. A
+  fixture asserting that `KIND:` starts matching would fail. What the swap does
+  change is the *body assembly* — the local pre-walk re-implements
+  `parseBullets()`'s continuation join — and that is the grammar duplication
+  INV-2 forbids, which is reason enough on its own. § 4 carries what it costs.
 - **ANTS-3809 depends on § 2.2's `TrailerMatch`**; its `body_shadowed` refusal is
   unimplementable without `offset` / `anchored`.
 - **ANTS-3793's `BulletRecord::body`** is defined in terms of § 2.4's export.
@@ -937,6 +989,7 @@ The rows below are frozen past-state records and were not edited.
 | Loop | Date | Lanes | C / H / M / L / I | Outcome |
 |---|---|---|---|---|
 | 3 (cap) | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet, identical to loops 1–2) | 0 / 5 / 9 / 9 / 0 | **Converged by cap. 23 verified, 19 fixed, 4 filed, 2 dismissed** — tail at [`docs/reviews/ANTS-3808-cold-eyes-loop3-tail.md`](../reviews/ANTS-3808-cold-eyes-loop3-tail.md); fold in directly, do NOT re-dispatch. **Phase 5's stop-and-consolidate trigger fired: collateral outran draft defects two loops running (14 v 1, then 20 v 3).** The one CRITICAL raised was **dismissed on verification** — a lane argued the non-suppression branch breaks INV-3 on a migrated item, but § 2.4's render reconstructs the headline into the head line, so a key inside it reappears ahead of the residual and the re-parse takes the same first match; no divergence could be constructed. What loop 3 actually caught was loop 2's repairs: § 2.2's "move to file scope" contradicted § 4's newly-added "not namespace-scope globals" (§ 4 now owns placement); § 2.2.1 claimed four rows lack a `parseBullets()` counterpart when only `offset` and `anchored` do — `lanes.value` and `evidence.value` are the reader's own `lanesRaw` / `evRaw`, so INV-4 was told not to grade two rows it can; INV-5's fixture list had drifted off § 2.1's table and **dropped the GFM row, the one that proves the strip is textual rather than syntactic**; and the strip rule never trimmed, so `" "` is not empty and the stray-blank-line guard never fires. Filed rather than fixed, because each needs a decision and all four land in § 2.1 / § 2.3.1 — the sections whose repairs generated most of loops 2 and 3. Lane spend 119k / 117k against a 60k budget. |
+| 4 | 2026-08-19 | 3, cold — identical brief, packet rebuilt from disk plus two settled facts about unchanged source established while verifying loop 3 | **Q1 1 · Q2 5 · Q3 1 · Q4 2** — verified 9, fixed 9, dismissed 0 | (Q-counts) | **Cap reached (2 for a spec); the run files its tail and ships. A CALM cap by count — but the headline finding is one the two amendments create JOINTLY, which neither loop could have seen before both were written.** **Two lanes independently found it:** § 2.1's strip makes the residual an INFIX of the full body rather than a suffix, and § 2.3.1's migrated-item guarantee rests on it being a suffix. Worked: a bullet with a stale line-initial `Kind: bug` in a continuation and its canonical `Kind: implement.` at the tail migrates with column `implement`, has the tail stripped, then suppresses on `bug` — so `bug` is the file's only `Kind:` and the next migration adopts it. **A migrated item silently rewriting its own column, with no consumer write, and the `kind` vocabulary rider is no help because `bug` is recognised.** Closed by a condition on the strip rather than by narrowing the guarantee: a line is stripped only when it is the ONLY line-initial declaration of its key in the body. **All three lanes found the second**, and it is loop 3's own: the `kind` rider that loop added appears in the prose and NOT in the § 2.3 table, which is the surface an implementer transcribes — so the coded predicate would omit exactly the guard loop 3 introduced. **Two Q4s, both about fixtures that cannot fail.** INV-6's three fixtures all pass with the strip omitted, because a body keeping its trailing trailer lines *declares* those keys and § 2.3 suppresses every column line — identity holds and nothing accretes; the discriminator is a residual declaring NO trailer key, which was not in the list. And INV-1's two-value case stops discriminating under presence unless the shadowing mention is MID-LINE. A fifth INV-6 fixture now pins the only-declaration condition. **One Q1 settled by opening the file:** two passages disagreed on whether `rxKind` carries `CaseInsensitiveOption`. It does not — ANTS-3407 added it and ANTS-4065 § 2.2 removed it — so § 7's declared user-visible widening is false and a filter fixture asserting `KIND:` now matches would red. **One more of loop 3's:** INV-3's scope clause excludes the very fixture loop 3 added to discriminate the amendment, and still said *Both* over three; the fixture is now declared as deliberately outside the scope, asserting that the re-parse yields the BODY's value. Also fixed: § 2.1's four-shape table, to which INV-5's test is pinned, still described the unstripped body; INV-6's byte-identity clause gained the two preconditions the reader imposes (two-space continuation indent, no post-`**` text, the latter unreachable and owned by ANTS-4528); and the strip predicate's right edge is pinned to a single-key full line. Doc 941 → 994 lines. **Deferred tail: none.** |
 | 3 | 2026-08-19 | 3, cold — genre pinned `spec`, cap 2; packet carried seven bounded source windows and an explicit note that neither amendment is implemented | **Q1 3 · Q2 6 · Q3 2 · Q4 0** — verified 11, fixed 11, dismissed 1 | (Q-counts) | **The gate on ANTS-4505 + ANTS-4506, run before any code. Nine of the eleven are the amendment's own collateral, and the shape is uniform: § 2.3's rule was reversed and every passage that RESTED on the old rule was left standing.** All three lanes independently found the same three, which between them are the whole class. § 2.3.1's two-branch table still read *present with a different value → suppression does not fire … the column is canonical*, which is the shipped `shadows()` an implementer would have rebuilt. **INV-1 asserted the CANONICAL value exactly once** — under presence that value reaches the file zero times on precisely the state INV-3's new third fixture calls correct, so the invariant was red against a conforming build and the tempting repair is to restore value equality. And § 7's ANTS-3758 reconciliation still said *§ 2.3's per-key suppression compares values*. **The sharpest single finding is lane A's, and it is a data-loss path I wrote:** § 2.1 claimed the strip *moves exactly the lines § 2.4 will re-emit*, and three of the render's five emissions are conditional — `Layman:`, `Lanes:` and `Evidence:` on a non-empty column, `Source:` additionally on `provenance.source != "defaulted"`. Resolved by proving the gates cannot bite a non-empty trailing declaration rather than by adding a guard: the column is extracted from the body that carries the line, and `provenance.source` is `defaulted` only where the bullet declared none. **A second of mine, found while verifying rather than by a lane, and it is the one presence-suppression genuinely opens:** `matchLastIn()` returns the last match RAW for `kind` when no capture is recognised, so a residual whose only line-initial `Kind:` is an unrecognised fragment would suppress the recognised column, leave the fragment as the file's only `Kind:`, and be adopted by the next parse — the column degrading one migration at a time with nothing reporting it. The rule gains a vocabulary rider for `kind` alone. **Two more structural:** INV-2 forbids a trailer-key regex anywhere outside `RoadmapParse`, and § 2.1 put the new strip in `makeItem()` — the spec failing its own invariant on its own deliverable, now owned by `RoadmapParse` and stated case-sensitive; and § 6's case table had no `Inv6RoundTripAddsNothing` row, so the amendment's whole deliverable would have shipped untested. **Two pre-existing:** INV-4 named *four rows with no `parseBullets()` counterpart* against § 2.2.1's *only two*, which would have had the test grade the spec against itself on the two asymmetric keys; and §§ 2.2/2.4/§ 4 still described their own work as unbuilt — the accessor and `bulletText()` both shipped under ANTS-4497/4504 — so a reader could not tell what was still owed. INV-6's byte-identity clause was narrowed to the render's own emission order and spelling, *trailers last* alone not being sufficient. **One dismissed:** § 4's *at most six* per-bullet regex matches is stale — `matchLastIn()` global-matches and ANTS-4504 adds a masking pass — but the argument it supports (one accessor call, not five) is unchanged, so it changes no line. Doc 851 → 941 lines; invariants 5 → 6. **Not converged; loop 2 owed, and the cap is 2.** |
 | 2 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet, identical to loop 1's) | 1 / 4 / 4 / 6 / 0 | **15 verified, all 15 fixed, 3 dismissed — and 14 of the 15 were loop 1's own fix collateral, which is the finding about this run.** Both lanes led on the same CRITICAL, and it was loop 1's repair turned inside out: `anchored` was defined as `offset == 0 \|\| body.at(offset-1) == '\n'` with `offset` pinned to `capturedStart(1)`, but every pattern puts literal text between the line start and group 1, so the field is unreachably **false on every key of every bullet** — carrying less than the per-key constant loop 1 rejected it for. Now computed off `capturedStart(0)`, and INV-4 requires both polarities so a false-only fixture set cannot pass against it. Loop 1's prefix-strip rule also proved under-specified three ways it could not have been read as: stated in `[id]`/`**` tokens it strips nothing from a GFM bullet; an empty first-line residual kept as an empty string makes `body` begin with `'\n'` and emits a stray blank line on nearly every bullet; and it never said the stripped headline is the **untruncated** one, so any headline over 120 chars would have left its tail behind. **One genuine draft defect, and it is the loop-1 ledger's own failure:** § 7's "behaviour-preserving" claim about the dialog edit was recorded as fixed and had only been fixed in ANTS-3793 — both lanes re-found it, which is the cold re-read working exactly as designed. The harder sweep this loop then caught a figure that had gone stale *within the run*: filing ANTS-3811 moved the corpus denominator 1645 → 1646, so the ratio is now the durable claim. Lane spend 109k / 116k against a 60k budget. |
 | 1 | 2026-08-04 | 2 (single doc, cold; genre pinned `spec`; shared byte-stable packet) | 3 / 3 / 7 / 11 / 0 | **24 verified, 23 fixed, 1 surfaced, 2 dismissed.** Both lanes independently led on the same two — `anchored` carrying two incompatible definitions, and § 2.3.1's "same body" equality — and the second was the draft's own central correctness argument, false because § 2.1 stores a residual while the column was extracted from the full body. **The sharpest finding came out of verifying a lane's weaker version of it:** § 2.1's "drop the first line" is *lossy*, not merely imprecise. A native bullet takes `headline` from the bold token only, so text after the closing `**` lives nowhere but `body`'s first line — measured **241 of 1645** bracket-id bullets in this project's own `ROADMAP.md`, and for a single-line bullet it is the item's entire substance (`[ANTS-1649]`, `[ANTS-1650]`). The rule became a prefix strip and gained INV-5 to catch the naive reading. **Surfaced, not fixed:** § 2.3 puts a `trailerValuesIn()` call inside `ants_roadmapstore_lib`, which links `Qt6::Core` + `Qt6::Sql` and nothing else by deliberate design (`src/roadmaprender.h:11-12`, for ANTS-3794's headless path) — § 4 claimed "no edge"; it now carries three options and a named owner. Sweep also found ANTS-3793's umbrella holding a stale duplicate of this contract, including the false equality claim: banners added there rather than reconciling two copies. Lane spend 107k / 105k against a 60k budget. |
