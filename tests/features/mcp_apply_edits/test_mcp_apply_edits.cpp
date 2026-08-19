@@ -377,3 +377,109 @@ TEST(McpApplyEdits, Ants3711EarlierEditShiftsLaterRangeAndTheGuardCatchesIt) {
     // Line 4 after the deletion is "epsilon", not "delta" — and it survives.
     EXPECT_EQ(slurp(p), QStringLiteral("alpha\ngamma\ndelta\nepsilon\n"));
 }
+
+// ANTS-4473 — an `ambiguous` skip names WHERE the occurrences are. Filed off a
+// WORKED WELL report whose contrast was the finding: `roadmap_log
+// op:amend_body` refuses an over-broad match with a hint naming the cause AND
+// the retry, and the reporting session recovered in one more call with no
+// re-read. In the same session `apply_edits` returned `ambiguous` for a
+// two-occurrence `old` — correct, and silent about where, so recovery needed a
+// full file read.
+TEST(McpApplyEdits, Ants4473AmbiguousNamesTheOccurrenceLines) {
+    const QString contents =
+        QStringLiteral("alpha\n")     // 1
+        + QStringLiteral("target\n")  // 2
+        + QStringLiteral("beta\n")    // 3
+        + QStringLiteral("target\n")  // 4
+        + QStringLiteral("gamma\n");  // 5
+
+    const auto oc = ApplyEdits::applyToContent(contents,
+                                               QStringLiteral("target"),
+                                               QStringLiteral("X"), false);
+    EXPECT_FALSE(oc.applied);
+    EXPECT_EQ(oc.skipReason, "ambiguous");
+    EXPECT_EQ(oc.matchCount, 2);
+    ASSERT_EQ(oc.matchLines.size(), 2);
+    EXPECT_EQ(oc.matchLines.at(0), 2) << "1-based, matching read_region";
+    EXPECT_EQ(oc.matchLines.at(1), 4);
+    ASSERT_EQ(oc.matchTexts.size(), 2);
+    EXPECT_EQ(oc.matchTexts.at(0), QStringLiteral("target"))
+        << "the physical line verbatim, so it can be pasted back as `old`";
+    EXPECT_EQ(oc.matchTexts.at(1), QStringLiteral("target"));
+}
+
+// The line reported is the one the match STARTS on: a multi-line `old` has no
+// single line, and its first is the one a caller retries from.
+TEST(McpApplyEdits, Ants4473MultiLineOldReportsItsStartLine) {
+    const QString contents =
+        QStringLiteral("head\n")      // 1
+        + QStringLiteral("a\nb\n")    // 2-3
+        + QStringLiteral("mid\n")     // 4
+        + QStringLiteral("a\nb\n");   // 5-6
+
+    const auto oc = ApplyEdits::applyToContent(contents,
+                                               QStringLiteral("a\nb"),
+                                               QStringLiteral("Z"), false);
+    EXPECT_EQ(oc.skipReason, "ambiguous");
+    EXPECT_EQ(oc.matchCount, 2);
+    ASSERT_EQ(oc.matchLines.size(), 2);
+    EXPECT_EQ(oc.matchLines.at(0), 2);
+    EXPECT_EQ(oc.matchLines.at(1), 5);
+}
+
+// A cap with no flag reads as completeness, which is the defect this verb's
+// siblings were fixed for. `matchCount` must stay the TRUE total while the list
+// is capped, so a caller can always tell the two apart.
+TEST(McpApplyEdits, Ants4473MatchCountIsTrueTotalWhenTheListIsCapped) {
+    QString contents;
+    for (int i = 0; i < 25; ++i) contents += QStringLiteral("dup\n");
+
+    const auto oc = ApplyEdits::applyToContent(contents,
+                                               QStringLiteral("dup"),
+                                               QStringLiteral("X"), false);
+    EXPECT_EQ(oc.skipReason, "ambiguous");
+    EXPECT_EQ(oc.matchCount, 25) << "the total must not be the capped size";
+    EXPECT_EQ(oc.matchLines.size(), 10) << "capped at 10";
+    EXPECT_EQ(oc.matchLines.at(0), 1);
+    EXPECT_EQ(oc.matchLines.at(9), 10);
+}
+
+// The occurrence walk advances by one character, which is what QString::count
+// does — so the total it reports is the same one the uniqueness test counted.
+// Were the two to diverge, the skip would report a count that disagrees with
+// the very condition that produced it.
+TEST(McpApplyEdits, Ants4473OverlappingOccurrencesCountLikeQStringCount) {
+    const QString contents = QStringLiteral("aaa\n");
+    const auto oc = ApplyEdits::applyToContent(contents,
+                                               QStringLiteral("aa"),
+                                               QStringLiteral("X"), false);
+    EXPECT_EQ(oc.skipReason, "ambiguous");
+    EXPECT_EQ(oc.matchCount, contents.count(QStringLiteral("aa")))
+        << "matchCount must equal the count that decided `ambiguous`";
+}
+
+// The new fields stay empty on every other outcome, so a caller cannot read a
+// stale list from a previous concern. INV-1's reason values are unchanged.
+TEST(McpApplyEdits, Ants4473FieldsAreEmptyOnAppliedAndNotFound) {
+    const auto ok = ApplyEdits::applyToContent(QStringLiteral("one two\n"),
+                                               QStringLiteral("one"),
+                                               QStringLiteral("1"), false);
+    EXPECT_TRUE(ok.applied);
+    EXPECT_EQ(ok.matchCount, 0);
+    EXPECT_TRUE(ok.matchLines.isEmpty());
+
+    const auto nf = ApplyEdits::applyToContent(QStringLiteral("one two\n"),
+                                               QStringLiteral("zeta"),
+                                               QStringLiteral("Z"), false);
+    EXPECT_EQ(nf.skipReason, "not_found");
+    EXPECT_EQ(nf.matchCount, 0);
+    EXPECT_TRUE(nf.matchLines.isEmpty());
+
+    // replace_all turns the same duplicate into a normal apply, not a skip.
+    const auto ra = ApplyEdits::applyToContent(QStringLiteral("x x x"),
+                                               QStringLiteral("x"),
+                                               QStringLiteral("y"), true);
+    EXPECT_TRUE(ra.applied);
+    EXPECT_EQ(ra.replacements, 3);
+    EXPECT_TRUE(ra.matchLines.isEmpty());
+}

@@ -2276,6 +2276,44 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
                 "`old` only in spacing. Retry with that line's exact text, or "
                 "use the start_line/end_line form for line %2.")
                     .arg(oc.nearMissKind).arg(oc.nearMissLine);
+        } else if (!oc.matchLines.isEmpty()) {
+            // ANTS-4473 — the `ambiguous` half, in the SAME fields. The two
+            // outcomes are mutually exclusive by construction (a near miss is
+            // only sought on `not_found`, occurrences only on `ambiguous`), so
+            // one `candidates` key carries both and a caller keeps one code
+            // path. Filed off a WORKED WELL report: `roadmap_log op:amend_body`
+            // refuses an over-broad match with a hint naming the cause and the
+            // retry, and the reporting session recovered in one call — while
+            // this verb's `ambiguous`, correct but silent about WHERE, cost a
+            // full file read.
+            QJsonArray cands;
+            QStringList lineNums;
+            for (int i = 0; i < oc.matchLines.size(); ++i) {
+                QJsonObject cand;
+                cand["line"] = oc.matchLines.at(i);
+                cand["text"] = oc.matchTexts.value(i);
+                cands.append(cand);
+                lineNums << QString::number(oc.matchLines.at(i));
+            }
+            s["candidates"]  = cands;
+            s["match_count"] = oc.matchCount;
+            // Say so when the list is shorter than the count. A cap with no
+            // flag reads as completeness, which is the defect this verb's
+            // siblings were fixed for.
+            const bool capped = oc.matchCount > oc.matchLines.size();
+            if (capped) s["candidates_truncated"] = true;
+            s["hint"] = QStringLiteral(
+                "`old` occurs %1 time(s) — apply_edits requires a unique match. "
+                "%2 at line(s) %3%4. Extend `old` with surrounding context to "
+                "single one out, use the start_line/end_line form for the one "
+                "you mean, or pass replace_all:true to change all %1.")
+                    .arg(oc.matchCount)
+                    .arg(capped ? QStringLiteral("First %1")
+                                      .arg(oc.matchLines.size())
+                                : QStringLiteral("They are"))
+                    .arg(lineNums.join(QStringLiteral(", ")))
+                    .arg(capped ? QStringLiteral(" (list truncated)")
+                                : QString());
         }
         skipped.append(s); ++editsSkipped;
     };

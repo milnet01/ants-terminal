@@ -63,6 +63,44 @@ void findWhitespaceNearMiss(const QString &contents, const QString &oldStr,
     r.nearMissKind = QStringLiteral("whitespace");
 }
 
+// ANTS-4473 — record WHERE the N occurrences behind an `ambiguous` are.
+// `total` is passed in rather than recounted: it is already known at the call
+// site, and two counting methods that can disagree is how a reported total
+// stops matching the list beside it.
+//
+// The walk advances by ONE character, which is what QString::count does, so
+// overlapping occurrences (`aa` in `aaa`) are counted the same way the caller's
+// uniqueness test counted them. Line numbers are 1-based and name the line the
+// match STARTS on — a multi-line `oldStr` has no single line, and its first is
+// the one a caller retries from.
+void collectOccurrenceLines(const QString &contents, const QString &oldStr,
+                            int total, EditOutcome &r) {
+    // Enough to disambiguate by eye; a pathological `old` must not turn one
+    // skip row into hundreds. matchCount carries the truth either way.
+    constexpr int kMaxReported = 10;
+    r.matchCount = total;
+
+    int from = 0;
+    int line = 1;
+    int scanned = 0;   // how far the line counter has consumed
+    while (r.matchLines.size() < kMaxReported) {
+        const int idx = contents.indexOf(oldStr, from);
+        if (idx < 0) break;
+        for (int i = scanned; i < idx; ++i)
+            if (contents.at(i) == QLatin1Char('\n')) ++line;
+        scanned = idx;
+
+        int ls = idx;
+        while (ls > 0 && contents.at(ls - 1) != QLatin1Char('\n')) --ls;
+        int le = idx;
+        while (le < contents.size() && contents.at(le) != QLatin1Char('\n')) ++le;
+
+        r.matchLines.append(line);
+        r.matchTexts.append(contents.mid(ls, le - ls));
+        from = idx + 1;
+    }
+}
+
 }  // namespace
 
 EditOutcome applyToContent(const QString &contents, const QString &oldStr,
@@ -82,6 +120,7 @@ EditOutcome applyToContent(const QString &contents, const QString &oldStr,
     }
     if (count > 1 && !replaceAll) {
         r.skipReason = QStringLiteral("ambiguous");
+        collectOccurrenceLines(contents, oldStr, count, r);   // ANTS-4473
         return r;
     }
 

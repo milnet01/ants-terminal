@@ -36380,6 +36380,44 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-18, found while implementing ANTS-4481.
   Lanes: mcp, roadmap-store, docs.
 
+- 📋 [ANTS-4496] **ANTS-2022 still describes the apply_edits skipped row as three fields, two shipped extensions later.**
+  Found while checking whether ANTS-4473 was safe to build. It was, and this is
+  the thing that made me check twice.
+
+  docs/specs/ANTS-2022.md says the skipped entry is "one entry per skipped
+  **edit**, of shape `{index, path, reason}` with `reason` in {not_found,
+  ambiguous, too_large, commit_failed}", and its worked example shows exactly
+  those three keys. The spec mentions neither ANTS-4418 nor `candidates` nor
+  `near_miss` anywhere — grep returns nothing for all three.
+
+  But ANTS-4418 shipped `candidates:[{line,text}]`, `near_miss_line` and `hint`
+  onto that row, and ANTS-4473 has now added `match_count` and
+  `candidates_truncated` alongside them. So the spec has been behind by one
+  extension since 2026-08-17 and is now behind by two.
+
+  Why ANTS-4473 proceeded rather than stopping the way ANTS-4478 did, because the
+  two look alike and are not: ANTS-4478 would have BROKEN a live tested invariant
+  (ANTS-3855 INV-3 asserts project_id:0 under dry_run by name). Here nothing
+  pins the row to three fields — ANTS-2022's INV-1 pins only the reason VALUES,
+  which are unchanged, and no test asserts the key set. The three-field
+  description is prose, and it was already false before this session touched it.
+
+  Fix: amend § 2 / § 2.3's envelope description and the worked example to carry
+  the diagnostic fields both items ship, as OPTIONAL keys present only on the
+  outcome that produces them — `candidates` + `near_miss_line` on a
+  whitespace-class `not_found`, `candidates` + `match_count` (+
+  `candidates_truncated`) on an `ambiguous`. One amendment covers both.
+
+  Rule 14 applies to the amendment: a conformer building a strict parser from
+  "of shape {index, path, reason}" writes something different once the row is
+  documented as extensible, so it is a change of direction and owes the gate.
+  Worth doing as one pass rather than two, which is why it is filed rather than
+  folded into ANTS-4473's commit.
+  **Layman:** The design document for the edit tool lists three pieces of information in its failure report; the tool has been sending more than that for a while, and the document was never updated.
+  Kind: doc-fix.
+  Source: in-session-2026-08-19, found while implementing ANTS-4473.
+  Lanes: docs, mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

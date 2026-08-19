@@ -8,6 +8,8 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
+#include <QVector>
 
 namespace ApplyEdits {
 
@@ -30,6 +32,23 @@ struct EditOutcome {
     int     nearMissLine = -1;     // 1-based line in `contents`
     QString nearMissText;          // that line, verbatim, as the file has it
     QString nearMissKind;          // why it differed, e.g. "whitespace"
+
+    // ANTS-4473 — the occurrences behind an `ambiguous`. The near-miss fields
+    // above answer "you are one space out"; these answer "there are N of them,
+    // and here they are". Filed off a WORKED WELL report whose contrast was the
+    // finding: `roadmap_log op:amend_body` refuses an over-broad match with a
+    // hint naming the cause AND the retry, and the reporting session recovered
+    // in one call with no re-read — while `ambiguous` from this verb, correct
+    // but silent about WHERE, cost a full file read.
+    //
+    // `matchCount` is the TRUE total and `matchLines` is capped, so a capped
+    // list can never read as the complete one — an `old` occurring 200 times
+    // must not emit 200 rows, and a silent truncation here would be the same
+    // "a cap with no flag reads as completeness" defect this verb's siblings
+    // were fixed for. Empty / 0 on every other outcome.
+    int         matchCount = 0;    // total occurrences, UNCAPPED
+    QVector<int> matchLines;       // 1-based start lines, capped
+    QStringList matchTexts;        // those physical lines, verbatim
 };
 
 // Apply one old→new edit to `contents`. Without replaceAll, `oldStr` must
