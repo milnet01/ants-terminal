@@ -14,6 +14,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The sanitizer CI job finishes again, and a timeout now reads as a failure** (ANTS-4533)
+  The memory-safety half of CI had been quietly giving up part-way
+  through for two days — cancelled at its 30-minute cap on 36 of the
+  last 40 runs. It did not look like a failure, because a job killed by
+  a timeout is reported as *cancelled* rather than *failed*, so nothing
+  went red and nothing notified. Three causes, all measured: the long
+  steps are now wrapped so an overrun genuinely fails; the compiler
+  cache is saved even when the job does not finish (a cancelled job
+  skipped the save, which froze the cache and made every later build
+  slower, which made the timeout likelier); and the sanitized test run
+  is parallel instead of serial. Measured after the fix: 922s to 704s
+  on the tests, and a first fully green run.
+
 - **Re-importing the roadmap no longer piles metadata lines up inside entries** (ANTS-4506)
   The migration now drops the trailing run of trailer-only lines from what
   it stores, because that block is the renderer's own output rather than

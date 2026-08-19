@@ -38292,6 +38292,41 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-19, observed logging ANTS-4505/4506.
   Lanes: roadmap-mcp.
 
+- 📋 [ANTS-4537] **roadmap_log op:append advanced the id counter by two for one bullet, burning ANTS-4535.**
+  Observed 2026-08-19. Two consecutive single-bullet appends:
+
+    ANTS-4534: counter_advanced_past 4533 -> counter_advanced_to 4534
+    ANTS-4536: counter_advanced_past 4534 -> counter_advanced_to 4536
+
+  The second allocated 4536 where 4535 was next. roadmap_query
+  ids:["ANTS-4535","ANTS-4536"] confirms it: 4535 is in
+  `missing_ids`, 4536 in `matched_ids`. No archive rotation is
+  involved -- `archived_ids` is empty -- so this is an allocation gap,
+  not ANTS-4387's archived-vs-missing case.
+
+  Cost is small but not zero. A gap reads as a deleted or lost item
+  to anyone auditing the sequence, and this session had already
+  written "Filed as ANTS-4535" into ANTS-4533's resolution note before
+  the envelope was read closely -- a wrong cross-reference that had to
+  be amended. The envelope reports the jump honestly; nothing
+  consumes it.
+
+  The envelope field to key on already exists: when
+  counter_advanced_to exceeds counter_advanced_past by more than the
+  number of bullets written, that is the defect. Worth either not
+  skipping, or saying why it skipped.
+
+  It is NOT deterministic: the append that filed THIS item went
+  4536 -> 4537, advancing by exactly one. So a repro needs the
+  conditions, not just a repeat. Not investigated: whether a
+  concurrent reader bumped the counter, or whether .roadmap-counter
+  and the store's high_water disagree (ANTS-4141 was that class and
+  is shipped, so a regression there is the first thing to check).
+  **Layman:** Filing one to-do item silently used up two ID numbers, leaving a gap that looks like a lost item.
+  Kind: fix.
+  Source: in-session-2026-08-19, hit while filing ANTS-4536.
+  Lanes: mcp, roadmap.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
@@ -50377,7 +50412,7 @@ contributors don't duplicate research.
   Kind: refactor.
   Source: in-session-2026-08-12 (clangd, during ANTS-4124).
 
-- 📋 [ANTS-4533] **CI's build-asan job times out at its 30-minute cap on nearly every run, and a timeout reads as cancelled rather than red.**
+- ✅ [ANTS-4533] **CI's build-asan job times out at its 30-minute cap on nearly every run, and a timeout reads as cancelled rather than red.**
   Measured 2026-08-19 over the last 30 ci.yml runs: build-asan was
   cancelled on 28 of them, going back to at least 2026-08-18T14:14. Two
   runs squeaked through (06:46 and 11:05 today), which is the tell -- the
@@ -50410,9 +50445,86 @@ contributors don't duplicate research.
 
   Not caused by ANTS-4505/4506 -- the run immediately before it (a version
   bump touching no test logic) failed identically.
+  Resolved (2026-08-19): three causes, each measured before being
+  fixed.
+
+  A job killed by timeout-minutes concludes `cancelled`, not
+  `failure`, so the run never read as red. Build and ctest are now
+  wrapped in `timeout`, which exits 124 and FAILS the step; the job
+  cap sits above their sum as an unreachable backstop.
+
+  actions/cache saves from an implicit post-step that is skipped on a
+  cancelled job, so no timed-out run ever saved its ccache. The cache
+  stayed frozen at the last completing run while main moved on, and
+  every later build started colder -- 11m29s at 11:05 against 16m42s
+  at 17:13 the same day. Restore and save are now split, the save
+  guarded `if: always()`.
+
+  The sanitized suite was serial: 922s for 3650 tests on a 4-vCPU
+  runner, dominated by per-process startup under ASan rather than by
+  any one test. Now -j2 with --timeout 300, matching what the
+  pre-push hook has done since ANTS-3761. tools/ci-parity.sh's asan
+  leg takes the same flags so the local mirror still mirrors.
+
+  Run 32294768761: build-test, qt62-baseline and build-asan all green
+  -- the first clean build-asan in two days, and the first ASan
+  ccache saved since 11:05.
+
+  One projection was wrong and was corrected in a follow-up commit.
+  -j2 gave 1.31x (922s -> 704s), not the 2x a halving predicts, so
+  the first ctest budget finished with 16 SECONDS to spare. Budgets
+  are now ~1.4x the measured cost: build 24m, ctest 16m, cap 42m.
+
+  tests/features/ci_asan_budget/ locks all four invariants against
+  the workflow text; all four ran red before the fix, plus two
+  further mutation probes -- one of which caught a false pass in the
+  test itself, where `if: always()` was matching the NEXT step's
+  guard.
+
+  NOT closed by this: the pre-push hook's ASan leg still skips on a
+  tree it cannot measure, and a CMakeLists.txt edit guarantees that
+  state -- so the push most likely to need the local gate is the one
+  that skips it. Filed as ANTS-4536.
   **Layman:** The safety-checking half of our automated build has been quietly giving up part-way through for two days, and it does not look like a failure.
   Kind: fix.
   Source: in-session-2026-08-19, found checking CI after the ANTS-4505/4506 push.
+  Lanes: ci, tests.
+
+- 📋 [ANTS-4536] **A CMakeLists.txt edit guarantees the pre-push ASan gate skips, so the riskiest pushes are the unguarded ones.**
+  ANTS-4118 gates the pre-push hook's ASan leg on being able to
+  MEASURE the pending work in build-asan, and refuses when it cannot
+  -- an unmeasured build is the one a caller timeout kills. Correct as
+  far as it goes.
+
+  But editing CMakeLists.txt leaves a pending CMake regen, and
+  `ninja -C build-asan -n` then reports `[0/1] Re-running CMake...`
+  rather than an edge count. The hook reads that as unmeasurable and
+  skips. Observed twice today on the ANTS-4533 push:
+
+    pre-push: no build-asan gate SKIPPED -- cannot measure pending
+              work in build-asan (no ninja / no build.ninja, or a
+              pending CMake regen hiding the real edges)
+
+  So the skip is not occasional -- it is GUARANTEED for any push that
+  adds or rewires a source file, which is the change most likely to
+  reach for an API the floor does not have or to introduce a
+  sanitizer-visible defect. ANTS-4131's Qt-floor guard exists because
+  a new TU is the highest-risk change; this hole is the same shape and
+  points the other way.
+
+  Less severe since ANTS-4533: CI's build-asan now completes and goes
+  red on a real failure, so a skipped local leg is no longer a total
+  outage. That is why this is filed rather than fixed inline.
+
+  Candidate directions, unmeasured: run the regen first and then
+  measure (cheap -- it is a CMake re-run, not a build); or measure
+  against `cmake --build build-asan -n` instead; or let the hook
+  report an explicit "regen pending, run it yourself" with the exact
+  command, rather than the current generic skip that reads as a
+  tooling fault.
+  **Layman:** The safety check that runs before we upload code quietly stands down on exactly the kind of change most likely to need it.
+  Kind: fix.
+  Source: in-session-2026-08-19, observed while closing ANTS-4533.
   Lanes: ci, tests.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
