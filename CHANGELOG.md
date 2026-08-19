@@ -214,6 +214,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap's id counter cache no longer drifts behind the database** (ANTS-4141)
+  Filing an item on a migrated project allocates its number from the database
+  and left the on-disk counter untouched, so the counter fell further behind
+  with every item — measured at 99 behind on this project. Anything still
+  reading it, such as a fresh clone or a hand-written entry, would then pick a
+  number already taken. It is now refreshed on each write, as a best-effort
+  cache update that cannot fail the write itself.
+
 - **A roadmap item that quotes an example above its own details no longer imports the example's values** (ANTS-4497)
   Four of the five detail lines an item carries were read from the FIRST place
   they appeared in the item, so an item quoting a sample block — or whose title

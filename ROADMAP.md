@@ -46682,7 +46682,7 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-04 (noticed while fixing ANTS-3828).
 
-- 🚧 [ANTS-4141] **A single `roadmap_log op:flip` re-rendered the whole of ROADMAP.md from a store that has diverged from the file by ~200 ids.**
+- ✅ [ANTS-4141] **A single `roadmap_log op:flip` re-rendered the whole of ROADMAP.md from a store that has diverged from the file by ~200 ids.**
   Hit 2026-08-13 flipping two bullets. The write reported
   `items_rendered: 1975` and touched three files —
   `ROADMAP.md`, `docs/roadmap/0.6.md`, `docs/roadmap/0.5.md` — for a change
@@ -46846,6 +46846,44 @@ here.)
   ruling this item already made — "the store owns allocation" — settles the
   direction; what is left is the write and its failure mode, since the
   counter write can fail and the store path currently has no such path.
+  Resolved (2026-08-19) — Part 2 shipped, and with the divergence cleared
+  that is the last of it. Both parts and the condition are now closed:
+
+    - Part 1, the divergence guard, shipped 2026-08-14.
+    - The ~200-id divergence itself cleared with ANTS-4065 Phase E on
+      2026-08-18. Verified by use rather than by assertion: ~20 roadmap_log
+      writes against this project this session, all succeeding, none
+      refused.
+    - Part 2, counter reconciliation, ships now. A store-path allocation
+      writes the allocated value back to `.roadmap-counter`, and reports
+      `counter_advanced_to` / `counter_advanced_past` when it moves.
+
+  Two design calls made here rather than left implicit.
+
+  **On every allocation, not only after a migration.** ANTS-4142's wording
+  ("reconcile ... after a migration") is the other defensible reading, and
+  it does not hold: a cache refreshed only at migration time drifts again
+  with the very next append, and the drift is the whole mechanism.
+
+  **Best effort, and that decides the shape.** By the time this runs the
+  item is committed and the files are rendered, so there is nothing to roll
+  back, and failing a completed append because a CACHE could not be
+  refreshed would be worse than the drift. The markdown path treats the
+  identical failure as fatal, correctly — there the counter IS the
+  allocation source and the write can still be undone. Only reconciles when
+  the file already exists: a project without one has nothing drifting, and
+  creating one would hand a stable-id project a file it never had.
+
+  Test: tests/features/roadmap_alloc_store_floor/ INV-3, with an ants-v1
+  fixture so the STORE path is the one exercised — the file's other cases
+  use a mixed fixture on purpose, and INV-3 asserts the envelope carries no
+  `line` precisely so it cannot pass on the markdown path by accident.
+  Proved red first: allocated DEMO-0002, counter left at 1. Full suite
+  3629/3629.
+
+  Residue, and it is data rather than code: this project's counter still
+  reads 4402 against a store high-water of 4501. The next store-path append
+  made by a binary carrying this fix reconciles it.
 
 - ✅ [ANTS-4402] **The same store divergence has a READ side, and it is silent: `roadmap_query` serves the store while echoing `ROADMAP.md` as its path, so every hand edit is invisible.**
   ANTS-4141 documents the WRITE side and prescribes the workaround this

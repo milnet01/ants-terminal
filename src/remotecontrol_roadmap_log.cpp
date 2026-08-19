@@ -427,9 +427,60 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             env[QStringLiteral("ok")]   = true;
             env[QStringLiteral("id")]   = idStr;
             env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
-            // No `line` / `bytes_written` / `counter_advanced_to`: a store has
-            // no lines (ANTS-3793 INV-2's declared field difference), the render
-            // decides placement, and .roadmap-counter is not the carrier here.
+            // No `line` / `bytes_written`: a store has no lines (ANTS-3793
+            // INV-2's declared field difference) and the render decides
+            // placement. `.roadmap-counter` is not the allocation SOURCE here
+            // either — but it is a cache of it, and the block below keeps it
+            // in step, so the two counter fields are reported when it moves.
+            //
+            // ANTS-4141 part 2 — reconcile the derived counter cache with the
+            // allocation the store just made. The store owns allocation (that
+            // item's own ruling) and roadmap-format.md § 3.5.1 calls
+            // `.roadmap-counter` a derived, per-machine cache rather than
+            // source. But everything that still READS it — a fresh clone, a
+            // hand append, a tool — allocates from it, and this path never
+            // wrote it, so it drifted by one per allocation. Measured
+            // 2026-08-19 on this project: 4402 against a store high-water of
+            // 4501.
+            //
+            // On EVERY allocation rather than only after a migration, which is
+            // the other defensible reading of that item: a cache refreshed
+            // only at migration time starts drifting again with the next
+            // append, and the drift is what the collision needs.
+            //
+            // BEST EFFORT, deliberately, and this is the half that decides the
+            // shape: the item is already committed and the files already
+            // rendered by the time we get here, so there is nothing to roll
+            // back, and failing an append because a CACHE could not be
+            // refreshed would turn a completed write into an error. The
+            // markdown path treats the same failure as fatal because there the
+            // counter IS the allocation source and the write can still be
+            // undone.
+            //
+            // Only when the file already exists: a project with no counter has
+            // nothing drifting, and creating one here would hand a
+            // stable-id or counter-less project a file it never had. Advance
+            // only upward, for the reason raiseIdHighWater() does the same.
+            if (!dryRun && !useStablePrefix && allocated > 0
+                && QFile::exists(counterPath)) {
+                qint64 cached = 0;
+                QFile cr(counterPath);
+                if (cr.open(QIODevice::ReadOnly)) {
+                    cached = QString::fromUtf8(cr.readAll().trimmed()).toLongLong();
+                    cr.close();
+                }
+                if (allocated > cached) {
+                    QSaveFile cw(counterPath);
+                    if (cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                        const QByteArray cv =
+                            (QString::number(allocated) + QChar('\n')).toUtf8();
+                        if (cw.write(cv) == cv.size() && cw.commit()) {
+                            env[QStringLiteral("counter_advanced_to")]   = allocated;
+                            env[QStringLiteral("counter_advanced_past")] = cached;
+                        }
+                    }
+                }
+            }
             rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
             // ANTS-2043 — the near-duplicate advisory, kept: the records are
             // the store's own items, read BEFORE the write so the new bullet
