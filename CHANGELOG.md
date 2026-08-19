@@ -228,6 +228,27 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A filename mentioned in an entry's Source line is no longer reported as a missing file.** (ANTS-4502)
+  The import treated a token as a path if it carried EITHER a directory
+  separator OR a filename-shaped ending, and either half alone is a bad test.
+  The ending alone flags every bare filename and every `§4.4`-shaped fragment:
+  11 of 12 notes on one project, every file existing one directory down. The
+  separator alone flags every prose slash: measured over this project's 1,781
+  entries it accepts 97 tokens of which 2 are real paths, the rest being
+  slash-command names, id pairs and phrases like `precision/convenience`.
+  Requiring both gives 1 candidate, 1 real, 0 false reports. A path with no
+  extension — a bare directory — is no longer checked, which is the whole cost.
+
+- **A roadmap entry that quotes the format no longer has its own example read as real data.** (ANTS-4504)
+  The guard against a quoted trailer key was three fixed-length lookbehinds, so
+  it only saw a backtick one to three characters before the label. An entry
+  whose example wrapped across two lines had the second key parsed as a real
+  declaration — ANTS-3808 gained a `Lanes:` value it never wrote. Every key is
+  now matched against a masked copy of the body in which inline code spans are
+  blanked, with values taken from the original text so a real value keeps its
+  own backticks. Span boundaries come from the project's existing CommonMark
+  primitive rather than a fourth hand-rolled pairing.
+
 - **roadmap_log dry_run returns the next id under the same key the real write uses, so it reads as a reservation.** (ANTS-4508)
   The preview tells you which number your entry will get, but does not hold it — and the wording makes it look held.
 

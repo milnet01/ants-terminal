@@ -103,6 +103,21 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.106" date="2026-08-19">
+      <description>
+        <p>Roadmap store robustness — reconciliation of item IDs and field values between the file and database, plus a large sweep of MCP tooling improvements, feedback system enhancements, and a Lua event-handler memory corruption fix.</p>
+        <ul>
+          <li><em>Added:</em> Feedback v2 gains <code>awaiting</code> triage state for questions awaiting reporter input, and <code>build_target_for</code> MCP verb finds which test program owns a source file. (ANTS-3631, 3745)</li>
+          <li><em>Added:</em> Roadmap query now reports which backend answered (<code>source: "store" | "markdown"</code>), <code>section_index</code> can return slugs only to avoid reply overflow, and <code>spec_lint</code> falls back to the global standard when a project has none. (ANTS-4402, 4467, 4080)</li>
+          <li><em>Added:</em> <code>spec_lint</code> accepts an invariant-id floor declaration so specs continuing a sibling's numbering don't report intentional gaps, and <code>co_change_family</code> lists all edit sites of a settings field across the codebase. (ANTS-3784, 3368)</li>
+          <li><em>Changed:</em> Roadmap reading dispatches before loading the file, so query on a migrated project no longer pulls the entire 3 MiB ROADMAP.md to ask which backend serves it, and empty code maps now explain why instead of returning a bare flag. (ANTS-3863, 4419)</li>
+          <li><em>Fixed:</em> Roadmap database — item ID allocation no longer reuses numbers already assigned, field defaults no longer overwrite existing values on re-import, and headlines wrapping across lines no longer split items in two when rewritten. (ANTS-4493, 4498, 4484)</li>
+          <li><em>Fixed:</em> Roadmap store reconciliation — migrations strip path punctuation in Source fields, hand-edits to ROADMAP.md are reported as discarded rather than silently lost, duplicate IDs are caught before insert with both bullet sites named, and the ID counter is refreshed after every write. (ANTS-4481, 4462, 4428, 4141)</li>
+          <li><em>Fixed:</em> Lua memory corruption when plugins register event handlers from inside a handler, plus fixes to MCP verbs <code>apply_edits</code>, <code>feedback_log</code>, <code>roadmap_log</code>, and a dozen analysis and audit tools. (ANTS-4441, 4473, 4437, 4463, 4401)</li>
+          <li><em>Fixed:</em> Roadmap text handling — an entry that quotes the roadmap format no longer has its own example read as real data, and a filename mentioned in an entry's provenance line is no longer reported as a missing file. (ANTS-4504, 4502)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.105" date="2026-08-19">
       <description>
         <p>A broad correctness sweep of the built-in Claude Code integration, driven by defects other sessions reported while using the tools, plus the roadmap store's migration half and a project's coding standards now readable in the repository itself.</p>

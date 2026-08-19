@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  Version <strong>0.7.105</strong> ·
+  Version <strong>0.7.106</strong> ·
   <a href="CHANGELOG.md">What's new</a> ·
   <a href="ROADMAP.md">What's planned</a>
 </p>
@@ -47,7 +47,7 @@ Ants Terminal answers a lot of those questions **itself** and hands Claude a
 short, tidy summary instead of a wall of text. Less text read means fewer
 tokens spent. Three things make that happen:
 
-- **A built-in toolkit Claude can use.** 90 ready-made tools that answer
+- **A built-in toolkit Claude can use.** 93 ready-made tools that answer
   Claude's common questions directly — often saving thousands of tokens per
   question (more below).
 - **Gentle nudges.** An optional set of "hooks" quietly steers Claude toward
