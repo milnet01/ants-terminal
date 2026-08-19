@@ -40719,6 +40719,37 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-08-19, from the corroborating DOOM Ants report on ANTS-4502..
   Lanes: roadmap.
 
+- 📋 [ANTS-4528] **Continuation indent is destroyed at PARSE, so a nested list cannot survive a render.**
+  The ANTS-4506 write-up names the RENDERER -- "emits every continuation
+  line of a body at exactly two spaces". True, but the cause is upstream:
+  `parseBullets()` builds the body with `body.append(cont.trimmed())`
+  (src/roadmapparse.cpp), so the indent is gone before the render ever
+  sees it. `appendIndented()` can only put a uniform two spaces back.
+
+  Cost, measured by the Claude Code config session: one added bullet
+  produced a 404-line diff, 188 of those lines re-indentations of
+  surviving text; a numbered sub-list written at four spaces with
+  six-space continuations comes back flat, so the numbered item and its
+  own prose sit at the same level and the continuation breaks out of the
+  list. It also trips that repo's pre-commit SURVIVOR check, so the
+  commit needed --no-verify.
+
+  NOT a free fix, which is why it is its own item. Storing the indent
+  makes stored bodies indented, and ANTS-3809's loop 3 established that
+  `TrailerMatch::anchored` is exact for all five keys PRECISELY because
+  they are not -- `anchored` tests `body.at(at-1) == '\n'`. ANTS-4505 has
+  since made `anchored` load-bearing for render suppression too. So this
+  change touches ANTS-3757 section 2.1.1, ANTS-3808 sections 2.1/2.2/2.3
+  and ANTS-3809's INV set together, and `anchored` would have to tolerate
+  leading whitespace at every consumer.
+
+  Do it as one contract pass over those three specs, not as a patch to
+  the parser.
+  **Layman:** A roadmap entry containing a numbered sub-list comes back flat after a save, so the list breaks apart.
+  Kind: fix.
+  Source: in-session-2026-08-19, split out of ANTS-4506 during its contract pass..
+  Lanes: roadmap, roadmaprender.
+
 ### 🔌 Ants-MCP feedback from CC sessions (triage 2026-07-25)
 
 Triage of the 13 `*_Ants_MCP_Feedback.md` files under /mnt/Games/Scripts/Linux.
