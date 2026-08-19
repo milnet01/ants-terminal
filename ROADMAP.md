@@ -37267,7 +37267,7 @@ are closed inline in the feedback files rather than filed here.
   Not yet built. Next step is implementation, which is the third reviewer
   a spec's cap hands off to.
 
-- 📋 [ANTS-4502] **A bare filename in trailer prose is reported unresolved_path, though the file exists one directory down.**
+- ✅ [ANTS-4502] **A bare filename in trailer prose is reported unresolved_path, though the file exists one directory down.**
   Measured, not inferred — `roadmap_migrate dry_run` against
   /home/ants/.claude on 2026-08-19, immediately after ANTS-4481 shipped.
 
@@ -37339,6 +37339,27 @@ are closed inline in the feedback files rather than filed here.
   Also worth taking from DOOM's report: splitting notes by confidence, so
   a field_conflict is not drowned by path noise, is a cheaper mitigation
   than the detector fix and is independent of it.
+  Resolved (2026-08-19), and the answer is NOT the rule this bullet
+  recommended. The bullet proposed treating a token with no separator as
+  prose, plus an id-citation exclusion. Measured over this project's 1,781
+  sourced bullets through the real parser, separator-only accepts 97 tokens
+  of which 2 resolve: 40 slash-command names (/cold-eyes, /test-audit),
+  9 id citations, 46 prose slashes (precision/convenience, 4d/5, #7/#8).
+  ~98% false -- worse than the rule it replaces. The two tests were an OR
+  and are now an AND: a token is a path reference when it carries `/` AND a
+  filename-shaped final segment. Same corpus: 1 candidate, 1 resolves, 0
+  notes, costing one real reference (docs/specs, a directory). The AND-form
+  subsumes the id-citation clause an id pair has no extension and the
+  whole trailing-punctuation question the gate raised. Classification runs
+  on the punctuation-chopped token. The recognised-source-form gate stays
+  whole-value: a per-token form reports the prose slashes inside the ten
+  corpus values that begin with one of its prefixes and carry a `/`.
+  Contract: ANTS-4065 section 2.5, amended and gated through
+  review-contract over two loops -- 16 verified, 16 fixed, cap reached.
+  Test: INV-12 in tests/features/roadmap_import_mapping, six fixtures all
+  red against the OR-form plus a control. Full suite 3667/3667.
+  Two halves filed rather than folded in: ANTS-4526 (a trailer key on a
+  fenced line) and ANTS-4527 (Evidence: values that are prose).
 
 - 📋 [ANTS-4503] **The roadmap store's history byte cap counts characters, so a UTF-8 store can exceed it several-fold.**
   Found by a cold review lane while gating ANTS-4498; verified against
