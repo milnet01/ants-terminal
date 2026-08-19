@@ -46810,6 +46810,42 @@ here.)
   Kind: fix.
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (hit while recording the cross-session feedback batch).
+  Progress (2026-08-19) — measured, and TWO of this bullet's standing
+  instructions are now stale. Read this before acting on anything above.
+
+  1. **The divergence is CLEARED and roadmap_log is no longer refusing.**
+  This item says "will refuse every write until the ~200 un-imported
+  bullets are imported ... Hand-edit ROADMAP.md until then." That was true
+  when written; ANTS-4065 Phase E completed on 2026-08-18 and the store is
+  in sync. This session made roughly twenty roadmap_log writes against this
+  project — flips, appends, batches — every one succeeding and rendering
+  ~2,139 items, with no render_would_drop refusal.
+
+  2. **So "hand-edit ROADMAP.md until then" is now the DANGEROUS advice**,
+  by this item's own analysis: the render writes the store's document, and
+  a bullet the store has never seen is simply not in it. A hand edit
+  between two roadmap_log calls is exactly the window this item measured
+  losing ANTS-4146. The guidance has inverted — use the verb, do not hand
+  edit.
+
+  3. **Part 2 is still open and is now a number.** `.roadmap-counter` reads
+  **4402**; the store's `id_prefix.high_water` for ANTS reads **4501**. The
+  counter lags by 99 and drifts by one on every store-path allocation,
+  because the store path calls raiseIdHighWater() and never writes the
+  counter file — every counter write in the handler sits on the markdown
+  path. Anything reading the counter (a fresh clone, a hand append, a tool)
+  therefore allocates into a block the store already owns.
+
+  4. **ANTS-4493, shipped today, closes the OTHER direction only.** The
+  markdown allocator now floors to the store's high-water, so a project on
+  that path can no longer reissue a stored id. It does not make the store
+  path write the counter, so it does not touch the gap above.
+
+  So the remaining work under this item is precisely: on a store-path
+  allocation, reconcile `.roadmap-counter` to the allocated value. The
+  ruling this item already made — "the store owns allocation" — settles the
+  direction; what is left is the write and its failure mode, since the
+  counter write can fail and the store path currently has no such path.
 
 - ✅ [ANTS-4402] **The same store divergence has a READ side, and it is silent: `roadmap_query` serves the store while echoing `ROADMAP.md` as its path, so every hand edit is invisible.**
   ANTS-4141 documents the WRITE side and prescribes the workaround this
