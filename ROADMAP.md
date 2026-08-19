@@ -37560,6 +37560,34 @@ are closed inline in the feedback files rather than filed here.
   still append. Do NOT start before ANTS-4506 -- shipping a second
   markdown-rendering surface while the roadmap's own render/parse round
   trip is unstable would duplicate that defect rather than avoid it.
+  THE RULE THAT DECIDES WHAT MIGRATES (settled in session 2026-08-19, and
+  recorded here because this item is the entry point for the migration
+  family — it was reached in conversation and would otherwise be
+  re-derived, differently, by whoever asks next):
+
+    The store is for things whose PRIMARY form is structured and whose
+    file form is a RENDERING. It is not for things whose primary form is
+    a document.
+
+  Applied, with the verdicts:
+
+  - ROADMAP.md — structured bullets with fields. Correctly migrated.
+  - The feedback corpus — findings with fields. THIS item. Best remaining
+  candidate.
+  - CHANGELOG.md — NO. The file IS the artifact: it ships inside packages
+  and renders on GitHub. A store form would be a second source of truth
+  for something whose whole purpose is to be read as a file.
+  - docs/specs/ (245 files) — NO. The document is the point. What IS worth
+  indexing is the invariant set across them, and that is a CACHE
+  (mcp-caches.md's contract, keyed and relocatable) rather than a
+  migration into the store, which mcp-caches.md § and ANTS-3756 both
+  define as PRIMARY and never a cache. Do not conflate the two.
+  - The audit / false-positive ledgers — ANTS-4514, considered, and the
+  argument there is cross-project reuse rather than structure.
+
+  The two NOs are the load-bearing half. Without them this rule reads as
+  "put everything in the store", which is how a store stops being
+  authoritative for anything.
   **Layman:** Move the 19 shared feedback files into the same database as the roadmap, so all of them can be asked one question instead of nineteen.
   Kind: feature.
   Source: user-request-2026-08-19.
