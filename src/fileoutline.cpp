@@ -2,6 +2,8 @@
 
 #include "fileoutline.h"
 
+#include "markdownscan.h"   // ANTS-4520 — shared blockquote strip
+
 #include <QSet>
 #include <QHash>
 #include <QPair>
@@ -926,7 +928,14 @@ QJsonObject compute(const QString &absPath,
                 }
             }
         } else if (effective == Mode::Md) {
-            QRegularExpressionMatch m = rxMdHeading().match(line);
+            // ANTS-4520 — a heading inside a blockquote is a heading. A plan
+            // file whose run-state blocks are `> ## You are here` /
+            // `> ## Previously` outlined to the plain headings only, so the
+            // blocks a session is told to read FIRST were invisible in the one
+            // call meant to answer "what is in this file?". The `>` does not
+            // change the depth, so the ANTS-4396 filter treats it as a `##`.
+            QRegularExpressionMatch m =
+                rxMdHeading().match(MarkdownScan::stripBlockquote(line));
             if (m.hasMatch()) {
                 const int level = m.captured(1).size();
                 if (withSizes) mdLevelByLine.insert(totalLines, level);

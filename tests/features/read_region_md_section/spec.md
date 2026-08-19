@@ -58,6 +58,31 @@ it is unique.
   `MarkdownScan::fenceMask`, the shared primitive, and this was the last
   hand-rolled tracker in the tree.
 
+### ANTS-4520 — a heading inside a blockquote
+
+`> ## Foo` refused `section_not_found` and the ANTS-4350 candidate list omitted
+it, so a caller could not tell a missing heading from an unsupported shape and
+doubted their spelling. Not exotic: a OneUp plan document uses blockquoted
+headings as its standing convention for run-state blocks — one
+`> ## You are here` above a stack of `> ## Previously` — and its session handoff
+says to read the *You are here* block first. The one section a new session is
+told to read was the one section mode could not address.
+
+It degraded in the worst direction: the fallback is `workspace_search` for the
+literal text then `read_region` with a **line range** — three calls instead of
+one, and a line range is exactly the stale-anchor problem section mode exists to
+remove. On a file that grows a new block at the top every session, a range
+cached from one session is wrong by the next.
+
+| Case | Asserts |
+|---|---|
+| `Ants4520BlockquotedHeadingResolves` | `> ## You are here` resolves by slug; a deeper quoted heading (`> ###`) is nested, and the next `> ##` ends the body. |
+| `Ants4520QuotedSectionDoesNotSwallowPlainOne` | A less-deeply-quoted heading always terminates, so `> ## Previously` stops before the plain `## Plain section`; the plain heading's own span is unaffected. |
+| `Ants4520FencedQuotedHeadingIsStillNotAHeading` | The fence mask wins — `> ## …` inside a ```` ```markdown ```` block is sample text (the ANTS-3674 defect must not return by a new route). |
+
+The strip and the depth rule live in `MarkdownScan` (INV-14 there), shared with
+`file_outline`'s md mode so the two cannot disagree.
+
 ## Out of scope
 
 - **The CommonMark closer-LENGTH rule** — a 3-backtick line closing a

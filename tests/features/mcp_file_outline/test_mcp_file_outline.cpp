@@ -1156,3 +1156,53 @@ TEST(McpFileOutline, Ants4469MaxSymbolsReportsDroppedCount) {
         << "ANTS-4469: the field is a truncation report, not a always-present "
            "counter";
 }
+
+// ANTS-4520 — md mode surfaces a heading inside a blockquote.
+//
+// The companion to read_region's section resolver: a plan file whose run-state
+// blocks are `> ## You are here` / `> ## Previously` outlined to the plain
+// headings only, so the blocks a session is told to read first were invisible
+// in the one call meant to answer "what is in this file?".
+TEST(McpFileOutline, Ants4520MdBlockquotedHeadings) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/plan.md");
+    const QByteArray body =
+        "# Plan\n"
+        "\n"
+        "> ## You are here\n"
+        "> Run state.\n"
+        ">\n"
+        "> ## Previously\n"
+        "> Older.\n"
+        "\n"
+        "## Plain section\n"
+        "Body.\n";
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
+    }
+    auto names = [](const QJsonObject &o) {
+        QStringList n;
+        for (const auto &v : o.value("symbols").toArray())
+            n << v.toObject().value("name").toString();
+        return n;
+    };
+
+    const QJsonObject all = FileOutline::compute(
+        path, FileOutline::Mode::Auto, false, 100, false, 0);
+    const QStringList got = names(all);
+    EXPECT_EQ(got, (QStringList{QStringLiteral("Plan"),
+                                QStringLiteral("You are here"),
+                                QStringLiteral("Previously"),
+                                QStringLiteral("Plain section")}))
+        << "got: " << got.join(QStringLiteral(", ")).toStdString();
+
+    // The quote marker does not change the DEPTH: `> ##` is level 2, so the
+    // heading-depth filter treats it exactly as `##`.
+    const QJsonObject shallow = FileOutline::compute(
+        path, FileOutline::Mode::Auto, false, 100, false, /*maxHeadingLevel=*/1);
+    EXPECT_EQ(names(shallow), (QStringList{QStringLiteral("Plan")}))
+        << "a quoted `##` must be filtered by depth like any other `##`";
+}

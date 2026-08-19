@@ -394,3 +394,42 @@ TEST(MarkdownScanHeadings, LevelRule) {
     EXPECT_EQ(MarkdownScan::headingLevel(QStringLiteral("not a heading")), 0);
     EXPECT_EQ(MarkdownScan::headingLevel(QString()), 0);
 }
+
+// ANTS-4520 — the shared blockquote strip, and the depth rule it feeds.
+TEST(MarkdownScan, StripBlockquoteAndQuotedHeadingSpans) {
+    int d = -1;
+    EXPECT_EQ(MarkdownScan::stripBlockquote(QStringLiteral("## plain"), &d),
+              QStringLiteral("## plain"));
+    EXPECT_EQ(d, 0);
+    EXPECT_EQ(MarkdownScan::stripBlockquote(QStringLiteral("> ## quoted"), &d),
+              QStringLiteral("## quoted"));
+    EXPECT_EQ(d, 1);
+    // Nested, and a marker with no space after it.
+    EXPECT_EQ(MarkdownScan::stripBlockquote(QStringLiteral("> >## deep"), &d),
+              QStringLiteral("## deep"));
+    EXPECT_EQ(d, 2);
+    // Up to 3 spaces before a marker still opens a quote; a 4th does not.
+    EXPECT_EQ(MarkdownScan::stripBlockquote(QStringLiteral("   > x"), &d),
+              QStringLiteral("x"));
+    EXPECT_EQ(d, 1);
+    EXPECT_EQ(MarkdownScan::stripBlockquote(QStringLiteral("    > x"), &d),
+              QStringLiteral("    > x"));
+    EXPECT_EQ(d, 0);
+    // A bare '>' is a marker, not text.
+    EXPECT_EQ(MarkdownScan::stripBlockquote(QStringLiteral(">"), &d),
+              QString());
+    EXPECT_EQ(d, 1);
+
+    const auto h = MarkdownScan::headings(QStringList{
+        QStringLiteral("> ## Quoted"),      // 1
+        QStringLiteral("> body"),           // 2
+        QStringLiteral("## Plain"),         // 3
+        QStringLiteral("body"),             // 4
+    });
+    ASSERT_EQ(h.size(), 2);
+    EXPECT_EQ(h[0].quoteDepth, 1);
+    EXPECT_EQ(h[0].text, QStringLiteral("Quoted"));
+    EXPECT_EQ(h[0].endLine, 2) << "a shallower heading terminates a quoted one";
+    EXPECT_EQ(h[1].quoteDepth, 0);
+    EXPECT_EQ(h[1].endLine, 4);
+}

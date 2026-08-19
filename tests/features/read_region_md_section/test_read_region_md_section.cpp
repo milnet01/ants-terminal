@@ -428,3 +428,96 @@ TEST(ReadRegionMdSection, NotFoundStillListsHeadingsWhenNothingScores) {
     EXPECT_FALSE(candidatesOf(env).isEmpty())
         << "an unranked heading list beats nothing at all";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4520 — a heading inside a blockquote is a heading.
+//
+// `> ## Foo` refused `section_not_found` and the ANTS-4350 candidate list
+// omitted it, so a caller could not tell a missing heading from an
+// unsupported shape and doubted their spelling. Not exotic: a OneUp plan
+// document uses blockquoted headings as its standing convention for run-state
+// blocks — one `> ## You are here` above a stack of `> ## Previously` — and
+// its session handoff says to read the *You are here* block FIRST. So the one
+// section a new session is told to read was the one section mode could not
+// address.
+//
+// It degraded in the worst direction too: the fallback is workspace_search for
+// the literal text then read_region with a LINE RANGE — three calls instead of
+// one, and a line range is exactly the stale-anchor problem section mode
+// exists to remove. On a file that grows a new block at the top every session,
+// a range cached from one session is wrong by the next.
+
+// The reporter's shape. 1-based lines in the comment column.
+static const char *kQuotedDoc =
+    "> ## You are here\n"        // 1
+    "> Run state for the session.\n"  // 2
+    ">\n"                        // 3
+    "> ### A nested note\n"      // 4
+    "> Nested body.\n"           // 5
+    ">\n"                        // 6
+    "> ## Previously\n"          // 7
+    "> The older block.\n"       // 8
+    "\n"                         // 9
+    "## Plain section\n"         // 10
+    "Plain body.\n";             // 11
+
+// B1 — the block a session is told to read first resolves by name.
+TEST(ReadRegionMdSection, Ants4520BlockquotedHeadingResolves) {
+    QTemporaryDir dir;
+    const QJsonObject env =
+        extractFrom(writeDoc(dir, "plan.md"), kQuotedDoc, "you-are-here");
+    ASSERT_TRUE(env.value("ok").toBool())
+        << "a `> ## ` heading must be addressable: "
+        << env.value("error").toString().toStdString();
+    EXPECT_EQ(env.value("start_line").toInt(), 1);
+    EXPECT_EQ(env.value("section_slug").toString().toStdString(),
+              "you-are-here");
+    const QString body = joinLines(env);
+    EXPECT_TRUE(body.contains(QStringLiteral("Run state for the session.")));
+    EXPECT_TRUE(body.contains(QStringLiteral("Nested body.")))
+        << "a DEEPER quoted heading is nested, not a terminator";
+    EXPECT_FALSE(body.contains(QStringLiteral("The older block.")))
+        << "the next same-level quoted heading ends the section";
+}
+
+// B2 — the depth rule, in the direction that actually bites: a quoted section
+// must not swallow the plain section after it. Terminating only on
+// same-or-higher level at the SAME quote depth would run `> ## Previously` to
+// EOF and hand back the whole rest of the file.
+TEST(ReadRegionMdSection, Ants4520QuotedSectionDoesNotSwallowPlainOne) {
+    QTemporaryDir dir;
+    const QString path = writeDoc(dir, "plan.md");
+
+    const QJsonObject prev = extractFrom(path, kQuotedDoc, "previously");
+    ASSERT_TRUE(prev.value("ok").toBool());
+    EXPECT_EQ(prev.value("start_line").toInt(), 7);
+    EXPECT_EQ(prev.value("end_line").toInt(), 9)
+        << "a shallower-quoted heading always terminates";
+    EXPECT_FALSE(joinLines(prev).contains(QStringLiteral("Plain body.")));
+
+    // …and the unquoted heading is unaffected by the quoted ones above it.
+    const QJsonObject plain = extractFrom(path, kQuotedDoc, "plain-section");
+    ASSERT_TRUE(plain.value("ok").toBool());
+    EXPECT_EQ(plain.value("start_line").toInt(), 10);
+    EXPECT_EQ(plain.value("end_line").toInt(), 11);
+}
+
+// B3 — the fence rule still wins. `>` prefix stripping must not become a way
+// to smuggle a heading out of a code block: ANTS-3674 is the defect where a
+// document that TEACHES markdown lost every heading after its first fence.
+TEST(ReadRegionMdSection, Ants4520FencedQuotedHeadingIsStillNotAHeading) {
+    QTemporaryDir dir;
+    static const char *kDocWithFence =
+        "# Title\n"
+        "\n"
+        "```markdown\n"
+        "> ## Only an example\n"
+        "```\n"
+        "\n"
+        "## Real section\n"
+        "Real body.\n";
+    const QJsonObject env =
+        extractFrom(writeDoc(dir, "teach.md"), kDocWithFence, "only-an-example");
+    EXPECT_FALSE(env.value("ok").toBool())
+        << "a quoted heading inside a fence is sample text, not syntax";
+}

@@ -244,23 +244,52 @@ QString headingSlug(const QString &text) {
     return out;
 }
 
+QString stripBlockquote(const QString &trimmedLine, int *depth) {
+    int d = 0;
+    int i = 0;
+    while (i < trimmedLine.size()) {
+        int j = i;
+        int spaces = 0;
+        while (j < trimmedLine.size() && spaces < 3 &&
+               trimmedLine.at(j) == QLatin1Char(' ')) { ++j; ++spaces; }
+        if (j >= trimmedLine.size() || trimmedLine.at(j) != QLatin1Char('>')) break;
+        ++d;
+        i = j + 1;
+        // CommonMark § 5.1: one space after the marker is part of the marker.
+        if (i < trimmedLine.size() && trimmedLine.at(i) == QLatin1Char(' ')) ++i;
+    }
+    if (depth) *depth = d;
+    return d > 0 ? trimmedLine.mid(i) : trimmedLine;
+}
+
 QVector<Heading> headings(const QStringList &lines) {
     QVector<Heading> out;
     const QVector<bool> fence = fenceMask(lines);
     for (int i = 0; i < lines.size(); ++i) {
         if (fence.value(i)) continue;   // opener, closer and body are all masked
         const QString trimmed = lines.at(i).trimmed();
-        const int level = headingLevel(trimmed);
+        // ANTS-4520 — a blockquoted heading is a heading. The fence mask above
+        // still wins, so `> ## x` inside a fenced block stays sample text.
+        int quoteDepth = 0;
+        const QString content = stripBlockquote(trimmed, &quoteDepth);
+        const int level = headingLevel(content);
         if (level == 0) continue;
-        const QString text = trimmed.mid(level).trimmed();
-        out.push_back({i + 1, level, text, headingSlug(text), 0});
+        const QString text = content.mid(level).trimmed();
+        out.push_back({i + 1, level, text, headingSlug(text), 0, quoteDepth});
     }
     // Second pass for the spans: a section ends at the line before the next
-    // heading of the same or a higher level, else at the last input line.
+    // heading that TERMINATES it, else at the last input line. A heading
+    // terminates an earlier one when it is less deeply quoted (leaving the
+    // quote ends the quoted section — ANTS-4520), or equally quoted at the
+    // same or a higher level (the original rule, which is what depth 0 to
+    // depth 0 reduces to). A MORE deeply quoted heading is nested inside.
     for (int i = 0; i < out.size(); ++i) {
         out[i].endLine = lines.size();
         for (int j = i + 1; j < out.size(); ++j) {
-            if (out[j].level <= out[i].level) { out[i].endLine = out[j].line - 1; break; }
+            const bool terminates =
+                out[j].quoteDepth < out[i].quoteDepth ||
+                (out[j].quoteDepth == out[i].quoteDepth && out[j].level <= out[i].level);
+            if (terminates) { out[i].endLine = out[j].line - 1; break; }
         }
     }
     return out;

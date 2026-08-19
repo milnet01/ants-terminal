@@ -174,13 +174,29 @@ QString headingSlug(const QString &text);
 // (the ANTS-3674 defect: a document that *teaches* fenced code lost every
 // heading after the first fence). `text` is the heading text with the leading
 // '#' run and surrounding whitespace stripped, verbatim otherwise.
+//
+// ANTS-4520 — a heading inside a BLOCKQUOTE is a heading. `quoteDepth` is how
+// many `>` markers it sits behind (0 for an ordinary one), and it is what
+// bounds the section: a heading terminates an earlier one when it is less
+// deeply quoted, or equally quoted at the same-or-higher level. Terminating on
+// level alone would let a `> ## Previously` block swallow the plain `##`
+// section after it; terminating only within one depth would run it to EOF.
 struct Heading {
     int     line = 0;      // 1-based heading line
     int     level = 0;     // 1..6 = '#' count
     QString text;          // heading text, trimmed
     QString slug;          // headingSlug(text)
     int     endLine = 0;   // 1-based last line of this section's body
+    int     quoteDepth = 0;  // '>' markers the heading sits behind
 };
 QVector<Heading> headings(const QStringList &lines);
+
+// ANTS-4520 — strip a leading blockquote prefix (`>` plus one optional space,
+// repeated, each marker admitting up to 3 leading spaces per CommonMark) and
+// report how many markers were removed. Returns the line unchanged with
+// *depth == 0 when there is no prefix. Shared because read_region's section
+// resolver and file_outline's md mode must not disagree about what a heading
+// is — the same reason ANTS-3740 hoisted headingSlug.
+QString stripBlockquote(const QString &trimmedLine, int *depth = nullptr);
 
 }  // namespace MarkdownScan

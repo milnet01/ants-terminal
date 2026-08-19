@@ -37841,7 +37841,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: perf.
   Source: cc-feedback-2026-08-19 (OneUp).
 
-- 📋 [ANTS-4520] **read_region section= and file_outline cannot see a heading inside a blockquote.**
+- ✅ [ANTS-4520] **read_region section= and file_outline cannot see a heading inside a blockquote.**
   `> ## Foo` is a heading inside a blockquote. section= refuses
   section_not_found and the ANTS-4350 candidates list omits it, so the
   caller cannot tell a missing heading from an unsupported shape and
@@ -37869,6 +37869,17 @@ are closed inline in the feedback files rather than filed here.
   Cheaper partial that captures most of the value: list blockquoted
   headings in `candidates`, which tells the caller to reach for a line
   range instead of doubting the name.
+  Resolved (2026-08-19): the full fix, not the cheaper candidates-only
+  partial. `MarkdownScan::stripBlockquote` is the shared primitive (`>`
+  plus one optional space, repeated, 3-space indent per CommonMark) and
+  `Heading` now carries `quoteDepth`; `headings()` strips before the
+  heading test, and a section ends at the next heading that is LESS deeply
+  quoted, or equally quoted at the same-or-higher level. read_region
+  section= and file_outline md mode both route through it, so they cannot
+  disagree — the ANTS-3740 reason. The fence mask still wins: a quoted
+  heading inside a fenced block stays sample text (guarded, since that is
+  ANTS-3674 returning by a new route). Four behavioural tests + one
+  primitive test, all red first.
   **Layman:** A heading written inside a quoted block is invisible to the tool, so the one section you were told to read cannot be addressed by name.
   Kind: fix.
   Source: cc-feedback-2026-08-19 (OneUp).

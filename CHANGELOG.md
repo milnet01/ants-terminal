@@ -222,6 +222,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **read_region section= and file_outline cannot see a heading inside a blockquote.** (ANTS-4520)
+  A heading written inside a quoted block is invisible to the tool, so the one section you were told to read cannot be addressed by name.
+
 - **`read_regions` refuses conflicting alias arrays instead of picking one (ANTS-4512)**
   Sending both `paths` and `regions` silently used one and then reported a
   shape error against the other. It now refuses `bad_op_combo` naming both,

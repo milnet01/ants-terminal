@@ -118,6 +118,21 @@ cover `fenceOpenerChar` and the masking policy through their own behaviour.
   the second consumer. That resolver now calls them, so the slugs the brief
   publishes and the slugs `read_region` accepts cannot drift apart — which is
   the reason for the hoist, not tidiness.
+- **INV-14** (ANTS-4520) — `stripBlockquote` removes a leading blockquote
+  prefix (`>` plus one optional space, repeated, each marker admitting up to 3
+  leading spaces per CommonMark) and reports the depth; `headings` runs it
+  before the heading test, so `> ## Foo` is a heading carrying
+  `quoteDepth == 1`. A section ends at the next heading that is **less deeply
+  quoted**, or equally quoted at the same-or-higher level. Terminating on level
+  alone would let a `> ## Previously` block swallow the plain `##` section
+  after it; terminating only within one depth would run it to EOF. The fence
+  mask still wins, so a quoted heading inside a fenced block stays sample text.
+  *Test:* plain / `> ` / `> >` / 3-space-indented / 4-space-indented / bare `>`
+  strips, then a two-heading fixture asserting the depth and both spans.
+
+  The two consumers this serves are `read_region section=` and
+  `file_outline`'s md mode — same reason as INV-13's hoist: they must not
+  disagree about what a heading is.
 
 ## Test
 
