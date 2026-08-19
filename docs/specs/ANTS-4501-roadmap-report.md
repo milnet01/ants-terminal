@@ -100,7 +100,12 @@ Three rules, each on a different write path:
 - **`created`** — set at row insert, when `putItem()` creates a row that did
   not exist. Never rewritten.
 - **`last_modified`** — set on every successful `setItemField()` /
-  `clearItemField()`, and at insert.
+  `clearItemField()`, and at insert. **The stamp lives in the callers, not
+  inside `setItemField()`, and the migration loader and the backfill are both
+  exempt.** Put inside the store method it would fire on every path that
+  reaches it, so one re-migration or one backfill would date every item to
+  today — which is the `last_modified` rewrite § 5 rejects, and it would break
+  INV-4 as well.
 - **`shipped`** — set **only on the transition into `shipped`**: a `status`
   write whose new value is `shipped` and whose old value is not. It is
   *cleared* on a transition out, so a reopened item carries no closure date.
@@ -114,6 +119,14 @@ obvious only at corpus scale.
 **The date is the local calendar date**, formatted `YYYY-MM-DD` to satisfy the
 column's existing `GLOB` CHECK. Not UTC: a user asking "what did I close
 today?" means their day. § 2.4 owns the boundary rule that follows.
+
+**Every write path reads "today" through one injectable seam, not from
+`QDate::currentDate()` directly.** This is a contract rather than a convenience:
+INV-5 and INV-6 both assert that a *later* write does or does not move a date,
+and with a single real clock both writes land on the same day, so those tests
+pass against the broken build they exist to catch. The seam is a static
+test-only setter in the stamping path — the shape `RemoteControl` already uses
+for `setRoadmapHistoryCapForTest()` — and is never reachable from a request.
 
 **Migration does not stamp.** The three columns stay outside the plan's field
 set, exactly as today — `Loader::fieldsOf()` in `src/roadmapmigrateload.cpp`
@@ -146,6 +159,22 @@ $ start=$(date +%s%N); for sha in $(git rev-list -n 20 HEAD -- ROADMAP.md); do \
 cost. This is why the backfill is a **separate explicit operation and never a
 side effect of a read.**
 
+**Its surface is `roadmap_log op:"backfill_dates"`, and explicitly not a
+`roadmap_query` mode.** It writes, and `roadmap_query` is the read verb — INV-10
+forbids the report from writing at all, so putting a writing operation behind
+the same verb would contradict the invariant one section along. It takes
+`caller_cwd` (the project whose git history is walked — one project per call,
+like `roadmap_migrate`) and `dry_run`, and returns the counts it would write
+plus the ids it could not date. It refuses `not_a_git_repo` when the project
+root has no git history to walk, and `project_not_registered` when the store
+holds no row for that root.
+
+**The date taken from a commit is its AUTHOR date (`git log --date=short
+--format=%ad`), in local time.** Pinned because § 2.4 promises two callers the
+same number from the same data, and the committer date moves under every rebase
+and cherry-pick while the author date does not — so a rewritten history would
+otherwise change every figure this report produces.
+
 The marker scan agrees with the store exactly, which is what makes the walk
 trustworthy rather than approximate:
 
@@ -157,9 +186,16 @@ $ sqlite3 ~/.local/share/ants-terminal/roadmap.sqlite \
 1737
 ```
 
-Three properties the backfill must have, each an invariant below: it never
+Four properties the backfill must have, each an invariant below: it never
 overwrites a non-NULL date (INV-2), it never invents one for an id it did not
-observe (INV-3), and it is re-runnable to the same result (INV-2).
+observe (INV-3), it is re-runnable to the same result (INV-2), and **it skips
+any id whose current status is not `shipped`** (INV-3).
+
+That fourth one is not obvious and is the reason it is written down. § 2.2
+*clears* `shipped` when an item is reopened — so its column is NULL, the
+never-overwrite rule does not protect it, and git still holds the commit where
+its marker was `✅`. A backfill that reasons only from git therefore re-closes
+every reopened item, silently, on every run.
 
 **It is per-project**, because the walk needs that project's git repository,
 and the store is machine-global across 15 of them.
@@ -175,7 +211,13 @@ data must get the same number.
 - Every bucket is **half-open**, `[start, next_start)`, so an item belongs to
   exactly one bucket at each granularity (INV-8).
 - `since:"YYYY-MM-DD"` requests one explicit window instead of the four
-  standard ones.
+  standard ones. It replaces the whole `periods` object with a single
+  `periods.since` entry of the same `{closed, added, net}` shape, so a caller
+  never has to tell an absent bucket from an empty one.
+- `scope:"project"` (default) or `scope:"all"` selects one project or every
+  registered one. The store is machine-global over 15 projects, so the
+  cross-project view is the one thing no single roadmap file can give; it is
+  opt-in because the default question is about the project you are standing in.
 
 ### 2.5 The report surface
 
@@ -203,7 +245,7 @@ sample and not a claim about now:
   "generated_for": "2026-08-19",
   "totals":  { "items": 2143, "open": 406, "in_progress": 4, "shipped": 1737 },
   "by_status": { "planned": 329, "in-progress": 4, "shipped": 1737, "considered": 73 },
-  "by_kind":   { "fix": 0, "feature": 0 },
+  "by_kind":   { "fix": 604, "implement": 523, "enhancement": 323, "…": 0 },
   "periods": {
     "day":   { "closed": 0, "added": 0, "net": 0 },
     "week":  { "closed": 0, "added": 0, "net": 0 },
@@ -219,22 +261,29 @@ sample and not a claim about now:
 }
 ```
 
-**`open` is every item whose status is not `shipped`** — planned, in-progress and
-considered together — and `in_progress` is the subset of it that is in flight,
-reported beside it rather than instead of it. Stated because the two readings
-differ by the `considered` count (73 of this project's 2143) and both look
-reasonable, so a caller comparing two runs could not tell a definition change
-from a real one.
+**`open` is `planned + in-progress + considered`** — an enumeration, never
+`status != 'shipped'`. The `item` table's CHECK admits a fifth value,
+`dropped`, and the two forms disagree about it: a dropped item is not
+outstanding work and is not open. `in_progress` is the subset of `open` that is
+in flight, reported beside it rather than instead of it.
+
+**`dropped` appears in `totals.items` and in `by_status`, and in no other
+figure.** So `totals.items` is the sum of every `by_status` entry, and `open` is
+that sum less `shipped` and `dropped`. Stated as an identity because a caller
+comparing two runs could otherwise not tell a definition change from a real one.
+This project has no dropped items today, which is exactly why the sample below
+cannot settle it.
 
 `coverage` is not optional detail. It is the block that stops every other
 number lying, and INV-1 requires it.
 
 ### 2.6 Metrics beyond the request
 
-The roadmap bullet lists further metrics. This spec takes the four that are one
+The roadmap bullet lists further metrics. This spec takes the five that are one
 aggregate over columns that already exist — `by_status`, `by_kind`, `net` per
-period, `age_open` — and defers the rest to § 5. A metric needing a join the
-schema does not carry is a second feature wearing this one's id.
+period, `age_open` and `time_to_close` — and defers the rest to § 5. A metric
+needing a join the schema does not carry is a second feature wearing this
+one's id.
 
 ## 3. Invariants
 
@@ -260,8 +309,13 @@ schema does not carry is a second feature wearing this one's id.
   left NULL and counted in `coverage`, never given the walk's first or last
   date as a fallback. *Test:* `roadmap_report` runs a backfill over a fixture
   repository whose history omits one stored id, asserts that id's three columns
-  are still NULL. *Breaks when:* an unmatched id inherits a boundary commit's
-  date, which afterwards is indistinguishable from a real one.
+  are still NULL — **and, in the same fixture, an id whose history shows it
+  closed but whose stored status is `planned`, asserting its `shipped` is still
+  NULL after the run.** That second row is § 2.3's skip rule, and it is the one
+  a build passes by accident: the first row alone is satisfied by any backfill
+  that simply finds nothing. *Breaks when:* an unmatched id inherits a boundary
+  commit's date, which afterwards is indistinguishable from a real one; or a
+  reopened item is silently re-closed from git on the next run.
 
 - **INV-4** — **A re-migration never clears a stamped date.** After stamping,
   `roadmap_migrate` over the same source leaves all three columns untouched.
@@ -273,16 +327,19 @@ schema does not carry is a second feature wearing this one's id.
   be the only thing between a stamp and its deletion.
 
 - **INV-5** — **`shipped` is stamped on the transition into shipped, never on a
-  write to an already-shipped item.** *Test:* `roadmap_report` ships an item
-  (asserting the date), writes its `body` on a later simulated day, and asserts
-  `shipped` is unchanged. *Breaks when:* the stamp is attached to "status is
+  write to an already-shipped item.** *Test:* `roadmap_report` ships an item and
+  asserts `shipped` equals the seam's date, **advances § 2.2's injectable
+  "today" by one day**, writes the item's `body`, and asserts `shipped` is
+  unchanged. The advance is what makes the clause mean anything: on one real
+  clock both writes land on the same date and the assertion holds against the
+  broken build. *Breaks when:* the stamp is attached to "status is
   shipped" rather than "status became shipped" — after which one re-render
   dates the whole backlog to today and every throughput figure is wrong in the
   same direction, which is what makes it hard to notice.
 
 - **INV-6** — **`shipped` is cleared on a transition out of shipped.** *Test:*
   `roadmap_report` ships an item and asserts `shipped` is **non-NULL**, then
-  flips it back to `planned` and asserts it is NULL. The first assertion is what
+  flips it back to `planned` on an advanced § 2.2 seam and asserts it is NULL. The first assertion is what
   makes the clause mean anything: without it the fixture reads NULL before and
   NULL after, and passes against a build that implements neither half of § 2.2's
   `shipped` rule. *Breaks when:* only the set half is implemented, so a reopened
@@ -310,15 +367,21 @@ schema does not carry is a second feature wearing this one's id.
   across two thousand.
 
 - **INV-10** — **`mode:"report"` writes nothing.** No row, no file, no
-  migration, no id allocation. *Test:* `roadmap_report` hashes the store file,
-  issues the report, asserts the hash is unchanged. *Breaks when:* the report
+  migration, no id allocation. *Test:* `roadmap_report` records the row count
+  of every table and the maximum `history_id`, issues the report, and asserts
+  both are unchanged. **Not a hash of the store file:** the store opens in WAL
+  mode (`RoadmapStore::enableWal()`), so a write lands in the `-wal` sidecar and
+  leaves the main file's bytes alone until a checkpoint — a file hash would come
+  back green over a report that had written rows, and could come back red over
+  one that had written none. *Breaks when:* the report
   reaches for the migration path to freshen the rows it is about to summarise —
   tempting, because a stale store gives a stale report.
 
 ## 4. RAM / build cost
 
-The report is aggregate SQL over `item`; its result is bounded by the number of
-distinct status and kind values, not by the item count. No new target, no new
+The report is aggregate SQL over `item`, issued by the new `RoadmapStore`
+reader § 7 names; its result is bounded by the number of distinct status and
+kind values, not by the item count. No new target, no new
 library.
 
 **The backfill is the memory question.** The walk holds one revision's id set
@@ -364,11 +427,15 @@ fixtures must assert a *value*, not merely that nothing moved.
 
 ## 7. Cross-doc impact
 
-- `docs/standards/mcp-behavioural-notes.md` — a `roadmap_query` per-verb note
-  for `mode:"report"`, and the backfill's one-off nature.
-- `docs/specs/ANTS-3756-roadmap-store-schema.md` — § 7's method census moves if
-  the store gains an aggregate reader, and the three date columns stop being
-  write-only.
+- `docs/standards/mcp-behavioural-notes.md` — two per-verb notes, not one: a
+  `roadmap_query` note for `mode:"report"`, and a `roadmap_log` note for
+  `op:"backfill_dates"` recording that it is one-off and walks git.
+- `docs/specs/ANTS-3756-roadmap-store-schema.md` — § 7's method census moves,
+  and the three date columns stop being write-only. The aggregate SQL lives in
+  **one new public `RoadmapStore` reader**, not as raw SQL in the envelope
+  builder: every other reader on that surface is a store method, the census
+  counts them, and a verb issuing its own SQL against these tables would be the
+  second place that knows the schema.
 - `docs/specs/ANTS-3765-roadmap-migration-load.md` — INV-3's enumeration names
   `milestone`, `resolution`, `visibility` and `priority` but not the three
   dates, while `Loader::fieldsOf()`'s comment does name them. Widen the
@@ -380,3 +447,4 @@ fixtures must assert a *value*, not merely that nothing moved.
 
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
+| 1 | 2026-08-19 | 3, cold — genre pinned `spec`, cap 2; one byte-stable shared packet carrying the live `item`/`history` schemas, `isWritableItemField()`, `Loader::fieldsOf()`, ANTS-3765 INV-3, the `roadmap_query` mode dispatch and every measurement re-run that morning | **Q1 1 · Q2 3 · Q3 6 · Q4 2** (12 verified / 1 dismissed) | **Twelve verified, twelve fixed; one dismissed as immaterial.** **Three defects were found independently by ALL THREE lanes**, the strongest signal this gate produces, and all three were gaps rather than errors. **The backfill had no surface at all** — § 2.3 specified the walk, its cost, its memory budget and two invariants, and no passage said how it is invoked; INV-10 forbids the report mode from writing, so the one place a reader might have inferred was closed off. Now `roadmap_log op:"backfill_dates"`, with its arguments and two refusal codes, and § 7's behavioural-notes line split in two because the fix made its single-verb routing wrong. **INV-5's test could not fail.** It asked for a write on "a later simulated day" while § 2.2 pinned the date to the local calendar and named no seam — so both writes land on one date and the clause passes against exactly the broken build it targets. § 2.2 now requires an injectable "today" on every write path, modelled on `setRoadmapHistoryCapForTest()`, and INV-5/INV-6 drive it. **`open` was defined twice in one sentence**: the rule said `status != 'shipped'` and the enumeration said planned + in-progress + considered, which disagree about the schema's fifth value `dropped` — and this project has none, so the sample envelope could not disambiguate. Now an enumeration with a stated `totals.items` identity. **The best single-lane finding was a live contradiction between two of my own rules**: § 2.2 clears `shipped` when an item is reopened, so its column is NULL, the never-overwrite rule does not protect it, and git still holds the commit where its marker was ✅ — a backfill reasoning only from git re-closes every reopened item on every run. § 2.3 gained a fourth property and INV-3 a second fixture row. **Two findings were collateral from fixes made earlier the same session**: the `open` sentence and the `by_kind` sample were both written during the author-side pass. **One was found by the orchestrator while verifying, not by a lane** — INV-10 hashed the store file, and the store opens in WAL, so a write lands in the `-wal` sidecar and the hash goes green over a report that wrote rows. Now a row-count and `max(history_id)` check. **Dismissed as true but immaterial:** the 302 ms sample scanned `ROADMAP.md` alone while the walk reads three files, so ~23 s is a lower bound — the command is quoted beside the figure, and nothing built changes. **Three lane open questions resolved clean:** `git rev-list` returns 1496 for `ROADMAP.md` and for `ROADMAP.md docs/roadmap/` alike, so the sample and the population are the same revision set; `putItem()` is public but absent from ANTS-3756 § 7's census because that census counts what ANTS-3765 *added*; and the store's journal mode is `wal`, which became the INV-10 finding above. Doc 382 → 449 lines. |
