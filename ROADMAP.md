@@ -38194,6 +38194,46 @@ are closed inline in the feedback files rather than filed here.
   Kind: enhancement.
   Source: in-session-2026-08-19 (found closing ANTS-4510).
 
+- 📋 [ANTS-4531] **changelog_log appends the id to a summary that already ends with it, so the bullet reads (ANTS-4506) (ANTS-4506).**
+  op:add / add_batch renders `- **<summary>** (<id>)`. A caller who
+  writes the id into `summary` -- which reads naturally, and which the
+  verb's own examples do not warn against -- gets it twice, and the
+  duplicate is only visible after the write.
+
+  Hit twice in one add_batch on 2026-08-19; both bullets needed a
+  hand-edit of CHANGELOG.md immediately afterwards, which is the edit the
+  verb exists to remove.
+
+  Cheapest fix: when `summary` already ends with `(<id>)` for the SAME id,
+  do not append a second one. A refusal would be wrong here -- the input is
+  unambiguous and the intent is obvious. Second choice is naming the
+  append in the `summary` field description so a caller stops writing it.
+  **Layman:** Writing a changelog line whose title already names the item number prints that number twice.
+  Kind: fix.
+  Source: in-session-2026-08-19, hit while logging ANTS-4505/4506.
+  Lanes: roadmap-mcp, changelog.
+
+- 📋 [ANTS-4532] **roadmap_log writes a flip note as one long unwrapped line, so a resolution note does not match the corpus around it.**
+  `note` (op:flip / flip_batch / annotate) is written verbatim, and the
+  schema tells the caller to pre-wrap to ~70 columns. Every existing body
+  in ROADMAP.md is wrapped, so a caller who does not pre-wrap leaves one
+  1,200-character line in a file where nothing else is -- noisy in a diff
+  and in the dialog's raw view.
+
+  Verbatim is the right default for prose that carries its own line
+  structure. What is missing is the cheap alternative: an opt-in `wrap`
+  argument (or wrapping a note that contains NO newline at all, which
+  cannot have meaningful structure to preserve). The verb already
+  re-renders the whole file, so the reflow costs nothing extra.
+
+  Observed on ANTS-4505 and ANTS-4506's own resolution notes, left as
+  written rather than repaired by hand -- an amend_body rewrite of a
+  1,200-character line risks more than it fixes.
+  **Layman:** Notes added to roadmap entries come out as one very long line instead of wrapped like everything else.
+  Kind: enhancement.
+  Source: in-session-2026-08-19, observed logging ANTS-4505/4506.
+  Lanes: roadmap-mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
