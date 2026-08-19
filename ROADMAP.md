@@ -35636,7 +35636,7 @@ happen.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18 (filed three times).
   Lanes: antshelper, claudeintegration.
 
-- 📋 [ANTS-4473] **`apply_edits`' `ambiguous` skip names no candidate lines, where `amend_body`'s refusal already diagnoses its own cause.**
+- ✅ [ANTS-4473] **`apply_edits`' `ambiguous` skip names no candidate lines, where `amend_body`'s refusal already diagnoses its own cause.**
   Filed off the back of a WORKED WELL report, and the contrast is the finding.
   `roadmap_log op:amend_body` refused an `old_text` spanning a hard-wrapped
   line break with a hint naming the cause and the retry — "`old_text` appears
@@ -35650,6 +35650,33 @@ happen.
   apply_edits whitespace misses on the `ambiguous` skip as well, listing the
   lines that matched. Same field, same shape, and it closes on the write verb
   the gap amend_body has already closed on the roadmap one.
+  Resolved (2026-08-19), commits 5d89a04e + 83182301. An `ambiguous` skip now
+  carries `candidates:[{line,text}]` naming where the occurrences are — the same
+  field ANTS-4418 built for whitespace-class `not_found` misses, and the same one
+  read_region section-mode and roadmap_log's locators return, so one caller path
+  covers all of them. The two outcomes are mutually exclusive by construction, so
+  they share the key rather than minting a second.
+
+  `match_count` is the true total, the list caps at 10, and
+  `candidates_truncated` says so when the cap bites — a cap with no flag reads as
+  completeness, which is the defect several of this verb's siblings were fixed
+  for. The occurrence walk advances one character, matching QString::count, so the
+  total reported is the same one that decided `ambiguous`; a test pins that.
+
+  Five tests, four red-first at assertion level. The follow-up commit is worth
+  reading: the capped-list test used EXPECT for its size check and then indexed
+  the vector, so with the feature absent it SEGV'd instead of failing — the red
+  run produced a core dump rather than the named expectation it existed to
+  produce. ASSERT_EQ now guards the indexing; verified exit 1 with one named
+  FAILED test where the same run previously dumped core.
+
+  NOT done, filed as ANTS-4496: docs/specs/ANTS-2022.md still describes this
+  skipped row as `{index, path, reason}` and mentions neither ANTS-4418 nor
+  `candidates`, so the spec is now two extensions behind. This proceeded where
+  ANTS-4478 stopped because nothing here is pinned — ANTS-2022's INV-1 pins the
+  reason VALUES only, unchanged, and no test asserts the key set.
+
+  Suite 3626/3626.
   **Layman:** When an edit matches in two places the tool refuses without saying where, so you have to go hunting; a sister tool already tells you.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18 (WORKED WELL entry).

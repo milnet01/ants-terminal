@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`apply_edits` says where the occurrences are when an edit matches more than once.** (ANTS-4473)
+  An `ambiguous` skip was correct and silent about location, so recovering from it meant re-reading the file. It now carries `candidates:[{line,text}]` — the same field a `not_found` near-miss already returns — plus `match_count` for the true total and `candidates_truncated` when the ten-entry list is capped. Recover by extending `old` with surrounding context, by naming the occurrence with the `start_line`/`end_line` form, or with `replace_all:true`.
+
 - **`roadmap_log` and `changelog_log` accept each other's word for "add an entry"** (ANTS-4475)
   One spells it `append` and the other `add`, and each already accepted the
   other's word for the batch version. Both now accept both. Error messages
