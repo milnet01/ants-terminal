@@ -214,6 +214,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Bash guard-hook now routes a `--stat` diff to `git_state op:diff` (ANTS-2169)**
+  It had named `get_git_status` and `roadmap_query`, neither of which can
+  return changed lines, so obeying the block led to a dead end and then to
+  the bypass token. The status/log branch keeps `get_git_status`.
+
 - **roadmap_log now reports the hand-edits its re-render overwrote (ANTS-4462, ANTS-4465)**
   On a migrated project every roadmap_log op rewrites the whole ROADMAP.md
   from the store, so anything typed into the file by hand — the preamble

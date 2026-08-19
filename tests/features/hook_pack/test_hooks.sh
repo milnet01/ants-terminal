@@ -145,6 +145,33 @@ if [ "$have_jq" -eq 1 ]; then
         fail "ANTS-2169 real grep-read of ROADMAP.md no longer blocks (regression)"
     fi
 
+    # A --stat diff asks for CHANGED LINES. get_git_status has no field for
+    # them, so routing there is a dead end that ends in `# ants-bypass` — the
+    # raw command the veto exists to prevent. The reason must name git_state.
+    diff_reason="$(printf '%s' '{"tool_input":{"command":"git diff --stat"}}' \
+        | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null | jq -r '.reason // empty')"
+    case "$diff_reason" in
+        *git_state*) pass "diff veto routes to git_state" ;;
+        "")          fail "diff veto stopped blocking (regression)" ;;
+        *)           fail "diff veto routes elsewhere: $diff_reason" ;;
+    esac
+    # ...and must NOT prescribe get_git_status, which cannot answer a diff.
+    case "$diff_reason" in
+        *"use mcp__ants__get_git_status"*)
+            fail "diff veto still prescribes get_git_status: $diff_reason" ;;
+        *)  pass "diff veto does not prescribe a status-only verb" ;;
+    esac
+    check_reason_size git-diff-stat '{"tool_input":{"command":"git diff --stat"}}'
+
+    # The status/log branch keeps its own verb — splitting the diff case out
+    # must not have taken get_git_status with it.
+    status_reason="$(printf '%s' '{"tool_input":{"command":"git status"}}' \
+        | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null | jq -r '.reason // empty')"
+    case "$status_reason" in
+        *get_git_status*) pass "status veto still routes to get_git_status" ;;
+        *) fail "status veto lost its verb: $status_reason" ;;
+    esac
+
     # Bypass: trailing `# ants-bypass` suppresses the veto.
     bypass_out="$(printf '%s' '{"tool_input":{"command":"grep -r foo src/ # ants-bypass"}}' | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)"
     if [ -z "$bypass_out" ]; then

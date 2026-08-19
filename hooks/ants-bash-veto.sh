@@ -5,8 +5,10 @@
 #  - SOFT-WARN (ANTS-2141): a raw source search (grep -r / rg / project find)
 #    → non-blocking PreToolUse `additionalContext` nudge toward the MCP index
 #    verbs; the command still runs. Throttled per session, tallied always.
-#  - BLOCK (unchanged): git status / log / diff → get_git_status; ROADMAP|grep
-#    → roadmap_query. Emit `{"decision":"block","reason":"..."}`.
+#  - BLOCK: git status / log → get_git_status; a --stat diff → git_state
+#    op:diff (a diff needs CHANGED LINES, which get_git_status has no field
+#    for); ROADMAP|grep → roadmap_query. Emit
+#    `{"decision":"block","reason":"..."}`.
 # INV-4: block reason ≤ 200 B. INV-7: jq -r only. INV-12: bypass token
 # never appears in the reason string.
 
@@ -44,6 +46,7 @@ if ants_is_source_search "$cmd"; then
         exit 0
     fi
     ants_grep_nudge_record "$nudge_tool" true
+    # shellcheck disable=SC2016  # backticks are literal markdown, not a subshell
     ctx='Ants tip: that was a raw source search. Prefer mcp__ants__workspace_search (project-wide code search) / find_definition / find_sources — indexed, far fewer tokens than streaming grep/find output back. Append `# ants-bypass` to silence.'
     jq -nc --arg c "$ctx" \
         '{hookSpecificOutput:{hookEventName:"PreToolUse", additionalContext:$c}}'
@@ -61,6 +64,7 @@ if ants_is_source_read "$cmd"; then
         exit 0
     fi
     ants_grep_nudge_record "$nudge_tool" true
+    # shellcheck disable=SC2016  # backticks are literal markdown, not a subshell
     ctx='Ants tip: that dumped a whole source file. Prefer mcp__ants__file_outline (symbols/structure) or mcp__ants__read_region (a line range) — far fewer tokens than cat-ing the entire file back. Append `# ants-bypass` to silence.'
     jq -nc --arg c "$ctx" \
         '{hookSpecificOutput:{hookEventName:"PreToolUse", additionalContext:$c}}'
@@ -82,8 +86,17 @@ esac
 # Block branches — precise, low false-positive routing kept as hard vetoes.
 reason=""
 case "$cmd" in
-    "git status"|"git status "*|*"git diff --stat"*|"git log --oneline"*|"git log -n"*"--oneline"*)
-        reason='use mcp__ants__get_git_status / mcp__ants__roadmap_query — paginated git facts cost ~30 tokens vs raw stdout'
+    # A diff asks for CHANGED LINES. get_git_status cannot answer that at all
+    # and roadmap_query is not a git verb, so the old shared reason sent the
+    # caller to a dead end and then to `# ants-bypass` — the raw command the
+    # veto exists to prevent. git_state op:diff is the verb that answers it
+    # (ANTS-2074 working-tree, ANTS-3377 hunks); ANTS-2169 Part 2 identified it
+    # but the message kept naming the wrong two.
+    *"git diff --stat"*)
+        reason='use mcp__ants__git_state op:"diff" — per-file added/removed counts (hunks:true for @@ headers); get_git_status is status-only and cannot answer a diff'
+        ;;
+    "git status"|"git status "*|"git log --oneline"*|"git log -n"*"--oneline"*)
+        reason='use mcp__ants__get_git_status (status+branch+ahead/behind) or mcp__ants__git_state op:"log" — paginated git facts cost ~30 tokens vs raw stdout'
         ;;
     *"cat ROADMAP.md"*"grep"*|*"grep "*"ROADMAP.md"*)
         [ "$roadmap_read" -eq 1 ] && \

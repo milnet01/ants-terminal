@@ -10443,6 +10443,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   diff, ANTS-2074) + hunks=true (ANTS-3377) — no new work needed.
   Note: the installed ~/.claude/hooks copy is stale vs repo; re-run
   tools/install-hooks.sh (or relaunch) to pick up this fix live.
+  Follow-up 2026-08-19: Part 2 was closed as "already served by git_state
+  op:diff — no new work needed", and the verb does answer it, but the veto's
+  own message was never updated to SAY so. It kept naming get_git_status and
+  roadmap_query, neither of which can return changed lines, so a caller who
+  obeyed the block reached a dead end and then reached for `# ants-bypass`.
+  Hit live today. Fixed by splitting the stat-diff case into its own branch
+  routing to git_state op:diff, with two hook_pack assertions run red against
+  the pre-fix hook first. The lesson worth keeping: identifying the right verb
+  in a resolution note is not the same as fixing the thing that misroutes
+  people, and only the second one changes what anyone does.
+
+  This item's closing note also says the stale ~/.claude copy is picked up by
+  "re-run tools/install-hooks.sh (or relaunch)". The "(or relaunch)" half is
+  false — nothing invokes the installer — which is why Part 1's fix was still
+  not live a month after this item shipped. Filed as ANTS-4516.
 
 - ✅ [ANTS-2175] **MCP dispatch silently ignores unknown / misspelled args — echo an `ignored_args` advisory.**
   Trigger: passed `query="token"` to `roadmap_query`, which has no `query` param (its filters are status / section / id / mode). The unknown arg was silently dropped and the verb returned the full unfiltered roadmap — looked like a working search, cost ~6 extra calls to realise the filter was a no-op.
@@ -11980,6 +11995,55 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The symbol checker still flags ordinary field names like "counts" and "truncated" as missing code — the fix that landed only covered the tool names.
   Kind: fix.
   Source: in-session-2026-07-28 (ANTS-3688 post-relaunch probe).
+
+- 📋 [ANTS-4516] **Hook installer never runs, so ~/.claude/hooks silently drifts from the repo.**
+  Found while verifying ANTS-4462. The LIVE hook at ~/.claude/hooks/ was a
+  month-stale copy: it was missing ANTS-2023's read-dump nudge AND
+  ANTS-2169 Part 1's exclusion fix, both marked shipped. Nothing invokes
+  tools/install-hooks.sh -- no settings.json entry, no build step, no
+  launch step -- so the only route is a human remembering. ANTS-2169's own
+  closing note says "re-run tools/install-hooks.sh (or relaunch) to pick up
+  this fix live"; the "(or relaunch)" half is FALSE and is why it sat stale
+  through many relaunches. Installed by hand today, so the symptom is gone
+  and the cause is not. Two ids can be shipped, tested and green while
+  having no effect on the machine, and nothing reports it. Options: run the
+  installer from launch.sh, or have a hook self-check its own mtime against
+  the repo and warn. Prefer the warn -- writing to ~/.claude at launch is a
+  bigger blast radius than a message.
+  **Layman:** Fixes to my helper hooks were written but never actually switched on, for a month.
+  Kind: fix.
+  Source: in-session-2026-08-19 (ANTS-4462 verification).
+
+- 📋 [ANTS-4517] **Git veto matches the literal command text, so WRITING about a diff is blocked.**
+  Same false-positive shape ANTS-2169 Part 1 fixed for ROADMAP.md, still
+  live on the git branch. The pattern is a bare substring match anywhere in
+  the command, so a heredoc, a python string or a doc edit that CONTAINS
+  the stat-diff phrase is vetoed even though it runs no git at all. Hit
+  twice in one session while editing the veto's own comments -- the veto
+  blocked the fix to itself. ANTS-2169 solved the ROADMAP case by detecting
+  the non-read shape; the git case wants the same treatment, most simply by
+  anchoring the match to the start of the command (a real invocation begins
+  with git, possibly after a pipe) rather than accepting it mid-string.
+  Guard against the obvious over-correction: a pipeline's second stage is a
+  real invocation too.
+  **Layman:** The helper blocks me for merely mentioning a command in a comment, not running it.
+  Kind: fix.
+  Source: in-session-2026-08-19 (ANTS-4462 verification).
+
+- 📋 [ANTS-4518] **No gate runs shellcheck, so hooks/ and tools/ shell regressions are invisible.**
+  Neither ci.yml nor tools/ci-parity.sh runs shellcheck on anything --
+  verified by grep; ci-parity's only match is a comment mentioning SC2164.
+  Measured consequence: ants-bash-veto.sh had lost the SC2016 suppression
+  its older installed copy carried, so the committed hook failed shellcheck
+  at HEAD and no gate said so. Restored today alongside the routing fix.
+  The project ships a lot of load-bearing shell (hooks/, tools/,
+  packaging/, tests/*.sh), and check-code selects shellcheck on the shell
+  signal -- so the tool is already the project's choice, it is simply never
+  run automatically. Wire it into ci-parity --lints and ci.yml over the
+  shell surface, and expect an existing-findings backlog on first run.
+  **Layman:** Nothing automatically checks our shell scripts for mistakes.
+  Kind: test.
+  Source: in-session-2026-08-19 (ANTS-4462 verification).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

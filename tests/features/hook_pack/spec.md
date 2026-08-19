@@ -117,6 +117,39 @@ These run only when `jq` is present (skipped with a `[skip]` line otherwise).
   concurrent-fork race; defer to manual smoke test for the same
   reason.
 
+## ANTS-2169 Part 2 — git veto routes a diff to the verb that can answer it
+
+Four assertions, appended; everything above is unchanged.
+
+| # | Asserts |
+|---|---------|
+| G1 | A `--stat` diff still blocks, and its reason names `git_state`. |
+| G2 | That reason does NOT prescribe `get_git_status`. |
+| G3 | The reason obeys INV-4 (1..200 B) on the new branch too. |
+| G4 | The status/log branch still routes to `get_git_status`. |
+
+G2 is the one with teeth. G1 alone passes if a future edit adds
+`git_state` to the old shared string while leaving the wrong verb in
+front of it, which is the shape the original defect had: the resolution
+note for ANTS-2169 Part 2 correctly identified `git_state op:diff` and
+the message still sent people to `get_git_status`. Naming the right verb
+somewhere is not the same as routing to it.
+
+G4 exists because the fix SPLIT one case branch into two. The obvious
+way to get that wrong is to take `get_git_status` with the diff, leaving
+a plain `git status` routed to a diff verb — a regression the diff-side
+assertions cannot see.
+
+**Run red before trusting these.** Verified 2026-08-19 against the
+pre-fix hook: G1 and G2 failed with the wrong reason quoted, while G4
+passed on both versions — which is what proves the red run was measuring
+the routing rather than a broken harness.
+
+**Would break this:** asserting only that the diff blocks (the pre-fix
+hook blocks too, just wrongly); matching the reason on `diff` rather than
+on the verb name (the wrong string contains the word); dropping G4 after
+the split looks settled.
+
 ## Why shell, not C++
 
 The hooks are bash scripts; the install path is bash + jq; no
