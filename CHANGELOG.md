@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.106] — unreleased (Patron RC preview)
 ### Added
 
 - **ignored_args is suppressed on refusals, so a wrong-argument call never learns its args were wrong.** (ANTS-4525)
