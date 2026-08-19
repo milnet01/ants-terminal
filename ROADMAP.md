@@ -28283,15 +28283,15 @@ against current source before filing.
   ships as a silent factor-of-N:
 
   1. THE ITEM'S OWN SKETCH WAS WRONG. It says `SELECT SUM(LENGTH(body))`, and
-     SQLite's LENGTH() over TEXT counts CHARACTERS — bytes only for a BLOB. That
-     query returns a character count under a name promising bytes: correct on
-     ASCII, wrong by up to 4x otherwise, silent either way. The shipped query
-     casts to BLOB. The test fixture deliberately mixes ASCII and CJK (6 chars /
-     10 bytes) because an ASCII-only fixture passes against both implementations.
+  SQLite's LENGTH() over TEXT counts CHARACTERS — bytes only for a BLOB. That
+  query returns a character count under a name promising bytes: correct on
+  ASCII, wrong by up to 4x otherwise, silent either way. The shipped query
+  casts to BLOB. The test fixture deliberately mixes ASCII and CJK (6 chars /
+  10 bytes) because an ASCII-only fixture passes against both implementations.
   2. UTF-8 bytes are NOT resident bytes. A materialised body is a QString, i.e.
-     UTF-16 — roughly 2x the CHARACTER count. So this figure is about half the
-     resident cost on ASCII and can exceed it on CJK. The header says outright not
-     to read it as a RAM number.
+  UTF-16 — roughly 2x the CHARACTER count. So this figure is about half the
+  resident cost on ASCII and can exceed it on CJK. The header says outright not
+  to read it as a RAM number.
 
   DELIBERATELY NOT DONE: rewiring INV-3's gate from item count to bytes. The
   aggregate makes that possible, and the item says it "would make that budget
@@ -28427,16 +28427,16 @@ against current source before filing.
   sites were re-read rather than re-derived, and here is what they actually need:
 
   - `writeAll()` (roadmapexport.cpp:678) binds `QSqlDatabase &db` and threads it
-    into five helpers — `writeIdPrefixes`, `loadSections`, `writeSections`,
-    `loadItems`, `writeItems` — each running its own bespoke SELECT. Only
-    `loadItems`/`writeItems` are plausibly served by `readItems()`; the rest are
-    not item reads at all.
+  into five helpers — `writeIdPrefixes`, `loadSections`, `writeSections`,
+  `loadItems`, `writeItems` — each running its own bespoke SELECT. Only
+  `loadItems`/`writeItems` are plausibly served by `readItems()`; the rest are
+  not item reads at all.
   - `writeProject()` (:746) needs TRANSACTION CONTROL: `db.transaction()` then
-    `db.rollback()`. Its own comment says why it must be DEFERRED — "this path
-    only reads, and taking the write lock would block every other writer for the
-    whole run".
+  `db.rollback()`. Its own comment says why it must be DEFERRED — "this path
+  only reads, and taking the write lock would block every other writer for the
+  whole run".
   - `rebuildProject()` (:794) needs `BEGIN IMMEDIATE` + `ROLLBACK` plus raw
-    INSERTs for the import path.
+  INSERTs for the import path.
 
   So the real blocker is the store's transaction surface, not its readers.
   `RoadmapStore` exposes `begin()` / `commit()` / `rollback()` / `inTransaction()`
@@ -28446,10 +28446,10 @@ against current source before filing.
   store has no deferred read-only transaction to offer it.
 
   REVISED BLOCKER, replacing "blocked on ANTS-3816":
-    (a) a deferred read-only transaction on the store surface, for the export;
-    (b) typed readers for the four non-item helper SELECTs;
-    (c) a bulk-write path for `rebuildProject()`, or an explicit decision that the
-        rebuild keeps raw SQL as the import's own privileged seam.
+  (a) a deferred read-only transaction on the store surface, for the export;
+  (b) typed readers for the four non-item helper SELECTs;
+  (c) a bulk-write path for `rebuildProject()`, or an explicit decision that the
+  rebuild keeps raw SQL as the import's own privileged seam.
 
   And (c) may be the honest answer for the whole item: the export/import pair is
   the store's rebuild path, so it is arguably the one caller that SHOULD hold the
@@ -31586,21 +31586,21 @@ against current source before filing.
   anything:
 
   1. **The blame is the whole cost.** The rest of the open path is 75 ms
-     total — loadMarkdown 3 ms (3.59 MB, page-cached), renderCardsHtml
-     57 ms, extractToc 4 ms, setHtml 11 ms, layout 0 ms. Measured by
-     linking a throwaway against build/lib*.a and calling the real
-     statics, not a replica. So ANTS-3863's 3.3 MB read is NOT this
-     bottleneck; it is 3 ms of the 3,790.
+  total — loadMarkdown 3 ms (3.59 MB, page-cached), renderCardsHtml
+  57 ms, extractToc 4 ms, setHtml 11 ms, layout 0 ms. Measured by
+  linking a throwaway against build/lib*.a and calling the real
+  statics, not a replica. So ANTS-3863's 3.3 MB read is NOT this
+  bottleneck; it is 3 ms of the 3,790.
 
   2. **The payload is four cards.** The blame result is consumed only for
-     `- 🚧 [ID]` bullets. This roadmap has 4 in-progress bullets out of
-     2,031. 45,832 lines are blamed to date four cards.
+  `- 🚧 [ID]` bullets. This roadmap has 4 in-progress bullets out of
+  2,031. 45,832 lines are blamed to date four cards.
 
   3. **Restricting the blame to the lines we need does NOT fix it.**
-     `git blame -L` over just the four blocks is 3.12 s against 3.71 s —
-     16%. The cost is history traversal, not line count, so the obvious
-     optimisation is worthless and is recorded here so nobody tries it
-     again.
+  `git blame -L` over just the four blocks is 3.12 s against 3.71 s —
+  16%. The cost is history traversal, not line count, so the obvious
+  optimisation is worthless and is recorded here so nobody tries it
+  again.
 
   What makes it fire on EVERY open rather than once: `mainwindow.cpp` does
   `new RoadmapDialog(...)` with `WA_DeleteOnClose`, so the in-memory
@@ -31705,23 +31705,23 @@ against current source before filing.
   which ANTS-3863 may change unilaterally:
 
   1. `remotecontrol_roadmap_query.cpp`, the main cache-miss block. ANTS-4402's
-     backend-witness runs `idRe.globalMatch()` over the whole markdown to fill
-     `file_ahead_of_store`, and it runs exactly on the migrated path. Landed
-     2026-08-15, after ANTS-3863's spec converged, so § 2.4 never saw it.
-     Candidate fix: source the file-max-id scan from the store, or make the
-     witness lazy so it only fires when the caller asks for it.
+  backend-witness runs `idRe.globalMatch()` over the whole markdown to fill
+  `file_ahead_of_store`, and it runs exactly on the migrated path. Landed
+  2026-08-15, after ANTS-3863's spec converged, so § 2.4 never saw it.
+  Candidate fix: source the file-max-id scan from the store, or make the
+  witness lazy so it only fires when the caller asks for it.
 
   2. `remotecontrol_roadmap_log.cpp`, `op:append`. The ANTS-2043 near-duplicate
-     advisory parses the whole PRE-write markdown on every successful migrated
-     append, so the read cannot simply move later — the implementation pins it
-     immediately before `commitAndRender()` with a comment saying why. Candidate
-     fix: compute `possible_duplicates` from the store's own items, which is
-     what the migrated path's records already are.
+  advisory parses the whole PRE-write markdown on every successful migrated
+  append, so the read cannot simply move later — the implementation pins it
+  immediately before `commitAndRender()` with a comment saying why. Candidate
+  fix: compute `possible_duplicates` from the store's own items, which is
+  what the migrated path's records already are.
 
   3. `remotecontrol_roadmap_query.cpp`, the `section=` miss block. The
-     ANTS-1907 per-section etag is computed from `sliceSection(full())` on BOTH
-     backends, before the dispatch, so the branch cannot go lazy without
-     changing when a cached etag is produced.
+  ANTS-1907 per-section etag is computed from `sliceSection(full())` on BOTH
+  backends, before the dispatch, so the branch cannot go lazy without
+  changing when a cached etag is produced.
 
   None is a regression: each is behaviour that already existed and that
   ANTS-3863 preserved deliberately. What is new is that the cost is now
@@ -31793,11 +31793,11 @@ against current source before filing.
   delta. Two cheap improvements, either alone sufficient:
 
   - On a `range_mismatch` whose skipped range sits BELOW an applied edit in the
-    same call, add `shifted_by:<delta>` and a `hint` naming the applied edit —
-    the same shape ANTS-4418 gave `not_found` with `candidates`/`near_miss_line`.
+  same call, add `shifted_by:<delta>` and a `hint` naming the applied edit —
+  the same shape ANTS-4418 gave `not_found` with `candidates`/`near_miss_line`.
   - Or resolve every range edit in one batch against the ORIGINAL file, which
-    is what a caller who computed them from one read actually means, and is how
-    the `old`-string form already behaves.
+  is what a caller who computed them from one read actually means, and is how
+  the `old`-string form already behaves.
 
   Workaround in the meantime: order range edits BOTTOM-UP, or re-read between
   batches. Neither is discoverable from the refusal.
@@ -31913,9 +31913,9 @@ against current source before filing.
   `QFile` + `readAll()` rather than from the call's shared text provider:
 
   1. `remotecontrol_roadmap_query.cpp:1881` — the section_index branch's
-     "lazy-fill the index" block.
+  "lazy-fill the index" block.
   2. `remotecontrol_roadmap_query.cpp:2176` — the section branch's INV-9
-     "ensure we have an index" block.
+  "ensure we have an index" block.
 
   Both predate ANTS-3863 and neither was converted by it, so they are
   invisible to the seam: they read the body unconditionally, on the
@@ -31956,7 +31956,7 @@ against current source before filing.
   No op writes that column. `annotate` and `amend_body` write `body`; `append` takes a layman argument but only for a NEW item. So a project in this state cannot be repaired with the verb that the state blocks. It is a bootstrap deadlock, not a content check.
 
   Measured 2026-08-18 across the store's 14 projects — open public items with an empty layman column:
-    vestige 585, finbreak 13, music-production 4, mame-curator 2.
+  vestige 585, finbreak 13, music-production 4, mame-curator 2.
   For vestige, music-production and mame-curator a re-import changes nothing (`items_updated: 0` on a dry run) because their FILES genuinely carry no layman line. Those three are blocked with no in-tool escape today; the only remedy is a hand edit plus roadmap_migrate, which is exactly the hand-editing the verb exists to remove.
 
   The design question to settle before coding: should the gate fire on the whole project, or only on the items a write actually touched? The second keeps the invariant that matters (no NEW open item ships without a layman line) without holding legacy debt against every future write. The first is what INV-5 says today.
@@ -32014,8 +32014,8 @@ against current source before filing.
   A store row is re-rendered to a markdown bullet and re-parsed to build the record. Where the stored headline itself holds a newline, the rendered line has no closing `**` on it, the parse fails, and the record comes back with an EMPTY headline and a body holding only that first line.
 
   Observed on finbreak FIBR-0016, against a store migrated moments earlier:
-    mode headline_only -> {id, status, section_slug} and NO headline field at all
-    include_body true  -> body is the single line `[FIBR-0016] **P13: ...` (48 chars)
+  mode headline_only -> {id, status, section_slug} and NO headline field at all
+  include_body true  -> body is the single line `[FIBR-0016] **P13: ...` (48 chars)
   while the store row holds the full headline and a 2257-char body. 18 of finbreak's 270 items have a newline in the headline.
 
   Two consequences. The data is invisible to any caller listing headlines — `headline_only` exists for exactly that and returns nothing for these items. And the short body reads as a short bullet rather than as a failed parse, which is how the finbreak session diagnosed the store as holding truncated bodies. It does not; the round trip loses them.
@@ -34265,10 +34265,10 @@ finbreak re-verified it.
   Measured on the AI_Prompts cutover (2026-08-15). A `roadmap_log
   op:append` with no `layman` refused:
 
-    code: render_gate_unmet
-    error: "the roadmap render refuses this project: 1 open item(s)
-            carry no Layman: line"
-    gate_failures: ["AIPR-0030"]
+  code: render_gate_unmet
+  error: "the roadmap render refuses this project: 1 open item(s)
+  carry no Layman: line"
+  gate_failures: ["AIPR-0030"]
 
   AIPR-0030 is the item the call was appending. It is not in the
   roadmap, so a session following the documented remedy — fill the named
@@ -34610,9 +34610,9 @@ entry retracts the missing-.git diagnosis and proves the discriminator is
 - ✅ [ANTS-4423] **roadmap_query blames its ID filter when a `query` match returns nothing.**
   A section query narrowed by `query` returned count 0 with this warning:
 
-    "default ID-filter dropped all 40 bullet(s) in this section (every entry was
-    either a rollup-summary or narrator-prose line with no [PROJ-NNNN] id).
-    Re-issue with include_narrator_bullets:true ..."
+  "default ID-filter dropped all 40 bullet(s) in this section (every entry was
+  either a rollup-summary or narrator-prose line with no [PROJ-NNNN] id).
+  Re-issue with include_narrator_bullets:true ..."
 
   Every one of those 40 bullets HAS an id — the same call without the keyword
   filter returns all 40 with ids populated. A control run using a keyword that
@@ -34946,11 +34946,11 @@ whole files.
   this guard as it does to the code that would later refuse."
   Three measured divergences from `fenceMask`:
   • it calls `.trimmed()`, so ANY indent counts as a fence, where `fenceMask`
-    applies a CommonMark 3-space / list-content-column allowance;
+  applies a CommonMark 3-space / list-content-column allowance;
   • it does not track the opener CHARACTER, so a ``` opener is "closed" by a
-    \~~~ line, which `fenceMask` rejects;
+  \~~~ line, which `fenceMask` rejects;
   • it ignores run length (`fenceMask` does too — see the sibling item — but
-    the two must agree after that fix, not merely both be wrong).
+  the two must agree after that fix, not merely both be wrong).
   When it wrongly concludes there is an unclosed opener it INSERTS a
   backslash into the caller's text at `:1020`. Fix by routing it through
   `MarkdownScan::fenceMask`, after the run-length fix lands there.
@@ -35032,7 +35032,7 @@ whole files.
   each. Measured this session:
   • `src/remotecontrol*` = 30,349 lines across 16 files (14 `.cpp` + 2 `.h`);
   • `src/claudeintegration.cpp` = 14,140 lines, of which ONE function,
-    `onMcpConnection`, spans `:1570`–`:13007` = 11,438 lines.
+  `onMcpConnection`, spans `:1570`–`:13007` = 11,438 lines.
   `indie_review_partition` derives one review lane per entry, so it hands a
   single reviewer 30k lines and calls it a lane; the verb's `too_coarse` flag
   keys on FILE COUNT, so neither tripped it.
@@ -35052,14 +35052,14 @@ whole files.
   `.audit_cache/cold-sweep-2026-08-18.md`.
   HIGH:
   • `terminalgrid.cpp:3180` — Sixel `!` repeat defeats the 4 MiB payload cap:
-    `count` clamped per group only and `$` resets `x`, so ~700k repeats of a
-    6-byte group passes the dimension check and the byte budget while running
-    ~4e9 `setPixelColor()` calls. Claimed to pin the VT parse thread for
-    minutes on a 4 MiB `cat`.
+  `count` clamped per group only and `$` resets `x`, so ~700k repeats of a
+  6-byte group passes the dimension check and the byte budget while running
+  ~4e9 `setPixelColor()` calls. Claimed to pin the VT parse thread for
+  minutes on a 4 MiB `cat`.
   • `terminalwidget.cpp:5856` — `sendScratchpad` writes `\r` synchronously
-    after the asynchronous `pasteToTerminal`, so the shell gets a bare Enter
-    first and the command with none; claimed to submit the Enter even if the
-    user cancels the confirmation.
+  after the asynchronous `pasteToTerminal`, so the shell gets a bare Enter
+  first and the command with none; claimed to submit the Enter even if the
+  user cancels the confirmation.
   MEDIUM: RIS discards theme colours + configured scrollback · OSC 0/2 window
   title is the one attacker-supplied OSC payload with no length cap and is
   persisted to the session file · fatal PTY write error never disables the
@@ -35084,31 +35084,31 @@ whole files.
   ANTS-4451 (`PostToolUse` keys).
   HIGH:
   • `:302` — transcript lookup sits only inside the PID-changed branch, so on
-    the ordinary launch path `m_transcriptPath` stays empty for the life of
-    the process and every hook is dropped as cold-start; the retry backstop is
-    itself gated on it being non-empty. Only a tab switch recovers it. (The
-    cold-start drop at `:1185-1194` is real; the latch claim is what needs
-    checking.)
+  the ordinary launch path `m_transcriptPath` stays empty for the life of
+  the process and every hook is dropped as cold-start; the retry backstop is
+  itself gated on it being non-empty. Only a tab switch recovers it. (The
+  cold-start drop at `:1185-1194` is real; the latch claim is what needs
+  checking.)
   • `:1236` — `PermissionRequest` has no producer: the installer wires five
-    events and this is not among them, yet it has a header contract, a live
-    consumer in the status widgets and a hardening pass (ANTS-2190).
-    `PostToolUseFailure` claimed to be the same shape.
+  events and this is not among them, yet it has a header contract, a live
+  consumer in the status widgets and a hardening pass (ANTS-2190).
+  `PostToolUseFailure` claimed to be the same shape.
   • `:14002` — session-metadata `cwd` bypasses `isSafeAbsolutePath` while the
-    transcript-derived twin is gated; session metadata is tried FIRST, and
-    `decodeProjectPath` is ungated too and can emit `..`.
+  transcript-derived twin is gated; session metadata is tried FIRST, and
+  `decodeProjectPath` is ungated too and can emit `..`.
   • `:13026` — close-tag scrub tolerates less than the open-tag scrub
-    (`[^>]*` on the open form only), so `</ants_mcp_data foo>` passes.
+  (`[^>]*` on the open form only), so `</ants_mcp_data foo>` passes.
   • `:1701`, `:3648` — shared `caller_cwd` schema promises a focused-tab
-    fallback ANTS-1415 removed (six verbs), and `workspace_search`'s `query`
-    alias is unreachable because `pattern` sits in `required[]`.
+  fallback ANTS-1415 removed (six verbs), and `workspace_search`'s `query`
+  alias is unreachable because `pattern` sits in `required[]`.
   • `:12791`, `:12306` — `token_usage` wrong in both directions: a 304 books
-    as a failed call, and a handler returning its own `ok:false` never updates
-    `dispatchResult`.
+  as a failed call, and a handler returning its own `ok:false` never updates
+  `dispatchResult`.
   • `claudestatuswidgets.cpp:2044` — ~8 config open+parse per second on the
-    default configuration, re-adding the cost ANTS-2116 removed.
+  default configuration, re-adding the cost ANTS-2116 removed.
   • `docs/subsystems.md` vs `modelautoswitch` — map describes a deliberately
-    parked feature as live (`kAutoSwitchActuatorParked` returns before
-    injection and before the ledger append).
+  parked feature as live (`kAutoSwitchActuatorParked` returns before
+  injection and before the ledger append).
   MEDIUM: 32 KB tail window where the sibling grew to 4 MiB · sibling tab's
   `SessionStart` mutates singleton state during cold start · 2 s `/proc` scan
   pays full cost when Claude is not running · hook socket path is
@@ -35128,23 +35128,23 @@ whole files.
   source first. Filed separately as VERIFIED: ANTS-4445 (test-audit fold-in).
   HIGH:
   • `llmclient.cpp:38` — destructor aborts while `m_reply` is still set, so
-    `finished()` fires synchronously into `onFinished` from a dying object,
-    which emits and nulls the pointer, returning into a `deleteLater()`
-    through null. The `abort()` method nulls first for exactly this reason.
+  `finished()` fires synchronously into `onFinished` from a dying object,
+  which emits and nulls the pointer, returning into a `deleteLater()`
+  through null. The `abort()` method nulls first for exactly this reason.
   • `llmclient.cpp:333` — non-streaming fallback cannot fire because `drain()`
-    already consumed the reply, making the OWASP LLM06 error-scrub unreachable
-    and returning a silent blank answer for a genuinely non-streaming
-    provider.
+  already consumed the reply, making the OWASP LLM06 error-scrub unreachable
+  and returning a silent blank answer for a genuinely non-streaming
+  provider.
   • `llmdispatcher.cpp:17` — the "production" runner has no production caller,
-    so `m_activeClients` is never appended to, `cancelAll()`'s abort block is
-    inert and spec INV-9 is unmet on the only shipping path.
+  so `m_activeClients` is never appended to, `cancelAll()`'s abort block is
+  inert and spec INV-9 is unmet on the only shipping path.
   • `reviewdialogbase.cpp:262`, `:237` — a failed dispatch is
-    indistinguishable from a clean review and the Dispatch button is never
-    disabled, so re-clicking wipes collected reports and doubles API spend.
+  indistinguishable from a clean review and the Dispatch button is never
+  disabled, so re-clicking wipes collected reports and doubles API spend.
   • `coldeyesdialog.cpp:354` — the "previously fixed, do not re-raise" block
-    never appears in a production brief; `markFindingFixed` has no non-test
-    caller while the header advertises the review→fix→re-review loop as
-    shipped.
+  never appears in a production brief; `markFindingFixed` has no non-test
+  caller while the header advertises the review→fix→re-review loop as
+  shipped.
   MEDIUM: cleartext refusal protects the key, not the payload (no API key +
   `http://` to a remote host sends the whole brief unencrypted) · SSE line
   split is O(N) per line over a 10 MiB buffer · hitting the cap clears the
@@ -35163,18 +35163,18 @@ whole files.
   ANTS-4453 (SARIF `state`).
   HIGH:
   • `auditdialog.cpp:6232` — `plainTextResults()` has no suppression filter,
-    so every suppressed finding goes into the "Review with Claude" file while
-    the report's own preamble asserts the filter ran; the consumer is an agent
-    instructed to fix what it is handed.
+  so every suppressed finding goes into the "Review with Claude" file while
+  the report's own preamble asserts the filter ran; the consumer is an agent
+  instructed to fix what it is handed.
   • `auditdialog.cpp:2056` — the documented cppcheck / semgrep passthrough
-    markers never suppress: the previous-line check is gated on three tokens,
-    none of which appear in `// cppcheck-suppress <id>` or `# nosemgrep`.
-    (Note `AuditEngine::commentSuppresses` DOES recognise both forms — the
-    claim is that the gate never lets them reach it.)
+  markers never suppress: the previous-line check is gated on three tokens,
+  none of which appear in `// cppcheck-suppress <id>` or `# nosemgrep`.
+  (Note `AuditEngine::commentSuppresses` DOES recognise both forms — the
+  claim is that the gate never lets them reach it.)
   • `auditautofix.cpp:106` — auto-fix claimed 100% non-functional on any CRLF
-    file: `applyRepair` opens with `QIODevice::Text` where its only caller does
-    not, so the stale-plan guard refuses every repair, and the UI advises
-    re-running the audit, which cannot help.
+  file: `applyRepair` opens with `QIODevice::Text` where its only caller does
+  not, so the stale-plan guard refuses every repair, and the UI advises
+  re-running the audit, which cannot help.
   MEDIUM: the 100-per-check cap counts suppressed findings, pushing real ones
   into `omittedCount` · noise-floor denominator counts lines in
   `.audit_suppress` rather than findings suppressed this run · every write
@@ -35194,55 +35194,55 @@ whole files.
   (`rcEscapeUnclosedFence`).
   HIGH:
   • `remotecontrol_terminal.cpp:1243`, `:1352` — uncapped `note` into a
-    backtracking scrub on both pass-headings routes; the GFM twin caps it
-    first citing "a same-UID slow-regex DoS via `roadmap_log
-    op:flip_batch / annotate`". Claimed unreachable rather than skipped,
-    because an earlier gate returns before the guard; dispatch is on the GUI
-    thread.
+  backtracking scrub on both pass-headings routes; the GFM twin caps it
+  first citing "a same-UID slow-regex DoS via `roadmap_log
+  op:flip_batch / annotate`". Claimed unreachable rather than skipped,
+  because an earlier gate returns before the guard; dispatch is on the GUI
+  thread.
   • `remotecontrol_state.cpp:2679` — `task_priors` still hardcodes
-    `ANTS-*.md` and ignores `specs_dir`, the identical defect fixed ~200 lines
-    above in `invariant_check`. Non-Ants projects get `specs_count: 0` with
-    `ok:true`.
+  `ANTS-*.md` and ignores `specs_dir`, the identical defect fixed ~200 lines
+  above in `invariant_check`. Non-Ants projects get `specs_count: 0` with
+  `ok:true`.
   • `remotecontrol_state.cpp:2999` — `project_conventions` emits a five-row
-    table for any caller, signalling absence only via a per-row `false` that
-    `compact:true` drops. (Matches a behaviour already observed on
-    `write-code`'s first run.)
+  table for any caller, signalling absence only via a per-row `false` that
+  `compact:true` drops. (Matches a behaviour already observed on
+  `write-code`'s first run.)
   • `remotecontrol_changelog.cpp:866` — every write path is an unlocked
-    read-modify-write; `QSaveFile` makes the replacement atomic and does
-    nothing about the read→commit window. Two concurrent same-project sessions
-    lose one side's entry. `SessionMemoryEngine::mutateLocked` is named as the
-    existing answer.
+  read-modify-write; `QSaveFile` makes the replacement atomic and does
+  nothing about the read→commit window. Two concurrent same-project sessions
+  lose one side's entry. `SessionMemoryEngine::mutateLocked` is named as the
+  existing answer.
   • `remotecontrol_changelog.cpp:822` — the one-line fold is applied to one
-    branch of a two-branch assignment; three more unfolded sites feed the same
-    renderer.
+  branch of a two-branch assignment; three more unfolded sites feed the same
+  renderer.
   • `remotecontrol_feedback.cpp:198` — O(n²) clamp under a comment calling it
-    cheap; re-encodes the whole prefix to UTF-8 every 64 characters.
+  cheap; re-encodes the whole prefix to UTF-8 every 64 characters.
   • `remotecontrol_workspace.cpp:1780`, `:1651` — `mutation_probe` writes and
-    restores the caller's source with plain `QFile` + `Truncate` where
-    `apply_edits` uses `QSaveFile`, against a header advertising the restore as
-    "guaranteed, INCLUDING on a failed or timed-out run".
+  restores the caller's source with plain `QFile` + `Truncate` where
+  `apply_edits` uses `QSaveFile`, against a header advertising the restore as
+  "guaranteed, INCLUDING on a failed or timed-out run".
   • `remotecontrol_roadmap_log.cpp:1745`, `:3139`, `:4362` — the ANTS-3350
-    counter-path fix landed in `op:append` only; `flip`, `flip_batch` and
-    `append_batch` still resolve `.roadmap-counter` under `caller_cwd`, so
-    from a subdirectory `append_batch` can reissue a shipped id.
+  counter-path fix landed in `op:append` only; `flip`, `flip_batch` and
+  `append_batch` still resolve `.roadmap-counter` under `caller_cwd`, so
+  from a subdirectory `append_batch` can reissue a shipped id.
   • `remotecontrol_roadmap_query.cpp:2167` — `mode:"bundles"` discards the
-    `source` / `file_ahead_of_store` witness on four exits.
+  `source` / `file_ahead_of_store` witness on four exits.
   • `remotecontrol_docs.cpp:926` — `doc_dedup` is the only doc verb with no
-    `docs_digest` and is ETag-eligible, so it can answer a false 304 exactly
-    when re-run after a fix batch.
+  `docs_digest` and is ETag-eligible, so it can answer a false 304 exactly
+  when re-run after a fix batch.
   • `focusedtest.cpp:117`, `:124` — two routes to a false green: a coverage-map
-    value that is a string rather than an array counts as mapped and
-    contributes no patterns; and patterns validated as PCRE2 are handed to
-    `ctest -R`, whose engine is ERE.
+  value that is a string rather than an array counts as mapped and
+  contributes no patterns; and patterns validated as PCRE2 are handed to
+  `ctest -R`, whose engine is ERE.
   • `featurecoverage.cpp:481` — the `.`-tail fallback disables the
-    contract-doc drift lane for every path literal with a 4+-letter extension
-    (`.json`, `.yaml`, `.toml`) — the class ANTS-3600 widened the tokeniser to
-    catch.
+  contract-doc drift lane for every path literal with a 4+-letter extension
+  (`.json`, `.yaml`, `.toml`) — the class ANTS-3600 widened the tokeniser to
+  catch.
   • `speclint.h:17` + 3 siblings — four documents state a shipping default
-    false since ANTS-4345; `docs/standards/specs.md` now carries the
-    required-sections block, so `sections_checked` is true here and
-    `missing_section` fires against a backlog the standard measures at 139 of
-    243 specs.
+  false since ANTS-4345; `docs/standards/specs.md` now carries the
+  required-sections block, so `sections_checked` is true here and
+  `missing_section` fires against a backlog the standard measures at 139 of
+  243 specs.
   MEDIUM: three pass-headings write paths collect the scrub report and never
   emit it · a failed per-locator note vanishes with the flip reported
   successful · `focused_test` blocks the GUI thread up to 30 min ·
@@ -35269,26 +35269,26 @@ whole files.
   project (2026-08-18 migration).
   HIGH:
   • `roadmapexport.cpp:937` — the only durable backup claimed unrestorable on
-    some inputs: the rebuild indexes items with Qt's Unicode `toLower()` while
-    every reference in the export uses SQLite's ASCII-only `lower()` from the
-    generated `id_fold` column. For an id with a non-ASCII uppercase letter
-    every reference misses the hash, binds 0, and the FK pragma aborts the
-    whole load — and INV-1's round trip cannot catch it, because it fails
-    before the re-export.
+  some inputs: the rebuild indexes items with Qt's Unicode `toLower()` while
+  every reference in the export uses SQLite's ASCII-only `lower()` from the
+  generated `id_fold` column. For an id with a non-ASCII uppercase letter
+  every reference misses the hash, binds 0, and the FK pragma aborts the
+  whole load — and INV-1's round trip cannot catch it, because it fails
+  before the re-export.
   • `roadmapstore.cpp:462` — the ID prefix is a case-sensitive key against
-    `roadmap-data-model.md:579`, which requires the opposite by name: "both
-    fold the prefix, or `Sh` and `SH` become two allocators over one
-    namespace". Item ids ARE folded, so the two allocators eventually collide
-    on the unique constraint and roll back the whole project.
+  `roadmap-data-model.md:579`, which requires the opposite by name: "both
+  fold the prefix, or `Sh` and `SH` become two allocators over one
+  namespace". Item ids ARE folded, so the two allocators eventually collide
+  on the unique constraint and roll back the whole project.
   • `roadmapstore.cpp:909`, `:1581` — two documented readers with no
-    production caller: the relationship writers the data model promises as
-    built, and the byte reader whose header claims it "retires" an item-count
-    ceiling still in force.
+  production caller: the relationship writers the data model promises as
+  built, and the byte reader whose header claims it "retires" an item-count
+  ceiling still in force.
   • `pluginmanager.cpp:223` — a load-time wedge is invisible to the watchdog:
-    `m_execStart` is populated only from event dispatch, so a plugin whose
-    `init.lua` enters one uninterruptible C call is never demoted and every
-    broadcast keeps posting to a queue nothing drains. INV-3 promises the
-    opposite.
+  `m_execStart` is populated only from event dispatch, so a plugin whose
+  `init.lua` enters one uninterruptible C call is never demoted and every
+  broadcast keeps posting to a queue nothing drains. INV-3 promises the
+  opposite.
   MEDIUM: the divergence guard compares ids case-sensitively, so one
   case-variant hand edit bricks all eight write ops with a remedy that cannot
   clear it · the history cap counts characters while calling them bytes, where
@@ -35597,13 +35597,13 @@ happen.
 
   Three routes, none free, and picking one is a decision rather than an
   implementation detail:
-    1. A config key naming the shared root (mcp-config-keys.md), defaulting to
-       the parent of caller_cwd. Explicit, portable, one more key to document.
-    2. Derive it from the roadmap store's `project` table, which holds every
-       registered project's root — real data, already maintained, but it couples
-       the feedback verbs to the roadmap store for a hint.
-    3. Widen the scan to the parent of each *tab's* cwd. Cheap, and it fails for
-       exactly the single-tab case where the hint is most wanted.
+  1. A config key naming the shared root (mcp-config-keys.md), defaulting to
+  the parent of caller_cwd. Explicit, portable, one more key to document.
+  2. Derive it from the roadmap store's `project` table, which holds every
+  registered project's root — real data, already maintained, but it couples
+  the feedback verbs to the roadmap store for a hint.
+  3. Widen the scan to the parent of each *tab's* cwd. Cheap, and it fails for
+  exactly the single-tab case where the hint is most wanted.
 
   Route 1 is the recommendation. Filed here rather than guessed at, because all
   three change what the verb's contract promises and route 2 changes what it
@@ -35797,11 +35797,11 @@ happen.
 
   Two options, and the choice is the user's because one of them rewrites
   published history on a public repo:
-    (a) leave it, and let this bullet be the record of what that commit
-        actually contains;
-    (b) `git commit --amend` the message and `git push --force-with-lease`.
-        Low risk here (sole author, no collaborators) but it is still a
-        rewrite of history that is already public.
+  (a) leave it, and let this bullet be the record of what that commit
+  actually contains;
+  (b) `git commit --amend` the message and `git push --force-with-lease`.
+  Low risk here (sole author, no collaborators) but it is still a
+  rewrite of history that is already public.
 
   Filed rather than decided, so the fact survives the session that noticed it.
   **Layman:** One saved change in the project history has the wrong description attached; fixing it means editing history that is already published, so it needs a decision first.
@@ -35897,16 +35897,16 @@ are closed inline in the feedback files rather than filed here.
   Loader::applyPlanFields() already holds each written column and the row's
   id at the point it decides "changed".
 
-    - Outcome gains updatedItems, capped at 200 where the entries are
-      COLLECTED so nothing unbounded accumulates. items_updated stays the
-      true total, so the array needs no count of its own and a truncated
-      list cannot read as a complete one; updated_items_truncated is
-      derived by the verb from the two, not stored.
-    - `id` is the STORED id — it.id.isEmpty() ? cur->id : it.id, the form
-      the field_conflict note already used. A matched item whose source
-      bullet carries no id is a real state, and reporting an empty id would
-      name nothing a caller can act on.
-    - applyPlanFields' four out-params became one FieldChanges struct.
+  - Outcome gains updatedItems, capped at 200 where the entries are
+  COLLECTED so nothing unbounded accumulates. items_updated stays the
+  true total, so the array needs no count of its own and a truncated
+  list cannot read as a complete one; updated_items_truncated is
+  derived by the verb from the two, not stored.
+  - `id` is the STORED id — it.id.isEmpty() ? cur->id : it.id, the form
+  the field_conflict note already used. A matched item whose source
+  bullet carries no id is a real state, and reporting an empty id would
+  name nothing a caller can act on.
+  - applyPlanFields' four out-params became one FieldChanges struct.
 
   The gate caught the assertion that mattered, and all three lanes found
   it: the parity leg as first written could not fail. INV-3's runs are all
@@ -35979,22 +35979,22 @@ are closed inline in the feedback files rather than filed here.
   ANTS-4065 § 2.5 says the unit is the whitespace-delimited TOKEN. Prose
   provenance carrying a real path was the failing case, not punctuation.
 
-    - `looksLikePath()` → `pathTokensIn()`: returns the qualifying tokens
-      rather than a bool, because the caller needs the path to resolve and
-      to name, not just to know one is in there. Evidence is deliberately
-      NOT tokenised — each comma-separated element is already one path,
-      spaces included.
-    - Trailing punctuation is stripped as a FALLBACK after the verbatim
-      attempt fails, never unconditionally, so a path whose name really
-      ends in one of `.,;:)]"'` still resolves on the first try. This is
-      what the reported `…files-and-naming.md).` case needed.
-    - The note now reports the TRIMMED token, which also closes the
-      "self-concealing" half: a trailing period at the end of a
-      sentence-shaped detail is invisible to a reader.
-    - PlannedItem gains sourceLine / evidenceLine, computed in makeItem by
-      counting newlines before the label in rec.body (which starts at
-      rec.firstLine). The note points at the path's line; 0 falls back to
-      firstLine. Measured in the test: 18 rather than 15.
+  - `looksLikePath()` → `pathTokensIn()`: returns the qualifying tokens
+  rather than a bool, because the caller needs the path to resolve and
+  to name, not just to know one is in there. Evidence is deliberately
+  NOT tokenised — each comma-separated element is already one path,
+  spaces included.
+  - Trailing punctuation is stripped as a FALLBACK after the verbatim
+  attempt fails, never unconditionally, so a path whose name really
+  ends in one of `.,;:)]"'` still resolves on the first try. This is
+  what the reported `…files-and-naming.md).` case needed.
+  - The note now reports the TRIMMED token, which also closes the
+  "self-concealing" half: a trailing period at the end of a
+  sentence-shaped detail is invisible to a reader.
+  - PlannedItem gains sourceLine / evidenceLine, computed in makeItem by
+  counting newlines before the label in rec.body (which starts at
+  rec.firstLine). The note points at the path's line; 0 falls back to
+  firstLine. Measured in the test: 18 rather than 15.
 
   Test: tests/features/roadmap_import_mapping — three fixture bullets
   (prose+resolvable, parenthesised, prose+missing). Proved red first: it
@@ -36107,9 +36107,9 @@ are closed inline in the feedback files rather than filed here.
   source lines with a two-space continuation indent. On render the closing half came back at
   column 0:
 
-      - ✅ [FIBR-0001] **P01: project skeleton + lint + format
-      + test + security-scan harness.**
-        `pyproject.toml` (Python
+  - ✅ [FIBR-0001] **P01: project skeleton + lint + format
+  + test + security-scan harness.**
+  `pyproject.toml` (Python
 
   A line beginning `+ ` at column 0 IS a new markdown list item, so the bullet visibly splits.
   Another produced a bare `guard.**` at column 0. The store keeps the newline inside the headline
@@ -36212,20 +36212,20 @@ are closed inline in the feedback files rather than filed here.
 
   Fix, in order.
   1. Teach the parser the renderer's own output: a bold headline continues until the closing `**`
-     across as many lines as it takes. This is the actual defect. Note the Fin Break item fixes
-     the same disagreement from the renderer's side, at ingest; either one closes this, and the
-     ingest-side join is the smaller change.
+  across as many lines as it takes. This is the actual defect. Note the Fin Break item fixes
+  the same disagreement from the renderer's side, at ingest; either one closes this, and the
+  ingest-side join is the smaller change.
   2. Never default a field over a non-empty stored value. Where the parse yields nothing and the
-     store holds something, keep the store's value and report it — a migration that can only ADD
-     information is one nobody has to be brave to run.
+  store holds something, keep the store's value and report it — a migration that can only ADD
+  information is one nobody has to be brave to run.
   3. Distinguish "absent from source" from "parser did not reach it": they need opposite
-     responses and today share one code. Emit `parse_incomplete` with the line it stopped at, and
-     refuse the batch rather than defaulting.
+  responses and today share one code. Emit `parse_incomplete` with the line it stopped at, and
+  refuse the batch rather than defaulting.
   4. Independent of the bug: roadmap_migrate overwrites rows in a store with no undo and no
-     snapshot. Take a pre-migration backup automatically, or accept a `backup_to` path. Trap
-     worth documenting — the store runs in WAL mode (2.7 MB `-wal` alongside a 12.8 MB
-     `.sqlite`), so a plain `cp` of the `.sqlite` is an INCONSISTENT backup that silently loses
-     the most recent writes. sqlite3's backup API is the correct route.
+  snapshot. Take a pre-migration backup automatically, or accept a `backup_to` path. Trap
+  worth documenting — the store runs in WAL mode (2.7 MB `-wal` alongside a 12.8 MB
+  `.sqlite`), so a plain `cp` of the `.sqlite` is an INCONSISTENT backup that silently loses
+  the most recent writes. sqlite3's backup API is the correct route.
   Resolved (2026-08-19) — the root defect. The other three asks are filed:
   ANTS-4498 (a defaulted value must not overwrite a stored one) and
   ANTS-4499 (pre-migration backup). Ask 3 is subsumed: `parse_incomplete`
@@ -36276,15 +36276,15 @@ are closed inline in the feedback files rather than filed here.
 
   Asked for, in the reporter's order.
   1. A guarded delete/drop op on roadmap_log — require the id verbatim, refuse if the item has
-     relationships or history, dry_run previewable. This is the missing verb.
+  relationships or history, dry_run previewable. This is the missing verb.
   2. Failing that, expose the `dropped` status the schema already allows in `to_status`, and
-     exclude dropped items from render and from default roadmap_query results.
+  exclude dropped items from render and from default roadmap_query results.
   3. Make orphaning mean something: either exclude orphaned items from render (so removing the
-     bullet and re-ingesting IS the removal path), or stop calling it orphaned — the word implies
-     detachment while the behaviour is retention.
+  bullet and re-ingesting IS the removal path), or stop calling it orphaned — the word implies
+  detachment while the behaviour is retention.
   4. Add a pre-write duplicate check to op:append. It already computes `possible_duplicates` and
-     scored the reporter's at 100 — but AFTER writing. Refusing a score-100 duplicate unless a
-     force flag is passed would have prevented the second bad item outright.
+  scored the reporter's at 100 — but AFTER writing. Refusing a score-100 duplicate unless a
+  force flag is passed would have prevented the second bad item outright.
 
   Needs a spec before implementation: this is a new destructive verb surface on a shared,
   machine-global store with no undo, and (3) changes what an existing word means.
@@ -36352,12 +36352,12 @@ are closed inline in the feedback files rather than filed here.
 
   Fix, in order of value.
   1. Decide the layout by POSITION, not first-match: if a dated topic appears above the first
-     flat category heading, the section is dated-with-a-legacy-tail and the top insert is
-     unambiguously safe. Refuse only when the section is genuinely flat.
+  flat category heading, the section is dated-with-a-legacy-tail and the top insert is
+  unambiguously safe. Refuse only when the section is genuinely flat.
   2. Where it still refuses, say what it FOUND — "section is MIXED: 512 dated topics at lines
-     25-10511, 6 flat category headings at lines 10664-10970" — rather than asserting FLAT.
+  25-10511, 6 flat category headings at lines 10664-10970" — rather than asserting FLAT.
   3. Drop or invert the "use op:add" advice for this shape; on a dated-majority section that
-     advice is the thing producing the mixture.
+  advice is the thing producing the mixture.
   A narrower interim that would have unblocked the reporter: an explicit `allow_mixed:true`.
   Resolved (2026-08-18), commit 591c1c52. The guard now classifies by POSITION: a dated topic above the first flat category heading means a dated section with a legacy tail, and the top insert is accepted because it provably cannot reach the tail. Refusal kept for the genuinely flat case and for flat-above-dated, and it now reports what it FOUND (MIXED, both populations, both line ranges) instead of asserting the section is flat. Dated topics are parsed with QDate, so a date-shaped non-date does not silently disable the guard. Three tests, proven red first; the MIXED-wording assertion had to be tightened after its first draft passed against the old message, which already contained the word. Suite 3612/3612.
   **Layman:** The changelog writer refuses a whole file because of six old headings at the very bottom, then tells you to do the thing that made the mess.
@@ -36386,12 +36386,12 @@ are closed inline in the feedback files rather than filed here.
 
   Fix — the legibility half, which is cheap and is what prevents the false confidence.
   1. Either REFUSE with a specific code (`unsupported_source_format`, naming the format and the
-     supported set), or return an explicit `store_backed:true|false` / `served_from` field on the
-     migrate response AND on every roadmap_query response. Today the only tell is the ABSENCE of
-     unrelated fields, which no caller will notice.
+  supported set), or return an explicit `store_backed:true|false` / `served_from` field on the
+  migrate response AND on every roadmap_query response. Today the only tell is the ABSENCE of
+  unrelated fields, which no caller will notice.
   2. `sections_written:0` on every run despite 236 section rows existing reads as a bug or at
-     best a misleading counter. If it means "no sections changed", report an unchanged count
-     alongside, as the item counters already do.
+  best a misleading counter. If it means "no sections changed", report an unchanged count
+  alongside, as the item counters already do.
 
   The capability half — converting such a project to ants-v1 — is filed separately.
   Progress (2026-08-18), commit 591c1c52 — the DOCUMENTATION half is done, the
@@ -36469,9 +36469,9 @@ are closed inline in the feedback files rather than filed here.
 
   Hard prerequisites, both of which must land first:
   - The id-namespace item below — otherwise the render stamps 566 unstable synthesised ids into a
-    public repo's roadmap permanently.
+  public repo's roadmap permanently.
   - ANTS-3771 (declare the project's id format) — otherwise the 427 bold-span pseudo-ids get
-    written back as ids. See the id-provenance item for why the parser cannot be narrowed instead.
+  written back as ids. See the id-provenance item for why the parser cannot be narrowed instead.
 
   Needs a spec: it is a one-way bulk rewrite of a version-controlled file, it allocates ids in
   bulk from a counter other documents already cite, and its ordering constraints against the two
@@ -36522,22 +36522,22 @@ are closed inline in the feedback files rather than filed here.
   Two defects, and the first causes the second.
 
   1. Id synthesis draws from the project's LIVE id space without reserving it. Synthesised ids
-     reach 3D_E-0611 while .roadmap-counter sat at 47, so the next ~565 allocations each collide.
-     It had already happened once before the reporter noticed: 3D_E-0046 was synthesised onto an
-     audio bullet before being allocated for a real item; re-migration resolved it (the parsed
-     0046 kept the id, the audio bullet moved to 0047) but only after the fact, and it silently
-     renumbers items other documents may already cite. A synthesised id therefore cannot be
-     quoted in a commit message or a spec — it is a positional artefact, and this session watched
-     one move.
-     Fix: never synthesise into the live id space. Reserve above the counter's high-water mark,
-     or use a visibly non-allocatable namespace (`3D_E-S0001`) or a separate synthetic_id column.
-     If synthesis must share the space, bump .roadmap-counter past the high-water mark as part of
-     the migration and say so in the response.
+  reach 3D_E-0611 while .roadmap-counter sat at 47, so the next ~565 allocations each collide.
+  It had already happened once before the reporter noticed: 3D_E-0046 was synthesised onto an
+  audio bullet before being allocated for a real item; re-migration resolved it (the parsed
+  0046 kept the id, the audio bullet moved to 0047) but only after the fact, and it silently
+  renumbers items other documents may already cite. A synthesised id therefore cannot be
+  quoted in a commit message or a spec — it is a positional artefact, and this session watched
+  one move.
+  Fix: never synthesise into the live id space. Reserve above the counter's high-water mark,
+  or use a visibly non-allocatable namespace (`3D_E-S0001`) or a separate synthetic_id column.
+  If synthesis must share the space, bump .roadmap-counter past the high-water mark as part of
+  the migration and say so in the response.
 
   2. The allocator's high-water floor does not include the store. Fix: floor `maxFileId` to the
-     store's max id for the prefix as well as the file's and the corpus's. Cheap guard worth
-     adding alongside — before returning, assert the issued id is absent from the store for that
-     project and refuse or retry at +1; the store is already open at that moment.
+  store's max id for the prefix as well as the file's and the corpus's. Cheap guard worth
+  adding alongside — before returning, assert the issued id is absent from the store for that
+  project and refuse or retry at +1; the store is already open at that moment.
 
   The collision is silent (ok:true, a normal-looking id), fires exactly once per project at the
   boundary, and is therefore easy to miss in testing and guaranteed to hit every migrated
@@ -36618,14 +36618,14 @@ are closed inline in the feedback files rather than filed here.
 
   docs/standards/roadmap-format.md § 3.5.3, verbatim:
 
-    | `planned` | On the roadmap from project design (default; usually
-    omitted) |
+  | `planned` | On the roadmap from project design (default; usually
+  omitted) |
 
   and, below the two tables:
 
-    "A bullet with no `Kind:` / `Source:` reads as implementation work for
-    the planned roadmap (`Kind: implement`, `Source: planned`) — and that
-    is a reader-side fallback for pre-v1.1 bullets"
+  "A bullet with no `Kind:` / `Source:` reads as implementation work for
+  the planned roadmap (`Kind: implement`, `Source: planned`) — and that
+  is a reader-side fallback for pre-v1.1 bullets"
 
   So `source: "planned"` on 989 GFM bullets is not a status word landing in
   a provenance column by positional mix-up: `planned` IS a Source value in
@@ -36660,9 +36660,9 @@ are closed inline in the feedback files rather than filed here.
   spellings, and the test sides with the code so the divergence is invisible.
 
   - `docs/specs/ANTS-4065-import-mapping-contract.md` INV-7 requires "a note whose
-    code is exactly **path_unresolved**", and its loop-4 row records the amendment
-    deliberately: "INV-7's note code was unnamed, alone among this spec's five
-    notes, so its clause could not fail — now path_unresolved".
+  code is exactly **path_unresolved**", and its loop-4 row records the amendment
+  deliberately: "INV-7's note code was unnamed, alone among this spec's five
+  notes, so its clause could not fail — now path_unresolved".
   - `src/roadmapmigrate.cpp` validatePaths emits `unresolved_path`.
   - `tests/features/roadmap_import_mapping/` asserts `unresolved_path`.
 
@@ -36745,22 +36745,22 @@ are closed inline in the feedback files rather than filed here.
   EXTENSIBLE, with a table of the diagnostic keys each outcome adds, read
   off the source rather than off the tool description.
 
-    - § 2.3 gains the table: `not_found` adds candidates / near_miss_line /
-      hint when `old` is single-line and exactly one line matches under
-      whitespace normalisation; `ambiguous` always adds candidates /
-      match_count / hint, with candidates_truncated only when the list is
-      shorter than the count. Cap is 10 (kMaxReported, applyedits.cpp).
-      Absence is stated as the normal case, with the four skip sites that
-      carry no EditOutcome named.
-    - § 2.5's worked example shows both shapes — a three-field floor row
-      and an extended one.
-    - § 2.5 restated the reason set and had drifted to four of the six
-      values; the restatement is deleted rather than corrected (§ 2.3 owns
-      the set), which is what stopped it drifting again.
-    - § 2.1's EditOutcome sketch had a comment enumerating two of the four
-      skipReason values. The enumeration is deleted, not extended, and the
-      block is now labelled as the original shape with src/applyedits.h
-      named as the live one.
+  - § 2.3 gains the table: `not_found` adds candidates / near_miss_line /
+  hint when `old` is single-line and exactly one line matches under
+  whitespace normalisation; `ambiguous` always adds candidates /
+  match_count / hint, with candidates_truncated only when the list is
+  shorter than the count. Cap is 10 (kMaxReported, applyedits.cpp).
+  Absence is stated as the normal case, with the four skip sites that
+  carry no EditOutcome named.
+  - § 2.5's worked example shows both shapes — a three-field floor row
+  and an extended one.
+  - § 2.5 restated the reason set and had drifted to four of the six
+  values; the restatement is deleted rather than corrected (§ 2.3 owns
+  the set), which is what stopped it drifting again.
+  - § 2.1's EditOutcome sketch had a comment enumerating two of the four
+  skipReason values. The enumeration is deleted, not extended, and the
+  block is now labelled as the original shape with src/applyedits.h
+  named as the live one.
 
   No rule-14 gate. The item's own body expected one; on reading it, this
   amendment records what already shipped (ANTS-3711, ANTS-4418, ANTS-4473
@@ -36930,6 +36930,40 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager), split from ANTS-4486 on 2026-08-19.
   Lanes: mcp, roadmap-store.
+  Corpus effect MEASURED (2026-08-19), settling the debt this note left
+  open. The answer is ZERO suppressions on this project, and the reason
+  matters more than the number.
+
+  Method: snapshot all 2141 stored rows, re-migrate for real, diff. Not
+  one row's provenance, kind or status moved -- 599 items updated, every
+  one of them body or extras only.
+
+  Why the guard never fires here: the guard is `defaulted AND stored
+  non-empty`, but a field whose plan text already EQUALS the stored text
+  short-circuits before it. 383 items default their provenance in the
+  plan; 419 stored rows already hold the defaulted literal, written at
+  INSERT time by the original migration, which is correct behaviour and is
+  what the second feature test locks. Sampled 32 of the 383 defaulted
+  items against the store: 32 of 32 already held the literal. So the
+  defaulted population is a subset of the already-defaulted rows and no
+  write was ever proposed.
+
+  This VINDICATES the wording the gate forced into the spec -- "384 is the
+  population at risk rather than the number of overwrites". Population at
+  risk 383; actual overwrites 0. The earlier framing, that a re-migration
+  would overwrite 384 correct rows, was wrong about this corpus.
+
+  The fix is still load-bearing and still correct: a project whose
+  markdown LOSES a provenance line after the store recorded a real one is
+  exactly the case, and nothing on this corpus is in that state. It rests
+  on the two feature tests, which is where it should rest -- a corpus that
+  does not exercise a rule is not evidence about it either way.
+
+  Also from this run, filed rather than folded in: ANTS-4504 (a backticked
+  trailer mention that soft-wraps escapes the parser's guard) and
+  ANTS-4505 (a render-written trailer at a bullet's tail outranks the true
+  one, so a mis-parsed value can never be corrected). ANTS-3808 carries
+  both.
 
 - 📋 [ANTS-4499] **roadmap_migrate overwrites rows in a machine-global store with no snapshot and no undo.**
   ANTS-4486's fourth ask, filed separately because it is a capability rather
@@ -36982,13 +37016,13 @@ are closed inline in the feedback files rather than filed here.
   Asked for, in the reporter's order:
   1. Reserve above the counter's high-water rather than inside it.
   2. Or use a visibly non-allocatable namespace (`3D_E-S0001`), so a reader
-     can tell a synthesised id at sight and no tool mistakes it for a
-     citation target.
+  can tell a synthesised id at sight and no tool mistakes it for a
+  citation target.
   3. Or a separate synthetic_id column, leaving `id` NULL until a real one
-     is allocated — the cleanest model and the largest change, since `id` is
-     the locate key for flip / annotate / amend.
+  is allocated — the cleanest model and the largest change, since `id` is
+  the locate key for flip / annotate / amend.
   4. If synthesis must keep sharing the space, bump .roadmap-counter past
-     the high-water as part of the migration and say so in the response.
+  the high-water as part of the migration and say so in the response.
 
   Needs a spec: it changes what an id MEANS, ANTS-3765 § 2.8 owns the
   allocation rules, and option 3 touches the schema. Related: ANTS-4343 (a
@@ -37007,19 +37041,19 @@ are closed inline in the feedback files rather than filed here.
   and that is the whole design question.** Measured 2026-08-19 rather than
   assumed:
 
-    - The item table already has `created`, `last_modified` and `shipped`
-      columns (date-only, nullable, `YYYY-MM-DD` CHECKed). putItem() binds
-      them and readItem() reads them back, so the round trip works.
-    - **Nothing in src/ ever writes them.** No writer binds a value; the
-      migration excludes them by design, because a markdown roadmap cannot
-      express them and a re-run must never clear a value a human set
-      (ANTS-4065 INV-3). So today they are NULL on every row.
-    - The history table does carry timestamped transitions, including
-      status, so "closed this week" is derivable from it — but a FIRST
-      migration writes no history at all (recordHistory() is reached only
-      from the field-update path), so every project's pre-migration
-      history is simply absent. For most projects that is the entire
-      backlog.
+  - The item table already has `created`, `last_modified` and `shipped`
+  columns (date-only, nullable, `YYYY-MM-DD` CHECKed). putItem() binds
+  them and readItem() reads them back, so the round trip works.
+  - **Nothing in src/ ever writes them.** No writer binds a value; the
+  migration excludes them by design, because a markdown roadmap cannot
+  express them and a re-run must never clear a value a human set
+  (ANTS-4065 INV-3). So today they are NULL on every row.
+  - The history table does carry timestamped transitions, including
+  status, so "closed this week" is derivable from it — but a FIRST
+  migration writes no history at all (recordHistory() is reached only
+  from the field-update path), so every project's pre-migration
+  history is simply absent. For most projects that is the entire
+  backlog.
 
   So the honest first version answers the point-in-time questions exactly
   and the time-bucketed ones only from the point the store started being
@@ -37034,25 +37068,25 @@ are closed inline in the feedback files rather than filed here.
 
   Additional metrics worth carrying, in rough order of usefulness:
 
-    - **Open by status and by kind** — planned vs in-progress vs
-      considered, and fix/feature/doc/chore. Says where the work actually
-      is, not just how much.
-    - **Net change per period** (added minus closed). A backlog growing
-      faster than it drains is the number that matters, and neither half
-      alone shows it.
-    - **Age of open items** — median, oldest, and a count past 90 days.
-      The "is anything stuck" signal.
-    - **Time to close** — median days from first appearance to shipped,
-      for items where both are known. Pair it with the count it was
-      computed from, or a median over four items reads as a trend.
-    - **Per-project breakdown.** The store is machine-global and holds 14
-      projects, so a cross-project view is something only the store can
-      give and no single ROADMAP.md can.
-    - **Per-lane counts**, since lanes are already a column.
-    - **Blocked-by-format counts** — open items with no Kind or no Layman
-      line, which is exactly the set the render gate refuses on, so this
-      doubles as a pre-flight for ANTS-4483.
-    - **Store vs markdown divergence** per project, once ANTS-4488 lands.
+  - **Open by status and by kind** — planned vs in-progress vs
+  considered, and fix/feature/doc/chore. Says where the work actually
+  is, not just how much.
+  - **Net change per period** (added minus closed). A backlog growing
+  faster than it drains is the number that matters, and neither half
+  alone shows it.
+  - **Age of open items** — median, oldest, and a count past 90 days.
+  The "is anything stuck" signal.
+  - **Time to close** — median days from first appearance to shipped,
+  for items where both are known. Pair it with the count it was
+  computed from, or a median over four items reads as a trend.
+  - **Per-project breakdown.** The store is machine-global and holds 14
+  projects, so a cross-project view is something only the store can
+  give and no single ROADMAP.md can.
+  - **Per-lane counts**, since lanes are already a column.
+  - **Blocked-by-format counts** — open items with no Kind or no Layman
+  line, which is exactly the set the render gate refuses on, so this
+  doubles as a pre-flight for ANTS-4483.
+  - **Store vs markdown divergence** per project, once ANTS-4488 lands.
 
   Surface: an op on `roadmap_query` rather than a new verb — it is a read
   over the same rows, and it should be one cheap call with no notes array
@@ -37079,23 +37113,23 @@ are closed inline in the feedback files rather than filed here.
   Eleven of that project's twelve notes are this class, and every one of
   the five distinct filenames exists:
 
-      roadmap-format.md    -> standards/roadmap-format.md
-      changelog-format.md  -> standards/changelog-format.md
-      charters.md          -> draft/skills/charters.md
-      documentation.md     -> standards/documentation.md
-      commits.md           -> standards/commits.md
+  roadmap-format.md    -> standards/roadmap-format.md
+  changelog-format.md  -> standards/changelog-format.md
+  charters.md          -> draft/skills/charters.md
+  documentation.md     -> standards/documentation.md
+  commits.md           -> standards/commits.md
 
   So the resolver tries the project root and stops. Two candidate rules,
   and the second is probably right:
 
   - walk the tree for a unique match. Rejected as stated: `documentation.md`
-    and `commits.md` each match twice (the second under
-    backups/claude-tidy-20260803T143428Z/), so a unique-match rule is
-    undefined on exactly this corpus.
+  and `commits.md` each match twice (the second under
+  backups/claude-tidy-20260803T143428Z/), so a unique-match rule is
+  undefined on exactly this corpus.
   - treat a token carrying NO directory separator as a prose MENTION rather
-    than a path, and emit no note at all. A bare filename in a sentence is
-    not a claim that the file sits at the root, which is the premise the
-    current note rests on.
+  than a path, and emit no note at all. A bare filename in a sentence is
+  not a claim that the file sits at the root, which is the premise the
+  current note rests on.
 
   Cost of leaving it: the note class is ~92% of that project's migration
   output, so a real unresolved path arrives buried in false ones — the
@@ -37130,19 +37164,88 @@ are closed inline in the feedback files rather than filed here.
 
   Two things to settle, and they are a policy choice rather than a fix:
   - whether the cap is meant to bound BYTES (then the predicate is
-    `octet_length()`, and `ANTS-3765` § 2.9's prose is right as written), or
-    to bound TEXT VOLUME (then the code is right and every document saying
-    "bytes" is wrong, `m_historyCap` / `historyCapBytes` /
-    `ANTS_HISTORY_CAP_BYTES` included).
+  `octet_length()`, and `ANTS-3765` § 2.9's prose is right as written), or
+  to bound TEXT VOLUME (then the code is right and every document saying
+  "bytes" is wrong, `m_historyCap` / `historyCapBytes` /
+  `ANTS_HISTORY_CAP_BYTES` included).
   - whichever way it goes, `QString::size()` at the call site is UTF-16
-    code units, which is a third unit again — it agrees with `length()` on
-    the BMP and disagrees on anything astral.
+  code units, which is a third unit again — it agrees with `length()` on
+  the BMP and disagrees on anything astral.
 
   Not urgent: the cap is a soft budget with a `history_capped` note and
   ANTS-3765 INV-15 already guarantees hitting it never aborts a migration.
   **Layman:** The limit on how much change-history the roadmap database keeps is measured in the wrong unit, so it can grow bigger than intended.
   Kind: fix.
   Source: in-session-2026-08-19, ANTS-4498's review-contract gate loop 2.
+
+- 📋 [ANTS-4504] **A backticked trailer mention that soft-wraps escapes the guard, so its second key parses as a declaration.**
+  rxSource()/rxLanes() guard a quoted key with THREE FIXED-LENGTH negative
+  lookbehinds (src/roadmapparse.cpp, rxSource()). Each sees only the 1-3
+  characters immediately before the label, so a backtick that OPENED the
+  span several words earlier is invisible.
+
+  Observed on ANTS-3808, whose body quotes rxTrailerKey's own corpus note
+  -- a backticked example carrying two keys, which the source wraps across
+  two lines. The second key sits at end-of-line preceded by a space, so no
+  lookbehind fires and it parses as a declaration. ANTS-3808's stored lane
+  list is ["packaging"], captured from that example; there is no other
+  lane declaration anywhere in the bullet.
+
+  This is the failure mode the parser's own comments predict: "the corpus
+  most likely to write that sentence is the one documenting the format."
+
+  A fixed-length lookbehind cannot express "inside a backticked span". The
+  fix is span-aware -- mask backticked runs before matching, or track
+  open/close state across the body. Note the span may WRAP, so a
+  single-line mask is not enough.
+
+  The write path already has the right idea: roadmap_log refused this very
+  bullet with body_shadowed until the mentions were reworded. The read
+  path has no equivalent.
+
+  Not yet sized. Pairs with the sibling filed alongside it.
+  **Layman:** A roadmap entry that quotes an example of its own format has the example read as real data.
+  Kind: fix.
+  Source: in-session-2026-08-19, found re-migrating after ANTS-4498.
+  Lanes: roadmap.
+
+- 📋 [ANTS-4505] **A render-written trailer at a bullet's tail outranks the true trailer, so a mis-parsed value can never be corrected.**
+  RoadmapRender::bulletText() emits the head line, then body, THEN the
+  four trailer keys re-derived from the store columns -- at the END of the
+  bullet. The parser's trailer match is un-anchored and last-match-wins.
+  So on the next parse the render's own appended lines outrank any trailer
+  written earlier in the body.
+
+  Self-consistent while the store is right. The problem is that it is
+  ONE-WAY: once a column holds a wrong value, the render writes that wrong
+  value to the tail, the next migration reads it back, and the true
+  trailer earlier in the body can never win again. A human correcting the
+  real trailer in place is silently ignored.
+
+  Observed on ANTS-3808. Its true metadata sits at bullet-relative lines
+  38-40; lines 226-227 carry render output holding values captured from a
+  DEMO-0003 example block the bullet quotes at lines 6-8. The store holds
+  provenance "test" and a layman line reading "An older thing" -- and
+  today's re-migration did not move either.
+
+  Blast radius is narrow on this corpus: ANTS-3808 is the only item whose
+  provenance is "test" (2141 items checked). Meta-documentation bullets
+  are the population at risk.
+
+  Open question this owns: what SHOULD win. Candidates -- the render marks
+  its appended block so the parser prefers it explicitly rather than by
+  accident of position; or the render suppresses a key already present in
+  body; or the migration prefers the FIRST declaration after the headline.
+  Each changes ANTS-3808's own shipped suppression rule, so this needs a
+  spec pass, not a patch.
+
+  Repairing ANTS-3808's three columns is part of the fix, not a
+  prerequisite: hand-editing ROADMAP.md is reverted by the next render,
+  so the store is what has to move.
+  **Layman:** Once a roadmap entry's metadata is read wrong, re-importing can never fix it -- the wrong value keeps winning.
+  Kind: fix.
+  Source: in-session-2026-08-19, found re-migrating after ANTS-4498.
+  Lanes: roadmap.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
@@ -46988,14 +47091,14 @@ here.)
   Resolved (2026-08-19) — Part 2 shipped, and with the divergence cleared
   that is the last of it. Both parts and the condition are now closed:
 
-    - Part 1, the divergence guard, shipped 2026-08-14.
-    - The ~200-id divergence itself cleared with ANTS-4065 Phase E on
-      2026-08-18. Verified by use rather than by assertion: ~20 roadmap_log
-      writes against this project this session, all succeeding, none
-      refused.
-    - Part 2, counter reconciliation, ships now. A store-path allocation
-      writes the allocated value back to `.roadmap-counter`, and reports
-      `counter_advanced_to` / `counter_advanced_past` when it moves.
+  - Part 1, the divergence guard, shipped 2026-08-14.
+  - The ~200-id divergence itself cleared with ANTS-4065 Phase E on
+  2026-08-18. Verified by use rather than by assertion: ~20 roadmap_log
+  writes against this project this session, all succeeding, none
+  refused.
+  - Part 2, counter reconciliation, ships now. A store-path allocation
+  writes the allocated value back to `.roadmap-counter`, and reports
+  `counter_advanced_to` / `counter_advanced_past` when it moves.
 
   Two design calls made here rather than left implicit.
 
@@ -47592,15 +47695,15 @@ here.)
   What is on screen today, top to bottom:
 
   - A tab strip: Full roadmap / History / Current / Next / Far Future /
-    Custom.
+  Custom.
   - A full-width Search field.
   - A status row of five checkboxes, each with its own emoji, laid out
-    edge to edge: Shipped, Planned, In progress, Considered, Currently
-    being tackled. A density combo ("Cozy") is stranded at the far right
-    of the same row.
+  edge to edge: Shipped, Planned, In progress, Considered, Currently
+  being tackled. A density combo ("Cozy") is stranded at the far right
+  of the same row.
   - A second row of ELEVEN category checkboxes: implement, fix,
-    audit-fix, review-fix, doc, doc-fix, refactor, test, chore, release,
-    research, ux.
+  audit-fix, review-fix, doc, doc-fix, refactor, test, chore, release,
+  research, ux.
 
   So sixteen checkboxes across two rows, plus a combo, plus a search
   field, plus six tabs — before a single roadmap item is visible. On the
@@ -47612,19 +47715,19 @@ here.)
   Wanted, to be settled at design time rather than assumed here:
 
   - The status set and the category set each collapse to ONE control
-    that shows its current selection and opens the full set on demand —
-    a multi-select dropdown summarising as `3 of 12` or similar. The
-    common case is all-on or one-off, and neither needs eleven
-    always-visible boxes.
+  that shows its current selection and opens the full set on demand —
+  a multi-select dropdown summarising as `3 of 12` or similar. The
+  common case is all-on or one-off, and neither needs eleven
+  always-visible boxes.
   - The density combo moves out of the status row; it is a view
-    preference, not a filter, and sitting inside the filter row is what
-    makes that row read as unbounded.
+  preference, not a filter, and sitting inside the filter row is what
+  makes that row read as unbounded.
   - A visible "filters active" affordance and a one-click reset, so a
-    collapsed control can never hide why the list looks short. This is
-    the risk the collapse introduces and it must be answered in the same
-    pass.
+  collapsed control can never hide why the list looks short. This is
+  the risk the collapse introduces and it must be answered in the same
+  pass.
   - Keyboard parity with today: whatever replaces a checkbox must still
-    be reachable without the mouse.
+  be reachable without the mouse.
 
   Sequencing: do it WITH ANTS-3762 rather than before or after. They
   touch the same widget and the same paint path, and laying it out twice
