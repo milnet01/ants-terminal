@@ -37884,7 +37884,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: cc-feedback-2026-08-19 (OneUp).
 
-- 📋 [ANTS-4521] **mutation_probe mutates every occurrence with no way to state how many were intended.**
+- ✅ [ANTS-4521] **mutation_probe mutates every occurrence with no way to state how many were intended.**
   The verb refuses an inert mutation, and its reasoning is right: a
   mutation that changed nothing runs a test that passes against unmutated
   code. A mutation that changes MORE than the caller believes has the same
@@ -37915,6 +37915,16 @@ are closed inline in the feedback files rather than filed here.
   Weaker alternative if a new field is unwanted: a warning field whenever
   occurrences > 1. The refusal is better because it lands before the test
   runs, and therefore before a verdict exists to be misread.
+  Resolved (2026-08-19): optional per-mutation `expect_occurrences`, taken
+  as specified rather than the weaker occurrences>1 warning. A mismatch
+  refuses THAT mutation with outcome `occurrence_mismatch`, reports both
+  counts, and lands before the write and before the run — so no verdict
+  exists to be misread. Per-mutation like inert, so one bad entry does not
+  lose the batch. Absent is unchecked and does NOT default to 1. Three
+  behavioural tests drive the live verb; the two proving "absent and
+  matching are unchanged" were green before the fix, which is what makes
+  that claim measured rather than asserted, and the mismatch one proves no
+  test ran via a sentinel the test command would have created.
   **Layman:** A test-quality check can quietly change more places than you meant, and still report success.
   Kind: enhancement.
   Source: cc-feedback-2026-08-19 (LocalWebServerManager).

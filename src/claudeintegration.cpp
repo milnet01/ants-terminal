@@ -4120,6 +4120,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "could not be read, and a run that executed nothing, "
                         "both used to read as a pass and make every later "
                         "verdict unfalsifiable. "
+                        "ANTS-4521: a mutation may carry "
+                        "`expect_occurrences` — a mismatch refuses THAT "
+                        "mutation (occurrence_mismatch) before any test runs, "
+                        "because a mutation hitting more sites than intended "
+                        "can be killed by a test covering a site you never "
+                        "meant to probe. "
                         "`test_command` is an ARGV ARRAY, never a shell string — "
                         "a deliberate narrowing, because this verb writes to a "
                         "source file and spawns a process. caller_cwd required.");
@@ -4159,7 +4165,26 @@ void ClaudeIntegration::onMcpConnection() {
                                     nv["description"] = QStringLiteral(
                                         "Replacement; may be empty (a deletion "
                                         "is a mutation). Equal to `old` ⟹ inert.");
+                                QJsonObject eo; eo["type"] = "integer";
+                                    eo["minimum"] = 1;
+                                    eo["description"] = QStringLiteral(
+                                        "ANTS-4521, optional: how many "
+                                        "occurrences of `old` you INTEND to "
+                                        "mutate. A mismatch refuses this "
+                                        "mutation (outcome "
+                                        "\"occurrence_mismatch\", both counts "
+                                        "reported) and runs no test. Absent ⟹ "
+                                        "unchecked — every occurrence is "
+                                        "mutated, which is often the intent, "
+                                        "so this does NOT default to 1. Set it "
+                                        "when the label names ONE site: a "
+                                        "mutation hitting more can be killed "
+                                        "by a test covering a site you never "
+                                        "meant to probe while the one you did "
+                                        "stays uncovered, and the verdict "
+                                        "still reads `killed`.");
                                 ip["label"] = l; ip["old"] = ov; ip["new"] = nv;
+                                ip["expect_occurrences"] = eo;
                                 item["properties"] = ip;
                                 mutsP["items"] = item;
                             }

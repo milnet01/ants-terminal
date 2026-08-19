@@ -14,6 +14,7 @@ session, this project six times in one evening.
 | INV-1 | The three INERT shapes are detected and reported as `inert`, never as a surviving mutant: `old` absent from the file, `new` equal to `old`, and an empty `old`. An inert mutation runs NO test. *Test:* `MutationProbe.Inv1InertShapes` |
 | INV-2 | `parseCounts` reads pytest, ctest and gtest summaries; unrecognised output leaves both counts at `-1`, which is distinct from `0`. *Test:* `MutationProbe.Inv2CountParsing` |
 | INV-3 | The verb is registered on the WORKER delegate, verifies `restored_clean` rather than assuming it, refuses a red baseline under `require_green_baseline`, and executes `test_command` as argv with no shell path. *Test:* `MutationProbe.Inv3GuaranteesWired` |
+| INV-4 | (ANTS-4521) A mutation may carry `expect_occurrences`. When it does not match how many times `old` occurs, THAT mutation is refused with outcome `occurrence_mismatch`, both counts reported, no write and no test run; the rest of the batch still runs. Absent ⟹ unchecked, and it does NOT default to 1 — a mutation meant to hit every site is legitimate. *Test:* `MutationProbe.Ants4521OccurrenceMismatchRefusesBeforeAnyTestRuns`, `…MatchingExpectationRunsNormally`, `…AbsentExpectationIsUnchangedBehaviour` |
 
 ## Why `inert` is the field that matters
 
@@ -26,6 +27,28 @@ comment-only edit, a `[... for x in []]` no-op, and a half-applied two-part
 So an inert mutation skips the test run entirely rather than running one and
 disclaiming it. A run there would pass against unmutated code, which is the
 false conclusion the verb exists to prevent.
+
+## Why a mismatch refuses rather than warns (ANTS-4521)
+
+`inert` guards a mutation that changed **less** than the caller believes. The
+same defect runs the other way and was unguarded: a LocalWebServerManager
+session meant to clear `high_contrast` on ONE palette, the literal occurred
+twice, both were cleared, and the result came back `occurrences:2
+outcome:killed`.
+
+Nothing wrong followed because it died — and the dangerous direction is subtler
+than survival. With N sites mutated, the mutant can be killed by a test
+covering a site the caller never meant to touch while the site they DID mean to
+probe stays uncovered. The verdict reads `killed`, the label — which is what
+gets quoted in a commit message as evidence — describes a narrower mutation
+than the one that ran, and the uncovered site is invisible. A false GREEN in a
+verb whose whole purpose is refusing false greens.
+
+`occurrences` was already reported, so the information existed; it arrived as
+one integer among ten rather than as a check against intent. The refusal lands
+before the write and before the run, and therefore before a verdict exists to
+be misread — which is why it beats the weaker alternative of warning whenever
+`occurrences > 1`.
 
 ## Why `test_command` is argv and not a shell string
 

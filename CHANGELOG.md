@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **mutation_probe mutates every occurrence with no way to state how many were intended.** (ANTS-4521)
+  A test-quality check can quietly change more places than you meant, and still report success.
+
 - **`roadmap_query`'s `bad_mode` refusal names the `id`/`ids[]` route (ANTS-4511)**
   `mode:"by_id"` is the obvious guess for a single-item lookup, and none of
   the accepted mode names answers it — item lookup is an argument, not a

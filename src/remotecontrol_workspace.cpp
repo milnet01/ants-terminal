@@ -1781,6 +1781,46 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             continue;
         }
 
+        // ANTS-4521 — the caller may state how many sites the mutation meant,
+        // and a mismatch is refused here: before the write, before the run,
+        // and therefore before a verdict exists to be misread.
+        //
+        // `inert` guards a mutation that changed LESS than the caller believes.
+        // This is the same defect in the other direction, and the dangerous
+        // half is subtler than survival: with N sites mutated, the mutant can
+        // be killed by a test covering a site the caller never meant to touch
+        // while the site they DID mean to probe stays uncovered. The verdict
+        // reads `killed`, the label — which is what gets quoted as evidence —
+        // says what they intended, and the uncovered site is invisible. A
+        // false GREEN in a verb whose whole purpose is refusing false greens.
+        //
+        // ABSENT is not 1. A mutation meant to hit every site is legitimate
+        // ("the constant 3" usually means all of them), so defaulting would
+        // break the common case to guard the uncommon one. Per-mutation like
+        // `inert`, because the mutation list is data and one malformed entry
+        // must not lose the other results.
+        if (mo.contains(QStringLiteral("expect_occurrences"))) {
+            const int want = mo.value(QStringLiteral("expect_occurrences")).toInt();
+            if (want != ap.occurrences) {
+                r[QStringLiteral("applied")]              = false;
+                r[QStringLiteral("outcome")]              = QStringLiteral("occurrence_mismatch");
+                r[QStringLiteral("occurrences")]          = ap.occurrences;
+                r[QStringLiteral("expected_occurrences")] = want;
+                r[QStringLiteral("summary")] = QStringLiteral(
+                    "`old` occurs %1 time(s), not the %2 expected — no test was "
+                    "run and the file was not touched. A mutation that hits "
+                    "more sites than intended can be killed by a test covering "
+                    "a site you never meant to probe, while the one you did "
+                    "stays uncovered: the verdict reads `killed` and the label "
+                    "describes a narrower mutation than the one that ran. "
+                    "Narrow `old` until it is unique, or raise "
+                    "`expect_occurrences` if hitting them all is the intent.")
+                        .arg(ap.occurrences).arg(want);
+                results.append(r);
+                continue;
+            }
+        }
+
         QFile w(check.resolved);
         if (!w.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             r[QStringLiteral("applied")] = false;

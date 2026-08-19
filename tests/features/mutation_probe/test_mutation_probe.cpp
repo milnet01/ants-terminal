@@ -138,6 +138,12 @@ TEST(MutationProbe, Inv3GuaranteesWired) {
     EXPECT_NE(rc.find("ARGV ARRAY"), std::string::npos)
         << "the refusal must say so, since a shell string is the natural "
            "thing a caller reaches for";
+
+    // ANTS-4521 — the per-mutation `expect_occurrences` is declared in the
+    // schema. The behavioural tests below prove the check; this proves a
+    // caller can DISCOVER it, which for an opt-in guard is the whole value.
+    EXPECT_NE(ci.find("expect_occurrences"), std::string::npos)
+        << "an opt-in guard nobody is told about is not a guard";
 }
 
 // ANTS-4401 — `require_green_baseline` must be gated on EVIDENCE of green,
@@ -202,4 +208,162 @@ TEST(MutationProbe, Ants4401RefusalIsWiredAndDistinguishesTheTwoCauses) {
     EXPECT_NE(rc.find("ran no tests"), std::string::npos)
         << "the empty arm must say nothing executed — pointing a caller at "
            "their runner's output format would be the wrong repair";
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-4521 — `expect_occurrences`: state how many sites the mutation meant.
+//
+// The verb refuses an inert mutation, and its reasoning is right: a mutation
+// that changed nothing runs a test that passes against unmutated code. A
+// mutation that changes MORE than the caller believes has the same shape and
+// was not guarded.
+//
+// A LocalWebServerManager session meant to clear `high_contrast` on ONE
+// palette; the literal occurs twice, both were cleared, and the result came
+// back occurrences:2 outcome:killed. Nothing wrong followed because it died —
+// and the dangerous direction is subtler than survival. With N sites mutated,
+// the mutant can be killed by a test covering a site the caller never meant to
+// touch while the site they DID mean to probe stays uncovered. The verdict
+// reads `killed`, the label says what the caller intended, and the uncovered
+// site is invisible. A false GREEN in a verb whose whole purpose is refusing
+// false greens. `occurrences` was already reported, so the information existed
+// — it just arrived as one integer among ten rather than as a check against
+// intent. And the label is what gets quoted in a commit message as evidence.
+//
+// These drive the live verb rather than the engine, because the whole claim is
+// about what the VERB does with the count applyOne already returns: refuse
+// before the test runs, and therefore before a verdict exists to be misread.
+
+#include "remotecontrol.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QIODevice>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QStandardPaths>
+#include <QTemporaryDir>
+
+namespace {
+
+// Two sites for one literal — the reporter's shape exactly.
+const char *kTwoSiteSource =
+    "palette_a = {\n"
+    "    'high_contrast': True,\n"
+    "}\n"
+    "palette_b = {\n"
+    "    'high_contrast': True,\n"
+    "}\n";
+
+QString seedProject(const QTemporaryDir &tmp) {
+    const QString p = QDir(tmp.path()).filePath(QStringLiteral("palettes.py"));
+    QFile f(p);
+    EXPECT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(kTwoSiteSource);
+    f.close();
+    return p;
+}
+
+// `touch <sentinel>` as the test command: it exits 0 (so a run that DOES
+// happen reads as `survived`) and leaves a file behind, which is what makes
+// "no test was run" provable rather than inferred from a missing field.
+QJsonObject probe(const QTemporaryDir &tmp, const QString &sentinel,
+                  const QJsonObject &mutation) {
+    const QString touch = QStandardPaths::findExecutable(QStringLiteral("touch"));
+    EXPECT_FALSE(touch.isEmpty());
+    QJsonArray argv; argv.append(touch); argv.append(sentinel);
+    QJsonArray muts;  muts.append(mutation);
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+    req[QStringLiteral("test_command")] = argv;
+    req[QStringLiteral("mutations")]    = muts;
+    return rc.cmdMutationProbe(req).object();
+}
+
+QJsonObject onlyResult(const QJsonObject &env) {
+    const QJsonArray rs = env.value(QStringLiteral("results")).toArray();
+    EXPECT_EQ(rs.size(), 1);
+    return rs.isEmpty() ? QJsonObject() : rs.at(0).toObject();
+}
+
+QJsonObject mutation(int expect) {
+    QJsonObject m;
+    m[QStringLiteral("label")] = QStringLiteral("clear high_contrast on palette_a");
+    m[QStringLiteral("old")]   = QStringLiteral("'high_contrast': True");
+    m[QStringLiteral("new")]   = QStringLiteral("'high_contrast': False");
+    if (expect > 0) m[QStringLiteral("expect_occurrences")] = expect;
+    return m;
+}
+
+}  // namespace
+
+// EO-1 — the reported call: one site intended, two found. The mutation is
+// refused with its own outcome, both numbers are reported, and NO test ran.
+TEST(MutationProbe, Ants4521OccurrenceMismatchRefusesBeforeAnyTestRuns) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString src = seedProject(tmp);
+    const QString sentinel = QDir(tmp.path()).filePath(QStringLiteral("ran"));
+
+    const QJsonObject env = probe(tmp, sentinel, mutation(1));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << "one bad mutation must not lose the batch — it is per-mutation, "
+           "like inert: " << env.value(QStringLiteral("error")).toString().toStdString();
+
+    const QJsonObject r = onlyResult(env);
+    EXPECT_EQ(r.value(QStringLiteral("outcome")).toString().toStdString(),
+              std::string("occurrence_mismatch"));
+    EXPECT_FALSE(r.value(QStringLiteral("applied")).toBool());
+    EXPECT_EQ(r.value(QStringLiteral("occurrences")).toInt(), 2);
+    EXPECT_EQ(r.value(QStringLiteral("expected_occurrences")).toInt(), 1);
+    EXPECT_FALSE(r.contains(QStringLiteral("exit_code")))
+        << "no verdict may exist for a mutation that was refused";
+
+    EXPECT_FALSE(QFileInfo::exists(sentinel))
+        << "the refusal must land BEFORE the test runs — that is the point of "
+           "refusing rather than warning";
+
+    // The file is untouched, so the batch is safe to re-issue.
+    QFile f(src);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    EXPECT_EQ(f.readAll(), QByteArray(kTwoSiteSource));
+    EXPECT_TRUE(env.value(QStringLiteral("restored_clean")).toBool());
+}
+
+// EO-2 — an expectation that MATCHES changes nothing: the mutation applies and
+// the test runs exactly as it would without the field.
+TEST(MutationProbe, Ants4521MatchingExpectationRunsNormally) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QString sentinel = QDir(tmp.path()).filePath(QStringLiteral("ran"));
+
+    const QJsonObject r = onlyResult(probe(tmp, sentinel, mutation(2)));
+    EXPECT_TRUE(r.value(QStringLiteral("applied")).toBool());
+    EXPECT_EQ(r.value(QStringLiteral("occurrences")).toInt(), 2);
+    EXPECT_EQ(r.value(QStringLiteral("outcome")).toString().toStdString(),
+              std::string("survived"));   // `touch` exits 0
+    EXPECT_TRUE(QFileInfo::exists(sentinel));
+}
+
+// EO-3 — ABSENT is byte-identical to today. A multi-site mutation with no
+// stated expectation is legitimate ("the constant 3" usually means all of
+// them), which is why the field must NOT default to 1.
+TEST(MutationProbe, Ants4521AbsentExpectationIsUnchangedBehaviour) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QString sentinel = QDir(tmp.path()).filePath(QStringLiteral("ran"));
+
+    const QJsonObject r = onlyResult(probe(tmp, sentinel, mutation(0)));
+    EXPECT_TRUE(r.value(QStringLiteral("applied")).toBool());
+    EXPECT_EQ(r.value(QStringLiteral("occurrences")).toInt(), 2);
+    EXPECT_FALSE(r.contains(QStringLiteral("expected_occurrences")));
+    EXPECT_EQ(r.value(QStringLiteral("outcome")).toString().toStdString(),
+              std::string("survived"));
+    EXPECT_TRUE(QFileInfo::exists(sentinel));
 }
