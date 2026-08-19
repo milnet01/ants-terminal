@@ -38069,7 +38069,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: in-session-2026-08-19 (found fixing ANTS-4523).
 
-- 📋 [ANTS-4525] **ignored_args is suppressed on refusals, so a wrong-argument call never learns its args were wrong.**
+- ✅ [ANTS-4525] **ignored_args is suppressed on refusals, so a wrong-argument call never learns its args were wrong.**
   tests/features/mcp_ignored_args INV-6 gates the advisory to a freshly
   dispatched call and states it "never annotates a refusal (ok:false)".
 
@@ -38100,6 +38100,16 @@ are closed inline in the feedback files rather than filed here.
   written is not a bug to route around. Related: ANTS-4524, the sibling
   case where an argument is accepted, dropped, and barred from being
   reported.
+  Resolved (2026-08-19): INV-6 amended rather than routed around, as the
+  item asked. The parse-and-attach moved to `mcp::withIgnoredArgs`, a
+  shared seam the dispatch site now calls in one line, and the `ok:false`
+  suppression is gone. It only ADDS a key, so the ANTS-2112 refusal floor
+  is preserved by construction rather than by a rule someone must keep.
+  Did NOT try to distinguish a refusal CAUSED by the unknown args from an
+  unrelated one — the duplication there is harmless and the detection is
+  not. INV-7 covers refusal + floor + empty + unparsable + success; INV-6's
+  scrape for the absent `!= QJsonValue(false)` guard is the half that reds
+  against the pre-fix tree, since the helper is new.
   **Layman:** When a call fails, the tool stops telling you that you also used the wrong option names.
   Kind: enhancement.
   Source: in-session-2026-08-19 (found closing ANTS-4510).

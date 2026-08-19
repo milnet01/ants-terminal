@@ -148,6 +148,28 @@ bool terseDefault();
 // universal key is reported (matches a verb that declares no properties).
 QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known);
 
+// ANTS-4525 — attach the `ignored_args` advisory to a response body, REFUSALS
+// INCLUDED. Returns `responseJson` unchanged when `ignored` is empty or the
+// body is not a JSON object.
+//
+// The advisory used to be suppressed on `ok:false`, on the reasoning that the
+// caller already reads the error. That is backwards for the case it matters
+// most in: a caller holding a wrong mental model of a verb passes wrong
+// ARGUMENTS and gets a refusal, so the reply that would correct the model is
+// suppressed precisely because it refused. Measured — a DOOM session called
+// read_log {max_commits:3, body:true} believing it read git log; both args are
+// unknown to the verb, nothing said so, and the reply was `not_found` on the
+// Ants debug-log path, which explains the file rather than the misconception.
+//
+// Suppression stays defensible for a refusal CAUSED by the unknown args, where
+// the error says everything; it is wrong for a refusal that happened for an
+// unrelated reason and left the wrong args unmentioned. Distinguishing the two
+// costs more than the harmless duplication, so the advisory is attached to
+// both. It only ADDS a key, so the ANTS-2112 refusal floor
+// (ok/code/error/retry_after_ms) is untouched by construction — a caller who
+// cannot see the error is worse off than one who cannot see the advisory.
+QString withIgnoredArgs(const QString &responseJson, const QStringList &ignored);
+
 // ANTS-3391 — true when the roadmap bullet object `bullet` contains `needle`
 // as a case-insensitive substring of its headline, headline_full, or body
 // field (the three text surfaces roadmap_query emits). Powers the

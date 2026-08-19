@@ -34,9 +34,28 @@ was a no-op.
 - **INV-5** — the `tools/list` handler populates `m_toolParamKeys` from the
   assembled tools array's `inputSchema.properties`, rebuilt in lockstep with
   `m_lastToolsList`.
-- **INV-6** — the dispatch site calls `mcp::ignoredArgs`, attaches an
-  `ignored_args` field, and is gated so it runs only on a freshly-dispatched
-  call (`!cachedHit`) and never annotates a refusal (`ok:false`).
+- **INV-6** — the dispatch site calls `mcp::ignoredArgs`, attaches the field
+  through `mcp::withIgnoredArgs`, and is gated so it runs only on a
+  freshly-dispatched call (`!cachedHit`).
+- **INV-7** — (ANTS-4525) the advisory is attached to **refusals** as well as
+  successes, and only ever ADDS a key, so the ANTS-2112 refusal floor
+  (`ok`/`code`/`error`/`retry_after_ms`) survives. An empty `ignored` list or
+  an unparsable body returns the response byte-identical.
+
+  INV-6 read *"never annotates a refusal (`ok:false`)"* until 2026-08-19, and
+  that is backwards for the case it matters most in: a caller holding a wrong
+  mental model of a verb passes wrong ARGUMENTS and gets a refusal, so the
+  reply that would correct the model is suppressed precisely because it
+  refused. Measured — a DOOM session called `read_log {max_commits:3,
+  body:true}` believing it read git log; both args are unknown to the verb,
+  nothing said so, and the reply was `not_found` on the Ants debug-log path,
+  which explains the file rather than the misconception. Suppression stays
+  defensible for a refusal *caused by* the unknown args; distinguishing that
+  case costs more than the harmless duplication.
+
+  **What is falsifiable against the pre-fix tree** is INV-6's scrape for the
+  absent `!= QJsonValue(false)` guard. `mcp::withIgnoredArgs` is new, so its
+  own tests could only fail to compile there.
 
 ## Tests
 

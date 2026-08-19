@@ -458,6 +458,21 @@ QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known) {
     return out;
 }
 
+QString withIgnoredArgs(const QString &responseJson, const QStringList &ignored) {
+    if (ignored.isEmpty()) return responseJson;
+    QJsonParseError perr{};
+    const QJsonDocument doc =
+        QJsonDocument::fromJson(responseJson.toUtf8(), &perr);
+    // A body this cannot parse is returned verbatim rather than replaced: the
+    // advisory is worth less than the response it would destroy.
+    if (perr.error != QJsonParseError::NoError || !doc.isObject())
+        return responseJson;
+    QJsonObject env = doc.object();
+    env[QStringLiteral("ignored_args")] = QJsonArray::fromStringList(ignored);
+    return QString::fromUtf8(
+        QJsonDocument(env).toJson(QJsonDocument::Compact));
+}
+
 bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,
                         QueryMode mode) {
     const QString needleLower = needle.toLower();

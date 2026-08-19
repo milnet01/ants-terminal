@@ -13024,31 +13024,23 @@ void ClaudeIntegration::onMcpConnection() {
                 // already carries the advisory for those args) and BEFORE the
                 // cache insert so a future hit returns it too. Parses the body
                 // only when there IS an unrecognised arg (rare), so the
-                // steady-state cost is one cheap key-set diff. Refusal
-                // envelopes (ok:false) are left untouched — the caller already
-                // reads their error. Empty m_toolParamKeys (no tools/list yet)
-                // degrades to no advisory.
+                // steady-state cost is one cheap key-set diff. Empty
+                // m_toolParamKeys (no tools/list yet) degrades to no advisory.
+                //
+                // ANTS-4525 — REFUSALS are annotated too. They used to be left
+                // untouched on the reasoning that the caller already reads the
+                // error, and that is backwards for the case it matters most
+                // in: a caller with a wrong mental model of a verb passes wrong
+                // ARGUMENTS and gets a refusal, so the advisory that would
+                // correct the model is suppressed precisely because it
+                // refused. mcp::withIgnoredArgs only ADDS a key, so the
+                // ANTS-2112 refusal floor is untouched by construction.
                 if (toolHandled && !cachedHit &&
                     m_toolParamKeys.contains(toolName)) {
-                    const QStringList ignored = mcp::ignoredArgs(
-                        argsObj, m_toolParamKeys.value(toolName));
-                    if (!ignored.isEmpty()) {
-                        QJsonParseError perr{};
-                        const QJsonDocument advDoc = QJsonDocument::fromJson(
-                            responseText.toUtf8(), &perr);
-                        if (perr.error == QJsonParseError::NoError &&
-                            advDoc.isObject()) {
-                            QJsonObject env = advDoc.object();
-                            if (env.value(QStringLiteral("ok"))
-                                    != QJsonValue(false)) {
-                                env[QStringLiteral("ignored_args")] =
-                                    QJsonArray::fromStringList(ignored);
-                                responseText = QString::fromUtf8(
-                                    QJsonDocument(env)
-                                        .toJson(QJsonDocument::Compact));
-                            }
-                        }
-                    }
+                    responseText = mcp::withIgnoredArgs(
+                        responseText,
+                        mcp::ignoredArgs(argsObj,
+                                         m_toolParamKeys.value(toolName)));
                 }
                 // ANTS-1357 — populate cache on miss-success. INV-5
                 // exclusions enforced inside maybeInsertIdempotentReadCache.

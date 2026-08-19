@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **ignored_args is suppressed on refusals, so a wrong-argument call never learns its args were wrong.** (ANTS-4525)
+  When a call fails, the tool stops telling you that you also used the wrong option names.
+
 - **mutation_probe mutates every occurrence with no way to state how many were intended.** (ANTS-4521)
   A test-quality check can quietly change more places than you meant, and still report success.
 
