@@ -76,7 +76,14 @@ bool isFieldProjectionTool(const QString &toolName) {
         || toolName == QStringLiteral("codebase_index")      // ANTS-1637
         || toolName == QStringLiteral("docs_index")          // ANTS-2139
         || toolName == QStringLiteral("co_change_family")    // ANTS-3368
-        || toolName == QStringLiteral("model_switch_stats"); // ANTS-1735
+        || toolName == QStringLiteral("model_switch_stats")  // ANTS-1735
+        // ANTS-4523 — the documented first call and the largest response in
+        // the session, so the verb a caller is most likely to narrow. It was
+        // absent by omission rather than by decision: the sibling test's
+        // negative list names session_brief and current_state and never named
+        // this one. `fields=` narrows the PAYLOAD, not the work — the eager
+        // codebase_index refresh (ANTS-2140) still runs.
+        || toolName == QStringLiteral("session_orient");
 }
 
 // ANTS-2094 — offload-eligible read verbs (see header). A separate set from

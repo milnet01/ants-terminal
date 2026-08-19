@@ -37910,7 +37910,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: cc-feedback-2026-08-19 (Games_Hub).
 
-- 📋 [ANTS-4523] **session_orient silently ignores fields=, on the largest response in the session.**
+- ✅ [ANTS-4523] **session_orient silently ignores fields=, on the largest response in the session.**
   Hit while re-checking the feedback queue after a triage. Wanted one
   field; called session_orient {fields:["feedback_pending"]} and got the
   ENTIRE payload -- active_bullets, the 67-lane codebase_index, the
@@ -37941,9 +37941,78 @@ are closed inline in the feedback files rather than filed here.
   each verb that advertises `fields` with a single key and confirm the
   response carries only it. This one advertised the argument and dropped
   it, so the advertisement is not evidence.
+  Resolved (2026-08-19). session_orient joins mcp::isFieldProjectionTool.
+  One line, because the verb was absent by OMISSION rather than by
+  decision — the allowlist test's negative list names session_brief and
+  current_state and never named this one, so nothing had ever ruled on it.
+
+  Test first: added session_orient to the positive list, ran it red
+  ("session_orient should be field-projectable", McpProjection.
+  Inv8AllowlistExact), then fixed the source. 13/13 green.
+
+  Two things found while doing it, neither of them this item.
+  - INV-8's prose said the allowlist was "the eleven in-scope tools" while
+    the list held fourteen. Every addition updated the list and not the
+    sentence. Dropped the number rather than correcting it to fifteen: the
+    test asserts membership, and a count no check reads goes stale by
+    construction.
+  - The real defect is a class, filed as ANTS-4524. mcp_ignored_args INV-2
+    calls fields= universal and bars it from ignored_args on the grounds
+    that "the dispatcher accepts them for every verb"; this allowlist is
+    why that is false. A verb outside the list drops the arg and is
+    forbidden from saying so. Not widened here, because `compact` shares
+    the same predicate and defaults ON — widening the shared gate would
+    compact every unlisted verb's response for every caller.
+
+  Narrowing changes the PAYLOAD, not the work: the eager codebase_index
+  refresh (ANTS-2140) still runs. Recorded in the code comment so nobody
+  reads fields= as a way to make the first call cheaper server-side.
   **Layman:** Asking the biggest tool for one small piece of its answer still returns the whole thing.
   Kind: fix.
   Source: in-session-2026-08-19 (maintainer, measured).
+
+- 📋 [ANTS-4524] **fields= is documented universal but allowlisted, so every other verb drops it AND cannot report it.**
+  Two specs disagree, and the gap between them is silent in both
+  directions.
+
+  tests/features/mcp_ignored_args INV-2: caller_cwd, etag_match, fields,
+  compact and offload are universal dispatch-layer args and are NEVER
+  reported in ignored_args, "even when a verb's known set does not
+  redeclare them -- the dispatcher accepts them for every verb".
+
+  tests/features/mcp_projection INV-8: fields is honoured only for the
+  verbs on mcp::isFieldProjectionTool's allowlist (15 after ANTS-4523).
+
+  So a caller passing fields= to a verb outside the list gets it dropped,
+  and the advisory that exists to catch exactly this is barred from
+  mentioning it. ANTS-4523 was one instance; this is the class. Nothing
+  enumerates which verbs honour it, so the only way to find out is to
+  call one and compare.
+
+  Do NOT fix by widening isFieldProjectionTool as it stands. `compact`
+  shares the identical predicate at the adjacent dispatch block, and it
+  falls back to mcp::terseDefault() which is ON by default -- so widening
+  the shared gate would start compacting every currently-unlisted verb's
+  response, for every caller, whether or not they asked. `fields` is
+  opt-in and has no default, so it can be widened alone; that asymmetry is
+  the whole design constraint and is why the two must be split before
+  either moves.
+
+  Three routes, in preference order.
+  1. Split the predicate, then make `fields` genuinely universal --
+     projectFields is already a pure top-level key filter over any object
+     envelope, with a refusal floor, so it is safe on any verb whose
+     response is a JSON object. INV-2's premise becomes true.
+  2. Keep the allowlist and report fields= in ignored_args when the verb
+     is not on it. Amends INV-2 rather than satisfying it.
+  3. Enumerate the honouring verbs in the arg's own description, so the
+     answer is at least readable without an experiment.
+
+  Whichever is taken, the two specs must be edited together -- they are
+  each true alone and false as a pair, which is how this survived.
+  **Layman:** One setting is advertised as working everywhere but only works on some tools, and nothing warns you.
+  Kind: fix.
+  Source: in-session-2026-08-19 (found fixing ANTS-4523).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

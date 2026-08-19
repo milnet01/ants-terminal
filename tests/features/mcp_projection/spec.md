@@ -58,9 +58,27 @@ short-circuits when state is unchanged.
   a `fields=["bullets","etag"]` response carries the same etag a full
   call would (this is what "etag computed on canonical body, not filtered
   body" means).
-- **INV-8 — allowlist is the eleven in-scope tools only.**
-  `isFieldProjectionTool` returns true for exactly those eleven and false
-  otherwise (e.g. `get_scrollback`, `session_brief`).
+- **INV-8 — allowlist is the in-scope tools only.**
+  `isFieldProjectionTool` returns true for exactly those and false
+  otherwise (e.g. `get_scrollback`, `session_brief`). The count is
+  deliberately not written here: it read "eleven" while the list held
+  fourteen, because every addition (ANTS-3533, ANTS-2139, ANTS-3368,
+  ANTS-4523 …) updates the list and not the prose. The test asserts the
+  membership, which is the part that matters; a number no check reads is
+  a number that goes stale.
+
+  **`session_orient` joined the list under ANTS-4523**, having been absent
+  by omission — the negative list below names `session_brief` and
+  `current_state` and never named it.
+
+  **Known contradiction, filed not fixed.** `tests/features/mcp_ignored_args`
+  INV-2 calls `fields` a universal dispatch-layer arg that is NEVER reported
+  as ignored, "because the dispatcher accepts them for every verb". This
+  allowlist is why that premise is false: a verb outside it accepts `fields`,
+  drops it, and is barred from reporting it — silence in both directions.
+  Widening the gate is NOT a free fix, because `compact` shares this same
+  predicate and falls back to a default-ON terse setting, so widening both
+  together would compact every currently-unlisted verb's response.
 - **INV-9 — dispatch ordering.** In `claudeintegration.cpp` the
   `projectFields` call appears after `applyEtagPattern` and before the
   `wrapMcpData` call, and is guarded so the etag short-circuit

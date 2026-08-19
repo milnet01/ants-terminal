@@ -136,7 +136,8 @@ TEST(McpProjection, Inv8AllowlistExact) {
     for (const char *t : {"roadmap_query", "project_layout", "file_outline",
                           "get_environment", "tab_list", "subsystem",
                           "git_state", "read_log", "model_switch_stats",
-                          "read_region", "codebase_index", "docs_index"}) {
+                          "read_region", "codebase_index", "docs_index",
+                          "session_orient"}) {
         EXPECT_TRUE(mcp::isFieldProjectionTool(QString::fromUtf8(t)))
             << t << " should be field-projectable";
     }

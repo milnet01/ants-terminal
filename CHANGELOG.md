@@ -214,6 +214,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`session_orient` honours `fields=` (ANTS-4523)**
+  It had accepted and silently dropped the argument — ~16k tokens for a
+  three-integer answer, on the documented first call. Narrowing trims the
+  payload, not the work: the eager codebase_index refresh still runs.
+
 - **Bash guard-hook now routes a `--stat` diff to `git_state op:diff` (ANTS-2169)**
   It had named `get_git_status` and `roadmap_query`, neither of which can
   return changed lines, so obeying the block led to a dead end and then to
