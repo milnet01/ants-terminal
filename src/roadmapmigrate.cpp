@@ -1050,24 +1050,11 @@ bool isRecognisedSourceForm(const QString &v) {
 //
 // Returns the qualifying tokens rather than a bool, because the caller needs
 // the path to resolve and to name, not merely to know one is in there.
-QStringList pathTokensIn(const QString &value) {
-    QStringList out;
-    if (value.isEmpty() || isRecognisedSourceForm(value))
-        return out;
-    static const QRegularExpression ext(QStringLiteral("\\.[A-Za-z0-9]{1,5}$"));
-    const QStringList tokens =
-        value.simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
-    for (const QString &t : tokens)
-        if (t.contains(QLatin1Char('/')) || ext.match(t).hasMatch())
-            out.append(t);
-    return out;
-}
-
-// ANTS-4481 — a token that ends a sentence keeps its punctuation. The trailer
-// parse drops ONE trailing period, so `…files-and-naming.md).` arrives here as
-// `…files-and-naming.md)` and resolves to nothing. Stripped as a FALLBACK, never
-// unconditionally: a path whose name really ends in one of these still resolves
-// on the verbatim attempt, and only a failure buys the second try.
+// Chop a token's trailing run of sentence punctuation. Hoisted above
+// pathTokensIn() by ANTS-4502, which classifies the chopped form: the
+// extension test anchors on `$`, so `docs/gone.md.` would otherwise read as
+// prose. validatePaths() still calls it on `Evidence:` elements, which are not
+// tokenised.
 QString withoutTrailingPunctuation(const QString &token) {
     QString t = token;
     while (!t.isEmpty()) {
@@ -1082,6 +1069,45 @@ QString withoutTrailingPunctuation(const QString &token) {
     return t;
 }
 
+// ANTS-4065 § 2.5, amended by ANTS-4502 — the separator test and the extension
+// test are an AND, not an OR.
+//
+// Either half alone is a bad predicate. The extension half alone accepts every
+// bare filename (a MENTION, not a claim the file sits at the project root) and
+// every `§4.4`-shaped fragment: 11 of 12 notes on one real corpus, every
+// filename existing one directory down. The separator half alone accepts every
+// prose slash: measured over this project's 1,781 sourced bullets it takes 97
+// tokens of which 2 resolve, the rest being 40 slash-command names
+// (`/cold-eyes`, `/test-audit`), 9 id citations (`DEMO-0057/0081`) and 46
+// prose slashes (`precision/convenience`, `4d/5`, `#7/#8`). ~98% false.
+//
+// Requiring both is what says *path*: a separator says the author meant a
+// location, a filename-shaped final segment says they meant a file. Same
+// corpus: 1 candidate, 1 resolves, 0 notes. The cost is a reference with no
+// extension — `docs/specs`, a directory — which goes unvalidated.
+QStringList pathTokensIn(const QString &value) {
+    QStringList out;
+    // The recognised-form gate is deliberately whole-VALUE, not per token: a
+    // per-token form reports the prose slashes inside the ten corpus values
+    // that begin with one of these prefixes and carry a `/`, and not one of
+    // the ten names a file.
+    if (value.isEmpty() || isRecognisedSourceForm(value))
+        return out;
+    static const QRegularExpression ext(QStringLiteral("\\.[A-Za-z0-9]{1,5}$"));
+    const QStringList tokens =
+        value.simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    for (const QString &raw : tokens) {
+        const QString t = withoutTrailingPunctuation(raw);
+        if (t.contains(QLatin1Char('/')) && ext.match(t).hasMatch())
+            out.append(t);
+    }
+    return out;
+}
+
+// ANTS-4481 — a token that ends a sentence keeps its punctuation. The trailer
+// parse drops ONE trailing period, so `…files-and-naming.md).` arrives here as
+// `…files-and-naming.md)` and resolves to nothing. Stripped as a FALLBACK, never
+// unconditionally: a path whose name really ends in one of these still resolves
 // Resolves under the project root only. A value escaping the root — absolute,
 // or climbing out with `..` — is reported unresolved rather than probed, which
 // keeps a roadmap from turning the importer into a filesystem oracle.

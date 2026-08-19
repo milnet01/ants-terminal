@@ -1020,3 +1020,81 @@ TEST(RoadmapImportMapping, Inv11LastMatchWinsForEveryTrailerKey) {
     // The one key that was already built, as a regression guard.
     EXPECT_EQ(it->kind, QStringLiteral("implement"));
 }
+
+// --------------------------------------------------------------- INV-12 ---
+// A `Source:` token is a path reference only when it carries a directory
+// separator AND a filename-shaped final segment. § 2.5's two tests were an OR
+// and are now an AND: either half alone is a bad predicate, because the first
+// matches every prose slash and the second every bare filename.
+//
+// Every fixture below must FAIL against the OR-form: (a)-(c) are accepted by
+// the extension half alone, (d)-(f) by the separator half alone.
+
+TEST(RoadmapImportMapping, Inv12PathReferenceNeedsSeparatorAndExtension) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    // The file fixture (a) names, one directory down from the root — the shape
+    // that made 11 of 12 notes on one real corpus, every filename existing.
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/standards/roadmap-format.md"),
+                          QStringLiteral("x\n")));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), doc(QStringLiteral(
+        // --- separator missing ---
+        "- 📋 [DEMO-0050] **A bare filename that exists one directory down.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-19, per roadmap-format.md.\n"
+        "- 📋 [DEMO-0051] **A bare filename that exists nowhere.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-19, per nowhere.md.\n"
+        "- 📋 [DEMO-0052] **Tokens that end in a dot plus alphanumerics and name no file.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-19, see §4.4 and ~7.2ms and (0.6.0.\n"
+        // --- extension missing ---
+        "- 📋 [DEMO-0053] **An id pair, ending the sentence.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-19, closes DEMO-0057/0081.\n"
+        "- 📋 [DEMO-0054] **A slash-command name.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-19, raised during /cold-eyes.\n"
+        "- 📋 [DEMO-0055] **A prose slash.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-19, a precision/convenience trade.\n"
+        // --- the control: both halves, and the file is absent ---
+        "- 📋 [DEMO-0056] **A real path reference that does not resolve.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: in-session-2026-08-19, see docs/gone.md.\n"))));
+
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    ASSERT_TRUE(disc) << err.toStdString();
+    MigrationPlan plan = RoadmapMigrate::planFrom(*disc, QStringLiteral("Demo"),
+                                                  QStringLiteral("demo"));
+    RoadmapMigrate::validatePaths(plan, root);
+
+    for (const char *id : {"DEMO-0050", "DEMO-0051", "DEMO-0052",
+                           "DEMO-0053", "DEMO-0054", "DEMO-0055"}) {
+        const PlannedItem *it = itemById(plan, id);
+        ASSERT_NE(it, nullptr) << id;
+        EXPECT_FALSE(it->extras.contains(QStringLiteral("unresolved_path")))
+            << id << " source=[" << it->source.toStdString()
+            << "] is prose under § 2.5, but was reported as a path. notes: "
+            << notesDump(plan.notes).toStdString();
+    }
+
+    // The control still fires — the amendment narrows the predicate, it does
+    // not switch the check off (INV-7 unchanged).
+    const PlannedItem *ctl = itemById(plan, "DEMO-0056");
+    ASSERT_NE(ctl, nullptr);
+    const QJsonArray unresolved =
+        ctl->extras.value(QStringLiteral("unresolved_path")).toArray();
+    ASSERT_EQ(unresolved.size(), qsizetype(1))
+        << "notes: " << notesDump(plan.notes).toStdString();
+    EXPECT_EQ(unresolved.at(0).toString(), QStringLiteral("docs/gone.md"));
+}
