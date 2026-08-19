@@ -1,10 +1,11 @@
 # ANTS-3855 — Add `roadmap_migrate`, the verb that loads a project into the store
 
-**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings.
+**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3855 (in-session-2026-08-06, measured while starting ANTS-3853's first item).
 **Blocker for:** ANTS-3807 (per-project migration briefs), ANTS-3772, ANTS-3815.
 **Composes with:** ANTS-3757 (read half), ANTS-3765 (load half), ANTS-3793 (consumer cutover).
+**Covers:** ANTS-4478, ANTS-4479, ANTS-4482 (envelope half), ANTS-4490 (envelope half) — four cross-session reports that each want a different field of one enumerated envelope, so they share one contract rather than four documents that must agree forever.
 
 **Layman:** The roadmap database is built and tested but nothing can put a
 project into it. This adds the command that does — with a preview mode that
@@ -351,26 +352,116 @@ downstream re-derives it.
   "store_path": "/home/…/.local/share/ants-terminal/roadmap.sqlite",
   "changed_at": "2026-08-06T21:14:07Z",
   "sources": [{"path": "ROADMAP.md", "format": "ants-v1"}],
-  "items_inserted": 0, "items_updated": 0, "items_unchanged": 0,
-  "items_orphaned": 0, "ids_allocated": 0,
-  "sections_written": 0, "elements_written": 0, "history_rows": 0,
+  "store_backed": true, "markdown_rewritten": false,
+  "items_inserted": 0, "items_updated": 0, "items_updated_governed": 0,
+  "items_unchanged": 0, "items_orphaned": 0, "ids_allocated": 0,
+  "sections_written": 0, "sections_unchanged": 0,
+  "elements_written": 0, "history_rows": 0,
+  "updated_items": [], "updated_items_truncated": false,
+  "defaulted_fields": {},
   "notes": [], "notes_count": 0, "notes_truncated": false
 }
 ```
 
 The example is the **shape**, not a measurement — every numeric field is
-zeroed and `notes[]` is empty, so no figure here can be read as this project's,
-`project_id` included. § 4 carries the measured ones.
+zeroed and `notes[]`, `updated_items[]` and `defaulted_fields` are empty, so no
+figure here can be read as this project's, `project_id` included. § 4 carries
+the measured ones.
+
+**`items_updated_governed` and `defaulted_fields` arrived with ANTS-4065 § 2.6
+and were shipped without being enumerated here**; this amendment adds them to
+the block rather than leaving two live fields undocumented in the one place that
+claims to enumerate the envelope. Neither behaviour changes.
 
 `sources[].path` is **relative to `req.projectRoot`** — the canonical root of
 § 2.3 — so `ROADMAP.md` and `docs/roadmap/0.6.md`, not the absolute paths
 `findRoadmaps()` resolved. The caller supplied that root; echoing it back on
 every entry is noise.
 
-`project_id` is the store's `project_id` after a committed run. **Under
-`dry_run` it is `0`** — `registerProject()`'s rowid is allocated inside a
-transaction that is about to roll back, and a provisional id that a later real
-run need not reuse is worse than no id, because it looks durable.
+`store_backed` answers the question the counts cannot: **will `roadmap_query`
+and `roadmap_log` serve this project from the store after this call?** It is
+`plan.sources[0].format == "ants-v1"` — index 0 is the live roadmap, and it is
+what `project.source_format` records (`src/roadmapmigrate.h`, the sole
+precondition ANTS-3815 INV-2 rests on) — because `RoadmapSource::migratedProject()`
+returns `nullopt` for every other dialect, by design and with a comment saying
+so ("legitimately markdown-served", `src/roadmapsource.cpp`). A
+`github-task-list` or `pass-headings` project therefore migrates `ok: true` with
+faithful counts and is still answered from markdown.
+
+**Added 2026-08-19 (ANTS-4490).** Vestige migrated 1026 items, got a healthy
+envelope, and kept being served from markdown; the only tell was the ABSENCE of
+unrelated fields on later `roadmap_query` responses, which no caller notices.
+The verb's description now says this in prose, which a script cannot read — the
+field is what makes the outcome legible to one.
+
+`markdown_rewritten` is **always `false`**, and it is a field rather than a
+sentence for the same reason. This verb reads the roadmap and never writes it:
+`ROADMAP.md` is byte-identical after a successful migration and `git status` is
+clean. The first re-render is the next `roadmap_log` write, which reports
+`files_written: ["ROADMAP.md"]` and reflows the whole file. INV-11 pins both
+halves — the constant and the property that makes it true.
+
+**Added 2026-08-19 (ANTS-4482).** Three sessions verified the byte-identity with
+checksums and read it as a migration that had not run; on a project whose
+`store_high_water` is also 0, both available signals point at failure after a
+clean success. A constant is the right shape here: INV-11 is what makes the
+value true, so a caller reading the field never has to know which release
+changed it.
+
+`updated_items[]` names the items `items_updated` counted, each with the fields
+that changed:
+
+```json
+"updated_items": [{"id": "ANTS-1234", "fields": ["status", "body"]}]
+```
+
+`items_updated` stays the true total, so the array needs no count of its own. It
+is bounded at **200 entries**, on `notes[]`'s pattern and for its reason, with
+`updated_items_truncated` on breach; the cap is applied where the entries are
+collected, so nothing unbounded accumulates in `Outcome`. `fields[]` carries the
+store's column names, in the order the load wrote them.
+
+**Added 2026-08-19 (ANTS-4479).** A dry run reporting `items_updated: 3` gave no
+ids and no fields, so the reporter could not tell a reconciliation of real drift
+from a lossy re-parse flattening good rows — and backed `ROADMAP.md` up to a
+scratchpad and diffed afterwards to prove it was safe. Under `dry_run` this
+turns a count into a reviewable plan, which is the whole value of a preview.
+
+`sections_unchanged` is `sections_written`'s partner, and exists because
+`sections_written: 0` alone is illegible: it is INV-7's proof of idempotence and
+reads as a counter that never moved. Both count sections the plan carried —
+`written` those inserted or differing, `unchanged` those matched with nothing to
+write — so their sum is the plan's section count on every run, and
+`0 written / 236 unchanged` says what happened where `0` did not.
+
+**Added 2026-08-19 (ANTS-4490).** Vestige reported `sections_written: 0` "on
+every run despite 236 section rows existing" as a bug in its own right. It was
+not one: the counter was correct and unreadable.
+
+`project_id` is the store's `project_id` for this root, on **both** paths
+whenever a row for this root already exists — step 6 has read it already
+(`readProjectByRoot()`, before the transaction opens), and that id is durable,
+pre-existing, and the very thing the same envelope's `items_updated` /
+`items_unchanged` counts were diffed against.
+
+**So `0` means one thing only: this root has no `project` row yet.** Under
+`dry_run` that is the truthful answer — the rowid `registerProject()` would
+allocate is inside a transaction about to roll back, and a provisional id a
+later real run need not reuse is worse than no id, because it looks durable. A
+committed run always reports non-zero. A caller scripting "migrate only if not
+already present" therefore reads `project_id > 0` on a dry run as "already
+migrated", which is the question it was asking.
+
+**Amended 2026-08-19 (ANTS-4478).** This read "Under `dry_run` it is `0`"
+unqualified, and INV-3 tested that by name. Three projects reported the same
+shape independently: a dry run over an already-migrated project answered
+`project_id: 0` beside counts that could only have been computed against that
+project's real rows, so the envelope proved the lookup succeeded while the id
+said it had not. The reason the old rule gave is sound and was over-general — it
+holds for a project the run is REGISTERING, and for no other. **Omitting the
+field when it cannot be resolved was considered and rejected:** 0 is unambiguous
+once the pre-existing case is handled, and an absent key costs every caller a
+second branch to tell it from a zero.
 
 `notes[]` is bounded on **both axes**, because capping the element count alone
 bounds no bytes — `Note::detail` is a `QString` with no length rule of its own:
@@ -402,6 +493,22 @@ Every count is `RoadmapMigrateLoad::Outcome`'s corresponding field, renamed to
 the envelope's snake_case and **not** recomputed — the `Outcome` is "a value,
 not a log … every outcome assertable by a test" (`src/roadmapmigrateload.h`),
 and a second tally would be a second answer.
+
+**Two of the fields above are new members of `Outcome`, added by this amendment
+on ANTS-4065 § 2.6's precedent** — that spec added `itemsUpdatedGoverned` the
+same way, without reopening ANTS-3765's declaration block, and this document
+records the extension in § 7 rather than editing that one. They are
+`QVector<UpdatedItem> updatedItems` (`{QString id; QStringList fields;}`, capped
+at 200) and `int sectionsUnchanged`. **The load is the only layer that can know
+either**: `Loader::applyPlanFields()` already holds each changed `f.column` and
+the item's id, and `Loader::matchSections()` already distinguishes a section it
+wrote from one it matched — so both are collected where the decision is made,
+never re-derived by the verb. Both join ANTS-3765 INV-13's dry-run/real-run
+comparison, which is stated over the whole `Outcome` rather than a list.
+
+`store_backed` and `markdown_rewritten` are **not** `Outcome` fields and are the
+two exceptions to the no-recompute rule: neither is a tally. The first is read
+off `plan.sources[0]`, the second is a constant INV-11 makes true.
 
 `notes[]` is `Outcome::notes` in order, one object per
 `RoadmapMigrate::Note`, carrying `source_index` verbatim including its `-1`
@@ -536,9 +643,16 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   `SELECT COUNT(*)` is 0 on each of `project`, `section`, `item`, `element` and
   `history` (via `store.db()`); then the real run, and assert every count field
   in the envelope equals the dry run's (ANTS-3765 INV-13's comparison, driven
-  through the verb). Also asserts § 2.4's two dry-run envelope rules:
-  `project_id` is `0` on the dry run and non-zero on the real one, and
-  `sources[].path` is relative on both (`ROADMAP.md`, never an absolute path).
+  through the verb), `updated_items` included. Also asserts § 2.4's dry-run
+  envelope rules: `sources[].path` is relative on both (`ROADMAP.md`, never an
+  absolute path), and **`project_id` is `0` on a dry run over a root with no
+  `project` row and equal to the real id on a dry run over one already
+  migrated**.
+  <br>**The project_id clause needs three runs, not two**, because one dry run
+  cannot exhibit both cases: dry over an empty store (expect `0`), the real run
+  (expect non-zero), then a second dry run over the now-migrated root (expect
+  the *same* id the real run reported). The third is the leg three projects
+  reported and the one the pre-amendment code passes only by reporting `0`.
 - **INV-4** — No refusal in § 2.5 **adds or changes** a row. *Test:* feature
   test — snapshot `SELECT COUNT(*)` on `project`, `section`, `item`, `element`
   and `history`, drive each refusal `run()` can reach (steps 1–8), re-snapshot,
@@ -581,6 +695,11 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   twice over one fixture root. (`elements_written` is the ONE count deliberately
   excluded — `roadmapmigrateload.h` states it "is non-zero even on an unchanged
   re-run" because § 2.6 rebuilds element rows wholesale.)
+  <br>**`sections_unchanged` is asserted on that same second run** and equals the
+  number of sections the fixture carries. It is what makes `sections_written: 0`
+  readable as idempotence rather than as a counter that never moved (§ 2.4), and
+  asserting it here rather than in an invariant of its own is deliberate: the two
+  figures are one statement about one run.
 - **INV-8** — After a successful run, the project resolves through ANTS-3793's
   consumer dispatch against the same store. *Test:* feature test —
   the test opens its own `RoadmapStore` at `storePath` (creating it), asserts
@@ -617,6 +736,32 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   total (>200); a fixture whose note `detail` would exceed 2048 characters
   yields a `detail` of exactly 2048 ending in the ellipsis. Both legs are needed
   because the two bounds are independent — capping entries bounds no bytes.
+- **INV-11** — This verb writes nothing under `req.projectRoot`, and
+  `markdown_rewritten` says so. *Test:* feature test — hash every file under the
+  fixture root before `run()` and again after a successful **non-dry** run,
+  assert every hash unchanged (`ROADMAP.md` included), and assert
+  `markdown_rewritten` is `false` on both the dry and the real envelope.
+  <br>*Breaks when:* a later change renders at migrate time — which is a live
+  proposal (ANTS-4483), and this is where it should land as a red test rather
+  than as an unexplained whole-file reflow in somebody else's commit.
+- **INV-12** — `store_backed` agrees with the consumer dispatch. *Test:* feature
+  test, two legs against two fixture roots. (a) an `ants-v1` roadmap:
+  `store_backed` is `true` and `RoadmapSource::migratedProject()` returns the
+  project id afterwards. (b) a `github-task-list` roadmap: `ok` is still `true`
+  with non-zero counts, `store_backed` is `false`, and `migratedProject()`
+  returns `nullopt`.
+  <br>**Leg (b) is the one that matters** — it pins that a *successful*
+  migration whose project is not store-backed says so in the envelope, which is
+  the state Vestige could only detect by noticing which fields a later
+  `roadmap_query` response did not carry.
+- **INV-13** — `updated_items` names exactly the items `items_updated` counted,
+  with the fields that changed. *Test:* feature test — migrate a fixture, edit
+  two bullets in the source (one `status`, one `headline`), migrate again, then
+  assert `items_updated == 2`, that `updated_items` carries those two ids and no
+  others, and that each entry's `fields` is exactly the one column changed.
+  <br>*Breaks when:* the array is filled from the plan rather than from the write
+  path — every matched item would then appear, and the array would say nothing
+  the count does not.
 
 ## 4. RAM / build cost
 
@@ -701,7 +846,7 @@ target, no new dependency, no new link edge (§ 2.1). The feature test joins `te
 
 ## 6. Tests
 
-Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-10.
+Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-13.
 Label `features;fast`. Source added to `test_core`'s `SOURCES` list — not
 `add_executable` (`tests/features/README.md`).
 
@@ -716,13 +861,21 @@ that one line is covered by INV-2's source-grep leg instead.
 |---|---|
 | INV-1 | source-grep only |
 | INV-2 | (a) `run()` against a temp store · (b) source-grep |
-| INV-3..INV-10 | `run()` against a temp store |
+| INV-3..INV-13 | `run()` against a temp store |
 
 Each invariant is verified to FAIL against pre-change source before the code
 is restored, per the project test convention. INV-1 and INV-2(b) fail
 trivially (no such TU); INV-2(a) and INV-3..INV-10 fail to compile against a
 tree with no `RoadmapMigrateVerb::run()`, which is the must-fail-first proof
 for a new surface.
+
+**The 2026-08-19 amendment's four legs are proved red the same way, against the
+shipped code rather than an empty tree.** INV-3's third run and INV-12's leg (b)
+red on the value (`project_id: 0` where the real id is expected; a missing
+`store_backed`); INV-11 and INV-13 red on the absent field. A fixture root
+carrying a `github-task-list` roadmap is new and INV-12(b) is its only consumer.
+The `ants-v1` fixture already carries sections, so INV-7's `sections_unchanged`
+leg needs no new fixture.
 
 Fixture: a `QTemporaryDir` project root carrying a small hand-written
 `ants-v1` `ROADMAP.md`, canonicalised before it is passed (§ 2.3's precondition,
@@ -759,6 +912,16 @@ remaining legs against the declared-but-unimplemented seam.
   verb is neither.
 - **`docs/subsystems.md`** gains the migration lane, alongside the
   `roadmapsource` entry ANTS-3825 already owes it.
+- **[ANTS-3765](ANTS-3765-roadmap-migration-load.md)** — `Outcome` gains
+  `updatedItems` and `sectionsUnchanged` (§ 2.4). Recorded here rather than by
+  editing that spec's declaration block, on the precedent ANTS-4065 § 2.6 set
+  when it added `itemsUpdatedGoverned` the same way. Its INV-13 is stated over
+  every count and needs no wording change; the load's own feature test gains
+  both fields where it compares a dry run against the real one.
+- **The verb's `tools/list` description** gains the four new response fields.
+  ANTS-4482 and ANTS-4490 put the same facts there in prose on 2026-08-18
+  (commit 591c1c52); the fields are what a caller can branch on, and the
+  description now names them.
 - **`CLAUDE.md`** — no change. Its module map is a pointer since ANTS-1292,
   and the verb catalogue is `tool_info {catalog:true}`.
 - **ANTS-3807's bullet** currently attributes the missing cutover route to
