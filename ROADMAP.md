@@ -37066,6 +37066,43 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: in-session-2026-08-19, verifying ANTS-4481 against the live corpus.
 
+- 📋 [ANTS-4503] **The roadmap store's history byte cap counts characters, so a UTF-8 store can exceed it several-fold.**
+  Found by a cold review lane while gating ANTS-4498; verified against
+  source, dismissed from that gate as inert, filed rather than dropped.
+
+  `RoadmapStore::historyBytes()` (src/roadmapstore.cpp:985) sums
+  `length(field) + length(old_value) + length(new_value)` over the
+  `history` table. **SQLite's `length()` on a TEXT value counts characters,
+  not bytes** — `length(X)` is documented as the number of characters, and
+  `octet_length()` is the byte form. The comment above it pins the measure
+  to `length()` deliberately, to avoid `dbstat` and its
+  `SQLITE_ENABLE_DBSTAT_VTAB` build flag, so the unit was a consequence of
+  that choice rather than a decision.
+
+  Why it is NOT a live bug, and why it is still worth an id: both sides of
+  the comparison count the same units, so the cap functions and nothing
+  built today is wrong — which is exactly why the gate dismissed it. What
+  is wrong is the SIZE it enforces. A roadmap whose history is ASCII
+  enforces the nominal figure; one carrying emoji status markers, em
+  dashes and non-Latin text enforces up to ~4x it. This corpus is full of
+  all three.
+
+  Two things to settle, and they are a policy choice rather than a fix:
+  - whether the cap is meant to bound BYTES (then the predicate is
+    `octet_length()`, and `ANTS-3765` § 2.9's prose is right as written), or
+    to bound TEXT VOLUME (then the code is right and every document saying
+    "bytes" is wrong, `m_historyCap` / `historyCapBytes` /
+    `ANTS_HISTORY_CAP_BYTES` included).
+  - whichever way it goes, `QString::size()` at the call site is UTF-16
+    code units, which is a third unit again — it agrees with `length()` on
+    the BMP and disagrees on anything astral.
+
+  Not urgent: the cap is a soft budget with a `history_capped` note and
+  ANTS-3765 INV-15 already guarantees hitting it never aborts a migration.
+  **Layman:** The limit on how much change-history the roadmap database keeps is measured in the wrong unit, so it can grow bigger than intended.
+  Kind: fix.
+  Source: in-session-2026-08-19, ANTS-4498's review-contract gate loop 2.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
