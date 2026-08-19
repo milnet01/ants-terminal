@@ -37,7 +37,7 @@
   <service name="obs_scm">
     <param name="scm">git</param>
     <param name="url">https://github.com/milnet01/ants-terminal.git</param>
-    <param name="revision">v0.7.104</param>
+    <param name="revision">v0.7.105</param>
     <param name="match-tag">v*</param>
     <param name="versionformat">@PARENT_TAG@</param>
     <param name="versionrewrite-pattern">v(.*)</param>

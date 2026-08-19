@@ -34,7 +34,7 @@ ants-terminal (0.7.105-1) unstable; urgency=medium
   * The push safety check no longer starts a sanitizer build it cannot
     finish in time. (ANTS-4118)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Thu, 13 Aug 2026 00:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 19 Aug 2026 00:00:00 +0200
 
 ants-terminal (0.7.104-1) unstable; urgency=medium
 

@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.105" date="2026-08-13">
+    <release version="0.7.105" date="2026-08-19">
       <description>
         <p>A broad correctness sweep of the built-in Claude Code integration, driven by defects other sessions reported while using the tools, plus the roadmap store's migration half and a project's coding standards now readable in the repository itself.</p>
         <ul>
