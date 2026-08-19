@@ -17,7 +17,7 @@ of § 2.4's export.
 **Contents:** [1. Problem](#1-problem) · [2. Surface](#2-surface)
 ([2.1 What the migration stores](#21-what-the-migration-stores) ·
 [2.2 Asking the grammar](#22-asking-the-grammar-trailervaluesin) ·
-[2.3 Suppression on value equality](#23-suppression-on-value-equality) ·
+[2.3 Suppression on a line-initial declaration](#23-suppression-on-a-line-initial-declaration) ·
 [2.4 The render's one export](#24-the-renders-one-export)) ·
 [3. Invariants](#3-invariants) · [4. RAM / build cost](#4-ram--build-cost) ·
 [5. Out of scope](#5-out-of-scope) · [6. Tests](#6-tests) ·
@@ -177,6 +177,36 @@ Four shapes, all determinate:
 produces, and § 2.3's suppression then fires for no key, so every column is
 emitted exactly once. INV-1 and INV-5 both cover it.
 
+**AMENDED 2026-08-19 (ANTS-4506) — a TRAILING run of trailer-only lines is
+metadata, not body.** After the prefix strip, drop from the end of `body` every
+line that consists of nothing but one trailer declaration
+(`^(?:\*\*)?(?:Kind|Lanes|Layman|Evidence|Source):` and its value), stopping at
+the first line that is not one. The columns are extracted from the full body as
+before — this changes what is STORED, never what is read.
+
+**Why: without it the round trip is not stable, and the instability is
+measurable.** § 2.4's render appends its trailer block at the END of the
+bullet. The next parse has no way to tell that block from prose, so it files it
+into `body` — and the body is no longer the residual this section defines. One
+re-migration of this project moved **599** bodies; bodies containing a `Kind:`
+trailer went 1,605 → 2,063 (**+458**) and a `Source:` trailer 1,493 → 1,590
+(**+97**), from a single cycle. It converges after one cycle rather than growing
+without bound, so it is accretion and not a leak — but every diff-derived
+counter rests on `parse(render(x)) == x`, and `items_updated` is one of them.
+
+**The strip is what makes the round trip an identity rather than a fixed point
+reached on the second pass.** A conforming bullet writes its trailers last, so
+the strip moves exactly the lines § 2.4 will re-emit: parse drops them, render
+puts them back, and the file is byte-identical on the first cycle. A bullet with
+prose *below* its trailers keeps them in the body — the run stops at the prose —
+and § 2.3's suppression then keeps the render from adding a second copy.
+
+**It is the trailing RUN, not every trailer line.** A trailer in the middle of a
+body is authored prose about the item and stays; only the block at the tail is
+the render's. And the strip is per-line-shape, never a count: a body that is
+*entirely* trailer lines strips to empty, which § 2.1 already calls a normal
+outcome.
+
 ANTS-3757 § 2.1.1's `body` row is amended on ship; § 7 owns that obligation and
 its caveat.
 
@@ -284,44 +314,95 @@ exactly the two keys whose normalisation is asymmetric.
 INV-4 asserts the rest of the equality directly, so a divergence fails a test
 rather than silently disabling the feature.
 
-### 2.3 Suppression on value equality
+### 2.3 Suppression on a line-initial declaration
 
-**`renderBullet()` emits a trailer key from its column only when the body would
-not already re-parse to that same value**, asked through § 2.2's accessor.
-
-**"That same value" is a different comparison for the list-valued keys, and
-naming which is not a detail.** Two of the five columns are `QStringList`s, and
-the accessor hands back both a pre-split string and a split list for each;
-comparing the pre-split string against a joined column diverges on separator
-spacing alone, so suppression would never fire for those two and half the
-defect would survive a passing spec:
+**`renderBullet()` emits a trailer key from its column only when the body does
+not already DECLARE that key**, asked through § 2.2's accessor. A declaration is
+a line-initial match; a mid-sentence mention is not one, and a mention inside a
+code span is not a match at all (ANTS-4504).
 
 **One accessor call per bullet, reused across all five comparisons** — `const
 TrailerValues tv = RoadmapParse::trailerValuesIn(it.body);` once, then:
 
 | Column | Suppress when |
 |---|---|
-| `kind`, `layman`, `source` | `tv.<key>.value == it.<key>` |
-| `lanes`, `evidence` | `tv.lanesList == it.lanes` / `tv.evidenceList == it.evidence` — **list equality, element by element**, never a join |
+| all five | `tv.<key>.offset >= 0 && tv.<key>.anchored` |
+
+**AMENDED 2026-08-19 (ANTS-4505): one row, not two.** The table read
+`tv.<key>.value == it.<key>` for the three scalars and element-by-element list
+equality for `lanes` and `evidence`, and the list rows existed only because
+comparing a pre-split string against a joined column diverges on separator
+spacing — a hazard of comparing values at all. Presence does not compare
+values, so the split forms are no longer read here and the two rows collapse
+into one. `tv.lanesList` / `tv.evidenceList` stay on the accessor for their
+other consumers.
 
 Calling the accessor per key would be five passes and up to thirty matches per
 bullet, against § 4's budget of six.
 
-**Value equality and not mere presence — and the reason is value loss, not an
-INV-12 breach.** Stated precisely, because the tempting shorter argument is
-wrong: ANTS-3758's INV-12 asserts against the *rendered text*, and a body that
-made a presence check fire necessarily contains the literal `Kind:` itself, so
-that text is still in the output and INV-12 still passes. Presence-based
-suppression does not break INV-12.
+**AMENDED 2026-08-19 (ANTS-4505) — suppression is PRESENCE, line-initial, not
+value equality. The argument below is kept because it is what the reversal has
+to answer.**
 
-What it breaks is **correctness of the value**. A body line reading
-`Kind: refactor` — stale prose, or a key the author typed into the body — has
-the key present and a value the store disagrees with. Suppress on presence and
-the render drops the canonical column line, leaving the *stale* value as the
-only one in the file; the next migration reads that back and the store has
-silently adopted it. Comparing values instead means a mismatch always emits from
-the column, which is canonical, and INV-12 continues to hold as written: the
-required piece is in the rendered text either way, exactly once.
+> **Value equality and not mere presence — and the reason is value loss, not an
+> INV-12 breach.** Stated precisely, because the tempting shorter argument is
+> wrong: ANTS-3758's INV-12 asserts against the *rendered text*, and a body that
+> made a presence check fire necessarily contains the literal `Kind:` itself, so
+> that text is still in the output and INV-12 still passes. Presence-based
+> suppression does not break INV-12.
+>
+> What it breaks is **correctness of the value**. A body line reading
+> `Kind: refactor` — stale prose, or a key the author typed into the body — has
+> the key present and a value the store disagrees with. Suppress on presence and
+> the render drops the canonical column line, leaving the *stale* value as the
+> only one in the file; the next migration reads that back and the store has
+> silently adopted it.
+
+**The rule is now:**
+
+> **Suppress a key when `trailerValuesIn(it.body)` matched it and the match is
+> LINE-INITIAL — `m.offset >= 0 && m.anchored` — whatever the value.**
+
+**What the value-equality rule cost, which is why it goes.** It is
+one-directional. The render appends its block at the END of the bullet, and the
+parser takes the last line-initial match, so the appended copy outranks any
+trailer written earlier in the body. Once a column holds a wrong value the
+render writes that wrong value to the tail, the next migration reads it back,
+and **a human correcting the real trailer line in place is silently ignored,
+permanently.** Observed on ANTS-3808 itself, whose stored `provenance` reads
+`test` and whose layman line reads `An older thing.` — both captured from a
+`DEMO-0003` example the bullet quotes, and neither moved by any re-migration.
+The file is the authoring surface; an edit to it that can never take effect is
+a defect however canonical the column is.
+
+**Why presence is now SAFE, and this is a change in the world rather than a
+change of mind.** The old argument needs a body that carries the key with a
+value the column disagrees with. Three things have closed the routes to that
+state since it was written:
+
+- **The write side already refuses it.** `rlBodyShadows()`
+  (`src/remotecontrol_roadmap_query.cpp`) refuses `append` / `append_batch` with
+  `body_shadowed` when a supplied column differs from what the body yields —
+  and those two are the only ops that set a column independently of the body
+  they ship with (§ 2.3.1). ANTS-3809 § 2.6 has every other body-writing op
+  re-derive its columns from the body it just wrote.
+- **A quoted key is no longer present.** ANTS-4504 masks every inline code span
+  before matching, so the mention-in-prose case that made presence jumpy —
+  `` `query:'Source:'` `` — declares nothing at all now.
+- **`anchored` is part of the rule, not an afterthought.** A mid-sentence
+  mention does not suppress; only a line-initial declaration does. Stored bodies
+  carry no indent (§ 2.1), so `anchored` is exact for all five keys — the
+  precondition ANTS-3809's loop 3 established and stated.
+
+**So the state the old rule protected against is unreachable through a
+supported write, and the one it produced — an uncorrectable column — is
+reachable every time a value is read wrong once.** INV-12 continues to hold as
+written on either rule: the required piece is in the rendered text exactly once.
+
+**What is given up, stated.** A body that carries a stale line-initial trailer
+reached by some route this section has not foreseen now wins over its column,
+where before the column won. That is the same trade in both directions; the
+amendment picks the direction in which a human can intervene.
 
 **Why per-key and not a stored flag.** A `verbatim`-versus-`residual` flag on
 `provenance.body` was the original sketch on the ANTS-3808 bullet, and it is
@@ -518,12 +599,19 @@ only place either is argued.**
   `layman` / `evidence` the store holds, **for every item reachable without a
   shadowing consumer write** — which is every migrated item and every
   post-cutover item whose body was written under § 2.1's strip. § 2.3.1 shows
-  why: whichever branch the value-equality test takes, exactly one canonical
-  value reaches the file. *Breaks when:* the render suppresses a key whose
-  stored value differs from what the body re-parses to, or emits one the reader
-  then reads twice. *Test:* `Inv3RenderReaderAgree`, two fixtures — a migrated
-  bullet whose residual carries the key (suppression fires) and a post-cutover
-  bullet with a residual body that does not (all keys emitted from columns).
+  why: whichever branch the presence test takes, exactly one value reaches the
+  file — the body's own declaration, or the column. **Amended 2026-08-19
+  (ANTS-4505): on the suppressing branch the value that reaches the file is the
+  BODY's, and the two agree because `rlBodyShadows()` refuses the only write
+  that could separate them** (§ 2.3). *Breaks when:* the render suppresses a key
+  the body does not declare line-initially, or emits one the reader then reads
+  twice. *Test:* `Inv3RenderReaderAgree`, **three** fixtures — a migrated bullet
+  whose residual carries the key line-initially (suppression fires), a
+  post-cutover bullet with a residual body that does not (all keys emitted from
+  columns), and **a bullet whose body declares the key with a value the column
+  disagrees with (ANTS-4505: suppression still fires, the body's line is the
+  only one in the file, and the re-parse adopts it — the case the value-equality
+  rule answered the other way, so it is this amendment's discriminator)**.
 
   **The scope clause is load-bearing, and it excludes exactly one state.** A
   column written *without* rewriting the body leaves the body's own key
@@ -535,8 +623,10 @@ only place either is argued.**
   *shadowed*, not for being post-cutover.
 - **INV-4** — **`trailerValuesIn(body)` equals what `parseBullets()` assigns from
   the same body**, over all five keys and § 2.2.1's normalisation table. Without
-  this equality the suppression compares incommensurable values, never fires, and
-  the defect stays live behind a passing spec. *Breaks when:* the accessor
+  the accessor is what both the render and the reader ask, so a divergence would
+  put the two out of step on which keys a body declares. **Its `anchored` field
+  is now load-bearing for suppression as well** (§ 2.3), not only for a consumer
+  quoting a match. *Breaks when:* the accessor
   returns raw captures, skips the `rxTrailerKey` truncation or a trailing-period
   chop, or splits `lanes` / `evidence` differently. *Test:* `Inv4AccessorAgrees`,
   over a fixture table covering each normalisation step including the two-key
@@ -546,6 +636,21 @@ only place either is argued.**
   nothing**: a line-leading `Kind:` (true) and an inline mid-prose `Source:`
   (false). A fixture set that only ever expects `false` passes against the
   always-false implementation this field was specified twice to avoid.
+- **INV-6** — **Migrate-then-render is an identity on the FIRST cycle, and the
+  stored body gains nothing.** For a bullet whose trailers are written last —
+  the conforming shape — `render(parse(x)) == x` byte for byte, and
+  `parse(render(parse(x))).body == parse(x).body`. *Breaks when:* § 2.1's
+  trailing-trailer strip is omitted, which is the state measured on 2026-08-19:
+  one re-migration moved **599** bodies, **+458** gaining a `Kind:` line they
+  never carried and **+97** a `Source:` line, because the render's own appended
+  block was filed back into the body. *Test:* `Inv6RoundTripAddsNothing`, three
+  fixtures — trailers last (identity on cycle one); prose BELOW the trailers
+  (the run stops at the prose, the trailer stays in the body, and § 2.3's
+  suppression keeps the render from adding a second copy); and a body that is
+  entirely trailer lines (strips to empty, which § 2.1 calls a normal outcome).
+  **The middle fixture is the one an implementation fails by stripping every
+  trailer line rather than the trailing run**, and it reds silently: the body
+  still round-trips, it has just lost an authored line.
 - **INV-5** — **No bullet text is lost across migrate-then-render.** For every
   bullet, whatever of the head line the reader did **not** consume — on a native
   bullet, the text after the closing `**` — survives into the rendered output.
