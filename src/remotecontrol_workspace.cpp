@@ -1986,19 +1986,53 @@ QJsonDocument RemoteControl::cmdReadRegions(const QJsonObject &req) {
     // alias in preference order. If none is an array, pass `items` through so
     // extractBatch emits its precise "items array is required" bad_args error.
     QJsonValue itemsVal = req.value(QStringLiteral("items"));
+    QString    itemsKey = QStringLiteral("items");
     if (!itemsVal.isArray()) {
         for (const char *alias : {"requests", "paths", "regions"}) {
             const QJsonValue v = req.value(QLatin1String(alias));
-            if (v.isArray()) { itemsVal = v; break; }
+            if (v.isArray()) {
+                itemsVal = v;
+                itemsKey = QString::fromLatin1(alias);
+                break;
+            }
         }
+    }
+    // ANTS-4512 — two arrays for ONE parameter is a caller bug, and picking
+    // one by preference order made it unreportable. A session sent `paths` as
+    // bare filenames and `regions` as well-shaped objects; `paths` won, and
+    // the reply was three copies of `item missing "path"` — true of the array
+    // the verb chose, false of the array the caller meant, and naming neither.
+    // So the natural next move was to re-inspect the array where nothing was
+    // wrong. Refuse instead, naming every key supplied: the caller drops one
+    // and is done. Same rule roadmap_query already applies to id vs section.
+    QStringList suppliedKeys;
+    for (const char *k : {"items", "requests", "paths", "regions"}) {
+        if (req.value(QLatin1String(k)).isArray())
+            suppliedKeys << QString::fromLatin1(k);
+    }
+    if (suppliedKeys.size() > 1) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral(
+            "read_regions: %1 are aliases for the same batch key and were "
+            "sent together; pass exactly one")
+            .arg(suppliedKeys.join(QStringLiteral(" and ")));
+        o["code"]     = QStringLiteral("bad_op_combo");
+        o["supplied"] = QJsonArray::fromStringList(suppliedKeys);
+        return QJsonDocument(o);
     }
     // ANTS-3589 — a top-level `path` is the per-item default: an item that
     // omits its own `path` reads from this instead, so the single-file case
     // (N slices of one module) passes the filename once. Per-item `path` wins.
-    return QJsonDocument(ReadRegion::extractBatch(
+    QJsonObject batch = ReadRegion::extractBatch(
         rootCanonical, itemsVal,
         req.value(QStringLiteral("max_bytes")).toInt(0),
-        req.value(QStringLiteral("path")).toString()));
+        req.value(QStringLiteral("path")).toString());
+    // ANTS-4512 — say which key the batch was read from. Without it a
+    // per-item shape error cannot be attributed to an array at all, which is
+    // what made the refusal above worth having.
+    batch["items_key"] = itemsKey;
+    return QJsonDocument(batch);
 }
 
 // ANTS-2094 — read_spill: re-read a body spilled by the offload path, by its

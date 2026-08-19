@@ -37575,7 +37575,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-19 (DOOM Ants).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4510] **read_log is advertised in the session bootstrap between two git verbs and is not a git-log reader.**
+- ✅ [ANTS-4510] **read_log is advertised in the session bootstrap between two git verbs and is not a git-log reader.**
   The SessionStart hook lists `read_log -> filtered log tail (vs full
   Read)` between `git_state` and `model_switch_stats`, both git/session
   verbs. In that company it reads plainly as `git log`. Called that way it
@@ -37595,12 +37595,17 @@ are closed inline in the feedback files rather than filed here.
   log on what looked like the cheaper indexed path -- the opposite of what
   the bootstrap list is for, on the first verb a session reaches for when
   orienting.
+  Resolved (2026-08-19). The bootstrap line now reads `read_log → Ants debug-log tail (NOT git log)`. Took the wording half only; the arg-layer half is a bigger finding than this item, recorded below.
+
+  The prelude is byte-capped (INV-10, 1400 B) and was already near it, so the replacement was sized against the cap rather than written freely: +1 byte, and McpOrientation_Inv10.ScriptOutputByteCap re-run specifically to prove it still fits rather than inferred from the suite passing. Also corrected the copy of the prelude in docs/specs/ANTS-1897.md, which would otherwise show the old text.
+
+  Why the reporter got no argument error, which the item asked about: ignored_args (ANTS-2175) WOULD have flagged max_commits and body as unknown, but INV-6 gates it to success envelopes and never annotates a refusal. read_log refused not_found, so the advisory was suppressed at exactly the moment it was most useful — a wrong mental model produces a refusal, and a refusal is the one shape that cannot carry the correction. That is a class, not a read_log quirk, so it is not fixed here.
   **Layman:** A tool listed as "read the recent log" sits next to the git tools and reads a completely different log.
   Kind: doc-fix.
   Source: cc-feedback-2026-08-19 (DOOM Ants).
   Lanes: mcp, claude-integration.
 
-- 📋 [ANTS-4511] **roadmap_query refuses the natural by_id mode without naming the id/ids route that replaces it.**
+- ✅ [ANTS-4511] **roadmap_query refuses the natural by_id mode without naming the id/ids route that replaces it.**
   Looking up one bullet, mode:"by_id" is the obvious first guess. It
   refuses with bad_mode and lists the accepted modes -- which is good
   behaviour -- but none of those names says "this is how you fetch one item
@@ -37620,12 +37625,19 @@ are closed inline in the feedback files rather than filed here.
 
   The refusal already carries an `accepted` array, so the hint has an
   obvious home beside it.
+  Resolved (2026-08-19). The bad_mode refusal now carries a hint: "to fetch specific items pass id / ids[] with mode bullets or headline_only — item lookup is an argument, not a mode".
+
+  Took the hint rather than the by_id alias, and the reason is in the sentence itself: aliasing by_id to bullets would make the wrong mental model WORK, so the next call that needs the distinction fails somewhere less obvious. The hint corrects the model instead.
+
+  Unconditional rather than special-cased to the by_id spelling — by-id, byId, single and item leave a caller in exactly the same position, and a hint that fires only on the closest guess helps only the caller who needed it least. That is a test case, not a comment.
+
+  New feature dir tests/features/roadmap_query_mode_hint/, three cases, BEHAVIOURAL — it live-drives cmdRoadmapQuery rather than scraping source. The sibling roadmap_query_id_body_cap is the argument for that: ANTS-3402 shipped with scrape-only coverage and the feature was inert, the scrape passing all the while. Ran red first (G1/G2 failed on the absent hint, G3 passed on both versions, which is what shows the harness measured the hint).
   **Layman:** Guessing the obvious name for "look up one entry" fails, and the error does not say what to use instead.
   Kind: enhancement.
   Source: cc-feedback-2026-08-19 (DOOM Ants).
   Lanes: mcp.
 
-- 📋 [ANTS-4512] **read_regions picks one of two alias arrays silently, then reports the missing key against the array the caller got right.**
+- ✅ [ANTS-4512] **read_regions picks one of two alias arrays silently, then reports the missing key against the array the caller got right.**
   `paths` and `regions` are both documented aliases for `items`. When a
   call sends BOTH, `paths` wins silently. The reporter sent `paths` as bare
   filename strings and `regions` as properly-shaped {path, start_line,
@@ -37646,6 +37658,13 @@ are closed inline in the feedback files rather than filed here.
   And where both keys are sent and disagree in SHAPE, a bad_op_combo-style
   refusal naming both beats picking one silently -- the same rule
   roadmap_query already applies to id vs section.
+  Resolved (2026-08-19). Two arrays for one batch key now refuse bad_op_combo naming every key supplied, and a success echoes items_key.
+
+  Took route 3 (the refusal) over route 1 (name the key in the message) because route 1 leaves the caller with a correct error about an array they did not mean to send. Took it over route 2 (accept bare strings as whole-file reads) because that makes the ambiguous call succeed, and the caller still never learns which array was used. The refusal ends it in one round trip.
+
+  Added items_key as well, and it is not redundant with the refusal: the refusal covers the two-array case, items_key is what makes a per-item shape error interpretable in the ORDINARY one-array case, which is where the reporter's confusion actually started.
+
+  New feature dir tests/features/read_regions_alias_conflict/, three cases, behavioural, red-checked first. The existing RR-7 alias test is kept — it is a windowed source-grep over 1500 chars from cmdReadRegions, which can prove the alias names are wired but never which array a call resolved to. Deliberately placed the new code AFTER the alias literals so RR-7's byte window still reaches them; that trap has bitten this project before and is written into the spec's Would-break list.
   **Layman:** Send the same information two ways and the tool quietly uses one, then complains about a mistake in the other.
   Kind: fix.
   Source: cc-feedback-2026-08-19 (Games Hub).

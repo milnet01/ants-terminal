@@ -1681,6 +1681,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_by_ids/test_roadmap_query_by_ids.cpp
                 # ANTS-3425 roadmap_query by-id/ids honours max_body_bytes (end-to-end).
                 tests/features/roadmap_query_id_body_cap/test_roadmap_query_id_body_cap.cpp
+                tests/features/roadmap_query_mode_hint/test_roadmap_query_mode_hint.cpp
+                tests/features/read_regions_alias_conflict/test_read_regions_alias_conflict.cpp
                 # ANTS-1696 roadmap_query section_shape hint for non-bullet sections.
                 tests/features/roadmap_query_section_shape/test_roadmap_query_section_shape.cpp
                 # ANTS-1441 roadmap_log op:flip for ants-v1 native format.

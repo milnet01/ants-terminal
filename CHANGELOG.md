@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_query`'s `bad_mode` refusal names the `id`/`ids[]` route (ANTS-4511)**
+  `mode:"by_id"` is the obvious guess for a single-item lookup, and none of
+  the accepted mode names answers it — item lookup is an argument, not a
+  mode. The hint fires on every bad mode, not just that spelling.
+
 - **roadmap_migrate states that it never rewrites ROADMAP.md** (ANTS-4482)
   `markdown_rewritten` is on every response and is always false. The file being byte-identical after a migration is expected, not a sign it did not run.
 
@@ -213,6 +218,15 @@ for security-relevant changes.
   corpus with 0 newly firing.
 
 ### Fixed
+
+- **`read_regions` refuses conflicting alias arrays instead of picking one (ANTS-4512)**
+  Sending both `paths` and `regions` silently used one and then reported a
+  shape error against the other. It now refuses `bad_op_combo` naming both,
+  and a successful call echoes `items_key`.
+
+- **`read_log` no longer reads as a git-log reader in the session bootstrap (ANTS-4510)**
+  It sat between `git_state` and `model_switch_stats` described as a
+  "filtered log tail", and now says `Ants debug-log tail (NOT git log)`.
 
 - **`session_orient` honours `fields=` (ANTS-4523)**
   It had accepted and silently dropped the argument — ~16k tokens for a

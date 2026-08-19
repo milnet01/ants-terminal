@@ -84,7 +84,7 @@ constexpr const char *kOrientationScriptBody =
     "  • find_sources       → \"who calls bar?\" (C/C++ ONLY — else use\n"
     "                         codebase_index / workspace_search)\n"
     "  • git_state          → status + branch + ahead/behind in one call\n"
-    "  • read_log           → filtered log tail (vs full Read)\n"
+    "  • read_log           → Ants debug-log tail (NOT git log)\n"
     "  • model_switch_stats → auto-switcher trust signal + near-miss breakdown\n"
     "  • spec_log           → write a spec's Status / cold-eyes loop / INV entries\n"
     "\n"

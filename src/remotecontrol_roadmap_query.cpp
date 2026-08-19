@@ -1590,6 +1590,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["error"] = QStringLiteral("unknown mode: %1").arg(verbatim);
         out["code"] = QStringLiteral("bad_mode");
         out["accepted"] = QJsonArray::fromStringList(kModes);
+        // ANTS-4511 — `accepted` says what IS a mode; it cannot say how to
+        // fetch one item, because that route is an ARGUMENT (id / ids[]) and
+        // not a mode at all. So the single most common wrong guess —
+        // mode:"by_id", on what the store makes the most common lookup — got
+        // a refusal listing five names, none of which answers it, and burned
+        // a round-trip per session that guessed it.
+        //
+        // Unconditional rather than special-cased to the "by_id" spelling:
+        // "by-id", "single" and "item" leave a caller in exactly the same
+        // position, and a hint that fires only on one spelling helps only the
+        // caller who already guessed closest.
+        out["hint"] = QStringLiteral(
+            "to fetch specific items pass id / ids[] with mode bullets or "
+            "headline_only — item lookup is an argument, not a mode");
         return QJsonDocument(out);
     }
     // ANTS-1437-INV-3: section_index + section is conceptually
