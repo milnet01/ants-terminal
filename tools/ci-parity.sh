@@ -187,9 +187,16 @@ fi
 
 # --- build-asan: Debug + ASan/UBSan build, sanitized ctest, smoke (--asan) ---
 asan_ctest() {
+    # ANTS-4533 — mirrors ci.yml's build-asan ctest exactly. -j2 because the
+    # sanitized suite is per-process-startup bound (measured 922s serial for
+    # 3650 tests on CI's 4-vCPU runner), --timeout 300 so a hung test is one
+    # failed test rather than the whole budget. Unlike ci.yml there is no
+    # outer `timeout` wrapper: a killed ninja corrupts .ninja_deps, and a
+    # local gate reports its own result without a cancelled/failed ambiguity.
     ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
     UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    LC_ALL="$locale" ctest --test-dir "$asan_dir" --output-on-failure
+    LC_ALL="$locale" ctest --test-dir "$asan_dir" -j2 --output-on-failure \
+                           --timeout 300
 }
 asan_smoke() {
     local pre=(QT_QPA_PLATFORM=offscreen

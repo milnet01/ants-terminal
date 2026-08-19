@@ -1899,6 +1899,9 @@ if(ANTS_TESTS)
                 tests/features/co_change_family/test_co_change_family.cpp
                 # ANTS-4391 ci.yml declares the tools the suite shells out to.
                 tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp
+                # ANTS-4533 ci.yml's build-asan job stays inside its budget
+                # and goes red, not `cancelled`, when it does not.
+                tests/features/ci_asan_budget/test_ci_asan_budget.cpp
                 # ANTS-1306 task_priors MCP context bundler.
                 tests/features/mcp_task_priors/test_mcp_task_priors.cpp
                 # ANTS-1307 project_conventions MCP convention summary.

@@ -163,11 +163,14 @@ jobs:
   # have a real unit-test suite that does full app lifecycle.
   build-asan:
     runs-on: ubuntu-24.04
-    # ASan is 2-3x slower than the release build. Last sweep (0.7.91
-    # indie-review fold-in) pushed wall time past the prior 20m cap.
-    # Mirrors 421e32d's build-test bump shape; 30m gives ~25% headroom
-    # over the build-test 25m budget.
-    timeout-minutes: 30
+    # ANTS-4533 — this cap is a BACKSTOP, not the gate. It must stay above
+    # the sum of the per-step `timeout` guards below (20m + 12m), because a
+    # job killed by timeout-minutes concludes `cancelled` rather than
+    # `failure`: the run does not read as red and nothing notifies. That is
+    # how this job went 36-of-40 cancelled over two days unnoticed. The step
+    # guards exit 124 and go red; tests/features/ci_asan_budget/ locks the
+    # ordering so a later bump cannot quietly undo it.
+    timeout-minutes: 35
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 500M
@@ -188,7 +191,12 @@ jobs:
 
       - name: Restore ccache (asan)
         # See "Restore ccache (release)" above re: v5.0.5 Node-20 warning.
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        # ANTS-4533 — restore/save are SPLIT here, unlike build-test. The
+        # combined action saves from an implicit post-step, and that post-step
+        # is skipped when the job is cancelled, so every timed-out run left the
+        # cache frozen at the last run that completed. Saving explicitly right
+        # after the build breaks that spiral.
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
           path: ${{ github.workspace }}/.ccache
           # Separate key from release: different compile flags
@@ -208,7 +216,18 @@ jobs:
           ccache --zero-stats
 
       - name: Build
-        run: cmake --build build-asan --parallel
+        # Guarded rather than left to timeout-minutes: `timeout` exits 124, so
+        # an overrun FAILS the step. Measured 11m29s / 11m38s / 12m15s warm.
+        run: timeout 20m cmake --build build-asan --parallel
+
+      - name: Save ccache (asan)
+        # `always()` is the point of the split: this must survive the overrun
+        # it exists to prevent recurring.
+        if: always()
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-asan-${{ github.sha }}
 
       - name: ccache stats (asan)
         if: always()
@@ -219,7 +238,12 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --output-on-failure
+        # ANTS-4533 — was serial: 922s for 3650 tests on a 4-vCPU runner,
+        # dominated by per-process startup under ASan rather than by any one
+        # test. -j2 matches the pre-push hook (ANTS-3761) and the workstation
+        # preset's caution; --timeout 300 turns a hung test into one failed
+        # test instead of the whole budget.
+        run: timeout 12m ctest -j2 --output-on-failure --timeout 300
 
       - name: Smoke-test binary init paths
         working-directory: build-asan
