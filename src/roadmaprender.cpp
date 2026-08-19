@@ -281,7 +281,7 @@ bool resolveUnderRoot(const QString &root, const QString &rel, QString *abs, QSt
 
 std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                               const QString &projectRoot, const Options &opts,
-                              QString *error) {
+                              QString *error, QHash<QString, QString> *contentOut) {
     if (error)
         error->clear();
 
@@ -445,6 +445,11 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
             text += QLatin1Char('\n');
         contentOf.insert(path, text);
     }
+
+    // ANTS-4462 / ANTS-4465 — before the write phase, so a dry render (which
+    // returns two lines below) hands back the same bytes a real one would.
+    if (contentOut)
+        *contentOut = contentOf;
 
     out.filesWritten = fileOrder;
     if (opts.dryRun) {

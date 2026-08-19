@@ -514,6 +514,28 @@ which heading you expect it under.
   accounts for all eight ops — and a project with no store row is
   unaffected. Differences a
   caller sees:
+  - **The render owns the WHOLE file, and every write now says what that
+    cost.** A hand-edit the store does not model — the preamble above the
+    first heading is the case with no verb at all — is reverted by the next
+    op, and used to be reverted in silence under an `ok:true` envelope
+    (ANTS-4465). `items_rendered` reads as reassurance and is not: it counts
+    items, not content, so a store that has fallen behind the file passes it
+    exactly as a fresh one does (ANTS-4462). So `commitAndRender()` renders
+    the store as it stood **before** the mutation and diffs that against the
+    file, reporting `discarded_external_edits` (bool) plus
+    `discarded_edit_lines` on the true arm — `would_*` on a dry run, per
+    ANTS-4463's tense rule. Both are **absent** when nothing measured the
+    file, which is not the same as clean. Three things the shape rules out:
+    diffing the *post*-mutation render instead (it differs from the file by
+    the change the call was made to write, so every healthy write reports);
+    comparing mtimes (the sequence writes the store and *then* the file, so
+    the file is always newer and every project reads stale); and refusing on
+    drift (one hand-edit anywhere would brick every op, which is the
+    `render_gate_unmet` shape both items were filed against). Expect one true
+    report per project on the **first** write after a migration: the file
+    still carries the author's bytes wherever the store keeps a canonical
+    form — a table separator, say (ANTS-3832) — and that publish really does
+    overwrite them.
   - **Envelope**: `line`, `lines`, `bytes` and `bytes_written` are all
     dropped, and `files_written` / `items_rendered` come from the render.
     On the markdown path `line` **would be** `firstLine + 1`, and ANTS-3793

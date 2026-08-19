@@ -19,6 +19,7 @@
 // declaration sufficient until now.
 #include "roadmapstore.h"
 
+#include <QHash>
 #include <QString>
 #include <QStringList>
 #include <optional>
@@ -54,6 +55,23 @@ struct Outcome {
     // was written. Populated on every engaged return, so a caller staring at a
     // gate failure can still see how many items would have rendered.
     QStringList gateFailures;
+
+    // ANTS-4462 / ANTS-4465 — the external-edit report. SET BY
+    // RoadmapWrite::commitAndRender(), never by render() itself, and the
+    // asymmetry is the point: render() is handed a store and asked to publish
+    // it, so it cannot tell an edit it is about to destroy from the mutation it
+    // was called to publish. Only the write sequence holds both sides — the
+    // PRE-mutation render and the file on disk — and it stamps the answer here
+    // because this Outcome is already the channel that reaches the envelope.
+    // Left at the defaults on the render's own returns, which is what
+    // `externalEditsChecked:false` means: not "clean", but "nobody looked".
+    bool externalEditsChecked = false;
+    // Lines by which the file differed from what the store alone would have
+    // produced: lines the file held and the render does not reproduce, plus
+    // lines the render holds that the file had lost. Zero with
+    // externalEditsChecked ⇒ the file was exactly the store's render, so the
+    // publish overwrote nothing but its own output.
+    int externalEditLines = 0;
 };
 
 // ANTS-3808 § 2.4 — one bullet's markdown, byte-identical to what the file
@@ -108,8 +126,16 @@ bool isOpen(const QString &status);
 // A gate failure and a partial commit both return an ENGAGED Outcome, because
 // a refusal that returned nullopt would throw away the one field the caller
 // needs (INV-5, § 2.7).
+// `contentOut`, when given, receives the exact bytes each file would get, keyed
+// by the same absolute paths as Outcome::filesWritten. It is populated on the
+// engaged success return under EITHER dryRun setting and left untouched on the
+// gate-failure return, where nothing was assembled. ANTS-4462 / ANTS-4465 need
+// it: comparing a dry render's text against the file that exists is the only
+// way to see a hand-edit before the next publish destroys it, and a second
+// renderer written to answer that would be a copy of this one.
 std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                               const QString &projectRoot, const Options &opts,
-                              QString *error = nullptr);
+                              QString *error = nullptr,
+                              QHash<QString, QString> *contentOut = nullptr);
 
 } // namespace RoadmapRender

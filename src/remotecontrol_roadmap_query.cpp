@@ -181,6 +181,25 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
             QJsonArray::fromStringList(outcome.filesWritten);
     }
     out[QStringLiteral("items_rendered")] = outcome.itemsRendered;
+
+    // ANTS-4462 / ANTS-4465 — what the publish overwrote that the store never
+    // held. Absent when nothing measured it, because false would claim the file
+    // was clean when in fact nobody looked (the ANTS-4463 lesson, in the other
+    // direction: there a present field asserted an action that never happened).
+    //
+    // Tense follows the same rule as the two fields above. The count rides only
+    // on the true arm: on a healthy project it is always zero, and a zero
+    // emitted on every write is a field nobody reads.
+    if (outcome.externalEditsChecked) {
+        const bool any = outcome.externalEditLines > 0;
+        out[dryRun ? QStringLiteral("would_discard_external_edits")
+                   : QStringLiteral("discarded_external_edits")] = any;
+        if (any) {
+            out[dryRun ? QStringLiteral("would_discard_edit_lines")
+                       : QStringLiteral("discarded_edit_lines")] =
+                outcome.externalEditLines;
+        }
+    }
 }
 
 bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,

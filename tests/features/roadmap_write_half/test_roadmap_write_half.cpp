@@ -729,6 +729,155 @@ TEST(RoadmapWriteHalf, Ants4463DryRunEmitsNoPastTenseFields) {
 }
 
 
+// ------------------------------------------------- ANTS-4462 / ANTS-4465 ----
+
+// The publish reports the hand-edits it overwrote.
+//
+// On a migrated project every roadmap_log op re-renders the WHOLE file from the
+// store, so any byte that arrived from outside the store is silently reverted.
+// Two reporters hit the same mechanism from opposite ends: LocalWebServerManager
+// edited the file preamble by hand and watched the next `flip` put it back
+// (ANTS-4465), and finbreak hand-flipped two bullets to shipped with ~40 lines
+// of resolution prose and found the store still serving the pre-edit text —
+// where the next write would have published the stale version over them
+// (ANTS-4462's data-loss half). Both landed under an `ok:true` envelope with
+// nothing in it saying anything had been lost, and `items_rendered` matching
+// the file's bullet count reads as reassurance while counting items, not
+// content.
+//
+// One measurement answers both: render the store BEFORE the mutation and
+// compare that against the file on disk. What differs is exactly what did not
+// come from the store.
+TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+
+    // 1. The FIRST write after a migration, which is not the quiet case and
+    //    must not be dressed up as one. A just-migrated file has never been
+    //    rendered, so it still carries the author's bytes wherever the store
+    //    keeps a canonical form instead — this fixture's table separator is
+    //    `|---|---|` and the render emits `| --- | --- |` (ANTS-3832 stores a
+    //    table as canonical JSON rather than replaying it). That is text the
+    //    publish really is about to overwrite, so reporting it is the honest
+    //    answer, not a false positive. It fires once per project and then goes
+    //    quiet, because the write that reports it also canonicalises the file.
+    const QJsonObject first =
+        rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("A first bullet."))).object();
+    ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool())
+        << "precondition: code=" << first.value(QStringLiteral("code")).toString().toStdString()
+        << " error=" << first.value(QStringLiteral("error")).toString().toStdString();
+    ASSERT_TRUE(first.contains(QStringLiteral("discarded_external_edits")))
+        << "ANTS-4462: the field is absent only when nothing measured the file. "
+           "A store-backed write measured it, so it must report — silence here "
+           "is indistinguishable from the defect";
+    EXPECT_TRUE(first.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "the migration's own normalisation is a real overwrite and is "
+           "reported as one; suppressing it would mean modelling which "
+           "differences are cosmetic, which is a judgement this check does not "
+           "have and should not invent";
+    EXPECT_GE(first.value(QStringLiteral("discarded_edit_lines")).toInt(), 1);
+
+    // 2. The second write, over a file the render itself just wrote. This is
+    //    the arm that matters most: a check that cried wolf on every healthy
+    //    write would be worse than no check, because it would be switched off.
+    const QJsonObject clean =
+        rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("A clean bullet."))).object();
+    ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(clean.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "a write over a file that is already the store's own render "
+           "discards nothing";
+    EXPECT_FALSE(clean.contains(QStringLiteral("discarded_edit_lines")))
+        << "the count rides on the true arm only; a zero on every healthy "
+           "write is a field nobody reads";
+
+    // 3. Now the reported defect: edit the file outside the store. The preamble
+    //    is ANTS-4465's own case — it is outside every bullet, so no verb can
+    //    write it and a hand-edit is the ONLY way to change it.
+    QByteArray hand = readAll(roadmap);
+    ASSERT_FALSE(hand.isEmpty());
+    const QByteArray marker = "> **Current version:** 9.9.9 — set by hand.\n";
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1, marker);
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    const QJsonObject dirty =
+        rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("A bullet after the hand-edit."))).object();
+    ASSERT_TRUE(dirty.value(QStringLiteral("ok")).toBool())
+        << "the report must not become a refusal: one hand-edit anywhere would "
+           "then brick every op on the project, which is the render_gate_unmet "
+           "shape these items were filed against";
+    EXPECT_TRUE(dirty.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "ANTS-4465: the hand-written preamble line was overwritten by the "
+           "re-render and the envelope said nothing";
+    EXPECT_GE(dirty.value(QStringLiteral("discarded_edit_lines")).toInt(), 1)
+        << "ANTS-4465: the caller needs the size of what was lost, not just "
+           "that something was";
+
+    // The revert itself is the behaviour being reported, not a second bug: the
+    // store is primary and the render publishes it. What the fix adds is that
+    // the caller is told.
+    EXPECT_FALSE(readAll(roadmap).contains(marker))
+        << "precondition for the assertions above: the hand-edit really was "
+           "discarded, so the report is describing something that happened";
+
+    // 4. And the drift is not sticky — the write that reported it also
+    //    republished the file, so the next write starts clean again.
+    const QJsonObject after =
+        rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("A bullet after the revert."))).object();
+    ASSERT_TRUE(after.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(after.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "a stale true would train callers to ignore the field";
+}
+
+// A preview reports what the real call WOULD discard, in the future tense.
+//
+// ANTS-4463 settled the rule for this envelope: a past-tense name IS the
+// assertion, so a dry run must not carry one. The same rule reaches these two
+// fields — and a preview is exactly where a caller most wants the warning,
+// because it is the call made before deciding whether to write at all.
+TEST(RoadmapWriteHalf, Ants4462DryRunUsesTheFutureTense) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    QByteArray hand = readAll(roadmap);
+    ASSERT_FALSE(hand.isEmpty());
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1, "> A line no verb can write.\n");
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = appendReq(root, QStringLiteral("A previewed bullet."));
+    req[QStringLiteral("dry_run")] = true;
+    const QJsonObject dry = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool())
+        << "precondition: code=" << dry.value(QStringLiteral("code")).toString().toStdString();
+    EXPECT_TRUE(dry.value(QStringLiteral("would_discard_external_edits")).toBool())
+        << "ANTS-4462: the preview is where the warning is worth most";
+    EXPECT_GE(dry.value(QStringLiteral("would_discard_edit_lines")).toInt(), 1);
+    EXPECT_FALSE(dry.contains(QStringLiteral("discarded_external_edits")))
+        << "ANTS-4463: a dry run discarded nothing, so it must not say it did";
+    EXPECT_FALSE(dry.contains(QStringLiteral("discarded_edit_lines")));
+
+    // And a preview writes nothing, so the hand-edit is still there.
+    EXPECT_TRUE(readAll(roadmap).contains("> A line no verb can write."));
+}
+
+
 // ------------------------------------------------------------- ANTS-4475 ----
 
 // roadmap_log accepts changelog_log's spelling of the same act.

@@ -10200,6 +10200,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "unrecognised_format. SIZE NOTE: keep append bodies "
                         "small — large payloads can drop in transit "
                         "(ANTS-1853); use Edit for long prose. "
+                        // ANTS-4465 — the amend_headline warning generalised.
+                        // The hazard is not the headline; it is that on a
+                        // migrated project the render owns the WHOLE file.
+                        // INV-5 caps this string at 800 B on the tools/list
+                        // wire, so the reasoning lives in `detail` and only
+                        // the warning itself is spent here.
+                        "MIGRATED: every op re-renders the WHOLE file, so a "
+                        "hand-edit outside the store is reverted; the write "
+                        "reports `discarded_external_edits` (ANTS-4462). "
                         "caller_cwd Required.");
                     // ANTS-2079 — full per-op reference in `detail`
                     // (stripped from the tools/list wire; served by
@@ -10290,7 +10299,33 @@ void ClaudeIntegration::onMcpConnection() {
                         "`body` (≲1–2 short paragraphs) or write the "
                         "prose with the Edit tool directly into "
                         "ROADMAP.md. If a call refuses with "
-                        "arguments_empty, just resend it.");
+                        "arguments_empty, just resend it. "
+                        // ANTS-4465 / ANTS-4462 — the whole account, here
+                        // rather than in the wire description, which INV-5
+                        // caps at 800 B.
+                        "MIGRATED PROJECT — what the re-render owns. Every op "
+                        "re-renders the WHOLE file from the store, so ANY byte "
+                        "the store does not model is reverted: the preamble "
+                        "above the first heading is the sharpest case, since "
+                        "no verb writes it and a hand-edit there is the only "
+                        "way to change it. op:\"amend_headline\" refuses on a "
+                        "migrated project for this reason and is an INSTANCE "
+                        "of the rule, not a headline-only quirk. The write no "
+                        "longer does it silently (ANTS-4462): it renders the "
+                        "store as it stood BEFORE the mutation, diffs that "
+                        "against the file, and reports "
+                        "`discarded_external_edits` (bool) plus "
+                        "`discarded_edit_lines` on the true arm — "
+                        "`would_discard_*` on a dry run, per ANTS-4463's tense "
+                        "rule. ABSENT means nothing measured the file, which "
+                        "is not the same as clean. It reports and never "
+                        "refuses, because one hand-edit would otherwise brick "
+                        "every op on the project. Expect one true report per "
+                        "project on the FIRST write after a migration: the "
+                        "file still carries the author's bytes wherever the "
+                        "store keeps a canonical form (a table separator, "
+                        "ANTS-3832), and that publish really does overwrite "
+                        "them.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to append a new bullet or flip an "
                         "existing one's status on ROADMAP.md. "
@@ -10571,7 +10606,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "headline_match_ambiguous. NOT supported on a migrated "
                         "project: the headline is a store column and its "
                         "locate key, so a markdown-only patch would be "
-                        "reverted by the next render. "
+                        "reverted by the next render. ANTS-4465 — that is an "
+                        "INSTANCE of the migrated-project rule in this verb's "
+                        "description, not a headline-only quirk: every byte "
+                        "the store does not model goes the same way, and this "
+                        "op refuses only because it can see the collision "
+                        "coming. "
                         "ANTS-4097: single-line is a MATCHING rule, not a "
                         "safety one — rewriting a phrase that spans a "
                         "hard-wrapped paragraph takes N calls, each succeeds, "

@@ -35319,7 +35319,7 @@ it. The second is PAST-TENSE FIELDS ON A PREVIEW OR A REFUSAL: a field whose
 name asserts a completed action, emitted on a path where the action did not
 happen.
 
-- 📋 [ANTS-4462] **roadmap_query answers from a store snapshot that does not track file edits, and the staleness is unobservable.**
+- 🚧 [ANTS-4462] **roadmap_query answers from a store snapshot that does not track file edits, and the staleness is unobservable.**
   HIGHEST severity of this triage, and it is the guard-removed-hazard-remains
   shape. finbreak previously refused every roadmap_log op with
   `render_gate_unmet`; that refusal is now gone, but the stale store behind it
@@ -35366,6 +35366,17 @@ happen.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: roadmapstore, roadmapsource, remotecontrol_roadmap_query.
+  Progress (2026-08-19): the WRITE half is shipped; the READ half is what keeps this item open.
+
+  Shipped — the data-loss half, and with it ANTS-4465 outright. Fix (3) in the body ("never re-render from a snapshot older than the file") is answered in the reporting form rather than the refusing one: RoadmapWrite::commitAndRender() renders the store as it stood BEFORE the mutation, diffs that against the file, and the envelope carries `discarded_external_edits` + `discarded_edit_lines` (`would_discard_*` on a dry run). A stale store and a hand-edit are the same symptom to this check and it catches both. See ANTS-4465 for the detail; the note there is the implementation record for both items.
+
+  The write-vs-query disagreement named at the end of the body is now what does the detecting, as predicted — the write path compares the store's own render against the file, which is that comparison made concrete.
+
+  STILL OPEN — the read half. roadmap_query cannot report `store_stale` / `store_synced_at`, because finding (1) stands: the `project` table has no currency column at all, so staleness is unrepresentable rather than merely unreported. That needs the schema-ladder rung finding (2) describes — kSchemaVersion 2 → 3, ANTS-3815's `source_format` rung as the precedent, and its DEFAULT is load-bearing (SQLite refuses `ADD COLUMN ... NOT NULL` with no default on a table that HAS ROWS, so a defaultless rung passes every empty test store and fails every real one). ANTS-3781 INV-4 makes a version bump with no rung a red test.
+
+  A per-query render is far too expensive, which is why the read half needs the column and the write half did not.
+
+  Blast radius is unchanged for the read half but no longer includes silent data loss: the five reporting projects can now see an overwrite in the envelope, they just cannot see a stale answer from roadmap_query.
 
 - ✅ [ANTS-4463] **roadmap_log `dry_run` returns `files_written` and `note_appended:true` — both assert an action that did not happen.**
   A dry-run flip returns `files_written:["…/ROADMAP.md"]` and
@@ -35412,7 +35423,7 @@ happen.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_roadmap_log.
 
-- 📋 [ANTS-4465] **roadmap_log's re-render silently discards hand-edits outside a bullet, including the whole preamble.**
+- ✅ [ANTS-4465] **roadmap_log's re-render silently discards hand-edits outside a bullet, including the whole preamble.**
   On a store-backed ROADMAP.md a hand-edit to the file PREAMBLE (line 4,
   `> **Current version:** …`, outside any bullet) was reverted by the next
   `op:flip`, with nothing in the envelope saying so.
@@ -35440,6 +35451,19 @@ happen.
   Kind: fix.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: roadmaprender, remotecontrol_roadmap_log.
+  Resolved (2026-08-19): closed by the shared write-path guard, as this item's own note predicted — one guard, two items.
+
+  RoadmapWrite::commitAndRender() gains step 1b: render the store as it stood BEFORE the mutation, and diff that against the file on disk. What differs is exactly what did not come from the store. The envelope reports `discarded_external_edits` (bool) plus `discarded_edit_lines` on the true arm, and `would_discard_*` on a dry run per ANTS-4463's tense rule. Both fields are ABSENT when nothing measured the file, which is not the same as clean.
+
+  Fix (a) AND fix (b) both landed. The envelope reports (a); the verb description now carries the general rule (b) — "every op re-renders the whole file from the store, so ANY hand-edit the store does not model is reverted, the preamble especially, since no verb writes it" — and op:amend_headline's own warning now says it is an instance of that rule rather than a headline-only quirk.
+
+  Why a second render rather than a diff of the one already there: the existing dry render runs AFTER the mutation, so it differs from the file by the change the call was made to write. Diffing that flags every healthy write. Raw mtime is not a substitute either — the sequence writes the store and THEN the file, so the file is always the newer of the two.
+
+  Reports, never refuses. A refusal here is the render_gate_unmet shape: one hand-edit anywhere bricks every op on the project.
+
+  Measured, and worth knowing: the FIRST write after a migration reports drift on every project, because the file still carries the author's bytes wherever the store keeps a canonical form — a `|---|---|` table separator renders as `| --- | --- |` (ANTS-3832). That is a true positive; the publish really does overwrite them. It fires once and goes quiet, because the write that reports it also republishes the file.
+
+  src/roadmapwrite.cpp (step 1b + driftLines/externalDrift), src/roadmaprender.{h,cpp} (a `contentOut` out-param so the dry render hands back its bytes), src/remotecontrol_roadmap_query.cpp (rcRoadmapWriteFields — the single emission point all ten op sites route through), src/claudeintegration.cpp (descriptions). Tests: RoadmapWriteHalf.Ants4462ReportsDiscardedExternalEdits + Ants4462DryRunUsesTheFutureTense, both run RED against pre-fix source (assertion failures, not compile failures) before the fix. Suite 11 → 13.
 
 - 📋 [ANTS-4466] **`op:annotate` reports `to_status` from the stale file read, not from the rendered result.**
   After a `git checkout --` reverted ROADMAP.md while the store kept a flip,
@@ -35770,7 +35794,7 @@ happen.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: roadmapparse.
 
-- 📋 [ANTS-4477] **Commit ee33b664 is mislabelled — a chore message carrying the 2026-08-18 triage, and the decision to rewrite it is the user's.**
+- 💭 [ANTS-4477] **Commit ee33b664 is mislabelled — a chore message carrying the 2026-08-18 triage, and the decision to rewrite it is the user's.**
   ee33b664 reads "chore: re-copy the commits.md mirror after CFG-0143 loop 2
   upstream" and contains that one-line mirror re-copy PLUS 381 lines of
   ROADMAP.md — the whole ANTS-4462..4476 triage. The content is correct and
@@ -35807,6 +35831,11 @@ happen.
   **Layman:** One saved change in the project history has the wrong description attached; fixing it means editing history that is already published, so it needs a decision first.
   Kind: chore.
   Source: in-session-2026-08-18.
+  Closed no-action (2026-08-19, user decision). Commit ee33b664 keeps its `chore:` subject.
+
+  The content is correct and already pushed. Amending would rewrite published history for a label, and the label is the only thing wrong. Recorded here so a later ledger audit that notices the mismatch finds the decision instead of re-opening it.
+
+  The habit the item was really about stands: a hook-refused commit leaves the index STAGED, so `git status` before staging anything else, or the next commit swallows it.
 
 ## 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 second triage
 

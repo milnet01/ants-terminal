@@ -5,7 +5,9 @@
 #include "roadmapparse.h"
 
 #include <QFile>
+#include <QHash>
 #include <QSet>
+#include <QStringView>
 
 #include <algorithm>
 
@@ -38,6 +40,53 @@ QStringList fileIds(const QString &path) {
 // the problem, the names are the entry point into it.
 constexpr int kNameCap = 25;
 
+// ANTS-4462 / ANTS-4465 — how far `have` (the file on disk) has drifted from
+// `want` (what the store alone renders), counted in lines.
+//
+// A MULTISET of lines, not a diff. Two reasons, and neither is about saving
+// effort. An LCS over a 20k-line file is O(n·m) and this runs on every write.
+// And the answer a caller needs is "how much text is at stake", which a
+// multiset gives exactly: a line the render MOVED is present on both sides and
+// scores nothing, so a reflow does not read as data loss, while a line only the
+// file has (a hand-edit about to be overwritten) and a line only the render has
+// (a hand-DELETION about to be undone) each score one. Both directions count,
+// because a deletion silently reverted is the same class of surprise as an
+// insertion silently dropped, and reporting only one arm would hand a session
+// that hand-deleted a stale line a clean bill of health.
+int driftLines(const QString &have, const QString &want) {
+    QHash<QStringView, int> tally;
+    const QList<QStringView> wantLines = QStringView(want).split(u'\n');
+    tally.reserve(wantLines.size());
+    for (QStringView l : wantLines)
+        ++tally[l];
+
+    int drift = 0;
+    for (QStringView l : QStringView(have).split(u'\n')) {
+        const auto it = tally.find(l);
+        if (it != tally.end() && it.value() > 0)
+            --it.value();
+        else
+            ++drift;   // the file holds it; the render will not reproduce it
+    }
+    for (auto it = tally.cbegin(); it != tally.cend(); ++it)
+        drift += it.value();   // the render holds it; the file had lost it
+    return drift;
+}
+
+// The whole check, over the files a render would rewrite. A file that does not
+// exist yet is one the render is about to CREATE, and creating a file destroys
+// nothing — so it is skipped rather than counted as wholly discarded.
+int externalDrift(const QHash<QString, QString> &preImage) {
+    int drift = 0;
+    for (auto it = preImage.cbegin(); it != preImage.cend(); ++it) {
+        QFile f(it.key());
+        if (!f.open(QIODevice::ReadOnly))
+            continue;
+        drift += driftLines(QString::fromUtf8(f.readAll()), it.value());
+    }
+    return drift;
+}
+
 }  // namespace
 
 Result commitAndRender(RoadmapStore &store, qint64 projectId,
@@ -65,6 +114,53 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         return r;
     };
 
+    // Step 1b — ANTS-4462 / ANTS-4465, the PRE-IMAGE. Render the store as it
+    // stands, before the mutation touches it, and measure how far the file on
+    // disk has drifted from it.
+    //
+    // Why a second render and not a diff of the one below: the step-3 render
+    // runs AFTER the mutation, so its text differs from the file by the change
+    // this call was made to write. Diffing that would flag every healthy write.
+    // The pre-image differs from the file by nothing BUT what arrived from
+    // outside the store — a hand-edit (ANTS-4465) or a store that fell behind
+    // the file (ANTS-4462's data-loss half) — which is the one question worth
+    // asking a moment before the publish overwrites it.
+    //
+    // Nor is raw mtime a substitute: this sequence writes the store and THEN
+    // the file, so after every healthy write the file is the newer of the two
+    // and an mtime test reports stale on every project.
+    //
+    // Diagnostic only. A failure here is swallowed — `error` is deliberately
+    // not passed, so a pre-image that cannot be built leaves the caller's own
+    // error channel clean — and the write proceeds with
+    // `externalEditsChecked:false`, which reads as "nobody looked" rather than
+    // as "clean". Refusing on drift was considered and rejected: it is the
+    // render_gate_unmet shape, where one hand-edit anywhere bricks every op on
+    // the project, and these two items ask to be TOLD, not blocked.
+    int drift = 0;
+    bool driftChecked = false;
+    {
+        RoadmapRender::Options pre;
+        pre.liveRoadmapPath = liveRoadmapPath;
+        pre.dryRun = true;
+        QHash<QString, QString> preImage;
+        if (RoadmapRender::render(store, projectId, projectRoot, pre, nullptr, &preImage)
+            && !preImage.isEmpty()) {
+            drift = externalDrift(preImage);
+            driftChecked = true;
+        }
+    }
+
+    // Every Outcome that leaves this function carries the measurement, so the
+    // envelope sees it whichever render produced the rest of the fields.
+    const auto publish = [&](const RoadmapRender::Outcome &o) {
+        if (!outcome)
+            return;
+        *outcome = o;
+        outcome->externalEditsChecked = driftChecked;
+        outcome->externalEditLines = drift;
+    };
+
     // Step 2.
     if (!mutate(error))
         return abort(Result::StoreFailed);
@@ -82,8 +178,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // Set before the gate check: GateUnmet's envelope is built from
     // `gateFailures`, so the refusal path needs the Outcome as much as the
     // success path does.
-    if (outcome)
-        *outcome = *dry;
+    publish(*dry);
     if (!dry->gateFailures.isEmpty()) {
         if (error && error->isEmpty()) {
             *error = QStringLiteral("the roadmap render refuses this project: %1 open "
@@ -146,8 +241,8 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     opts.dryRun = false;
     const auto published =
         RoadmapRender::render(store, projectId, projectRoot, opts, error);
-    if (published && outcome)
-        *outcome = *published;
+    if (published)
+        publish(*published);
     if (!published || !published->committed) {
         if (error && error->isEmpty()) {
             *error = published

@@ -214,6 +214,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log now reports the hand-edits its re-render overwrote (ANTS-4462, ANTS-4465)**
+  On a migrated project every roadmap_log op rewrites the whole ROADMAP.md
+  from the store, so anything typed into the file by hand — the preamble
+  above the first heading especially, which no verb can write — was
+  silently put back. The write now renders the store as it stood before
+  the change, compares that against the file, and reports
+  `discarded_external_edits` with a line count (`would_discard_*` on a
+  dry run). It reports rather than refuses, so one hand-edit cannot block
+  every roadmap op on a project. Expect one true report per project on
+  the first write after a migration, where the render canonicalises
+  formatting the migration kept verbatim.
+
 - **A roadmap migration no longer overwrites a stored field with a value it invented** (ANTS-4498)
   Where a roadmap file does not declare an item's `Kind:` or `Source:`,
   the import supplies a default. Re-running a migration then wrote that
