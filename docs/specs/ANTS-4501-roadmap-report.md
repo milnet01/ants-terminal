@@ -1,6 +1,6 @@
 # ANTS-4501 — Roadmap report: totals, lifecycle and throughput per period
 
-**Status:** spec draft (2026-08-19).
+**Status:** accepted — review-contract loops 1–2 folded, converged by cap (2026-08-19).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-4501 (user-request-2026-08-19).
 
