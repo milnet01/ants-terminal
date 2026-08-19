@@ -388,6 +388,15 @@ so ("legitimately markdown-served", `src/roadmapsource.cpp`). A
 `github-task-list` or `pass-headings` project therefore migrates `ok: true` with
 faithful counts and is still answered from markdown.
 
+**Under `dry_run` it is still the format answer**, and reads as *would this
+project be served from the store if this run committed*. It does **not** go
+`false` merely because nothing was committed. This is deliberately the opposite
+posture to `project_id` two paragraphs up, and the two differ because their
+subjects do: an id is a row that either exists or does not, and a rolled-back
+row does not exist — a dialect is a property of the file on disk, which a
+rollback cannot change. A preview whose value flipped on commit would answer
+nothing a caller could act on before committing, which is what a preview is for.
+
 **Added 2026-08-19 (ANTS-4490).** Vestige migrated 1026 items, got a healthy
 envelope, and kept being served from markdown; the only tell was the ABSENCE of
 unrelated fields on later `roadmap_query` responses, which no caller notices.
@@ -420,6 +429,12 @@ is bounded at **200 entries**, on `notes[]`'s pattern and for its reason, with
 `updated_items_truncated` on breach; the cap is applied where the entries are
 collected, so nothing unbounded accumulates in `Outcome`. `fields[]` carries the
 store's column names, in the order the load wrote them.
+
+`id` is the **stored** id — `it.id.isEmpty() ? cur->id : it.id`, the form
+`Loader::applyPlanFields()`'s `field_conflict` note already uses. A matched item
+whose source bullet carries no id is a real state (§ 2.6.1's re-match pairs by
+headline and order), so collecting the plan's id alone would emit an entry with
+an empty `id` that no caller can act on and no test can match.
 
 **Added 2026-08-19 (ANTS-4479).** A dry run reporting `items_updated: 3` gave no
 ids and no fields, so the reporter could not tell a reconciliation of real drift
@@ -503,8 +518,19 @@ at 200) and `int sectionsUnchanged`. **The load is the only layer that can know
 either**: `Loader::applyPlanFields()` already holds each changed `f.column` and
 the item's id, and `Loader::matchSections()` already distinguishes a section it
 wrote from one it matched — so both are collected where the decision is made,
-never re-derived by the verb. Both join ANTS-3765 INV-13's dry-run/real-run
-comparison, which is stated over the whole `Outcome` rather than a list.
+never re-derived by the verb.
+
+**`updated_items_truncated` is not a third member.** The verb derives it from
+what it was handed — true exactly when `items_updated` exceeds the array's
+length — and a stored bool would be a second answer to a question those two
+values already settle.
+
+**Only `sectionsUnchanged` joins ANTS-3765 INV-13's dry-run/real-run
+comparison**, which compares the two `Outcome`s "count by count, excluding
+`projectId`". `updatedItems` is not a count and that invariant's wording does
+not reach it, so **its parity is asserted here instead**, at the envelope, by
+INV-3 — which is where this document's contract lives, and costs ANTS-3765 no
+wording change.
 
 `store_backed` and `markdown_rewritten` are **not** `Outcome` fields and are the
 two exceptions to the no-recompute rule: neither is a tally. The first is read
@@ -652,7 +678,8 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   cannot exhibit both cases: dry over an empty store (expect `0`), the real run
   (expect non-zero), then a second dry run over the now-migrated root (expect
   the *same* id the real run reported). The third is the leg three projects
-  reported and the one the pre-amendment code passes only by reporting `0`.
+  reported, and the one the pre-amendment code **fails**: it answers `0` where
+  the real id is expected.
 - **INV-4** — No refusal in § 2.5 **adds or changes** a row. *Test:* feature
   test — snapshot `SELECT COUNT(*)` on `project`, `section`, `item`, `element`
   and `history`, drive each refusal `run()` can reach (steps 1–8), re-snapshot,
@@ -736,11 +763,19 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   total (>200); a fixture whose note `detail` would exceed 2048 characters
   yields a `detail` of exactly 2048 ending in the ellipsis. Both legs are needed
   because the two bounds are independent — capping entries bounds no bytes.
-- **INV-11** — This verb writes nothing under `req.projectRoot`, and
+- **INV-11** — This verb writes no **source** file under `req.projectRoot`, and
   `markdown_rewritten` says so. *Test:* feature test — hash every file under the
-  fixture root before `run()` and again after a successful **non-dry** run,
-  assert every hash unchanged (`ROADMAP.md` included), and assert
-  `markdown_rewritten` is `false` on both the dry and the real envelope.
+  fixture root before `run()` and again after a successful **non-dry** run;
+  assert every pre-existing file's hash is unchanged (`ROADMAP.md` included) and
+  that the **only** new path is the store, then assert `markdown_rewritten` is
+  `false` on both the dry and the real envelope.
+  <br>**Not "every hash unchanged", because § 6's fixture puts the store under
+  that same root and the verb creates it** — the flat form reds against a correct
+  implementation, on the one file the fixture REQUIRES the verb to write.
+  Excluding `*.sqlite*` from the hash set instead would hide a regression in the
+  store's own location, which is what INV-6 and INV-9 rest on. The `-wal` /
+  `-shm` sidecars need no exclusion: INV-9 establishes that SQLite removes both
+  when `run()` closes its connection, so neither exists when the test re-hashes.
   <br>*Breaks when:* a later change renders at migrate time — which is a live
   proposal (ANTS-4483), and this is where it should land as a red test rather
   than as an unexplained whole-file reflow in somebody else's commit.
@@ -749,16 +784,24 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   `store_backed` is `true` and `RoadmapSource::migratedProject()` returns the
   project id afterwards. (b) a `github-task-list` roadmap: `ok` is still `true`
   with non-zero counts, `store_backed` is `false`, and `migratedProject()`
-  returns `nullopt`.
+  returns `nullopt`. (c) both roots again under `dry_run:true`, reporting the
+  same two values.
   <br>**Leg (b) is the one that matters** — it pins that a *successful*
   migration whose project is not store-backed says so in the envelope, which is
   the state Vestige could only detect by noticing which fields a later
-  `roadmap_query` response did not carry.
+  `roadmap_query` response did not carry. **Leg (c) pins the dry-run posture**
+  § 2.4 states, and it is the one an implementer is most likely to build the
+  other way.
 - **INV-13** — `updated_items` names exactly the items `items_updated` counted,
   with the fields that changed. *Test:* feature test — migrate a fixture, edit
   two bullets in the source (one `status`, one `headline`), migrate again, then
   assert `items_updated == 2`, that `updated_items` carries those two ids and no
   others, and that each entry's `fields` is exactly the one column changed.
+  <br>**A second leg pins the bound**, on INV-10's pattern: a fixture whose
+  re-run changes more than 200 items yields exactly 200 entries,
+  `updated_items_truncated: true`, and an `items_updated` carrying the true
+  total. One bound rather than `notes[]`'s two — an entry here is an id and a
+  short column list, so capping the entries bounds the bytes.
   <br>*Breaks when:* the array is filled from the plan rather than from the write
   path — every matched item would then appear, and the array would say nothing
   the count does not.
@@ -869,13 +912,14 @@ trivially (no such TU); INV-2(a) and INV-3..INV-10 fail to compile against a
 tree with no `RoadmapMigrateVerb::run()`, which is the must-fail-first proof
 for a new surface.
 
-**The 2026-08-19 amendment's four legs are proved red the same way, against the
-shipped code rather than an empty tree.** INV-3's third run and INV-12's leg (b)
-red on the value (`project_id: 0` where the real id is expected; a missing
-`store_backed`); INV-11 and INV-13 red on the absent field. A fixture root
-carrying a `github-task-list` roadmap is new and INV-12(b) is its only consumer.
-The `ants-v1` fixture already carries sections, so INV-7's `sections_unchanged`
-leg needs no new fixture.
+**The 2026-08-19 amendment's five legs are proved red the same way, against the
+shipped code rather than an empty tree.** INV-3's third run reds on the value
+(`project_id: 0` where the real id is expected); INV-7's `sections_unchanged`
+leg, INV-11, INV-12 and INV-13 red on an absent field. A fixture root carrying a
+`github-task-list` roadmap is new, and INV-12's legs (b) and (c) are its only
+consumers. The `ants-v1` fixture already carries sections, so INV-7's leg needs
+no new fixture; INV-13's second leg needs one that changes more than 200 items,
+which is generated rather than hand-written.
 
 Fixture: a `QTemporaryDir` project root carrying a small hand-written
 `ants-v1` `ROADMAP.md`, canonicalised before it is passed (§ 2.3's precondition,
@@ -914,10 +958,12 @@ remaining legs against the declared-but-unimplemented seam.
   `roadmapsource` entry ANTS-3825 already owes it.
 - **[ANTS-3765](ANTS-3765-roadmap-migration-load.md)** — `Outcome` gains
   `updatedItems` and `sectionsUnchanged` (§ 2.4). Recorded here rather than by
-  editing that spec's declaration block, on the precedent ANTS-4065 § 2.6 set
-  when it added `itemsUpdatedGoverned` the same way. Its INV-13 is stated over
-  every count and needs no wording change; the load's own feature test gains
-  both fields where it compares a dry run against the real one.
+  editing that spec's declaration block, on the precedent ANTS-4065 set when it
+  added `itemsUpdatedGoverned` the same way. **Its INV-13 compares counts**, so
+  `sectionsUnchanged` joins it and the load's own feature test gains that field
+  where it compares a dry run against the real one. `updatedItems` is not a
+  count and stays outside it — INV-3 asserts that array's parity at the
+  envelope instead — so no wording change is owed to that invariant.
 - **The verb's `tools/list` description** gains the four new response fields.
   ANTS-4482 and ANTS-4490 put the same facts there in prose on 2026-08-18
   (commit 591c1c52); the fields are what a caller can branch on, and the
@@ -937,6 +983,7 @@ remaining legs against the declared-but-unimplemented seam.
 
 | Loop | Date | Lanes | Findings (C/H/M/L/I) | Resolution |
 |---|---|---|---|---|
+| 4 | 2026-08-19 | 3 cold `review-lane`, one byte-stable shared-context file, scrubbed doc copy, packet carrying 13 verbatim source windows | **Q1 1 · Q2 3 · Q3 3 · Q4 1** — verified 8, dismissed 1 | **Eight verified, eight fixed. First loop of a NEW run, gating the 2026-08-19 envelope amendment** (§ 2.4 + § 3, for ANTS-4478 / 4479 / 4482 / 4490); the 2026-08-06 run closed at its cap on loop 3. Q-counts, not the retired C/H/M/L/I scale. **All three lanes independently found the same three defects**, which is the strongest signal any loop of this document has produced, and every one of them landed on text this amendment ADDED. **The worst is INV-11**: it told the implementer to "hash every file under the fixture root … assert every hash unchanged", while § 6's fixture puts the store "inside that same temp dir" and has the verb create it — so the new invariant reds against a correct implementation, on the one file the fixture REQUIRES the verb to write. Restated as *no pre-existing file changed and the only new path is the store*, with the `*.sqlite*` exclusion refused by name because it would hide a regression in the store's own location. **The Q1 was a false claim about a sibling spec**: § 2.4 and § 7 both said ANTS-3765 INV-13 is "stated over the whole `Outcome`", and that invariant reads "count by count, excluding `projectId`" — so `updatedItems`, a `QVector`, joined nothing and its dry-run parity was asserted nowhere. Now: `sectionsUnchanged` joins INV-13 as a count, `updatedItems` is asserted at the envelope by INV-3, and ANTS-3765 needs no wording change. **The third was `store_backed`'s dry-run value**, where the field's stated QUESTION ("will `roadmap_query` … serve this project from the store after this call?") and its stated FORMULA (`plan.sources[0].format == "ants-v1"`) answered differently under `dry_run`, one paragraph after the amendment settled exactly that shape for `project_id`; two builders would have built `true` and `!dry_run && …`. Stated explicitly, with the asymmetry against `project_id` argued from their subjects — a rolled-back row does not exist, a dialect on disk is unchanged by a rollback — and pinned by a new INV-12 leg (c). **Three more, one per lane.** `updated_items[].id` did not say WHICH id, where `applyPlanFields()` already branches `it.id.isEmpty() ? cur->id : it.id`, so a matched id-less bullet would have emitted an unusable empty id. `updated_items_truncated` was named nowhere in the `Outcome` extension list nor in the two stated exceptions, so one builder would have added a third member and another derived it — now explicitly derived by the verb. And § 3 said the third `project_id` leg is "the one the pre-amendment code passes only by reporting `0`" while § 6 says it reds, which would have had an implementer weaken the assertion back to the defect ANTS-4478 reported. **Dismissed on materiality:** § 2.4 attributes `defaulted_fields` to ANTS-4065 § 2.6, which is `itemsUpdatedGoverned`'s section — true-but-inert provenance, and the lane that raised it said so itself. **Two lane open questions, and only one resolved clean:** INV-12 leg (b) needs a `github-task-list` roadmap to yield non-zero counts, and `tests/features/roadmap_migrate_read/fixtures/archives/declaredformat/` already carries one with live bullets; the second — that the `updated_items` bound had no invariant while `notes[]`'s equivalent has INV-10 — was real, and is the run's one **[Q4]**: a stated bound with no falsifiable surface. It became INV-13's second leg, counted rather than filed as an open question. Doc 942 → 988 lines. |
 | 3 (cap) | 2026-08-06 | 3 cold `general-purpose`, same packet rebuilt, no prior-loop briefing | C 1 · H 4 · M 8 · L 11 — **24 verified, 4 dismissed** | All 24 fixed; **converged by cap, nothing deferred**. Dimension tally: dim 15×8, dim 4×5, dim 7×5, dim 6×3, dim 5×2, dim 1×1, dim 9×1, dim 10×1, dim 12×1, dim 13×1. **Origin: almost entirely loop 2's own collateral** — the second consecutive collateral-dominant loop, which is why the run stops at the cap rather than asking for a fourth. The CRITICAL is the clearest case: loop 2 added two refusals that *presuppose existing rows* (a re-run changing this root's slug or name), which made INV-4's "the store holds no `project` row" false for a correct implementation — restated as "no refusal **adds or changes** a row", with the two handler-level refusals `run()` cannot reach named as covered by inspection. Three cross-references pointed at invariants saying the opposite of what cited them: § 2.3.1 said "INV-6 is stated against rows" when INV-6 is deliberately about file existence and INV-4 is the row one; § 2.2 said "INV-8 locks it" of a property loop 2 had just removed from INV-8; § 2.5's table filed the re-run name check under step 1 when the sequence performs it at step 6, where the row it reads exists. All three lanes independently found the **stamp origin** contradiction — § 2.3 said "taken once, at step 7" while step 0b passes a stamp *into* `run()` — which would have put the clock read back inside `run()` and destroyed the reproducibility the seam exists for; the stamp now has its own § 2.3.2 and the handler owns the read. Two more fixtures could not have run as written: **INV-5**'s `history_rows > 0` guard is unreachable on a first-ever load, because `Loader::recordHistory()` is reached only from the field-update path (`src/roadmapmigrateload.cpp`) — the fixture is now a re-run over an edited source; and **INV-9** asserted 0600 without controlling the umask, so it passed vacuously under `umask 077` — it now sets `umask(022)` for the call. Also closed: step 6's two lookups conflated "no row" with an SQL error (now `store_failed`, the split `migratedProject()` already makes); INV-1's "`//`-leading" skip would have redded against the two *indented* member comments that actually carry the mentions; the `notes[]` caps shipped with no invariant (now INV-10); `run()`'s connection teardown was load-bearing for INV-9 and unstated (`~RoadmapStore()` does `removeDatabase()`); and § 4 never named its deliberate departure from ANTS-3765 § 4's one-connection-for-ten-projects shape. **Dismissed on verification:** the "4 MiB" comment in `roadmapstore.cpp` for the **third** time (it is ANTS-3761 INV-12's export RSS budget, not the cache size — recorded here so a fourth run does not spend on it); `kDefaultHistoryCapBytes` unconfirmed (`250LL * 1024 * 1024`, `src/roadmapstore.h:23`); `auditautofix.cpp` unverified (opened, it ships the expression); whether `mcp-tools.md` carries a `dry_run` support list (it does, and § 7's edit has a target). **New id filed rather than left as a promise:** ANTS-3857, re-rooting a moved project. Doc 653 → 740 lines. **Recommendation on exit: split at § 2's seams before implementation if this spec is revisited** — three loops of lanes have flagged its length, and roughly a third of the body is why-this-shape justification rather than contract. |
 | 2 | 2026-08-06 | 3 cold `general-purpose`, same packet rebuilt against the edited doc, no prior-loop briefing | C 0 · H 4 · M 7 · L 13 — **24 verified, 3 dismissed** | All 24 fixed. Dimension tally: dim 15×7, dim 5×6, dim 4×5, dim 6×3, dim 1×2, dim 9×2, dim 10×1, dim 13×1, dim 2×1. **Zero CRITICAL — loop 1's structural defects did not resurface.** **Origin split: ~14 fix collateral vs ~5 draft defects**, which is Phase 5's collateral-dominance trigger; answered with a consolidation sweep rather than only reconciliation — § 6's restatement of § 2.1.1's ANTS-3856 rationale cut to a pointer, INV-4's restatement of § 2.5's WAL wording cut, and an unbacked "small enough not to need the offload path" claim deleted rather than given a number it did not have. Two fixtures could not have run: **INV-9** checked `-wal`/`-shm` permissions *after* `run()` returns, but SQLite removes both on a clean last-connection close (verified by writing and closing a WAL db — only `t.db` survives), so it is narrowed to the store file, the sidecar half left to ANTS-3756 INV-17 which already owns it; **INV-8** claimed the no-restart property but tested `migratedProject()`, which never touches the `roadmapStoreOrNull()` cache where that property lives — narrowed to what the fixture falsifies, with the stronger claim attributed to ANTS-3793. Loop 1's own step 0a/0b was **wrong**: `CallerCwdContract::Required` already refuses an empty `caller_cwd` before the handler runs, and `ResolvedRoot::Source` supplies the discriminator loop 1 said had to be checked by hand — rewritten against `src/resolvedroot.h`, which also supplied the unstated canonical-root precondition three later steps rest on (it uses the same `QFileInfo::canonicalFilePath()` as `migratedProject()` and `registerProject()`, so the forms agree — but silently). Also closed: step 6 was missing the re-run slug-change condition its own prose required; the symmetric `project_name` re-run case was undecided; whether a caller-supplied `export_slug` is slugified or validated verbatim was ambiguous, and INV-6 tested nothing under one reading; the `notes[]` cap bounded entries but not bytes (`Note::detail` is an unbounded `QString`) — now 200 entries × 2 KiB; concurrent lock contention had no stated outcome. **Dismissed on verification:** INV-8's three-argument `migratedProject()` call "would not compile" (both trailing params default to `nullptr` in `src/roadmapsource.h`); the `**Layman:**` line's placement (blank-line separated from the header block, matching ANTS-3766, and `spec_query` parses); no-TOC, dismissed a second time on the same evidence — 0 of 4 sibling specs carry one. **Corrected mid-fix by verification, not by a lane:** this loop's own fix first named a `ANTS_SOURCE_DIR` define for INV-1's source scan; the define that exists on `test_core` is `ANTS_SRC_DIR` (`CMakeLists.txt:2485`), and INV-1 now names that one. Doc 576 → 650 lines despite the consolidation — the growth is contract, but § 5.3's yardstick is now the live concern and loop 3 is the last. |
 | 1 | 2026-08-06 | 3 cold `general-purpose`, one shared byte-identical packet | C 3 · H 4 · M 6 · L 10 · I 1 — **23 verified, 3 dismissed** | All 23 fixed. Dimension tally: dim 15×5, dim 5×5, dim 4×3, dim 7×3, dim 10×3, dim 1×2, dim 6×2, dim 9×2, dim 12×2, dim 8×1, dim 13×1. **All three lanes independently led on the same defect**, which is what makes the tail credible: § 6 said INV-2..INV-8 were "driven through the registered handler" and then that the handler resolves `defaultPath()` internally, so six invariants had no runnable test surface and an implementer following ¶1 would have migrated into the user's real store — reproducing ANTS-3856. Fixed by § 2.1.1's `RoadmapMigrateVerb::run(storePath, req)` seam, on the precedent ANTS-3793 § 2.2 set for `storeFor()`. Two more the draft got flatly wrong: INV-4 claimed the store is "byte-unchanged" after *every* refusal, false for the two that follow `store.open()` (which creates the file and both WAL sidecars) — restated at row level; and `dry_run` was never reconciled with `mcp-tools.md`'s "returns before any disk write", which it violates by opening the store — now § 2.3.1, stated as a bounded deviation with the argument for why a throwaway store would make the preview *wrong* rather than merely different. Also added: a `slug_collision` pre-check (`export_slug` is `UNIQUE` and the default is derived, so two roots slugifying alike collided into the catch-all), § 2.6's trust boundary + INV-9 (`specs.md` § 5.4 requires it and the draft had none), a 200-entry `notes[]` cap, and the 1 s/project ceiling ANTS-3765 § 4 sets — the draft had quoted only the 60 s bridge timeout, 60× looser. **Dismissed on verification:** no-TOC (no sibling spec carries one and `specs.md` § 3's required order omits it); a claimed-stale "4 MiB" comment in `roadmapstore.cpp` (lane misread — the 4 MiB is ANTS-3761 INV-12's export RSS budget, not the cache size); `features;fast` not being a real label (it is — `CMakeLists.txt:1001`). **Found during packet construction, before a lane was spent:** nothing. **Found by 4b's sweep, not by a lane:** the `**Layman:**` line still promised a preview that writes nothing, contradicting the § 2.3.1 just added, and two sub-subsections used `###` where siblings use `####`. **Executed rather than read** (4a step 2): the `export_slug` `CHECK` against real SQLite (`Ants_Terminal` fails both clauses, `ants-terminal` passes both, empty fails — so INV-6's fixture is valid), and `QDateTime::currentDateTimeUtc().toString(Qt::ISODate)` compiled against Qt 6, returning `2026-08-06T20:22:28Z`, which `isIsoZStamp()`'s regex accepts. Doc grew 318 → 575 lines; watch it, and split at § 2's seams if loop 2 is still finding structural defects. |
