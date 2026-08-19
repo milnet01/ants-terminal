@@ -36910,6 +36910,75 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Vestige), split from ANTS-4493 on 2026-08-19.
   Lanes: mcp, roadmap-store.
 
+- 📋 [ANTS-4501] **A roadmap report: totals, open/closed/in-flight, and throughput per day, week, month and year.**
+  Asked for: total items; closed in total and for the year, month, week and
+  day; still open; in progress; added for the year, month, week and day;
+  plus any other metric worth having.
+
+  **The blocker is that the roadmap does not record WHEN anything happened,
+  and that is the whole design question.** Measured 2026-08-19 rather than
+  assumed:
+
+    - The item table already has `created`, `last_modified` and `shipped`
+      columns (date-only, nullable, `YYYY-MM-DD` CHECKed). putItem() binds
+      them and readItem() reads them back, so the round trip works.
+    - **Nothing in src/ ever writes them.** No writer binds a value; the
+      migration excludes them by design, because a markdown roadmap cannot
+      express them and a re-run must never clear a value a human set
+      (ANTS-4065 INV-3). So today they are NULL on every row.
+    - The history table does carry timestamped transitions, including
+      status, so "closed this week" is derivable from it — but a FIRST
+      migration writes no history at all (recordHistory() is reached only
+      from the field-update path), so every project's pre-migration
+      history is simply absent. For most projects that is the entire
+      backlog.
+
+  So the honest first version answers the point-in-time questions exactly
+  and the time-bucketed ones only from the point the store started being
+  written. The spec has to choose between: start stamping the three
+  columns on every write (cheap, correct going forward, blind to the past);
+  derive from history (no new writes, same blind spot, more work per
+  query); or backfill from git — the roadmap and its rotated archives are
+  version-controlled, so a one-off walk of `git log` over ROADMAP.md can
+  date most closures retroactively. That third option is the only one that
+  can answer "closed this year" for work already done, and it is the part
+  most likely to be underestimated.
+
+  Additional metrics worth carrying, in rough order of usefulness:
+
+    - **Open by status and by kind** — planned vs in-progress vs
+      considered, and fix/feature/doc/chore. Says where the work actually
+      is, not just how much.
+    - **Net change per period** (added minus closed). A backlog growing
+      faster than it drains is the number that matters, and neither half
+      alone shows it.
+    - **Age of open items** — median, oldest, and a count past 90 days.
+      The "is anything stuck" signal.
+    - **Time to close** — median days from first appearance to shipped,
+      for items where both are known. Pair it with the count it was
+      computed from, or a median over four items reads as a trend.
+    - **Per-project breakdown.** The store is machine-global and holds 14
+      projects, so a cross-project view is something only the store can
+      give and no single ROADMAP.md can.
+    - **Per-lane counts**, since lanes are already a column.
+    - **Blocked-by-format counts** — open items with no Kind or no Layman
+      line, which is exactly the set the render gate refuses on, so this
+      doubles as a pre-flight for ANTS-4483.
+    - **Store vs markdown divergence** per project, once ANTS-4488 lands.
+
+  Surface: an op on `roadmap_query` rather than a new verb — it is a read
+  over the same rows, and it should be one cheap call with no notes array
+  and no write plan. Worth a `since` argument so a session can ask for one
+  window instead of all of them.
+
+  Needs a spec: the time-source decision above is a contract other things
+  will bind to, and a backfill from git is a one-way pass over
+  version-controlled files.
+  **Layman:** One command that answers "where does the roadmap stand?" — how many items there are, how many are done, how many are still open, and how many were finished or added today, this week, this month and this year.
+  Kind: feature.
+  Source: user-request-2026-08-19.
+  Lanes: mcp, roadmap-store.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
