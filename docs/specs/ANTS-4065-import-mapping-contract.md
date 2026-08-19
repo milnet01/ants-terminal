@@ -643,8 +643,13 @@ convention.
 value is a path reference when:
 
 > **Split the value on whitespace. A TOKEN is a path reference when it
-> contains `/` OR matches `\.[A-Za-z0-9]{1,5}$`. The value is a path reference
-> when any of its tokens is.**
+> contains `/` AND is not an ID CITATION. The value is a path reference when
+> any of its tokens is.**
+>
+> **An ID CITATION** is a token matching the roadmap id grammar
+> (`RoadmapParse::idTokenPattern()`), optionally followed by one or more
+> `/`-separated numeric continuations — the form a bullet uses to cite a pair
+> of sibling ids, `DOOM-0057/0081`.
 
 **The unit is the whitespace-delimited token, not the value** — corrected
 2026-08-10, having twice been left undefined. A `Source:` value is frequently a
@@ -655,9 +660,62 @@ token, or the last token before a parenthetical, and the three classify
 different values. Tokenising first removes the question, and it is also what
 makes the multi-path case work without a second rule.
 
-`user-2026-08-08` has no slash and no extension in any token;
-`rpmlint.log warnings` has one qualifying token; and
-`docs/specs/ANTS-3863-pre-read-dispatch.md` qualifies on both counts.
+`user-2026-08-08` has no slash in any token; `rpmlint.log warnings` has none
+either and is prose under this rule; `DOOM-0057/0081` has one but is an id
+citation; and `docs/specs/ANTS-3863-pre-read-dispatch.md` qualifies.
+
+**AMENDED 2026-08-19 (ANTS-4502) — the extension disjunct is deleted, and an id
+citation is never a path.** The original rule accepted a token on either a `/`
+or a trailing `\.[A-Za-z0-9]{1,5}$`. Measured against two live corpora after
+ANTS-4481 shipped, that second half is where essentially all of this
+section's output comes from, and essentially none of it is a real finding.
+
+- **Claude Code config**, `roadmap_migrate dry_run` 2026-08-19: **11 of 12
+  notes** are bare filenames, and **every one of the five distinct filenames
+  exists** — `roadmap-format.md` at `standards/roadmap-format.md`,
+  `charters.md` at `draft/skills/charters.md`, and so on. The resolver tries
+  the project root and stops, so a file one directory down reads as missing.
+- **DOOM Ants**, a clean migration the same day: **15 of 16 notes** are this
+  class and **not one names a path at all** — `§4.4`, `~7.2ms`, `(0.6.0`,
+  `Ultra`, `DOOM-0057/0081`, and two fragments of an English sentence. A
+  section mark, a duration and a parenthesised version all end in `.` plus one
+  to five alphanumerics.
+
+So the note class runs at 92–94% false on both, which buries the one
+`field_conflict` that mattered — the signal-to-noise failure ANTS-4481 was
+filed for, one layer down.
+
+**A bare filename in a sentence is a MENTION, not a claim that the file sits at
+the project root**, and that premise is the only thing the old disjunct rested
+on. `Source:` is provenance prose by design (§ 3.5.3's vocabulary is
+hyphenated tokens and dates); `Evidence:` is the field `roadmap-format.md`
+§ 3.5 designates for paths, and it keeps its unconditional validation. A
+reference that means a path says so with a separator.
+
+**Walking the tree for a unique match was considered and rejected.** It is
+undefined on exactly the corpus that motivates it: in that project
+`documentation.md` and `commits.md` each match twice, the second under a
+`backups/` directory. An existence-only walk would avoid the ambiguity but
+costs a filesystem scan per migration to recover a signal the field was never
+carrying.
+
+**What this gives up, stated.** A `Source:` naming a genuinely missing file
+with no directory part is no longer reported. That is the accepted price: the
+alternative is a note class that is wrong nine times in ten, which is not a
+report.
+
+**The id-citation clause is the second half, and it is not decoration.** The
+no-separator rule alone leaves `DOOM-0057/0081` — an id PAIR reads as a
+two-segment path, and it is the specific trap a roadmap sets. The grammar is
+already stated once, in `RoadmapParse::idTokenPattern()`; this reuses it rather
+than writing a second id regex that would drift.
+
+**`Evidence:` is deliberately untouched, and its own noise is filed
+separately.** DOOM's `user screenshot` and `E1M1 outdoor courtyard` reach the
+notes through `Evidence:`, which has no predicate because the standard defines
+every element as a path. That corpus writes prose there anyway. Suppressing it
+here would silently drop real evidence paths that carry no separator, and the
+right repair is at the WRITE side, so it is out of scope for this section.
 
 **Apply the predicate AFTER `trailerValuesIn()`'s trailing-period chop, not
 before.** The regex anchors on `$`, so a token ending in a sentence period —
@@ -936,9 +994,29 @@ column is a wish.** The measured drift named `headline`, `layman`, `lanes` and
   no marker at all — a prose capture that happens to BE a taxonomy word, silently
   taken. And an
   implementer should treat it as a guard against a shape that may not occur
-  rather than as a repair with known targets. Nor does this invariant cover a
-  backtick span crossing a line break, which defeats the guard entirely and is
-  a separate mechanism (§ 5).
+  rather than as a repair with known targets. Nor did this invariant cover a
+  backtick span crossing a line break, which defeated the guard entirely and
+  was a separate mechanism — **closed 2026-08-19 by ANTS-4504**, which matches
+  every key through a length-preserving mask built from
+  `MarkdownScan::codeSpans()`.
+- **INV-12** — A `Source:` token carrying no directory separator is prose, and
+  an id citation is never a path: neither yields a `unresolved_path` note nor
+  an `extras.unresolved_path` element. *Test:* four fixtures, each a bullet
+  whose `Source:` is otherwise unresolvable — (a) a bare filename that exists
+  one directory down (`Source: in-session, per roadmap-format.md.`), (b) a bare
+  filename that exists nowhere, (c) a token that is not a filename at all but
+  ends in a dot plus alphanumerics (`§4.4`, `~7.2ms`, `(0.6.0`), (d) an id pair
+  (`DOOM-0057/0081`) → in every case `notes` carries no `unresolved_path` and
+  `extras` no such key, while a control bullet citing `docs/gone.md` in the
+  same import still does (INV-7 unchanged).
+  *Breaks when:* the extension disjunct is restored, or when the id-citation
+  clause is dropped and the no-separator rule kept alone — (d) is the case that
+  distinguishes them, since an id pair carries a separator and reads as a
+  two-segment path.
+  **Fixture (a) is the one that must not be "fixed" by a tree walk.** Resolving
+  a bare filename by searching the project is undefined on the corpus that
+  motivates it (§ 2.5), and the accepted cost is stated there: a `Source:`
+  naming a genuinely missing file with no directory part goes unreported.
 
 ## 4. RAM / build cost
 
@@ -1004,23 +1082,39 @@ the corpus, not by usage over time.
   `field_defaulted` note cannot fire for it and the loss would be untracked in
   a different way. **Whoever fixes it owes `evidence` a provenance entry
   first.** Recorded so § 2.5's measurement is not read as implying a repair.
-- **A backtick span crossing a line break defeats the guard.** The three
-  lookbehinds in § 2.2 are fixed-length and inspect only the character before
-  the match, so a quoted example broken across two source lines is read as a
-  declaration. Live: ANTS-3808 declares no `Lanes:` and imports
-  `lanes = ["packaging"]`, harvested out of `` `Source: regression. Lanes: `` /
-  `` packaging.` ``. This is a **third** mechanism, independent of both the
-  precedence rule and the second-trailer problem § 2.2 handles by correcting
-  the source, and it is filed rather than fixed because the repair is either a
-  multi-line-aware guard or fence tracking — both changes to how the parser
-  scans, which § 5's next entry already puts out of scope.
+- **A backtick span crossing a line break defeated the guard — CLOSED
+  2026-08-19 by ANTS-4504, kept here because it was this spec's own filing.**
+  The three lookbehinds in § 2.2 are fixed-length and inspect only the one to
+  three characters before the match, so a quoted example broken across two
+  source lines was read as a declaration. Live: ANTS-3808 declares no `Lanes:`
+  and imported `lanes = ["packaging"]`, harvested out of
+  `` `Source: regression. Lanes: `` / `` packaging.` ``. The repair is the
+  multi-line-aware guard named here: every key is now matched through a
+  length-preserving mask built from `MarkdownScan::codeSpans()`, with captures
+  sliced from the unmasked text. **What is still open is the STORE**, not the
+  parse — a column already holding a wrongly-harvested value is not corrected
+  by re-reading (ANTS-4505).
+- **A trailer key on a FENCED line is still read as a declaration.** ANTS-4504
+  masks inline code spans only. It computes a fence mask because
+  `codeSpans()` requires one, and deliberately does not blank fenced lines:
+  there is no measurement of how many corpus bullets carry a fenced block with
+  a trailer key in it, and that change moves corpus values in a second way on
+  top of the one already shipped. Filed rather than folded in.
+- **`Evidence:` values that are not paths.** § 2.5 gives `Evidence:` no
+  predicate, because `roadmap-format.md` § 3.5 defines every element as a
+  path. The corpus disagrees: DOOM Ants' clean migration reports
+  `user screenshot` and `E1M1 outdoor courtyard` as unresolved paths, and both
+  are prose an author wrote into the field. Applying § 2.5's separator
+  predicate here would silently drop real single-token evidence paths, so the
+  repair belongs at the WRITE side — a `roadmap_log` refusal or a note when an
+  `Evidence:` element is not path-shaped — and not in this contract.
 - **Re-migrating the other 13 projects.** ANTS-3853 owns the rollout; this is
   the gate it waits on.
 
 ## 6. Tests
 
 Feature test: `tests/features/roadmap_import_mapping/`, covering **INV-1 through
-INV-11** — every one is a behavioural case; this spec carries no source-grep
+INV-12** — every one is a behavioural case; this spec carries no source-grep
 invariant, INV-8 having been rewritten as one after the grep form was found
 unable to fail. Label `features;fast` — every fixture is a few-line roadmap, so
 nothing here needs the `perf` label.
