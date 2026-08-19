@@ -32074,7 +32074,7 @@ against current source before filing.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
 
-- 📋 [ANTS-4437] **roadmap_query drops the headline entirely when the stored headline contains a newline.**
+- ✅ [ANTS-4437] **roadmap_query drops the headline entirely when the stored headline contains a newline.**
   A store row is re-rendered to a markdown bullet and re-parsed to build the record. Where the stored headline itself holds a newline, the rendered line has no closing `**` on it, the parse fails, and the record comes back with an EMPTY headline and a body holding only that first line.
 
   Observed on finbreak FIBR-0016, against a store migrated moments earlier:
@@ -32088,6 +32088,21 @@ against current source before filing.
   **Layman:** Items whose title was wrapped over two lines come back with no title at all, even from the mode whose only job is titles.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
+  Resolved (2026-08-19) by ANTS-4486's render half in commit 2581b74e, not
+  by work filed under this id — which is why it sat 📋 while being fixed.
+  Closed on evidence rather than on the sibling's say-so.
+
+  LocalWebServerManager reported it fixed in the wild and could not tell
+  which mechanism did it. That distinction matters: if ANTS-4484's INGEST
+  join had simply stopped newlines reaching the store, the query path would
+  still be broken for every row already holding one, and this item would be
+  masked rather than fixed. Checked: the store still holds 71 headlines
+  containing a newline, and FIBR-0016 — this item's own original repro —
+  returns its headline_oneline correctly. So the read path handles the
+  newline rather than the data having been normalised out from under it.
+
+  Nothing to build. Recording the mechanism because a fix credited to the
+  wrong cause is one that gets "re-fixed" later, or reverted as dead code.
 
 - 📋 [ANTS-4438] **The first store-backed write re-wraps the whole roadmap file, producing a large diff unrelated to the edit.**
   Measured 2026-08-18 on a throwaway copy of finbreak: one `annotate` adding a single note line rewrote 1238 lines and shrank the file by 1455 bytes.
@@ -37770,6 +37785,165 @@ are closed inline in the feedback files rather than filed here.
   Kind: investigate.
   Source: in-session-2026-08-19, while surveying the store for migration candidates.
   Lanes: roadmap-store.
+
+- 📋 [ANTS-4519] **A spilled read_region emits a headless rows_preview that costs ~1k tokens and conveys nothing.**
+  When the row bodies fit, rows_preview is genuinely useful and OneUp says
+  so -- they picked rows straight off the head snippets. When they do not,
+  the server sets rows_preview_heads_omitted and emits the SAME array with
+  the text stripped: 168 entries of bare {bytes, index}, ~3.7 KB / ~1k
+  tokens, on one start_line:42 end_line:400 read.
+
+  A per-row byte count cannot tell a caller which row they want, and
+  row_count + total_bytes already carry that information in two integers.
+  The accompanying hint defends the omission as a fairness principle --
+  "a summary of some rows has the same defect as a prefix of some rows" --
+  and OneUp's rebuttal is the sharp part: that reasoning is sound for
+  HEADS, and does not justify emitting the headless array, which is
+  neither a summary nor a prefix but a list of row lengths.
+
+  It lands on exactly the calls that are already the session's most
+  expensive, and it misleads on first encounter -- 168 entries read as
+  content until you notice every one is empty, so the natural next move is
+  a read_spill call to confirm.
+
+  Fix: when rows_preview_heads_omitted would be set, omit rows_preview
+  entirely and keep row_count, total_bytes and the paging hint. If the
+  array must stay for schema stability, cap it at ~10 rather than scaling
+  it with row count -- a headless preview conveys the same amount at any
+  length.
+  **Layman:** A big read sends back a long list of empty rows that tells you nothing but still costs money.
+  Kind: perf.
+  Source: cc-feedback-2026-08-19 (OneUp).
+
+- 📋 [ANTS-4520] **read_region section= and file_outline cannot see a heading inside a blockquote.**
+  `> ## Foo` is a heading inside a blockquote. section= refuses
+  section_not_found and the ANTS-4350 candidates list omits it, so the
+  caller cannot tell a missing heading from an unsupported shape and
+  doubts their spelling. file_outline's md mode does not surface them
+  either.
+
+  Not exotic. OneUp's plan documents use blockquoted headings as their
+  standing convention for run-state blocks -- one `> ## You are here` plus
+  a stack of `> ## Previously` -- and their session handoff says to read
+  the *You are here* block first. So the one section a new session is TOLD
+  to read is the one section mode cannot address.
+
+  It degrades in the worst direction: the fallback is workspace_search for
+  the literal text then read_region with a LINE RANGE -- three calls
+  instead of one, and a line range is exactly the stale-anchor problem
+  section mode exists to remove. On a plan file that grows a new block at
+  the top every session, a range cached from one session is wrong by the
+  next.
+
+  Fix: strip a leading blockquote prefix (`>` plus optional space,
+  repeated) before testing a line for a heading, in both file_outline's md
+  mode and read_region's section resolver. Body runs to the next
+  same-or-higher heading AT THE SAME blockquote depth, so a `> ##
+  Previously` block cannot swallow the plain `##` section after it.
+  Cheaper partial that captures most of the value: list blockquoted
+  headings in `candidates`, which tells the caller to reach for a line
+  range instead of doubting the name.
+  **Layman:** A heading written inside a quoted block is invisible to the tool, so the one section you were told to read cannot be addressed by name.
+  Kind: fix.
+  Source: cc-feedback-2026-08-19 (OneUp).
+
+- 📋 [ANTS-4521] **mutation_probe mutates every occurrence with no way to state how many were intended.**
+  The verb refuses an inert mutation, and its reasoning is right: a
+  mutation that changed nothing runs a test that passes against unmutated
+  code. A mutation that changes MORE than the caller believes has the same
+  shape and is not guarded.
+
+  LWSM meant to clear high_contrast on ONE palette; the literal occurs
+  twice, both were cleared, and the result came back occurrences:2
+  outcome:killed. Nothing wrong followed because it died -- and the
+  dangerous direction is subtler than survival. With N sites mutated, the
+  mutant can be killed by a test covering a site the caller never meant to
+  touch while the site they DID mean to probe stays uncovered. The verdict
+  reads killed, the label says what the caller intended, and the uncovered
+  site is invisible. A false GREEN in a verb whose whole purpose is
+  refusing false greens. occurrences is reported, so the information
+  exists -- it just arrives as one integer among ten rather than as a
+  check against intent.
+
+  The label is what gets quoted in a commit message as evidence, and it
+  describes a narrower mutation than the one that ran.
+
+  Fix: optional per-mutation expect_occurrences. On mismatch refuse that
+  mutation with a distinct outcome (occurrence_mismatch, alongside inert),
+  report both numbers, run no test. Absent, byte-identical to today.
+  Same shape as inert: the caller states an expectation and a mismatch is
+  reported rather than papered over with a verdict that cannot be
+  interpreted. Do NOT default it to 1 -- that breaks existing multi-site
+  callers, and a mutation intended to hit every site is legitimate.
+  Weaker alternative if a new field is unwanted: a warning field whenever
+  occurrences > 1. The refusal is better because it lands before the test
+  runs, and therefore before a verdict exists to be misread.
+  **Layman:** A test-quality check can quietly change more places than you meant, and still report success.
+  Kind: enhancement.
+  Source: cc-feedback-2026-08-19 (LocalWebServerManager).
+
+- 📋 [ANTS-4522] **roadmap_migrate's updated_items[].fields is not the union of the columns the write touches.**
+  Games_Hub saw notes[] carry a field_conflict on `headline` while
+  updated_items[].fields for the same id listed only `body` -- so the
+  reviewable plan ANTS-4479 added disagreed with the notes array, and the
+  field actually destroyed was the one the plan omitted. After their
+  remigration the same items came back fields:[headline, body]: the second
+  run reported the headline moving and the first did not.
+
+  The TRIGGER they hit is fixed (ANTS-4484/4486 -- verified 2026-08-19 on
+  a fresh wrapped-headline fixture, which now migrates with zero notes).
+  This item is the half that does not depend on it: a session doing the
+  recommended thing -- preview with dry_run, read updated_items as the
+  plan -- was told less than notes[] already knew, and told it about the
+  wrong column. Worse than no plan, because it reads as coverage. Filed
+  separately for that reason rather than closed with the parser fix.
+
+  Fix: make updated_items[].fields the union of every column the write
+  will touch, including ones changed only because a parse fell back. If
+  the two arrays are computed by different paths, derive one from the
+  other so they cannot disagree again.
+
+  Guard when testing: a fixture whose parse is clean produces no
+  disagreement, so a test built only on healthy input passes without
+  exercising the union at all.
+  **Layman:** The migration preview lists fewer changes than it will make, which is worse than no preview because it reads as complete.
+  Kind: fix.
+  Source: cc-feedback-2026-08-19 (Games_Hub).
+
+- 📋 [ANTS-4523] **session_orient silently ignores fields=, on the largest response in the session.**
+  Hit while re-checking the feedback queue after a triage. Wanted one
+  field; called session_orient {fields:["feedback_pending"]} and got the
+  ENTIRE payload -- active_bullets, the 67-lane codebase_index, the
+  71-section index, project_layout, the lot. Roughly 16k tokens for a
+  three-integer answer.
+
+  Not a caller error, and checked rather than assumed: the same argument on
+  git_state {op:"status", fields:["branch"]} correctly returned {"branch":
+  "main"} and nothing else. So `fields` works, and this verb does not
+  honour it. `feedback_pending` is a top-level key of the response, which
+  is exactly what the contract says the argument selects.
+
+  Worst possible verb to have this on, for two reasons. It is the
+  DOCUMENTED FIRST CALL, so the cost lands in every session. And it is the
+  one verb whose full payload is genuinely large, which is precisely why a
+  caller reaches for the narrowing argument. The failure is silent -- no
+  bad_args, no echo saying the argument was dropped -- so a caller who
+  narrows believes they saved the tokens they just spent, and would have no
+  reason to check.
+
+  Fix: honour `fields` on session_orient like every other verb. If some
+  sub-block cannot be skipped because a later one depends on it, refuse
+  with bad_args naming that key rather than silently returning everything
+  -- an argument that is accepted and ignored is worse than one that is
+  rejected.
+
+  Worth checking the same way rather than reasoning from the code: call
+  each verb that advertises `fields` with a single key and confirm the
+  response carries only it. This one advertised the argument and dropped
+  it, so the advertisement is not evidence.
+  **Layman:** Asking the biggest tool for one small piece of its answer still returns the whole thing.
+  Kind: fix.
+  Source: in-session-2026-08-19 (maintainer, measured).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
