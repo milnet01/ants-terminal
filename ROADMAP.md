@@ -40584,6 +40584,25 @@ filed below.
   a reversible plan, not an edit. It interacts with ANTS-4507, whose
   items_updated counter is already unusable as a signal, and a repair
   pass will change that count.
+  Phase 1 measured (2026-08-20), read-only, nothing written. Detector: tools/roadmap-trailer-truncation-survey.py, committed so phase 2 re-runs it rather than re-deriving it — opens the machine-global store read-only, normalises whitespace AND strips bold markers, then asks of each layman/source value whether it appears verbatim after its own key in the same item's surviving inline run, and what follows it. Truncated iff the next character is neither a sentence stop nor the next trailer key.
+
+  Store holds 16 projects / 5049 items, not the 14 the body assumes.
+
+  TRUNCATED AND REPAIRABLE: 403 values, ~29,000 characters lost, across 10 of 16 projects. Ants_Terminal 269, LocalWebServerManager 67, MAME_Curator 35, LottoTracker 10, Ants_Projects_Hub_Website 9 (all 9 items), Games_Hub 5, Snatch 5, DOOM_Ants / Rolodex / finbreak 1 each. Clean at 0: .claude, AI_Prompts, Contact_List, OneUp, Vestige, Music_Production. Every sampled case had its remainder present in the body, so the body's premise that the prose is the surviving copy holds — for this class.
+
+  Two corrections to the body's numbers, both from measuring rather than assuming.
+
+  The "4 unbalanced open brackets" figure is not the detector. Round-bracket imbalance finds 88 values, and it MISSES most truncations while catching intact ones. Drop it.
+
+  There are TWO truncation mechanisms, not one. The body describes the hard wrap (ANTS-1731: `Source: in-session-2026-05-21 (noticed integrating` + newline + `ANTS-1722`). The second and commoner one is an ABBREVIATION STOP: the value is chopped at the period inside `e.g.` / `etc.` / a decimal / a leading `.deb`, giving stored values like `...two Claude tabs open (e` (ANTS-1911) and `Get the` (FIBR-0158). ANTS-4542/4553 fixed the wrap; whether they fixed this one is unverified, so the cause may still be live. Check before repairing, or the repair re-truncates.
+
+  DUPLICATION (phase 2) is 3461 items carrying an inline run, not 123. That is 69% of the store and includes every project. The count is that high because the legacy run is written BOTH as `Kind: x` and as `**Layman:** x`; a detector matching only the bare form under-counts badly, which is how 123 was reached.
+
+  A verb-authored item's stored body carries no trailer run (checked on ANTS-4592), so the duplication is purely migration residue and the population is closed — it cannot grow.
+
+  THIRD RESIDUE CLASS FOUND, out of this item's scope, filed as ANTS-4595: 1789 items across 6 projects store a lifecycle word in `source` (Vestige 989, Ants_Terminal 419, Music_Production 357 — all of its items). Unlike the truncations this is NOT repairable from prose. It must be settled before any pass rewrites `source`.
+
+  Phase 2 (repair) is unstarted and still owes a dry run and a reversible plan.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
@@ -40863,6 +40882,23 @@ filed below.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol_roadmap_query, roadmapwrite.
+
+- 📋 [ANTS-4595] **1789 migrated items store a lifecycle word in the source column.**
+  Found while measuring ANTS-4585, and out of that item's scope: it is neither a truncation nor a duplication.
+
+  Measured read-only across the machine-global store: 1789 items in 6 projects have source = 'planned'. Vestige 989, Ants_Terminal 419, Music_Production 357 (every item it has), finbreak 16, Games_Hub 4, MAME_Curator 4. No other lifecycle word occurs.
+
+  item.source is NOT NULL with no default, so the importer had to write something for a bullet that carried no `Source:` line, and it wrote the status. The column is provenance — "where did this come from" — and a lifecycle word answers a different question, so every one of these items has lost its provenance rather than merely being short.
+
+  Unlike ANTS-4585's truncations this is NOT repairable from prose: the surviving inline run carries no provenance line for these, which is why the importer had nothing to copy. So the honest repair is probably a sentinel that reads as absent (or making the column nullable), not an invented value.
+
+  Sequencing: this must be settled BEFORE any pass that rewrites the column, including ANTS-4585's repair. A repair walking it will otherwise either preserve the wrong value or overwrite it with a guess, and there is no second copy to check against afterwards.
+
+  Ants_Terminal's 419 sit alongside 269 truncations in the same column, so the two populations overlap and a single pass touches both.
+  **Layman:** Nearly two thousand old roadmap entries record "planned" as the reason they exist, which says nothing about where they came from.
+  Kind: fix.
+  Source: ANTS-4585 phase 1 measurement, 2026-08-20.
+  Lanes: roadmapmigrate, roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
