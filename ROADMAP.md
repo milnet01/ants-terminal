@@ -40621,6 +40621,22 @@ filed below.
   It is bounded by what survives in prose: only 1126 of 5096 items still carry the inline run at all. For the rest the trailer was stripped into columns at migration, the cut text is gone, and no re-parse recovers it. That is the "no verbatim match" bucket, and it is the part of phase 2 that needs a real decision rather than a re-parse.
 
   Sequencing consequence: the lanes column is now safe to repair by re-parse, because ANTS-4597 stops the next parse re-truncating it -- the same unblock ANTS-4596 gave the layman column. Both must land before any repair pass, which is what this item's own ordering already says.
+  Progress 2026-08-20 (observed while closing ANTS-4599, not a phase-2
+  decision): the ANTS-4599 flip's re-render discarded 4 file-only lines —
+  duplicate TAIL trailer blocks on ANTS-2127 and ANTS-4077, each bullet's
+  canonical block sitting earlier and surviving. So part of the damage
+  population is file-side only and self-heals on the next re-render,
+  without a re-parse and without touching the store.
+
+  That splits the phase-2 population smaller than assumed: file-only
+  duplicates need no repair plan at all, only a re-render. What still
+  needs one is unchanged — items whose stored body no longer holds the
+  inline run, where the cut text is gone and no re-parse recovers it.
+
+  Worth measuring before planning: how many of the divergent items are
+  file-only. Note the surface, per ANTS-4599 — roadmap_query's `body`
+  composes a trailer line from the column, so it cannot answer
+  body-vs-column; read the store's `item.body` column.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
