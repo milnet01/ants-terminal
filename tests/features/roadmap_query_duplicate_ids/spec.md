@@ -67,19 +67,30 @@ The `roadmap_query` tool description in `claudeintegration.cpp`
 names the `duplicate_ids[]` field, its shape, and its purpose
 (surfacing hand-edited drift past the `.roadmap-counter` guard).
 
-### INV-7 — detector keys only on canonical allocated IDs (ANTS-1688)
+### INV-7 — detector excludes the reader's synthetic nonces (ANTS-1688, narrowed by ANTS-4546)
 
-`rcComputeDuplicateIds` counts a bullet's `id` only when it matches
-the canonical allocated-ID shape `^[A-Za-z][A-Za-z0-9_-]*-<digits>$`
-(`RoadmapIndex::isCanonicalId`). The GFM adapter (ANTS-1428)
-synthesises 10-char content-hash nonces for ID-less bullets and
-surfaces Obsidian `^anchor` tokens; neither is an allocated ID, so
-neither can be a `.roadmap-counter` drift collision. Before this
-fix a legacy-format roadmap over-reported — e.g. a `35ra39wbn1`
-hash surfaced as a 7× "duplicate ID", and the inflated
-`occurrences[]` lists drove the `section_index` envelope to ~55 KB
-(tripping the persisted-output truncation path). Keying on the
-canonical shape removes the over-report and the bulk of the payload.
+`rcComputeDuplicateIds` counts every non-empty `id` EXCEPT one the
+reader marked `synthetic`. The GFM adapter (ANTS-1428) synthesises
+10-char content-hash nonces for ID-less bullets; before ANTS-1688 a
+legacy-format roadmap over-reported on them — a `35ra39wbn1` hash
+surfaced as a 7× "duplicate ID", and the inflated `occurrences[]`
+lists drove the `section_index` envelope to ~55 KB (tripping the
+persisted-output truncation path).
+
+**ANTS-1688 fixed that by keying on the canonical allocated-ID shape,
+and ANTS-4546 narrows the exclusion back to what it was for.** The
+canonical key took the AUTHORED non-canonical ids with it: on a GFM
+roadmap two bullets leading with the same bold span (`**Photo mode**`,
+twice in 3D_Engine) both carry id `Photo mode`; `roadmap_query` said
+nothing and `roadmap_log` then refused `bullet_ambiguous` — the read
+side handing out an id that provably could not address either bullet,
+with the failure arriving at write time. `synthetic` is the property
+that actually separates a nonce from an authored id, so it is the one
+the detector keys on, and ANTS-1688's over-report stays closed.
+
+The field's frame widens with it, from "ids that collided past the
+`.roadmap-counter` guard" to **"this id addresses more than one
+bullet"** — which is what its name says and what a caller can act on.
 
 ### INV-8 — occurrences tail capped (ANTS-1688)
 
@@ -91,12 +102,26 @@ and the caller still learns the true multiplicity. Entries at or
 under the cap carry no `truncated_count` (envelope shape unchanged
 for the common case).
 
+### INV-9 — an authored non-canonical id collides (ANTS-4546)
+
+Two GFM bullets sharing a bold lead-in are reported; two sharing a
+reader-synthesised content-hash id are not. Verified END TO END through
+`cmdRoadmapQuery` against a seeded `QTemporaryDir` roadmap rather than
+against the detector, for two reasons: this bundle may not include
+`remotecontrol_internal.h` (`RcTuSplit` INV-5), and the question is
+whether the signal reaches the caller, not whether the helper computes
+it.
+
 ## Test plan
 
 INV-1 through INV-6 and INV-8 are verified by a source-grep against
 the implementation, matching the project's feature-conformance style
 (no live MCP round-trip needed at this layer — the detector is a
-pure function over the bullets array). INV-7's predicate
-(`RoadmapIndex::isCanonicalId`) lives in the Qt-Core-only
-`ants_core_lib` and is verified behaviourally (accept allocated IDs,
-reject hash nonces / anchors / hyphen-less bold IDs / empties).
+pure function over the bullets array). `RoadmapIndex::isCanonicalId`
+lives in the Qt-Core-only `ants_core_lib` and is verified behaviourally
+(accept allocated IDs, reject hash nonces / anchors / hyphen-less bold
+IDs / empties) — it is no longer the detector's whole predicate, but it
+still decides which ids the ANTS-1688 half exempts. INV-7 and INV-9 are
+verified together, end to end through `cmdRoadmapQuery`, by the one case
+that separates them: two bullets sharing a bold lead-in report, two
+sharing a synthesised hash do not.

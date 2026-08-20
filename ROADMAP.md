@@ -38792,7 +38792,7 @@ filed below.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4546] **The markdown reader serves ids that roadmap_migrate quarantines, so a session plans against ids roadmap_log cannot act on.**
+- ✅ [ANTS-4546] **The markdown reader serves ids that roadmap_migrate quarantines, so a session plans against ids roadmap_log cannot act on.**
   Same server build, two readers, opposite answers.
 
   roadmap_migrate's dry run on Vestige emits notes with code
@@ -38822,8 +38822,48 @@ filed below.
 
   The surviving half of the 2026-08-18 'bold span read as ID' finding,
   now visible as a disagreement rather than a single parser bug.
-  **Layman:** Two parts of the roadmap tooling disagree about what an item's ID is, so planned work can't be written back.
+  Resolved (2026-08-20), differently from the filing and on measurement.
+
+  The report's mechanism does not hold. Probed against the live server on
+  a Vestige-shaped GFM fixture: roadmap_query returns id "Terrain System",
+  and `op:annotate` keyed on that id SUCCEEDS (dry run ok:true, line 8).
+  Quarantine is not rejection — roadmapmigrate.cpp:334 keeps the token as
+  the item's id and records `id_origin: "quarantined"` beside it. So the
+  two readers do not disagree about what the id IS; they disagree about
+  whether to LABEL it, and a bullet the report calls unaddressable is
+  addressable.
+
+  The symptom was real and the mechanism next to it. Second probe, same
+  fixture, two bullets leading `**Photo mode**` (a shape 3D_Engine
+  actually has): roadmap_query reports both with the same id and says
+  nothing, then `op:annotate` refuses `bullet_ambiguous`. THAT is a read
+  side handing out an id which provably cannot address either bullet, with
+  the failure arriving at write time — the report's own words, one case
+  over.
+
+  Fixed by widening a detector that already existed rather than adding a
+  field: `duplicate_ids[]` has shipped since ANTS-1646. ANTS-1688 keyed it
+  to the canonical id shape to stop the GFM adapter's 10-char content-hash
+  nonces over-reporting, and that key took the AUTHORED non-canonical ids
+  with it. The predicate is now "every non-empty id except one the reader
+  marked synthetic" — which is the property that actually separates a
+  nonce from an authored id, so ANTS-1688's over-report stays closed while
+  a shared bold lead-in reports. The field's frame widens with it, from
+  "collided past the counter guard" to "this id addresses more than one
+  bullet", which is what its name says.
+
+  Verified red first: the end-to-end test failed against the pre-fix
+  predicate and passes after, with two identical-hash bullets in the same
+  fixture proving the nonce exclusion still holds. Suite 3703/3703 green.
+
+  Two pieces deliberately left out and filed rather than folded in:
+  ANTS-4575 (surface `id_origin` on read — advisory, since the id works)
+  and ANTS-4574 (`bullet_ambiguous` advises "narrow with anchor or id"
+  when the id IS what the caller passed and no anchor exists — found while
+  measuring this one).
+
   Kind: fix.
+  **Layman:** Two parts of the roadmap tooling disagree about what an item's ID is, so planned work can't be written back.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: roadmapparse, roadmapmigrate.
 
@@ -39864,6 +39904,109 @@ filed below.
   Kind: investigate.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol.
+
+- 📋 [ANTS-4574] **`bullet_ambiguous` tells the caller to "narrow with anchor or id" when the id IS what they passed and no anchor exists.**
+  Measured, not predicted. On a GFM roadmap with two bullets leading
+  `**Photo mode**`, an annotate keyed on that id refuses:
+
+    bullet_ambiguous — "locator matched 2 bullets — narrow with anchor
+    or id"
+
+  The caller passed an id. That id is the ambiguous one. The bullets carry
+  no caret anchor, so the other half of the advice names something that
+  does not exist in the file. Every route the message offers is closed,
+  and the caller has no way to reach either bullet.
+
+  The envelope already carries what would help: `suggestions[]` holds both
+  headlines, and `headline` is a working locator. So the fix is the
+  message, not a new mechanism: when the ambiguous locator WAS the id,
+  say so, and point at the headline locator with the two candidate
+  headlines already in hand. If neither headline is unique either, say
+  that too rather than naming a route that cannot work.
+
+  Found while measuring ANTS-4546, whose duplicate_ids widening now makes
+  this refusal reachable at READ time — a caller warned by duplicate_ids
+  still has to be told what to do about it.
+  **Layman:** When two roadmap items share a name, the error tells you to do the one thing you already did.
+  Kind: fix.
+  Source: measured in-session 2026-08-20 while triaging ANTS-4546.
+  Lanes: remotecontrol, roadmapwrite.
+
+- 📋 [ANTS-4575] **roadmap_query does not say which ids were INFERRED from a bold prose lead-in, so a caller cannot tell one from a declared id.**
+  The surviving half of ANTS-4546, restated to what is actually true.
+
+  On a GFM roadmap the reader adopts a leading bold span as the item's id
+  (`**Terrain System**` becomes id "Terrain System"). roadmap_migrate
+  records the same token with `id_origin: "quarantined"` — outside
+  roadmap-format § 3.5.1's grammar — and roadmap_query records nothing.
+
+  What ANTS-4546 claimed follows from that, and does NOT: the report said
+  such an id is one "roadmap_log cannot act on", with the failure arriving
+  at write time. Measured against the live server on a Vestige-shaped
+  fixture, `op:annotate id:"Terrain System"` SUCCEEDS. Quarantine keeps
+  the id and flags its origin; it does not reject it. The real write-time
+  failure was the COLLISION case, and that is closed by ANTS-4546's
+  duplicate_ids widening.
+
+  What is left is provenance: a session planning work cannot tell an
+  inferred id from a declared one, and the parser's own comment says
+  nothing in the text can separate a prose lead-in from a real multi-word
+  id — which is why two bullets can silently share one.
+
+  Proposed: an activation-gated per-bullet `id_origin` on roadmap_query,
+  emitted ONLY when it is not "parsed", using the store's own vocabulary
+  so the two readers answer in one language. Byte-identical envelope on
+  any roadmap whose ids are grammatical.
+
+  Deliberately NOT done with ANTS-4546: it is advisory (the id works), and
+  the measured harm was the collision. Filed rather than folded in so the
+  cost is decided on its own merits.
+
+  Do NOT implement this by emptying the id. ANTS-1438 ships a Vestige
+  fixture whose ids are `Terrain System` and `JustBoldNoSeparator`, and
+  both are addressable today.
+  **Layman:** Some roadmap item IDs are guessed from the text; nothing tells you which ones.
+  Kind: enhancement.
+  Source: ANTS-4546 residue, measured in-session 2026-08-20.
+  Lanes: remotecontrol, roadmapparse.
+
+- 📋 [ANTS-4576] **Deleting a trailer declaration from a body surfaces a raw SQLite NOT NULL string, because § 2.6 clears a column the schema forbids clearing.**
+  Measured, on this project's own store. Reproducer, verbatim:
+
+    roadmap_log op:"amend_body" id:"ANTS-4546"
+      old_text:"Kind: fix."  new_text:"The kind is unchanged."
+    -> {"code":"store_failed",
+        "error":"NOT NULL constraint failed: item.kind Unable to fetch row"}
+
+  What happened is correct until the last step. The body carried a
+  line-leading kind declaration; the amend removed it; ANTS-3809 § 2.6
+  re-derived the trailer columns from the new body, found the key gone,
+  and called clearItemField on a column the schema declares NOT NULL.
+  The write refused atomically and nothing was lost.
+
+  Two things to fix, in order:
+
+  (a) The message. A caller who asked to edit one sentence is handed a
+      SQLite constraint string naming a column they never mentioned. That
+      is the same complaint ANTS-4549 makes about op:annotate, on the
+      path ANTS-4549's guard does not cover: that guard reads the `note`,
+      and this arrives through new_text.
+
+  (b) The rule. § 2.6 clears a column when the body it replaced yielded
+      the key and the new body does not. For four of the five columns
+      that is right. `kind` is NOT NULL with a default, so "the body no
+      longer declares it" cannot mean "no kind" — it means the default.
+      Decide which, and say so in the refusal if the answer is neither.
+
+  Note the shape this leaves a caller in: the body's declaration is now
+  the only thing keeping the column populated, so that one line cannot be
+  edited by the verb that exists for editing body lines. Sibling of
+  ANTS-4549 (caller prose reaching a column) from the other direction:
+  caller prose LEAVING one.
+  **Layman:** Removing one line from an item's notes can fail with a database error that says nothing useful.
+  Kind: fix.
+  Source: measured in-session 2026-08-20 while closing ANTS-4546.
+  Lanes: remotecontrol, roadmapstore.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

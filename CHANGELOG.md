@@ -37,6 +37,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- ****`roadmap_query`'s `duplicate_ids[]` now reports an authored id shared by two bullets, whatever its shape.** (ANTS-4546)**
+  On a roadmap whose bullets lead with a bold span, two bullets sharing
+  that span both carry it as their id — and `roadmap_log` then refuses
+  `bullet_ambiguous`, so a silence on the read side was paid for at write
+  time. The detector had been keyed to the canonical `[PROJ-NNNN]` shape
+  to stop the reader's own content-hash nonces over-reporting, and that
+  key excluded the authored ids too; it now excludes only the nonces,
+  which is what it was for. Read the field as "this id addresses more
+  than one bullet". A roadmap whose ids are all canonical is unaffected.
+
 - ****A `roadmap_log` `note` is prose — a trailer keyword named mid-sentence no longer rewrites that column.** (ANTS-4549)**
   `op:"annotate"`, `op:"flip"` and `op:"flip_batch"` append the note to the
   bullet's body, and the trailer columns are then re-derived from that body

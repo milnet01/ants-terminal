@@ -929,9 +929,26 @@ QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
     for (const auto &v : bullets) {
         const QJsonObject o = v.toObject();
         const QString id = o.value(QStringLiteral("id")).toString();
-        // ANTS-1688 — anchors / hash nonces / hyphen-less legacy bold
-        // IDs are not allocated IDs and can't be drift collisions.
-        if (!RoadmapIndex::isCanonicalId(id)) continue;
+        if (id.isEmpty()) continue;   // rollups + narrators
+        // ANTS-1688 excluded every non-canonical id, to stop the GFM
+        // adapter's 10-char content-hash NONCES over-reporting (a
+        // `35ra39wbn1` surfaced as a 7× duplicate and drove the
+        // section_index envelope to ~55 KB). ANTS-4546 keeps the nonces out
+        // and lets the AUTHORED ids back in, because `synthetic` is the
+        // property that actually separates the two — the reader sets it on
+        // exactly the ids it invented.
+        //
+        // What that costs is the field's old frame, "ids that collided past
+        // the .roadmap-counter guard", and it is worth it: on a GFM roadmap
+        // two bullets leading with the same bold span (`**Photo mode**`,
+        // twice in 3D_Engine) BOTH carry that id, roadmap_query said
+        // nothing, and roadmap_log then refused `bullet_ambiguous` — the
+        // read side handing out an id that provably cannot address either
+        // bullet, with the failure arriving at write time. An id that
+        // addresses two bullets is what a caller needs to know, which is
+        // also what the field's name says.
+        if (!RoadmapIndex::isCanonicalId(id) &&
+            o.value(QStringLiteral("synthetic")).toBool(false)) continue;
         QJsonObject occ;
         occ[QStringLiteral("section_slug")] =
             o.value(QStringLiteral("section_slug")).toString();

@@ -5,10 +5,18 @@
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
 #include "roadmapindex.h"
+#include "remotecontrol.h"   // ANTS-4546 — drives the verb end to end
 
 #include <gtest/gtest.h>
 
+#include <QDir>
+#include <QFile>
+#include <QIODevice>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
+#include <QTemporaryDir>
 
 #include <map>
 #include <sstream>
@@ -216,5 +224,72 @@ TEST(roadmap_query_duplicate_ids, LiveRoadmapNoDuplicateBullets) {
             " — each [ANTS-NNNN] must own exactly one bullet; "
             "renumber via roadmap_log op:append or convert the "
             "cross-cite to a non-ID reference").c_str());
+    EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-4546 INV-9 — an AUTHORED id that addresses two bullets is a
+// duplicate, whatever its shape. ANTS-1688 narrowed the detector to the
+// canonical shape to stop 10-char content-hash NONCES over-reporting, and
+// took the authored non-canonical ids with it: on a GFM roadmap two bullets
+// leading with the same bold span (`**Photo mode**`) both carry id
+// "Photo mode", roadmap_query said nothing, and roadmap_log then refused
+// `bullet_ambiguous` — a read-time silence paid for at write time, which is
+// the whole of the ANTS-4546 report. The nonces stay excluded: they are
+// flagged `synthetic` by the reader, which is the property that actually
+// distinguishes them.
+//
+// End to end through the verb rather than against the detector: this bundle
+// may not include remotecontrol_internal.h (RcTuSplit INV-5), and the
+// question is anyway whether the signal REACHES the caller.
+TEST(roadmap_query_duplicate_ids, Inv9AuthoredNonCanonicalIdCollides) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QFile f(QDir(tmp.path()).filePath(QStringLiteral("ROADMAP.md")));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QByteArray seed = "# Roadmap\n\n";
+    for (int i = 0; i < 30; ++i)
+        seed += "Padding to clear the minimum-parseable-size gate. \n";
+    seed +=
+        "\n## Systems\n\n"
+        "- [ ] **Photo mode** — capture stills.\n"
+        "  Kind: feature.\n"
+        "\n"
+        "- [ ] **Photo mode** — a second bullet nobody noticed shares it.\n"
+        "  Kind: feature.\n"
+        "\n"
+        "- [ ] **Terrain System** — heightmap streaming, and unique.\n"
+        "  Kind: feature.\n"
+        "\n"
+        // Two bullets with IDENTICAL text and no bold lead-in: the reader
+        // synthesises the same content-hash id for both, which is exactly
+        // ANTS-1688's over-report shape. It must stay unreported.
+        "- [ ] no bold lead-in, so the reader synthesises a hash id.\n"
+        "\n"
+        "- [ ] no bold lead-in, so the reader synthesises a hash id.\n"
+        "\n";
+    ASSERT_EQ(f.write(seed), seed.size());
+    f.close();
+
+    RemoteControl rc(nullptr);
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = tmp.path();
+    r[QStringLiteral("status")]     = QStringLiteral("all");
+    const QJsonObject resp = rc.cmdRoadmapQuery(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QJsonArray dupes =
+        resp.value(QStringLiteral("duplicate_ids")).toArray();
+    expect(dupes.size() == 1,
+           "INV-9: exactly one duplicate reported (the authored collision)");
+    if (dupes.size() == 1) {
+        const QJsonObject e = dupes.at(0).toObject();
+        expect(e.value(QStringLiteral("id")).toString() ==
+                   QStringLiteral("Photo mode"),
+               "INV-9: the authored bold id is the one reported");
+        expect(e.value(QStringLiteral("occurrences")).toArray().size() == 2,
+               "INV-9: both occurrences carried");
+    }
     EXPECT_EQ(0, expect_failures());
 }
