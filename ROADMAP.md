@@ -40938,10 +40938,38 @@ filed below.
 
   Verified end-to-end by re-running the throwaway probe against the rebuilt library, not by trusting the unit test: all four shapes now store whole.
 
-  Unblocks ANTS-4585 phase 2 — a repaired value is no longer re-truncated on the next parse. Not measured yet: rxLanes() (roadmapparse.cpp:334) still carries the identical `(.+?)[\.\n]` shape.
+  Unblocks ANTS-4585 phase 2 — a repaired value is no longer re-truncated on the next parse. Measured immediately after, and it is damaged: rxLanes() (roadmapparse.cpp:334) carries the identical shape and loses whole lanes at a dotted token. Filed as ANTS-4597.
   **Layman:** A plain-English summary containing "e.g." or a decimal number is cut off at that dot when the roadmap is read.
   Kind: fix.
   Source: ANTS-4585 phase 1 measurement, 2026-08-20.
+  Lanes: roadmapparse.
+
+- 📋 [ANTS-4597] **The lanes capture drops every lane after one carrying a dot.**
+  rxLanes() (roadmapparse.cpp:334) still carries the non-greedy `(.+?)` closed by `[\.\n]` that ANTS-4596 just removed from the layman key. ANTS-4596's note left this unmeasured; it is now measured, and the damage is worse than layman's because a truncated LIST silently loses whole members rather than trailing characters.
+
+  The signature is an asymmetry: across the machine-global store, 24 bodies carry an inline lanes run containing a dotted token, and ZERO stored lane names contain a dot. Every one of those 24 was cut at the dot.
+
+    ANTS-1117  inline: remotecontrol.cpp, AuditDialog, RoadmapDialog,
+                       MainWindow, Clau...
+               stored: ["remotecontrol"]
+    ANTS-1125  inline: RoadmapDialog, docs/standards, .claude/bump.json,
+                       packaging/rot...
+               stored: ["RoadmapDialog","docs/standards"]
+    ANTS-1444  inline: ants_audit_lib, CMakeLists.txt.
+               stored: ["ants_audit_lib","CMakeLists"]
+
+  Two distinct losses. ANTS-1117 and ANTS-1125 lose MEMBERS — five lanes become one — and the render then emits the short list terminated by a full stop, which reads as a correct declaration, exactly the failure mode ANTS-4542's spec describes for its own case. ANTS-1444 and ANTS-1705 lose only an extension, turning `CMakeLists.txt` into `CMakeLists`, which still names a real-looking lane and is therefore harder to spot.
+
+  This is ANTS-3382's reasoning for a third time: its comment says an end-of-line capture is needed because "a `[^\.\n]` stop would truncate at the extension". Applied to evidence, then to the provenance key, then to layman by ANTS-4596, and never here.
+
+  The fix is ANTS-4596's, with one difference worth checking before writing it: lanes are split by splitTrailerList() on the RAW capture with no trim or period chop applied first (roadmapparse.cpp:1543 comment), so the chop has to land before the split rather than after it.
+
+  Also verify a lane list is still ended by a following declaration on the same line — that is ANTS-4542 INV-4, which passes today only because the first-period stop provides it by accident. ANTS-4596 hit the same trap and needed its own stop set, because rxTrailerKey() names Lanes and would end a lane list at itself.
+
+  Consumers to re-check after the fix, since a lane set that grows changes their output: indie_review_partition and subsystem both key on lanes.
+  **Layman:** A to-do listing five affected areas can be stored as one, because a filename in the list ends the list early.
+  Kind: fix.
+  Source: ANTS-4596 follow-up, 2026-08-20.
   Lanes: roadmapparse.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
