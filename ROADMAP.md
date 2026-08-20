@@ -38653,6 +38653,27 @@ are closed inline in the feedback files rather than filed here.
   concurrent reader bumped the counter, or whether .roadmap-counter
   and the store's high_water disagree (ANTS-4141 was that class and
   is shipped, so a regression there is the first thing to check).
+  Progress (2026-08-20): a second project reports the same class from
+  op:append_batch rather than op:append, which widens the defect beyond
+  the single-append path this bullet was filed against.
+
+  Snatch, one session: op:append_batch allocated SNAT-0030/0031, and the
+  NEXT append_batch allocated SNAT-0035/0036 -- burning SNAT-0032, 0033
+  and 0034. Confirmed as gaps rather than rotations: roadmap_query
+  ids:[SNAT-0032,SNAT-0033,SNAT-0034] returned all three in missing_ids
+  with archived_ids empty. SNAT-0017 is missing from an earlier session
+  too, so it is not a one-off there either.
+
+  The reporter asks a question this bullet does not settle and should:
+  whether the gap is INTENTIONAL. If ids are reserved per-batch or
+  per-section and unused reservations are dropped, that is defensible and
+  the fix is documentation -- the verb description currently implies a
+  counter advancing one per bullet. If it is not intentional, the thread
+  to pull is the counter divergence recorded on ANTS-4579.
+
+  Cost is not just cosmetic. Unpredictable ids are why that session twice
+  wrote a wrong cross-reference into a bullet body, which ANTS-4580
+  covers.
   **Layman:** Filing one to-do item silently used up two ID numbers, leaving a gap that looks like a lost item.
   Kind: fix.
   Source: in-session-2026-08-19, hit while filing ANTS-4536.
@@ -40132,6 +40153,203 @@ filed below.
   Kind: fix.
   Source: in-session-2026-08-20, while closing ANTS-4576..
   Lanes: remotecontrol.
+
+- 📋 [ANTS-4578] **An unknown top-level parameter is accepted and ignored, so a narrowing that never happened looks like it worked.**
+  Snatch passed `fields` to feedback_query, which does not declare it
+  (its schema is caller_cwd, etag_match, include_tracking, max_bytes,
+  path). The call returned ok:true and the FULL 7.4 KB delta -- three
+  findings the session had written seconds earlier and already held in
+  context -- with nothing in the envelope saying the argument was
+  dropped.
+
+  Reproduced here during this triage, on a second and more expensive
+  verb. session_orient declares only caller_cwd and etag_match
+  (claudeintegration.cpp:6682-6683). Called with
+  fields:["feedback_pending","branch","ahead","behind"] it returned the
+  entire payload -- active_bullets, codebase_index, sections_index, the
+  full project_layout -- roughly 17 KB to learn one count. Same silence.
+
+  Why it is worse than a refusal, in the reporter's words: a refusal
+  teaches the caller the parameter is wrong; a silently ignored one
+  leaves them believing the narrowing worked, so the same call gets made
+  again. Both sessions would have repeated it.
+
+  It also hides the correct answer. feedback_query DOES support
+  max_bytes, which would have capped the delta -- so a working narrowing
+  existed and the silent acceptance of the wrong argument is what
+  concealed it.
+
+  Fix, preferred by the reporter and stronger for being surface-wide:
+  refuse an unknown top-level parameter with bad_args naming it. That is
+  already the pattern for other malformed input -- `ids` of the wrong
+  type refuses bad_args rather than dumping the full list. If a hard
+  refusal is judged too breaking, echo `ignored_params:[...]` so the drop
+  is at least visible.
+
+  Separately and cheaply: both verbs are natural candidates for real
+  `fields` support. The commonest call after a feedback write is exactly
+  the confirmation Snatch wanted, and session_orient's feedback_pending
+  block is a few bytes inside a payload measured in tens of KB.
+  **Layman:** Ask a tool for a small answer using a word it doesn't know, and it quietly sends the huge one instead.
+  Kind: fix.
+  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20; reproduced on this repo during the triage that filed it..
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4579] **counter_advanced_past reports a position the allocator has already passed, so the one field a caller would predict from is knowably false.**
+  Distinct from ANTS-4551, which is about op:append_batch OMITTING the
+  counter fields. This is about the value being wrong when op:append does
+  emit them.
+
+  Repro on project `snatch`, one session, in order:
+
+  1. op:append -> SNAT-0029, envelope counter_advanced_past 19,
+     counter_advanced_to 29.
+  2. op:append_batch (2 bullets) -> SNAT-0030, SNAT-0031.
+  3. op:append_batch (2 bullets) -> SNAT-0035, SNAT-0036.
+  4. op:append -> SNAT-0037, envelope counter_advanced_past 29.
+
+  At step 4 ids 0030 through 0036 demonstrably already existed, so the
+  reported position was seven behind the allocator at the moment it was
+  emitted. The counter file and whatever the store allocates from had
+  diverged, and the envelope reported the stale one as fact.
+
+  The id-gap half of the same report -- step 3 jumping 31 to 35, burning
+  SNAT-0032/0033/0034, confirmed as gaps rather than rotations via
+  missing_ids with archived_ids empty -- is recorded on ANTS-4537 rather
+  than re-filed here.
+
+  Fix: make counter_advanced_past reflect the position the store actually
+  allocated from, or drop the field. A number knowably false at emit time
+  is worse than an absent one, because it is precisely the field a caller
+  reaches for to predict the next id -- which is what the sibling filed
+  alongside this one is about.
+  Progress (2026-08-20): reproduced on THIS repo within minutes of
+  filing, which makes it two projects and pins the mechanism to its
+  sibling.
+
+  Sequence, same session: op:append_batch allocated ANTS-4578 through
+  ANTS-4581 and emitted no counter field. The very next op:append
+  allocated ANTS-4582 and reported counter_advanced_past 4577 — at a
+  point where 4578, 4579, 4580 and 4581 demonstrably existed, four ids
+  behind, exactly the shape Snatch measured at seven.
+
+  So this is not an independent defect from ANTS-4551. append_batch not
+  writing .roadmap-counter is what leaves the file stale; the next
+  append then reads that stale file value and reports it as
+  counter_advanced_past. One cause, two symptoms: 4551 is the silence,
+  this is the false number that silence produces.
+
+  That strengthens the option recorded on ANTS-4551 — on a store-backed
+  project, stop writing the file and let the store own allocation. It
+  removes both symptoms rather than reporting around them. Fixing only
+  the envelope here would leave .roadmap-counter still drifting.
+  **Layman:** The write receipt names an ID counter position that had already moved on, so predicting the next ID from it fails.
+  Kind: fix.
+  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20..
+  Lanes: remotecontrol, roadmapwrite.
+
+- 📋 [ANTS-4580] **append_batch has no way for a bullet to cite its own batch siblings, so callers predict ids and get them wrong.**
+  Bullets written in one append_batch frequently need to reference each
+  other -- "pairs with X", "supersedes Y", "X is the systemic half of
+  this". The ids do not exist until the write returns, so the body text
+  cannot name them and there is no placeholder mechanism.
+
+  That leaves two options, and both were exercised on Snatch: predict the
+  ids, which was wrong twice in one session because a 2-bullet batch that
+  had been issuing consecutive ids suddenly jumped four; or write the
+  batch and issue one op:amend_body per cross-reference afterwards.
+  Filing SNAT-0039 and SNAT-0040 cost 2 batch bullets plus 2 follow-up
+  amends because each cited the other.
+
+  Impact is not severe but it recurs on essentially every thematically
+  grouped batch, which is the case append_batch exists to serve. The
+  workaround doubles the call count and leaves a window in which the
+  PUSHED roadmap carries wrong cross-references -- which happened: two
+  commits landed with incorrect ids in bullet bodies before the amends.
+  It also actively encourages id prediction, which the sibling filed
+  alongside this one shows is unsafe.
+
+  Suggested fix: a substitution token resolved after allocation --
+  `{{id:0}}` through `{{id:N}}` referring to the batch's own indices,
+  substituted server-side once ids are known. The database-sequence
+  placeholder pattern.
+
+  Smaller alternative if that is too much: document the write-then-amend
+  pattern in the append_batch description as the supported approach, so a
+  session reaches for it instead of predicting. Nothing currently warns
+  that the ids are unpredictable.
+  **Layman:** Items filed together often need to point at each other, but their numbers don't exist until after they're written.
+  Kind: enhancement.
+  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20..
+  Lanes: remotecontrol, roadmapwrite.
+
+- 📋 [ANTS-4581] **A bad_path refusal on a feedback-file path names no verb that would have worked.**
+  The *_Ants_MCP_Feedback.md convention puts the file at the PARENT of
+  the project root. feedback_query resolves it by derivation and
+  read_region reads it fine by absolute path; workspace_search refuses.
+
+  Repro: workspace_search {caller_cwd:
+  "/mnt/Games/Scripts/Linux/Snatch", pattern: "^### ", regex: true,
+  glob: "Snatch_Ants_MCP_Feedback.md", lane: ".."} returns {ok:false,
+  code:"bad_path", error: "workspace-search: \"lane\" escapes project
+  root"}. read_region on the same file by absolute path, same
+  caller_cwd, succeeds.
+
+  The reporter is explicit that the refusal is CORRECT for a
+  project-scoped search verb and is NOT asking for the sandbox to be
+  loosened. The report is about the inconsistency: three verbs, three
+  different answers about whether the shared root is reachable, and no
+  hint pointing at the one that works. It cost one refused call and a
+  fall back to Bash grep -- while listing existing finding headings
+  before appending, which the file's own contributor header asks every
+  session to do.
+
+  Cheapest useful fix, and it changes no capability: when a bad_path
+  refusal is triggered by a path matching *_Ants_MCP_Feedback.md, name
+  feedback_query (for the un-triaged tail) and read_region (for arbitrary
+  slices) in the error. A dead end becomes a redirect at no cost to the
+  sandbox.
+
+  Alternatively feedback_query could grow a headings-only mode. "List
+  what has already been reported" is a fixed, predictable need with no
+  first-class answer today: delta_present:false correctly says nothing is
+  un-triaged, but says nothing about what the triaged findings were.
+
+  Same class as ANTS-4565 (doc_citations refusing the ~global sentinel
+  its sibling read verbs accept): a family of verbs disagreeing about
+  reachable paths, with the refusal naming no alternative.
+  **Layman:** Three tools give three different answers about whether the shared feedback folder is reachable, and the refusal doesn't point at the one that works.
+  Kind: enhancement.
+  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20..
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4582] **The renderer appends a full stop to a trailer value that already ends in one, producing a double period.**
+  Observed on ANTS-4578, filed minutes earlier in this section. The
+  `source` supplied was "Snatch_Ants_MCP_Feedback.md 2026-08-20;
+  reproduced on this repo during the triage that filed it." — ending in a
+  full stop, as a sentence does. The rendered trailer reads "...that
+  filed it.." with two.
+
+  So the renderer appends its terminating period unconditionally rather
+  than only when the value lacks one. Compare the neighbouring bullets,
+  whose sources were supplied WITHOUT a trailing stop and render with
+  exactly one.
+
+  Cosmetic, and deliberately filed small. It is worth noting only because
+  the roadmap file is generated, so the blemish cannot be fixed in place
+  — every future render reproduces it, and a hand edit is discarded
+  (ANTS-4555's territory). There is also no op that amends the `source`
+  column, so an already-filed item cannot be corrected at all today;
+  that gap is the more interesting half and is the reason this is a fix
+  rather than a nitpick.
+
+  Cheapest fix: trim a trailing period from the value before appending
+  one, in the same place the trailer line is composed. Applies to every
+  trailer that gets the treatment, not just `source`.
+  **Layman:** A stray extra full stop appears in the roadmap file when the text you supplied already ended with one.
+  Kind: fix.
+  Source: in-session-2026-08-20, observed while filing ANTS-4578.
+  Lanes: roadmaprender.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
