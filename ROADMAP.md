@@ -40498,6 +40498,89 @@ filed below.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
   Lanes: roadmapparse, roadmap-store.
 
+- 📋 [ANTS-4586] **No stable direct-download URL exists, so every download link is a page a user still has to navigate.**
+  Verified against the live site 2026-08-20. antsprojectshub.co.za's
+  Ants Terminal page carries three links: the Download button and "All
+  releases" both go to /releases, and "grab the ready-to-run AppImage"
+  goes to /releases/latest. README.md's install section uses the same
+  /releases/latest.
+
+  None is stale — that is worth stating, because the obvious diagnosis
+  was a hardcoded old link and it is wrong. Every one of them is correct
+  and every one lands on a PAGE. When that page carried no asset
+  (ANTS-4583) the user's reasonable reading was that the site links to
+  GitHub instead of to a download.
+
+  The structural gap: GitHub's direct form is
+  /releases/latest/download/<exact-filename>, and this project's filename
+  embeds the version (Ants_Terminal-0.7.105-x86_64.AppImage), so no
+  permanent direct URL can exist. Every publisher of a link is therefore
+  forced to send people to a page.
+
+  Proposal, cheap and additive: upload a SECOND copy of the same artefact
+  under a version-less name, Ants_Terminal-x86_64.AppImage, alongside the
+  versioned one. That makes
+  github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-x86_64.AppImage
+  a permanent direct download that never needs updating anywhere — the
+  site, the README, a forum post, a QR code. The versioned filename stays
+  exactly as it is for people who want a specific build, and the zsync
+  update channel is untouched.
+
+  Deliberately NOT done as part of ANTS-4583. It changes what is
+  published rather than repairing a failure, so it is the user's call
+  rather than a fix to slip in. Note it also needs ANTS-4583's
+  verification step widened to cover the third artefact, or the guard
+  would pass while the alias silently went missing.
+  **Layman:** There is no permanent link that downloads the app directly — every link sends you to a page to hunt for the file.
+  Kind: enhancement.
+  Source: user-report-2026-08-20 (site could not link a download).
+  Lanes: packaging, ci.
+
+- 📋 [ANTS-4587] **Package-manager users are two releases behind, and every OBS build reports success.**
+  Found while checking the OTHER download path after ANTS-4583. The
+  AppImage was the reported failure; this one nobody reported.
+
+  Measured 2026-08-20. All four repositories publish
+  ants-terminal-0.7.103 — Tumbleweed 0.7.103-1.2, Leap 16.0
+  0.7.103-lp160.1.1, Mageia 10 0.7.103-1.1, and Fedora 44 likewise. The
+  current public release is 0.7.105 and the tree names 0.7.106, so a user
+  who followed the README's recommended install path ("this is the best
+  option — you get updates automatically") is two releases behind and has
+  no way to notice.
+
+  Cause. packaging/obs/_service in git pins revision v0.7.105 and is
+  correct. The OBS project's own copy still pins v0.7.103:
+
+      osc cat home:milnet:ants-terminal ants-terminal _service
+        -> <param name="revision">v0.7.103</param>
+
+  So the git-side bump happened and packaging/obs/obs-submit.sh was never
+  run for 0.7.104 or 0.7.105. obs_scm only re-clones when the services
+  are triggered, so OBS kept building the source archive it already had.
+
+  The dangerous part is the signal. `osc results` reports **succeeded**
+  on all four targets, because they DID build — from stale sources. A
+  green board means "the last thing we told it to build still builds",
+  never "the current release is published". That is the same shape as
+  ANTS-4583: a step that silently did not happen, with no check that
+  would notice, and an outward-facing artefact left wrong for weeks.
+
+  Two things to fix, and the second is the valuable one.
+
+  1. Submit the current tag so the repositories carry 0.7.105.
+  2. Verify PUBLISHED VERSION rather than build status. A check that
+  compares the newest RPM in each repository against the latest
+  non-prerelease GitHub tag answers the question a user actually has.
+  It belongs next to ANTS-4583's artefact check — same class, other
+  channel — and would have caught this the week it happened.
+
+  Housekeeping noticed in passing: the OBS package still carries a stale
+  ants-terminal-0.7.101.tar.gz alongside the generated sources.
+  **Layman:** Anyone who installed via their package manager is stuck on an old version, and nothing reported a problem.
+  Kind: fix.
+  Source: in-session-2026-08-20, found while auditing every download path after the v0.7.105 report.
+  Lanes: packaging, ci.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
