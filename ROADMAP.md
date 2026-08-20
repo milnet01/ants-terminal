@@ -40893,9 +40893,11 @@ filed below.
 
   Measured read-only across the machine-global store: 1789 items in 6 projects have source = 'planned'. Vestige 989, Ants_Terminal 419, Music_Production 357 (every item it has), finbreak 16, Games_Hub 4, MAME_Curator 4. No other lifecycle word occurs.
 
-  item.source is NOT NULL with no default, so the importer had to write something for a bullet that carried no `Source:` line, and it wrote the status. The column is provenance — "where did this come from" — and a lifecycle word answers a different question, so every one of these items has lost its provenance rather than merely being short.
+  CORRECTED 2026-08-20, before any work started: this was first filed as importer damage, and it is not. `git log -S` puts the earliest occurrence in commit 7e4edf92, `ANTS-1129: Source: field backfill`, a deliberate pass that wrote the placeholder into the roadmap PROSE for bullets that had no provenance. The 52 of the 1789 whose body still carries a run read `Source: planned.` literally; the other 1737 lost the line to stripTrailingTrailerLines because it was trailing. The importer copied faithfully. Verified rather than assumed, which is the same test this session applied to two incoming reports. The column is provenance — "where did this come from" — and a lifecycle word answers a different question, so every one of these items has lost its provenance rather than merely being short.
 
-  Unlike ANTS-4585's truncations this is NOT repairable from prose: the surviving inline run carries no provenance line for these, which is why the importer had nothing to copy. So the honest repair is probably a sentinel that reads as absent (or making the column nullable), not an invented value.
+  Not repairable from prose, but for a different reason than first filed: the prose says the same placeholder. There is no truer value to recover anywhere, because none was ever recorded. So the repair is a sentinel that reads as absent, or making the column nullable — never an invented value.
+
+  Reader-facing impact is small and should be measured before this is scheduled. Only 41 of Ants_Terminal's 419 render a placeholder line in the roadmap file today, and the archives render none, so most of the population is invisible to a reader and the defect is a data-quality tidy rather than the corruption the first filing implied.
 
   Sequencing: this must be settled BEFORE any pass that rewrites the column, including ANTS-4585's repair. A repair walking it will otherwise either preserve the wrong value or overwrite it with a guess, and there is no second copy to check against afterwards.
 
