@@ -54,6 +54,33 @@ done
 
 changed="$(printf '%s\n' "$changed" | sed '/^$/d' | sort -u)"
 
+# ANTS-4584 — README claim check, BEFORE the docs-only skip below.
+# It has to run first: a README-only push is docs-only, so gating it behind
+# that skip would exempt exactly the push most likely to introduce drift.
+# Three greps against the code, so it costs nothing on a push that touches
+# neither side.
+if [[ -x tools/check-readme-claims.sh ]]; then
+    if ! readme_out="$(tools/check-readme-claims.sh 2>&1)"; then
+        echo "$readme_out"
+        echo "pre-push: README.md contradicts the code — fix it, or --no-verify."
+        exit 1
+    fi
+fi
+
+# ANTS-4584 — the PROSE half, which no script can judge: does the README still
+# read for someone who does not write software? Raised every 10th push rather
+# than every one, because the answer changes slowly and a prompt that fires
+# constantly stops being read. Advisory — it never blocks.
+push_count_file=".git/ants-push-count"
+push_n=$(( $(cat "$push_count_file" 2>/dev/null || echo 0) + 1 ))
+echo "$push_n" > "$push_count_file" 2>/dev/null || true
+if (( push_n % 10 == 0 )); then
+    echo "pre-push: push #${push_n} — re-read README.md as a NEW USER."
+    echo "          The numbers are checked above; this is about the prose:"
+    echo "          jargon that crept in, a feature described but not shipped,"
+    echo "          install steps nobody has run lately."
+fi
+
 if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
     # Positive capture (robust across grep builds — a bare `grep -qv` exit code
     # proved unreliable here): the non-doc files are the lines that do NOT match

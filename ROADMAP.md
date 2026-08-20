@@ -40351,6 +40351,93 @@ filed below.
   Source: in-session-2026-08-20, observed while filing ANTS-4578.
   Lanes: roadmaprender.
 
+- 🚧 [ANTS-4583] **A release can be published with no downloadable artefact, and nothing notices.**
+  v0.7.105, the public "Latest" release, carries zero assets. Reported by
+  the user because antsprojectshub.co.za could not link a download for it
+  and fell back to the GitHub page.
+
+  Cause, measured. The appimage job carried a 25-minute budget; run
+  32275414256 expired at 25m19s. GitHub reports a timed-out job as
+  "cancelled", which is why it read as a deliberate stop rather than a
+  failure. It expired inside the FIRST step, installing Qt6 on the
+  runner, so build, package, smoke-test and upload were all skipped. The
+  release object exists because the TAG PUSH creates it, not this
+  workflow, so the page rendered normally with nothing attached.
+
+  The budget was never generous: successful runs measured 13m23s, 15m8s,
+  16m34s, 18m18s and 22m36s, that last being v0.7.106-rc1 on the same
+  day with under two and a half minutes of headroom. A ceiling set near
+  the fastest observed run rather than the slowest fails on the first
+  slow apt mirror.
+
+  Fixed in commit 02a68c04, two changes. The ceiling is 60 minutes. And a
+  final step re-reads the release and fails the run unless both the
+  AppImage and its .zsync are attached — because uploading and having
+  uploaded are different claims, and until now nothing checked the second
+  one.
+
+  Full audit of all 100 releases: v0.7.105 is the only regression. The
+  v0.7.19 to v0.7.41 and v0.7.92 / v0.7.93 blocks have no assets because
+  they predate this workflow, which is what its manual backfill trigger
+  exists for.
+
+  What is still open, and it is the more valuable half. The new step
+  cannot fire when the job is killed before reaching it, which is exactly
+  what happened here — so it catches a failed upload but not a dead run.
+  The gap it leaves is that an empty release is externally
+  indistinguishable from a healthy one, with no periodic check over
+  published state. A scheduled audit that walks the releases and reports
+  any non-prerelease missing its AppImage would close the class rather
+  than this instance. Filed as the follow-up rather than built here.
+  **Layman:** The latest release had no file to download for a day, and no check anywhere would have caught it.
+  Kind: fix.
+  Source: user-report-2026-08-20 (the website could not link a download).
+  Lanes: packaging, ci.
+
+- 🚧 [ANTS-4584] **README.md's numeric claims are checked against the code on every push, and its prose is raised every tenth.**
+  The user asked that README.md be kept current and readable by a
+  non-programmer, and suggested making it part of every tenth push.
+
+  Split in two, because the two halves have different answers.
+
+  The NUMBERS are derivable, so they are checked mechanically on every
+  push by tools/check-readme-claims.sh: the version banner against
+  CMakeLists.txt, the MCP tool count against the registrations in
+  claudeintegration.cpp, and the colour-theme count against themes.cpp.
+  Every push rather than every tenth, because three greps cost nothing
+  and a check that runs one time in ten lets nine drifted pushes through.
+
+  The tool count is the one this was most needed for. CLAUDE.md's release
+  section already called it out as "the one nothing else verifies", and
+  it was verified only by a human remembering. The count is derived from
+  the assignment shape rather than a fixed variable name, because
+  registration uses several (`t`, `wsTool` and others); keying on the
+  variable would have counted 64 of 93 and reported a clean check.
+
+  Verified by mutation, not by reading: with the README edited to claim
+  91 tools and 9 themes the script exits 1 and names both, and the
+  correct file exits 0.
+
+  The PROSE is the half no script judges, so the hook raises it every
+  tenth push as an advisory that never blocks. A prompt that fires on
+  every push stops being read, and the answer to "does this still read
+  for a newcomer" changes slowly.
+
+  Ordering detail worth keeping: the claim check runs BEFORE the hook's
+  docs-only skip. A README-only push IS docs-only, so gating it behind
+  that skip would have exempted exactly the push most likely to introduce
+  the drift.
+
+  Found while checking: the README's install section points at
+  releases/latest, which resolved to the assetless v0.7.105 — so its
+  "grab the AppImage" instructions matched no file. Not fixed here; that
+  is ANTS-4583's backfill, and the link is correct once the release
+  carries its artefacts.
+  **Layman:** The README's numbers are now checked automatically, and every tenth push reminds someone to re-read it as a newcomer would.
+  Kind: test.
+  Source: user-request-2026-08-20.
+  Lanes: ci, docs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
