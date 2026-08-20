@@ -40603,6 +40603,11 @@ filed below.
   THIRD RESIDUE CLASS FOUND, out of this item's scope, filed as ANTS-4595: 1789 items across 6 projects store a lifecycle word in `source` (Vestige 989, Ants_Terminal 419, Music_Production 357 — all of its items). Unlike the truncations this is NOT repairable from prose. It must be settled before any pass rewrites `source`.
 
   Phase 2 (repair) is unstarted and still owes a dry run and a reversible plan.
+  Progress (2026-08-20): the phase-1 note's open question is answered and the blocker is cleared. The abbreviation-stop cause WAS still live at HEAD, on the layman key only, and is fixed as ANTS-4596. Verified by running the parser rather than reading it. So a phase-2 repair is no longer re-truncated by the next parse, and phase 2 can proceed on its own terms.
+
+  Two things that changes for the repair. The abbreviation-stop subset may now be recoverable by RE-PARSING the surviving prose rather than by a bespoke repair pass, since the parser reads those values correctly today — worth measuring before writing any repair code, because it could remove most of phase 2's work. And the wrap subset is unaffected: ANTS-4542 fixed that separately and earlier.
+
+  Still open before phase 2 writes anything: ANTS-4595 (the lifecycle word in the provenance column) has to be settled first, and rxLanes() carries the same unfixed `(.+?)[\.\n]` shape that ANTS-4596 just removed from layman — unmeasured, and lanes are identifiers so the corpus may show no damage.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
@@ -40899,6 +40904,43 @@ filed below.
   Kind: fix.
   Source: ANTS-4585 phase 1 measurement, 2026-08-20.
   Lanes: roadmapmigrate, roadmap-store.
+
+- ✅ [ANTS-4596] **The layman capture stops at the first period, not the trailing one.**
+  Blocks ANTS-4585 phase 2. Repairing the stored values without this fix re-truncates them on the next parse.
+
+  roadmapparse.cpp:348 captures the value with a NON-GREEDY `(.+?)` closed by `[\.\n]`, so it ends at the FIRST period in the value. Its own comment says the character class is there to strip the TRAILING sentence period (INV-4, punctuation-free). Those are different rules, and the corpus only shows the difference when the value contains an internal dot.
+
+  Verified by running the parser at HEAD, not by reading the regex — a throwaway TU linked against build/*.a calling parseAntsV1Bullet. Input `Layman:` line, then what was stored:
+
+    "... two Claude tabs open (e.g. Ants Terminal + Vestige), ..."
+      -> "When you have two Claude tabs open (e"
+    "Sub-numbered items like 41.5 and 41.5.B ..."
+      -> "Sub-numbered items like 41"
+    "A plain sentence with no abbreviation in it."
+      -> stored whole, correct
+
+  The same probe shows the provenance column is already right: a value carrying `(e.g. a parenthetical)` survives whole. ANTS-3764 gave that key the correct shape — capture `[^\n]+` to end of line, stop at a following trailer key, then chop ONE trailing period — and ANTS-3382 gave the evidence key the same treatment, its comment reasoning that a `[^\.\n]` stop would truncate at a file extension. That is this defect, already diagnosed twice on neighbouring keys and never back-applied here.
+
+  The fix is that shape, with one wrinkle: rxTrailerKey() lists Kind, Lanes, Layman and Evidence because it exists to serve the provenance key. A layman capture running to end-of-line needs a stop set naming the provenance key and not itself, or a single-line value followed by a second key on the same line regresses — today the first-period stop hides that case by accident.
+
+  rxLanes() (line 334) has the identical `(.+?)[\.\n]` shape. Lanes are identifiers so the corpus may show no damage; measure before deciding whether it is in scope.
+
+  Measured impact is in ANTS-4585's phase 1 note: of 403 truncated values, the large majority are this key.
+  Resolved (2026-08-20). rxLayman() now captures `([^\n]+)` to end-of-line, and the extraction site stops at a following trailer key, trims, chops ONE trailing period and trims again — rxSource()'s shape verbatim.
+
+  Added rxTrailerKeyAfterLayman(), the stop set naming Kind/Lanes/Source/Evidence. rxTrailerKey() names Layman and not Source because it exists to serve the provenance key, so reusing it would have let a layman value run through a following `Source:`. That is INV-4, and it passed RED before the fix only because the first-period stop produced it by accident.
+
+  The change also moves this key onto matchLastIn()'s NON-consuming continuation branch — the one rxSource() already uses, whose guard skips continuation for a value already closed by a full stop. So ANTS-4542's wrap behaviour is inherited rather than re-implemented, which is what INV-5 checks.
+
+  Test: tests/features/roadmap_trailer_layman_internal_period (6 cases, into test_claude). Red first, on assertions not compile: INV-1/2/6 failed and INV-3/4/5 passed, so the three that describe the defect and the three that guard against regressing it were distinguished before any source changed. ctest -N moved 3746 -> 3752. Full suite green at 3738/3738.
+
+  Verified end-to-end by re-running the throwaway probe against the rebuilt library, not by trusting the unit test: all four shapes now store whole.
+
+  Unblocks ANTS-4585 phase 2 — a repaired value is no longer re-truncated on the next parse. Not measured yet: rxLanes() (roadmapparse.cpp:334) still carries the identical `(.+?)[\.\n]` shape.
+  **Layman:** A plain-English summary containing "e.g." or a decimal number is cut off at that dot when the roadmap is read.
+  Kind: fix.
+  Source: ANTS-4585 phase 1 measurement, 2026-08-20.
+  Lanes: roadmapparse.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

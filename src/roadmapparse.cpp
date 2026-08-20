@@ -336,16 +336,29 @@ const QRegularExpression &rxLanes() {
     return rx;
 }
 // ANTS-1154-INV-4: optional Layman: line — case-insensitive label,
-// takes the rest of the line up to a period or newline.
+// takes the rest of the line.
 // ANTS-1861: match both plain "Layman:" and bold "**Layman:**" forms
 // (roadmap_log writes the bold version).
-// NOTE — `[\\.\\n]` is intentional: it strips the trailing sentence
-// period so rec.layman is punctuation-free (INV-4 invariant). CHANGELOG
-// consumers that need the full sentence should use match->body via
-// rxBoldLayman (see remotecontrol.cpp cmdChangelogLog, ANTS-1933).
+//
+// ANTS-4596 — the capture runs to end-of-line, and the ONE trailing period
+// INV-4 forbids is chopped at the extraction site. It used to be a
+// non-greedy `(.+?)` closed by `[\\.\\n]`, which ends the value at the FIRST
+// period inside it: `(e.g. …)` stored `(e`, and `41.5` stored `41`.
+// Stripping a TRAILING stop and stopping at the FIRST one are two different
+// rules that agree only on a value with no internal dot, which is why the
+// corpus hid the difference.
+//
+// This is rxSource()'s shape (ANTS-3764) and rxEvidence()'s (ANTS-3382),
+// whose comment already reasons that a `[^\\.\\n]` stop "would truncate at
+// the extension". Neither had been back-applied here. It also moves this key
+// onto matchLastIn()'s non-consuming continuation branch, the one rxSource()
+// already uses and ANTS-4542 INV-5 already covers.
+//
+// CHANGELOG consumers that need the full sentence still use match->body via
+// rxBoldLayman (see remotecontrol_changelog.cpp, ANTS-1933).
 const QRegularExpression &rxLayman() {
     static const QRegularExpression rx(
-        QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*(.+?)\\s*[\\.\\n]"),
+        QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*([^\\n]+)"),
         QRegularExpression::MultilineOption |
         QRegularExpression::CaseInsensitiveOption);
     return rx;
@@ -398,6 +411,16 @@ const QRegularExpression &rxSource() {
 const QRegularExpression &rxTrailerKey() {
     static const QRegularExpression rx(
         QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence):"));
+    return rx;
+}
+
+// ANTS-4596 — the same stop, for `Layman:`. rxTrailerKey() above is built to
+// serve `Source:` and therefore names Layman and not Source; reusing it here
+// would let a layman value run straight through a following `Source:` while
+// ending at a second `Layman:` that cannot occur on one line.
+const QRegularExpression &rxTrailerKeyAfterLayman() {
+    static const QRegularExpression rx(
+        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Source|Evidence):"));
     return rx;
 }
 
@@ -1537,8 +1560,20 @@ TrailerValues trailerValuesIn(const QString &body) {
     // because only that column has a closed value set. matchLastIn() still
     // prefers a LINE-INITIAL match and falls back to the last mid-line one,
     // which is the half of INV-11 that does the work here.
+    // ANTS-4596 — mirrors the `Source:` extraction below: stop at a following
+    // trailer key (scanned on the match's own masked twin, per ANTS-4504 and
+    // ANTS-4542), trim, drop ONE trailing period for INV-4, trim again.
     out.layman = matchLastIn(rxLayman(), body, masked);
-    out.layman.value = out.layman.value.trimmed();
+    if (out.layman.offset >= 0) {
+        QString lmRaw = out.layman.value;
+        const auto keyAt = rxTrailerKeyAfterLayman().match(out.layman.maskedValue);
+        if (keyAt.hasMatch()) lmRaw = lmRaw.left(keyAt.capturedStart());
+        lmRaw = lmRaw.trimmed();
+        if (lmRaw.endsWith(QLatin1Char('.'))) lmRaw.chop(1);
+        out.layman.value = lmRaw.trimmed();
+    } else {
+        out.layman.value = out.layman.value.trimmed();
+    }
 
     // `lanes.value` is the RAW capture: parseBullets() applies neither a trim
     // nor a period chop before splitting it.

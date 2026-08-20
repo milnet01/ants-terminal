@@ -59,6 +59,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The layman capture stops at the first period, not the trailing one.** (ANTS-4596)
+  A plain-English roadmap summary containing "e.g.", "etc.", a decimal
+  like 41.5, or a filename like .deb was cut off at that dot when the
+  roadmap was read. The capture now runs to the end of the line and
+  removes only the sentence's own closing period, which is what the two
+  neighbouring trailer keys already did.
+
 - **`bullet_ambiguous` no longer advises narrowing by the locator that just failed** (ANTS-4574)
   When an `id` matched two bullets and neither carried an anchor, the
   refusal said "narrow with anchor or id" — naming two routes that were
