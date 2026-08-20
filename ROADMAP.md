@@ -40803,6 +40803,39 @@ filed below.
   Source: user-report-2026-08-20.
   Lanes: ci.
 
+- 📋 [ANTS-4591] **roadmap_log's schema does not mention bad_section's new candidates[], so nothing tells a caller to read it.**
+  ANTS-4556 shipped `candidates[]` + `sections_total` on the bad_section
+  refusal. The verb's schema was NOT updated, and started but was left
+  undone in the same session — recorded rather than left implicit.
+
+  Two surfaces, and the split matters because one of them is capped.
+
+  The tools/list `description` (claudeintegration.cpp, the roadmap_log
+  block) does not list `bad_section` among its refusal codes at all. It
+  is capped at 800 B on the wire by INV-5, and its own comment says the
+  reasoning belongs in `detail` for exactly that reason — so this is not
+  the place to explain the field, and it may not have room for the code
+  name either. Measure before adding.
+
+  The per-op `detail` (tool_info {name:"roadmap_log"}) is where the
+  explanation goes: that bad_section now ranks near-misses, that the list
+  is capped at 10, that it is a HINT and the write still refuses, and
+  that bad_case still wins for a pure case mismatch.
+
+  Worth doing because discoverability is the whole point of the change: a
+  caller who does not know the field exists still makes the section_index
+  round-trip ANTS-4556 was filed to remove, and the refusal is then
+  strictly more bytes for no benefit.
+
+  Watch the byte-window scrape tests when editing either string — adding
+  a literal to a verb's schema block has pushed a later literal past a
+  fixed-byte scrape window before (mcp_*_verb / build_status). Run the
+  full suite, not just the roadmap lanes.
+  **Layman:** The new "did you mean?" hint works, but nothing advertises it, so callers may never look.
+  Kind: doc.
+  Source: in-session-2026-08-20, residue of ANTS-4556.
+  Lanes: remotecontrol, docs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
