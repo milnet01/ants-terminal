@@ -243,11 +243,30 @@ jobs:
           # downloads, so without it embedded clients fall back to
           # whole-file fetch (still works, just slower). With it,
           # only changed blocks transfer.
+          # ANTS-4586 — a SECOND copy under a version-less name, so a
+          # permanent direct-download URL exists:
+          #   /releases/latest/download/Ants_Terminal-x86_64.AppImage
+          # GitHub's direct form needs an exact filename, and ours embeds the
+          # version, so before this every link the site or README could offer
+          # was a PAGE the user still had to navigate. That is why an empty
+          # release (ANTS-4583) read to the user as "it points at GitHub
+          # instead of a download". The versioned name is unchanged for people
+          # who want a specific build, and zsync still keys on it.
+          #
+          # RC builds are skipped: `latest` never resolves to a prerelease, so
+          # an alias there would be a file nothing can reach by the stable URL,
+          # and publishing an unversioned RC binary invites the exact mix-up
+          # the separate RC channel exists to prevent.
+          ALIAS="Ants_Terminal-x86_64.AppImage"
+          UPLOADS=( "${OUTPUT}" "${OUTPUT}.zsync" )
+          if [ "${{ steps.tag.outputs.is_rc }}" != "1" ]; then
+            cp "${OUTPUT}" "${ALIAS}"
+            UPLOADS+=( "${ALIAS}" )
+          fi
           gh release upload "${{ steps.tag.outputs.ref }}" \
-            "${OUTPUT}" \
-            "${OUTPUT}.zsync" \
+            "${UPLOADS[@]}" \
             --clobber
-          echo "Uploaded ${OUTPUT} to release ${{ steps.tag.outputs.ref }}"
+          echo "Uploaded ${UPLOADS[*]} to release ${{ steps.tag.outputs.ref }}"
 
       # ANTS-4583 — assert the release really carries both artefacts.
       # Uploading and *having uploaded* are different claims, and until
@@ -265,8 +284,16 @@ jobs:
                     --json assets --jq '.assets[].name')
           echo "Assets now on ${{ steps.tag.outputs.ref }}:"
           echo "${NAMES}"
+          # ANTS-4586 — the alias is checked on a stable release for the same
+          # reason the other two are: an artefact nothing verifies is one that
+          # can go missing quietly, and this is the one a published link
+          # depends on.
+          WANT=( "${OUTPUT}" "${OUTPUT}.zsync" )
+          if [ "${{ steps.tag.outputs.is_rc }}" != "1" ]; then
+            WANT+=( "Ants_Terminal-x86_64.AppImage" )
+          fi
           MISSING=0
-          for want in "${OUTPUT}" "${OUTPUT}.zsync"; do
+          for want in "${WANT[@]}"; do
             if ! printf '%s\n' "${NAMES}" | grep -Fxq "${want}"; then
               echo "::error::${want} is NOT attached to the release"
               MISSING=1
