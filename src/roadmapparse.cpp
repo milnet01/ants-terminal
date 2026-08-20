@@ -515,6 +515,54 @@ QString maskCodeSpans(const QString &body) {
 // value is sliced from `body` at the same offsets. That split is the whole
 // contract — the mask decides WHERE a declaration is, never what it says, so a
 // value legitimately carrying backticks is stored verbatim.
+// ANTS-4542 — a trailer value is hard-wrapped by its author, and every
+// pattern stops the capture at `[\.\n]`. So a value that runs past the wrap
+// ended AT the wrap and the remainder was dropped: `Lanes: build, ci, tests,`
+// stored three lanes and lost `security.` from the line below, and the render
+// then re-emitted the short list terminated with a full stop — which reads as
+// a bullet that really declares three.
+//
+// Measured on this project 2026-08-20: of 2199 bullets, 123 state a key both
+// as pre-migration inline prose and as a rendered trailer, and the wrapped
+// ones are the divergent set. Four values render with an unbalanced open
+// bracket (`Source: in-session-2026-05-21 (noticed integrating.`), which is
+// the only reason the loss was visible at all.
+//
+// This is import-time damage rather than ongoing corruption: the render emits
+// body text verbatim and never re-wraps it, and it always writes a trailer on
+// its own line terminated by a full stop. So the rule is a no-op on generated
+// content and changes only how legacy prose reads.
+constexpr int kMaxWrapLines = 4;
+
+// A continuation line stops the value when it opens a NEW declaration —
+// otherwise `Lanes: a, b,` would swallow the `Kind:` line beneath it.
+bool lineBeginsTrailerDecl(QStringView line) {
+    while (!line.isEmpty()
+           && (line.at(0) == QLatin1Char(' ') || line.at(0) == QLatin1Char('\t')))
+        line = line.mid(1);
+    if (line.startsWith(QLatin1String("**")))
+        line = line.mid(2);
+    for (const QLatin1String key : {QLatin1String("Kind:"), QLatin1String("Source:"),
+                                    QLatin1String("Lanes:"), QLatin1String("Layman:"),
+                                    QLatin1String("Evidence:")})
+        if (line.startsWith(key))
+            return true;
+    return false;
+}
+
+// Index of the first SENTENCE-terminating full stop — one at end of line or
+// followed by whitespace. A dot inside a token (`…_Feedback.md 2026-08-20`)
+// does not end the value; INV-5 pins that.
+int sentenceStop(QStringView v) {
+    for (int i = 0; i < v.size(); ++i) {
+        if (v.at(i) != QLatin1Char('.'))
+            continue;
+        if (i + 1 >= v.size() || v.at(i + 1).isSpace())
+            return i;
+    }
+    return -1;
+}
+
 TrailerMatch matchLastIn(const QRegularExpression &rx, const QString &body,
                          const QString &masked,
                          CandidatePred isCandidate = nullptr) {
@@ -527,9 +575,78 @@ TrailerMatch matchLastIn(const QRegularExpression &rx, const QString &body,
         const QRegularExpressionMatch m = i.next();
         const int at = m.capturedStart(0);
         TrailerMatch cur;
-        cur.value    = body.mid(m.capturedStart(1), m.capturedLength(1));
-        cur.offset   = m.capturedStart(1);
+        cur.value       = body.mid(m.capturedStart(1), m.capturedLength(1));
+        cur.maskedValue = masked.mid(m.capturedStart(1), m.capturedLength(1));
+        cur.offset      = m.capturedStart(1);
         cur.anchored = (at == 0) || (at > 0 && masked.at(at - 1) == QLatin1Char('\n'));
+
+        // ANTS-4542 — the match ended at the WRAP rather than at a full stop,
+        // so the value continues on the line below. Walk forward while the
+        // text is still this value: stop at a blank line (a paragraph break
+        // is never a wrap), at a line opening another declaration, and at the
+        // value's own sentence-terminating full stop. Continuation is decided
+        // against `masked`, so a key quoted in backticks below does not end
+        // the value; the text is taken from `body`, so a value legitimately
+        // carrying backticks is stored verbatim. Both halves are the split
+        // this function already documents.
+        //
+        // The five patterns are not one shape, and the difference decides
+        // where a continuation starts. Four end `\s*[\.\n]`, CONSUMING a
+        // terminator, so a wrap leaves a newline as the match's last
+        // character. `rxSource()` captures `([^\n]+)` and consumes nothing,
+        // so its match simply ends at the line's last character and the
+        // newline sits just past it. Keying on the terminator alone read
+        // `Source:` as never wrapping — INV-2 is that case.
+        //
+        // In the consuming shape the `\s*` is greedy across newlines, so on a
+        // PARAGRAPH break it has already eaten the blank line before the loop
+        // runs and the blank-line guard never fires. Count the newlines it
+        // took: one is a wrap, two is a new paragraph and the value ended at
+        // the first.
+        const int  matchEnd = m.capturedEnd(0);
+        const bool consumedTerminator = (matchEnd > m.capturedEnd(1));
+        int contStart = -1;
+        if (consumedTerminator) {
+            const QString gap = masked.mid(m.capturedEnd(1),
+                                           matchEnd - m.capturedEnd(1));
+            if (matchEnd > 0 && masked.at(matchEnd - 1) == QLatin1Char('\n')
+                && gap.count(QLatin1Char('\n')) < 2)
+                contStart = matchEnd;
+        } else if (matchEnd < masked.size()
+                   && masked.at(matchEnd) == QLatin1Char('\n')
+                   && !cur.value.trimmed().endsWith(QLatin1Char('.'))) {
+            // Non-consuming shape: the capture ran to end of line. A value
+            // already closed by a full stop is finished, not wrapped — which
+            // is what keeps a `Source:` naming a `.md` file from absorbing
+            // the line beneath it (INV-5).
+            contStart = matchEnd + 1;
+        }
+        if (contStart >= 0) {
+            int pos = contStart;
+            for (int n = 0; n < kMaxWrapLines && pos < masked.size(); ++n) {
+                int eol = static_cast<int>(masked.indexOf(QLatin1Char('\n'), pos));
+                if (eol < 0)
+                    eol = static_cast<int>(masked.size());
+                const QStringView mline = QStringView(masked).mid(pos, eol - pos);
+                if (mline.trimmed().isEmpty() || lineBeginsTrailerDecl(mline))
+                    break;
+                const int stop = sentenceStop(mline);
+                const int take = (stop >= 0 ? stop : eol - pos);
+                const QString seg  = body.mid(pos, take).trimmed();
+                const QString mseg = masked.mid(pos, take).trimmed();
+                if (!seg.isEmpty()) {
+                    if (!cur.value.isEmpty()) {
+                        cur.value       += QLatin1Char(' ');
+                        cur.maskedValue += QLatin1Char(' ');
+                    }
+                    cur.value       += seg;
+                    cur.maskedValue += mseg;
+                }
+                if (stop >= 0)
+                    break;
+                pos = eol + 1;
+            }
+        }
         lastSeen = cur;
 
         if (isCandidate && !isCandidate(cur.value))
@@ -1450,8 +1567,10 @@ TrailerValues trailerValuesIn(const QString &body) {
         // same reason the match did: a key quoted inside a `Source:` value is
         // a mention, and truncating there would silently drop the rest of a
         // real value.
-        const auto keyAt =
-            rxTrailerKey().match(masked.mid(out.source.offset, srcRaw.size()));
+        // ANTS-4542 — scan the match's own masked twin rather than re-slicing
+        // `masked` at offset+size, which is no longer the same text once a
+        // wrapped value has been joined across its line break.
+        const auto keyAt = rxTrailerKey().match(out.source.maskedValue);
         if (keyAt.hasMatch()) srcRaw = srcRaw.left(keyAt.capturedStart());
         srcRaw = srcRaw.trimmed();
         if (srcRaw.endsWith(QLatin1Char('.'))) srcRaw.chop(1);

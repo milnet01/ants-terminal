@@ -1812,6 +1812,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_fence_guard/test_roadmap_log_fence_guard.cpp
                 # ANTS-2058 parseBullets inline `Kind: . Lanes: .` lanes extraction.
                 tests/features/roadmap_query_inline_lanes/test_roadmap_query_inline_lanes.cpp
+                tests/features/roadmap_trailer_wrapped_value/test_roadmap_trailer_wrapped_value.cpp  # ANTS-4542
                 # ANTS-1878 roadmap_log op:create_section.
                 tests/features/mcp_roadmap_log_create_section/test_mcp_roadmap_log_create_section.cpp
                 # ANTS-1879 roadmap_log op:append_batch.

@@ -558,6 +558,37 @@ reading. The residue is a bullet that has **no** line-initial declaration and a
 capitalised prose mention, which falls through to the mid-line branch; INV-1's
 note is what makes that visible rather than silent.
 
+**A value HARD-WRAPPED by its author continues onto the next line.** Recorded
+2026-08-20 from ANTS-4542; this amendment states what was built, it does not
+set new direction. Every pattern stopped the capture at the wrap, so a value
+running past it was truncated and the remainder silently dropped — measured
+here as `Lanes: build, ci, tests,` storing three lanes and losing `security.`
+from the line below, and as four corpus values rendering with an unbalanced
+open bracket (`Source: in-session-2026-05-21 (noticed integrating.`). The
+render then re-emits the short value terminated by a full stop, which reads as
+a correct declaration, so the loss is invisible at the point a reader could
+catch it.
+
+The continuation stops at the value's own sentence-terminating full stop — one
+at end of line or followed by whitespace, so a dot inside a token (`…_Feedback
+.md 2026-08-20`) does not end it — at a blank line, at a line opening another
+declaration, or after four lines. It is decided against the code-span mask and
+sliced from the unmasked body, which is § 2.2's existing split: the mask says
+where a declaration is, never what it says.
+
+**The two pattern shapes differ and the difference is load-bearing.** Four keys
+end `\s*[\.\n]` and CONSUME a terminator, so a wrap leaves a newline as the
+match's last character. `rxSource()` captures `([^\n]+)` and consumes nothing,
+so its match ends at the line's last character with the newline just past it.
+A rule keyed on the terminator alone reads `Source:` as never wrapping — which
+it did, until the shapes were separated.
+
+This is import-time damage rather than ongoing corruption: the render emits
+body text verbatim and never re-wraps it, and always writes a trailer on its
+own line terminated by a full stop. So the rule is a no-op on generated content
+and changes only how legacy prose reads. `tests/features/roadmap_trailer_wrapped_value/`
+pins all seven cases.
+
 ### 2.3 A defaulted field is always noted
 
 `makeItem()`'s empty-`rawKind` branch gains the note its unmapped-value sibling

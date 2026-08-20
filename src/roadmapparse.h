@@ -168,6 +168,13 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal = nullptr)
 // bare value cannot answer "was this an un-anchored mid-prose match?".
 struct TrailerMatch {
     QString value;         // empty when the key is absent
+    // ANTS-4542 — `value` with code spans blanked, built by the same steps.
+    // It exists because `value` stopped being a contiguous slice of `body`
+    // when a WRAPPED value gained its continuation: callers that re-scanned
+    // `masked.mid(offset, value.size())` were then reading a window of the
+    // wrong length. Same string when the value did not wrap, so the
+    // unwrapped path is byte-identical to what it was.
+    QString maskedValue;
     // Index of the CAPTURE (`capturedStart(1)`) into `body`, in QString
     // positions — UTF-16 code units, NOT bytes. -1 when absent. Converting
     // this to a UTF-8 offset breaks ANTS-3809's sentence extraction on the
