@@ -168,14 +168,29 @@ too — that service builds for more than openSUSE.)
 
 ### The easy way (any Linux, 64-bit)
 
-Not on one of the above? Grab the ready-to-run **AppImage** from the
-[Releases page](https://github.com/milnet01/ants-terminal/releases/latest) —
-download it, make it executable, and run it:
+Not on one of the above? Grab the ready-to-run **AppImage** — one file, no
+installer. This link always gives you the newest version:
+
+**[Download Ants Terminal (AppImage, 64-bit Linux)](https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-x86_64.AppImage)**
+
+Then make it executable and run it:
 
 ```bash
-chmod +x Ants_Terminal-*-x86_64.AppImage
-./Ants_Terminal-*-x86_64.AppImage
+chmod +x Ants_Terminal-x86_64.AppImage
+./Ants_Terminal-x86_64.AppImage
 ```
+
+Or do the whole thing in one line:
+
+```bash
+curl -L -o Ants_Terminal-x86_64.AppImage \
+  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-x86_64.AppImage
+chmod +x Ants_Terminal-x86_64.AppImage && ./Ants_Terminal-x86_64.AppImage
+```
+
+Prefer a specific version? Every release on the
+[Releases page](https://github.com/milnet01/ants-terminal/releases) also carries
+the same build under its version number.
 
 It works on most recent Linux distributions and bundles everything it needs.
 Your settings live in `~/.config/ants-terminal/`.

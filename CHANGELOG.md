@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **A daily audit of what is actually published** (ANTS-4588)
+  Checks the current release against reality rather than against the last build's exit code: that the release carries its AppImage, .zsync and permanent alias, that the permanent URL serves a real ELF binary (fetched as bytes, not inferred from a listing), and that every package repository publishes the release's version. Written because two channels broke on the same day while both reported success, and because a per-run check cannot catch a job that dies before reaching it. A fetch that could not run reports as unchecked rather than as drift.
+
+- **A permanent direct-download link for the latest AppImage** (ANTS-4586)
+  A stable release now also publishes the same binary under a version-less name, so `github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-x86_64.AppImage` downloads the current version and never needs updating anywhere. Previously the filename embedded the version, so no permanent direct URL could exist and every link a site or README could offer was a page to navigate. The versioned filename is unchanged and RC builds are excluded, since `latest` never resolves to a prerelease.
+
 - **README.md's numeric claims are verified against the code on every push** (ANTS-4584)
   tools/check-readme-claims.sh checks the version banner against CMakeLists.txt, the MCP tool count against claudeintegration.cpp, and the colour-theme count against themes.cpp — the tool count in particular had no verifier but a person remembering. It runs from the pre-push hook ahead of the docs-only skip, so a README-only push cannot exempt itself; every tenth push additionally raises the prose for a human read.
 
@@ -45,6 +51,9 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **Package-manager users were two releases behind** (ANTS-4587)
+  All four repositories (openSUSE Tumbleweed and Leap 16.0, Fedora 44, Mageia 10) served 0.7.103 while the current release was 0.7.105. The `_service` file in git correctly pinned v0.7.105, but the OBS project's own copy still pinned v0.7.103 — the submit step was never run for 0.7.104 or 0.7.105, so OBS kept rebuilding the source archive it already had and reported every build as succeeded.
 
 - **A bullet listing four lanes no longer stores three** (ANTS-4553)
   Reported against finbreak, where a bullet's prose listed four lanes while the stored column held three. Same cause as ANTS-4542: the list was truncated at the line wrap rather than diverging from a second source. Values already truncated in existing stores are not repaired by this change and are tracked as ANTS-4585.
