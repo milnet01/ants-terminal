@@ -1090,6 +1090,32 @@ Catchers, cheapest first:
 **A defect paid for at cold-reader prices that a grep could have caught
 is a process failure, not a review success.**
 
+### 9.4 Prose is outside every review here
+
+**Wording, register, tone, ordering and examples are nobody's job.** No
+review here asks whether a document is well written, and a finding whose
+only remedy is *reword this* is out of scope however true it is.
+
+The reason is that the question has no bar. Nobody can be caught being
+wrong about it, so the dimension never comes back clean. `review-contract`
+ran fifteen dimensions until 2026-08-08 and did not converge: six could
+never come back clean, their findings became edits, and the edits broke
+things that were true. `skills/review-contract/references/rationale.md`
+holds the measurement.
+
+**Length is excluded too, and §2.8 owns why** — what is worth looking at
+in a long document is duplication, prose narrating a table, and decisions
+nobody made, each of which a review already asks by name. *Make this
+shorter* is not a finding, and no size budget may stand in for one.
+
+**A review states this exclusion in its own scope section and cites this
+one**, rather than restating the reasoning (§2.1). A document that
+genuinely needs prose work gets a separate, single-pass, report-only job.
+Never a gate.
+
+Stated 2026-08-20 (ROADMAP CFG-0149). Three skills and one charter cited
+§2.8 for this rule, which is about length alone and states none of it.
+
 ## 10. Anti-patterns
 
 - ❌ A fact stated in more than one document.
@@ -1127,6 +1153,7 @@ is a process failure, not a review success.**
 | §2.8 delete first, write second | **nothing** — visible only as a later review loop's findings landing in added text |
 | §7 screenshots current | **nothing** — a reader, or a user noticing |
 | §9.3 repeated classes become checks | **nothing** — a habit, evidenced only by these `nothing` rows falling over time |
+| §9.4 prose is outside every review | **`Partial:`** `review-skill`, a cold rule-by-rule review, asks of every rule what it must not fire on — so a skill omitting the exclusion is catchable there, and that is a review rather than a check. **Nothing** catches a prose finding raised inside a run; the parent dismisses it case by case |
 
 The `nothing` rows are this standard's honest error budget. **§2.2's
 second row is the largest hole in it**: a checker can prove that
