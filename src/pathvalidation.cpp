@@ -49,6 +49,28 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     // The asymmetry that made this surprising is real and worth the words:
     // feedback_log takes an absolute path happily, so the WRITE verb works
     // where the READ verbs refuse.
+    // ANTS-4569 — the `lane` case, and only it. A lane is a search SCOPE
+    // selector, so `lane:".."` is a caller asking to search a wider tree
+    // rather than attempting a traversal — and there is a sanctioned route
+    // for that: point caller_cwd at the tree's own root and confine with
+    // `glob` (measured 2026-08-19, one match in 3.3 s over the shared root).
+    // The refusal stays correct; what was missing was naming the knob. The
+    // description reads as session identity ("Your $PWD"), which is why a
+    // session wanting another tree reaches for `lane` and concludes the file
+    // is unreachable.
+    //
+    // Deliberately NOT generalised to `path`: ANTS-4421 keeps that refusal
+    // hint-free unless the target is a feedback file, on the grounds that an
+    // ordinary out-of-root path has no legitimate route and handing it a
+    // working caller_cwd reads as an invitation to re-issue and escape. A
+    // lane is bounded by the root it is anchored to either way.
+    if (paramName == QStringLiteral("lane")) {
+        o[QStringLiteral("hint")] = QStringLiteral(
+            "\"lane\" is a subdirectory of the project root and cannot "
+            "escape it. To search a DIFFERENT tree, set caller_cwd to that "
+            "tree's root and confine the sweep with \"glob\".");
+        return o;
+    }
     if (!absPath.isEmpty()
         && QFileInfo(absPath).fileName().endsWith(
                QStringLiteral("_Ants_MCP_Feedback.md"))) {

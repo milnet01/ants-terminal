@@ -3416,7 +3416,12 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject laneProp;     laneProp["type"]     = "string";
                                               laneProp["description"] =
                         QStringLiteral("Subdir under repo root (e.g. \"src\"). "
-                                        "Empty = whole repo.");
+                                        "Empty = whole repo. ANTS-4569: lane "
+                                        "cannot escape the project root — "
+                                        "\"..\" refuses bad_path. To search a "
+                                        "DIFFERENT tree, set caller_cwd to "
+                                        "that tree's root and confine with "
+                                        "glob.");
                     QJsonObject globProp;     globProp["type"]     = "string";
                                               globProp["description"] =
                         QStringLiteral("Ripgrep --glob filter (e.g. \"*.cpp\"). "

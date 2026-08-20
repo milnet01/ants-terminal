@@ -582,3 +582,28 @@ TEST(McpPathAnchor, NonFeedbackFileInParentStillRefused) {
         QStringLiteral("apply_edits"));
     EXPECT_TRUE(check.bad);
 }
+
+// ANTS-4569 — a `lane` that escapes the root is refused correctly, but the
+// refusal never named the arg that reaches another tree. `lane` is a search
+// SCOPE selector, not a traversal attempt: the sanctioned route is to point
+// caller_cwd at that tree's root and confine with `glob`. Distinct from
+// Ants4421HintOnlyForFeedbackPaths above, which keeps `path` hint-free —
+// there an out-of-root path has no legitimate route, so a caller_cwd would
+// read as an invitation to escape.
+TEST(McpPathAnchor, Ants4569LaneEscapeNamesCallerCwd) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+
+    const auto check = PathValidation::validatePath(
+        QStringLiteral(".."), fx.root,
+        QStringLiteral("workspace-search"), QStringLiteral("lane"));
+    ASSERT_TRUE(check.bad);
+    const QString hint = check.err.value(QStringLiteral("hint")).toString();
+    EXPECT_FALSE(hint.isEmpty())
+        << "a lane escape must name the route out, not just refuse";
+    EXPECT_TRUE(hint.contains(QStringLiteral("caller_cwd")))
+        << "the hint must name the arg to change; got: " << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("glob")))
+        << "the hint must name how to confine the wider search; got: "
+        << hint.toStdString();
+}
