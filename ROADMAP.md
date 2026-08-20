@@ -40668,6 +40668,40 @@ filed below.
   Source: in-session-2026-08-20, the common cause behind ANTS-4583 and ANTS-4587.
   Lanes: ci, packaging.
 
+- 💭 [ANTS-4589] **Point the website's Download button at the permanent AppImage URL.**
+  💭 because it is a change to a DIFFERENT repository
+  (Ants_Projects_Hub_Website) and the user has not decided. Recorded so
+  the recommendation does not die with the session that made it.
+
+  antsprojectshub.co.za/p/ants-terminal.html carries three links, verified
+  live 2026-08-20: the Download button and "All releases" both go to
+  /releases, and "grab the ready-to-run AppImage" goes to /releases/latest.
+  All three are CORRECT and none is stale — the obvious diagnosis was a
+  hardcoded old link and it was wrong. All three land on a PAGE.
+
+  Since ANTS-4586 shipped there is a permanent direct URL:
+
+    https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-x86_64.AppImage
+
+  Pointing the Download button there makes it a real one-click download,
+  always the current version, never needing an update again. README.md
+  already leads with it (commit c336a729).
+
+  The specific argument for doing it: on 2026-08-20 the release page
+  existed and held no file, so every one of those three links resolved to
+  a page with nothing on it — which is exactly what the user reported as
+  "it points to the GitHub page instead of an actual download". A direct
+  asset URL fails LOUDLY (404) in that situation instead of quietly
+  showing an empty page, and ANTS-4588's daily audit now checks that same
+  URL serves a real binary.
+
+  Not a defect and not urgent; the site works. This is the difference
+  between working and good.
+  **Layman:** The website's Download button could download the app directly instead of sending people to a page to hunt for it.
+  Kind: marketing.
+  Source: in-session-2026-08-20, raised with the user and left as their decision.
+  Lanes: packaging.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
