@@ -38961,6 +38961,18 @@ filed below.
   values (kind against its enum, status, dates) on the dry path and report
   them — and soften the description's "can't drift" claim to name what the
   preview does not cover.
+  Progress (2026-08-20): a sibling landed with live evidence for this
+  one. ANTS-4576 records a measured `store_failed` — a raw SQLite
+  "NOT NULL constraint failed: item.kind" — from an op:amend_body whose
+  markdown-side reasoning was entirely sound. Same shape as this item:
+  the store layer refuses at commit for a reason no pre-write surface
+  could show the caller.
+
+  So these two are worth taking together rather than in sequence. This
+  item asks the preview to touch the store; ANTS-4576 asks what the
+  refusal should say when it does. A dry run that answered the first and
+  still emitted a raw constraint string would only move the surprise
+  earlier.
   **Layman:** The "preview before you write" check says fine for writes that then fail.
   Kind: fix.
   Source: AI_Prompts_Ants_MCP_Feedback.md 2026-08-20.
