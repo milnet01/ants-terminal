@@ -3,6 +3,7 @@
 #include "remotecontrol_internal.h"
 #include "roadmapfoldin.h"
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the injectable "today"
+#include "wrapmatch.h"     // ANTS-4550 — the wrapped-match rule
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -2136,10 +2137,12 @@ static QString rcAmendedParagraph(const QStringList &lines, int editedIdx) {
 }
 
 // ANTS-3406 — roadmap_log op:"amend_body". Locate a bullet (id > anchor
-// > headline, same rules as flip) and replace an exact single-line
-// substring of its continuation body (`old_text` → `new_text`), guarded
-// by amendBodyExact's single-occurrence uniqueness check so it can never
-// silently clobber unrelated prose. Standalone handler — deliberately NOT
+// > headline, same rules as flip) and replace an exact substring of its
+// continuation body (`old_text` → `new_text`), guarded by
+// amendBodyExact's single-occurrence uniqueness check so it can never
+// silently clobber unrelated prose. ANTS-4550 — "exact" is exact apart
+// from whitespace runs, which match across a hard-wrapped line break on a
+// second pass taken only when the exact one finds nothing. Standalone handler — deliberately NOT
 // threaded into the delicate flip/annotate path (ANTS-2059 history); it
 // reuses the free walk/scrub/write helpers so flip/annotate stay
 // untouched. Exact-match patch only this pass; full-body-replace is out
@@ -2480,16 +2483,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             if (!before)
                 return rlErr(QStringLiteral("store_failed"), seamErr);
 
-            // Single-line, exactly as amendBodyExact() is: a phrase spanning a
-            // line break does not match, and the hint below says so.
-            QStringList bodyLines = before->body.split(QChar('\n'));
-            int hits = 0, hitLine = -1;
-            for (int i = 0; i < bodyLines.size(); ++i) {
-                const int c = bodyLines.at(i).count(oldText);
-                if (c > 0 && hitLine < 0)
-                    hitLine = i;
-                hits += c;
-            }
+            // ANTS-4550 — the same seam amendBodyExact() runs, so the two
+            // paths cannot answer one old_text differently. Indent::None:
+            // the store holds the body as an UNINDENTED residual the render
+            // indents on the way out, so prefixing here would double it.
+            const WrapMatch::Patch patch = WrapMatch::patchOnce(
+                before->body, oldText, newText, WrapMatch::Indent::None);
+            const int hits = patch.hits;
             if (hits == 0) {
                 QJsonObject env;
                 env[QStringLiteral("ok")]    = false;
@@ -2508,11 +2508,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                                        "line stripped off");
                 } else if (!foldedOld.isEmpty() &&
                            before->body.simplified().contains(foldedOld)) {
+                    // ANTS-4550 — a wrapped phrase now matches, so folded-yet-
+                    // absent means the whitespace itself differs from anything
+                    // the rule spans (a `>` mid-word, a non-breaking space).
                     env[QStringLiteral("hint")] =
-                        QStringLiteral("`old_text` appears to span a hard-wrapped "
-                                       "line break (bodies wrap at ~70 cols); "
-                                       "amend_body matches within one physical line — "
-                                       "pass a substring that fits on a single line");
+                        QStringLiteral("`old_text` matches the body only with its "
+                                       "whitespace folded away entirely — check for "
+                                       "a character inside it that is not plain "
+                                       "space, tab or newline");
                 }
                 return QJsonDocument(env);
             }
@@ -2522,10 +2525,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                                    "body — narrow it to a unique substring")
                         .arg(hits));
             }
-            bodyLines[hitLine].replace(oldText, newText);
-            const QString newBody = bodyLines.join(QChar('\n'));
+            const QString newBody = patch.text;
             // ANTS-4097 — echo the paragraph the edit landed in.
-            const QString amendedPara = rcAmendedParagraph(bodyLines, hitLine);
+            const QString amendedPara =
+                rcAmendedParagraph(newBody.split(QChar('\n')), patch.line);
 
             HistoryContext hist;              // ANTS-3822 § 2.5 — one op, one stamp
             hist.changedAt = rlHistoryStamp();
@@ -2563,6 +2566,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             env[QStringLiteral("amended")] = true;
             if (!amendedPara.isEmpty())
                 env[QStringLiteral("body_paragraph")] = amendedPara;
+            // ANTS-4550 — the match straddled a hard-wrapped line break, so
+            // the paragraph re-flowed; say so rather than let the next diff.
+            if (patch.wrapped)
+                env[QStringLiteral("wrapped_match")] = true;
             if (!matchedId.isEmpty())
                 env[QStringLiteral("id")] = matchedId;
             // No `line` / `body_line` / `bytes` — a store has no lines
@@ -2582,6 +2589,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // 6. Patch. Body span, or — ANTS-4372 — the headline LINE itself.
     int editedLine = -1;
     int hits = 0;
+    // ANTS-4550 — set when the match straddled a hard-wrapped line break, so
+    // the caller learns the paragraph re-flowed rather than discovering it in
+    // the next diff.
+    bool wrappedMatch = false;
     if (headlineMode) {
         // The headline is one physical line, so the "spans a line break"
         // failure mode does not exist here; uniqueness is still enforced,
@@ -2620,7 +2631,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
         }
     } else {
         hits = amendBodyExact(lines, bodyAnchorLine, oldText, newText,
-                              &editedLine);
+                              &editedLine, &wrappedMatch);
     }
     if (hits == 0) {
         // ANTS-3467 — distinguish the two common failure modes so the caller
@@ -2650,11 +2661,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                                "bullet").arg(reportLine);
         } else if (!headlineMode && !foldedOld.isEmpty() &&
                    markdown.simplified().contains(foldedOld)) {
+            // ANTS-4550 — a wrapped phrase inside the located bullet now
+            // MATCHES, so reaching here with the text present-but-folded
+            // means it is present somewhere else: another bullet, or the
+            // headline this op does not edit.
             env[QStringLiteral("hint")] =
-                QStringLiteral("`old_text` appears to span a hard-wrapped "
-                               "line break (bodies wrap at ~70 cols); "
-                               "amend_body matches within one physical line — "
-                               "pass a substring that fits on a single line");
+                QStringLiteral("`old_text` is present in ROADMAP.md only "
+                               "with its whitespace folded, and outside this "
+                               "bullet's body — check the id, and note that "
+                               "amend_body does not edit a headline "
+                               "(op:\"amend_headline\" does)");
         }
         return QJsonDocument(env);
     }
@@ -2685,6 +2701,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
         // ANTS-4097 — echo the paragraph the edit landed in.
         const QString para = rcAmendedParagraph(lines, editedLine);
         if (!para.isEmpty()) out["body_paragraph"] = para;
+        // ANTS-4550 — a wrapped match re-flows the lines it spanned into one.
+        if (wrappedMatch) out["wrapped_match"] = true;
         if (preview) { out["dry_run"] = true; out["bytes"] = byteCount; }
         else         { rcSetWriteBytes(out, sizeBefore, byteCount); }
         if (!matchedId.isEmpty()) out["id"] = matchedId;

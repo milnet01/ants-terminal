@@ -308,7 +308,7 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames);
 QString rcRightStrip(QString s);
 void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after);
 int appendBodyNote(QStringList &lines, int headlineLine, const QString &note, bool *alreadyPresent = nullptr);
-int amendBodyExact(QStringList &lines, int headlineLine, const QString &oldText, const QString &newText, int *matchedLine);
+int amendBodyExact(QStringList &lines, int headlineLine, const QString &oldText, const QString &newText, int *matchedLine, bool *wrapped = nullptr);
 QJsonObject buildHeaderInventoryEnvelope(const QVector<RoadmapIndex::Section> &index, const QString &path, qint64 bytes);
 quint64 rcFnv1a64(const QString &normalised);
 QString rcNormaliseHeadline(const QString &raw);

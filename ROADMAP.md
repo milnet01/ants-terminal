@@ -38827,7 +38827,7 @@ filed below.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: roadmapparse, roadmapmigrate.
 
-- 📋 [ANTS-4547] **workspace_search cannot match a quotation that spans a hard-wrapped line, so every review gate drops to a bespoke sed | tr | grep.**
+- ✅ [ANTS-4547] **workspace_search cannot match a quotation that spans a hard-wrapped line, so every review gate drops to a bespoke sed | tr | grep.**
   Structural, not a bug. Verifying a cold reviewer's finding means
   matching its quotation against the file — review-contract Phase 3's
   first step, which DISMISSES a finding whose quote does not appear. Docs
@@ -38867,6 +38867,29 @@ filed below.
 
   Every review gate on this machine is affected: review-contract,
   review-contract-set, review-skill, review-code, review-tests.
+  Resolved (2026-08-20): `match_wrapped:true` on workspace_search.
+  Literal mode only (`regex:true` refuses bad_args rather than re-flowing
+  the caller's own pattern); off by default. A whitespace run in the
+  pattern becomes "whitespace, plus any markdown blockquote markers that
+  follow it", the search runs under `rg --multiline`, `line` reports where
+  the span STARTS, and each row's `text` is folded to one line so a row
+  stays one line by contract. Two-sided as the report asked: the pattern's
+  own newlines, indent and `>` markers tokenise away, so a quotation
+  pasted straight out of a blockquote matches unmarked text.
+
+  The smaller `quote_match` alternative was NOT taken. It answers only the
+  review gate's question, and this flag answers it with the verb's whole
+  existing surface (lane, glob, context, headline_only, the caps) already
+  attached.
+
+  The rule itself is src/wrapmatch.{h,cpp}, shared with ANTS-4550 so the
+  two verbs cannot answer one quotation differently — the report's own
+  argument for one owner, given the reference sed pipeline was one-sided
+  and wrong for months.
+
+  Evidenced by tests/features/wrapped_quote_match (INV-1..5 call the seam
+  directly; INV-8/9 drive cmdWorkspaceSearch against a seeded tree).
+  Suite 3695/3695 green, count moved 3685 -> 3695.
   **Layman:** Searching for a quoted sentence fails whenever the sentence wraps onto a second line — which is most of them.
   Kind: feature.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20; finbreak_Ants_MCP_Feedback.md 2026-08-20.
@@ -38943,7 +38966,7 @@ filed below.
   Source: AI_Prompts_Ants_MCP_Feedback.md 2026-08-20; reproduced filing this bullet.
   Lanes: remotecontrol, roadmapparse.
 
-- 📋 [ANTS-4550] **op:amend_body refuses a hard-wrapped old_text, forcing the multi-call joint-result hazard ANTS-4097 already names.**
+- ✅ [ANTS-4550] **op:amend_body refuses a hard-wrapped old_text, forcing the multi-call joint-result hazard ANTS-4097 already names.**
   amend_body matches old_text within one PHYSICAL line. Bodies are
   hard-wrapped at ~70 columns, so a phrase of ordinary sentence length
   routinely straddles a break and refuses body_match_not_found even
@@ -38971,6 +38994,31 @@ filed below.
 
   Same normalisation as the workspace_search wrapped-quote item in this
   section; worth doing once and sharing.
+  Resolved (2026-08-20): amend_body matches across a hard wrap, both the
+  markdown and the store path, through the same WrapMatch::patchOnce seam.
+
+  The wrapped pass runs ONLY after the exact pass finds nothing, so no
+  previously-succeeding call changed behaviour and the fallback can only
+  turn a refusal into an edit. Uniqueness is enforced on whichever pass
+  matched, so a wrapped phrase occurring twice still refuses
+  body_match_ambiguous. A wrapped match re-flows the lines it spanned into
+  one and the envelope carries `wrapped_match:true` — the caller learns
+  the paragraph moved instead of finding out in the next diff.
+
+  The two paths differ in one documented respect: markdown keeps
+  ANTS-3752's continuation indent for a multi-line new_text, the store does
+  not, because it holds the body as an unindented residual the render
+  indents on the way out.
+
+  Two standing contracts were corrected rather than worked around. The
+  ANTS-3467 wrap-span HINT test now asserts the amend succeeds, and
+  tests/features/roadmap_log_amend_body/spec.md INV-10's parenthetical
+  ("multi-line old_text matching was NOT added") is superseded by a new
+  INV-11. The ANTS-4097 body_paragraph echo stays: it is still the only
+  view of a re-flowed paragraph.
+
+  Evidenced by tests/features/wrapped_quote_match INV-6/7 plus the
+  rewritten Ants3467WrapSpanNowAmends. Suite 3695/3695 green.
   **Layman:** Fixing a sentence in an item's notes takes several separate edits whenever the sentence wraps.
   Kind: enhancement.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.

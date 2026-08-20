@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- ****`workspace_search` gains `match_wrapped:true` — find a quotation that is hard-wrapped in the file.** (ANTS-4547)**
+  A run of whitespace in the pattern matches a run of whitespace and
+  markdown blockquote markers in the text, so a sentence spanning a line
+  break is found and `line` reports where the span starts. Prose here
+  wraps at ~70 columns, so a line-oriented search missed text that was
+  present and exact — and a review gate that dismisses a finding whose
+  quote it cannot locate then ships the real defect. Two-sided: paste the
+  quotation with its own newlines and `>` markers and it still matches
+  unmarked text. Literal patterns only; off by default.
+
 - **The roadmap can now answer "when" — dates are recorded going forward, and the past is backfilled from git** (ANTS-4501)
   `roadmap_query mode:"report"` shipped with nothing to count: the item table's date columns existed and nothing ever wrote them, so every "closed this week" was computed over an empty set. Two changes fix that. Every roadmap write now stamps when an item was created, when it last changed, and — only on the move into shipped — when it closed; a later edit to a closed item no longer moves its closure date, and reopening one clears it. And `roadmap_log op:"backfill_dates"` walks the project's own git history once to date everything filed before today: 1525 revisions in 4 seconds on this project, dating all 2179 items with none left over. It never overwrites a date that is already there, so it is safe to re-run and a hand correction survives.
 
@@ -26,6 +36,15 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- ****`roadmap_log op:"amend_body"` amends a phrase that straddles a hard-wrapped line break, in one call.** (ANTS-4550)**
+  `old_text` is now exact apart from its whitespace runs, which span a
+  line break. The wrapped pass runs only after the exact one finds
+  nothing, so no previously-succeeding call changed, and the
+  `body_match_ambiguous` guard applies to whichever pass matched. This
+  removes the multi-call hazard ANTS-4097 could only echo. Shares one
+  matching rule (`src/wrapmatch.cpp`) with `workspace_search`, so the two
+  verbs cannot answer one quotation differently.
 
 - **ROADMAP.md's version banner no longer silently reverts after a release** (ANTS-4529)
   The bump recipe hand-edited a version number into ROADMAP.md, which is

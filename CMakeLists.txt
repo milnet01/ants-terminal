@@ -482,6 +482,9 @@ add_library(ants_core_lib STATIC
     src/focusedtest.cpp
     # ANTS-1720 — `fields=` MCP response projection (pure helper).
     src/mcpprojection.cpp
+    # ANTS-4547/4550 — the wrapped-quotation matching rule (pure helper),
+    # shared by workspace_search and roadmap_log op:amend_body.
+    src/wrapmatch.cpp
     # ANTS-2094 — proactive result offload: spill large read bodies to a
     # content-addressed cache file + serve a head+pointer envelope.
     src/mcpspill.cpp
@@ -1743,6 +1746,9 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
                 # ANTS-3406 roadmap_log op:amend_body (exact single-line body patch).
                 tests/features/roadmap_log_amend_body/test_roadmap_log_amend_body.cpp
+                # ANTS-4547/4550 — the shared wrapped-quotation matching rule,
+                # and its two consumers (workspace_search, amend_body).
+                tests/features/wrapped_quote_match/test_wrapped_quote_match.cpp
                 # ANTS-4404 — the write path's fence extents come from
                 # MarkdownScan, so prose QUOTING fence syntax cannot make the
                 # bullets below it unwritable.

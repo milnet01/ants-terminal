@@ -3519,7 +3519,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         return cmdRoadmapLogFlip(req);
     }
     // ANTS-3406 — op:"amend_body": patch a bullet's body prose in place
-    // (exact single-line old_text→new_text). Standalone handler,
+    // (exact old_text→new_text, ANTS-4550 wrap-tolerant). Standalone handler,
     // m_main-independent (caller_cwd + filesystem only).
     if (op == QStringLiteral("amend_body")) {
         return cmdRoadmapLogAmendBody(req);

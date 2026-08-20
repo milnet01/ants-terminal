@@ -16,6 +16,7 @@
 #include "roadmapdialog.h"
 #include "roadmapindex.h"
 #include "markdownscan.h"    // ANTS-4404 — fence extents, shared with the walk
+#include "wrapmatch.h"   // ANTS-4550 — the wrapped-match rule
 #include "verifyengine.h"
 #include "verifytrust.h"
 #include "debuglog.h"
@@ -1225,22 +1226,25 @@ int appendBodyNote(QStringList &lines, int headlineLine,
     return insertAt;
 }
 
-// ANTS-3406 — replace an exact single-line substring `oldText` with
-// `newText` inside the continuation body of the bullet whose headline
-// sits at `headlineLine`. The body span is the same contiguous indented
-// run appendBodyNote() targets (blank line / column-0 line / EOF
-// terminated), so a match can never leak into a sibling bullet or touch
-// the headline. Requires exactly one occurrence across the span's lines:
-// returns the total count found; only on a unique match (count == 1) is
-// the replacement applied in place and *matchedLine set to the 0-based
-// edited line index. On a 0- or multi-match `lines` is left untouched so
-// the caller can refuse without a rollback. `oldText` must be non-empty
-// (the caller enforces this) and is matched verbatim (case-sensitive);
-// a phrase spanning a line boundary won't match any single line and is
-// reported as not-found by design (the exact-match patch is single-line).
+// ANTS-3406 — replace the substring `oldText` with `newText` inside the
+// continuation body of the bullet whose headline sits at `headlineLine`.
+// The body span is the same contiguous indented run appendBodyNote()
+// targets (blank line / column-0 line / EOF terminated), so a match can
+// never leak into a sibling bullet or touch the headline. Requires
+// exactly one occurrence across the span: returns the total count found;
+// only on a unique match (count == 1) is the replacement applied in place,
+// *matchedLine set to the 0-based line the match STARTS on, and *wrapped
+// set to whether it spanned a line break. On a 0- or multi-match `lines`
+// is left untouched so the caller can refuse without a rollback.
+// `oldText` must be non-empty (the caller enforces this) and is matched
+// verbatim (case-sensitive) apart from its whitespace runs — ANTS-4550
+// gives those WrapMatch's wrapped rule, so a phrase straddling the ~70-col
+// hard wrap is reached, on a second pass taken only when the exact match
+// found nothing.
 int amendBodyExact(QStringList &lines, int headlineLine,
                    const QString &oldText, const QString &newText,
-                   int *matchedLine) {
+                   int *matchedLine, bool *wrapped) {
+    if (wrapped) *wrapped = false;
     // ANTS-3467 — the body block is the headline line's full indented
     // continuation: every following line up to (not including) the next
     // non-indented, non-empty line (the next top-level bullet / heading /
@@ -1258,47 +1262,32 @@ int amendBodyExact(QStringList &lines, int headlineLine,
         if (!ln.isEmpty() && !ln.at(0).isSpace()) break;
         ++spanEnd;
     }
-    int total   = 0;
-    int hitLine  = -1;
-    for (int i = headlineLine + 1; i < spanEnd; ++i) {
-        const int c = lines.at(i).count(oldText);
-        if (c > 0 && hitLine < 0) hitLine = i;
-        total += c;
-    }
-    if (total != 1) return total;   // 0 → not found, >1 → ambiguous
+    const int spanStart = headlineLine + 1;
+    if (spanEnd <= spanStart) return 0;
 
-    // ANTS-3752 — a multi-line `newText` must not land flush-left. This is a
-    // plain `QString::replace` into ONE list element, so an embedded newline
-    // becomes a real line at column 0 when the list is joined. Every such
-    // line stops being body (roadmap-format.md § 3.5 requires the
-    // continuation indent), which cuts the bullet in two — silently, because
-    // the envelope still returns {ok:true, amended:true} and only the NEXT
-    // reader discovers it. Measured at filing: 16 lines detached from one
-    // bullet, after which amend_body could no longer locate text it had
-    // itself just written, and roadmap_query include_body stopped at the
-    // break.
-    //
-    // Give each continuation line the matched line's own indent, which is the
-    // same normalisation op:append already applies to `body` — that is why
-    // appending a long body works and amending one did not. Relative
-    // indentation the caller supplied is PRESERVED (prefix, not replace), so
-    // a deeper nested sub-bullet still nests. Genuinely empty lines are left
-    // empty rather than being filled with trailing whitespace.
-    QString patch = newText;
-    if (patch.contains(QLatin1Char('\n'))) {
-        const QString &target = lines.at(hitLine);
-        int w = 0;
-        while (w < target.size() && target.at(w).isSpace()) ++w;
-        const QString indent = target.left(w);
-        if (!indent.isEmpty()) {
-            QStringList parts = patch.split(QLatin1Char('\n'));
-            for (int i = 1; i < parts.size(); ++i)
-                if (!parts.at(i).isEmpty()) parts[i].prepend(indent);
-            patch = parts.join(QLatin1Char('\n'));
-        }
-    }
-    lines[hitLine].replace(oldText, patch);
-    if (matchedLine) *matchedLine = hitLine;
+    // ANTS-4550 — the match itself is WrapMatch's, exact pass first and the
+    // wrapped pass only on a miss. Matching the joined span rather than each
+    // line in turn is what lets a phrase straddling the ~70-col hard wrap be
+    // amended in one call instead of N single-line calls whose joint result
+    // is checked by nothing (the ANTS-4097 hazard). Indent::MatchLineIndent
+    // keeps ANTS-3752's rule for a multi-line `newText`.
+    const QStringList span = lines.mid(spanStart, spanEnd - spanStart);
+    const WrapMatch::Patch p = WrapMatch::patchOnce(
+        span.join(QLatin1Char('\n')), oldText, newText,
+        WrapMatch::Indent::MatchLineIndent);
+    if (p.hits != 1) return p.hits;   // 0 → not found, >1 → ambiguous
+
+    // Splice the patched span back. A wrapped match re-flows the lines it
+    // spanned into one, so the line COUNT can shrink — every index the
+    // caller uses afterwards is derived from the list below, not carried
+    // across this call.
+    const QStringList patched = p.text.split(QLatin1Char('\n'));
+    for (int i = spanEnd - 1; i >= spanStart; --i) lines.removeAt(i);
+    for (int i = 0; i < patched.size(); ++i)
+        lines.insert(spanStart + i, patched.at(i));
+
+    if (matchedLine) *matchedLine = spanStart + p.line;
+    if (wrapped)     *wrapped     = p.wrapped;
     return 1;
 }
 

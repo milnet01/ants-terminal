@@ -3327,11 +3327,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "lane, glob, max_results (cap 500), context [0,10], "
                     "case, respect_gitignore, include_hidden, dedup, "
                     "timeout_sec [1,30], max_match_bytes, headline_only, "
-                    "enclosing_symbol. "
+                    "enclosing_symbol, match_wrapped. "
                     "caller_cwd anchors the project root (or '~global' for "
-                    "~/.claude/). The query is ONE literal/regex pattern, not "
+                    "~/.claude/). The query is ONE pattern, not "
                     "AND-combined words — a multi-word query that hits 0 "
-                    "matches returns an advisory `hint` (pass a single token, "
+                    "matches returns an advisory `hint` (a single token, "
                     "or regex:true with .* between terms). Hard-kill returns "
                     "rg_failed with a hint.");
                 // ANTS-2079 — full per-arg reference in `detail` (stripped
@@ -3710,6 +3710,29 @@ void ClaudeIntegration::onMcpConnection() {
                             "uncapped scan. Best with regex:true. count_only "
                             "wins if both are set.");
                         props["matches_only"] = mo;
+                    }
+                    {
+                        QJsonObject mw; mw["type"] = "boolean";
+                                        mw["default"] = false;
+                                        mw["description"] = QStringLiteral(
+                            "Optional (ANTS-4547). Match a quotation that is "
+                            "HARD-WRAPPED in the file: a run of whitespace in "
+                            "`pattern` matches a run of whitespace and markdown "
+                            "blockquote markers in the text, so a sentence "
+                            "spanning a line break is found and `line` reports "
+                            "where the span STARTS. Prose here wraps at ~70 "
+                            "columns, so a line-oriented search misses text "
+                            "that is present and exact — and for a review gate "
+                            "that DISMISSES a finding whose quote it cannot "
+                            "locate, that miss is indistinguishable from a "
+                            "defect, so the real defect ships. Normalisation is "
+                            "TWO-SIDED: paste the quotation with its own "
+                            "newlines, indentation and `>` markers and it still "
+                            "matches unmarked text. Each row's `text` is folded "
+                            "to one line. LITERAL only — with `regex:true` it "
+                            "refuses bad_args rather than re-flowing your "
+                            "pattern. Off by default.");
+                        props["match_wrapped"] = mw;
                     }
                     props["offset"]      = wsOffsetProp;      // ANTS-3547
                     props["context"]     = ctxProp;
@@ -10565,10 +10588,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "\"amend_body\" (ANTS-3406) patches a bullet's "
                         "continuation prose in place — locate by "
                         "id/anchor/headline, then replace the EXACT "
-                        "single-line `old_text` with `new_text` (unique-match "
+                        "`old_text` with `new_text` (unique-match "
                         "guarded; status/headline out of scope; dry_run "
                         "previewable). Use it to fix a stale phrase inside an "
                         "existing bullet's body without a raw text edit. "
+                        "ANTS-4550 — a phrase straddling the ~70-col hard "
+                        "wrap matches and is amended in ONE call; see "
+                        "`old_text`. "
                         "\"backfill_dates\" (ANTS-4501) is the ONE-OFF that "
                         "makes roadmap_query mode:\"report\" answer anything "
                         "about the PAST. The item table's `created` / `shipped` "
@@ -10658,11 +10684,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "op:\"amend_body\" (ANTS-3406) / "
                         "op:\"amend_headline\" (ANTS-4372) — the EXACT substring "
                         "to replace inside the located bullet's continuation "
-                        "body. Must occur on exactly one body line (0 → "
+                        "body. Must occur exactly once (0 → "
                         "body_match_not_found, >1 → body_match_ambiguous, so "
                         "it can't silently clobber unrelated prose). "
-                        "Case-sensitive; single-line (a phrase spanning a "
-                        "line break won't match). The headline is out of "
+                        "Case-sensitive. ANTS-4550 — a phrase straddling the "
+                        "~70-col hard wrap DOES match and is amended in one "
+                        "call: a run of whitespace here matches a run of "
+                        "whitespace in the body, so paste the sentence as it "
+                        "reads. That pass runs only after an exact match finds "
+                        "nothing, and the uniqueness guard above applies to "
+                        "it unchanged; a wrapped match re-flows the lines it "
+                        "spanned into one and the envelope says "
+                        "`wrapped_match:true`. The headline is out of "
                         "scope — amend_body edits body prose only. "
                         "op:\"amend_headline\" is the mirror: it edits the "
                         "HEADLINE text only, with the body out of scope. A "
@@ -10684,14 +10717,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "the store does not model goes the same way, and this "
                         "op refuses only because it can see the collision "
                         "coming. "
-                        "ANTS-4097: single-line is a MATCHING rule, not a "
-                        "safety one — rewriting a phrase that spans a "
-                        "hard-wrapped paragraph takes N calls, each succeeds, "
-                        "each looks right alone, and the paragraph they "
-                        "jointly produce is checked by nothing. The success "
+                        "ANTS-4097: the success "
                         "envelope echoes `body_paragraph` (the edited line "
                         "with its wrapped neighbours) so you can read the "
-                        "joint result without re-reading the file.");
+                        "joint result without re-reading the file. It was "
+                        "written because a wrapped phrase then took N "
+                        "single-line calls, each succeeding, each looking "
+                        "right alone, with the paragraph they jointly produced "
+                        "checked by nothing — ANTS-4550 removes that split "
+                        "rather than mitigating it, and the echo stays.");
                     QJsonObject newTextProp;
                     newTextProp["type"]      = "string";
                     newTextProp["maxLength"] = 4000;

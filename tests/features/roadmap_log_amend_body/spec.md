@@ -76,8 +76,16 @@ note_scrubbed_params?, post_bullets?}`.
   looks right alone, and the paragraph they jointly produce is checked by
   nothing; `{amended, body_line, bytes_written}` has no view of it and
   there is no prompt to re-read precisely because the calls succeeded. The
-  `old_text` schema description says so too. (Multi-line `old_text`
-  matching was NOT added — it would change the uniqueness guard's unit.)
+  `old_text` schema description says so too.
+- **INV-11** (ANTS-4550) — supersedes INV-10's single-line matching, and
+  removes the hazard INV-10 could only echo: an `old_text` straddling the
+  ~70-col hard wrap is matched and amended in ONE call, via the shared
+  `WrapMatch::patchOnce` seam (`tests/features/wrapped_quote_match`). The
+  wrapped pass runs ONLY after the exact pass finds nothing, so no
+  currently-succeeding call changes behaviour, and INV-4's uniqueness
+  guard is enforced on whichever pass matched. A wrapped match re-flows
+  the lines it spanned into one and the envelope says so with
+  `wrapped_match:true`.
 
 ## Tests
 

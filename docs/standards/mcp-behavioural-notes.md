@@ -395,6 +395,22 @@ server-controllable beyond this per-tool hint.
   driver function. Opt-in (back-compat when absent); a heuristic line
   scan over the region read_region already slices. v1 is one-function
   scoped (cross-method pipeline mapping is a follow-on).
+- **`workspace_search match_wrapped:true` (ANTS-4547)** — matches a
+  quotation that is HARD-WRAPPED in the file. A run of whitespace in
+  `pattern` matches a run of whitespace *and markdown blockquote markers*
+  in the text; `line` reports where the matched span STARTS and each
+  row's `text` is folded to one line. Off by default, and LITERAL only —
+  with `regex:true` it refuses `bad_args`, because re-flowing a caller's
+  regex changes what their own pattern means. Why it exists: prose here
+  wraps at ~70 columns, so a line-oriented search misses text that is
+  present and exact, and a review gate that DISMISSES a finding whose
+  quote it cannot locate then ships the real defect. Normalisation is
+  TWO-SIDED — paste the quotation with its own newlines, indentation and
+  `>` markers and it still matches unmarked text; normalising only the
+  file was the bug that sat in the hand-rolled `sed | tr | grep` version
+  of this for months. The rule itself is `src/wrapmatch.{h,cpp}`, shared
+  with `roadmap_log op:"amend_body"` (ANTS-4550) so the two verbs cannot
+  answer one quotation differently.
 
 ## Write / edit verbs
 
@@ -517,6 +533,19 @@ which heading you expect it under.
   not restated here); and `op:"bundle_row"` **writes normally** — it appends to a
   Markdown table under a named section and never parses bullets, so the
   roadmap's bullet format never reaches it (ANTS-1691).
+- **`roadmap_log op:"amend_body"` matches across a hard wrap (ANTS-4550)** —
+  `old_text` is exact apart from its whitespace runs, which span a
+  line break, so a phrase straddling the ~70-col wrap is amended in ONE
+  call rather than by N single-line calls whose joint result is checked by
+  nothing (the hazard ANTS-4097 could only echo). The wrapped pass runs
+  ONLY after the exact pass finds nothing, so no previously-succeeding
+  call changed; `body_match_ambiguous` is enforced on whichever pass
+  matched. A wrapped match re-flows the lines it spanned into one and the
+  envelope carries `wrapped_match:true`. Both the markdown and the store
+  path go through `WrapMatch::patchOnce`, differing only in indent policy:
+  markdown keeps ANTS-3752's continuation indent for a multi-line
+  `new_text`, the store does not, because it holds the body as an
+  unindented residual the render indents on the way out.
 - **`roadmap_log op:"backfill_dates"` (ANTS-4501)** — a ONE-OFF that walks
   the project's git history and fills the `created` / `shipped` columns for
   the rows predating forward stamping. Not a `roadmap_query` mode, and

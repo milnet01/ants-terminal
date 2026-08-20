@@ -379,10 +379,12 @@ TEST(roadmap_log_amend_body, Ants3467NestedSubBulletAcrossBlankLine) {
     EXPECT_FALSE(contains(md, "1/5/10/30 min"));
 }
 
-// ANTS-3467 — a phrase that spans a hard-wrapped line break can't match a
-// single physical line, but body_match_not_found now carries a hint naming
-// the wrap so the caller self-corrects rather than reading "text absent".
-TEST(roadmap_log_amend_body, Ants3467WrapSpanHint) {
+// ANTS-3467 / ANTS-4550 — SUPERSEDED CONTRACT. A phrase spanning a
+// hard-wrapped line break used to refuse body_match_not_found with a hint
+// naming the wrap; ANTS-4550 makes it match instead, in one call. The test
+// is kept pointed at the same seeded phrase so the case it was written for
+// still has an assertion — what changed is which answer is correct.
+TEST(roadmap_log_amend_body, Ants3467WrapSpanNowAmends) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1Nested()));
@@ -392,16 +394,17 @@ TEST(roadmap_log_amend_body, Ants3467WrapSpanHint) {
     r[QStringLiteral("id")]       = QStringLiteral("ANTS-0043");
     // "make it user-configurable" straddles the wrap (…make it\n…user-config…).
     r[QStringLiteral("old_text")] = QStringLiteral("make it user-configurable");
-    r[QStringLiteral("new_text")] = QStringLiteral("x");
+    r[QStringLiteral("new_text")] = QStringLiteral("expose it in Settings");
     const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(r).object();
 
-    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
-    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
-              QStringLiteral("body_match_not_found"));
-    EXPECT_TRUE(contains(resp.value(QStringLiteral("hint"))
-                             .toString().toStdString(),
-                         "hard-wrapped"))
-        << "wrap-spanning failure must hint at the line break";
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "ANTS-4550: a wrap-spanning old_text now amends";
+    EXPECT_TRUE(resp.value(QStringLiteral("wrapped_match")).toBool())
+        << "the envelope must say the match spanned a line break";
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "expose it in Settings"));
+    EXPECT_FALSE(contains(md, "make it"))
+        << "no half of the wrapped phrase may survive";
 }
 
 // ANTS-3467 — old_text present in the file but outside the located bullet's
@@ -456,17 +459,23 @@ TEST(roadmap_log_amend_body, Inv8Inv9SourceSurface) {
            "INV-9: schema registers new_text property");
     expect(contains(ci, "amend_body\\\" (ANTS-3406)"),
            "INV-9: op descriptor documents amend_body");
-    expect(contains(ci, "single-line is a MATCHING rule, not a "),
-           "INV-10: old_text descriptor warns that N calls compose");
+    // ANTS-4550 — the descriptor no longer warns that N calls compose,
+    // because one call now does the job; what it must still carry is the
+    // wrap-tolerant matching rule and its uniqueness guard.
+    expect(contains(ci, "straddling the "),
+           "INV-11: old_text descriptor states the wrapped-match rule");
+    expect(contains(ci, "wrapped_match:true"),
+           "INV-11: old_text descriptor names the envelope signal");
     EXPECT_EQ(0, expect_failures());
 }
 
 // INV-10 (ANTS-4097) — the success envelope echoes `body_paragraph`, the
-// edited line WITH its hard-wrapped neighbours. amend_body matches within one
-// physical line, so rewriting a phrase that spans a wrapped paragraph takes N
-// calls; each succeeds and each looks right alone, and {amended, body_line,
-// bytes_written} has no view of what the N together produced. The echo is the
-// only thing in the envelope that shows it.
+// edited line WITH its hard-wrapped neighbours. It was written when amend_body
+// matched within one physical line, so rewriting a phrase spanning a wrapped
+// paragraph took N calls; each succeeded and each looked right alone, and
+// {amended, body_line, bytes_written} had no view of what the N together
+// produced. ANTS-4550 removed that split; the echo stays, because a
+// wrapped match re-flows the lines it spanned and the caller should see it.
 TEST(roadmap_log_amend_body, Inv10WrappedParagraphEcho) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

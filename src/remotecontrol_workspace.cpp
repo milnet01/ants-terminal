@@ -2,6 +2,7 @@
 #include "remotecontrol.h"
 #include "mutationprobe.h"   // ANTS-4398
 #include "remotecontrol_internal.h"
+#include "wrapmatch.h"   // ANTS-4547 — the wrapped-quotation matching rule
 #include "buildtargets.h"        // ANTS-3745 — build_target_for engine
 #include "fileoutline.h"
 #include "readlog.h"
@@ -258,6 +259,44 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const bool isRegex = req.value("regex").toBool(false);
     const QString caseMode = req.value("case").toString(QStringLiteral("smart"));
 
+    // ANTS-4547 — wrapped-quotation matching. Prose here is hard-wrapped at
+    // ~70 columns, so a quotation of ordinary sentence length spans a break
+    // and a line-oriented search misses text that is present and exact. For a
+    // review gate that DISMISSES a finding whose quote cannot be located, that
+    // miss is indistinguishable from a defect and the real defect ships —
+    // measured by the reporter at 18% of quotations. The rule itself lives in
+    // WrapMatch so this verb and roadmap_log op:"amend_body" cannot answer one
+    // quotation differently.
+    //
+    // Off by default, and LITERAL only: re-flowing a caller's regex would
+    // change what their own pattern means, so that combination refuses rather
+    // than surprising them.
+    const bool matchWrapped =
+        req.value(QStringLiteral("match_wrapped")).toBool(false);
+    if (matchWrapped && isRegex) {
+        QJsonObject e = wsErr("bad_args",
+            QStringLiteral("workspace-search: \"match_wrapped\" applies to a "
+                           "literal pattern — it re-flows whitespace, which "
+                           "would change what a regex means"));
+        e["hint"] = QStringLiteral(
+            "drop `regex:true`, or write the wrap into the pattern yourself "
+            "(e.g. `\\s+` between words with `--multiline` semantics).");
+        return QJsonDocument(e);
+    }
+    // The pattern handed to rg: the literal itself, or — under
+    // match_wrapped — the same literal with every whitespace run widened to
+    // "whitespace, plus any markdown blockquote markers that follow it".
+    QString rgPattern = pattern;
+    if (matchWrapped) {
+        rgPattern = WrapMatch::toRegex(pattern);
+        if (rgPattern.isEmpty()) {
+            return QJsonDocument(wsErr("bad_pattern",
+                QStringLiteral("workspace-search: \"pattern\" holds no text "
+                               "to match once its whitespace and blockquote "
+                               "markers are folded")));
+        }
+    }
+
     // ANTS-1876 / ANTS-3548 — per-match text clip (INV-1). The clip is
     // now default-ON (token-saver default per the project's "savers
     // default ON, keep an off switch" rule): an absent arg → the
@@ -363,7 +402,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     if (caseMode == QLatin1String("smart"))           argv << QStringLiteral("--smart-case");
     else if (caseMode == QLatin1String("insensitive")) argv << QStringLiteral("--ignore-case");
     else if (caseMode == QLatin1String("sensitive"))   argv << QStringLiteral("--case-sensitive");
-    if (!isRegex) argv << QStringLiteral("--fixed-strings");
+    // ANTS-4547 — the wrapped form IS a regex (WrapMatch::toRegex), and it
+    // must be allowed to cross a line boundary, which is rg's --multiline.
+    if (matchWrapped) argv << QStringLiteral("--multiline");
+    else if (!isRegex) argv << QStringLiteral("--fixed-strings");
     if (context > 0) argv << QStringLiteral("--context") << QString::number(context);
     if (!glob.isEmpty()) argv << QStringLiteral("--glob") << glob;
     // ANTS-3704 — rendered AFTER the positive glob: rg resolves competing globs
@@ -383,7 +425,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     if (include_hidden) {
         argv << QStringLiteral("--hidden");
     }
-    argv << QStringLiteral("--") << pattern << laneAbs;
+    argv << QStringLiteral("--") << rgPattern << laneAbs;
 
     // ANTS-3716 § 2.4 — the process run (start, budget, hard kill, stderr cap)
     // moved to rcRunRg() so `cited_by` shares one rg call site (INV-9). The
@@ -572,6 +614,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         QString text = data.value("lines").toObject().value("text").toString();
         // Strip a single trailing newline that rg includes in `lines.text`.
         if (text.endsWith(QLatin1Char('\n'))) text.chop(1);
+        // ANTS-4547 — a --multiline hit's `text` is the WHOLE matched span,
+        // line breaks and continuation indent included. A row is one line by
+        // contract (every consumer, dedup and the clip included, assumes it),
+        // so fold it the same way the match itself was folded. `line` still
+        // reports where the span STARTS, which is the question the caller
+        // asked.
+        if (matchWrapped) text = text.simplified();
 
         QJsonObject m;
         m["file"] = path;
@@ -928,6 +977,9 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // a filter-induced 0-match result from a genuinely clean tree.
     out["respect_gitignore"] = respect_gitignore;
     out["include_hidden"]    = include_hidden;
+    // ANTS-4547 — activation-gated: a caller reading zero matches needs to
+    // know whether the wrapped rule was in force.
+    if (matchWrapped) out["match_wrapped"] = true;
     // ANTS-1565-INV-4: echo effective wall-clock budget so a caller can
     // see whether they got their requested timeout_sec or the default.
     out["timeout_sec"] = budgetSec;
