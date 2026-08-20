@@ -17,6 +17,14 @@ for security-relevant changes.
 - **The roadmap can now answer "when" — dates are recorded going forward, and the past is backfilled from git** (ANTS-4501)
   `roadmap_query mode:"report"` shipped with nothing to count: the item table's date columns existed and nothing ever wrote them, so every "closed this week" was computed over an empty set. Two changes fix that. Every roadmap write now stamps when an item was created, when it last changed, and — only on the move into shipped — when it closed; a later edit to a closed item no longer moves its closure date, and reopening one clears it. And `roadmap_log op:"backfill_dates"` walks the project's own git history once to date everything filed before today: 1525 revisions in 4 seconds on this project, dating all 2179 items with none left over. It never overwrites a date that is already there, so it is safe to re-run and a hand correction survives.
 
+### Changed
+
+- **workspace_search: a `lane` that escapes the project root now names the route out** (ANTS-4569)
+  The refusal was correct but terminal. Both the `lane` schema
+  description and the `bad_path` envelope now say that to search a
+  different tree you set caller_cwd to that tree's root and confine
+  with `glob` — so a refused call carries its own repair.
+
 ### Fixed
 
 - **ROADMAP.md's version banner no longer silently reverts after a release** (ANTS-4529)

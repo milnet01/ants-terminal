@@ -38722,7 +38722,7 @@ Three folded into existing items rather than re-filed: ANTS-3620 flipped out of
 considered on new evidence, ANTS-4507 and ANTS-4539 annotated. The rest are
 filed below.
 
-- 📋 [ANTS-4545] **file_outline / read_region containment is a string-prefix test, so a sibling whose name starts with the project's is readable.**
+- 💭 [ANTS-4545] **file_outline / read_region containment is a string-prefix test, so a sibling whose name starts with the project's is readable.**
   The project-root containment check compares path STRINGS, not path
   components. With caller_cwd=/…/LocalWebServerManager, the file
   /…/LocalWebServerManager_Ants_MCP_Feedback.md is a SIBLING of the root,
@@ -38753,6 +38753,40 @@ filed below.
   reads as a feature and is not one. Closing it changes that reach — see
   the workspace_search caller_cwd item in this section for the sanctioned
   route.
+  Closed not-a-defect (2026-08-20). Measured against the running server
+  before writing any code; the report's stated cause is false.
+
+  Containment is NOT a string-prefix test. PathValidation::anchoredUnder
+  (src/pathvalidation.cpp:120) compares `c == r || c.startsWith(r + '/')`
+  — the separator is what makes it component-safe. Every path-taking verb
+  routes through this one chokepoint (ANTS-1295), so the "audit every
+  verb" scope note is answered by that fact rather than by a sweep.
+
+  The three predicted escapes do not exist. Probed with a throwaway root:
+  proj.env and proj-secrets/id_rsa are both refused bad_path, "escapes
+  project root". The positive control the reporter cited (RetroDB/app.py
+  refused) is the same check working, not a check with one hole.
+
+  What actually admitted their file: ANTS-3430's feedback-file exception,
+  which is deliberate and documented at src/pathvalidation.cpp:72-99 —
+  `*_Ants_MCP_Feedback.md` sitting in an ANCESTOR directory of the root is
+  reachable by the general project-scoped verbs, by design, because the
+  file never lives under the project it is about. The shared name prefix
+  is a coincidence of the naming convention and plays no part: a probe
+  named zzzUnrelated_Ants_MCP_Feedback.md in the same directory is equally
+  readable. That is the disproof — a prefix rule cannot admit a
+  non-prefix name.
+
+  Not closing it would have removed the only sanctioned cross-session
+  route while breaking nothing that was broken.
+
+  One true residual, recorded rather than reopened: the ancestor chain
+  runs to /, so with a root deep in a tree a probe at /X_Ants_MCP_Feedback
+  .md is reachable (verified). ANTS-3616 chose ancestor over parent-only
+  deliberately — a parent-only bound locks out any session whose cwd is a
+  project subdirectory — and the suffix plus the ancestor test is the
+  stated bound. Reopening that is a separate argument with its own
+  evidence, not a fold-in here.
   **Layman:** A read tool can open files just outside the project when their name happens to start the same way.
   Kind: security.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20.
@@ -39560,7 +39594,7 @@ filed below.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4569] **workspace_search's lane refusal should name caller_cwd as the knob for searching a tree outside the project.**
+- ✅ [ANTS-4569] **workspace_search's lane refusal should name caller_cwd as the knob for searching a tree outside the project.**
   Filed as the documentation half only. The contributor filed a request for
   a ~feedback sentinel and then CORRECTED THEMSELVES the same day: the
   reach already exists, and the enhancement is not needed.
@@ -39595,6 +39629,20 @@ filed below.
   string-prefix hole removes file_outline's and read_region's accidental
   reach to the shared-root feedback files, so this sanctioned route needs
   to be documented BEFORE that lands, not after.
+  Resolved (2026-08-20): both halves shipped in 7d6b6c8f. The `lane`
+  schema description names the constraint and the route; the bad_path
+  refusal carries a matching hint, so a refused call names its own repair.
+  Scoped to paramName == "lane": ANTS-4421 keeps the `path` refusal
+  hint-free unless the target is a feedback file, and that reasoning still
+  holds — an out-of-root `path` has no legitimate route. Test
+  McpPathAnchor.Ants4569LaneEscapeNamesCallerCwd, red on assertions first.
+  Suite 3685/3685.
+
+  The ordering constraint this item recorded is void. It said the doc half
+  had to land before the containment fix, because closing that hole would
+  remove file_outline's and read_region's reach to the shared-root feedback
+  files. Measured today: there is no hole, and the reach is deliberate
+  (ANTS-3430). See ANTS-4545. The doc half stands on its own merits.
   **Layman:** A search tool refuses to look outside the project without mentioning the setting that lets you point it elsewhere.
   Kind: doc-fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20 (request plus the same contributor's correction to it).
