@@ -32,7 +32,7 @@ backticks is stored verbatim. This is the same shape ANTS-4066 already uses for
 the bold-headline matcher, one level up.
 
 **Span boundaries are `MarkdownScan::codeSpans()`'s**, not a fourth hand-rolled
-pairing. That primitive already states CommonMark's rules once for the project:
+pairing. That primitive states the pairing rules once for the project:
 a run pairs only with an equal-length run; a run with no partner is literal
 text and opens nothing; a span may cross a newline but never a blank line or a
 fence line; a backtick run inside a fenced block is not a delimiter. The
@@ -56,6 +56,9 @@ this item's job.
 | INV-4 | A captured value containing a code span is stored VERBATIM: the mask decides where a match is, never what it says. |
 | INV-5 | A backtick run with no equal-length partner masks nothing — one stray backtick cannot swallow the rest of the body and silence its real trailers. |
 | INV-6 | An ordinary bullet, carrying no backtick at all, parses byte-identically. |
+| INV-7 (ANTS-4598) | A line whose runs do not all pair does not unmask a key quoted BELOW it. The leftover run stays literal rather than taking the opener of a balanced line further down, which would invert the mask for the rest of the body. |
+| INV-8 (ANTS-4598) | INV-5's other half: a stray run does not swallow the trailer block below it merely because some later line quotes something. |
+| INV-9 (ANTS-4598) | A run INSIDE an already-paired span is span content, never a delimiter — a ``` quoted within a `…` span opens nothing. |
 
 ## Test
 
@@ -63,3 +66,24 @@ this item's job.
 (bundle `test_core`). Drives `RoadmapParse::trailerValuesIn()` and
 `RoadmapParse::parseBullets()` on hand-written markdown — the level the defect
 lives at, before any store or migration is involved.
+
+## ANTS-4598 — the pairing order
+
+INV-1 to INV-6 assume `codeSpans()` puts the span where the author wrote it.
+Until 2026-08-20 it paired runs in one forward sweep over the whole body, so a
+run left over on one line took as its closer the OPENER of a balanced line
+further down. Past that point the mask is INVERTED: text the author quoted
+reads as prose, and prose reads as quoted — so a quoted key downstream parses
+as a declaration, which is INV-1 failing on a body that satisfies its shape.
+
+The repair is two passes: pair within a line first, then join what is left over
+across lines. A hard-wrapped span leaves a leftover on BOTH lines and still
+joins; a line that balances on its own has nothing to donate. Measured over the
+machine-global store's 4291 bodies — four bullets parse differently, all four
+toward the declaration their author wrote, none loses a value, and the corpus's
+409 legitimately wrapped spans are unchanged.
+
+INV-9 is the no-regression half and is not hypothetical: the sweep consumed
+runs inside a span by resuming at the closing run, and a first draft that
+collected runs up front without saying so turned the ``` quoted inside a `…`
+span into a cross-line opener, silencing the declarations between them.

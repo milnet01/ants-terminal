@@ -85,6 +85,21 @@ cover `fenceOpenerChar` and the masking policy through their own behaviour.
   fenced block, between → zero; a stray backtick → zero; `` `code` `` inside a
   fence → zero.
 
+  **The forward search runs in two passes, and the order is load-bearing**
+  (ANTS-4598). Pass 1 pairs runs **within** a line; pass 2 joins what is left
+  over **across** lines. A single sweep in document order let a run left over
+  on one line take as its closer the **opener of a balanced line further
+  down**, inverting the mask from there to the end of the body — measured as
+  `roadmapparse` reading a quoted trailer key as a declaration. Pairing within
+  a line first separates the two shapes the sweep could not tell apart: a
+  hard-wrapped span leaves a leftover on **both** lines and still joins, while
+  a line that balances on its own has nothing to donate. Pairing `(a, b)` also
+  consumes every run **between** them — those are span content, so a ``` run
+  quoted inside a `` `…` `` span never opens one of its own; the sweep got that
+  by resuming at the closing run. This is deliberately **not** CommonMark
+  § 6.1's left-to-right order: on ambiguous input the two answers are equally
+  arbitrary, and this primitive exists to place a **mask**.
+
   This is `DocIntegrity::maskInlineCode` hoisted (ANTS-3635a), so the boundary
   rule is load-bearing rather than incidental: it decides where a span *ends*,
   which is what `doc_citations`' "a continuation fills a whole span" branches

@@ -2,6 +2,7 @@
 
 #include "markdownscan.h"
 
+#include <algorithm>
 #include <QRegularExpression>
 #include <QRegularExpressionMatch>
 #include <QString>
@@ -114,55 +115,101 @@ QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine) {
     return mask;
 }
 
+// ANTS-4598 — two passes, and the order between them is the fix. Pass 1 pairs
+// runs WITHIN a line; pass 2 joins what is left over across lines.
+//
+// The single forward sweep this replaced paired runs in document order, so a
+// run left over on one line took as its closer the OPENER of a balanced line
+// further down. From there the polarity is inverted for the rest of the body:
+// what the author quoted reads as prose, and what they wrote as prose reads as
+// quoted. For `roadmapparse`'s mask that means a quoted trailer key downstream
+// is read as a declaration, which is where the defect was measured.
+//
+// Pairing within a line first is what separates the two shapes the sweep could
+// not tell apart. A hard-wrapped span leaves a leftover run on BOTH lines and
+// still joins in pass 2; a line that balances on its own keeps its runs and has
+// none to donate. Measured 2026-08-20 over the machine-global store's 4291
+// bodies: four bullets parse differently, all four toward the declaration their
+// author wrote, and none loses a value.
+//
+// This is not CommonMark § 6.1's order, which pairs left to right across the
+// whole paragraph. The primitive is a MASK — it decides where a span is, to
+// keep a quotation from being read as a declaration — and on ambiguous input
+// (`` `a `b` c` ``) CommonMark's answer and this one are equally arbitrary.
+// The 409 legitimate wrapped spans in that corpus are the case worth keeping,
+// and pass 2 keeps them.
 QVector<CodeSpan> codeSpans(const QStringList &lines,
                             const QVector<bool> &fence) {
     QVector<CodeSpan> out;
     const auto isBoundary = [&](int li) {
         return fence.value(li) || lines.at(li).trimmed().isEmpty();
     };
+
+    // Every backtick run outside a boundary line, in document order.
+    struct Run { int line, col, len; bool used; };
+    QVector<Run> runs;
     for (int li = 0; li < lines.size(); ++li) {
         if (isBoundary(li)) continue;
+        const QString &s = lines.at(li);
         int i = 0;
-        while (i < lines.at(li).size()) {
-            if (lines.at(li).at(i) != QLatin1Char('`')) { ++i; continue; }
-            const int openStart = i;
-            int openLen = 0;
-            while (i < lines.at(li).size()
-                   && lines.at(li).at(i) == QLatin1Char('`')) { ++i; ++openLen; }
-
-            // Forward search for a run of EQUAL length, never past a blank or
-            // fenced line: an inline span crosses neither.
-            int closeLine = li, cj = i, closeEnd = -1;
-            for (;;) {
-                const QString &s = lines.at(closeLine);
-                while (cj < s.size()) {
-                    if (s.at(cj) != QLatin1Char('`')) { ++cj; continue; }
-                    int runLen = 0;
-                    while (cj < s.size() && s.at(cj) == QLatin1Char('`')) {
-                        ++cj;
-                        ++runLen;
-                    }
-                    if (runLen == openLen) { closeEnd = cj; break; }
-                }
-                if (closeEnd >= 0 || closeLine + 1 >= lines.size()
-                    || isBoundary(closeLine + 1)) break;
-                ++closeLine;
-                cj = 0;
-            }
-            if (closeEnd < 0) continue;   // unmatched run — literal text
-
-            out.append({li, openStart + openLen,
-                        closeLine, closeEnd - openLen, openLen});
-            if (closeLine == li) {
-                i = closeEnd;             // resume just past the closing run
-                continue;
-            }
-            // Multi-line span: the rest of this line is inside it, so resume
-            // on the closing line, past its closing run.
-            li = closeLine;
-            i  = closeEnd;
+        while (i < s.size()) {
+            if (s.at(i) != QLatin1Char('`')) { ++i; continue; }
+            const int start = i;
+            int len = 0;
+            while (i < s.size() && s.at(i) == QLatin1Char('`')) { ++i; ++len; }
+            runs.append({li, start, len, false});
         }
     }
+
+    // Pairing (a, b) also consumes every run BETWEEN them: those runs are span
+    // CONTENT, not delimiters, so a ``` quoted inside a `…` span can never
+    // open one of its own. The sweep got this by resuming at the closing run;
+    // with the runs collected up front it has to be said, and a draft that did
+    // not say it lost the trailers of two bullets quoting a fence pattern.
+    const auto pair = [&](int a, int b) {
+        for (int k = a; k <= b; ++k) runs[k].used = true;
+        out.append({runs[a].line, runs[a].col + runs[a].len,
+                    runs[b].line, runs[b].col, runs[a].len});
+    };
+
+    // Pass 1 — within one line. `a = b` resumes past the closer, as the sweep
+    // did, so the next opener is looked for outside the span just closed.
+    for (int a = 0; a < runs.size(); ++a) {
+        if (runs.at(a).used) continue;
+        int b = a + 1;
+        while (b < runs.size() && runs.at(b).line == runs.at(a).line) {
+            if (!runs.at(b).used && runs.at(b).len == runs.at(a).len) break;
+            ++b;
+        }
+        if (b >= runs.size() || runs.at(b).line != runs.at(a).line) continue;
+        pair(a, b);
+        a = b;
+    }
+
+    // Pass 2 — join the leftovers across lines. CommonMark § 6.1's newline
+    // allowance, kept: a span may cross a line break but never a blank or a
+    // fenced line, so the search stops at the first boundary rather than
+    // skipping it. A run that finds no partner here is literal text and opens
+    // nothing — which is what makes one stray backtick harmless.
+    for (int a = 0; a < runs.size(); ++a) {
+        if (runs.at(a).used) continue;
+        for (int b = a + 1; b < runs.size(); ++b) {
+            if (runs.at(b).line == runs.at(a).line) continue;
+            bool blocked = false;
+            for (int l = runs.at(a).line + 1; l <= runs.at(b).line; ++l)
+                if (isBoundary(l)) { blocked = true; break; }
+            if (blocked) break;
+            if (runs.at(b).used || runs.at(b).len != runs.at(a).len) continue;
+            pair(a, b);
+            break;
+        }
+    }
+
+    // Pass 2 appends out of order; consumers read spans in document order.
+    std::sort(out.begin(), out.end(), [](const CodeSpan &x, const CodeSpan &y) {
+        return x.startLine != y.startLine ? x.startLine < y.startLine
+                                          : x.startCol < y.startCol;
+    });
     return out;
 }
 

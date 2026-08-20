@@ -11,6 +11,7 @@
 #include "roadmapparse.h"
 
 #include <QString>
+#include <QStringList>
 
 namespace {
 
@@ -130,4 +131,68 @@ TEST(RoadmapTrailerCodeSpan, ParseBulletsDoesNotAdoptAQuotedLane) {
     ASSERT_EQ(recs.size(), 1);
     EXPECT_TRUE(recs.constFirst().lanes.isEmpty())
         << "adopted a lane the bullet never declared";
+}
+
+// ANTS-4598 — INV-7. `codeSpans()` paired runs in one forward sweep, so a run
+// left over on one line took the OPENER of a balanced line further down as its
+// closer. From there the polarity is inverted: what the author quoted reads as
+// prose and what they wrote as prose reads as quoted. ANTS-3722's own body,
+// reduced: line 1 carries five backticks, and line 3 — which balances on its
+// own and quotes four trailer keys — had its first run stolen. Pre-fix this
+// read `lanes: ["Source:` trailer below the"]`, a lane the bullet never wrote.
+TEST(RoadmapTrailerCodeSpan, AnUnbalancedLineDoesNotUnmaskAQuotedKeyBelowIt) {
+    const auto tv = RoadmapParse::trailerValuesIn(QStringLiteral(
+        "  `lanes: [\"`/`Source:` trailer below the\"]`. That bullet has none.\n"
+        "  The string comes from a sentence that QUOTES the trailer keys:\n"
+        "  \"and the `Layman:`/`Kind:`/`Lanes:`/`Source:` trailer below the\".\n"
+        "  Kind: fix.\n"));
+    EXPECT_TRUE(tv.lanesList.isEmpty())
+        << "read a lane out of an inverted mask: "
+        << tv.lanesList.join(QLatin1Char('|')).toStdString();
+    EXPECT_TRUE(tv.source.value.isEmpty())
+        << "read a source out of an inverted mask: "
+        << tv.source.value.toStdString();
+    EXPECT_TRUE(tv.layman.value.isEmpty())
+        << "read a layman out of an inverted mask: "
+        << tv.layman.value.toStdString();
+    // The one real declaration, written plainly, is still read.
+    EXPECT_EQ(tv.kind.value, QStringLiteral("fix"));
+}
+
+// ANTS-4598 — INV-8, and the other half of INV-5's claim. INV-5 asserts a
+// stray run masks nothing when the body holds no partner for it at all; the
+// forward sweep found one the moment ANY later line quoted anything, and the
+// span it opened ran over the whole trailer block in between. Measured over
+// the machine-global store: this silenced every trailer on ANTS-4077 and the
+// layman line on ANTS-2127.
+TEST(RoadmapTrailerCodeSpan, AStrayRunDoesNotSwallowTheTrailersBelowIt) {
+    const auto tv = RoadmapParse::trailerValuesIn(QStringLiteral(
+        "  A stray ` backtick sits in this sentence.\n"
+        "  **Layman:** the trailers below still parse.\n"
+        "  Kind: doc.\n"
+        "  Source: regression-2026-08-20.\n"
+        "  Lanes: markdownscan, `docsindex`.\n"));
+    EXPECT_EQ(tv.kind.value, QStringLiteral("doc"));
+    EXPECT_EQ(tv.source.value, QStringLiteral("regression-2026-08-20"));
+    EXPECT_EQ(tv.layman.value,
+              QStringLiteral("the trailers below still parse"));
+    // INV-4 — the value is sliced from the ORIGINAL body, so the second lane
+    // keeps the backticks it was written with.
+    EXPECT_EQ(tv.lanesList, (QStringList{QStringLiteral("markdownscan"),
+                                         QStringLiteral("`docsindex`")}));
+}
+
+// ANTS-4598 — INV-9. The no-regression half: a run INSIDE an already-paired
+// span is span content, never a delimiter. The one-pass sweep got this for
+// free by resuming at the closing run; pairing within a line first has to say
+// it, and a first draft that did not turned the ``` runs quoted here into a
+// cross-line opener that swallowed the declarations between them.
+TEST(RoadmapTrailerCodeSpan, ARunInsideAPairedSpanIsContentNotADelimiter) {
+    const auto tv = RoadmapParse::trailerValuesIn(QStringLiteral(
+        "  The pattern `^\\s{0,3}(```|~~~)` is wrong.\n"
+        "  Kind: fix.\n"
+        "  Lanes: markdownscan.\n"
+        "  The fix is `^ {0,3}(```|~~~)` instead.\n"));
+    EXPECT_EQ(tv.kind.value, QStringLiteral("fix"));
+    EXPECT_EQ(tv.lanesList, (QStringList{QStringLiteral("markdownscan")}));
 }
