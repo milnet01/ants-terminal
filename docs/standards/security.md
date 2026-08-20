@@ -255,16 +255,16 @@ read past.
 rule with no row has no mechanical check and no reviewer assigned. Treat
 it as *nothing mechanical* by default rather than as covered.
 
-| Rule | Kind of check that catches a breach |
+| Rule | What catches a breach |
 |---|---|
-| Secrets in the repo (§2) | a secret scanner, on every commit or push — in CI where there is CI, otherwise a pre-commit hook. The venue moves; the check does not |
-| Injection and unsafe calls (§3) | static analysis for the project's languages |
-| Dependency vulnerabilities (§8) | the ecosystem's own advisory check, on the `dependencies.md` cadence |
+| Secrets in the repo (§2) | `check-code`'s `gitleaks` step, a secret-scanning check, on every commit or push — in CI where there is CI, otherwise a pre-commit hook. The venue moves; the check does not |
+| Injection and unsafe calls (§3) | `check-code`'s language sweep (`semgrep`, `bandit`, `ruff`, `cppcheck`), a static-analysis check |
+| Dependency vulnerabilities (§8) | `check-dependencies`, an advisory check — the ecosystem's own, run on the `dependencies.md` cadence |
 | Lockfile committed (§8) | the repository — a missing lockfile is visible |
 | Atomic writes and owner-only permissions (§4) | **nothing mechanical** — a permission bit is greppable in principle and nothing greps it |
 | Encryption of what a stolen disk would expose (§4) | **nothing mechanical** — whether a thing *should* be encrypted is a judgement about the data |
-| TLS with verification on (§5) | static analysis, where the language has a rule for a disabled-verification flag — **`Partial:`**, since a verification disabled through config rather than code is invisible to it |
-| No credentials in a URL (§5) | a secret scanner, if its rules cover URL userinfo — otherwise **nothing** |
+| TLS with verification on (§5) | `check-code`'s language sweep, a static-analysis check, where the language has a rule for a disabled-verification flag — **`Partial:`**, since a verification disabled through config rather than code is invisible to it |
+| No credentials in a URL (§5) | `check-code`'s `gitleaks` step, a secret-scanning check, if its rules cover URL userinfo — otherwise **nothing** |
 | Late-acquire, early-drop privilege (§7) | **nothing mechanical** — the shape of an escalation is a design question |
 | Anti-patterns restating a rule above (§10) | **nothing of its own** — caught, or not, by that rule's row. Three do: blocklist-over-allowlist, logging a whole request object, committing a secret and removing it next commit |
 | Anti-patterns restating nothing above (§10) | **nothing mechanical** — rolling your own crypto, token format or password hashing; disabling a security check to pass a test; "it's only internal"; validating in the user interface only. These four are stated only in §10, so no row above covers them |

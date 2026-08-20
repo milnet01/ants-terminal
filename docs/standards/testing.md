@@ -392,7 +392,7 @@ following a chain of abstractions to find out what it actually asserts.
 
 ## What checks this
 
-| Rule | Kind of check |
+| Rule | What catches a breach |
 |---|---|
 | Tests pass (§1) | the test runner — **`Partial:`** locally always, and in CI only where the project has a pipeline that runs it. §1 states no CI requirement, so on a project without one nothing checks this except the person who remembers to run it |
 | Determinism (§7) | repeated runs, and a shuffled run order where the runner supports it |
