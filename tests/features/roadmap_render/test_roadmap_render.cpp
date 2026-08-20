@@ -379,6 +379,35 @@ TEST(RoadmapRender, Inv12RequiredPiecesPresent) {
         << "Kind: omitted because it equals the default";
 }
 
+// ANTS-4582 — the trailer's terminating period belongs to the FORMAT, not the
+// value: roadmap-format.md § 3.5 calls Evidence out as the one key rendered
+// WITHOUT one, which makes the stop the format's on every other key. So a
+// value that already ends in a stop must not be given a second. The parse
+// chops exactly one (roadmapparse.cpp, ANTS-3764), so emitting one terminator
+// either way is what keeps the pair symmetric.
+TEST(RoadmapRender, Ants4582TrailerPeriodNotDoubled) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+    const auto sec = f->store->addSection(f->projectId, QStringLiteral("s"), QStringLiteral("S"), 2, 1, std::nullopt, &err);
+    ASSERT_TRUE(sec);
+    auto ended = mkItem(f->projectId, QStringLiteral("P-1"), QStringLiteral("Value ends in a stop."), *sec, 0);
+    ended.source = QStringLiteral("in-session-2026-08-20, reproduced on this repo.");
+    ASSERT_TRUE(f->store->putItem(ended, &err)) << err.toStdString();
+    auto bare = mkItem(f->projectId, QStringLiteral("P-2"), QStringLiteral("Value ends bare."), *sec, 1);
+    bare.source = QStringLiteral("in-session-2026-08-20, reproduced on this repo");
+    ASSERT_TRUE(f->store->putItem(bare, &err)) << err.toStdString();
+
+    ASSERT_TRUE(RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err));
+    const QString text = readAll(f->liveAbs());
+    EXPECT_FALSE(text.contains(QStringLiteral("repo..")))
+        << "a value already ending in a period was given a second:\n" << text.toStdString();
+    // Guards the other direction: both spellings must still EMIT the key, so
+    // the fix cannot pass by suppressing the trailer instead of trimming it.
+    EXPECT_EQ(text.count(QStringLiteral("Source: in-session-2026-08-20, reproduced on this repo.")), 2)
+        << text.toStdString();
+}
+
 // INV-13 — no file is written outside projectRoot, and the check covers the
 // live roadmap as well as source_path. The live path is the one every project
 // uses, so exempting it would hollow the invariant out.

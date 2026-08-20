@@ -52,6 +52,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap render no longer doubles the full stop on a trailer value that already ends in one** (ANTS-4582)
+  `Kind:`, `Source:` and `Lanes:` now get their terminating period only
+  when the value lacks one. The period belongs to the format, not the
+  value (roadmap-format.md § 3.5 names `Evidence:` as the one key rendered
+  without one), so a value supplied as a sentence was rendering with two.
+
 - **Package-manager users were two releases behind** (ANTS-4587)
   All four repositories (openSUSE Tumbleweed and Leap 16.0, Fedora 44, Mageia 10) served 0.7.103 while the current release was 0.7.105. The `_service` file in git correctly pinned v0.7.105, but the OBS project's own copy still pinned v0.7.103 — the submit step was never run for 0.7.104 or 0.7.105, so OBS kept rebuilding the source archive it already had and reported every build as succeeded.
 

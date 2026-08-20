@@ -40343,7 +40343,7 @@ filed below.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20..
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4582] **The renderer appends a full stop to a trailer value that already ends in one, producing a double period.**
+- ✅ [ANTS-4582] **The renderer appends a full stop to a trailer value that already ends in one, producing a double period.**
   Observed on ANTS-4578, filed minutes earlier in this section. The
   `source` supplied was "Snatch_Ants_MCP_Feedback.md 2026-08-20;
   reproduced on this repo during the triage that filed it." — ending in a
@@ -40366,6 +40366,34 @@ filed below.
   Cheapest fix: trim a trailing period from the value before appending
   one, in the same place the trailer line is composed. Applies to every
   trailer that gets the treatment, not just `source`.
+  Resolved (2026-08-20): the render appends its terminator only when the
+  value lacks one, via a withStop() helper shared by the three keys that
+  get one (Kind / Source / Lanes); Evidence still gets none.
+
+  The reported cheapest fix — trim the value before appending — was NOT
+  taken as stated, because it is lossy in the other direction. The parse
+  chops exactly one trailing period unconditionally (roadmapparse.cpp,
+  ANTS-3764), so a value stored WITH a stop would render with one and
+  re-import without it. The double period was therefore the escape that
+  made the pair round-trip, which is why this needed the conditional
+  rather than a trim.
+
+  What settles which side gives way is roadmap-format.md § 3.5: it names
+  Evidence as the one key rendered WITHOUT a trailing period, so the stop
+  is the FORMAT's on every other key and a value carrying its own is the
+  anomaly. Trimming is canonicalisation toward the format's own rule, not
+  data loss.
+
+  Locked by RoadmapRender.Ants4582TrailerPeriodNotDoubled, verified RED on
+  the assertion before the fix. Full suite 3727/3727.
+
+  NOT yet visible in ROADMAP.md: the render runs in the MCP server, whose
+  binary is 13 commits behind HEAD. Existing doubled values correct
+  themselves on the first render after a relaunch.
+
+  The bullet's second half stands open: there is still no op that amends
+  the `source` column, so a filed item's provenance cannot be corrected.
+  Not filed separately — it is ANTS-4585's territory.
   **Layman:** A stray extra full stop appears in the roadmap file when the text you supplied already ended with one.
   Kind: fix.
   Source: in-session-2026-08-20, observed while filing ANTS-4578.

@@ -58,6 +58,18 @@ void appendIndented(QStringList *out, const QString &text) {
         out->append(l.isEmpty() ? QString() : QStringLiteral("  ") + l);
 }
 
+// ANTS-4582 — the terminating stop belongs to the FORMAT, not the value.
+// roadmap-format.md § 3.5 calls `Evidence:` out as the one key rendered
+// WITHOUT one, which makes the stop the format's on every key that gets it.
+// So a value that already ends in one is given no second: the parse chops
+// exactly one (roadmapparse.cpp, ANTS-3764), and emitting one terminator
+// either way is what keeps that pair symmetric. Appending unconditionally
+// produced `...that filed it..` on every render of a source supplied as a
+// sentence, and the file is generated, so no hand edit could remove it.
+QString withStop(const QString &value) {
+    return value.endsWith(QLatin1Char('.')) ? value : value + QLatin1Char('.');
+}
+
 } // namespace
 
 // One bullet in full § 3.5 form.
@@ -125,7 +137,7 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     // reporting it. The other four keys have no closed value set, so there is no
     // "unrecognised" state for them to be in.
     if (!(shadows(tv.kind) && RoadmapParse::isRecognisedKind(tv.kind.value)))
-        appendIndented(&lines, QStringLiteral("Kind: ") + it.kind + QLatin1Char('.'));
+        appendIndented(&lines, QStringLiteral("Kind: ") + withStop(it.kind));
     // ANTS-4065 § 2.4 — a `source` the IMPORT supplied is not written back into
     // the file. `roadmap-format.md` § 3.5.3 makes `planned` the default, so
     // rendering it turns "this bullet said nothing" into "this bullet says
@@ -146,7 +158,7 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
         it.provenance.value(QStringLiteral("source")).toString()
             != QLatin1String("defaulted");
     if (!it.source.isEmpty() && !shadows(tv.source) && assertedSource)
-        appendIndented(&lines, QStringLiteral("Source: ") + it.source + QLatin1Char('.'));
+        appendIndented(&lines, QStringLiteral("Source: ") + withStop(it.source));
     // ANTS-4505 — one rule for all five, where the two list-valued keys used to
     // need their own. They compared ELEMENT BY ELEMENT because comparing a
     // pre-split string against a joined column diverges on separator spacing
@@ -154,7 +166,7 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     // `tv.lanesList` / `tv.evidenceList` are no longer read here; they stay on
     // the accessor for their other consumers.
     if (!it.lanes.isEmpty() && !shadows(tv.lanes))
-        appendIndented(&lines, QStringLiteral("Lanes: ") + it.lanes.join(QStringLiteral(", ")) + QLatin1Char('.'));
+        appendIndented(&lines, QStringLiteral("Lanes: ") + withStop(it.lanes.join(QStringLiteral(", "))));
     // Rendered WITHOUT a trailing period: paths contain dots, so a sentence
     // period would read as part of the last path (roadmap-format.md § 3.5).
     if (!it.evidence.isEmpty() && !shadows(tv.evidence))
