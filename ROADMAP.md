@@ -40371,7 +40371,7 @@ filed below.
   Source: in-session-2026-08-20, observed while filing ANTS-4578.
   Lanes: roadmaprender.
 
-- 🚧 [ANTS-4583] **A release can be published with no downloadable artefact, and nothing notices.**
+- ✅ [ANTS-4583] **A release can be published with no downloadable artefact, and nothing notices.**
   v0.7.105, the public "Latest" release, carries zero assets. Reported by
   the user because antsprojectshub.co.za could not link a download for it
   and fell back to the GitHub page.
@@ -40409,6 +40409,34 @@ filed below.
   published state. A scheduled audit that walks the releases and reports
   any non-prerelease missing its AppImage would close the class rather
   than this instance. Filed as the follow-up rather than built here.
+  Resolved (2026-08-20): fix in commit 02a68c04; v0.7.105 backfilled by
+  run 32362946347, which completed successfully.
+
+  Verified end to end rather than from the run status. The release now
+  carries both artefacts. The direct URL serves HTTP 200 with
+  content-length 31,758,840, and the first bytes are 7f 45 4c 46 with
+  41 49 02 at offset 8 — ELF, AppImage type 2, so it is a real binary and
+  not a stub or an error page. The workflow's own smoke-test (--version,
+  --help) passed before upload. /releases/latest resolves to v0.7.105,
+  prerelease false, 2 assets — so both the website's link and README's
+  install section now land on a downloadable file.
+
+  The new verification step ran on this very run and reported success, so
+  it is proven on a real release rather than only in principle.
+
+  The diagnosis was confirmed by the backfill itself: this run spent over
+  30 minutes before finishing, well past the 25-minute ceiling that
+  killed the original. Under the old budget it would have died the same
+  way, in the same step.
+
+  Known limit, stated because it is the reason ANTS-4583's own body
+  called the guard the lesser half: the verification step cannot fire
+  when the job is killed before reaching it, which is exactly what
+  happened to v0.7.105. It catches a failed upload, not a dead run. A
+  periodic audit over published state is what closes that class, and the
+  sibling channel found the same shape — ANTS-4587, where every OBS build
+  reports success while the repositories serve a two-release-old
+  package.
   **Layman:** The latest release had no file to download for a day, and no check anywhere would have caught it.
   Kind: fix.
   Source: user-report-2026-08-20 (the website could not link a download).
