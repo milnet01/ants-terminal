@@ -533,6 +533,20 @@ which heading you expect it under.
   not restated here); and `op:"bundle_row"` **writes normally** — it appends to a
   Markdown table under a named section and never parses bullets, so the
   roadmap's bullet format never reaches it (ANTS-1691).
+- **A `note` is prose (ANTS-4549)** — under `op:"annotate"`, `op:"flip"`
+  and `op:"flip_batch"` a note may name a trailer key only with the label
+  first on its line, the shape the render writes a declaration in.
+  Mid-line it refuses `body_shadowed`. The note is appended to the body
+  and § 2.6 re-derives every trailer column from that new body, so a bare
+  `Kind:` in a sentence was read as a declaration and its following words
+  written to the column — caught on AI_Prompts/AIPR-0033 only because the
+  store's CHECK constraint refused an invalid kind, which is luck rather
+  than a guard: an accepted kind would have written silently, and the
+  other four columns have no CHECK at all. Position rather than
+  `op:"append"`'s value comparison, because a note supplies no column to
+  compare against and blanket-refusing would close § 2.6's own remediation
+  route — a `Layman:` note is the only way to fill that column on a
+  migrated item, and the render gates on it.
 - **`roadmap_log op:"amend_body"` matches across a hard wrap (ANTS-4550)** —
   `old_text` is exact apart from its whitespace runs, which span a
   line break, so a phrase straddling the ~70-col wrap is amended in ONE

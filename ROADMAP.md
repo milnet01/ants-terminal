@@ -38926,7 +38926,7 @@ filed below.
   Source: AI_Prompts_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapstore.
 
-- 📋 [ANTS-4549] **op:annotate parses trailer keywords out of caller-supplied note prose, where op:append guards against exactly that.**
+- ✅ [ANTS-4549] **op:annotate parses trailer keywords out of caller-supplied note prose, where op:append guards against exactly that.**
   op:annotate does not treat `note` as opaque body text. A note whose
   prose contains a bare trailer keyword has that keyword read as
   metadata and the following words written to the matching column.
@@ -38961,6 +38961,42 @@ filed below.
   Sibling of ANTS-4506 / ANTS-4507 from the caller-prose side: the
   metadata trailer is recognised in text that was never a render.
   Detection angle already considered as ANTS-4476.
+  Resolved (2026-08-20): the note-carrying ops now refuse a trailer key
+  named mid-line, as `body_shadowed`, with the text quoted and both
+  remedies named. One guard, checked where the note is scrubbed — before
+  the locate, before the format split, before the backend split — so
+  annotate, flip and flip_batch and both backends give one answer.
+  flip_batch skips only the offending locator.
+
+  Fix (a) as filed could not be taken as written, and finding out why is
+  the useful part of this item. Routing the note through append's guard
+  means append's PREDICATE, which is value difference against a supplied
+  column — and a note supplies none. Blanket-refusing every declaration
+  instead breaks ANTS-3809 § 2.6's own reason for existing: an annotate
+  whose note carries a `Layman:` line is the only way to fill that column
+  on a migrated item, and the render gates on it. Caught by
+  RoadmapWriteHalf.Inv4BodyDerivesColumns, which uses exactly that shape
+  and went red against the first attempt.
+
+  So the predicate is POSITION, and it needs no new argument: a deliberate
+  declaration is written as its own line, the way the render emits one, and
+  prose that happens to name a key is not. The two are distinguishable
+  without asking the caller.
+
+  Guarded only where the parser can actually read a declaration out of
+  prose: `kind`, `source` and `lanes`, whose patterns are un-anchored.
+  The other two are anchored (`^\s*`) and cannot match mid-line, so a note
+  naming them in a sentence is accepted — a guard stricter than the parser
+  refuses notes that were never at risk.
+
+  The mcp-error-codes.md row said this code "reaches only append /
+  append_batch — every other op re-derives its columns from the body it just
+  wrote, so its column cannot disagree." That re-derivation is the
+  MECHANISM by which caller prose reached a column, not a reason it could
+  not. Row corrected.
+
+  Evidenced by tests/features/roadmap_log_note_trailer_guard (7 tests,
+  red on assertions first). Suite 3702/3702 green.
   **Layman:** Writing a note that happens to name a metadata field can silently change the item's category.
   Kind: fix.
   Source: AI_Prompts_Ants_MCP_Feedback.md 2026-08-20; reproduced filing this bullet.

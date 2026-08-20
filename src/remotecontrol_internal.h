@@ -248,6 +248,8 @@ bool rlFlushHistory(RoadmapStore &store, HistoryContext &hist, QString *error);
 void rlAttachHistoryNote(QJsonObject &env, const RoadmapStore &store,
                          const HistoryContext &hist);
 
+// ANTS-4549 — a `note` is opaque prose: refuse one that declares a trailer key.
+bool rlNoteDeclaresTrailer(const QString &note, QString *error);
 bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, HistoryContext *hist, QString *error);
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);

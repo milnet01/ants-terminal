@@ -10672,7 +10672,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "untouched); optional under op:\"flip\" (append "
                         "the resolution note while flipping in one "
                         "call). Scrubbed of leaked tool-call XML like "
-                        "op:\"append\"'s body; pre-wrap to ~70 columns.");
+                        "op:\"append\"'s body; pre-wrap to ~70 columns. "
+                        "ANTS-4549 — a note is PROSE: it may name a trailer key "
+                        "(`Kind:`, `Layman:`, `Source:`, `Lanes:`, `Evidence:`) "
+                        "only with the label first on its line, which is how the "
+                        "render writes a declaration. Mid-line the key would be "
+                        "re-parsed as metadata and its following words written to "
+                        "that column, so it refuses `body_shadowed`; wrap the key "
+                        "in backticks to talk ABOUT it.");
 
                     // ANTS-3406 — op:"amend_body" operands: replace an
                     // exact single-line substring of the located bullet's

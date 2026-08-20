@@ -1227,6 +1227,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             QStringLiteral("roadmap_log: op:\"annotate\" requires a "
                            "non-empty `note` to append to the bullet"));
     }
+    // ANTS-4549 — here, before the locate and before either the format or the
+    // backend split, so all three note-carrying ops and both backends give one
+    // answer. The note is appended to the body and § 2.6 re-derives the trailer
+    // columns from it, so a bare `Kind:` in prose rewrites a column the caller
+    // never mentioned — op:"append" has refused exactly this as body_shadowed
+    // since ANTS-3809 § 2.5, and this routes the note through that guard rather
+    // than adding a second one.
+    {
+        QString shadowErr;
+        if (rlNoteDeclaresTrailer(note, &shadowErr))
+            return rlErr(QStringLiteral("body_shadowed"),
+                QStringLiteral("roadmap_log: %1").arg(shadowErr));
+    }
 
     // 2. id_hint is bad_op_combo under op:"flip"/"annotate" — counter
     //    is consumed only when an anchor is injected, never explicitly
@@ -2930,6 +2943,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         }
         QStringList noteScrubbed;
         if (!note.isEmpty()) rcScrubLeakedToolXml(note, noteScrubbed);
+        // ANTS-4549 — per LOCATOR, so one bad note does not cost the batch the
+        // other closures; the same guard op:"flip"/"annotate" runs above.
+        {
+            QString shadowErr;
+            if (rlNoteDeclaresTrailer(note, &shadowErr)) {
+                skip(li, QStringLiteral("body_shadowed"), shadowErr);
+                continue;
+            }
+        }
 
         const bool hasRange = (locRange.size() == 2);
         if (locId.isEmpty() && locAnchor.isEmpty() &&

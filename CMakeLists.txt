@@ -1749,6 +1749,9 @@ if(ANTS_TESTS)
                 # ANTS-4547/4550 — the shared wrapped-quotation matching rule,
                 # and its two consumers (workspace_search, amend_body).
                 tests/features/wrapped_quote_match/test_wrapped_quote_match.cpp
+                # ANTS-4549 — a `note` is opaque prose: a bare trailer keyword
+                # in one may not be re-parsed as metadata.
+                tests/features/roadmap_log_note_trailer_guard/test_roadmap_log_note_trailer_guard.cpp
                 # ANTS-4404 — the write path's fence extents come from
                 # MarkdownScan, so prose QUOTING fence syntax cannot make the
                 # bullets below it unwritable.

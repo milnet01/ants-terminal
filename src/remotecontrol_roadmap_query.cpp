@@ -610,6 +610,82 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
     return rlResolveCounterPrefix(idPrefixArg, text.full(), callerCanonical);
 }
 
+// ANTS-4549 — a `note` may declare a trailer key only in the shape the
+// RENDERER writes one: the label first on its line. Anywhere else the key sits
+// in running prose, and reading it as metadata is the defect. Returns true when
+// the op must refuse, filling *error with the message.
+//
+// The note is appended to the bullet's body, and § 2.6 then re-derives every
+// trailer column from that new body — so a bare `Kind:` mid-sentence is read as
+// a declaration and the words after it are written to the column. Reported
+// against AI_Prompts/AIPR-0033, where it produced an invalid kind and the
+// store's CHECK constraint refused the whole write. That refusal was luck: a
+// following word inside the 21 accepted kinds would have SUCCEEDED and silently
+// re-kinded the item, and the other four keys have no CHECK at all.
+//
+// Why POSITION and not the value comparison rlBodyShadows() uses: a note has no
+// column argument to compare against, and blanket-refusing every declaration
+// would break § 2.6's own reason for existing — an annotate whose note carries
+// a `Layman:` line is the only way to fill that column on a migrated item, and
+// the render gates on it. The two shapes are distinguishable without asking the
+// caller: a deliberate declaration is written as its own line, exactly as the
+// render emits it, and prose that happens to name a key is not. Leading
+// whitespace is allowed, so a caller indenting their line is not caught out.
+//
+// Two of the five patterns (`Layman:`, `Evidence:`) are anchored already and
+// cannot match mid-line at all, so this never fires on them — that is the
+// parser's rule, kept rather than second-guessed: a guard stricter than the
+// parser refuses notes that were never at risk.
+//
+// ANTS-4504's code-span masking is what makes the remedy cheap: a key inside
+// backticks declares nothing, so wrapping it is a one-character fix.
+bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error) {
+    if (note.isEmpty())
+        return false;
+    for (const RlTrailerKey &k : kRlTrailerKeys) {
+        const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(note);
+        const QString fromNote = rlBodyValueFor(tv, k);
+        if (fromNote.isEmpty())
+            continue;
+        const RoadmapParse::TrailerMatch &m = tv.*(k.match);
+        if (m.offset < 0 || m.offset > note.size())
+            continue;
+        // Everything on the line before the VALUE must be the label itself.
+        // Computed off the capture rather than off TrailerMatch::anchored,
+        // which is false for an indented un-anchored key (`  Kind: fix.`) —
+        // the shape a caller writing a declaration by hand actually produces.
+        const QString field = QString::fromLatin1(k.field);
+        const QString label = field.left(1).toUpper() + field.mid(1);
+        const int lineStart = note.lastIndexOf(QLatin1Char('\n'), m.offset) + 1;
+        const QString before = note.mid(lineStart, m.offset - lineStart);
+        const QRegularExpression labelOnly(
+            QStringLiteral("^\\s*(?:\\*\\*)?%1:(?:\\*\\*)?\\s*$").arg(label),
+            QRegularExpression::CaseInsensitiveOption);
+        if (labelOnly.match(before).hasMatch())
+            continue;   // a declaration in the render's own shape — allowed
+        if (!error)
+            return true;
+        QString quoted = note.mid(lineStart,
+                                  (note.indexOf(QLatin1Char('\n'), m.offset) < 0
+                                       ? note.size()
+                                       : note.indexOf(QLatin1Char('\n'), m.offset))
+                                      - lineStart).trimmed();
+        if (quoted.size() > 160)
+            quoted.truncate(160);
+        *error = QStringLiteral(
+                     "the `note` names the `%1` trailer key mid-line, so a "
+                     "re-parse of the body this note is appended to would read "
+                     "\"%2\" as that column's value. A note is prose: wrap the "
+                     "key in backticks (`%3:`), which declares nothing, or "
+                     "reword the mention. To DECLARE the key deliberately, put "
+                     "`%3:` first on its own line, as the render writes it. "
+                     "(offending text: %4)")
+                     .arg(field, fromNote, label, quoted);
+        return true;
+    }
+    return false;
+}
+
 // § 2.5 and § 2.6 for the two ops that carry column arguments — `append` and
 // `append_batch` — filling one item's `body`, its five trailer columns and the
 // provenance for both. Shared because `append_batch` must run it inside its

@@ -37,6 +37,20 @@ for security-relevant changes.
 
 ### Fixed
 
+- ****A `roadmap_log` `note` is prose — a trailer keyword named mid-sentence no longer rewrites that column.** (ANTS-4549)**
+  `op:"annotate"`, `op:"flip"` and `op:"flip_batch"` append the note to the
+  bullet's body, and the trailer columns are then re-derived from that body
+  — so a bare `Kind:` in a sentence was read as a declaration and its
+  following words written to the column. Caught on one report only because
+  the store's CHECK constraint refused an invalid kind; an accepted one
+  would have written silently, and the other four columns have no CHECK.
+  A note may now name a trailer key only with the label first on its line,
+  which is how the render writes a declaration; mid-line it refuses
+  `body_shadowed`, quoting the text and naming both remedies. Position
+  rather than a value check, so the one deliberate use — a `Layman:` note
+  filling that column on a migrated item, which the render gates on — keeps
+  working.
+
 - ****`roadmap_log op:"amend_body"` amends a phrase that straddles a hard-wrapped line break, in one call.** (ANTS-4550)**
   `old_text` is now exact apart from its whitespace runs, which span a
   line break. The wrapped pass runs only after the exact one finds
