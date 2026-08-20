@@ -106,7 +106,7 @@ jobs:
               fail=1
             elif [ "${got}" != "${VER}" ]; then
               echo "  ${d}: ${got}  (release is ${VER})"
-              echo "::error::${d} publishes ${got}, two steps behind the ${VER} release"
+              echo "::error::${d} publishes ${got}, not the ${VER} release"
               fail=1
             else
               echo "  ${d}: ${got}  ok"

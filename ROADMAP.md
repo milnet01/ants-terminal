@@ -40526,7 +40526,7 @@ filed below.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
   Lanes: roadmapparse, roadmap-store.
 
-- 📋 [ANTS-4586] **No stable direct-download URL exists, so every download link is a page a user still has to navigate.**
+- ✅ [ANTS-4586] **No stable direct-download URL exists, so every download link is a page a user still has to navigate.**
   Verified against the live site 2026-08-20. antsprojectshub.co.za's
   Ants Terminal page carries three links: the Download button and "All
   releases" both go to /releases, and "grab the ready-to-run AppImage"
@@ -40559,12 +40559,21 @@ filed below.
   rather than a fix to slip in. Note it also needs ANTS-4583's
   verification step widened to cover the third artefact, or the guard
   would pass while the alias silently went missing.
+  Resolved (2026-08-20): commit 47a66043, published to v0.7.105 by run 32365208825.
+
+  https://github.com/milnet01/ants-terminal/releases/latest/download/Ants_Terminal-x86_64.AppImage
+
+  Verified against the live URL, not the run status: HTTP 200, first bytes 7f 45 4c 46 with 41 49 02 at offset 8 (ELF, AppImage type 2), and content-length 31,758,840 — byte-identical to the versioned asset, so it is the same build rather than a re-package.
+
+  README's install section now leads with it (commit c336a729). That fixed a second defect in the same paragraph: the old steps told the reader to chmod the glob Ants_Terminal-*-x86_64.AppImage, which matches nothing until they have already found and downloaded a file.
+
+  RC builds are excluded, since `latest` never resolves to a prerelease and an unversioned RC binary would invite the mix-up the separate RC channel exists to prevent.
   **Layman:** There is no permanent link that downloads the app directly — every link sends you to a page to hunt for the file.
   Kind: enhancement.
   Source: user-report-2026-08-20 (site could not link a download).
   Lanes: packaging, ci.
 
-- 📋 [ANTS-4587] **Package-manager users are two releases behind, and every OBS build reports success.**
+- ✅ [ANTS-4587] **Package-manager users are two releases behind, and every OBS build reports success.**
   Found while checking the OTHER download path after ANTS-4583. The
   AppImage was the reported failure; this one nobody reported.
 
@@ -40604,12 +40613,21 @@ filed below.
 
   Housekeeping noticed in passing: the OBS package still carries a stale
   ants-terminal-0.7.101.tar.gz alongside the generated sources.
+  Resolved (2026-08-20): submitted via packaging/obs/obs-submit.sh, OBS revision 20. All four repositories now publish 0.7.105 — Tumbleweed, Leap 16.0, Mageia 10 and Fedora 44, each verified by reading the published RPM filename rather than the build status.
+
+  The cause was confirmed at the server: the OBS copy of _service pinned v0.7.103 while git pinned v0.7.105, so obs_scm had never re-fetched. After the commit the generated source is _service:obs_scm:ants-terminal-0.7.105.obscpio.
+
+  Fedora lagged the other three by several minutes in `succeeded(unpublished)` — built but not yet published. Worth knowing for the next release: build completion is not publication, and the project metadata disables publishing nowhere, so that state resolves on its own.
+
+  The SIGNAL half of this item is what actually shipped as a fix — ANTS-4588 now checks the published version daily, which is the thing that would have caught this in the week it happened rather than three releases later.
+
+  Left alone deliberately: the stale ants-terminal-0.7.101.tar.gz still sits in the OBS package. It is unused (the tar service generates Source0 at build time) and deleting it would disturb a state that is now correct and published. Not worth the risk today.
   **Layman:** Anyone who installed via their package manager is stuck on an old version, and nothing reported a problem.
   Kind: fix.
   Source: in-session-2026-08-20, found while auditing every download path after the v0.7.105 report.
   Lanes: packaging, ci.
 
-- 🚧 [ANTS-4588] **Audit what is published rather than what the last build reported.**
+- ✅ [ANTS-4588] **Audit what is published rather than what the last build reported.**
   Two download channels were found broken on the same day and BOTH
   reported success. v0.7.105 stood as the public Latest release carrying
   no AppImage, because its build timed out before the upload step
@@ -40640,6 +40658,11 @@ filed below.
   people to ignore the job, which is how a gate stops working.
 
   Read-only, fixes nothing. Going red is the product.
+  Resolved (2026-08-20): commit 2d92308c, .github/workflows/release-audit.yml, daily plus on demand.
+
+  Proven in BOTH directions on the day it was written, which is the only evidence that separates a working gate from one that merely runs. Run 32365436222 went RED against the real drift then present, naming it exactly — "openSUSE_Tumbleweed: 0.7.103 (release is 0.7.105)". Run 32368365878, after both channels were repaired, went green: "Every published download matches release v0.7.105."
+
+  One defect found in its own output afterwards and fixed: the drift message hardcoded "two steps behind", which was true of today's gap and would misreport any other. It now names the versions and not the distance.
   **Layman:** A daily check that the current release can actually be downloaded, and that package users are not stuck on an old version.
   Kind: test.
   Source: in-session-2026-08-20, the common cause behind ANTS-4583 and ANTS-4587.
