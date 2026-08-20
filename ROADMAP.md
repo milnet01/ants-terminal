@@ -40608,6 +40608,23 @@ filed below.
   Two things that changes for the repair. The abbreviation-stop subset may now be recoverable by RE-PARSING the surviving prose rather than by a bespoke repair pass, since the parser reads those values correctly today — worth measuring before writing any repair code, because it could remove most of phase 2's work. And the wrap subset is unaffected: ANTS-4542 fixed that separately and earlier.
 
   Still open before phase 2 writes anything: ANTS-4595 (the lifecycle word in the provenance column) has to be settled first, and rxLanes() carries the same unfixed `(.+?)[\.\n]` shape that ANTS-4596 just removed from layman — unmeasured, and lanes are identifiers so the corpus may show no damage.
+  Progress (2026-08-20): the phase-2 repair population is MEASURED for the lanes column, as a side effect of ANTS-4597. This answers, for one column, the "does re-parsing the surviving prose recover it for free?" question phase 2 was told to measure first. For lanes the answer is yes, for 54 items.
+
+  Method: reconstruct each bullet from the stored body, run the CURRENT parser over it (throwaway TU linked against build/libants_roadmapparse_lib.a), and diff against the stored lanes column.
+
+    bodies still carrying an inline `Lanes:` declaration : 1126 of 5096
+    re-parse differs from the stored column              :   54
+      ...gaining whole MEMBERS                           :   40
+      ...net characters recovered                        : 1783
+    stored lane names containing a dot                   :    0
+
+  Two cautions on that 54, both learned the hard way in the same session.
+
+  It is CUMULATIVE, not ANTS-4597's alone. The stored column was written at migration and predates ANTS-4542's wrap repair as well, so the diff credits both. ANTS-4597 in isolation -- both parsers run over the same 1126 bodies -- moves 15 bullets and 5 member gains. Do not attribute the 54 to any single fix.
+
+  It is bounded by what survives in prose: only 1126 of 5096 items still carry the inline run at all. For the rest the trailer was stripped into columns at migration, the cut text is gone, and no re-parse recovers it. That is the "no verbatim match" bucket, and it is the part of phase 2 that needs a real decision rather than a re-parse.
+
+  Sequencing consequence: the lanes column is now safe to repair by re-parse, because ANTS-4597 stops the next parse re-truncating it -- the same unblock ANTS-4596 gave the layman column. Both must land before any repair pass, which is what this item's own ordering already says.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
