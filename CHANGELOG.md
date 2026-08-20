@@ -59,6 +59,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A `Lanes:` list is no longer cut short at a dotted lane name** (ANTS-4597)
+  The lanes capture stopped at the first full stop, which for this key is
+  usually a dot inside a filename, so every member after it was lost —
+  `remotecontrol.cpp, AuditDialog, RoadmapDialog, …` was read as the single
+  lane `remotecontrol`. The value now ends at its sentence stop instead,
+  where a dot inside a token does not count, and the list is split from the
+  finished text. Measured over the roadmap store: 15 bullets parse
+  differently, 5 gain whole members, nothing loses one.
+
 - **The layman capture stops at the first period, not the trailing one.** (ANTS-4596)
   A plain-English roadmap summary containing "e.g.", "etc.", a decimal
   like 41.5, or a filename like .deb was cut off at that dot when the

@@ -306,8 +306,8 @@ const QRegularExpression &rxKind() {
 // Source: …`), so `Lanes:` lands mid-line, not at a line start. The
 // old `^\\s*` anchor matched only line-leading `Lanes:` and returned
 // lanes:[] for every inline bullet — while rxKind worked purely because
-// `Kind:` happened to sit first. Match `Lanes:` anywhere; the non-greedy
-// capture still stops at the first period/newline.
+// `Kind:` happened to sit first. Match `Lanes:` anywhere; a following
+// declaration on the same line ends the value (see the extraction site).
 // ANTS-3407 — deliberately NOT CaseInsensitive (unlike the anchored
 // Kind:/Layman:/Evidence: labels). Because this pattern is un-anchored,
 // case-insensitivity would match a lowercase "lanes:" occurring mid-prose
@@ -328,10 +328,33 @@ const QRegularExpression &rxKind() {
 // closing `**` in the first lane, so a bullet declaring `**Lanes:** core`
 // reported a lane named `** core`), and 2 quote `` `**Lanes:**` `` while
 // writing about the format.
+//
+// ANTS-4597 — the capture runs to end-of-line and the extraction site ends the
+// value at its SENTENCE stop, BEFORE splitTrailerList() sees the text. It used
+// to be the non-greedy `(.+?)` closed by `[\\.\\n]` that ANTS-4596 removed
+// from rxLayman(), and for THIS key the first period is usually a dot inside a
+// filename rather than the sentence stop — so the list ended there and lost
+// every member after it.
+//
+// A truncated LIST is worse than a truncated string: `remotecontrol.cpp,
+// AuditDialog, RoadmapDialog, MainWindow, …` yielded the single lane
+// `remotecontrol`, and the render then emits that short list terminated by a
+// full stop, which reads as a correct declaration.
+//
+// Measured by running BOTH parsers over the machine-global store 2026-08-20 —
+// this file at HEAD~ and at HEAD, over the 1126 bodies carrying a `Lanes:`
+// declaration, rather than against the stored column, which also carries
+// ANTS-4542's repair and would credit it here. 15 bullets parse differently,
+// 5 gain whole members (ANTS-1117 goes 1 lane -> 6, ANTS-1125 2 -> 5), 302
+// characters are recovered and NOTHING loses a member.
+//
+// This is ANTS-3382's reasoning a third time — its comment on rxEvidence()
+// already says a `[^\\.\\n]` stop "would truncate at the extension" — after
+// ANTS-3764 applied it to `Source:` and ANTS-4596 to `Layman:`.
 const QRegularExpression &rxLanes() {
     static const QRegularExpression rx(
         QStringLiteral("(?<!`)(?<!`\\*)(?<!`\\*\\*)"
-                       "(?:\\*\\*)?Lanes:(?:\\*\\*)?\\s*(.+?)\\s*[\\.\\n]"),
+                       "(?:\\*\\*)?Lanes:(?:\\*\\*)?\\s*([^\\n]+)"),
         QRegularExpression::MultilineOption);
     return rx;
 }
@@ -421,6 +444,19 @@ const QRegularExpression &rxTrailerKey() {
 const QRegularExpression &rxTrailerKeyAfterLayman() {
     static const QRegularExpression rx(
         QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Source|Evidence):"));
+    return rx;
+}
+
+// ANTS-4597 — and again for `Lanes:`. The set names every key EXCEPT this one,
+// for the reason above: rxTrailerKey() names Lanes, so reusing it would end a
+// lane list at itself and let it run through the `Source:` that follows it on
+// the same line. Three near-identical sets now exist, differing only in the
+// key each omits. Left as three literals rather than folded into a builder:
+// the literal is greppable, and a generated pattern would move this grammar's
+// only spelling of the trailer keys behind a join.
+const QRegularExpression &rxTrailerKeyAfterLanes() {
+    static const QRegularExpression rx(
+        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Layman|Source|Evidence):"));
     return rx;
 }
 
@@ -1575,9 +1611,51 @@ TrailerValues trailerValuesIn(const QString &body) {
         out.layman.value = out.layman.value.trimmed();
     }
 
-    // `lanes.value` is the RAW capture: parseBullets() applies neither a trim
-    // nor a period chop before splitting it.
-    out.lanes     = matchLastIn(rxLanes(), body, masked);
+    // ANTS-4597 — two stops, and the normalisation lands BEFORE the split
+    // rather than after it. That order is the whole difference for this key:
+    // splitTrailerList() must be handed the finished text, or a following
+    // declaration becomes a lane of its own and the last member keeps the
+    // sentence period.
+    //
+    // The second stop is `sentenceStop()`, NOT the end of the line, and that is
+    // this key's one departure from `Layman:` above and `Source:` below. Both of
+    // those hold free prose, where absorbing a following sentence costs some
+    // over-long text; a lane run is one clause, and the surplus is SPLIT into
+    // bogus lanes that `subsystem` and `indie_review_partition` then key on.
+    // Measured against the live store while writing this: an end-of-line stop
+    // repaired 75 of 78 dotted runs and turned three declarations followed by
+    // ordinary prose — `Lanes: hooks. Verify the resulting predicate table …` —
+    // into a single lane carrying the whole sentence.
+    //
+    // sentenceStop() is the rule the old `[\\.\\n]` was reaching for and got
+    // wrong: a full stop at end-of-value or before whitespace ends it, a dot
+    // inside a token (`remotecontrol.cpp`, `.claude/bump.json`) does not. It is
+    // already the continuation walk's terminator, so both halves of this key now
+    // stop on one rule instead of two. It also subsumes the trailing-period
+    // chop the sibling keys do by hand.
+    //
+    // Both scans run on the match's own MASKED twin (ANTS-4504 / ANTS-4542), so
+    // a key or a stop inside a code span cannot end a real value.
+    //
+    // `lanes.value` is therefore no longer the raw capture — it is the text the
+    // split is applied TO, which is exactly what `evidence.value` already means
+    // (ANTS-3808 § 2.2.1, whose table row is updated with this change). The two
+    // list keys are now symmetric; the asymmetry that row recorded was a
+    // consequence of the old first-period stop, not a contract.
+    out.lanes = matchLastIn(rxLanes(), body, masked);
+    if (out.lanes.offset >= 0) {
+        QString lnRaw    = out.lanes.value;
+        QString lnMasked = out.lanes.maskedValue;
+        const auto keyAt = rxTrailerKeyAfterLanes().match(lnMasked);
+        if (keyAt.hasMatch()) {
+            lnRaw    = lnRaw.left(keyAt.capturedStart());
+            lnMasked = lnMasked.left(keyAt.capturedStart());
+        }
+        const int stop = sentenceStop(lnMasked);
+        if (stop >= 0)
+            lnRaw = lnRaw.left(stop);
+        out.lanes.value = lnRaw.trimmed();
+    }
     out.lanesList = splitTrailerList(out.lanes.value);
 
     // ANTS-3382 — `evidence.value` is the text the split is applied TO, which

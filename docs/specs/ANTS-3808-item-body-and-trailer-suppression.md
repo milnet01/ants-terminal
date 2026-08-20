@@ -371,7 +371,7 @@ cannot reasonably re-derive them differently:
 |---|---|
 | `kind.value`, `layman.value` | `captured(1).trimmed()` |
 | `lanesList` | split `captured(1)` on `,` (`SkipEmptyParts`), each part trimmed, empties dropped |
-| `lanes.value` | `captured(1)` — the raw capture, no trim and no period chop, because `parseBullets()` applies none before splitting |
+| `lanes.value` | truncate at the first following `rxTrailerKeyAfterLanes` match, then at `sentenceStop()`, trim — i.e. the input `lanesList` is split from (ANTS-4597) |
 | `evidenceList` | trim; drop **one** trailing `.` unless the value ends `..`; then split/trim as `lanesList` |
 | `evidence.value` | the trimmed, period-chopped text **before** the split — i.e. the input `evidenceList` is split from |
 | `source.value` | truncate at the first following `rxTrailerKey` match, trim, drop one trailing `.`, trim again |
@@ -384,10 +384,16 @@ table rather than against the reader.
 
 **`lanes.value` and `evidence.value` do have counterparts, and INV-4 must grade
 them against the reader rather than against this table** — they are the reader's
-own intermediates: `const QString lanesRaw = lanesMatch.captured(1)` and
-`QString evRaw = evidenceMatch.captured(1).trimmed()` after its period chop.
-Grading them against the table instead would test the spec against itself on
-exactly the two keys whose normalisation is asymmetric.
+own intermediates, each the text its list is split FROM. Grading them against
+the table instead would test the spec against itself.
+
+**ANTS-4597 changed the `lanes.value` row and did not weaken the rule above it.**
+It used to read "the raw capture, no trim and no period chop, because
+`parseBullets()` applies none before splitting", which was true of a reader whose
+capture stopped at the first period. That stop cut a lane list at a dot inside a
+filename, so the capture now runs to end-of-line and the reader normalises it
+BEFORE the split. The row still names what the reader does; the two list keys are
+simply no longer asymmetric.
 
 INV-4 asserts the rest of the equality directly, so a divergence fails a test
 rather than silently disabling the feature.

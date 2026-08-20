@@ -40944,7 +40944,7 @@ filed below.
   Source: ANTS-4585 phase 1 measurement, 2026-08-20.
   Lanes: roadmapparse.
 
-- 📋 [ANTS-4597] **The lanes capture drops every lane after one carrying a dot.**
+- ✅ [ANTS-4597] **The lanes capture drops every lane after one carrying a dot.**
   rxLanes() (roadmapparse.cpp:334) still carries the non-greedy `(.+?)` closed by `[\.\n]` that ANTS-4596 just removed from the layman key. ANTS-4596's note left this unmeasured; it is now measured, and the damage is worse than layman's because a truncated LIST silently loses whole members rather than trailing characters.
 
   The signature is an asymmetry: across the machine-global store, 24 bodies carry an inline lanes run containing a dotted token, and ZERO stored lane names contain a dot. Every one of those 24 was cut at the dot.
@@ -40967,9 +40967,50 @@ filed below.
   Also verify a lane list is still ended by a following declaration on the same line — that is ANTS-4542 INV-4, which passes today only because the first-period stop provides it by accident. ANTS-4596 hit the same trap and needed its own stop set, because rxTrailerKey() names Lanes and would end a lane list at itself.
 
   Consumers to re-check after the fix, since a lane set that grows changes their output: indie_review_partition and subsystem both key on lanes.
+  Resolved (2026-08-20). rxLanes() now captures `([^\n]+)` to end-of-line, and the extraction site stops at a following trailer key, then at sentenceStop(), then trims -- all BEFORE splitTrailerList(), which is the one ordering difference this key has from the three that already had the fix.
+
+  Added rxTrailerKeyAfterLanes(), naming Kind/Layman/Source/Evidence. rxTrailerKey() names Lanes and would have ended a lane list at itself, exactly as this item predicted.
+
+  ONE departure from ANTS-4596's shape, and it was not in the plan -- the corpus found it. A first draft stopping at end-of-line repaired the dotted runs and turned three declarations followed by ordinary prose into a single lane carrying a whole sentence: `Lanes: hooks. Verify the resulting predicate table still matches docs/specs/ANTS-2141.md ...` became one lane. Layman/Source can absorb a following sentence and merely look long; a lane run is one clause and the surplus is SPLIT into bogus lanes that subsystem and indie_review_partition then key on. The value therefore ends at sentenceStop() -- the existing helper, already the continuation walk's terminator, whose rule (a stop at end-of-value or before whitespace ends it; a dot inside a token does not) is what the old `[\.\n]` was reaching for and got wrong. It also subsumes the trailing-period chop the sibling keys do by hand.
+
+  Measured by running BOTH parsers over the machine-global store -- this file at HEAD~ and at HEAD, over the 1126 bodies carrying a `Lanes:` declaration. Deliberately NOT against the stored lanes column: that was written at migration and also carries ANTS-4542's repair, and comparing to it credited this change with 54 items and 40 member gains. Isolated, the true figures are 15 bullets parsed differently, 5 gaining whole members, 302 characters recovered, nothing losing a member. ANTS-1117 goes 1 lane -> 6, ANTS-1125 2 -> 5, CFG-0133 `commits` -> `commits.md`.
+
+  The item's own "24 bodies, all 24 cut" does not reproduce and should not be re-used; two of my own candidate extractors were also wrong before this number settled -- the first counted prose after the declaration, the second silently skipped every LINE-INITIAL declaration because its `(?:^|[ \t])` anchor had no MULTILINE flag.
+
+  One bullet's already-wrong value changed shape rather than improving: ANTS-3722, whose body mis-masks its own quoted keys. Pre-existing, both parsers get it wrong, mechanism established by bisect and filed as ANTS-4598.
+
+  Test: tests/features/roadmap_trailer_lanes_dotted_token, 8 cases into test_claude. Red first on assertions, not compile -- INV-1/2/6 failed and INV-3/4/5 passed, separating the invariants that describe the defect from those guarding against regressing it. INV-7 was added after the corpus probe caught the prose case. ctest -N 3752 -> 3760; full suite 3746/3746.
+
+  Consumers re-checked as this item asked: subsystem and indie_review_partition key on lanes and both take the list from this parse, so a repaired lane set reaches them with no further change.
+
+  ANTS-3808 section 2.2.1's `lanes.value` row is updated -- it described the raw capture, which was only true of a reader whose capture stopped at the first period. The two list keys are no longer asymmetric.
+
+  Still stored short: this stops re-truncation, it does not repair the columns already written. That is ANTS-4585 phase 2, and this unblocks it for the lanes column as ANTS-4596 did for layman.
   **Layman:** A to-do listing five affected areas can be stored as one, because a filename in the list ends the list early.
   Kind: fix.
   Source: ANTS-4596 follow-up, 2026-08-20.
+  Lanes: roadmapparse.
+
+- 📋 [ANTS-4598] **An odd backtick count inverts code-span masking for the rest of the body.**
+  maskCodeSpans() (ANTS-4504) blanks inline code spans so a bullet that QUOTES a trailer key is not read as declaring one. Pairing is sequential over the whole body, so a line carrying an ODD number of backticks inverts the polarity of every span after it: text inside a span reads as outside, and a quoted key downstream is matched as a declaration.
+
+  Found while verifying ANTS-4597, and it is NOT caused by it — both parsers mis-parse the same bullet, they merely surface different wrong values.
+
+  Mechanism established by bisect with the real parser (a throwaway TU linked against build/libants_roadmapparse_lib.a, feeding ANTS-3722's body one prefix at a time), not by reading maskCodeSpans():
+
+    ANTS-3722 line 2 carries 5 backticks. Prefixes of lines 1-3 parse to
+    NO lanes, which is correct. The prefix through line 4 is the first to
+    yield a bogus lane, and every longer prefix keeps one.
+
+    The same two lines reproduced ALONE, with balanced backticks, parse
+    to no lanes -- so the guard itself works and the parity is what fails.
+
+  Corpus reach is unmeasured. The one confirmed victim is ANTS-3722, whose stored lanes are ["y"] against a body that declares none; the population is bullets documenting the roadmap format, which is the corpus a lane filter should trust most.
+
+  The narrow fix is to leave an unpaired trailing backtick unpaired rather than letting it open a span that runs to end of body. Whether that is right for a body split across continuation lines needs a measurement first.
+  **Layman:** A to-do that quotes the roadmap's own field names can be credited with a subsystem it never named, if a stray backtick appears earlier in the text.
+  Kind: fix.
+  Source: ANTS-4597 verification, 2026-08-20.
   Lanes: roadmapparse.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
