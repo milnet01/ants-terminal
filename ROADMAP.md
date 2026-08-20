@@ -40687,6 +40687,34 @@ filed below.
   one-off that repairs migration-era columns per project. Reversibility
   is a file copy of the store taken before the write, plus the dry run
   listing every change.
+  Phase 2 TOOL SHIPPED 2026-08-20 (4309b01d), and deliberately NOT RUN.
+  `roadmap_log op:"repair_trailers"` — one-off, per project, dry-run-able,
+  store-only, beside op:"backfill_dates". Contract + 8 invariants in
+  tests/features/roadmap_repair_trailers/spec.md. Suite 3757/3757.
+
+  Two things the TESTS caught that a review would not have, both worth
+  carrying into any similar repair. Migrating the fixture could not
+  reproduce the damage AT ALL, because migration runs today's fixed
+  parser — the short value has to be injected, and the first draft's
+  INV-2 passed while exercising none of the pass. And migration STRIPS a
+  run that trails the body, so the first fixture reproduced the one state
+  this pass cannot repair; the run has to sit mid-body. Mutation-verified
+  afterwards: disabling the repair fails INV-1/2/5/7, removing the guard
+  fails INV-3 alone.
+
+  NOT RUN, and that is the remaining work rather than an oversight. The
+  verb lives in the running Ants process, so the op is not callable until
+  Ants is relaunched onto this build. The write also wants its own step:
+  copy the store first, run with dry_run, read the counts against the 824
+  / 58 / 54 measured above, then run for real. It is machine-global, so a
+  surprise there is 16 projects' surprise.
+
+  Order for whoever picks it up. ANTS-4600 first — project_id 17 is a
+  deleted /tmp scratchpad holding 33 items, 32 byte-identical to
+  LottoTracker's, and a repair pass walks it and reports the work done.
+  Then the run. THEN phase 3, the duplication, which is still entirely
+  open: stripping the inline run is what removes it, and doing that
+  before the repair destroys the only surviving copy of the cut text.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
