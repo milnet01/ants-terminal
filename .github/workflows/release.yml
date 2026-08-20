@@ -42,7 +42,15 @@ jobs:
   appimage:
     name: Build AppImage (x86_64)
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    # ANTS-4583 — was 25, which is what silently lost the v0.7.105
+    # AppImage: that run died at 25m19s and GitHub reports a timed-out
+    # job as "cancelled", so the release page was created by the tag and
+    # simply never received a binary. The budget was never generous —
+    # the v0.7.106-rc1 build the same day took 22m36s, under two and a
+    # half minutes of headroom — so any slow apt mirror tipped it over,
+    # and it timed out inside the very first step (installing Qt6).
+    # Sized now against the SLOWEST observed run rather than the fastest.
+    timeout-minutes: 60
 
     steps:
       - name: Resolve target tag
@@ -240,3 +248,32 @@ jobs:
             "${OUTPUT}.zsync" \
             --clobber
           echo "Uploaded ${OUTPUT} to release ${{ steps.tag.outputs.ref }}"
+
+      # ANTS-4583 — assert the release really carries both artefacts.
+      # Uploading and *having uploaded* are different claims, and until
+      # this step existed nothing checked the second one: a release with
+      # no binary looked identical to a healthy one from the outside, and
+      # v0.7.105 sat empty as the public "Latest" download for a day
+      # before a user hit it. Fail loudly here instead.
+      - name: Verify the release carries its artefacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
+        run: |
+          set -euo pipefail
+          NAMES=$(gh release view "${{ steps.tag.outputs.ref }}" \
+                    --json assets --jq '.assets[].name')
+          echo "Assets now on ${{ steps.tag.outputs.ref }}:"
+          echo "${NAMES}"
+          MISSING=0
+          for want in "${OUTPUT}" "${OUTPUT}.zsync"; do
+            if ! printf '%s\n' "${NAMES}" | grep -Fxq "${want}"; then
+              echo "::error::${want} is NOT attached to the release"
+              MISSING=1
+            fi
+          done
+          if [ "${MISSING}" -ne 0 ]; then
+            echo "::error::release is missing artefacts"
+            exit 1
+          fi
+          echo "Verified: both artefacts are attached."
