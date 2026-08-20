@@ -40206,7 +40206,7 @@ filed below.
   this.
   **Layman:** A refusal caused by what you typed is labelled as a database fault.
   Kind: fix.
-  Source: in-session-2026-08-20, while closing ANTS-4576..
+  Source: in-session-2026-08-20, while closing ANTS-4576.
   Lanes: remotecontrol.
 
 - 📋 [ANTS-4578] **An unknown top-level parameter is accepted and ignored, so a narrowing that never happened looks like it worked.**
@@ -40247,7 +40247,7 @@ filed below.
   block is a few bytes inside a payload measured in tens of KB.
   **Layman:** Ask a tool for a small answer using a word it doesn't know, and it quietly sends the huge one instead.
   Kind: fix.
-  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20; reproduced on this repo during the triage that filed it..
+  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20; reproduced on this repo during the triage that filed it.
   Lanes: remotecontrol, mcp.
 
 - 📋 [ANTS-4579] **counter_advanced_past reports a position the allocator has already passed, so the one field a caller would predict from is knowably false.**
@@ -40300,7 +40300,7 @@ filed below.
   the envelope here would leave .roadmap-counter still drifting.
   **Layman:** The write receipt names an ID counter position that had already moved on, so predicting the next ID from it fails.
   Kind: fix.
-  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20..
+  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapwrite.
 
 - 📋 [ANTS-4580] **append_batch has no way for a bullet to cite its own batch siblings, so callers predict ids and get them wrong.**
@@ -40335,7 +40335,7 @@ filed below.
   that the ids are unpredictable.
   **Layman:** Items filed together often need to point at each other, but their numbers don't exist until after they're written.
   Kind: enhancement.
-  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20..
+  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapwrite.
 
 - 📋 [ANTS-4581] **A bad_path refusal on a feedback-file path names no verb that would have worked.**
@@ -40375,7 +40375,7 @@ filed below.
   reachable paths, with the refusal naming no alternative.
   **Layman:** Three tools give three different answers about whether the shared feedback folder is reachable, and the refusal doesn't point at the one that works.
   Kind: enhancement.
-  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20..
+  Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol.
 
 - ✅ [ANTS-4582] **The renderer appends a full stop to a trailer value that already ends in one, producing a double period.**
@@ -41008,7 +41008,7 @@ filed below.
   Source: ANTS-4596 follow-up, 2026-08-20.
   Lanes: roadmapparse.
 
-- 📋 [ANTS-4598] **An odd backtick count inverts code-span masking for the rest of the body.**
+- ✅ [ANTS-4598] **An odd backtick count inverts code-span masking for the rest of the body.**
   maskCodeSpans() (ANTS-4504) blanks inline code spans so a bullet that QUOTES a trailer key is not read as declaring one. Pairing is sequential over the whole body, so a line carrying an ODD number of backticks inverts the polarity of every span after it: text inside a span reads as outside, and a quoted key downstream is matched as a declaration.
 
   Found while verifying ANTS-4597, and it is NOT caused by it — both parsers mis-parse the same bullet, they merely surface different wrong values.
@@ -41025,6 +41025,15 @@ filed below.
   Corpus reach is unmeasured. The one confirmed victim is ANTS-3722, whose stored lanes are ["y"] against a body that declares none; the population is bullets documenting the roadmap format, which is the corpus a lane filter should trust most.
 
   The narrow fix is to leave an unpaired trailing backtick unpaired rather than letting it open a span that runs to end of body. Whether that is right for a body split across continuation lines needs a measurement first.
+  Resolved 2026-08-20 (6c61f5a8). The mechanism is confirmed and the body above understates it: the leftover run does not open a span running to end of body, it takes as its CLOSER the opener of a balanced line further down, and the polarity is inverted from there. Fixed in MarkdownScan::codeSpans() rather than in maskCodeSpans(), because the pairing is the primitive's and every consumer inherits the defect.
+
+  Two passes, and the order is the fix: pair runs WITHIN a line, then join the leftovers ACROSS lines. That separates the two shapes one sweep could not tell apart -- a hard-wrapped span leaves a leftover on BOTH lines and still joins; a line that balances on its own has nothing to donate. Pairing also consumes the runs between the pair, which the sweep got for free by resuming at the closing run; a first draft that omitted it turned a ``` quoted inside a code span into a cross-line opener and silenced the declarations between them. That is now INV-9.
+
+  Corpus reach measured, which the body asked for. A probe linked against the real parser over the machine-global store's 4291 bodies, old parser vs new -- NOT against the stored columns. FOUR bullets parse differently and all four improve; none loses a value. ANTS-3722 stops reporting the lane it never declared. ANTS-4077 recovers kind, source and layman -- its kind read the regex fragment (?:**)? -- and ANTS-2127 recovers its layman line, both silenced by a stray backtick whose partner sat below the trailer block. ANTS-4424 stops reporting a bogus source. The corpus's 409 legitimately wrapped code spans are unchanged.
+
+  Test-first in tests/features/roadmap_trailer_code_span/ (bundle test_core), red on assertions: INV-7 and INV-8 failed, INV-9 passed as the regression guard. ctest -N 3760 -> 3763; full suite 3749/3749 green, plus the four disabled corpus-calibration suites (DocSymbols, SpecLint, DocDedup, RoadmapBackfill) run explicitly, since codeSpans is shared with docintegrity, docsymbols, speclint and doccitations.
+
+  Not fixed here: ANTS-3722's stored body still carries the materialised damage -- a bogus `Source: z.` line and its lanes column -- which no re-parse recovers. That is ANTS-4585 phase 2.
   **Layman:** A to-do that quotes the roadmap's own field names can be credited with a subsystem it never named, if a stray backtick appears earlier in the text.
   Kind: fix.
   Source: ANTS-4597 verification, 2026-08-20.
@@ -43579,7 +43588,7 @@ assistant suggestions, accepted by the user for filing.
   ANTS-4065 section 5 carries the same entry.
   **Layman:** A roadmap entry that shows its own format inside a code block can still have that example read as real data.
   Kind: fix.
-  Source: in-session-2026-08-19, filed by ANTS-4504 as its own out-of-scope half..
+  Source: in-session-2026-08-19, filed by ANTS-4504 as its own out-of-scope half.
   Lanes: roadmap.
 
 - 📋 [ANTS-4527] **Evidence: values that are prose are reported as unresolved paths, and the repair belongs at the write side.**
@@ -43598,7 +43607,7 @@ assistant suggestions, accepted by the user for filing.
   ANTS-4065 section 5 carries the same entry, filed rather than folded in.
   **Layman:** When someone writes a note instead of a filename in a roadmap entry's Evidence line, the import complains it cannot find a file of that name.
   Kind: fix.
-  Source: in-session-2026-08-19, from the corroborating DOOM Ants report on ANTS-4502..
+  Source: in-session-2026-08-19, from the corroborating DOOM Ants report on ANTS-4502.
   Lanes: roadmap.
 
 - 📋 [ANTS-4528] **Continuation indent is destroyed at PARSE, so a nested list cannot survive a render.**
@@ -43629,7 +43638,7 @@ assistant suggestions, accepted by the user for filing.
   the parser.
   **Layman:** A roadmap entry containing a numbered sub-list comes back flat after a save, so the list breaks apart.
   Kind: fix.
-  Source: in-session-2026-08-19, split out of ANTS-4506 during its contract pass..
+  Source: in-session-2026-08-19, split out of ANTS-4506 during its contract pass.
   Lanes: roadmap, roadmaprender.
 
 - ✅ [ANTS-4529] **The bump recipe hand-edits ROADMAP.md's version banner, and the next roadmap_log write reverts it.**
@@ -43713,7 +43722,7 @@ assistant suggestions, accepted by the user for filing.
   after.
   **Layman:** After a release, the version shown at the top of the roadmap file can silently go back to the old number.
   Kind: fix.
-  Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle..
+  Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle.
   Lanes: roadmap-store, packaging.
 
 - 📋 [ANTS-4530] **CLAUDE.md and .claude/bump.json both route the version bump to /bump, which no longer exists.**
@@ -43735,7 +43744,7 @@ assistant suggestions, accepted by the user for filing.
   to "the /release skill (step 9)" when packaging/cut-rc.sh does it.
   **Layman:** The project's own instructions name a command that was removed, so a new session has to work out the bump by itself.
   Kind: doc-fix.
-  Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle..
+  Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle.
   Lanes: docs.
 
 - 📋 [ANTS-4539] **No MCP op can set a section's intro, so every roadmap preamble edit is discarded.**
@@ -43839,7 +43848,7 @@ assistant suggestions, accepted by the user for filing.
   this is a readability fix, not a drift risk.
   **Layman:** Two guide documents quote the version line in the README using words the README does not actually use.
   Kind: doc-fix.
-  Source: in-session-2026-08-19, spotted while fixing ANTS-4529..
+  Source: in-session-2026-08-19, spotted while fixing ANTS-4529.
   Lanes: docs, packaging.
 
 ### 🔌 Ants-MCP feedback from CC sessions (triage 2026-07-25)
