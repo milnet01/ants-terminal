@@ -38974,6 +38974,29 @@ filed below.
   Snatch's alternative is worth weighing: stop writing the file at all on
   store-backed projects and say in the reply that the store owns
   allocation. The current half-and-half is the worst of both.
+  Progress (2026-08-20): reproduced ON THIS REPO during the triage that
+  filed it, which makes it three projects rather than two.
+
+  Sequence: one op:append allocated ANTS-4549 and reported
+  counter_advanced_past 4544 / counter_advanced_to 4549, writing 4549 to
+  .roadmap-counter. Three op:append_batch calls then allocated
+  ANTS-4550-4556, ANTS-4557-4564 and ANTS-4565-4573, emitting no counter
+  field and leaving the file at 4549. Store high-water 4573, file 4549,
+  24 ids behind. Hand-corrected to 4573.
+
+  One difference from Snatch's report worth recording, because it changes
+  the severity per project rather than the defect. Snatch noted the stale
+  value is committed, so a fresh clone sees it. Here .roadmap-counter is
+  gitignored (.gitignore:145), so nothing wrong reaches a clone and the
+  damage is confined to the working tree. The defect is identical; the
+  blast radius depends on whether a given project ignores the file.
+
+  That is an argument for Snatch's second option over the first. If the
+  store owns allocation on a store-backed project, writing the file at
+  all is what creates the divergence — and the projects that ignore it
+  have already concluded the store owns it. Emitting the counter fields
+  on append_batch fixes the reporting; not writing the file fixes the
+  class.
   **Layman:** One way of adding items reports that it updated the ID counter and the batch way doesn't, so people conclude it never does.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20; Snatch_Ants_MCP_Feedback.md 2026-08-20.
