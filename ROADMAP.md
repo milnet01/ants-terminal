@@ -1251,7 +1251,7 @@ for the rotation contract.
   Kind: fix.
   Source: in-session-2026-08-19.
 
-- 📋 [ANTS-4542] **Line-initial trailer suppression duplicates every INLINE trailer run — 201 bullets, and it truncates the value.**
+- ✅ [ANTS-4542] **Line-initial trailer suppression duplicates every INLINE trailer run — 201 bullets, and it truncates the value.**
   Regression from ANTS-4505/4506 (commit 2fa895d0, 19:12 today), first
   observed live at 23:45 because the binary carrying it was only promoted
   by launch.sh at 23:40 — the 22:27 write (ANTS-4538) predates it and was
@@ -1292,6 +1292,17 @@ for the rotation contract.
 
   Verified guard, incidentally: this very body was first refused with
   `body_shadowed` because it quoted the keys unfenced. That guard works.
+  Resolved (2026-08-20): commit 310a837b. Fixed as one rule in the shared matchLastIn() — a value whose match ended at a WRAP rather than at a sentence-terminating full stop continues onto the next line, stopping at that stop, a blank line, a line opening another declaration, or four lines.
+
+  The mechanism recorded above did NOT survive measurement, and saying so is the useful part of this closure. This bullet reads BLOCKING, "every roadmap_log write corrupts ROADMAP.md", and attributes it to line-initial anchoring. The renderer emits body text verbatim and never re-wraps it (roadmaprender.cpp:443), so wrap points are the author's and stable: the damage is import-time, done once, and not ongoing. Confirmed on this session's own writes — 2 hunks, 0 deletions, where a live regression would have produced ~200.
+
+  Measured over all 2199 bullets before changing anything: 123 state a key both as pre-migration inline prose and as a rendered trailer, not 201, and the divergent subset is the wrapped values.
+
+  Two things the red run caught that a reading would not. The greedy whitespace before the stop class eats a blank line, so a paragraph break arrived looking like a wrap. And the five patterns are not one shape: rxSource() captures to end of line and consumes no terminator, so a rule keyed on the terminator read it as never wrapping — precisely the key carrying the visible corpus damage.
+
+  Not done, deliberately: the already-truncated columns are not repaired, and the duplicate inline runs are not stripped from stored bodies. Both are data migrations over 14 projects and neither is safe to fold into a parser fix. The prose still holds the full original text, so a repair remains possible.
+
+  tests/features/roadmap_trailer_wrapped_value/ pins 7 invariants; 3 were red before the fix. Suite 3726/3726.
   **Layman:** Every roadmap write now adds duplicate trailer lines to 201 existing entries and mangles one of them, so ROADMAP.md cannot be regenerated until this is fixed.
   Kind: fix.
   Source: in-session-2026-08-19.
@@ -39271,7 +39282,7 @@ filed below.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20; LottoTracker_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmaprender.
 
-- 📋 [ANTS-4553] **The renderer emits metadata trailers on bullets that already carry them inline, and the two copies disagree.**
+- ✅ [ANTS-4553] **The renderer emits metadata trailers on bullets that already carry them inline, and the two copies disagree.**
   A single write appended structured trailer lines to long-shipped
   bullets whose prose bodies already state those fields inline, so the
   rendered file now says each thing twice. Roughly a dozen bullets in one
@@ -39296,6 +39307,15 @@ filed below.
   it; if the prose is, the store should not restate it. Whichever way, a
   divergence like FIBR-0001's four-vs-three is worth reporting to the
   caller rather than rendering silently.
+  Resolved (2026-08-20): commit 310a837b, same cause as ANTS-4542 and fixed with it.
+
+  Your FIBR-0001 evidence was decisive and correct: the prose lists four lanes, the stored column holds three. The mechanism is that the trailer capture stopped at the line wrap, so `Lanes: build, ci, tests,` lost `security.` from the line below — the four-versus-three is a truncation, not a divergence between two independent sources.
+
+  On the suggested fix — suppress the trailing structured line, or reconcile the two — this took neither. Suppressing would make the rendered file non-reparseable: the store is authoritative and the inline prose copy is not parsed as a declaration, so dropping the trailer would lose the column on the next import. And the inline run cannot be safely excised from the prose, because it carries text no column holds (FIBR-0001's `Dependencies: none.` has no counterpart) and the wrapped sentence has no reliable boundary.
+
+  What WAS fixed is the thing underneath both: values stop being truncated. Your project's existing stored values are still short — the original text survives in the prose, so a repair is possible, but it is a data migration over 14 projects and is not folded into a parser change.
+
+  The duplication itself therefore remains: a migrated bullet still states its metadata twice. Filed as the follow-up rather than closed silently, because the reader-facing complaint in your report is not yet answered.
   **Layman:** Old roadmap items now state their category twice, and the two statements don't match.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
@@ -40394,7 +40414,7 @@ filed below.
   Source: user-report-2026-08-20 (the website could not link a download).
   Lanes: packaging, ci.
 
-- 🚧 [ANTS-4584] **README.md's numeric claims are checked against the code on every push, and its prose is raised every tenth.**
+- ✅ [ANTS-4584] **README.md's numeric claims are checked against the code on every push, and its prose is raised every tenth.**
   The user asked that README.md be kept current and readable by a
   non-programmer, and suggested making it part of every tenth push.
 
@@ -40433,10 +40453,50 @@ filed below.
   "grab the AppImage" instructions matched no file. Not fixed here; that
   is ANTS-4583's backfill, and the link is correct once the release
   carries its artefacts.
+  Resolved (2026-08-20): commit c63ccc80. tools/check-readme-claims.sh verifies version, MCP tool count and colour-theme count against CMakeLists.txt, claudeintegration.cpp and themes.cpp; wired into tools/hooks/pre-push ahead of the docs-only skip, with the prose reminder on every tenth push. Verified by mutation — a faked 91/9 exits 1 and names both.
   **Layman:** The README's numbers are now checked automatically, and every tenth push reminds someone to re-read it as a newcomer would.
   Kind: test.
   Source: user-request-2026-08-20.
   Lanes: ci, docs.
+
+- 📋 [ANTS-4585] **Migrated bullets still state their metadata twice, and the already-truncated columns are still short.**
+  ANTS-4542 and ANTS-4553 fixed the CAUSE: a hard-wrapped trailer value is
+  no longer truncated at the wrap. Neither repaired the damage already in
+  the stores, and ANTS-4553's reader-facing complaint is therefore still
+  open. Filed rather than left inside a closed bullet.
+
+  Two pieces of residue, and the ORDER between them is the whole point.
+
+  First, repair. Values truncated before the fix are still short in every
+  migrated store. This IS repairable, unlike the ANTS-4558 indentation
+  case: the original text survives in the bullet's own prose, because the
+  inline run was never stripped. Measured here, 123 of 2199 bullets state
+  a key both ways; four render with an unbalanced open bracket, which is
+  the cheap detector for the subset that is provably truncated.
+
+  Second, and ONLY after repair, the duplication. A migrated bullet
+  renders its metadata twice: once as legacy inline prose, once as the
+  rendered trailer. Stripping the inline run is what removes the
+  duplication, and doing it before the repair would destroy the only
+  surviving copy of the truncated text.
+
+  Two constraints any design has to answer, both learned from rejecting
+  the reported fix. Suppressing the rendered trailer instead is wrong:
+  the store is authoritative and the inline prose is not parsed as a
+  declaration, so the file would stop round-tripping and the column would
+  be lost on the next import. And the inline run cannot be excised
+  wholesale, because it carries text no column holds — finbreak's
+  FIBR-0001 writes `Dependencies: none.` in the same sentence, and there
+  is no column for it.
+
+  Scope is 14 projects' stores, so this is a migration with a dry run and
+  a reversible plan, not an edit. It interacts with ANTS-4507, whose
+  items_updated counter is already unusable as a signal, and a repair
+  pass will change that count.
+  **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
+  Kind: fix.
+  Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
+  Lanes: roadmapparse, roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

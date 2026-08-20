@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **README.md's numeric claims are verified against the code on every push** (ANTS-4584)
+  tools/check-readme-claims.sh checks the version banner against CMakeLists.txt, the MCP tool count against claudeintegration.cpp, and the colour-theme count against themes.cpp — the tool count in particular had no verifier but a person remembering. It runs from the pre-push hook ahead of the docs-only skip, so a README-only push cannot exempt itself; every tenth push additionally raises the prose for a human read.
+
 - ****`workspace_search` gains `match_wrapped:true` — find a quotation that is hard-wrapped in the file.** (ANTS-4547)**
   A run of whitespace in the pattern matches a run of whitespace and
   markdown blockquote markers in the text, so a sentence spanning a line
@@ -42,6 +45,15 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **A bullet listing four lanes no longer stores three** (ANTS-4553)
+  Reported against finbreak, where a bullet's prose listed four lanes while the stored column held three. Same cause as ANTS-4542: the list was truncated at the line wrap rather than diverging from a second source. Values already truncated in existing stores are not repaired by this change and are tracked as ANTS-4585.
+
+- **A hard-wrapped roadmap trailer value keeps the text below the wrap** (ANTS-4542)
+  Every trailer pattern stopped its capture at the line break, so a value wrapped mid-phrase lost its tail: `Lanes: MainWindow,` stored one lane and dropped `TerminalWidget.` from the next line, and the render then re-emitted the short value terminated with a full stop, which reads as a correct declaration. A wrapped value now continues onto the following line, stopping at its own sentence-terminating full stop, a blank line, a line opening another declaration, or four lines. No-op on generated content, which is always emitted unwrapped.
+
+- **A release can no longer be published with no downloadable file** (ANTS-4583)
+  v0.7.105 shipped with no AppImage: its build hit a 25-minute job timeout (GitHub reports that as "cancelled") inside the first step, so nothing was built or uploaded, while the release page existed because the tag created it. The ceiling is now 60 minutes — sized against the slowest observed run, 22m36s, not the fastest — and a new final step re-reads the release and fails the run unless both the AppImage and its .zsync are attached.
 
 - **roadmap_query: an item's notes come back with their own indenting** (ANTS-4558)
   Notes read back through the tool were flush-left even where the file had lists and indented commands, so text read out and written back lost its structure. The block is now dedented by its shared indent only.
