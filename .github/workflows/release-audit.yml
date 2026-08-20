@@ -1,0 +1,125 @@
+# ANTS-4588 — audit what is actually PUBLISHED, not what the last build said.
+#
+# Written after two download channels were found broken on the same day, both
+# reporting success:
+#
+#   • v0.7.105 stood as the public "Latest" release carrying no AppImage at
+#     all, for a day, because its build hit a job timeout before the upload
+#     step (ANTS-4583). The release page existed because the TAG created it.
+#   • All four package repositories served 0.7.103 while the current release
+#     was 0.7.105, because the OBS submit was never run (ANTS-4587). `osc
+#     results` reported "succeeded" on every target — they did build, from
+#     stale sources.
+#
+# The common shape is that every existing signal answers "did the last thing
+# we ran work?", and nobody was asking "is the current release downloadable?".
+# A per-run check cannot answer it: the v0.7.105 job DIED before reaching its
+# own verification step. Only a check over published state, running on its own
+# schedule, can.
+#
+# It is deliberately read-only and fixes nothing. Going red is the product.
+name: Release audit
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Are the current release's downloads real?
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Audit published downloads
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          OBS_BASE: https://download.opensuse.org/repositories/home:/milnet:/ants-terminal
+        run: |
+          set -uo pipefail
+          fail=0
+          # A fetch that could not run is NOT drift. Reporting one as the other
+          # trains people to ignore this job, which is how it stops working.
+          unchecked=0
+
+          TAG=$(gh release list --repo "$REPO" --limit 30 \
+                  --json tagName,isPrerelease \
+                  --jq 'map(select(.isPrerelease==false))|.[0].tagName')
+          if [ -z "${TAG}" ]; then
+            echo "::error::could not resolve the latest non-prerelease tag"
+            exit 1
+          fi
+          VER="${TAG#v}"
+          echo "Latest published release: ${TAG} (version ${VER})"
+          echo
+
+          # --- 1. the GitHub release actually carries its artefacts ---------
+          echo "GitHub release assets:"
+          NAMES=$(gh release view "${TAG}" --repo "$REPO" --json assets --jq '.assets[].name')
+          echo "${NAMES}"
+          for want in "Ants_Terminal-${VER}-x86_64.AppImage" \
+                      "Ants_Terminal-${VER}-x86_64.AppImage.zsync" \
+                      "Ants_Terminal-x86_64.AppImage"; do
+            if ! printf '%s\n' "${NAMES}" | grep -Fxq "${want}"; then
+              echo "::error::${TAG} is missing ${want}"
+              fail=1
+            fi
+          done
+
+          # --- 2. the permanent link resolves to a real binary -------------
+          # Checked by fetching bytes, not by asking whether a file is listed:
+          # the whole point of this URL is that other people publish it.
+          ALIAS_URL="https://github.com/${REPO}/releases/latest/download/Ants_Terminal-x86_64.AppImage"
+          MAGIC=$(curl -sL --max-time 60 -r 0-9 "${ALIAS_URL}" | od -An -tx1 | tr -d ' \n')
+          if [ -z "${MAGIC}" ]; then
+            echo "::warning::could not fetch ${ALIAS_URL} — not checked"
+            unchecked=1
+          elif [ "${MAGIC:0:8}" != "7f454c46" ]; then
+            echo "::error::${ALIAS_URL} does not serve an ELF binary (got ${MAGIC})"
+            fail=1
+          else
+            echo "Permanent link serves an ELF/AppImage: ok"
+          fi
+
+          # --- 3. the package repositories publish the CURRENT version -----
+          echo
+          echo "Package repositories:"
+          for d in openSUSE_Tumbleweed openSUSE_Leap_16.0 Mageia_10 Fedora_44; do
+            listing=$(curl -s --max-time 60 "${OBS_BASE}/${d}/x86_64/") || listing=""
+            if [ -z "${listing}" ]; then
+              echo "  ${d}: could not fetch — not checked"
+              echo "::warning::${d} listing unavailable"
+              unchecked=1
+              continue
+            fi
+            got=$(printf '%s' "${listing}" \
+                    | grep -oE 'ants-terminal-[0-9][^"<]*\.rpm' \
+                    | grep -v debug | sed -E 's/^ants-terminal-([0-9.]+)-.*/\1/' \
+                    | sort -V | tail -1)
+            if [ -z "${got}" ]; then
+              echo "  ${d}: no ants-terminal package found"
+              echo "::error::${d} publishes no ants-terminal package"
+              fail=1
+            elif [ "${got}" != "${VER}" ]; then
+              echo "  ${d}: ${got}  (release is ${VER})"
+              echo "::error::${d} publishes ${got}, two steps behind the ${VER} release"
+              fail=1
+            else
+              echo "  ${d}: ${got}  ok"
+            fi
+          done
+
+          echo
+          if [ "${fail}" -ne 0 ]; then
+            echo "::error::a published download does not match release ${TAG}"
+            exit 1
+          fi
+          if [ "${unchecked}" -ne 0 ]; then
+            echo "All checks that RAN passed, but some could not run (see warnings)."
+            exit 0
+          fi
+          echo "Every published download matches release ${TAG}."

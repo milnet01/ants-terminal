@@ -40609,6 +40609,42 @@ filed below.
   Source: in-session-2026-08-20, found while auditing every download path after the v0.7.105 report.
   Lanes: packaging, ci.
 
+- 🚧 [ANTS-4588] **Audit what is published rather than what the last build reported.**
+  Two download channels were found broken on the same day and BOTH
+  reported success. v0.7.105 stood as the public Latest release carrying
+  no AppImage, because its build timed out before the upload step
+  (ANTS-4583). All four package repositories served 0.7.103 against a
+  0.7.105 release, because the OBS submit was never run, while
+  `osc results` reported succeeded on every target (ANTS-4587).
+
+  The shape is shared and it is the point of this item: every signal in
+  place answered "did the last thing we ran work?", and nothing asked "is
+  the current release downloadable?". Those are different questions, and
+  only the second is the one a user has.
+
+  A per-run check cannot answer it. ANTS-4583's own verification step is
+  proof: it would not have caught v0.7.105, because that job DIED before
+  reaching it. Only a check over PUBLISHED state, on its own schedule,
+  can see a release that was never completed.
+
+  .github/workflows/release-audit.yml runs daily and on demand. It
+  resolves the latest non-prerelease tag, then checks three things: the
+  release carries its AppImage, .zsync and version-less alias; the
+  permanent URL serves an actual ELF binary, fetched as bytes rather than
+  inferred from a file listing, because that URL exists for other people
+  to publish; and every package repository's newest RPM matches the
+  release version.
+
+  One design rule worth keeping: a fetch that could NOT run is reported
+  as unchecked, never as drift. Reporting the two the same way trains
+  people to ignore the job, which is how a gate stops working.
+
+  Read-only, fixes nothing. Going red is the product.
+  **Layman:** A daily check that the current release can actually be downloaded, and that package users are not stuck on an old version.
+  Kind: test.
+  Source: in-session-2026-08-20, the common cause behind ANTS-4583 and ANTS-4587.
+  Lanes: ci, packaging.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
