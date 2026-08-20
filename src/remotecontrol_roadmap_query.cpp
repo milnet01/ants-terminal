@@ -251,6 +251,17 @@ bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
 // ItemWrite column to compare against. § 2.5 and § 2.6 both walk exactly this
 // set, and two copies of it would be two answers to "which keys are trailer
 // keys".
+//
+// ANTS-4576 — and what an UN-declared column becomes, which is the DDL's answer
+// rather than this file's. `layman` is nullable; `lanes` and `evidence` are
+// NOT NULL DEFAULT '[]'; `kind` and `source` are NOT NULL with no default. A
+// single rule ("clear it") reached the engine on four of the five and came back
+// as a raw `NOT NULL constraint failed: item.kind`.
+enum class RlUndeclare {
+    ClearToNull,   // nullable: absence is a value it can hold
+    EmptyList,     // NOT NULL DEFAULT '[]': the empty list IS its absent state
+    Keep,          // NOT NULL, no default: it HAS no absent state
+};
 struct RlTrailerKey {
     const char *field;
     RoadmapParse::TrailerMatch RoadmapParse::TrailerValues::*match;
@@ -259,20 +270,21 @@ struct RlTrailerKey {
     QStringList RoadmapParse::TrailerValues::*list;
     QString     RoadmapStore::ItemWrite::*col;
     QStringList RoadmapStore::ItemWrite::*colList;
+    RlUndeclare undeclare;
 };
 static const RlTrailerKey kRlTrailerKeys[] = {
     {"kind",   &RoadmapParse::TrailerValues::kind,   nullptr,
-     &RoadmapStore::ItemWrite::kind,   nullptr},
+     &RoadmapStore::ItemWrite::kind,   nullptr, RlUndeclare::Keep},
     {"layman", &RoadmapParse::TrailerValues::layman, nullptr,
-     &RoadmapStore::ItemWrite::layman, nullptr},
+     &RoadmapStore::ItemWrite::layman, nullptr, RlUndeclare::ClearToNull},
     {"source", &RoadmapParse::TrailerValues::source, nullptr,
-     &RoadmapStore::ItemWrite::source, nullptr},
+     &RoadmapStore::ItemWrite::source, nullptr, RlUndeclare::Keep},
     {"lanes",  &RoadmapParse::TrailerValues::lanes,
      &RoadmapParse::TrailerValues::lanesList,  nullptr,
-     &RoadmapStore::ItemWrite::lanes},
+     &RoadmapStore::ItemWrite::lanes, RlUndeclare::EmptyList},
     {"evidence", &RoadmapParse::TrailerValues::evidence,
      &RoadmapParse::TrailerValues::evidenceList, nullptr,
-     &RoadmapStore::ItemWrite::evidence},
+     &RoadmapStore::ItemWrite::evidence, RlUndeclare::EmptyList},
 };
 
 // The stored form of a list-valued trailer column: a JSON array of strings.
@@ -382,7 +394,8 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
                                    const RoadmapStore::ItemWrite &before,
                                    const QString &newBody,
                                    const QSet<QString> &supplied,
-                                   HistoryContext *hist, QString *error) {
+                                   HistoryContext *hist, QString *error,
+                                   QStringList *kept) {
     const RoadmapParse::TrailerValues oldTv = RoadmapParse::trailerValuesIn(before.body);
     const RoadmapParse::TrailerValues newTv = RoadmapParse::trailerValuesIn(newBody);
     for (const RlTrailerKey &k : kRlTrailerKeys) {
@@ -390,7 +403,7 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
         if (supplied.contains(field))
             continue;
         const QString oldValue = rlBodyValueFor(oldTv, k);
-        const QString newValue = rlBodyValueFor(newTv, k);
+        QString newValue = rlBodyValueFor(newTv, k);   // ANTS-4576 canonicalises `kind`
         if (oldValue.isEmpty() && newValue.isEmpty())
             continue;  // untouched — it came from a request argument or the
                        // migration, and this op has no opinion about it.
@@ -398,6 +411,40 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
         const QString current =
             k.colList ? rlJsonArrayText(before.*(k.colList)) : before.*(k.col);
         if (!newValue.isEmpty()) {
+            // ANTS-4576 — `kind` is a CLOSED vocabulary the column CHECKs, and
+            // the capture arrives raw: `Kind: Fix.` and the mapped alias
+            // `Kind: bug.` are both recognised by the parser and both refused
+            // by the engine. Canonicalise with the migration's own mapper
+            // (roadmap-data-model.md § 7.4, applied and not restated), and say
+            // so in words when nothing recognises it — the alternative is the
+            // engine's `CHECK constraint failed: kind IN (...)`, which quotes
+            // 21 values and not the one the caller wrote.
+            if (k.undeclare == RlUndeclare::Keep && field == QLatin1String("kind")) {
+                const QString folded = newValue.trimmed().toLower();
+                if (RoadmapParse::canonicalKinds().contains(folded)) {
+                    newValue = folded;
+                } else if (const QString mapped = RoadmapParse::mappedKind(folded);
+                           !mapped.isEmpty()) {
+                    newValue = mapped;
+                } else {
+                    if (error) {
+                        *error = QStringLiteral(
+                                     "the body declares `Kind: %1`, which is not one of "
+                                     "the accepted kinds (implement, fix, audit-fix, "
+                                     "review-fix, doc, doc-fix, refactor, test, chore, "
+                                     "release, perf, security, feature, enhancement, "
+                                     "investigate, research, accessibility, optimize, "
+                                     "package, marketing, ux). Nothing was written. Use "
+                                     "one of those, or — if the line is prose rather "
+                                     "than a declaration — wrap `Kind:` in backticks or "
+                                     "reword it so it does not begin the line.")
+                                     .arg(newValue);
+                    }
+                    return false;
+                }
+                if (current == newValue)
+                    continue;
+            }
             if (current == newValue)
                 continue;  // § 2.6 writes each one that CHANGED.
             if (!store.setItemField(itemPk, field, newValue,
@@ -411,15 +458,39 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
                 hist->record(itemPk, field,
                              current.isEmpty() ? QString() : current, newValue);
         } else {
-            // The body carried it and the write removed it. clearItemField(),
-            // never an empty setItemField(): putItem() binds an empty value as
-            // SQL NULL while setItemField() binds the string it is given, and
-            // ANTS-3761's INV-2 column diff reads '' and NULL as different. For
-            // lanes/evidence the trap is sharper — "[]" is valid JSON and an
-            // empty array canonicalises happily, so setItemField() would store
-            // an empty array where NULL is meant and nothing would refuse it.
+            // The body carried it and the write removed it. ANTS-4576 — what
+            // that MEANS is the column's own storage contract, and reading it
+            // as "clear" on all five was a raw `NOT NULL constraint failed`
+            // on four of them.
+            if (k.undeclare == RlUndeclare::Keep) {
+                // NOT NULL with no default: the column has no absent state, so
+                // a body that stopped declaring the key cannot mean the item
+                // has none. Keeping loses nothing — the render emits a trailer
+                // line from the column exactly when the body does NOT declare
+                // that key at a line start, so the deleted line comes back
+                // canonically and the file still says what the column says.
+                if (kept && !current.isEmpty())
+                    kept->append(field);
+                continue;
+            }
             if (current.isEmpty() || current == QLatin1String("[]"))
                 continue;
+            if (k.undeclare == RlUndeclare::EmptyList) {
+                // NOT NULL DEFAULT '[]'. The empty array is what "no lanes"
+                // is stored as, so this is a real clear and not a fudge — the
+                // one thing it must not be is NULL, which the schema refuses.
+                const QString empty = QStringLiteral("[]");
+                if (!store.setItemField(itemPk, field, empty,
+                                        QStringLiteral("asserted"), error))
+                    return false;
+                if (hist)
+                    hist->record(itemPk, field, current, empty);
+                continue;
+            }
+            // Nullable. clearItemField(), never an empty setItemField():
+            // putItem() binds an empty value as SQL NULL while setItemField()
+            // binds the string it is given, and ANTS-3761's INV-2 column diff
+            // reads '' and NULL as different.
             if (!store.clearItemField(itemPk, field, QStringLiteral("asserted"), error))
                 return false;
             // A clear IS a change, and its new value is absence — a null
@@ -610,10 +681,15 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
     return rlResolveCounterPrefix(idPrefixArg, text.full(), callerCanonical);
 }
 
-// ANTS-4549 — a `note` may declare a trailer key only in the shape the
+// ANTS-4549 — caller prose may declare a trailer key only in the shape the
 // RENDERER writes one: the label first on its line. Anywhere else the key sits
 // in running prose, and reading it as metadata is the defect. Returns true when
 // the op must refuse, filling *error with the message.
+//
+// ANTS-4576 — the text is a `note` (annotate / flip / flip_batch) or an
+// amend_body `new_text`, and `argName` says which. Both are prose the caller
+// wrote about the item, both land in the body, and § 2.6 re-parses what lands:
+// one rule, named in the message for the argument it fired on.
 //
 // The note is appended to the bullet's body, and § 2.6 then re-derives every
 // trailer column from that new body — so a bare `Kind:` mid-sentence is read as
@@ -639,7 +715,8 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
 //
 // ANTS-4504's code-span masking is what makes the remedy cheap: a key inside
 // backticks declares nothing, so wrapping it is a one-character fix.
-bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error) {
+bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error,
+                                     const char *argName) {
     if (note.isEmpty())
         return false;
     for (const RlTrailerKey &k : kRlTrailerKeys) {
@@ -673,14 +750,14 @@ bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error) {
         if (quoted.size() > 160)
             quoted.truncate(160);
         *error = QStringLiteral(
-                     "the `note` names the `%1` trailer key mid-line, so a "
-                     "re-parse of the body this note is appended to would read "
-                     "\"%2\" as that column's value. A note is prose: wrap the "
-                     "key in backticks (`%3:`), which declares nothing, or "
-                     "reword the mention. To DECLARE the key deliberately, put "
-                     "`%3:` first on its own line, as the render writes it. "
-                     "(offending text: %4)")
-                     .arg(field, fromNote, label, quoted);
+                     "`%5` names the `%1` trailer key mid-line, so a re-parse "
+                     "of the resulting body would read \"%2\" as that column's "
+                     "value. `%5` is prose: wrap the key in backticks (`%3:`), "
+                     "which declares nothing, or reword the mention. To DECLARE "
+                     "the key deliberately, put `%3:` first on its own line, as "
+                     "the render writes it. (offending text: %4)")
+                     .arg(field, fromNote, label, quoted,
+                          QString::fromLatin1(argName));
         return true;
     }
     return false;

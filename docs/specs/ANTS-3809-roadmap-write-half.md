@@ -645,18 +645,41 @@ replacing and once over the body it is writing — and the four outcomes are:
 | — | — | **untouched** — it came from a request argument or the migration, and this op has no opinion about it |
 | — | a value | written to that value |
 | a value | a different value | written to the new one |
-| a value | — | **cleared** — the body carried it and the write removed it |
+| a value | — | **un-declared** — the body carried it and the write removed it; what that means is the column's own storage contract, below |
 
 The second `trailerValuesIn()` call is the whole cost, on a string already in
 memory, against § 4's per-op budget of two full render walks.
 
-**Clearing is `clearItemField(itemPk, field, "asserted")`**, never an empty
+**Un-declaring is not always clearing** (amended by ANTS-4576, 2026-08-20 —
+this section read "cleared" for all five, and only one of the five can hold
+NULL). The DDL states which is which, once, and this table follows it:
+
+| Column | Storage | On un-declare |
+|---|---|---|
+| `layman` | nullable | cleared to `NULL` |
+| `lanes`, `evidence` | `NOT NULL DEFAULT '[]'` | set to `[]` — the empty list IS their absent state |
+| `kind`, `source` | `NOT NULL`, no default | **kept** — with no absent state to write, "the body stopped saying it" cannot mean "the item has none" |
+
+Clearing `layman` is `clearItemField(itemPk, field, "asserted")`, never an empty
 `setItemField()`: `putItem()` binds an empty value as SQL NULL while
 `setItemField()` binds the string it is given, and ANTS-3761's INV-2 column diff
 reads `''` and NULL as different (`src/roadmapstore.h`, `clearItemField()`'s own
-comment). For `lanes` / `evidence` the trap is sharper — `"[]"` is valid JSON
-and an empty array canonicalises happily, so `setItemField()` would store an
-empty array where NULL is meant and nothing would refuse it.
+comment).
+
+Keeping `kind` / `source` is lossless rather than a fudge: § 2.4's render emits
+a trailer line from a column exactly when the body does NOT declare that key at
+a line start, so the deleted line returns canonically below the body and the
+file still declares what the column holds. The op reports the kept columns as
+`trailer_columns_kept` — the one outcome a caller cannot read out of their own
+diff.
+
+Measured before the repair, on this project's own store: one "clear it" rule
+reached the engine on four of the five columns and came back to the caller as
+`NOT NULL constraint failed: item.kind Unable to fetch row` — from an
+`op:"amend_body"` that had asked to reword one sentence. Contract and cases:
+`tests/features/roadmap_log_trailer_undeclare/spec.md`, which also carries
+ANTS-4549's guard on `new_text` (the same rule as on a `note`: both are caller
+prose landing in a body this section re-parses).
 
 **This spec writes no `history` row.** `appendHistory()` / `maxHistorySeq()`
 exist and the migration uses them, so a consumer write that changes a column

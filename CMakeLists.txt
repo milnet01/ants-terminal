@@ -1752,6 +1752,10 @@ if(ANTS_TESTS)
                 # ANTS-4549 — a `note` is opaque prose: a bare trailer keyword
                 # in one may not be re-parsed as metadata.
                 tests/features/roadmap_log_note_trailer_guard/test_roadmap_log_note_trailer_guard.cpp
+                # ANTS-4576 / ANTS-4548 — a body that stops declaring a
+                # trailer key: what un-declaring means is the column's own
+                # storage contract, not always a clear.
+                tests/features/roadmap_log_trailer_undeclare/test_roadmap_log_trailer_undeclare.cpp
                 # ANTS-4404 — the write path's fence extents come from
                 # MarkdownScan, so prose QUOTING fence syntax cannot make the
                 # bullets below it unwritable.

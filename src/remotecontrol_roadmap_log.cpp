@@ -2234,6 +2234,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     }
     QStringList newTextScrubbedNames;
     rcScrubLeakedToolXml(newText, newTextScrubbedNames);
+    // ANTS-4576 — `new_text` is caller prose landing in a body § 2.6 re-parses,
+    // which is what a `note` is (ANTS-4549); one rule, one owner, named for the
+    // argument it fired on. Body mode only: the headline is not a trailer
+    // surface, and a guard stricter than the parser refuses text never at risk.
+    // Here, beside the scrub, for ANTS-4549's reason — before the locate, the
+    // format split and the backend split, so both backends give one answer.
+    if (!headlineMode) {
+        QString shadowErr;
+        if (rcdetail::rlNoteDeclaresTrailer(newText, &shadowErr, "new_text"))
+            return rlErr(QStringLiteral("body_shadowed"),
+                         QStringLiteral("roadmap_log: %1").arg(shadowErr));
+    }
 
     // 2. Locator (id > anchor > headline) — same rules as flip.
     const QString locId       = req.value(QStringLiteral("id")).toString();
@@ -2545,6 +2557,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
 
             HistoryContext hist;              // ANTS-3822 § 2.5 — one op, one stamp
             hist.changedAt = rlHistoryStamp();
+            QStringList keptColumns;
 
             const auto mutate = [&](QString *err) -> bool {
                 if (!store.setItemField(*itemPk, QStringLiteral("body"), newBody,
@@ -2552,8 +2565,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                     return false;
                 hist.record(*itemPk, QStringLiteral("body"), before->body, newBody);
                 // § 2.6 — all five keys, since amend_body supplies none.
+                // `kept` (ANTS-4576): amend_body is the only op that can
+                // REMOVE a declaration, so it is the only one with a kept
+                // column to report.
                 if (!rlDeriveTrailerColumns(store, *itemPk, *before, newBody,
-                                            {}, &hist, err))
+                                            {}, &hist, err, &keptColumns))
                     return false;
                 // ANTS-4501 § 2.2 — a body edit is a modification. No
                 // `shipped` stamp: amend_body cannot move the status.
@@ -2583,6 +2599,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             // the paragraph re-flowed; say so rather than let the next diff.
             if (patch.wrapped)
                 env[QStringLiteral("wrapped_match")] = true;
+            // ANTS-4576 — the edit deleted a declaration of a NOT NULL column,
+            // whose value therefore SURVIVES and is re-emitted canonically by
+            // the render. Reported because it is the one outcome the caller
+            // cannot read out of their own diff.
+            if (!keptColumns.isEmpty()) {
+                QJsonArray kept;
+                for (const QString &c : std::as_const(keptColumns)) kept.append(c);
+                env[QStringLiteral("trailer_columns_kept")] = kept;
+            }
             if (!matchedId.isEmpty())
                 env[QStringLiteral("id")] = matchedId;
             // No `line` / `body_line` / `bytes` — a store has no lines

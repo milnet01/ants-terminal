@@ -248,9 +248,16 @@ bool rlFlushHistory(RoadmapStore &store, HistoryContext &hist, QString *error);
 void rlAttachHistoryNote(QJsonObject &env, const RoadmapStore &store,
                          const HistoryContext &hist);
 
-// ANTS-4549 — a `note` is opaque prose: refuse one that declares a trailer key.
-bool rlNoteDeclaresTrailer(const QString &note, QString *error);
-bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, HistoryContext *hist, QString *error);
+// ANTS-4549 — caller prose is opaque: refuse text that declares a trailer key
+// anywhere but the shape the render writes one. `argName` is the argument the
+// text arrived in, and is named in the message: the same rule guards `note`
+// (annotate / flip / flip_batch) and `new_text` (amend_body, ANTS-4576).
+bool rlNoteDeclaresTrailer(const QString &note, QString *error,
+                           const char *argName = "note");
+// `kept` (ANTS-4576, optional) collects the NOT NULL columns whose declaration
+// the new body dropped and whose value therefore survives — the one outcome a
+// caller cannot see in their own diff.
+bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, HistoryContext *hist, QString *error, QStringList *kept = nullptr);
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
 qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &projectRoot, const QString &prefix);
