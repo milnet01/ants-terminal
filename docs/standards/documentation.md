@@ -999,9 +999,25 @@ only for the reader who follows it, so a class that never fires is still worth
 its cost. Each class's own comment in `.githooks/pre-commit` records its
 measurement, at the point it is implemented.
 
-**The table above is the home of the class list; the hook carries only the
-measurements, each in its own class's comment.** That header said this section delegates the
-hook's scope to it, which would have made the code the home of a rule — so
+**The table above is the home of the class list and of the `Fires` column. The
+hook owns the exclusion enumeration — the `Skips` and `Reads` properties — as
+the artefact that executes it, and its own header says so.** The cells above
+restate that enumeration for a reader, and are updated in the same change that
+edits the hook. **So adding or removing an exclusion is an edit to
+`.githooks/pre-commit` first and to the cell second; adding or removing a
+*class* is an edit here first.**
+
+Decided 2026-08-20 by the user (CFG-0176), reversing half of the 2026-08-14
+settlement recorded below. Two artefacts each declared themselves the
+enumeration — this sentence, and the hook header's *"this list is the
+enumeration"* — so a maintainer adding a seventh `survivor` exclusion could
+follow either and leave the other stale. An enumeration nothing executes is the
+one that goes stale, which is why the executing side won.
+
+**What the 2026-08-14 settlement still holds is the class list**, and its
+reasoning is why the split falls where it does. That header said this section
+delegates the hook's scope to it — all of it, the class list included — which
+would have made the code the home of a rule — so
 someone adding a class would update the header, believe the rule updated, and
 leave this table stale. Settled here 2026-08-14 (ROADMAP CFG-0107), and the
 header was corrected the same day to say so. **It was incomplete in the same
