@@ -1826,8 +1826,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "Optional (ANTS-2227). When true, return the would-be "
                         "result (carrying `dry_run:true`) WITHOUT writing to "
                         "disk — a free pre-flight that shares the real write "
-                        "path, so the preview can't drift from the actual "
-                        "result. Defaults false.");
+                        "path up to the point of no return, so the preview "
+                        "cannot drift from the actual result on anything it "
+                        "reaches. ANTS-4548 — it stops SHORT of the commit and "
+                        "of the write to disk, so a green preview is evidence "
+                        "the request is valid, never that the write landed. "
+                        "Defaults false.");
                     return p;
                 };
 
@@ -10745,7 +10749,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "the unique `old_text` match. Required (the key must "
                         "be present); an empty string deletes the matched "
                         "phrase. Scrubbed of leaked tool-call XML like a "
-                        "`note`.");
+                        "`note`. ANTS-4576 — and guarded like one: naming a "
+                        "trailer key mid-line (`Kind:`, `Source:`, `Lanes:`) "
+                        "refuses body_shadowed, because the body this text "
+                        "lands in is re-parsed for those keys. Backtick the "
+                        "key to mention it; put it first on its own line to "
+                        "DECLARE it. DELETING a declaration is safe and no "
+                        "longer refuses: `kind` and `source` cannot be empty, "
+                        "so the column keeps its value, the render re-emits "
+                        "the line canonically below the body, and the envelope "
+                        "says `trailer_columns_kept`; `lanes` / `evidence` "
+                        "empty to `[]`; `layman`, the only nullable one, "
+                        "clears.");
 
                     // ANTS-1690 — flip_batch locators array. Each item
                     // carries one locator (id|anchor|headline|line_range)
@@ -11032,7 +11047,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "`note_would_append`; the past-tense `files_written` "
                         "and `note_appended` are ABSENT, so a caller that "
                         "branches on either cannot read a preview as a "
-                        "completed write.");
+                        "completed write. "
+                        // ANTS-4548 — measured: the preview RUNS the mutation.
+                        "ANTS-4548 — on a store-backed project the preview is "
+                        "not a simulation: the store mutation runs inside the "
+                        "transaction and is rolled back, so a column CHECK, a "
+                        "NOT NULL refusal, the render gate and the divergence "
+                        "guard all reach a dry run exactly as they reach the "
+                        "real call. What it does NOT cover is the COMMIT and "
+                        "the file publish after it — a preview cannot tell you "
+                        "the write to disk will land.");
 
                     // ANTS-2126 — pass designator for op:"append" on a
                     // `#### Pass N.M` heading roadmap.

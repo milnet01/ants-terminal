@@ -38935,7 +38935,7 @@ filed below.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20; finbreak_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4548] **roadmap_log dry_run never touches the store, so a preview is green for a write a CHECK constraint then refuses.**
+- ✅ [ANTS-4548] **roadmap_log dry_run never touches the store, so a preview is green for a write a CHECK constraint then refuses.**
   The dry_run parameter's own description says it returns the would-be
   result without writing, "a free pre-flight that shares the real write
   path, so the preview can't drift from the actual result." It drifted.
@@ -38973,6 +38973,31 @@ filed below.
   refusal should say when it does. A dry run that answered the first and
   still emitted a raw constraint string would only move the surprise
   earlier.
+  Resolved (2026-08-20): the filed mechanism is FALSE on a store-backed
+  project, and the measurement is the deliverable. `commitAndRender()`
+  step 2 runs the mutation, step 5 rolls it back — so a column CHECK, a
+  NOT NULL refusal, the render gate and the divergence guard all reach a
+  dry run exactly as they reach the real call.
+
+  Measured, not read: INV-6 of
+  tests/features/roadmap_log_trailer_undeclare/spec.md drives four
+  amend_body calls twice each — a success, a mid-line trailer key, a
+  locator miss and a kind the column refuses — and asserts the preview and
+  the real call agree on both `ok` and `code`, with the store row and the
+  file byte-identical after the preview. It passed BEFORE any change in
+  this bundle, including on the call that refused.
+
+  What the report saw is now refused identically on both paths ahead of
+  the store: ANTS-4549 guards a bare keyword in a `note`, ANTS-4576 the
+  same in `new_text`. I could not reproduce the original AIPR-0033
+  sequence, so the divergence it describes is unexplained rather than
+  disproven — what is proven is that no divergence survives today.
+
+  The item's second ask IS taken: the description claimed the preview
+  "can't drift from the actual result", and it stops short of the commit
+  and of the write to disk. Both the shared ANTS-2227 prop and
+  roadmap_log's own now say what a green preview is and is not evidence
+  for. Shipped: src/claudeintegration.cpp.
   **Layman:** The "preview before you write" check says fine for writes that then fail.
   Kind: fix.
   Source: AI_Prompts_Ants_MCP_Feedback.md 2026-08-20.
@@ -39982,7 +40007,7 @@ filed below.
   Source: ANTS-4546 residue, measured in-session 2026-08-20.
   Lanes: remotecontrol, roadmapparse.
 
-- 📋 [ANTS-4576] **Deleting a trailer declaration from a body surfaces a raw SQLite NOT NULL string, because § 2.6 clears a column the schema forbids clearing.**
+- ✅ [ANTS-4576] **Deleting a trailer declaration from a body surfaces a raw SQLite NOT NULL string, because § 2.6 clears a column the schema forbids clearing.**
   Measured, on this project's own store. Reproducer, verbatim:
 
     roadmap_log op:"amend_body" id:"ANTS-4546"
@@ -40015,10 +40040,62 @@ filed below.
   edited by the verb that exists for editing body lines. Sibling of
   ANTS-4549 (caller prose reaching a column) from the other direction:
   caller prose LEAVING one.
+  Resolved (2026-08-20): both halves, and the filed count was low —
+  FOUR of the five columns refused a clear, not one. `layman` alone is
+  nullable; `lanes` and `evidence` are NOT NULL DEFAULT '[]'; `kind` and
+  `source` are NOT NULL with no default. Measured, not reasoned: the test
+  reproduced `NOT NULL constraint failed: item.kind` AND `item.lanes`
+  before the repair.
+
+  (b) the rule. Un-declaring is now the column's own storage contract:
+  `layman` clears to NULL, the two list columns are set to `[]` (their
+  absent state), and the two with no absent state KEEP their value. Keeping
+  is lossless — § 2.4's render emits a trailer line from a column exactly
+  when the body stops declaring that key, so the deleted line returns
+  canonically below the body and the file still says what the column says.
+  The envelope reports `trailer_columns_kept`.
+
+  (a) the message. `new_text` now runs through ANTS-4549's guard, which
+  reads the argument name, so the two prose arguments answer one rule. And
+  the derivation canonicalises a recognised `kind` with the migration's own
+  mapper (a raw capture meant `Fix.` and the alias `bug.` both reached the
+  CHECK), refusing in words when nothing recognises it.
+
+  Shipped: src/remotecontrol_roadmap_query.cpp,
+  src/remotecontrol_roadmap_log.cpp, ANTS-3809 § 2.6 amended.
+  Contract + 11 cases:
+  tests/features/roadmap_log_trailer_undeclare/spec.md. Suite 3714/3714.
+  The refusal CODE is still `store_failed`, which is now the weakest part
+  of the path — filed as ANTS-4577 rather than widened here.
   **Layman:** Removing one line from an item's notes can fail with a database error that says nothing useful.
   Kind: fix.
   Source: measured in-session 2026-08-20 while closing ANTS-4546.
   Lanes: remotecontrol, roadmapstore.
+
+- 📋 [ANTS-4577] **A body-derived column refused for the CALLER's reason still answers `store_failed`.**
+  ANTS-4576 gave the § 2.6 derivation a refusal a caller can act on —
+  it names the key, the rejected value and both remedies. The CODE it
+  travels under is still `store_failed`, because every mutate failure
+  routes through `commitAndRender` and `rcRoadmapWriteRefused` maps that
+  one way.
+
+  So a caller branching on the code reads an engine fault where the fault
+  is their own text, and a retry is the wrong response to both readings.
+
+  The plumbing is a per-op code override at the three sites whose mutate
+  runs the derivation — annotate/flip, amend_body, flip_batch: an out
+  parameter on `rlDeriveTrailerColumns`, set when it refuses for a
+  caller-input reason, and applied to the envelope after
+  `rcRoadmapWriteRefused` returns. Deliberately not taken with ANTS-4576,
+  which asked for the message.
+
+  Pick the code from `docs/standards/mcp-error-codes.md` rather than
+  inventing one; `body_shadowed` is the neighbouring refusal and is not
+  this.
+  **Layman:** A refusal caused by what you typed is labelled as a database fault.
+  Kind: fix.
+  Source: in-session-2026-08-20, while closing ANTS-4576..
+  Lanes: remotecontrol.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

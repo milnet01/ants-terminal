@@ -29,6 +29,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log: `dry_run` now says what a green preview is, and is not, evidence for** (ANTS-4548)
+  The preview is not a simulation — it performs the store write inside a transaction and rolls it back, so every refusal the real call would hit reaches it too. It stops short of the commit and of the write to disk, and the tool description now says so instead of claiming the preview cannot differ from the result.
+
 - **workspace_search: a `lane` that escapes the project root now names the route out** (ANTS-4569)
   The refusal was correct but terminal. Both the `lane` schema
   description and the `bad_path` envelope now say that to search a
@@ -36,6 +39,9 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **roadmap_log: deleting a `Kind:` or `Source:` line from an item's notes no longer fails with a database error** (ANTS-4576)
+  Removing a trailer declaration from a body used to clear the column, and four of the five columns cannot be empty — the caller got a raw `NOT NULL constraint failed`. What un-declaring means is now the column's own contract: the plain-English line clears, lanes and evidence empty to a list with nothing in it, and kind and source keep their value, which the roadmap file then states canonically. An amend_body `new_text` is guarded like a `note`, and a recognised kind is canonicalised rather than refused.
 
 - ****`roadmap_query`'s `duplicate_ids[]` now reports an authored id shared by two bullets, whatever its shape.** (ANTS-4546)**
   On a roadmap whose bullets lead with a bold span, two bullets sharing
