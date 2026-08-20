@@ -336,10 +336,15 @@ a column already holding a wrongly-harvested value is not corrected by
 re-reading, which is ANTS-4505.
 
 **"Line-initial" needs no indentation rule, and the predicate already exists.**
-`collectBulletBody()` builds `body` by appending `'\n'` followed by
-`cont.trimmed()` for each continuation line, so the body **preserves line breaks
-and carries no leading whitespace** — a source line `   Kind: test.` reaches the
-matcher as `Kind: test.` at a line start. `TrailerMatch::anchored`, computed in
+`collectBulletBody()` builds `body` by appending `'\n'` followed by each
+continuation line, the block **dedented to its common left edge** (per-line
+`cont.trimmed()` until ANTS-4554, 2026-08-20), so the body **preserves line
+breaks and carries no leading whitespace on any line sitting at that edge** — a
+source line `   Kind: test.` reaches the matcher as `Kind: test.` at a line
+start whenever the rest of the block shares that indent, which the format's
+two-space continuation guarantees. A line the author indented deeper keeps the
+difference and is NOT line-initial, which is the intended reading: a
+declaration inside a nested block is structure, not the bullet's trailer. `TrailerMatch::anchored`, computed in
 `matchLastIn()` as `(at == 0) || body.at(at - 1) == '\n'` over
 `capturedStart(0)`, is therefore exactly this test and is the predicate to
 use. `matchLastIn()` already computes it on every global match and

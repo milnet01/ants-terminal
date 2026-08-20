@@ -251,18 +251,29 @@ its last non-blank line, separated by one `\n`.** Two things the markdown path
 does drop out: `appendBodyNote()` sniffs the bullet's existing indent and
 re-applies it, and walks forward to find where the continuation run ends — both
 are markdown-span problems, and `item.body` is already exactly that span, with
-its lines held **un-indented** (`parseBullets()` builds it with
-`body.append(cont.trimmed())`, so `item.body` carries no leading whitespace on
-any line). The render's `appendIndented()` puts the two spaces back on the way
-out.
+its lines held **dedented to their common left edge** (`parseBullets()` strips
+the continuation block's shared indent — `cont.trimmed()` per line until
+ANTS-4554, 2026-08-20). So a body whose lines are uniformly indented, which is
+every body the format's two-space continuation produces, carries no leading
+whitespace; a line the author indented DEEPER than that edge keeps the
+difference. The render's `appendIndented()` puts the two spaces back on the way
+out, so the deeper line renders deeper — which is the whole of ANTS-4554.
 
-**That un-indented storage is also what makes `TrailerMatch::anchored` exact
-here.** A canonical trailer line inside `item.body` starts at column 0, so for
+**That storage is also what makes `TrailerMatch::anchored` exact
+here.** A canonical trailer line inside `item.body` starts at column 0 — the
+render writes it at the common edge — so for
 the un-anchored `rxSource` / `rxLanes` the match itself begins the line and
 `anchored` is true — the same answer the `^\s*` patterns give for the other
 three keys. Were bodies stored indented, `anchored` would read false for a
 line-leading `Source:` and § 2.5's remedy split would be wrong for two of five
 keys.
+
+**The one line that now reads `anchored == false` is a declaration indented
+deeper than the block's common edge** (ANTS-4554) — i.e. one inside a nested
+list or an indented sample. That is the answer this section wants: such a line
+is structure the author wrote, not the canonical trailer the render authored,
+and treating it as a declaration is how a bullet ends up stating its metadata
+twice.
 
 **Four of the eight rows take an `itemPk`** — `flip`, `flip_batch`, `annotate`
 and `amend_body` — **and nothing so far says how a locator becomes one.**

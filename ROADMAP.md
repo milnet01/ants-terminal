@@ -28394,6 +28394,17 @@ against current source before filing.
   at DRAFT time when a spec runs long, not after acceptance — is already
   carried by global CLAUDE.md rule 14 ("needing many more loops is
   evidence the document is oversized"). Do not reopen this.
+  Note (2026-08-20): one of the asymmetries this oracle was pointed at is
+  gone. The `body` row in ANTS-3793 § 2.1.1 said a stored body line that
+  is itself indented "renders deeper and parses back flat", so
+  `item.body`'s own indentation did not survive a render/parse cycle.
+  ANTS-4554 fixed that at the reader: the continuation block is dedented
+  to its common left edge, so a line indented deeper round-trips with its
+  depth. The pointer sentence naming this item was removed from that row
+  in the same commit.
+
+  The oracle still has everything else to prove — this narrows one known
+  red, it does not make the round trip clean.
 
 - 💭 [ANTS-3811] **Decide whether `Source:` / `Lanes:` stay un-anchored, now that a residual body can shadow a column.**
   `rxSource` and `rxLanes` are deliberately un-anchored: ANTS-2058
