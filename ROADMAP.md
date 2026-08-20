@@ -40836,6 +40836,34 @@ filed below.
   Source: in-session-2026-08-20, residue of ANTS-4556.
   Lanes: remotecontrol, docs.
 
+- 📋 [ANTS-4592] **ANTS-4508's would_be_id never reached the store-backed dry_run path.**
+  Confirmed in source, not taken on report. src/remotecontrol_roadmap_log.cpp:501 sets env["id"] = idStr unconditionally inside cmdRoadmapLogAppend's store-backed arm — there is no dryRun branch, and rcRoadmapWriteFields() (which runs 56 lines later) adds only the would_write / items_rendered tense pair, never an id. The file-backed preview at :967 does emit would_be_id, which is where ANTS-4508 landed.
+
+  So the invariant holds on one of the two paths it covers. INV-7 of tests/features/roadmap_log_prefix_and_dry_run/spec.md states unconditionally that a preview reports its id under would_be_id / would_be_ids and never under id / ids; its fixture allocates DOOM-0001 on a fresh counter-strategy project, which is the file-backed path, so no existing test can see the store-backed class.
+
+  The reporter's point that this is now worse than before the fix stands: the schema's dry_run description promises would_be_id, so a caller who reads the docs looks for it, does not find it, and falls back to id — the key ANTS-4508 exists to remove.
+
+  Fix: emit would_be_id on the store-backed dry_run arm and drop id there, mirroring :967. append_batch's store arm needs the same check for would_be_ids. Add a fixture on a migrated project — the gap is that INV-7 is verified on one path only.
+  **Layman:** A preview of a new roadmap item still hands back the id under the key a real write uses, on any project that has moved to the database.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-20.
+  Lanes: remotecontrol_roadmap_log.
+
+- 📋 [ANTS-4593] **A dry_run render-gate refusal names its own rolled-back candidate id.**
+  Confirmed in source. Under ANTS-4548 a dry run runs `mutate` inside the transaction and rolls it back, so the caller's candidate row IS in the store when the render gate evaluates. rcRoadmapWriteRefused() (src/remotecontrol_roadmap_query.cpp, GateUnmet arm) then emits outcome.gateFailures verbatim, with no marker separating the request's own row from pre-existing ones.
+
+  The gate reaching a dry run is the design and is not in question. The reporting is: the message is present-tense about the PROJECT ("the roadmap render refuses this project: 1 open item(s) carry no Layman: line") and gate_failures is the key that elsewhere names real ids. The caller greps for the id, finds nothing, and cannot tell a bad input from a diverged store. That code's own comment says the gate is per-project so the caller's item may be blameless — which is true of a real write and false of a dry run.
+
+  The two cases need different actions: fix the call, versus go and repair the roadmap. Today they are indistinguishable.
+
+  Fix: on the dry_run path, separate the caller's own candidate row from gate_failures. An input error missing a required field is arguably missing_field rather than render_gate_unmet; failing that, report it under a request_gate_failures / would_be_id key, which is the convention ANTS-4463 and ANTS-4508 already established on this envelope.
+
+  Same shape as its sibling above, one level up: a would-be id reported under the key that names real ones.
+  **Layman:** When a preview is refused for a missing Layman line, it blames an item id that exists nowhere — the preview's own throwaway row.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-20.
+  Lanes: remotecontrol_roadmap_query, roadmapwrite.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
