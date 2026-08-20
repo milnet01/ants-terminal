@@ -40637,6 +40637,56 @@ filed below.
   file-only. Note the surface, per ANTS-4599 — roadmap_query's `body`
   composes a trailer line from the column, so it cannot answer
   body-vs-column; read the store's `item.body` column.
+  Phase 2 DECIDED and measured 2026-08-20. The open question is answered:
+  the repair is a RE-PARSE of the surviving prose, guarded by strict
+  prefix. No bespoke un-truncation logic is needed anywhere.
+
+  Method: reconstruct each bullet as head line + indented stored body
+  ONLY -- deliberately without the render's composed trailers, since
+  re-parsing those hands the stored column straight back and the diff is
+  zero by construction -- then run the CURRENT parser (throwaway TU
+  linked against build/libants_roadmapparse_lib.a) and diff.
+
+  Measured over 5076 items in the 16 real projects:
+
+    bodies whose prose still declares a key : 3044
+    layman  re-parse differs                :  833
+      ...stored is a strict prefix (repair) :  824   +82,362 chars
+      ...disagrees otherwise (SKIP)         :    9
+    source  re-parse differs                :   60
+      ...stored is a strict prefix (repair) :   58    +2,323 chars
+      ...disagrees otherwise (SKIP)         :    2
+    lanes                                   :   54   (measured earlier)
+
+  THE GUARD IS THE WHOLE DESIGN, and the 11 skips are why. They are not
+  noise: seven are post-migration hand edits where the STORED value is
+  newer and better and the legacy prose holds the older draft -- 1933,
+  1934, 1931, 1932, 1884, 1565, 1579. An unguarded re-parse silently
+  REVERTS those to superseded text, with no second copy to check against
+  afterwards. Two more are real damage the guard correctly repairs (4273
+  stores the 5-char fragment, 1390 stores an unrelated sentence) and two
+  are normalisation, one of which (FIBR-0137) would LOSE a parenthetical.
+
+  Phase 1's 417 was an UNDER-count, and the detector is why. The survey
+  calls a value intact when the next character is a sentence stop, which
+  cannot tell "the value ends here" from "the value continues past an
+  internal stop". CFG-0116 stores `Split the long sentences in our
+  skills` where the prose reads `... skills. Each one should say one
+  thing.`; CFG-0132 stores `A plain config` for a 130-char value, cut at
+  the dot in `config.yaml`. Both were counted intact. Keep the survey as
+  the cheap read-only view; the re-parse diff is the real population.
+
+  ANTS-4595 DOES NOT BLOCK THIS, measured rather than assumed: the prefix
+  guard rewrites 0 rows whose `source` column holds `planned`. The two
+  populations are disjoint, so the sequencing constraint this item has
+  carried since phase 1 is discharged for the repair as designed. It
+  still stands for any pass that rewrites the column unguarded.
+
+  Home for the pass: an explicit `roadmap_log` op with dry_run, following
+  ANTS-4501 op:"backfill_dates" -- the established shape here for a
+  one-off that repairs migration-era columns per project. Reversibility
+  is a file copy of the store taken before the write, plus the dry run
+  listing every change.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
@@ -41112,6 +41162,40 @@ filed below.
   Kind: fix.
   Source: in-session-2026-08-20, hit while measuring ANTS-4598.
   Lanes: mcp, roadmap.
+
+- 📋 [ANTS-4600] **A deleted /tmp scratchpad is registered as a project in the machine-global store.**
+  Found while measuring ANTS-4585 phase 2, and it has to be settled
+  before any repair pass runs, because such a pass would walk it.
+
+  project_id 17 has root
+  /tmp/claude-1000/-mnt-Games-Scripts-Linux-LottoTracker/8e41de1c-319c-4da5-8c5f-279631b9f3ba/scratchpad/RoadmapRenderProbe
+  and holds 33 items. The directory no longer exists -- it was a session
+  scratchpad -- and 32 of its 33 items are byte-identical in id and body
+  to LottoTracker's, which has 38. It is a probe copy that got migrated
+  into the shared store and left there.
+
+  Measured effect. The ANTS-4585 survey reports it as a 16th project with
+  its own 29 duplicate runs and 12 truncations, numerically identical to
+  LottoTracker's row, so every machine-wide total is inflated by one
+  project's worth of a project that does not exist. roadmap_query
+  mode:"report" scope:"all" sums the same rows. The phase-2 measurement
+  excluded project_id 17 by hand; a pass that does not exclude it repairs
+  a dead copy and reports the work as done.
+
+  Two things to decide, and the second is the durable one. Whether to
+  delete the project row and its items, which is a write to the shared
+  store and wants the same backup a repair pass wants. And whether
+  migration should refuse a root under a session scratchpad or a path
+  that has since been deleted -- registration is what made this
+  permanent, and nothing stops the next probe doing it again.
+
+  Not urgent for any reader: no project's own ROADMAP.md is affected,
+  because the render is per project and this one has no directory to
+  write to. It is the machine-global surfaces that are wrong.
+  **Layman:** A throwaway test folder got recorded as a real project in the shared roadmap database, so machine-wide counts double-count one project
+  Kind: fix.
+  Source: ANTS-4585 phase 2 measurement, 2026-08-20.
+  Lanes: roadmap-store, roadmapmigrate.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
