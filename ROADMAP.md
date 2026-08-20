@@ -39385,7 +39385,7 @@ filed below.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: roadmaprender.
 
-- 📋 [ANTS-4556] **roadmap_log's bad_section refuses without a candidates list, where three sibling refusals now supply one.**
+- ✅ [ANTS-4556] **roadmap_log's bad_section refuses without a candidates list, where three sibling refusals now supply one.**
   op:append with an unknown slug returns bad_section and nothing else. On
   Vestige that discarded a ~2.4 KB body just composed, with no route
   forward except a separate section_index call whose reply is 141 slugs.
@@ -39407,6 +39407,25 @@ filed below.
   (`performance` vs `performance-2`, which that roadmap actually has) it
   is a saved round-trip. bad_case already returning canonical_slug proves
   the machinery exists.
+  Resolved (2026-08-20): bad_section now carries `candidates[]` (ranked,
+  capped at 10) plus `sections_total`.
+
+  Reused rather than reimplemented, per the report's own observation that
+  the pattern is settled: ReadRegion::rankSectionCandidates moved out of
+  readregion.cpp's anonymous namespace and was retyped to take a plain
+  QStringList, because roadmap_log ranks section slugs it already holds
+  and has no document to re-scan. Second caller, so the shape is shared;
+  a copy would have drifted from the read_region suite that locks it.
+
+  Still refuses. The write does not resolve a near miss — guessing which
+  section the caller meant is how a 2.4 KB body lands in the wrong one,
+  and a test locks that the file is byte-identical after the refusal.
+  bad_case still wins over the ranked path, since a pure case mismatch
+  has an exact answer (canonical_slug, ANTS-1524) and must not be
+  downgraded to a guess.
+
+  Locked by tests/features/roadmap_log_refusal_candidates — 4 cases,
+  RED verified on the near-miss ranking before the fix.
   **Layman:** Getting a section name slightly wrong throws the whole write away with no hint at the right name.
   Kind: enhancement.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
@@ -40019,7 +40038,7 @@ filed below.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4574] **`bullet_ambiguous` tells the caller to "narrow with anchor or id" when the id IS what they passed and no anchor exists.**
+- ✅ [ANTS-4574] **`bullet_ambiguous` tells the caller to "narrow with anchor or id" when the id IS what they passed and no anchor exists.**
   Measured, not predicted. On a GFM roadmap with two bullets leading
   `**Photo mode**`, an annotate keyed on that id refuses:
 
@@ -40041,6 +40060,22 @@ filed below.
   Found while measuring ANTS-4546, whose duplicate_ids widening now makes
   this refusal reachable at READ time — a caller warned by duplicate_ids
   still has to be told what to do about it.
+  Resolved (2026-08-20): the refusal now names only routes that exist.
+
+  Reproduced first, and the measured message was the reported one
+  verbatim: "roadmap_log: locator matched 2 bullets — narrow with anchor
+  or id". When the ambiguous locator was the id, it now says that id is
+  not unique and branches on what is actually available — `anchor` when
+  the matched bullets carry one, `headline` (with the headlines already
+  in suggestions[]) when they do not.
+
+  Added beyond the report: the third branch. Two bullets sharing an id
+  AND a headline are reachable by no locator at all, so naming the
+  headline route there would have repeated the original defect one step
+  later. That case says so and tells the caller to disambiguate in the
+  file.
+
+  Locked by RoadmapLogRefusalCandidates.AmbiguousIdNamesTheHeadlineRoute.
   **Layman:** When two roadmap items share a name, the error tells you to do the one thing you already did.
   Kind: fix.
   Source: measured in-session 2026-08-20 while triaging ANTS-4546.
@@ -40729,6 +40764,44 @@ filed below.
   Kind: marketing.
   Source: in-session-2026-08-20, raised with the user and left as their decision.
   Lanes: packaging.
+
+- 📋 [ANTS-4590] **A deliberate proving run of the Release audit is indistinguishable from a real outage.**
+  Reported by the user, who received the failure email and could not tell
+  whether the downloads were broken.
+
+  ANTS-4588 added the Release audit and, correctly, proved it by running
+  it against the real drift before the fix landed. That produced run
+  32365436222 (failure, 2d92308, 11:46 UTC); the post-fix run
+  32368365878 (success, c336a72, 12:20 UTC) is the live answer.
+
+  Both send a byte-identical "All jobs have failed" notification. Nothing
+  in the email, the run title, or the job name distinguishes "we are
+  testing the alarm" from "the alarm is real", so the only way to resolve
+  it is `gh run list` and a timestamp comparison. That is the wrong cost
+  for the reader of an alert, and it is the second time in one day that a
+  green/red signal here has been unreliable in the OTHER direction
+  (GitHub reporting a timeout as "cancelled", OBS reporting stale
+  rebuilds as "succeeded").
+
+  Worth fixing because an alert people learn to second-guess stops
+  working as an alert.
+
+  Options, cheapest first. (a) Never prove the gate on `main`: run the
+  drift rehearsal on a branch or with a `dry_run` input, so a red run on
+  main always means a real outage — this needs no code, only a rule in
+  the workflow's own docs. (b) Give the workflow a `reason` /
+  `rehearsal:true` dispatch input that lands in the run NAME via
+  `run-name:`, so the notification subject itself says which it is.
+  (c) Both: (a) is the policy, (b) is the guard for when someone does it
+  anyway.
+
+  Not urgent — no user-facing breakage — but it should be settled before
+  the audit's daily schedule has been running long enough that people
+  stop reading its mail.
+  **Layman:** Testing the download alarm sends the same panic email as the download actually being broken.
+  Kind: enhancement.
+  Source: user-report-2026-08-20.
+  Lanes: ci.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

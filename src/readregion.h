@@ -10,6 +10,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
+#include <QStringList>
 
 namespace ReadRegion {
 
@@ -64,5 +65,20 @@ QJsonObject extract(const QString &absPath, const Options &opts);
 QJsonObject extractBatch(const QString &rootCanonical,
                          const QJsonValue &itemsValue, int maxBytes,
                          const QString &defaultPath = QString());
+
+// ANTS-4350 — rank a document's headings against a query slug that matched
+// nothing, so a refusal carries near-misses instead of a dead end. Non-numeric
+// word overlap is the primary key and a shared leading numeric token the
+// tiebreak: a caller who half-remembers a title gets the WORDS right and the
+// number wrong, while one working from a cross-reference ("commits.md § 1.1")
+// gets the NUMBER right and the words wrong. Nothing scoring falls back to the
+// supplied order. Capped at 10 so a large document does not pay a big refusal.
+//
+// ANTS-4556 — takes a plain slug list rather than parsed headings, because
+// roadmap_log's `bad_section` ranks SECTION slugs it already holds and there
+// is no document to re-scan. Second caller, so the shape is shared rather than
+// copied.
+QStringList rankSectionCandidates(const QString &wantSlug,
+                                  const QStringList &slugs);
 
 }  // namespace ReadRegion

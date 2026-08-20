@@ -4,6 +4,7 @@
 #include "roadmapfoldin.h"
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the injectable "today"
 #include "wrapmatch.h"     // ANTS-4550 — the wrapped-match rule
+#include "readregion.h"   // ANTS-4556 — the shared section-slug ranker
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -805,9 +806,29 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 return QJsonDocument(env);
             }
         }
-        return rlErr(QStringLiteral("bad_section"),
-            QStringLiteral("roadmap_log: unknown section slug "
-                           "\"%1\"").arg(verbatim));
+        // ANTS-4556 — a bad_section that offers nothing discards the body the
+        // caller just composed and leaves one route: a section_index call
+        // answering 141 slugs. Three sibling refusals already rank near-misses
+        // (read_region section mode on both section_ambiguous and
+        // section_not_found; apply_edits on not_found and ambiguous), so this
+        // verb was the outlier rather than the precedent. Ranked by the SHARED
+        // ranker, never a second copy of it.
+        //
+        // A hint, never a resolution: the write still refuses. Guessing which
+        // section the caller meant is how a 2.4 KB body lands in the wrong one.
+        QStringList slugs;
+        slugs.reserve(index.size());
+        for (const auto &s : index) slugs << s.slug;
+        const QStringList cands =
+            ReadRegion::rankSectionCandidates(section, slugs);
+        QJsonObject env;
+        env["ok"]         = false;
+        env["code"]       = QStringLiteral("bad_section");
+        env["error"]      = QStringLiteral("roadmap_log: unknown section slug "
+                                           "\"%1\"").arg(verbatim);
+        env["candidates"] = QJsonArray::fromStringList(cands);
+        env["sections_total"] = index.size();
+        return QJsonDocument(env);
     }
 
     // ANTS-2055 — refuse an append into a parent section that has
@@ -1899,10 +1920,48 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         const QString code = (matchedCount == 0)
             ? QStringLiteral("bullet_not_found")
             : QStringLiteral("bullet_ambiguous");
-        const QString msg = (matchedCount == 0)
-            ? QStringLiteral("roadmap_log: locator matched zero bullets")
-            : QStringLiteral("roadmap_log: locator matched %1 bullets — "
-                             "narrow with anchor or id").arg(matchedCount);
+        // ANTS-4574 — "narrow with anchor or id" is only advice when the
+        // caller has an unused locator left. Measured on a GFM roadmap with
+        // two bullets leading `**Photo mode**`: the id WAS the ambiguous
+        // locator and neither bullet carried a caret anchor, so every route
+        // the message named was closed and the caller could reach neither
+        // bullet. Name only routes that exist, and say so when none does.
+        QString msg;
+        if (matchedCount == 0) {
+            msg = QStringLiteral("roadmap_log: locator matched zero bullets");
+        } else if (!locId.isEmpty()) {
+            bool anyAnchor = false;
+            for (const int mi : matchIndices) {
+                if (!bullets.at(mi).anchor.isEmpty()) { anyAnchor = true; break; }
+            }
+            // Whether the headline route can actually separate them: two
+            // bullets sharing an id AND a headline are reachable by neither,
+            // and saying so beats naming a third route that also fails.
+            QSet<QString> distinctHeadlines;
+            for (const int mi : matchIndices) {
+                distinctHeadlines.insert(
+                    rcGfmCanonicalHeadline(bullets.at(mi).headline));
+            }
+            msg = QStringLiteral("roadmap_log: id \"%1\" matched %2 bullets — "
+                                 "that id is not unique in this file")
+                      .arg(locId).arg(matchedCount);
+            if (anyAnchor) {
+                msg += QStringLiteral("; narrow with `anchor`, which the "
+                                      "matched bullets carry");
+            } else if (distinctHeadlines.size() == matchedCount) {
+                msg += QStringLiteral("; the matched bullets carry no anchor, "
+                                      "so narrow with `headline` using one of "
+                                      "the headlines in suggestions[]");
+            } else {
+                msg += QStringLiteral("; the matched bullets carry no anchor "
+                                      "and do not have distinct headlines, so "
+                                      "no locator can address them — "
+                                      "disambiguate them in the file first");
+            }
+        } else {
+            msg = QStringLiteral("roadmap_log: locator matched %1 bullets — "
+                                 "narrow with anchor or id").arg(matchedCount);
+        }
         return rlSugErr(code, msg, suggestions, matchedCount);
     }
     const GfmBullet &target = bullets.at(matchIndices.first());

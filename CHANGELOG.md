@@ -38,6 +38,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log's `bad_section` refusal now carries ranked near-miss candidates** (ANTS-4556)
+  A mistyped slug threw the composed body away and left one route: a
+  `section_index` call answering every slug in the file. The refusal now
+  ranks the real slugs against what you typed (capped at 10), reusing
+  read_region's ranker rather than growing a second copy. It still
+  refuses — a near miss is a hint, never a resolution.
+
 - **roadmap_query: `body` is the item's notes, no longer the whole rendered bullet** (ANTS-4557)
   Two projects reported opposite things about this field and both were right: the database column holds notes, while the tool rebuilt the bullet and handed back its title line and metadata block too. The field is now the notes alone — the title is already returned separately. The metadata lines stay, because nothing else carries their text.
 
@@ -51,6 +58,12 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **`bullet_ambiguous` no longer advises narrowing by the locator that just failed** (ANTS-4574)
+  When an `id` matched two bullets and neither carried an anchor, the
+  refusal said "narrow with anchor or id" — naming two routes that were
+  both closed. It now names the id as the ambiguous one and points at the
+  headline locator, or says outright that no locator can address them.
 
 - **Roadmap render no longer doubles the full stop on a trailer value that already ends in one** (ANTS-4582)
   `Kind:`, `Source:` and `Lanes:` now get their terminating period only
