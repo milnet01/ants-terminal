@@ -21784,7 +21784,6 @@ server build id so clients can self-diagnose this.
   Kind: fix.
   Lanes: mcp, changelog, roadmapfoldin.
   Source: in-session-2026-06-12 (ANTS-2125 fold-in).
-  **Layman:** Fixed Ants pasting a cut-off `…` title into the changelog when a roadmap item's title was long
 
 - ✅ [ANTS-2128] **roadmap_log op:append emits an undocumented `missing_field` code for absent required fields — converge with the taxonomy's `bad_args`.**
   Surfaced by the ANTS-2126 cold-eyes loop. cmdRoadmapLogAppend refuses absent required fields (caller_cwd/section/status/kind/source) with code `missing_field` (remotecontrol.cpp:4201-4221), but `missing_field` is not in docs/standards/mcp-error-codes.md — the taxonomy documents `bad_args` ("a required argument is missing or has the wrong shape", line 35) for exactly this case. Either (a) add a `missing_field` row to mcp-error-codes.md and reconcile callers, or (b) migrate the append path to `bad_args` (preferred — fewer codes, matches the documented gloss). ANTS-2126's new pass-headings append deliberately uses the documented `bad_args` rather than propagate `missing_field` to a second site. Low-risk doc/code-fix; touch the append + append_batch field guards together.
@@ -31399,9 +31398,6 @@ against current source before filing.
   extended to the bold form. Three new cases in
   `tests/features/roadmap_import_mapping/`, two red against pre-change
   source. Full suite green (3339); conformance 0 findings.
-  **Layman:** Twenty roadmap items write their work-type in bold; the importer does not recognise that spelling and will file a scrap of the sentence instead
-  Kind: fix.
-  Source: in-session-2026-08-09.
 
 - 📋 [ANTS-4078] **Two sections hold 2.6 MB of the roadmap's 3.2 MB and are both still labelled `(target: …)` — rotation cannot help either.**
   Split from ANTS-4070 after measuring, so that item can stay the
@@ -41039,7 +41035,7 @@ filed below.
   Source: ANTS-4597 verification, 2026-08-20.
   Lanes: roadmapparse.
 
-- 📋 [ANTS-4599] **roadmap_query include_body appends a trailer line the stored body does not carry.**
+- ✅ [ANTS-4599] **roadmap_query include_body appends a trailer line the stored body does not carry.**
   Measured on ANTS-3722, not inferred. roadmap_query with include_body
   returns a body whose LAST line is a Lanes declaration naming "y". The
   store's body column ends two lines earlier and carries no Lanes line at
@@ -41069,6 +41065,33 @@ filed below.
   Decide which of the two it should be and say so in the schema: return
   the stored body verbatim, or mark a synthesised line so a caller can
   tell it apart. Either is fine; silently mixing the two is not.
+  Resolved 2026-08-20: documented, not changed. Mechanism read at last
+  — `RoadmapSource::appendRecord()` builds every store-backed record by
+  parsing `RoadmapRender::bulletText(item)`, and that render emits a
+  trailer line for each column whose key the stored prose does not
+  declare at a line start (INV-12). ANTS-4557 dropped the head line from
+  the field, not the round trip.
+
+  Both options the finding offered are wrong, and reading the mechanism
+  is what shows it. Returning the stored column breaks ANTS-3793 § 2.1.1
+  — a store record is what parseBullets() would assign to that item's
+  RENDERED bullet — so the two backends would disagree on `body`, which
+  is INV-2's subject. Marking a composed line cannot be done with parity:
+  the markdown backend parses the generated file and cannot know which
+  lines a renderer wrote, so marking one backend diverges them.
+
+  So the field is not silently mixing two things. It answers one question
+  consistently — what this bullet says in the file — and the schema
+  promised a different one. Corrected in three places: the include_body
+  schema text, mcp-behavioural-notes.md, and the ANTS-4554/4557/4558
+  contract, each now naming the store's `item.body` column as the surface
+  for the body-vs-column question.
+
+  Locked by INV-6 in tests/features/roadmap_body_indent. INV-5 could not
+  see this: its fixture declares every key its columns carry, so the
+  render suppresses all of them. Proved non-vacuous by mutation —
+  disabling the lanes composition fails INV-6 alone, with INV-1..5 green,
+  INV-3's byte-for-byte backend parity included. 3750/3750.
   **Layman:** Reading a to-do's text back can show a field line the item's text does not actually contain, which makes a parser bug look like correct behaviour.
   Kind: fix.
   Source: in-session-2026-08-20, hit while measuring ANTS-4598.

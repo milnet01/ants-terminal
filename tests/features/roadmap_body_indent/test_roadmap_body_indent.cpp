@@ -290,3 +290,68 @@ TEST(RoadmapBodyIndent, Inv5TrailerLinesStayInTheBody) {
     EXPECT_TRUE(has(body, "Kind: implement."));
     EXPECT_TRUE(has(body, "Source: seed."));
 }
+
+// ---------------------------------------------------------------- INV-6 -----
+
+// And a trailer line the body never carried is COMPOSED into it, from the
+// column, whenever the stored prose does not declare that key at a line start.
+// INV-5's fixture cannot see this: DEMO-0007 declares `Kind:` and `Source:`
+// itself, so the render suppresses both and every trailer in that body is the
+// body's own.
+//
+// This is the render's contract (INV-12), not a leak: `body` answers "what
+// does this bullet say in ROADMAP.md", and ROADMAP.md is generated from the
+// store, so the line is really there. It is asserted because the question it
+// does NOT answer is the one a reader assumes it does — "does the stored body
+// declare this field?" — and a composed line makes an item whose column and
+// body disagree look self-consistent. ANTS-4599.
+TEST(RoadmapBodyIndent, Inv6ComposesATrailerTheBodyDoesNotDeclare) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    // The body names no trailer key at all; `lanes` reaches the column only
+    // through the argument, which is the ordinary way the two diverge.
+    const QString prose =
+        QStringLiteral("A note whose prose never names that key.");
+    ASSERT_FALSE(prose.contains(QStringLiteral("Lanes")));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("section")]    = QStringLiteral("work");
+    req[QStringLiteral("status")]     = QStringLiteral("planned");
+    req[QStringLiteral("headline")]   = QStringLiteral("An item whose lanes live only in the column.");
+    req[QStringLiteral("kind")]       = QStringLiteral("implement");
+    req[QStringLiteral("source")]     = QStringLiteral("seed");
+    req[QStringLiteral("body")]       = prose;
+    // The render gate refuses an open item with no `Layman:` line, and this
+    // one's prose declares neither key — so `layman` is composed too, and by
+    // the same rule.
+    req[QStringLiteral("layman")]     = QStringLiteral("A plain-language line.");
+    req[QStringLiteral("lanes")]      = QJsonArray{QStringLiteral("alpha"),
+                                                   QStringLiteral("beta")};
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QString id = resp.value(QStringLiteral("id")).toString();
+    ASSERT_FALSE(id.isEmpty()) << QJsonDocument(resp).toJson().toStdString();
+
+    const std::string body = bodyOf(rc, root, id).toStdString();
+    EXPECT_TRUE(has(body, "A note whose prose never names that key."))
+        << "the submitted prose is missing from the body";
+    EXPECT_TRUE(has(body, "Lanes: alpha, beta."))
+        << "the read dropped a trailer line the render composes; body was:\n"
+        << body;
+
+    // The same line is in the generated file, which is why the markdown
+    // backend answers this fetch the same way (INV-3): a walk of that file
+    // reads the composed line as an ordinary continuation line.
+    const std::string md =
+        readAll(QDir(root).filePath(QStringLiteral("ROADMAP.md"))).toStdString();
+    EXPECT_TRUE(has(md, "\n  Lanes: alpha, beta."))
+        << "the re-render did not emit the composed trailer line";
+}

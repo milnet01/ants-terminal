@@ -563,15 +563,28 @@ which heading you expect it under.
 - **`roadmap_query include_body` returns the continuation block, not the
   rendered bullet (ANTS-4557 / ANTS-4558, 2026-08-20)** — two projects
   measured opposite things in one week and both were right. The store's
-  `item.body` COLUMN holds prose; the verb's `body` FIELD was built by
-  rendering the item to markdown and re-parsing it, so it carried the head
-  line and the render's own trailer block. It is now the bullet's
-  continuation lines alone, dedented by their common indent — the head is
-  already `headline` / `headline_oneline`, and the indentation below the
-  common edge is the author's structure. The trailer lines stay: they are
-  continuation lines on both backends, and `Source:` / `Layman:` text is
-  carried by no other field the list emits, so dropping them would blind the
-  `query=` filter to it.
+  `item.body` COLUMN holds prose; the verb's `body` FIELD is the bullet's
+  continuation lines, dedented by their common indent — the head is already
+  `headline` / `headline_oneline`, and the indentation below the common edge
+  is the author's structure. The trailer lines stay: they are continuation
+  lines on both backends, and `Source:` / `Layman:` text is carried by no
+  other field the list emits, so dropping them would blind the `query=`
+  filter to it.
+- **The store record is still rendered and re-parsed, and a trailer line can
+  be COMPOSED (ANTS-4599, 2026-08-20)** — ANTS-4557 dropped the head line
+  from the field, not the round trip: `RoadmapSource::appendRecord()` still
+  builds each record by parsing `RoadmapRender::bulletText(item)`, which
+  emits a trailer line for every column whose key the stored prose does not
+  declare at a line start (INV-12). So a body that never wrote `Lanes:` reads
+  back carrying one. Measured on ANTS-3722: stored body no `Lanes:` line,
+  `lanes` column `["y"]`, returned body ends `Lanes: y.`. The field answers
+  *what does this bullet say in `ROADMAP.md`* — truthfully, since the file is
+  generated from the store. It does not answer *does the stored body declare
+  this field*, and it cannot be made to: nothing marks a composed line, and
+  the markdown backend parses the rendered file with no way to know which
+  lines a renderer wrote, so marking one backend would diverge the two. Ask
+  the `item.body` column when the divergence is the question — which is
+  ANTS-4585 phase 2's job, and the reason this is written down.
 - **`roadmap_log op:"backfill_dates"` (ANTS-4501)** — a ONE-OFF that walks
   the project's git history and fills the `created` / `shipped` columns for
   the rows predating forward stamping. Not a `roadmap_query` mode, and

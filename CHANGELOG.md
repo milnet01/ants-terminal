@@ -59,6 +59,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query: the `include_body` schema now says a trailer line can be composed from a column** (ANTS-4599)
+  The store-backed record is built by rendering the item and re-parsing it,
+  so the body carries a trailer line for every column whose key the stored
+  prose does not declare. The field answers what the bullet says in
+  ROADMAP.md, not whether the stored body declares that field — and the
+  schema had promised the second. Behaviour unchanged; locked by INV-6.
+
 - **A `Lanes:` list is no longer cut short at a dotted lane name** (ANTS-4597)
   The lanes capture stopped at the first full stop, which for this key is
   usually a dot inside a filename, so every member after it was lost —

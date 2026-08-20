@@ -50,6 +50,17 @@ both backends, and `Source:` / `Layman:` text is carried by no other
 field the list emits — so removing them would make the `query=` keyword
 filter blind to it.
 
+**And a trailer line may be COMPOSED rather than quoted.** The render
+emits one for every column whose key the stored prose does not already
+declare at a line start (INV-12), so a body that never wrote `Lanes:`
+comes back carrying one. The field answers *what does this bullet say in
+`ROADMAP.md`* — and it does say it, because the file is generated from
+the store. It does not answer *does the stored body declare this field*;
+nothing distinguishes a composed line from a quoted one, and nothing can,
+because the markdown backend parses the rendered file and has no way to
+know which lines a renderer wrote. Ask the `item.body` column for that
+question (ANTS-4599).
+
 **What this does not repair:** a project migrated before this change
 holds flattened bodies in its store, and its rendered file is flat too.
 The depth is recoverable only from git history.
@@ -70,3 +81,7 @@ The depth is recoverable only from git history.
   a migrated project the four-space sub-bullet is still at four and the
   command line still deeper.
 - **INV-5** — and the trailer lines are still in the body, deliberately.
+- **INV-6** — a trailer line for a column the stored body does not
+  declare is composed into the body, and into the rendered file with it.
+  INV-5's fixture cannot see this: its body declares every key its
+  columns carry, so the render suppresses all of them.
