@@ -1756,6 +1756,9 @@ if(ANTS_TESTS)
                 # trailer key: what un-declaring means is the column's own
                 # storage contract, not always a clear.
                 tests/features/roadmap_log_trailer_undeclare/test_roadmap_log_trailer_undeclare.cpp
+                # ANTS-4554 / ANTS-4558 / ANTS-4557 — a bullet body keeps its
+                # own shape through the read path and the re-render.
+                tests/features/roadmap_body_indent/test_roadmap_body_indent.cpp
                 # ANTS-4404 — the write path's fence extents come from
                 # MarkdownScan, so prose QUOTING fence syntax cannot make the
                 # bullets below it unwritable.

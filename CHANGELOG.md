@@ -29,6 +29,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query: `body` is the item's notes, no longer the whole rendered bullet** (ANTS-4557)
+  Two projects reported opposite things about this field and both were right: the database column holds notes, while the tool rebuilt the bullet and handed back its title line and metadata block too. The field is now the notes alone — the title is already returned separately. The metadata lines stay, because nothing else carries their text.
+
 - **roadmap_log: `dry_run` now says what a green preview is, and is not, evidence for** (ANTS-4548)
   The preview is not a simulation — it performs the store write inside a transaction and rolls it back, so every refusal the real call would hit reaches it too. It stops short of the commit and of the write to disk, and the tool description now says so instead of claiming the preview cannot differ from the result.
 
@@ -39,6 +42,12 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **roadmap_query: an item's notes come back with their own indenting** (ANTS-4558)
+  Notes read back through the tool were flush-left even where the file had lists and indented commands, so text read out and written back lost its structure. The block is now dedented by its shared indent only.
+
+- **Roadmap items keep their indenting: a nested sub-bullet is no longer re-attached to the bullet above it** (ANTS-4554)
+  Reading a bullet stripped the indent off every line of its notes, so writing the file back put them all at one level — which in Markdown makes an indented sub-point belong to the wrong parent. The shared indent is now removed and anything deeper is kept, so lists and command lines survive a write. Items imported before this change are already flat; their original indenting is only in git history.
 
 - **roadmap_log: deleting a `Kind:` or `Source:` line from an item's notes no longer fails with a database error** (ANTS-4576)
   Removing a trailer declaration from a body used to clear the column, and four of the five columns cannot be empty — the caller got a raw `NOT NULL constraint failed`. What un-declaring means is now the column's own contract: the plain-English line clears, lanes and evidence empty to a list with nothing in it, and kind and source keep their value, which the roadmap file then states canonically. An amend_body `new_text` is guarded like a `note`, and a recognised kind is canonicalised rather than refused.

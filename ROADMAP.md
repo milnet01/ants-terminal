@@ -39269,7 +39269,7 @@ filed below.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: roadmaprender.
 
-- 📋 [ANTS-4554] **The re-render drops nested continuation lines from four-space to two-space indent, which changes how the markdown renders.**
+- ✅ [ANTS-4554] **The re-render drops nested continuation lines from four-space to two-space indent, which changes how the markdown renders.**
   The one part of the whole-file re-render that is not cosmetic. Nested
   list continuation lines are re-indented from 4 spaces to 2, which in
   Markdown turns a nested sub-bullet's continuation into a continuation of
@@ -39291,6 +39291,15 @@ filed below.
   touches nothing else, for projects the store cannot round-trip. The
   verb already computes the 1-based insertion line under dry_run, so the
   information is there. Overlaps ANTS-4438.
+  Resolved (2026-08-20): one cause, and it was in the READER. `parseBullets()` collected each continuation line with `cont.trimmed()`, so the format's own two-space indent and a nested sub-bullet's extra two went in the same call; the render then put two back on every line and the sub-bullet came out at the parent's depth.
+
+  The collection now dedents the block by its COMMON leading whitespace. The common edge is the format's two spaces; anything deeper is the author's structure and survives the round trip. INV-4 drives a real op on a migrated fixture and asserts the four-space sub-bullet is still at four in the rendered file.
+
+  The append-only fallback the report asked for is NOT built and is not needed for this: the re-render now preserves depth, which was the condition attached to it.
+
+  What this does not repair: a project migrated BEFORE today holds flattened bodies in its store and a flattened file, so the depth is recoverable only from git history. LottoTracker is in that state.
+
+  Shipped: src/roadmapparse.cpp. Contract + 5 cases: tests/features/roadmap_body_indent/spec.md. Suite 3719/3719.
   **Layman:** Writing to the roadmap re-indents sub-bullets so they visually attach to the wrong parent.
   Kind: fix.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-20.
@@ -39351,7 +39360,7 @@ filed below.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4557] **roadmap_query include_body returned the whole rendered bullet on Snatch, contradicting what AI_Prompts measured in the store.**
+- ✅ [ANTS-4557] **roadmap_query include_body returned the whole rendered bullet on Snatch, contradicting what AI_Prompts measured in the store.**
   Filed as an investigation because two contributors measured opposite
   things in the same week and both look careful.
 
@@ -39379,12 +39388,21 @@ filed below.
 
   Check this alongside the include_body indentation item in this section —
   both are about what the read path does to a body on the way out.
+  Resolved (2026-08-20): both contributors measured correctly and the two facts are compatible — the COLUMN and the FIELD were different things wearing one name.
+
+  The store's `item.body` column holds prose ending before the metadata, which is what AI_Prompts dumped. The verb's `body` field was built by `RoadmapSource::appendRecord`, which RENDERS each item to markdown and re-parses it, so the head line and the render's own trailer block came back inside it. That is what Snatch measured on a store-backed project, and the markdown path did the same thing for its own reason: the record's body has always been head + continuation lines.
+
+  The fix follows the schema, which already said `continuation prose`: the emitted body is the continuation block alone. `BulletRecord::body` is unchanged (the trailer grammar reads head and body as one string); a new `bodyProse` carries the block and is what the verb emits.
+
+  The trailer lines STAY, against the report's suggestion, and INV-5 locks that: they are continuation lines on both backends, and `Source:` / `Layman:` text is carried by no other field the list emits, so dropping them would blind the `query=` keyword filter. No `include_rendered` flag — the rendered bullet is what the file holds.
+
+  Shipped: src/roadmapparse.{h,cpp}, src/remotecontrol_roadmap_query.cpp (5 emission sites), docs/standards/mcp-behavioural-notes.md, ANTS-3808 § 2.1 amended.
   **Layman:** Two projects disagree about what an item's notes field contains, so one of the readings is wrong.
   Kind: investigate.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20 vs AI_Prompts_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapstore.
 
-- 📋 [ANTS-4558] **roadmap_query include_body per-line-lstrips body lines, flattening indentation the file preserves.**
+- ✅ [ANTS-4558] **roadmap_query include_body per-line-lstrips body lines, flattening indentation the file preserves.**
   Two bullets were appended whose bodies contain indented blocks — a
   lettered list with hanging indents, and two indented command lines.
   ROADMAP.md on disk has them exactly as written, byte for byte.
@@ -39412,6 +39430,13 @@ filed below.
   preserving relative structure. If that is more churn than it is worth, an
   opt-in body_verbatim:true on the id/ids path would do, since the targeted
   fetch is where a session is most likely about to edit what it reads.
+  Resolved (2026-08-20): same one-line cause as ANTS-4554, seen from the read side — the reporter's diagnosis was exact, including that it is a read-path normalisation rather than a write-path defect.
+
+  Fixed as they asked: dedent by the MINIMUM leading whitespace across the block rather than per-line lstrip. So a body read back can be handed straight to op:amend_body, which is the hazard half of the report.
+
+  No `body_verbatim` flag: with the dedent in place the returned text IS the file's text below the common edge, so a second shape would be a second contract for the same field.
+
+  Shipped: src/roadmapparse.cpp, and the include_body description now states it.
   **Layman:** Reading an item's notes back loses the indenting of lists and command lines, even though the file has it right.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.

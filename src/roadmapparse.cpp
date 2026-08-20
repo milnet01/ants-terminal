@@ -780,12 +780,33 @@ parsePassHeadingBullets(const QStringList &lines) {
 // leaves as the first line that is NOT part of the bullet, so the caller's
 // `lastLine` is `i` on every exit. ANTS-1426: a blank line inside the body is
 // tolerated when the next non-blank line is still an indented continuation.
-QString collectBulletBody(const QStringList &lines, int &i, const QString &head) {
-    QString body = head;
+//
+// ANTS-4554 / ANTS-4558 — the continuation lines are DEDENTED by their common
+// leading whitespace, not trimmed one by one. Per-line trimming discards the
+// only thing the indent carries: a sub-bullet at four spaces and the paragraph
+// at two came back at zero, so the render re-emitted both at two and the
+// sub-bullet became a continuation of its PARENT. That is a rendering change,
+// not a whitespace change, and it reached the store on every migration.
+//
+// The common indent is the format's own (two spaces per roadmap-format.md
+// § 3.5); anything deeper is the author's structure and survives. A body whose
+// every line sits deeper than two loses that shared depth — the alternative,
+// stripping a fixed two, leaves body text indented in the store and in every
+// read, and this is the shape the corpus actually writes.
+//
+// Trailing whitespace still goes, per line, as it always did.
+//
+// `prose` (optional) receives the dedented continuation block ALONE. It is
+// what roadmap_query emits as `body`: the head line is already returned as
+// `headline`, and reading it as the body's first line is ANTS-4557's
+// "the headline is paid for three times".
+QString collectBulletBody(const QStringList &lines, int &i, const QString &head,
+                          QString *prose = nullptr) {
+    QStringList cont;      // continuation lines, verbatim but right-trimmed
     ++i;
     while (i < lines.size()) {
-        const QString &cont = lines[i];
-        if (cont.trimmed().isEmpty()) {
+        const QString &cont_ = lines[i];
+        if (cont_.trimmed().isEmpty()) {
             // Peek to the next non-blank line. If it's still an
             // indented continuation (and not a new top-level
             // bullet), absorb the blank and keep collecting.
@@ -804,24 +825,50 @@ QString collectBulletBody(const QStringList &lines, int &i, const QString &head)
             // line(s) (as a single '\n' in the body) and skip
             // forward to the continuation line.
             if (nextLine.startsWith(QStringLiteral("  "))) {
-                body.append('\n');
+                cont.append(QString());   // the absorbed blank, as one '\n'
                 i = peek;
                 continue;
             }
             // Anything else at col 0 ends the body.
             break;
         }
-        if (cont.startsWith(QStringLiteral("- ")) ||
-            cont.startsWith(QStringLiteral("* "))) break;
-        if (cont.startsWith(QStringLiteral("  "))) {
-            body.append('\n');
-            body.append(cont.trimmed());
+        if (cont_.startsWith(QStringLiteral("- ")) ||
+            cont_.startsWith(QStringLiteral("* "))) break;
+        if (cont_.startsWith(QStringLiteral("  "))) {
+            // Right-trim only. The left edge is decided once, below, over the
+            // whole block — a per-line decision cannot see the common indent.
+            QString line = cont_;
+            while (line.endsWith(QLatin1Char(' ')) || line.endsWith(QLatin1Char('\t')))
+                line.chop(1);
+            cont.append(line);
             ++i;
             continue;
         }
         break;
     }
-    return body;
+
+    // The common indent, over the non-blank lines only: a blank line has no
+    // indent to contribute and counting it as zero would dedent nothing.
+    int common = -1;
+    for (const QString &l : std::as_const(cont)) {
+        if (l.isEmpty()) continue;
+        int lead = 0;
+        while (lead < l.size() && (l.at(lead) == QLatin1Char(' ') ||
+                                   l.at(lead) == QLatin1Char('\t')))
+            ++lead;
+        if (common < 0 || lead < common) common = lead;
+    }
+    if (common < 0) common = 0;
+
+    QStringList dedented;
+    dedented.reserve(cont.size());
+    for (const QString &l : std::as_const(cont))
+        dedented.append(l.isEmpty() ? QString() : l.mid(common));
+
+    const QString block = dedented.join(QLatin1Char('\n'));
+    if (prose)
+        *prose = block;
+    return cont.isEmpty() ? head : head + QLatin1Char('\n') + block;
 }
 
 // Everything the bullet's own text decides. `head` is the bullet line with its
@@ -1606,8 +1653,10 @@ parseBullets(const QString &markdownText) {
         // continuation lines — then let the shared grammar fill everything
         // the bullet's own text decides.
         const int bulletIdx = i;   // ANTS-3764 — span start, before the walk
-        const QString body = collectBulletBody(lines, i, head);
+        QString prose;
+        const QString body = collectBulletBody(lines, i, head, &prose);
         fillBulletRecord(rec, head, body, gfmHere);
+        rec.bodyProse = prose;   // ANTS-4557 — the body without its head line
 
         // ANTS-3764 — the span. `i` is the index of the first line that is
         // NOT part of this bullet on every exit from the walk above, so the
@@ -1644,8 +1693,10 @@ std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText) {
     BulletRecord rec;
     rec.status = status;
     int i = 0;
-    const QString body = collectBulletBody(lines, i, head);
+    QString prose;
+    const QString body = collectBulletBody(lines, i, head, &prose);
     fillBulletRecord(rec, head, body, /*gfmHere=*/false);
+    rec.bodyProse = prose;   // ANTS-4557 — same field, same rule, store side
     return rec;
 }
 }  // namespace RoadmapParse

@@ -560,6 +560,18 @@ which heading you expect it under.
   markdown keeps ANTS-3752's continuation indent for a multi-line
   `new_text`, the store does not, because it holds the body as an
   unindented residual the render indents on the way out.
+- **`roadmap_query include_body` returns the continuation block, not the
+  rendered bullet (ANTS-4557 / ANTS-4558, 2026-08-20)** — two projects
+  measured opposite things in one week and both were right. The store's
+  `item.body` COLUMN holds prose; the verb's `body` FIELD was built by
+  rendering the item to markdown and re-parsing it, so it carried the head
+  line and the render's own trailer block. It is now the bullet's
+  continuation lines alone, dedented by their common indent — the head is
+  already `headline` / `headline_oneline`, and the indentation below the
+  common edge is the author's structure. The trailer lines stay: they are
+  continuation lines on both backends, and `Source:` / `Layman:` text is
+  carried by no other field the list emits, so dropping them would blind the
+  `query=` filter to it.
 - **`roadmap_log op:"backfill_dates"` (ANTS-4501)** — a ONE-OFF that walks
   the project's git history and fills the `created` / `shipped` columns for
   the rows predating forward stamping. Not a `roadmap_query` mode, and

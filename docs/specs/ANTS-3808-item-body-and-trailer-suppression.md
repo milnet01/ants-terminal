@@ -37,8 +37,11 @@ of § 2.4's export.
 **Two contracts share one column and mean opposite things by it.**
 
 `RoadmapParse::parseBullets()` seeds `QString body = head` — the bullet line
-minus its `"- "` and minus its status emoji — then appends every continuation
-line trimmed of indentation. So `body`'s first line is the id-and-headline text
+minus its `"- "` and minus its status emoji — then appends the continuation
+block **dedented by its common leading whitespace** (ANTS-4554/4558, 2026-08-20;
+it trimmed each line individually until then, which flattened a four-space
+sub-bullet onto the two-space paragraph above it and let the render re-parent
+it). So `body`'s first line is the id-and-headline text
 and the rest is every continuation, the `Layman:` / `Kind:` / `Source:` /
 `Lanes:` / `Evidence:` trailer included. `RoadmapMigrate`'s `makeItem()` copies
 that verbatim into `item.body`, which is exactly what ANTS-3757 § 2.1.1 tells it
@@ -772,9 +775,12 @@ only place either is argued.**
   its period cannot round-trip byte-identically** (added on ship, 2026-08-19,
   after a fixture written that way reddened against a correct build), lanes
   joined `", "`. **Two further
-  preconditions come from the reader, not the render** (added 2026-08-19): every
-  continuation must be indented **exactly two spaces**, because `parseBullets()`
-  stores `cont.trimmed()` and `appendIndented()` puts two back; and the head
+  preconditions come from the reader, not the render** (added 2026-08-19; the
+  first amended 2026-08-20 by ANTS-4554): the continuation block's **common**
+  indent must be exactly two spaces, because `parseBullets()` strips that
+  common indent and `appendIndented()` puts two back — a line indented DEEPER
+  than the common edge now round-trips unchanged, where per-line trimming used
+  to flatten it; and the head
   line must carry **no text after the closing `**`**, because § 2.1 stores that
   text as a body line the render then emits on its own indented line — so the
   241-of-1646 shape cannot round-trip byte-identically at all, and

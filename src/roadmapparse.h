@@ -56,6 +56,11 @@ struct BulletRecord {
     // see no behaviour change.
     QString layman;      // value from `Layman:` line; "" if absent
     QString body;        // full bullet body (post-emoji, pre-continuation-join)
+    // ANTS-4557 / ANTS-4558 — `body` WITHOUT its head line, dedented by the
+    // continuation block's common indent. What roadmap_query emits as `body`:
+    // the head line is already returned as `headline` / `headline_oneline`,
+    // and the indent below the common one is the author's structure.
+    QString bodyProse;
     QString sectionHeading;  // text of the most recent ## or ### heading
     int sectionLevel = 0;    // 2 for `##`, 3 for `###`, 0 if no section
     QString sectionSlug;     // sectionHeading → lowercase, non-alnum→`-`
