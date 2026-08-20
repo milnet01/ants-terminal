@@ -1,4 +1,4 @@
-// ANTS-3833 TU 3/13 — Roadmap read ops.
+// ANTS-3833 TU 3/14 — Roadmap read ops.
 #include "remotecontrol.h"
 #include <QRegularExpression>
 #include "remotecontrol_internal.h"
@@ -3715,13 +3715,19 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     if (op == QStringLiteral("backfill_dates")) {
         return cmdRoadmapLogBackfillDates(req);
     }
+    // ANTS-4585 phase 2 — repair_trailers. A WRITE, and store-only, so it sits
+    // beside backfill_dates for the same reason: the read verb must not write.
+    if (op == QStringLiteral("repair_trailers")) {
+        return cmdRoadmapLogRepairTrailers(req);
+    }
     if (op != QStringLiteral("append")) {
         return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: unknown op \"%1\" — expected "
                            "\"append\" (default), \"append_batch\", "
                            "\"flip\", \"flip_batch\", \"annotate\", "
                            "\"amend_body\", \"amend_headline\", "
-                           "\"bundle_row\", \"backfill_dates\", or "
+                           "\"bundle_row\", \"backfill_dates\", "
+                           "\"repair_trailers\", or "
                            "\"create_section\"").arg(op));
     }
 

@@ -585,6 +585,30 @@ which heading you expect it under.
   lines a renderer wrote, so marking one backend would diverge the two. Ask
   the `item.body` column when the divergence is the question — which is
   ANTS-4585 phase 2's job, and the reason this is written down.
+- **`roadmap_log op:"repair_trailers"` (ANTS-4585 phase 2)** — the other
+  ONE-OFF, and the sibling of `backfill_dates` in shape: per project via
+  `caller_cwd`, `dry_run`-able, store-only, never a side effect of a read. It
+  recovers the `layman` / `source` / `lanes` values migration cut short at a
+  hard line wrap (ANTS-4542) or at the full stop inside `e.g.` / `config.yaml`
+  (ANTS-4596, ANTS-4597). Those causes are fixed; the short values are still
+  stored. **The repair is a re-parse**, because the legacy inline run was never
+  stripped from those items' bodies, so the author's full text survives in the
+  item's own prose and the current parser reads it correctly. The bullet is
+  rebuilt from its head line and its STORED body only, never from the render —
+  `bulletText()` composes a trailer line for every column the prose does not
+  declare (ANTS-4599), so re-parsing that hands the column straight back and
+  the pass becomes a no-op reporting success. **A value is written only where
+  the stored one is a strict prefix of the re-parse**, `lanes` compared
+  element-wise; everything else is skipped and counted. That guard is the
+  design rather than caution: measured across 16 projects, seven items hold a
+  column NEWER than its prose because a later `roadmap_log` write updated it
+  and left the legacy run alone, and an unguarded re-parse reverts those to
+  superseded text with no second copy to check against. Provenance stays
+  `asserted` — the recovered text is the author's own adjacent prose and the
+  guard only ever extends an already-asserted value, so it recovers an
+  assertion rather than inventing one. Idempotent. It CANNOT repair an item
+  whose prose no longer carries the run; that text is gone, and no pass
+  recovers it.
 - **`roadmap_log op:"backfill_dates"` (ANTS-4501)** — a ONE-OFF that walks
   the project's git history and fills the `created` / `shipped` columns for
   the rows predating forward stamping. Not a `roadmap_query` mode, and

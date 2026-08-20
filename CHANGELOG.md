@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"repair_trailers" — recover the trailer values migration cut short** (ANTS-4585)
+  A one-off, per project, with a dry run. Values cut at a hard line wrap or
+  at the full stop inside `e.g.` / `config.yaml` are recovered by re-parsing
+  the prose that still holds them, since the legacy inline run was never
+  stripped. A value is written only where the stored one is a strict prefix
+  of the re-parse: measured across 16 projects, seven items hold a column
+  newer than its prose, and an unguarded pass would revert those to
+  superseded text. 824 layman values, 58 source and 54 lanes are repairable.
+
 - **A daily audit of what is actually published** (ANTS-4588)
   Checks the current release against reality rather than against the last build's exit code: that the release carries its AppImage, .zsync and permanent alias, that the permanent URL serves a real ELF binary (fetched as bytes, not inferred from a listing), and that every package repository publishes the release's version. Written because two channels broke on the same day while both reported success, and because a per-run check cannot catch a job that dies before reaching it. A fetch that could not run reports as unchecked rather than as drift.
 

@@ -1008,6 +1008,9 @@ public:
     // ANTS-4501 § 2.3 — drive the git backfill against a synthetic caller_cwd
     // without a MainWindow. See tests/features/roadmap_backfill_dates/spec.md.
     QJsonDocument cmdRoadmapLogBackfillDatesForTest(const QJsonObject &req);
+    // ANTS-4585 phase 2 — drive the trailer repair against a synthetic
+    // caller_cwd. See tests/features/roadmap_repair_trailers/spec.md.
+    QJsonDocument cmdRoadmapLogRepairTrailersForTest(const QJsonObject &req);
     // ANTS-3822 § 2.3.2 — lower the history cap this instance opens its store
     // with, so a test can reach the cap without 250 MiB of real history. Must be
     // called BEFORE the first verb, since the store is opened lazily and cached.
@@ -1079,6 +1082,12 @@ private:
     // Store-only, like the two above: `project_not_registered` on a project the
     // migration has not taken over. See docs/specs/ANTS-4501-roadmap-report.md.
     QJsonDocument cmdRoadmapLogBackfillDates(const QJsonObject &req);
+    // ANTS-4585 phase 2 — repair_trailers: re-parse each item's surviving
+    // prose and extend the trailer columns migration cut short. Guarded by
+    // strict prefix, so it can only ever lengthen a value with more of the
+    // author's own adjacent text. Store-only, like the ops above.
+    // See tests/features/roadmap_repair_trailers/spec.md.
+    QJsonDocument cmdRoadmapLogRepairTrailers(const QJsonObject &req);
     // ANTS-1879 INV-10 — shared bullet-formatting helper extracted from
     // cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
     // can format each bullet through the same code path. scrubbedNames

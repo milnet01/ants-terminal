@@ -10577,6 +10577,7 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("create_section");
                     opEnum.append("bundle_row");
                     opEnum.append("backfill_dates");  // ANTS-4501
+                    opEnum.append("repair_trailers");  // ANTS-4585
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
@@ -10657,7 +10658,44 @@ void ClaudeIntegration::onMcpConnection() {
                         "(the walk could not complete; nothing was written). "
                         "~4 s over 1525 revisions on Ants Terminal — a one-off, "
                         "not a per-query cost, which is why it is an explicit "
-                        "op and never a side effect of a read.");
+                        "op and never a side effect of a read. "
+                        "\"repair_trailers\" (ANTS-4585 phase 2) is the other "
+                        "ONE-OFF: it recovers the `layman` / `source` / `lanes` "
+                        "values MIGRATION CUT SHORT, at a hard line wrap "
+                        "(ANTS-4542) or at the full stop inside `e.g.` / "
+                        "`config.yaml` (ANTS-4596 / ANTS-4597). Those causes are "
+                        "fixed; the short values are still stored. The repair is "
+                        "a RE-PARSE: the item's legacy inline run was never "
+                        "stripped from its body, so the author's full text "
+                        "survives in its own prose, and the current parser reads "
+                        "it correctly. The bullet is rebuilt from its head line "
+                        "and its STORED body only, never from the render — "
+                        "`bulletText()` composes a trailer line for every column "
+                        "the prose does not declare (ANTS-4599), so re-parsing "
+                        "that hands the column straight back and the pass "
+                        "becomes a no-op reporting success. **A value is written "
+                        "ONLY where the stored one is a strict prefix of the "
+                        "re-parse**, so the op can only ever EXTEND a value with "
+                        "more of the author's own adjacent prose; `lanes` "
+                        "compares element-wise, since a joined string diverges "
+                        "on separator spacing alone. Everything else is SKIPPED "
+                        "and counted, and that guard is the whole design rather "
+                        "than caution: seven measured items hold a column that "
+                        "is NEWER than the prose, because a later roadmap_log "
+                        "write updated it and left the legacy run alone — an "
+                        "unguarded re-parse reverts those to superseded text "
+                        "with no second copy to check against. Takes "
+                        "`caller_cwd` (one project per call) and `dry_run`, "
+                        "which decides every write before opening a transaction "
+                        "so the preview reports the real run's counts. Returns "
+                        "`items`, `items_with_run`, `repaired`, the per-column "
+                        "`layman_repaired` / `source_repaired` / "
+                        "`lanes_repaired`, `chars_recovered`, `skipped` and a "
+                        "capped `skipped_ids[]`. Idempotent: a second run "
+                        "repairs nothing. It CANNOT repair an item whose prose "
+                        "no longer carries the run — that text is gone and no "
+                        "re-parse recovers it. Refusals: `project_not_registered` "
+                        "(run roadmap_migrate first), `store_failed`.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
                     QJsonArray toStatusEnum;

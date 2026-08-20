@@ -349,6 +349,9 @@ set(ANTS_RC_SOURCES_REL
     # file, so appending violates no pre-split relative order and leaves every
     # existing TU's ordinal and every two-anchor scrape window where it was.
     src/remotecontrol_roadmap_backfill.cpp
+    # ANTS-4585 phase 2 — op:"repair_trailers"'s handler. Appended last for the
+    # same reason as the line above.
+    src/remotecontrol_roadmap_repair.cpp
 )
 list(TRANSFORM ANTS_RC_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_rc_abs)
@@ -1783,6 +1786,10 @@ if(ANTS_TESTS)
                 # real repository with controlled author dates: the subject IS
                 # a history walk, so a fake would assert against the harness.
                 tests/features/roadmap_backfill_dates/test_roadmap_backfill_dates.cpp
+                # ANTS-4585 phase 2 — the trailer repair. Against a store the
+                # migration actually built, because the subject is what
+                # migration left behind.
+                tests/features/roadmap_repair_trailers/test_roadmap_repair_trailers.cpp
                 tests/features/roadmap_alloc_store_floor/test_roadmap_alloc_store_floor.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through
