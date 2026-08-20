@@ -41039,6 +41039,41 @@ filed below.
   Source: ANTS-4597 verification, 2026-08-20.
   Lanes: roadmapparse.
 
+- 📋 [ANTS-4599] **roadmap_query include_body appends a trailer line the stored body does not carry.**
+  Measured on ANTS-3722, not inferred. roadmap_query with include_body
+  returns a body whose LAST line is a Lanes declaration naming "y". The
+  store's body column ends two lines earlier and carries no Lanes line at
+  all; the lanes column holds ["y"]. So the verb synthesised that line
+  from the column.
+
+  It is not doing this uniformly. The same returned body carries TWO
+  Source lines while the source column holds one value, so those came
+  from the body text verbatim. The pattern looks like "append a trailer
+  line for a column whose key is absent from the body", but the mechanism
+  is UNVERIFIED -- this is a black-box observation and nobody has read the
+  composing code.
+
+  Why it matters. The include_body schema note says "The trailer lines ARE
+  body lines and stay, on both backends", which reads as a promise that
+  what comes back is what is stored. A reader who takes it that way
+  concludes the body genuinely declares the field. That is what happened
+  here: ANTS-4598's damage was briefly read as CORRECT parsing of a body
+  that declares the lane, because the returned body appeared to declare
+  it. The stored body does not.
+
+  The hazard is sharpest for the job this verb is most used for -- asking
+  whether a bullet declares what its columns say. A synthesised line makes
+  a divergent item look self-consistent, so the divergence ANTS-4585 phase
+  2 has to find is invisible from this surface.
+
+  Decide which of the two it should be and say so in the schema: return
+  the stored body verbatim, or mark a synthesised line so a caller can
+  tell it apart. Either is fine; silently mixing the two is not.
+  **Layman:** Reading a to-do's text back can show a field line the item's text does not actually contain, which makes a parser bug look like correct behaviour.
+  Kind: fix.
+  Source: in-session-2026-08-20, hit while measuring ANTS-4598.
+  Lanes: mcp, roadmap.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
