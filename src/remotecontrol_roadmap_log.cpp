@@ -5444,6 +5444,14 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
                            "to an existing directory").arg(callerRaw));
         return std::nullopt;
     }
+    // ANTS-4602 — assigned as soon as each is known, NOT on the success path
+    // alone. Two callers (`repair_trailers`, `backfill_dates`) remap this
+    // function's refusals and interpolate `root.isEmpty() ? roadmapPath : root`
+    // into the message; assigning at the end left both empty on every refusal,
+    // so the one envelope a caller has to act on named neither the project nor
+    // the file, and its ternary had nothing to fall back to.
+    *projectRoot = callerCanonical;
+
     const QString found = findRoadmapUnder(callerCanonical);
     if (found.isEmpty()) {
         *refusal = rcSectionOpErr(QStringLiteral("no_roadmap"),
@@ -5451,6 +5459,8 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
                 .arg(callerCanonical));
         return std::nullopt;
     }
+
+    *roadmapPath = found;
 
     QFile rf(found);
     if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -5482,8 +5492,6 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
         return std::nullopt;
     }
 
-    *projectRoot = callerCanonical;
-    *roadmapPath = found;
     return target;
 }
 

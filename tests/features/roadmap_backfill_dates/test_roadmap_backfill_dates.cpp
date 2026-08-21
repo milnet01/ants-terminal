@@ -458,6 +458,15 @@ TEST(RoadmapBackfill, RefusesAProjectTheStoreDoesNotHold) {
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString().toStdString(),
               std::string("project_not_registered"))
         << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+
+    // ANTS-4602 — the refusal has to NAME the project it refused. Both
+    // store-only ops interpolate roadmapSectionOpTarget()'s out-params, and
+    // those were assigned on the success path alone, so every refusal read
+    // `no row for ""` — the one envelope a caller must act on naming neither
+    // the project nor the file. Asserting on the message rather than the code
+    // is the point: the code was already right and told nobody which project.
+    EXPECT_TRUE(resp.value(QStringLiteral("error")).toString().contains(root))
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
 }
 
 // A dry run against THIS repository's real history and a COPY of the real

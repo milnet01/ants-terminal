@@ -68,6 +68,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log's store-only ops now name the project they refused** (ANTS-4602)
+  `repair_trailers` and `backfill_dates` reported `the store holds no
+  row for ""` on every refusal, naming neither the project nor the
+  file — the shared lookup filled its out-params only when it
+  succeeded.
+
 - **A throwaway temporary folder can no longer register itself as a real project** (ANTS-4600)
   The roadmap database is shared by every project on the machine, so
   anything recorded in it as a project stays there. A session's temporary

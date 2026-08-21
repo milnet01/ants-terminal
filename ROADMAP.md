@@ -40804,8 +40804,10 @@ filed below.
 
   VESTIGE DID NOT RUN, and it is the largest project at 1026 items. It
   refuses project_not_registered even though the store holds every one of
-  them -- the write-side dispatch gates on the ROADMAP.md's format and
-  Vestige's file is hand-written phase headings with no store marker.
+  them -- the write-side dispatch gates on the ROADMAP.md's dialect, and
+  Vestige's is not ants-v1, so `migratedProject()` returns "markdown-served"
+  by design (ANTS-3863 § 5). Read from source; my first filing of ANTS-4601
+  guessed "no store marker" and that was wrong.
   Filed as ANTS-4601, with ANTS-4602 for the refusal that names "" instead
   of the root, which is what made it cost a source read to diagnose.
   Phase 3 will hit the same wall on that project.
@@ -41403,9 +41405,35 @@ filed below.
   answers from the store with all 1026. What refuses is the write-side
   dispatch: `roadmapSectionOpTarget()` reads the project's ROADMAP.md,
   hands the text to `roadmapWriteTarget()` -> `migratedProject()`, and
-  Vestige's file is a hand-written phase-headings document carrying no
-  store-format marker. So the FILE says not-migrated while the STORE holds
-  the rows.
+  it comes back empty.
+
+  The mechanism, read rather than inferred -- the first filing of this item
+  said "no store-format marker" and the source disproves it.
+  `migratedProject()` (src/roadmapsource.cpp:308) finds the project row, and
+  Vestige's roadmap DOES produce a dialect signal. It falls out at the last
+  gate in the function:
+
+      if (format != QStringLiteral("ants-v1"))
+          return std::nullopt;   // legitimately markdown-served (§ 5)
+
+  So Vestige is not an accident. It is a migrated project whose ROADMAP.md
+  is a hand-written non-ants-v1 document, which ANTS-3863 § 5 says is
+  served from markdown ON PURPOSE, and the write-side dispatch is built on
+  the same call so the store never writes it back.
+
+  That reframes this item from a bug to a DESIGN QUESTION, and it should be
+  settled before any code moves. The store holds 1026 rows for a project
+  whose file the store does not serve. Either those rows are a read-only
+  mirror, in which case repairing their trailer columns is work with no
+  reader and this item should be closed as won't-do -- or they are live,
+  in which case a store-only op has a legitimate claim to reach them and
+  needs a resolution path that does not ask the file's dialect.
+
+  ANTS-3863 INV-3 constrains any answer: it requires the dispatch to keep
+  consulting the file, and names "the dispatch stops consulting the file at
+  all" as the failure it exists to catch. So the fix is NOT to loosen
+  `migratedProject()`. It would be a separate store-row lookup used by the
+  two store-only ops alone.
 
   That gate is right for a section op, which has to write the file back.
   It is wrong for `repair_trailers` and `backfill_dates`, which are
@@ -41425,7 +41453,7 @@ filed below.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
   Lanes: remotecontrol, roadmapsource.
 
-- 📋 [ANTS-4602] **repair_trailers and backfill_dates name an empty string in the refusal that is supposed to name the project root.**
+- ✅ [ANTS-4602] **repair_trailers and backfill_dates name an empty string in the refusal that is supposed to name the project root.**
   The refusal reads: the store holds no row for "". Run roadmap_migrate
   first. The quotes are always empty, on every project, for both ops.
 
@@ -41447,6 +41475,27 @@ filed below.
   Fix: set the out-params from `callerCanonical` / `found` as soon as each
   is known, not at the end. Both are already computed above every refusal
   that follows them.
+  Resolved 2026-08-21. `roadmapSectionOpTarget()` now assigns `*projectRoot`
+  as soon as caller_cwd canonicalises and `*roadmapPath` as soon as the
+  roadmap is found, instead of assigning both on the success path alone.
+  Three hunks, one file, no behaviour change beyond the message.
+
+  Proved rather than reasoned. The existing
+  `RoadmapBackfill.RefusesAProjectTheStoreDoesNotHold` reaches this exact
+  refusal, so it gained one assertion -- that `error` contains the root --
+  and I reverted the fix to watch it fail. It failed for the right reason,
+  with the defect verbatim in the failure output:
+
+    the store holds no row for "". Run roadmap_migrate first.
+
+  Restored, rebuilt, 3759/3759 green.
+
+  Asserting on the MESSAGE and not the code is the point of the test: the
+  code was already correct and told nobody which project it had refused.
+
+  ANTS-3863's invariants are untouched -- they bound what the dispatch
+  READS and the shape of its signatures, and this moves two assignments
+  inside one function.
   **Layman:** An error message meant to tell you which project failed prints empty quotes instead.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
