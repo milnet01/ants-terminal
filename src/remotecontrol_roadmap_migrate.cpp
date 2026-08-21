@@ -80,6 +80,22 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
         return QJsonDocument(e);
     }
 
+    // ANTS-4617 — the inverse. Branches BEFORE the migrate request is built,
+    // because deregister shares only `caller_cwd` with it: no project_name, no
+    // export_slug default, no clock. It also deliberately sits AFTER the
+    // ANTS-4600 transient-root guard above, so a scratchpad under the temp dir
+    // is refused by the same rule on both verbs rather than being registrable
+    // one way and prunable the other.
+    if (req.value(QStringLiteral("op")).toString() == QLatin1String("deregister")) {
+        RoadmapMigrateVerb::DeregisterRequest d;
+        d.projectRoot = root;
+        d.exportSlug  = req.value(QStringLiteral("export_slug")).toString();
+        d.confirm     = req.value(QStringLiteral("confirm")).toBool(false);
+        d.dryRun      = req.value(QStringLiteral("dry_run")).toBool(false);
+        return QJsonDocument(
+            RoadmapMigrateVerb::deregister(RoadmapStore::defaultPath(), d));
+    }
+
     RoadmapMigrateVerb::Request r;
     r.projectRoot = root;
     const QString nameArg = req.value(QStringLiteral("project_name")).toString();

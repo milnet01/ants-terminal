@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate op:"deregister" removes a project from the shared store** (ANTS-4617)
+  Trying a risky operation on a throwaway copy is the careful thing to do,
+  and it permanently polluted the shared database — there was no inverse of
+  migrate. `deregister` removes a project and everything hanging off it in
+  one transaction. It refuses while the project's folder still exists
+  unless you pass `confirm:true`, because the database holds history the
+  roadmap file does not; a project whose files are gone needs no confirm.
+
 - **roadmap_log op:"render" publishes the store to ROADMAP.md on demand** (ANTS-4614)
   After adopting the database, the tidy-up a migration computed could not
   be written to the file until some unrelated edit happened to trigger it —

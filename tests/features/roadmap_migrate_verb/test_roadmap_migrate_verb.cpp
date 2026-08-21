@@ -1211,3 +1211,193 @@ TEST(RoadmapMigrateVerb, Inv14HandlerWiresTheGuard) {
         << "the refusal must carry the `transient_root` code "
            "(docs/standards/mcp-error-codes.md § 1)";
 }
+
+// ---------------------------------------------------------- ANTS-4617 -------
+//
+// op:"deregister" — the inverse the catalogue never had. Migrating a scratch
+// copy to test something destructive in isolation is the careful instinct, and
+// it left a permanent row that roadmap_query mode:"report" scope:"all" sums
+// into machine-wide figures forever. The store is machine-global, so the
+// incentive ran the wrong way.
+
+// Rows go from every table, and the project is gone.
+TEST(RoadmapMigrateVerb, Ants4617DeregisterRemovesEveryTablesRows) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
+                    .value(QStringLiteral("ok")).toBool());
+
+    RoadmapMigrateVerb::DeregisterRequest d;
+    d.projectRoot = root;
+    d.confirm     = true;   // the root still exists; see the guard case below
+    const QJsonObject env = RoadmapMigrateVerb::deregister(storePath, d);
+
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(env.value(QStringLiteral("deregistered")).toBool());
+    EXPECT_GT(env.value(QStringLiteral("items")).toInt(), 0)
+        << "ANTS-4617: the counts are the caller's only account of what went";
+
+    const QList<int> after = rowCounts(storePath);
+    ASSERT_EQ(after.size(), rowTables().size());
+    for (int i = 0; i < after.size(); ++i) {
+        EXPECT_EQ(after.at(i), 0)
+            << "ANTS-4617: " << rowTables().at(i).toStdString()
+            << " still holds rows — " << describeCounts(after).toStdString();
+    }
+}
+
+// THE ONE THAT MATTERS. The store is machine-global and held 17 projects when
+// this was filed, so a delete that reached past its own project would be far
+// worse than the clutter it was written to remove.
+TEST(RoadmapMigrateVerb, Ants4617DeregisterLeavesSiblingProjectsIntact) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    const QString doomed = makeProjectRoot(dir, QStringLiteral("doomed"), demoRoadmap());
+    const QString keeper = makeProjectRoot(dir, QStringLiteral("keeper"), demoRoadmap());
+    ASSERT_FALSE(doomed.isEmpty());
+    ASSERT_FALSE(keeper.isEmpty());
+    ASSERT_TRUE(RoadmapMigrateVerb::run(
+        storePath, request(doomed, QStringLiteral("doomed"), QStringLiteral("Doomed")))
+                    .value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(RoadmapMigrateVerb::run(
+        storePath, request(keeper, QStringLiteral("keeper"), QStringLiteral("Keeper")))
+                    .value(QStringLiteral("ok")).toBool());
+    const QList<int> both = rowCounts(storePath);
+
+    RoadmapMigrateVerb::DeregisterRequest d;
+    d.projectRoot = doomed;
+    d.confirm     = true;
+    ASSERT_TRUE(RoadmapMigrateVerb::deregister(storePath, d)
+                    .value(QStringLiteral("ok")).toBool());
+
+    // The keeper's project row survives, and so does everything hanging off it:
+    // exactly half the rows should have gone, since the two fixtures are equal.
+    auto store = openStore(storePath, RoadmapStore::Access::Interactive);
+    ASSERT_NE(store, nullptr);
+    QString err;
+    const auto kept = store->readProjectBySlug(QStringLiteral("keeper"), &err);
+    ASSERT_TRUE(kept.has_value()) << err.toStdString();
+    const auto gone = store->readProjectBySlug(QStringLiteral("doomed"), &err);
+    EXPECT_FALSE(gone.has_value()) << "ANTS-4617: the doomed row must be gone";
+
+    const auto items = store->readItems(kept->projectId, &err);
+    ASSERT_TRUE(items.has_value()) << err.toStdString();
+    EXPECT_GT(items->size(), 0)
+        << "ANTS-4617: the sibling's items were taken with the doomed project";
+
+    const QList<int> left = rowCounts(storePath);
+    ASSERT_EQ(left.size(), both.size());
+    for (int i = 0; i < left.size(); ++i) {
+        EXPECT_EQ(left.at(i), both.at(i) / 2)
+            << "ANTS-4617: " << rowTables().at(i).toStdString()
+            << " — the delete reached past its own project. before="
+            << describeCounts(both).toStdString()
+            << " after=" << describeCounts(left).toStdString();
+    }
+}
+
+// The guard. Deregistering a LIVE project is data loss with no undo: the store
+// is primary and ROADMAP.md is its render, so the rows are the only copy of the
+// history, relationships and citations the file does not carry.
+TEST(RoadmapMigrateVerb, Ants4617RefusesWhileTheRootStillExists) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
+                    .value(QStringLiteral("ok")).toBool());
+    const QList<int> before = rowCounts(storePath);
+
+    RoadmapMigrateVerb::DeregisterRequest d;
+    d.projectRoot = root;          // confirm deliberately absent
+    const QJsonObject env = RoadmapMigrateVerb::deregister(storePath, d);
+
+    EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
+              QStringLiteral("confirm_required"));
+    EXPECT_EQ(rowCounts(storePath), before)
+        << "ANTS-4617: a refused deregister must delete nothing";
+}
+
+// An ABSENT root is the case the item was filed for — a scratch project whose
+// files are long gone — and it needs no ceremony. Keyed by slug, because that
+// is all a caller pruning such a row still has.
+TEST(RoadmapMigrateVerb, Ants4617AbsentRootNeedsNoConfirmAndSlugIsAKey) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("scratch"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    ASSERT_TRUE(RoadmapMigrateVerb::run(
+        storePath, request(root, QStringLiteral("scratch"), QStringLiteral("Scratch")))
+                    .value(QStringLiteral("ok")).toBool());
+
+    ASSERT_TRUE(QDir(root).removeRecursively())
+        << "the scratchpad this models is deleted minutes later";
+
+    RoadmapMigrateVerb::DeregisterRequest d;
+    d.exportSlug = QStringLiteral("scratch");   // no root, no confirm
+    const QJsonObject env = RoadmapMigrateVerb::deregister(storePath, d);
+
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_FALSE(env.value(QStringLiteral("root_exists")).toBool());
+    EXPECT_TRUE(env.value(QStringLiteral("deregistered")).toBool());
+}
+
+// dry_run reports what would go and deletes nothing. This is the one verb whose
+// preview a caller runs precisely because they are afraid of the real call, so
+// a preview that performed the delete to measure it would be the opposite of
+// reassuring — the count comes from a read, not from a rolled-back delete.
+TEST(RoadmapMigrateVerb, Ants4617DryRunDeletesNothing) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
+                    .value(QStringLiteral("ok")).toBool());
+    const QList<int> before = rowCounts(storePath);
+
+    RoadmapMigrateVerb::DeregisterRequest d;
+    d.projectRoot = root;
+    d.confirm     = true;
+    d.dryRun      = true;
+    const QJsonObject env = RoadmapMigrateVerb::deregister(storePath, d);
+
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(env.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_GT(env.value(QStringLiteral("items")).toInt(), 0)
+        << "ANTS-4617: a preview that reports nothing is not a preview";
+    EXPECT_FALSE(env.contains(QStringLiteral("deregistered")))
+        << "ANTS-4463: no past-tense field on a preview";
+    EXPECT_EQ(rowCounts(storePath), before)
+        << "ANTS-4617: a preview must delete nothing";
+}
+
+// An unknown key is `not_found`, not a silent success. A prune loop that read
+// ok:true for a project it never removed would report a clean store it had not
+// cleaned.
+TEST(RoadmapMigrateVerb, Ants4617UnknownProjectIsNotFound) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), demoRoadmap());
+    ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
+                    .value(QStringLiteral("ok")).toBool());
+
+    RoadmapMigrateVerb::DeregisterRequest d;
+    d.exportSlug = QStringLiteral("never-registered");
+    const QJsonObject env = RoadmapMigrateVerb::deregister(storePath, d);
+    EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
+              QStringLiteral("not_found"));
+}

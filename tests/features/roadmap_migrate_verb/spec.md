@@ -89,3 +89,51 @@ The handler's own two refusals — `caller_cwd_required` (the dispatcher's,
 before the handler) and `no_project` (step 0a's) — are covered by inspection.
 Both refuse before `run()` is entered, so neither can touch a store: the
 property holds by construction rather than by fixture.
+
+## ANTS-4617 — `op:"deregister"`, the inverse the catalogue never had
+
+`roadmap_migrate` had no inverse, and the store is **machine-global**. Migrating
+a scratch copy to test something destructive in isolation is the careful
+instinct, and it left a permanent row that `roadmap_query mode:"report"
+scope:"all"` sums into machine-wide figures forever. The incentive ran the wrong
+way: the store penalised the safe thing to do.
+
+Distinct from ANTS-4600's `transient_root` guard, which stops a scratchpad under
+the **system temp dir** being registered at all. The root that prompted this was
+not under the temp dir, so that guard does not fire and the row is legitimate at
+write time.
+
+**The guard is the design.** Deregistering a live project is data loss with no
+undo — the store is primary and `ROADMAP.md` is its render, so the rows are the
+only copy of the history, relationships and citations the file does not carry.
+It refuses `confirm_required` while the root still exists, checked against the
+**stored** root rather than the caller's argument, so keying by slug cannot skip
+it. An absent root is the case the item was filed for and needs no ceremony.
+
+The delete is one transaction across all nine tables in foreign-key order, under
+`PRAGMA defer_foreign_keys` — `section.parent_id` self-references, so a single
+`DELETE` over a project's sections would otherwise fail the moment it removed a
+parent before its child. Deferring moves enforcement to `COMMIT` rather than
+removing it, so a mistake still fails loudly and rolls back whole. Relationships
+are cleared from **both** ends: a row in another project pointing into this one
+would otherwise dangle, which is the one way this delete could corrupt a project
+it was not aimed at.
+
+- **`Ants4617DeregisterRemovesEveryTablesRows`** — every table is empty after.
+- **`Ants4617DeregisterLeavesSiblingProjectsIntact`** — **the case that
+  matters.** Two equal projects, one deregistered; the survivor keeps its
+  project row and its items, and exactly half the rows in every table remain. A
+  delete that reached past its own project would be far worse than the clutter
+  this was written to remove.
+- **`Ants4617RefusesWhileTheRootStillExists`** — `confirm_required`, and nothing
+  is deleted.
+- **`Ants4617AbsentRootNeedsNoConfirmAndSlugIsAKey`** — the filed case: files
+  deleted, keyed by the slug, no confirm needed.
+- **`Ants4617DryRunDeletesNothing`** — the count comes from a **read**, never
+  from a rolled-back delete. This is the one verb whose preview is run precisely
+  because the caller fears the real call, so a preview that performed the delete
+  to measure it would be the opposite of reassuring. ANTS-4463's tense rule
+  holds: no `deregistered` field on a preview.
+- **`Ants4617UnknownProjectIsNotFound`** — not a silent success. A prune loop
+  reading `ok:true` for a project it never removed would report a clean store it
+  had not cleaned.

@@ -1337,6 +1337,78 @@ bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
     return true;
 }
 
+bool RoadmapStore::deregisterProject(qint64 projectId,
+                                     DeregisterCounts *counts, QString *error) {
+    // The child scopes, resolved through the project rather than by joining at
+    // delete time: an item row is gone by the time `history` would need it.
+    static const QString kItems =
+        QStringLiteral("SELECT item_pk FROM item WHERE project_id = ?");
+    static const QString kSections =
+        QStringLiteral("SELECT section_id FROM section WHERE project_id = ?");
+
+    struct Step { const char *sql; int *out; };
+    DeregisterCounts local;
+    if (!counts) counts = &local;
+    *counts = DeregisterCounts{};
+
+    // FK order, children first. `project` is last and is the row whose absence
+    // makes the project gone; everything above it would otherwise dangle.
+    const QVector<QPair<QString, int *>> steps = {
+        {QStringLiteral("DELETE FROM element WHERE section_id IN (") + kSections
+             + QStringLiteral(")"), &counts->elements},
+        {QStringLiteral("DELETE FROM history WHERE item_pk IN (") + kItems
+             + QStringLiteral(")"), &counts->history},
+        {QStringLiteral("DELETE FROM feedback_ref WHERE item_pk IN (") + kItems
+             + QStringLiteral(")"), &counts->feedbackRefs},
+        // Both ends — see the header. `?` is bound twice here, so this step
+        // takes the id twice; every other takes it once.
+        {QStringLiteral("DELETE FROM relationship WHERE src_pk IN (") + kItems
+             + QStringLiteral(") OR dst_pk IN (") + kItems + QStringLiteral(")"),
+         &counts->relationships},
+        {QStringLiteral("DELETE FROM citation WHERE project_id = ? OR item_pk IN (")
+             + kItems + QStringLiteral(")"), &counts->citations},
+        {QStringLiteral("DELETE FROM item WHERE project_id = ?"), &counts->items},
+        {QStringLiteral("DELETE FROM section WHERE project_id = ?"), &counts->sections},
+        {QStringLiteral("DELETE FROM id_prefix WHERE project_id = ?"), &counts->idPrefixes},
+        {QStringLiteral("DELETE FROM project WHERE project_id = ?"), nullptr},
+    };
+
+    const bool ownTransaction = !m_inTransaction;
+    if (ownTransaction && !begin(error))
+        return false;
+    // Connection-scoped and reset below, because a leaked deferral would turn
+    // every later write's FK enforcement into a commit-time surprise.
+    if (!exec(m_db, QStringLiteral("PRAGMA defer_foreign_keys = ON"), error)) {
+        if (ownTransaction) rollback(nullptr);
+        return false;
+    }
+    const auto restore = [&] {
+        exec(m_db, QStringLiteral("PRAGMA defer_foreign_keys = OFF"), nullptr);
+    };
+
+    for (const auto &step : steps) {
+        QSqlQuery q(m_db);
+        q.prepare(step.first);
+        for (int i = 0, n = step.first.count(QLatin1Char('?')); i < n; ++i)
+            q.addBindValue(projectId);
+        if (!q.exec()) {
+            if (error) *error = lastErr(q);
+            restore();
+            if (ownTransaction) rollback(nullptr);
+            return false;
+        }
+        if (step.second) *step.second = q.numRowsAffected();
+    }
+
+    if (ownTransaction && !commit(error)) {
+        restore();
+        rollback(nullptr);
+        return false;
+    }
+    restore();
+    return true;
+}
+
 bool RoadmapStore::unfileItem(qint64 itemPk, QString *error) {
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(

@@ -424,3 +424,117 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     env[QStringLiteral("defaulted_fields")] = defaultedFieldTally(plan);
     return env;
 }
+
+QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
+                                           const DeregisterRequest &req) {
+    if (req.projectRoot.isEmpty() && req.exportSlug.isEmpty()) {
+        return rmErr(QStringLiteral("bad_args"),
+                     QStringLiteral("roadmap_migrate: deregister needs a "
+                                    "project root or an export_slug to key on"));
+    }
+
+    // Its own Access::Bulk connection for the duration of one call, on run()'s
+    // reasoning above: a stack local, so ~RoadmapStore() checkpoints the WAL
+    // and removes the connection name before this returns.
+    RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    if (!store.open(&err)) {
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: could not open the roadmap "
+                                    "store at \"%1\": %2").arg(storePath, err));
+    }
+
+    // Both lookups check their ERROR out-param and not just their optional, for
+    // run()'s reason: nullopt means BOTH "no such row" and "the query failed",
+    // and conflating them here would report a project as unregistered because
+    // the query broke — then answer `not_found` to a caller whose project is
+    // very much still in the store.
+    err.clear();
+    std::optional<RoadmapStore::ProjectRow> row;
+    if (!req.exportSlug.isEmpty())
+        row = store.readProjectBySlug(req.exportSlug, &err);
+    else
+        row = store.readProjectByRoot(req.projectRoot, &err);
+    if (!row && !err.isEmpty()) {
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: could not read the project "
+                                    "row: %1").arg(err));
+    }
+    if (!row) {
+        return rmErr(QStringLiteral("not_found"),
+                     QStringLiteral("roadmap_migrate: the store holds no project "
+                                    "for \"%1\"")
+                         .arg(req.exportSlug.isEmpty() ? req.projectRoot
+                                                       : req.exportSlug));
+    }
+
+    // THE GUARD. Deregistering a project whose files are still there is data
+    // loss with no undo: the store is primary and ROADMAP.md is its render, so
+    // the rows are the only copy of everything the file does not carry —
+    // history, relationships, citations. An absent root is the case this was
+    // filed for and needs no ceremony; anything else has to be asked for in so
+    // many words. Checked against the STORED root, not the caller's argument,
+    // so keying by slug cannot skip it.
+    const bool rootPresent =
+        !row->root.isEmpty() && QFileInfo::exists(row->root);
+    if (rootPresent && !req.confirm) {
+        QJsonObject e = rmErr(QStringLiteral("confirm_required"),
+            QStringLiteral("roadmap_migrate: \"%1\" still exists on disk, so "
+                           "deregistering it would discard the store's own copy "
+                           "of this project's history, relationships and "
+                           "citations — none of which ROADMAP.md carries. Pass "
+                           "confirm:true if that is what you want.")
+                .arg(row->root));
+        e[QStringLiteral("project_root")] = row->root;
+        e[QStringLiteral("export_slug")]  = row->exportSlug;
+        return e;
+    }
+
+    QJsonObject env;
+    env[QStringLiteral("ok")]           = true;
+    env[QStringLiteral("op")]           = QStringLiteral("deregister");
+    env[QStringLiteral("project_root")] = row->root;
+    env[QStringLiteral("export_slug")]  = row->exportSlug;
+    env[QStringLiteral("root_exists")]  = rootPresent;
+
+    // A dry run reports what WOULD go and opens no transaction. Counting is a
+    // second query rather than a rolled-back delete: this is the one verb whose
+    // preview a caller runs precisely because they are afraid of the real call,
+    // and a preview that performs the deletion to measure it would be the
+    // opposite of reassuring.
+    if (req.dryRun) {
+        RoadmapStore::DeregisterCounts would;
+        if (const auto items = store.readItems(row->projectId, &err))
+            would.items = int(items->size());
+        else if (!err.isEmpty())
+            return rmErr(QStringLiteral("store_failed"), err);
+        if (const auto secs = store.listSections(row->projectId, &err))
+            would.sections = int(secs->size());
+        else if (!err.isEmpty())
+            return rmErr(QStringLiteral("store_failed"), err);
+        env[QStringLiteral("dry_run")]        = true;
+        env[QStringLiteral("would_delete")]   = true;
+        env[QStringLiteral("items")]          = would.items;
+        env[QStringLiteral("sections")]       = would.sections;
+        return env;
+    }
+
+    RoadmapStore::DeregisterCounts counts;
+    if (!store.deregisterProject(row->projectId, &counts, &err)) {
+        return rmErr(QStringLiteral("store_failed"),
+                     QStringLiteral("roadmap_migrate: deregister failed and was "
+                                    "rolled back whole: %1").arg(err));
+    }
+
+    env[QStringLiteral("deregistered")]  = true;
+    env[QStringLiteral("items")]         = counts.items;
+    env[QStringLiteral("sections")]      = counts.sections;
+    env[QStringLiteral("elements")]      = counts.elements;
+    env[QStringLiteral("history_rows")]  = counts.history;
+    env[QStringLiteral("relationships")] = counts.relationships;
+    env[QStringLiteral("citations")]     = counts.citations;
+    env[QStringLiteral("feedback_refs")] = counts.feedbackRefs;
+    env[QStringLiteral("id_prefixes")]   = counts.idPrefixes;
+    return env;
+}

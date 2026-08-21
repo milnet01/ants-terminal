@@ -587,7 +587,14 @@ TEST(RoadmapRender, Ants3818NoUnsortedSectionConsumer) {
     const QRegularExpression rx(QStringLiteral("listSections\\s*\\((?!.*Ordered)"));
     const QStringList exempt{QStringLiteral("roadmapstore.cpp"),
                              QStringLiteral("roadmapstore.h"),
-                             QStringLiteral("remotecontrol_roadmap_log.cpp")};
+                             QStringLiteral("remotecontrol_roadmap_log.cpp"),
+                             // ANTS-4617 — op:"deregister"'s dry run calls it
+                             // for `.size()` alone, to report how many sections
+                             // WOULD go. It never reads an element of the list,
+                             // so document order cannot reach the answer, and
+                             // sorting to count would be work whose result is
+                             // discarded.
+                             QStringLiteral("roadmapmigrateverb.cpp")};
     QStringList offenders;
     const QStringList files = srcDir.entryList(
         {QStringLiteral("*.cpp"), QStringLiteral("*.h")}, QDir::Files, QDir::Name);

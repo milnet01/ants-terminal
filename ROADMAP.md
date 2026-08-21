@@ -42604,7 +42604,7 @@ open, and two of these were exactly that.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-4617] **A project migrated into the machine-global store cannot be removed, so safe testing leaves permanent clutter.**
+- ✅ [ANTS-4617] **A project migrated into the machine-global store cannot be removed, so safe testing leaves permanent clutter.**
   To measure render fidelity without risking the real project, the reporter
   migrated a scratch copy under its own root -- project_id 17, export_slug
   roadmap-render-probe-throwaway. That row is permanent: the catalog exposes
@@ -42627,6 +42627,7 @@ open, and two of these were exactly that.
   declares REFERENCES but no ON DELETE CASCADE, so a hand prune today means
   deleting eight tables in order with foreign keys on, which nobody should be
   doing by hand against a live WAL store.
+  Resolved 2026-08-21: roadmap_migrate op:"deregister", keyed by caller_cwd's root or by export_slug when the files are already gone. RoadmapStore::deregisterProject() does the hand cascade the project preamble describes — one transaction across all nine tables in foreign-key order, under PRAGMA defer_foreign_keys because section.parent_id self-references and a single DELETE over a project's sections would otherwise fail the moment it removed a parent before its child. Deferring moves enforcement to COMMIT rather than removing it, so a mistake still fails loudly and rolls back whole. Relationships are cleared from BOTH ends: a row in another project pointing into this one would otherwise dangle, and that is the one way this delete could corrupt a project it was not aimed at. The guard is the design, and it is checked against the STORED root rather than the caller's argument so keying by slug cannot skip it: while the root exists it refuses confirm_required, because the store is primary and the file is its render, so the rows are the only copy of the history, relationships and citations the file does not carry. An absent root is the filed case and needs no ceremony. dry_run counts from a READ, never a rolled-back delete — this is the one verb whose preview a caller runs precisely because they fear the real call. Six cases in tests/features/roadmap_migrate_verb. The one that matters is the sibling: two equal projects, one deregistered, and exactly half the rows remain in every table with the survivor's items intact. The store is machine-global and held 17 projects when this was filed, so a delete reaching past its own project would be far worse than the clutter it removes. Suite 3823/3823.
   **Layman:** Trying a risky operation on a throwaway copy is the careful thing to do, and it permanently pollutes the shared database.
   Kind: feature.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.

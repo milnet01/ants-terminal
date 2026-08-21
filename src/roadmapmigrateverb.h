@@ -51,6 +51,31 @@ struct Request {
 // it before returning (§ 2.2).
 QJsonObject run(const QString &storePath, const Request &req);
 
+// ANTS-4617 — the inverse, and the catalogue had none. Migrating a scratch copy
+// to test a destructive render in isolation is the careful instinct, and it left
+// a permanent row that `roadmap_query mode:"report" scope:"all"` sums into
+// machine-wide figures forever. Distinct from ANTS-4600's `transient_root`
+// guard, which stops a scratchpad under the SYSTEM TEMP DIR being registered at
+// all: the root that prompted this was not under the temp dir, so that guard
+// does not fire and the row is legitimate at write time.
+//
+// Keyed by root OR export_slug, because the two callers know different things:
+// a session in the project has the root, and someone pruning a project whose
+// files are already gone has only the slug the store lists.
+//
+// The GUARD is the whole design. Deregistering a LIVE project is data loss with
+// no undo — the store is primary and the file is a render — so it refuses
+// unless the root no longer exists on disk, or the caller passes `confirm`.
+// Absent-root is the case this was filed for and needs no ceremony; anything
+// else must be asked for in so many words.
+struct DeregisterRequest {
+    QString projectRoot;   // already canonical; may be empty if slug is given
+    QString exportSlug;    // alternative key
+    bool    confirm = false;
+    bool    dryRun  = false;
+};
+QJsonObject deregister(const QString &storePath, const DeregisterRequest &req);
+
 // § 2.1 — the DERIVED DEFAULT for `export_slug`: lowercase, every run of
 // non-[a-z0-9] to a single `-`, leading/trailing `-` stripped. Ants_Terminal →
 // ants-terminal. Declared here so the handler shares the one definition rather

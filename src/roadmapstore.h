@@ -738,6 +738,32 @@ public:
     std::optional<ProjectRow> readProjectByRoot(const QString &canonicalRoot,
                                                 QString *error = nullptr) const;
 
+    // ANTS-4617 — the inverse of registerProject(), and the store had none.
+    // The store is MACHINE-GLOBAL, so testing anything destructive against a
+    // throwaway copy left a permanent row: `roadmap_query mode:"report"
+    // scope:"all"` then sums a dead project into machine-wide figures forever.
+    // The incentive ran the wrong way — trying a risky render on a scratch copy
+    // is the careful instinct, and the store penalised it.
+    //
+    // Deletes in FOREIGN-KEY order across all nine tables. The schema declares
+    // REFERENCES and no ON DELETE CASCADE, so this is the hand cascade the
+    // project preamble describes, in one transaction, with
+    // `PRAGMA defer_foreign_keys` for the duration: `section.parent_id`
+    // self-references, so a single DELETE over a project's sections would
+    // otherwise fail the moment it removed a parent before its child. Deferring
+    // moves enforcement to COMMIT rather than removing it — a mistake still
+    // fails loudly and rolls back whole.
+    //
+    // Relationships are cleared from BOTH ends. A row in another project
+    // pointing INTO this one would otherwise dangle, which is the one way this
+    // delete could corrupt a project it was not aimed at.
+    struct DeregisterCounts {
+        int elements = 0, history = 0, feedbackRefs = 0, relationships = 0;
+        int citations = 0, items = 0, sections = 0, idPrefixes = 0;
+    };
+    bool deregisterProject(qint64 projectId, DeregisterCounts *counts,
+                           QString *error = nullptr);
+
     // § 2.8 step 1's first branch: the prefix this project already allocates
     // under, which idHighWater() cannot answer because it takes the prefix as
     // an argument. Also found missing at implementation. nullopt = no row.
