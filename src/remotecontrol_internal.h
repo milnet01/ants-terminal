@@ -257,7 +257,15 @@ bool rlNoteDeclaresTrailer(const QString &note, QString *error,
 // `kept` (ANTS-4576, optional) collects the NOT NULL columns whose declaration
 // the new body dropped and whose value therefore survives — the one outcome a
 // caller cannot see in their own diff.
-bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, HistoryContext *hist, QString *error, QStringList *kept = nullptr);
+//
+// `code` (ANTS-4577, optional) carries the refusal code for the one failure
+// here that is the CALLER's and not the engine's: a body declaring a `Kind:`
+// no vocabulary recognises. Every mutate failure reaches the envelope through
+// commitAndRender() and rcRoadmapWriteRefused(), which maps the whole class to
+// `store_failed` — so without this the caller reads an engine fault for their
+// own text, and retry is the wrong response to both readings. Set only on that
+// refusal; left untouched otherwise, so an unset value still means store_failed.
+bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, HistoryContext *hist, QString *error, QStringList *kept = nullptr, QString *code = nullptr);
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
 qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &projectRoot, const QString &prefix);

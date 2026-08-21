@@ -1429,6 +1429,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 HistoryContext hist;
                 hist.changedAt = rlHistoryStamp();
 
+                // ANTS-4577 — carries the derivation's own refusal code out of
+                // the mutate, where the return type is a bare bool.
+                QString deriveCode;
+
                 const auto mutate = [&](QString *err) -> bool {
                     // ANTS-4501 § 2.2 — `wrote` is what decides the
                     // `last_modified` stamp. An annotate whose note is already
@@ -1463,7 +1467,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                     // five. This is what keeps `Layman:` from being a body line
                     // the render's gate can never see.
                     if (!rlDeriveTrailerColumns(store, *itemPk, *before,
-                                                newBody, {}, &hist, err))
+                                                newBody, {}, &hist, err,
+                                                nullptr, &deriveCode))
                         return false;
                     // ANTS-4501 § 2.2 — after every column this op writes,
                     // including the trailer columns above.
@@ -1481,8 +1486,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                     store, projectId, callerCanonical, roadmapPath, dryRun,
                     mutate, &outcome, &writeErr);
                 QJsonObject env;
-                if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+                if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+                    // ANTS-4577 — applied AFTER the mapper, because the mapper
+                    // is what fills `code` and it has only the commitAndRender
+                    // result to go on.
+                    if (!deriveCode.isEmpty())
+                        env[QStringLiteral("code")] = deriveCode;
                     return QJsonDocument(env);
+                }
                 rlAttachHistoryNote(env, store, hist);   // ANTS-3822 § 2.3.1
 
                 env[QStringLiteral("ok")]          = true;
@@ -2616,6 +2627,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
 
             HistoryContext hist;              // ANTS-3822 § 2.5 — one op, one stamp
             hist.changedAt = rlHistoryStamp();
+            QString deriveCode;               // ANTS-4577 — see the flip site
             QStringList keptColumns;
 
             const auto mutate = [&](QString *err) -> bool {
@@ -2628,7 +2640,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 // REMOVE a declaration, so it is the only one with a kept
                 // column to report.
                 if (!rlDeriveTrailerColumns(store, *itemPk, *before, newBody,
-                                            {}, &hist, err, &keptColumns))
+                                            {}, &hist, err, &keptColumns,
+                                            &deriveCode))
                     return false;
                 // ANTS-4501 § 2.2 — a body edit is a modification. No
                 // `shipped` stamp: amend_body cannot move the status.
@@ -2643,8 +2656,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
                 &outcome, &writeErr);
             QJsonObject env;
-            if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+            if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+                if (!deriveCode.isEmpty())     // ANTS-4577
+                    env[QStringLiteral("code")] = deriveCode;
                 return QJsonDocument(env);
+            }
             rlAttachHistoryNote(env, store, hist);   // ANTS-3822 § 2.3.1
 
             env[QStringLiteral("ok")]      = true;
@@ -3339,6 +3355,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         // (item_pk, changed_at) so each item still numbers from its own base.
         HistoryContext hist;
         hist.changedAt = rlHistoryStamp();
+        QString deriveCode;               // ANTS-4577 — see the flip site
 
         const auto mutate = [&](QString *err) -> bool {
             for (const StoreTarget &st : resolved) {
@@ -3367,7 +3384,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 // § 2.6 — a body write re-derives every trailer column the
                 // request did not supply, which for flip_batch is all five.
                 if (!rlDeriveTrailerColumns(store, st.itemPk, st.before,
-                                            st.newBody, {}, &hist, err))
+                                            st.newBody, {}, &hist, err,
+                                            nullptr, &deriveCode))
                     return false;
                 if (!rlStampModified(store, st.itemPk, err))
                     return false;
@@ -3384,8 +3402,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             store, projectId, callerCanonical, roadmapPath, dryRun,
             mutate, &outcome, &writeErr);
         QJsonObject env;
-        if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+            if (!deriveCode.isEmpty())        // ANTS-4577
+                env[QStringLiteral("code")] = deriveCode;
             return QJsonDocument(env);
+        }
         rlAttachHistoryNote(env, store, hist);   // ANTS-3822 § 2.3.1
 
         const bool echoHeadline = rcReturnHeadlineOnly(req);

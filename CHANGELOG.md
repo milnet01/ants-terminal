@@ -68,6 +68,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **a trailer value your own text got wrong is no longer reported as a database fault** (ANTS-4577)
+  A body declaring an unrecognised `Kind:` refused under `store_failed`,
+  so a caller branching on the code read an engine fault for their own
+  text — and a retry is the wrong answer to both readings. It now
+  answers `bad_kind`, which is what the same value in an argument has
+  always answered.
+
 - **find_definition now resolves C++ definitions whose return type wraps onto its own line** (ANTS-4603)
   Every definition anchor matched a single line, so the common shape for
   a long return type resolved to nothing — which reads as "no such

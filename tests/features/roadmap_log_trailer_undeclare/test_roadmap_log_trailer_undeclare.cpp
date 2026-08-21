@@ -16,6 +16,8 @@
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
 
+#include <QJsonArray>
+
 #include <gtest/gtest.h>
 
 #include <QByteArray>
@@ -377,6 +379,78 @@ TEST(RoadmapLogTrailerUndeclare, Inv5bUnrecognisedKindRefusesInWords) {
     EXPECT_FALSE(has(err, "constraint failed")) << err;
     EXPECT_TRUE(has(err, "banana")) << "the refusal quotes the rejected value: " << err;
     EXPECT_TRUE(has(err, "kind")) << err;
+    // ANTS-4577 — the CODE has to agree with the message. ANTS-4576 gave this
+    // refusal words a caller can act on while it still travelled as
+    // `store_failed`, so a caller branching on `code` read an engine fault for
+    // their own text — and retry is the wrong response to both readings.
+    // `bad_kind` is the taxonomy's existing name for this exact condition.
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString().toStdString(),
+              std::string("bad_kind"))
+        << QJsonDocument(resp).toJson().toStdString();
+    const auto item = itemOf(QStringLiteral("DEMO-0007"), projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->kind, QStringLiteral("implement")) << "nothing written";
+}
+
+// ANTS-4577 — the code override lives at THREE call sites, and a fix proved on
+// one of them is a fix proved on one of them. annotate and flip_batch reach the
+// same derivation by their own paths, each with its own envelope, so each is
+// its own chance to have wired the carrier and forgotten the envelope.
+//
+// Getting there needs the body's OWN `Kind:` declaration gone first, and that
+// is a property of the derivation rather than a quirk of the fixture:
+// trailerValuesIn() takes the FIRST match, so a note appended at the end of a
+// body that already declares the key is read as agreeing with the column and
+// changes nothing. The first draft of this test asserted a refusal without that
+// step and the annotate succeeded — correctly. So step one deletes the
+// declaration (INV-1: the column keeps its value), and only then can a note's
+// declaration be the one the derivation reads.
+TEST(RoadmapLogTrailerUndeclare, Ants4577BadKindCodeOnAnnotateAndFlipBatch) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+
+    ASSERT_TRUE(rc.cmdRoadmapLogAmendBodyForTest(
+                      amendReq(root, QStringLiteral("DEMO-0007"),
+                               QStringLiteral("Kind: implement."),
+                               QStringLiteral("The kind is undeclared now.")))
+                    .object()
+                    .value(QStringLiteral("ok"))
+                    .toBool())
+        << "setup: the body must stop declaring `Kind:` before a note's can be read";
+
+    QJsonObject annotate;
+    annotate[QStringLiteral("caller_cwd")] = root;
+    annotate[QStringLiteral("op")]         = QStringLiteral("annotate");
+    annotate[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    annotate[QStringLiteral("note")]       = QStringLiteral("Kind: banana.");
+    const QJsonObject aResp = rc.cmdRoadmapLogFlipForTest(annotate).object();
+    EXPECT_FALSE(aResp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(aResp).toJson().toStdString();
+    EXPECT_EQ(aResp.value(QStringLiteral("code")).toString().toStdString(),
+              std::string("bad_kind"))
+        << QJsonDocument(aResp).toJson().toStdString();
+
+    QJsonObject locator;
+    locator[QStringLiteral("id")]   = QStringLiteral("DEMO-0007");
+    locator[QStringLiteral("note")] = QStringLiteral("Kind: banana.");
+    QJsonObject batch;
+    batch[QStringLiteral("caller_cwd")] = root;
+    batch[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+    batch[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    batch[QStringLiteral("locators")]   = QJsonArray{locator};
+    const QJsonObject bResp = rc.cmdRoadmapLogFlipBatchForTest(batch).object();
+    EXPECT_FALSE(bResp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(bResp).toJson().toStdString();
+    EXPECT_EQ(bResp.value(QStringLiteral("code")).toString().toStdString(),
+              std::string("bad_kind"))
+        << QJsonDocument(bResp).toJson().toStdString();
+
     const auto item = itemOf(QStringLiteral("DEMO-0007"), projectId);
     ASSERT_TRUE(item.has_value());
     EXPECT_EQ(item->kind, QStringLiteral("implement")) << "nothing written";

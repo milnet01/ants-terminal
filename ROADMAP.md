@@ -40180,7 +40180,7 @@ filed below.
   Source: measured in-session 2026-08-20 while closing ANTS-4546.
   Lanes: remotecontrol, roadmapstore.
 
-- 📋 [ANTS-4577] **A body-derived column refused for the CALLER's reason still answers `store_failed`.**
+- ✅ [ANTS-4577] **A body-derived column refused for the CALLER's reason still answers `store_failed`.**
   ANTS-4576 gave the § 2.6 derivation a refusal a caller can act on —
   it names the key, the rejected value and both remedies. The CODE it
   travels under is still `store_failed`, because every mutate failure
@@ -40200,6 +40200,43 @@ filed below.
   Pick the code from `docs/standards/mcp-error-codes.md` rather than
   inventing one; `body_shadowed` is the neighbouring refusal and is not
   this.
+  Resolved 2026-08-21, as the bullet specified: an out-param on
+  `rlDeriveTrailerColumns`, set where it refuses for a caller-input reason,
+  applied to the envelope after `rcRoadmapWriteRefused` returns, at the three
+  ops whose mutate runs the derivation.
+
+  The code is `bad_kind`, taken from the taxonomy rather than minted. The
+  derivation has exactly ONE caller-input refusal -- a body declaring a
+  `Kind:` no vocabulary recognises -- and mcp-error-codes.md already owns
+  that condition under that name. Same value, same remedy; the only
+  difference is that it arrived in the body instead of an argument. Every
+  other `return false` in the function is a store write that failed, which
+  IS `store_failed`, so nothing else needed a code. The row now records the
+  second emitter, since a reader looking up `bad_kind` would otherwise have
+  no reason to think a body line could raise it.
+
+  Coverage is all three sites, deliberately: a fix proved on one path is a
+  fix proved on one path, and each op builds its own envelope, so each was
+  its own chance to wire the carrier and forget the envelope. The existing
+  Inv5b covers amend_body; a new test covers annotate and flip_batch.
+
+  MUTATION-VERIFIED. Removing the one `*code` assignment fails both tests
+  with exactly `store_failed` -- the defect this item describes, verbatim.
+  Suite 3760/3760.
+
+  WORTH KNOWING, and the first draft of the test got it wrong. The
+  derivation reads `trailerValuesIn()`, which takes the FIRST match in the
+  body. So a note appended to a body that ALREADY declares `Kind:` is read
+  as agreeing with the column and changes nothing -- my annotate case
+  succeeded, correctly, and the assertion was what was wrong. Reaching the
+  refusal through a note requires the body's own declaration to be gone
+  first, which is INV-1's deletion path. The test now does that as an
+  explicit setup step and says why.
+
+  Not changed: `body_shadowed` stays what it is. The bullet said it is the
+  neighbouring refusal and is not this, and that held -- a note whose
+  `Kind:` label begins its line is a declaration, passes that guard, and
+  reaches the column.
   **Layman:** A refusal caused by what you typed is labelled as a database fault.
   Kind: fix.
   Source: in-session-2026-08-20, while closing ANTS-4576.

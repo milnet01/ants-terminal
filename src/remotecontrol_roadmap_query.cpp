@@ -395,7 +395,7 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
                                    const QString &newBody,
                                    const QSet<QString> &supplied,
                                    HistoryContext *hist, QString *error,
-                                   QStringList *kept) {
+                                   QStringList *kept, QString *code) {
     const RoadmapParse::TrailerValues oldTv = RoadmapParse::trailerValuesIn(before.body);
     const RoadmapParse::TrailerValues newTv = RoadmapParse::trailerValuesIn(newBody);
     for (const RlTrailerKey &k : kRlTrailerKeys) {
@@ -440,6 +440,17 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
                                      "reword it so it does not begin the line.")
                                      .arg(newValue);
                     }
+                    // ANTS-4577 — the only refusal in this function that is the
+                    // caller's rather than the engine's. mcp-error-codes.md § 1
+                    // already owns this condition under `bad_kind` ("a `kind`
+                    // enum doesn't match the recognised set"), so the code is
+                    // picked from the taxonomy rather than minted: the value is
+                    // the same value, the remedy is the same remedy, and the
+                    // only difference is that it arrived in the body instead of
+                    // an argument. Every other `return false` below is a store
+                    // write that failed, which IS `store_failed`.
+                    if (code)
+                        *code = QStringLiteral("bad_kind");
                     return false;
                 }
                 if (current == newValue)
