@@ -2092,18 +2092,28 @@ void ClaudeIntegration::onMcpConnection() {
                     "headline, headline_oneline, kind, lanes}. Filters: "
                     "status (all|active|shipped), section=<slug>, "
                     "query=<keyword>, id / "
-                    "ids[] (by [PROJ-NNNN]). mode: "
+                    "ids[]. mode: "
                     "bullets (default) | section_index (slug discovery) | "
                     "headline_only (~10x smaller) | bundles (thematic "
                     "groups) | report. Opt-in: include_body, "
                     "compact, fields, etag_match. Refusals: bad_case, "
-                    "bad_section, bad_mode_combo. caller_cwd Required. "
+                    "bad_section, bad_mode_combo, no_roadmap_loaded. "
+                    "caller_cwd Required. "
                     "`source` = the backend that answered, not `path` "
                     "(ANTS-4402).");
                 // ANTS-2079 — full per-op reference lives in `detail`,
                 // stripped from the tools/list wire and served on demand
                 // by tool_info {name:"roadmap_query"}.
                 roadmapTool["detail"] = QStringLiteral(
+                    "ANTS-4611 — `no_roadmap_loaded` IS AN ANSWER, not a "
+                    "failed call: this project keeps no ROADMAP.md, which is "
+                    "true of 9 of the 24 projects on this machine. Branch on "
+                    "it rather than retrying or switching tab. Where you "
+                    "passed caller_cwd the envelope carries `resolved_root` "
+                    "and the message names it, so a project that keeps no "
+                    "roadmap is distinguishable from a root that resolved "
+                    "somewhere you did not mean; the active tab is named only "
+                    "where the tab is what supplied the path. "
                     "ANTS-4402 — WHICH BACKEND ANSWERED. The envelope "
                     "carries `source`: \"store\" or \"markdown\". `path` "
                     "names ROADMAP.md on BOTH, so it does not tell you. On "

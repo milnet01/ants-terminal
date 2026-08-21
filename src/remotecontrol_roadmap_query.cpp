@@ -2129,9 +2129,21 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         path = m_main->roadmapPathForRemote();
     }
     if (path.isEmpty()) {
+        // ANTS-4611 — the VERDICT here was always right; the wording
+        // misdirected. Blaming "the active tab" when the caller named a root
+        // sends them to diagnose tab misrouting, and nothing in the envelope
+        // said where the verb had actually looked — so a project that simply
+        // keeps no roadmap was indistinguishable from a misresolved root.
+        // Name the tab only where the tab is what supplied the path.
         out["ok"] = false;
-        out["error"] = QStringLiteral(
-            "no ROADMAP.md detected for the active tab");
+        if (!callerRaw.isEmpty()) {
+            out["resolved_root"] = callerCanonical;
+            out["error"] = QStringLiteral("no ROADMAP.md under %1")
+                               .arg(callerCanonical);
+        } else {
+            out["error"] = QStringLiteral(
+                "no ROADMAP.md detected for the active tab");
+        }
         out["code"] = QStringLiteral("no_roadmap_loaded");
         return QJsonDocument(out);
     }

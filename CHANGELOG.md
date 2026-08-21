@@ -96,6 +96,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query's no_roadmap_loaded refusal now says where it looked** (ANTS-4611)
+  Passing an explicit `caller_cwd` and getting back "no ROADMAP.md detected
+  for the active tab" sent callers to diagnose tab misrouting. The refusal
+  now reads "no ROADMAP.md under <root>" and carries `resolved_root`; the
+  tab is named only where the tab supplied the path. The verdict is
+  unchanged, and the schema now says the code is an answer — this project
+  keeps no roadmap — rather than a failed call.
+
 - **roadmap_log body scrub now strips leaked OPENING tags, not just closing ones** (ANTS-4609)
   Peeling a closing tag off the edge of a body exposed the opening half of
   the same pair, alone on its line with its value, and the scrub stopped

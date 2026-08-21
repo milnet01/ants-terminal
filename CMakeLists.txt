@@ -1643,6 +1643,8 @@ if(ANTS_TESTS)
                 # ANTS-1437 roadmap_query section_index mode.
                 tests/features/roadmap_query_section_index/test_roadmap_query_section_index.cpp
                 tests/features/roadmap_query_slugs_only/test_roadmap_query_slugs_only.cpp
+                # ANTS-4611 no_roadmap_loaded names the root it searched.
+                tests/features/roadmap_query_no_roadmap_refusal/test_roadmap_query_no_roadmap_refusal.cpp
                 # ANTS-1881 roadmap_query mode:"headline_only".
                 tests/features/roadmap_query_headline_only/test_roadmap_query_headline_only.cpp
                 # ANTS-1922 roadmap_query mode:"bundles".

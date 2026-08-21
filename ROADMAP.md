@@ -42432,7 +42432,7 @@ open, and two of these were exactly that.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4611] **no_roadmap_loaded blames "the active tab" when the caller passed an explicit caller_cwd.**
+- ✅ [ANTS-4611] **no_roadmap_loaded blames "the active tab" when the caller passed an explicit caller_cwd.**
   roadmap_query with an explicit caller_cwd on a project with no ROADMAP.md
   returns {ok:false, code:"no_roadmap_loaded", error:"no ROADMAP.md detected
   for the active tab"}. Reproduced byte-identically on earlyoom and demoreel.
@@ -42457,6 +42457,7 @@ open, and two of these were exactly that.
   documents the success shape and no refusal codes; listing this one and
   saying it means "this project keeps no roadmap" rather than "the call
   failed" would let a caller branch on it without measuring it first.
+  Resolved 2026-08-21: the refusal now names the root it searched. Where caller_cwd was passed the envelope carries `resolved_root` and the message reads "no ROADMAP.md under <root>"; the active tab is named only where the tab is what supplied the path. The verdict is untouched — still ok:false, still no_roadmap_loaded — and a case locks that, because the reporter was right that the verdict was never the defect. Schema updated on both halves: the wire description names the code, and `detail` says it is an ANSWER rather than a failed call and to branch on it. New suite tests/features/roadmap_query_no_roadmap_refusal, 3 cases. INV-3 (tab wording where the tab really was the source) carries no case and the spec says so — it needs a live MainWindow and this bundle builds RemoteControl(nullptr), so a case would assert against a stub. Worth recording: naming the code on the always-loaded wire cost 19 bytes and blew the 800-byte budget INV-5 enforces, at 811. The explanation went to `detail` and the id-format parenthetical was traded away for it. Suite 3795/3795.
   **Layman:** You point the tool at a folder and it answers about a browser tab, so you cannot tell whether it looked where you asked.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
