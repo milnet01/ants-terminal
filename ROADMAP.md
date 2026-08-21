@@ -40224,6 +40224,43 @@ filed below.
   vocabulary would then be a separate field, or not surfaced at all.
 
   Not implemented; this widens the choice rather than settling it.
+  Decided 2026-08-21 by the user: option (d), declared vs inferred. The
+  store's three-word vocabulary (option c) is rejected for the reason the
+  body already measured -- it labels all 989 Vestige bullets quarantined,
+  which tells a caller only that this project's ids are not ANTS-shaped.
+
+  Three things the body did not settle, settled here before coding.
+
+  No new BulletRecord member. The discriminator is derivable from fields
+  both backends already fill, so ANTS-3793's 22-member census and its INV-2
+  field table do not move. The emit is built where the envelope is, beside
+  the existing bold_id line.
+
+  The discriminator is `!boldId.isEmpty() && id == boldId`, NOT a test on
+  idToken. idToken is filled FROM boldId when the leading slot holds no
+  bracket (roadmapparse.cpp ~1225), so it cannot separate the two -- an
+  earlier reading of this item had it backwards. `id == boldId` is exactly
+  the branch at ~1238 that adopts a bold span as the id, and it holds on
+  the ants-v1 path too, where ANTS-1987 adopts a head-anchored ID-shaped
+  bold token (`- 📋 **Cl9.**`). That is an adoption, so it reads inferred,
+  which is right.
+
+  The INV-2 collision the body feared does not arise. INV-2 compares the
+  store against markdown parsing THE RENDERED FILE, and the render writes
+  every id in brackets -- so both backends read a declared id there and
+  agree. The flag can therefore only ever fire on a markdown-served
+  project, which is precisely the population it is for. Stated as a
+  consequence rather than a limitation: after a project is migrated and
+  rendered, the inference has been made permanent in the text and the flag
+  correctly goes quiet.
+
+  Field name is `id_inferred: true`, gated, absent when the id was
+  declared. NOT `id_origin`: the store column of that name carries a
+  different vocabulary (parsed / synthesised / quarantined), and reusing
+  the name for two answers is the wart `format` already has across the
+  verbs. A synthetic content-hash id is not covered by this flag -- the
+  long-standing `synthetic: true` field already answers it, and a second
+  name for it would be duplication.
   **Layman:** Some roadmap item IDs are guessed from the text; nothing tells you which ones.
   Kind: enhancement.
   Source: ANTS-4546 residue, measured in-session 2026-08-20.
@@ -41929,6 +41966,29 @@ filed below.
 
   Do NOT fix this by converting on append. That is ANTS-4491's job, it is
   destructive, and doing it a bullet at a time is how the file got here.
+  Decided 2026-08-21 by the user, and the answer reframes the item rather
+  than picking one of its three options.
+
+  The three options all assumed ROADMAP.md is the artifact to keep uniform.
+  It is not: the target state is that a project is imported into the store
+  and its ROADMAP.md is REGENERATED from it, so a mixed file is transient
+  and self-correcting. The user's words: "When importing into the DB it has
+  to conform to the standard of the DB and the roadmap.md file will be
+  overwritten anyway. So, everything needs to be adapted so that it can be
+  imported into the DB."
+
+  So: no fix, no GFM writer, no refusal. Appending ants-v1 into a GFM file
+  is the direction of travel, not a defect. What survives of this item is
+  the third option's second half -- declare the behaviour -- because it is
+  currently undocumented and reads as a surprise.
+
+  The mixing is still real input for ANTS-4491: a converter meeting a file
+  that is already ~4.4% in its target dialect must be idempotent per
+  bullet. That requirement moves to 4491 and does not need this item open.
+
+  Left planned rather than flipped: the four-state taxonomy has no won't-do
+  value, and 💭 is live research-phase work that blocks phase closure
+  (roadmap-format § 3.3), so flipping there would misstate it.
   **Layman:** Adding a roadmap item to a project that uses checkboxes writes it in a different style, leaving the file half one thing and half the other.
   Kind: fix.
   Source: measured in-session 2026-08-21 against Vestige's roadmap.
