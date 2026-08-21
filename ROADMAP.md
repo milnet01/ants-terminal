@@ -41501,7 +41501,7 @@ filed below.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4603] **find_definition misses any member function whose return type sits on its own line.**
+- ✅ [ANTS-4603] **find_definition misses any member function whose return type sits on its own line.**
   Measured twice this session, both real definitions, both returning
   `definitions_count: 0` after scanning 947 files:
 
@@ -41523,6 +41523,57 @@ filed below.
   session that trusts it concludes the function does not exist. This is
   not rare style -- it is what every `std::optional<T>` returning member
   in this codebase looks like.
+  Resolved 2026-08-21. The C++ anchors gain a PAIR — `wrappedDef` matching a
+  qualified-name line at column 0, `wrappedPrev` deciding whether the line
+  above reads as a return type — and scanFile carries the previous trimmed
+  line to join them. A wrapped match reports both lines as its signature, so
+  the result carries the return type the query was about.
+
+  Why a pair rather than one pattern. The qualified-name line alone is
+  byte-indistinguishable from a statement-position call (`Foo::bar(x);`),
+  which is exactly what kept every def anchor single-line. Two guards, each
+  sufficient alone: column 0 (a definition sits there; a call inside a body
+  is indented) and the previous line reading as a type.
+
+  VERDICT DIFF, measured rather than argued. The change is additive -- isDef
+  only goes false->true -- so the set the pair fires on IS the diff. A
+  throwaway TU compiled against Qt6Core with the SAME two regexes, generic
+  `\w+` in the symbol slot so one pass covers every possible query:
+
+    882 files scanned, 30 lines fired, 0 false positives
+
+  All 30 read and confirmed as out-of-line member definitions --
+  TerminalWidget::urlSpansForLine, RoadmapDialog::parseBullets, 14 of
+  RoadmapStore's, RemoteControl::roadmapWriteTarget. Including
+  RoadmapStore::readProjectByRoot, which is the function I had to find BY
+  HAND while diagnosing ANTS-4601 in this same session, because this verb
+  could not see it.
+
+  Consequence for find_caller, and it is a fix rather than a cost: those 30
+  lines were being reported as CALLERS of their own symbol, which INV-9
+  forbids. They now leave that bucket.
+
+  MUTATION-VERIFIED, two mutations, because a passing test proves nothing
+  about which half is load-bearing. Disabling the pair fails all four new
+  assertions. Opening `wrappedPrev` to `^.*$` while keeping the column
+  anchor fails EXACTLY ONE -- the column-0 call under `=` -- so each
+  negative leg is defeated by its own guard and neither hides behind the
+  other. Suite 3759/3759.
+
+  A note on the second mutation: its first attempt did not COMPILE, and
+  ctest ran the stale binary and produced output that read as a clean
+  confirmation. Caught only by checking BUILD_RC before the test result.
+
+  Untouched: ANTS-1303 INV-6 (an over-long line is still skipped and still
+  advances lineNo -- prevLine is cleared with it, so a return type cannot
+  license a call across text nothing looked at) and INV-8's kind logic (a
+  wrapped line ends in `(` or `,`, so it tags `definition`).
+
+  Not attempted: an INDENTED wrapped definition, e.g. one nested in a
+  namespace block. Measured 0 in this tree, so the strict column anchor
+  costs nothing here and buys the whole indented-call population. A project
+  that indents them gets no benefit from this and would need the guard
+  rethought rather than the anchor loosened.
   **Layman:** The "where is this defined?" tool returns nothing for functions written in a common C++ style.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).

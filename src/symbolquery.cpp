@@ -148,6 +148,22 @@ bool looksLikeDeclaration(const QString &line) {
 struct Anchors {
     QVector<QRegularExpression> def;
     QRegularExpression call;
+    // ANTS-4603 — the two halves of the wrapped-signature anchor. Every
+    // pattern in `def` matches ONE line, and a C++ member definition whose
+    // return type is long conventionally puts that type on its own line:
+    //
+    //     std::optional<RemoteControl::RoadmapWriteTarget>
+    //     RemoteControl::roadmapWriteTarget(const QString &projectRoot,
+    //
+    // The second line carries no return-type token, so no `def` pattern can
+    // match it, and the symbol resolved to nothing at all — which reads as
+    // "no such symbol" rather than "not found", so a caller designs around a
+    // function that is there. `wrappedDef` matches the qualified-name line;
+    // `wrappedPrev` is what the line ABOVE must look like for it to count.
+    // Empty for every language but C++.
+    QRegularExpression wrappedDef;
+    QRegularExpression wrappedPrev;
+    bool hasWrapped = false;
     bool cppKind = false;
     const char *lang = "";
 };
@@ -234,6 +250,30 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // thing that is plainly there. Tagged `namespace` by the kind
             // logic below so a caller can tell it from a function.
             add(QStringLiteral("^[ \\t]*namespace\\s+") + s + QStringLiteral("\\b"));
+            // ANTS-4603 — the wrapped-return-type pair (see Anchors). Both
+            // halves are deliberately narrow, because the qualified-name line
+            // on its own is indistinguishable from a statement-position call
+            // (`Foo::bar(x);`), which is what kept these patterns single-line.
+            //
+            // Anchored at COLUMN 0, with no `[ \t]*` slack: an out-of-line
+            // definition sits at column 0 and a call inside a function body is
+            // always indented. Measured over this tree — 30 wrapped
+            // definitions at column 0, 0 indented — so the strict anchor costs
+            // nothing here and removes the whole indented-call population.
+            a.wrappedDef = QRegularExpression(
+                QStringLiteral("^(?:[A-Za-z_]\\w*::)+") + s + QStringLiteral("\\s*\\("));
+            // And the line above must read as a return type: one token run of
+            // type characters, ending in `>`, a word character, `*` or `&`.
+            // The lookahead rejects a keyword, which is never a return type,
+            // so `return` / `throw` / `else` on their own line cannot license
+            // the call below them. A line ending `&&` is excluded in code —
+            // it is a wrapped boolean expression, not a reference return.
+            a.wrappedPrev = QRegularExpression(QStringLiteral(
+                "^(?!(?:return|co_return|co_await|co_yield|throw|else|case|default)\\b)"
+                "[A-Za-z_][\\w:<>,~ \\t*&]*[>\\w*&]$"));
+            a.wrappedDef.optimize();
+            a.wrappedPrev.optimize();
+            a.hasWrapped = true;
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             a.cppKind = true;
             break;
@@ -328,6 +368,7 @@ void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
 
     const QString rel = fi.absoluteFilePath().mid(st.rootPrefixLen);
     int lineNo = 0;
+    QString prevLine;   // ANTS-4603 — previous line, trimmed; "" at file start
     while (!f.atEnd()) {
         QByteArray raw = f.readLine();
         ++lineNo;
@@ -339,7 +380,14 @@ void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
         // multi-thousand-file scan that is millions of avoided allocs.
         while (!raw.isEmpty() && (raw.back() == '\n' || raw.back() == '\r'))
             raw.chop(1);
-        if (raw.size() > kMaxLineBytes) continue;  // backtracking guard
+        if (raw.size() > kMaxLineBytes) {
+            // INV-6 skips the line for matching but still advances lineNo.
+            // The previous-line context has to be dropped with it: keeping it
+            // would let a return type license a qualified call two lines
+            // below, across text nothing looked at.
+            prevLine.clear();
+            continue;                              // backtracking guard
+        }
         const QString line = QString::fromUtf8(raw);
 
         bool isDef = false;
@@ -347,9 +395,29 @@ void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
             if (re.match(line).hasMatch()) { isDef = true; break; }
         }
 
+        // ANTS-4603 — the wrapped-signature pair, tried only once the
+        // single-line anchors have all missed. `&&` is excluded here rather
+        // than in `wrappedPrev`: a reference return type legitimately ends in
+        // a single `&` (`const std::vector<UrlSpan> &`), and telling that from
+        // a wrapped boolean is a two-character test, not a regex.
+        bool isWrapped = false;
+        if (!isDef && an.hasWrapped && !prevLine.isEmpty()
+            && !prevLine.endsWith(QLatin1String("&&"))
+            && an.wrappedDef.match(line).hasMatch()
+            && an.wrappedPrev.match(prevLine).hasMatch()) {
+            isDef = true;
+            isWrapped = true;
+        }
+
+        const QString thisLine = line.trimmed();
+
         if (isDef && st.collectDefs) {
             ++st.defsTotal;
-            const QString trimmed = line.trimmed();
+            // A wrapped match reports BOTH lines, so the signature carries the
+            // return type the query was really about. `line` still names where
+            // the symbol is, which is what a reader jumps to.
+            const QString trimmed =
+                isWrapped ? prevLine + QLatin1Char(' ') + thisLine : thisLine;
             QString kind = QStringLiteral("definition");
             if (an.cppKind) {
                 if (trimmed.startsWith(QLatin1String("namespace"))) {
@@ -386,6 +454,8 @@ void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
                 }
             }
         }
+
+        prevLine = thisLine;
     }
     f.close();
 }

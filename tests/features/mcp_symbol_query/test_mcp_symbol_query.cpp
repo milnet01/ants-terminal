@@ -105,6 +105,43 @@ TEST(McpSymbolQuery, LiveBehaviour) {
                              "    return slurpBody(p);\n"         // ANTS-2146: return-position call — NOT a def
                              "}\n"));
 
+    // --- ANTS-4603: a return type wrapped onto its own line ------------
+    // The convention for a long return type, and every def anchor matches
+    // ONE line, so the qualified-name line carried no return-type token and
+    // resolved to nothing — reading as "no such symbol" for a function that
+    // is plainly there. Measured on this tree: 30 such definitions, all
+    // invisible. The fixture pairs each real case with the false positive
+    // that kept the anchor single-line for so long.
+    writeFile(root, QStringLiteral("src/wrapped.cpp"),
+              QStringLiteral("#include \"widget.h\"\n"
+                             "std::optional<Widget::Handle>\n"
+                             "Widget::acquireHandle(int slot) {\n"   // wrapped def
+                             "    return {};\n"
+                             "}\n"
+                             "const std::vector<Widget::Span> &\n"
+                             "Widget::spansForRow(int row) const {\n"  // wrapped, ref return
+                             "    return m_spans;\n"
+                             "}\n"
+                             "void Widget::caller() {\n"
+                             "    int total =\n"
+                             "        Widget::acquireHandle(1);\n"   // NOT a def: indented
+                             "}\n"
+                             // Each negative leg defeats ONE half of the pair,
+                             // so neither half can go untested behind the
+                             // other. This one is at column 0 — the line
+                             // anchor passes and only the previous-line test
+                             // can reject it, because `=` is not a return
+                             // type.
+                             "static const int kSeats =\n"
+                             "Widget::spansForRow(2);\n"
+                             // And this one has a return-type-shaped line
+                             // above it, so only the column anchor rejects it.
+                             "int Widget::rows() const {\n"
+                             "    QVector<int> out;\n"
+                             "    Widget::spansForRow(3);\n"
+                             "    return 0;\n"
+                             "}\n"));
+
     // --- ANTS-3465: C++ type definitions (struct/class/union/enum) -----
     // Opening brace on the keyword line → kind "definition"; a trailing `;`
     // forward declaration → kind "declaration". None have a same-named
@@ -225,6 +262,27 @@ TEST(McpSymbolQuery, LiveBehaviour) {
     expect(hasDef(SymbolQuery::findDefinition(root, QStringLiteral("FwdOnly"), def),
                   QStringLiteral("src/types.h"), QStringLiteral("declaration")),
            "ANTS-3465: forward declaration tagged as declaration");
+
+    // ANTS-4603 — a wrapped return type resolves, and the two shapes that
+    // look like it do not. The negative legs are the whole reason this
+    // anchor is a PAIR: the qualified-name line alone is indistinguishable
+    // from a statement-position call, so an anchor without the previous-line
+    // test would report both of them as definitions.
+    expect(hasDef(SymbolQuery::findDefinition(root, QStringLiteral("acquireHandle"), def),
+                  QStringLiteral("src/wrapped.cpp"), QStringLiteral("definition")),
+           "ANTS-4603: wrapped return type resolves");
+    expect(hasDef(SymbolQuery::findDefinition(root, QStringLiteral("spansForRow"), def),
+                  QStringLiteral("src/wrapped.cpp"), QStringLiteral("definition")),
+           "ANTS-4603: wrapped reference return type resolves (trailing &)");
+    // Exactly one definition each: the indented call and the return-position
+    // call in the same file must not have been counted as a second.
+    expect(SymbolQuery::findDefinition(root, QStringLiteral("acquireHandle"), def)
+               .definitionsTotal == 1,
+           "ANTS-4603: an indented qualified call is not a definition");
+    expect(SymbolQuery::findDefinition(root, QStringLiteral("spansForRow"), def)
+               .definitionsTotal == 1,
+           "ANTS-4603: a column-0 call under `=` is not a definition, and an "
+           "indented one under a return-type-shaped line is not either");
 
     // INV-4 — build* / node_modules / dot-dirs skipped.
     const auto skip = SymbolQuery::findDefinition(root, QStringLiteral("skipMe"), def);

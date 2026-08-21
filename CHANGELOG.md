@@ -68,6 +68,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_definition now resolves C++ definitions whose return type wraps onto its own line** (ANTS-4603)
+  Every definition anchor matched a single line, so the common shape for
+  a long return type resolved to nothing — which reads as "no such
+  symbol" for a function that is plainly there. 30 such definitions in
+  this tree, including 14 of RoadmapStore's.
+
 - **roadmap_log's store-only ops now name the project they refused** (ANTS-4602)
   `repair_trailers` and `backfill_dates` reported `the store holds no
   row for ""` on every refusal, naming neither the project nor the
