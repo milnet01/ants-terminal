@@ -2769,6 +2769,35 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
             return false;
         }
         const QString sharedRoot = QFileInfo(rootCanonical).absolutePath();
+        // ANTS-4613 — a leaf beginning with a dot has NO derivable name. For
+        // caller_cwd=~/.claude the naive derivation is
+        // `<home>/.claude_Ants_MCP_Feedback.md`: a hidden-looking file in the
+        // user's home directory which — ANTS-3714 settled this on the spec
+        // side — cannot match the authoritative `*_Ants_MCP_Feedback.md` glob,
+        // so nothing will ever read it. The verb kept deriving one anyway and
+        // answered ok:true / created:true, and success plus creation reads as
+        // success: the session silently started a SECOND feedback file while
+        // the project's real one stayed untouched.
+        //
+        // Refuse rather than guess. There is no correct name to infer here,
+        // and the siblings are the actionable retry — the same shape
+        // op:append_tracking's not_found already uses.
+        if (leaf.startsWith(QChar('.'))) {
+            err = fbErr(QStringLiteral("bad_args"),
+                        toolName + QStringLiteral(": \"path\" is required — "
+                        "caller_cwd's leaf \"%1\" begins with a dot, and a "
+                        "feedback name derived from it could never match the "
+                        "*_Ants_MCP_Feedback.md convention. Name the file "
+                        "explicitly.").arg(leaf));
+            const QJsonArray cands = feedbackSiblingCandidates(
+                QDir::cleanPath(sharedRoot + QLatin1Char('/') + leaf));
+            if (!cands.isEmpty()) {
+                err[QStringLiteral("candidates")] = cands;
+                err[QStringLiteral("hint")] = QStringLiteral(
+                    "pass one of `candidates` as `path`");
+            }
+            return false;
+        }
         // ANTS-3376 default is "<leaf>_Ants_MCP_Feedback.md". ANTS-3426 — a
         // leaf already ending in "_Ants" doubles the token, so try the
         // de-doubled convention first (see feedbackConventionalNames). Adopt

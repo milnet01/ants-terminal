@@ -104,6 +104,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **feedback_log no longer derives a stray feedback file from a dotted project leaf** (ANTS-4613)
+  Omitting `path` from a project like `~/.claude` created
+  `<home>/.claude_Ants_MCP_Feedback.md` and reported success — a
+  hidden-looking file that could never match the naming convention, so a
+  session quietly started a second feedback file nobody reads while the
+  real one went untouched. A dotted leaf now refuses with the sibling
+  files as candidates. Only the leaf counts: a project under a dotted
+  parent still derives normally.
+
 - **roadmap_query's no_roadmap_loaded refusal now says where it looked** (ANTS-4611)
   Passing an explicit `caller_cwd` and getting back "no ROADMAP.md detected
   for the active tab" sent callers to diagnose tab misrouting. The refusal

@@ -452,6 +452,81 @@ TEST(McpFeedbackLog, DerivesDefaultPathOnCreate) {
               "bad_args");
 }
 
+// ANTS-4613 — a caller_cwd whose LEAF begins with a dot (`~/.claude`) derived
+// `/home/ants/.claude_Ants_MCP_Feedback.md`: a name that looks like a hidden
+// file, in the user's home directory, and NOT the file that project actually
+// uses. The write returned ok:true / created:true / path_derived:true, so a
+// session that omitted `path` silently started a SECOND feedback file nobody
+// reads while the canonical one stayed untouched.
+//
+// ANTS-3714 already settled the spec half — a leaf starting with a dot cannot
+// match the authoritative `*_Ants_MCP_Feedback.md` glob — and the verb kept
+// deriving one anyway. Refuse and make the caller name the file: there is no
+// correct name to guess here, and success plus creation reads as success.
+TEST(McpFeedbackLog, RefusesToDeriveFromADotLeaf) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir(".claude"));
+    const QString caller = root.path() + "/.claude";
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = caller;            // no "path" → would derive
+    req["op"] = "append_finding"; req["date"] = "2026-08-21";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_FALSE(env.value("ok").toBool())
+        << "ANTS-4613: a dot leaf has no derivable feedback name";
+    EXPECT_EQ(env.value("code").toString().toStdString(), "bad_args");
+    EXPECT_FALSE(QFileInfo::exists(root.path() + "/.claude_Ants_MCP_Feedback.md"))
+        << "ANTS-4613: the stray dotfile-adjacent sibling must not be created";
+}
+
+// ANTS-4613 — the refusal has to be actionable. A caller told only "no" will
+// guess a name; the sibling files in the shared root are the candidates, and
+// op:append_tracking already refuses this way (not_found + candidates + hint).
+TEST(McpFeedbackLog, DotLeafRefusalOffersTheSiblings) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkdir(".claude"));
+    QFile sib(root.path() + "/claude_config_Ants_MCP_Feedback.md");
+    ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
+    sib.write("# Ants MCP Feedback\n"); sib.close();
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/.claude";
+    req["op"] = "append_finding"; req["date"] = "2026-08-21";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    ASSERT_FALSE(env.value("ok").toBool());
+    const QJsonArray cands = env.value("candidates").toArray();
+    ASSERT_EQ(cands.size(), 1) << "ANTS-4613: the shared root's sibling is the retry";
+    EXPECT_TRUE(cands.at(0).toString().endsWith(
+        "claude_config_Ants_MCP_Feedback.md"));
+}
+
+// ANTS-4613 over-reach guard — only the LEAF matters. A perfectly ordinary
+// project that merely SITS under a dotted parent still derives, because its own
+// name is a fine feedback stem.
+TEST(McpFeedbackLog, DottedParentDoesNotBlockDerivation) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkpath(".hidden/Proj"));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/.hidden/Proj";
+    req["op"] = "append_finding"; req["date"] = "2026-08-21";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    ASSERT_TRUE(env.value("ok").toBool()) << "only the leaf is undecidable";
+    EXPECT_TRUE(QFileInfo::exists(
+        root.path() + "/.hidden/Proj_Ants_MCP_Feedback.md"));
+}
+
 // ANTS-3376 / ANTS-2227 — the dry_run preview propagates path_derived from
 // the derived (omitted-path) resolution and writes nothing to disk.
 TEST(McpFeedbackLog, DryRunPreviewCarriesPathDerivedNoWrite) {

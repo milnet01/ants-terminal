@@ -42493,7 +42493,7 @@ open, and two of these were exactly that.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: remotecontrol, roadmap-store.
 
-- 📋 [ANTS-4613] **feedback_log derives a stray dotfile-adjacent sibling when caller_cwd's leaf begins with a dot.**
+- ✅ [ANTS-4613] **feedback_log derives a stray dotfile-adjacent sibling when caller_cwd's leaf begins with a dot.**
   With path omitted, derivation yields <caller_cwd-leaf>_Ants_MCP_Feedback.md
   at the PARENT of caller_cwd. For caller_cwd=/home/ants/.claude that is
   /home/ants/.claude_Ants_MCP_Feedback.md -- a name that looks like a hidden
@@ -42513,6 +42513,7 @@ open, and two of these were exactly that.
   it refuses not_found with candidates + hint, and either use it or refuse
   with those candidates. At minimum, never derive a name from a leaf
   beginning with a dot -- refuse bad_args and make the caller name the file.
+  Resolved 2026-08-21: resolveFeedbackPath (src/remotecontrol_workspace.cpp) now refuses bad_args when caller_cwd's leaf begins with a dot, carrying `candidates` + `hint` where siblings exist — the shape op:append_tracking's not_found already uses. Took the report's minimum ask rather than its fuller one: widening the hunt to arbitrary directories is a filesystem-wide scan, and there is no correct name to infer from `.claude` at any cost. What made this expensive was ok:true plus created:true reading as success, so the caller never re-read. Three cases in tests/features/mcp_feedback_log: the refusal, the candidates, and an over-reach guard proving only the LEAF matters — a project merely SITTING under a dotted parent still derives, because its own name is a fine stem. That guard passed before the fix and still passes. Schema updated. Suite 3803/3803.
   **Layman:** Filing feedback from the config folder quietly starts a second file in your home directory that nobody reads.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
