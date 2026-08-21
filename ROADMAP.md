@@ -26761,6 +26761,29 @@ against current source before filing.
   **Layman:** Write down what an ID looks like for each project, so a bold heading or a stray word can never be mistaken for one.
   Kind: implement.
   Source: user-request-2026-08-01.
+  Progress (2026-08-21): specced. Direction settled with the user --
+  a declared format is authoritative over BOTH reads and writes, and a bold
+  lead-in that fails it KEEPS its id and is flagged rather than emptied.
+  Contract at docs/specs/ANTS-3771-id-format-declaration.md, 13 invariants,
+  review-contract loops 1 + 2 folded, cap reached.
+
+  Two members, both optional. `prefix` is generative (allocator + write-time
+  refusal); `pattern` is recognitional (the GFM bold-lead-in branch, and
+  isGrammaticalId() on an explicit parameter). No `digits` member: renderId()
+  already fixes four-wide and the store carries 0 ids at any other width
+  across 4676 of 5103 items.
+
+  NOT flipped to in-progress, and held short of `accepted`, because one
+  design decision is the user's: which core-side helper owns the single load
+  of id_format. `RoadmapSource::bulletsFor()` cannot do it -- ants_roadmapstore_lib
+  does not link ants_core_lib, deliberately (ANTS-3808 s4), and ProjectSettings
+  lives in core. The three candidates are in the spec's s8. It blocks INV-13
+  only; the rest is implementable.
+
+  Measured while speccing, and it re-scopes ANTS-4491: of Vestige's 454 bold
+  lead-ins, 192 are the `**AX1. headline**` shape whose id is a PREFIX of the
+  span, and 112 carry no digit at all. No pattern separates those 112 from
+  deliberate digitless ids, which is why the keep-and-flag answer matters.
 
 - 📋 [ANTS-3772] **3D_Engine and RetroDB carry roadmap ids that collide, so neither migrates.**
   Found by running ANTS-3765's loader over the ten-project corpus
@@ -42132,6 +42155,38 @@ filed below.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-3771 spec authoring).
   Lanes: mcp.
+
+- 📋 [ANTS-4608] **The trailer-shadow guard reads a C++ scope operator as a trailer key, so a note naming a symbol refuses.**
+  Hit twice while writing the ANTS-3771 progress note, and then a THIRD
+  time by this very bullet -- the first draft of this item was refused by
+  the defect it describes, which is as good a reproduction as exists.
+
+  `roadmap_log op:annotate` refused `body_shadowed` on a sentence naming
+  `RoadmapSource::bulletsFor()`. The guard matched the `Source:` inside that
+  identifier and reported that a re-parse would take the rest of the line as
+  the `source` column. The offending text it quoted began mid-identifier,
+  which is the tell.
+
+  A double colon is a C++ SCOPE OPERATOR, not a trailer declaration. No
+  render emits `Foo::bar` as a trailer line and no re-parse would read one,
+  because a trailer key is `<Key>:` followed by a value, never `<Key>::`.
+  In this codebase the collision is routine rather than exotic: any symbol
+  whose class name ends in one of the key words hits it -- `Source`, `Kind`,
+  `Lanes`, `Evidence`, `Layman`.
+
+  Suggested: require the colon NOT be followed by a second colon. One
+  character of lookahead, and it cannot weaken the guard, because a genuine
+  declaration is `Key: value`, which the lookahead still matches.
+
+  The refusal is otherwise a good one: it named the column, quoted the
+  shadowing text and gave both escapes. Only the predicate is too wide.
+  Worked around by backticking the symbol, which is the documented escape --
+  note that this bullet had to backtick its own repro to be writable, so the
+  verbatim form of the trigger is not recorded here.
+  **Layman:** Writing a note that mentions a code symbol whose name happens to end in Source or Kind gets rejected, because the tool mistakes the double colon for a heading.
+  Kind: fix.
+  Source: in-session-2026-08-21 (ANTS-3771 spec authoring).
+  Lanes: mcp, roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
