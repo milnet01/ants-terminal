@@ -36988,6 +36988,26 @@ are closed inline in the feedback files rather than filed here.
   hold a standing decision not to hand-convert 989 bullets -- which is the
   argument for this item existing, and also why it must not ship a
   converter that quietly drops or duplicates identities.
+  Prerequisite status 2026-08-21: ONE of the two named above is now closed.
+
+  The id-namespace/provenance item is ANTS-4575, shipped today -- the
+  reader now reports `id_inferred: true` on a bullet whose id it adopted
+  from a bold prose lead-in. That does NOT give this converter an id
+  source; it only lets it SEE which of the 989 ids are guessed, which is
+  the input it needs before deciding what to emit for each.
+
+  Still open, and still a hard blocker: ANTS-3771 (declare the project's id
+  format in .ants/project.json). Without it the 427 bold-span pseudo-ids
+  get written back as ids, which is the failure this item's body already
+  names. ANTS-3771 is also the real fix for the collision ANTS-4575 only
+  warns about -- two bullets sharing a lead-in still fold to one identity,
+  and nothing in the text can separate that from a real multi-word id.
+
+  So the order is ANTS-3771, then this. Do not read the ANTS-4605
+  annotation as a third blocker: that item was closed by decision, not
+  fixed, and its one live consequence for this converter is already stated
+  in the body above -- the source file is ~4.4% ants-v1 already, so the
+  convert must be idempotent per bullet.
 
 - 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
