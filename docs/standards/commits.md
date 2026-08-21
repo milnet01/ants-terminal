@@ -342,10 +342,27 @@ commit. If a hook fails, investigate and fix the underlying issue
 A hook whose own failure message prescribes a bypass for a named
 case authorises that case. Every other bypass still needs the user.
 
+**A named case names the CIRCUMSTANCE, not the command.** *"No network —
+skip with X"* authorises that push; a blanket *"fix it, or bypass with
+X"* printed on every failure authorises nothing, because it names no case
+to be in. Without this, a gate that prints its own escape hatch
+self-authorises every bypass of itself, which empties this section for
+exactly the gates that have one. So **a bypass of a check that actually
+FAILED always needs the user** — that failure is the thing the check
+exists to report.
+
 **Every bypass says why in the commit body, whichever it was.**
 [coding § 1.2](coding.md) requires the reason on every workaround and
 names `--no-verify` in its list, so a user-authorised skip owes one too.
 The body note is the only trace either leaves.
+
+**Scope: a bypass at COMMIT time. A push-time bypass has no commit body
+to be written in**, because every commit already exists by then and §2.2
+forbids amending one to add the note. Skipping the §4.2 gate —
+`git push --no-verify`, or the `SKIP_LOCAL_CI=1` form a hook prescribes
+— is recorded **in the body of the next commit**, naming what was
+skipped and why. Where there is no next commit it is recorded nowhere, and
+the *What checks this* table's §2.3 row says so.
 
 ### 2.4 Commit only files you mean to
 
@@ -459,11 +476,76 @@ mirror is *worse than no mirror*, because it returns green for a
 pipeline that will fail. You then push with more confidence than if you
 had never run it.
 
-So the local runner reads `.github/workflows/*.yml` and executes what it
-finds there. [`act`](https://github.com/nektos/act) does exactly this,
-running the real workflow in a container. Same principle the rest of
-this foundation runs on: **read the source of truth, never re-encode
-it.**
+**So invert it: put the checks in one script the repository owns, and
+have `.github/workflows/ci.yml` set up a machine and call that script.**
+Then there is one list of steps, the local run and the remote run cannot
+disagree, and the script is a thing you can give a flag to — which the
+documentation mode below requires and a container full of YAML cannot
+offer. LocalWebServerManager is the worked example; its `ci.yml` header
+says outright that the script owns every actual check.
+
+**A repository-owned gate script is only a mirror when the workflow does
+not call it.** That distinction is the whole rule, and without it the
+paragraph above appears to forbid the arrangement this one prescribes.
+
+**Where the pipeline cannot be inverted** — a workflow you do not
+control, a job matrix with no single entry point —
+[`act`](https://github.com/nektos/act) runs the real workflow in a
+container and is the fallback. Same principle either way: **read the
+source of truth, never re-encode it.**
+
+**Run it over the commits you are pushing, not over your working
+tree.** Those are the same tree only when the tree is clean, and nothing
+makes it clean. An uncommitted fix turns the run green for commits that
+will go red. Unrelated scratch work turns it red for commits that were
+fine. Both answers are about a tree the remote will never see, and
+neither announces itself.
+
+A pre-push hook is where this bites. git hands the hook the exact range
+on stdin — one `<local ref> <local sha> <remote ref> <remote sha>` line
+per ref — and a hook that then runs the gate from the repo root has
+thrown it away. **The same range decides the docs-only exemption
+below**, so a hook that reads it for one and not the other is already
+half right.
+
+**Route 1 — check the pushed commits out somewhere else and run the
+gate there.**
+
+```bash
+tree=$(mktemp -d)
+trap 'git worktree remove --force "$tree" 2>/dev/null' EXIT
+git worktree add --detach --quiet "$tree" "$local_sha"
+( cd "$tree" && ./scripts/local-ci.sh )
+```
+
+That runs against what the remote will see, and it never touches the
+working tree. The cost is a checkout with none of your ignored files in
+it, so a gate that needs a virtualenv, a build tree or a downloaded
+fixture pays to make one on every push.
+
+**Route 2 — where that cost is too high, refuse a dirty tree instead**
+— exit non-zero when `git status --porcelain` is non-empty, and name the
+files.
+It is a worse experience and an honest one: the developer is told the
+run cannot answer for this push, rather than shown a verdict that does
+not.
+
+**A clean tree is not enough on its own, and this is the condition that
+gets left out.** It proves the tree matches `HEAD` — never that `HEAD`
+is what you are pushing. `git push origin other-branch` from `main`,
+`git push origin HEAD~2:main`, and a push carrying several refs all pass
+the porcelain check while the gate answers for a commit the remote will
+never receive. So route 2 is available **only when every pushed tip
+equals `HEAD`**: compare each `<local sha>` on stdin against
+`git rev-parse HEAD`, and where any differs, refuse or take route 1.
+
+**Never stash to manufacture a clean tree.** `git stash` exits 0 having
+stashed nothing when there is nothing to stash, so the hook cannot tell
+a clean tree from a failed stash — [`languages/cpp.md`](languages/cpp.md)
+§ Tests records the same trap producing a false pass. A stash also
+mutates the developer's tree mid-hook, and the `pop` has to survive a
+gate that may have just exited non-zero, on a machine where the push was
+interrupted.
 
 **Where a job genuinely cannot run locally** — a self-hosted runner, a
 secret that is not on your machine, a platform you do not have — cover
@@ -475,13 +557,68 @@ confidence in a different place.
 **A repository with a pipeline and no way to run it locally has a gap
 worth fixing** before the next feature, not a rule to argue with.
 
-**The docs-only exemption, and the condition that makes it safe.** A
-push that changes only documentation may skip the local run **if both
-hold**:
+**A docs-only push runs the documentation checks — not the whole
+pipeline, and not nothing.** Both extremes are wrong in the same way. A
+full run charges ninety seconds of engine tests for a typo fix, and that
+is how a person learns to reach for `--no-verify` by reflex; a blanket
+skip walks past the markdown lint, the link check, the docs build and
+the test that counts something in a README. Measured on this machine
+(OneUp, 2026-08-21): the documentation mode of that project's gate runs
+in 0.14s where its full gate takes about 90s, and it still covers every
+check a `.md` edit can reach.
+
+So **give the gate a documentation mode and select it by the paths in
+the push**. Where the gate has no such mode, run all of it and say so —
+never quietly select a subset the gate does not offer. A hook cannot
+invent a check, and a skipped check followed by a green line is
+indistinguishable from a clean run.
+
+**Which files count as documentation is a per-project answer, and
+getting it wrong is not symmetric.** A file the pipeline READS is a
+pipeline input whatever its extension: a test that asserts against
+`README.md`, a check that counts headings, a docs site that builds from
+`docs/`. On 2026-08-19 a LocalWebServerManager push edited `CLAUDE.md`,
+took the exemption on the strength of the `.md`, and GitHub found the
+prose count that project's own suite forbids. So decide by what the
+pipeline reads, never by the extension, and let every uncertain case run
+the full gate — a wrong guess must cost time, never coverage.
+
+**A generic hook cannot do this on its own, so it must be told.** One
+shared between repositories has no way to know what a given pipeline
+reads, and its default will therefore be a list of extensions — which is
+the thing this paragraph forbids. `~/.claude/githooks/pre-push` takes the
+answer from `git config ants.gate.docsGlob`, per repository. **A
+repository whose pipeline reads markdown must narrow that glob to exclude
+those paths, or keep its own hook.** Nothing checks that it did.
+
+**The remaining case, where there is nothing to run at all.** Where the
+pipeline has no job that acts on documentation, the documentation checks
+are the empty set and the push may skip the local run entirely — **if
+both hold**:
+
+**This skip outranks the run-all-of-it fallback above.** Both fire on the
+same push — a docs-only push, to a repository whose gate has no
+documentation mode and whose pipeline has no documentation job — and they
+prescribe opposite things. A gate with no documentation mode is not a
+reason to run it when there is provably nothing in it for your paths.
+Condition 2 is what proves that, which is why it is the condition that
+matters.
 
 1. The last push's CI run on the remote succeeded —
-   `gh run list --branch "$(git branch --show-current)" --event push
-   --limit 1 --json conclusion`. **Both filters are load-bearing.** `gh
+   `gh run list --branch <the branch being pushed> --event push
+   --limit 1 --json conclusion`. **Take the branch from the ref being
+   pushed, never from `git branch --show-current`** — that reads the
+   working tree, which this section has just finished saying is not what
+   is being pushed, so a hook run for `git push origin feature` from
+   `main` would check `main`'s last conclusion and grant the skip on it.
+   The `<remote ref>` field of the hook's own stdin line names it —
+   **with the prefix stripped**, `${remote_ref#refs/heads/}`. git supplies
+   that field fully qualified and `--branch` wants a bare branch name.
+   Measured 2026-08-21: `--branch main` returned two runs on a repository
+   where `--branch refs/heads/main` returned `[]`, so a hook substituting
+   the field directly gets an empty list on every push and condition 1
+   can never hold — a skip that silently never fires, indistinguishable
+   from one denied on the merits. **Both filters are load-bearing.** `gh
    run list` scopes by neither branch nor event, so `--limit 1` alone
    returns the most recent run of any kind on any branch — a green
    scheduled run while the last push went red is exactly the case this
@@ -494,8 +631,9 @@ not simply "docs are safe".** Plenty of pipelines lint markdown, check
 links, spell-check, or build a docs site — and against one of those, a
 docs-only change is exactly as capable of going red as a code change.
 Taking the exemption without checking is how the rule produces the
-failure it exists to prevent. If any job touches your paths, the change
-is not docs-only for this purpose, whatever it looks like in the diff.
+failure it exists to prevent. If any job touches your paths, this skip
+is not available — run those jobs, which is the documentation mode
+above, whatever the diff looks like.
 
 ### 4.3 Tags
 
@@ -512,7 +650,9 @@ decides what leaves the machine. `--tags` sends every local tag,
 including ones never meant to leave it. Pushing the tag by name in a
 second command is explicit too. Where the project's workflows trigger on
 tags it buys a second CI run for nothing, and for a release tag
-[releases.md](releases.md) §4 rules it out by name. Settled 2026-08-18 (ROADMAP CFG-0133): this
+[releases.md](releases.md) §4 rules out **the separate tag push** by
+name: that section prescribes `--follow-tags` and requires the tag to go
+"with the commit it names, not separately and not later". Settled 2026-08-18 (ROADMAP CFG-0133): this
 section said "explicitly" and named no command, while `releases.md` §4
 and the global `CLAUDE.md` §6 both prescribe `--follow-tags`. A
 conformer running the prescribed command could not tell whether it
@@ -583,14 +723,15 @@ the rows below say so.
 | §1.5 trailers, and naming the model that did the work | **nothing** — and the failure is silent: a trailer copied from an older commit names a superseded model and reads as correct |
 | §2.1 one concern per commit | **nothing** — a judgement about the diff's contents, not its shape |
 | §2.2 don't amend | **nothing** for the case §2.2 leads with — an amend after a failed hook is local and leaves no trace. On a published commit it depends on the branch: on a shared one `git push` rejects the non-fast-forward and §3.3 refuses the force-push, but on a **personal** branch §3.3 permits it and §4.4 asks for no confirmation, so there it is **nothing** as well — and that is where most amending happens |
-| §2.3 don't skip hooks | **nothing mechanical** — `--no-verify` leaves no trace in the commit itself, so §2.3's required body note is the only one there is, and nothing checks that it was written |
+| §2.3 don't skip hooks | **nothing mechanical** — `--no-verify` leaves no trace in the commit itself, so §2.3's required body note is the only one there is, and nothing checks that it was written. A **push**-time bypass (`--no-verify`, or a hook's own `SKIP_LOCAL_CI=1` form) is worse: it belongs in the next commit's body, and where there is no next commit it is recorded **nowhere at all** |
 | §2.4 commit only files you mean to | Partial: a well-maintained `.gitignore` catches the common cases. An allowlist-style ignore file catches more and creates the opposite failure — a file silently never committed (`draft/README.md` records seven lost that way) |
 | §2.5 don't commit half-finished work | CI, where the project has it — and `commits.md` §4.2's local run catches it earlier and cheaper |
 | §2.6 don't commit generated files | The same `.gitignore`, when it has patterns for that project's build outputs. **Nothing** catches a generated file the ignore file does not name |
 | §3.1–3.2 trunk-based default, branch naming | **nothing** — branch names are never validated, and nothing reads the branching shape |
 | §3.3 don't force-push a shared branch | Branch protection, **where the plan allows it**. Checked 2026-08-10: unavailable on a private repo without GitHub Pro, so on this machine's private repos it is **nothing** |
 | §4.1 push cadence on a metered repo | **nothing** — nothing counts queued commits or asks before spending quota |
-| §4.2 the pipeline runs locally before a push | **nothing** on the rule itself. CI going red catches the *failure*, which is precisely the cost the rule exists to avoid — a check that fires after the damage is not a check on the rule |
+| §4.2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it is not reached, all silent. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` and must copy a `pre-push` into its own hooks directory — which a skeleton-scaffolded project does not ship. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. And the machine-wide hook **exits 0 when it discovers no gate script**, so a repository with a pipeline and no local runner — §4.2's "gap worth fixing" — pushes green forever with the hook installed |
+| §4.2 the local run is over the pushed commits, not the working tree | `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally, so where either runs the rule cannot be breached. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |
 | §4.3 annotated tags, never lightweight | **nothing** — and a lightweight tag is invisible until someone reads its absent message |
 | §4.4 confirm before a destructive operation | **nothing** — by construction: the confirmation is the check, and nothing checks the confirmation happened |
 
@@ -604,4 +745,6 @@ the rows below say so.
 | 4 | 2026-08-18 | 3, cold — genre pinned `standard`, first loop of a NEW run, gating the CFG-0133 edit. Packet carried both hooks in full, `releases.md` §§4 and 6, `documentation.md` §9.0, `CLAUDE.md` § Git push, and `git push --help`'s `--follow-tags` text verbatim | 2 | 4 | 0 | n/a | **Six verified, six fixed; none dismissed. Two more found by the orchestrator's own sweep.** **All three lanes independently found two defects.** The first is the sharpest: the What-checks-this table named `skeleton/files/.githooks/pre-commit` as what enforces `documentation.md` §9.0 — and that copy has two classes where the installed hook has seven. §9.0 says so itself ("**`path` is absent too** … the skeleton ships the weaker `link` class in its place"), so a scaffolded project was told its commits were checked for something nothing checks. Both hook rows now name the installed `.githooks/` path. The second: §4.4 carved force-pushes out to §3.3, which covers branches only — so a tag force-push fell back to §4.4's *confirm, unless pre-authorised*, where §4.3 refuses it outright. Two lanes found §1.2's roadmap test keying on `ROADMAP.md` alone while the hook sets `has_roadmap=yes` on `.roadmap-counter` too; a repo mid-setup was refused a form the standard granted it. **One lane alone found the run's quietest defect**: §1.2 exempts `Merge`/`Revert`/`fixup!`/`squash!` subjects from the *prefix* rule and says nothing about §1.3, while the hook exits before the length and trailing-period checks as well — measured here, a 102-character `Revert "…"` with a trailing period passes and the same length without the prefix fails. And §3.1 mandated PR-based feature work where `CLAUDE.md` §7 makes direct-to-`main` the default; §3.1 now hands that answer back the way §4.1 hands back cadence. **Both orchestrator findings came from settling a lane's open question rather than from a lane**: `gh run list` is not branch-scoped, so §4.2 condition 1's `--limit 1` returned the most recent run on *any* branch and answered a different question than the condition asks; and fixing the pre-commit row left its `commit-msg` sibling still naming the skeleton tree. **One dismissed as code-side and filed**: the hook counts subject length with `wc -m`, which returns characters under the user's UTF-8 locale and bytes under `LC_ALL=C` — measured 29 vs 31 on the standard's own em-dash release example. |
 | 5 | 2026-08-18 | 3, cold — identical brief, packet rebuilt from disk and extended with the INSTALLED `.githooks/pre-commit` class header, which loop 4's fixes now point at | 0 | 6 | 4 | n/a | **Ten verified, ten fixed; none dismissed. Not one Q1 from a lane** — every lane defect was two passages disagreeing or a conformer with no way to tell. **Three of the ten landed on loop 4's own text, and two of those were mine rather than a lane's.** The sharpest lane finding is one loop 4 half-fixed: the §9.0 row's file path was corrected and its *coverage* claim was left standing, where `documentation.md` §9.0 says outright **"Passing the hook is not this rule satisfied"** and names quoted fragments and census counts as unchecked — so a green hook read as §9.0 discharged. The row is now `Partial:`. **The best pre-existing finding needed no cross-reference at all**: §1.2 offered the `fix:` form to a repo with no roadmap, and that form is *defined* by a `Refs: PROJ-NNNN` trailer naming an allocated id — which such a repo cannot allocate, while §5 makes inventing one an anti-pattern. A conformer hot-fixing a config repo had no conforming option. **Two rows of the What-checks-this table were overstating their catcher.** §2.2's said `git push` rejects a published amend; §3.3 permits the force-push on a personal branch and §4.4 asks for no confirmation, which is where most amending happens. And §1.3's *single line* was covered by no row — **measured here, a 70-character first line with a second line under it passes the hook and yields a 134-character subject**, because the hook reads `head -1` and git's subject is the whole first paragraph joined. **That measurement refuted my own first draft of the fix**, which said `git log --oneline` truncates it; it does not, it joins, and the defect is worse than the row I nearly shipped. Also fixed: §1.2's prose reserved category prefixes for *a repo-wide sweep or a release* while its own table's chore and docs examples name single artefacts; §3.2 had no legal spelling for §1.2's two-part ` + ` component, a git refname having no space (`git check-ref-format` refuses it); §1.5's back-fill deadline was unbounded, now the push; and §2.3 required a written reason for the hook-prescribed bypass only, where `coding.md` §1.2 requires one for every workaround and names `--no-verify`. **My own two:** loop 4 asserted a second tag push *"buys a second CI run"* with no `on:` condition, and left §4.4's tag refusal ambiguous about approval given live at a collision. |
 | 6 | 2026-08-18 | 3, cold — identical brief, packet rebuilt from disk and extended with the four facts loop 5's lanes could not settle without `Bash` | 2 | 2 | 1 | n/a | **Five verified, five fixed; one dismissed. Cap reached (3 for a standard); the run files its tail and exits.** **A VIOLENT cap, and the run is oscillating: three of the five landed on text THIS RUN wrote** — checked against the earlier loops' ledger rows, not recall. **All three lanes independently found the one substantial pre-existing defect**, and it is one loop 5 DISMISSED as immaterial: § 1.4 attributes the release *tag* body's content to `releases.md` §§ 2–3, and § 2's enumeration names the commit body, the published notes and any announcement — not the tag; § 4 requires it be annotated without saying what it carries. A lane named the build difference loop 5 could not: a release tool written from § 4 tags with `-m "Release 0.7.55"`, one written from § 1.4 pastes the changelog section, and both are conformant. **The self-inflicted three share one shape — each was a fix that solved half of a two-half defect.** Loop 4 added `--branch` to § 4.2's command and not `--event`, so a green *scheduled* run still answered for a red push (`gh run list` scopes by neither). Loop 5 corrected the § 9.0 row's file path and left its coverage claim. And loop 5 resolved the unusable `fix:` form by PROHIBITING it in a roadmap-less repo — where `commit-msg` tests `category_form` before the `has_roadmap` branch and accepts `fix:` everywhere, so the prohibition enforced nothing and no row listed it; the form is restored and only its trailer withdrawn. **The second pre-existing finding was a mutual deferral neither section closed**: § 2.1 sends a cross-cutting refactor to § 1.2 *"where the repo has one"*, and § 1.2 caps its ` + ` guidance at two parts and sends anything wider back to § 2.1 as *"usually"* more than one concern — so a genuine cross-cutting rename in a roadmap-less repo had no prescribed subject and `component_form` accepts every spelling. **One finding was the sweep catching the same loop's own fix**: the § 1.4 repair implied CFG-0143 would relocate the wrap exemption, which CFG-0098 item 9 had already decided belongs here. **Size is not the reason the cap bound** — 456 lines, well inside what two cold reads finish, and the lanes reached § 5 and the closing table every loop. |
+| 7 | 2026-08-21 | 3, cold — genre pinned `standard`, first loop of a NEW run, gating the CFG-0182 edit. Packet carried `languages/cpp.md` § Tests, `workflow.md` § 6 as written the same day, `CLAUDE.md` rule 6, the new machine-wide hook in full, and eight measured source facts | 0 | 4 | 3 | n/a | **Seven verified, seven fixed; none dismissed. Not one Q1 from a lane.** **All three lanes independently found the same defect, and it was the change's own foundation**: § 4.2 said the local runner *"reads `.github/workflows/*.yml` and executes what it finds there"* via `act`, while the worked example this edit added runs `./scripts/local-ci.sh` — the repository-owned script the paragraph above calls *"worse than no mirror"*. Two lanes went further and found the half that made it unbuildable: the new docs-only rule says to *"give the gate a documentation mode"*, and a workflow executed through `act` has no flag to give it. `workflow.md` § 6, written the same hour, resolved it the other way and cited *"`commits.md` § 4.2 states the principle"* — a principle § 4.2 did not state. The section now states the inversion outright — one repository-owned gate script that `ci.yml` also calls — with `act` demoted to the fallback, and adds the distinction the whole rule turns on: **a gate script is only a mirror when the workflow does not call it.** **All three lanes also found the same Q3**, and it is this edit's own: route 2 (*refuse a dirty tree*) proves the tree matches `HEAD`, never that `HEAD` is what you are pushing. Reproduced here — a clean tree, `git push origin HEAD~2:main`, and a push made from a different branch all pass `git status --porcelain` while the gate answers for a commit the remote will never receive. Route 2 now requires every pushed tip to equal `HEAD`. **One lane alone found the quietest defect, and it is the same shape in pre-existing text**: condition 1 of the skip reads the branch from `git branch --show-current` — the working tree — eleven lines after the section finishes saying the working tree is not what is being pushed. **Two Q3s about traces that do not exist:** § 2.3 requires every bypass to state its reason in the commit body, and a push-time bypass happens after every commit exists while § 2.2 forbids amending one, so skipping the new gate had nowhere to be recorded; and § 4.3's *"rules it out by name"* had two available antecedents prescribing opposite commands for a release tag — `releases.md` § 4 settles it as the separate tag push. **Two What-checks-this rows were made false by this run's own hook**, both written hours earlier: they read **nothing** while `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally. **The 4b sweep found three more copies of the retired design** — `CLAUDE.md` § 6 and `releases.md` § 6 step 5 both restated the `act` route as § 4.2's requirement, and `releases.md`' What-checks-this row said a release is unchecked when `act` is absent, which is now only one of two routes. **One lane surfaced a code-side finding correctly rather than filing it as a doc defect**: the machine-wide hook decides documentation by extension while this section says never to. Real, and unfixable generically — the hook now says so in those words rather than implying its default is compliant. |
+| 8 | 2026-08-21 | 3, cold — identical brief, packet rebuilt from disk and extended with `releases.md` § 4 and § 6 step 5, plus the reproduced clean-tree/wrong-tip cases | 2 | 3 | 4 | n/a | **Nine verified, nine fixed; none dismissed. Six of the nine landed on text loop 7 wrote** — 4a-min's pattern at its starkest, and every one in text a fix ADDED. **The sharpest was settled by measurement rather than reading.** Loop 7 fixed condition 1 to take the branch from the hook's `<remote ref>` field; git supplies that field fully qualified, and `gh run list --branch` wants a bare name. Run here: `--branch main` returned two runs on a repository where `--branch refs/heads/main` returned `[]`. So loop 7's repair produced a skip that can never fire, indistinguishable from one denied on the merits — a worse defect than the one it fixed. One lane filed it as a Q1; a second raised it as the open question that named the one `gh` call which would settle it. **Two lanes found that loop 7 referred to *route 1* and *route 2* in two places and numbered neither**, so a hook author self-assessing against the coverage row had to guess which was which — and guessing wrong builds the porcelain check as the tip≠`HEAD` fallback, which is the exact failure the sentence closes. **All three lanes found the docs-classification rule has no owner.** § 4.2 says to decide by what the pipeline reads and never by the extension; the hook the table endorses decides by extension by default and says so in its own comment. The rule was unbuildable as written — a hook shared between repositories cannot know what a pipeline reads — so the section now names the per-repository knob that tells it, and the table says nothing checks the glob was narrowed. **One lane alone found the run's best pre-existing Q2**, and it empties § 2.3 for exactly the gates that matter: a hook's failure message prescribing a bypass *authorises* it, and the machine-wide hook printed `fix it, or push once with: SKIP_LOCAL_CI=1` on **every** failure — so the one gate with a scripted bypass self-authorised every bypass of itself. A named case now names the CIRCUMSTANCE, not the command, and a bypass of a check that actually failed always needs the user. The hook's message was changed with it. **A second lane-1 Q1 was the coverage row overstating its own hook, twice**: `core.hooksPath` holds one value and the local one wins, so a project setting it for `commit-msg` silently loses the machine-wide `pre-push` — which is every skeleton-scaffolded project, since `skeleton/files/.githooks/` ships no `pre-push`. And the hook exited 0 on discovering no gate script, so a repository with a pipeline and no local runner pushed green forever with the hook installed; it now says which of the two cases it is. **One Q2 was two of loop 7's own rules firing on one push**: *run all of it* and *skip entirely* both apply to a docs-only push to a repo whose gate has no docs mode and whose pipeline has no docs job, and neither yielded. The skip now outranks. **Both code-side findings were surfaced by lanes rather than misfiled as document defects**, which is the brief working. |
 <!-- MIRROR END -->
