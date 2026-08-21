@@ -4660,7 +4660,7 @@ minor tag (next: pre-0.8.0).
   Layman: Let the terminal do more of the setup work when starting a new project, so Claude spends fewer tokens doing it.
   Kind: implement.
   Source: user-2026-04-28.
-  Lanes: MainWindow.
+  Lanes: MainWindow, SettingsDialog, new `ProjectTemplateWizard` class, docs.
 
 ### 🎨 Undo for accidental tab close (user request 2026-04-30)
 
@@ -4709,7 +4709,7 @@ minor tag (next: pre-0.8.0).
   SettingsDialog.
   Kind: implement.
   Source: user-2026-04-30.
-  Lanes: Config, MainWindow.
+  Lanes: Config, MainWindow, SettingsDialog.
 
 - 💭 [ANTS-1103] **Generic UI-action undo / redo stack (deferred).**
   A wider mechanism beyond tab-close: font-size
@@ -4794,7 +4794,7 @@ minor tag (next: pre-0.8.0).
   RoadmapDialog.
   Kind: doc-fix.
   Source: user-2026-04-30.
-  Lanes: docs.
+  Lanes: docs, RoadmapDialog.
 
 - 📋 [ANTS-1107] **Adopt App-Build documentation folder structure.**
   **Deferred — paired with ANTS-1108** (native App-
@@ -5601,7 +5601,7 @@ minor tag (next: pre-0.8.0).
   through `skippedOut` at the dialog layer so an empty brief is visible.
   Kind: implement. Source: in-session-2026-05-21 (noticed integrating
   ANTS-1722). Lanes: briefdispatch, testauditdialog.
-  Source: in-session-2026-05-21 (noticed integrating.
+  Source: in-session-2026-05-21 (noticed integrating ANTS-1722).
   Lanes: briefdispatch, testauditdialog.
 
 - ✅ [ANTS-1723] **Workflow-state MCP tool — superpowers skill context compression.**
@@ -6871,7 +6871,7 @@ they are one change.
   status bar.
   Kind: implement.
   Source: user-2026-04-30.
-  Lanes: MainWindow.
+  Lanes: MainWindow, status bar.
 
 - ✅ [ANTS-1849] **Suggested-model chip click should return focus to the terminal.**
   The model-chip click handler (`claudestatuswidgets.cpp:136`) sends `/model
@@ -7081,7 +7081,7 @@ they are one change.
   replace it. 121 tests pass.
   Kind: fix. Source: user-2026-04-30 (two reports, same
   class). Lanes: MainWindow.
-  Source: user-2026-04-30 (two reports, same.
+  Source: user-2026-04-30 (two reports, same class).
   Lanes: MainWindow.
 
 ---
@@ -27113,7 +27113,7 @@ against current source before filing.
   **Layman:** One old spec writes two header labels on the same line; a new rule says one per line, so that spec needs a one-line rewrap.
   Kind: doc-fix.
   Source: in-session-2026-08-02, ANTS-3785 cold-eyes loop 3.
-  Lanes: claudeintegration.
+  Lanes: claudeintegration, mainwindow.
 
 - 📋 [ANTS-3788] **Cold-eyes lanes spend ~100k tokens against a 60k budget even with a fully-built context packet.**
   Measured across all six lanes of the ANTS-3786 gate (2026-08-02):
@@ -32158,7 +32158,7 @@ against current source before filing.
   beside roadmap_read_seam's Inv3Latency, not a claim in this body.
   **Layman:** The roadmap tools now avoid opening the big 3 MB file just to ask "is this project in the database?" — but three places still read the whole thing straight afterwards for their own reasons, so those three got no faster.
   Kind: perf.
-  Source: :bulletsFromStore().
+  Source: :bulletsFromStore() instead of parsing storeText.full(), so op:append's migrated path reads no body at all.
 
 - 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
   Hit 2026-08-17 converting six call sites in one `apply_edits` call. All six
@@ -40743,6 +40743,49 @@ filed below.
   `.backup`, never cp, which is not safe against a live WAL database. It
   predates the eviction, so restoring it would bring project 17 back.
   Phase 2 wants its OWN backup taken immediately before the run.
+  Phase 2 RUN on this project 2026-08-21. Backup first
+  (roadmap.sqlite.pre-ANTS-4585p2.20260821-092057.bak, sqlite3 .backup, mode
+  0600, integrity ok, 16 projects), then dry_run, then the real run.
+
+    items 2236 / with a surviving run 1804
+    repaired 646 -- layman 578, source 46, lanes 22
+    chars recovered 64,669
+    skipped 27
+
+  Real run reported the dry run's counts exactly (INV-5), and a second dry
+  run reports 0 repairs with the same 27 skips (INV-7). Store after: 16
+  projects, 5085 items, integrity ok, foreign_key_check empty. The repair writes the STORE only and left the repo tree clean; the file
+  caught up on the next render, where 14 short trailer lines came back
+  whole. Only 14, against 646 repairs, because the render composes a
+  trailer line only for a column the prose does not declare (ANTS-4599) --
+  so most repairs are invisible in the file and live in the column.
+
+  Spot-checked rather than assumed. ANTS-1911, the canonical
+  abbreviation-stop case, went from `...two Claude tabs open (e` to the
+  whole 460-char sentence. ANTS-1933 and ANTS-1565, two of the seven
+  hand-edited items, are untouched and still hold the newer stored value --
+  the guard is doing what it was designed for.
+
+  TWO THINGS FOR WHOEVER PICKS THIS UP.
+
+  The skip count is 27 for this project alone, where the pre-ship
+  measurement recorded 11 store-wide for layman+source. Nothing was
+  written for any of them, so it is not a correctness problem, but the
+  populations are not the same shape and the difference is unexplained.
+  Likely the lanes element-wise guard, which that 11 never counted.
+
+  ANTS-4273 is skipped, not repaired. The pre-ship note called it damage
+  "the guard correctly repairs"; it does not. The stored value is the
+  5-char fragment `ants, which is not a strict PREFIX of the re-parse, so
+  the guard skips it. That is the safe behaviour and the contract is right
+  -- but the item stays damaged, and so does anything else in the 20 skips
+  that are not one of the seven known hand edits. Those need a decision of
+  their own; they are not repairable by re-parse.
+
+  Still open: the other 15 projects (the store-wide measurement said 824
+  layman / 58 source / 54 lanes, so roughly 246 / 12 / 32 remain outside
+  this project). One call each, same backup-first sequence, and it is
+  other projects' data. Then phase 3, which stays LAST.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
@@ -47567,7 +47610,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: implement. Source: user-2026-05-01. Lanes: Config,
   RoadmapDialog, AuditDialog, SettingsDialog, MainWindow.
   Source: user-2026-05-01.
-  Lanes: Config.
+  Lanes: Config, RoadmapDialog, AuditDialog, SettingsDialog, MainWindow.
 
 ### 🐛 Crash-safe session persistence (user report 2026-05-02)
 
@@ -47660,7 +47703,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   known PID NOT dropped) to lock both directions.
   Kind: fix. Source: user-2026-05-07 (initial), user-2026-05-08
   (regression). Lanes: claudeintegration, claudetabtracker.
-  Source: user-2026-05-07 (initial), user-2026-05-08.
+  Source: user-2026-05-07 (initial), user-2026-05-08 (regression).
   Lanes: claudeintegration, claudetabtracker.
 
 ### 🐛 Claude Code UX — bottom status-bar `Claude:` widget shows wrong tab's state (user report 2026-05-07)
@@ -47962,7 +48005,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-2026-05-12. Lanes: remotecontrol,
   claudeintegration, mainwindow.
   Kind: feature.
-  Lanes: remotecontrol.
+  Lanes: remotecontrol, claudeintegration, mainwindow.
 
 - ✅ [ANTS-1249] **`file_outline` MCP tool.**
   Shipped 2026-05-12.
@@ -48015,7 +48058,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-2026-05-12. Lanes: new (gitwrap), remotecontrol,
   claudeintegration, mainwindow.
   Kind: feature.
-  Lanes: new (gitwrap), remotecontrol.
+  Lanes: new (gitwrap), remotecontrol, claudeintegration, mainwindow.
 
 - ✅ [ANTS-1251] **`subsystem` MCP tool (consolidated; map / files / recent_changes via `op`)**
   — shipped 2026-05-12. Pre-parses the
@@ -48070,7 +48113,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: feature. Source: user-2026-05-12. Lanes: new (hooks/,
   tools/install-hooks.sh, tests/features/hook_pack/).
   Source: user-2026-05-12.
-  Lanes: new (hooks/.
+  Lanes: new (hooks/, tools/install-hooks.sh, tests/features/hook_pack/).
 
 - ✅ [ANTS-1253] **Consolidate MCP-tool provider registry.**
   Shipped 2026-05-13. Replaced 12 per-tool
@@ -48799,7 +48842,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: fix. Source: user-2026-05-07 (ANTS-1187 origin),
   user-2026-05-08 (paint-pipeline finding). Lanes:
   terminalwidget (paintEvent + onVtBatch + snapshot lifecycle).
-  Source: user-2026-05-07 (ANTS-1187 origin),.
+  Source: user-2026-05-07 (ANTS-1187 origin), user-2026-05-08 (paint-pipeline finding).
   Lanes: terminalwidget (paintEvent + onVtBatch + snapshot lifecycle).
 
 ### 🐛 TerminalGrid::resize — default scroll region doesn't grow with grid (user report 2026-05-08, ANTS-1187/1193 root cause)
