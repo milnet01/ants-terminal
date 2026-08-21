@@ -40110,6 +40110,56 @@ filed below.
   Do NOT implement this by emptying the id. ANTS-1438 ships a Vestige
   fixture whose ids are `Terrain System` and `JustBoldNoSeparator`, and
   both are addressable today.
+  Design blocker found 2026-08-21, before writing any code. NOT implemented,
+  and the reason is a collision with ANTS-3793 that the proposal does not
+  mention.
+
+  The proposal says to emit `id_origin` "using the store's own vocabulary so
+  the two readers answer in one language". The store CAN answer: the column
+  exists and `readItems()` already populates `ItemWrite::idOrigin` from it.
+  The markdown reader cannot -- there is no column, only the text.
+
+  The collision. ANTS-3793 INV-2 requires the two backends to produce
+  byte-identical `BulletRecord`s, and its own § table is explicit that on
+  the store path `id` comes FROM THE RENDERED HEAD LINE, NOT from the `id`
+  column, precisely to hold that invariant. Add a field the store path
+  reads from a column and the markdown path derives from text, and INV-2
+  fails by construction on the first project where they disagree. The
+  census in that spec is also stated as a count (22 members), so a 23rd
+  field is a spec amendment rather than an additive change.
+
+  Three options, and two are wrong.
+
+    (a) Real column on the store path, grammar on the markdown path.
+        Breaks INV-2. Rejected.
+    (b) Grammar on both. INV-2 holds and the VALUE is wrong: with
+        idTokenPattern() = `[A-Za-z0-9][A-Za-z0-9_-]*-\d+`, `PASS-43-5`
+        matches but `PASS-43-5-B` does not -- so a real synthesised pass id
+        reports `quarantined`. That is the exact harm roadmapexport.cpp's
+        rule 6 comment guards against ("burying it with the junk would bury
+        144 live items"), and it would mislabel live items as junk in the
+        one field whose whole purpose is to say what an id IS.
+    (c) A three-way predicate over the RENDERED id, shared by both paths:
+        pass-shaped -> synthesised, else grammatical -> parsed, else
+        quarantined. Both readers derive it from the one thing they share,
+        so INV-2 holds, the vocabulary matches the store's, and the pass
+        case is right.
+
+  (c) is the recommendation. It costs: one BulletRecord field, one shared
+  predicate, the emit gated on != "parsed", ANTS-3793's INV-2 census and
+  field table amended to 23, and a test per backend proving they agree on a
+  pass-shaped id -- which is the case that distinguishes (c) from (b) and
+  the only one worth a fixture.
+
+  What (c) still cannot see, and it should be stated in the envelope's
+  documentation rather than discovered: a `parsed` verdict is a statement
+  about the id's SHAPE, not its provenance. An off-grammar id hand-written
+  by an author and one adopted from a bold prose lead-in are the same text
+  and stay indistinguishable. That is the parser's own comment, and no
+  reader-side field fixes it.
+
+  Not started because the choice above changes a spec's invariant, and
+  picking it silently is what the item is complaining about elsewhere.
   **Layman:** Some roadmap item IDs are guessed from the text; nothing tells you which ones.
   Kind: enhancement.
   Source: ANTS-4546 residue, measured in-session 2026-08-20.
