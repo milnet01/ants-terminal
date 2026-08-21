@@ -1,6 +1,7 @@
 # ANTS-3771 — Declare a project's id format in `.ants/project.json`
 
-**Status:** spec draft (2026-08-21).
+**Status:** spec draft, cold-eyes loops 1 + 2 folded, cap reached (2026-08-21). **Not `accepted`:** § 8's first open question is a design
+decision with build-graph consequences and is the user's to make; it blocks INV-13 and nothing else.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3771 (user-request-2026-08-01); direction chosen
 in-session 2026-08-21 (authority = reads *and* writes; a non-matching
