@@ -633,11 +633,18 @@ bool Loader::allocateId(QString *allocated) {
         // already allocates under, and deriving the prefix afresh from a source
         // file that carries no ids would let a renamed directory start a second
         // counter.
+        //
+        // ANTS-3771 § 2.3 — ABOVE all three. The store row records what THIS
+        // STORE has allocated; the declaration records what the PROJECT has
+        // decided, and where they disagree the project is right and the row is
+        // a stale artefact of an earlier migration.
         err.clear();
         const auto storedPrefix = store.idPrefixFor(projectId, &err);
         if (!err.isEmpty())
             return fail(err);
-        if (storedPrefix) {
+        if (!opts.idFormat.prefix.isEmpty()) {
+            prefix = opts.idFormat.prefix;
+        } else if (storedPrefix) {
             prefix = *storedPrefix;
         } else {
             // Failing that, the most frequent prefix among the plan's PARSED

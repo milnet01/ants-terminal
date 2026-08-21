@@ -9,6 +9,7 @@
 // pre-split relative order can be violated by it.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "projectsettings.h"   // ANTS-3771
 #include "gitwrap.h"
 #include "roadmapparse.h"
 
@@ -131,6 +132,9 @@ RlBackfillWalk rlWalkGitForDates(const QString &root, const QStringList &pathspe
         return w;
     }
 
+    const RoadmapParse::IdFormat idFormat =
+        ProjectSettings::idFormatFor(root);   // ANTS-3771
+
     QString curDate;
     QStringList added;   // this commit's added bullet lines, discarded per commit
 
@@ -140,8 +144,13 @@ RlBackfillWalk rlWalkGitForDates(const QString &root, const QStringList &pathspe
         // parseBullets() as a document rather than matched with a second regex.
         // A continuation line with no bullet above it yields no record, so a
         // fragment cannot invent one.
+        // ANTS-3771 — these are a PROJECT'S OWN roadmap lines, so they are
+        // read under that project's declaration like any other project-scoped
+        // read (§ 2.2). Loaded once outside the lambda: `root` cannot change
+        // during a walk and load() reads the file every time it is asked.
         for (const RoadmapParse::BulletRecord &b :
-                 RoadmapParse::parseBullets(added.join(QLatin1Char('\n')))) {
+                 RoadmapParse::parseBullets(added.join(QLatin1Char('\n')),
+                                            idFormat)) {
             if (b.id.isEmpty() || curDate.isEmpty()) continue;
             if (!w.firstSeen.contains(b.id))
                 w.firstSeen.insert(b.id, curDate);

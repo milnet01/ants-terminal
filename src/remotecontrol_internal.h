@@ -275,6 +275,50 @@ qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &
 // op:append pays no body read while the rare prefix-sniff still gets the whole
 // file.
 QString rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId, const QString &idPrefixArg, RoadmapSource::RoadmapText &text, const QString &callerCanonical);
+
+// ANTS-3771 § 2.3 — refuse a caller-supplied WRITTEN id (`stable_id`) that
+// breaches the project's own declaration. Returns "" to accept; otherwise fills
+// *code with the refusal code and returns the message.
+//
+// Two tests, and which code fires matters to a caller because the fix for each
+// is different (mcp-error-codes.md):
+//   bad_id_format      — the id is not accepted by roadmap-format.md § 3.5.1's
+//                        universal grammar NOR by the declared pattern. This is
+//                        ANTS-3769's `[ANTS-119&]` class: the prefix is fine and
+//                        the SUFFIX is not a number.
+//   id_format_mismatch — the id is well-formed but the text before its final
+//                        `-` is not the declared `prefix`. A token can satisfy
+//                        the universal gate and still breach THIS project's
+//                        declaration; folding the two into one code would make
+//                        the refusals indistinguishable.
+//
+// It fires ONLY on a project that DECLARES an id_format, and that is a
+// deliberate departure from § 2.3's table, which puts the first row at "always,
+// declaration or not". Measured 2026-08-21: `Ts20-SP6` and `Demo-SP1` — the
+// documented stable_id example and the value two shipped suites
+// (mcp_roadmap_log_append_batch, roadmap_log_stable_prefix_hint) assert on —
+// both FAIL the universal grammar, whose suffix must be `-\d+`. An
+// unconditional row therefore makes id_strategy:"stable_prefix" unusable and
+// reddens both suites. Gated on the declaration it keeps INV-1's promise —
+// a project that declares nothing behaves exactly as today — and still catches
+// ANTS-3769's class on every project that declares one.
+//
+// `pattern` takes no part in ROW 2, per § 2.3: matching it against a bracket id
+// would reject a conforming `ANTS-0042` under § 3.1's own example. It takes
+// part in row 1 only as an additional ACCEPTING arm (isGrammaticalId's second
+// clause), never as a rejecter, so it can refuse nothing the universal grammar
+// admits.
+QString rlDeclaredIdRefusal(const QString &writtenId,
+                            const RoadmapParse::IdFormat &fmt, QString *code);
+
+// ANTS-3771 — the project's declared id format, and a markdown read under it.
+// Shorthands over ProjectSettings::idFormatFor(): eleven sites in
+// remotecontrol_roadmap_log.cpp need the same lookup, and that TU is under
+// ANTS-3833 INV-6's 6000-line cap, so each spelt-out call wrapped onto a second
+// line. Defined beside rlDeclaredIdRefusal() rather than there for that reason.
+RoadmapParse::IdFormat rlDecl(const QString &root);
+QVector<RoadmapParse::BulletRecord> rlParse(const QString &markdown,
+                                            const QString &root);
 bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error);
 QString changelogMalformedAdvisory(int line, bool plural, bool applied);
 QStringList rcShortBareAltTerms(const QString &pattern);
@@ -300,9 +344,13 @@ void rcCapBodyFields(QJsonArray &arr, int cap);
 void rcStripBodyFields(QJsonArray &arr);
 void rcClipMatchTextFields(QJsonArray &matches, int cap);
 void rcApplyHeadlineOnly(QJsonArray &matches);
-QString rlDetectStablePrefixId(const QString &markdown);
-bool rlRoadmapHasAnyBulletId(const QString &markdown);
-QString rlDetectCounterPrefix(const QString &markdown);
+// ANTS-3771 — each of these four reads BulletRecord::id out of a markdown
+// sniff, so each takes the project's DECLARED id format. Defaulted for the
+// caller that holds no project root; a caller that holds one and omits it would
+// sniff ids the rest of the same verb does not agree with (INV-13).
+QString rlDetectStablePrefixId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
+bool rlRoadmapHasAnyBulletId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
+QString rlDetectCounterPrefix(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 QString rlResolveCounterPrefix(const QString &idPrefixArg, const QString &markdown, const QString &callerCanonical);
 qint64 rlMaxExistingIdForPrefix(const QVector<RoadmapDialog::BulletRecord> &bullets, const QString &pfx);
 QStringList rcSectionChildSlugs(const QVector<RoadmapIndex::Section> &index, const RoadmapIndex::Section &sec);
@@ -335,7 +383,16 @@ double rcHeadlineJaccard(const QSet<QString> &tokA, const QSet<QString> &tokB, i
 QJsonArray rcComputePossibleDuplicates(const QVector<RoadmapDialog::BulletRecord> &existing, const QString &newHeadline);
 QString rcGfmCanonicalHeadline(const QString &rawHead);
 QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead, const QString &boldId);
-QVector<GfmBullet> walkGfmBullets(const QStringList &lines);
+// ANTS-3771 — `fmt` is the project's DECLARED id format. The WRITE path has
+// its own GFM walker (this one), separate from RoadmapParse's, and its
+// `boldId` is what an `id` locator matches against — so without the
+// declaration here a project could address `AX1` through roadmap_query and not
+// through roadmap_log, which is precisely the two-answers-for-one-bullet
+// failure INV-13 forbids. `boldId` is never used to REWRITE text, only to
+// locate and to echo, so resolving it through the declaration cannot change
+// what lands on disk.
+QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
+                                  const RoadmapParse::IdFormat &fmt = {});
 void applyGfmFlip(QStringList &lines, const GfmBullet &b, const QString &statusEmoji, const QString &anchorToInject);
 QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines);
 void applyAntsV1Flip(QStringList &lines, const AntsV1Bullet &b, const QString &targetEmoji);

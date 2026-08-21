@@ -103,8 +103,9 @@ QStringList detectionPrefixOf(const QString &markdown) {
 // bulletText() emits a head line with no status marker and parseAntsV1Bullet()
 // declines it exactly as a document walk would skip it.
 void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
-                  const QString &heading, int level, const QString &slug) {
-    auto rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletText(it));
+                  const QString &heading, int level, const QString &slug,
+                  const RoadmapParse::IdFormat &fmt) {
+    auto rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletText(it), fmt);
     if (!rec)
         return;
     rec->sectionHeading = heading;
@@ -392,7 +393,8 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
 
 std::optional<QVector<BulletRecord>>
 bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
-                 ReadError *why, QString *error) {
+                 ReadError *why, QString *error,
+                 const RoadmapParse::IdFormat &fmt) {
     if (why)
         *why = ReadError::None;
     if (error)
@@ -497,7 +499,7 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
             const auto it = itemOf->constFind(e.itemPk);
             if (it == itemOf->constEnd())
                 continue;
-            appendRecord(out, *it, heading, level, slug);
+            appendRecord(out, *it, heading, level, slug, fmt);
         }
     }
 
@@ -512,7 +514,7 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
                   return a.idFold.compare(b.idFold) < 0;
               });
     for (const RoadmapStore::ItemRef &ref : unfiled)
-        appendRecord(out, itemOf->value(ref.itemPk), QString(), 0, QString());
+        appendRecord(out, itemOf->value(ref.itemPk), QString(), 0, QString(), fmt);
 
     return out;
 }
@@ -520,7 +522,7 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
 std::optional<QVector<BulletRecord>>
 bulletsFor(RoadmapStore &store, const QString &projectRoot,
            RoadmapText &text, bool includeArchive, ReadError *why,
-           QString *error) {
+           QString *error, const RoadmapParse::IdFormat &fmt) {
     if (why)
         *why = ReadError::None;
     if (error)
@@ -537,7 +539,7 @@ bulletsFor(RoadmapStore &store, const QString &projectRoot,
             *why = markerWhy;
         return std::nullopt;
     }
-    return bulletsFromStore(store, *projectId, includeArchive, why, error);
+    return bulletsFromStore(store, *projectId, includeArchive, why, error, fmt);
 }
 
 QHash<QString, QString> legendByEmoji(const QString &legendText) {

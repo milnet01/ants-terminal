@@ -5586,7 +5586,17 @@ void ClaudeIntegration::onMcpConnection() {
                     "key is supplied, unrecognised_format on a malformed "
                     "existing file. Declared paths are validated under the root "
                     "(bad_path) and the file is written world-readable. "
-                    "caller_cwd required.");
+                    "ANTS-3771 — op:\"set\" also takes `id_format`, the "
+                    "project's own ID grammar and the one non-path key: "
+                    "{prefix?, pattern?}. `prefix` decides what an allocation "
+                    "renders and refuses a written id whose prefix disagrees "
+                    "(id_format_mismatch); `pattern` (PCRE2, <=512 bytes) says "
+                    "which text of a GFM bold lead-in IS the id, so "
+                    "`**AX1. Some headline**` reports `AX1` instead of the whole "
+                    "sentence. Both optional and independent; an invalid one "
+                    "refuses bad_args at write time and is DROPPED at read time. "
+                    "op:\"detect\" cannot suggest it — a grammar is not a path "
+                    "on disk. caller_cwd required.");
                 psTool["selection_hint"] = QStringLiteral(
                     "Use op:detect (or read session_orient's "
                     "project_settings_suggestion) when codebase_index comes back "
@@ -5623,6 +5633,33 @@ void ClaudeIntegration::onMcpConnection() {
                         rmProp["description"] = QStringLiteral("Roadmap file (repo-relative).");
                     QJsonObject clProp; clProp["type"] = "string";
                         clProp["description"] = QStringLiteral("Changelog file (repo-relative).");
+                    // ANTS-3771 — the one non-path key. additionalProperties is
+                    // false so an unknown member is client-rejected before the
+                    // verb sees it, which matches applyWrite()'s own refusal.
+                    QJsonObject ifProp; ifProp["type"] = "object";
+                        ifProp["additionalProperties"] = false;
+                        QJsonObject ifProps;
+                        QJsonObject ifPfx; ifPfx["type"] = "string";
+                            ifPfx["description"] = QStringLiteral(
+                                "Canonical ID prefix (1-16 chars of "
+                                "[A-Za-z0-9_-], at least one letter, e.g. ANTS "
+                                "or 3D_E). Beats the store's id_prefix row and "
+                                "the markdown sniff; an explicit id_prefix "
+                                "argument on roadmap_log still wins.");
+                        QJsonObject ifPat; ifPat["type"] = "string";
+                            ifPat["description"] = QStringLiteral(
+                                "PCRE2, <=512 bytes, matched against a GFM bold "
+                                "lead-in with its trailing '.' already dropped. "
+                                "Capture group 1 is the id (the whole match when "
+                                "there is no group); the text it did not consume "
+                                "is the headline. A NON-match changes nothing — "
+                                "the bullet keeps the id it has today.");
+                        ifProps["prefix"] = ifPfx;
+                        ifProps["pattern"] = ifPat;
+                        ifProp["properties"] = ifProps;
+                        ifProp["description"] = QStringLiteral(
+                            "The project's own ID grammar (op:set). Both members "
+                            "optional and independent.");
                     props["op"]           = opProp;
                     props["source_roots"] = srProp;
                     props["test_roots"]   = trProp;
@@ -5630,6 +5667,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["specs_dir"]    = sdProp;
                     props["roadmap"]      = rmProp;
                     props["changelog"]    = clProp;
+                    props["id_format"]    = ifProp;              // ANTS-3771
                     props["dry_run"]      = makeDryRunProp();    // ANTS-2227
                     props["caller_cwd"]   = makeCallerCwdReadProp();
                     schema["properties"]  = props;

@@ -17,6 +17,7 @@
 
 #include "roadmapmigrateverb.h"
 
+#include "projectsettings.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
@@ -228,8 +229,17 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
                                .arg(req.projectRoot, discErr));
     }
 
+    // 3a — ANTS-3771. The project's DECLARED id format, loaded ONCE here and
+    // handed to both halves: the read half classifies parsed-vs-quarantined
+    // against it (§ 2.4) and the load half allocates under its `prefix`
+    // (§ 2.3). This is the impure side, which is where a filesystem read
+    // belongs — planFrom() is pure (ANTS-3757 INV-9) and the loader's library
+    // cannot see ProjectSettings at all.
+    const RoadmapParse::IdFormat idFormat =
+        ProjectSettings::idFormatFor(req.projectRoot);
+
     // 4 — the plan. Pure: no filesystem, no clock, no id counter. Cannot fail.
-    auto plan = RoadmapMigrate::planFrom(*disc, name, slug);
+    auto plan = RoadmapMigrate::planFrom(*disc, name, slug, idFormat);
 
     // 4a — ANTS-4065 § 2.5. Separate from planFrom() because resolving a cited
     // path reads the filesystem and planFrom() is pure (ANTS-3757 INV-9). Never
@@ -318,6 +328,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     opts.changedAt   = req.changedAt;
     opts.projectRoot = req.projectRoot;
     opts.dryRun      = req.dryRun;
+    opts.idFormat    = idFormat;      // ANTS-3771 § 2.3
     const auto out = RoadmapMigrateLoad::load(store, plan, opts);
 
     // 9 — the envelope. Every count is Outcome's corresponding field renamed to

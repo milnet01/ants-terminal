@@ -27,6 +27,17 @@ QStringList fileIds(const QString &path) {
     if (!f.open(QIODevice::ReadOnly))
         return {};
     QStringList out;
+    // ANTS-3771 — deliberately the BARE overload, and INV-13's grep should
+    // read this comment rather than flag it. Two reasons, and the second is
+    // decisive. This function reads a file that commitAndRender() is about to
+    // overwrite, which means the project is MIGRATED — so the file it reads is
+    // roadmaprender.cpp's own ants-v1 output, `gfmHere` is false, and the
+    // branch a declaration governs cannot run (the same argument INV-6 makes
+    // for the store path). And this library links
+    // `Qt6::Core Qt6::Sql ants_roadmapparse_lib` and deliberately not
+    // ants_core_lib, so ProjectSettings is not reachable from here at all;
+    // threading a value down would add a parameter to commitAndRender() and
+    // ten call sites to carry something that cannot change the answer.
     const auto bullets = RoadmapParse::parseBullets(QString::fromUtf8(f.readAll()));
     out.reserve(bullets.size());
     for (const RoadmapParse::BulletRecord &b : bullets)

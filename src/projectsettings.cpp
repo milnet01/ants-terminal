@@ -5,6 +5,7 @@
 
 #include "codebaseindex.h"
 #include "pathvalidation.h"
+#include "roadmapfoldin.h"
 
 #include <QDir>
 #include <QDirIterator>
@@ -15,6 +16,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSet>
 
 #include <algorithm>
@@ -52,6 +54,45 @@ std::optional<QStringList> parseDirArray(const QString &rootCanonical,
     return out;
 }
 
+// ANTS-3771 § 2.5 — the declaration, under load()'s per-entry drop rule: an
+// invalid member is DROPPED, never fatal, because an unreadable settings file
+// must not take the roadmap down with it. A dropped member reads as undeclared
+// and the existing fallback applies (INV-10).
+//
+// `prefix` is validated by the EXISTING RoadmapFoldIn::isValidIdPrefix()
+// (ANTS-3492) rather than by a second grammar written here — the digit-led
+// `3D_E` case is already correct there.
+//
+// `pattern` crosses a trust boundary: author-supplied text compiled into a
+// regex and run over every bullet of a file that can be a megabyte. Two
+// refusals, both dropping the member: over kIdFormatPatternMaxBytes, or does
+// not compile. A pattern that does not compile is not a pattern.
+std::optional<RoadmapParse::IdFormat> parseIdFormat(const QJsonValue &v) {
+    if (!v.isObject()) return std::nullopt;
+    const QJsonObject o = v.toObject();
+    RoadmapParse::IdFormat fmt;
+
+    const QJsonValue pv = o.value(QStringLiteral("prefix"));
+    if (pv.isString()) {
+        const QString pfx = pv.toString().trimmed();
+        if (RoadmapFoldIn::isValidIdPrefix(pfx)) fmt.prefix = pfx;
+    }
+
+    const QJsonValue rv = o.value(QStringLiteral("pattern"));
+    if (rv.isString()) {
+        const QString pat = rv.toString();
+        if (!pat.isEmpty() &&
+            pat.toUtf8().size() <= RoadmapParse::kIdFormatPatternMaxBytes &&
+            QRegularExpression(pat).isValid())
+            fmt.pattern = pat;
+    }
+
+    // An object emptied by dropping becomes nullopt — the same rule
+    // parseDirArray() applies to an array emptied by dropping (INV-10).
+    if (!fmt.isDeclared()) return std::nullopt;
+    return fmt;
+}
+
 }  // namespace
 
 Settings load(const QString &rootCanonical) {
@@ -75,7 +116,13 @@ Settings load(const QString &rootCanonical) {
     s.roadmap     = validEntry(rootCanonical, o.value(QStringLiteral("roadmap")));
     s.changelog   = validEntry(rootCanonical, o.value(QStringLiteral("changelog")));
     s.specsDir    = validEntry(rootCanonical, o.value(QStringLiteral("specs_dir")));
+    s.idFormat    = parseIdFormat(o.value(QStringLiteral("id_format")));  // ANTS-3771
     return s;
+}
+
+RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical) {
+    const Settings s = load(rootCanonical);
+    return s.idFormat.value_or(RoadmapParse::IdFormat{});
 }
 
 // ----- ANTS-2161 — detector + writer ------------------------------------
@@ -385,7 +432,52 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
         const bool file     = key == QLatin1String("roadmap")
                            || key == QLatin1String("changelog");
 
-        if (dirArray) {
+        // ANTS-3771 § 2.5 — the write side is STRICT where load() is lenient,
+        // exactly as every path key here already is: a caller who typed a bad
+        // pattern is told, rather than having it silently dropped years later.
+        // The branch has to exist at all because without it `id_format` falls
+        // into the unknown-key passthrough at the bottom and is written
+        // unvalidated (INV-9). No new refusal code is owed: `bad_args` is what
+        // this function already returns for a wrong-typed or invalid value, and
+        // `bad_path` does not apply — id_format names no path.
+        if (key == QLatin1String("id_format")) {
+            if (!v.isObject())
+                return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not an object)"));
+            const QJsonObject o = v.toObject();
+            for (auto m = o.begin(); m != o.end(); ++m) {
+                if (m.key() != QLatin1String("prefix") &&
+                    m.key() != QLatin1String("pattern"))
+                    return fail(QStringLiteral("bad_args"), key,
+                                QStringLiteral("(unknown member: ") + m.key() + QLatin1Char(')'));
+            }
+            if (o.contains(QStringLiteral("prefix"))) {
+                const QJsonValue pv = o.value(QStringLiteral("prefix"));
+                if (!pv.isString())
+                    return fail(QStringLiteral("bad_args"), key, QStringLiteral("(prefix: not a string)"));
+                const QString pfx = pv.toString().trimmed();
+                if (!RoadmapFoldIn::isValidIdPrefix(pfx))
+                    return fail(QStringLiteral("bad_args"), key,
+                                QStringLiteral("(prefix: ") + pv.toString() + QLatin1Char(')'));
+            }
+            if (o.contains(QStringLiteral("pattern"))) {
+                const QJsonValue rv = o.value(QStringLiteral("pattern"));
+                if (!rv.isString())
+                    return fail(QStringLiteral("bad_args"), key, QStringLiteral("(pattern: not a string)"));
+                const QString pat = rv.toString();
+                if (pat.isEmpty())
+                    return fail(QStringLiteral("bad_args"), key, QStringLiteral("(pattern: empty)"));
+                if (pat.toUtf8().size() > RoadmapParse::kIdFormatPatternMaxBytes)
+                    return fail(QStringLiteral("bad_args"), key,
+                                QStringLiteral("(pattern: over %1 bytes)")
+                                    .arg(RoadmapParse::kIdFormatPatternMaxBytes));
+                if (!QRegularExpression(pat).isValid())
+                    return fail(QStringLiteral("bad_args"), key,
+                                QStringLiteral("(pattern: does not compile)"));
+            }
+            if (o.isEmpty())
+                return fail(QStringLiteral("bad_args"), key, QStringLiteral("(empty object)"));
+            out[key] = o;
+        } else if (dirArray) {
             if (!v.isArray())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not an array)"));
             const QJsonArray arr = v.toArray();

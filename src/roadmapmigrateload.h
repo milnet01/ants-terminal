@@ -95,6 +95,16 @@ struct Options {
     // A root that cannot be canonicalised is that method's refusal, not this
     // one's, and it aborts the load like any other write failure.
     QString projectRoot;
+    // ANTS-3771 § 2.3 — the project's DECLARED id format. Only `prefix` is read
+    // here, and it is inserted ABOVE all three of § 2.8 step 1's existing terms.
+    // Without that, one declaring project takes its declared prefix from
+    // roadmap_log and a sniffed or directory-derived one from a migration
+    // allocation — two id families in one store, which is the outcome
+    // UNIQUE (project_id, id_fold) cannot even detect.
+    //
+    // Supplied by the caller rather than loaded here: ProjectSettings is in
+    // ants_core_lib and this library deliberately does not link it.
+    RoadmapParse::IdFormat idFormat;
     bool    dryRun = false;      // plan the writes, roll back instead of commit
 };
 

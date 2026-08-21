@@ -108,7 +108,12 @@ TEST(RoadmapQuerySectionPassHeading, FallbackWired) {
     const std::string rc = ants_test::slurpRemoteControl();
     expect(contains(rc, "ANTS-2225"),
            "INV-4a", "remotecontrol.cpp missing the ANTS-2225 marker");
-    expect(contains(rc, "RoadmapDialog::parseBullets(markdown)"),
+    // ANTS-3771 — this read `RoadmapDialog::parseBullets(markdown)`, which
+    // matched an unrelated preflight line in a different verb and would have
+    // passed with the fallback deleted. Anchored on the fallback's own
+    // statement instead, which is what INV-4b is about; the declaration it now
+    // carries is that item's, and the whole-file read is unchanged.
+    expect(contains(rc, "const auto whole = RoadmapParse::parseBullets("),
            "INV-4b",
            "section= fallback must re-parse the whole markdown");
     expect(contains(rc, "b.sectionSlug == sec->slug"),

@@ -1227,6 +1227,16 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     QJsonObject changes;
     for (const QString &k : kKeys)
         if (req.contains(k)) changes[k] = req.value(k);
+    // ANTS-3771 — `id_format` is a set-only recognised key, deliberately NOT in
+    // kKeys. That set drives op:detect's layout suggestion and its
+    // declared/undeclared echo, and a declaration is not a path this verb can
+    // find on disk: detect covers the six PATH keys and cannot detect this one.
+    // applyWrite() validates it and refuses `bad_args` (§ 2.5, INV-9); without
+    // this line it would fall into that function's unknown-key passthrough
+    // having never been offered to it.
+    if (req.contains(QStringLiteral("id_format")))
+        changes[QStringLiteral("id_format")] =
+            req.value(QStringLiteral("id_format"));
 
     // Shared atomic writer: world-readable 0644 (NOT setOwnerOnlyPerms).
     // ANTS-2227 — under dry_run, return the would-be settings + landing path
@@ -1355,7 +1365,8 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     if (changes.isEmpty())
         return err(QStringLiteral("bad_args"), QStringLiteral(
             "project_settings set: supply at least one of "
-            "source_roots/test_roots/docs_dir/specs_dir/roadmap/changelog"));
+            "source_roots/test_roots/docs_dir/specs_dir/roadmap/changelog"
+            "/id_format"));
     QString ec, ek, ev;
     const auto merged = ProjectSettings::applyWrite(
         existing, changes, rootCanonical, &ec, &ek, &ev);

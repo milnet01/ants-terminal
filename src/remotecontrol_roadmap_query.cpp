@@ -2,6 +2,7 @@
 #include "remotecontrol.h"
 #include <QRegularExpression>
 #include "remotecontrol_internal.h"
+#include "projectsettings.h"   // ANTS-3771 — the declared id format
 #include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "mainwindow.h"
 #include "mcpprojection.h"
@@ -681,6 +682,15 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
                                     const QString &callerCanonical) {
     if (!idPrefixArg.isEmpty())
         return idPrefixArg;
+    // ANTS-3771 § 2.3 — new step 2, ABOVE the store row. The store row records
+    // what THIS STORE has allocated; the declaration records what the PROJECT
+    // has decided, and where they disagree the project is right and the row is
+    // a stale artefact of a migration. An explicit id_prefix argument still
+    // wins (INV-7) — it is documented to override everything.
+    const QString declared =
+        ProjectSettings::idFormatFor(callerCanonical).prefix;
+    if (!declared.isEmpty())
+        return declared;
     QString ignored;
     if (const auto pfx = store.idPrefixFor(projectId, &ignored)) {
         if (!pfx->isEmpty())
@@ -690,6 +700,66 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
     // sniffing the prefix out of the corpus needs every byte, and a migrated
     // project normally has a stored prefix and never reaches this line.
     return rlResolveCounterPrefix(idPrefixArg, text.full(), callerCanonical);
+}
+
+// ANTS-3771 — see remotecontrol_internal.h for what each of these three owes.
+RoadmapParse::IdFormat rcdetail::rlDecl(const QString &root) {
+    return ProjectSettings::idFormatFor(root);
+}
+
+QVector<RoadmapParse::BulletRecord> rcdetail::rlParse(const QString &markdown,
+                                                      const QString &root) {
+    return RoadmapParse::parseBullets(markdown, rlDecl(root));
+}
+
+// § 2.3 — see the declaration for the two tests, the two codes, and why this is
+// gated on the project having declared.
+QString rcdetail::rlDeclaredIdRefusal(const QString &writtenId,
+                                      const RoadmapParse::IdFormat &fmt,
+                                      QString *code) {
+    const auto refuse = [&](const QString &c, const QString &msg) {
+        if (code) *code = c;
+        return msg;
+    };
+    if (code) code->clear();
+    if (!fmt.isDeclared() || writtenId.isEmpty())
+        return QString();
+
+    // Row 1. The universal grammar, spelled from RoadmapParse::idTokenPattern()
+    // rather than restated, OR the declared pattern matching the WHOLE token.
+    // The declared arm never narrows: it can only accept more.
+    static const QRegularExpression kUniversal(
+        QStringLiteral("\\A(?:") + RoadmapParse::idTokenPattern() +
+        QStringLiteral(")\\z"));
+    bool accepted = kUniversal.match(writtenId).hasMatch();
+    if (!accepted && !fmt.pattern.isEmpty()) {
+        const QRegularExpression declared(
+            QStringLiteral("\\A(?:") + fmt.pattern + QStringLiteral(")\\z"));
+        accepted = declared.isValid() && declared.match(writtenId).hasMatch();
+    }
+    if (!accepted) {
+        return refuse(QStringLiteral("bad_id_format"),
+            QStringLiteral("id \"%1\" is accepted neither by "
+                           "roadmap-format.md § 3.5.1's grammar (a "
+                           "letter-bearing prefix, then `-`, then digits) nor "
+                           "by this project's declared `id_format.pattern` — "
+                           "see .ants/project.json").arg(writtenId));
+    }
+
+    // Row 2. The prefix, when one is declared. `pattern` takes no part here:
+    // it is authored against a bold lead-in, and running it over a bracket id
+    // would reject a conforming ANTS-0042 (§ 2.3).
+    if (!fmt.prefix.isEmpty()) {
+        const int cut = writtenId.lastIndexOf(QLatin1Char('-'));
+        const QString pfx = cut > 0 ? writtenId.left(cut) : writtenId;
+        if (pfx != fmt.prefix) {
+            return refuse(QStringLiteral("id_format_mismatch"),
+                QStringLiteral("id \"%1\" has the prefix \"%2\", but this "
+                               "project declares `id_format.prefix` = \"%3\" "
+                               "in .ants/project.json").arg(writtenId, pfx, fmt.prefix));
+        }
+    }
+    return QString();
 }
 
 // ANTS-4549 — caller prose may declare a trailer key only in the shape the
@@ -2770,7 +2840,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 for (const auto &b : whole)
                     if (b.sectionSlug == sec->slug) bullets.append(b);
             } else {
-                bullets = RoadmapDialog::parseBullets(slice);
+                bullets = RoadmapParse::parseBullets(   // ANTS-3771
+                    slice, ProjectSettings::idFormatFor(callerCanonical));
             }
             // ANTS-2225 — pass-heading fallback. parseBullets engages its
             // `#### Pass N.M` reader only when it sees >= 2 pass headings AND
@@ -2794,7 +2865,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // § 5 scopes the store backend to ants-v1, which is not the
             // pass-headings dialect this fallback exists for.
             if (!fromStore && bullets.empty()) {
-                const auto whole = RoadmapDialog::parseBullets(text.full());
+                const auto whole = RoadmapParse::parseBullets(   // ANTS-3771
+                    text.full(), ProjectSettings::idFormatFor(callerCanonical));
                 QVector<RoadmapDialog::BulletRecord> filtered;
                 for (const auto &b : whole)
                     if (b.sectionSlug == sec->slug) filtered.append(b);

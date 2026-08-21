@@ -38,6 +38,33 @@ inline constexpr const char *kEmojiPlanned    = "📋";
 inline constexpr const char *kEmojiInProgress = "🚧";
 inline constexpr const char *kEmojiConsidered = "💭";
 
+// ANTS-3771 — a project's DECLARED id format, as read from
+// .ants/project.json's `id_format` (docs/specs/ANTS-3771-id-format-declaration.md).
+// Default-constructed means UNDECLARED, which is every project that ships no
+// key and is the zero-change path (INV-1).
+//
+// It arrives here as a VALUE, never as a path this namespace resolves. That is
+// what keeps the reader Qt6::Core-only and free of ProjectSettings: the single
+// load is ProjectSettings::idFormatFor(), in ants_core_lib, and every
+// project-scoped caller passes the result down (INV-13).
+struct IdFormat {
+    QString prefix;    // canonical prefix grammar; empty = undeclared. Generative
+                       // half — allocation and written-id refusal (§ 2.3). Never
+                       // affects reading.
+    QString pattern;   // PCRE2, matched against extractBoldId()'s output — the
+                       // bold span with its one trailing `.` already chopped and
+                       // trimmed, NOT the raw span (§ 2.2). Empty = undeclared.
+                       // Recognitional half; never affects allocation.
+    bool isDeclared() const { return !prefix.isEmpty() || !pattern.isEmpty(); }
+};
+
+// ANTS-3771 § 2.5 — the cap on a declared `pattern`, in bytes of UTF-8. Matches
+// the cap spec_conformance already applies to a pattern (ANTS-4108 § 2.4) so
+// the two agree on what an over-long pattern is. Exported because
+// ProjectSettings::load() and project_settings op:set both enforce it and a
+// second literal is a second answer.
+inline constexpr int kIdFormatPatternMaxBytes = 512;
+
 // Bullet record surfaced via the `roadmap-query` IPC verb (ANTS-1117).
 // One entry per top-level status-emoji-prefixed bullet in document
 // order; plain narration bullets without an emoji are omitted (they
@@ -250,7 +277,14 @@ QString stripTrailingTrailerLines(const QString &body);
 // Dispatches on detectRoadmapFormat(). Result is read-only; used by the
 // `roadmap-query` IPC verb to feed Claude a structured snapshot without
 // re-burning the file content as tokens.
-QVector<BulletRecord> parseBullets(const QString &markdownText);
+// ANTS-3771 — `fmt` is the project's DECLARED id format. The default argument
+// keeps a caller that holds no project root (a fixture, an ad-hoc string)
+// working, and it is the hazard INV-13 names: a caller that HOLDS a root and
+// omits it reads that project's roadmap as undeclared, so one bullet resolves
+// to two ids depending on which path reached it. Pass
+// ProjectSettings::idFormatFor(root) wherever a root is in hand.
+QVector<BulletRecord> parseBullets(const QString &markdownText,
+                                   const IdFormat &fmt = {});
 
 // ANTS-3793 § 2.1.1 — the record parseBullets() would build for ONE ants-v1
 // bullet, given exactly that bullet's text. The read seam's normative rule is
@@ -274,6 +308,13 @@ QVector<BulletRecord> parseBullets(const QString &markdownText);
 // `sectionSlug` (the document's, and the store walk's own — its slugger is
 // stateful across sections), and `firstLine` / `lastLine` (a store has no
 // lines, which is ANTS-3793 INV-2's one declared field difference).
-std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText);
+//
+// ANTS-3771 — takes the declaration for symmetry with parseBullets() and so
+// INV-6 is TESTABLE rather than asserted: the store path can be driven with a
+// declaration in hand and shown to produce the same records. It cannot change
+// them — this text is RoadmapRender::bulletText()'s output, which is ants-v1,
+// so `gfmHere` is false and the branch the declaration governs never runs.
+std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText,
+                                              const IdFormat &fmt = {});
 
 }  // namespace RoadmapParse

@@ -177,11 +177,36 @@ bool isItem(const BulletRecord &rec) {
 // in the leading slot is off-grammar and quarantined (§ 2.6) — position is the
 // discriminator, not shape (§ 2.5), so `[ANTS-119&]` is quarantined for the
 // same reason `[Cl9]` is rather than being handed a second identity.
-bool isGrammaticalId(const QString &token) {
+//
+// ANTS-3771 § 2.4 — plus the project's DECLARED pattern, when there is one.
+// Under a declaration a matched lead-in is the project's own grammar, and
+// recording it as off-grammar would say the opposite: the migration would
+// change no `id_origin` at all and the declaration would be inert exactly where
+// ANTS-4491's converter reads it.
+//
+// It has to be a PARAMETER because nothing on the record carries the answer.
+// After § 2.2 a declared `AX1` and an off-grammar `Cl9` are
+// byte-indistinguishable here — both arrive as `idToken` with an empty
+// `boldId` — so isGrammaticalId("AX1") is false however the migration got
+// there. A `BulletRecord::idDeclared` flag was the obvious alternative and is
+// rejected: it would be a 23rd member against ANTS-3793's stated 22-member
+// census, whose INV-2 requires both backends to derive every member
+// identically.
+//
+// It never NARROWS: the universal arm is unconditional, so declaring a pattern
+// does not make `ANTS-0042` off-grammar. The declared arm must match the WHOLE
+// token — this is an acceptance test on a token, not a search over prose.
+bool isGrammaticalId(const QString &token, const RoadmapParse::IdFormat &fmt) {
     static const QRegularExpression rx(
         QStringLiteral("\\A(?:") + RoadmapParse::idTokenPattern() +
         QStringLiteral(")\\z"));
-    return rx.match(token).hasMatch();
+    if (rx.match(token).hasMatch())
+        return true;
+    if (fmt.pattern.isEmpty())
+        return false;
+    const QRegularExpression declared(QStringLiteral("\\A(?:") + fmt.pattern +
+                                      QStringLiteral(")\\z"));
+    return declared.isValid() && declared.match(token).hasMatch();
 }
 
 void addNote(QVector<Note> &notes, const char *code, const QString &detail,
@@ -259,7 +284,8 @@ int trailerLine(const BulletRecord &rec, QLatin1String label) {
 }
 
 PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
-                     int position, int sourceIndex, QVector<Note> &notes) {
+                     int position, int sourceIndex, QVector<Note> &notes,
+                     const RoadmapParse::IdFormat &fmt) {
     PlannedItem it;
     it.sourceIndex = sourceIndex;
     // ANTS-4484 / ANTS-4486 — a bold headline that soft-wraps across source
@@ -332,8 +358,8 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
         it.provenance.insert(QStringLiteral("id"), QStringLiteral("migrated"));
     } else if (!rec.idToken.isEmpty()) {
         it.id       = rec.idToken;
-        it.idOrigin = isGrammaticalId(rec.idToken) ? QStringLiteral("parsed")
-                                                   : QStringLiteral("quarantined");
+        it.idOrigin = isGrammaticalId(rec.idToken, fmt) ? QStringLiteral("parsed")
+                                                        : QStringLiteral("quarantined");
         it.provenance.insert(QStringLiteral("id"), QStringLiteral("asserted"));
         if (it.idOrigin == QLatin1String("quarantined"))
             addNote(notes, "quarantined_id", rec.idToken, rec.firstLine, sourceIndex);
@@ -429,11 +455,17 @@ struct SourceCtx {
 
 // The structural walk of ONE source, appending into `plan`. This is
 // ANTS-3757 § 2.11's walk unchanged except where a comment names ANTS-3766.
-void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan) {
+void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
+                const RoadmapParse::IdFormat &fmt) {
     const QStringList lines = src.markdown.split(QLatin1Char('\n'));
     const int n = lines.size();
 
-    const QVector<BulletRecord> records = RoadmapParse::parseBullets(src.markdown);
+    // ANTS-3771 — the declaration reaches the reader here. Without it the
+    // migration would classify against ids the reader resolved WITHOUT the
+    // project's own rule, which is the inert-declaration outcome § 2.4 exists
+    // to prevent.
+    const QVector<BulletRecord> records =
+        RoadmapParse::parseBullets(src.markdown, fmt);
     QHash<int, const BulletRecord *> recordAt;
     for (const BulletRecord &rec : records)
         if (rec.firstLine >= 1) recordAt.insert(rec.firstLine, &rec);
@@ -560,7 +592,7 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan) {
             if (isItem(*rec)) {
                 plan.items.append(makeItem(*rec, section(cur).slug,
                                            builds[cur].nextPosition++,
-                                           ctx.index, plan.notes));
+                                           ctx.index, plan.notes, fmt));
                 builds[cur].hasElement    = true;
                 builds[cur].lastItemIndex = plan.items.size() - 1;
                 ln = last + 1;
@@ -930,7 +962,8 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
 }
 
 MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
-                       const QString &exportSlug) {
+                       const QString &exportSlug,
+                       const RoadmapParse::IdFormat &fmt) {
     MigrationPlan plan;
     plan.projectName = projectName;
     plan.exportSlug  = exportSlug;
@@ -951,7 +984,7 @@ MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
                 QFileInfo(plan.sources.at(i).path).fileName());
             ctx.prefix = m.captured(1) + QLatin1Char('-') + m.captured(2);
         }
-        walkSource(plan.sources.at(i), ctx, plan);
+        walkSource(plan.sources.at(i), ctx, plan, fmt);
     }
 
     // § 2.5 — both items are kept and both are reported. Merging or renaming

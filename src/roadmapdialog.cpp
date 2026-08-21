@@ -2,6 +2,7 @@
 
 #include "coloredtabbar.h"     // for ClaudeTabIndicator::color (ToolUse yellow)
 #include "config.h"
+#include "projectsettings.h"   // ANTS-3771 — the declared id format
 #include "dialogchrome.h"      // ANTS-1242 — frameless dialog chrome
 #include "roadmapindex.h"      // ANTS-1287 — canonical home for heading/slug helpers
 // ANTS-3793 — the read seam and the store behind it. Included HERE and not in
@@ -571,11 +572,14 @@ RoadmapDialog::roadmapBullets(RoadmapSource::RoadmapText &text,
     m_sourceError.clear();
     m_lastReadFromStore = false;
     const QString root = storeProjectRoot();
+    // ANTS-3771 — one load per read, used on BOTH outcomes: the markdown
+    // fallbacks below and the store seam. INV-13 is that they agree.
+    const RoadmapParse::IdFormat idFormat = ProjectSettings::idFormatFor(root);
     // ANTS-3863 — three separate exits reach the same "not migrated, parse the
     // text" outcome and all three convert identically. Each is a full() and the
     // dispatch above them is not, which is the whole of the saving here.
     if (root.isEmpty())
-        return RoadmapParse::parseBullets(text.full());
+        return RoadmapParse::parseBullets(text.full(), idFormat);
 
     if (!m_roadmapStore) {
         // § 2.2 rules 1 and 2: absent → markdown (the common case, and no
@@ -590,12 +594,13 @@ RoadmapDialog::roadmapBullets(RoadmapSource::RoadmapText &text,
         }
     }
     if (!m_roadmapStore)
-        return RoadmapParse::parseBullets(text.full());
+        return RoadmapParse::parseBullets(text.full(), idFormat);
 
     RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
     QString err;
     auto records = RoadmapSource::bulletsFor(*m_roadmapStore, root, text,
-                                             includeArchive, &why, &err);
+                                             includeArchive, &why, &err,
+                                             idFormat);   // ANTS-3771
     if (records) {
         m_lastReadFromStore = true;
         return *records;
@@ -604,7 +609,7 @@ RoadmapDialog::roadmapBullets(RoadmapSource::RoadmapText &text,
         m_sourceError = err;
         return {};   // INV-1 — never the markdown behind the store's back
     }
-    return RoadmapParse::parseBullets(text.full());
+    return RoadmapParse::parseBullets(text.full(), idFormat);
 }
 
 // ANTS-3793 § 2.3 — the stored legend, or nothing.

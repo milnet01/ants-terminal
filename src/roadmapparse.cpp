@@ -1047,6 +1047,33 @@ QString collectBulletBody(const QStringList &lines, int &i, const QString &head,
     return cont.isEmpty() ? head : head + QLatin1Char('\n') + block;
 }
 
+// ANTS-3771 § 2.5 — the declaration with its pattern already compiled. The
+// spec's "compiled once per parseBullets() call, never per bullet" is what this
+// type is for: fillBulletRecord() runs per bullet and takes this, so a
+// declaration cannot turn a document walk into a per-bullet regex compile.
+//
+// `hasPattern` is false for an absent pattern AND for one that does not
+// compile. ProjectSettings::load() already drops an uncompilable pattern
+// (§ 2.5), so reaching here with one means a caller built an IdFormat by hand;
+// treating it as undeclared is the same fail-safe, and it is why this is a
+// bool rather than rx.isValid() read at each use.
+struct CompiledIdFormat {
+    QRegularExpression rx;
+    bool hasPattern = false;
+
+    explicit CompiledIdFormat(const IdFormat &fmt) {
+        if (fmt.pattern.isEmpty())
+            return;
+        if (fmt.pattern.toUtf8().size() > kIdFormatPatternMaxBytes)
+            return;
+        rx.setPattern(fmt.pattern);
+        if (!rx.isValid())
+            return;
+        rx.optimize();
+        hasPattern = true;
+    }
+};
+
 // Everything the bullet's own text decides. `head` is the bullet line with its
 // `- ` marker and status marker already removed — the caller strips those,
 // because the STRIP is what tells the two document formats apart and, on the
@@ -1054,7 +1081,7 @@ QString collectBulletBody(const QStringList &lines, int &i, const QString &head,
 // record at all. `rec.status`, the section fields and the line span are the
 // caller's; every other member is assigned here.
 void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &body,
-                      bool gfmHere) {
+                      bool gfmHere, const CompiledIdFormat &decl) {
     // ANTS-1405 — widened from `\[ANTS-(\d+)\]` to accept any
     // `[PROJ-NNNN]` token shape per the shareable
     // docs/standards/roadmap-format.md § 3.5.1 spec. Captures the full
@@ -1120,6 +1147,12 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     QString boldId;      // multi-prefix bold-ID token, e.g. "Sh4"
     QString bracketId;   // ANTS-1987 — head-anchored bare-bracket id, e.g. "Cl9"
     QString boldCand;
+    // ANTS-3771 — the id the project's DECLARED pattern resolved out of the
+    // bold lead-in, and the text of that lead-in the pattern did not consume.
+    // Both empty when nothing is declared or the pattern did not match, which
+    // is the whole of INV-1: every branch below then reads as it does today.
+    QString declaredId;
+    QString declaredRest;
     if (gfmHere) {
         // Bold-ID token preservation. Multi-prefix projects
         // get their existing ID respected.
@@ -1157,9 +1190,42 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         // bullets). Nothing in the text can separate that from a real
         // multi-word id, which is the argument for ANTS-3771: let a
         // project DECLARE its id format instead of inferring one.
-        if (extractBoldId(head, &boldCand) &&
-            !boldCand.endsWith(QLatin1Char(':'))) {
-            boldId = boldCand;
+        //
+        // ANTS-3771 is now buildable, and this is where it lands. A project
+        // that DECLARES its id format has written the rule down, so the
+        // inference above is not consulted for it: the declared pattern is
+        // tried first, and only a non-match falls through to the trailing-colon
+        // guard. `boldId` is still set on a match — it drives the headline
+        // branches below, which have to keep working — but rec.boldId is NOT,
+        // because that field means "the reader ADOPTED this span as an id" and
+        // under a declaration it adopted nothing (§ 2.2, INV-3).
+        if (extractBoldId(head, &boldCand)) {
+            if (decl.hasPattern) {
+                // Search semantics, not anchored unless the author anchored it
+                // — the same rule spec_conformance uses for a pattern
+                // invariant (specs.md § 3.5.1). The input is extractBoldId()'s
+                // OUTPUT: the span with its one trailing `.` chopped and
+                // trimmed, which is what every project authors its pattern
+                // against.
+                const auto m = decl.rx.match(boldCand);
+                if (m.hasMatch()) {
+                    // Capture group 1 when the pattern HAS one, else the whole
+                    // match. A group that did not participate would empty the
+                    // id, and § 5 excludes emptying an id permanently — so an
+                    // empty resolution is treated as no match at all and the
+                    // bullet keeps what the heuristic gives it (INV-4).
+                    QString cand = decl.rx.captureCount() >= 1 ? m.captured(1)
+                                                               : m.captured(0);
+                    cand = cand.trimmed();
+                    if (!cand.isEmpty()) {
+                        declaredId   = cand;
+                        declaredRest = boldCand.mid(m.capturedEnd(0)).trimmed();
+                        boldId       = boldCand;
+                    }
+                }
+            }
+            if (declaredId.isEmpty() && !boldCand.endsWith(QLatin1Char(':')))
+                boldId = boldCand;
         }
     } else {
         // ANTS-1987 — extract a leading bold-ID token here too, not
@@ -1222,6 +1288,11 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     const auto leadTok = rxLeadToken.match(head);
     if (leadTok.hasMatch()) {
         rec.idToken = leadTok.captured(1);
+    } else if (!declaredId.isEmpty()) {
+        // ANTS-3771 — the declared id, not the whole bold run. Leaving the run
+        // here would quarantine the very bullet the declaration just resolved:
+        // RoadmapMigrate classifies on this field (§ 2.4).
+        rec.idToken = declaredId;
     } else if (!boldId.isEmpty()) {
         // The other shape the leading slot takes: `**Sh4.**` / `**FW W5**`
         // (extractBoldId has already dropped the token's trailing `.`).
@@ -1230,7 +1301,16 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
 
     // Extract structured fields from body.
     const auto idMatch = rxId.match(body);
-    if (idMatch.hasMatch()) {
+    if (!declaredId.isEmpty()) {
+        // ANTS-3771 — a declared match wins OUTRIGHT, including over the
+        // body-wide rxId below. Today `- [ ] **AX1. foo** … see [ANTS-9999]`
+        // reports the citation, because rxId takes the first `[PROJ-NNNN]`
+        // anywhere in the body. Under a declaration the project has said which
+        // text names its items, so the lead-in is authoritative and the
+        // citation is a citation. This is the ONE branch other than the bold
+        // fallback that the declaration changes, and INV-2 is scoped to say so.
+        rec.id = declaredId;
+    } else if (idMatch.hasMatch()) {
         // ANTS-1405 — capture group is the full token; assign
         // verbatim. For `[ANTS-NNNN]` the value is byte-identical
         // to the pre-1405 `"ANTS-%1".arg(\d+)` form.
@@ -1246,7 +1326,12 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     // envelope can emit a dedicated `bold_id` field. Keeps the
     // `id` semantics back-compatible (matches boldId here, but
     // a synthetic content-hash if boldId was empty further down).
-    if (!boldId.isEmpty()) rec.boldId = boldId;
+    // ANTS-3771 — deliberately NOT set on a declared match. `bold_id` reports a
+    // span the reader adopted BY INFERENCE (ANTS-1438), and idWasInferred() is
+    // `id == boldId`, so leaving it set would fire `id_inferred` on the very
+    // ids a project declared — including the ordinary bare-token case where the
+    // capture spans the whole span (`**A1**`), which is INV-5's own example.
+    if (declaredId.isEmpty() && !boldId.isEmpty()) rec.boldId = boldId;
     // ANTS-1438-INV-4 — GFM bullets with a bold-ID *and* an
     // em-dash separator have a natural (id, headline) split:
     // `**FW W5 (cont.)** — add a reference-regression spec ...`
@@ -1255,7 +1340,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     // split matches, set the headline directly from the post-
     // separator prose; the rxBold-based fallback below stays
     // for INV-5 (no separator) and ants-v1 (no boldId).
-    if (gfmHere && !boldId.isEmpty()) {
+    if (gfmHere && !boldId.isEmpty() && declaredRest.isEmpty()) {
         const QString afterSep = splitOnEmDash(head);
         if (!afterSep.isEmpty()) {
             QString h = afterSep;
@@ -1289,6 +1374,20 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
     if (!rec.headline.isEmpty()) {
         // INV-4 already set the headline from the em-dash split;
         // skip the bold-or-prose fallback for this row.
+    } else if (!declaredRest.isEmpty() && boldMatch.hasMatch()) {
+        // ANTS-3771 INV-3 — the pattern consumed a PREFIX of the bold span
+        // (`**AX1. Geometric …**` → id `AX1`); what it did not consume is the
+        // headline. Without this the span would fall through to the branch
+        // below, which sees `h == boldId` and hunts for a SECOND bold run —
+        // there is none, so the headline would come out empty and the item
+        // would lose its text.
+        //
+        // The whole bold span is consumed: the render re-emits it as
+        // `[id] **headline**`, which is exactly the case ANTS-3808 § 2.1's
+        // table sanctions.
+        assignHeadline(rec, declaredRest,
+                       headlinePrefixEnd(body, boldMatch.capturedStart(),
+                                         boldMatch.capturedEnd()));
     } else if (boldMatch.hasMatch() &&
                (!gfmHere || boldIsHeadAnchored)) {
         QString h = boldText(boldMatch);   // ANTS-4066 — sliced from `body`
@@ -1761,7 +1860,7 @@ QString stripTrailingTrailerLines(const QString &body) {
 }
 
 QVector<BulletRecord>
-parseBullets(const QString &markdownText) {
+parseBullets(const QString &markdownText, const IdFormat &fmt) {
     // ANTS-2119 (roadmapdialog M-1) — function-local memo, mirroring
     // reverseTopLevelSections' (size, ==) guard. parseBullets is the dominant
     // uncached per-render cost (full split('\n') + per-bullet regex +
@@ -1769,11 +1868,21 @@ parseBullets(const QString &markdownText) {
     // markdown) and re-runs on every debounced keystroke / filter toggle in
     // renderCardsHtml. The input is identical across consecutive renders of the
     // same document, so the hit rate is ~100%; a content change invalidates it.
+    //
+    // ANTS-3771 — the DECLARATION is part of the key. It has to be: the same
+    // document parsed under a declaration and without one is required to differ
+    // (INV-2/INV-3), so a text-only key would hand a fixture that parses both
+    // ways the first answer twice, and the test asserting they differ would
+    // pass or fail on call order.
     static thread_local QString s_lastInput;
+    static thread_local QString s_lastPrefix;
+    static thread_local QString s_lastPattern;
     static thread_local QVector<BulletRecord> s_lastResult;
-    if (markdownText.size() == s_lastInput.size() && markdownText == s_lastInput)
+    if (markdownText.size() == s_lastInput.size() && markdownText == s_lastInput
+        && fmt.prefix == s_lastPrefix && fmt.pattern == s_lastPattern)
         return s_lastResult;
 
+    const CompiledIdFormat decl(fmt);   // ANTS-3771 § 2.5 — once per call
     QVector<BulletRecord> out;
     // ANTS-3808 — the five trailer matchers moved out to file scope so
     // trailerValuesIn() could share them. ANTS-3793 — and the rest of the
@@ -1896,7 +2005,7 @@ parseBullets(const QString &markdownText) {
         const int bulletIdx = i;   // ANTS-3764 — span start, before the walk
         QString prose;
         const QString body = collectBulletBody(lines, i, head, &prose);
-        fillBulletRecord(rec, head, body, gfmHere);
+        fillBulletRecord(rec, head, body, gfmHere, decl);
         rec.bodyProse = prose;   // ANTS-4557 — the body without its head line
 
         // ANTS-3764 — the span. `i` is the index of the first line that is
@@ -1910,12 +2019,15 @@ parseBullets(const QString &markdownText) {
         out.append(rec);
     }
     // ANTS-2119 (roadmapdialog M-1) — populate the memo for the next render.
-    s_lastInput  = markdownText;
-    s_lastResult = out;
+    s_lastInput   = markdownText;
+    s_lastPrefix  = fmt.prefix;
+    s_lastPattern = fmt.pattern;
+    s_lastResult  = out;
     return out;
 }
 
-std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText) {
+std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText,
+                                              const IdFormat &fmt) {
     const QStringList lines = bulletText.split('\n');
     if (lines.isEmpty())
         return std::nullopt;
@@ -1936,7 +2048,10 @@ std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText) {
     int i = 0;
     QString prose;
     const QString body = collectBulletBody(lines, i, head, &prose);
-    fillBulletRecord(rec, head, body, /*gfmHere=*/false);
+    // ANTS-3771 — carried through so INV-6 is testable. `gfmHere` is false
+    // here by construction, so the declaration cannot reach the branch it
+    // governs; that is the invariant, stated as code rather than as a promise.
+    fillBulletRecord(rec, head, body, /*gfmHere=*/false, CompiledIdFormat(fmt));
     rec.bodyProse = prose;   // ANTS-4557 — same field, same rule, store side
     return rec;
 }

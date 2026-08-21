@@ -476,12 +476,13 @@ void rcApplyHeadlineOnly(QJsonArray &matches) {
 // cmdRoadmapLogAppend to surface a helpful hint when the
 // .roadmap-counter is missing AND the project uses stable IDs the
 // allocator doesn't currently support.
-QString rlDetectStablePrefixId(const QString &markdown) {
+QString rlDetectStablePrefixId(const QString &markdown,
+                               const RoadmapParse::IdFormat &fmt) {
     static const QRegularExpression antsRe(
         QStringLiteral("^ANTS-[0-9]+$"));
     static const QRegularExpression stableRe(
         QStringLiteral("^[A-Za-z][A-Za-z0-9_-]+$"));
-    const auto bullets = RoadmapDialog::parseBullets(markdown);
+    const auto bullets = RoadmapParse::parseBullets(markdown, fmt);
     constexpr int kSniffCap = 50;
     const int upTo = std::min<int>(bullets.size(), kSniffCap);
     for (int i = 0; i < upTo; ++i) {
@@ -499,8 +500,9 @@ QString rlDetectStablePrefixId(const QString &markdown) {
 // greenfield roadmap (no ids of any kind → safe to auto-init
 // .roadmap-counter at 0) apart from a roadmap that already allocated
 // ids but lost its counter file (a real desync we keep refusing).
-bool rlRoadmapHasAnyBulletId(const QString &markdown) {
-    const auto bullets = RoadmapDialog::parseBullets(markdown);
+bool rlRoadmapHasAnyBulletId(const QString &markdown,
+                             const RoadmapParse::IdFormat &fmt) {
+    const auto bullets = RoadmapParse::parseBullets(markdown, fmt);
     constexpr int kSniffCap = 50;
     const int upTo = std::min<int>(bullets.size(), kSniffCap);
     for (int i = 0; i < upTo; ++i)
@@ -517,13 +519,14 @@ bool rlRoadmapHasAnyBulletId(const QString &markdown) {
 // falls back to "ANTS" (back-compat for a fresh/id-less roadmap). The
 // prefix is the run before the FINAL `-digits`, so "mame-curator-1065"
 // → "mame-curator" and "ANTS-2057" → "ANTS".
-QString rlDetectCounterPrefix(const QString &markdown) {
+QString rlDetectCounterPrefix(const QString &markdown,
+                              const RoadmapParse::IdFormat &fmt) {
     static const QRegularExpression counterRe(
         // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
         QStringLiteral(
             "^((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*)"
             "-([0-9]{1,8})$"));
-    const auto bullets = RoadmapDialog::parseBullets(markdown);
+    const auto bullets = RoadmapParse::parseBullets(markdown, fmt);
     constexpr int kSniffCap = 50;
     const int upTo = std::min<int>(bullets.size(), kSniffCap);
     QHash<QString, int> counts;
@@ -575,6 +578,17 @@ QString rlResolveCounterPrefix(const QString &idPrefixArg,
                                const QString &markdown,
                                const QString &callerCanonical) {
     if (!idPrefixArg.isEmpty()) return idPrefixArg;
+    // ANTS-3771 § 2.3 — the declaration, ABOVE the sniff. It has to be HERE as
+    // well as in rlStoreCounterPrefix(): that function inserts the declaration
+    // above the STORE ROW and then delegates the rest of the chain to this one,
+    // and an UNMIGRATED project reaches this function directly with no store
+    // row in the picture at all. Putting it in only one of the two gives a
+    // declaring project its declared prefix once it has migrated and a sniffed
+    // one before — two id families in one project, which is the outcome § 2.3
+    // exists to prevent.
+    const QString declared =
+        ProjectSettings::idFormatFor(callerCanonical).prefix;
+    if (!declared.isEmpty()) return declared;
     const QString sniffed = rlDetectCounterPrefix(markdown);
     if (!sniffed.isEmpty()) return sniffed;
     return rlLeafDirPrefix(callerCanonical);
@@ -1658,8 +1672,17 @@ QVector<int> rcFenceOpenerOf(const QVector<bool> &fenced) {
     return openerOf;
 }
 
-QVector<GfmBullet> walkGfmBullets(const QStringList &lines) {
+QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
+                                  const RoadmapParse::IdFormat &fmt) {
     QVector<GfmBullet> out;
+    // ANTS-3771 § 2.5 — compiled once per walk, never per bullet.
+    QRegularExpression declRx;
+    bool haveDecl = false;
+    if (!fmt.pattern.isEmpty() &&
+        fmt.pattern.toUtf8().size() <= RoadmapParse::kIdFormatPatternMaxBytes) {
+        declRx.setPattern(fmt.pattern);
+        if (declRx.isValid()) { declRx.optimize(); haveDecl = true; }
+    }
     const QVector<bool> fenced = rcFenceExtents(lines);
     const QVector<int>  openerOf = rcFenceOpenerOf(fenced);
     for (int i = 0; i < lines.size(); ++i) {
@@ -1705,7 +1728,23 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines) {
         else    {  tryStrip(kAdapterEmojiConsidered, QStringLiteral("💭")); }
 
         QString boldId;
-        if (rcExtractBoldId(head, &boldId)) b.boldId = boldId;
+        if (rcExtractBoldId(head, &boldId)) {
+            b.boldId = boldId;
+            // ANTS-3771 — the same resolution fillBulletRecord() performs, on
+            // the same input (rcExtractBoldId mirrors extractBoldId, trailing
+            // `.` chopped and trimmed). Capture group 1 when the pattern has
+            // one, else the whole match; an empty resolution is no match, so
+            // an id is never emptied (§ 5).
+            if (haveDecl) {
+                const auto m = declRx.match(boldId);
+                if (m.hasMatch()) {
+                    const QString cand =
+                        (declRx.captureCount() >= 1 ? m.captured(1)
+                                                    : m.captured(0)).trimmed();
+                    if (!cand.isEmpty()) b.boldId = cand;
+                }
+            }
+        }
         b.headline = head;
         b.anchor   = rcExtractCaretAnchor(ln);
 

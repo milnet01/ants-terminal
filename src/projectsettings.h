@@ -7,6 +7,8 @@
 #ifndef ANTS_PROJECTSETTINGS_H
 #define ANTS_PROJECTSETTINGS_H
 
+#include "roadmapparse.h"
+
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -24,6 +26,12 @@ struct Settings {
     std::optional<QString>     roadmap;       // file; roadmap_query / _log / project_layout
     std::optional<QString>     changelog;     // file; changelog_log / project_layout
     std::optional<QString>     specsDir;      // dir;  spec_query / _log / current_state / project_layout
+    // ANTS-3771 — the project's DECLARED id format. The first non-path member
+    // here, and the reason this header now includes roadmapparse.h: parsing and
+    // validating the declaration in ONE place is what makes idFormatFor() a
+    // thin accessor rather than a second reader. nullopt when the key is
+    // absent, or when every member of it was dropped by validation.
+    std::optional<RoadmapParse::IdFormat> idFormat;
 };
 
 // Reads + parses <rootCanonical>/.ants/project.json on every call (no
@@ -36,6 +44,23 @@ struct Settings {
 // by dropping becomes nullopt. The dir-vs-file type check is left to the
 // consumer.
 Settings load(const QString &rootCanonical);
+
+// ANTS-3771 — the SINGLE load of a project's declared id format
+// (docs/specs/ANTS-3771-id-format-declaration.md § 2.2, user decision
+// 2026-08-21). Every project-scoped roadmap read calls this and passes the
+// result down to parseBullets() / bulletsFor(); nothing else reads the key.
+//
+// It lives here, and not in the read seam, because of the build graph:
+// RoadmapSource::bulletsFor() is in ants_roadmapstore_lib, whose link list is
+// `Qt6::Core Qt6::Sql ants_roadmapparse_lib` under the comment "the reader, NOT
+// ants_core_lib" — and ProjectSettings is in ants_core_lib, which links the
+// store PRIVATE. Reading .ants/project.json inside the seam would invert that
+// edge. So the declaration travels as a VALUE and the load happens core-side.
+//
+// Default-constructed (undeclared) for a project with no file, no key, or a
+// key whose every member load() dropped — which is the zero-change path INV-1
+// asserts. Uncached, like load() itself.
+RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical);
 
 // ANTS-2161 / ANTS-3393 — true for a top-level directory name the source
 // walk should neither descend nor index: any dot-dir (.git/.ants/.venv),

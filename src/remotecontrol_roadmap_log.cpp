@@ -149,7 +149,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(md)))
+                if (rcBulletsArePassHeadings(rlParse(md, cc)))   // ANTS-3771
                     return cmdRoadmapLogPassAppend(req, rp, md);
             }
         }
@@ -297,6 +297,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                                "shape ^[A-Za-z][A-Za-z0-9_-]+$")
                     .arg(stableId));
         }
+        QString declCode;   // ANTS-3771 § 2.3 — rlDeclaredIdRefusal()'s doc
+        const QString declMsg = rcdetail::rlDeclaredIdRefusal(
+            stableId, rlDecl(callerCanonical), &declCode);
+        if (!declMsg.isEmpty())
+            return rlErr(declCode, QStringLiteral("roadmap_log: ") + declMsg);
     }
 
     // ANTS-3809 § 2.2 — the store path, AHEAD of the counter machinery below.
@@ -627,7 +632,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                     rmText = QString::fromUtf8(rmf.readAll());
                 }
                 const QString stablePrefix =
-                    rlDetectStablePrefixId(rmText);
+                    rlDetectStablePrefixId(rmText, rlDecl(callerCanonical));
                 if (!stablePrefix.isEmpty()) {
                     // ANTS-1905 — surface the new escape hatch as the
                     // recommended fix; back-compat callers branching
@@ -669,7 +674,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 // surface (rlRoadmapHasAnyBulletId discriminates the two).
                 const qint64 seed = RoadmapFoldIn::corpusHighWater(
                     QFileInfo(counterPath).absolutePath());
-                if (seed == 0 && rlRoadmapHasAnyBulletId(rmText)) {
+                if (seed == 0 &&
+                    rlRoadmapHasAnyBulletId(rmText, rlDecl(callerCanonical))) {
                     return rlErr(QStringLiteral("counter_missing"),
                         QStringLiteral("roadmap_log: .roadmap-counter does "
                                        "not exist at \"%1\" and no "
@@ -752,8 +758,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // error instead of misleading bad_section / silent corruption.
     // Envelope shape parity with the cmdRoadmapQuery gate above:
     // path + bytes + hint inline-constructed (not via rlErr).
-    const auto preflightBullets =
-        RoadmapDialog::parseBullets(markdown);
+    const auto preflightBullets = rlParse(markdown, callerCanonical);
     const qint64 markdownBytes = markdown.toUtf8().size();
     if (preflightBullets.isEmpty() &&
         markdownBytes > kRoadmapMinParseableSize) {
@@ -1174,7 +1179,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(md)))
+                if (rcBulletsArePassHeadings(rlParse(md, cc)))   // ANTS-3771
                     return cmdRoadmapLogPassFlip(req, rp, md);
             }
         }
@@ -1351,7 +1356,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     //    enough to be a real roadmap, fall through to ANTS-1441's
     //    ants-v1 native walker before refusing.
     QStringList lines = markdown.split(QChar('\n'));
-    const QVector<GfmBullet> bullets = walkGfmBullets(lines);
+    const QVector<GfmBullet> bullets = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
 
     // ANTS-3561 — apply an op:flip / op:annotate to a single, already-located
     // ants-v1 native bullet (index into `v1bullets`): status-emoji swap
@@ -2365,7 +2370,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // Pass-headings roadmaps store bodies under #### Pass headings, not
     // indented bullet continuation lines — refuse clearly rather than
     // mis-edit (parity with the ANTS-2031 format gate).
-    if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown))) {
+    if (rcBulletsArePassHeadings(rlParse(markdown, callerCanonical))) {
         return rlErr(QStringLiteral("unsupported_format"),
             QStringLiteral("roadmap_log: op:\"%1\" is not supported on "
                            "pass-headings roadmaps — edit it with a text "
@@ -2385,7 +2390,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     QString matchedHeadline;
     QString format;
 
-    const QVector<GfmBullet> bullets = walkGfmBullets(lines);
+    const QVector<GfmBullet> bullets = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
     if (!bullets.isEmpty()) {
         format = QStringLiteral("gfm");
         const quint64 need = rcFnv1a64(rcNormaliseHeadline(locHeadline));
@@ -2944,9 +2949,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     // ANTS-2126 — route to the pass-headings flip_batch writer (replaces
     // the ANTS-2031 format_mismatch refusal). The pre-gate validation
     // (to_status canonical + non-empty locators) matches what it needs.
-    if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(markdown)))
+    if (rcBulletsArePassHeadings(rlParse(markdown, callerCanonical)))
         return cmdRoadmapLogPassFlipBatch(req, roadmapPath, markdown);
-    const bool isGfm = !walkGfmBullets(lines).isEmpty();
+    const RoadmapParse::IdFormat batchFlipIdFormat = rlDecl(callerCanonical);
+    const bool isGfm = !walkGfmBullets(lines, batchFlipIdFormat).isEmpty();
     // ANTS-3565 — a mixed GFM+ants-v1 roadmap (GFM-majority with appended
     // `- 📋 [ID]` emoji bullets) must resolve locators against EITHER set, so
     // walk ants-v1 whenever the file is big enough — not only when there are
@@ -3013,7 +3019,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     // ANTS-3565 — walk ants-v1 whenever the file is big enough (not only for a
     // pure-v1 file) so a GFM-majority roadmap's appended emoji bullets are a
     // per-locator fallback below.
-    const QVector<GfmBullet>    gbs = isGfm    ? walkGfmBullets(lines)
+    const QVector<GfmBullet>    gbs = isGfm    ? walkGfmBullets(lines, batchFlipIdFormat)
                                                : QVector<GfmBullet>();
     const QVector<AntsV1Bullet> vbs = hasV1walk ? walkAntsV1Bullets(lines)
                                                 : QVector<AntsV1Bullet>();
@@ -3524,7 +3530,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         // dominant one: a mixed roadmap flips its GFM and emoji bullets in the
         // same batch.
         if (!t.isV1Bullet) {
-            const QVector<GfmBullet> live = walkGfmBullets(lines);
+            const QVector<GfmBullet> live = walkGfmBullets(lines, rlDecl(callerCanonical));   // ANTS-3771
             const auto it = std::find_if(live.begin(), live.end(),
                 [&t](const GfmBullet &b){ return b.firstLine == t.firstLine; });
             if (it == live.end()) continue;  // should not happen
@@ -3815,7 +3821,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     rf.close();
 
     // INV-9 — unrecognised_format gate (parity with append path).
-    const auto preflightBullets = RoadmapDialog::parseBullets(markdown);
+    const auto preflightBullets = rlParse(markdown, callerCanonical);
     const qint64 markdownBytes = markdown.toUtf8().size();
     if (preflightBullets.isEmpty() &&
         markdownBytes > kRoadmapMinParseableSize) {
@@ -4643,7 +4649,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             if (pf.open(QIODevice::ReadOnly | QIODevice::Text)) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
-                if (rcBulletsArePassHeadings(RoadmapDialog::parseBullets(md)))
+                if (rcBulletsArePassHeadings(rlParse(md, cc)))   // ANTS-3771
                     return cmdRoadmapLogPassAppendBatch(req, rp, md);
             }
         }
@@ -4697,6 +4703,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
                 .arg(callerCanonical));
 
+    // ANTS-3771 — ONCE for the batch (load() re-reads the file every call).
+    const RoadmapParse::IdFormat batchIdFormat = rlDecl(callerCanonical);
     const QString counterPath =
         callerCanonical + QLatin1Char('/') +
         QStringLiteral(".roadmap-counter");
@@ -4755,7 +4763,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 rmText = QString::fromUtf8(rmf.readAll());
             const qint64 seed = RoadmapFoldIn::corpusHighWater(
                 QFileInfo(counterPath).absolutePath());
-            if (seed == 0 && rlRoadmapHasAnyBulletId(rmText))
+            if (seed == 0 && rlRoadmapHasAnyBulletId(rmText, batchIdFormat))
                 return rlErr(QStringLiteral("counter_missing"),
                     QStringLiteral("roadmap_log: .roadmap-counter does not "
                                    "exist at \"%1\" and no counter-style "
@@ -4802,7 +4810,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     rf.close();
 
     // INV-9 — unrecognised_format short-circuits the whole batch.
-    const auto preflightBullets = RoadmapDialog::parseBullets(markdown);
+    const auto preflightBullets = rlParse(markdown, callerCanonical);
     const qint64 markdownBytes = markdown.toUtf8().size();
     if (preflightBullets.isEmpty() &&
         markdownBytes > kRoadmapMinParseableSize) {
@@ -5041,6 +5049,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                                     "stable-prefix shape "
                                     "^[A-Za-z][A-Za-z0-9_-]+$").arg(sid));
                 continue;
+            }
+            {   // ANTS-3771 § 2.3, per bullet: a breaching id is skipped and
+                QString c;   // the rest of the batch still applies.
+                const QString m = rcdetail::rlDeclaredIdRefusal(sid, batchIdFormat, &c);
+                if (!m.isEmpty()) { skip(c, m); continue; }
             }
             if (seenStableIds.contains(sid)) {
                 skip(QStringLiteral("id_taken"),

@@ -1,6 +1,7 @@
 // ANTS-3833 TU 2/14 — Terminal and window verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "projectsettings.h"   // ANTS-3771 — the declared id format
 #include "findsources.h"
 #include "mainwindow.h"
 #include "pathvalidation.h"
@@ -1490,7 +1491,8 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
             RoadmapSource::ReadError seamWhy = RoadmapSource::ReadError::None;
             auto records = RoadmapSource::bulletsFor(
                 *store, projectRoot, text, includeArchive,
-                &seamWhy, error);
+                &seamWhy, error,
+                ProjectSettings::idFormatFor(projectRoot));   // ANTS-3771
             if (why)
                 *why = seamWhy;
             if (records)
@@ -1504,6 +1506,9 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
     // ANTS-3863 — the line that makes the laziness pay. It is reached only when
     // the project is NOT migrated, which is the one case where the whole file
     // was always going to be needed.
-    return RoadmapParse::parseBullets(text.full());
+    // ANTS-3771 — the same declaration the seam above was given, so the two
+    // outcomes of this function cannot resolve one bullet to two ids (INV-13).
+    return RoadmapParse::parseBullets(
+        text.full(), ProjectSettings::idFormatFor(projectRoot));
 }
 

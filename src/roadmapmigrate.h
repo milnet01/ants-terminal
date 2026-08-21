@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include "roadmapparse.h"
+
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -218,8 +220,16 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
 // The discovery NOTES arrive as part of the argument, which is what lets them
 // reach the plan without planFrom() touching the filesystem: INV-9's purity is
 // preserved because they are passed in, not read.
+//
+// ANTS-3771 — `fmt` is the project's DECLARED id format, supplied by the caller
+// for the same reason `projectName` and `exportSlug` are: reading
+// .ants/project.json is a filesystem touch and INV-9 makes this function pure.
+// Its impure caller (roadmapmigrateverb.cpp) loads it with
+// ProjectSettings::idFormatFor(). Undeclared is the default and is the
+// zero-change path.
 MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
-                       const QString &exportSlug);
+                       const QString &exportSlug,
+                       const RoadmapParse::IdFormat &fmt = {});
 
 // ANTS-4065 § 2.5 — resolve every `Source:` / `Evidence:` value that names a
 // file, against `projectRoot`. A path that does not resolve is NOT a refusal:

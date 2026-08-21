@@ -204,7 +204,8 @@ std::unique_ptr<RoadmapStore> storeFor(const QString &defaultPath,
 std::optional<QVector<BulletRecord>>
 bulletsFromStore(RoadmapStore &store, qint64 projectId,
                  bool includeArchive, ReadError *why,
-                 QString *error = nullptr);
+                 QString *error = nullptr,
+                 const RoadmapParse::IdFormat &fmt = {});   // ANTS-3771 — see bulletsFor()
 
 // § 2.2's dispatch. Three outcomes, not two:
 //   engaged               → migrated; read the store at this projectId
@@ -269,9 +270,24 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
 // detectionPrefix(). This function never calls full(), so an unmigrated
 // caller's own text.full() is the first and only body read on that path.
 std::optional<QVector<BulletRecord>>
+//
+// ANTS-3771 — `fmt` is the project's DECLARED id format, from
+// ProjectSettings::idFormatFor(projectRoot). It arrives as a VALUE and is not
+// loaded here: this library links `Qt6::Core Qt6::Sql ants_roadmapparse_lib`
+// and deliberately NOT ants_core_lib (ANTS-3808 § 4), which is where
+// ProjectSettings lives — reading .ants/project.json inside the seam would
+// invert that edge.
+//
+// It cannot change what this function returns, and carrying it is how INV-6
+// says so testably: every record here is derived from
+// RoadmapRender::bulletText(), which emits ants-v1, so the GFM bold branch the
+// declaration governs never runs on the store path. A caller passes the same
+// value it would pass to parseBullets() on the unmigrated path, so one call
+// site holds one declaration for both outcomes (INV-13).
 bulletsFor(RoadmapStore &store, const QString &projectRoot,
            RoadmapText &text, bool includeArchive, ReadError *why,
-           QString *error = nullptr);
+           QString *error = nullptr,
+           const RoadmapParse::IdFormat &fmt = {});
 
 // § 2.3 — a project's stored legend, re-keyed from the lifecycle WORDS the
 // store holds ("planned", "shipped", …) to the status EMOJI every consumer of
