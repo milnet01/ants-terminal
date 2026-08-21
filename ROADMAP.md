@@ -34739,6 +34739,33 @@ finbreak re-verified it.
   **Layman:** After importing a project's roadmap, the tool still says the file is ahead of the database — it never records how far the ids have got.
   Kind: fix.
   Source: in-session-2026-08-15 AI_Prompts cutover.
+  New measurement 2026-08-21 (LottoTracker_Ants_MCP_Feedback.md), and it
+  changes what this item is about.
+
+  The headline says store_high_water is left at 0. On LottoTracker it is
+  left at 32, with file_highest_id 33 -- an OFF-BY-ONE against the highest
+  id the migration itself ingested, not a zero. Either the mechanism has
+  changed since this was filed or it was never uniformly 0; worth
+  establishing which before fixing, because the two have different repairs.
+
+  Everything else about that project is correct, which is the point. An
+  ids[] fetch of LOTTO-0033 returns all_ids_resolved:true with the right
+  status and section, and the allocator is right too -- a dry-run append
+  reported the would-be id as LOTTO-0034, not a colliding LOTTO-0033.
+  Nothing is missing. Only the counter lags.
+
+  Why that is worse than it sounds: file_ahead_of_store is the flag a caller
+  branches on to decide whether the store can be trusted against the
+  markdown. Set on a freshly migrated, fully resolved project, it trains
+  callers to ignore it -- which is exactly when it needs to be believed. A
+  session that DOES believe it will re-migrate or fall back to reading the
+  whole markdown, losing the saving the store exists to provide.
+
+  The reporter's alternative, if the counter must lag: distinguish the two
+  conditions with separate fields (counter_behind vs unresolved_file_ids[])
+  so a caller can tell a cosmetic lag from a genuine unmigrated bullet.
+  That would also settle ANTS-4430 and ANTS-4406, which are the same
+  one-flag-two-meanings shape.
 
 - 📋 [ANTS-4411] **render_gate_unmet names the id being appended, so its remedy is unfollowable.**
   Measured on the AI_Prompts cutover (2026-08-15). A `roadmap_log
@@ -40086,6 +40113,26 @@ filed below.
   ANTS-4463: make the ABSENCE of the field distinguishable from the field
   being empty, so a caller can tell "not supported here" from "nothing to
   report".
+  Second report, 2026-08-21 (claude_config_Ants_MCP_Feedback.md), and it
+  widens the case from one status to the backend.
+
+  Reproduced on to_status:"shipped", not just in-progress: roadmap_log
+  {op:"flip", id:"CFG-0169", to_status:"shipped", note:"...",
+  return:"headline_only", compact:true} returned an envelope with no
+  post_bullets at all. That project is store-backed (migrated 2026-08-18).
+
+  The reporter's own diagnosis is the useful part: this is the second
+  documented return/dry_run field this week that landed on one backend and
+  not the other. ANTS-4508's `would_be_id` was the same shape, and they
+  re-confirmed that a store-backed dry_run still returns `id`. So the likely
+  cause is shared -- the store-backed path was not updated alongside the
+  file-backed one -- rather than anything specific to a status value.
+
+  Untested and worth checking before assuming: op:append and both _batch
+  forms. If this is the ANTS-4508 pattern again, one test that drives the
+  documented return/dry_run surface against a MIGRATED fixture would catch
+  both classes. The existing fixtures allocate on a fresh counter-strategy
+  project, which is the code path that already works, so they cannot see it.
   **Layman:** A flag meant to save a follow-up read didn't do anything on one kind of status change.
   Kind: investigate.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
@@ -40127,7 +40174,7 @@ filed below.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20 (fifth and sixth firings).
   Lanes: antshelper, claudeintegration.
 
-- 💭 [ANTS-4572] **roadmap_log's envelope could report when its XML scrub actually removed something.**
+- 📋 [ANTS-4572] **roadmap_log's envelope could report when its XML scrub actually removed something.**
   Filed as considered because the reporter rates it optional and low value,
   and explicitly says the current behaviour is the right default either way.
 
@@ -40154,6 +40201,32 @@ filed below.
 
   See also ANTS-4532 — the same class of "what the write verb quietly does
   to a body".
+  Promoted from considered to planned 2026-08-21, on new evidence that
+  changes the premise this was filed under.
+
+  It was filed as optional because the reporter had tripped the scrub and it
+  had WORKED -- "a guard that works is invisible". The claude_config report
+  of 2026-08-21 (now ANTS-4609) is the same guard working only PARTLY: the
+  scrubber removed two closing tags and wrote the opening one to disk,
+  leaving a bare `<compact>true` line in the middle of a bullet body, with
+  ok:true and no signal.
+
+  That inverts the cost-benefit. A silent scrub on a clean result is a
+  courtesy nobody needs to know about. A silent scrub on a PARTIAL result is
+  a false assurance: the caller has been told, by the verb's description,
+  that bodies are scrubbed, so ok:true is read as "the body is clean" and
+  they never re-read the file. The reporter puts it plainly -- a partial
+  scrub is worse than no scrubber, because a caller who knew there was none
+  would have sanitised the body themselves.
+
+  So the ask is unchanged and its value is not: emit `scrubbed:true` plus a
+  count or the removed tokens whenever anything was stripped. A silent scrub
+  and a clean body are indistinguishable in today's envelope, which is what
+  let ANTS-4609 reach disk unnoticed.
+
+  Pair it with ANTS-4609 rather than sequencing them -- that one makes the
+  scrub complete, this one makes it legible, and shipping only the first
+  leaves the next gap just as silent.
   **Layman:** A safety net quietly cleans up a mistake, so nobody learns they made it.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20 (filed as a worked-well report).
@@ -40638,6 +40711,29 @@ filed below.
   project, stop writing the file and let the store own allocation. It
   removes both symptoms rather than reporting around them. Fixing only
   the envelope here would leave .roadmap-counter still drifting.
+  Scope widened 2026-08-21 (Snatch_Ants_MCP_Feedback.md): it is not
+  append_batch-only, so a fix aimed at the batch path alone would leave it
+  live.
+
+  Measured on Snatch in this order: (1) op:"append_batch" with 2 bullets
+  issued SNAT-0041 and SNAT-0042; (2) op:"append" with 1 bullet issued
+  SNAT-0043 and reported counter_advanced_past:38, counter_advanced_to:43.
+  38 predates two ids the same session had been issued moments earlier, so
+  the field described a counter state that was already stale when reported.
+
+  Severity stays low and no data was wrong -- the ids were correct and
+  contiguous. The cost is that counter_advanced_past cannot be read as "the
+  last id in use", which is its natural reading, and it is precisely the
+  field a session reaches for to avoid the id-prediction trap that project
+  has been bitten by twice.
+
+  The reporter's second option is worth weighing against the first: drop the
+  field in favour of the ids/post_bullets already returned on the write,
+  which are what a caller should be reading anyway. They confirm
+  return:"headline_only" gave back ids + post_bullets correctly on BOTH ops
+  this session, so the better answer already exists and this field is the
+  one that misleads. Note ANTS-4570 has the opposite report on op:flip, so
+  "already works" holds for append and not across the verb.
   **Layman:** The write receipt names an ID counter position that had already moved on, so predicting the next ID from it fails.
   Kind: fix.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
@@ -40678,7 +40774,7 @@ filed below.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapwrite.
 
-- 📋 [ANTS-4581] **A bad_path refusal on a feedback-file path names no verb that would have worked.**
+- 💭 [ANTS-4581] **A bad_path refusal on a feedback-file path names no verb that would have worked.**
   The *_Ants_MCP_Feedback.md convention puts the file at the PARENT of
   the project root. feedback_query resolves it by derivation and
   read_region reads it fine by absolute path; workspace_search refuses.
@@ -40713,6 +40809,32 @@ filed below.
   Same class as ANTS-4565 (doc_citations refusing the ~global sentinel
   its sibling read verbs accept): a family of verbs disagreeing about
   reachable paths, with the refusal naming no alternative.
+  Demoted from planned to considered 2026-08-21: the need that motivated it
+  is met by another route, and the original reporter says so.
+
+  ANTS-4569 shipped a GENERIC hint on the lane refusal -- "lane is a
+  subdirectory of the project root and cannot escape it. To search a
+  DIFFERENT tree, set caller_cwd to that tree's root and confine the sweep
+  with glob" -- and put the same guidance in the verb's schema under `lane`.
+  The reporter re-ran their exact repro on 2026-08-21: it still refuses,
+  correctly, and now carries that hint; the route it names works, returning
+  matches across two feedback files in 35 ms.
+
+  Their verdict on the difference: the hint is generic rather than the
+  feedback-file-specific one this item asks for, so it names neither
+  feedback_query nor read_region by verb -- but the caller_cwd+glob route it
+  DOES name is strictly more useful for the "list what has already been
+  reported" case, so this reads as the better call rather than a partial
+  one. They also explicitly withdraw the alternative in this item's body, a
+  headings-only mode on feedback_query, as no longer needed for that use
+  case.
+
+  Not flipped to shipped, because the specific fix this item describes did
+  not ship and recording it as done would claim work nobody did. Left open
+  as considered: naming feedback_query and read_region on a bad_path
+  refusal whose path matches *_Ants_MCP_Feedback.md is still a real
+  improvement, it is still cheap, and ANTS-4565 is the same family. What has
+  gone is the urgency -- there is no longer a dead end behind it.
   **Layman:** Three tools give three different answers about whether the shared feedback folder is reachable, and the refusal doesn't point at the one that works.
   Kind: enhancement.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
@@ -42245,6 +42367,262 @@ filed below.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-3771 spec authoring).
   Lanes: mcp, roadmap-store.
+
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-21 triage
+
+Fourteen findings from four contributor files (claude_config 6, LottoTracker 5,
+Games_Hub 1, Snatch 2). Nine filed here as new items; five fold into existing
+ids as added evidence; two closed n/a. Every finding was checked against the
+live roadmap before filing — the delta alone shows already-fixed findings as
+open, and two of these were exactly that.
+
+- 📋 [ANTS-4609] **The body XML scrub strips CLOSING tags only, so a leaked OPENING tag lands in ROADMAP.md.**
+  ANTS-3703 fixed the stray closing tag. The mirror was never covered: an
+  op:append whose body tail carried three lines of leaked tool-call XML had
+  its two closing tags removed and its OPENING tag written to disk, leaving a
+  bare `<compact>true` line between the last prose paragraph and the trailer
+  block. Envelope: ok:true, id CFG-0178, no signal of any kind.
+
+  Why a partial scrub is worse than none. A caller who knows there is no
+  scrub sanitises the body themselves. A caller who reads ok:true on a verb
+  documented to scrub has no reason to re-read the file, so the fragment
+  survives until somebody reads that bullet by eye -- for a roadmap body,
+  potentially weeks. The render gate does not catch it: it is neither a
+  trailer key nor a heading.
+
+  Fix: scrub opening tags as the same token class -- `<compact>` is no more
+  legitimate roadmap prose than `</compact>`. Guard the obvious over-reach by
+  anchoring to a line that is ONLY a tag, which is what a leaked fragment
+  always looks like; a body may legitimately carry angle brackets inside a
+  backtick span.
+
+  The repair path is sound -- one op:amend_body call fixed it, wrapped_match
+  true, body_paragraph echoed correctly. The defect is that the repair was
+  needed. The reporting half is ANTS-4572.
+  **Layman:** A safety net that removes half a mess reads as though it removed all of it.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4610] **mode:section_index cannot be narrowed, so resolving one slug costs the whole index.**
+  Measured on LocalWebServerManager: 40 section objects, ~4.7k tokens, to get
+  one slug. `fields` operates on top-level response keys so ["sections"]
+  keeps the whole array; `compact` drops empty VALUES, not rows. The envelope
+  echoes filter:"all", which reads as though a narrower filter exists, and
+  the schema documents none for this mode.
+
+  This is the step before the most common write. On a mature roadmap the
+  index is mostly rows the caller will never use -- that file had 154 shipped
+  items in sections whose active_count is 0.
+
+  The reporter's workaround was to look up a known id with mode:headline_only
+  + fields:["bullets"] and read section_slug back, ~90 tokens. That only
+  works when you already know an id in the target section, which a session
+  filing NEW work usually does not.
+
+  Ask: a substring filter on the headline, `q:"dev experience"`, the shape
+  workspace_search already uses. An active_only flag would serve a different
+  common case and is cheaper, but would NOT have answered this one --
+  dev-experience had active_count 0. Distinct from ANTS-1848 (status filter),
+  ANTS-1729 (pagination) and ANTS-4467 (spill), all shipped: none of them
+  narrows by name.
+  **Layman:** Asking where to file an item returns every section in the file, including the empty ones.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4611] **no_roadmap_loaded blames "the active tab" when the caller passed an explicit caller_cwd.**
+  roadmap_query with an explicit caller_cwd on a project with no ROADMAP.md
+  returns {ok:false, code:"no_roadmap_loaded", error:"no ROADMAP.md detected
+  for the active tab"}. Reproduced byte-identically on earlyoom and demoreel.
+  The VERDICT is right; the wording misdirects, and nothing in the envelope
+  echoes the root that was resolved.
+
+  Two wrong conclusions are available and both are reasonable. A session
+  reads it as tab misrouting -- "the MCP is pointed at the wrong project" --
+  and retries, switches tab, or abandons. Or it reads ok:false as failure and
+  stops, when for some callers the refusal IS the answer: the adopt-project
+  skill asks exactly this question, and "no roadmap" is one of its four
+  legitimate outcomes; its own text calls a missing roadmap "an answer and
+  not an error", which the envelope contradicts.
+
+  9 of the 24 projects on this machine have no ROADMAP.md, so this is the
+  common case rather than an edge one.
+
+  Fix: echo the resolved root in the refusal -- "no ROADMAP.md at <root>" --
+  and mention the active tab only where the tab was actually what was used.
+  A `resolved_root` envelope field would do the same job without touching the
+  message and would help every other refusal too. Cheaper still: the schema
+  documents the success shape and no refusal codes; listing this one and
+  saying it means "this project keeps no roadmap" rather than "the call
+  failed" would let a caller branch on it without measuring it first.
+  **Layman:** You point the tool at a folder and it answers about a browser tab, so you cannot tell whether it looked where you asked.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4612] **amend_body's wrapped-match re-flow corrupts indentation in a column-aligned block, cumulatively.**
+  ANTS-4550's wrapped-match pass re-flows the lines a match spanned into one.
+  Where the body holds an indented, column-aligned block, that re-flow
+  rewrites the leading whitespace of neighbouring lines instead of preserving
+  it -- and every repair attempt triggers the same pass and adds more.
+
+  Measured on CFG-0196 in the store-backed ~/.claude/ROADMAP.md, whose body
+  held a 4-space-indented list of skill-to-doc-path rows. Three successive
+  amend_body calls, each ok:true with wrapped_match:true and the CORRECT text
+  in body_paragraph: one row went 4 -> 6 -> 8 -> 12 leading spaces, a sibling
+  4 -> 6, and the following line 2 -> 4. Content correct throughout; only
+  leading whitespace drifted.
+
+  Why there is no way back. On a store-backed project the file is a render,
+  so hand-repair is reverted by the next write. amend_body is the only route,
+  and it is the thing causing the damage. The reporter escaped by rewriting
+  the block so it no longer depends on column alignment.
+
+  Fix, either: preserve each re-flowed line's original leading whitespace; or
+  decline the wrapped pass where the span's lines have DIFFERING indentation
+  -- an indented block is a deliberate structure, not a hard wrap -- refusing
+  with a code the caller can branch on, as body_match_ambiguous already does.
+  Reporting wrapped_match:true is not enough on its own: it is also true on
+  the benign case the pass was built for.
+  **Layman:** Fixing a sentence inside an indented table nudges the table sideways, and every attempt to straighten it nudges it further.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: remotecontrol, roadmap-store.
+
+- 📋 [ANTS-4613] **feedback_log derives a stray dotfile-adjacent sibling when caller_cwd's leaf begins with a dot.**
+  With path omitted, derivation yields <caller_cwd-leaf>_Ants_MCP_Feedback.md
+  at the PARENT of caller_cwd. For caller_cwd=/home/ants/.claude that is
+  /home/ants/.claude_Ants_MCP_Feedback.md -- a name that looks like a hidden
+  file, in the user's home directory, and NOT the file this project actually
+  uses (/mnt/Games/Scripts/Linux/claude_config_Ants_MCP_Feedback.md, 56 KB).
+
+  The write returns ok:true, created:true, path_derived:true. Success plus
+  creation reads as success, so a session that omits path silently starts a
+  second feedback file the maintainer never reads, and the canonical one is
+  untouched.
+
+  ANTS-3714 fixed the SPEC for this case -- a leaf starting with a dot cannot
+  match the authoritative glob -- and the verb still derives one.
+
+  Fix: before creating, look for an existing *_Ants_MCP_Feedback.md whose
+  name plausibly matches the project, as op:append_tracking already does when
+  it refuses not_found with candidates + hint, and either use it or refuse
+  with those candidates. At minimum, never derive a name from a leaf
+  beginning with a dot -- refuse bad_args and make the caller name the file.
+  **Layman:** Filing feedback from the config folder quietly starts a second file in your home directory that nobody reads.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4614] **There is no publish op, so a migration's normalisation sits in the store with no way to land it.**
+  roadmap_migrate reports markdown_rewritten:false and it is honest
+  (ANTS-4482 shipped the saying-so half). What has no owner is the doing-it
+  half: the canonical re-render only lands on the NEXT roadmap_log write.
+
+  On LottoTracker that is not cosmetic. The file carries two id dialects the
+  store would normalise on render -- 24 bullets as `- OK **LOTTO-NNNN**
+  Headline.` and 9 as `- TODO [LOTTO-NNNN] **Headline.**` -- so a real,
+  wanted normalisation is sitting undelivered with no way to publish it.
+  Measured: migrate returns store_backed:true, elements_written:33; git
+  status is empty; roadmap_query answers `source` of "store".
+
+  Two costs. A user adopting the store as source of truth across projects
+  has no on-demand way to publish the canonical file, so the only route is
+  to invent a semantic write purely as a render trigger -- which pollutes the
+  roadmap with a bullet or note nobody wanted. And the migration becomes
+  unverifiable from the repo side: a clean git status after migrating is
+  indistinguishable from the migration not having run.
+
+  Ask: roadmap_log op:"render" -- no locator, no semantic change, dry_run
+  previewable, reporting bytes and lines changed. Or a roadmap_migrate
+  render:true flag. Either gives the migration a reviewable artefact and
+  lets the standard be enforced on demand rather than as a side effect.
+  **Layman:** After adopting the database, the tidy-up it computed cannot be written to the file until some unrelated edit happens to trigger it.
+  Kind: feature.
+  Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: remotecontrol, roadmap-store.
+
+- 📋 [ANTS-4615] **discarded_edit_lines mixes cosmetic restyling with text that does not survive, so real prose loss hides in the number.**
+  A status flip that changed nothing (from and to both planned) re-rendered
+  and reported discarded_edit_lines:84, discarded_external_edits:true. Of
+  those 84, the overwhelming majority were benign -- 24 bullets moving from
+  an older bold-id form to the canonical bracketed-id form. One was a
+  sentence that no longer exists anywhere in the file.
+
+  The underlying truncation is ANTS-4596, shipped, and the repair of
+  already-stored short values is ANTS-4585. What neither covers is that the
+  ONE number the caller is given cannot distinguish the two populations. A
+  single 84 that mixes them trains callers to wave the flag through, which
+  the reporter says is what nearly happened.
+
+  This matters more once a project is store-backed, because the re-render is
+  then unavoidable and fires on any write -- including a status flip made
+  for an unrelated reason, inside a 1600-line whole-file rewrite nobody can
+  eyeball.
+
+  Ask: split the counter so cosmetic restyling is reported apart from lines
+  whose TEXT does not survive into the output, and name the lost text in a
+  discarded_text array. The count is the caller's only signal, so its
+  precision is the whole value of the field.
+  **Layman:** One count lumps harmless reformatting together with sentences that were deleted, so nobody can tell the difference.
+  Kind: fix.
+  Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-4616] **Store round-trip fidelity is unverified for tables, code fences and blockquotes inside a bullet body.**
+  The reporter withdrew the re-indenting half of their 2026-08-19 finding
+  after measuring it: LOTTO-0002's body round-trips its nested sub-bullets
+  WITH their original two-space indentation across all four nested blocks,
+  consistent with ANTS-4558. They also reclassified the whole-file re-render
+  itself as intended rather than a defect, now that the store is the source
+  of truth and the re-render is what enforces one standard across projects.
+
+  What they flag as unmeasured is the rest of the element vocabulary. Once a
+  project is store-backed the re-render is unavoidable, so every element type
+  a body can carry needs to survive it: markdown tables, fenced code blocks,
+  and blockquotes inside a bullet body. Nothing has exercised those.
+
+  The evidence for taking it seriously is in this same batch -- ANTS-4596 was
+  a real prose loss that shipped and was only caught because a contributor
+  grepped for a sentence they remembered writing.
+
+  Ask: a round-trip fidelity case per element type, of the shape
+  tests/features/roadmap_read_seam already uses -- write markdown, migrate,
+  render, parse the file that lands, compare. Cheap to add beside the
+  existing fixtures, and it converts an assumption into a gate.
+  **Layman:** We know indented lists survive the database round trip; nobody has checked tables or code blocks.
+  Kind: test.
+  Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-4617] **A project migrated into the machine-global store cannot be removed, so safe testing leaves permanent clutter.**
+  To measure render fidelity without risking the real project, the reporter
+  migrated a scratch copy under its own root -- project_id 17, export_slug
+  roadmap-render-probe-throwaway. That row is permanent: the catalog exposes
+  roadmap_migrate and no inverse.
+
+  Two costs. The store keeps a project whose files live in a session
+  scratchpad that will be deleted -- and roadmap_query mode:report scope:all
+  will sum a dead project into machine-wide figures. And the incentive runs
+  the wrong way: testing a destructive-looking render in isolation is the
+  right instinct, and the store currently penalises it.
+
+  Note this is adjacent to but distinct from ANTS-4600's transient_root
+  guard, which stops a scratchpad under the system temp dir being registered
+  at all. This scratch root was NOT under the temp dir, so that guard does
+  not fire and the row is legitimate at write time.
+
+  Ask: a deregister op keyed on export_slug or root, refusing unless the root
+  is absent or the caller passes an explicit confirm. Failing that, document
+  the scratch-project pattern and a supported way to prune -- the schema
+  declares REFERENCES but no ON DELETE CASCADE, so a hand prune today means
+  deleting eight tables in order with foreign keys on, which nobody should be
+  doing by hand against a live WAL store.
+  **Layman:** Trying a risky operation on a throwaway copy is the careful thing to do, and it permanently pollutes the shared database.
+  Kind: feature.
+  Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
+  Lanes: roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
@@ -45031,6 +45409,44 @@ assistant suggestions, accepted by the user for filing.
   ANTS-4529 reached here: delete the duplicate rather than sync it.
 
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
+  Second report 2026-08-21 (Games_Hub_Ants_MCP_Feedback.md), with the
+  mechanism that makes this unrecoverable rather than merely missing.
+
+  `create_section` takes `intro_body`, documented as "Single newlines =
+  paragraph breaks; hard-wrapped at 80 cols on word boundaries". The
+  reporter pre-wrapped their prose to ~78 cols -- which is how every other
+  body field in the repo is written, roadmap_log's own `body` saying
+  "pre-wrap to ~70 columns" -- and got one paragraph per LINE, a blank line
+  between every line of the intro. Measured creating the "Playing against
+  other people" section in Games_Hub's ROADMAP.md, 2026-08-20.
+
+  That much is caller error. What makes it an item is that it composes with
+  the store into a permanent defect. Every other authored field has an amend
+  path -- amend_body and amend_headline for a bullet, annotate for a note. A
+  section intro has none. And the obvious fallback is actively undone: the
+  reporter hand-rewrapped the intro and the very next roadmap_log write
+  reported discarded_external_edits:true, discarded_edit_lines:13 and
+  restored the double-spaced form. So the only routes left are to leave it,
+  or to reach into the store out-of-band -- which is exactly what
+  discarded_external_edits exists to stop.
+
+  The opposite mistake is symmetric and worse: an intro passed as one long
+  line renders fine, and a caller who then wants a genuine paragraph break
+  has no way to add one either.
+
+  Shape of the ask, unchanged in substance but now specific:
+  op:"amend_section_intro" with locator `section` (the slug create_section
+  already returns) plus `intro_body` on create_section's semantics,
+  replacing whatever is stored -- symmetric with amend_body, no new parsing,
+  dry_run previewable. Smaller alternative if a new op is unwanted: let
+  create_section take replace_intro:true on a section that already exists.
+
+  Cheaper than either, and independently useful: have create_section's
+  success envelope echo the RENDERED intro the way dry_run echoes a bullet,
+  so a caller sees the paragraph explosion in the reply rather than on the
+  next read. The reporter notes dry_run IS supported here and would have
+  caught it, and argues the gap is the missing recovery rather than the
+  newline rule -- a preview only helps the caller who thinks to preview.
   **Layman:** There is no supported way to fix a typo in the text at the top of the roadmap — every attempt is silently undone.
   Kind: implement.
   Lanes: roadmap-store, mcp.
