@@ -40715,6 +40715,34 @@ filed below.
   Then the run. THEN phase 3, the duplication, which is still entirely
   open: stripping the inline run is what removes it, and doing that
   before the repair destroys the only surviving copy of the cut text.
+  Progress (2026-08-21): the phase-2 blocker is GONE. ANTS-4600 is closed
+  at fa68ab12 — project 17 is evicted (16 projects, zero orphans
+  store-wide, foreign_key_check empty) and roadmap_migrate now refuses a
+  root under the system temp dir, so nothing under /tmp is registered and
+  a repair pass no longer walks a dead copy.
+
+  Also, and check this rather than taking it from here: the "Ants
+  relaunched" precondition looks ALREADY MET. The running process served
+  roadmap_log's schema this session carrying `repair_trailers` in its op
+  enum with the full phase-2 description — and that schema comes from the
+  running binary, which is what would execute the op. So the process is at
+  least as new as 4309b01d. This is an observation from a served schema,
+  NOT a run: nothing was invoked. Confirm with a dry_run before trusting
+  it, because a schema proving the op is REGISTERED is not the same as
+  proving its body behaves.
+
+  What remains, unchanged: backup → dry_run → run. The strict-prefix guard
+  is still the whole design — seven items hold a column newer than their
+  prose and an unguarded pass reverts them. Phase 3 (strip the duplicate
+  inline runs) still stays LAST: the prose is the only surviving copy of
+  the lost text.
+
+  A verified pre-eviction backup of the shared store exists at
+  ~/.local/share/ants-terminal/roadmap.sqlite.pre-ANTS-4600.20260821-083415.bak
+  (mode 0600, integrity_check ok, 17 projects) — taken with sqlite3
+  `.backup`, never cp, which is not safe against a live WAL database. It
+  predates the eviction, so restoring it would bring project 17 back.
+  Phase 2 wants its OWN backup taken immediately before the run.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
