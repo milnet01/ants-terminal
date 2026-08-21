@@ -205,3 +205,71 @@ TEST(roadmap_log_flip_mixed_format, Inv5AbsentIdStillNotFound) {
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
               QStringLiteral("bullet_not_found"));
 }
+
+// ANTS-4604 — roadmap_query must say the file is MIXED, not just that it is
+// github-task-list.
+//
+// This suite's own INV-1 asserts that a flip on the emoji bullet answers
+// `format: "ants-v1"`, and that is correct — it describes the bullet the op
+// touched. roadmap_query answers `github-task-list`, and that is correct too —
+// it means "the GFM adapter engaged, so kind/lanes/layman are degraded". One
+// field name, two questions. Vestige read the pair as a contradiction and, from
+// it, inferred that the disagreement decides whether the store may serve their
+// project. It does not: migratedProject() runs its own detector over the
+// detection prefix and reads neither envelope field.
+//
+// What was actually missing is the thing both answers hide: whether the file is
+// uniform. The old loop broke on the first GFM bullet, so a file with one GFM
+// bullet and a file with nothing but GFM bullets were indistinguishable.
+TEST(roadmap_log_flip_mixed_format, Ants4604QueryReportsMixedWithCounts) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seed()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("format")).toString(),
+              QStringLiteral("github-task-list"))
+        << "unchanged: the adapter-mode echo still fires";
+    EXPECT_TRUE(resp.value(QStringLiteral("mixed")).toBool())
+        << "the seed is 2 GFM bullets + 1 ants-v1 emoji bullet: "
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("gfm_bullets")).toInt(), 2);
+    EXPECT_EQ(resp.value(QStringLiteral("non_gfm_bullets")).toInt(), 1);
+}
+
+// ANTS-4604 — and a UNIFORM file's envelope is byte-identical to what it was.
+// This is the half that keeps the change additive: emitting `mixed:false` on
+// every uniform roadmap would be a new field on every existing caller's
+// envelope, which is what "additive" was chosen to avoid.
+TEST(roadmap_log_flip_mixed_format, Ants4604UniformGfmOmitsTheMixedFields) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QByteArray uniform = "# Test Roadmap\n\n";
+    uniform += kPad;
+    uniform += "\n## Work Items\n\n"
+               "- [ ] **G1.** \xE2\x80\x94 first GFM task-list bullet.\n"
+               "- [ ] **G2.** \xE2\x80\x94 second GFM task-list bullet.\n"
+               "- [x] **G3.** \xE2\x80\x94 third GFM task-list bullet.\n\n";
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), uniform));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("format")).toString(),
+              QStringLiteral("github-task-list"));
+    EXPECT_FALSE(resp.contains(QStringLiteral("mixed")))
+        << "a uniform file must not gain the field: "
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_FALSE(resp.contains(QStringLiteral("gfm_bullets")));
+    EXPECT_FALSE(resp.contains(QStringLiteral("non_gfm_bullets")));
+}

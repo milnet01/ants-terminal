@@ -3587,11 +3587,35 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // the whole file in one shape; if any bullet was tagged GFM,
     // surface the format so callers know they're in adapter mode
     // and the (kind/lanes/layman) fields are degraded.
+    //
+    // ANTS-4604 — and count both populations rather than breaking on the
+    // first GFM bullet, because ANY-bullet-is-GFM cannot tell a uniform
+    // github-task-list roadmap from a MIXED one. Reported by Vestige, whose
+    // file is 989 GFM bullets and 45 ants-v1 emoji bullets: `format` said
+    // github-task-list, roadmap_log said ants-v1 for a bullet it flipped, and
+    // a caller keying on `format != "ants-v1"` had no way to see that neither
+    // answer described a uniform file.
+    //
+    // The counts are named for what was actually counted. `non_gfm_bullets`
+    // is NOT claimed to be ants-v1: this loop reads the per-bullet `format`
+    // tag, which is emitted only for github-task-list, so the remainder is
+    // "everything else" and calling it a dialect would be inventing one.
+    int gfmBullets = 0;
     for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
         if (v.toObject().value(QStringLiteral("format")).toString() ==
             QLatin1String("github-task-list")) {
-            out["format"] = QStringLiteral("github-task-list");
-            break;
+            ++gfmBullets;
+        }
+    }
+    if (gfmBullets > 0) {
+        out["format"] = QStringLiteral("github-task-list");
+        const int others = int(m_roadmapCacheBullets.size()) - gfmBullets;
+        // Emitted only when the file actually carries both, so every uniform
+        // roadmap's envelope stays byte-identical to what it was.
+        if (others > 0) {
+            out["mixed"]           = true;
+            out["gfm_bullets"]     = gfmBullets;
+            out["non_gfm_bullets"] = others;
         }
     }
     // ANTS-1398-INV-5: echo the opt-in only when the caller set it

@@ -41795,7 +41795,7 @@ filed below.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
   Lanes: codebaseindex.
 
-- 📋 [ANTS-4604] **`format` names two different questions across the roadmap verbs, so on a mixed file they look like they contradict each other.**
+- ✅ [ANTS-4604] **`format` names two different questions across the roadmap verbs, so on a mixed file they look like they contradict each other.**
   Reported by Vestige as "the two verbs report different dialects for the
   same file", minutes apart in one session:
 
@@ -41834,6 +41834,49 @@ filed below.
   keying on `!= "ants-v1"` can see it is not looking at a uniform file. Plus
   one spelling per dialect across both verbs, and a distinct field name
   wherever the value describes a single bullet rather than the file.
+  Resolved 2026-08-21, additively. roadmap_query's envelope loop no longer
+  breaks on the first GFM bullet; it counts both populations and, when the
+  file carries both, adds `mixed:true` + `gfm_bullets` + `non_gfm_bullets`.
+
+  The diagnosis held up and sharpened on contact. roadmap_query's top-level
+  `format` is not a dialect detector at all -- ANTS-1428's own comment calls
+  it an ADAPTER-MODE echo, meaning "some bullet was GFM, so kind/lanes/layman
+  are degraded". Breaking on the first hit is why a file with one GFM bullet
+  and a file with nothing else were indistinguishable. That was the whole
+  defect; the counts fell out of removing the break.
+
+  Two deliberate departures from the reporter's suggested fix, both because
+  the suggestion would have asserted more than the code knows.
+
+  `non_gfm_bullets`, not `secondary_count`/`secondary:"ants-v1"`. This loop
+  reads the PER-BULLET `format` tag, which is emitted only for
+  github-task-list, so the remainder is "everything else" -- on a
+  pass-headings file it is not ants-v1 at all. Naming the count for what was
+  counted is the honest version.
+
+  It lives in the QUERY ENVELOPE, not in the shared detector. Putting `mixed`
+  in detectRoadmapFormat() was the obvious move and is wrong: that function
+  stops at 300 non-blank lines, because ANTS-3863 INV-1 BOUNDS what the
+  dispatch path may read. A count from there would be prefix-scoped and would
+  read as whole-file. roadmap_query has already parsed everything, so its
+  count is real.
+
+  Spelling left alone on the user's call: roadmap_log still says "gfm" where
+  roadmap_query says "github-task-list". Unifying them changes a value other
+  sessions may already compare against. Recorded here rather than fixed.
+
+  VERIFIED. ctest count moved 5 -> 7, so both new tests actually compiled in
+  rather than passing by absence. Mutation: restoring the break-on-first loop
+  fails the mixed test and leaves the uniform one passing -- the correct
+  split, since the uniform test asserts ABSENCE and guards over-emission, so
+  only a test per direction covers both. Suite 3762/3762.
+
+  Documented in `detail`, not `description`: the wire one-liner carries an
+  800-byte budget (mcp_tool_detail_field INV-5) that ANTS-3409 already had to
+  trim. The note says what each verb's `format` actually answers, that the
+  fields are absent on a uniform file rather than missing on an old server,
+  and -- the part the reporter most needed -- that none of it decides which
+  backend serves a project.
   **Layman:** Two roadmap tools report the file's format differently, and neither is wrong — they are answering different questions under the same name.
   Kind: fix.
   Source: Vestige feedback 2026-08-21, re-measured in-session.

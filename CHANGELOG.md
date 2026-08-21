@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query now says when a roadmap file mixes two bullet styles** (ANTS-4604)
+  A roadmap carrying both checkbox and emoji bullets reported only the
+  first style it found, so it looked identical to a file written
+  entirely in that style. It now adds `mixed` with a count of each,
+  and only when the file really carries both.
+
 - **roadmap_log op:"repair_trailers" — recover the trailer values migration cut short** (ANTS-4585)
   A one-off, per project, with a dry run. Values cut at a hard line wrap or
   at the full stop inside `e.g.` / `config.yaml` are recovered by re-parsing
