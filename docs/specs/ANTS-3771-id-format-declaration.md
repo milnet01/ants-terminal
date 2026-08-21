@@ -94,7 +94,7 @@ members are themselves optional:
 | Member | Type | Half | Consumed by | When absent |
 |---|---|---|---|---|
 | `prefix` | `string` | generative | `rlStoreCounterPrefix()`, `roadmap_log op:append` | today's four-step resolution, unchanged |
-| `pattern` | `string` (PCRE2) | recognitional | `fillBulletRecord()`'s GFM bold branch | today's trailing-colon guard, unchanged |
+| `pattern` | `string` (PCRE2) | recognitional | `fillBulletRecord()`'s GFM bold branch; `RoadmapMigrate`'s parsed-vs-quarantined gate (§ 2.4) | today's trailing-colon guard, unchanged |
 
 **There is no `digits` member, and its absence is a measurement rather than
 an omission.** `RoadmapFoldIn::renderId()` already renders
@@ -113,9 +113,8 @@ or both. `prefix` never affects reading; `pattern` never affects allocation.
 ### 2.2 The read half
 
 `RoadmapParse` gains a value type and an overload. It stays Qt6::Core-only
-and gains **no** dependency on `ProjectSettings` — the caller loads the
-declaration and passes it in, the same way it already passes text rather
-than a path.
+and gains **no** dependency on `ProjectSettings`: the declaration arrives as
+a value, the same way text already arrives rather than a path.
 
 ```cpp
 namespace RoadmapParse {
@@ -125,7 +124,8 @@ namespace RoadmapParse {
 // which is every project that ships no key and is the zero-change path.
 struct IdFormat {
     QString prefix;    // canonical prefix grammar; empty = undeclared
-    QString pattern;   // PCRE2, matched against the bold span; empty = undeclared
+    QString pattern;   // PCRE2, matched against extractBoldId()'s output
+                       // (see below); empty = undeclared
     bool isDeclared() const { return !prefix.isEmpty() || !pattern.isEmpty(); }
 };
 
@@ -134,10 +134,25 @@ QVector<BulletRecord> parseBullets(const QString &markdownText,
 }
 ```
 
-The default argument is what keeps every existing call site untouched.
+**The default argument keeps every existing call site compiling, and that is
+exactly the hazard.** A caller that omits the argument silently reads a
+project's roadmap as undeclared, so one bullet resolves to two different ids
+depending on which path reached it. There are 31 `parseBullets` mentions
+across `src/` outside `roadmapparse.*` (`grep -rn 'parseBullets(' src/`,
+2026-08-21), which is far too many to audit per change.
 
-**The pattern governs one branch and no other:** `fillBulletRecord()`'s GFM
-bold-lead-in branch, quoted in § 1. The ants-v1 native branch (`rxIdShaped`),
+**So the declaration is loaded at ONE point: `RoadmapSource::bulletsFor()`**,
+which already receives the `projectRoot` it needs and is the seam ANTS-3793
+defines for exactly this reason — one reader function, two backends. Every
+consumer reaching bullets *for a project* goes through it. The bare
+one-argument overload survives for callers that have no project to declare
+anything: a test fixture, a diff hunk (`remotecontrol_roadmap_backfill.cpp`
+parses added lines), an ad-hoc string. **A project-scoped caller taking the
+bare overload is a defect, and INV-13 is what catches it.**
+
+**The pattern governs one PARSER branch and no other:** `fillBulletRecord()`'s
+GFM bold-lead-in branch, quoted in § 1. (§ 2.4 has the migration reading the
+*result* of that branch; no second parser branch consults the pattern.) The ants-v1 native branch (`rxIdShaped`),
 the head-anchored bracket branch (`rxLeadBracketId`), the body-wide `rxId`
 and `rxLeadToken` are all unchanged. That boundary is measured, not
 stylistic: all 427 quarantined ids in the store are Vestige's, and Vestige
@@ -146,12 +161,32 @@ single whitespace-free token and adopts no prose.
 
 With a `pattern` declared, that branch becomes:
 
+**The pattern is matched against `extractBoldId()`'s output — the bold span
+with its trailing `.` already dropped — not against the raw span.** Named
+because the two build differently: against the stripped candidate
+`^([A-Za-z0-9]+)$` matches `**AX1.**`, and against the raw span it does not,
+so every project's pattern is authored to whichever this sentence picks.
+`extractBoldId()` chops **one** trailing `.` and then trims, and its own
+regex is `^\*\*(.{1,80}?)\*\*` — so a bold run over 80 characters yields no
+candidate at all and a declaration cannot reach it. That is today's
+behaviour and this spec does not change it; it is stated because a project
+authors its pattern against this input.
+
 - **Match** → the id is **capture group 1**, or the whole match when the
   pattern has no capturing group. So `**AX1. Geometric / ray-traced audio
   occlusion**` under `^([A-Za-z]{1,4}\d+)(?:\.|$)` yields `AX1`, and the
   remaining text stays the headline. Search semantics, not anchored unless
   the author anchors it — the same rule `spec_conformance` uses for a
   pattern invariant (`specs.md` § 3.5.1).
+
+  **A match sets all three id fields, and leaving any of them to the
+  implementer breaks something downstream.** `rec.id` and `rec.idToken` both
+  take the captured value; **`rec.boldId` is left EMPTY.** `boldId` means
+  *the reader adopted this bold span as an id by inference*, and under a
+  declaration it did not — the project wrote the rule down. `idToken` follows
+  because `RoadmapMigrate` classifies on the leading-slot token (§ 2.4), and
+  leaving it as the whole bold run would quarantine the very bullet the
+  declaration just resolved.
 - **No match** → **the record keeps exactly the id today's heuristic
   assigns.** Nothing is emptied. An emptied id makes the bullet a narrator
   bullet, which `roadmap_query` drops from its default result set, so a
@@ -165,10 +200,18 @@ defines the flag as *"did the reader ADOPT this record's id from a bold
 prose lead-in, rather than read it from a bracket token the author wrote?"*
 A pattern match is no longer an adoption the reader invented — it is the
 project's own written rule — so the flag is **not** emitted on a match and
-**is** emitted on a non-match. `RoadmapParse::idWasInferred()` keeps its
-signature and its `id == boldId` test; what changes is that a matched id is
-capture group 1 and therefore no longer equals `boldId`, so the existing
-predicate reports the new answer with no new field and no new state.
+**is** emitted on a non-match.
+
+**That outcome comes from the emptied `boldId` above, and from nothing
+else.** `RoadmapParse::idWasInferred()` is
+`!rec.boldId.isEmpty() && rec.id == rec.boldId`, so an empty `boldId` makes
+it false on every match, and the predicate keeps its signature with no new
+field and no new state. **Reasoning instead that the captured id "no longer
+equals `boldId`" is wrong**, and the worked table in § 3.1 is the
+counter-example: `A1` captures the *whole* span, so `id == boldId` holds and
+an unchanged `boldId` would fire the flag on a match. A pattern whose
+capture spans its whole input is the ordinary case for a project whose ids
+are bare tokens, not a corner.
 
 That is the field ANTS-4491's converter needs: after Vestige declares a
 pattern, `id_inferred: true` means *this one still needs a decision*, and
@@ -192,11 +235,27 @@ has allocated, while the declaration records what the *project* has decided;
 where they disagree the project is right and the store row is a stale
 artefact of a migration.
 
-**Refusal.** `roadmap_log op:append` / `op:append_batch` refuse a
-caller-supplied `id_hint`-derived or `stable_id` id that the declaration
-rejects, with a **new** code `id_format_mismatch`, naming the declared
-form. This is the check that would have refused ANTS-3769's seven
-`&`-bearing ids.
+**Refusal, and the predicate is pinned here because "the declaration
+rejects" has three readings that build three different refusal surfaces.**
+A caller-supplied written id — `stable_id`, or the id an `id_hint` renders —
+is refused when **either** test fails:
+
+| Test | Applies | Code |
+|---|---|---|
+| `roadmap-format.md` § 3.5.1's universal grammar, as `RoadmapMigrate::isGrammaticalId()` already spells it | always, declaration or not | `bad_id_format` |
+| the text before the id's final `-` equals the declared `prefix` | only when `prefix` is declared | `id_format_mismatch` |
+
+**`pattern` takes no part in a written id.** It is matched against a GFM
+bold span and nothing else, so running it over a bracket id would reject a
+conforming `ANTS-0042` under § 3.1's own example — which is why § 2.1 calls
+it recognitional and this table does not name it.
+
+**ANTS-3769 is caught by the first row, not by the declaration**, and the
+distinction matters because that row fires on projects that declare nothing.
+`ANTS-119&` has the prefix `ANTS` and would pass a prefix test; what refuses
+it is the universal grammar, whose suffix must be `\d+`. What this spec adds
+there is the **check point** — that gate does not reach `op:append`'s written
+ids today, which is why those seven were written unchallenged.
 
 **Not `bad_id_format`, which is taken and means something else.**
 `mcp-error-codes.md` gives that code to a token that is id-*shaped* but
@@ -207,7 +266,34 @@ declaration; folding the two into one code would make the two refusals
 indistinguishable to a caller, and the fix for each is different. **Allocation is unaffected** — an allocated id is rendered
 by `renderId()` and conforms by construction.
 
-### 2.4 Validation, and the untrusted-input boundary
+### 2.4 What the declaration does to a migration
+
+`RoadmapMigrate` classifies a bullet's leading-slot token with
+`isGrammaticalId()`, which tests `RoadmapParse::idTokenPattern()` —
+`PREFIX-\d+`. `AX1` has no `-`, so it fails, and the bullet is quarantined.
+That is why Vestige holds 427 quarantined items today.
+
+**Under a declared `pattern`, a bullet whose lead-in matched is `parsed`,
+not `quarantined`.** The declaration is the project's own grammar, and
+recording a declared id as off-grammar would say the opposite. Two things
+follow, and neither is optional:
+
+- `isGrammaticalId()` accepts a token the declared pattern resolved, in
+  addition to the universal grammar. It never *narrows* — a project that
+  declares a pattern does not thereby make `ANTS-0042` off-grammar.
+- Because § 2.2 sets `rec.idToken` to the captured value, the migration sees
+  `AX1` rather than the whole bold run, so the two agree by construction
+  rather than by a second rule.
+
+**This is why the item exists.** Leaving the migration gate alone would let
+a project declare a format and change no `id_origin` at all — the
+declaration would be inert exactly where ANTS-4491's converter reads.
+
+**Re-migrating a project that already migrated is § 5's, and excluded.**
+This section governs the classification a migration performs *when it runs*,
+never a repass over rows already stored.
+
+### 2.5 Validation, and the untrusted-input boundary
 
 `prefix` is validated by the **existing** `RoadmapFoldIn::isValidIdPrefix()`
 — 1-16 characters of `[A-Za-z0-9_-]` containing at least one ASCII letter
@@ -249,13 +335,17 @@ Failure is asymmetric on purpose, and it follows ANTS-2160's shipped shape:
 - **INV-2** — A declared `pattern` changes the id assigned by
   `fillBulletRecord()`'s **GFM bold-lead-in branch only**. The ants-v1
   native branch, `rxLeadBracketId`, `rxLeadToken` and the body-wide `rxId`
-  assign what they assign today. *Test:*
+  assign what they assign today. (§ 2.4's migration gate consumes that
+  branch's *output*; it is not a second branch and does not run the pattern.) *Test:*
   `tests/features/roadmap_id_format_declared`, a fixture carrying one bullet of each
   shape parsed under a pattern that would match all of them.
-- **INV-3** — On a match, `rec.id` is capture group 1 when the pattern has
-  a capturing group and the whole match otherwise; the text the pattern did
-  not consume remains in the headline. *Test:*
-  `tests/features/roadmap_id_format_declared`.
+- **INV-3** — On a match, `rec.id` **and** `rec.idToken` are capture group 1
+  when the pattern has a capturing group and the whole match otherwise,
+  `rec.boldId` is empty, and the text the pattern did not consume remains in
+  the headline. The pattern is applied to `extractBoldId()`'s output, not to
+  the raw bold span. *Test:*
+  `tests/features/roadmap_id_format_declared`, including a bullet whose bold
+  span ends in `.` so the stripped-vs-raw input is distinguishable.
 - **INV-4** — On a non-match, `rec.id` is exactly the value the undeclared
   path assigns. **No bullet loses an id it has today**, so no bullet becomes
   a narrator bullet by declaring a format. *Test:*
@@ -263,8 +353,10 @@ Failure is asymmetric on purpose, and it follows ANTS-2160's shipped shape:
   declared / undeclared pair over the same fixture.
 - **INV-5** — `roadmap_query` emits `id_inferred: true` for a bullet whose
   id the GFM branch adopted and the declared pattern did **not** match, and
-  omits it when the pattern matched. *Test:*
-  `tests/features/roadmap_query_id_inferred` (extended).
+  omits it when the pattern matched — **including when the capture spans the
+  whole bold span**, which is the case an unchanged `boldId` would get wrong.
+  *Test:* `tests/features/roadmap_query_id_inferred` (extended), with a
+  `**A1**`-shaped fixture as well as an `**AX1. …**` one.
 - **INV-6** — ANTS-3793 INV-2 still holds: the store backend and the
   markdown backend return identical `BulletRecord`s. The declared pattern
   cannot break it, because `bulletsFromStore()` derives every record from
@@ -277,9 +369,10 @@ Failure is asymmetric on purpose, and it follows ANTS-2160's shipped shape:
   *Test:* `tests/features/roadmap_id_format_declared`, over a fixture project whose
   store row and declaration disagree.
 - **INV-8** — `roadmap_log op:append` / `op:append_batch` refuse a
-  caller-supplied id the declaration rejects, with code
-  `id_format_mismatch` — never `bad_id_format`, which stays the universal
-  gate's — and write nothing. *Test:* `tests/features/roadmap_id_format_declared`.
+  caller-supplied written id by § 2.3's two-row table and write nothing: the
+  universal grammar yields `bad_id_format` with or without a declaration, a
+  prefix disagreeing with a declared `prefix` yields `id_format_mismatch`,
+  and `pattern` is applied to neither. *Test:* `tests/features/roadmap_id_format_declared`.
 - **INV-9** — `project_settings op:set` refuses an `id_format` whose
   `prefix` fails `isValidIdPrefix()`, or whose `pattern` exceeds 512 bytes,
   fails to compile, or is not a string — and the file on disk is unchanged.
@@ -292,6 +385,20 @@ Failure is asymmetric on purpose, and it follows ANTS-2160's shipped shape:
   `RoadmapFoldIn::renderId()`; this spec introduces no width of its own.
   *Test:* source-grep — `renderId()` remains the only id renderer on the
   allocation path.
+- **INV-12** — Under a declared `pattern`, a migration records a bullet whose
+  lead-in matched as `id_origin = 'parsed'`, not `'quarantined'`, and
+  `isGrammaticalId()` still accepts every token the universal grammar accepts.
+  *Test:* `tests/features/roadmap_id_format_declared`, migrating a
+  Vestige-shaped fixture with and without a declaration and comparing the
+  `id_origin` census.
+- **INV-13** — Every path that parses a project's roadmap resolves the same
+  id for the same bullet: `RoadmapSource::bulletsFor()` loads the declaration
+  once from the project root it already receives, and no consumer reaching
+  bullets for a project calls the bare `parseBullets(text)` overload. *Test:*
+  `tests/features/roadmap_id_format_declared`, asserting `roadmap_query`,
+  `roadmap_log`'s markdown read and `RoadmapDialog` return one id for one
+  declared-project bullet; plus a source-grep that no project-scoped caller
+  takes the one-argument overload.
 
 ### 3.1 The worked pattern, stated so it can be run
 
@@ -340,19 +447,21 @@ touch the filesystem.
   it can file for it.
 - **A `digits` / width member** — permanently excluded, see § 2.1. Width is
   ANTS-3765 § 2.8's and is uniform across the corpus.
-- **Backfilling or re-migrating existing store rows** once a project declares
-  a format. The declaration governs reads and future writes; re-deciding
-  `id_origin` for rows already stored is a migration, and ANTS-4585 phase 3
-  owns the store-side repasses.
+- **Backfilling or re-migrating rows a migration already stored.** A
+  migration that RUNS under a declaration honours it (§ 2.4); what is excluded
+  is going back over rows written before the project declared one. Re-deciding
+  a stored `id_origin` is a repass, and ANTS-4585 phase 3 owns those.
 - **Anything that empties an id.** Permanently excluded — § 2.2 gives the
   reason and ANTS-4575's body forbids it by name.
 
 ## 6. Tests
 
 Feature test: `tests/features/roadmap_id_format_declared/`. Covers INV-1
-through INV-4 and INV-7 through INV-10. Label `features;fast`. **INV-11 is a
-source-grep and has no case here** — its claim is that no second id renderer
-appeared, which a passing test cannot show. Ask
+through INV-4, INV-7 through INV-10, and INV-12 / INV-13. Label
+`features;fast`. **INV-11 is a source-grep and has no case here** — its claim
+is that no second id renderer appeared, which a passing test cannot show.
+**INV-13 is half source-grep**: its behavioural half has cases, its
+no-caller-takes-the-bare-overload half does not. Ask
 `build_target_for` which bundle owns the new source rather than guessing —
 bundles are not derivable from the path — and check that `ctest -N -R` moves
 before and after.
@@ -371,11 +480,12 @@ implementing.
 - § 2.1's key table in `docs/specs/ANTS-2160.md` gains `id_format`. It is the
   first non-path key there, so that section's sentence
   "Every value is a repo-root-relative path." needs qualifying.
-- `docs/specs/ANTS-3765-roadmap-migration-load.md` — § 2.8 step 1's prefix
-  resolution gains the declaration above the store row.
 - `docs/specs/ANTS-3793-roadmap-consumer-cutover.md` — no change to INV-2 or
   to the 22-member census; § 2.1.1 gains a note that the declared pattern is
   unreachable on the store path.
+- `docs/specs/ANTS-3757-*` / `docs/specs/ANTS-3765-roadmap-migration-load.md`
+  — § 2.5/2.6's parsed-vs-quarantined gate now has a second accepting rule
+  (§ 2.4); ANTS-3765 § 2.8 step 1's prefix chain gains the declaration.
 - `docs/standards/mcp-config-keys.md` — `id_format` catalogued.
 - `docs/standards/mcp-error-codes.md` — one new row, `id_format_mismatch`,
   stating how it differs from the neighbouring `bad_id_format`.
@@ -385,3 +495,7 @@ implementing.
 - CHANGELOG.md — one entry.
 
 ## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q-count | Outcome |
+|---|---|---|---|---|
+| 1 | 2026-08-21 | 3, cold — genre pinned `spec`; one byte-stable shared packet carrying 8 code windows, the ANTS-3793 § 2.1.1 / ANTS-3765 § 2.8 / ANTS-2160 § 2.1 passages, and the store + Vestige measurements | **Q1 1 · Q2 0 · Q3 5** (6 verified / 1 dismissed) | **Six verified, six fixed; one dismissed.** **All three lanes independently found the same two**, which is the strongest signal the run produced. **[Q1] The `id_inferred` reasoning was false, and the spec's own worked table was the counter-example.** § 2.2 claimed a matched id "is capture group 1 and therefore no longer equals `boldId`", so `idWasInferred()` — `!rec.boldId.isEmpty() && rec.id == rec.boldId` — would report the new answer unchanged. The § 3.1 row `` \| `A1` \| `A1` \| `` captures the *whole* bold span, so `id == boldId` holds and the flag fires **on a match**, breaching INV-5 and feeding ANTS-4491's converter "still needs a decision" for ids the project declared. A whole-span capture is the ordinary case for bare-token ids, not a corner. Fixed by having a match set `boldId` empty, which is also the truer statement: an adoption by declaration is not an adoption by inference. **[Q3] The write-time refusal predicate was never defined** — "an id the declaration rejects" had three readings (prefix equality, `pattern` re-purposed against a bracket id, or the universal grammar), each producing a different `id_format_mismatch` surface for callers to bind to. The ANTS-3769 claim was false under two of them: `ANTS-119&` has the prefix `ANTS` and passes a prefix test. Now a two-row table, with that item re-grounded on the universal grammar and on this spec adding the *check point* rather than the check. **Three more Q3s, each an invention something else binds to.** The pattern's input was "the bold span", which has two readings — `extractBoldId()` chops a trailing `.` and trims, so `^([A-Za-z0-9]+)$` matches `**AX1.**` against one and not the other, and every project authors its pattern to whichever. `rec.idToken` was unstated on a match, so one builder leaves the whole bold run there and `isGrammaticalId()` quarantines the bullet the declaration just resolved. And the migration's parsed-vs-quarantined gate was neither in scope nor excluded — which would have made a declaration inert exactly where ANTS-4491 reads it; § 2.4 now owns it. **The best finding came from an Open question, not a Findings section:** § 2.2 said "the caller loads the declaration and passes it in" and named no caller, while the overload's default argument silently reads a project as undeclared — 31 `parseBullets` mentions in `src/` outside `roadmapparse.*`, so one bullet could resolve to two ids depending on the path. The load point is now pinned at `RoadmapSource::bulletsFor()`, which already receives the `projectRoot`. **Dismissed as unverified:** one lane read INV-6 as false on the ground that "Vestige is in the store, so the rendered text for a migrated project is GFM there". `renderBullet()` writes `"- " + emojiFor(it.status)` and `roadmaprender.cpp` contains no checkbox emission at all, so the store path renders ants-v1 whatever the project's source dialect — matching ANTS-3793 § 2.1.2's own table. **The other two lanes raised the same point as an Open question rather than a finding, and that was a packet gap of mine**: no window covered `bulletText()`. **Also fixed, as this loop's own collateral:** the sentence "The default argument is what keeps every existing call site untouched" survived the seam fix and directly contradicted the new INV-13. |
