@@ -68,6 +68,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A throwaway temporary folder can no longer register itself as a real project** (ANTS-4600)
+  The roadmap database is shared by every project on the machine, so
+  anything recorded in it as a project stays there. A session's temporary
+  scratch folder had been recorded that way: 33 items that were copies of
+  another project's, under a folder that was deleted minutes later. Every
+  machine-wide count has been reporting one project too many ever since.
+  Migrating from a folder under the system temporary directory is now
+  refused, and says which folder to use instead. The already-recorded copy
+  is removed separately.
+
 - **roadmap_query: the `include_body` schema now says a trailer line can be composed from a column** (ANTS-4599)
   The store-backed record is built by rendering the item and re-parsing it,
   so the body carries a trailer line for every column whose key the stored

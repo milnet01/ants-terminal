@@ -41220,6 +41220,38 @@ filed below.
   Not urgent for any reader: no project's own ROADMAP.md is affected,
   because the render is per project and this one has no directory to
   write to. It is the machine-global surfaces that are wrong.
+  Progress (2026-08-21): the DURABLE half is shipped at 67783e54 — the
+  second of the two things this bullet said to decide, and the one it
+  called durable. `RoadmapMigrateVerb::isTransientRoot()` refuses a root
+  under the system temp dir; the handler consults it at step 0b, before
+  any store opens, refusing `transient_root`. ANTS-3855 § 2.5 and INV-14
+  record it; the taxonomy row is in mcp-error-codes.md § 1.
+
+  Measured, by linking the shipped predicate rather than replicating it:
+  all 16 legitimate registered roots allowed, 0 false positives; the
+  offending root, restored to its migration-time state, refused. Suite
+  3759/3759.
+
+  Two findings this bullet did not have. `registerProject()`'s INV-8
+  already refuses a root that does not CANONICALISE — so the "path that
+  has since been deleted" half of the proposal is unreachable at
+  registration time and needs no code: the scratchpad existed when it was
+  migrated. And the guard cannot live in `run()`, which takes an arbitrary
+  storePath and whose own fixtures legitimately migrate temp roots into
+  temp stores; it would have reddened the whole ANTS-3855 suite.
+
+  STILL OPEN — the first half: deleting project 17's rows. Left
+  deliberately, not forgotten. It is a destructive write to a store shared
+  by 16 projects, so it is the user's call rather than a tidy-up. A
+  verified online backup is already taken at
+  ~/.local/share/ants-terminal/roadmap.sqlite.pre-ANTS-4600.20260821-083415.bak
+  (integrity_check ok, 17 projects, mode 0600). The rows to remove, in
+  dependency order since the schema has no ON DELETE CASCADE: 33 element,
+  1 history, 33 item, 3 section, 1 project; citation, feedback_ref,
+  id_prefix and relationship are all 0.
+
+  ANTS-4585 phase 2 stays blocked until that delete lands — a repair pass
+  would still walk project 17 today.
   **Layman:** A throwaway test folder got recorded as a real project in the shared roadmap database, so machine-wide counts double-count one project
   Kind: fix.
   Source: ANTS-4585 phase 2 measurement, 2026-08-20.
