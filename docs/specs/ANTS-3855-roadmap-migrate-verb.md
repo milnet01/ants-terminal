@@ -1,11 +1,11 @@
 # ANTS-3855 — Add `roadmap_migrate`, the verb that loads a project into the store
 
-**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed.
+**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3855 (in-session-2026-08-06, measured while starting ANTS-3853's first item).
 **Blocker for:** ANTS-3807 (per-project migration briefs), ANTS-3772, ANTS-3815.
 **Composes with:** ANTS-3757 (read half), ANTS-3765 (load half), ANTS-3793 (consumer cutover).
-**Covers:** ANTS-4478, ANTS-4479, ANTS-4482 (envelope half), ANTS-4490 (envelope half) — four cross-session reports that each want a different field of one enumerated envelope, so they share one contract rather than four documents that must agree forever.
+**Covers:** ANTS-4478, ANTS-4479, ANTS-4482 (envelope half), ANTS-4490 (envelope half) — four cross-session reports that each want a different field of one enumerated envelope, so they share one contract rather than four documents that must agree forever. Plus **ANTS-4600**, which is not one of those four and is not an envelope report at all: it is the registration guard (§ 2.5 step 0b, INV-14), and it lives here because this verb is the only thing that registers a project.
 
 **Layman:** The roadmap database is built and tested but nothing can put a
 project into it. This adds the command that does — with a preview mode that
@@ -554,6 +554,7 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 |---|---|---|
 | — | `caller_cwd` absent or empty — refused by the `Required` contract, before the handler | `caller_cwd_required` |
 | 0a | `caller_cwd` present but does not canonicalise | `no_project` |
+| 0b | `caller_cwd` resolves under the system temp dir (ANTS-4600) | `transient_root` |
 | 1 | `project_name` empty after trimming | `bad_args` |
 | 2 | `export_slug` fails the DDL `CHECK` in § 2.1 | `bad_args` |
 | 3 | `findRoadmaps()` → `not_found` | `no_roadmap` |
@@ -829,6 +830,30 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   <br>*Breaks when:* the array is filled from the plan rather than from the write
   path — every matched item would then appear, and the array would say nothing
   the count does not.
+- **INV-14** — the verb registers no project whose root is a TRANSIENT
+  location. *Test:* feature test, two legs, because the predicate and its
+  wiring fail independently — a correct predicate nobody calls refuses nothing.
+  (a) `RoadmapMigrateVerb::isTransientRoot()` is `true` for the canonical temp
+  dir and for a `QTemporaryDir` beneath it, and `false` for this checkout's
+  `src/`, for a sibling merely NAMED like the temp dir (`/tmpfoo` against
+  `/tmp` — a bare `startsWith()` would refuse a legitimate root), and for an
+  empty string. (b) a source-grep asserting
+  `src/remotecontrol_roadmap_migrate.cpp` names both `isTransientRoot` and
+  `transient_root`.
+  <br>**Leg (b) is a grep and not a call for INV-4's stated reason**: the guard
+  is the handler's, `test_core` cannot link `RemoteControl`, and a predicate
+  that is never consulted registers the next scratchpad exactly as before.
+  <br>**The guard is in the HANDLER, not in `run()`, and that is the
+  invariant's substance rather than a placement detail.** `run()` takes an
+  arbitrary `storePath`, and every fixture above legitimately migrates a temp
+  root into a temp store — a guard inside `run()` would red all of them. What
+  is refused is registering a transient root into the MACHINE-GLOBAL store,
+  which is this handler's decision alone.
+  <br>**It does not fire on a DELETED root**, which canonicalises to empty and
+  is step 0a's `no_project`. `RoadmapStore::registerProject()`'s INV-8 is the
+  same case one layer down and arrives too late for this one: a session
+  scratchpad exists while it is being migrated and is removed afterwards, so
+  canonicalisation passed and the row is permanent.
 
 ## 4. RAM / build cost
 
@@ -913,7 +938,7 @@ target, no new dependency, no new link edge (§ 2.1). The feature test joins `te
 
 ## 6. Tests
 
-Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-13.
+Feature test: `tests/features/roadmap_migrate_verb/`. Covers INV-1..INV-14.
 Label `features;fast`. Source added to `test_core`'s `SOURCES` list — not
 `add_executable` (`tests/features/README.md`).
 
@@ -929,6 +954,7 @@ that one line is covered by INV-2's source-grep leg instead.
 | INV-1 | source-grep only |
 | INV-2 | (a) `run()` against a temp store · (b) source-grep |
 | INV-3..INV-13 | `run()` against a temp store |
+| INV-14 | (a) the predicate directly · (b) source-grep |
 
 Each invariant is verified to FAIL against pre-change source before the code
 is restored, per the project test convention. INV-1 and INV-2(b) fail

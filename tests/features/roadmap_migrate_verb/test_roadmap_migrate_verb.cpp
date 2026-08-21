@@ -1144,3 +1144,70 @@ TEST(RoadmapMigrateVerb, Inv13UpdatedItemsIsBoundedAt200) {
     EXPECT_EQ(env.value(QStringLiteral("items_updated")).toInt(), kItems)
         << "items_updated must stay the TRUE total, not the clipped one";
 }
+
+// --------------------------------------------------------------- INV-14 -----
+//
+// ANTS-4600 — § 2.5 step 0b. The machine-global store acquired a project whose
+// root was a session scratchpad under /tmp: 33 items, every id a byte-identical
+// copy of LottoTracker's, and a directory that no longer exists. It inflated
+// every machine-wide surface (`roadmap_query mode:"report" scope:"all"`, the
+// ANTS-4585 survey) by one project's worth of a project that is not there.
+//
+// registerProject()'s INV-8 does not catch it: that refuses a root which does
+// not CANONICALISE, and the scratchpad existed at migration time. Registration
+// is what made it permanent, so the guard has to sit at registration.
+//
+// Two legs, because the predicate and its wiring fail independently — a correct
+// predicate nobody calls refuses nothing. The behavioural half is a source
+// scrape rather than a call, for INV-4's stated reason: the handler is
+// RemoteControl's and test_core cannot link it (roadmapmigrateverb.h).
+
+TEST(RoadmapMigrateVerb, Inv14TransientRootIsRefused) {
+    // The temp root itself and anything beneath it.
+    const QString tmp = QFileInfo(QDir::tempPath()).canonicalFilePath();
+    ASSERT_FALSE(tmp.isEmpty()) << "no canonical temp dir; the guard is inert here";
+    EXPECT_TRUE(RoadmapMigrateVerb::isTransientRoot(tmp));
+
+    QTemporaryDir scratch;
+    ASSERT_TRUE(scratch.isValid());
+    const QString scratchRoot = QFileInfo(scratch.path()).canonicalFilePath();
+    EXPECT_TRUE(RoadmapMigrateVerb::isTransientRoot(scratchRoot))
+        << scratchRoot.toStdString() << " is under " << tmp.toStdString();
+
+    // A real project root is not transient. ANTS_SRC_DIR is this checkout's
+    // src/, which no CI runner puts under the temp dir.
+    const QString srcDir = QFileInfo(QStringLiteral(ANTS_SRC_DIR)).canonicalFilePath();
+    ASSERT_FALSE(srcDir.isEmpty());
+    EXPECT_FALSE(RoadmapMigrateVerb::isTransientRoot(srcDir));
+
+    // A SIBLING whose name merely starts with the temp dir's is not under it.
+    // A bare startsWith() would match it and refuse a legitimate root.
+    EXPECT_FALSE(RoadmapMigrateVerb::isTransientRoot(tmp + QStringLiteral("foo")));
+
+    // An empty root disables the guard rather than matching everything: the
+    // caller-cwd refusal above it already owns that case.
+    EXPECT_FALSE(RoadmapMigrateVerb::isTransientRoot(QString()));
+}
+
+TEST(RoadmapMigrateVerb, Inv14HandlerWiresTheGuard) {
+    const QString handlerPath =
+        QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/remotecontrol_roadmap_migrate.cpp");
+    QFile f(handlerPath);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly)) << handlerPath.toStdString();
+
+    QStringList code;
+    const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        if (line.trimmed().startsWith(QStringLiteral("//")))
+            continue;
+        code.append(line);
+    }
+    const QString text = code.join(QLatin1Char('\n'));
+
+    EXPECT_TRUE(text.contains(QStringLiteral("isTransientRoot")))
+        << "the handler must consult the guard; a predicate nobody calls "
+           "registers the next scratchpad exactly as before";
+    EXPECT_TRUE(text.contains(QStringLiteral("transient_root")))
+        << "the refusal must carry the `transient_root` code "
+           "(docs/standards/mcp-error-codes.md § 1)";
+}

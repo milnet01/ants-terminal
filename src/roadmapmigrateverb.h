@@ -62,4 +62,12 @@ QJsonObject run(const QString &storePath, const Request &req);
 // the one they passed, and they have an export path keyed on it.
 QString defaultExportSlug(const QString &leafDirName);
 
+// ANTS-4600, § 2.5 step 0b — is `canonicalRoot` a TRANSIENT location, one no
+// durable project may be registered from? Declared here on defaultExportSlug()'s
+// pattern: the handler is the caller, the policy belongs to the verb, and
+// test_core can link this TU but not RemoteControl's (see the note above).
+//
+// `canonicalRoot` must already be canonical, as Request::projectRoot is.
+bool isTransientRoot(const QString &canonicalRoot);
+
 }  // namespace RoadmapMigrateVerb

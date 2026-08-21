@@ -54,6 +54,32 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     const QString root = rr.cwd;
     const QString leaf = QDir(root).dirName();
 
+    // 0b — ANTS-4600. The store is MACHINE-GLOBAL, so a root registered from
+    // here outlives the session that asked, and every machine-wide surface
+    // (`roadmap_query mode:"report" scope:"all"`) counts it forever. A session
+    // scratchpad under the temp dir is exactly that: it existed when it was
+    // migrated — so registerProject()'s INV-8 canonicalisation guard passed —
+    // and was gone minutes later, leaving 33 duplicate items behind under a
+    // path nothing can render to. See docs/standards/mcp-error-codes.md § 1;
+    // `bad_path` is not it, this path is fine and is the wrong KIND of place.
+    //
+    // The guard is HERE and not in run(): run() takes an arbitrary storePath,
+    // and its own fixtures legitimately migrate temp roots into temp stores.
+    // What is refused is registering one into the shared store, which is this
+    // handler's decision alone — the same reason INV-4 puts `no_project` here.
+    if (RoadmapMigrateVerb::isTransientRoot(rr.cwd)) {
+        QJsonObject e;
+        e[QStringLiteral("ok")]    = false;
+        e[QStringLiteral("code")]  = QStringLiteral("transient_root");
+        e[QStringLiteral("error")] =
+            QStringLiteral("roadmap_migrate: \"%1\" is under the temporary "
+                           "directory \"%2\" — a session scratchpad, not a "
+                           "durable project. Migrate the real project root "
+                           "instead.")
+                .arg(rr.cwd, QDir::tempPath());
+        return QJsonDocument(e);
+    }
+
     RoadmapMigrateVerb::Request r;
     r.projectRoot = root;
     const QString nameArg = req.value(QStringLiteral("project_name")).toString();

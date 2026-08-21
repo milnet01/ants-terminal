@@ -22,6 +22,7 @@
 #include "roadmapstore.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
 
@@ -168,6 +169,29 @@ QString RoadmapMigrateVerb::defaultExportSlug(const QString &leafDirName) {
         }
     }
     return out;
+}
+
+// ANTS-4600 — § 2.5 step 0b. registerProject()'s INV-8 refuses a root that does
+// not CANONICALISE, which is the deleted-path case and arrives too late: a
+// session scratchpad exists while it is being migrated and is removed after.
+// Registration is what makes it permanent, so the guard is at registration.
+//
+// The rule is deliberately the narrowest one that covers the measured case:
+// under the system temp dir. Anything cleverer — matching "scratchpad" or a
+// session-id shape in the path — is guessing at a naming convention no
+// component owns.
+bool RoadmapMigrateVerb::isTransientRoot(const QString &canonicalRoot) {
+    // The temp root is canonicalised too. `canonicalRoot` is canonical by
+    // precondition, and on a system whose temp dir is itself a symlink the two
+    // forms would never compare equal.
+    const QString tmp = QFileInfo(QDir::tempPath()).canonicalFilePath();
+    if (tmp.isEmpty() || canonicalRoot.isEmpty())
+        return false;   // no temp dir to be under; the cwd refusal owns empty.
+    // The separator is load-bearing: a bare startsWith() would also match a
+    // sibling merely NAMED like the temp dir (/tmpfoo against /tmp) and refuse
+    // a legitimate root.
+    return canonicalRoot == tmp
+           || canonicalRoot.startsWith(tmp + QLatin1Char('/'));
 }
 
 QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req) {
