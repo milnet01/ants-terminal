@@ -42376,7 +42376,7 @@ ids as added evidence; two closed n/a. Every finding was checked against the
 live roadmap before filing — the delta alone shows already-fixed findings as
 open, and two of these were exactly that.
 
-- 📋 [ANTS-4609] **The body XML scrub strips CLOSING tags only, so a leaked OPENING tag lands in ROADMAP.md.**
+- ✅ [ANTS-4609] **The body XML scrub strips CLOSING tags only, so a leaked OPENING tag lands in ROADMAP.md.**
   ANTS-3703 fixed the stray closing tag. The mirror was never covered: an
   op:append whose body tail carried three lines of leaked tool-call XML had
   its two closing tags removed and its OPENING tag written to disk, leaving a
@@ -42399,6 +42399,7 @@ open, and two of these were exactly that.
   The repair path is sound -- one op:amend_body call fixed it, wrapped_match
   true, body_paragraph echoed correctly. The defect is that the repair was
   needed. The reporting half is ANTS-4572.
+  Resolved 2026-08-21: rcScrubLeakedToolXml (src/remotecontrol.cpp) now strips an opening tag as the same token class as a closing one. The measured shape is exact — peeling the closing tag exposes the opening half alone on its line with its scalar, and the ANTS-3703 loop stopped because the trailing token was then `true` rather than a tag. Bounded by the SHAPE of the rest of the line: only a lone scalar after the tag marks a leaked parameter, so `<div> wrapper is the culprit` is prose and survives. Two cases in tests/features/roadmap_log_annotate — one for the residue, one for the over-reach guard; the guard case passed before the fix and still passes, which is what proves the strip did not widen. Red run verified on assertions. Suite 3792/3792.
   **Layman:** A safety net that removes half a mess reads as though it removed all of it.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.

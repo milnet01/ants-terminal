@@ -488,6 +488,58 @@ TEST(roadmap_log_annotate, Inv8MidSentenceMarkupSurvives) {
         << "INV-8: mid-sentence markup must survive the edge strip";
 }
 
+// INV-8 — peeling a CLOSING tag off the edge can expose the OPENING half of
+// the same leaked pair, sitting on its own line with its scalar value
+// (ANTS-4609). ANTS-3703's loop stops there, because the trailing token is
+// then `true` and not a tag, so `<compact>true` reached ROADMAP.md while the
+// envelope still said ok:true. A half-scrub is worse than none: a caller who
+// reads ok:true on a verb documented to scrub has no reason to re-read the
+// file. The note path shares rcScrubLeakedToolXml with op:"append"'s body,
+// which is where this was measured.
+TEST(roadmap_log_annotate, Inv8OpeningTagWithScalarStripped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] = QStringLiteral(
+        "Resolved 2026-08-21: shipped it.\n<compact>true\n</compact>\n</invoke>");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "Resolved 2026-08-21: shipped it."))
+        << "the prose itself must survive the scrub";
+    EXPECT_FALSE(contains(md, "<compact>"))
+        << "INV-8: the exposed OPENING tag must not reach ROADMAP.md";
+    EXPECT_FALSE(contains(md, "compact>true"))
+        << "INV-8: the leaked scalar must go with its tag, not be orphaned";
+}
+
+// INV-8 — the over-reach guard. A line that opens with a tag and continues in
+// PROSE is prose: only a lone scalar after the tag marks a leaked parameter.
+// Without this, widening the strip to whole lines would eat real text at the
+// one place ANTS-3703 was careful not to.
+TEST(roadmap_log_annotate, Inv8OpeningTagFollowedByProseSurvives) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] = QStringLiteral(
+        "Progress 2026-08-21: still open.\n<div> wrapper is the culprit here");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "wrapper is the culprit here"))
+        << "INV-8: a tag followed by prose is prose and must survive";
+}
+
 // INV-11 — `bytes_written` is the DELTA; `file_bytes` carries the whole file
 // (ANTS-3702). Before this, a one-line note against a 452 KB ROADMAP.md
 // reported ~459592 bytes written, which reads as a duplicated file.

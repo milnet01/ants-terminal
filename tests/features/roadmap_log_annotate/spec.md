@@ -85,6 +85,14 @@ A bare XML-ish tag at the very START or END of the note is stripped too
 and a stray `</note>` reached ROADMAP.md verbatim before this. Edges
 only: markup mid-sentence is prose and is left alone.
 
+Peeling that closing tag EXPOSES the opening half of the same pair, alone
+on its line with its scalar value, and the ANTS-3703 loop stopped there —
+the trailing token was then `true`, not a tag, so `<compact>true` reached
+ROADMAP.md under an `ok:true` envelope. ANTS-4609 strips an opening tag as
+the same token class. What bounds it is the shape of the rest of the line:
+only a **lone scalar** after the tag marks a leaked parameter, so
+`<div> wrapper is the culprit` is prose and survives.
+
 ### INV-11 — `bytes_written` is the delta, `file_bytes` the whole file
 
 Every roadmap_log op reports `bytes_written` as the bytes it ADDED

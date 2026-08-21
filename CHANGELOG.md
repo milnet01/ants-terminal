@@ -96,6 +96,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log body scrub now strips leaked OPENING tags, not just closing ones** (ANTS-4609)
+  Peeling a closing tag off the edge of a body exposed the opening half of
+  the same pair, alone on its line with its value, and the scrub stopped
+  there — so a bare `<compact>true` line reached ROADMAP.md under an
+  `ok:true` envelope. Only a lone scalar after the tag counts as leakage,
+  so markup followed by prose still survives.
+
 - **a trailer value your own text got wrong is no longer reported as a database fault** (ANTS-4577)
   A body declaring an unrecognised `Kind:` refused under `store_failed`,
   so a caller branching on the code read an engine fault for their own

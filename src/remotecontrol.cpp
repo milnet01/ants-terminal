@@ -1121,9 +1121,22 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
         QStringLiteral("\\A\\s*</?[a-z][a-z0-9_-]*\\s*>|"
                        "</?[a-z][a-z0-9_-]*\\s*>\\s*\\z"),
         QRegularExpression::CaseInsensitiveOption);
+    // ANTS-4609 — peeling the CLOSING tag off the edge exposes the OPENING
+    // half of the same pair, alone on its line with its scalar: `<compact>true`
+    // survived the loop above, because by then the trailing token is `true` and
+    // not a tag. A half-scrub is worse than none — the caller reads ok:true on a
+    // verb documented to scrub and never re-reads the file. So an opening tag is
+    // the same token class as a closing one; what bounds it is the SHAPE of the
+    // rest of the line. Only a lone scalar after the tag marks a leaked
+    // parameter, so `<div> wrapper is the culprit` is prose and stays.
+    static const QRegularExpression reEdgeOpenScalarLine(
+        QStringLiteral("\\A\\s*<[a-z][a-z0-9_-]*\\s*>[^\\s`<>]*[ \\t]*(?:\\n|\\z)|"
+                       "(?:\\A|\\n)[ \\t]*<[a-z][a-z0-9_-]*\\s*>[^\\s`<>]*\\s*\\z"),
+        QRegularExpression::CaseInsensitiveOption);
     for (;;) {
         const QString before = text;
         text.remove(reEdgeTag);
+        text.remove(reEdgeOpenScalarLine);
         if (text == before) break;
     }
     rcEscapeUnclosedFence(text);   // ANTS-3640
