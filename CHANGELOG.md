@@ -104,6 +104,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **amend_body no longer collapses an aligned or nested block when a match spans it** (ANTS-4612)
+  A wrapped match re-flows the lines it spanned into one, which is right
+  for a hard wrap and destroys a column-aligned table or a nested list —
+  and every repair attempt ran the same pass, so the damage accumulated.
+  Such a span now refuses `body_match_wrapped_block` and writes nothing.
+  Ordinary hard wraps are unaffected, including a bullet whose
+  continuation sits at a deeper hanging indent.
+
 - **feedback_log no longer derives a stray feedback file from a dotted project leaf** (ANTS-4613)
   Omitting `path` from a project like `~/.claude` created
   `<home>/.claude_Ants_MCP_Feedback.md` and reported success — a

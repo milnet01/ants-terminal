@@ -58,3 +58,33 @@ handing to ripgrep.
   STARTS. Off by default: the same search without it still misses.
 - **INV-9** — `match_wrapped` is literal-mode only; with `regex:true` it
   refuses `bad_args` rather than re-flowing a caller's regex.
+- **INV-10** — the wrapped pass DECLINES a span whose continuation lines carry
+  structure a re-flow would destroy: column alignment (an internal run of 2+
+  spaces) or the opening of a new list item. `Patch::structuredBlock` is set,
+  `text` is left empty so no caller can half-apply, and `hits` stays 1 — the
+  phrase *was* found, and calling it absent sends the caller hunting for text
+  that is there.
+
+  **Differing indentation is NOT the discriminator**, though that is what the
+  report asked for (ANTS-4612). ANTS-3467's own fixture disproves it:
+
+  ```
+    - **Auto-lock timeout (the priority):** make it
+      user-configurable (e.g. 1/5/10/30 min) so users tune it.
+  ```
+
+  is 2 spaces then 4 and is an ordinary hard wrap — the deeper indent is the
+  bullet's hanging indent. The naive rule was written, and `Ants3467WrapSpan‑
+  NowAmends` caught it in the same session.
+
+- **INV-11** — end to end, `op:"amend_body"` refuses such a span with
+  `body_match_wrapped_block` and leaves the file byte-identical. A distinct
+  code because `wrapped_match:true` is *also* true on the benign case the pass
+  was built for, so it cannot be branched on.
+
+  Why it matters more than an ordinary refusal: the damage was **cumulative**.
+  Measured on CFG-0196, three successive amend calls — each `ok:true` with the
+  correct text echoed in `body_paragraph` — walked one row from 4 to 6 to 8 to
+  12 leading spaces. On a store-backed project the file is a render, so hand
+  repair is reverted by the next write; `amend_body` was both the only route
+  back and the thing causing the damage.

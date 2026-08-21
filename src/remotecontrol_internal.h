@@ -319,6 +319,12 @@ QString rlDeclaredIdRefusal(const QString &writtenId,
 RoadmapParse::IdFormat rlDecl(const QString &root);
 QVector<RoadmapParse::BulletRecord> rlParse(const QString &markdown,
                                             const QString &root);
+// ANTS-4612 — the whole refusal envelope for "re-flowing this wrapped span
+// would collapse a structured block". Both amend_body paths (store and
+// markdown) refuse identically, and remotecontrol_roadmap_log.cpp sits AT
+// ANTS-3833 INV-6's 6000-line cap, so the envelope is built here and each call
+// site is one line.
+QJsonDocument rlWrappedBlockErr();
 bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error);
 QString changelogMalformedAdvisory(int line, bool plural, bool applied);
 QStringList rcShortBareAltTerms(const QString &pattern);
@@ -373,6 +379,9 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames);
 QString rcRightStrip(QString s);
 void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after);
 int appendBodyNote(QStringList &lines, int headlineLine, const QString &note, bool *alreadyPresent = nullptr);
+// Returns hits, or -1 when the unique hit was DECLINED because a continuation
+// line of its span carries structure a re-flow would destroy (ANTS-4612) —
+// `lines` is untouched either way.
 int amendBodyExact(QStringList &lines, int headlineLine, const QString &oldText, const QString &newText, int *matchedLine, bool *wrapped = nullptr);
 QJsonObject buildHeaderInventoryEnvelope(const QVector<RoadmapIndex::Section> &index, const QString &path, qint64 bytes);
 quint64 rcFnv1a64(const QString &normalised);

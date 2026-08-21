@@ -78,6 +78,19 @@ struct Patch {
     bool    wrapped = false;  // the hit spanned a line break
     int     line    = -1;     // 0-based line the match STARTS on
     QString text;             // the patched text; valid only when hits == 1
+
+    // ANTS-4612 — the unique wrapped hit was DECLINED because a continuation
+    // line of its span carries STRUCTURE that the re-flow would destroy:
+    // column alignment (an internal run of 2+ spaces) or the opening of a new
+    // list item. Not differing indentation — a bullet's hanging indent differs
+    // and is an ordinary hard wrap; see patchOnce for the fixture that
+    // disproves that reading.
+    //
+    // `text` is empty, exactly as on a miss or an ambiguity, so no caller can
+    // half-apply; `hits` stays 1 because the phrase WAS found, and reporting
+    // it absent would send the caller hunting for text that is there. A caller
+    // that ignores this field gets a refusal, not a corruption.
+    bool    structuredBlock = false;
 };
 
 // Replace the single occurrence of `oldText` in `text`. An EXACT match is

@@ -74,6 +74,14 @@ QByteArray seedRoadmap() {
         "  break appears again.\n"
         "  Kind: feature.\n"
         "  Source: seed.\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [ANTS-0044] **Column-aligned block bullet.**\n"
+        "  The routing table, deliberately aligned:\n"
+        "\n"
+        "    review-contract    docs/standards/one.md\n"
+        "      review-skill     docs/standards/two.md\n"
+        "  Kind: feature.\n"
+        "  Source: seed.\n"
         "\n");
 }
 
@@ -207,6 +215,117 @@ TEST(wrapped_quote_match, Inv7WrappedAmbiguityStillRefuses) {
     EXPECT_TRUE(has(readFile(path).toStdString(),
                     "  A shared clause that wraps across the\n"))
         << "an ambiguous match must leave the file untouched";
+}
+
+// INV-10 — the pure seam declines a wrapped match whose span crosses lines of
+// DIFFERING indentation (ANTS-4612). The wrapped pass exists for a HARD WRAP,
+// where every line of the span shares one indent. Where they differ the block
+// is a deliberate structure — a column-aligned table, a nested list — and
+// re-flowing it into one line destroys the structure whatever is done with the
+// leading whitespace. So the rule is about what the span IS, not about
+// repairing the damage afterwards.
+TEST(wrapped_quote_match, Inv10DeclinesAcrossDifferingIndent) {
+    const QString block =
+        QStringLiteral("    review-contract    docs/standards/one.md\n"
+                       "      review-skill     docs/standards/two.md\n");
+    const WrapMatch::Patch p = WrapMatch::patchOnce(
+        block, QStringLiteral("one.md review-skill"), QStringLiteral("x"),
+        WrapMatch::Indent::MatchLineIndent);
+
+    EXPECT_TRUE(p.structuredBlock)
+        << "INV-10: a span crossing a column-aligned line is not a hard wrap";
+    EXPECT_TRUE(p.text.isEmpty())
+        << "INV-10: a declined patch must not half-apply";
+}
+
+// INV-10 guard — differing indentation is NOT the discriminator, and this is
+// the shape that proves it: a bullet's continuation sits deeper than its marker
+// line (the hanging indent) and is still an ordinary hard wrap. The naive
+// "decline on differing indent" rule broke exactly this, caught by ANTS-3467's
+// own case. The signal is structure on the continuation line, not its depth.
+TEST(wrapped_quote_match, Inv10HangingIndentStillPatches) {
+    const QString para =
+        QStringLiteral("  - **Auto-lock timeout:** make it\n"
+                       "    user-configurable so users tune it\n");
+    const WrapMatch::Patch p = WrapMatch::patchOnce(
+        para, QStringLiteral("make it user-configurable"),
+        QStringLiteral("expose it in Settings"),
+        WrapMatch::Indent::MatchLineIndent);
+
+    EXPECT_FALSE(p.structuredBlock)
+        << "INV-10: a hanging indent is a hard wrap, not a structured block";
+    EXPECT_EQ(p.hits, 1);
+    EXPECT_TRUE(p.wrapped);
+    EXPECT_TRUE(p.text.contains(QStringLiteral("expose it in Settings")));
+}
+
+// INV-10 — the second structural signal: the span crossed into a NEW list
+// item, so the two lines are siblings rather than one wrapped sentence, and
+// re-flowing them merges two bullets into one.
+TEST(wrapped_quote_match, Inv10DeclinesAcrossAListBoundary) {
+    const QString list =
+        QStringLiteral("  - first item ends here\n"
+                       "  - second item starts here\n");
+    const WrapMatch::Patch p = WrapMatch::patchOnce(
+        list, QStringLiteral("ends here - second"), QStringLiteral("x"),
+        WrapMatch::Indent::MatchLineIndent);
+
+    EXPECT_TRUE(p.structuredBlock)
+        << "INV-10: crossing a list boundary is not a hard wrap";
+    EXPECT_TRUE(p.text.isEmpty());
+}
+
+// INV-11 — end to end, and the part that made this expensive: the damage was
+// CUMULATIVE. Every repair attempt triggered the same pass and added more, and
+// on a store-backed project hand-repair is reverted by the next render, so
+// amend_body was both the only route back and the thing causing the damage.
+// Measured on CFG-0196: one row went 4 -> 6 -> 8 -> 12 leading spaces over
+// three calls, each returning ok:true with the CORRECT text echoed back.
+TEST(wrapped_quote_match, Inv11AmendRefusesToReflowAnAlignedBlock) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = QDir(tmp.path()).filePath(QStringLiteral("ROADMAP.md"));
+    ASSERT_TRUE(writeFile(path, seedRoadmap()));
+    const std::string before = readFile(path).toStdString();
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = amendReq(tmp.path());
+    r[QStringLiteral("id")]       = QStringLiteral("ANTS-0044");
+    r[QStringLiteral("old_text")] =
+        QStringLiteral("one.md review-skill");
+    r[QStringLiteral("new_text")] = QStringLiteral("one.md review-agent-rules");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(r).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+        << "INV-11: re-flowing a column-aligned block must be refused";
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_match_wrapped_block"))
+        << "INV-11: the caller needs a code it can branch on — wrapped_match:true "
+           "is not enough, it is also true on the benign case";
+    EXPECT_EQ(readFile(path).toStdString(), before)
+        << "INV-11: a refused amend must leave the file byte-identical";
+}
+
+// INV-11 guard — the ordinary hard-wrapped amend still lands, through the full
+// verb rather than the seam alone. INV-6 covers the same path; this asserts the
+// new refusal did not swallow it.
+TEST(wrapped_quote_match, Inv11HardWrappedAmendStillLands) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = QDir(tmp.path()).filePath(QStringLiteral("ROADMAP.md"));
+    ASSERT_TRUE(writeFile(path, seedRoadmap()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = amendReq(tmp.path());
+    r[QStringLiteral("id")]       = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("old_text")] =
+        QStringLiteral("not what allocates: the counter appends");
+    r[QStringLiteral("new_text")] = QStringLiteral("not what allocates: the store appends");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(r).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "INV-11 guard: a real hard wrap must still amend";
+    EXPECT_TRUE(has(readFile(path).toStdString(), "the store appends"));
 }
 
 // INV-7 tail — the store path runs the same seam rather than its own copy.

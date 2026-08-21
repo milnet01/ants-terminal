@@ -1319,6 +1319,12 @@ int amendBodyExact(QStringList &lines, int headlineLine,
     const WrapMatch::Patch p = WrapMatch::patchOnce(
         span.join(QLatin1Char('\n')), oldText, newText,
         WrapMatch::Indent::MatchLineIndent);
+    // ANTS-4612 — a wrapped hit whose span crosses a structured line (column
+    // alignment, a new list item) is a block, not a hard wrap. -1 rather than
+    // 0: the phrase WAS
+    // found, and reporting it absent sends the caller hunting for text that is
+    // there. `lines` is untouched, so the caller refuses without a rollback.
+    if (p.structuredBlock) return -1;
     if (p.hits != 1) return p.hits;   // 0 → not found, >1 → ambiguous
 
     // Splice the patched span back. A wrapped match re-flows the lines it

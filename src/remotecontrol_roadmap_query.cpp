@@ -703,6 +703,21 @@ QString rcdetail::rlStoreCounterPrefix(RoadmapStore &store, qint64 projectId,
 }
 
 // ANTS-3771 — see remotecontrol_internal.h for what each of these three owes.
+QJsonDocument rcdetail::rlWrappedBlockErr() {
+    QJsonObject o;
+    o[QStringLiteral("ok")]    = false;
+    o[QStringLiteral("code")]  = QStringLiteral("body_match_wrapped_block");
+    o[QStringLiteral("error")] = QStringLiteral(
+        "roadmap_log: `old_text` spans a hard-wrapped break whose lines are "
+        "indented differently \u2014 an aligned or nested block, which "
+        "re-flowing would collapse. Amend one line of it, or rewrite the "
+        "block so it does not depend on column alignment");
+    o[QStringLiteral("hint")]  = QStringLiteral(
+        "amend one line of the block, or rewrite it so it does not depend on "
+        "column alignment");
+    return QJsonDocument(o);
+}
+
 RoadmapParse::IdFormat rcdetail::rlDecl(const QString &root) {
     return ProjectSettings::idFormatFor(root);
 }

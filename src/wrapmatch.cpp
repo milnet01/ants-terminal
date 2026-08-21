@@ -110,6 +110,49 @@ Patch patchOnce(const QString &text, const QString &oldText,
 
     p.line = text.left(start).count(QLatin1Char('\n'));
 
+    // ANTS-4612 — a wrapped hit re-flows the lines it spanned into one, which
+    // is right for a HARD WRAP and destroys anything else. Measured on
+    // CFG-0196: three successive amend_body calls, each ok:true with the
+    // correct text echoed, walked one row of an aligned block from 4 to 6 to 8
+    // to 12 leading spaces. Cumulative, because every repair attempt ran this
+    // same pass — and on a store-backed project the file is a render, so hand
+    // repair is reverted: this verb was both the only way back and the thing
+    // causing the damage.
+    //
+    // The reported discriminator was "the span's lines are indented
+    // differently", and that is WRONG — ANTS-3467's fixture disproves it:
+    //
+    //     - **Auto-lock timeout (the priority):** make it
+    //       user-configurable (e.g. 1/5/10/30 min) so users tune it.
+    //
+    // is 2 spaces then 4, and is an ordinary hard wrap; the deeper indent is
+    // the bullet's hanging indent. Declining on indent alone breaks it.
+    //
+    // What actually separates the two is STRUCTURE on a continuation line:
+    //   (a) an internal run of 2+ spaces — column alignment, which a re-flow
+    //       silently destroys and which prose never has; or
+    //   (b) a line that opens a new list item — the span has crossed a
+    //       structural boundary, so the two lines are siblings, not a wrap.
+    // Neither is true of a hard-wrapped sentence, and both are true of exactly
+    // the blocks a re-flow ruins.
+    if (p.wrapped) {
+        static const QRegularExpression reAligned(QStringLiteral("\\S[ \\t]{2,}\\S"));
+        static const QRegularExpression reListItem(
+            QStringLiteral("\\A[ \\t]*(?:[-*+]|\\d+[.)])\\s"));
+        const int endOff = start + length;
+        int bol = text.indexOf(QLatin1Char('\n'), start) + 1;   // 2nd line on
+        for (; bol > 0 && bol < endOff; ) {
+            int eol = text.indexOf(QLatin1Char('\n'), bol);
+            if (eol < 0) eol = text.size();
+            const QString line = text.mid(bol, eol - bol);
+            if (line.contains(reAligned) || line.contains(reListItem)) {
+                p.structuredBlock = true;
+                return p;   // `text` stays empty — no half-apply
+            }
+            bol = eol + 1;
+        }
+    }
+
     // ANTS-3752 — a multi-line `newText` must not land flush-left where
     // the surrounding text is indented continuation. Give each of its
     // continuation lines the matched line's own indent; relative

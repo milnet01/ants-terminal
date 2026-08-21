@@ -42464,7 +42464,7 @@ open, and two of these were exactly that.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4612] **amend_body's wrapped-match re-flow corrupts indentation in a column-aligned block, cumulatively.**
+- ✅ [ANTS-4612] **amend_body's wrapped-match re-flow corrupts indentation in a column-aligned block, cumulatively.**
   ANTS-4550's wrapped-match pass re-flows the lines a match spanned into one.
   Where the body holds an indented, column-aligned block, that re-flow
   rewrites the leading whitespace of neighbouring lines instead of preserving
@@ -42488,6 +42488,7 @@ open, and two of these were exactly that.
   with a code the caller can branch on, as body_match_ambiguous already does.
   Reporting wrapped_match:true is not enough on its own: it is also true on
   the benign case the pass was built for.
+  Resolved 2026-08-21: WrapMatch::patchOnce now DECLINES a wrapped span whose continuation lines carry structure a re-flow would destroy, setting Patch::structuredBlock and leaving the patched text empty so no caller can half-apply. Both amend_body paths refuse body_match_wrapped_block and write nothing. Chose the report's option 2 (decline) over option 1 (preserve indentation): re-flowing a column-aligned block destroys it whatever is then done with leading whitespace, so the correct output is the block left alone, and the reporter's own escape was to rewrite the block. IMPORTANT — the reported discriminator was wrong and the session proved it. "Decline where the span's lines have differing indentation" was implemented first and broke ANTS-3467's own fixture, which is a bullet marker line at 2 spaces continued at 4: that is a hanging indent and an ordinary hard wrap. The real signal is structure on a CONTINUATION line — an internal run of 2+ spaces (column alignment) or the opening of a new list item. Neither is true of a hard-wrapped sentence. A report's stated cause is a claim, not a premise. Five cases in tests/features/wrapped_quote_match (INV-10/11), red run verified by stubbing the guard: the two defect cases fail, the two guard cases stay green. Suite 3808/3808. Structural note: remotecontrol_roadmap_log.cpp is now at EXACTLY 6000 lines, the ANTS-3833 INV-6 cap, with zero headroom — the refusal envelope was extracted to the query TU to fit two call sites into two lines. Filed as ANTS-4620.
   **Layman:** Fixing a sentence inside an indented table nudges the table sideways, and every attempt to straighten it nudges it further.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
@@ -42627,6 +42628,32 @@ open, and two of these were exactly that.
   Kind: feature.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: roadmap-store.
+
+- 📋 [ANTS-4620] **remotecontrol_roadmap_log.cpp is AT the 6000-line cap with zero headroom.**
+  ANTS-4612 added eleven lines to this TU and had to claw all eleven back
+  before it could land: the refusal envelope was extracted to the query TU
+  so two call sites became two lines, and one out-param became a -1 return
+  sentinel. The file is now at exactly 6000, which INV-6 permits and which
+  leaves nothing for the next change.
+
+  This is not a near-miss that resolved itself. The extraction was the
+  right structure anyway, so the cost was hidden; the next item touching
+  this TU will not be so lucky, and the pressure is toward writing the
+  change badly rather than toward splitting the file.
+
+  ANTS-3833 already anticipated this. Its spec section 2.2 expects a
+  twelfth TU once one reaches the cap, and rc_tu_split INV-3 derives its
+  expectations from ANTS_RC_SOURCES so no case hard-codes the count. The
+  machinery for the split exists and is unused.
+
+  Ask: cut a twelfth TU. The amend family (amend_body, amend_headline) is
+  the obvious slice — it is self-contained, it is what keeps arriving, and
+  it would take roughly 600 lines with it. Insert it at its slice position
+  in ANTS_RC_SOURCES_REL rather than appending, per INV-3, or every
+  two-anchor source scrape silently reorders.
+  **Layman:** One source file is exactly full, so the next small change to it cannot be written without moving something out first.
+  Kind: refactor.
+  Source: in-session-2026-08-21.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

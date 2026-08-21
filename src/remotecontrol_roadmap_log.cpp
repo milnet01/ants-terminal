@@ -2590,6 +2590,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             const WrapMatch::Patch patch = WrapMatch::patchOnce(
                 before->body, oldText, newText, WrapMatch::Indent::None);
             const int hits = patch.hits;
+            if (patch.structuredBlock) return rlWrappedBlockErr();  // ANTS-4612
             if (hits == 0) {
                 QJsonObject env;
                 env[QStringLiteral("ok")]    = false;
@@ -2751,6 +2752,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
         hits = amendBodyExact(lines, bodyAnchorLine, oldText, newText,
                               &editedLine, &wrappedMatch);
     }
+    if (hits < 0) return rlWrappedBlockErr();   // ANTS-4612
     if (hits == 0) {
         // ANTS-3467 — distinguish the two common failure modes so the caller
         // self-corrects instead of concluding the text is absent: (a) the
