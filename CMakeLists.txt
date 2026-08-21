@@ -1890,6 +1890,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_parser_pass_emoji_status/test_roadmap_parser_pass_emoji_status.cpp
                 # ANTS-1987 native-path bold-ID extraction for emoji bullets.
                 tests/features/roadmap_query_emoji_bold_id/test_roadmap_query_emoji_bold_id.cpp
+                # ANTS-4575 which ids were INFERRED from a bold prose lead-in.
+                tests/features/roadmap_query_id_inferred/test_roadmap_query_id_inferred.cpp
                 # ANTS-1567 MCP tool prefix-tag bucket coverage.
                 tests/features/mcp_tool_prefix_tags/test_mcp_tool_prefix_tags.cpp
                 # ANTS-1568 etag-tip memo appended to etag-supporting tools.

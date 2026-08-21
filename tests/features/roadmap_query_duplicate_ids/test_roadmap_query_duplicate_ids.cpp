@@ -158,15 +158,23 @@ TEST(roadmap_query_duplicate_ids, Inv8DetectorFiltersAndCaps) {
 TEST(roadmap_query_duplicate_ids, Inv6McpDescriptorMentionsField) {
     expect_reset();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const auto pos = ci.find("\"roadmap_query\"");
-    ASSERT_NE(pos, std::string::npos)
-        << "INV-6 precondition: roadmap_query tool name missing "
-           "from claudeintegration.cpp";
-    // 9 KiB window: the description grew with the ANTS-1646
-    // duplicate_ids paragraph. Past tests bumped from 6→7 KiB; this
-    // budget keeps headroom for the next minor additive change
-    // without bleeding into the following tool descriptor.
-    const std::string region = ci.substr(pos, 9000);
+    // ANTS-4575 — was a FIXED byte window from a bare `"roadmap_query"`
+    // match, bumped 6→7→9 KiB, one bump per feature that touched the
+    // schema. Adding the `id_inferred` paragraph pushed both anchors past
+    // 9000 (ANTS-1646 to +9536, duplicate_ids to +9622) and reddened this
+    // row, which names neither.
+    //
+    // ANTS-3720 already shipped the fix for exactly this shape and migrated
+    // three chronic scrapes; it was explicitly not a blanket sweep, so this
+    // one kept its window. Use the helper instead of a fourth bump: it
+    // bounds the scrape from this tool's registration to the NEXT one
+    // (measured here: 45,693 bytes, ending at roadmap_branch_drift), so it
+    // tracks the code and cannot be outgrown.
+    const std::string region =
+        ants_test::mcpToolDescriptor(ci, "roadmap_query");
+    ASSERT_FALSE(region.empty())
+        << "INV-6 precondition: roadmap_query descriptor not found in "
+           "claudeintegration.cpp";
     expect(contains(region, "duplicate_ids"),
            "INV-6: roadmap_query descriptor names duplicate_ids[] "
            "so the field is discoverable from tools/list");

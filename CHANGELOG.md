@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query says which ids it GUESSED from a bold prose lead-in** (ANTS-4575)
+  A bullet now carries `id_inferred: true` when the reader adopted its id
+  from a bold phrase instead of reading an id the author wrote in brackets
+  — so a session planning work on a checklist-style roadmap can tell a real
+  id from a guessed one. Gated: absent when the id was declared, so a
+  roadmap whose ids are all bracketed sends exactly the same bytes as
+  before. It is not the existing `synthetic` flag, which marks an id
+  invented from a content hash when there was no text to take one from; the
+  two can never both fire on one bullet.
+
 - **roadmap_query now says when a roadmap file mixes two bullet styles** (ANTS-4604)
   A roadmap carrying both checkbox and emoji bullets reported only the
   first style it found, so it looked identical to a file written

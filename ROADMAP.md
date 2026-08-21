@@ -24379,6 +24379,26 @@ requesting no action and are closed in place rather than filed.
   **Layman:** Adding any option to a tool keeps breaking unrelated tests, because they read a fixed number of bytes from a starting point rather than reading to the end of the section.
   Kind: test.
   Source: in-session-2026-07-28 (hit twice while implementing ANTS-3701/3704).
+  Fourth scrape migrated 2026-08-21 by ANTS-4575:
+  roadmap_query_duplicate_ids INV-6, which this item's own resolution note
+  left on a fixed window ("Not a blanket sweep").
+
+  It failed exactly as predicted here. Adding an `id_inferred` paragraph to
+  the roadmap_query descriptor pushed both its anchors past the 9 KiB window
+  -- ANTS-1646 to +9536, duplicate_ids to +9622 -- so the row went red
+  naming `duplicate_ids`, a field that change never touched. That is the
+  "unrelated row goes red with a message naming something the change never
+  touched" sentence in this body, observed again ~3.5 weeks later.
+
+  Now on ants_test::mcpToolDescriptor(). Measured while migrating: the
+  self-sizing window is 45,693 bytes and ends at roadmap_branch_drift's
+  registration, so it is nowhere near the following descriptor and cannot be
+  outgrown.
+
+  Recorded rather than reopened -- this item shipped the helper and said the
+  sweep was partial, so a later instance is the documented consequence and
+  not a regression. Any remaining fixed window is a candidate for the same
+  one-line swap; ANTS-3573 is a known one.
 
 - ✅ [ANTS-3721] **ANTS-3661's measured figures count occurrences and spans where the text says needles.**
   An independent cold read of the ANTS-3692 amendment found three HIGH
@@ -40113,7 +40133,7 @@ filed below.
   Source: measured in-session 2026-08-20 while triaging ANTS-4546.
   Lanes: remotecontrol, roadmapwrite.
 
-- 📋 [ANTS-4575] **roadmap_query does not say which ids were INFERRED from a bold prose lead-in, so a caller cannot tell one from a declared id.**
+- ✅ [ANTS-4575] **roadmap_query does not say which ids were INFERRED from a bold prose lead-in, so a caller cannot tell one from a declared id.**
   The surviving half of ANTS-4546, restated to what is actually true.
 
   On a GFM roadmap the reader adopts a leading bold span as the item's id
@@ -40261,6 +40281,41 @@ filed below.
   verbs. A synthetic content-hash id is not covered by this flag -- the
   long-standing `synthetic: true` field already answers it, and a second
   name for it would be duplication.
+  Resolved 2026-08-21. Option (d) as decided: `id_inferred: true`, gated,
+  absent when the id was declared.
+
+  Shipped as a free predicate `RoadmapParse::idWasInferred()` rather than a
+  BulletRecord field, so ANTS-3793's 22-member census and INV-2 field table
+  did not move. Body is `!boldId.isEmpty() && id == boldId` — both conjuncts
+  load-bearing, since a bullet whose prose cites a [PROJ-NNNN] has that
+  token WIN the id, and the id it then reports is a bracket token. Emitted
+  at all five roadmap_query bullet-fill sites; `headline_only` rebuilds a
+  four-key object and so drops it, which is ANTS-1881 INV-2 unchanged.
+  Documented in the verb's `detail` block, NOT the wire description, whose
+  800 B budget is spent every session.
+
+  Test: tests/features/roadmap_query_id_inferred (9 invariants, test_claude).
+  Red run done properly rather than assumed -- the predicate was stubbed to
+  `return false` and INV-1/INV-3/INV-8 went red ON THEIR ASSERTIONS, not on
+  a compile error, while the other five stayed green, which is what shows
+  those five are not vacuous. INV-9 drives cmdRoadmapQuery end to end,
+  because INV-8 is a source scrape and proves only that the emit line
+  exists. Suite 3771/3771, +9 on the 3762 baseline.
+
+  Two things found on the way, both real.
+
+  The store-vs-markdown divergence the bullet feared is not one. INV-2
+  compares the store against markdown parsing THE RENDERED file, and the
+  render writes every id in brackets, so both read a declared id and agree.
+  The flag can only fire on a markdown-served project, which is exactly the
+  population it is for.
+
+  And INV-6 of roadmap_query_duplicate_ids went red naming `duplicate_ids`,
+  a field this change never touched: it took a FIXED 9 KiB byte window from
+  the descriptor and the new paragraph pushed both its anchors past it
+  (ANTS-1646 to +9536, duplicate_ids to +9622). Migrated to
+  ants_test::mcpToolDescriptor() rather than bumped a fourth time -- see
+  the ANTS-3720 annotation.
   **Layman:** Some roadmap item IDs are guessed from the text; nothing tells you which ones.
   Kind: enhancement.
   Source: ANTS-4546 residue, measured in-session 2026-08-20.

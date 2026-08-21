@@ -886,6 +886,8 @@ static QJsonArray rcBuildBulletCacheArray(
         if (b.synthetic) o["synthetic"] = true;
         if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
         if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
+        // ANTS-4575 — gated: absent when the id was declared.
+        if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
         arr.append(o);
     }
     return arr;
@@ -2247,6 +2249,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // (additive; absent on native ants-v1 bullets and on
                 // GFM bullets with no bold prefix).
                 if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
+                // ANTS-4575 — gated: absent when the id was declared.
+                if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
                 arr.append(o);
             }
             m_roadmapCacheBullets = arr;
@@ -2315,6 +2319,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     if (b.synthetic) o["synthetic"] = true;
                     if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
                     if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
+                    // ANTS-4575 — gated: absent when the id was declared.
+                    if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
                     arr.append(o);
                 }
                 m_roadmapCacheBullets = arr;
@@ -2836,6 +2842,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 if (!b.anchor.isEmpty()) o["anchor"] = b.anchor;
                 // ANTS-1438 — bold_id (matches full-file emission).
                 if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
+                // ANTS-4575 — gated: absent when the id was declared.
+                if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
                 sectionBullets.append(o);
             }
             m_roadmapSectionCache.insert(sec->slug, sectionBullets);
@@ -3120,6 +3128,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // (additive; absent on native ants-v1 bullets and on
                 // GFM bullets with no bold prefix).
                 if (!b.boldId.isEmpty()) o["bold_id"] = b.boldId;
+                // ANTS-4575 — gated: absent when the id was declared.
+                if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
                 arr.append(o);
             }
             m_roadmapCacheBullets = arr;

@@ -1424,6 +1424,15 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
 // `[...]`; parseShippedDates anchors it on word boundaries (CHANGELOG
 // prose). Both derive from this so the accepted ID shape can't drift
 // between the two parsers.
+// ANTS-4575 — see the header for why this is `id == boldId` and not a test
+// on `idToken`. Both conjuncts are load-bearing: boldId alone is non-empty
+// on a bullet whose body cites a [PROJ-NNNN] that then WINS the id (the
+// rxId branch above runs first), and that bullet's reported id is a bracket
+// token, so it is declared.
+bool idWasInferred(const BulletRecord &rec) {
+    return !rec.boldId.isEmpty() && rec.id == rec.boldId;
+}
+
 QString idTokenPattern() {
     // ANTS-3492 — prefix may be digit-led if it contains ≥1 letter
     // (3D_E-0042). Bare, unanchored fragment shared by parseBullets

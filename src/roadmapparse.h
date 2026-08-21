@@ -123,6 +123,23 @@ struct BulletRecord {
     // is a partition over these.
     int firstLine = 0, lastLine = 0;
 };
+// ANTS-4575 — did the reader ADOPT this record's id from a bold prose
+// lead-in, rather than read it from a bracket token the author wrote?
+//
+// Surfaced by roadmap_query as a gated `id_inferred: true`. The
+// discriminator is `id == boldId`: that is exactly the branch in
+// fillBulletRecord that adopts a bold span as the id, and it holds on the
+// native branch too, where ANTS-1987 adopts a head-anchored ID-shaped bold
+// token (`- 📋 **Cl9.**`). An adoption is an inference on either branch, so
+// this deliberately does NOT test `format`.
+//
+// It is NOT a test on `idToken`: that field is filled FROM boldId when the
+// leading slot holds no bracket, so it cannot separate the two cases.
+//
+// A synthetic content-hash id reads false — `synthetic` already says that id
+// was manufactured, and the two answer different questions.
+bool idWasInferred(const BulletRecord &rec);
+
 // The `[PROJ-NNNN]` token shape, as a bare regex fragment (no anchors, no
 // capture group). ANTS-1784 — exported rather than file-static because
 // roadmapdialog.cpp's CHANGELOG scanner shares it with the bullet parser
