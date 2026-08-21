@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query mode:section_index can be narrowed by section name** (ANTS-4610)
+  Resolving the one slug a `roadmap_log` write needs used to cost the whole
+  index — 40 section objects for one string, with neither `fields` nor
+  `compact` able to cut it. `query` now filters the index by section
+  headline or slug, and the reply carries `sections_considered` /
+  `sections_filtered_out` so an empty result is legible. `whole_word` and
+  `regex` compose, as on the bullets path.
+
 - **A project can declare its own roadmap ID format in `.ants/project.json`** (ANTS-3771)
   Add an `id_format` object with a `prefix`, a `pattern`, or both, and the
   roadmap reader stops guessing. `prefix` decides what a new ID is called and

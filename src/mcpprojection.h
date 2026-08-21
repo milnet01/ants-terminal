@@ -184,6 +184,15 @@ QString withIgnoredArgs(const QString &responseJson, const QStringList &ignored)
 // `truncated:true` gives no clue the answer is in the tail.
 enum class QueryMode { Substring, WholeWord, Regex };
 
+// ANTS-4610 — the needle-against-haystack half, lifted out of
+// bulletMatchesQuery so mode:section_index can narrow by section name using
+// the SAME matcher rather than a second one that would drift from it. `hay`
+// is whatever text surface the caller is filtering; the mode semantics
+// (case-insensitivity, the word boundary, fail-closed on a bad pattern) are
+// identical wherever it is called.
+bool textMatchesQuery(const QString &hay, const QString &needle,
+                      QueryMode mode = QueryMode::Substring);
+
 bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,
                         QueryMode mode = QueryMode::Substring);
 

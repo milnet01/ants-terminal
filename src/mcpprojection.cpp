@@ -475,16 +475,22 @@ QString withIgnoredArgs(const QString &responseJson, const QStringList &ignored)
 
 bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,
                         QueryMode mode) {
-    const QString needleLower = needle.toLower();
     // headline + headline_full + body — the text surfaces the list emits.
     // headline_full is present only when a long headline was capped; absent
     // keys stringify to "" and drop out harmlessly. body is present at the
     // pre-pagination filter point (rcStripBodyFields runs post-slice), so
     // the match works even when include_body is false.
-    const QString hay =
-        (bullet.value(QStringLiteral("headline")).toString() + QChar('\n') +
-         bullet.value(QStringLiteral("headline_full")).toString() + QChar('\n') +
-         bullet.value(QStringLiteral("body")).toString()).toLower();
+    return textMatchesQuery(
+        bullet.value(QStringLiteral("headline")).toString() + QChar('\n') +
+            bullet.value(QStringLiteral("headline_full")).toString() +
+            QChar('\n') + bullet.value(QStringLiteral("body")).toString(),
+        needle, mode);
+}
+
+bool textMatchesQuery(const QString &hayRaw, const QString &needle,
+                      QueryMode mode) {
+    const QString needleLower = needle.toLower();
+    const QString hay = hayRaw.toLower();
     if (mode == QueryMode::Substring) return hay.contains(needleLower);
 
     // ANTS-4367 — the two narrowing modes. Both are case-insensitive, like

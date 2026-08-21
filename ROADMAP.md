@@ -42405,7 +42405,7 @@ open, and two of these were exactly that.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4610] **mode:section_index cannot be narrowed, so resolving one slug costs the whole index.**
+- ✅ [ANTS-4610] **mode:section_index cannot be narrowed, so resolving one slug costs the whole index.**
   Measured on LocalWebServerManager: 40 section objects, ~4.7k tokens, to get
   one slug. `fields` operates on top-level response keys so ["sections"]
   keeps the whole array; `compact` drops empty VALUES, not rows. The envelope
@@ -42427,6 +42427,7 @@ open, and two of these were exactly that.
   dev-experience had active_count 0. Distinct from ANTS-1848 (status filter),
   ANTS-1729 (pagination) and ANTS-4467 (spill), all shipped: none of them
   narrows by name.
+  Resolved 2026-08-21: `query` now narrows mode:section_index instead of refusing bad_mode_combo. Matched against the headline AND the slug, because a caller who has already seen a slug spells the slug and taking only one of the two answers half of them. Applied before pagination so it makes room rather than competing with the soft cap. `sections_considered` / `sections_filtered_out` ship with it — an unexplained empty array reads as "this roadmap has no sections". Reused `query` rather than adding the asked-for `q`: it already means case-insensitive substring filter on the bullets path and already carries whole_word and regex, so a new key would be a second dialect for one idea; both narrowing knobs compose here for free. The matcher was LIFTED rather than copied — mcp::textMatchesQuery is the needle-against-hay half of bulletMatchesQuery, which now calls it, so the two cannot drift. New suite tests/features/roadmap_query_section_filter, 5 cases, red run verified. INV-2 covers the reporter's actual case, a target section with active_count 0, which an active_only flag would not have answered. Suite 3800/3800.
   **Layman:** Asking where to file an item returns every section in the file, including the empty ones.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.

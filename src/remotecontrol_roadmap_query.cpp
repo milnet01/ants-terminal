@@ -1945,12 +1945,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // section_index / bundles modes (which emit no per-bullet text to
     // match). Refuse loudly rather than silently drop the arg — same stance
     // as the id / ids / bundles combos above.
+    // ANTS-4610 — section_index is the EXCEPTION: `query` narrows it by
+    // section name. It is the step before the most common write (resolving the
+    // slug roadmap_log's `section` wants), and unnarrowable it cost 40 section
+    // objects / ~4.7k tokens for one string. `fields` cannot help (it operates
+    // on top-level keys, so ["sections"] keeps the whole array) and neither can
+    // `compact` (it drops empty values, not rows).
     if (!queryArg.isEmpty()) {
         QString why;
-        if (mode == QLatin1String("section_index"))
-            why = QStringLiteral("query keyword filter does not combine "
-                                 "with mode:section_index");
-        else if (mode == QLatin1String("bundles"))
+        if (mode == QLatin1String("bundles"))
             why = QStringLiteral("query keyword filter does not combine "
                                  "with mode:bundles");
         else if (!idArg.isEmpty())
@@ -2613,6 +2616,34 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 legacyFormatSections.append(sec.slug);
             }
             sections.append(obj);
+        }
+
+        // ANTS-4610 — narrow by section NAME. Matched against the headline AND
+        // the slug: a caller who has already seen a slug spells the slug, and a
+        // filter that took only one of the two answers half of them. Applied
+        // BEFORE pagination, so it makes room rather than competing with the
+        // soft cap (same order file_outline's `filter` uses).
+        //
+        // An unexplained empty array reads as "this roadmap has no sections",
+        // so the counters ship with it: zero matches has to be distinguishable
+        // from nothing to match against.
+        if (!queryArg.isEmpty()) {
+            const int considered = sections.size();
+            QJsonArray kept;
+            for (const auto &v : std::as_const(sections)) {
+                const QJsonObject s = v.toObject();
+                if (mcp::textMatchesQuery(
+                        s.value(QStringLiteral("headline")).toString() +
+                            QChar('\n') +
+                            s.value(QStringLiteral("slug")).toString(),
+                        queryArg, queryMode)) {
+                    kept.append(v);
+                }
+            }
+            sections = kept;
+            out["query"]                 = queryArg;
+            out["sections_considered"]   = considered;
+            out["sections_filtered_out"] = considered - sections.size();
         }
 
         out["ok"] = true;
