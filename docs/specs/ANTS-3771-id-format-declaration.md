@@ -1,7 +1,7 @@
 # ANTS-3771 — Declare a project's id format in `.ants/project.json`
 
-**Status:** spec draft, cold-eyes loops 1 + 2 folded, cap reached (2026-08-21). **Not `accepted`:** § 8's first open question is a design
-decision with build-graph consequences and is the user's to make; it blocks INV-13 and nothing else.
+**Status:** accepted (2026-08-21) — cold-eyes loops 1 + 2 folded, cap
+reached, and § 8's load-point decision settled by the user.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3771 (user-request-2026-08-01); direction chosen
 in-session 2026-08-21 (authority = reads *and* writes; a non-matching
@@ -155,9 +155,21 @@ does, and the load happens core-side.** That is this section's own stated
 principle applied consistently: the declaration arrives as a value, never as
 a path the callee resolves.
 
-**Which core-side helper owns that single load is an OPEN DESIGN DECISION and
-is deliberately not settled here** — see § 8. What this spec does fix is the
-requirement: exactly one, not one per entry point.
+**The single load is `ProjectSettings::idFormatFor()`** (user decision,
+2026-08-21), in `src/projectsettings.{h,cpp}` — the file that already owns
+`.ants/project.json`, in the library that can already see both sides. It
+returns a `RoadmapParse::IdFormat` by value, default-constructed when the
+project declares nothing, and every project-scoped roadmap read calls it and
+passes the result down. **No library boundary moves**, which is what ruled
+out relocating `ProjectSettings` to a leaf: it includes `pathvalidation.h`
+and `codebaseindex.h` and would drag both.
+
+`ProjectSettings::Settings` gains `std::optional<IdFormat> idFormat`,
+validated by `load()` under its existing per-entry drop rule (§ 2.5), so the
+declaration is parsed and checked in exactly one place. `idFormatFor()` is
+the thin accessor over it. This is a header dependency from
+`projectsettings.h` on `roadmapparse.h`, which costs nothing:
+`ants_core_lib` already links `ants_roadmapparse_lib` PUBLIC.
 
 **The bare one-argument overload survives only for a caller that holds no
 project root** — a test fixture, an ad-hoc string. That is the test, and it
@@ -457,7 +469,8 @@ Failure is asymmetric on purpose, and it follows ANTS-2160's shipped shape:
   Vestige-shaped fixture with and without a declaration and comparing the
   `id_origin` census.
 - **INV-13** — Every path that parses a project's roadmap resolves the same
-  id for the same bullet. `bulletsFor()` and `parseBullets()` both take the
+  id for the same bullet. `ProjectSettings::idFormatFor()` is the only reader
+  of the declaration, and `bulletsFor()` and `parseBullets()` both take the
   `IdFormat` as a parameter; **a caller that holds a project root and takes a
   bare overload is a defect**, and a caller that holds none is the only
   legitimate user of one. *Test:*
@@ -557,6 +570,9 @@ implementing.
 - `docs/specs/ANTS-3808-*` — § 4's library-layering note is the reason the
   declaration cannot load inside the read seam (§ 2.2); no change owed, cited
   so the constraint is findable.
+- `docs/specs/ANTS-2160.md` again — `ProjectSettings::Settings` gains
+  `idFormat`, its first non-path member, and `idFormatFor()` joins the module
+  that § 2.2 of that spec describes as a "pure loader".
 - `docs/standards/mcp-config-keys.md` — `id_format` catalogued.
 - `docs/standards/mcp-error-codes.md` — one new row, `id_format_mismatch`,
   stating how it differs from the neighbouring `bad_id_format`.
@@ -567,17 +583,6 @@ implementing.
 
 ## 8. Open questions
 
-- **Which core-side helper owns the single load of `id_format`.** § 2.2
-  establishes that `RoadmapSource::bulletsFor()` cannot do it — the edge runs
-  `ants_core_lib` → `ants_roadmapstore_lib` and ANTS-3808 § 4 keeps the store
-  surface headless on purpose — and that exactly one core-side owner is
-  required rather than one per entry point. **Which one is not settled here.**
-  Three candidates, and the choice has build-graph consequences a document
-  review should not make alone: a new helper in `ants_core_lib` that every
-  project-scoped roadmap read funnels through; moving `ProjectSettings` to a
-  leaf library, which drags `pathvalidation` and `codebaseindex` with it; or
-  splitting only the JSON-reading half out. **This blocks implementation of
-  INV-13 and nothing else** — the rest of the spec is independent of it.
 - **Whether the backfill path's records reach the store.** § 2.2 puts
   `remotecontrol_roadmap_backfill.cpp` on the project-scoped side because it
   parses a project's own roadmap lines. If those records are never stored, the
@@ -590,3 +595,4 @@ implementing.
 |---|---|---|---|---|
 | 1 | 2026-08-21 | 3, cold — genre pinned `spec`; one byte-stable shared packet carrying 8 code windows, the ANTS-3793 § 2.1.1 / ANTS-3765 § 2.8 / ANTS-2160 § 2.1 passages, and the store + Vestige measurements | **Q1 1 · Q2 0 · Q3 5** (6 verified / 1 dismissed) | **Six verified, six fixed; one dismissed.** **All three lanes independently found the same two**, which is the strongest signal the run produced. **[Q1] The `id_inferred` reasoning was false, and the spec's own worked table was the counter-example.** § 2.2 claimed a matched id "is capture group 1 and therefore no longer equals `boldId`", so `idWasInferred()` — `!rec.boldId.isEmpty() && rec.id == rec.boldId` — would report the new answer unchanged. The § 3.1 row `` \| `A1` \| `A1` \| `` captures the *whole* bold span, so `id == boldId` holds and the flag fires **on a match**, breaching INV-5 and feeding ANTS-4491's converter "still needs a decision" for ids the project declared. A whole-span capture is the ordinary case for bare-token ids, not a corner. Fixed by having a match set `boldId` empty, which is also the truer statement: an adoption by declaration is not an adoption by inference. **[Q3] The write-time refusal predicate was never defined** — "an id the declaration rejects" had three readings (prefix equality, `pattern` re-purposed against a bracket id, or the universal grammar), each producing a different `id_format_mismatch` surface for callers to bind to. The ANTS-3769 claim was false under two of them: `ANTS-119&` has the prefix `ANTS` and passes a prefix test. Now a two-row table, with that item re-grounded on the universal grammar and on this spec adding the *check point* rather than the check. **Three more Q3s, each an invention something else binds to.** The pattern's input was "the bold span", which has two readings — `extractBoldId()` chops a trailing `.` and trims, so `^([A-Za-z0-9]+)$` matches `**AX1.**` against one and not the other, and every project authors its pattern to whichever. `rec.idToken` was unstated on a match, so one builder leaves the whole bold run there and `isGrammaticalId()` quarantines the bullet the declaration just resolved. And the migration's parsed-vs-quarantined gate was neither in scope nor excluded — which would have made a declaration inert exactly where ANTS-4491 reads it; § 2.4 now owns it. **The best finding came from an Open question, not a Findings section:** § 2.2 said "the caller loads the declaration and passes it in" and named no caller, while the overload's default argument silently reads a project as undeclared — 31 `parseBullets` mentions in `src/` outside `roadmapparse.*`, so one bullet could resolve to two ids depending on the path. The load point is now pinned at `RoadmapSource::bulletsFor()`, which already receives the `projectRoot`. **Dismissed as unverified:** one lane read INV-6 as false on the ground that "Vestige is in the store, so the rendered text for a migrated project is GFM there". `renderBullet()` writes `"- " + emojiFor(it.status)` and `roadmaprender.cpp` contains no checkbox emission at all, so the store path renders ants-v1 whatever the project's source dialect — matching ANTS-3793 § 2.1.2's own table. **The other two lanes raised the same point as an Open question rather than a finding, and that was a packet gap of mine**: no window covered `bulletText()`. **Also fixed, as this loop's own collateral:** the sentence "The default argument is what keeps every existing call site untouched" survived the seam fix and directly contradicted the new INV-13. |
 | 2 | 2026-08-21 | 3, cold — identical brief, packet rebuilt from disk and given the three windows loop 1 lacked (`renderBullet()`, `extractBoldId()`, `bulletsFor()`) | **Q1 2 · Q2 4 · Q3 1** (7 verified / 0 dismissed) | **Seven verified, seven fixed. Cap reached (2 for a spec); the run files its tail and exits.** **This is a VIOLENT cap, and the measurement says so plainly: six of the seven findings landed on text loop 1 wrote.** Each was a mechanism loop 1 pinned without tracing that field's consumers — the sweep covered the document and not the code that reads it. **The worst was found by resolving a lane's Open question, not by a Findings section, and it was unbuildable:** loop 1 put the single load of `id_format` inside `RoadmapSource::bulletsFor()`, which lives in `ants_roadmapstore_lib` — whose link list is `Qt6::Core Qt6::Sql ants_roadmapparse_lib` under the comment *"the reader, NOT ants_core_lib: this surface stays headless for ANTS-3794's publish path"*, while `ants_core_lib` links the store PRIVATE. `ProjectSettings` is in core, so the seam cannot read `.ants/project.json` without inverting a deliberate edge. `bulletsFor()` now takes the declaration as a parameter, and **which core-side helper owns the load is surfaced as § 8 rather than invented here** — it has build-graph consequences a document review should not settle alone. **All three lanes found the migration mechanism, and it was genuinely unbuildable too:** § 2.4 asserted `isGrammaticalId()` "accepts a token the declared pattern resolved" and justified it as agreeing "by construction", but that function sees a token and nothing else, and after loop 1 emptied `boldId` a declared `AX1` is byte-indistinguishable from an off-grammar `Cl9`. It now takes an `IdFormat` parameter — chosen over a `BulletRecord::idDeclared` flag, which would be a 23rd member against ANTS-3793's stated 22-member census. **Two lanes found the `rxId` precedence**, which loop 1 created by pinning `rec.id`: the body-wide `rxId` runs first and wins, so `**AX1. foo** … see [ANTS-9999]` reported the citation. A declared match now wins outright and INV-2 is scoped to say so. **Three more:** `bold_id` silently disappears from the envelope on a matched bullet (five emit sites, plus a shipped ANTS-1438 test) — intended, now stated; "no new code is owed here" read as *no new source code*, leaving `applyWrite()`'s forward-compat passthrough intact and INV-9 unpassable; and § 2.1's `prefix` row omitted the migration allocator, so a declaring project would take its declared prefix from `roadmap_log` and a sniffed one from a migration — two id families in one store. **One count of my own was wrong for the second run running**: `bold_id` has five emit sites, not three, because the grep that found them was truncated. **Why the cap binds, since that is evidence about the run:** 6/7 collateral means this gate was repairing itself rather than the draft. A third loop is not indicated — the document goes to implementation, which exercises the contract against real code and is the better third reviewer. |
+| impl-0 | 2026-08-21 | none — a user decision closing a stop condition loop 2 SURFACED, not a review | n/a | **§ 8's load-point fork settled: `ProjectSettings::idFormatFor()`.** Loop 2 could not settle where the single load of `id_format` lives, because `RoadmapSource::bulletsFor()` cannot read it — its library is deliberately not linked against the one holding `ProjectSettings` — and the three candidates moved a library boundary to different degrees. That is a 4a stop condition, so the run surfaced it rather than inventing an answer. The user chose the smallest: a helper in `ants_core_lib`, no boundary moved. `Settings` gains an `idFormat` member (its first non-path one) validated under `load()`'s existing per-entry drop rule, so the declaration is parsed in one place; § 7 records the ANTS-2160 impact. **No reviewer was dispatched for this row and none is owed** — the gate reached its cap, and rule 14 exempts an amendment that records a decision already taken rather than changing direction for work still to come. Status moved to `accepted`. |
