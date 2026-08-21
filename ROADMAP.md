@@ -41664,6 +41664,20 @@ filed below.
   (wrong), then "not ants-v1" (true but incomplete). It is GFM-majority,
   mixed, with 45 ants-v1 bullets — and it did not get that way by
   converting.
+  DECIDED by the user 2026-08-21: do NOT drop Vestige's 1026 store rows for
+  now. Recording it because the decision was made in conversation and would
+  otherwise have to be re-litigated by whoever picks this up.
+
+  The reasoning, so it is not re-opened on a whim. The rows are inert --
+  nothing reads them (Vestige's own verbs answer from markdown) and no op
+  can write them, so they cost nothing but disk. Deleting them means eight
+  hand-ordered statements with PRAGMA foreign_keys ON, because the schema
+  declares REFERENCES and no ON DELETE CASCADE. And ANTS-4491 is the natural
+  moment: its convert path re-imports the project anyway, so a fresh import
+  then is cleaner than reconciling a stale mirror now.
+
+  Vestige has already sanctioned the deletion from their side, so if the
+  answer changes later, no further ask is owed to them -- only the backup.
   **Layman:** The roadmap repair tool refuses to run on Vestige even though Vestige's data is in the database.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
@@ -41919,6 +41933,33 @@ filed below.
   Kind: fix.
   Source: measured in-session 2026-08-21 against Vestige's roadmap.
   Lanes: remotecontrol, roadmapparse.
+
+- 📋 [ANTS-4606] **One dialect, two spellings: roadmap_log says `gfm` where roadmap_query says `github-task-list`.**
+  Split out of ANTS-4604 rather than folded into it, on the user's call, so
+  the deferral is findable instead of buried in a shipped item's note.
+
+    roadmap_log   src/remotecontrol_roadmap_log.cpp:3252, :3593, :3657
+                    isGfm ? "gfm" : ...
+    roadmap_query                     "github-task-list"
+
+  Same dialect, two strings. A caller comparing the two envelopes reads a
+  third disagreement on top of the two ANTS-4604 explained, and nothing in
+  either schema says the vocabularies differ.
+
+  NOT fixed with ANTS-4604 deliberately. Unifying changes a value other
+  sessions may already compare against — a silent break for anyone keying on
+  "gfm", and this machine has 15 other projects whose sessions might. The
+  additive half shipped; this half needs a decision about who is allowed to
+  break.
+
+  Cheapest honest option if the break is unacceptable: leave both values and
+  say so in each verb's `detail`, so the split is documented rather than
+  discovered. That is strictly worse than one spelling and strictly better
+  than today.
+  **Layman:** Two tools spell the same roadmap format differently, so comparing their answers looks like a disagreement.
+  Kind: fix.
+  Source: in-session-2026-08-21, split out of ANTS-4604.
+  Lanes: remotecontrol.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
