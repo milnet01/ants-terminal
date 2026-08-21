@@ -199,6 +199,29 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
             out[dryRun ? QStringLiteral("would_discard_edit_lines")
                        : QStringLiteral("discarded_edit_lines")] =
                 outcome.externalEditLines;
+            // ANTS-4615 — the breakdown. One number could not be acted on: 84
+            // drifted lines were 24 bullets restyled into the canonical id form
+            // and ONE sentence that no longer existed anywhere. Rides on the
+            // same true arm as the total, for the same reason — a breakdown
+            // present on every write is a breakdown nobody reads.
+            out[dryRun ? QStringLiteral("would_discard_restyled_lines")
+                       : QStringLiteral("discarded_restyled_lines")] =
+                outcome.externalRestyledLines;
+            out[dryRun ? QStringLiteral("would_discard_text_lines")
+                       : QStringLiteral("discarded_text_lines")] =
+                outcome.externalTextLines;
+            if (!outcome.externalLostText.isEmpty()) {
+                // The text itself, not just its size. A count alone still
+                // leaves the caller grepping for a sentence they have to
+                // remember writing, which is how ANTS-4596 was found.
+                out[dryRun ? QStringLiteral("would_discard_text")
+                           : QStringLiteral("discarded_text")] =
+                    QJsonArray::fromStringList(outcome.externalLostText);
+                if (outcome.externalLostTextTruncated) {
+                    out[dryRun ? QStringLiteral("would_discard_text_truncated")
+                               : QStringLiteral("discarded_text_truncated")] = true;
+                }
+            }
         }
     }
 }

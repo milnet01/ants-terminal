@@ -72,6 +72,28 @@ struct Outcome {
     // externalEditsChecked ⇒ the file was exactly the store's render, so the
     // publish overwrote nothing but its own output.
     int externalEditLines = 0;
+
+    // ANTS-4615 — the breakdown, because one number cannot be acted on. A flip
+    // that changed nothing reported 84 drifted lines: 24 bullets moving from an
+    // older bold-id form to the canonical bracketed one, and ONE sentence that
+    // no longer existed anywhere. Mixing the two trains callers to wave the
+    // flag through.
+    //
+    // These classify the FILE's own lines and so do NOT sum to
+    // externalEditLines, which also counts lines the RENDER holds that the file
+    // had deleted — a reverted deletion is not a loss and is not either of
+    // these. The total's meaning is unchanged: this adds a breakdown, it does
+    // not suppress anything (ANTS-4462 is explicit that deciding which
+    // differences are cosmetic is not this check's judgement to make — so the
+    // total keeps counting every one of them).
+    //
+    // `externalRestyledLines` is the SOFTER claim and `externalTextLines` the
+    // one to act on, so an unclassifiable line counts as text: over-reporting
+    // loss costs a look, under-reporting hides the thing the item is about.
+    int         externalRestyledLines = 0;
+    int         externalTextLines     = 0;
+    QStringList externalLostText;              // capped; see kLostTextCap
+    bool        externalLostTextTruncated = false;
 };
 
 // ANTS-3808 § 2.4 — one bullet's markdown, byte-identical to what the file

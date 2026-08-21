@@ -837,6 +837,108 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
         << "a stale true would train callers to ignore the field";
 }
 
+// ANTS-4615 — one count cannot be acted on. A status flip that changed nothing
+// reported discarded_edit_lines:84; of those, the overwhelming majority were 24
+// bullets moving from an older bold-id form to the canonical bracketed one, and
+// ONE was a sentence that no longer exists anywhere in the file. A single number
+// mixing the two trains callers to wave the flag through, which the reporter
+// says is what nearly happened.
+//
+// This does NOT suppress anything — ANTS-4462's case above is explicit that
+// deciding which differences are cosmetic is a judgement this check should not
+// invent, and `discarded_edit_lines` keeps counting every drifted line in both
+// directions. What is added is a BREAKDOWN of the file's own lines plus the
+// lost text itself, so the caller can act instead of guessing.
+TEST(RoadmapWriteHalf, Ants4615SplitsRestyledFromLostText) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    // Canonicalise first, so the migration's own normalisation is spent and
+    // this case measures only what it plants.
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A settling bullet."))).object()
+        .value(QStringLiteral("ok")).toBool());
+
+    QByteArray hand = readAll(roadmap);
+    ASSERT_FALSE(hand.isEmpty());
+
+    // (a) RESTYLED — the same bullet in an older id dialect. Every word of it
+    //     survives into the render; only the styling differs. This is the class
+    //     that made up 24 of the reporter's 84.
+    const QByteArray canonical = "- \xF0\x9F\x93\x8B [DEMO-0008] **A settling bullet.**";
+    const QByteArray restyled  = "- TODO **DEMO-0008** A settling bullet.";
+    ASSERT_TRUE(hand.contains(canonical))
+        << "precondition: the render's canonical bullet form was not found";
+    hand.replace(canonical, restyled);
+
+    // (b) LOST — a sentence that exists only in the file. This is the one line
+    //     out of 84 that actually mattered, and the one a caller must see.
+    const QByteArray lost =
+        "> A hand-written sentence that exists nowhere in the store.\n";
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1, lost);
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    const QJsonObject env = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet after the hand-edits."))).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "precondition: both hand-edits should have registered as drift";
+
+    // The total is unchanged in meaning — still every drifted line, both
+    // directions. ANTS-4462's contract is not narrowed by this item.
+    EXPECT_GE(env.value(QStringLiteral("discarded_edit_lines")).toInt(), 2);
+
+    // The split. `discarded_text_lines` is the number to act on.
+    EXPECT_GE(env.value(QStringLiteral("discarded_restyled_lines")).toInt(), 1)
+        << "ANTS-4615: the id-dialect line's text survives; it is restyling";
+    EXPECT_EQ(env.value(QStringLiteral("discarded_text_lines")).toInt(), 1)
+        << "ANTS-4615: exactly one line's text does not survive — if restyling "
+           "leaks into this count the field is as unusable as the single total";
+
+    // And the lost text is NAMED. A count alone still leaves the caller
+    // grepping for a sentence they have to remember writing, which is how
+    // ANTS-4596 was found.
+    const QJsonArray text = env.value(QStringLiteral("discarded_text")).toArray();
+    ASSERT_EQ(text.size(), 1) << "ANTS-4615: the lost line must be reported";
+    EXPECT_TRUE(text.at(0).toString().contains(
+        QStringLiteral("exists nowhere in the store")))
+        << "got: " << text.at(0).toString().toStdString();
+}
+
+// ANTS-4615 — the quiet case. A healthy write must not start emitting the new
+// fields: a breakdown present on every write is a breakdown nobody reads, which
+// is the failure mode the item is about in the first place.
+TEST(RoadmapWriteHalf, Ants4615BreakdownRidesOnTheTrueArmOnly) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A settling bullet."))).object()
+        .value(QStringLiteral("ok")).toBool());
+
+    const QJsonObject clean = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A clean bullet."))).object();
+    ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
+    ASSERT_FALSE(clean.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "precondition: the second write should be clean";
+    EXPECT_FALSE(clean.contains(QStringLiteral("discarded_text_lines")));
+    EXPECT_FALSE(clean.contains(QStringLiteral("discarded_restyled_lines")));
+    EXPECT_FALSE(clean.contains(QStringLiteral("discarded_text")));
+}
+
 // A preview reports what the real call WOULD discard, in the future tense.
 //
 // ANTS-4463 settled the rule for this envelope: a past-tense name IS the

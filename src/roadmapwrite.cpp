@@ -10,6 +10,7 @@
 #include <QStringView>
 
 #include <algorithm>
+#include <utility>
 
 namespace RoadmapWrite {
 namespace {
@@ -51,6 +52,47 @@ QStringList fileIds(const QString &path) {
 // the problem, the names are the entry point into it.
 constexpr int kNameCap = 25;
 
+// ANTS-4615 — the content of a line with its STYLING removed: lowercase
+// alphanumeric words, joined by single spaces, with the status vocabulary
+// dropped. `- OK **LOTTO-0001** Headline.` and `- 📋 [LOTTO-0001] **Headline.**`
+// both reduce to `lotto 0001 headline`, which is what makes them recognisable
+// as the same line in two dialects. Emoji, brackets, asterisks and pipes are
+// all non-alphanumeric and fall out for free.
+QString contentKey(QStringView line) {
+    static const QSet<QString> kStatusWords = {
+        QStringLiteral("ok"),      QStringLiteral("todo"),
+        QStringLiteral("wip"),     QStringLiteral("done"),
+        QStringLiteral("doing"),   QStringLiteral("deferred"),
+        QStringLiteral("planned"), QStringLiteral("considered"),
+    };
+    QString out, tok;
+    const auto flush = [&] {
+        if (tok.isEmpty()) return;
+        if (!kStatusWords.contains(tok)) {
+            if (!out.isEmpty()) out += u' ';
+            out += tok;
+        }
+        tok.clear();
+    };
+    for (const QChar c : line) {
+        if (c.isLetterOrNumber()) tok += c.toLower();
+        else flush();
+    }
+    flush();
+    return out;
+}
+
+constexpr int kLostTextCap = 20;
+
+// What the file holds that `want` (the store alone) does not reproduce, split
+// by whether the line's TEXT survives in some other styling.
+struct DriftBreakdown {
+    int         total    = 0;
+    int         restyled = 0;
+    int         lost     = 0;
+    QStringList lostText;
+};
+
 // ANTS-4462 / ANTS-4465 — how far `have` (the file on disk) has drifted from
 // `want` (what the store alone renders), counted in lines.
 //
@@ -64,38 +106,74 @@ constexpr int kNameCap = 25;
 // because a deletion silently reverted is the same class of surprise as an
 // insertion silently dropped, and reporting only one arm would hand a session
 // that hand-deleted a stale line a clean bill of health.
-int driftLines(const QString &have, const QString &want) {
+//
+// ANTS-4615 — and split by whether the line's TEXT survives. `total` keeps the
+// meaning above exactly; `restyled` and `lost` classify the FILE's own lines
+// only, so they do not sum to it.
+DriftBreakdown driftLines(const QString &have, const QString &want) {
+    DriftBreakdown d;
     QHash<QStringView, int> tally;
     const QList<QStringView> wantLines = QStringView(want).split(u'\n');
     tally.reserve(wantLines.size());
     for (QStringView l : wantLines)
         ++tally[l];
 
-    int drift = 0;
+    QList<QStringView> fileOnly;
     for (QStringView l : QStringView(have).split(u'\n')) {
         const auto it = tally.find(l);
         if (it != tally.end() && it.value() > 0)
             --it.value();
         else
-            ++drift;   // the file holds it; the render will not reproduce it
+            fileOnly.append(l);   // the file holds it; the render will not
     }
+    d.total = static_cast<int>(fileOnly.size());
     for (auto it = tally.cbegin(); it != tally.cend(); ++it)
-        drift += it.value();   // the render holds it; the file had lost it
-    return drift;
+        d.total += it.value();   // the render holds it; the file had lost it
+
+    // Content keys of the lines only the RENDER has. A file-only line whose key
+    // is among them is the same text in another dialect — the render is about
+    // to restyle it, not delete it. Each match is consumed so two file lines
+    // cannot both be excused by one render line.
+    QHash<QString, int> renderKeys;
+    for (auto it = tally.cbegin(); it != tally.cend(); ++it)
+        if (it.value() > 0) renderKeys[contentKey(it.key())] += it.value();
+
+    for (QStringView l : std::as_const(fileOnly)) {
+        const auto k = renderKeys.find(contentKey(l));
+        if (k != renderKeys.end() && k.value() > 0) {
+            --k.value();
+            ++d.restyled;
+            continue;
+        }
+        // Blank and whitespace-only lines are layout, not text. Counting them
+        // as lost prose would bury the one line that matters under the noise
+        // this item exists to remove.
+        if (l.trimmed().isEmpty()) continue;
+        ++d.lost;
+        if (d.lostText.size() < kLostTextCap)
+            d.lostText.append(l.trimmed().toString());
+    }
+    return d;
 }
 
 // The whole check, over the files a render would rewrite. A file that does not
 // exist yet is one the render is about to CREATE, and creating a file destroys
 // nothing — so it is skipped rather than counted as wholly discarded.
-int externalDrift(const QHash<QString, QString> &preImage) {
-    int drift = 0;
+DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
+    DriftBreakdown all;
     for (auto it = preImage.cbegin(); it != preImage.cend(); ++it) {
         QFile f(it.key());
         if (!f.open(QIODevice::ReadOnly))
             continue;
-        drift += driftLines(QString::fromUtf8(f.readAll()), it.value());
+        const DriftBreakdown d =
+            driftLines(QString::fromUtf8(f.readAll()), it.value());
+        all.total    += d.total;
+        all.restyled += d.restyled;
+        all.lost     += d.lost;
+        for (const QString &t : d.lostText)
+            if (all.lostText.size() < kLostTextCap) all.lostText.append(t);
     }
-    return drift;
+    return all;
 }
 
 }  // namespace
@@ -148,7 +226,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // as "clean". Refusing on drift was considered and rejected: it is the
     // render_gate_unmet shape, where one hand-edit anywhere bricks every op on
     // the project, and these two items ask to be TOLD, not blocked.
-    int drift = 0;
+    DriftBreakdown drift;
     bool driftChecked = false;
     {
         RoadmapRender::Options pre;
@@ -168,8 +246,12 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         if (!outcome)
             return;
         *outcome = o;
-        outcome->externalEditsChecked = driftChecked;
-        outcome->externalEditLines = drift;
+        outcome->externalEditsChecked     = driftChecked;
+        outcome->externalEditLines        = drift.total;
+        outcome->externalRestyledLines    = drift.restyled;
+        outcome->externalTextLines        = drift.lost;
+        outcome->externalLostText         = drift.lostText;
+        outcome->externalLostTextTruncated = drift.lost > drift.lostText.size();
     };
 
     // Step 2.

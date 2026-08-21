@@ -83,6 +83,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **discarded_edit_lines now comes with a breakdown and the lost text itself** (ANTS-4615)
+  One count mixed harmless reformatting with sentences that were deleted,
+  so nobody could tell the difference — a measured report of 84 was 24
+  restyled bullets and one sentence that no longer existed. A drifted
+  write now also reports `discarded_restyled_lines`,
+  `discarded_text_lines` and `discarded_text[]` naming the lost lines. The
+  total is unchanged: this adds a breakdown rather than suppressing
+  anything.
+
 - **roadmap_log's `bad_section` refusal now carries ranked near-miss candidates** (ANTS-4556)
   A mistyped slug threw the composed body away and left one route: a
   `section_index` call answering every slug in the file. The refusal now

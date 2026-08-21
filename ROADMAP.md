@@ -42548,7 +42548,7 @@ open, and two of these were exactly that.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: remotecontrol, roadmap-store.
 
-- 📋 [ANTS-4615] **discarded_edit_lines mixes cosmetic restyling with text that does not survive, so real prose loss hides in the number.**
+- ✅ [ANTS-4615] **discarded_edit_lines mixes cosmetic restyling with text that does not survive, so real prose loss hides in the number.**
   A status flip that changed nothing (from and to both planned) re-rendered
   and reported discarded_edit_lines:84, discarded_external_edits:true. Of
   those 84, the overwhelming majority were benign -- 24 bullets moving from
@@ -42570,6 +42570,7 @@ open, and two of these were exactly that.
   whose TEXT does not survive into the output, and name the lost text in a
   discarded_text array. The count is the caller's only signal, so its
   precision is the whole value of the field.
+  Resolved 2026-08-21: the true arm now also carries discarded_restyled_lines, discarded_text_lines and discarded_text[] naming the lost lines (capped at 20, with discarded_text_truncated). The classifier reduces a line to its lowercase alphanumeric words with the status vocabulary dropped, so an older bold-id bullet and its canonical bracketed form key alike and pair as restyling; emoji, brackets and pipes are non-alphanumeric and fall out for free. Matches are consumed, so two file lines cannot both be excused by one render line. NOTHING IS SUPPRESSED, and that distinction is the whole design. ANTS-4462's own case says in a comment that deciding which differences are cosmetic is a judgement this check does not have and should not invent, so discarded_edit_lines keeps counting every drifted line in both directions and its cases still pass unchanged. That item says do not SUPPRESS; this one says do not CONFLATE. Fail-safe direction: an unclassifiable line counts as TEXT, because over-reporting loss costs a look while under-reporting hides the thing being reported. The two sub-counters classify the FILE's lines only and deliberately do NOT sum to the total, which also counts lines the render restores that the file had deleted — a reverted deletion is not a loss and inventing an arithmetic relationship would be a third wrong number. Two cases in tests/features/roadmap_write_half, red run verified. Suite 3814/3814.
   **Layman:** One count lumps harmless reformatting together with sentences that were deleted, so nobody can tell the difference.
   Kind: fix.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
