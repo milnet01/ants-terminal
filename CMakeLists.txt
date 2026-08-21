@@ -352,6 +352,9 @@ set(ANTS_RC_SOURCES_REL
     # ANTS-4585 phase 2 — op:"repair_trailers"'s handler. Appended last for the
     # same reason as the line above.
     src/remotecontrol_roadmap_repair.cpp
+    # ANTS-4614 — appended last, for the reason above: a member that never
+    # existed pre-split cannot violate any pre-split relative order.
+    src/remotecontrol_roadmap_publish.cpp
 )
 list(TRANSFORM ANTS_RC_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_rc_abs)

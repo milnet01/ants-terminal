@@ -42520,7 +42520,7 @@ open, and two of these were exactly that.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4614] **There is no publish op, so a migration's normalisation sits in the store with no way to land it.**
+- ✅ [ANTS-4614] **There is no publish op, so a migration's normalisation sits in the store with no way to land it.**
   roadmap_migrate reports markdown_rewritten:false and it is honest
   (ANTS-4482 shipped the saying-so half). What has no owner is the doing-it
   half: the canonical re-render only lands on the NEXT roadmap_log write.
@@ -42543,6 +42543,7 @@ open, and two of these were exactly that.
   previewable, reporting bytes and lines changed. Or a roadmap_migrate
   render:true flag. Either gives the migration a reviewable artefact and
   lets the standard be enforced on demand rather than as a side effect.
+  Resolved 2026-08-21: roadmap_log op:"render" publishes the store to the file with no semantic change — no locator, no arguments, nothing written to the store. Took the op rather than the roadmap_migrate render:true flag, because the need outlives the migration: a caller unsure whether the file is current wants to publish, not to re-migrate. It is the shared write sequence with a mutate that does nothing, and that is the design rather than a shortcut — every gate the eight semantic ops run (the Layman gate, ANTS-4141's divergence guard) lives in commitAndRender, so this op runs them too and cannot become a way around them. Reports files_written, items_rendered, bytes_written and the ANTS-4462 drift fields, which is the reviewable artefact the report asked for; ANTS-4615's breakdown, shipped an hour earlier, rides along. Idempotent and dry_run previewable, with ANTS-4463's tense rule honoured (no past-tense field on a preview). Refuses project_not_registered on a markdown-backed project rather than pretending: there the file already IS the source of truth. Three cases in tests/features/roadmap_write_half. The strongest is the item COUNT after publishing — the workaround this replaces added a bullet nobody wanted, so proving none was added is what proves the op is not a semantic write. Structural: it needed a new TU (remotecontrol_roadmap_publish.cpp, appended last per rc_tu_split INV-3) because the log TU is at its 6000-line cap; all fifteen TU ordinal markers were renumbered and RcTuSplit is green 6/6. Suite 3817/3817.
   **Layman:** After adopting the database, the tidy-up it computed cannot be written to the file until some unrelated edit happens to trigger it.
   Kind: feature.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.

@@ -10694,9 +10694,32 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("bundle_row");
                     opEnum.append("backfill_dates");  // ANTS-4501
                     opEnum.append("repair_trailers");  // ANTS-4585
+                    opEnum.append("render");  // ANTS-4614
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
+                        "\"render\" (ANTS-4614) PUBLISHES the store to "
+                        "ROADMAP.md with NO semantic change — no locator, no "
+                        "arguments, nothing written to the store. It exists "
+                        "because roadmap_migrate honestly reports "
+                        "markdown_rewritten:false and nothing owned the doing "
+                        "half: the canonical re-render landed only on the next "
+                        "unrelated write, so a wanted normalisation (two id "
+                        "dialects in one file, say) sat undelivered and the "
+                        "only route was to invent a semantic write purely as a "
+                        "render trigger, polluting the roadmap with a bullet "
+                        "nobody wanted. It also makes a migration verifiable "
+                        "from the repo side, where a clean `git status` was "
+                        "otherwise indistinguishable from the migration never "
+                        "having run. Idempotent, `dry_run` previewable, and it "
+                        "runs every gate the semantic ops run (the Layman "
+                        "gate, ANTS-4141's divergence guard) because those "
+                        "live in the shared write sequence. Reports "
+                        "files_written / items_rendered / bytes_written plus "
+                        "the ANTS-4462 drift fields. Store-backed projects "
+                        "only: on a markdown project the file already IS the "
+                        "source of truth, so it refuses "
+                        "`project_not_registered` rather than pretending. "
                         "\"append_batch\" (ANTS-1879) appends N bullets "
                         "to one `section` in a single read + single "
                         "commit — pass `bullets[]` (each with the same "

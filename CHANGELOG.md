@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"render" publishes the store to ROADMAP.md on demand** (ANTS-4614)
+  After adopting the database, the tidy-up a migration computed could not
+  be written to the file until some unrelated edit happened to trigger it —
+  so the only route was to invent a roadmap bullet nobody wanted, and a
+  clean `git status` after migrating was indistinguishable from the
+  migration never having run. `render` publishes it directly: no locator,
+  no semantic change, idempotent, `dry_run` previewable, and it runs every
+  gate the ordinary write ops run.
+
 - **roadmap_query mode:section_index can be narrowed by section name** (ANTS-4610)
   Resolving the one slug a `roadmap_log` write needs used to cost the whole
   index — 40 section objects for one string, with neither `fields` nor

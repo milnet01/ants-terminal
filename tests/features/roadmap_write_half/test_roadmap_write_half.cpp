@@ -837,6 +837,125 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
         << "a stale true would train callers to ignore the field";
 }
 
+// ANTS-4614 — op:"render" publishes the store with no semantic change.
+//
+// roadmap_migrate reports markdown_rewritten:false honestly (ANTS-4482) and
+// nothing owned the doing half: the canonical re-render landed only on the next
+// semantic write. On LottoTracker that was not cosmetic — the file carried two
+// id dialects the store would normalise, so a wanted normalisation sat
+// undelivered. The only route was to invent a semantic write purely as a render
+// trigger, which pollutes the roadmap with a bullet nobody wanted, and the
+// migration stayed unverifiable from the repo side: a clean git status after
+// migrating is indistinguishable from the migration never having run.
+TEST(RoadmapWriteHalf, Ants4614RenderPublishesWithoutASemanticWrite) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    // Straight after migration the file is still the author's bytes — the
+    // migration computed a normalisation and could not land it.
+    const QByteArray before = readAll(roadmap);
+    ASSERT_FALSE(before.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = root;
+    r[QStringLiteral("op")]         = QStringLiteral("render");
+    const QJsonObject env = rc.cmdRoadmapLogRenderForTest(r).object();
+
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << "code=" << env.value(QStringLiteral("code")).toString().toStdString()
+        << " error=" << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("op")).toString(), QStringLiteral("render"));
+    EXPECT_FALSE(env.value(QStringLiteral("files_written")).toArray().isEmpty())
+        << "ANTS-4614: the publish must name what it wrote";
+    EXPECT_GT(env.value(QStringLiteral("items_rendered")).toInt(), 0);
+    EXPECT_GT(env.value(QStringLiteral("bytes_written")).toDouble(), 0.0)
+        << "ANTS-4614: the caller needs to see the render landed without "
+           "re-reading the file";
+
+    // The artefact: the file really changed, and it changed into the store's
+    // own render. Without this the op could report success having done nothing,
+    // which is the state it was filed to end.
+    EXPECT_NE(readAll(roadmap), before)
+        << "ANTS-4614: the normalisation must actually land";
+
+    // And no bullet was invented to trigger it. That is the whole point: the
+    // workaround this replaces added a roadmap item nobody wanted. The fixture
+    // carries two, and after the publish it must still carry exactly two.
+    auto store = openStore(RoadmapStore::Access::Interactive);
+    ASSERT_NE(store, nullptr);
+    QString err;
+    const auto items = store->readItems(projectId, &err);
+    ASSERT_TRUE(items.has_value()) << err.toStdString();
+    EXPECT_EQ(items->size(), 2)
+        << "ANTS-4614: render must add no items — it is not a semantic write";
+}
+
+// ANTS-4614 — idempotence. The second render publishes the same bytes and
+// reports no drift, which is what makes the op safe to reach for: a caller who
+// is unsure whether the file is current can just run it.
+TEST(RoadmapWriteHalf, Ants4614SecondRenderIsQuiet) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = root;
+    r[QStringLiteral("op")]         = QStringLiteral("render");
+    ASSERT_TRUE(rc.cmdRoadmapLogRenderForTest(r).object()
+                    .value(QStringLiteral("ok")).toBool());
+    const QByteArray settled = readAll(roadmap);
+
+    const QJsonObject again = rc.cmdRoadmapLogRenderForTest(r).object();
+    ASSERT_TRUE(again.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(again.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "ANTS-4614: a render over the store's own output discards nothing";
+    EXPECT_EQ(readAll(roadmap), settled)
+        << "ANTS-4614: the render is idempotent";
+}
+
+// ANTS-4614 — dry_run previews and writes nothing. ANTS-4463's tense rule
+// reaches this op like every other: a past-tense name IS the assertion, so a
+// preview must not carry one.
+TEST(RoadmapWriteHalf, Ants4614DryRunPreviewsAndWritesNothing) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    const QByteArray before = readAll(roadmap);
+
+    RemoteControl rc(nullptr);
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = root;
+    r[QStringLiteral("op")]         = QStringLiteral("render");
+    r[QStringLiteral("dry_run")]    = true;
+    const QJsonObject env = rc.cmdRoadmapLogRenderForTest(r).object();
+
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(env.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_FALSE(env.value(QStringLiteral("would_write")).toArray().isEmpty())
+        << "ANTS-4614: a preview must still say what it WOULD write";
+    EXPECT_FALSE(env.contains(QStringLiteral("files_written")))
+        << "ANTS-4463: no past-tense field on a preview";
+    EXPECT_FALSE(env.contains(QStringLiteral("bytes_written")))
+        << "ANTS-4463: no bytes were written, so the assertion must be absent";
+    EXPECT_EQ(readAll(roadmap), before)
+        << "ANTS-4614: a preview must leave the file byte-identical";
+}
+
 // ANTS-4615 — one count cannot be acted on. A status flip that changed nothing
 // reported discarded_edit_lines:84; of those, the overwhelming majority were 24
 // bullets moving from an older bold-id form to the canonical bracketed one, and

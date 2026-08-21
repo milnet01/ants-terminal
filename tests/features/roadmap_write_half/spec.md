@@ -69,3 +69,62 @@ was performed and not inferred.
   file, so the file is always the newer of the two and every project reads stale.
 - Turning the report into a refusal → one hand-edit anywhere bricks every op on
   the project, which is the `render_gate_unmet` shape both items were filed against.
+
+### ANTS-4614 — `op:"render"` publishes the store on demand
+
+`roadmap_migrate` reports `markdown_rewritten:false` honestly (ANTS-4482 shipped
+the saying-so half) and **nothing owned the doing half**: the canonical
+re-render landed only on the next semantic write.
+
+On the reporting project that was not cosmetic. The file carried two id dialects
+the store would normalise — 24 bullets as `- OK **LOTTO-NNNN** Headline.` and 9
+as `- TODO [LOTTO-NNNN] **Headline.**` — so a real, wanted normalisation sat
+undelivered with no way to publish it. Two costs: the only route was to **invent
+a semantic write purely as a render trigger**, polluting the roadmap with a
+bullet nobody wanted; and the migration was **unverifiable from the repo side**,
+because a clean `git status` after migrating is indistinguishable from the
+migration never having run.
+
+The op is the shared write sequence with a `mutate` that does nothing. That is
+the design, not a shortcut: every gate the eight semantic ops run — the Layman
+gate (INV-5), ANTS-4141's divergence guard — lives in `commitAndRender`, so it
+runs here too, and this op cannot become a way around them.
+
+- **`Ants4614RenderPublishesWithoutASemanticWrite`** — the normalisation lands
+  (the file really changes), the envelope names what it wrote, and the store
+  still holds exactly the fixture's two items. That last assertion is the point:
+  the workaround it replaces added an item nobody wanted.
+- **`Ants4614SecondRenderIsQuiet`** — idempotent, and the second run reports no
+  drift. This is what makes the op safe to reach for when you are simply unsure
+  whether the file is current.
+- **`Ants4614DryRunPreviewsAndWritesNothing`** — ANTS-4463's tense rule reaches
+  this op like every other, so a preview carries `would_write` and neither
+  `files_written` nor `bytes_written`, and the file is left byte-identical.
+
+It refuses `project_not_registered` on a markdown-backed project rather than
+pretending: there the file already **is** the source of truth, so there is
+nothing to publish from.
+
+### ANTS-4615 — the drift report is split, and names the lost text
+
+`discarded_edit_lines` mixed two populations. One measured report of 84 was 24
+bullets restyled into the canonical id form plus **one** sentence that no longer
+existed anywhere; a single number trains callers to wave the flag through.
+
+The true arm now also carries `discarded_restyled_lines` (text survives, styling
+differs), `discarded_text_lines` (**the one to act on**), and `discarded_text[]`
+naming the lost lines, capped at 20 with `discarded_text_truncated`.
+
+**Nothing is suppressed, and that distinction is the design.**
+`Ants4462ReportsDiscardedExternalEdits` says in terms that deciding which
+differences are cosmetic is a judgement this check does not have and should not
+invent — so the total keeps counting every drifted line in both directions, and
+that case passes unchanged. ANTS-4462 says do not *suppress*; ANTS-4615 says do
+not *conflate*.
+
+Two consequences worth stating. An unclassifiable line counts as **text**:
+over-reporting loss costs a look, under-reporting hides the thing being
+reported. And the two sub-counters classify the **file's** lines only, so they
+deliberately do not sum to the total — which also counts lines the render
+restores that the file had deleted. A reverted deletion is not a loss, and
+inventing an arithmetic relationship would be a third wrong number.

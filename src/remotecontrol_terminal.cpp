@@ -1,4 +1,4 @@
-// ANTS-3833 TU 2/14 — Terminal and window verbs.
+// ANTS-3833 TU 2/15 — Terminal and window verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "projectsettings.h"   // ANTS-3771 — the declared id format

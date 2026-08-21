@@ -1011,6 +1011,12 @@ public:
     // ANTS-4585 phase 2 — drive the trailer repair against a synthetic
     // caller_cwd. See tests/features/roadmap_repair_trailers/spec.md.
     QJsonDocument cmdRoadmapLogRepairTrailersForTest(const QJsonObject &req);
+
+    // ANTS-4614 — render: publish the store to ROADMAP.md with no semantic
+    // change, so a migration's normalisation can be landed on demand instead
+    // of waiting for the next unrelated write. Store-only, m_main-independent.
+    // See tests/features/roadmap_write_half/spec.md.
+    QJsonDocument cmdRoadmapLogRenderForTest(const QJsonObject &req);
     // ANTS-3822 § 2.3.2 — lower the history cap this instance opens its store
     // with, so a test can reach the cap without 250 MiB of real history. Must be
     // called BEFORE the first verb, since the store is opened lazily and cached.
@@ -1088,6 +1094,11 @@ private:
     // author's own adjacent text. Store-only, like the ops above.
     // See tests/features/roadmap_repair_trailers/spec.md.
     QJsonDocument cmdRoadmapLogRepairTrailers(const QJsonObject &req);
+
+    // ANTS-4614 — render: the shared write sequence with a mutate that does
+    // nothing, so the canonical file can be published without inventing a
+    // semantic write to trigger it. Body in remotecontrol_roadmap_publish.cpp.
+    QJsonDocument cmdRoadmapLogRender(const QJsonObject &req);
     // ANTS-1879 INV-10 — shared bullet-formatting helper extracted from
     // cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
     // can format each bullet through the same code path. scrubbedNames
