@@ -41191,7 +41191,7 @@ filed below.
   Source: in-session-2026-08-20, hit while measuring ANTS-4598.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4600] **A deleted /tmp scratchpad is registered as a project in the machine-global store.**
+- ✅ [ANTS-4600] **A deleted /tmp scratchpad is registered as a project in the machine-global store.**
   Found while measuring ANTS-4585 phase 2, and it has to be settled
   before any repair pass runs, because such a pass would walk it.
 
@@ -41252,6 +41252,35 @@ filed below.
 
   ANTS-4585 phase 2 stays blocked until that delete lands — a repair pass
   would still walk project 17 today.
+  Resolved (2026-08-21): both halves closed. The guard shipped at
+  67783e54; the delete ran afterwards, on the user's explicit call rather
+  than as a tidy-up, because it writes to a store 16 projects share.
+
+  Evicted in one transaction with `PRAGMA foreign_keys = ON`, in
+  dependency order (the schema declares REFERENCES but no ON DELETE
+  CASCADE, so nothing cascades on its own): 33 element, 1 history, 33
+  item, 3 section, 1 project. citation, feedback_ref, id_prefix and
+  relationship were 0 as measured.
+
+  Verified after, not assumed. 16 projects; zero rows anywhere still keyed
+  on 17; `foreign_key_check` empty and `integrity_check` ok; LottoTracker
+  still holds its 38 items, none of which came from the probe copy; zero
+  orphaned items, sections, elements or history rows across the WHOLE
+  store, not just this project's; and every one of the 16 remaining roots
+  exists on disk. `roadmap_query mode:"report" scope:"all"` reports 5084
+  items, which equals `select count(*) from item` — so the figure is live
+  rather than a cached snapshot, and the machine-wide surfaces this bullet
+  said were wrong are now right.
+
+  Backup retained at
+  ~/.local/share/ants-terminal/roadmap.sqlite.pre-ANTS-4600.20260821-083415.bak
+  (mode 0600, integrity_check ok, 17 projects) — taken with sqlite3
+  `.backup`, never a plain cp, which is not safe against a live WAL
+  database.
+
+  ANTS-4585 phase 2 is UNBLOCKED: nothing under /tmp is registered, so a
+  repair pass no longer walks a dead copy. Its other stated preconditions
+  still stand.
   **Layman:** A throwaway test folder got recorded as a real project in the shared roadmap database, so machine-wide counts double-count one project
   Kind: fix.
   Source: ANTS-4585 phase 2 measurement, 2026-08-20.

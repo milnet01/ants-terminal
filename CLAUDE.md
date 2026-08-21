@@ -226,6 +226,23 @@ SIGTERM a push mid-ninja.
 
 - Signals/slots for cross-component comms.
 - Config at `~/.config/ants-terminal/config.json`, mode 0600.
+- **The roadmap store is MACHINE-GLOBAL, not per-project**
+  (`~/.local/share/ants-terminal/roadmap.sqlite`, mode 0600). Anything
+  registered in it outlives the session that registered it and is summed by
+  every `scope:"all"` surface. Two consequences worth knowing before you touch
+  it. **`roadmap_migrate` refuses a root under the system temp dir**
+  (`transient_root`, ANTS-4600, `RoadmapMigrateVerb::isTransientRoot()`) —
+  a session scratchpad once got registered, survived `registerProject()`'s
+  INV-8 because it still existed at migration time, and left 33 duplicate
+  items behind under a path deleted minutes later. That guard is in the
+  HANDLER, not in `run()`: `run()` takes an arbitrary `storePath` and
+  ANTS-3855's fixtures legitimately migrate temp roots into temp stores, so
+  a guard inside it reddens the suite. And **the schema declares
+  `REFERENCES` but no `ON DELETE CASCADE`**, so deleting a project means
+  deleting element → history → feedback_ref → relationship → citation →
+  item → section → id_prefix → project by hand, in that order, with
+  `PRAGMA foreign_keys = ON`. **Back it up with sqlite3 `.backup`, never
+  `cp`** — the store runs in WAL and a live Ants holds a connection.
 - Per-project layout is optionally declared in a repo-committed
   `<root>/.ants/project.json` (ANTS-2160, `src/projectsettings.cpp`):
   `source_roots`/`test_roots` (codebase_index), `docs_dir`,
