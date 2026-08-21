@@ -209,6 +209,35 @@ server-controllable beyond this per-tool hint.
 
 ## Read / incremental verbs
 
+- **`roadmap_query` `mode:"section_index"` — the counts of a LEVEL-2
+  section are ROLLUPS of its level-3 children, so summing `sections[]`
+  double-counts.** Measured 2026-08-21: `0.7.92 — indie-review #4` (level 2)
+  reports `active_count` 67, and its nine level-3 children sum to exactly
+  67 (3+2+31+1+15+1+4+2+8). Nothing in the envelope marks a row as a
+  rollup — `level` is the only signal, and a caller has to know what it
+  implies. Summing every row to answer "how many items are open under
+  theme X" gave **204** where the true figure was **119**.
+  **The `source` column is not the fallback**: it is populated on newer
+  items only, so counting the same population by
+  `source LIKE '%_Ants_MCP_Feedback.md%'` returned **48** — the opposite
+  error, and the more dangerous one, because an undercount reads as
+  progress.
+  The reliable route is the store, and the join is not the obvious one:
+
+  ```sql
+  SELECT s.slug, SUM(i.status IN ('planned','in-progress')) AS active
+  FROM item i
+  JOIN element e ON e.item_pk = i.item_pk AND e.kind = 'item'
+  JOIN section s ON s.section_id = e.section_id
+  JOIN project p ON p.project_id = i.project_id
+  WHERE p.export_slug = '<slug>' GROUP BY s.slug;
+  ```
+
+  `element` keys an item by **`item_pk`**, not `item_id` — `element.item_id`
+  does not exist and the query refuses to parse. Sections are flat rows
+  there, so the rollup problem cannot arise. Open the store read-only; it
+  runs in WAL with a live Ants holding a connection.
+
 - **`get_scrollback`** — since-cursor incremental mode (ANTS-1500).
 - **`co_change_family`** (ANTS-3368) — every edit site of ONE settings
   field, grouped by file. Matches on the longest run of the stem's words

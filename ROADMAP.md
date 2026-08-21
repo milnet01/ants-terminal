@@ -53731,6 +53731,45 @@ here.)
   Source: in-session-2026-08-18 (ANTS-4065 Phase E2 rollout).
   Lanes: mcp, roadmap-store.
 
+- 📋 [ANTS-4618] **The downstream global copy of roadmap-format.md has structurally diverged, and nothing catches it.**
+  CFG-0069 (user decision 2026-08-12) makes THIS project upstream of
+  `~/.claude/standards/roadmap-format.md`: the parser, the store and the
+  migration live here, so where the two disagree this copy governs and the
+  global one is corrected to match, never the reverse.
+
+  Measured 2026-08-21: they have already diverged structurally, not just in
+  wording. The global copy was split into `roadmap-format.md` +
+  `changelog-format.md` (CFG-0036) and is **1634 lines** to this one's
+  **1151**; the two titles differ (this one still says "ROADMAP.md &
+  CHANGELOG.md format spec"), and the global one carries a pointer block to
+  its changelog sibling that has no counterpart here.
+
+  **Nothing catches this.** `tools/check-standard-mirrors.sh` only walks
+  files carrying a `MIRROR BEGIN` marker, and this file has none precisely
+  because it is upstream-owned rather than a delta. So the drift is
+  invisible to the pre-commit hook, and the only reason it was noticed at
+  all is that ANTS-3771 needed to add a paragraph to both.
+
+  That paragraph was added to both by hand in the same hour, so the two are
+  in sync on this item's content and out of sync on everything above.
+
+  Two things to decide, and they are separable. Whether the CHANGELOG half
+  should be split out here too, which would make the two structurally
+  comparable again — this project's copy is the one that would change, which
+  is the direction CFG-0069 forbids for CONTENT and says nothing about for
+  STRUCTURE. And whether an upstream-owned file should get a check of its
+  own: not a mirror check (the bodies legitimately differ in extent), but a
+  weaker one that notices when the downstream copy's section set stops
+  containing the upstream's.
+
+  Filed rather than fixed because the first question is the user's — it is
+  about how the two documents are meant to relate, not about a defect in
+  either.
+  **Layman:** Two copies of the same rulebook have drifted apart and no check notices.
+  Kind: doc-fix.
+  Source: in-session-2026-08-21 (noticed while landing ANTS-3771's cross-doc impact).
+  Lanes: docs.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
