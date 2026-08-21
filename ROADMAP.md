@@ -42575,7 +42575,7 @@ open, and two of these were exactly that.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-4616] **Store round-trip fidelity is unverified for tables, code fences and blockquotes inside a bullet body.**
+- ✅ [ANTS-4616] **Store round-trip fidelity is unverified for tables, code fences and blockquotes inside a bullet body.**
   The reporter withdrew the re-indenting half of their 2026-08-19 finding
   after measuring it: LOTTO-0002's body round-trips its nested sub-bullets
   WITH their original two-space indentation across all four nested blocks,
@@ -42596,6 +42596,7 @@ open, and two of these were exactly that.
   tests/features/roadmap_read_seam already uses -- write markdown, migrate,
   render, parse the file that lands, compare. Cheap to add beside the
   existing fixtures, and it converts an assumption into a gate.
+  Resolved 2026-08-21: new suite tests/features/roadmap_body_element_roundtrip, 4 cases. RESULT — all four passed on the first run. The store holds markdown tables, fenced code blocks and blockquotes faithfully and the renderer emits them unchanged, so there was no defect here; what changes is that the assumption is now a gate. Method matters more than the verdict on this one. Each case writes markdown, migrates, DELETES the seed file, renders the store back out, and asserts against what lands. Deleting the seed is load-bearing: without it a case cannot tell a faithful round trip from a render that never ran, since both leave the author's own bytes on disk — it would have passed vacuously for exactly the reason it exists to rule out. The first draft did not delete it, went green, and the deletion was added specifically to find out whether that green meant anything. It did. INV-2 asserts a fence COUNT of two rather than presence, because an unbalanced fence is the worst of the three outcomes: it swallows everything after it when the file is next read. INV-4 puts all three in one body, since a pipeline can lose an element only in the presence of another. Suite 3812/3812.
   **Layman:** We know indented lists survive the database round trip; nobody has checked tables or code blocks.
   Kind: test.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.

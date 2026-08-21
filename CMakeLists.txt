@@ -1643,6 +1643,8 @@ if(ANTS_TESTS)
                 # ANTS-1437 roadmap_query section_index mode.
                 tests/features/roadmap_query_section_index/test_roadmap_query_section_index.cpp
                 tests/features/roadmap_query_slugs_only/test_roadmap_query_slugs_only.cpp
+                # ANTS-4616 store round-trip fidelity per body element type.
+                tests/features/roadmap_body_element_roundtrip/test_roadmap_body_element_roundtrip.cpp
                 # ANTS-4610 section_index narrowed by name.
                 tests/features/roadmap_query_section_filter/test_roadmap_query_section_filter.cpp
                 # ANTS-4611 no_roadmap_loaded names the root it searched.
