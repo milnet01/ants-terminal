@@ -42096,6 +42096,43 @@ filed below.
   Source: in-session-2026-08-21, split out of ANTS-4604.
   Lanes: remotecontrol.
 
+- 📋 [ANTS-4607] **Neither quotation checker survives a hard wrap, so a true quotation reads as unverifiable.**
+  Two verbs, one class, both hit while grounding the ANTS-3771 spec's
+  quotations. Each is the failure workspace_search's own match_wrapped
+  description warns about: a review gate that DISMISSES a finding whose quote
+  it cannot locate cannot tell "absent" from "wrapped", so the real defect
+  ships.
+
+  1. workspace_search match_wrapped folds whitespace and markdown blockquote
+  markers. It does not fold a SOURCE COMMENT LEADER. So this exact sentence,
+  present verbatim in src/roadmapparse.cpp's fillBulletRecord() comment and
+  hard-wrapped across four `//` lines, returns zero matches:
+
+    "Nothing in the text can separate that from a real multi-word id, which
+    is the argument for ANTS-3771: let a project DECLARE its id format
+    instead of inferring one."
+
+  Verified present by stripping `^\s*//\s?` and folding whitespace. A C++
+  codebase keeps its reasoning in wrapped comments, so this is most of what
+  a spec quotes. Suggested: fold `//`, `#`, and a leading `*` (the javadoc
+  continuation) the way blockquote markers are already folded.
+
+  2. doc_citations quotes:true requires the attributing backticked path on
+  the SAME PHYSICAL LINE as the quotation. Its matching folds newlines --
+  the description says so -- but its ATTRIBUTION does not. This corpus wraps
+  prose at ~76 columns, so a bullet naming a document and then quoting it is
+  routinely two lines and comes back `no_target`, which is indistinguishable
+  from a quotation nobody attributed. Reproduced twice in one document while
+  rewording purely to satisfy the tool. Suggested: look back to the nearest
+  preceding backticked path within the same block/bullet.
+
+  Both are detection-side, not matching-side: the comparison is already
+  wrap-tolerant and only the finding of the two operands is not.
+  **Layman:** Two tools that check whether a quote is real fail when the quote is split across lines, which is how this project writes everything.
+  Kind: fix.
+  Source: in-session-2026-08-21 (ANTS-3771 spec authoring).
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
