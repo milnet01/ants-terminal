@@ -36932,6 +36932,42 @@ are closed inline in the feedback files rather than filed here.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
+  Re-scoped 2026-08-21 by measuring the real input. This item is specified
+  as a github-task-list -> ants-v1 convert path; the file it will actually
+  meet is neither uniform nor purely GFM.
+
+  Vestige's ROADMAP.md, measured directly:
+
+    GFM task-list bullets                   : 989
+    ants-v1 emoji bullets                   :  45
+    GFM bullets carrying a bracket id       :   0
+    emoji bullets carrying a bracket id     :  45
+    emoji-bullet id range                   : 3D_E-0006 .. 3D_E-0624
+
+  Three consequences for the converter, none of them in the current spec.
+
+  It is ALREADY ~4.4% converted, and not by a converter -- op:append writes
+  ants-v1 into a GFM file (ANTS-4605). A converter assuming a uniform source
+  will either skip those 45 bullets or double-convert them. It has to be
+  idempotent per bullet.
+
+  The two populations do not share an id scheme. The 989 GFM bullets carry
+  PROSE lead-in ids (`FW W5 (cont.)`, `Audit X1`) -- the inferred-id case
+  ANTS-4575 is about. The 3D_E-NNNN ids exist only on the 45 emoji bullets
+  and in the store, where migration synthesised them and, per ANTS-4493's
+  comment, they "live in the store and in no file". So converting is not a
+  formatting pass: it has to decide, for 989 bullets, whether the id it
+  emits is the synthesised store id, the prose lead-in, or a fresh one --
+  and two bullets sharing a lead-in already fold to one identity.
+
+  The store is a stale mirror, so it is not a safe id source without a
+  reconciliation step: it stops at 3D_E-0612 while the file is live to
+  0624.
+
+  Vestige is the blocked consumer. Their 3D_E-0047 waits on this, and they
+  hold a standing decision not to hand-convert 989 bullets -- which is the
+  argument for this item existing, and also why it must not ship a
+  converter that quietly drops or duplicates identities.
 
 - 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
@@ -40160,6 +40196,34 @@ filed below.
 
   Not started because the choice above changes a spec's invariant, and
   picking it silently is what the item is complaining about elsewhere.
+  Confirmed in the wild 2026-08-21, and it is bigger than the fixture
+  suggested. Vestige's roadmap has 989 GFM bullets and NOT ONE carries a
+  bracket id -- every one of their ids is a bold prose lead-in adopted by
+  the reader (`FW W5 (cont.)`, `Audit X1`). Measured:
+
+    grep -cE '^- \[[ x]\] \[3D_E-' ROADMAP.md   ->  0
+
+  So the population this item is about is not a handful of edge cases in one
+  fixture; on that project it is the entire GFM half of the file, and a
+  session planning work there cannot tell an inferred id from a declared one
+  for any of them.
+
+  It also raises the stake on the design blocker recorded above. Option (b)
+  -- deriving origin from the grammar alone -- would label all 989 as
+  `quarantined`, which is true of their shape and useless as a signal: a
+  caller learns only that this project's ids are not ANTS-shaped, which they
+  can see. The three-way predicate has the same problem here, since none of
+  the 989 is pass-shaped either.
+
+  Which suggests a fourth option worth weighing before implementing: the
+  useful distinction for THIS corpus is not parsed / synthesised /
+  quarantined but DECLARED (the text carried a bracket token) versus
+  INFERRED (the reader adopted a bold span). That is exactly what the
+  headline of this item asks for, it is derivable from the rendered text on
+  both backends, and it survives the INV-2 constraint. The store's
+  vocabulary would then be a separate field, or not surfaced at all.
+
+  Not implemented; this widens the choice rather than settling it.
   **Layman:** Some roadmap item IDs are guessed from the text; nothing tells you which ones.
   Kind: enhancement.
   Source: ANTS-4546 residue, measured in-session 2026-08-20.
@@ -41535,6 +41599,71 @@ filed below.
 
   Until then Vestige's truncated columns stay short, and the phase-3
   duplication pass will hit the same wall.
+  Vestige answered 2026-08-21, and I re-measured every claim before acting.
+  Disposition changed: STAYS OPEN, not won't-do.
+
+  CONFIRMED from their side and mine.
+
+  Stale mirror. The store stops at 3D_E-0612; the file is live to 3D_E-0624
+  (they said 0622; two more landed while we corresponded). Nothing on the
+  Vestige side reads the store: their roadmap_query envelopes come back
+  source:"markdown", format:"github-task-list", so the verbs are the
+  interface and the FILE is the backend. All 1026 rows carry NULL created /
+  last_modified / shipped, so the store cannot even date itself.
+
+  Not won't-do, and this is the part that changes the disposition. Vestige
+  WANTS to be store-served and already tracks it as 3D_E-0047, blocked on
+  ANTS-4491 (the github-task-list -> ants-v1 convert path). The half-state
+  is accidental in origin but knowingly held: they refuse to hand-convert
+  989 bullets, which is exactly the work ANTS-4491 exists to remove. So this
+  item is downstream of ANTS-4491 rather than independent of it.
+
+  Dropping the rows is sanctioned by them and is probably right -- read by
+  nothing, unwritable, and ANTS-4491 will re-import. Not done here; it is a
+  destructive machine-global write and wants its own decision.
+
+  TWO OF THEIR CLAIMS DID NOT SURVIVE MEASUREMENT, and both matter.
+
+  1. "989 GFM bullets carrying 3D_E- ids." ZERO do:
+
+       grep -cE '^- \[[ x]\] \[3D_E-' ROADMAP.md   ->  0
+       emoji bullets with a bracket id             ->  45
+       emoji bullets with NO bracket id            ->   0
+
+     The GFM population carries PROSE lead-in ids (`FW W5 (cont.)`,
+     `Audit X1`) -- which is ANTS-4575's subject, met in the wild. The
+     3D_E-NNNN scheme exists only in the emoji bullets and in the store,
+     where migration SYNTHESISED it; ANTS-4493's own comment says those ids
+     "live in the store and in no file".
+
+  2. "The 47 emoji bullets exist because roadmap_log has been rewriting them
+     one flipped bullet at a time." They cannot be. A flip converting
+     `- [x] **FW W5**` yields `- ✅ **FW W5**` with NO bracket id, and there
+     are zero such bullets. Every emoji bullet carries a real 3D_E id, and
+     they span 0006 to 0624 -- so they were APPENDED as ants-v1 (op:append
+     writes that dialect), not converted. The file is mixed because appends
+     write one dialect into a file written in another.
+
+  THE DIALECT DISAGREEMENT IS REAL BUT MISDIAGNOSED, and it does not decide
+  Vestige's fate. There are not two competing detectors. `roadmap_log`'s
+  `format` is a HARDCODED literal on the store path
+  (remotecontrol_roadmap_log.cpp:1503, 2668 — "ants-v1" is true there by
+  construction) and is PER-BULLET on the mixed markdown path (:3554,
+  `if (t.isV1Bullet)`). `roadmap_query`'s is the FILE's dominant dialect. One
+  field name, two questions. Filed separately.
+
+  And `migratedProject()` consults NEITHER envelope field — it runs its own
+  `detectRoadmapFormat(text.detectionPrefix())`. So Vestige's worry that
+  "which detector supplies that format decides Vestige's fate" is answered:
+  neither of the ones they compared does.
+
+  Also confirmed as already-handled: ANTS-3565 knows about mixed
+  GFM+ants-v1 roadmaps and resolves locators against either set.
+
+  Correcting myself a THIRD time on this file. I called it "phase headings"
+  (wrong), then "not ants-v1" (true but incomplete). It is GFM-majority,
+  mixed, with 45 ants-v1 bullets — and it did not get that way by
+  converting.
   **Layman:** The roadmap repair tool refuses to run on Vestige even though Vestige's data is in the database.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
@@ -41665,6 +41794,88 @@ filed below.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
   Lanes: codebaseindex.
+
+- 📋 [ANTS-4604] **`format` names two different questions across the roadmap verbs, so on a mixed file they look like they contradict each other.**
+  Reported by Vestige as "the two verbs report different dialects for the
+  same file", minutes apart in one session:
+
+    roadmap_query -> "format": "github-task-list"
+    roadmap_log   -> "format": "ants-v1"
+
+  The observation is real. The diagnosis is not: there are no two competing
+  detectors. Measured at HEAD, `format` is emitted from three kinds of site
+  in src/remotecontrol_roadmap_log.cpp alone:
+
+    :1503, :2668, :3336, :3440   hardcoded "ants-v1" -- the STORE path,
+                                 where it is true by construction
+    :3554                        PER BULLET, `if (t.isV1Bullet)` -- the
+                                 mixed-file path, describing the located
+                                 bullet and not the file
+    :3252, :3593, :3657          `isGfm ? "gfm" : ...` -- the file's shape
+
+  roadmap_query's is the FILE's dominant dialect. So one field name carries
+  three meanings: what the file mostly is, what this one bullet is, and
+  what this writer just wrote. On a uniform roadmap all three agree and the
+  ambiguity is invisible; on a mixed one they diverge and a caller has no
+  way to tell which question was answered.
+
+  Note also `"gfm"` here against `"github-task-list"` from the query verb --
+  two spellings of one dialect, which a caller comparing envelopes reads as
+  a third disagreement.
+
+  What it does NOT do is decide dispatch. `migratedProject()` runs its own
+  `detectRoadmapFormat(text.detectionPrefix())` and consults neither
+  envelope field, so Vestige's worry that the disagreement decides their
+  project's fate is unfounded -- worth stating in whatever fix lands,
+  because it is the reasonable inference from the symptom.
+
+  Suggested shape, theirs and it is a good one: one shared detector
+  reporting the dominant dialect plus an explicit `mixed` flag, so a caller
+  keying on `!= "ants-v1"` can see it is not looking at a uniform file. Plus
+  one spelling per dialect across both verbs, and a distinct field name
+  wherever the value describes a single bullet rather than the file.
+  **Layman:** Two roadmap tools report the file's format differently, and neither is wrong — they are answering different questions under the same name.
+  Kind: fix.
+  Source: Vestige feedback 2026-08-21, re-measured in-session.
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4605] **op:append writes ants-v1 bullets into a github-task-list file, so an append silently makes the roadmap mixed.**
+  Found while checking Vestige's report that their 45 emoji bullets came
+  from flips converting GFM bullets one at a time. They did not, and the
+  measurement that settles it also finds this:
+
+    GFM bullets carrying a bracket id       :   0
+    emoji bullets carrying a bracket id     :  45
+    emoji bullets with NO bracket id        :   0
+    emoji-bullet id range                   : 3D_E-0006 .. 3D_E-0624
+
+  A flip converting `- [x] **FW W5**` produces `- ✅ **FW W5**` with no
+  bracket id. There are zero of those. Every emoji bullet carries a real id
+  the GFM population never carries, so each was APPENDED in ants-v1 form
+  into a file whose other 989 bullets are GFM task-list.
+
+  So the mixing is an append-side behaviour, not a flip-side one, and it is
+  ongoing: 45 bullets across an id range spanning the project's whole life.
+
+  What makes it worth fixing rather than accepting. ANTS-3565 already had
+  to teach flip_batch to resolve locators against BOTH sets because of
+  this, and ANTS-4491's converter will meet a file that is ~4.5% already in
+  its target dialect -- a converter assuming a uniform source either skips
+  those 45 or double-converts them. Each mixed file makes the next reader
+  harder to write.
+
+  The call is which way to go, and it is not obvious: append in the file's
+  OWN dialect (keeps the file uniform, needs a GFM writer), or refuse and
+  say so (honest, blocks a project until ANTS-4491 lands), or keep today's
+  behaviour and declare it (cheapest, and the mixed state is then a
+  documented consequence rather than a surprise). Not picked here.
+
+  Do NOT fix this by converting on append. That is ANTS-4491's job, it is
+  destructive, and doing it a bullet at a time is how the file got here.
+  **Layman:** Adding a roadmap item to a project that uses checkboxes writes it in a different style, leaving the file half one thing and half the other.
+  Kind: fix.
+  Source: measured in-session 2026-08-21 against Vestige's roadmap.
+  Lanes: remotecontrol, roadmapparse.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
