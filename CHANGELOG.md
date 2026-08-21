@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **A project can declare its own roadmap ID format in `.ants/project.json`** (ANTS-3771)
+  Add an `id_format` object with a `prefix`, a `pattern`, or both, and the
+  roadmap reader stops guessing. `prefix` decides what a new ID is called and
+  refuses one written with the wrong prefix; `pattern` says which part of a
+  bold heading is actually the ID, so a bullet written
+  `**AX1. Geometric occlusion**` is reported as item `AX1` with "Geometric
+  occlusion" as its headline, instead of the whole sentence being treated as
+  the ID. Set it with `project_settings op:"set" id_format:{…}`. A project
+  that declares nothing is completely unaffected, and a heading the pattern
+  does not match keeps exactly the ID it had before — nothing loses its
+  identity. Unblocks the one-time converter for checklist-format roadmaps.
+
 - **roadmap_query says which ids it GUESSED from a bold prose lead-in** (ANTS-4575)
   A bullet now carries `id_inferred: true` when the reader adopted its id
   from a bold phrase instead of reading an id the author wrote in brackets

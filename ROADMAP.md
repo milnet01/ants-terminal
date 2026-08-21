@@ -26732,7 +26732,7 @@ against current source before filing.
 
   Verdict-diffed rather than asserted, and the diff on THIS project is empty: **ANTS-3769 has shipped**, so the seven malformed-id bullets it names were repaired and the shape is extinct here (measured: 0 bullets of that shape, item count 1638 before and after). Proved the fix on a fixture carrying two `[ANTS-119&]`-style bullets instead — 1 item before, 3 after, with the `Done — ...` legend line still correctly excluded, so exactly the two malformed bullets moved and nothing else did. The survey is a cross-PROJECT corpus tool, so the fix still matters for any project that has not had its ANTS-3769.
 
-- 📋 [ANTS-3771] **Declare each project's id format in .ants/project.json so the reader stops guessing.**
+- ✅ [ANTS-3771] **Declare each project's id format in .ants/project.json so the reader stops guessing.**
   Every id rule in the reader today is a HEURISTIC inferred from the text,
   and each one is a guess that can be wrong in both directions. The GFM
   bold-lead-in rule is the live example: with no declared format, a bold
@@ -26784,6 +26784,47 @@ against current source before filing.
   lead-ins, 192 are the `**AX1. headline**` shape whose id is a PREFIX of the
   span, and 112 carry no digit at all. No pattern separates those 112 from
   deliberate digitless ids, which is why the keep-and-flag answer matters.
+  Resolved 2026-08-21. Shipped as specced, with two deviations and three
+  found defects, all recorded in the spec's new section 8.
+
+  A project may now write its ID grammar into .ants/project.json as
+  id_format {prefix?, pattern?}. prefix is generative: it beats the store's
+  id_prefix row and the markdown sniff in every prefix chain (roadmap_log
+  append/append_batch and the migration allocator), losing only to an
+  explicit id_prefix argument, and it refuses a written id whose prefix
+  disagrees. pattern is recognitional: it says which text of a GFM bold
+  lead-in IS the id, so `**AX1. Geometric occlusion**` reports AX1 with the
+  sentence as its headline, and a migration files it parsed rather than
+  quarantined. A non-match changes nothing and no id is ever emptied. A
+  project declaring nothing parses byte-identically to before.
+
+  The single load is ProjectSettings::idFormatFor() in ants_core_lib; the
+  declaration travels as a value to parseBullets, bulletsFor,
+  walkGfmBullets, planFrom and the loader's Options, because the read seam
+  is in a library that deliberately does not link core.
+
+  Deviation 1: spec section 2.3 puts the universal-grammar refusal at
+  "always, declaration or not". Measured, `Ts20-SP6` and `Demo-SP1` -- the
+  documented stable_id example and the values two shipped suites assert on
+  -- both fail that grammar, so unconditional it makes
+  id_strategy:"stable_prefix" unusable. Gated on the project having
+  declared instead.
+
+  Deviation 2: roadmapwrite.cpp's fileIds() keeps the bare overload; it
+  reads a migrated project's rendered ants-v1 output, where the branch a
+  declaration governs cannot run.
+
+  Found while building: parseBullets' memo was keyed on input text alone
+  (a correctness bug once one text may parse two ways); the write path has
+  its OWN GFM walker whose boldId an `id` locator matches, which section
+  2.2's consumer set missed; and ANTS-2225's INV-4b scrape matched an
+  unrelated line and would have passed with the fallback it names deleted.
+
+  tests/features/roadmap_id_format_declared, 19 cases, behavioural against
+  real files and stores. Red run verified: 9 of 19 fail on assertions with
+  the feature stubbed. Suite 3799/3799 green (3785 before).
+
+  Unblocks ANTS-4491.
 
 - 📋 [ANTS-3772] **3D_Engine and RetroDB carry roadmap ids that collide, so neither migrates.**
   Found by running ANTS-3765's loader over the ten-project corpus
@@ -37031,6 +37072,23 @@ are closed inline in the feedback files rather than filed here.
   fixed, and its one live consequence for this converter is already stated
   in the body above -- the source file is ~4.4% ants-v1 already, so the
   convert must be idempotent per bullet.
+  Unblocked 2026-08-21: ANTS-3771 has SHIPPED, so both hard prerequisites
+  this body names are now closed (ANTS-4575 earlier the same week).
+
+  What the converter gains, concretely. Vestige can declare its own id
+  grammar in .ants/project.json, and with a pattern declared the reader
+  resolves the 989 GFM bullets' lead-ins to real ids instead of adopting
+  whole sentences, a migration files a matched bullet parsed rather than
+  quarantined, and `id_inferred` narrows to exactly the bullets whose id is
+  still the reader's guess -- which is the per-bullet decision list this
+  converter needs. Two bullets sharing a prose lead-in still fold to one
+  identity where the pattern does not match, so authoring Vestige's pattern
+  against its own file remains that project's step, and the 427 measured
+  quarantines are the population to check it against.
+
+  What has NOT changed: the store is still a stale mirror (3D_E-0612 vs the
+  file's 0624), the source is still ~4.4% ants-v1 already, and the convert
+  must still be idempotent per bullet. Those three stay this item's work.
 
 - 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /

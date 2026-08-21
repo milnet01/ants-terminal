@@ -543,6 +543,18 @@ line numbers, and neither is silently merged or renamed.
 
 ### 2.6 Quarantine, and when it clears
 
+**ANTS-3771 added a second ACCEPTING rule, and it never narrows this one.** A
+project may declare its own id grammar in `.ants/project.json`; where it has,
+`isGrammaticalId()` takes an `IdFormat` parameter and accepts a token when the
+universal grammar accepts it **or** the declared pattern matches it whole. So a
+declared `AX1` migrates as `parsed`, and `ANTS-0042` still does. The parameter
+is not decoration: that function sees a token and nothing else, and after the
+declaration resolves a lead-in the token `AX1` is byte-indistinguishable from an
+off-grammar `Cl9` — both arrive as `idToken` with an empty `boldId`. A
+`BulletRecord::idDeclared` flag would have been the obvious alternative and is
+rejected, because it is a 23rd member against ANTS-3793's 22-member census.
+Everything below is unchanged for a project that declares nothing.
+
 The off-grammar ids are quarantined exactly as `roadmap-data-model.md` § 7.1
 requires: imported with the id **verbatim** — `Cl9`, the token's text, **without
 the surrounding brackets**, which are the markdown that delimits it and not part

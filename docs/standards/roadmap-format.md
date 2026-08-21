@@ -274,6 +274,23 @@ The ID is a project-prefixed monotonic integer:
   deleted (a deleted ID is *retired*; the next new bullet uses
   the next free number, not the deleted one).
 
+**A project may DECLARE its own id grammar** in `.ants/project.json`
+(ANTS-3771, `docs/specs/ANTS-3771-id-format-declaration.md`):
+
+```json
+{ "id_format": { "prefix": "ANTS", "pattern": "^([A-Za-z]{1,4}\\d+)(?:\\.|$)" } }
+```
+
+Two things it does NOT do. It does not narrow this section: the grammar above
+stays unconditionally accepted, and a declared `pattern` only ADDS a second
+accepting rule, for the GFM bold-lead-in shape (`**AX1. Some headline**` →
+`AX1`) that no bracket token can express. And it does not empty an id: a bullet
+the pattern does not match keeps exactly the id the reader gives it today.
+What it adds is that a project with ids this section cannot describe can say so
+in one place instead of every reader inferring it — and that a written id whose
+prefix disagrees with the declared one is refused (`id_format_mismatch`) rather
+than filed.
+
 On a project the roadmap store does not serve, and whose roadmap is not
 pass-headings — the carrier table below states exactly which those are,
 and it is not simply "has no store row" — the high-water mark lives in

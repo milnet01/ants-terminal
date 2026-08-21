@@ -261,6 +261,18 @@ migrated project's `ROADMAP.md` **is** that rendered text — so "what the store
 backend returns" and "what the markdown backend returns for this project after
 cutover" are the same object by construction rather than by coincidence.
 
+**ANTS-3771's declared id pattern is UNREACHABLE on this path, and the rule
+above is why.** A project may declare its own id grammar in
+`.ants/project.json`, and on the markdown path that pattern governs the GFM
+bold-lead-in branch. `bulletText()` emits **ants-v1**, so `gfmHere` is false
+for every record derived here and that branch never runs. `bulletsFor()` and
+`parseAntsV1Bullet()` still TAKE the declaration — carrying it is what makes
+this paragraph testable rather than asserted (that spec's INV-6) — and it
+cannot change a record. **The 22-member census is unchanged**: the declaration
+travels as a parameter, never as a `BulletRecord` field, which is why
+`isGrammaticalId()` gained an `IdFormat` argument instead of the record gaining
+a 23rd member.
+
 **`bulletText()` is why this is reachable at all.** `renderBullet()` is a free
 function in an anonymous namespace in `src/roadmaprender.cpp`; ANTS-3808 § 2.4
 exports `RoadmapRender::bulletText(const RoadmapStore::ItemWrite &)` as its

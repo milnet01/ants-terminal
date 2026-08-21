@@ -142,3 +142,41 @@ verb's `month_saved` / `ytd_saved` / `lifetime_saved` / `monthly[]` fields). See
 
 Values are JSON numbers (exact-integer to 2^53). The three data keys are written
 together behind a single `Config::save()` at fold time (never per MCP call).
+
+## Per-project `id_format` (ANTS-3771)
+
+**Not a config key** — it lives in the repo-committed
+`<root>/.ants/project.json` (ANTS-2160), not in
+`~/.config/ants-terminal/config.json`. Catalogued here because that is where a
+session looks for "what can I configure", and because it is the first key in
+that file that is not a path.
+
+```json
+{ "id_format": { "prefix": "ANTS", "pattern": "^([A-Za-z]{1,4}\\d+)(?:\\.|$)" } }
+```
+
+- `id_format.prefix` (string, optional) — the project's canonical ID prefix:
+  1-16 characters of `[A-Za-z0-9_-]` with at least one ASCII letter, validated
+  by the same `RoadmapFoldIn::isValidIdPrefix()` `roadmap_log`'s `id_prefix`
+  argument uses. **Generative half.** It beats the store's `id_prefix` row and
+  the markdown sniff in every prefix chain — `roadmap_log op:append` /
+  `op:append_batch` and the migration allocator alike — and loses only to an
+  explicit `id_prefix` argument. It also refuses a caller-supplied written id
+  whose prefix disagrees, with `id_format_mismatch`.
+- `id_format.pattern` (string, optional) — PCRE2, at most 512 bytes, matched
+  against a **GFM bold lead-in** with its one trailing `.` already dropped.
+  **Recognitional half.** Capture group 1 is the id (the whole match when the
+  pattern has no group); the text it did not consume becomes the headline. So a
+  project writing `- [ ] **AX1. Geometric occlusion**` reports `AX1` instead of
+  the whole sentence, and a migration files it `parsed` rather than
+  `quarantined`. A **non-match changes nothing** — the bullet keeps the id the
+  reader gives it today, and no id is ever emptied.
+
+Both members are optional and independent; a project may declare either alone.
+Written with `project_settings op:"set" id_format:{…}`, which refuses
+`bad_args` on an invalid member; `ProjectSettings::load()` **drops** an invalid
+member instead, so an unreadable declaration never takes the roadmap down with
+it. `op:"detect"` cannot suggest it — a grammar is not a path on disk.
+
+Full contract:
+[`../specs/ANTS-3771-id-format-declaration.md`](../specs/ANTS-3771-id-format-declaration.md).
