@@ -40786,6 +40786,43 @@ filed below.
   layman / 58 source / 54 lanes, so roughly 246 / 12 / 32 remain outside
   this project). One call each, same backup-first sequence, and it is
   other projects' data. Then phase 3, which stays LAST.
+  Phase 2 run across the WHOLE store 2026-08-21, on the user's say-so.
+  Backup first: roadmap.sqlite.pre-ANTS-4585p2-all.20260821-093420.bak
+  (sqlite3 .backup, 0600, integrity ok, 16 projects).
+
+  15 of 16 projects ran. Totals, this project included:
+
+    repaired 966 -- layman 870, source 68, lanes 28
+    chars recovered 88,070
+    skipped 37
+
+  Per project, repaired / skipped: Ants_Terminal 646/27, LocalWebServerManager
+  77/0, DOOM_Ants 71/0, finbreak 49/1, MAME_Curator 45/3, OneUp 21/0,
+  LottoTracker 13/0, Contact_List 12/0, APHW 9/5, .claude 8/1, Games_Hub 6/0,
+  Snatch 5/0, AI_Prompts 2/0, Rolodex 2/0, Music_Production 0/0.
+  Store after: 16 projects, integrity ok, foreign_key_check empty.
+
+  VESTIGE DID NOT RUN, and it is the largest project at 1026 items. It
+  refuses project_not_registered even though the store holds every one of
+  them -- the write-side dispatch gates on the ROADMAP.md's format and
+  Vestige's file is hand-written phase headings with no store marker.
+  Filed as ANTS-4601, with ANTS-4602 for the refusal that names "" instead
+  of the root, which is what made it cost a source read to diagnose.
+  Phase 3 will hit the same wall on that project.
+
+  Two corrections to the pre-ship measurement, from running it rather than
+  predicting it. Layman and source came in ABOVE it -- 870 and 68 against
+  824 and 58 -- because the survey's population was measured before this
+  project's own repairs shifted it. Lanes came in at 28 against 54, and
+  Vestige is the likely remainder. And phase 1's "clean at 0" list was
+  wrong for four of its six: .claude, AI_Prompts, Contact_List and OneUp
+  all had repairs (8, 2, 12, 21). Music_Production is genuinely 0 -- none
+  of its 357 items carries a surviving run at all, so nothing is
+  recoverable there by re-parse and nothing was lost.
+
+  Phase 2 is DONE for 15 projects. What remains: ANTS-4601 to reach
+  Vestige, the 37 skips (7 known hand edits, the rest undecided, see the
+  note above), then phase 3.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
@@ -41356,6 +41393,91 @@ filed below.
   Kind: fix.
   Source: ANTS-4585 phase 2 measurement, 2026-08-20.
   Lanes: roadmap-store, roadmapmigrate.
+
+- 📋 [ANTS-4601] **A store-only repair op is gated on the ROADMAP.md's format, so it cannot reach the largest migrated project.**
+  Found running ANTS-4585 phase 2 across all 16 projects. 14 ran. Vestige
+  refused `project_not_registered`, and it is the biggest project in the
+  store at 1026 items.
+
+  It IS registered. `roadmap_query mode:"report"` with the same caller_cwd
+  answers from the store with all 1026. What refuses is the write-side
+  dispatch: `roadmapSectionOpTarget()` reads the project's ROADMAP.md,
+  hands the text to `roadmapWriteTarget()` -> `migratedProject()`, and
+  Vestige's file is a hand-written phase-headings document carrying no
+  store-format marker. So the FILE says not-migrated while the STORE holds
+  the rows.
+
+  That gate is right for a section op, which has to write the file back.
+  It is wrong for `repair_trailers` and `backfill_dates`, which are
+  STORE-ONLY by contract -- neither renders anything, so neither needs the
+  file to be renderable. Both currently inherit the file gate from the
+  shared prologue.
+
+  The fix is a store-row lookup for the two store-only ops rather than the
+  file-shaped one, keeping the file gate for everything that writes the
+  file. Not attempted here: it changes a shared prologue that every
+  section op goes through, and the run it was blocking is done.
+
+  Until then Vestige's truncated columns stay short, and the phase-3
+  duplication pass will hit the same wall.
+  **Layman:** The roadmap repair tool refuses to run on Vestige even though Vestige's data is in the database.
+  Kind: fix.
+  Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
+  Lanes: remotecontrol, roadmapsource.
+
+- 📋 [ANTS-4602] **repair_trailers and backfill_dates name an empty string in the refusal that is supposed to name the project root.**
+  The refusal reads: the store holds no row for "". Run roadmap_migrate
+  first. The quotes are always empty, on every project, for both ops.
+
+  Cause, and it is one line of scope. `roadmapSectionOpTarget()`
+  (src/remotecontrol_roadmap_log.cpp:5429) assigns `*projectRoot` and
+  `*roadmapPath` only on the SUCCESS path, at the end of the function.
+  Every refusal returns before them, so both out-params are still empty
+  when the caller formats its message. `repair_trailers`
+  (src/remotecontrol_roadmap_repair.cpp:99) and `backfill_dates`
+  (src/remotecontrol_roadmap_backfill.cpp) both remap `op_unsupported` and
+  both interpolate `root.isEmpty() ? roadmapPath : root` -- so the
+  fallback is empty too and the ternary cannot help.
+
+  The damage is that the one refusal a caller needs to act on names
+  neither the project nor the file. It cost this session a source read to
+  learn which project had failed, when the caller_cwd was right there in
+  the request.
+
+  Fix: set the out-params from `callerCanonical` / `found` as soon as each
+  is known, not at the end. Both are already computed above every refusal
+  that follows them.
+  **Layman:** An error message meant to tell you which project failed prints empty quotes instead.
+  Kind: fix.
+  Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4603] **find_definition misses any member function whose return type sits on its own line.**
+  Measured twice this session, both real definitions, both returning
+  `definitions_count: 0` after scanning 947 files:
+
+    roadmapSectionOpTarget -> src/remotecontrol_roadmap_log.cpp:5430
+    roadmapWriteTarget     -> src/remotecontrol_roadmap_query.cpp:82
+
+  Both are written the way a long return type is normally wrapped:
+
+      std::optional<RemoteControl::RoadmapWriteTarget>
+      RemoteControl::roadmapWriteTarget(const QString &projectRoot,
+
+  The regex appears to want the return type and the qualified name on ONE
+  line, so a wrapped signature is invisible. `workspace_search` for the
+  qualified name found both immediately, which is the workaround and also
+  the proof the text is there.
+
+  Why it matters more than a miss: an empty `definitions[]` reads as "no
+  such symbol", which is a wrong answer rather than a missing one. A
+  session that trusts it concludes the function does not exist. This is
+  not rare style -- it is what every `std::optional<T>` returning member
+  in this codebase looks like.
+  **Layman:** The "where is this defined?" tool returns nothing for functions written in a common C++ style.
+  Kind: fix.
+  Source: in-session-2026-08-21 (ANTS-4585 phase 2 run).
+  Lanes: codebaseindex.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
