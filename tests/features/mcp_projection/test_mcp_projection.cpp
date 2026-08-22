@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <iterator>  // std::size — INV-10 derives its count
+
 #include <QByteArray>
 #include <QFile>
 #include <QJsonArray>
@@ -128,16 +130,33 @@ TEST(McpProjection, Ants2112SuccessNarrowingUnchanged) {
     EXPECT_TRUE(o.contains("bullets"));
 }
 
-// INV-8 — allowlist is exactly the twelve in-scope tools (original seven +
-// read_log/ANTS-1855, model_switch_stats/ANTS-1735, read_region/ANTS-2021,
-// codebase_index/ANTS-1637, docs_index/ANTS-2139 — matches the
-// makeFieldsProp() call-site count).
+// The in-scope projection tools, named ONCE. INV-8 asserts each is a member
+// of mcp::isFieldProjectionTool; INV-10 asserts each declares a `fields`
+// schema property. Those two must agree, and sharing the list is what makes
+// them agree by construction rather than by somebody remembering.
+//
+// ANTS-4624 — they did not agree, and the gap shipped. INV-10 asserted a
+// HARDCODED call-site count of 14, so when ANTS-4523 added session_orient to
+// the allowlist (15) the count still matched the 14 verbs that DO declare the
+// property, INV-10 kept passing, and the one member without it went out. The
+// dispatcher then required an array (`fv.isArray()`), the undeclared argument
+// arrived as a string, and the projection was silently skipped on the largest
+// response in the session. Deriving the count from this array is the whole
+// fix: adding a tool to one list now fails the other until both are done.
+//
+// Do NOT replace std::size(...) with a literal. The literal is the defect.
+constexpr const char *kFieldProjectionTools[] = {
+    "roadmap_query", "changelog_query", "project_layout", "file_outline",
+    "get_environment", "tab_list", "subsystem", "git_state", "read_log",
+    "model_switch_stats", "read_region", "codebase_index", "docs_index",
+    "co_change_family", "session_orient"};
+
+// INV-8 — every in-scope tool is field-projectable, and the out-of-scope
+// ones are not. ANTS-4624 widened the positive list from 13 to the full 15:
+// changelog_query (ANTS-3533) and co_change_family (ANTS-3368) were on the
+// allowlist and asserted by nothing, in a test calling itself Exact.
 TEST(McpProjection, Inv8AllowlistExact) {
-    for (const char *t : {"roadmap_query", "project_layout", "file_outline",
-                          "get_environment", "tab_list", "subsystem",
-                          "git_state", "read_log", "model_switch_stats",
-                          "read_region", "codebase_index", "docs_index",
-                          "session_orient"}) {
+    for (const char *t : kFieldProjectionTools) {
         EXPECT_TRUE(mcp::isFieldProjectionTool(QString::fromUtf8(t)))
             << t << " should be field-projectable";
     }
@@ -174,26 +193,26 @@ TEST(McpProjection, Inv9DispatchOrdering) {
         << "dispatch must gate projection on the allowlist";
 }
 
-// INV-10 — each in-scope tool declares a `fields` schema property.
+// INV-10 — each in-scope tool declares a `fields` schema property. The count
+// is DERIVED from kFieldProjectionTools above, so a tool added to the
+// allowlist without a schema property fails here (ANTS-4624).
 TEST(McpProjection, Inv10SchemaDeclaresFields) {
     QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     ASSERT_TRUE(f.open(QIODevice::ReadOnly));
     const QByteArray s = f.readAll();
     EXPECT_TRUE(s.contains("auto makeFieldsProp"))
         << "the shared `fields` schema fragment must be defined once";
-    // One call site per in-scope projection tool (ANTS-1855 added
-    // read_log → 8; ANTS-1735 added model_switch_stats → 9; ANTS-2021
-    // added read_region → 10; ANTS-1637 added codebase_index → 11;
-    // ANTS-2139 added docs_index → 12; ANTS-3533 added changelog_query
-    // → 13; ANTS-3368 added co_change_family → 14). The lambda definition
-    // reads `makeFieldsProp = [` so it is not counted by the call-form
-    // needle.
+    // The lambda definition reads `makeFieldsProp = [` so it is not counted
+    // by the call-form needle.
     int count = 0;
     int idx = 0;
     const QByteArray needle = "makeFieldsProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 14) << "expected 14 makeFieldsProp() call sites, got "
-                         << count;
+    EXPECT_EQ(count, int(std::size(kFieldProjectionTools)))
+        << "every tool in kFieldProjectionTools must declare a `fields` "
+           "schema property; expected "
+        << std::size(kFieldProjectionTools) << " makeFieldsProp() call sites, got "
+        << count;
 }
 
 // ───────────────────────────────────────────────────────────────────

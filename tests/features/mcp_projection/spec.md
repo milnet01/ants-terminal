@@ -69,7 +69,15 @@ short-circuits when state is unchanged.
 
   **`session_orient` joined the list under ANTS-4523**, having been absent
   by omission — the negative list below names `session_brief` and
-  `current_state` and never named it.
+  `current_state` and never named it. **That fix was incomplete and the gap
+  shipped (ANTS-4624)**: membership makes the dispatcher willing to project,
+  and the schema property is what lets the argument arrive projectable. See
+  INV-10.
+
+  **The positive list was widened to the full set by ANTS-4624.** It named
+  thirteen of fifteen — `changelog_query` (ANTS-3533) and `co_change_family`
+  (ANTS-3368) were on the allowlist and asserted by nothing, in a test
+  calling itself Exact.
 
   **Known contradiction, filed not fixed.** `tests/features/mcp_ignored_args`
   INV-2 calls `fields` a universal dispatch-layer arg that is NEVER reported
@@ -83,8 +91,29 @@ short-circuits when state is unchanged.
   `projectFields` call appears after `applyEtagPattern` and before the
   `wrapMcpData` call, and is guarded so the etag short-circuit
   (`{ok,unchanged,etag}`) is never narrowed.
-- **INV-10 — schema declares `fields`.** Each of the eleven tools'
-  `inputSchema.properties` carries a `fields` array-of-string property.
+- **INV-10 — schema declares `fields`.** Every tool on INV-8's list carries
+  a `fields` array-of-string property in its `inputSchema.properties`.
+
+  **ANTS-4624 — the count is now DERIVED, and that is the invariant.** This
+  read "each of the eleven tools" while the list held fourteen, and the test
+  asserted a hardcoded fourteen `makeFieldsProp()` call sites. So when
+  ANTS-4523 added `session_orient` to the allowlist the count still matched
+  the fourteen verbs that DO declare the property, INV-10 kept passing, and
+  the one member without it shipped. INV-8's own note — *a number no check
+  reads is a number that goes stale* — was true of INV-10 and nobody applied
+  it there.
+
+  The cost was silent: the dispatcher requires `fv.isArray()`, an undeclared
+  property gives the client no type to marshal to, so `fields` arrived as a
+  string and the projection was skipped on the largest response in the
+  session. Nothing reported it — `ignored_args` is barred from naming
+  `fields`, and passing the argument suppresses the very hint that
+  recommended it.
+
+  Both invariants now read one `kFieldProjectionTools` array in the test, and
+  INV-10 asserts `std::size` of it. Adding a tool to the allowlist without a
+  schema property fails INV-10; adding a schema property without the
+  allowlist fails INV-8. Do not reintroduce a literal.
 
 ## ANTS-2090 — tabular (columnar) encoding (`encoding:"tabular"`)
 

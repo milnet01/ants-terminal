@@ -6796,6 +6796,19 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     props["caller_cwd"] = cwdProp;
                     props["etag_match"] = etagProp;
+                    // ANTS-4624 — session_orient joined
+                    // mcp::isFieldProjectionTool in ANTS-4523 and never got
+                    // the matching schema property, so the dispatcher was
+                    // WILLING to project and the argument could not arrive in
+                    // a projectable form: the ANTS-1720 block requires
+                    // `fv.isArray()`, and with no declared property the client
+                    // marshals `fields` as a string. The projection was then
+                    // skipped in silence — ignored_args is barred from
+                    // reporting `fields` (it is a universal dispatch arg), and
+                    // passing it suppresses the leaner_call_hint that
+                    // recommended it, so the one signal a caller might have
+                    // noticed disappears on the call that needed it.
+                    props["fields"] = makeFieldsProp();
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));

@@ -149,6 +149,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`session_orient` now honours `fields=`, narrowing the largest response in the session** (ANTS-4624)
+  The verb joined the projection allowlist in 0.7.105 but never gained the
+  matching `fields` schema property, so the argument reached the dispatcher
+  as a string, failed its array check, and was skipped in silence — the
+  full bundle came back on every narrowed call. The property is now
+  declared, and the test that should have caught it derives its count from
+  the allowlist instead of hardcoding one.
+
 - **`roadmap_migrate` now declares its `op` and `confirm` arguments** (ANTS-4621)
   `op:"deregister"` and `confirm:true` were documented in the verb's
   description but declared in neither its schema properties nor any enum.
