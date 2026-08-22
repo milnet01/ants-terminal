@@ -39010,6 +39010,27 @@ are closed inline in the feedback files rather than filed here.
   and it generalises -- it is cheap to assert over the whole allowlist.
 
   Verify by CALLING it, per ANTS-4523's own advice.
+  Progress (2026-08-22). Fixed in 54356fb3, DELIBERATELY still planned.
+
+  session_orient's inputSchema now declares `fields` via makeFieldsProp(),
+  so the allowlist membership ANTS-4523 added can finally do something.
+
+  The durable half is the test. INV-8 and INV-10 now read one shared
+  kFieldProjectionTools array and INV-10 asserts std::size of it instead of
+  a hardcoded 14 — which is what let ANTS-4523 ship broken, since the
+  literal still matched the 14 verbs that did declare the property while
+  the allowlist had grown to 15. Red at 14 != 15 before the fix, green
+  after. INV-8's positive list also went from 13 to 15: changelog_query
+  and co_change_family were asserted by nothing.
+
+  Suite 100% of 3838.
+
+  NOT flipped, for the same reason ANTS-4622 was held: the running server
+  predates the change, so nothing has yet called session_orient with
+  fields= and seen a narrowed body. ANTS-4523's own body says the
+  advertisement is not evidence and to verify by calling — and it was
+  closed without doing that, which is precisely how this survived. Flip
+  only after a relaunch and a real call returning ONLY the listed keys.
   **Layman:** A fix marked done three days ago never actually worked, because the test checked a list instead of calling the tool.
   Kind: fix.
   Source: in-session-2026-08-22 (maintainer, measured).
