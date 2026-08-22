@@ -38963,6 +38963,57 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-20.
   Lanes: RoadmapDialog, build.
 
+- 📋 [ANTS-4624] **session_orient still drops fields=: ANTS-4523 fixed the allowlist and not the schema.**
+  Measured today, not reasoned from code. session_orient
+  {fields:["ok","server_build","mail_pending"]} returned the ENTIRE 35331-byte
+  bundle. That is ANTS-4523's exact symptom, and ANTS-4523 is marked shipped.
+
+  Not a stale binary: server_build 252b0b6b, built today, checked first per
+  that field's own hint.
+
+  ANTS-4523's fix added session_orient to mcp::isFieldProjectionTool. That is
+  necessary and NOT sufficient. The dispatch block also requires the value to
+  BE an array (claudeintegration.cpp, the ANTS-1720 projection: `if
+  (fv.isArray())`), and session_orient's inputSchema declares only caller_cwd
+  and etag_match with additionalProperties:false. With no declared property
+  there is no type to marshal to, so the argument arrives as a STRING,
+  isArray() is false, and the projection is skipped.
+
+  Proven with mcp_trace rather than inferred — record 11:
+  arg_keys {"caller_cwd":"string","fields":"string"}. The same client sends
+  session_message's declared message_id as "int" and include_acked as "bool",
+  so it marshals by declared type and an undeclared key degrades to string.
+
+  Three things make it silent, which is why it survived being fixed:
+  - ignored_args cannot report it: `fields` is on isUniversalDispatchArg's
+    exemption list, unconditionally.
+  - passing fields= SUPPRESSES both hints (maybeAddHints returns early on
+    args.contains("fields")), so the leaner_call_hint that recommended the
+    argument disappears on the call that used it — which reads as confirmation.
+  - the response is a success envelope, so nothing anywhere says it was dropped.
+
+  Why the test missed it: McpProjection.Inv8AllowlistExact asserts MEMBERSHIP
+  of the allowlist, a proxy for the behaviour. ANTS-4523's own body closes with
+  "call each verb that advertises fields= with a single key and confirm the
+  response carries only it -- the advertisement is not evidence." Its fix did
+  not do that.
+
+  Distinct from ANTS-4524 (open), which is about verbs OUTSIDE the allowlist.
+  This one is inside it. Note that ANTS-4524's preferred route 1 -- split the
+  predicate and make fields= universal -- does NOT fix this, because the
+  blocker is marshalling, not the predicate.
+
+  Fix: declare `fields` in session_orient's inputSchema as an array of strings,
+  mirroring roadmap_query's. Then add the invariant that would have caught it:
+  every tool in mcp::isFieldProjectionTool declares a fields property of type
+  array. That is the check whose absence let a proxy test pass a broken fix,
+  and it generalises -- it is cheap to assert over the whole allowlist.
+
+  Verify by CALLING it, per ANTS-4523's own advice.
+  **Layman:** A fix marked done three days ago never actually worked, because the test checked a list instead of calling the tool.
+  Kind: fix.
+  Source: in-session-2026-08-22 (maintainer, measured).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
@@ -53858,7 +53909,7 @@ here.)
   Source: in-session-2026-08-21 (noticed while landing ANTS-3771's cross-doc impact).
   Lanes: docs.
 
-- 📋 [ANTS-4622] **Cross-session mailbox: a `message` table in the store, plus its verbs.**
+- ✅ [ANTS-4622] **Cross-session mailbox: a `message` table in the store, plus its verbs.**
   User-requested fields: from, to, date, message, confirmation (the
   receiver marks it received). Needs a spec before code — it is a contract
   other projects bind to, and it touches the schema, the verb surface and
@@ -53944,6 +53995,27 @@ here.)
   on this bump and was VACUOUS until it: at one rung there was nothing to
   climb. Sharing one DDL constant between createSchema() and the rung is
   what made it pass first try.
+  Resolved (2026-08-22). Round trip observed through the dispatcher on the
+  relaunched binary (server_build 252b0b6b), which is what this item was
+  held open for: the suite proved the store and the handler, and nothing
+  had ever called the verb through the MCP layer.
+
+  Verified live, in order: dry_run send returned would_send with no
+  message_id (ANTS-4463) and wrote zero rows; send returned message_id 1;
+  inbox returned it with acked_at ABSENT; session_orient carried
+  mail_pending {unacked_count:1, from:["ants-terminal"]}; ack stamped
+  acked_at; a second ack answered already_acked:true and no acked_at, the
+  first ack being the fact; inbox include_acked:true showed the stamp with
+  unacked_count 0; and session_orient then omitted mail_pending entirely,
+  so the block gates in both directions.
+
+  Refusals exercised: unknown_project on an unregistered `to`, not_found
+  on an absent message_id, no_project on an unregistered caller_cwd. The
+  project table stayed at 16 rows across all of it, so the caller-resolve
+  path did not upsert (ANTS-4600).
+
+  No ignored_args advisory on any call, so every argument the handler
+  reads is declared — the ANTS-4621 trap this verb was written to avoid.
   **Layman:** Let the Claude sessions working on different projects leave each other messages, and see when a message has been picked up.
   Kind: feature.
   Source: user-request-2026-08-22.
