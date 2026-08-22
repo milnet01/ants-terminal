@@ -53899,6 +53899,22 @@ here.)
 
   Verb shape: one verb with ops (send / inbox / ack), matching roadmap_log
   rather than three thin verbs.
+  Progress (2026-08-22): spec accepted at
+  docs/specs/ANTS-4622-cross-session-mailbox.md. review-contract ran to its
+  cap of 2 loops, 6 cold lanes, 19 verified findings all fixed, no deferred
+  tail. Status stays planned — no code written.
+
+  All four decisions this item asked for are made: address by project
+  export_slug (a session is its shell PID, which is ephemeral and reused);
+  session_orient carries the inbox and never the outbox; the feedback
+  corpus asks for work to be FILED while the mailbox asks for a person to
+  KNOW something; two confirmation states in one nullable acked_at.
+
+  The gate found a THIRD coupling this item did not name, alongside the FK
+  delete order and retention: the export/import round-trip. A message
+  references two projects and an export carries one, so exporting mail
+  would import rows whose other end does not exist. Mail is explicitly not
+  exported, and kExportSchemaVersion does not move.
   **Layman:** Let the Claude sessions working on different projects leave each other messages, and see when a message has been picked up.
   Kind: feature.
   Source: user-request-2026-08-22.
