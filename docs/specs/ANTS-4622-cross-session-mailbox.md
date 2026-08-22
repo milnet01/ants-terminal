@@ -88,17 +88,36 @@ CREATE TABLE message (
   message_id      INTEGER PRIMARY KEY,
   from_project_id INTEGER NOT NULL REFERENCES project(project_id),
   to_project_id   INTEGER NOT NULL REFERENCES project(project_id),
-  from_session    TEXT NOT NULL DEFAULT '',
+  from_session    TEXT NOT NULL DEFAULT ''
+                    CHECK (length(CAST(from_session AS BLOB)) <= 128),
   created_at      TEXT NOT NULL
                     CHECK (created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'),
-  body            TEXT NOT NULL CHECK (length(body) > 0 AND length(body) <= 4096),
+  body            TEXT NOT NULL
+                    CHECK (length(body) > 0
+                       AND length(CAST(body AS BLOB)) <= 4096),
   acked_at        TEXT
                     CHECK (acked_at IS NULL OR acked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z')
 )
 ```
 
+```sql
+CREATE INDEX message_inbox_idx ON message(to_project_id, acked_at)
+```
+
 The `created_at` GLOB mirrors `history.changed_at` verbatim rather than
 inventing a second timestamp convention.
+
+**Both caps are byte-valued, and that is not a detail.** SQLite's `length()`
+counts **characters** on a TEXT value, so `length(body) <= 4096` would admit
+4096 characters — up to 16 KiB of UTF-8, four times what § 4 budgets — and a
+handler validating bytes would accept bodies the constraint then rejects.
+`CAST(… AS BLOB)` is what makes the cap mean bytes (verified: 2000 three-byte
+characters are refused, 1000 are accepted at 3000 bytes).
+
+**The index ships in the same array as the tables.** `roadmapstore.cpp`'s
+`ddl[]` already holds six `CREATE UNIQUE INDEX` statements beside its nine
+`CREATE TABLE` ones, so an index is schema here on exactly the same footing and
+inherits the byte-identity rule below.
 
 **The DDL text is part of the schema.** `src/roadmapstore.cpp` states the rule
 above its `ddl[]` array: SQLite stores a `CREATE TABLE` verbatim, comments
@@ -122,10 +141,30 @@ three thin verbs.
 | `inbox` | `caller_cwd` | `include_acked`, `limit`, `offset` | `messages[]`, `unacked_count` |
 | `ack` | `caller_cwd`, `message_id` | — | `acked_at`, `already_acked` |
 
-Refusal codes, per `docs/standards/mcp-error-codes.md`: `unknown_project`
-(the `to` slug resolves to no row), `not_found` (`ack` on an id that does not
-exist), `forbidden` (`ack` on a message addressed to another project),
-`inbox_full` (§ 2.6), `bad_args` (empty or oversized body).
+**All three ops require the CALLING project to be registered**, because
+`from_project_id` is `NOT NULL` and `inbox`/`ack` resolve the caller the same
+way. That refusal is `no_project`, which the taxonomy already carries — a
+caller in an unregistered checkout must be able to tell *you are not
+registered* from *your recipient is unknown*, and one code cannot say both.
+
+Refusal codes: `no_project` (the caller's own root is not registered),
+`unknown_project` (the `to` slug resolves to no row), `not_found` (`ack` on an
+id that does not exist **or on a message addressed to another project** —
+deliberately the same code, so a probe cannot use the refusal to learn that a
+message id exists), `inbox_full` (§ 2.6), `bad_args` (empty or oversized body).
+
+Of these, `no_project`, `not_found` and `bad_args` are already in
+`docs/standards/mcp-error-codes.md`; **`unknown_project` and `inbox_full` are
+new and the standard gains them in the same change** (§ 7). No third new code
+is introduced — an earlier draft added `forbidden` for the wrong-recipient
+`ack`, which both grew the taxonomy and leaked existence.
+
+Each `messages[]` entry carries `message_id`, `from` (the sender's
+`export_slug`), `from_session`, `created_at`, `body` and `acked_at`. The first
+two are load-bearing rather than informational: `ack` takes the `message_id`,
+and a reply — which § 5 makes the substitute for threading — needs the sender's
+slug to address `to`. An entry without them leaves both paths unusable from an
+inbox read.
 
 **Two contracts this verb inherits rather than re-derives:**
 
@@ -189,8 +228,17 @@ eight.
 Nothing in the design ever finishes with a message, so growth is unbounded
 unless capped. Two rules, and they are deliberately asymmetric:
 
-- **Acked mail is pruned after 30 days**, opportunistically on the next `send`
-  by the same project. An acked message has done its job.
+- **Acked mail is pruned after 30 days**, opportunistically on **any** op by
+  the calling project, over rows whose `to_project_id` is that project — a
+  project prunes its own inbox. An acked message has done its job.
+
+  **Both halves of that sentence are load-bearing.** Hanging the prune off
+  `send` alone would never fire for a project that acks its mail and never
+  sends again, so § 4's bound would hold only while a project keeps sending.
+  And *the calling project* has to name a side: scoped to `from_project_id` a
+  project would prune rows sitting in **other** projects' inboxes and never its
+  own, which is both surprising and the reading under which INV-8 passes
+  without exercising anything.
 - **Unacked mail is never auto-pruned**, at any age. Deleting undelivered mail
   is the one prune that loses the thing the feature exists to carry; an old
   unread message means nobody has picked that project up, which is exactly when
@@ -221,20 +269,24 @@ message is indistinguishable from one never sent.
   plus a second `ack` returning `already_acked:true` with `acked_at` unchanged.
 - **INV-4** — `session_orient` reports the inbox, never the outbox. *Test:*
   project A sends to project B and nobody acks; **the pair is the assertion** —
-  B's `mail_pending` counts one and A's is absent or zero. B's leg is what
-  distinguishes a working direction predicate from a block that failed to render
-  at all, which would also leave A at zero. The message is unacked, so an ack
-  filter cannot produce A's zero either.
+  B's `mail_pending` counts one and A's is **absent**, not present-and-zero,
+  which § 2.4 requires for ETag stability. B's leg is what distinguishes a
+  working direction predicate from a block that failed to render at all, which
+  would also leave A empty. The message is unacked, so an ack filter cannot
+  account for A either.
 - **INV-5** — Deregistering a project removes its mail from both ends and no
   further. *Test:* A and B exchange messages and B also holds an unrelated
   message from C; deregister A; no `message` row referencing A survives, and
   B's message from C is untouched. The surviving row is what distinguishes a
   scoped delete from a table truncate.
 - **INV-6** — The bump is expressed twice and the two agree: a store created at
-  version 3 and one climbed from version 2 hold byte-identical `message` DDL in
-  `sqlite_master`. *Test:*
-  `tests/features/roadmap_store_upgrade/test_roadmap_store_upgrade.cpp`, the
-  comparison ANTS-3815 INV-3 already performs, extended to the new table.
+  version 3 and one climbed from version 2 hold byte-identical `sqlite_master`
+  text — the table **and** its index, since both ship in `ddl[]`. *Test:*
+  `tests/features/roadmap_store_upgrade/test_roadmap_store_upgrade.cpp`. Its
+  ANTS-3815 INV-3 comparison is `SELECT sql FROM sqlite_master WHERE sql IS NOT
+  NULL ORDER BY rowid`, **derived rather than a hardcoded table list**, so it
+  covers the new rows without being extended. What would break it is the rung
+  and the array disagreeing by one character.
 - **INV-7** — Every argument `session_message`'s handler reads via
   `req.value()` is declared in the verb's `inputSchema.properties`, and `op`'s
   enum carries `send`, `inbox` and `ack`. *Test:* the ANTS-4621 guard's shape —
@@ -243,10 +295,12 @@ message is indistinguishable from one never sent.
   against the source rather than the engine, because no test that drives the
   engine seam crosses the dispatcher.
 - **INV-8** — Unacked mail survives the retention pass at any age. *Test:*
-  an unacked message stamped older than § 2.6's TTL, then a `send` from the same
-  project to trigger the prune; the old message remains. It is over the
-  TTL, so an age filter alone would delete it — only the acked predicate spares
-  it.
+  an unacked message **in the calling project's own inbox** stamped older than
+  § 2.6's TTL, then any op by that project to trigger the prune; the message
+  remains. The fixture has to sit inside the pruning scope § 2.6 defines, or the
+  prune never reaches it and the invariant passes without exercising anything.
+  It is over the TTL, so an age filter alone would delete it — only the acked
+  predicate spares it.
 - **INV-9** — A full inbox refuses rather than drops. *Test:* fill a
   recipient to § 2.6's cap, send once more, assert `code:"inbox_full"` and that
   the recipient's row count is unchanged.
@@ -259,8 +313,11 @@ message is indistinguishable from one never sent.
 **Store growth is capped by § 2.6, not by hope.** Worst case per recipient is
 500 unacked × 4 KiB body = 1.95 MiB; across the 16 registered projects, 31.2 MiB
 of `message` bodies before any `send` is refused (`python3 -c "print(500*4096*16/1048576)"`).
-Acked mail adds at most 30 days of traffic on top and is pruned without operator
-action.
+**Those figures depend on § 2.2's caps being byte-valued** — under a character
+cap the same DDL admits four times as much — and on `from_session` being bounded
+too, which is why it carries its own CHECK rather than only a default. Acked
+mail adds at most 30 days of traffic on top and is pruned by § 2.6's trigger
+without operator action.
 
 **Resident cost is an inbox read, not the table.** `inbox` selects one
 recipient's rows with a default `limit` of 20 and never loads the table;
@@ -294,6 +351,15 @@ sits at exactly the 6000 lines ANTS-3833 INV-6 caps a TU at, with no headroom
   does not promise.
 - **Cross-machine delivery.** The store is machine-global, not network-shared.
   Everything here is one machine's sessions talking to each other.
+- **Export and import.** `message` is deliberately NOT serialised by
+  `src/roadmapexport.cpp`, which today emits nine `"t"`-tagged record types and
+  gains no tenth. The reason is structural rather than a judgement about worth:
+  **a message references two projects and an export carries one**, so exporting
+  a project's mail would import rows whose other end does not exist — the
+  dangling reference § 2.5 exists to prevent, arriving through the import path
+  instead. `kExportSchemaVersion` therefore does not move. The cost is real and
+  accepted: an export/import round-trip loses mail. No id — this is a decision
+  not to build it.
 
 ## 6. Tests
 
@@ -320,8 +386,9 @@ however well it reads.
 
 - `CLAUDE.md` — the roadmap-store paragraph names the nine-table delete order
   and its hand-written FK sequence; both become ten.
-- `docs/standards/mcp-error-codes.md` — `unknown_project` and `inbox_full` if
-  either is new to the taxonomy.
+- `docs/standards/mcp-error-codes.md` — gains `unknown_project` and
+  `inbox_full`. Both are new; `no_project`, `not_found` and `bad_args` are
+  already catalogued and this spec reuses them unchanged (checked 2026-08-22).
 - `docs/standards/mcp-tools.md` — the new verb joins the authoring checklist's
   conformance set.
 - `docs/specs/ANTS-3756-roadmap-store-schema.md` — the schema spec gains the
@@ -334,3 +401,4 @@ however well it reads.
 
 | Loop | Date | Lanes | Q-count | Outcome |
 |---|---|---|---|---|
+| 1 | 2026-08-22 | 3, cold — genre pinned `spec`; one byte-stable shared packet carrying the `roadmapstore` DDL rules, `deregisterProject()`, the upgrade ladder, the PID-identity branch and the `feedback_pending` window | **Q1 3 · Q2 3 · Q3 4** (10 verified / 0 dismissed) | **Ten verified, ten fixed; nothing deferred.** **All three lanes independently found the same Q1**, and it is the run's most consequential: SQLite's `length()` counts **characters** on a TEXT value, so the draft's `length(body) <= 4096` capped 4096 *characters* — up to 16 KiB of UTF-8 — making every figure in § 4 understated by up to 4×, and leaving a handler that validates bytes accepting bodies the constraint then rejects. Now `length(CAST(body AS BLOB))`, verified by the refuting case (2000 three-byte characters refused, 1000 accepted at 3000 bytes). One lane added the other half: `from_session` carried no CHECK at all, so a row was unbounded whatever the body cap said. **The best Q3 was a coupling the roadmap item never named** — `src/roadmapexport.cpp` serialises nine `"t"`-tagged per-project record types, and the draft said nothing about whether mail joins them. It does not, and the reason is structural: a message references TWO projects and an export carries one, so exporting mail would import rows whose other end does not exist — the dangling reference § 2.5 exists to prevent, arriving through the import path. **Two Q3s were one ambiguity with two victims:** *"the next `send` by the same project"* never said which side it scoped, and under the `from_project_id` reading INV-8 passed without exercising anything — the vacuous-fixture trap, in a clause written the same day the drafting rule warning about it was read. The prune now fires on any op by the calling project over its own inbox, which also closes the Q2 where a project that acks and never sends again would never prune while § 4 promised a 30-day bound. **Three of the ten were the spec claiming things about documents it had not re-read:** `forbidden`, `unknown_project` and `inbox_full` were cited *per* `mcp-error-codes.md` and are absent from it, while `no_project` — the exact code for the unregistered-caller case the draft left unspecified — was already there. `forbidden` is dropped outright: reusing `not_found` for a message addressed elsewhere removes a new code and stops a probe learning that an id exists. **Open questions, none of which became findings:** the upgrade harness's ANTS-3815 INV-3 comparison is `SELECT sql FROM sqlite_master … ORDER BY rowid`, derived rather than a hardcoded list, so INV-6 needed its claim widened rather than the harness extended; `forbidden` appears 0 times in `src/`; and no other length CHECK exists in `roadmapstore.cpp` to set a character-vs-byte precedent. |
