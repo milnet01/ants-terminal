@@ -12260,6 +12260,33 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: test.
   Source: in-session-2026-08-19 (ANTS-4462 verification).
 
+- 📋 [ANTS-4623] **spec_lint has no §Invariants ↔ §Tests parity check.**
+  Found while writing ANTS-4622's spec. `spec_lint` checks
+  `invariant_no_test` (an INV with no test clause) and `invariant_id_gap`
+  (a hole in the id sequence), but nothing checks the OTHER direction:
+  that the ids the Tests section claims to cover match the ids § Invariants
+  declares.
+
+  check-doc-facts' catalogue calls this pair "the highest-yield pair in a
+  structured document and the one a citation search cannot find" — the two
+  sections restate the same set in different words, so they share no token
+  to grep for and can disagree indefinitely.
+
+  Hand-rolled it with awk on ANTS-4622 and it earned its keep immediately:
+  the Tests section wrote coverage as a RANGE (`INV-1..INV-5`), which no
+  machine check can expand, so the parity was unverifiable rather than
+  wrong. Expanding the range fixed it. A verb-side check would have to
+  decide whether to expand ranges or to flag them as unverifiable — the
+  second is probably right, and is the cheaper rule.
+
+  Suggested finding kinds: `test_coverage_gap` (an INV no test section
+  names) and `test_coverage_unverifiable` (range notation defeating the
+  comparison). CANDIDATE, not a finding: a spec may legitimately leave an
+  invariant to a surface the Tests section does not enumerate.
+  **Layman:** Catch a spec that declares ten contracts and only remembers to test eight.
+  Kind: enhancement.
+  Source: in-session-2026-08-22.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
