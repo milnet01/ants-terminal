@@ -42659,6 +42659,25 @@ open, and two of these were exactly that.
   Kind: refactor.
   Source: in-session-2026-08-21.
 
+- 🚧 [ANTS-4621] **Declare roadmap_migrate's `op` and `confirm` in its schema.**
+  ANTS-4617 shipped op:"deregister" and confirm:true documented at length
+  in the verb DESCRIPTION and declared in neither the schema's properties
+  nor its enum. The schema sets additionalProperties:false, so a strictly
+  validating MCP client refuses the call before it reaches the handler.
+
+  The permissive path is the worse one. ANTS-2175's ignored_args advisory
+  is built from inputSchema.properties, so a live deregister returns
+  `"ignored_args":["op"]` — the envelope tells the caller its argument was
+  ignored, on the very call that argument selected. Measured on the live
+  verb after the 2026-08-22 relaunch, not inferred.
+
+  Not caught by ANTS-4617's own tests because every one of them drives
+  RoadmapMigrateVerb::deregister() directly, which is correct for the
+  engine and cannot see a schema the dispatcher never applied.
+  **Layman:** The new "forget this project" command worked but was not listed in the tool's own instructions, so the reply wrongly said its main setting had been ignored.
+  Kind: fix.
+  Source: in-session-2026-08-22 (live verb test after relaunch).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

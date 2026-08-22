@@ -137,3 +137,42 @@ it was not aimed at.
 - **`Ants4617UnknownProjectIsNotFound`** — not a silent success. A prune loop
   reading `ok:true` for a project it never removed would report a clean store it
   had not cleaned.
+
+## ANTS-4621 — the schema has to declare what the handler reads
+
+ANTS-4617 shipped `op` and `confirm` documented at length in the verb's
+**description** and declared in neither the schema's `properties` nor any enum.
+The schema sets `additionalProperties: false`, so a strictly validating MCP
+client refuses the call before the handler is ever entered.
+
+The permissive path is the worse one, and it is the one that was measured.
+ANTS-2175 builds its `ignored_args` advisory from `inputSchema.properties`, so a
+live deregister after the 2026-08-22 relaunch answered:
+
+```
+"ignored_args":["op"], "code":"confirm_required"
+```
+
+— the envelope telling the caller its argument was ignored, on the very call
+that argument had just steered. A caller who believes that advisory concludes
+deregister never ran.
+
+**Why ANTS-4617's own tests could not catch it.** Every one of them drives
+`RoadmapMigrateVerb::deregister()` directly. That is correct for the engine —
+the seam exists so a test can link it without dragging `MainWindow` — but it
+means no test crossed the dispatcher, and the schema is the dispatcher's half of
+the contract. The gap is structural rather than an oversight, so the guard is
+written against the **source**, which is the only place both halves are visible.
+
+- **INV-11** — every argument `cmdRoadmapMigrate` reads via `req.value()` is
+  declared in the verb's `inputSchema.properties`, `caller_cwd` excepted as a
+  universal dispatch-layer arg (ANTS-2175 INV-2). Asserted by scraping the
+  handler for its `req.value()` keys rather than from a hardcoded list, so an
+  op added later and left undeclared fails without anyone remembering to extend
+  the test.
+
+- **`Ants4621SchemaDeclaresDeregisterArgs`** — `op` and `confirm` are declared,
+  and `op`'s enum carries `deregister`; without the enum value a client offering
+  completions never surfaces the op at all.
+- **`Ants4621HandlerReadsOnlyDeclaredArgs`** — INV-11 in general form. Both
+  assertions fail against the pre-fix tree.

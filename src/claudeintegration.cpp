@@ -11559,6 +11559,50 @@ void ClaudeIntegration::onMcpConnection() {
                             "bad_args.");
                         props["export_slug"] = p;
                     }
+                    // ANTS-4621 — declared because the HANDLER READS THEM.
+                    // ANTS-4617 shipped both documented in the description and
+                    // in neither the properties nor the enum, and this schema
+                    // sets additionalProperties:false — so a strictly
+                    // validating client refuses the call before the handler is
+                    // reached. The permissive path is worse: ANTS-2175 builds
+                    // `ignored_args` from inputSchema.properties, so a live
+                    // deregister answered "ignored_args":["op"] — telling the
+                    // caller its argument did nothing, on the call that
+                    // argument had just steered.
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        e.append(QStringLiteral("migrate"));
+                        e.append(QStringLiteral("deregister"));
+                        p["enum"] = e;
+                        p["description"] = QStringLiteral(
+                            "Verb mode. Default \"migrate\" (omit it) — load "
+                            "this project's markdown roadmap into the store. "
+                            "\"deregister\" (ANTS-4617) is the INVERSE: it "
+                            "DELETES the project and every row that hangs off "
+                            "it, keyed by caller_cwd's root or by "
+                            "`export_slug` when the files are already gone. "
+                            "It refuses `confirm_required` while the root "
+                            "still exists on disk — pass `confirm:true` to "
+                            "override. Preview it with `dry_run:true`, which "
+                            "reports the per-table counts and deletes "
+                            "nothing.");
+                        props["op"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "op:\"deregister\" only. Clears the "
+                            "`confirm_required` refusal raised when the "
+                            "project root still EXISTS on disk: the store is "
+                            "primary and ROADMAP.md is its render, so the rows "
+                            "are the only copy of that project's history, "
+                            "relationships and citations. An absent root needs "
+                            "no confirmation. Ignored by the migrate op.");
+                        props["confirm"] = p;
+                    }
                     props["dry_run"] = makeDryRunProp();
                     schema["properties"] = props;
                     QJsonArray req;

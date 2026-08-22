@@ -1401,3 +1401,88 @@ TEST(RoadmapMigrateVerb, Ants4617UnknownProjectIsNotFound) {
     EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
               QStringLiteral("not_found"));
 }
+
+// ---------------------------------------------------- ANTS-4621 schema decl --
+
+// The `roadmap_migrate` entry of the tools/list array, from `t["name"] =
+// "roadmap_migrate"` to its `tools.append(t)`. Scraped rather than built: the
+// assembled array lives inside ClaudeIntegration, which drags MainWindow behind
+// it, and this bundle links neither — the same reason INV-2(b) is a grep.
+static QString migrateToolBlock() {
+    QFile f(QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/claudeintegration.cpp"));
+    if (!f.open(QIODevice::ReadOnly))
+        return QString();
+    const QString all = QString::fromUtf8(f.readAll());
+    const int start = all.indexOf(QStringLiteral("t[\"name\"] = \"roadmap_migrate\";"));
+    if (start < 0)
+        return QString();
+    const int end = all.indexOf(QStringLiteral("tools.append(t);"), start);
+    if (end < 0)
+        return QString();
+    return all.mid(start, end - start);
+}
+
+// ANTS-4621 — every argument the HANDLER reads must be declared in the verb's
+// schema. `op` and `confirm` were not: the schema sets
+// additionalProperties:false, so a validating client rejects the call outright,
+// and the permissive path is worse than the strict one — ANTS-2175's
+// `ignored_args` advisory names `op` as ignored while that very argument is
+// what selected the deregister branch. A caller reading the envelope is told
+// its argument did nothing, by the call the argument just steered.
+//
+// Falsifiable against the pre-fix tree: both assertions fail there.
+TEST(RoadmapMigrateVerb, Ants4621SchemaDeclaresDeregisterArgs) {
+    const QString block = migrateToolBlock();
+    ASSERT_FALSE(block.isEmpty())
+        << "ANTS-4621: roadmap_migrate tool block not found in claudeintegration.cpp";
+
+    EXPECT_TRUE(block.contains(QStringLiteral("props[\"op\"]")))
+        << "ANTS-4621: cmdRoadmapMigrate reads req[\"op\"] to select deregister, "
+           "so the schema must declare it";
+    EXPECT_TRUE(block.contains(QStringLiteral("props[\"confirm\"]")))
+        << "ANTS-4621: deregister's confirm_required refusal is only clearable "
+           "by confirm:true, so the schema must declare it";
+
+    // The declaration has to carry the value that reaches the branch, else a
+    // client offering completions never surfaces it.
+    EXPECT_TRUE(block.contains(QStringLiteral("deregister")))
+        << "ANTS-4621: op's enum must contain \"deregister\"";
+}
+
+// The two names the schema declares are exactly the two the handler reads.
+// Guards the reverse drift: a later op added to the handler and not to the
+// schema lands back in `ignored_args` with no test to catch it.
+TEST(RoadmapMigrateVerb, Ants4621HandlerReadsOnlyDeclaredArgs) {
+    QFile f(QStringLiteral(ANTS_SRC_DIR)
+            + QStringLiteral("/remotecontrol_roadmap_migrate.cpp"));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QStringList lines =
+        QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+
+    static const QRegularExpression reValue(
+        QStringLiteral("req\\.value\\(QStringLiteral\\(\"([a-z_]+)\"\\)\\)"));
+    QStringList read;
+    for (const QString &line : lines) {
+        if (line.trimmed().startsWith(QStringLiteral("//")))
+            continue;
+        auto it = reValue.globalMatch(line);
+        while (it.hasNext()) {
+            const QString key = it.next().captured(1);
+            if (!read.contains(key))
+                read.append(key);
+        }
+    }
+    read.sort();
+    ASSERT_FALSE(read.isEmpty()) << "ANTS-4621: scrape found no req.value() calls";
+
+    const QString block = migrateToolBlock();
+    ASSERT_FALSE(block.isEmpty());
+    for (const QString &key : read) {
+        if (key == QStringLiteral("caller_cwd"))
+            continue;   // universal dispatch-layer arg (ANTS-2175 INV-2)
+        EXPECT_TRUE(block.contains(QStringLiteral("props[\"%1\"]").arg(key)))
+            << "ANTS-4621: the handler reads \"" << key.toStdString()
+            << "\" but the schema does not declare it — additionalProperties is "
+               "false, and ignored_args will call it ignored";
+    }
+}
