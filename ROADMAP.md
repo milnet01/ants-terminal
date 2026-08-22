@@ -53915,6 +53915,35 @@ here.)
   references two projects and an export carries one, so exporting mail
   would import rows whose other end does not exist. Mail is explicitly not
   exported, and kExportSchemaVersion does not move.
+  Progress (2026-08-22): implemented and pushed across three commits —
+  store layer (b0d34698), verb + orient block (ead39bd5), cross-doc
+  (9759a1d5). Suite 3839 to 3852 declared, 100% of 3838 green under the
+  default preset. 13 tests, every one observed failing for the reason it
+  exists.
+
+  DELIBERATELY still planned, not shipped. The verb has never been called
+  through the dispatcher: the running MCP process predates it, so a
+  relaunch is needed before a real send/inbox/ack round trip can be made.
+  Flipping now would mean a future session reads "the mailbox works" on
+  the strength of tests that all stop short of the dispatcher — which is
+  exactly the gap ANTS-4621 fell through, where every test passed while
+  the verb was uncallable. Flip after the round trip is observed.
+
+  Four defects the work surfaced, all fixed. A null QString binds as SQL
+  NULL rather than '', so the commonest call (a send with no session
+  provenance) tripped NOT NULL — 8 of 9 tests red on one cause. The
+  dry-run branch hand-rolled a project-row read, which RoadmapRender
+  INV-11 forbids; the fix (projectIdForSlug on the store, used by both
+  call sites) left the code shorter than before it. Registering a verb
+  owes four things enforced mechanically — a callerCwdContractFor branch,
+  a selection_hint, a kindForName bucket and a TU ordinal — and the first
+  full-suite run caught all four. README's tool count 93 to 94 was caught
+  by the pre-push hook rather than by me.
+
+  ANTS-3781 INV-8 (a DDL-built store and a climbed one must agree) passes
+  on this bump and was VACUOUS until it: at one rung there was nothing to
+  climb. Sharing one DDL constant between createSchema() and the rung is
+  what made it pass first try.
   **Layman:** Let the Claude sessions working on different projects leave each other messages, and see when a message has been picked up.
   Kind: feature.
   Source: user-request-2026-08-22.
