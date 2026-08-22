@@ -42659,7 +42659,7 @@ open, and two of these were exactly that.
   Kind: refactor.
   Source: in-session-2026-08-21.
 
-- 🚧 [ANTS-4621] **Declare roadmap_migrate's `op` and `confirm` in its schema.**
+- ✅ [ANTS-4621] **Declare roadmap_migrate's `op` and `confirm` in its schema.**
   ANTS-4617 shipped op:"deregister" and confirm:true documented at length
   in the verb DESCRIPTION and declared in neither the schema's properties
   nor its enum. The schema sets additionalProperties:false, so a strictly
@@ -42674,6 +42674,13 @@ open, and two of these were exactly that.
   Not caught by ANTS-4617's own tests because every one of them drives
   RoadmapMigrateVerb::deregister() directly, which is correct for the
   engine and cannot see a schema the dispatcher never applied.
+  Resolved (2026-08-22): `op` declared with an enum carrying
+  "migrate"/"deregister", and `confirm` declared as a boolean. INV-11 added
+  to tests/features/roadmap_migrate_verb/spec.md and guarded by two cases
+  that scrape the handler for its own req.value() keys rather than a
+  hardcoded list, so a later undeclared op fails without anyone remembering
+  to extend the test. Verified red on the pre-fix tree first. Suite
+  3825/3825. Commit 61c72b81.
   **Layman:** The new "forget this project" command worked but was not listed in the tool's own instructions, so the reply wrongly said its main setting had been ignored.
   Kind: fix.
   Source: in-session-2026-08-22 (live verb test after relaunch).
@@ -53823,6 +53830,51 @@ here.)
   Kind: doc-fix.
   Source: in-session-2026-08-21 (noticed while landing ANTS-3771's cross-doc impact).
   Lanes: docs.
+
+- 📋 [ANTS-4622] **Cross-session mailbox: a `message` table in the store, plus its verbs.**
+  User-requested fields: from, to, date, message, confirmation (the
+  receiver marks it received). Needs a spec before code — it is a contract
+  other projects bind to, and it touches the schema, the verb surface and
+  session bootstrap.
+
+  Four decisions the spec has to make, with the current lean.
+
+  ADDRESSING is the crux. A "CC session" is ephemeral; the store is keyed
+  by PROJECT and outlives every session. Mail addressed to a session id is
+  undeliverable the moment that session ends, which is most of the time.
+  Lean: address `to` by project export_slug (durable), carry the sending
+  session id alongside as provenance, not as the key. The useful message
+  is "for whoever picks up Vestige next".
+
+  DELIVERY. A mailbox nobody polls is a mailbox nobody reads. session_orient
+  already surfaces `feedback_pending` per file; unread mail belongs in the
+  same block, gated the same way. Without that slot this feature does not
+  work regardless of how good the table is.
+
+  OVERLAP with the *_Ants_MCP_Feedback.md corpus, which IS cross-session
+  communication today across 19 files. Lean: complements rather than
+  replaces. That corpus is broadcast findings addressed to the maintainer
+  and triaged into roadmap ids; this is directed, 1:1, with an ack and no
+  triage. If the spec cannot state that difference crisply, build neither —
+  a second channel duplicating the first is the failure mode here.
+
+  CONFIRMATION semantics. Two states (unread/read) or three (unread/read/
+  acted-on)? The feedback corpus learned this the expensive way: v2 dropped
+  its tracking tables because status DERIVED live beat status stored. Prefer
+  the fewest stored states that answer "can the sender stop wondering".
+
+  Two couplings that are easy to miss. The schema declares REFERENCES but
+  NO ON DELETE CASCADE, so a `message` table must join the nine-table
+  foreign-key delete order in ANTS-4617's deregisterProject() — otherwise
+  deregistering a project strands its mail. And the table grows unbounded
+  with no natural pruning event, so it needs a retention rule stated at
+  design time.
+
+  Verb shape: one verb with ops (send / inbox / ack), matching roadmap_log
+  rather than three thin verbs.
+  **Layman:** Let the Claude sessions working on different projects leave each other messages, and see when a message has been picked up.
+  Kind: feature.
+  Source: user-request-2026-08-22.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

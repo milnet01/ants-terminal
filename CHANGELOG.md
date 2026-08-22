@@ -137,6 +137,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_migrate` now declares its `op` and `confirm` arguments** (ANTS-4621)
+  `op:"deregister"` and `confirm:true` were documented in the verb's
+  description but declared in neither its schema properties nor any enum.
+  The schema sets `additionalProperties:false`, so a strictly validating
+  MCP client refused the call outright — and on the permissive path the
+  `ignored_args` advisory named `op` as ignored on the very call that
+  argument had just steered.
+
 - **amend_body no longer collapses an aligned or nested block when a match spans it** (ANTS-4612)
   A wrapped match re-flows the lines it spanned into one, which is right
   for a hard wrap and destroys a column-aligned table or a nested list —
