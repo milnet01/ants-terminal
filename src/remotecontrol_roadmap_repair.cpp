@@ -1,4 +1,4 @@
-// ANTS-4585 phase 2 — TU 14/15 — roadmap_log op:"repair_trailers": recover the
+// ANTS-4585 phase 2 — TU 14/16 — roadmap_log op:"repair_trailers": recover the
 // trailer values migration cut short, by re-parsing the prose that still
 // holds them.
 // Contract: tests/features/roadmap_repair_trailers/spec.md

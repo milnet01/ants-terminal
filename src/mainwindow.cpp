@@ -4485,6 +4485,13 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("roadmap_migrate",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdRoadmapMigrate));
+    // ANTS-4622 — session_message: the cross-session mailbox. Required
+    // contract on every op, read included: `inbox` and `ack` resolve the
+    // CALLING project from caller_cwd, so an absent one has no mailbox to
+    // read rather than a default one.
+    m_claudeIntegration->registerToolProvider("session_message",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdSessionMessage));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     m_claudeIntegration->registerToolProvider("changelog_log",

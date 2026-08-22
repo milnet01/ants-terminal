@@ -1,4 +1,4 @@
-// ANTS-3833 TU 9/15 — Session and state verbs.
+// ANTS-3833 TU 9/16 — Session and state verbs.
 #include "remotecontrol.h"
 #include "gitwrap.h"   // ANTS-4352 — gate_drift
 #include "remotecontrol_internal.h"
@@ -13,6 +13,7 @@
 #include "config.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
+#include "roadmapstore.h"       // ANTS-4622 — session_orient's mail_pending
 #include "similarcode.h"
 #include "subsystemmap.h"
 #include "testrescache.h"
@@ -1901,6 +1902,53 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         fp[QStringLiteral("total_awaiting")]      = totalAwaiting;
         fp[QStringLiteral("files")]              = pendingFiles;
         result[QStringLiteral("feedback_pending")] = fp;
+    }
+
+    // --- mail_pending (ANTS-4622 § 2.4) ---
+    // A mailbox nobody polls is a mailbox nobody reads, so the inbox rides
+    // along on the documented first call.
+    //
+    // Three deliberate differences from feedback_pending above.
+    //
+    // NOT gated on shipping a document. That gate exists because feedback
+    // triage is the Ants repo's job alone; an inbox belongs to every registered
+    // project.
+    //
+    // The INBOX, never the outbox. Mail this project has SENT and nobody has
+    // acked contributes nothing — ANTS-3631 measured what the other direction
+    // costs, a permanently non-zero to-do only somebody else can clear. For
+    // self-addressed mail the sender IS the recipient, so it does appear; that
+    // is delivery, not the outbox.
+    //
+    // Emitted ONLY when the unacked count is non-zero — never as a
+    // present-and-zero block. "No mail" means no UNACKED mail, not no rows: a
+    // project that has acked everything still holds rows until § 2.6's prune
+    // reaches them, and a zero block for those 30 days would churn this
+    // envelope's ETag at every session start. Absent also covers a project that
+    // is not registered at all, which has no mailbox rather than an empty one.
+    {
+        RoadmapStore mailStore(RoadmapStore::defaultPath());
+        QString mailErr;
+        if (mailStore.open(&mailErr)) {
+            // projectIdForRoot, never registerProject: the latter is
+            // upsert-shaped and would register any root this read was handed,
+            // into a machine-global store.
+            if (const auto self = mailStore.projectIdForRoot(rootCanonical)) {
+                int unacked = 0;
+                QStringList senders;
+                if (mailStore.mailSummaryFor(*self, &unacked, &senders) && unacked > 0) {
+                    QJsonArray from;
+                    for (const QString &s : senders)
+                        from.append(s);
+                    QJsonObject mp;
+                    mp[QStringLiteral("unacked_count")] = unacked;
+                    mp[QStringLiteral("from")]          = from;
+                    result[QStringLiteral("mail_pending")] = mp;
+                }
+            }
+        }
+        // A store that will not open is not an orient failure: it does not
+        // touch allOk, exactly as feedback_pending's absent corpus does not.
     }
 
     // ANTS-3587 — surface absent-but-optional artifacts (e.g. no ROADMAP.md on

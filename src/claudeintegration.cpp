@@ -11612,6 +11612,161 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-4622 — session_message: the cross-session mailbox.
+                // Every property below is declared because the HANDLER READS
+                // IT (INV-7). ANTS-4621 is why that is an invariant: this
+                // schema sets additionalProperties:false, so an undeclared
+                // argument is refused by a strict client before the handler
+                // runs — and on the permissive path ANTS-2175 builds its
+                // `ignored_args` advisory from these same properties, so an
+                // undeclared argument is reported as ignored on the very call
+                // it just steered.
+                {
+                    QJsonObject t;
+                    t["name"] = "session_message";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to leave a message for another project's next "
+                        "Claude session, read your own inbox, or ack mail "
+                        "you have read. Addressed by project export_slug, "
+                        "not by session. Ends in a receipt, not a roadmap "
+                        "id.");
+                    t["description"] = QStringLiteral(
+                        "ANTS-4622 — leave a message for whoever picks up "
+                        "another project next, and see when it has been read. "
+                        "Addressed to a PROJECT by its export_slug, never to a "
+                        "session: a session is its shell PID, which is "
+                        "ephemeral and OS-reused, so mail addressed to one is "
+                        "undeliverable the moment that session ends. "
+                        "op:\"send\" (needs `to` + `body`), op:\"inbox\" (the "
+                        "default — YOUR unacked mail, newest first) and "
+                        "op:\"ack\" (needs `message_id`; idempotent, and the "
+                        "FIRST ack is the fact). Confirmation is two states in "
+                        "one nullable column: an entry carrying `acked_at` has "
+                        "been read. All three ops need the CALLING project "
+                        "registered in the roadmap store, else `no_project` — "
+                        "run roadmap_migrate first. An unresolvable `to` "
+                        "refuses `unknown_project` rather than accepting mail "
+                        "that could never be delivered; a recipient already "
+                        "holding 500 unacked messages refuses `inbox_full` "
+                        "rather than dropping the oldest, because a silently "
+                        "dropped message is indistinguishable from one never "
+                        "sent. `ack` on a message addressed to another project "
+                        "answers `not_found`, the same code an absent id gets, "
+                        "so a probe cannot learn that an id exists. Acked mail "
+                        "is pruned 30 days after `acked_at`, opportunistically "
+                        "on ops that already write; UNACKED mail is never "
+                        "auto-pruned at any age, because an old unread message "
+                        "means nobody has picked that project up, which is "
+                        "exactly when it still matters. DISTINCT from the "
+                        "*_Ants_MCP_Feedback.md corpus and does not replace "
+                        "it: that channel asks for work to be FILED and ends "
+                        "in a roadmap id, this one asks for a person to KNOW "
+                        "something and ends in an ack.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD. REQUIRED — resolves WHICH project's "
+                            "mailbox this is, on every op including the reads.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        e.append(QStringLiteral("send"));
+                        e.append(QStringLiteral("inbox"));
+                        e.append(QStringLiteral("ack"));
+                        p["enum"] = e;
+                        p["description"] = QStringLiteral(
+                            "Verb mode. Default \"inbox\" (omit it) — your own "
+                            "unacked mail. \"send\" needs `to` and `body`; "
+                            "\"ack\" needs `message_id`.");
+                        props["op"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"send\" — the recipient project's "
+                            "export_slug (e.g. \"vestige\"). Resolved against "
+                            "the store; an unregistered slug refuses "
+                            "`unknown_project`. Self-addressed mail is allowed "
+                            "on purpose: it is the note for the next session on "
+                            "THIS project.");
+                        props["to"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"send\" — the message. Non-empty, and at most "
+                            "4096 BYTES. The cap is byte-valued, not "
+                            "character-valued: SQLite's length() counts "
+                            "characters on a TEXT value, so a character cap "
+                            "would admit up to four times as much UTF-8.");
+                        props["body"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"send\" — optional free-text provenance for "
+                            "the sending session. At most 128 bytes. NOTHING "
+                            "routes on it; it is there so a reader can tell who "
+                            "was working, not so anything can address a reply.");
+                        props["from_session"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["description"] = QStringLiteral(
+                            "op:\"ack\" — the message to mark read, from an "
+                            "`inbox` entry's `message_id`.");
+                        props["message_id"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "op:\"inbox\" — also return mail you have already "
+                            "acked. Default false, which is the useful view: "
+                            "what still needs reading.");
+                        props["include_acked"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["default"] = 20;
+                        p["description"] = QStringLiteral(
+                            "op:\"inbox\" — cap on `messages[]`. 0 or less "
+                            "returns every row. `unacked_count` is the TRUE "
+                            "total either way, so a capped page still reports "
+                            "how much is waiting.");
+                        props["limit"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["default"] = 0;
+                        p["description"] = QStringLiteral(
+                            "op:\"inbox\" — 0-based offset into the result, for "
+                            "paging past `limit`.");
+                        props["offset"] = p;
+                    }
+                    props["dry_run"] = makeDryRunProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
                 {
                     QJsonObject t;
@@ -12595,6 +12750,11 @@ void ClaudeIntegration::onMcpConnection() {
                         name == QLatin1String("session_orient"))
                         return QStringLiteral("workspace");
                     if (name == QLatin1String("session_memory") ||
+                            // ANTS-4622 — session_message is the cross-SESSION
+                            // half of the same question session_memory answers
+                            // within one: what survives this session. Bucketed
+                            // together so a catalogue reader finds both.
+                            name == QLatin1String("session_message") ||
                             name == QLatin1String("workflow_state"))
                         return QStringLiteral("mcp-state");
                     // ANTS-1735 — model_switch_stats: autonomous
@@ -14041,6 +14201,11 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // resolved from caller_cwd. A migration is a whole-project operation and
     // has nothing to fall back to when no project is named.
     if (toolName == QStringLiteral("roadmap_migrate"))    return C::Required;
+    // ANTS-4622 — session_message resolves WHICH project's mailbox this
+    // is from caller_cwd, on `inbox` and `ack` as much as on `send`. An
+    // absent caller_cwd has no mailbox rather than a default one, so the
+    // read ops are Required too.
+    if (toolName == QStringLiteral("session_message"))    return C::Required;
     // ANTS-1548 — changelog_log mutates CHANGELOG.md under the caller's
     // project root. Required for the same reason as roadmap_log.
     if (toolName == QStringLiteral("changelog_log"))      return C::Required;

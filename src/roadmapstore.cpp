@@ -1473,6 +1473,45 @@ bool RoadmapStore::deregisterProject(qint64 projectId,
 
 // ---- ANTS-4622: the cross-session mailbox ---------------------------------
 
+std::optional<qint64> RoadmapStore::projectIdForSlug(const QString &exportSlug,
+                                                     QString *error) const {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "SELECT project_id FROM project WHERE export_slug = ?"));
+    q.addBindValue(exportSlug);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+    return q.value(0).toLongLong();
+}
+
+std::optional<qint64> RoadmapStore::projectIdForRoot(const QString &root,
+                                                     QString *error) const {
+    // The same canonicalisation registerProject() applies before it stores the
+    // row; without it a caller_cwd that differs only by a symlink or a trailing
+    // slash would miss a project that is registered.
+    const QString canonical = QFileInfo(root).canonicalFilePath();
+    if (canonical.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("root does not canonicalise: %1").arg(root);
+        return std::nullopt;
+    }
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("SELECT project_id FROM project WHERE root = ?"));
+    q.addBindValue(canonical);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;
+    return q.value(0).toLongLong();
+}
+
 bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
                                const QString &body, const QString &fromSession,
                                const QString &createdAt, qint64 *messageId,
@@ -1497,21 +1536,13 @@ bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
                     QStringLiteral("from_session is %1 bytes; the cap is %2")
                         .arg(fromSession.toUtf8().size()).arg(kMailSessionMaxBytes));
 
-    QSqlQuery q(m_db);
-    q.prepare(QStringLiteral(
-        "SELECT project_id FROM project WHERE export_slug = ?"));
-    q.addBindValue(toSlug);
-    if (!q.exec()) {
-        if (error) *error = lastErr(q);
-        if (code)  *code  = QStringLiteral("io_error");
-        return false;
-    }
-    if (!q.next())
+    const auto to = projectIdForSlug(toSlug, error);
+    if (!to)
         return fail("unknown_project",
                     QStringLiteral("no project is registered under export_slug "
                                    "\"%1\", so mail to it could never be "
                                    "delivered").arg(toSlug));
-    const qint64 toProjectId = q.value(0).toLongLong();
+    const qint64 toProjectId = *to;
 
     // § 2.6 — the cap counts UNACKED rows, so acking frees a slot. A full
     // inbox refuses rather than dropping the oldest: a silently dropped
@@ -1649,6 +1680,39 @@ bool RoadmapStore::ackMessage(qint64 projectId, qint64 messageId,
         return false;
     }
     if (code) code->clear();
+    return true;
+}
+
+bool RoadmapStore::mailSummaryFor(qint64 projectId, int *unackedCount,
+                                  QStringList *senders, QString *error) const {
+    if (unackedCount) *unackedCount = 0;
+    if (senders) senders->clear();
+
+    QSqlQuery c(m_db);
+    c.prepare(QStringLiteral(
+        "SELECT count(*) FROM message WHERE to_project_id = ? AND acked_at IS NULL"));
+    c.addBindValue(projectId);
+    if (!c.exec() || !c.next()) {
+        if (error) *error = lastErr(c);
+        return false;
+    }
+    if (unackedCount) *unackedCount = c.value(0).toInt();
+    if (!senders)
+        return true;
+
+    QSqlQuery s(m_db);
+    s.prepare(QStringLiteral(
+        "SELECT DISTINCT p.export_slug FROM message m "
+        "JOIN project p ON p.project_id = m.from_project_id "
+        "WHERE m.to_project_id = ? AND m.acked_at IS NULL "
+        "ORDER BY p.export_slug"));
+    s.addBindValue(projectId);
+    if (!s.exec()) {
+        if (error) *error = lastErr(s);
+        return false;
+    }
+    while (s.next())
+        senders->append(s.value(0).toString());
     return true;
 }
 

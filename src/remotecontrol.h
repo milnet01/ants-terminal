@@ -909,6 +909,8 @@ public:
     // so a test can drive it against a QTemporaryDir instead of the user's
     // real store. See docs/specs/ANTS-3855-roadmap-migrate-verb.md § 2.1.1.
     QJsonDocument cmdRoadmapMigrate(const QJsonObject &req);
+    // ANTS-4622 — the cross-session mailbox (ops send / inbox / ack).
+    QJsonDocument cmdSessionMessage(const QJsonObject &req);
 
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;

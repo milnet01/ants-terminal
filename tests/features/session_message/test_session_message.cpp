@@ -337,3 +337,194 @@ TEST(SessionMessage, BodyCapIsBytesNotCharacters) {
     EXPECT_TRUE(f.store->sendMessage(a, QStringLiteral("bravo"), ok, QString(),
                                      QString::fromLatin1(kT1), &id, &code, &err)) << err.toStdString();
 }
+
+// ---------------------------------------------------------- INV-7 (source) --
+//
+// Every argument cmdSessionMessage reads via req.value()/req.contains() is
+// declared in the verb's inputSchema.properties, `caller_cwd` excepted as a
+// universal dispatch-layer arg (ANTS-2175 INV-2).
+//
+// Written against the SOURCE rather than the engine, and that is structural
+// rather than lazy: every behavioural test above drives RoadmapStore directly,
+// so none of them crosses the dispatcher — and the schema is the dispatcher's
+// half of the contract. ANTS-4617 shipped `op` and `confirm` documented in the
+// description and declared nowhere, and its own tests could not have caught it
+// for exactly this reason.
+//
+// The keys are SCRAPED from the handler rather than hardcoded, so an op added
+// later and left undeclared fails without anyone remembering to extend this.
+//
+// `static` on both helpers: this file compiles into a shared bundle, so a
+// file-scope name here can collide at link time with a sibling's.
+
+#include <QFile>
+#include <QRegularExpression>
+#include <QSet>
+
+#ifndef ANTS_SRC_DIR
+#  error "ANTS_SRC_DIR compile definition required"
+#endif
+
+namespace {
+
+static QString readSrc(const char *name) {
+    QFile f(QStringLiteral(ANTS_SRC_DIR) + QLatin1Char('/')
+            + QString::fromLatin1(name));
+    if (!f.open(QIODevice::ReadOnly))
+        return QString();
+    return QString::fromUtf8(f.readAll());
+}
+
+// Code lines only. Both region guards below assert the ABSENCE of a token, and
+// the prose explaining why that token is forbidden names it — so a
+// comment-blind match harvests the explanation and reddens correct code. The
+// INV-7 scrape above already skips comment lines per line; a region slice needs
+// the same treatment, applied to the slice.
+static QString codeOnly(const QString &src) {
+    QStringList kept;
+    const QStringList lines = src.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const QString t = line.trimmed();
+        if (t.startsWith(QLatin1String("//")))
+            continue;
+        kept << line;
+    }
+    return kept.join(QLatin1Char('\n'));
+}
+
+// The session_message entry of the tools/list block, bounded by its own
+// tools.append(t) so a property declared for a NEIGHBOURING verb cannot be
+// mistaken for one of ours.
+static QString sessionMessageToolBlock() {
+    const QString all = readSrc("claudeintegration.cpp");
+    const int start = all.indexOf(QStringLiteral("t[\"name\"] = \"session_message\";"));
+    if (start < 0)
+        return QString();
+    const int end = all.indexOf(QStringLiteral("tools.append(t);"), start);
+    if (end < 0)
+        return QString();
+    return all.mid(start, end - start);
+}
+
+}  // namespace
+
+TEST(SessionMessage, Inv7SchemaDeclaresEveryOp) {
+    const QString block = sessionMessageToolBlock();
+    ASSERT_FALSE(block.isEmpty()) << "session_message tool block not found";
+
+    for (const char *key : {"op", "to", "body", "from_session", "message_id",
+                            "include_acked", "limit", "offset"}) {
+        EXPECT_TRUE(block.contains(QStringLiteral("props[\"%1\"]")
+                                       .arg(QString::fromLatin1(key))))
+            << "inputSchema.properties is missing \"" << key << "\"";
+    }
+    // Without the enum values a client offering completions never surfaces the
+    // ops at all — the half of ANTS-4621 that a properties check alone misses.
+    for (const char *op : {"send", "inbox", "ack"}) {
+        EXPECT_TRUE(block.contains(QStringLiteral("e.append(QStringLiteral(\"%1\"))")
+                                       .arg(QString::fromLatin1(op))))
+            << "op enum is missing \"" << op << "\"";
+    }
+}
+
+TEST(SessionMessage, Inv7HandlerReadsOnlyDeclaredArgs) {
+    const QString handler = readSrc("remotecontrol_session_message.cpp");
+    ASSERT_FALSE(handler.isEmpty()) << "handler source not readable";
+    const QString block = sessionMessageToolBlock();
+    ASSERT_FALSE(block.isEmpty()) << "session_message tool block not found";
+
+    // Comment lines are skipped: this file's own header prose names req.value()
+    // while explaining the rule, and a comment-blind scrape would harvest it.
+    static const QRegularExpression reRead(
+        QStringLiteral("req\\.(?:value|contains)\\(QStringLiteral\\(\"([a-z_]+)\"\\)"));
+
+    QSet<QString> keys;
+    const QStringList lines = handler.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        if (line.trimmed().startsWith(QLatin1String("//")))
+            continue;
+        auto it = reRead.globalMatch(line);
+        while (it.hasNext())
+            keys.insert(it.next().captured(1));
+    }
+    ASSERT_FALSE(keys.isEmpty()) << "scraped no req.value() keys — the scrape "
+                                    "itself is broken, which would make this "
+                                    "test pass vacuously";
+
+    for (const QString &key : keys) {
+        if (key == QStringLiteral("caller_cwd"))
+            continue;  // ANTS-2175 INV-2 — a universal dispatch arg.
+        EXPECT_TRUE(block.contains(QStringLiteral("props[\"%1\"]").arg(key)))
+            << "handler reads \"" << key.toStdString()
+            << "\" but inputSchema.properties never declares it — a strict "
+               "client refuses the call, and ANTS-2175 reports the argument as "
+               "ignored on the call it steered";
+    }
+}
+
+// INV-10 and INV-4 are covered by INSPECTION, not behaviour, and the reason is
+// the same one ANTS-3855 gives for cmdRoadmapMigrate: the handler opens
+// RoadmapStore::defaultPath(), which is the developer's REAL machine-global
+// store. A test that drove it would write live data — which is how ANTS-3856's
+// fixture row got there. So the properties are asserted against the source.
+
+// INV-10 — a dry_run send writes nothing and claims nothing in the past tense.
+//
+// The strong half is the SECOND assertion: the preview must not reach the
+// writer at all. A preview that called sendMessage() and rolled back would
+// still satisfy "no row survives" while having taken a write lock on a store
+// other sessions share.
+TEST(SessionMessage, Inv10DryRunNeitherWritesNorClaimsPastTense) {
+    const QString h = readSrc("remotecontrol_session_message.cpp");
+    ASSERT_FALSE(h.isEmpty());
+
+    const int at = h.indexOf(QStringLiteral("if (dryRun) {"));
+    ASSERT_GE(at, 0) << "no dry_run branch in the send path";
+    const int end = h.indexOf(QStringLiteral("return QJsonDocument(out);"), at);
+    ASSERT_GT(end, at);
+    const QString branch = codeOnly(h.mid(at, end - at));
+
+    EXPECT_TRUE(branch.contains(QStringLiteral("would_send")))
+        << "ANTS-4463: a preview carries a would-be field, never message_id";
+    EXPECT_FALSE(branch.contains(QStringLiteral("message_id")))
+        << "ANTS-4463: a past-tense field on a preview lets a caller read it "
+           "as a completed write";
+    EXPECT_FALSE(branch.contains(QStringLiteral("sendMessage(")))
+        << "the preview must stop SHORT of the writer, not write and roll back";
+
+    // § 2.6 — the prune is a write, so a dry run must not trigger it either.
+    // Against an empty inbox a pruning preview is indistinguishable from a
+    // clean one, which is why this is asserted here rather than by fixture.
+    const int pruneAt = h.indexOf(QStringLiteral("pruneIfWriting = [&]"));
+    ASSERT_GE(pruneAt, 0);
+    const QString guard = codeOnly(h.mid(pruneAt, 220));
+    EXPECT_TRUE(guard.contains(QStringLiteral("dryRun")))
+        << "pruneIfWriting must exclude a dry run — a preview that prunes "
+           "destroys aged mail to measure itself";
+}
+
+// INV-4 — session_orient reports the INBOX, never the outbox, and emits no
+// block at all when there is nothing unacked.
+TEST(SessionMessage, Inv4OrientReportsTheInboxOnly) {
+    const QString st = readSrc("remotecontrol_state.cpp");
+    ASSERT_FALSE(st.isEmpty());
+
+    const int at = st.indexOf(QStringLiteral("mail_pending (ANTS-4622"));
+    ASSERT_GE(at, 0) << "no mail_pending block in session_orient";
+    const QString block = codeOnly(st.mid(at, 2200));
+
+    // The summary reader is scoped to the caller's own inbox; nothing in the
+    // block reads mail this project SENT.
+    EXPECT_TRUE(block.contains(QStringLiteral("mailSummaryFor")))
+        << "the block must use the bounded summary, not load message bodies "
+           "on a call that runs at every session start";
+    // Emitted only when non-zero — a present-and-zero block would churn the
+    // orient ETag for the 30 days acked rows linger (ANTS-3631's shape).
+    EXPECT_TRUE(block.contains(QStringLiteral("unacked > 0")))
+        << "the block must be omitted when nothing is unacked";
+    // projectIdForRoot, never registerProject: a READ must not register the
+    // caller into a machine-global store.
+    EXPECT_TRUE(block.contains(QStringLiteral("projectIdForRoot")));
+    EXPECT_FALSE(block.contains(QStringLiteral("registerProject")))
+        << "an orientation READ must never register a project";
+}

@@ -1,4 +1,4 @@
-// ANTS-4614 — TU 15/15 — roadmap_log op:"render": publish the store to the
+// ANTS-4614 — TU 15/16 — roadmap_log op:"render": publish the store to the
 // file on demand, with no semantic change.
 // Contract: tests/features/roadmap_write_half/spec.md (Ants4614* cases)
 //

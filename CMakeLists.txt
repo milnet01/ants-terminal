@@ -355,6 +355,10 @@ set(ANTS_RC_SOURCES_REL
     # ANTS-4614 — appended last, for the reason above: a member that never
     # existed pre-split cannot violate any pre-split relative order.
     src/remotecontrol_roadmap_publish.cpp
+    # ANTS-4622 — session_message's handler. Appended last, for the reason
+    # above: a member that never existed pre-split cannot violate any
+    # pre-split relative order, and every existing TU keeps its ordinal.
+    src/remotecontrol_session_message.cpp
 )
 list(TRANSFORM ANTS_RC_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_rc_abs)

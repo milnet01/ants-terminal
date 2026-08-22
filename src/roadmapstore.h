@@ -39,8 +39,9 @@ public:
     // 2 → 3 by ANTS-4622 § 2.2, which adds the `message` table and its two
     // indexes. Unlike ANTS-3815's rung this one adds no COLUMN, so the rung can
     // issue the very statements createSchema() issues rather than an ALTER that
-    // approximates them — kMessageDdl below is shared by both call sites, which
-    // makes ANTS-3781 INV-8 hold by construction instead of by discipline.
+    // approximates them — kMessageTableDdl and its two index constants live in
+    // roadmapstore.cpp's anonymous namespace and are shared by both call sites,
+    // which makes ANTS-3781 INV-8 hold by construction and not by discipline.
     static constexpr int kSchemaVersion = 3;
 
     // INV-16 — the write deadline, in ms, matching ConfigWriteLock's rather
@@ -201,6 +202,25 @@ public:
     std::optional<qint64> registerProject(const QString &root, const QString &name,
                                           const QString &exportSlug,
                                           QString *error = nullptr);
+
+    // ANTS-4622 § 2.1 — resolve an export_slug to its project. The recipient
+    // half of projectIdForRoot below, and it lives here for the same reason:
+    // RoadmapRender INV-11 keeps project-row reads in ONE owner, so a handler
+    // that hand-rolled `SELECT project_id FROM project WHERE export_slug = ?`
+    // would be a second reader of the same row. nullopt = no such project,
+    // which the mailbox surfaces as `unknown_project`.
+    std::optional<qint64> projectIdForSlug(const QString &exportSlug,
+                                           QString *error = nullptr) const;
+
+    // ANTS-4622 § 2.3 — resolve a root to its project WITHOUT registering it.
+    // registerProject() is upsert-shaped, so a verb that used it merely to
+    // learn the caller's id would silently register any root it was handed —
+    // which is the machine-global-store hazard ANTS-4600's guard exists for.
+    // nullopt = not registered, which the mailbox surfaces as `no_project`.
+    // Canonicalises its argument, so it takes the same form registerProject()
+    // stores.
+    std::optional<qint64> projectIdForRoot(const QString &root,
+                                           QString *error = nullptr) const;
 
     // ANTS-3796 § 2.3 — `position` is a required parameter and not a setter,
     // unlike setSectionIntro()/setSectionSource(): those columns are nullable
@@ -824,6 +844,16 @@ public:
     // that an id exists (§ 2.3).
     bool ackMessage(qint64 projectId, qint64 messageId, const QString &ackedAt,
                     bool *alreadyAcked, QString *code, QString *error = nullptr);
+
+    // § 2.4 — what session_orient's `mail_pending` block needs, and ONLY that:
+    // the unacked count and the distinct senders. Two aggregate queries, no row
+    // bodies — an orientation call runs on every session start, and loading up
+    // to kMailInboxCap message bodies to report a number is the wrong shape for
+    // it. Reports the INBOX and never the outbox: mail this project has SENT
+    // and nobody has acked contributes nothing, because a permanently non-zero
+    // to-do that only somebody else can clear is ANTS-3631's measured failure.
+    bool mailSummaryFor(qint64 projectId, int *unackedCount,
+                        QStringList *senders, QString *error = nullptr) const;
 
     // § 2.6 — deletes acked mail in THIS project's inbox whose `acked_at` is
     // strictly before `cutoff`. Unacked mail is spared at any age: an old
