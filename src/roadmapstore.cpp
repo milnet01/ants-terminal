@@ -30,6 +30,47 @@ constexpr const char *kKindCheck =
     "'investigate','research','accessibility','optimize','package',"
     "'marketing','ux'";
 
+// ANTS-4622 § 2.2 — the mailbox schema, in ONE place because two call sites
+// need it byte-identical: createSchema()'s ddl[] and upgradeLadder()'s 2 → 3
+// rung. ANTS-3781 INV-8 requires a DDL-built store and a climbed one to hold
+// the same sqlite_master text, and ANTS-3815's rung had to hand-reproduce an
+// ALTER because a column can only be appended. A whole new TABLE has no such
+// constraint — the rung can issue the identical statement — so sharing the
+// literal makes INV-8 hold by construction rather than by remembering to keep
+// two copies in step.
+//
+// Both length caps are byte-valued. SQLite's length() counts CHARACTERS on a
+// TEXT value, so `length(body) <= 4096` would admit 4096 characters — up to
+// 16 KiB of UTF-8, four times § 4's budget — and a handler validating bytes
+// would accept bodies this constraint then rejected.
+//
+// created_at's GLOB is history.changed_at's, character for character, rather
+// than a second timestamp convention.
+constexpr const char *kMessageTableDdl = R"(CREATE TABLE message (
+  message_id      INTEGER PRIMARY KEY,
+  from_project_id INTEGER NOT NULL REFERENCES project(project_id),
+  to_project_id   INTEGER NOT NULL REFERENCES project(project_id),
+  from_session    TEXT NOT NULL DEFAULT ''
+                    CHECK (length(CAST(from_session AS BLOB)) <= 128),
+  created_at      TEXT NOT NULL
+                    CHECK (created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'),
+  body            TEXT NOT NULL
+                    CHECK (length(body) > 0
+                       AND length(CAST(body AS BLOB)) <= 4096),
+  acked_at        TEXT
+                    CHECK (acked_at IS NULL OR acked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z')
+))";
+
+// Two indexes, not one, for the reason the FK block below states: SQLite does
+// not auto-index foreign keys. `to_project_id` leads the inbox index;
+// `from_project_id` leads nothing and deregisterProject() deletes on it.
+// `relationship` is the precedent — idx_rel_src AND idx_rel_dst, both ends,
+// exactly as its delete is both ends.
+constexpr const char *kMessageInboxIdxDdl =
+    "CREATE INDEX idx_message_inbox ON message(to_project_id, acked_at)";
+constexpr const char *kMessageFromIdxDdl =
+    "CREATE INDEX idx_message_from  ON message(from_project_id)";
+
 bool exec(QSqlDatabase &db, const QString &sql, QString *error) {
     QSqlQuery q(db);
     if (q.exec(sql))
@@ -251,6 +292,15 @@ const QVector<RoadmapStore::Upgrade> &RoadmapStore::upgradeLadder() {
         Upgrade{2, {QStringLiteral(
             "ALTER TABLE project ADD COLUMN source_format TEXT NOT NULL DEFAULT '' "
             "CHECK (source_format IN ('', 'ants-v1', 'github-task-list', 'pass-headings'))")}},
+        // ANTS-4622 § 2.2 — the second rung, and a different shape from the
+        // first. ANTS-3815 had to hand-write an ALTER because a column can only
+        // be appended, which is why ANTS-3781 INV-8 exists to catch the two
+        // texts drifting. A whole new table is issued identically on both
+        // paths, so this rung names the SAME constants createSchema() does and
+        // the two stores cannot disagree.
+        Upgrade{3, {QString::fromUtf8(kMessageTableDdl),
+                    QString::fromUtf8(kMessageInboxIdxDdl),
+                    QString::fromUtf8(kMessageFromIdxDdl)}},
     };
     return ladder;
 }
@@ -617,6 +667,11 @@ bool RoadmapStore::createSchema(QString *error) {
         QStringLiteral("CREATE INDEX idx_rel_src        ON relationship(src_pk)"),
         QStringLiteral("CREATE INDEX idx_rel_dst        ON relationship(dst_pk)"),
         QStringLiteral("CREATE INDEX idx_citation_proj  ON citation(project_id)"),
+        // ANTS-4622 § 2.2 — the mailbox. Shared verbatim with upgradeLadder()'s
+        // 2 → 3 rung; see kMessageTableDdl.
+        QString::fromUtf8(kMessageTableDdl),
+        QString::fromUtf8(kMessageInboxIdxDdl),
+        QString::fromUtf8(kMessageFromIdxDdl),
     };
 
     for (const QString &stmt : ddl) {
@@ -1367,6 +1422,13 @@ bool RoadmapStore::deregisterProject(qint64 projectId,
          &counts->relationships},
         {QStringLiteral("DELETE FROM citation WHERE project_id = ? OR item_pk IN (")
              + kItems + QStringLiteral(")"), &counts->citations},
+        // ANTS-4622 § 2.5 — both ends, like `relationship` above and for the
+        // same reason: a message names a sender AND a recipient, so mail in
+        // ANOTHER project's inbox points into this one and would dangle. This
+        // step binds the id twice.
+        {QStringLiteral("DELETE FROM message WHERE from_project_id = ? "
+                        "OR to_project_id = ?"),
+         &counts->messages},
         {QStringLiteral("DELETE FROM item WHERE project_id = ?"), &counts->items},
         {QStringLiteral("DELETE FROM section WHERE project_id = ?"), &counts->sections},
         {QStringLiteral("DELETE FROM id_prefix WHERE project_id = ?"), &counts->idPrefixes},
@@ -1407,6 +1469,207 @@ bool RoadmapStore::deregisterProject(qint64 projectId,
     }
     restore();
     return true;
+}
+
+// ---- ANTS-4622: the cross-session mailbox ---------------------------------
+
+bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
+                               const QString &body, const QString &fromSession,
+                               const QString &createdAt, qint64 *messageId,
+                               QString *code, QString *error) {
+    const auto fail = [&](const char *c, const QString &msg) {
+        if (code)  *code  = QString::fromLatin1(c);
+        if (error) *error = msg;
+        return false;
+    };
+
+    // Checked here as well as in the CHECK constraint, so the caller gets
+    // `bad_args` with a reason rather than a raw SQL constraint failure.
+    const int bodyBytes = body.toUtf8().size();
+    if (bodyBytes == 0)
+        return fail("bad_args", QStringLiteral("message body is empty"));
+    if (bodyBytes > kMailBodyMaxBytes)
+        return fail("bad_args",
+                    QStringLiteral("message body is %1 bytes; the cap is %2")
+                        .arg(bodyBytes).arg(kMailBodyMaxBytes));
+    if (fromSession.toUtf8().size() > kMailSessionMaxBytes)
+        return fail("bad_args",
+                    QStringLiteral("from_session is %1 bytes; the cap is %2")
+                        .arg(fromSession.toUtf8().size()).arg(kMailSessionMaxBytes));
+
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "SELECT project_id FROM project WHERE export_slug = ?"));
+    q.addBindValue(toSlug);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        if (code)  *code  = QStringLiteral("io_error");
+        return false;
+    }
+    if (!q.next())
+        return fail("unknown_project",
+                    QStringLiteral("no project is registered under export_slug "
+                                   "\"%1\", so mail to it could never be "
+                                   "delivered").arg(toSlug));
+    const qint64 toProjectId = q.value(0).toLongLong();
+
+    // § 2.6 — the cap counts UNACKED rows, so acking frees a slot. A full
+    // inbox refuses rather than dropping the oldest: a silently dropped
+    // message is indistinguishable from one that was never sent.
+    QSqlQuery c(m_db);
+    c.prepare(QStringLiteral(
+        "SELECT count(*) FROM message WHERE to_project_id = ? AND acked_at IS NULL"));
+    c.addBindValue(toProjectId);
+    if (!c.exec() || !c.next()) {
+        if (error) *error = lastErr(c);
+        if (code)  *code  = QStringLiteral("io_error");
+        return false;
+    }
+    if (c.value(0).toInt() >= kMailInboxCap)
+        return fail("inbox_full",
+                    QStringLiteral("\"%1\" already holds %2 unacked messages, "
+                                   "which is the cap").arg(toSlug).arg(kMailInboxCap));
+
+    QSqlQuery ins(m_db);
+    ins.prepare(QStringLiteral(
+        "INSERT INTO message (from_project_id, to_project_id, from_session, "
+        "created_at, body) VALUES (?,?,?,?,?)"));
+    ins.addBindValue(fromProjectId);
+    ins.addBindValue(toProjectId);
+    // A null QString binds as SQL NULL, not as '', so the column's
+    // `NOT NULL DEFAULT ''` would refuse the commonest call there is — a send
+    // carrying no session provenance. Normalised here rather than pushed onto
+    // every caller, since `from_session` is optional by design (§ 2.1).
+    ins.addBindValue(fromSession.isNull() ? QString::fromLatin1("") : fromSession);
+    ins.addBindValue(createdAt);
+    ins.addBindValue(body);
+    if (!ins.exec()) {
+        if (error) *error = lastErr(ins);
+        if (code)  *code  = QStringLiteral("io_error");
+        return false;
+    }
+    if (messageId) *messageId = ins.lastInsertId().toLongLong();
+    if (code) code->clear();
+    return true;
+}
+
+bool RoadmapStore::inboxFor(qint64 projectId, bool includeAcked, int limit,
+                            int offset, QVector<Message> *out, int *unackedCount,
+                            QString *error) const {
+    if (out) out->clear();
+
+    if (unackedCount) {
+        QSqlQuery c(m_db);
+        c.prepare(QStringLiteral(
+            "SELECT count(*) FROM message WHERE to_project_id = ? AND acked_at IS NULL"));
+        c.addBindValue(projectId);
+        if (!c.exec() || !c.next()) {
+            if (error) *error = lastErr(c);
+            return false;
+        }
+        *unackedCount = c.value(0).toInt();
+    }
+    if (!out)
+        return true;
+
+    // The sender's export_slug rather than its id: § 2.3 makes it the field a
+    // reply addresses `to`, so an inbox read that returned only the numeric id
+    // would leave the reply path unusable.
+    QString sql = QStringLiteral(
+        "SELECT m.message_id, p.export_slug, m.from_session, m.created_at, "
+        "m.body, m.acked_at FROM message m "
+        "JOIN project p ON p.project_id = m.from_project_id "
+        "WHERE m.to_project_id = ?");
+    if (!includeAcked)
+        sql += QStringLiteral(" AND m.acked_at IS NULL");
+    sql += QStringLiteral(" ORDER BY m.message_id DESC");
+    if (limit > 0)
+        sql += QStringLiteral(" LIMIT %1 OFFSET %2").arg(limit).arg(qMax(0, offset));
+
+    QSqlQuery q(m_db);
+    q.prepare(sql);
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        return false;
+    }
+    while (q.next()) {
+        Message m;
+        m.id          = q.value(0).toLongLong();
+        m.fromSlug    = q.value(1).toString();
+        m.fromSession = q.value(2).toString();
+        m.createdAt   = q.value(3).toString();
+        m.body        = q.value(4).toString();
+        m.ackedAt     = q.value(5).isNull() ? QString() : q.value(5).toString();
+        out->append(m);
+    }
+    return true;
+}
+
+bool RoadmapStore::ackMessage(qint64 projectId, qint64 messageId,
+                              const QString &ackedAt, bool *alreadyAcked,
+                              QString *code, QString *error) {
+    if (alreadyAcked) *alreadyAcked = false;
+
+    // Scoped to the caller's own inbox in the SELECT rather than checked
+    // afterwards: a message addressed to another project answers `not_found`,
+    // the same code an absent id gets, so a probe cannot use the refusal to
+    // learn that an id exists (§ 2.3).
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "SELECT acked_at FROM message WHERE message_id = ? AND to_project_id = ?"));
+    q.addBindValue(messageId);
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        if (code)  *code  = QStringLiteral("io_error");
+        return false;
+    }
+    if (!q.next()) {
+        if (code)  *code  = QStringLiteral("not_found");
+        if (error) *error = QStringLiteral("no message %1 in this project's inbox")
+                                .arg(messageId);
+        return false;
+    }
+    if (!q.value(0).isNull()) {
+        // Idempotent: the FIRST ack is the fact, so the stamp is left alone.
+        if (alreadyAcked) *alreadyAcked = true;
+        if (code) code->clear();
+        return true;
+    }
+
+    QSqlQuery u(m_db);
+    u.prepare(QStringLiteral(
+        "UPDATE message SET acked_at = ? WHERE message_id = ?"));
+    u.addBindValue(ackedAt);
+    u.addBindValue(messageId);
+    if (!u.exec()) {
+        if (error) *error = lastErr(u);
+        if (code)  *code  = QStringLiteral("io_error");
+        return false;
+    }
+    if (code) code->clear();
+    return true;
+}
+
+int RoadmapStore::pruneAckedMail(qint64 projectId, const QString &cutoff,
+                                 QString *error) {
+    // `acked_at IS NOT NULL` is what spares unacked mail at ANY age, and it is
+    // the whole invariant: an age filter alone would delete a message nobody
+    // has read, which is exactly when it still matters. Scoped to the calling
+    // project's own INBOX — scoped to from_project_id it would prune rows in
+    // other projects' inboxes and never its own (§ 2.6).
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "DELETE FROM message WHERE to_project_id = ? "
+        "AND acked_at IS NOT NULL AND acked_at < ?"));
+    q.addBindValue(projectId);
+    q.addBindValue(cutoff);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        return -1;
+    }
+    return q.numRowsAffected();
 }
 
 bool RoadmapStore::unfileItem(qint64 itemPk, QString *error) {

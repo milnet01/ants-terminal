@@ -35,7 +35,13 @@ public:
     // outright rather than opened read-only (ANTS-3756 § 2.3) — reachable for
     // the first time at this bump, because launch.sh can leave an older binary
     // on disk.
-    static constexpr int kSchemaVersion = 2;
+    //
+    // 2 → 3 by ANTS-4622 § 2.2, which adds the `message` table and its two
+    // indexes. Unlike ANTS-3815's rung this one adds no COLUMN, so the rung can
+    // issue the very statements createSchema() issues rather than an ALTER that
+    // approximates them — kMessageDdl below is shared by both call sites, which
+    // makes ANTS-3781 INV-8 hold by construction instead of by discipline.
+    static constexpr int kSchemaVersion = 3;
 
     // INV-16 — the write deadline, in ms, matching ConfigWriteLock's rather
     // than introducing a second timeout constant. One number covers both the
@@ -757,12 +763,74 @@ public:
     // Relationships are cleared from BOTH ends. A row in another project
     // pointing INTO this one would otherwise dangle, which is the one way this
     // delete could corrupt a project it was not aimed at.
+    //
+    // ANTS-4622 § 2.5 — `message` is cleared from both ends for exactly that
+    // reason, and it is the second table to need it: a message names a sender
+    // AND a recipient, so a project's mail hangs off two foreign keys rather
+    // than one.
     struct DeregisterCounts {
         int elements = 0, history = 0, feedbackRefs = 0, relationships = 0;
         int citations = 0, items = 0, sections = 0, idPrefixes = 0;
+        int messages = 0;
     };
     bool deregisterProject(qint64 projectId, DeregisterCounts *counts,
                            QString *error = nullptr);
+
+    // ---- ANTS-4622: the cross-session mailbox -----------------------------
+    //
+    // Addressed to a PROJECT, never to a session: a session is its shell PID,
+    // which is ephemeral, per-tab and OS-reused, so mail addressed to one is
+    // undeliverable the moment that session ends (§ 2.1). `fromSession` rides
+    // along as provenance and nothing routes on it.
+    //
+    // Timestamps are PARAMETERS, matching appendHistory()'s `changedAt`: the
+    // store does not read the clock. That is what lets a test construct an
+    // aged row at all — ANTS-4622 INV-8 needs one on each side of the TTL, and
+    // a store that stamped internally could not be given one.
+    //
+    // Caps — § 2.6 and § 2.2. Byte-valued, because SQLite's length() counts
+    // CHARACTERS on a TEXT value and 4096 of those is up to 16 KiB of UTF-8.
+    static constexpr int kMailBodyMaxBytes    = 4096;
+    static constexpr int kMailSessionMaxBytes = 128;
+    static constexpr int kMailInboxCap        = 500;
+    static constexpr int kMailAckedTtlDays    = 30;
+
+    struct Message {
+        qint64 id = 0;
+        QString fromSlug;     // the sender's export_slug — what a reply addresses
+        QString fromSession;  // provenance only
+        QString createdAt;
+        QString body;
+        QString ackedAt;      // empty ⇒ unread. § 2.3: two states, one column.
+    };
+
+    // On refusal these return false and set *code to the `mcp-error-codes.md`
+    // code the verb surfaces verbatim — `unknown_project`, `inbox_full`,
+    // `bad_args`, `not_found` — so the handler maps nothing and cannot drift
+    // from § 2.3's table.
+    bool sendMessage(qint64 fromProjectId, const QString &toSlug,
+                     const QString &body, const QString &fromSession,
+                     const QString &createdAt, qint64 *messageId,
+                     QString *code, QString *error = nullptr);
+
+    // `limit <= 0` returns every row. Ordered newest first.
+    bool inboxFor(qint64 projectId, bool includeAcked, int limit, int offset,
+                  QVector<Message> *out, int *unackedCount,
+                  QString *error = nullptr) const;
+
+    // Idempotent: a second ack succeeds, leaves `acked_at` alone and reports
+    // *alreadyAcked. A message addressed to another project is `not_found`
+    // rather than a distinct code, so a probe cannot use the refusal to learn
+    // that an id exists (§ 2.3).
+    bool ackMessage(qint64 projectId, qint64 messageId, const QString &ackedAt,
+                    bool *alreadyAcked, QString *code, QString *error = nullptr);
+
+    // § 2.6 — deletes acked mail in THIS project's inbox whose `acked_at` is
+    // strictly before `cutoff`. Unacked mail is spared at any age: an old
+    // unread message means nobody has picked that project up, which is exactly
+    // when it still matters. Returns the row count, or -1 on error.
+    int pruneAckedMail(qint64 projectId, const QString &cutoff,
+                       QString *error = nullptr);
 
     // § 2.8 step 1's first branch: the prefix this project already allocates
     // under, which idHighWater() cannot answer because it takes the prefix as
