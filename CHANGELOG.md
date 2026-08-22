@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **Cross-session mailbox: `session_message`, so Claude sessions on different projects can leave each other notes** (ANTS-4622)
+  Mail is addressed to a PROJECT by its export_slug, never to a session:
+  a session is its shell PID, which is ephemeral and reused, so mail
+  addressed to one is undeliverable the moment that session ends. Three
+  ops — send, inbox and ack — with confirmation held as two states in one
+  nullable column, and unread mail surfaced by session_orient at the
+  start of the next session on that project. Complements the
+  *_Ants_MCP_Feedback.md corpus rather than replacing it: that channel
+  asks for work to be FILED and ends in a roadmap id, this one asks for a
+  person to KNOW something and ends in a receipt. Adds the store's tenth
+  table and moves the schema to version 3.
+
 - **A gate that markdown tables, code fences and blockquotes survive the store round trip** (ANTS-4616)
   Once a project is store-backed the whole-file re-render fires on any
   write, so every element type a roadmap body can carry has to survive it.

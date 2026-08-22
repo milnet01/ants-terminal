@@ -240,9 +240,12 @@ SIGTERM a push mid-ninja.
   a guard inside it reddens the suite. And **the schema declares
   `REFERENCES` but no `ON DELETE CASCADE`**, so deleting a project means
   deleting element → history → feedback_ref → relationship → citation →
-  item → section → id_prefix → project by hand, in that order, with
-  `PRAGMA foreign_keys = ON`. **Back it up with sqlite3 `.backup`, never
-  `cp`** — the store runs in WAL and a live Ants holds a connection.
+  message → item → section → id_prefix → project by hand, in that order,
+  with `PRAGMA foreign_keys = ON`. **Two of those ten clear BOTH ends** —
+  `relationship` and, since ANTS-4622, `message`: each names two projects, so
+  a row in another project pointing into this one would otherwise dangle.
+  **Back it up with sqlite3 `.backup`, never `cp`** — the store runs in WAL
+  and a live Ants holds a connection.
 - Per-project layout is optionally declared in a repo-committed
   `<root>/.ants/project.json` (ANTS-2160, `src/projectsettings.cpp`):
   `source_roots`/`test_roots` (codebase_index), `docs_dir`,
