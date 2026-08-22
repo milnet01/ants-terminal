@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **A gate that markdown tables, code fences and blockquotes survive the store round trip** (ANTS-4616)
+  Once a project is store-backed the whole-file re-render fires on any
+  write, so every element type a roadmap body can carry has to survive it.
+  Nested lists were measured; these three were assumed. All four new cases
+  passed on the first run — no defect was found, and the assumption is now
+  a gate.
+
 - **roadmap_migrate op:"deregister" removes a project from the shared store** (ANTS-4617)
   Trying a risky operation on a throwaway copy is the careful thing to do,
   and it permanently polluted the shared database — there was no inverse of
