@@ -367,6 +367,14 @@ set(ANTS_RC_SOURCES_REL
     src/remotecontrol_roadmap_query.cpp
     src/remotecontrol_changelog.cpp
     src/remotecontrol_roadmap_log.cpp
+    # ANTS-4620 — TU 5 reached INV-6's 6,000-line cap with zero headroom, so it
+    # was cut in two at a member boundary. This is the SECOND HALF of that
+    # slice, inserted HERE and not appended: unlike the migrate/backfill/repair/
+    # publish/session_message entries below, it IS a slice of the pre-split
+    # file, so appending it would move every member it holds behind five TUs
+    # that used to follow them — silently reordering every two-anchor scrape
+    # window (find(A), then find(B, posA)). ANTS-3833 § 2.2's rule, applied.
+    src/remotecontrol_roadmap_log_batch.cpp
     src/remotecontrol_workspace.cpp
     src/remotecontrol_docs.cpp
     src/remotecontrol_feedback.cpp

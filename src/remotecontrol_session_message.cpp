@@ -1,4 +1,4 @@
-// ANTS-4622 TU 16/16 — the `session_message` handler: the cross-session mailbox's verb.
+// ANTS-4622 TU 17/17 — the `session_message` handler: the cross-session mailbox's verb.
 // Contract: docs/specs/ANTS-4622-cross-session-mailbox.md § 2.3.
 //
 // Thin by design, like its roadmap_migrate sibling. Everything that touches a

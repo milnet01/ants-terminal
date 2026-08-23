@@ -518,7 +518,7 @@ TEST(RoadmapRender, Inv11SingleElementReader) {
 // The two exempt files are exempt for stated reasons, verified 2026-08-17:
 //   roadmapstore.cpp        — the enumerator's own home, plus
 //                             listSectionsOrdered()'s single call to it.
-//   remotecontrol_roadmap_log.cpp — THREE order-independent callers, each
+//   remotecontrol_roadmap_log_batch.cpp — THREE order-independent callers, each
 //                             checked: create_section's renumber keys every row
 //                             by its own id; rotate_minor builds QHash indexes
 //                             and iterates a QHash, which has no order to lose;
@@ -587,7 +587,13 @@ TEST(RoadmapRender, Ants3818NoUnsortedSectionConsumer) {
     const QRegularExpression rx(QStringLiteral("listSections\\s*\\((?!.*Ordered)"));
     const QStringList exempt{QStringLiteral("roadmapstore.cpp"),
                              QStringLiteral("roadmapstore.h"),
-                             QStringLiteral("remotecontrol_roadmap_log.cpp"),
+                             // ANTS-4620 — all three live in the BATCH half of
+                             // the TU-5 split (create_section, rotate_minor,
+                             // retitle_section). The single-item half now calls
+                             // listSections() nowhere, so it is not exempt and a
+                             // new caller landing there is caught.
+                             QStringLiteral(
+                                 "remotecontrol_roadmap_log_batch.cpp"),
                              // ANTS-4617 — op:"deregister"'s dry run calls it
                              // for `.size()` alone, to report how many sections
                              // WOULD go. It never reads an element of the list,

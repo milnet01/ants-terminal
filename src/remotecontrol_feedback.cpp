@@ -1,4 +1,4 @@
-// ANTS-3833 TU 8/16 — Feedback and audit verbs.
+// ANTS-3833 TU 9/17 — Feedback and audit verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962

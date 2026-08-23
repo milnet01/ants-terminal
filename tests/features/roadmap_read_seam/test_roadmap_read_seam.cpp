@@ -1388,16 +1388,24 @@ TEST(RoadmapReadSeam, Ants3863Inv7NoQStringMarkdownOverloadSurvives) {
 // Comments are stripped before matching so the prose explaining the removal
 // cannot satisfy the scrape it is explaining.
 TEST(RoadmapReadSeam, Ants4426AppendAdvisoryReadsNoBody) {
-    const QString path = QStringLiteral(ANTS_SRC_DIR)
-                       + QStringLiteral("/remotecontrol_roadmap_log.cpp");
-    QFile f(path);
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly))
-        << "cannot read " << path.toStdString()
-        << " — the TU has moved and this case is scanning nothing";
+    // ANTS-4620 — BOTH halves of the TU-5 split. This is a negative assertion,
+    // which stays green while reading nothing, so a scan left pointing at one
+    // half would silently stop covering op:"append_batch" when that verb moved
+    // to the other. rc_tu_split INV-10 names exactly this failure class.
+    const QStringList paths{
+        QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/remotecontrol_roadmap_log.cpp"),
+        QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/remotecontrol_roadmap_log_batch.cpp"),
+    };
+    QStringList lines;
+    for (const QString &path : paths) {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly))
+            << "cannot read " << path.toStdString()
+            << " — the TU has moved and this case is scanning nothing";
+        lines << QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    }
 
     QStringList code;
-    const QStringList lines =
-        QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
     for (const QString &line : lines) {
         const int slashes = line.indexOf(QStringLiteral("//"));
         code << (slashes >= 0 ? line.left(slashes) : line);

@@ -224,6 +224,16 @@ struct HistoryContext {
 // the GLOB rather than assumed.
 QString rlHistoryStamp();
 
+// ANTS-4620 § the TU-5 split — the three date stamps, promoted because the cut
+// put their callers on both sides of the seam. Their reasoning, and why they
+// live in the callers rather than in RoadmapStore::setItemField(), stays with
+// the definitions in remotecontrol_roadmap_log.cpp. Spec:
+// docs/specs/ANTS-4501-roadmap-report.md § 2.2.
+QString rlStampToday();
+bool rlStampModified(RoadmapStore &store, qint64 itemPk, QString *err);
+bool rlStampShipped(RoadmapStore &store, qint64 itemPk, const QString &oldStatus,
+                    const QString &newStatus, QString *err);
+
 // ANTS-3822 § 2.3 — write the op's collected rows, or none of them.
 //
 // Asks historyWouldExceedCap() ONCE for the whole batch. Over the cap: writes
