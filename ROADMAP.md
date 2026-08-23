@@ -54201,6 +54201,64 @@ here.)
 
 ---
 
+- 📋 [ANTS-4625] **A Qt point upgrade silently poisons the incremental build tree, because RPM preserves header mtimes and ninja is mtime-based.**
+  Measured today, not inferred. Cost ~25 minutes and presented as 859 of
+  3838 tests failing with heap corruption -- which reads as a catastrophic
+  code regression rather than a build-tree problem.
+
+  THE MECHANISM, each link verified:
+
+    zypper installed qt6-base-devel 6.11.2 today at 10:20:34.
+    Its headers on disk carry UPSTREAM mtimes, not install time:
+      /usr/include/qt6/QtCore/qstring.h   2026-05-11 22:54
+      /usr/include/qt6/QtCore/qlist.h     2026-05-11 22:54
+      /usr/include/qt6/QtCore/qconfig.h   2026-08-18 13:48
+    The existing objects were from the 2026-08-22 20:59 build.
+
+  So every Qt header is OLDER than every object. Ninja decides staleness
+  by mtime, so it considered the whole tree current and recompiled
+  nothing, even though the header CONTENT changed at 10:20. The link then
+  bound 6.11.2 libraries to objects compiled from 6.11.1 headers. The few
+  TUs that were touched for other reasons DID recompile, against the new
+  headers -- and that mix is the defect: our own types embed QString /
+  QVector, so a layout or inline change across the patch release gives one
+  TU a different idea of a type's size than another.
+
+  SYMPTOM, so the next session recognises it rather than re-deriving it:
+  crashes inside the copy constructor / emplace of OUR OWN record types
+  (RoadmapMigrate::Source, RoadmapParse::BulletRecord), plus glibc
+  "free(): invalid next size". Concentrated in whole test binaries -- 797
+  of the 859 were simply all of test_core. A logic bug does not produce
+  that shape.
+
+  ccache does not save you and neither does a reconfigure. ccache never
+  runs, because ninja never invokes the compiler. `cmake -B build`
+  regenerates build.ninja (which is what fixes the separate stale
+  .so-path failure) but does not invalidate objects.
+
+  WHAT IS ODD AND WORTH ONE LOOK: the FIRST symptom was a hard link error,
+  'libQt6OpenGLWidgets.so.6.11.1 missing and no known rule to make it',
+  because build.ninja held the old absolute path. That failure is loud and
+  self-explaining. The silent-corruption case is the same upgrade one step
+  later, after the reconfigure -- so the loud error actually MASKS the
+  quiet one by making the reconfigure feel like the whole fix.
+
+  ASK: a configure-time guard. CMake already knows Qt6_VERSION; stamp it
+  into the build tree and compare on every build, erroring with 'Qt
+  changed X -> Y; run `ninja -C build -t clean` first' when it moves.
+  Cheap, mechanical, and it fires exactly once per upgrade. A weaker
+  variant is a documented rule in CLAUDE.md ('clean-rebuild after any
+  Qt/toolchain bump'), which is worth having either way but relies on
+  somebody remembering. This is a rolling distro, so the upgrade is not a
+  rare event.
+
+  Not attempted here: it is orthogonal to the item being shipped, it
+  wants a test (mutate the stamp, assert the build refuses), and getting
+  it wrong makes every build noisy.
+  **Layman:** After a system Qt update, rebuilding normally can produce a broken program that crashes everywhere, and nothing warns you.
+  Kind: fix.
+  Source: in-session-2026-08-23 (hit while shipping ANTS-4605).
+
 ## 1.0.0 — stability milestone (target: 2026-12)
 
 **Theme:** API freeze. No new features; quality, docs, migration guide.
