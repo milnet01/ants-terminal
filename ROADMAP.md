@@ -42782,7 +42782,7 @@ open, and two of these were exactly that.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-21.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-4620] **remotecontrol_roadmap_log.cpp is AT the 6000-line cap with zero headroom.**
+- ✅ [ANTS-4620] **remotecontrol_roadmap_log.cpp is AT the 6000-line cap with zero headroom.**
   ANTS-4612 added eleven lines to this TU and had to claw all eleven back
   before it could land: the refusal envelope was extracted to the query TU
   so two call sites became two lines, and one out-param became a -1 return
@@ -42804,6 +42804,7 @@ open, and two of these were exactly that.
   it would take roughly 600 lines with it. Insert it at its slice position
   in ANTS_RC_SOURCES_REL rather than appending, per INV-3, or every
   two-anchor source scrape silently reorders.
+  Resolved (2026-08-23): cut at cmdRoadmapLogFlipBatch, a member boundary verified in open code by tools/rc-namespace-scan.py. Head keeps the single-item write ops at 2818 lines; src/remotecontrol_roadmap_log_batch.cpp takes the batch and section ops at 3202. Both have real headroom again. NOT the slice this item proposed: the amend family sits in the MIDDLE of the file, so lifting it out leaves a non-contiguous slice, and contiguity is what lets the ANTS_RC_SOURCES order preserve every member's pre-split relative position. A member-boundary cut buys the same headroom without that cost. Inserted at position 6, not appended, as this item asked. All 17 markers renumbered. Three date stamps promoted to remotecontrol_internal.h because the cut put their callers on both sides; the link is INV-7's arbiter and it is green. Two tests named one TU: Ants3818NoUnsortedSectionConsumer went RED (all three listSections callers moved) and its exemption moved with them; Ants4426AppendAdvisoryReadsNoBody PASSED while its subject op:append_batch had left the file it scans, which is INV-10's named failure class, and it now reads both halves, proven by mutation rather than by passing. Suite 100% of 3843. Commit be66d8c9.
   **Layman:** One source file is exactly full, so the next small change to it cannot be written without moving something out first.
   Kind: refactor.
   Source: in-session-2026-08-21.

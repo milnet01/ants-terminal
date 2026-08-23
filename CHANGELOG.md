@@ -129,6 +129,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **Split the roadmap-write translation unit, which was at its line cap** (ANTS-4620)
+  The file holding the roadmap write operations had reached the 6,000-line
+  ceiling the project sets, leaving no room for the next change. It is now
+  two files — one for single-item writes, one for batch and section
+  writes — with the batch and section operations moved out. No behaviour
+  changes; two tests that named the old file by name were widened so they
+  still cover both halves.
+
 - **Declare that `roadmap_log op:"append"` writes ants-v1 into any roadmap dialect (ANTS-4605)**
   Appending to a github-task-list roadmap has always written an ants-v1
   emoji bullet, leaving the file mixed, and nothing said so — the
