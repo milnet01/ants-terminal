@@ -32614,6 +32614,31 @@ against current source before filing.
   **Layman:** The error table tells you to fix the problem with two commands that cannot touch the thing that is broken.
   Kind: doc-fix.
   Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
+  The replacement text is now known and measured, so this item is no longer
+  blocked on working out what the remedy should say. See ANTS-4434's
+  2026-08-23 annotations for the derivation.
+
+  What is true: repairing the named items ONE AT A TIME cannot work, which
+  is why this row is wrong rather than merely vague. The gate is per project
+  and is evaluated after the mutation, so each single repair is refused by
+  whichever offenders remain and rolled back; it commits only when it is the
+  last one outstanding. The row's "which `annotate` / `amend_body` can do one
+  at a time" is precisely the unfollowable half.
+
+  What works, verified against MAME_Curator (dry run, two offenders, one
+  call): a single `flip_batch` carrying every id from `gate_failures` as a
+  locator, each with a note whose FIRST line declares the trailer key, and
+  `to_status` set to the status those items already hold. Returned ok:true,
+  would_flip_count 2, no refusal, statuses unchanged.
+
+  `src/roadmapwrite.cpp` now says this in the refusal message itself
+  (shipped 2026-08-23), so the code and this doc row currently disagree --
+  the code is right. Fixing the row is this item's remaining work.
+
+  Note for whoever takes it: mcp-error-codes.md is a standard, so changing
+  an instruction in it trips global rule 14's gate (a conformer would do
+  something different). That is why the message was fixed here and the row
+  was deliberately left alone rather than edited in passing.
 
 - 💭 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
   ANTS-4402's witness compares `file_highest_id` against `store_high_water`, and the high water comes from the `id_prefix` table. Migration does not write a row there — only an id-allocating append does. So a migrated-but-never-appended project reports `store_high_water: 0`, and any id in the file makes `file_ahead_of_store` true forever.
@@ -37339,6 +37364,40 @@ are closed inline in the feedback files rather than filed here.
   in brackets, so a naive render stamps all 567 into a public repo.
 
   So the order is ANTS-4434, then this.
+  Two design constraints derived from source 2026-08-23 while establishing
+  the blocker above, recorded because whoever builds this will otherwise
+  re-derive them and one of them is not guessable.
+
+  The emitter half already exists. `RoadmapRender::render()` writes every
+  item in full roadmap-format § 3.5 bullet form unconditionally -- there is
+  no dialect switch in it, and its header says so. So converting is not
+  "write an ants-v1 emitter"; the render IS the emitter, and this item is
+  about what the store holds when it runs and about the ordering around it.
+
+  The ordering is fully determined by `RoadmapSource::migratedProject()`,
+  and BOTH single-step orders brick the project. That function dispatches on
+  the LIVE FILE's detected format, not on the stored source_format; the
+  stored value is a second witness used only to refuse a disagreement, and
+  that disagreement branch is checked BEFORE the ants-v1 gate. So:
+
+    rewrite the file first, leave source_format github-task-list
+       -> file reads ants-v1, store says github-task-list, disagreement
+       -> every read refuses SourceUnrecognised
+    set source_format ants-v1 first, leave the file
+       -> file still reads github-task-list, same disagreement
+       -> every read refuses
+
+  Neither write is safe alone. They must be atomic with respect to any
+  reader, which is exactly the shape `RoadmapWrite::commitAndRender()`
+  already solves for the ordinary write path: begin, mutate, dry render,
+  divergence guard, commit, publish. Building this on that sequence rather
+  than on a bespoke one is the cheap answer, and its one declared window
+  (committed store, unpublished file) is worse here than it is there -- on
+  an ordinary project that leaves a stale-but-readable file, whereas here it
+  leaves the store and the file disagreeing, i.e. unreadable. The remedy is
+  already implemented and the refusal names it ("re-run the migration to
+  record the new format"), which sets source_format back and unbricks it.
+  Worth an invariant when this is specced.
 
 - 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
@@ -54309,6 +54368,44 @@ here.)
   **Layman:** Let the Claude sessions working on different projects leave each other messages, and see when a message has been picked up.
   Kind: feature.
   Source: user-request-2026-08-22.
+
+- 📋 [ANTS-4627] **Music_Production's store holds four items its roadmap file does not, and a locator for one returns bullet_not_found.**
+  Found while measuring the render gate for ANTS-4434; unrelated to that fix,
+  so filed rather than folded in.
+
+  Music_Production is project_id 14, source_format `ants-v1`. Its store holds
+  MUSI-0354 and MUSI-0355 (in-progress) and MUSI-0356 and MUSI-0357
+  (planned). Its ROADMAP.md contains the literal MUSI-0354 zero times, and
+  its 372 emoji bullets carry no bracket ids at all -- the file's bullets are
+  `- <emoji> **Bold headline** ...`, so the store's MUSI-NNNN ids were
+  synthesised at migration and live only in the store.
+
+  The observation worth chasing: an `op:annotate` for MUSI-0354 against that
+  root refused `bullet_not_found` with "locator matched zero ants-v1
+  bullets", which is the MARKDOWN path's language, on a project whose stored
+  format is ants-v1. Two candidate explanations and no measurement
+  separating them yet.
+
+  Either the project is legitimately markdown-served and the id simply is
+  not in the file -- in which case the refusal is correct and the real
+  finding is that a store id can be unaddressable through the verb, with
+  nothing telling the caller its ids exist only in the store.
+
+  Or `RoadmapSource::migratedProject()` declined it and the reason is the
+  detection prefix: the file's first emoji bullet is at line 78, so if
+  `detectionPrefix()` is bounded shorter than that, a genuinely ants-v1 file
+  classifies as something else and the project silently falls back to
+  markdown. That would be a real bug and would affect any project with a long
+  preamble. Check the prefix bound against the first-bullet offset before
+  assuming the benign branch.
+
+  Not urgent -- Music_Production has 4 gate offenders and is on ANTS-4434's
+  blocked list already -- but the second branch, if true, is a silent
+  misroute rather than a data-entry gap, and it is cheap to settle.
+  **Layman:** A project's stored roadmap items and its roadmap file have drifted apart, and asking for one of the stored items says it does not exist.
+  Kind: investigate.
+  Source: in-session-2026-08-23.
+  Lanes: mcp, roadmap-store.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
