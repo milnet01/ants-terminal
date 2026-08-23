@@ -37143,6 +37143,24 @@ are closed inline in the feedback files rather than filed here.
   What has NOT changed: the store is still a stale mirror (3D_E-0612 vs the
   file's 0624), the source is still ~4.4% ants-v1 already, and the convert
   must still be idempotent per bullet. Those three stay this item's work.
+  Requirement inherited from ANTS-4605 (2026-08-23), which closes on the
+  strength of it: the converter must be IDEMPOTENT PER BULLET.
+
+  The input it will meet is not a uniform github-task-list file. op:append
+  writes ants-v1 whatever dialect the file is in, so any project that has
+  filed work through the verb is already part-converted — measured on
+  Vestige, 45 of 1034 bullets (~4.4%) are ants-v1 with real ids, spanning
+  3D_E-0006..0624, i.e. the whole life of the project. A converter that
+  assumes a uniform source will either skip those bullets or double-convert
+  them.
+
+  Note the mixing is append-side only, so the already-converted population
+  is exactly the set that carries bracket ids: flips apply per the bullet's
+  own format (ANTS-3565, applyGfmFlip vs applyAntsV1Flip) and never convert.
+  That gives the converter a cheap per-bullet test rather than a heuristic.
+
+  Declared in roadmap-format.md § 3.10.2 and in roadmap_log's op:append
+  detail, so this is documented input rather than a surprise at build time.
 
 - 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
@@ -42320,7 +42338,7 @@ filed below.
   Source: Vestige feedback 2026-08-21, re-measured in-session.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4605] **op:append writes ants-v1 bullets into a github-task-list file, so an append silently makes the roadmap mixed.**
+- ✅ [ANTS-4605] **op:append writes ants-v1 bullets into a github-task-list file, so an append silently makes the roadmap mixed.**
   Found while checking Vestige's report that their 45 emoji bullets came
   from flips converting GFM bullets one at a time. They did not, and the
   measurement that settles it also finds this:
@@ -42376,6 +42394,28 @@ filed below.
   Left planned rather than flipped: the four-state taxonomy has no won't-do
   value, and 💭 is live research-phase work that blocks phase closure
   (roadmap-format § 3.3), so flipping there would misstate it.
+  Resolved (2026-08-23) as the user's 2026-08-21 decision specified: declared,
+  not fixed. No GFM writer, no refusal, no convert-on-append.
+
+  Declared in two places, because a caller and a conformer read different
+  documents. roadmap-format.md § 3.10.2 (this project owns that standard
+  upstream) and roadmap_log's op:"append" detail, which is where someone
+  about to append actually looks. The detail string went in `detail`, not the
+  short description — ANTS-2079 INV-5 caps the tools/list wire at 800 B and
+  roadmap_log sits at 742, so the short form had no room and this is per-op
+  reference anyway.
+
+  One claim was verified rather than carried over from the finding: flips do
+  NOT convert. remotecontrol_roadmap_log.cpp:3534 dispatches applyGfmFlip vs
+  applyAntsV1Flip "per the bullet's OWN format, not the file's dominant one"
+  (ANTS-3565). So the declaration names append as the sole source of mixing
+  and says outright that flip is not, which is the difference between a
+  reader trusting the note and re-deriving it. It also hands ANTS-4491 a
+  per-bullet test instead of a heuristic: the converted population is exactly
+  the set carrying bracket ids.
+
+  The per-bullet idempotency requirement moved to ANTS-4491 by annotation, so
+  nothing is lost by closing this.
   **Layman:** Adding a roadmap item to a project that uses checkboxes writes it in a different style, leaving the file half one thing and half the other.
   Kind: fix.
   Source: measured in-session 2026-08-21 against Vestige's roadmap.

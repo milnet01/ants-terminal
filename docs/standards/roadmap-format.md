@@ -897,9 +897,27 @@ without requiring migration. See **ANTS-1428** for the adapter
 implementation; the contract is that `[ ]` / `[x]` bullets are
 surfaced through the same envelope shape as emoji bullets, with
 the missing fields (`Kind:`, `Source:`, etc.) returned as
-empty strings rather than parse errors. Projects that prefer
-GFM stay on GFM; projects that adopt the full Ants format get
-the extra surface.
+empty strings rather than parse errors.
+
+**The adapter is read-side only, and one write op does not match it.**
+`roadmap_log op:"append"` and `op:"append_batch"` always write an
+ants-v1 emoji bullet, whatever dialect the file is in — so appending to
+a GFM-task-list roadmap leaves it MIXED, and the ratio moves as work is
+filed. Nothing warns. `op:"flip"` / `op:"flip_batch"` are **not** in
+this class: they apply per the bullet's own format (**ANTS-3565**,
+`applyGfmFlip` vs `applyAntsV1Flip`), so a flip never converts a bullet
+and never changes the ratio.
+
+Declared rather than fixed (**ANTS-4605**). The target state is that a
+project is imported into the store and its ROADMAP.md is regenerated
+from it, so a mixed file is transient — the render emits one dialect.
+Two readers already account for the mixing: `op:"flip_batch"` resolves
+locators against both sets (ANTS-3565), and § 3.10.3's conversion must
+be idempotent per bullet, because the file it meets may be part-
+converted already.
+
+So a project that prefers GFM stays on GFM only while nothing appends
+to it; projects that adopt the full Ants format get the extra surface.
 
 #### 3.10.3 Migration
 

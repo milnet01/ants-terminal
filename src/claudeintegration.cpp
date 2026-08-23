@@ -10457,6 +10457,23 @@ void ClaudeIntegration::onMcpConnection() {
                         "bullet is still appended (append_batch attaches "
                         "it per accepted bullet as "
                         "`[{bullet_index, id, candidates[]}]`). "
+                        // ANTS-4605 — declared, not fixed. The user
+                        // settled the disposition 2026-08-21: a project
+                        // is imported into the store and its ROADMAP.md
+                        // is REGENERATED from it, so a mixed file is
+                        // transient and appending ants-v1 is the
+                        // direction of travel. What was missing was any
+                        // statement that it happens at all.
+                        "DIALECT (ANTS-4605): append always writes an "
+                        "ants-v1 emoji bullet, whatever dialect the file "
+                        "is in — so appending to a github-task-list "
+                        "roadmap leaves it MIXED, and nothing warns. "
+                        "That is the direction of travel, not a defect: "
+                        "the store re-renders the file in one dialect. "
+                        "op:\"flip\" does NOT do this — it applies per "
+                        "the bullet's own format (ANTS-3565), so a flip "
+                        "never converts a bullet. See roadmap-format.md "
+                        "§ 3.10.2. "
                         "op:\"flip\" (ANTS-1428) — flips a bullet's "
                         "status; injects an Obsidian-style "
                         "`^prefix-NNNN` anchor on first touch as the "

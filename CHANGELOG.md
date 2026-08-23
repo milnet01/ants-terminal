@@ -119,6 +119,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **Declare that `roadmap_log op:"append"` writes ants-v1 into any roadmap dialect (ANTS-4605)**
+  Appending to a github-task-list roadmap has always written an ants-v1
+  emoji bullet, leaving the file mixed, and nothing said so — the
+  standard actively claimed the opposite ("projects that prefer GFM stay
+  on GFM"). Now declared in roadmap-format.md § 3.10.2 and in the verb's
+  own op:"append" reference. Behaviour is unchanged: the store re-renders
+  the file in one dialect, so the mixed state is transient. `op:"flip"`
+  does not do this and never did — it applies per the bullet's own
+  format.
+
 - **discarded_edit_lines now comes with a breakdown and the lost text itself** (ANTS-4615)
   One count mixed harmless reformatting with sentences that were deleted,
   so nobody could tell the difference — a measured report of 84 was 24
