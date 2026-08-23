@@ -42835,6 +42835,46 @@ open, and two of these were exactly that.
   Kind: fix.
   Source: in-session-2026-08-22 (live verb test after relaunch).
 
+- 📋 [ANTS-4626] **An unrecognised argument is silently ignored and answered with the full set.**
+  Measured 2026-08-23. `roadmap_query {caller_cwd, mode:"sections",
+  section_filter:"cc-sessions", compact:true, fields:["sections"]}` returned
+  all 79 sections, 19,871 bytes, spilled to a handle — byte-identical to the
+  same call without `section_filter` (same handle hash both times).
+
+  `section_filter` is not in roadmap_query's schema. Nothing refused it,
+  nothing echoed it, and nothing said it had been dropped. The reply is a
+  SUPERSET of what was asked for, which is the one shape a caller cannot
+  detect: a filter that matched nothing and a filter that never ran both
+  return rows, and the second returns MORE, so the result looks like a
+  generous answer rather than a wrong one.
+
+  This exact failure already has a fix in this codebase. ANTS-3698 added
+  `filter` as an alias for `status` because "passing that name used to be
+  silently ignored and answered with the full set" — the same sentence,
+  one argument earlier. That fix was per-argument, so the class survived it.
+
+  Two things worth separating before implementing.
+
+  The narrow fix is a guess-resistant refusal: reject an unknown top-level
+  key with `bad_args` and name it, the way `ids` already refuses a
+  present-but-wrongly-typed value rather than dumping the full list
+  (ANTS-3541). The reasoning there is stated and applies unchanged here.
+
+  The wider question is whether that belongs in the dispatcher rather than
+  in each verb. Every verb hand-reads its arguments, so each is free to
+  ignore a key, and a per-verb fix leaves the next verb exposed. Against
+  that: a strict dispatcher-level check can break a caller that passes a
+  harmless extra key, so it needs a survey of what callers actually send
+  before it is switched on. Do the survey; do not assume the answer.
+
+  Note for whoever picks this up: `mode:"section_index"` already has the
+  right tools for what the failing call wanted — `query` narrows the index
+  by section name (ANTS-4610) and `slugs_only` avoids exactly this spill
+  (ANTS-4467). The defect is the silence, not a missing capability.
+  **Layman:** Ask a tool to narrow its answer using a setting it does not have, and it hands back everything instead of saying the setting is not real.
+  Kind: fix.
+  Source: in-session-2026-08-23.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
