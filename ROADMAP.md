@@ -38963,7 +38963,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-20.
   Lanes: RoadmapDialog, build.
 
-- 📋 [ANTS-4624] **session_orient still drops fields=: ANTS-4523 fixed the allowlist and not the schema.**
+- ✅ [ANTS-4624] **session_orient still drops fields=: ANTS-4523 fixed the allowlist and not the schema.**
   Measured today, not reasoned from code. session_orient
   {fields:["ok","server_build","mail_pending"]} returned the ENTIRE 35331-byte
   bundle. That is ANTS-4523's exact symptom, and ANTS-4523 is marked shipped.
@@ -39031,6 +39031,16 @@ are closed inline in the feedback files rather than filed here.
   advertisement is not evidence and to verify by calling — and it was
   closed without doing that, which is precisely how this survived. Flip
   only after a relaunch and a real call returning ONLY the listed keys.
+  Resolved (2026-08-23): verified through the dispatcher after relaunch, not
+  from the green suite. session_orient {caller_cwd, fields:["ok","server_build"]}
+  returned exactly those two keys; before the schema declared the property the
+  same call returned the full 35,331-byte bundle. That outcome entails the whole
+  chain: the ANTS-1720 block runs only when fv.isArray() is true, so the array
+  must have arrived typed, which is what the missing property prevented. The
+  loaded schema now shows fields as an array of strings, and server_build
+  reported build_commit c9449de0 = HEAD, so this was the fixed binary rather than
+  a stale one. Same discipline as ANTS-4622 and the closing advice of ANTS-4523,
+  whose fix was incomplete: the advertisement is not evidence.
   **Layman:** A fix marked done three days ago never actually worked, because the test checked a list instead of calling the tool.
   Kind: fix.
   Source: in-session-2026-08-22 (maintainer, measured).
