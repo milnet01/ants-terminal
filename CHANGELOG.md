@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **Build-time Qt-version guard: refuse a tree whose objects predate a Qt upgrade (ANTS-4625)**
+  A Qt point upgrade could silently poison an incremental build. RPM
+  preserves upstream header mtimes, so newer headers can be older than
+  your objects; ninja is mtime-based, rebuilds nothing, and links the new
+  libraries against stale objects. Measured on 6.11.1 → 6.11.2: 859 of
+  3838 tests failing with heap corruption. The build now compares the
+  installed Qt against the version the tree was configured with, and
+  refuses with the clean-rebuild command. A reconfigure alone never fixed
+  this — it regenerates build.ninja but invalidates no objects.
+
 - **Cross-session mailbox: `session_message`, so Claude sessions on different projects can leave each other notes** (ANTS-4622)
   Mail is addressed to a PROJECT by its export_slug, never to a session:
   a session is its shell PID, which is ephemeral and reused, so mail

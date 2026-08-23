@@ -93,6 +93,43 @@ add_custom_command(
 # must therefore ship the plugin AND libsqlite3 -- see the spec's section 7.
 find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLWidgets DBus Sql Test)
 
+# ANTS-4625 — refuse a build whose objects were compiled against a different
+# Qt than the one now installed.
+#
+# Ninja cannot see a Qt upgrade on its own. RPM preserves upstream header
+# mtimes, so a NEWER Qt can write headers that are OLDER than your objects;
+# ninja then rebuilds nothing and links the new libraries against stale
+# objects. Measured 2026-08-23: 859 of 3838 tests failing with heap
+# corruption. cmake/QtVersionGuard.cmake carries the full reasoning.
+#
+# Qt6_VERSION is what find_package just resolved, and it is baked into the
+# generated build file — so it is the version this tree was CONFIGURED
+# against. The guard re-reads the INSTALLED qconfig.h on every build and
+# compares. Patch precision on purpose: the incident was 6.11.1 -> 6.11.2.
+find_file(ANTS_QCONFIG_H qconfig.h
+    HINTS ${Qt6Core_INCLUDE_DIRS}
+    PATH_SUFFIXES QtCore)
+
+if(ANTS_QCONFIG_H)
+    # ALL, so an ordinary `cmake --build` runs it. Ninja may schedule it in
+    # any order relative to the compiles; that is fine, because the gate is
+    # the non-zero exit failing the BUILD, not the position in the graph.
+    add_custom_target(ants_qt_version_guard ALL
+        COMMAND ${CMAKE_COMMAND}
+            -DEXPECTED_QT_VERSION=${Qt6_VERSION}
+            -DQCONFIG_FILE=${ANTS_QCONFIG_H}
+            -P ${CMAKE_SOURCE_DIR}/cmake/QtVersionGuard.cmake
+        COMMENT "Checking installed Qt still matches this tree (ANTS-4625)"
+        VERBATIM)
+else()
+    # Not silent. A guard that quietly does not exist is the failure mode
+    # ANTS-4625 is about, so say so loudly at configure time.
+    message(WARNING
+        "ANTS-4625: qconfig.h not found under Qt6Core_INCLUDE_DIRS, so the "
+        "Qt-version guard is NOT active in this tree. A Qt upgrade will not "
+        "be detected; clean-rebuild by hand after one.")
+endif()
+
 # Lua 5.4 (optional — plugin system)
 find_package(PkgConfig)
 if(PkgConfig_FOUND)
@@ -2452,6 +2489,7 @@ if(ANTS_TESTS)
                 # a twelfth TU needs no edit here. Reads files at run time, so
                 # it needs Qt6::Core only.
                 tests/features/rc_tu_split/test_rc_tu_split.cpp
+        tests/features/qt_version_guard/test_qt_version_guard.cpp
                 tests/features/verify_trust_gate/test_verify_trust_gate.cpp
                 tests/features/claude_dot_restored_tabs/test_claude_dot_restored_tabs.cpp
                 tests/features/remote_control_new_tab/test_remote_control_new_tab.cpp
@@ -2679,6 +2717,11 @@ if(ANTS_TESTS)
         ANTS_JCS_VECTOR_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/vectors"
         # ANTS-3761 INV-18 — the committed golden exports, likewise.
         ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden"
+        # ANTS-4625 — the Qt-version guard, its fixture headers, and the
+        # CMake file INV-6 scrapes to prove the guard is actually wired in.
+        ANTS_QT_GUARD_SCRIPT="${CMAKE_SOURCE_DIR}/cmake/QtVersionGuard.cmake"
+        ANTS_QT_GUARD_FIXTURES="${CMAKE_SOURCE_DIR}/tests/features/qt_version_guard/fixtures"
+        ANTS_QT_GUARD_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         # ANTS-3758 INV-11 — the source tree the refit scrape walks.
         ANTS_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         # ANTS-3856 INV-5 — the bundle mains, scraped for the sandbox arming.

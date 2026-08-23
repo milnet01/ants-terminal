@@ -54201,7 +54201,7 @@ here.)
 
 ---
 
-- 📋 [ANTS-4625] **A Qt point upgrade silently poisons the incremental build tree, because RPM preserves header mtimes and ninja is mtime-based.**
+- ✅ [ANTS-4625] **A Qt point upgrade silently poisons the incremental build tree, because RPM preserves header mtimes and ninja is mtime-based.**
   Measured today, not inferred. Cost ~25 minutes and presented as 859 of
   3838 tests failing with heap corruption -- which reads as a catastrophic
   code regression rather than a build-tree problem.
@@ -54255,6 +54255,31 @@ here.)
   Not attempted here: it is orthogonal to the item being shipped, it
   wants a test (mutate the stamp, assert the build refuses), and getting
   it wrong makes every build noisy.
+  Resolved (2026-08-23). cmake/QtVersionGuard.cmake + an ALL target that runs
+  it every build; 5 cases in tests/features/qt_version_guard (test_core).
+  Suite 3838 -> 3843, 100%.
+
+  Verified by making it FIRE, not by its own green. Run against the REAL
+  /usr/include/qt6/QtCore/qconfig.h with EXPECTED_QT_VERSION=6.11.1 -- the
+  exact incident pair -- it refuses and names the remedy. The fixtures prove
+  the logic; that run proves the wiring.
+
+  The red run is worth recording because it justifies INV-1. With the script
+  moved aside, INV-3 and INV-5 PASSED -- `cmake -P` on a missing file also
+  exits non-zero, so both refusal cases were green against no guard at all.
+  Only INV-1 (a case that REQUIRES exit 0 from the real script) told the
+  truth. A refusal-only test suite for a guard is a suite that cannot tell
+  the guard from its own absence.
+
+  Two design points. Comparison is full-precision including patch, because
+  the incident WAS a patch bump and a major.minor check would have waved it
+  through. And an unreadable or version-less header REFUSES rather than
+  passing (INV-5): a guard that cannot look must not report OK, or
+  "nothing wrong" and "could not check" become the same answer.
+
+  Not covered: the guard sees the version, not the mtime hazard itself, so a
+  Qt rebuild at the SAME version that changed header content would still slip
+  through. Judged not worth chasing -- distro patch releases bump the version.
   **Layman:** After a system Qt update, rebuilding normally can produce a broken program that crashes everywhere, and nothing warns you.
   Kind: fix.
   Source: in-session-2026-08-23 (hit while shipping ANTS-4605).
