@@ -31,6 +31,7 @@
 #include <QTemporaryDir>
 
 #include <memory>
+#include <utility>
 
 ANTS_TEST_SCOPE();
 
@@ -94,7 +95,12 @@ const char *kPad =
 // public OPEN item with no `Layman:`. It has to be a different item from the one
 // INV-1 then flips: the gate reads the state the write produced, so flipping the
 // offender itself to `shipped` would clear the very condition under test.
-QByteArray fixture(bool withGateOffender = false) {
+// ANTS-4434 widened `withGateOffender` from a bool to a COUNT. One offender and
+// two are different states, not degrees of the same one: at one, a single-item
+// repair is the last outstanding and commits; at two, each single repair is
+// refused by the other and rolls back, so the project cannot be repaired one
+// item at a time at all. A bool cannot express the second.
+QByteArray fixture(int gateOffenders = 0) {
     QByteArray b =
         "<!-- ants-roadmap-format: 1 -->\n"
         "\n"
@@ -114,8 +120,13 @@ QByteArray fixture(bool withGateOffender = false) {
         "  Kind: fix.\n"
         "  Source: seed.\n"
         "\n";
-    if (withGateOffender)
+    if (gateOffenders >= 1)
         b += "- \xF0\x9F\x93\x8B [DEMO-0005] **An open item with no Layman line.**\n"
+             "  Kind: chore.\n"
+             "  Source: seed.\n"
+             "\n";
+    if (gateOffenders >= 2)
+        b += "- \xF0\x9F\x93\x8B [DEMO-0006] **A second open item with no Layman line.**\n"
              "  Kind: chore.\n"
              "  Source: seed.\n"
              "\n";
@@ -189,6 +200,20 @@ QString statusOf(const QString &id, qint64 projectId) {
     return item ? item->status : QString();
 }
 
+// ANTS-4434 — the gate reads the `layman` COLUMN, so the column is what a
+// repair has to be asserted against. Asserting on the rendered file instead
+// would pass on a body that merely contains the text without the trailer having
+// been parsed into the column the gate consults.
+QString laymanOf(const QString &id, qint64 projectId) {
+    auto store = openStore(RoadmapStore::Access::Interactive);
+    if (!store) return QString();
+    QString err;
+    const auto pk = store->findItem(projectId, id, &err);
+    if (!pk) return QString();
+    const auto item = store->readItem(*pk, &err);
+    return item ? item->layman : QString();
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------- INV-1 -----
@@ -202,7 +227,7 @@ TEST(RoadmapWriteHalf, Inv1RenderFailureRollsBack) {
     ASSERT_TRUE(tmp.isValid());
     qint64 projectId = 0;
     const QString root =
-        seedMigrated(guard, tmp, fixture(/*withGateOffender=*/true), &projectId);
+        seedMigrated(guard, tmp, fixture(/*gateOffenders=*/1), &projectId);
     ASSERT_FALSE(root.isEmpty());
 
     QJsonObject resp;
@@ -230,6 +255,113 @@ TEST(RoadmapWriteHalf, Inv1RenderFailureRollsBack) {
     EXPECT_EQ(statusOf(QStringLiteral("DEMO-0007"), projectId),
               QStringLiteral("planned"))
         << "a store write must not survive the render that refused it";
+}
+
+// ------------------------------------------------------------- ANTS-4434 -----
+
+// The gate is per PROJECT and is evaluated AFTER the mutation, and those two
+// facts together decide whether a blocked project can be repaired at all.
+//
+// A single-item repair is applied inside the transaction, so the item it fixed
+// is correctly no longer an offender — but the gate then refuses on whichever
+// offenders REMAIN, and the whole transaction rolls back, taking the good
+// repair with it. So a single repair commits only when it is the last one
+// outstanding. With two offenders, each single repair is refused by the other
+// and neither can ever land: the project is unrepairable one item at a time.
+//
+// One flip_batch carrying every offender repairs them together, the gate then
+// sees zero, and it commits. That route needs no gate change, which is why
+// ANTS-4434 does not have to settle the whole-project-vs-touched-items question
+// to unblock a stuck project.
+//
+// Measured on the live store 2026-08-23 before this test existed: MAME_Curator
+// has exactly two offenders, and annotating either one came back
+// render_gate_unmet naming only the OTHER — the two-refusal half below,
+// reproduced here against a fixture so it stays reproduced.
+TEST(RoadmapWriteHalf, Ants4434BatchRepairEscapesTheGateDeadlock) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root =
+        seedMigrated(guard, tmp, fixture(/*gateOffenders=*/2), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    // A note whose FIRST line declares the trailer key is what writes the
+    // column; mid-line it would be prose, and the column would stay empty.
+    const QString repair = QStringLiteral("Layman: A plain-language summary.");
+
+    // One at a time: each repair is refused by the OTHER offender, and the
+    // refusal naming only the other id is the evidence that the mutation landed
+    // inside the transaction before the gate ran.
+    const auto repairOne = [&](const QString &id) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("annotate");
+        req[QStringLiteral("id")]         = id;
+        req[QStringLiteral("note")]       = repair;
+        return rc.cmdRoadmapLogFlipForTest(req).object();
+    };
+
+    for (const auto &pair : {std::make_pair(QStringLiteral("DEMO-0005"),
+                                            QStringLiteral("DEMO-0006")),
+                             std::make_pair(QStringLiteral("DEMO-0006"),
+                                            QStringLiteral("DEMO-0005"))}) {
+        const QJsonObject resp = repairOne(pair.first);
+        EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+            << "repairing " << pair.first.toStdString()
+            << " alone must be refused while " << pair.second.toStdString()
+            << " is still outstanding";
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("render_gate_unmet"));
+        const QJsonArray failures =
+            resp.value(QStringLiteral("gate_failures")).toArray();
+        ASSERT_EQ(failures.size(), 1)
+            << "the repaired item must have left the offender set inside the "
+               "transaction, leaving exactly the other one";
+        EXPECT_EQ(failures.at(0).toString(), pair.second);
+        EXPECT_TRUE(laymanOf(pair.first, projectId).isEmpty())
+            << "the refused repair must not have survived the rollback";
+    }
+
+    // Both together: the gate sees zero offenders and the transaction commits.
+    QJsonObject batch;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("flip_batch");
+        // The status they already hold — flip_batch is the only op taking N
+        // locators with per-locator notes, so a same-status flip is how a batch
+        // annotate is expressed. Flipping them to something else would clear
+        // `isOpen` and pass the gate for the wrong reason.
+        req[QStringLiteral("to_status")] = QStringLiteral("planned");
+        QJsonArray locators;
+        for (const QString &id : {QStringLiteral("DEMO-0005"),
+                                  QStringLiteral("DEMO-0006")}) {
+            QJsonObject loc;
+            loc[QStringLiteral("id")]   = id;
+            loc[QStringLiteral("note")] = repair;
+            locators.append(loc);
+        }
+        req[QStringLiteral("locators")] = locators;
+        batch = rc.cmdRoadmapLogFlipBatchForTest(req).object();
+    }
+
+    EXPECT_TRUE(batch.value(QStringLiteral("ok")).toBool())
+        << "one batch repairing every offender must pass the gate; got code "
+        << batch.value(QStringLiteral("code")).toString().toStdString();
+    EXPECT_TRUE(batch.value(QStringLiteral("skipped")).toArray().isEmpty());
+
+    for (const QString &id : {QStringLiteral("DEMO-0005"),
+                              QStringLiteral("DEMO-0006")}) {
+        EXPECT_FALSE(laymanOf(id, projectId).isEmpty())
+            << id.toStdString() << " must carry a layman value after the batch";
+        EXPECT_EQ(statusOf(id, projectId), QStringLiteral("planned"))
+            << "the same-status flip must leave the item open, so the gate was "
+               "satisfied by the repair rather than by the item closing";
+    }
 }
 
 // ---------------------------------------------------------------- INV-2 -----

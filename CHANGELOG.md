@@ -177,6 +177,22 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`render_gate_unmet` now names a remedy that works — repair every offender in one `flip_batch`** (ANTS-4434)
+  The render's Layman gate is per project and is evaluated after the
+  mutation, so repairing one item at a time is refused by whichever
+  offenders remain and rolled back — a single repair commits only when it
+  is the last one outstanding, and a project with two or more could not be
+  repaired one item at a time at all. The refusal previously named the
+  offenders and no way out. It now names the route that works: one
+  `flip_batch` carrying every id from `gate_failures`, each locator with a
+  note whose first line declares the `Layman:` trailer and `to_status` set
+  to the status those items already hold. No gate change, so ANTS-3758
+  INV-5 is untouched. Locked by a new `RoadmapWriteHalf` case that asserts
+  both halves — each single repair refused while the other is outstanding,
+  and one batch repairing both. ANTS-4434 stays open for the bulk case,
+  where the offender count is 585 and a batch of hand-written summaries is
+  not a remedy.
+
 - **`session_orient` now honours `fields=`, narrowing the largest response in the session** (ANTS-4624)
   The verb joined the projection allowlist in 0.7.105 but never gained the
   matching `fields` schema property, so the argument reached the dispatcher

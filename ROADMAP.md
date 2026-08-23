@@ -32561,6 +32561,47 @@ against current source before filing.
   half and it turns out not to need the decision. It still needs deciding
   for ANTS-4491, where the offender count is 585 and a batch of 585
   hand-written summaries is not a remedy.
+  The escape already exists, and no new op is needed. Correcting the
+  annotation above, which proposed an annotate_batch: `flip_batch` already
+  takes a per-locator note, so a batch repair is expressible today.
+
+  Verified against MAME_Curator, dry run, both offenders in one call:
+
+    op flip_batch, to_status "planned" (their CURRENT status),
+    locators [{id 1040, note "<trailer-declaration>"},
+              {id 1075, note "<trailer-declaration>"}]
+    -> ok:true, would_flip_count:2, items_rendered:75, skipped:[]
+
+  No render_gate_unmet. Both notes appended, both statuses unchanged
+  (planned -> planned). One transaction repairs every offender, the gate
+  then sees zero, and it commits. The same two locators one at a time are
+  refused, as recorded above.
+
+  So the deadlock half of this item needs no code. What it needs is for the
+  route to be FINDABLE, which is the whole reason it stayed open: the
+  capability was there and the refusal did not say so. Two changes, both
+  small:
+
+  1. `render_gate_unmet`'s message should name the remedy that works -- one
+  flip_batch carrying every id in gate_failures, each locator's note
+  declaring the trailer key, to_status set to the item's current status.
+  Today the message names the offenders and no way out.
+
+  2. mcp-error-codes.md's entry for the code should say the same. That is
+  ANTS-4435, which exists precisely because the documented remedy "provably
+  cannot work" -- and a remedy that does work is now measured, so the two
+  items close together on one change rather than separately.
+
+  Note the flip-to-same-status shape is doing real work here and is not a
+  trick: flip_batch's contract is N locators, one to_status, per-locator
+  notes, and setting to_status to what the items already carry makes it a
+  pure batch-annotate. Worth stating in the docs rather than leaving each
+  caller to rediscover it.
+
+  What this does NOT solve, unchanged from the annotation above: ANTS-4491,
+  where the count is 585 and a batch of 585 hand-written summaries is not a
+  remedy. The whole-project-vs-touched-items question still has to be
+  settled for that, and it is now cleanly separable from this deadlock.
 
 - 📋 [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
   The `render_gate_unmet` row says: "Remedy is to fill in the named layman lines, which `annotate` / `amend_body` can do one at a time."

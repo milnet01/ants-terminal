@@ -274,8 +274,24 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     publish(*dry);
     if (!dry->gateFailures.isEmpty()) {
         if (error && error->isEmpty()) {
+            // ANTS-4434 — the message carries the remedy because the obvious one
+            // does not work, and nothing else says so. The gate is per PROJECT
+            // and is evaluated AFTER the mutation, so repairing one item at a
+            // time is refused by whichever offenders remain and rolled back:
+            // measured on a two-offender project, each single repair came back
+            // naming only the OTHER id. A single-item repair therefore commits
+            // only when it is the last one outstanding. One flip_batch carrying
+            // every gate_failures id repairs them together, the gate then sees
+            // zero, and it commits — verified 2026-08-23.
             *error = QStringLiteral("the roadmap render refuses this project: %1 open "
-                                    "item(s) carry no Layman: line")
+                                    "item(s) carry no Layman: line. Repair them in ONE "
+                                    "flip_batch — every id in gate_failures as a locator, "
+                                    "each carrying a note whose FIRST line declares the "
+                                    "Layman: trailer, and to_status set to the status those "
+                                    "items already hold. Repairing them one at a time cannot "
+                                    "work: this gate is per project and runs after the "
+                                    "mutation, so with two or more offenders each single "
+                                    "repair is refused by the rest and rolled back.")
                          .arg(dry->gateFailures.size());
         }
         return abort(Result::GateUnmet);
