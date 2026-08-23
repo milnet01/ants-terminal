@@ -32473,6 +32473,45 @@ against current source before filing.
   **Layman:** Three projects cannot use the roadmap tools at all, and the tools offer no way to fix the thing they are complaining about.
   Kind: fix.
   Source: finbreak-feedback-2026-08-18 (maintainer-reproduced).
+  Blocks ANTS-4491 as well, which its body did not know: recorded there
+  2026-08-23 with the derivation. The convert path ends in
+  RoadmapRender::render(), so every conversion meets this gate on its final
+  step. Two consequences for how this item is fixed.
+
+  Fix (a) does not cover the conversion case. "Do not fire on a dialect
+  whose format does not require the line" keys on the project's CURRENT
+  dialect; a converted project's dialect is ants-v1, which requires the
+  line. So (a) unblocks Vestige-as-it-stands and leaves
+  Vestige-after-conversion blocked by the same 585 items. Only (b), or the
+  whole-project-vs-touched-items decision this item calls "the design
+  question to settle before coding", reaches ANTS-4491.
+
+  That raises the stakes on the design question rather than changing it:
+  whichever way it goes has to hold for a project that is ants-v1 by
+  conversion rather than by history, and (b)'s "way out that is not a hand
+  edit" is what a bulk conversion needs, since the hand edit there is 585
+  summaries.
+
+  Gate site re-confirmed 2026-08-23: src/roadmaprender.cpp:356,
+  `isOpen(it->status) && it->layman.isEmpty()`, reading the store's layman
+  column with no reference to source_format -- so "dialect-blind" is still
+  accurate, and the citation in the body above (roadmaprender.cpp:315) has
+  since moved. The 585 figure reproduces exactly against the live store
+  today.
+
+  One contradiction found while checking, and NOT resolved here because it
+  decides this item's urgency rather than its fix. roadmap-data-model.md
+  section 3.2 says "A cut-over project whose roadmap is a GFM or
+  pass-headings dialect still splices markdown, renders nothing, and so
+  meets no gate on write", which would mean Vestige is NOT blocked today.
+  This item's progress note says "every roadmap_log op refused", measured
+  and maintainer-reproduced. `RoadmapSource::migratedProject()` returns
+  nullopt for every dialect but ants-v1, which supports section 3.2 -- but
+  ANTS-4614's op:render is newer than that paragraph and is gated on the
+  project being store-backed rather than on its dialect. Whoever takes this
+  should settle it with a dry run before deciding whether three projects are
+  broken now or only after conversion; the answer does not change what the
+  fix has to do.
 
 - 📋 [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
   The `render_gate_unmet` row says: "Remedy is to fill in the named layman lines, which `annotate` / `amend_body` can do one at a time."
@@ -37161,6 +37200,55 @@ are closed inline in the feedback files rather than filed here.
 
   Declared in roadmap-format.md § 3.10.2 and in roadmap_log's op:append
   detail, so this is documented input rather than a surprise at build time.
+  Prerequisite status 2026-08-23, re-measured: the two named blockers are
+  BOTH closed, and a THIRD one this body never named is now the only thing
+  standing. Do not read the 2026-08-21 note above as current — it says
+  ANTS-3771 is still open, and ANTS-3771 shipped that same day with
+  "Unblocks ANTS-4491" as its closing line.
+
+  Closed: ANTS-4575 (id provenance, shipped) and ANTS-3771 (declared id
+  format, shipped).
+
+  Open, and hard: ANTS-4434. Derived from source, not recalled. This
+  converter ends in RoadmapRender::render(), whose INV-5 gate at
+  src/roadmaprender.cpp:356 reads `isOpen(it->status) && it->layman.isEmpty()`
+  -- the store's layman COLUMN, with no reference to source_format. The gate
+  is per PROJECT (its own comment says so: "collect every offender rather
+  than stopping at the first"), so one offending open item refuses the whole
+  render.
+
+  Measured directly against the live store 2026-08-23, project_id 13:
+
+    sqlite3 -readonly ~/.local/share/ants-terminal/roadmap.sqlite \
+      "SELECT status, COUNT(*), SUM(CASE WHEN COALESCE(layman,'')=''
+       THEN 1 ELSE 0 END) FROM item WHERE project_id=13 GROUP BY status;"
+
+    planned      595  (584 with no layman)
+    in-progress    1  (  1 with no layman)
+    shipped      428  (415 with no layman)
+    considered     2  (  0 with no layman)
+
+  So 596 open items, 585 of them with an empty layman column -- reproducing
+  ANTS-4434's independently-measured 585 exactly. The convert path's final
+  render therefore refuses `render_gate_unmet` naming 585 ids, and ANTS-4434
+  records that NO roadmap_log op writes the column the gate refuses on.
+  Converting Vestige today does not standardise it; it bricks it.
+
+  The half of ANTS-4434 that does NOT help here, stated so nobody builds on
+  it: that item's fix (a) is "do not fire on a dialect whose format does not
+  require the line", resting on roadmap-format.md:830 making Layman optional
+  on github-task-list. After conversion the dialect IS ants-v1, which
+  requires it. Only (b) -- a route to the column that is not a hand edit plus
+  a re-import -- or the whole-project-vs-touched-items decision ANTS-4434
+  calls "the design question to settle before coding", unblocks this item.
+
+  Also re-measured while here, correcting a figure in the body above:
+  id_origin over the same 1026 items is parsed 32, quarantined 427,
+  synthesised 567 -- not 566. The 567 are what ANTS-4493 calls a positional
+  artefact ("this session watched one move"), and the render writes every id
+  in brackets, so a naive render stamps all 567 into a public repo.
+
+  So the order is ANTS-4434, then this.
 
 - 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
