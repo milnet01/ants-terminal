@@ -94,6 +94,7 @@ Already shipped (as of this ROADMAP revision):
 - ✅ [ANTS-4342] **Audit pipeline**
   — clazy + cppcheck + grep rules + fixture-enforced regression coverage
   Kind: implement.
+  Layman: The built-in code checker that scans the project for bugs and risky patterns.
 
 Gating items (blocks adoption **today**, not just for being default):
 
@@ -32512,6 +32513,54 @@ against current source before filing.
   should settle it with a dry run before deciding whether three projects are
   broken now or only after conversion; the answer does not change what the
   fix has to do.
+  Diagnosis corrected 2026-08-23 by measurement. This body's central claim
+  -- "No op writes that column" -- is FALSE, and the real mechanism is
+  narrower, which makes the fix smaller and removes the policy question from
+  the critical path.
+
+  `op:annotate` DOES write the column. A note whose FIRST line declares the
+  trailer key (the `Layman:` label first on its own line, which is how the
+  render writes it) is parsed as a declaration and lands in the column.
+  Measured on this project: ANTS-4342 went from an empty column to a set
+  one, and the shipped-with-empty count fell 621 -> 620. So the escape route
+  this item says does not exist has existed since the trailer-declaration
+  rules landed; `append`'s new-item-only layman argument is not the only
+  writer.
+
+  What is really wrong is the ORDER of mutation and gate, and it is a mutual
+  standoff. Measured against MAME_Curator, which has exactly two offenders:
+
+    annotate mame-curator-1040  -> render_gate_unmet, gate_failures ["mame-curator-1075"]
+    annotate mame-curator-1075  -> render_gate_unmet, gate_failures ["mame-curator-1040"]
+
+  Both dry runs. Read the counts: the project has TWO open items with no
+  layman line, and each refusal reports "1 open item(s)" and names only the
+  OTHER one. So the mutation is applied inside the transaction, the
+  project-wide gate is evaluated AFTER it, and the item just repaired is
+  correctly no longer an offender. Each repair is right, and each is refused
+  because a different item is still outstanding, so the whole transaction
+  rolls back and the count never moves.
+
+  The consequence, stated precisely: a single-item repair succeeds only when
+  it is the LAST outstanding one. At N=1 the gate sees zero and commits. At
+  N>=2 every single-item repair is refused and rolled back, and the project
+  cannot be repaired one item at a time at all. That is why MAME_Curator (2)
+  and Music_Production (4) are stuck while a one-offender project would have
+  healed itself on the first annotate.
+
+  So the minimal fix needs no gate change and no dialect carve-out: repair
+  all N offenders in ONE transaction and the gate sees zero. roadmap_log
+  already has append_batch and flip_batch and has no annotate_batch; that
+  asymmetry is the whole bug. A batch route dissolves the deadlock for every
+  affected project without touching ANTS-3758 INV-5, without weakening the
+  invariant, and without settling the whole-project-vs-touched-items
+  question this item calls "the design question to settle before coding".
+
+  That question stays open and is now a SEPARATE concern from the deadlock,
+  which is the useful part of this correction: the deadlock was the urgent
+  half and it turns out not to need the decision. It still needs deciding
+  for ANTS-4491, where the offender count is 585 and a batch of 585
+  hand-written summaries is not a remedy.
 
 - 📋 [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
   The `render_gate_unmet` row says: "Remedy is to fill in the named layman lines, which `annotate` / `amend_body` can do one at a time."
