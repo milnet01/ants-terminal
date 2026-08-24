@@ -1619,6 +1619,9 @@ if(ANTS_TESTS)
                 # ANTS-3519 feedback_query resolves foreign-prefix mapped ids
                 # against the sibling roadmap that owns the prefix.
                 tests/features/feedback_query_foreign_resolve/test_feedback_query_foreign_resolve.cpp
+                # ANTS-4471 feedback_query miss offers candidates from the
+                # configured shared corpus root, or says what it searched.
+                tests/features/feedback_query_shared_root/test_feedback_query_shared_root.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
                 # ANTS-3421 feedback_log op:compact_shipped (maintainer compaction).
                 tests/features/feedback_log_compact_shipped/test_feedback_log_compact_shipped.cpp

@@ -36365,7 +36365,7 @@ happen.
   All three backends covered: store-render, markdown-patch, and pass-headings (cmdRoadmapLogPassFlipBatch took an annotateMode parameter, so the note lands without flipping every located pass to a status nobody named).
   Verified: 11 new tests in tests/features/roadmap_log_annotate_batch, full suite 3865/3865.
 
-- 📋 [ANTS-4471] **`feedback_query`'s derived-path miss returns `found:false` with no `candidates`, where its sibling verb offers them.**
+- ✅ [ANTS-4471] **`feedback_query`'s derived-path miss returns `found:false` with no `candidates`, where its sibling verb offers them.**
   On a derived-path miss feedback_query returns {found:false, reason} and
   nothing else. `feedback_log op:"append_tracking"` in the same family already
   answers a missing file with `candidates` + `hint` listing sibling
@@ -36419,6 +36419,19 @@ happen.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_feedback.
+  Resolved (2026-08-24): route 1, the one this item recommended — a config key, `claude.mcp_feedback_root`, defaulting to empty, and empty means the pre-existing "parent of caller_cwd" rule.
+
+  The investigation note was exactly right and saved the work: the verb was never missing the feature. fbNotFound already emits candidates + hint; feedbackSiblingCandidates scanned one directory, that directory held nothing on the reported repro, and the function returned before either field could attach. So the fix is WHERE it looks.
+
+  Two changes, not one, because widening the scan does not help a project that has no corpus anywhere. (1) The configured root is scanned IN ADDITION to the derived directory — never instead of it, so setting the key cannot break the common case of a project sitting beside its corpus; results are deduped by absolute path, and derived-first ordering preserves ANTS-3376's own-file-floats-first ranking. (2) When the scan still finds nothing the envelope now carries `searched` (the directories actually looked in) and a hint naming the key. That is the reported dead end proper: found:false alone is equally consistent with "nothing filed here yet", "one character out in the basename" and "the corpus is not where I looked", and on this repro it was the third.
+
+  Routes 2 and 3 rejected as the item framed them. Route 2 (read the roadmap store's project table) buys a dependency for a hint. Route 3 (scan each tab's parent) fails for exactly the single-tab case where the hint is most wanted.
+
+  Documented in docs/standards/mcp-config-keys.md with the reasoning, including why hardcoding any absolute path would be wrong on another machine.
+
+  Verified: 3 new tests in tests/features/feedback_query_shared_root, with the corpus deliberately in a branch the caller's path cannot reach — a fixture that put them together would pass against the old code and prove nothing. Full suite 3872/3872. NOT verified live: needs a relaunch.
+
+  One thing learned that the item did not say: a DERIVED-path miss is ok:true with found:false (ANTS-4104), not a refusal. A first draft of the test asserted ok:false and failed. The new fields ride that envelope unchanged.
 
 - ✅ [ANTS-4472] **`mutation_probe` is absent from the SessionStart hook's verb list — three consecutive sessions hand-rolled the loop it replaces.**
   Filed three times by LocalWebServerManager: the 7th, 8th and a further

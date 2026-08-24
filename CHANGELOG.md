@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **Feedback lookups can be pointed at a shared corpus directory** (ANTS-4471)
+  When `feedback_query` could not find a project's feedback file it said
+  only "not found", even though it already knew how to list nearby files —
+  it was looking in one directory, and for a project whose feedback lives
+  on a different part of the disk that directory is empty. A new
+  `claude.mcp_feedback_root` setting names the shared folder, searched in
+  addition to the usual one, and a miss now reports which directories were
+  searched plus how to widen it. Empty by default, meaning the previous
+  behaviour is unchanged.
+
 - **roadmap_query can now answer "is my roadmap file in sync with the database?"** (ANTS-4462)
   Pass `check_sync:true` to have the roadmap rendered from the database and
   compared against the file on disk — the same comparison a write already

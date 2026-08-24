@@ -16,6 +16,36 @@ the auto-switcher stands down, and every verb refuses with `mcp_disabled`
 (turning it off is honoured immediately via the dispatcher guard; turning it
 back on takes effect on the next launch).
 
+## Feedback corpus root (ANTS-4471)
+
+`claude.mcp_feedback_root` (string, default empty). The directory holding the
+shared `*_Ants_MCP_Feedback.md` corpus, searched by `feedback_query` /
+`feedback_log` when a derived path misses and they need to offer `candidates`.
+
+**Empty means "the parent of `caller_cwd`"** — the rule the scan already used,
+and the right answer for every project whose checkout sits beside the corpus.
+Both directories are searched when the key is set, never one instead of the
+other, so configuring it cannot break the common case. Results are deduped by
+absolute path.
+
+The key exists for the one shape the derived rule cannot reach: a project on a
+different filesystem branch from the corpus. Reported against `~/.claude`,
+whose derived path is `/home/ants/.claude_Ants_MCP_Feedback.md` — so the
+searched directory was `/home/ants`, which holds no feedback file — while the
+real file is `claude_config_Ants_MCP_Feedback.md` under a scripts tree. Two
+mismatches at once: the corpus is not the caller's parent, and the leaf
+`.claude` is not the file's `claude_config`. Nothing in the path connects them,
+so the root has to be told rather than derived.
+
+A config key rather than the roadmap store's `project` table (which does hold
+every registered root): this is a **hint on a miss**, and coupling the feedback
+verbs to the roadmap store to produce one buys a dependency for a convenience.
+Hardcoding any absolute path would be wrong on every other machine.
+
+When the search finds nothing, the `not_found` envelope now carries `searched`
+(the directories actually looked in) and a `hint` naming this key — so the
+answer is actionable rather than terminal.
+
 ## Autonomous model switcher (ANTS-1735 §2.7)
 
 Single Settings toggle "Let Ants pick the Claude model for me" + config-only

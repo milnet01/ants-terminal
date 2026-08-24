@@ -607,6 +607,29 @@ void Config::setClaudeMcpEnabled(bool enabled) {
     save();
 }
 
+// ANTS-4471 — where the cross-session *_Ants_MCP_Feedback.md corpus lives, for
+// the feedback verbs' not-found candidate scan.
+//
+// Empty by default, and empty means "the parent of caller_cwd" — the rule the
+// scan already used and the right answer for every project whose checkout sits
+// beside the corpus. The key exists for the one shape that rule cannot reach: a
+// project on a different filesystem branch entirely (~/.claude, whose feedback
+// file is claude_config_Ants_MCP_Feedback.md under a scripts tree), where the
+// caller's path is connected to the corpus by nothing.
+//
+// A config key rather than the roadmap store's project table: this is a HINT on
+// a miss, and coupling the feedback verbs to the roadmap store to produce one
+// buys a dependency for a convenience. Hardcoding the author's own path would
+// be wrong on every other machine.
+QString Config::claudeMcpFeedbackRoot() const {
+    return m_data.value("claude.mcp_feedback_root").toString();
+}
+
+void Config::setClaudeMcpFeedbackRoot(const QString &dir) {
+    if (!storeIfChanged("claude.mcp_feedback_root", dir)) return;
+    save();
+}
+
 bool Config::claudeMcpOrientationNudgeShown() const {
     return m_data.value("claude.mcp_orientation_nudge_shown").toBool(false);
 }

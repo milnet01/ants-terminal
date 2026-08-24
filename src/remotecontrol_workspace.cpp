@@ -12,6 +12,7 @@
 #include "codebaseindex.h"
 #include "cochangefamily.h"   // ANTS-3368 — co_change_family pure seam
 #include "claudeintegration.h"
+#include "config.h"    // ANTS-4471 — claude.mcp_feedback_root
 #include "mainwindow.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"   // ANTS-3716 — cited_by's default scope
@@ -2606,14 +2607,49 @@ QString feedbackCallerLeaf(const QJsonObject &req) {
 // forcing the caller to shell out to `ls | grep feedback` — list the sibling
 // *_Ants_MCP_Feedback.md files in the same dir so the correct basename is one
 // retry away. Cheap dir read; returns absolute paths in name order.
+// ANTS-4471 — and scan the CONFIGURED shared root as well as the derived path's
+// own directory, because the derived directory is not always where the corpus
+// is. Reported against ~/.claude: the derived path is
+// /home/ants/.claude_Ants_MCP_Feedback.md, so the scanned directory is /home/ants,
+// which holds no feedback file at all — `cands` came back empty and the
+// not_found envelope returned before it could attach either field. The verb was
+// never missing the feature; the feature had nothing to find, and the session
+// fell back to a shell `ls`.
+//
+// Two mismatches at once there, which is why the parent-of-caller rule cannot
+// reach it: the corpus is on a different filesystem branch entirely, and the
+// leaf ".claude" is not the file's "claude_config". No path relationship
+// connects the two, so the root has to be told, not derived.
+//
+// Both directories are scanned, not one or the other: the derived directory is
+// right for every project that sits beside the corpus, and dropping it to
+// honour the key would break the common case to fix the rare one. Deduped by
+// absolute path so a configured root that IS the parent yields one entry, not
+// two. Order is deliberate — derived directory first, so ANTS-3376's
+// own-file-floats-first ranking still applies to the caller's own neighbours.
 QJsonArray feedbackSiblingCandidates(const QString &candidatePath) {
     QJsonArray out;
-    const QDir dir = QFileInfo(candidatePath).absoluteDir();
-    const QStringList names = dir.entryList(
-        {QLatin1String("*") + QLatin1String(kFeedbackSuffix)},
-        QDir::Files, QDir::Name);
-    for (const QString &n : names)
-        out.append(dir.absoluteFilePath(n));
+    QSet<QString> seen;
+    const auto scan = [&](const QDir &dir) {
+        if (!dir.exists()) return;
+        const QStringList names = dir.entryList(
+            {QLatin1String("*") + QLatin1String(kFeedbackSuffix)},
+            QDir::Files, QDir::Name);
+        for (const QString &n : names) {
+            const QString abs = dir.absoluteFilePath(n);
+            if (seen.contains(abs)) continue;
+            seen.insert(abs);
+            out.append(abs);
+        }
+    };
+    scan(QFileInfo(candidatePath).absoluteDir());
+    // Config is constructed here rather than held: this runs only on a MISS,
+    // which is already an error return, so one parse of config.json is cheaper
+    // than threading a Config through verbs that are deliberately
+    // m_main-independent.
+    const QString sharedRoot = Config().claudeMcpFeedbackRoot();
+    if (!sharedRoot.isEmpty())
+        scan(QDir(sharedRoot));
     return out;
 }
 
@@ -2671,8 +2707,37 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
                        const QString &callerLeaf) {
     QJsonObject e = fbErr(QStringLiteral("not_found"), message);
     QJsonArray cands = feedbackSiblingCandidates(resolved);
-    if (cands.isEmpty())
+    if (cands.isEmpty()) {
+        // ANTS-4471 — the reported dead end. `found:false` with no candidates
+        // and no hint is equally consistent with "this project has no feedback
+        // file yet", "you are one character out in the basename", and "the
+        // corpus is not where I looked" — and on the reported repro (~/.claude)
+        // it was the third, with the corpus on a different filesystem branch.
+        // Say which directories were searched and how to add the one that was
+        // not, so the answer is actionable instead of terminal. The session
+        // that hit this fell back to a shell `ls`.
+        const QString scanned =
+            QFileInfo(resolved).absoluteDir().absolutePath();
+        const QString sharedRoot = Config().claudeMcpFeedbackRoot();
+        e[QStringLiteral("searched")] = sharedRoot.isEmpty()
+            ? QJsonArray{ scanned }
+            : QJsonArray{ scanned, sharedRoot };
+        e[QStringLiteral("hint")] = sharedRoot.isEmpty()
+            ? QStringLiteral(
+                  "no *%1 file in \"%2\", the only directory searched. If this "
+                  "project's feedback file lives elsewhere — the corpus is "
+                  "commonly a shared directory that is NOT the parent of "
+                  "caller_cwd — set `claude.mcp_feedback_root` in "
+                  "~/.config/ants-terminal/config.json to that directory and "
+                  "it will be searched too.")
+                  .arg(QLatin1String(kFeedbackSuffix), scanned)
+            : QStringLiteral(
+                  "no *%1 file in \"%2\" or in the configured "
+                  "`claude.mcp_feedback_root` (\"%3\"). Check that key points "
+                  "at the shared corpus directory.")
+                  .arg(QLatin1String(kFeedbackSuffix), scanned, sharedRoot);
         return e;
+    }
 
     bool ownMatch = false;
     bool normMatch = false;   // ANTS-3439 — leaf<->package normalized match

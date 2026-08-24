@@ -144,6 +144,10 @@ public:
     // stands down, and every MCP verb refuses with `mcp_disabled`.
     bool claudeMcpEnabled() const;
     void setClaudeMcpEnabled(bool enabled);
+    // ANTS-4471 — shared root of the *_Ants_MCP_Feedback.md corpus. Empty
+    // (the default) means "the parent of caller_cwd", the pre-existing rule.
+    QString claudeMcpFeedbackRoot() const;
+    void setClaudeMcpFeedbackRoot(const QString &dir);
 
     // ANTS-2085 — terse-by-default for Ants MCP read responses. Default
     // true: token-saving on out of the box. Drives mcp::setTerseDefault()
