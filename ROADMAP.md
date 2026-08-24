@@ -37409,6 +37409,14 @@ are closed inline in the feedback files rather than filed here.
   already implemented and the refusal names it ("re-run the migration to
   record the new format"), which sets source_format back and unbricks it.
   Worth an invariant when this is specced.
+  Third-blocker status 2026-08-24: the gate-scope question this item waited on
+  is DECIDED -- the user chose touched-items-only. So Vestige's 585 legacy
+  items will not block every edit after conversion, which was the reason this
+  item was held.
+
+  Still not ready. The decision is recorded, not built; ANTS-4628 carries the
+  mechanism and the two gated documents in its path. This item unblocks when
+  that one ships, not when the decision was made.
 
 - 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
@@ -54503,6 +54511,36 @@ here.)
        makes no semantic change. Narrowest, but it weakens ANTS-4614's stated
        design -- that op deliberately runs every gate so it cannot become a
        way around them.
+  Remedy chosen by the user 2026-08-24: option 2, narrow the Layman gate to
+  the items a write TOUCHES. Recorded here rather than left in the session.
+
+  Mechanism, after checking both routes. The obvious one -- thread a
+  touched-id set down from each of the ten write ops into commitAndRender --
+  is rejected: it is ten call sites that must each remember to declare what
+  they touched, and an op that forgets silently gets the OLD whole-project
+  behaviour, which is the failure mode being removed.
+
+  The better route is to let the store report it. `commitAndRender` already
+  wraps `mutate()` in one transaction, so a transaction-scoped dirty set on
+  RoadmapStore -- putItem()/fileItem() recording each item_pk, cleared at
+  transaction start -- gives the render the touched set with no op declaring
+  anything and no op able to forget. Verified there is no such tracking today
+  (roadmapstore.h has no dirty set; putItem is at :264).
+
+  RenderOptions then gains a gate scope. Unset must keep gating everything, so
+  that no caller silently loses the check by not opting in; commitAndRender
+  passes the dirty set explicitly. `op:render`'s mutate touches nothing, so
+  its scope is empty, the gate passes, the file publishes, and
+  Music_Production's 357 ids land -- which is the deadlock dissolving as a
+  consequence rather than as a special case.
+
+  Not started. Two gated documents are in its path and that is the real cost:
+  ANTS-3758 INV-5 states the whole-project rule and its `Breaks when` names
+  "the gate is applied per item ... rather than per project" as the defect, so
+  the invariant is amended, not merely reworded, and global rule 14's cold
+  review fires. The `render_gate_unmet` row in the error-code standard is the
+  second (it is also ANTS-4435's, and already stale). ANTS-4434's refusal
+  message and `Inv5PublishGate` both change with it.
   **Layman:** One project's roadmap can no longer be edited at all: the tidy-up that would fix it is blocked by a rule that only an edit can satisfy.
   Kind: fix.
   Source: in-session-2026-08-24.
