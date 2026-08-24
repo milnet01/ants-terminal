@@ -54744,6 +54744,36 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-24.
 
+- 📋 [ANTS-10000] **roadmap_query's file_highest_id scrapes ids out of code examples, so a documented sample id reports the file as ahead of the store.**
+  Noticed 2026-08-24 while verifying ANTS-4630, not chased at the time.
+
+  Every roadmap_query reply on this project carries file_ahead_of_store:
+  true with file_highest_id: 9999, against a store high water of 4630. The
+  file holds no such item. ANTS-9999 appears only inside a fenced example
+  in ANTS-4629's own body, illustrating the changelog_log refusal that item
+  added — the id is sample text, deliberately absurd so no reader mistakes
+  it for real.
+
+  So the high-water scan reads ids without regard to whether the line is
+  prose or a code block, and a documented example is indistinguishable from
+  a live bullet. The consequence is not cosmetic: file_ahead_of_store is the
+  signal a caller uses to decide whether the store is stale and a migration
+  or render is owed. Here it is permanently true for a store that is
+  perfectly in sync, so the one indicator that would reveal a REAL
+  divergence is pinned on and cannot be believed. A project documenting its
+  own id format is the likeliest to trip it.
+
+  Fix: skip fenced and indented code blocks when scanning for the high
+  water — the same exclusion a markdown-aware reader already needs. Worth
+  checking whether any sibling scan (the render's divergence guard, the
+  migration's id sweep) shares the scraper and therefore the blind spot.
+  ESCALATION — the defect fired while this very item was being filed, and the consequence is worse than described above. The append envelope reported counter_advanced_past 4628, counter_advanced_to 10000: the allocator consults the same file high water, read 9999 out of the code example, and jumped. This item is therefore ANTS-10000 rather than ANTS-4631, and roughly 5,370 ids are burned. So the fault is not only a misleading indicator — it permanently skews id allocation, and any project that documents an id-shaped example in its own roadmap will do the same on its next append. That makes the code-block exclusion the load-bearing half of the fix, and the allocator the more urgent caller of the two.
+
+  Open for the user: whether to renumber this bullet back to 4631 and reset the counter, or accept the gap and carry on from 10000. Nothing cites this id yet, so the renumber is cheapest now — but it means editing the machine-global store by hand, so it is not being done unasked.
+  **Layman:** A roadmap that merely shows an example ID inside a code block is wrongly reported as newer than the database.
+  Kind: fix.
+  Source: in-session-2026-08-24.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
