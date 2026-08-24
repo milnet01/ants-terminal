@@ -55359,6 +55359,13 @@ here.)
   Do NOT simply correct 10000 to 4631 and call it done — that leaves the
   mechanism live with no decision recorded, which is the state this item
   exists to end.
+  Sequencing (2026-08-24): ANTS-4635 shipped today and gave op:"append_batch"'s store branch the same `.roadmap-counter` reconciliation op:"append" has had since ANTS-4141 part 2, via the shared rcRoadmapReconcileCounterCache() in remotecontrol_internal.h. That is one MORE writer of the counter than step 1's sweep would have found yesterday — count it.
+
+  If this retirement lands, ANTS-4635's work is removed rather than amended, and roadmap_log_store_preview_and_counter INV-5 goes with it. The suite's spec.md says so under its own "Out of scope".
+
+  Do these in order, not together. Retiring the counter while a fix to its reconciliation is in flight means the sweep in step 1 is measuring a moving target, which is the exact thing this item exists to avoid.
+
+  Also worth knowing before step 1: Games_Hub reported the batch-path drift from the CALLER side and it self-healed, invisibly, on the next single append. So a project can look correct and still be reading a stale counter — do not treat "no project reports a problem" as evidence that nothing reads it.
   **Layman:** Deletes a small leftover file that used to hand out roadmap numbers, after checking no other tool still relies on it.
   Kind: chore.
   Source: user-request-2026-08-24.
