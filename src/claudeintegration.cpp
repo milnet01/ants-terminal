@@ -2126,6 +2126,25 @@ void ClaudeIntegration::onMcpConnection() {
                     "has never seen, so the answer is PROVABLY stale. It is "
                     "one-directional: absence is not proof of freshness, "
                     "because a status flip or a body edit moves no id. "
+                    "ANTS-4462 — `check_sync:true` answers the SAME question "
+                    "in both directions and by CONTENT rather than by id, "
+                    "which is what that one-directional gap costs: two ✅ "
+                    "headlines were served as 📋 with an ok:true envelope and "
+                    "no id anywhere out of range. It renders the store and "
+                    "compares it against the live file — the same render and "
+                    "the same comparison roadmap_log runs before it "
+                    "overwrites, so \"is my file in sync?\" and \"what would a "
+                    "write overwrite?\" can never disagree. Returns "
+                    "`file_in_sync`, plus `drift_lines` / `drift_restyled` / "
+                    "`drift_lost` / `drift_lost_text` on the drifted arm only. "
+                    "`sync_checked:false` means nobody looked (not "
+                    "store-backed, or the render failed) and must NOT be read "
+                    "as in-sync. OPT-IN and never cached, deliberately: one "
+                    "render of a 2,267-item store measures ~204 ms, more than "
+                    "this verb's whole 100 ms bullet-cache TTL, so it cannot "
+                    "ride every query — and a cached answer to \"is my file in "
+                    "sync RIGHT NOW\" would be worse than none. Ask once at "
+                    "orientation. "
                     "`query=<keyword>` is a CASE-INSENSITIVE substring "
                     "match over headline AND body; `id` fetches one bullet "
                     "and `ids[]` a bundle, both by [PROJ-NNNN]. (Both "
@@ -2785,6 +2804,34 @@ void ClaudeIntegration::onMcpConnection() {
                             "and does not spill. Same filter, same drop rules, "
                             "same order — only the row shape changes.");
                         props["slugs_only"] = p;
+                    }
+                    {   // ANTS-4462 — opt-in file-vs-store staleness check.
+                        QJsonObject p;
+                        p["type"]    = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "Optional (ANTS-4462). Answer \"is ROADMAP.md in "
+                            "sync with the store?\" by rendering the store and "
+                            "comparing it against the live file — the same "
+                            "render and the same comparison roadmap_log runs "
+                            "before it overwrites, so the two surfaces can "
+                            "never disagree. Adds `file_in_sync`, plus "
+                            "`drift_lines` / `drift_restyled` / `drift_lost` / "
+                            "`drift_lost_text` on the drifted arm only. "
+                            "`sync_checked:false` means nobody looked — not "
+                            "store-backed, or the render failed — and is NOT a "
+                            "clean bill of health. This is the two-directional "
+                            "answer `file_ahead_of_store` cannot give: that "
+                            "flag fires only on an ID the store has never "
+                            "seen, so a hand status flip or a body edit moves "
+                            "nothing and reads as healthy. OPT-IN and never "
+                            "cached: one render of a 2,267-item store measures "
+                            "~204 ms, more than this verb's entire 100 ms "
+                            "bullet-cache TTL, so it cannot ride every query "
+                            "— and a cached answer to a question about RIGHT "
+                            "NOW would be worse than no answer. Ask once at "
+                            "orientation, not per call.");
+                        props["check_sync"] = p;
                     }
                     props["encoding"] = makeEncodingProp();      // ANTS-2090
                     schema["properties"] = props;

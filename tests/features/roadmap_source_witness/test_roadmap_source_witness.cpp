@@ -7,6 +7,7 @@
 // lands in a QTemporaryDir instead of the developer's REAL store.
 
 #include "remotecontrol.h"
+#include "roadmaprender.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
@@ -111,6 +112,35 @@ bool migrateDefaultStore(const QString &root) {
     return true;
 }
 
+// ANTS-4462 — PUBLISH the store over the file, so the file becomes the render's
+// own output. Without this the fixture is hand-written markdown the render has
+// never touched, and it differs from the store's canonical form by dialect
+// alone — real drift, but not the drift a staleness case is about. Rendering
+// first removes that confound so the flip below is the ONLY difference.
+bool renderStore(const QString &root) {
+    RoadmapStore store(RoadmapStore::defaultPath(),
+                       RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Interactive);
+    QString err;
+    if (!store.open(&err)) {
+        ADD_FAILURE() << "store open: " << err.toStdString();
+        return false;
+    }
+    const auto pid = store.projectIdForRoot(root, &err);
+    if (!pid) {
+        ADD_FAILURE() << "projectIdForRoot: " << err.toStdString();
+        return false;
+    }
+    RoadmapRender::Options opts;
+    opts.liveRoadmapPath = root + QStringLiteral("/ROADMAP.md");
+    const auto out = RoadmapRender::render(store, *pid, root, opts, &err);
+    if (!out || !out->committed) {
+        ADD_FAILURE() << "render: " << err.toStdString();
+        return false;
+    }
+    return true;
+}
+
 // A FRESH RemoteControl per query: cmdRoadmapQuery memoises bullets on
 // (path, mtime) with a 100 ms TTL, and mtime has 1-second resolution on some
 // filesystems — so a case that rewrites the fixture and reuses one instance
@@ -119,6 +149,16 @@ QJsonObject query(const QString &root) {
     RemoteControl rc(nullptr);
     QJsonObject req;
     req[QStringLiteral("caller_cwd")] = root;
+    return rc.cmdRoadmapQuery(req).object();
+}
+
+// ANTS-4462 — one query with the staleness check engaged. A FRESH
+// RemoteControl for the same reason query() takes one.
+QJsonObject checkSync(const QString &root) {
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("check_sync")] = true;
     return rc.cmdRoadmapQuery(req).object();
 }
 
@@ -192,4 +232,128 @@ TEST(RoadmapSourceWitness, Inv3FileAheadOfStoreWarns) {
     EXPECT_EQ(out.value(QStringLiteral("file_highest_id")).toInt(), 4242);
     EXPECT_LT(out.value(QStringLiteral("store_high_water")).toInt(), 4242)
         << "both numbers are reported so the gap is visible, not inferred";
+}
+
+// ---------------------------------------------------------------- INV-4 -----
+
+// ANTS-4462 — `check_sync` answers by CONTENT, in both directions, where
+// `file_ahead_of_store` can only answer by ID and only in one.
+//
+// INV-3 above covers the case the id witness CAN see: a bullet filed by hand
+// carrying an id above the store's mark. The reported defect is the case it
+// cannot — a hand STATUS FLIP on a bullet the store already holds. No id moves,
+// so `file_ahead_of_store` stays absent and the envelope reads healthy while
+// the store serves the pre-flip status. Measured on the reporting project:
+// two ✅ headlines returned as 📋, ok:true, no warning anywhere.
+TEST(RoadmapSourceWitness, Inv4CheckSyncSeesAHandFlipTheIdWitnessCannot) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    QDir dir(tmp.path());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("proj")));
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    const QString rmPath = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(writeFile(rmPath, roadmapText()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    ASSERT_TRUE(renderStore(root));
+
+    // The baseline, on the published file, before anything is edited.
+    const QJsonObject before = checkSync(root);
+    ASSERT_TRUE(before.value(QStringLiteral("ok")).toBool());
+
+    // Flip 📋 -> ✅ in the FILE only, on the file the render just published.
+    // Same bullet, same id, same everything else — exactly what a
+    // `git checkout --` or a hand edit leaves behind.
+    QFile pub(rmPath);
+    ASSERT_TRUE(pub.open(QIODevice::ReadOnly));
+    QByteArray flipped = pub.readAll();
+    pub.close();
+    const QByteArray published = flipped;
+    flipped.replace("\xF0\x9F\x93\x8B [DEMO-0001]", "\xE2\x9C\x85 [DEMO-0001]");
+    ASSERT_NE(flipped, published) << "the fixture flip must actually apply";
+    ASSERT_TRUE(writeFile(rmPath, flipped));
+
+    const QJsonObject after = checkSync(root);
+    ASSERT_TRUE(after.value(QStringLiteral("ok")).toBool()) << "query refused";
+    ASSERT_EQ(after.value(QStringLiteral("source")).toString(),
+              QStringLiteral("store"))
+        << "this case is only meaningful when the store is answering";
+
+    // The gap, asserted as a CHANGE rather than as an absence. The id witness
+    // has a baseline value on this fixture for reasons that have nothing to do
+    // with the flip, so asserting it is absent would be asserting something
+    // else. What matters is that the flip does not MOVE it — a status flip
+    // moves no id, so the id witness cannot be what detects one.
+    EXPECT_EQ(before.value(QStringLiteral("file_ahead_of_store")),
+              after.value(QStringLiteral("file_ahead_of_store")))
+        << "the flip changed the id witness — then the premise of ANTS-4462's "
+           "read half has changed and this test no longer covers its case";
+
+    // The content check, on the same two calls, does move.
+    EXPECT_TRUE(before.value(QStringLiteral("file_in_sync")).toBool())
+        << "the render had just published this file";
+    EXPECT_FALSE(after.value(QStringLiteral("file_in_sync")).toBool())
+        << "the file says done and the store says open; that is not in sync";
+    EXPECT_GT(after.value(QStringLiteral("drift_lines")).toInt(), 0);
+    EXPECT_FALSE(after.contains(QStringLiteral("sync_checked")))
+        << "sync_checked is the nobody-looked marker and must be absent on a "
+           "measurement that ran";
+}
+
+// ANTS-4462 — and it reports the healthy case as healthy, so the signal is
+// worth something. A check that cried wolf on every project would be ignored.
+TEST(RoadmapSourceWitness, Inv4CheckSyncIsQuietOnAnUneditedProject) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    QDir dir(tmp.path());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("proj")));
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapText()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    ASSERT_TRUE(renderStore(root));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("check_sync")] = true;
+    const QJsonObject out = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+    ASSERT_EQ(out.value(QStringLiteral("source")).toString(),
+              QStringLiteral("store"));
+
+    EXPECT_TRUE(out.value(QStringLiteral("file_in_sync")).toBool())
+        << "the render just published this file — it IS the store's output";
+    // The drift counters ride the true arm only — zeros on every healthy
+    // check are fields nobody reads.
+    EXPECT_FALSE(out.contains(QStringLiteral("drift_lines")));
+    EXPECT_FALSE(out.contains(QStringLiteral("sync_checked")));
+}
+
+// ANTS-4462 — an unmigrated project must not read as "in sync". Nobody looked
+// is a different answer from clean, and conflating them is the ANTS-4463
+// lesson in the other direction: a present field asserting an unchecked fact.
+TEST(RoadmapSourceWitness, Inv4CheckSyncSaysNobodyLookedOnMarkdown) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    QDir dir(tmp.path());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("proj")));
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapText()));
+    // Deliberately NOT migrated.
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("check_sync")] = true;
+    const QJsonObject out = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+    ASSERT_EQ(out.value(QStringLiteral("source")).toString(),
+              QStringLiteral("markdown"));
+
+    EXPECT_FALSE(out.value(QStringLiteral("sync_checked")).toBool())
+        << "no store to compare against — that is not a clean bill of health";
+    EXPECT_FALSE(out.contains(QStringLiteral("file_in_sync")))
+        << "a project with no store cannot be in or out of sync with one";
 }

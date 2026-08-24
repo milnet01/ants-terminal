@@ -36049,7 +36049,7 @@ it. The second is PAST-TENSE FIELDS ON A PREVIEW OR A REFUSAL: a field whose
 name asserts a completed action, emitted on a path where the action did not
 happen.
 
-- 🚧 [ANTS-4462] **roadmap_query answers from a store snapshot that does not track file edits, and the staleness is unobservable.**
+- ✅ [ANTS-4462] **roadmap_query answers from a store snapshot that does not track file edits, and the staleness is unobservable.**
   HIGHEST severity of this triage, and it is the guard-removed-hazard-remains
   shape. finbreak previously refused every roadmap_log op with
   `render_gate_unmet`; that refusal is now gone, but the stale store behind it
@@ -36134,6 +36134,19 @@ happen.
   but it is real on a 616 KB roadmap and should be measured before
   committing. Decide between the two before building — do not assume the
   column is required just because these notes said so first.
+  Resolved (2026-08-24): the READ half ships as roadmap_query `check_sync:true`, and the notes' own instruction to decide between the column and the comparison BEFORE building is what settled it — measured, not assumed.
+
+  MEASUREMENT. One render of this project's store (2,267 items, 4.5 MB across three files) costs ~204 ms warm, averaged over 10 runs, taken by linking the real ants_roadmapstore_lib and calling the real RoadmapRender::render rather than by replicating it. That number kills the always-on version outright: it is more than roadmap_query's entire 100 ms bullet-cache TTL, so the notes were right that a per-query render is too expensive. It is perfectly acceptable for a check a caller ASKS for, which a session does once at orientation. The notes had already half-named this route; the missing step was noticing that "too expensive per query" and "too expensive" are different claims.
+
+  WHY NOT THE COLUMN, on three grounds rather than one. (1) The measurement above removes its only advantage, since the opt-in comparison costs nothing when not requested. (2) A version bump is a ONE-WAY DOOR: RoadmapStore::open() refuses outright when user_version exceeds the build's, so the first binary to take the machine-global store to 3 locks every older build — an older AppImage, an RC, another project's checkout — out of every project on it. That is a far larger blast radius than the reporting gap being closed. (3) The comparison is strictly MORE correct, which the notes themselves observed: a stored stamp records what the store BELIEVES it last published, so an edit made after that stamp is invisible to it, and it goes stale on any path that writes the file without updating the column.
+
+  IMPLEMENTATION. RoadmapWrite::measureDrift() — the SAME pre-image render and the SAME externalDrift() the write path runs at step 1b, exposed read-only with no transaction. Deliberately shared: "is my file in sync?" and "what would a write overwrite?" must never answer differently, and a second implementation would be a second answer. roadmap_query gains check_sync, returning file_in_sync plus drift_lines / drift_restyled / drift_lost / drift_lost_text on the drifted arm only. sync_checked:false means nobody looked — not store-backed, or the render failed — and is not a clean bill of health.
+
+  WHAT IT ADDS OVER file_ahead_of_store, which is the reported defect exactly: that flag fires only on an ID the store has never seen, so a hand STATUS FLIP or a body edit moves nothing and reads as healthy — the two ✅ headlines served as 📋 under ok:true. check_sync answers by content, in both directions.
+
+  NOTE ON SEMANTICS worth having before someone reads a false positive: file_in_sync is strict — it is true only when the file IS the render's output. A migrated project whose file has not been rendered since differs by dialect alone and reports drift honestly; the remedy is one op:"render" (ANTS-4614). contentKey() ignores status words and punctuation, so a status flip counts as `restyled` rather than `lost`; `total` is the signal for staleness, and `lost` is the signal for prose that would vanish.
+
+  Verified: 3 new tests in roadmap_source_witness. The flip case asserts the id witness is UNCHANGED by the flip while file_in_sync moves true → false — a change rather than an absence, because that fixture trips file_ahead_of_store at baseline for unrelated reasons. Full suite 3869/3869. NOT yet verified live: check_sync needs a relaunch, since the running instance predates it.
 
 - ✅ [ANTS-4463] **roadmap_log `dry_run` returns `files_written` and `note_appended:true` — both assert an action that did not happen.**
   A dry-run flip returns `files_written:["…/ROADMAP.md"]` and
@@ -54835,6 +54848,46 @@ here.)
   **Layman:** Deletes a small leftover file that used to hand out roadmap numbers, after checking no other tool still relies on it.
   Kind: chore.
   Source: user-request-2026-08-24.
+
+- 📋 [ANTS-4633] **file_ahead_of_store fires at baseline on a freshly migrated single-item fixture.**
+  Observed while writing ANTS-4462's read-half tests, NOT chased down —
+  filed so it is not lost.
+
+  In tests/features/roadmap_source_witness, a fixture whose ROADMAP.md
+  declares exactly one bullet [DEMO-0001], migrated and then rendered,
+  reports `file_ahead_of_store` on a plain roadmap_query. The store holds
+  that bullet, so the file declares no id the store lacks and the flag
+  should be absent. A first test drafted to assert its absence failed on
+  that baseline, before any edit was made.
+
+  The likely mechanism, unverified: the flag compares
+  RoadmapFoldIn::maxDeclaredId(file, prefix) against
+  store->idHighWater(pid, prefix), and the prefix is resolved by
+  rlStoreCounterPrefix. If that resolves to something the store's id_prefix
+  row does not match, idHighWater comes back 0 while the file scan finds 1,
+  and 1 > 0 fires the flag. The fixture uses display name "Demo" and
+  export slug "demo" against ids spelled DEMO-NNNN, so a case mismatch is
+  the first thing to check.
+
+  Scope check before assuming it is general: it does NOT reproduce on this
+  project. A live roadmap_query against Ants_Terminal this session returned
+  source:"store" with no file_ahead_of_store, so whatever it is, it is not
+  firing on a large real migrated project. That is why this is filed as
+  investigate rather than fix — it may be a fixture artefact, and calling
+  it a defect without confirming would be overclaiming.
+
+  Why it is worth an item anyway: ANTS-4631 already had to remove one
+  spurious `file_ahead_of_store` (a documented sample id in prose pinning
+  the flag on for a store in perfect sync). A second false-positive route
+  on the same flag is the pattern worth catching — a staleness warning
+  that cries wolf is one people learn to ignore, which is exactly what the
+  flag exists to prevent.
+
+  The ANTS-4462 test works around it rather than depending on it: it
+  asserts the flag is UNCHANGED across a hand flip instead of absent.
+  **Layman:** A staleness warning appears on a small test project that has nothing wrong with it, which would teach people to ignore the warning.
+  Kind: investigate.
+  Source: in-session-2026-08-24.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

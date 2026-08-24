@@ -18,9 +18,50 @@
 #include "roadmapstore.h"
 
 #include <QString>
+#include <QStringList>
 #include <functional>
+#include <optional>
 
 namespace RoadmapWrite {
+
+// ANTS-4462 — the READ side of the drift measurement the write side already
+// performs. Same numbers, same code path, no mutation and no transaction.
+//
+// Why this and not the `store_synced_at` column the item's notes specced first:
+// the column was specced before the write half existed, and the write half
+// showed that currency can be derived by COMPARING rather than by remembering.
+// Three things settled it once both were on the table.
+//
+// Measured: one render of this project's store (2,267 items, 4.5 MB over three
+// files) costs ~204 ms warm. That is far too much PER QUERY — roadmap_query is
+// the most-called verb in a session and its bullet cache runs a 100 ms TTL — so
+// the notes were right to reject an always-on check. They are the same 204 ms
+// for a check a caller ASKS for, which a session does once at orientation, and
+// that is the shape this serves.
+//
+// A version bump is a one-way door: RoadmapStore::open() refuses a store whose
+// user_version exceeds the build's, so the first binary to upgrade the
+// MACHINE-GLOBAL store locks every older build out of every project on it.
+// A read-only comparison costs nothing to withdraw.
+//
+// And the comparison is strictly MORE correct. A stored stamp records what the
+// store BELIEVES it last published, so an edit made after that stamp is
+// invisible to it and it goes stale silently on any path that writes the file
+// without updating the column. Rendering and comparing cannot be wrong about
+// the file it just read.
+struct Drift {
+    int         total    = 0;   // lines on exactly one side, both directions
+    int         restyled = 0;   // file lines the render would rewrite in place
+    int         lost     = 0;   // file lines whose TEXT the render would drop
+    QStringList lostText;       // a capped sample of those lines
+};
+
+// nullopt means the measurement could not be taken — the render failed or came
+// back empty — and is NOT a clean bill of health. Callers must report it the
+// way the write side reports `externalEditsChecked:false`: nobody looked.
+std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
+                                  const QString &projectRoot,
+                                  const QString &liveRoadmapPath);
 
 // Every FAILING value below reaches an MCP envelope, so each names a `code`
 // (docs/standards/mcp-error-codes.md): render_gate_unmet, render_would_drop,

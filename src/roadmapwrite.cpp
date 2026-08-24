@@ -178,6 +178,37 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
 
 }  // namespace
 
+// ANTS-4462 — the read half. Deliberately the SAME pre-image render and the
+// SAME externalDrift() the write path runs at step 1b, so "is my file in sync?"
+// and "what would this write overwrite?" can never answer differently. A second
+// implementation would be a second answer.
+//
+// No transaction: render() only reads, and wrapping it would make a read-only
+// query contend with writers on the machine-global store.
+std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
+                                  const QString &projectRoot,
+                                  const QString &liveRoadmapPath) {
+    RoadmapRender::Options pre;
+    pre.liveRoadmapPath = liveRoadmapPath;
+    pre.dryRun = true;
+    // ANTS-4628 — an ENGAGED EMPTY scope, judging nothing. A staleness check
+    // that failed the Layman gate would go dark on exactly the projects
+    // carrying legacy debt, which is where the question is worth asking.
+    pre.gateScope = QSet<qint64>{};
+    QHash<QString, QString> preImage;
+    if (!RoadmapRender::render(store, projectId, projectRoot, pre,
+                               nullptr, &preImage)
+        || preImage.isEmpty())
+        return std::nullopt;
+    const DriftBreakdown d = externalDrift(preImage);
+    Drift out;
+    out.total    = d.total;
+    out.restyled = d.restyled;
+    out.lost     = d.lost;
+    out.lostText = d.lostText;
+    return out;
+}
+
 Result commitAndRender(RoadmapStore &store, qint64 projectId,
                        const QString &projectRoot,
                        const QString &liveRoadmapPath, bool dryRun,

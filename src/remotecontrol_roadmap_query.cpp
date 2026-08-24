@@ -9,6 +9,7 @@
 #include "paginationengine.h"
 #include "roadmapfoldin.h"
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the report reads "today" through the seam
+#include "roadmapwrite.h"   // ANTS-4462 — measureDrift, the read-side staleness check
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
@@ -2286,6 +2287,55 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // consistent answer than a second provider: the cache key was stamped from
     // one stat, so every branch sees the snapshot that stat described.
     auto text = RoadmapSource::RoadmapText::fromFile(path);
+
+    // ANTS-4462 — the read half, OPT-IN. Stamped into `out` here, before the
+    // branches, so every return path below carries it.
+    //
+    // `file_ahead_of_store` above is one-directional by construction: an id the
+    // file declares above the store's mark proves the read is stale, and its
+    // ABSENCE proves nothing, because a status flip or a body edit moves no id.
+    // That is the whole reported defect — two ✅ headlines served as 📋, with an
+    // ok:true envelope and no id anywhere out of range. This answers the same
+    // question by content instead of by id, in both directions.
+    //
+    // Opt-in and never cached. One render of a 2,267-item store measured
+    // ~204 ms warm, which is more than this verb's entire 100 ms bullet-cache
+    // TTL — so it cannot ride every query, and a CACHED answer to "is my file
+    // in sync right now?" would be worse than no answer. A session asks once,
+    // at orientation, and pays once.
+    if (req.value(QStringLiteral("check_sync")).toBool() &&
+        !callerCanonical.isEmpty()) {
+        RoadmapSource::ReadError syncWhy = RoadmapSource::ReadError::None;
+        bool measured = false;
+        if (RoadmapStore *store = roadmapStoreOrNull(&syncWhy, nullptr)) {
+            if (const auto pid = RoadmapSource::migratedProject(
+                    *store, callerCanonical, text, nullptr, &syncWhy)) {
+                if (const auto d = RoadmapWrite::measureDrift(
+                        *store, *pid, callerCanonical, path)) {
+                    measured = true;
+                    out[QStringLiteral("file_in_sync")] = (d->total == 0);
+                    if (d->total > 0) {
+                        // Rides the true arm only, like the write side's
+                        // discarded_* fields: on a healthy project every count
+                        // is zero, and zeros emitted on every check are fields
+                        // nobody reads.
+                        out[QStringLiteral("drift_lines")]    = d->total;
+                        out[QStringLiteral("drift_restyled")] = d->restyled;
+                        out[QStringLiteral("drift_lost")]     = d->lost;
+                        if (!d->lostText.isEmpty())
+                            out[QStringLiteral("drift_lost_text")] =
+                                QJsonArray::fromStringList(d->lostText);
+                    }
+                }
+            }
+        }
+        // A project that is not store-backed, or a render that could not be
+        // built, must NOT read as "in sync" — that is the ANTS-4463 lesson in
+        // the other direction, where a present field asserted something nobody
+        // checked. `checked:false` says nobody looked.
+        if (!measured)
+            out[QStringLiteral("sync_checked")] = false;
+    }
 
     if (!fresh) {
         if (text.openFailed()) {

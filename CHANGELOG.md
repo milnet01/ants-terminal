@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query can now answer "is my roadmap file in sync with the database?"** (ANTS-4462)
+  Pass `check_sync:true` to have the roadmap rendered from the database and
+  compared against the file on disk — the same comparison a write already
+  runs before it overwrites, so the two can never disagree. Returns
+  `file_in_sync` plus a breakdown of how many lines differ and which text
+  would be lost. The existing warning only fired when the file mentioned an
+  item the database had never seen, so a status changed by hand looked
+  perfectly healthy; this catches that. Opt-in and never cached: it costs a
+  full render (~204 ms on a 2,267-item project), which is why it is a
+  question you ask once rather than something every query pays for.
+
 - **Every roadmap_log flip/annotate envelope names the path that wrote** (ANTS-4464)
   The store-backed and markdown paths declare different fields on
   purpose — a store has no line numbers — but nothing said which had
