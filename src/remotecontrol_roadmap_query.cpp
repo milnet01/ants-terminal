@@ -14,6 +14,7 @@
 #include <QFile>
 #include <QSaveFile>   // ANTS-4635 — the shared .roadmap-counter cache refresh
 #include <QFileInfo>
+#include <algorithm>   // ANTS-4636 — std::max over the two high-water sources
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -2402,9 +2403,33 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     m_roadmapCacheSource = QStringLiteral("store");
                     const QString pfx = rcdetail::rlStoreCounterPrefix(
                         *store, *pid, QString(), text, callerCanonical);
+                    // ANTS-4636 — the HIGHER of the allocator's counter and
+                    // the ids the items actually hold, because either alone
+                    // is wrong in a different direction.
+                    //
+                    // idHighWater() reads the id_prefix row, and roadmapstore.h
+                    // says outright that MIGRATION DOES NOT WRITE ONE — only an
+                    // id-allocating append does. So a migrated-but-never-
+                    // appended project reported 0 here while holding every id
+                    // in its file, and `file_highest_id > 0` then pinned
+                    // `file_ahead_of_store` on for a store in perfect sync.
+                    // Album_Builder hit it with 357 items; the fixture in
+                    // roadmap_source_witness hits it with one, which is what
+                    // ANTS-4633 saw and could not explain.
+                    //
+                    // maxAllocatedId() alone is not the answer either: it is
+                    // derived from surviving items, so an id allocated and
+                    // then deleted leaves it BELOW the counter, and the flag
+                    // would start crying wolf the other way. Both reporters
+                    // guessed a prefix mismatch; `pfx` is in fact correct —
+                    // maxDeclaredId() filters strictly by it, so a wrong
+                    // prefix would have zeroed file_highest_id too and fired
+                    // nothing at all. The prefix was never the fault.
                     QString hwErr;
-                    if (const auto hw = store->idHighWater(*pid, pfx, &hwErr))
-                        m_roadmapCacheStoreHighWater = *hw;
+                    const auto counterHw = store->idHighWater(*pid, pfx, &hwErr);
+                    const auto itemsHw   = store->maxAllocatedId(*pid, pfx, &hwErr);
+                    m_roadmapCacheStoreHighWater =
+                        std::max(counterHw.value_or(0), itemsHw.value_or(0));
                     // ANTS-4402's id scan needs every byte, so this is a
                     // full() and ANTS-3863's saving does not reach this
                     // branch — on a migrated project the body is read here

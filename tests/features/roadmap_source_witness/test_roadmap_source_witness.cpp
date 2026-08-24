@@ -279,11 +279,17 @@ TEST(RoadmapSourceWitness, Inv4CheckSyncSeesAHandFlipTheIdWitnessCannot) {
               QStringLiteral("store"))
         << "this case is only meaningful when the store is answering";
 
-    // The gap, asserted as a CHANGE rather than as an absence. The id witness
-    // has a baseline value on this fixture for reasons that have nothing to do
-    // with the flip, so asserting it is absent would be asserting something
-    // else. What matters is that the flip does not MOVE it — a status flip
-    // moves no id, so the id witness cannot be what detects one.
+    // The gap, asserted as a CHANGE rather than as an absence. What matters
+    // here is that the flip does not MOVE the id witness — a status flip moves
+    // no id, so the id witness cannot be what detects one.
+    //
+    // ANTS-4636 — this used to say the witness "has a baseline value on this
+    // fixture for reasons that have nothing to do with the flip", so asserting
+    // absence would be asserting something else. That baseline value was the
+    // defect ANTS-4633 filed and ANTS-4636 fixed: migration writes no id_prefix
+    // row, so the witness read 0 against a file holding DEMO-0001. It is absent
+    // now, and Inv6 below asserts that directly. The change-assertion stays
+    // because it is a different statement, and still the one this case needs.
     EXPECT_EQ(before.value(QStringLiteral("file_ahead_of_store")),
               after.value(QStringLiteral("file_ahead_of_store")))
         << "the flip changed the id witness — then the premise of ANTS-4462's "
@@ -356,4 +362,50 @@ TEST(RoadmapSourceWitness, Inv4CheckSyncSaysNobodyLookedOnMarkdown) {
         << "no store to compare against — that is not a clean bill of health";
     EXPECT_FALSE(out.contains(QStringLiteral("file_in_sync")))
         << "a project with no store cannot be in or out of sync with one";
+}
+
+// ---------------------------------------------------------------- INV-6 -----
+
+// ANTS-4636 — a freshly migrated project is NOT ahead of its own store.
+//
+// `idHighWater()` reads the `id_prefix` row, and roadmapstore.h says outright
+// that migration does not write one: only an id-allocating append does. So a
+// migrated-but-never-appended project reported a store high-water of 0 while
+// holding every id in its file, and `file_highest_id > 0` pinned the warning on
+// permanently. Album_Builder hit it with 357 items and read it as "the
+// migration did not land"; this fixture hits it with one, which is the baseline
+// firing ANTS-4633 filed and could not explain.
+//
+// Both reports guessed a prefix mismatch. The prefix is correct — maxDeclaredId
+// filters strictly by it, so a wrong prefix would have zeroed `file_highest_id`
+// too and fired nothing at all.
+//
+// A false staleness warning is worth a test of its own: the flag's whole value
+// is that it is rare, and one that fires on every healthy migrated project is
+// one people learn to ignore.
+TEST(RoadmapSourceWitness, Inv6FreshlyMigratedProjectIsNotAheadOfItsStore) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const XdgRedirect xdg(dir.filePath(QStringLiteral("xdg")));
+
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapText()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    // Deliberately NO append between the migration and the query: an append is
+    // what writes the id_prefix row, so appending here would paper over the
+    // exact condition this case exists to cover.
+
+    const QJsonObject out = query(root);
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << "query refused";
+    ASSERT_EQ(out.value(QStringLiteral("source")).toString(),
+              QStringLiteral("store"))
+        << "only meaningful when the store is answering";
+
+    EXPECT_FALSE(out.contains(QStringLiteral("file_ahead_of_store")))
+        << "the store holds every id the file declares — warning that the file "
+           "is ahead tells a session its migration silently wrote nothing\n"
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_GE(out.value(QStringLiteral("store_high_water")).toInt(),
+              out.value(QStringLiteral("file_highest_id")).toInt())
+        << "and the two numbers must agree, since they describe the same ids";
 }

@@ -230,6 +230,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query: a freshly migrated project no longer warns that its file is ahead of its own store** (ANTS-4636)
+  `idHighWater()` reads the `id_prefix` row, and migration does not write one — only an id-allocating append does. A migrated-but-never-appended project therefore reported a store high-water of 0 while holding every id in its file, so `file_ahead_of_store` was pinned on permanently and read as "the migration silently wrote nothing". The mark is now the higher of that counter and the ids the items actually hold. Reported by Album_Builder on a 357-item project.
+
 - **Confirmed that file_ahead_of_store's baseline firing is a real defect, not a fixture artefact** (ANTS-4633)
   Album_Builder reported the same flag on a real 357-item project whose ids were minted under a previous directory name, which is this item's own hypothesis confirmed in the wild: a high-water lookup keyed on a prefix re-derived from the path finds no rows and reports 0. The fix is tracked as ANTS-4636.
 

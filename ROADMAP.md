@@ -43407,19 +43407,26 @@ Three were reproduced directly in this session rather than taken on report.
   Source: Games_Hub-2026-08-24, confirmed against source.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4636] **store_high_water reads 0 and file_ahead_of_store fires when a project's id prefix does not match its directory leaf.**
+- ✅ [ANTS-4636] **store_high_water reads 0 and file_ahead_of_store fires when a project's id prefix does not match its directory leaf.**
   Album_Builder migrated cleanly — 357 items, store_backed:true, source:"store",
   and a dry-run append correctly allocated MUSI-0358. Yet every roadmap_query
   reply carries `store_high_water:0` beside `file_ahead_of_store:true` and
   `file_highest_id:357`. Read together those three say the store is empty and
   the markdown is ahead of it, i.e. the migration did not land.
 
-  MECHANISM, named by the reporter and matching ANTS-4633's hypothesis exactly.
-  The project's ids use the `MUSI-` prefix, minted when the directory was
-  Music_Production; the leaf is now Album_Builder. A high-water lookup keyed on
-  a prefix re-derived from the directory name looks for `ALBU-` rows, finds
-  none, and returns 0 — while the file scan finds 357, and 357 > 0 fires the
-  flag.
+  MECHANISM — and it is NOT the one either reporter proposed. Both guessed a
+  prefix re-derived from the directory leaf (`ALBU-` against `MUSI-` ids). The
+  prefix was never at fault, and their own figures prove it:
+  RoadmapFoldIn::maxDeclaredId() filters strictly by prefix, so a wrong prefix
+  would have zeroed `file_highest_id` too and fired nothing at all. The two
+  numbers disagreeing is itself proof the prefix resolved correctly.
+
+  The real cause is stated outright in roadmapstore.h, by ANTS-4631:
+  RoadmapStore::idHighWater() reads the `id_prefix` row, and MIGRATION DOES NOT
+  WRITE ONE — only an id-allocating append does. So a migrated-but-never-
+  appended project reports 0 there while holding every id in its file, and any
+  `file_highest_id > 0` pins the flag on permanently. Album_Builder had
+  migrated and not yet appended.
 
   THIS CLOSES ANTS-4633's OPEN QUESTION. That item observed the same flag
   firing at baseline on a single-item fixture whose display name was "Demo"
@@ -43434,6 +43441,13 @@ Three were reproduced directly in this session rather than taken on report.
   rather than on a prefix re-derived from the path — the store knows its own
   id_prefix rows. Check `rlStoreCounterPrefix` and `idHighWater` together.
   A renamed project is the case that breaks it, and renames are not rare.
+  Resolved (2026-08-24): the store's high-water mark in roadmap_query's source witness is now the HIGHER of RoadmapStore::idHighWater() (the allocator's counter) and RoadmapStore::maxAllocatedId() (the ids the items actually hold, added by ANTS-4631 for this exact class).
+
+  Either alone is wrong in a different direction. The counter does not exist until the first id-allocating append, which is the defect here. The item-derived figure sits BELOW the counter once an allocated id is deleted, which would make the flag cry wolf the other way. The max is correct under both.
+
+  Locked by roadmap_source_witness INV-6, which migrates and deliberately does not append — an append is what writes the id_prefix row, so appending would paper over the condition. Verified red before the fix: INV-6 alone fails, the other five witness cases stay green, so the test detects this defect and nothing else moved. Full suite 3878/3878.
+
+  INV-4's case could previously only assert the witness was UNCHANGED across a hand flip, because it had an unexplained baseline value on that fixture; its comment is corrected and it now sits beside a direct absence assertion.
   **Layman:** A project renamed since its roadmap ids were minted is told its migration did not work, when it did.
   Kind: fix.
   Source: Album_Builder-2026-08-24; supersedes the fixture-artefact reading of ANTS-4633.
@@ -55388,6 +55402,13 @@ here.)
   Resolved (2026-08-24): the investigation is answered, and the answer is that it is NOT a fixture artefact. Album_Builder reported the same flag independently the same day on a real 357-item project: ids minted as `MUSI-` under the pre-rename folder Music_Production, directory leaf now Album_Builder, so a high-water lookup keyed on a prefix re-derived from the path finds no rows and returns 0 while the file scan finds 357. That is this item's own hypothesis, confirmed in the wild.
   It does not reproduce on Ants_Terminal for the reason this item could not see from inside: here the leaf and the prefix happen to agree. A renamed project is the case that breaks it.
   The fix is tracked as ANTS-4636, which carries both reports. Closing this rather than duplicating the work.
+  Correction (2026-08-24, same day): the hypothesis this item recorded — and which the closing note above endorsed on Album_Builder's word — is WRONG. Neither a case mismatch nor a prefix re-derived from the directory name is involved.
+
+  RoadmapFoldIn::maxDeclaredId() filters strictly by prefix, so a mis-resolved prefix would have returned 0 for the FILE scan as well and fired nothing at all. The flag fires precisely because the two numbers disagree, which proves the prefix resolved correctly on both sides.
+
+  The real cause, stated outright in roadmapstore.h by ANTS-4631: idHighWater() reads the `id_prefix` row and MIGRATION DOES NOT WRITE ONE — only an id-allocating append does. This fixture migrates and never appends, which is exactly the uncovered condition. Fixed in ANTS-4636 by taking the higher of idHighWater and maxAllocatedId, and locked by roadmap_source_witness INV-6.
+
+  Worth keeping visible: two independent sessions reached the same plausible wrong mechanism from the same symptom, and the disproof was already present in the numbers both had reported.
   **Layman:** A staleness warning appears on a small test project that has nothing wrong with it, which would teach people to ignore the warning.
   Kind: investigate.
   Source: in-session-2026-08-24.

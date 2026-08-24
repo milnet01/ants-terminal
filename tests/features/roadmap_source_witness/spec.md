@@ -36,3 +36,36 @@ body edit moves no id. Both of those were measured as live shapes on this
 project and neither is detectable this cheaply. Reconciling the two backends is
 ANTS-4141's job and needs the render fixed first — this feature makes the
 divergence visible, it does not resolve it.
+
+## INV-6 — a freshly migrated project is not ahead of its own store
+
+- **INV-6** — Immediately after a migration, with no append in between, the
+  envelope carries **no** `file_ahead_of_store`, and `store_high_water` is at
+  least `file_highest_id`. The store holds every id the file declares, so the
+  warning must not fire. *Test:*
+  `Inv6FreshlyMigratedProjectIsNotAheadOfItsStore`.
+
+Added by ANTS-4636. `RoadmapStore::idHighWater()` reads the `id_prefix` row,
+and `roadmapstore.h` states that **migration does not write one** — only an
+id-allocating append does. So a migrated-but-never-appended project reported a
+store high-water of 0 while holding every id in its file, and any
+`file_highest_id > 0` pinned the warning on permanently.
+
+Album_Builder hit it with 357 items and read the envelope as "the migration
+silently wrote nothing", which is the natural reading of
+`file_ahead_of_store: true` beside `store_high_water: 0`. This suite's own
+fixture hit it with one item; that is the baseline firing ANTS-4633 filed and
+could not account for, and it is why INV-4's case had to assert the witness was
+*unchanged* across a hand flip rather than absent.
+
+**Both reports proposed a prefix mismatch, and the prefix was never at fault.**
+`RoadmapFoldIn::maxDeclaredId()` filters strictly by prefix, so a wrong prefix
+would have zeroed `file_highest_id` as well and fired nothing at all. The two
+numbers disagreeing is itself the proof that the prefix resolved correctly.
+
+The high-water mark is now the **higher** of the allocator's counter
+(`idHighWater`) and the ids the items actually hold (`maxAllocatedId`, added by
+ANTS-4631 for this class of problem). Either alone is wrong in a different
+direction: the counter is absent until the first append, and the item-derived
+figure sits below the counter once an allocated id is deleted. A staleness
+warning whose whole value is being rare must not fire on a healthy project.
