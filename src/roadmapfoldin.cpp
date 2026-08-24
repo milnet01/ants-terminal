@@ -1,5 +1,7 @@
 #include "roadmapfoldin.h"
 
+#include "markdownscan.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -11,6 +13,7 @@
 #include <QStringList>
 #include <QThread>
 
+#include <algorithm>
 #include <cerrno>
 #include <fcntl.h>
 #include <sys/file.h>
@@ -227,6 +230,37 @@ QString sniffIdPrefix(const QString &projectPath, const QString &fallback) {
     return sniffPrefixFromText(QString::fromUtf8(f.readAll()), fallback);
 }
 
+qint64 maxDeclaredId(const QString &text, const QString &prefix) {
+    if (prefix.isEmpty() || text.isEmpty()) return 0;
+
+    const QRegularExpression idRe(
+        QStringLiteral("\\b") + QRegularExpression::escape(prefix) +
+        QStringLiteral("-([0-9]{1,8})\\b"));
+    // A declaration is a TOP-LEVEL list item: `- `, `* ` or `+ ` with up to
+    // three leading spaces, the same indent allowance CommonMark gives a
+    // fence. Three is not arbitrary — four spaces past the enclosing content
+    // column opens an indented code block, which is where a documented
+    // example sits, so the cap is what separates a bullet from a sample.
+    static const QRegularExpression itemRe(QStringLiteral("^ {0,3}[-*+] "));
+
+    const QStringList lines = text.split(QChar('\n'));
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+
+    qint64 maxN = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (fence.value(i)) continue;   // fence syntax and its content
+        const QString &line = lines.at(i);
+        if (!itemRe.match(line).hasMatch()) continue;
+        auto it = idRe.globalMatch(line);
+        while (it.hasNext()) {
+            bool ok = false;
+            const qint64 n = it.next().captured(1).toLongLong(&ok);
+            if (ok && n > maxN) maxN = n;
+        }
+    }
+    return maxN;
+}
+
 qint64 corpusHighWater(const QString &projectPath, const QString &prefix) {
     const QString root = QFileInfo(projectPath).canonicalFilePath();
     if (root.isEmpty()) return 0;
@@ -249,18 +283,11 @@ qint64 corpusHighWater(const QString &projectPath, const QString &prefix) {
         if (pfx.isEmpty()) return 0;  // no counter-style ids anywhere
     }
 
-    // Max numeric suffix of `pfx-NNNN` across the corpus.
-    const QRegularExpression idRe(
-        QStringLiteral("\\b") + QRegularExpression::escape(pfx) +
-        QStringLiteral("-([0-9]{1,8})\\b"));
+    // Max numeric suffix of `pfx-NNNN` across the corpus, counting only the
+    // lines that DECLARE an id (ANTS-4631 — see maxDeclaredId).
     qint64 maxN = 0;
     auto scan = [&](const QString &text) {
-        auto it = idRe.globalMatch(text);
-        while (it.hasNext()) {
-            bool ok = false;
-            const qint64 n = it.next().captured(1).toLongLong(&ok);
-            if (ok && n > maxN) maxN = n;
-        }
+        maxN = std::max(maxN, maxDeclaredId(text, pfx));
     };
     scan(roadmap);
     scan(readFile(root + QStringLiteral("/CHANGELOG.md")));

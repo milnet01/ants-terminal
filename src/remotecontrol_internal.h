@@ -280,7 +280,7 @@ bool rlNoteDeclaresTrailer(const QString &note, QString *error,
 bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, HistoryContext *hist, QString *error, QStringList *kept = nullptr, QString *code = nullptr);
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
-qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &projectRoot, const QString &prefix);
+qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &prefix);
 // ANTS-3863 § 2.4 — the one helper BELOW the seam this item touches. `text` is
 // consulted only on the last fallback, after an explicit id_prefix and the
 // store's own idPrefixFor() have both come up empty, so the common migrated

@@ -57,6 +57,24 @@ QList<int> peekIds(const QString &projectPath, int n);
 // "/.roadmap-counter"); empty when projectPath fails to canonicalise.
 QString counterFilePath(const QString &projectPath);
 
+// ANTS-4631 — the highest `prefix`-NNNN id that `text` DECLARES: the max
+// over top-level list items outside a fenced block. Ids elsewhere are
+// mentions, not allocations.
+//
+// The distinction is not pedantry. A roadmap that documents its own id
+// format writes id-shaped sample text — in prose, in an indented example,
+// in a fence — and a raw `\bPFX-NNNN\b` scan of the bytes cannot tell that
+// from a live bullet. Measured here 2026-08-24: one deliberately-absurd
+// `ANTS-9999` in a body pinned `file_ahead_of_store` true for a store that
+// was exactly in sync — disabling the one indicator that would reveal a
+// REAL divergence — and then the allocator, which floors to this value,
+// issued 10000 for the next item and burned ~5,370 ids.
+//
+// Shared rather than inlined at each scan site: corpusHighWater() feeds
+// allocation and roadmap_query's backend witness reports the same number,
+// and a rule stated twice is two rules that will disagree.
+qint64 maxDeclaredId(const QString &text, const QString &prefix);
+
 // ANTS-3450 — the project's true ID high-water mark, derived from the
 // committed roadmap corpus rather than the `.roadmap-counter` cache.
 // Scans, for `prefix`-NNNN ids, the three committed files that between

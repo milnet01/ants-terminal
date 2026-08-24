@@ -39,18 +39,29 @@ using namespace rcdetail;  // ANTS-3833
 // and nothing about what moved it, so a contiguous-ids assumption broke with
 // no way to find out why. Which is ANTS-4374's invariant on the write side:
 // a number the caller did not ask for has to say where it came from.
+//
+// ANTS-4631 REVISED the mechanism above and kept the explanation. "Anywhere
+// in the text" was too wide: a roadmap documenting its own id format writes
+// id-shaped sample text, and one deliberately-absurd `ANTS-9999` in a body
+// was read as an allocation, issuing 10000 next and burning ~5,370 ids. The
+// scan now counts only lines that DECLARE an id — a top-level list item
+// outside a fence — so a mention in prose is text again. A gap is still free
+// and a collision still is not; what changed is that a sample id is no longer
+// evidence of an allocation. On a MIGRATED project none of this runs at all:
+// the store's id columns answer directly.
 static void rlExplainCounterFloor(QJsonObject &out, qint64 counterFileValue,
                                   qint64 corpusMax) {
     out[QStringLiteral("counter_floor")]        = corpusMax;
     out[QStringLiteral("counter_file_value")]   = counterFileValue;
     out[QStringLiteral("counter_floor_reason")] = QStringLiteral(
-        "ids were allocated above `.roadmap-counter` (%1) because an id as "
-        "high as %2 already appears in the corpus — ROADMAP.md, CHANGELOG.md "
-        "or docs/roadmap/*.md. The scan matches the id token ANYWHERE in the "
-        "text, so a bullet BODY that merely mentions a higher id raises the "
-        "floor past it. This is deliberate: a gap in the sequence is free, "
-        "reissuing a live id is not. Do not assume ids from consecutive "
-        "calls are contiguous.")
+        "ids were allocated above `.roadmap-counter` (%1) because a BULLET "
+        "declaring an id as high as %2 already exists in the corpus — "
+        "ROADMAP.md, CHANGELOG.md or docs/roadmap/*.md — so the counter file "
+        "was behind the committed record. Only declaring lines count: an id "
+        "merely mentioned in a body, or shown as an example inside a fence, "
+        "is text and does not raise the floor. A gap in the sequence is free "
+        "and reissuing a live id is not, so do not assume ids from "
+        "consecutive calls are contiguous.")
             .arg(counterFileValue).arg(corpusMax);
 }
 
@@ -2164,12 +2175,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         rlMaxExistingIdForPrefix(preflightBullets, counterPfx);
     maxFileId = std::max(maxFileId, RoadmapFoldIn::corpusHighWater(
         QFileInfo(counterPath).absolutePath(), counterPfx));
-    // ANTS-3809 § 2.3 — on the store path the high-water is the store's own,
-    // floored to the committed corpus by rlStoreIdHighWater(). There is no
-    // counter file to lag or to self-heal, so counterReconciled cannot fire.
+    // ANTS-3809 § 2.3 — on the store path the high-water is the store's own
+    // (ANTS-4631: its two id columns, no text scan). There is no counter file
+    // to lag or to self-heal, so counterReconciled cannot fire.
     const qint64 effCounter = writeTarget
         ? rlStoreIdHighWater(*writeTarget->store, writeTarget->projectId,
-                             QFileInfo(roadmapPath).absolutePath(), counterPfx)
+                             counterPfx)
         : std::max(counter, maxFileId);
     const bool counterReconciled =
         !useStablePrefix && !writeTarget && effCounter > counter;

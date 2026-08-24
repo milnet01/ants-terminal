@@ -890,6 +890,23 @@ public:
     std::optional<qint64> idHighWater(qint64 projectId, const QString &prefix,
                                       QString *error = nullptr) const;
 
+    // ANTS-4631 — the highest numeric suffix among the ids this project's
+    // items ACTUALLY hold, for `prefix`. nullopt = no matching item, which is
+    // not an error.
+    //
+    // idHighWater() above is the allocator's counter and is the better answer
+    // where it exists — but migration does not write an id_prefix row, only an
+    // id-allocating append does, so a migrated-but-never-appended project
+    // reports nullopt there while holding thousands of ids. This column is the
+    // one place that cannot be wrong: an id is here because an item has it.
+    //
+    // It is what the corpus text scan was standing in for. A scan of prose
+    // cannot distinguish an allocated id from a documented example, and on
+    // this project one absurd sample id burned ~5,370 numbers; the store has
+    // never had to guess.
+    std::optional<qint64> maxAllocatedId(qint64 projectId, const QString &prefix,
+                                         QString *error = nullptr) const;
+
     // § 2.9's seq continuation: appendHistory() takes `seq` from its caller, so
     // the caller needs the current maximum for this (item, stamp). Absent rows
     // ⇒ nullopt, not an error — and the first row of a stamp is seq 0.

@@ -669,25 +669,37 @@ std::optional<qint64> rcdetail::rlStoreItemPk(RoadmapStore &store, qint64 projec
     return hit;
 }
 
-// § 2.3 — the counter high-water the store path allocates from, floored to the
-// committed corpus.
+// § 2.3 — the high-water the store path allocates from. Two store columns,
+// no text scan: the next id is the highest this project has, plus one.
 //
-// The floor is not belt-and-braces. roadmap-format.md § 3.5.1 defines
-// .roadmap-counter as a derived, per-machine cache — NOT source (ANTS-3450) —
-// whose true value is the highest id across the committed corpus, and both
-// existing allocators already floor to corpusHighWater(). Swapping in
-// idHighWater() alone would silently drop that floor, which is the mechanism
-// that stops a fresh clone reissuing a live id.
+// ANTS-4631 — this used to floor to RoadmapFoldIn::corpusHighWater(), a
+// `\bPFX-NNNN\b` scan of ROADMAP.md, CHANGELOG.md and every archive. That
+// floor was written when the markdown file WAS the record (ANTS-3450), and it
+// was never retired when the store became one: a migrated project's file is a
+// rendered OUTPUT of these very rows, so the scan re-read the store's own
+// answer through prose that cannot distinguish an allocated id from a
+// documented example. Measured 2026-08-24: one deliberately-absurd `ANTS-9999`
+// inside a body was read as the high water and the next append issued 10000,
+// burning ~5,370 ids. A column cannot make that mistake.
 //
-// idHighWater() returning nullopt is NOT an error — its own comment says so,
-// and it is the state of every project until its first store-side allocation.
-// Treated as 0, exactly as the markdown path treats an absent counter file.
+// Both columns, because neither alone is complete. idHighWater() is the
+// allocator's own counter and remembers an id whose item was later deleted —
+// but migration never writes that row, only an id-allocating append does, so a
+// migrated-but-never-appended project reports nullopt while holding thousands
+// of ids. maxAllocatedId() reads those ids straight off the items. nullopt from
+// either is NOT an error; it is the ordinary state of a project that has not
+// reached that half yet.
+//
+// The un-migrated markdown path still floors to the corpus, and must: with no
+// project row there is no column to ask.
 qint64 rcdetail::rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
-                                 const QString &projectRoot, const QString &prefix) {
-    qint64 floor = RoadmapFoldIn::corpusHighWater(projectRoot, prefix);
+                                 const QString &prefix) {
+    qint64 floor = 0;
     QString ignored;
     if (const auto hw = store.idHighWater(projectId, prefix, &ignored))
         floor = std::max(floor, *hw);
+    if (const auto mx = store.maxAllocatedId(projectId, prefix, &ignored))
+        floor = std::max(floor, *mx);
     return floor;
 }
 
@@ -2315,25 +2327,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     QString hwErr;
                     if (const auto hw = store->idHighWater(*pid, pfx, &hwErr))
                         m_roadmapCacheStoreHighWater = *hw;
-                    if (!pfx.isEmpty()) {
-                        const QRegularExpression idRe(
-                            QStringLiteral("\\b")
-                            + QRegularExpression::escape(pfx)
-                            + QStringLiteral("-([0-9]{1,8})\\b"));
-                        // ANTS-4402's id scan needs every byte, so this is a
-                        // full() and ANTS-3863's saving does not reach this
-                        // branch — on a migrated project the body is read here
-                        // whatever the dispatch cost. Tracked separately; the
-                        // scan is this witness's contract, not this item's.
-                        auto it = idRe.globalMatch(text.full());
-                        while (it.hasNext()) {
-                            bool okN = false;
-                            const qint64 n =
-                                it.next().captured(1).toLongLong(&okN);
-                            if (okN && n > m_roadmapCacheFileMaxId)
-                                m_roadmapCacheFileMaxId = n;
-                        }
-                    }
+                    // ANTS-4402's id scan needs every byte, so this is a
+                    // full() and ANTS-3863's saving does not reach this
+                    // branch — on a migrated project the body is read here
+                    // whatever the dispatch cost. Tracked separately; the
+                    // scan is this witness's contract, not this item's.
+                    //
+                    // ANTS-4631 — one shared rule with the allocator's floor
+                    // (RoadmapFoldIn::corpusHighWater), because this number
+                    // is the one a caller reads to decide the store is stale
+                    // and the other decides what id it gets. A local copy of
+                    // the scrape is what let a documented sample id pin
+                    // `file_ahead_of_store` on for a store in perfect sync.
+                    m_roadmapCacheFileMaxId =
+                        RoadmapFoldIn::maxDeclaredId(text.full(), pfx);
                 }
             }
         }

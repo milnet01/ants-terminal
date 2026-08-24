@@ -366,13 +366,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             if (!useStablePrefix) {
                 prefix = rlStoreCounterPrefix(store, projectId, idPrefixArg,
                                               storeText, callerCanonical);
-                // The corpus floor lives inside rlStoreIdHighWater(); it is
-                // keyed on the roadmap's own directory, as the markdown path
-                // keys it on .roadmap-counter's, because caller_cwd may be a
-                // subdirectory of the project root.
-                const qint64 highWater = rlStoreIdHighWater(
-                    store, projectId, QFileInfo(roadmapPath).absolutePath(),
-                    prefix);
+                // ANTS-4631 — the store's own id columns decide this, with
+                // no reference to the rendered file. The corpus floor that
+                // used to live inside rlStoreIdHighWater() read a documented
+                // sample id as an allocation and burned ~5,370 ids.
+                const qint64 highWater =
+                    rlStoreIdHighWater(store, projectId, prefix);
                 allocated = highWater + 1;
                 if (req.contains(QStringLiteral("id_hint"))) {
                     // The rule is the markdown path's, unchanged; only the

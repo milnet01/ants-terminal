@@ -762,24 +762,31 @@ TEST(McpRoadmapLogAppendBatch, Ants2179SingleIdHintCollisionRefused) {
 //
 // The allocation arithmetic is exact and was not the cause. What moves the
 // floor is ANTS-2179/3450 reconciliation: `effCounter` is
-// max(counter, corpus high-water), and corpusHighWater matches
-// `\bPFX-NNNN\b` in the WHOLE TEXT of ROADMAP.md, CHANGELOG.md and
-// docs/roadmap/*.md — bodies and prose included. So a bullet whose body merely
-// MENTIONS a higher id raises the floor past it, and the next batch
-// legitimately starts above.
+// max(counter, corpus high-water), so a committed id higher than the counter
+// file raises the floor past it and the next batch legitimately starts above.
 //
 // That safety property stays: reissuing a live id is far worse than a gap.
 // What was missing is that the envelope reported `counter_advanced_to` and
 // nothing about what moved it.
+//
+// ANTS-4631 narrowed WHICH ids count and this test moved with it. The scan
+// used to match the id token anywhere in the text, so a body merely MENTIONING
+// a higher id raised the floor — which read as caution until a documented
+// sample id burned ~5,370 numbers on this project. Only a declaring line
+// counts now. The two halves are asserted together deliberately: a real
+// committed id must still raise the floor AND still explain itself, while the
+// mention beside it must not move anything.
 TEST(McpRoadmapLogAppendBatch, Ants4383CounterFloorIsExplained) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
-    // The counter says 9100, but a BODY in the file mentions ANTS-9150 — the
-    // shape that produced the reported gap.
+    // The counter says 9100 and lags a real bullet at ANTS-9150 — the shape
+    // that produced the reported gap. The body beside it mentions a far higher
+    // id that is an example and must be ignored (ANTS-4631).
     writeRoadmap(dir.path(), minimalRoadmap() +
-        QStringLiteral("- 📋 [ANTS-9003] **A bullet citing a later id.**\n"
-                       "  Superseded by ANTS-9150, which is not itself a "
-                       "bullet here.\n"
+        QStringLiteral("- 📋 [ANTS-9150] **A committed bullet above the "
+                       "counter.**\n"
+                       "  Not to be confused with ANTS-9800, which is sample "
+                       "text in this body and not a bullet anywhere.\n"
                        "  Kind: implement.\n"
                        "  Source: test.\n\n"));
     writeCounter(dir.path(), 9100);
@@ -791,20 +798,23 @@ TEST(McpRoadmapLogAppendBatch, Ants4383CounterFloorIsExplained) {
     ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
         << out.value(QStringLiteral("error")).toString().toStdString();
 
-    // The ids start above the MENTIONED id, not above the counter.
+    // The ids start above the DECLARED id, not above the counter — and not
+    // above the 9800 the body names.
     const QJsonArray ids = out.value(QStringLiteral("ids")).toArray();
     ASSERT_EQ(ids.size(), 2);
     EXPECT_EQ(ids.at(0).toString(), QStringLiteral("ANTS-9151"))
-        << "the floor is the corpus max, not the counter file";
+        << "the floor is the highest DECLARED id, not the counter file and "
+           "not an id a body merely mentions";
 
     // And the envelope now says so, instead of leaving the jump unexplained.
     EXPECT_EQ(out.value(QStringLiteral("counter_file_value")).toInt(), 9100);
     EXPECT_EQ(out.value(QStringLiteral("counter_floor")).toInt(), 9150);
     const QString why =
         out.value(QStringLiteral("counter_floor_reason")).toString();
-    EXPECT_TRUE(why.contains(QStringLiteral("BODY")))
+    EXPECT_TRUE(why.contains(QStringLiteral("BULLET")))
         << "the reason must name the mechanism a caller cannot guess — that a "
-           "body merely MENTIONING an id raises the floor. Was: "
+           "committed BULLET above the counter file is what moved the floor. "
+           "Was: "
         << why.toStdString();
     EXPECT_TRUE(why.contains(QStringLiteral("contiguous")))
         << "…and warn off the contiguous-ids assumption this broke";

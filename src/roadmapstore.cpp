@@ -2486,6 +2486,31 @@ std::optional<qint64> RoadmapStore::idHighWater(qint64 projectId, const QString 
     return q.value(0).toLongLong();
 }
 
+std::optional<qint64> RoadmapStore::maxAllocatedId(qint64 projectId,
+                                                   const QString &prefix,
+                                                   QString *error) const {
+    if (prefix.isEmpty())
+        return std::nullopt;
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    // GLOB narrows to this prefix's ids in SQL; the suffix is then a plain
+    // integer cast. The trailing pattern is `[0-9]*` rather than `*` so a
+    // sibling prefix sharing a leading run (ANTS / ANTSX) cannot contribute.
+    q.prepare(QStringLiteral(
+        "SELECT MAX(CAST(substr(id, ?) AS INTEGER)) FROM item "
+        "WHERE project_id = ? AND id GLOB ?"));
+    q.addBindValue(prefix.size() + 2);          // 1-based, past "PFX-"
+    q.addBindValue(projectId);
+    q.addBindValue(prefix + QStringLiteral("-[0-9]*"));
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next() || q.value(0).isNull())
+        return std::nullopt;
+    return q.value(0).toLongLong();
+}
+
 std::optional<int> RoadmapStore::maxHistorySeq(qint64 itemPk, const QString &changedAt,
                                                QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));

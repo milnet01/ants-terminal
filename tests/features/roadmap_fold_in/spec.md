@@ -21,6 +21,20 @@ and AuditEngine::templateRoadmapFoldInBlock.
   live or migrated id. Verified by `CorpusHighWaterAcrossSources`: a
   stale counter (100) below ids seeded into each of the three files
   allocates above the true max (250), not the counter+1.
+- INV-6c (ANTS-4631): the corpus scan counts an id only where a line
+  **declares** one — a top-level list item (`- `/`* `/`+ ` with up to three
+  leading spaces) outside a fenced block, per `RoadmapFoldIn::maxDeclaredId`.
+  An id in prose, in an indented example, or inside a fence is text and does
+  not raise the floor. INV-6b's safety property is unchanged: a committed
+  bullet above the counter still floors allocation. Verified by
+  `CorpusHighWaterCountsOnlyDeclaringLines`, whose fixture puts a sample id
+  in all three excluded positions beside one real bullet.
+
+  This is the **un-migrated** path only. A migrated project allocates from
+  the store's own id columns with no text scan at all
+  (`rcdetail::rlStoreIdHighWater`) — the file it would otherwise scan is a
+  rendered output of those rows, and scraping it read a documented sample id
+  as an allocation, burning ~5,370 ids on this project.
 - INV-7: `insertBlock` is atomic — temp-file pattern preserved by
   QSaveFile. Verified by reading the file post-write and checking
   the block lands on the line after the named heading.

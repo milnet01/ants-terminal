@@ -145,6 +145,52 @@ TEST(RoadmapFoldIn, CorpusHighWaterAcrossSources) {
               QByteArray("253")) << "counter self-heals up to corpus+N";
 }
 
+// ANTS-4631 — the scan counts an id only where a line DECLARES one: a
+// top-level list item outside a fenced block. A roadmap that documents its
+// own id format writes id-shaped sample text in prose, in an indented
+// example and inside a fence, and none of those is an allocated id.
+//
+// Measured on this project 2026-08-24: a deliberately-absurd `ANTS-9999` in
+// ANTS-4629's body pinned file_ahead_of_store true against a store that was
+// exactly in sync, and then the allocator — which floors to this value —
+// issued 10000 for the very item filing the defect, burning ~5,370 ids.
+//
+// The three exclusions are one rule, not three: a declaration is a list
+// item, so prose and indented continuation lines are out by position, and
+// the fence mask removes the one case a bullet-shaped line is still an
+// example. Anything MarkdownScan treats as a fence is excluded here too, so
+// the two cannot diverge.
+TEST(RoadmapFoldIn, CorpusHighWaterCountsOnlyDeclaringLines) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+
+    writeFile(root, "ROADMAP.md",
+              "# Roadmap\n\n## To Do\n\n"
+              "- [ANTS-0150] **Live item.**\n"
+              "  Prose naming ANTS-9999 as a sample id, exactly as a bullet\n"
+              "  describing the id format does.\n"
+              "\n"
+              "    changelog_log {op:\"add\", id:\"ANTS-9998\",\n"
+              "                   summary:\"**Bold** (ANTS-9998)\"}\n"
+              "\n"
+              "  ```\n"
+              "  - [ANTS-9997] **A bullet quoted inside a fence.**\n"
+              "  ```\n");
+    writeFile(root, ".roadmap-counter", "100\n");
+
+    // The sample ids are text; 150 is the only id this file declares.
+    EXPECT_EQ(RoadmapFoldIn::corpusHighWater(root, QStringLiteral("ANTS")),
+              150)
+        << "a documented sample id must not raise the high water";
+
+    // The allocator floors to the same value, so the next id is 151 — the
+    // half that made the defect permanent rather than cosmetic.
+    const auto ids = RoadmapFoldIn::allocateIds(root, 1);
+    ASSERT_EQ(ids.size(), 1);
+    EXPECT_EQ(ids[0], 151);
+}
+
 // ANTS-1618 — empty (or freshly-created) `.roadmap-counter` is a valid
 // initial state. Pre-1618 the allocate failed with `id_counter_failed`
 // and a misleading "stale .lock sibling" hint; post-1618 the engine
