@@ -184,6 +184,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query elides a long body BEFORE spilling it, so the middle is unreachable by any argument.** (ANTS-4630)
+  A very long roadmap note can now be read right through. Before, its middle was cut out and the suggested fix could not reach it.
+
 - **changelog_log op:"add" double-wraps a summary that already carries its own emphasis or id.** (ANTS-4629)
   Writing a changelog entry whose text already carried bold or its own
   reference number produced a mangled line, and the reply gave no sign of

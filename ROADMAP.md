@@ -43232,7 +43232,7 @@ its reporter measured.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-24.
   Lanes: mcp, changelog.
 
-- 📋 [ANTS-4630] **roadmap_query elides a long body BEFORE spilling it, so the middle is unreachable by any argument.**
+- ✅ [ANTS-4630] **roadmap_query elides a long body BEFORE spilling it, so the middle is unreachable by any argument.**
   REPRODUCED 2026-08-24 against 0.7.106 (build ecdaed8a), and the gap is
   LARGER than the report measured.
 
@@ -43276,6 +43276,13 @@ its reporter measured.
 
   Either way the marker text must name a remedy that works at the size that
   triggered it. Today it names one that cannot.
+  Resolved (2026-08-24, 31652047): the cache keeps each body whole, and the emission ceiling is stated where the id count is known — one id clamps to 1 MiB, a wider ids[] fetch keeps 16 KiB. The default is untouched. The preferred fix in this bullet was "spill before eliding"; keeping the cache whole is what makes that true, since the dispatch-site offload spills the serialised response and the body now reaches it intact.
+
+  Two consequences the tests caught rather than review. Two list paths inherited their ceiling from the cache and capped nothing themselves, so one began emitting uncapped bodies. And pagination measures rows BEFORE the emission cap, so an oversized body was weighed at full size and its row dropped — a single 51 KB bullet came back count:0 against total:1. Bodies are now capped ahead of the measure, the same principle ANTS-3577 applied to the lean projection.
+
+  The memory bound is unchanged, which is what makes it safe: bodies come from the roadmap file, so the sum is bounded by the file either way. Measured on the Ants store — 2265 items, 3.95 MB of bodies against a 4.5 MB file, only 3 items above 16 KiB, so the cache grows about 21 KB.
+
+  Three tests added (roadmap_query_id_body_cap): the middle of an oversized body is reachable on a single id, a wide ids[] fetch keeps its ceiling, and the marker's own advice now works at the size that triggered it. Suite 3853, green. Live re-measure against CFG-0196 is owed on the next relaunch — the running MCP still serves the pre-fix binary.
   **Layman:** A very long roadmap note can be read at its start and end but not its middle, and the error message suggests a fix that cannot work.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-24.
