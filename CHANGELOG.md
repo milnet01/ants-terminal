@@ -129,6 +129,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **A migrated project whose file was never rendered is write-locked, and the render that would free it is gate-refused.** (ANTS-4628)
+  The roadmap's "plain-English summary" rule now applies to the items an
+  edit touches, instead of to the whole project. Editing one item no longer
+  demands that every other item in the project already carry a summary —
+  which had made some projects impossible to edit at all, including the one
+  whose repair was itself blocked by the rule.
+
 - **Split the roadmap-write translation unit, which was at its line cap** (ANTS-4620)
   The file holding the roadmap write operations had reached the 6,000-line
   ceiling the project sets, leaving no room for the next change. It is now

@@ -32613,6 +32613,22 @@ against current source before filing.
   its ids. The message is right for every project measured except that one;
   correcting it belongs with whichever remedy ANTS-4628 takes, since two of
   the three would make the precondition moot.
+  Superseded in effect 2026-08-24 by ANTS-4628 (25820953), which removes the
+  deadlock this item worked around rather than the workaround.
+
+  A single-item repair now commits: the gate judges only what the write touched,
+  so repairing one offender is no longer refused by the others. The flip_batch
+  escape still works and is still how N items are repaired in one call, but it
+  is no longer the ONLY route, and the precondition recorded in the annotation
+  above -- that the ids must already be in the file -- no longer strands a
+  project, because op:render can now publish them there first.
+
+  src/roadmapwrite.cpp's refusal message no longer prescribes the batch remedy;
+  it names the touched offenders and says a Layman line can ride along in the
+  same call. The test that pinned the old behaviour
+  (Ants4434BatchRepairEscapesTheGateDeadlock) is inverted and renamed
+  Ants4628SingleItemRepairNowCommits, asserting that the single repair lands AND
+  that the untouched offender is left alone.
 
 - 📋 [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
   The `render_gate_unmet` row says: "Remedy is to fill in the named layman lines, which `annotate` / `amend_body` can do one at a time."
@@ -32650,6 +32666,21 @@ against current source before filing.
   an instruction in it trips global rule 14's gate (a conformer would do
   something different). That is why the message was fixed here and the row
   was deliberately left alone rather than edited in passing.
+  The render_gate_unmet row was rewritten 2026-08-24 by ANTS-4628 (25820953),
+  which is NOT this item being done. ANTS-4628 made the row's central claim
+  false -- it said "the gate is per project, not per item" -- so leaving it was
+  not an option: shipping a change that falsifies a documented refusal code is
+  worse than touching another item's territory.
+
+  What the rewrite covers: the scope rule, the new remedy (a Layman line can ride
+  along in the same call, so annotate and flip now repair and land in one write),
+  the historical note on why the old per-item loop could not work, and the
+  ANTS-4628 extreme case. It also drops the stale `roadmaprender.cpp:315` line
+  reference.
+
+  What it does NOT cover, and what remains this item's: whatever else the row is
+  stale about beyond the gate's scope. Re-read it fresh rather than assuming the
+  2026-08-24 pass swept it -- that pass was aimed at one claim.
 
 - 💭 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
   ANTS-4402's witness compares `file_highest_id` against `store_high_water`, and the high water comes from the `id_prefix` table. Migration does not write a row there — only an id-allocating append does. So a migrated-but-never-appended project reports `store_high_water: 0`, and any id in the file makes `file_ahead_of_store` true forever.
@@ -37417,6 +37448,14 @@ are closed inline in the feedback files rather than filed here.
   Still not ready. The decision is recorded, not built; ANTS-4628 carries the
   mechanism and the two gated documents in its path. This item unblocks when
   that one ships, not when the decision was made.
+  Third blocker CLEARED 2026-08-24 (ANTS-4628, 25820953). The gate is now
+  scoped to the items a write touches, so Vestige's 585 legacy items will not
+  block every edit after conversion -- the reason this item was held.
+
+  Its two other blockers were already closed (ANTS-4575 shipped; ANTS-3771 is
+  the remaining hard one per the annotation above). So the gate question is off
+  this item's critical path entirely; what stands between it and a start is
+  ANTS-3771, and nothing else recorded here.
 
 - 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
@@ -54467,7 +54506,7 @@ here.)
   Source: in-session-2026-08-23.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4628] **A migrated project whose file was never rendered is write-locked, and the render that would free it is gate-refused.**
+- ✅ [ANTS-4628] **A migrated project whose file was never rendered is write-locked, and the render that would free it is gate-refused.**
   Split out of ANTS-4627, whose annotation carries the diagnosis. This is the
   half that is a live breakage rather than an investigation.
 
@@ -54541,6 +54580,47 @@ here.)
   review fires. The `render_gate_unmet` row in the error-code standard is the
   second (it is also ANTS-4435's, and already stale). ANTS-4434's refusal
   message and `Inv5PublishGate` both change with it.
+  Resolved 2026-08-24 (25820953). Remedy 2 as chosen: the gate is scoped to
+  the items a write touches.
+
+  RoadmapStore records item_pks written since begin(); RenderOptions gains an
+  optional gateScope; commitAndRender states it for all three of its renders.
+  Recording in the store rather than at each of the ten write ops is the design
+  -- an op that forgot to declare would present an empty scope and skip the gate
+  altogether, which is worse than the whole-project gating it replaces.
+
+  The optionality is normative: unset judges every item (so a direct render() is
+  unchanged and nobody loses the check by not opting in), engaged-empty judges
+  nothing (op:render, and any write touching no item row). Collapsing the two
+  re-creates the deadlock, and INV-5's `Breaks when` now names that mutation.
+
+  Two deliberate consequences. A write that touches an offender is still refused,
+  so this is a narrowing and not an exemption -- and roadmap-data-model.md 3.1's
+  tier exemption no longer covers `layman` for a public open item. A rotation
+  publishes past unrelated debt, since it moves section and element rows and no
+  item; ANTS-4070 INV-10 is amended from "inherited" to "inherited but scoped",
+  which is what it always effectively was.
+
+  Also fixed in passing: the ANTS-4462 pre-image render was gated, so on exactly
+  the debt-carrying projects that need it the drift check silently did not run
+  and externalEditsChecked reported false. It now carries an engaged-empty scope.
+
+  Suite 3848/3848 (3844 before), 100%, and green through the pre-push gate.
+  Must-fail-first done: red on the assertion, not on compile, with the API
+  stubbed first.
+
+  Gated per rule 14: two cold lanes, 8 verified findings fixed, 2 dismissed.
+  Both lanes independently found the same defect -- my two documents gave
+  op:render opposite answers, and it IS the publish op, so they disagreed on the
+  one case the change exists for. One dismissal is worth recording: a lane
+  claimed Music_Production had a route out via flip_batch, reasoning from the
+  test fixture; measured live, that refuses bullet_not_found, because the
+  fixture's file carries ids and Music_Production's does not.
+
+  NOT yet verified live. The MCP is served by the running Ants instance, which
+  is the pre-change binary, so Music_Production stays stuck until a relaunch.
+  The unsticking sequence after one is: op:render (empty scope, publishes the
+  357 ids into the file), then ordinary locators resolve.
   **Layman:** One project's roadmap can no longer be edited at all: the tidy-up that would fix it is blocked by a rule that only an edit can satisfy.
   Kind: fix.
   Source: in-session-2026-08-24.
