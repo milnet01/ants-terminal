@@ -1316,10 +1316,14 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
 
 QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
         const QJsonObject &req, const QString &roadmapPath,
-        const QString &markdown) {
+        const QString &markdown, bool annotateMode) {
     const QString canon =
         rlCanonicalToStatus(req.value(QStringLiteral("to_status")).toString());
+    // ANTS-4470 — empty under annotate_batch, and unused there: the gate
+    // refuses a to_status on that op, so there is no status to resolve.
     const QString keyword = PassHeadingWrite::passStatusKeyword(canon);
+    const QString opName = annotateMode ? QStringLiteral("annotate_batch")
+                                        : QStringLiteral("flip_batch");
     // to_status is validated canonical at the gate, so keyword is non-empty.
     const QJsonArray locators = req.value(QStringLiteral("locators")).toArray();
 
@@ -1339,28 +1343,58 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
             skipped.append(s);
             continue;
         }
-        PassHeadingWrite::WriteResult r =
-            PassHeadingWrite::flipPassStatus(md, locId, locHeadline, keyword);
-        if (!r.ok) {
+        QString note = loc.value(QStringLiteral("note")).toString();
+        // ANTS-4470 — an annotate with no note writes nothing; refused per
+        // locator, as on the GFM/ants-v1 batch path.
+        if (annotateMode && note.isEmpty()) {
             QJsonObject s;
             s["locator_index"] = i;
-            s["code"]          = r.code;
-            s["error"]         = QStringLiteral("locator matched no pass");
+            s["code"]          = QStringLiteral("missing_field");
+            s["error"]         = QStringLiteral("op:\"annotate_batch\" requires "
+                "a non-empty `note` on every locator");
             skipped.append(s);
             continue;
         }
-        md = r.markdown;
-        QString note = loc.value(QStringLiteral("note")).toString();
+        // ANTS-4470 — under annotate the status surgery is skipped entirely.
+        // The locator must still RESOLVE, so the note has somewhere to land and
+        // an unmatched locator is still reported; annotatePass is what resolves
+        // it in that case.
+        QString matchedId;
+        if (!annotateMode) {
+            PassHeadingWrite::WriteResult r =
+                PassHeadingWrite::flipPassStatus(md, locId, locHeadline, keyword);
+            if (!r.ok) {
+                QJsonObject s;
+                s["locator_index"] = i;
+                s["code"]          = r.code;
+                s["error"]         = QStringLiteral("locator matched no pass");
+                skipped.append(s);
+                continue;
+            }
+            md = r.markdown;
+            matchedId = r.matchedId;
+        }
         if (!note.isEmpty()) {
             QStringList sc;
             rcScrubLeakedToolXml(note, sc);
             PassHeadingWrite::WriteResult an =
                 PassHeadingWrite::annotatePass(md, locId, locHeadline, note);
-            if (an.ok) md = an.markdown;
+            if (annotateMode && !an.ok) {
+                QJsonObject s;
+                s["locator_index"] = i;
+                s["code"]          = an.code;
+                s["error"]         = QStringLiteral("locator matched no pass");
+                skipped.append(s);
+                continue;
+            }
+            if (an.ok) {
+                md = an.markdown;
+                if (matchedId.isEmpty()) matchedId = an.matchedId;
+            }
         }
         QJsonObject f;
         f["locator_index"] = i;
-        f["id"]            = r.matchedId;
+        f["id"]            = matchedId;
         flipped.append(f);
     }
 
@@ -1368,7 +1402,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
     auto envelope = [&](qint64 before, qint64 after) {
         QJsonObject out;
         out["ok"]            = true;
-        out["op"]            = QStringLiteral("flip_batch");
+        out["op"]            = opName;                       // ANTS-4470
         out["format"]        = QStringLiteral("pass-headings");
         out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
         out["flipped"]       = flipped;
@@ -1386,8 +1420,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
         QJsonObject e;
         e["ok"]     = false;
         e["code"]   = QStringLiteral("roadmap_write_failed");
-        e["error"]  = QStringLiteral("roadmap_log op:\"flip_batch\": "
-            "atomic write of \"%1\" failed").arg(roadmapPath);
+        e["error"]  = QStringLiteral("roadmap_log op:\"%1\": "
+            "atomic write of \"%2\" failed").arg(opName).arg(roadmapPath);
         e["format"] = QStringLiteral("pass-headings");
         return QJsonDocument(e);
     }

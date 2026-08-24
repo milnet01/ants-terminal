@@ -1805,6 +1805,9 @@ if(ANTS_TESTS)
                 tests/features/mcp_roadmap_log_pass_writer/test_mcp_roadmap_log_pass_writer.cpp
                 # ANTS-1717/1793 roadmap_log note append (annotate + flip-note).
                 tests/features/roadmap_log_annotate/test_roadmap_log_annotate.cpp
+                # ANTS-4470/4466/4464 roadmap_log op:annotate_batch, the store
+                # path's committed-status report, and write_path.
+                tests/features/roadmap_log_annotate_batch/test_roadmap_log_annotate_batch.cpp
                 # ANTS-3406 roadmap_log op:amend_body (exact single-line body patch).
                 tests/features/roadmap_log_amend_body/test_roadmap_log_amend_body.cpp
                 # ANTS-4547/4550 — the shared wrapped-quotation matching rule,

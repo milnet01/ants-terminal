@@ -3931,7 +3931,11 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
         return cmdRoadmapLogAmendBody(req, /*headlineMode=*/true);
     }
     // ANTS-1690 — batch flip: N bullets, one read + one commit.
-    if (op == QStringLiteral("flip_batch")) {
+    // ANTS-4470 — op:"annotate_batch" shares the handler, mirroring exactly how
+    // op:"annotate" shares cmdRoadmapLogFlip above: it is this path with the
+    // status write skipped, and the emoji-swap is skipped inside the handler.
+    if (op == QStringLiteral("flip_batch") ||
+        op == QStringLiteral("annotate_batch")) {
         return cmdRoadmapLogFlipBatch(req);
     }
     // ANTS-1878 — create_section. m_main-independent (no counter
@@ -3973,6 +3977,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
             QStringLiteral("roadmap_log: unknown op \"%1\" — expected "
                            "\"append\" (default), \"append_batch\", "
                            "\"flip\", \"flip_batch\", \"annotate\", "
+                           "\"annotate_batch\", "
                            "\"amend_body\", \"amend_headline\", "
                            "\"bundle_row\", \"backfill_dates\", "
                            "\"render\", "

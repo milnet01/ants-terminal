@@ -156,7 +156,9 @@ QString rlCanonicalToStatus(const QString &toStatus);
 QJsonDocument cmdRoadmapLogPassAppend(const QJsonObject &req, const QString &roadmapPath, const QString &markdown);
 QJsonDocument cmdRoadmapLogPassAppendBatch(const QJsonObject &req, const QString &roadmapPath, const QString &markdown);
 QJsonDocument cmdRoadmapLogPassFlip(const QJsonObject &req, const QString &roadmapPath, const QString &markdown);
-QJsonDocument cmdRoadmapLogPassFlipBatch(const QJsonObject &req, const QString &roadmapPath, const QString &markdown);
+// ANTS-4470 — `annotateMode` omits the status flip, leaving the per-locator
+// note as the whole operation (op:"annotate_batch").
+QJsonDocument cmdRoadmapLogPassFlipBatch(const QJsonObject &req, const QString &roadmapPath, const QString &markdown, bool annotateMode = false);
 bool rcRoadmapIdLess(const QString &a, const QString &b);
 QString rcExtractGateNote(const QString &body);
 bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, const QString &err);
@@ -381,6 +383,7 @@ void rcMaybeEmitEvidence(QJsonObject &o, const RoadmapDialog::BulletRecord &b);
 bool rcReturnHeadlineOnly(const QJsonObject &req);
 QJsonObject rcCompactBullet(const QString &id, const QString &statusWord, const QString &headline);
 QString rcStatusWord(const QString &emoji);
+QString rcStatusEmoji(const QString &word);
 QString rcSanitizeBulletField(const QString &in, int maxLen);
 QString rcComputeSectionEtag(const QString &slice);
 QJsonObject rcSectionShape(const QString &slice);

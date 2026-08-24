@@ -810,6 +810,25 @@ QString rcStatusWord(const QString &emoji) {
     return emoji;
 }
 
+// ANTS-4466 — the inverse of rcStatusWord, for the store path's flip/annotate
+// envelope. The store holds status as a lifecycle WORD; the envelope's
+// from_status / to_status are emoji, and until this existed the only emoji in
+// hand on that path came from the parsed FILE — which is what let a reverted
+// ROADMAP.md be reported as the committed result (the store had ✅, the file
+// 📋, and the envelope said 📋 while the render correctly restored ✅).
+//
+// Pass-through on already-emoji / unknown input, mirroring rcStatusWord's own
+// contract. Deliberately NOT reused for op:append's word→emoji map: that one
+// also has to REFUSE an unknown status (bad_status), and a mapper that both
+// converts and refuses is two jobs.
+QString rcStatusEmoji(const QString &word) {
+    if (word == QStringLiteral("shipped"))     return QString::fromUtf8("\xE2\x9C\x85");     // ✅
+    if (word == QStringLiteral("in-progress")) return QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
+    if (word == QStringLiteral("considered"))  return QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
+    if (word == QStringLiteral("planned"))     return QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
+    return word;
+}
+
 // ANTS-1743 — sanitise a single-line bullet field (headline / layman /
 // source) before splicing it into ROADMAP.md. rcHeadlineOneline folds
 // embedded \n/\r/\t + whitespace runs to single spaces so a stray

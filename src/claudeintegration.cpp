@@ -10731,6 +10731,7 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("flip");
                     opEnum.append("flip_batch");
                     opEnum.append("annotate");
+                    opEnum.append("annotate_batch");  // ANTS-4470
                     opEnum.append("amend_body");   // ANTS-3406
                     opEnum.append("amend_headline");  // ANTS-4372
                     opEnum.append("create_section");
@@ -10787,6 +10788,35 @@ void ClaudeIntegration::onMcpConnection() {
                         "bullet WITHOUT changing its status — for "
                         "recording partial progress on a still-open "
                         "item; no status flip, no anchor injection. "
+                        "\"annotate_batch\" (ANTS-4470) is that op's "
+                        "batch form and closes the asymmetry that left "
+                        "annotate the only bullet-writing op without "
+                        "one: N notes in a single read + single atomic "
+                        "commit, where N separate annotates cost N "
+                        "reads of a large ROADMAP.md, N commits, and "
+                        "raced the file watcher the same way N separate "
+                        "flips did before flip_batch existed. Takes "
+                        "flip_batch's `locators[]` UNCHANGED — "
+                        "{id|anchor|headline|line_range} plus the "
+                        "per-locator `note` that array has carried "
+                        "since ANTS-1690 — so there is no second shape "
+                        "to learn; it is flip_batch with the status "
+                        "write omitted, exactly as annotate is flip. "
+                        "`to_status` is REFUSED (bad_op_combo), not "
+                        "ignored, since a caller who passes one means "
+                        "to change status. A locator with no `note` "
+                        "writes nothing and is refused into `skipped[]` "
+                        "per locator, so one noteless locator does not "
+                        "cost the batch its other closures; when every "
+                        "locator is noteless the all-failed refusal "
+                        "still fires. The envelope keeps flip_batch's "
+                        "keys — `flipped` / `flipped_count` / "
+                        "`would_flip_count` — deliberately, so one "
+                        "parser reads both ops; each row's `to_status` "
+                        "is that item's OWN unchanged status, and the "
+                        "batch-wide top-level `to_status` is ABSENT, "
+                        "because a single value there could only be "
+                        "wrong. "
                         "\"create_section\" (ANTS-1878) splices a new "
                         "## / ### heading after an existing section — "
                         "pass `after_section` (slug), `level` (2 or 3), "
@@ -11087,7 +11117,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "flip to `to_status`. Each is one locator "
                         "(id|anchor|headline|line_range) + optional `note` "
                         "and `no_anchor`. Single read + single atomic "
-                        "commit across all of them.");
+                        "commit across all of them. ANTS-4470 — also "
+                        "required, in the SAME shape, under "
+                        "op:\"annotate_batch\", where `note` stops being "
+                        "optional: it is the whole operation, and a "
+                        "locator without one is refused into `skipped[]`. "
+                        "`no_anchor` is inert there (annotate injects no "
+                        "anchor), as is any `to_status`, which that op "
+                        "refuses at the top level.");
 
                     // ANTS-1879 — bullets[] array for op:"append_batch".
                     // Each element carries the same shape as the

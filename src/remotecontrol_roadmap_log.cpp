@@ -1503,10 +1503,25 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                                                         ? QStringLiteral("annotate")
                                                         : QStringLiteral("flip");
                 env[QStringLiteral("format")]      = QStringLiteral("ants-v1");
-                env[QStringLiteral("from_status")] = v1target.status;
+                // ANTS-4466 — from the STORE, not from `v1target`, which is the
+                // parsed FILE. On this path the file is the render's output, so
+                // the two normally agree; where they do not — a `git checkout --`
+                // that reverted ROADMAP.md while the store kept the flip — the
+                // file is the stale one, and reporting it described the op's
+                // INPUT while the render had already committed the correct
+                // RESULT. A caller confirming a write from the envelope got the
+                // wrong answer in exactly the divergence case where confirming
+                // matters most.
+                const QString storeFromEmoji = rcStatusEmoji(before->status);
+                env[QStringLiteral("from_status")] = storeFromEmoji;
                 env[QStringLiteral("to_status")]   = annotateMode
-                                                        ? v1target.status
+                                                        ? storeFromEmoji
                                                         : targetEmoji;
+                // Rides on the true arm only, like ANTS-4463/4465's fields: a
+                // divergence is news, and a key present on every write restating
+                // from_status is a key nobody reads.
+                if (v1target.status != storeFromEmoji)
+                    env[QStringLiteral("file_status")] = v1target.status;
                 env[QStringLiteral("file")]        = QStringLiteral("ROADMAP.md");
                 env[QStringLiteral("id")]          = v1target.id;
                 // No `line` / `bytes` / `note_line`: a store has no lines
@@ -1528,6 +1543,30 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                     QJsonArray dropped;
                     for (const QString &n : noteScrubbedNames) dropped.append(n);
                     env[QStringLiteral("note_scrubbed_params")] = dropped;
+                }
+                // ANTS-4464 — name the path that ran. The two paths declare
+                // different field sets on purpose (ANTS-3793 INV-2: a store has
+                // no lines, so `line` / `note_line` / `bytes_written` cannot be
+                // resolved without re-reading the file the render just wrote,
+                // which ANTS-3863 exists to avoid). What was missing is not the
+                // fields but the STATEMENT: a caller reading `note_line`
+                // unconditionally got null on a successful write with nothing
+                // saying why, and identical calls returned two shapes across a
+                // migration. Named `write_path` rather than the reported
+                // `path` — this envelope already carries `file`, and `path` is
+                // a filesystem word everywhere else in the verb layer.
+                env[QStringLiteral("write_path")] = QStringLiteral("render");
+                // ANTS-4464 — the file path emits this under
+                // return:"headline_only"; the store path did not, so a
+                // documented echo went silently missing on migrated projects.
+                // Same divergence class as the fields above.
+                if (rcReturnHeadlineOnly(req)) {
+                    env[QStringLiteral("post_bullets")] = QJsonArray{
+                        rcCompactBullet(
+                            v1target.id,
+                            rcStatusWord(env.value(QStringLiteral("to_status"))
+                                             .toString()),
+                            v1target.headline) };
                 }
                 if (dryRun)
                     env[QStringLiteral("dry_run")] = true;
@@ -1569,6 +1608,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             out["line"]            = v1target.firstLine + 1;
             out["bytes"]           = static_cast<qint64>(previewUtf8.size());
             out["anchor_injected"] = false;
+            out["write_path"]      = QStringLiteral("patch");   // ANTS-4464
             out["id"]              = v1target.id;
             if (!note.isEmpty()) {
                 out["note_appended"] = !noteAlreadyPresent;
@@ -1604,6 +1644,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         out["line"]            = v1target.firstLine + 1;
         rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(utf8.size()));
         out["anchor_injected"] = false;
+        out["write_path"]      = QStringLiteral("patch");   // ANTS-4464
         out["id"]              = v1target.id;
         if (!note.isEmpty()) {
             out["note_appended"] = !noteAlreadyPresent;
@@ -2083,6 +2124,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         out["line"]            = target.firstLine + 1;
         out["bytes"]           = static_cast<qint64>(previewUtf8.size());
         out["anchor_injected"] = !anchorToInject.isEmpty();
+        // ANTS-4464 — GFM is reachable only on a file-backed project (a
+        // migrated project's ROADMAP.md is the render's own ants-v1 output), so
+        // this arm is always the patch path. Declared anyway: the field is
+        // useful precisely because a caller can read it unconditionally.
+        out["write_path"]      = QStringLiteral("patch");
         if (!anchorToInject.isEmpty()) out["anchor"] = anchorToInject;
         if (!target.boldId.isEmpty()) out["id"] = target.boldId;
         if (needInjection && newCounter >= 0) out["counter"] = newCounter;
@@ -2137,6 +2183,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     out["line"]            = target.firstLine + 1;  // 1-based
     rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(utf8.size()));
     out["anchor_injected"] = !anchorToInject.isEmpty();
+    out["write_path"]      = QStringLiteral("patch");   // ANTS-4464
     if (!anchorToInject.isEmpty()) out["anchor"] = anchorToInject;
     if (!target.boldId.isEmpty()) out["id"]      = target.boldId;
     if (needInjection && newCounter >= 0)

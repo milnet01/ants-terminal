@@ -36157,7 +36157,7 @@ happen.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_roadmap_log.
 
-- 📋 [ANTS-4464] **`op:flip` lost `line`, `note_line` and `bytes_written` when the render path became the only path.**
+- ✅ [ANTS-4464] **`op:flip` lost `line`, `note_line` and `bytes_written` when the render path became the only path.**
   Three identical `op:flip` calls in one session returned two different sets of
   fields. The first carried `line`, `note_line`, `bytes_written` and
   `file_bytes`; the second and third dropped all four and carried
@@ -36179,6 +36179,11 @@ happen.
   Kind: fix.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_roadmap_log.
+  Resolved (2026-08-24): every flip/annotate envelope now carries `write_path` — "render" on the store path, "patch" on the markdown path — on single-item and batch ops, dry-run and success alike.
+  The reported CAUSE was wrong and the fix follows from the measured one, so recording it: this is not one path that dropped four fields, it is TWO paths whose field difference ANTS-3793 INV-2 declares deliberately. A store has no lines, and resolving line / note_line there would mean re-reading the file the render just wrote, which ANTS-3863 exists to avoid. The reporter saw the shapes change because their project was MIGRATED between calls.
+  So the fields were not restored and null placeholders were not added; what was missing was the STATEMENT, which is the report's own fallback prescription. Named write_path rather than the reported `path`: these envelopes already carry `file`, and `path` is a filesystem word everywhere else in the verb layer.
+  Found while fixing it: the store path also dropped the post_bullets echo that return:"headline_only" promises and the markdown path emits — the same divergence class, one field, in the same envelope. Fixed here rather than filed.
+  items_rendered needed no change: rcRoadmapWriteFields runs only on the store path, so it was never present-and-meaningless on the other.
 
 - ✅ [ANTS-4465] **roadmap_log's re-render silently discards hand-edits outside a bullet, including the whole preamble.**
   On a store-backed ROADMAP.md a hand-edit to the file PREAMBLE (line 4,
@@ -36222,7 +36227,7 @@ happen.
 
   src/roadmapwrite.cpp (step 1b + driftLines/externalDrift), src/roadmaprender.{h,cpp} (a `contentOut` out-param so the dry render hands back its bytes), src/remotecontrol_roadmap_query.cpp (rcRoadmapWriteFields — the single emission point all ten op sites route through), src/claudeintegration.cpp (descriptions). Tests: RoadmapWriteHalf.Ants4462ReportsDiscardedExternalEdits + Ants4462DryRunUsesTheFutureTense, both run RED against pre-fix source (assertion failures, not compile failures) before the fix. Suite 11 → 13.
 
-- 📋 [ANTS-4466] **`op:annotate` reports `to_status` from the stale file read, not from the rendered result.**
+- ✅ [ANTS-4466] **`op:annotate` reports `to_status` from the stale file read, not from the rendered result.**
   After a `git checkout --` reverted ROADMAP.md while the store kept a flip,
   the two disagreed: roadmap_query said ✅ from source:"store", the file said
   📋. The subsequent `op:annotate` returned `from_status:"📋", to_status:"📋"` —
@@ -36240,6 +36245,10 @@ happen.
   Kind: fix.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_roadmap_log.
+  Resolved (2026-08-24): the store path now reports from_status / to_status from the STORE rather than from the parsed file. The store's committed status was already in hand at that point (`before` from store.readItem), so the fix is local; what was missing was a word-to-emoji mapper, added as rcStatusEmoji beside the existing rcStatusWord it inverts.
+  Took the report's first option over its second: report the committed RESULT, and additionally surface `file_status` when the file disagrees, so the divergence is visible rather than resolved silently in one direction. file_status rides the true arm only — absent when the two agree, which is every healthy write.
+  Extended to cmdRoadmapLogFlipBatch's store path in the same change. Not scope creep: annotate_batch was being added there in the same commit, and shipping it with the known-wrong status source would have shipped this defect twice.
+  Verified by reproducing the reported scenario — migrate a temp project, flip in the store, revert the file underneath it, annotate. The test asserts the store path ran AND that the file genuinely diverged, so it cannot pass vacuously.
 
 - ✅ [ANTS-4467] **roadmap_query mode:"section_index" spills on a large roadmap and drops the slugs — the one field the mode exists to return.**
   On an 84-section ROADMAP.md the section_index reply exceeded the inline
@@ -36316,7 +36325,7 @@ happen.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: docsymbols, remotecontrol_workspace.
 
-- 📋 [ANTS-4470] **roadmap_log has `append_batch` and `flip_batch` but no `annotate_batch`.**
+- ✅ [ANTS-4470] **roadmap_log has `append_batch` and `flip_batch` but no `annotate_batch`.**
   `op:"annotate"` is the only bullet-writing op with no batch form, and
   `append_batch` (ANTS-1879) and `flip_batch` (ANTS-1690) were each filed to
   remove exactly this cost — so this is an asymmetry rather than a feature
@@ -36338,6 +36347,10 @@ happen.
   Kind: feature.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: remotecontrol_roadmap_log.
+  Resolved (2026-08-24): op:"annotate_batch" added, sharing cmdRoadmapLogFlipBatch exactly as op:"annotate" shares cmdRoadmapLogFlip — the handler reads the mode from the request and skips the status write. The report was right that no new parameter shape was needed: locators[] has carried a per-locator note since ANTS-1690, so the op is that array with to_status omitted.
+  Decisions worth knowing. to_status REFUSES (bad_op_combo) rather than being ignored, mirroring op:"annotate". A noteless locator is skipped per locator rather than failing the batch, because that is this op's failure model — but when every locator is noteless the all-failed refusal still fires. The top-level to_status is ABSENT on an annotate envelope: each item keeps its own status and one value there could only be wrong. The envelope otherwise keeps flip_batch's keys (flipped / flipped_count / would_flip_count) deliberately, so one parser reads both ops.
+  All three backends covered: store-render, markdown-patch, and pass-headings (cmdRoadmapLogPassFlipBatch took an annotateMode parameter, so the note lands without flipping every located pass to a status nobody named).
+  Verified: 11 new tests in tests/features/roadmap_log_annotate_batch, full suite 3865/3865.
 
 - 📋 [ANTS-4471] **`feedback_query`'s derived-path miss returns `found:false` with no `candidates`, where its sibling verb offers them.**
   On a derived-path miss feedback_query returns {found:false, reason} and

@@ -14,6 +14,23 @@ for security-relevant changes.
 
 ### Added
 
+- **Every roadmap_log flip/annotate envelope names the path that wrote** (ANTS-4464)
+  The store-backed and markdown paths declare different fields on
+  purpose — a store has no line numbers — but nothing said which had
+  run, so a caller reading `note_line` got nothing with no way to tell
+  why, and identical calls changed shape across a migration. A new
+  `write_path` ("render" or "patch") makes the absence a statement. The
+  store path also now emits the `post_bullets` echo that
+  `return:"headline_only"` promises and only the other path supplied.
+
+- **roadmap_log gains `op:"annotate_batch"`** (ANTS-4470)
+  Adds a note to N roadmap items in one read and one atomic commit,
+  where N separate annotates cost N reads of a large ROADMAP.md, N
+  commits, and raced the file watcher. Takes flip_batch's existing
+  `locators[]` unchanged, so there is no second shape to learn; a
+  `to_status` is refused rather than ignored, and a locator with no
+  note is skipped without costing the batch its other closures.
+
 - **Build-time Qt-version guard: refuse a tree whose objects predate a Qt upgrade (ANTS-4625)**
   A Qt point upgrade could silently poison an incremental build. RPM
   preserves upstream header mtimes, so newer headers can be older than
@@ -183,6 +200,16 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **roadmap_log reports the status it just committed, not the one it read** (ANTS-4466)
+  On a store-backed project, `op:"annotate"` described the stale file it
+  read rather than the result the render had committed — so after a
+  `git checkout --` reverted ROADMAP.md, the envelope said the item was
+  still planned while the write had correctly restored shipped. Nothing
+  was lost; the report was wrong, in exactly the case where a caller
+  confirming a write most needs it right. A new `file_status` names the
+  file's value when the two disagree, so a divergence is visible rather
+  than silently resolved.
 
 - **Roadmap id allocation reads the store's id columns instead of scraping the rendered roadmap** (ANTS-4631)
   A migrated project's ROADMAP.md is a rendered output of the store, but the
