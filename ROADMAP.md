@@ -54791,6 +54791,34 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-24.
 
+- 📋 [ANTS-4632] **Retire .roadmap-counter once nothing outside this repo reads it.**
+  ANTS-4631 moved id allocation on a migrated project to the store's own
+  id columns, so the file is no longer consulted on that path. It is now
+  inert here AND stale: it holds 10000, the value burned by the pre-fix
+  allocator scraping the sample id out of ANTS-4631's body prose.
+
+  The user has said it can go. It gets its own item rather than an inline
+  delete because the risk is not in this repo: the counter is a
+  roadmap-format.md artefact, other projects and any un-migrated project
+  still allocate from it, and roadmap_log's own counter strategy writes it.
+  So the work is the SWEEP, not the deletion.
+
+  Steps:
+    1. Find every reader and writer — the C++ store/foldin path, the
+       roadmap_log counter strategy, roadmap-format.md's own prose, the
+       skeleton, and any other project on this machine carrying one.
+    2. Decide per surface: an un-migrated project still needs it, so the
+       retirement is conditional on migration rather than global.
+    3. Only then delete this repo's copy, and say in the item what still
+       depends on the mechanism elsewhere.
+
+  Do NOT simply correct 10000 to 4631 and call it done — that leaves the
+  mechanism live with no decision recorded, which is the state this item
+  exists to end.
+  **Layman:** Deletes a small leftover file that used to hand out roadmap numbers, after checking no other tool still relies on it.
+  Kind: chore.
+  Source: user-request-2026-08-24.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
