@@ -23,6 +23,7 @@ dispatch-site and verb-wiring invariants.
 | `Inv11FailOpenWiring` | INV-11 — `offloadBody` returns the body on `ensurePrivateDir`/`commit` failure. |
 | `Ants4397ShapeSummaryForLongRows` | ANTS-4397 — a body of few, very WIDE rows carries `rows_preview`: one `{index, bytes, head}` row per row, covering every row where the body prefix covered one. |
 | `Ants4519HeadlessShapePreviewIsOmittedNotEmitted` | ANTS-4519 — when a text sample cannot fit for every row, `rows_preview` is omitted entirely (`rows_preview_omitted:true`, `row_count` kept) rather than emitted headless. A bare list of row LENGTHS conveys nothing `row_count` + `bytes` do not, and cost ~1k tokens on the session's most expensive calls. |
+| `Ants4474NarrowsHeadsBeforeDroppingThem` | ANTS-4474 — the head gives way by SHRINKING before it gives way by vanishing. When a full-width sample cannot cover every row the width steps down (60 → 40 → 24 → 12) and the narrowest that covers them all is used, reported as `rows_preview_head_chars`. Only when no width covers every row does ANTS-4519's omission apply. A row label, a Markdown heading, a table cell name and a function signature all live in the first ~40 characters, so the narrowed head still answers "what is this row?" — the one question `bytes` cannot. |
 
 ## Pre-fix expectation
 

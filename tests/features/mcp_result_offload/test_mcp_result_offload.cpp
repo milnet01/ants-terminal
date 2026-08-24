@@ -904,3 +904,73 @@ TEST_F(McpResultOffload, Ants4519HeadlessShapePreviewIsOmittedNotEmitted) {
         << "head (2048 B) + one head_row + pointer + two integers — if this "
            "grows past the bound the shape array is back";
 }
+
+// ANTS-4474 — when the per-row heads will not fit, SHRINK them before
+// dropping them.
+//
+// The residual on ANTS-4397, reported against the same shape that item was
+// built for: a 60-row .claude/workflow.md whose § 1 status table puts each
+// row's identity in its first ~25 characters. The bytes column did its job —
+// the caller could see WHICH rows were large — and with the heads gone they
+// could not see WHAT any row was, which is the one question `bytes` cannot
+// answer. They fell back to `sed | grep -o` to recover the labels, then two
+// more read calls.
+//
+// ANTS-4519 has since removed the bytes-only rung this item's text proposed
+// as the last step, so without the shrink the ladder now falls from full
+// heads straight to omitting the preview entirely. That makes the narrowed
+// head the ONLY rung that keeps a label at all.
+//
+// Not a reversal of ANTS-4397: complete coverage still wins over a prefix,
+// and the head still gives way before the coverage does. It just gives way
+// by shrinking first.
+TEST_F(McpResultOffload, Ants4474NarrowsHeadsBeforeDroppingThem) {
+    // 60 rows, each carrying its identity in a short leading label and then
+    // enough filler that a full-width head must truncate.
+    QJsonArray arr;
+    for (int i = 0; i < 60; ++i)
+        arr.append(QStringLiteral("| Item %1 | ").arg(i, 2, 10, QLatin1Char('0')) +
+                   QString(300, QLatin1Char('x')));
+    QJsonObject b; b["lines"] = arr;
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), 16384);
+
+    const QJsonObject o = offloadEnv(QStringLiteral("read_region"), body);
+    ASSERT_TRUE(o.value("offloaded").toBool());
+
+    // The regression this locks: before the ladder, the full-width head could
+    // not cover 60 rows, the headless build could, and the preview was
+    // omitted outright under ANTS-4519.
+    EXPECT_FALSE(o.value("rows_preview_omitted").toBool())
+        << "a narrowed head fits here — omitting the preview throws away "
+           "every row's label to save bytes a shorter head would have saved";
+
+    const QJsonArray shape = o.value("rows_preview").toArray();
+    ASSERT_EQ(shape.size(), 60)
+        << "the narrowed head must still cover EVERY row — partial coverage "
+           "is the defect ANTS-4397 fixed and this must not reintroduce it";
+    EXPECT_FALSE(o.value("rows_preview_truncated").toBool());
+
+    // The head was narrowed, and the envelope says so rather than leaving the
+    // caller to wonder why a head they recognise is shorter than usual.
+    const int headChars = o.value("rows_preview_head_chars").toInt();
+    EXPECT_GT(headChars, 0)
+        << "the narrowed width must be reported when it is below the default";
+    EXPECT_LT(headChars, 60);
+
+    // The whole point: every row still says what it is.
+    for (int i = 0; i < shape.size(); ++i) {
+        const QJsonObject r = shape.at(i).toObject();
+        EXPECT_EQ(r.value("index").toInt(), i);
+        EXPECT_GT(r.value("bytes").toInt(), 300);
+        const QString head = r.value("head").toString();
+        EXPECT_TRUE(head.contains(QStringLiteral("Item %1")
+                                      .arg(i, 2, 10, QLatin1Char('0'))))
+            << "row " << i << " head lost its label: \""
+            << head.toStdString() << "\"";
+    }
+
+    // INV-9 still holds — the narrowed heads are a saving against the full
+    // ones, not a new cost.
+    EXPECT_LT(compact(o).toUtf8().size(), body.toUtf8().size());
+}

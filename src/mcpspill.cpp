@@ -3,6 +3,7 @@
 #include "secureio.h"   // ensurePrivateDir (0700) + setOwnerOnlyPerms (0600)
 
 #include <atomic>
+#include <iterator>   // std::size — ANTS-4474's head ladder
 
 #include <QByteArray>
 #include <QCryptographicHash>
@@ -270,14 +271,31 @@ QString offloadBody(const QString &toolName, const QString &body) {
                         qMin<qint64>(offloadHeadBytes() * 2,
                                      total - usedSoFar - 1);
                     // Build the summary with per-row heads; if that cannot
-                    // cover EVERY row, rebuild without them.
+                    // cover EVERY row, rebuild with NARROWER heads, and only
+                    // then without them.
                     //
                     // Complete coverage is the finding: a summary of some
                     // rows has the same defect as a prefix of some rows —
                     // the caller still cannot see which of the others are
                     // large. `bytes` is what decides where to page, and the
                     // head is a convenience, so the head is what gives way.
-                    const auto buildShape = [&](bool withHeads) {
+                    //
+                    // ANTS-4474 — but it gives way by SHRINKING before it
+                    // gives way by vanishing, which is the rung that was
+                    // missing. A row label, a Markdown heading, a table cell
+                    // name and a function signature all live in the first ~40
+                    // characters, so a narrowed head still answers "what is
+                    // this row?" — the one question the bytes column cannot.
+                    // Reported against a 60-row .claude/workflow.md whose § 1
+                    // status table puts every row's identity in its first ~25
+                    // characters: the caller could see WHICH rows were large
+                    // and not WHAT any of them was, and fell back to
+                    // `sed | grep -o` plus two more reads.
+                    //
+                    // `headChars` of 0 means no head at all. That rung is kept
+                    // only to decide the ANTS-4519 omission below — a headless
+                    // shape is never emitted.
+                    const auto buildShape = [&](int headChars) {
                         QJsonArray acc;
                         if (shapeBudget <= 0) return acc;
                         for (int i = 0; i < fullArr.size(); ++i) {
@@ -289,13 +307,13 @@ QString offloadBody(const QString &toolName, const QString &body) {
                             r[QStringLiteral("index")] = i;
                             r[QStringLiteral("bytes")] =
                                 static_cast<int>(elBytes.size());
-                            if (withHeads) {
+                            if (headChars > 0) {
                                 QString firstChars =
                                     fullArr.at(i).isString()
                                         ? fullArr.at(i).toString()
                                         : QString::fromUtf8(elBytes);
-                                if (firstChars.size() > 60) {
-                                    firstChars.truncate(60);
+                                if (firstChars.size() > headChars) {
+                                    firstChars.truncate(headChars);
                                     firstChars += QChar(0x2026);
                                 }
                                 r[QStringLiteral("head")] = firstChars;
@@ -309,10 +327,29 @@ QString offloadBody(const QString &toolName, const QString &body) {
                         }
                         return acc;
                     };
-                    QJsonArray shape = buildShape(/*withHeads=*/true);
+                    // The ladder. Each rung is tried only because the one
+                    // above it could not cover every row, and the walk stops
+                    // the moment coverage is complete — so a call that fits at
+                    // 60 pays for exactly one build, as before.
+                    static constexpr int kHeadLadder[] = { 60, 40, 24, 12 };
+                    QJsonArray shape = buildShape(kHeadLadder[0]);
+                    int headChars = kHeadLadder[0];
+                    for (size_t li = 1;
+                         li < std::size(kHeadLadder) &&
+                             shape.size() < fullArr.size();
+                         ++li) {
+                        const QJsonArray narrower = buildShape(kHeadLadder[li]);
+                        // Strictly more rows, never merely different: a
+                        // narrower head that buys no extra row is a worse
+                        // preview of the same set.
+                        if (narrower.size() > shape.size()) {
+                            shape     = narrower;
+                            headChars = kHeadLadder[li];
+                        }
+                    }
                     bool headsDropped = false;
                     if (shape.size() < fullArr.size()) {
-                        const QJsonArray lean = buildShape(false);
+                        const QJsonArray lean = buildShape(0);
                         if (lean.size() > shape.size()) {
                             shape = lean;
                             headsDropped = true;
@@ -343,6 +380,14 @@ QString offloadBody(const QString &toolName, const QString &body) {
                         o[QStringLiteral("rows_preview")]     = shape;
                         o[QStringLiteral("rows_preview_truncated")] =
                             shape.size() < domCount;
+                        // ANTS-4474 — rides the narrowed arm only. At the
+                        // default width the key would say nothing, and a key
+                        // present on every preview is one nobody reads; when
+                        // it IS present it explains why a head the caller
+                        // recognises is shorter than they have seen before.
+                        if (headChars < kHeadLadder[0])
+                            o[QStringLiteral("rows_preview_head_chars")] =
+                                headChars;
                         o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
                             "one SHAPE row per row — {index, bytes, head} — "
                             "because the row BODIES do not all fit. Use "

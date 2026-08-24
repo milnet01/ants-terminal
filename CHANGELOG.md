@@ -146,6 +146,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **Large-result previews shrink each row's text sample before dropping it** (ANTS-4474)
+  When a preview could not fit a sample of every row it discarded all of
+  them, leaving row sizes but no hint of what any row contained — usually
+  the only part that says what the row is. The sample width now steps down
+  (60 → 40 → 24 → 12) and the narrowest that still covers every row wins,
+  reported as `rows_preview_head_chars`. Only when no width fits is the
+  preview omitted.
+
 - **A migrated project whose file was never rendered is write-locked, and the render that would free it is gate-refused.** (ANTS-4628)
   The roadmap's "plain-English summary" rule now applies to the items an
   edit touches, instead of to the whole project. Editing one item no longer

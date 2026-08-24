@@ -36482,7 +36482,7 @@ happen.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18 (WORKED WELL entry).
   Lanes: remotecontrol_workspace.
 
-- 📋 [ANTS-4474] **`rows_preview` should SHRINK the per-row heads rather than drop them when the budget binds.**
+- ✅ [ANTS-4474] **`rows_preview` should SHRINK the per-row heads rather than drop them when the budget binds.**
   Residual on ANTS-4397, which shipped and fired on exactly the reported shape:
   the contributor hit `.claude/workflow.md` cold, got 48,607 bytes offloaded
   with `rows_preview` covering all 60 rows as {index, bytes} plus
@@ -36509,6 +36509,10 @@ happen.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-18.
   Lanes: paginationengine, remotecontrol.
+  Resolved (2026-08-24): the head now steps down 60 → 40 → 24 → 12 and the narrowest width that covers EVERY row is used. The walk stops the moment coverage is complete, so a call that already fitted at 60 pays for exactly one build as before. The chosen width rides the envelope as `rows_preview_head_chars`, present only when it is below the 60 default.
+  One correction to the item as filed, and it makes the fix matter MORE rather than less: the degradation order it prescribes ends "→ bytes only (all rows)", and ANTS-4519 has since removed that rung — a headless shape array is now omitted outright, because a bare list of row LENGTHS says nothing `row_count` + `bytes` do not. So the ladder was falling from full heads straight to no preview at all, and the narrowed head is now the ONLY rung that keeps a label. The reporter would today get less than the {index, bytes} rows they complained about.
+  Not a reversal of ANTS-4397: complete coverage still beats a prefix, and the head still gives way before the coverage does — it just gives way by shrinking first. ANTS-4519's omission still applies, but only when no width covers every row.
+  Verified: new test Ants4474NarrowsHeadsBeforeDroppingThem on the reported 60-row shape, asserting full coverage, a reported narrowed width, and that every row's head still carries its own label. Non-vacuous — `rows_preview_head_chars` is emitted only when the width actually dropped, so its presence proves the new rung ran; pre-fix that same case hit rows_preview_omitted. Both sibling tests (ANTS-4397, ANTS-4519) still green. Full suite 3866/3866.
 
 - ✅ [ANTS-4475] **roadmap_log spells its append op `append` and changelog_log spells the same act `add` — accept each other's spelling.**
   Both sibling write verbs append an entry to a Markdown record and name the op
