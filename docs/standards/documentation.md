@@ -325,6 +325,18 @@ things where it previously said one wrong thing consistently.
 Measured 2026-08-11 over five review loops on two standards: eight
 defects were introduced by the repairs, and **five were this**.
 
+**Two reasons that grep comes back empty on a copy that is there.** Both
+are mechanical, and an empty result reads exactly like one home. **Search
+with whitespace-and-blockquote normalisation** — `workspace_search` with
+`match_wrapped: true` — because these documents hard-wrap, so a phrase
+spanning a line break matches nowhere and the search returns a false
+all-clear; measured 2026-08-24, a search for one instruction reported no
+copy while copies existed. **And the second copy is often not a sentence**: a
+table row, a trigger cell, a stop-condition bullet. It states the rule in
+a few words, shares no phrasing with the prose, and is what a fix to the
+prose leaves standing. So **search the subject** — the tool name, the
+flag, the section name — never the words you just changed.
+
 **A rule stated in a second document is a pointer, never a copy** — and
 this is the half most often missed, because the rule above reads as being
 about facts. A second document that restates an obligation has taken
