@@ -184,6 +184,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap id allocation reads the store's id columns instead of scraping the rendered roadmap** (ANTS-4631)
+  A migrated project's ROADMAP.md is a rendered output of the store, but the
+  allocator still floored its next id to a `\bPFX-NNNN\b` scan of that file's
+  whole text — so it re-read the store's own answer back through prose, which
+  cannot tell an allocated id from a documented example. One deliberately
+  absurd `ANTS-9999` inside a body was read as the high water: the next append
+  issued ANTS-10000 and burned ~5,370 ids, and every roadmap_query reply
+  reported the file ahead of a store that was exactly in sync, pinning on the
+  one indicator that would reveal a real divergence. The store path now asks
+  two columns and reads no file. The two callers with no database to ask — an
+  un-migrated project, and the file-vs-store witness — count only lines that
+  declare an id, a top-level list item outside a fence.
+
 - **roadmap_query elides a long body BEFORE spilling it, so the middle is unreachable by any argument.** (ANTS-4630)
   A very long roadmap note can now be read right through. Before, its middle was cut out and the suggested fix could not reach it.
 

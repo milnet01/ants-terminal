@@ -54744,7 +54744,7 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-24.
 
-- 📋 [ANTS-10000] **roadmap_query's file_highest_id scrapes ids out of code examples, so a documented sample id reports the file as ahead of the store.**
+- ✅ [ANTS-4631] **Id allocation scrapes the rendered roadmap instead of asking the store, so a documented sample id is read as an allocation.**
   Noticed 2026-08-24 while verifying ANTS-4630, not chased at the time.
 
   Every roadmap_query reply on this project carries file_ahead_of_store:
@@ -54763,14 +54763,31 @@ here.)
   divergence is pinned on and cannot be believed. A project documenting its
   own id format is the likeliest to trip it.
 
-  Fix: skip fenced and indented code blocks when scanning for the high
-  water — the same exclusion a markdown-aware reader already needs. Worth
-  checking whether any sibling scan (the render's divergence guard, the
-  migration's id sweep) shares the scraper and therefore the blind spot.
-  ESCALATION — the defect fired while this very item was being filed, and the consequence is worse than described above. The append envelope reported counter_advanced_past 4628, counter_advanced_to 10000: the allocator consults the same file high water, read 9999 out of the code example, and jumped. This item is therefore ANTS-10000 rather than ANTS-4631, and roughly 5,370 ids are burned. So the fault is not only a misleading indicator — it permanently skews id allocation, and any project that documents an id-shaped example in its own roadmap will do the same on its next append. That makes the code-block exclusion the load-bearing half of the fix, and the allocator the more urgent caller of the two.
+  Fix as filed -- skip fenced and indented code blocks -- was MEASURED WRONG
+    before implementing (2026-08-24). The example at line 43184 sat in no fence
+    within +/-250 lines, and was indented four spaces inside a list item whose
+    content column is two, so CommonMark reads it as a paragraph and no
+    code-block rule excludes it. ANTS-9999 also appears in plain prose in this
+    item's own body. The filed fix would have left the reading at 9999 exactly
+    where it was.
 
-  Open for the user: whether to renumber this bullet back to 4631 and reset the counter, or accept the gap and carry on from 10000. Nothing cites this id yet, so the renumber is cheapest now — but it means editing the machine-global store by hand, so it is not being done unasked.
-  **Layman:** A roadmap that merely shows an example ID inside a code block is wrongly reported as newer than the database.
+    What shipped instead, after the user asked the obvious question -- the store
+    already has a column for this, so why scrape a file at all: on a MIGRATED
+    project the allocator no longer reads the corpus. rlStoreIdHighWater() is two
+    store columns and no text scan, the highest id this project holds plus one.
+    The scrape was written when markdown WAS the record (ANTS-3450) and was never
+    retired when the store became one, so it re-read the store's own answer back
+    through prose that cannot tell an allocation from an example.
+
+    The two places with no database to ask -- an un-migrated project, and the
+    file-vs-store witness -- now count only DECLARING lines: a top-level list
+    item outside a fence. One shared helper, RoadmapFoldIn::maxDeclaredId, so the
+    allocator floor and the witness cannot diverge.
+  ESCALATION — the defect fired while this very item was being filed, and the consequence is worse than described above. The append envelope reported counter_advanced_past 4628, counter_advanced_to 10000: the allocator consults the same file high water, read 9999 out of the code example, and jumped. This item was therefore filed as ANTS-10000 rather than ANTS-4631, burning roughly 5,370 ids; both were reverted by hand in the store on 2026-08-24 (item id and id_prefix.high_water), which the user authorised because nothing cited the id yet. So the fault is not only a misleading indicator — it permanently skews id allocation, and any project that documents an id-shaped example in its own roadmap will do the same on its next append. That made the allocator the load-bearing half of the fix, and the reading the cosmetic one -- the reverse of how it was filed.
+
+    Still open, deliberately: `.roadmap-counter` is now consulted by no migrated project and the user has said it can be retired. Retiring it is its own change -- something outside this repo may still read it -- so it is not folded in here.
+  Resolved (2026-08-24, dd8c5b4b). Full suite 3854 tests, 100% pass; one test added. Verified after the change: the id this project would allocate next comes from the store (4632), and the corpus scan the un-migrated path still uses reads 4631 rather than 9999.
+  **Layman:** Roadmap ID numbers are now taken from the database, which knows every ID, instead of by reading the roadmap file, where an example ID looked real.
   Kind: fix.
   Source: in-session-2026-08-24.
 
