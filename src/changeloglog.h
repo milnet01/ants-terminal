@@ -37,6 +37,14 @@ const QStringList &canonicalCategories();
 QString formatBullet(const QString &summary, const QString &body,
                      const QString &id);
 
+// ANTS-4629 — why a caller-supplied `summary` must be refused, or empty when it
+// is fine. formatBullet() wraps in `**` and appends the id unconditionally, so
+// a summary already carrying either renders as an empty-strong followed by
+// literal asterisks: a bullet that does not read as a heading, written with
+// ok:true. Only for text the CALLER supplied — a summary this verb derives
+// from a roadmap headline is its own and is never checked.
+QString preRenderedSummaryReason(const QString &summary, const QString &id);
+
 struct InsertResult {
     bool    ok = false;
     QString markdown;   // the new file body (valid iff ok)

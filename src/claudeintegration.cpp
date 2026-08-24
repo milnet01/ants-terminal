@@ -11817,7 +11817,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "Refusals: not_unreleased, bad_category, "
                         "no_changelog, format_mismatch, id_not_in_roadmap, "
                         "feature_grouped_section, missing_field, bad_args, "
-                        "bad_op_combo.");
+                        "bad_summary, bad_op_combo.");
                     // ANTS-2079 — full per-op reference in `detail`
                     // (stripped from the tools/list wire; served by
                     // tool_info {name:"changelog_log"}).
@@ -11889,9 +11889,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "id_not_in_roadmap, feature_grouped_section "
                         "(normalize: dated `### ` topics, not flat "
                         "categories), missing_field, bad_args "
-                        "(empty entries[]), bad_op_combo. "
+                        "(empty entries[]), bad_summary (ANTS-4629 — the "
+                        "`summary` already starts with `**` or ends with an "
+                        "id in parentheses; this verb adds both, so it would "
+                        "render `- ****...` or repeat the id. Pass the plain "
+                        "text. Under add_batch it is a per-entry skip), "
+                        "bad_op_combo. "
                         "Returns {ok, op, file, category, line, "
-                        "bytes_written, file_bytes, created_category, id?} "
+                        "bytes_written, file_bytes, created_category, "
+                        "bullet, id?} — `bullet` is the rendered entry, "
+                        "echoed on the real write as well as under dry_run "
+                        "(ANTS-4629) "
                         "— or for "
                         "add_batch {ok, op, file, applied:[{index, id?, "
                         "category, line}], applied_count, skipped, "

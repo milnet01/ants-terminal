@@ -1,6 +1,7 @@
 // ANTS-1548: see changeloglog.h.
 
 #include "changeloglog.h"
+#include <QRegularExpression>   // ANTS-4629
 #include <QDate>
 
 #include <QStringList>
@@ -198,6 +199,28 @@ int firstFeatureGroupedTopicLine(const QStringList &lines,
     return (headingCount >= 1 && sawBoldRun) ? firstTopic : -1;
 }
 }  // namespace
+
+QString preRenderedSummaryReason(const QString &summary, const QString &id) {
+    const QString t = summary.trimmed();
+    if (t.startsWith(QLatin1String("**"))) {
+        return QStringLiteral(
+            "summary already starts with `**`; this verb adds the emphasis, so "
+            "the entry would render as `- ****...` — pass the plain text");
+    }
+    // A trailing `(PREFIX-NNNN)`. Matched whatever `id` holds, and not only
+    // when the two agree: a summary carrying SOME id is the caller doing this
+    // verb's job either way, and if they disagree the bullet is wrong twice.
+    static const QRegularExpression rxTrailingId(
+        QStringLiteral("\\([A-Za-z][A-Za-z0-9_-]*-\\d+\\)$"));
+    if (rxTrailingId.match(t).hasMatch()) {
+        return QStringLiteral(
+            "summary already ends with an id in parentheses; this verb appends "
+            "`id` itself, so it would appear twice — pass the plain text%1")
+            .arg(id.isEmpty() ? QString()
+                              : QStringLiteral(" and let `id` carry %1").arg(id));
+    }
+    return QString();
+}
 
 QString formatBullet(const QString &summary, const QString &body,
                      const QString &id) {

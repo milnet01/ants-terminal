@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QIODevice>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 #include <QStringLiteral>
@@ -214,6 +215,105 @@ TEST(changelog_log_writer, Inv6AddEndToEnd) {
     // Under Added, above the existing Added entry.
     EXPECT_LT(md.find("Brand new feature."),
               md.find("Existing added entry."));
+}
+
+// ANTS-4629 — a summary that already carries the verb's own rendering is
+// refused rather than double-wrapped. op:"add" wraps in ** and appends the id
+// unconditionally, so a pre-rendered summary produced an empty-strong followed
+// by literal asterisks: a bullet that does not read as a heading, written with
+// ok:true and a plausible byte count. Seven shipped that way in one project.
+//
+// Both halves are asserted. The refusal prevents it; the `bullet` echo on the
+// REAL write path (not just dry_run) is what makes any future case visible at
+// the call site instead of five days later.
+TEST(changelog_log_writer, Ants4629RefusesAPreRenderedSummary) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // ADD_FAILURE, not ASSERT_TRUE: this lambda returns a value, and the
+    // ASSERT_* macros expand to `return;`.
+    const auto add = [&](const QString &summary, const QString &id) {
+        if (!writeFile(clPath(tmp.path()), QByteArray(kChangelog)))
+            ADD_FAILURE() << "fixture write failed";
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("op")]         = QStringLiteral("add");
+        req[QStringLiteral("category")]   = QStringLiteral("Fixed");
+        req[QStringLiteral("summary")]    = summary;
+        if (!id.isEmpty()) req[QStringLiteral("id")] = id;
+        return rc.cmdChangelogLog(req).object();
+    };
+
+    // Already bold.
+    {
+        const QJsonObject r = add(QStringLiteral("**Already bold.**"), QString());
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool());
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_summary"));
+        EXPECT_FALSE(contains(readFileStd(clPath(tmp.path())), "Already bold."))
+            << "a refused add must write nothing";
+    }
+
+    // Already carries its id.
+    {
+        const QJsonObject r = add(QStringLiteral("Plain summary. (ANTS-1234)"),
+                                  QStringLiteral("ANTS-1234"));
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool());
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_summary"));
+    }
+
+    // A clean summary still lands — and the envelope now says what it wrote.
+    {
+        const QJsonObject r = add(QStringLiteral("A clean summary."),
+                                  QStringLiteral("ANTS-1234"));
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+            << r.value(QStringLiteral("error")).toString().toStdString();
+        EXPECT_EQ(r.value(QStringLiteral("bullet")).toString(),
+                  QStringLiteral("- **A clean summary.** (ANTS-1234)"))
+            << "ANTS-4629: the write path must echo the rendered bullet, not "
+               "only the dry-run path";
+    }
+}
+
+// ANTS-4629 — op:"add_batch" shares the guard, and one bad entry is a per-entry
+// skip rather than a refusal of the batch. That shape matters: the seven live
+// malformed entries went in as a batch, so a whole-batch refusal would have
+// been the wrong lesson.
+TEST(changelog_log_writer, Ants4629BatchSkipsOnlyTheBadEntry) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    QJsonArray entries;
+    {
+        QJsonObject good;
+        good[QStringLiteral("summary")]  = QStringLiteral("Good entry.");
+        good[QStringLiteral("category")] = QStringLiteral("Fixed");
+        entries.append(good);
+        QJsonObject bad;
+        bad[QStringLiteral("summary")]  = QStringLiteral("**Bad entry.**");
+        bad[QStringLiteral("category")] = QStringLiteral("Fixed");
+        entries.append(bad);
+    }
+    req[QStringLiteral("entries")] = entries;
+    const QJsonObject r = rc.cmdChangelogLog(req).object();
+
+    EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(r.value(QStringLiteral("applied_count")).toInt(), 1);
+    const QJsonArray skipped = r.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1);
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_summary"));
+
+    const std::string md = readFileStd(clPath(tmp.path()));
+    EXPECT_TRUE(contains(md, "Good entry."));
+    EXPECT_FALSE(contains(md, "Bad entry."));
 }
 
 // INV-7 — op:"add_from_roadmap" reuses headline + Layman.

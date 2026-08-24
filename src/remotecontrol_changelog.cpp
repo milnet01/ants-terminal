@@ -748,6 +748,16 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                 QStringLiteral("changelog_log: op:\"add\" requires "
                                "`summary`"));
         }
+        // ANTS-4629 — refuse a summary that already carries this verb's own
+        // rendering, rather than wrapping it twice and reporting ok:true.
+        {
+            const QString why =
+                ChangelogLog::preRenderedSummaryReason(summary, id);
+            if (!why.isEmpty()) {
+                return clErr(QStringLiteral("bad_summary"),
+                    QStringLiteral("changelog_log: %1").arg(why));
+            }
+        }
         if (!reqCategory.isEmpty()) {
             category = reqCategory;
         } else {
@@ -934,6 +944,12 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     out["line"]             = res.line;
     rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
     out["created_category"] = res.created_category;
+    // ANTS-4629 — echo what was actually written. This was emitted on the
+    // dry-run path only, so a caller who did not already suspect a problem had
+    // no way to see a malformed bullet: the write reported ok:true with a
+    // plausible byte count and said nothing about its own output. Seven
+    // malformed entries in one project outlived that silence by five days.
+    out["bullet"]           = bullet;
     if (!id.isEmpty()) out["id"] = id;
     // ANTS-2125 — non-blocking advisory: the entry was inserted in
     // canonical order, but the Unreleased section already interleaves
@@ -983,6 +999,15 @@ ClBatchEntryResult resolveClBatchEntry(
 
     if (!summary0.isEmpty()) {
         summary = summary0;
+        // ANTS-4629 — same guard as op:"add", as a per-entry skip. The live
+        // malformed entries this was filed for went in as a batch, so refusing
+        // the whole call would be the wrong shape.
+        const QString why = ChangelogLog::preRenderedSummaryReason(summary, id);
+        if (!why.isEmpty()) {
+            r.code  = QStringLiteral("bad_summary");
+            r.error = why;
+            return r;
+        }
         if (!reqCategory.isEmpty()) {
             category = reqCategory;
         } else {
