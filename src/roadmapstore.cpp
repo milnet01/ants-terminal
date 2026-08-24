@@ -846,6 +846,7 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
         return std::nullopt;
     }
     const qint64 itemPk = q.lastInsertId().toLongLong();
+    m_writtenItems.insert(itemPk);   // ANTS-4628
 
     // INV-20 — exactly one kind='item' element per item, created here so an
     // item can never exist unfiled. The element IS the filing; there is no
@@ -958,6 +959,7 @@ bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
             *error = lastErr(q);
         return false;
     }
+    m_writtenItems.insert(itemPk);   // ANTS-4628
     return true;
 }
 
@@ -1103,6 +1105,10 @@ bool RoadmapStore::begin(QString *error) {
     if (!exec(m_db, QStringLiteral("BEGIN IMMEDIATE"), error))
         return false;
     m_inTransaction = true;
+    // ANTS-4628 — the gate scope is per transaction, so it starts empty here.
+    // Cleared on BEGIN rather than on COMMIT/ROLLBACK because the reader runs
+    // before either of those; see itemsWrittenSinceBegin().
+    m_writtenItems.clear();
     return true;
 }
 
@@ -1866,6 +1872,7 @@ bool RoadmapStore::clearItemField(qint64 itemPk, const QString &field,
             *error = lastErr(q);
         return false;
     }
+    m_writtenItems.insert(itemPk);   // ANTS-4628
     return true;
 }
 

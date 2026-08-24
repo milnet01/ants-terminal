@@ -568,7 +568,18 @@ to. INV-8 asserts the dry and real envelopes match for **both** operations.
   `updateSection()`, so the next render emits a bare `##` — a heading with no
   text to slug, which the migration cannot read back and no later op can
   address.
-- **INV-10** — The publish gate is inherited, not bypassed. *Test:* fixture
+- **INV-10** — The publish gate is inherited, not bypassed: a rotation goes
+  through `commitAndRender` like every other write and gets no private
+  un-gated path. **Amended 2026-08-24 (ANTS-4628): what it inherits is a
+  SCOPED gate, and a rotation touches no item row** — it moves `section` and
+  `element` rows — so its scope is engaged-empty and no item refuses it. An
+  offender under a different minor therefore no longer blocks a rotation, which
+  is what this invariant's test asserted until that date. It is not a bypass:
+  the gate runs, over the empty set the rotation actually touched. Note also
+  that `minor_not_closed` already refuses a rotation whose move set holds an
+  open item, and closed items are never gated — so even before the amendment
+  the only thing this could ever fire on was debt elsewhere in the project.
+  *Test:* fixture
   whose **open** minor holds a public item with no `Layman:` line; rotate the
   closed minor and assert `code == "render_gate_unmet"` with both files
   byte-identical to before, even though the offending item is in a different

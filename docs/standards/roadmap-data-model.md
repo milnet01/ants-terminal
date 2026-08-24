@@ -202,23 +202,53 @@ carries.** Requiring the full set on legacy data would reject the commonest
 operations there — a status flip, a headline correction, a body edit — for
 fields the item was never obliged to have. A status flip is the clearest case
 and is **not** a curating write at all; the rule above covers the rest, so an
-editor need not back-fill `priority` or `layman` **on the item being edited** in
-order to fix a typo. An item *created* after cutover is at the full tier from
+editor need not back-fill `priority` **on the item being edited** in order to
+fix a typo. (`layman` was named here too until 2026-08-24; the paragraph below
+now overrides it for a public, open item on a store-migrated project, and
+leaving it listed here meant a reader who stopped at this line built a write
+path that accepts the fix and is then surprised by `render_gate_unmet`.) An item *created* after cutover is at the full tier from
 its first write.
 
 **This is a rule about the item, and § 3.2's publish gate is a rule about the
-project — the second still applies to the write.** On a store-migrated project
-every write validates by rendering, so a typo fix is refused `render_gate_unmet`
-while *any* public open item in that project lacks a `layman`, including items
-the editor never touched. Nothing above exempts a write from that gate; § 3.2
-owns it and names the remedy.
+write — the second still applies.** On a store-migrated project every write
+validates by rendering, so a write is refused `render_gate_unmet` when a public
+open item **it touches** lacks a `layman`. Nothing above exempts a write from
+that gate; § 3.2 owns it and names the remedy.
+
+**So the tier exemption above does NOT extend to `layman` on a store-migrated
+project — for a PUBLIC, OPEN item.** An editor fixing a typo on such an item
+need not back-fill `priority`, but does have to give it a one-sentence
+`layman`, because the write puts it in the gate's scope. A closed item or an
+`internal` one is never gated (§ 3.2), so the exemption holds there unchanged;
+demanding `layman` on a closed item is § 10's anti-pattern and this paragraph
+does not create an exception to it. The line can ride along in the same call
+— a `roadmap_log` note whose first line declares the `Layman:` trailer sets the
+column — so the cost is one sentence on an item already being edited, and
+legacy debt is repaired as the corpus is touched rather than in one sweep.
+Amended 2026-08-24 with § 3.2's scope decision; before it, that write was
+refused anyway, by every *other* item's missing line as well as its own.
 
 ### 3.2 Required before publish
 
-`layman`, **on open items only**. A project with any public open item lacking
-one **fails the publish gate**, and the gate is the whole mechanism: the render
-is not generated at all, rather than generated with that item omitted. It does
-not fail migration.
+`layman`, **on open items only**. A public open item lacking one **fails the
+publish gate**, and the gate is the whole mechanism: the render is not
+generated at all, rather than generated with that item omitted. It does not
+fail migration.
+
+**The gate judges a scope of items, and the scope is the caller's to state.**
+Asked with no scope it judges every item — the whole-project rule as originally
+written, and what a direct `RoadmapRender::render()` still gets. Every write
+states a scope, and it is the items that write touched. Decided by the user
+2026-08-24, superseding the 2026-08-03 whole-project decision and closing the
+exemption question this section had been carrying as unassigned.
+
+**`op:render` is a write for this purpose, not an unscoped publish.** It goes
+through the same `commitAndRender` sequence with a mutation that writes no
+item, so it states an EMPTY scope, the gate judges nothing, and it publishes.
+Reading it as "a bare publish, therefore unscoped, therefore whole-project"
+inverts the amendment on the one operation it was made for — Music_Production's
+publish was the case that could not be unblocked any other way. No caller on
+the verb surface passes an unscoped render.
 
 **On a store-migrated project (INV-3's sense — cut over, and a roadmap
 `roadmap-format.md` § 3.1's detector classifies `ants-v1`, from the marker
@@ -226,11 +256,20 @@ where present and a best-effort parse otherwise), the gate blocks every store
 write, not only publication.** Each write op on such a project validates
 by rendering (ANTS-3809 INV-1), so an unmet gate refuses it
 `render_gate_unmet` — including a `dry_run` preview, which the same render
-produces. Because the gate is per *project*, a status flip on a blameless item
-is refused by other items' missing `layman` values; the refusal's
-`gate_failures[]` names them, and filling those lines in is the remedy. That
-is a deliberate consequence of making the render the only writer **of the
-markdown files**, not a separate rule. A cut-over project whose roadmap is a
+produces. Because the write's scope is the items it touched, a status flip on
+a blameless item is **not** refused by other items' missing `layman` values;
+only its own would refuse it, and the refusal's `gate_failures[]` names them.
+That is a deliberate consequence of making the render the only writer **of the
+markdown files**, not a separate rule.
+
+**Whole-project scoping was tried first and was withdrawn because it is
+self-blocking.** A gate evaluated after the mutation refuses every write on a
+project carrying legacy debt, the repairs included, so repairing one item at a
+time is refused by the offenders that remain and rolled back (ANTS-4434). Taken
+to its end that is a project no call can edit at all: Music_Production reached
+it, where the one op that would publish the ids a repair must name was itself
+gate-refused, with no route out through the verb surface (ANTS-4628). A rule
+whose enforcement removes the ability to comply is not enforcing anything. A cut-over project whose roadmap is a
 GFM or pass-headings dialect still splices markdown, renders nothing, and so
 meets no gate on write. A closed item publishes without
 `layman`: § 3.3 leaves the field empty on migrated items, so gating closed
@@ -238,18 +277,26 @@ items too would make the gate unsatisfiable for every project with published
 history. This is the **only** publish-gating field; `priority` and `resolution`
 gate neither publishing nor migration.
 
-**Open, and it blocks the first render rather than a later one:** § 3.3 leaves
-`layman` empty on every migrated item, and close to half the corpus has none — so
-read literally, no project can publish until every one of its open items is
-hand-curated. § 7.5 gives `priority` an explicit "written after cutover"
-exemption for exactly this; `layman` has none, and whether it should is a
-decision with a real cost either way (curate hundreds of items before the first
-publish, or publish open items with no reader-facing sentence). ANTS-3758 built
-the gate and has shipped, so **the exemption question outlived its owner and is
-now unassigned** — and the paragraph above raises its cost, since after cutover
-an unmet gate blocks writes and not merely the first publish. ANTS-3821 tracks
-filling this project's own missing lines in, which relieves the symptom without
-deciding the rule.
+**Settled 2026-08-24, by scope rather than by exemption.** The question this
+paragraph carried was whether `layman` should get the "written after cutover"
+exemption § 7.5 gives `priority` — because § 3.3 leaves the field empty on
+every migrated item that did not declare one (49% of the corpus, by § 3.3's own
+count; a declared `Layman:` line is preserved, not dropped), and read literally
+no project could publish until all of those were hand-curated. Neither answer was
+taken. `layman` gets **no exemption**: an item that is public, open and in a
+write's scope owes its sentence, migrated or not. What changed is the scope, so
+the corpus is no longer asked all at once. Every write — `op:render` included —
+asks only what it touched. Only an unscoped `render()` asks every item, and
+nothing on the verb surface issues one.
+
+The practical effect is that the backlog is repaid as the corpus is edited,
+one sentence at a time, by whoever is already in that item — and never demanded
+as a precondition for unrelated work. The whole-project FIGURE is no longer
+reported by anything on the verb surface, since every dry run reachable there is
+now scoped; measuring it needs an unscoped `render()`, which only a direct
+library caller can make. That is a gap, recorded as one. ANTS-3821 still tracks filling
+this project's own missing lines in; it is now a tidy-up rather than the thing
+standing between the project and its first render.
 
 ### 3.3 Accepted at migration — historical items
 
@@ -691,7 +738,7 @@ ever need to cite the item:
 | Items | Approx. count | Rule |
 |---|---|---|
 | **Closed** | ~1,020 | Allocated in bulk, in document order. Nobody cites a finished item, so no curation is required and none is invented. |
-| **Open** | ~600 | Allocated into the project's normal sequence and treated as a real item — it will be cited, worked on, and referenced in commits. § 3.2's publish gate then applies, so it must be curated before that project publishes. |
+| **Open** | ~600 | Allocated into the project's normal sequence and treated as a real item — it will be cited, worked on, and referenced in commits. § 3.2's publish gate then applies, so it must be curated before a write that TOUCHES it can land (§ 3.2's scope rule, 2026-08-24) — not before the project publishes, which is no longer gated on it. |
 
 The two rows differ in *obligation*, not in ID shape and not in provenance
 (§ 7.7 states where both stand). A separate archival prefix would add a second
@@ -1188,7 +1235,7 @@ than a question.
 | INV-4 cross-project relationships | the `relationship` table carries them; that they are *used* is not checkable |
 | INV-5 no relationship inferred from prose | **nothing** — a prohibition on authors and on migration, enforced by § 6 giving migration only two structured fields to read |
 | § 7.7 provenance never silently promoted | **nothing yet.** ANTS-3809 landed the write path that stamps it, but no test asserts a value is never promoted; the check is still § 9's |
-| §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **partly.** § 3.2's gate is enforced on every store write and checked by `Inv1RenderFailureRollsBack`; § 3.1's write-time obligations and the §§ 7.3–7.5 enums are validated nowhere, and remain § 9's |
+| §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **partly.** § 3.2's gate is enforced on every store write; `Inv1RenderFailureRollsBack` checks that a refused write rolls back, and since 2026-08-24 it does so against the write's OWN offender rather than an unrelated one. The SCOPE rule is checked by `Ants4628UntouchedDebtDoesNotBlockAWrite`, `Ants4628WriteIsStillRefusedByItsOwnOffender` and `Ants4628RenderPublishesPastLegacyDebt` (same bundle), and at the render library by `Inv5GateScopeLimitsOffenders`. § 3.1's write-time obligations and the §§ 7.3–7.5 enums are validated nowhere, and remain § 9's |
 | § 7.1 identity grammar | `roadmap-format.md` § 3.5.1's regex, already in `RoadmapIndex::isCanonicalId` |
 | § 8 reconciliation | **nothing** — prose agreement between two standards; § 8's ID-allocation bullet records how far the amendment it owes has got. |
 

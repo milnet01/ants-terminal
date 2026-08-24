@@ -40,7 +40,7 @@ INV-1 … INV-13 are the design spec's, numbered identically.
 | INV-7 | A retitle changes title and slug and nothing else, and reports `slug` + `previous_slug`. |
 | INV-8 | A dry run writes nothing and reports what the real run reports — for both operations. |
 | INV-9 | `""`, `"   "`, a newline, and a punctuation-only title each refuse `bad_args`; an unresolvable slug refuses `section_not_found`; an absent argument refuses `missing_field`. |
-| INV-10 | The render's publish gate is inherited: an offending item under a *different* minor refuses the rotation with `render_gate_unmet`. |
+| INV-10 | The render's publish gate is inherited but SCOPED (ANTS-4628, 2026-08-24): a rotation touches no item row, so an offending item under a *different* minor no longer refuses it. The rotation still runs the full `commitAndRender` sequence — the gate is not bypassed, it judges the empty set the rotation touched. |
 | INV-11 | After a retitle, render → re-import leaves the section count and the retitled section's `section_id` unchanged. |
 | INV-12 | Forward and backward slug collisions refuse; retitling the suffixed member and an unrelated section on the same fixture both succeed. |
 | INV-13 | After a rotation, render → re-import leaves the section count and every moved `section_id` unchanged, each moved slug equal to `"0-7-"` + the slug derived within the move set alone; a move that would free a base a remaining live section was disambiguated out of refuses. |

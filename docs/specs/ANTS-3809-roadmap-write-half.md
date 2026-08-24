@@ -80,8 +80,19 @@ below.**
    327 open bullets, **102 of them with no `Layman:` line** (2026-08-04;
    `rxLayman` matches both the plain and the bold form, so the pattern above is
    the parser's own acceptance set). So on the day this project migrates, *every*
-   write op would refuse — the gate is per project, not per item. That is a
+   write op would refuse — the gate was per project, not per item. That is a
    precondition this spec has to state and give a remedy for, not a detail.
+
+   **Amended 2026-08-24 (ANTS-4628): the gate is scoped to the items a write
+   touches**, so the figure above is no longer a precondition on every write —
+   it is the size of a backlog repaid as items are edited. A write is refused
+   only by its own offenders, and `commitAndRender` states that scope for all
+   three of its renders from `RoadmapStore::itemsWrittenSinceBegin()`. The
+   102-item measurement stands as a dated record; what changed is what it costs.
+   ANTS-3758 § 2.5 owns the rule and the unset-versus-engaged-empty distinction
+   this file does not restate. Recorded here because § 1's premise — that every
+   op refuses on migration day — is what the rest of this spec's remedy
+   reasoning was built on.
 
 2. **Two ops are not item writes.** `create_section` writes a `section` row;
    `bundle_row` edits one `element` row's payload — and the store has **no

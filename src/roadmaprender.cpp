@@ -351,9 +351,18 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
             ++out.itemsExcluded;
             continue;
         }
-        // INV-5 — the gate is per PROJECT, so collect every offender rather
-        // than stopping at the first.
-        if (isOpen(it->status) && it->layman.isEmpty())
+        // INV-5 — collect every offender rather than stopping at the first:
+        // one refusal naming all of them is actionable, a first-failure is not.
+        //
+        // ANTS-4628 / § 2.5 — but only within the gate's SCOPE. Unset judges
+        // every item, which is the whole-project rule and what every caller
+        // that has not opted in still gets; an engaged scope judges only its
+        // members. Written as `!opts.gateScope ||` and not as an emptiness
+        // test on purpose: an engaged EMPTY scope must judge NOTHING, which is
+        // the `op:render` case, and an `isEmpty()` here would silently turn it
+        // back into judge-everything and re-create the deadlock.
+        if (isOpen(it->status) && it->layman.isEmpty()
+            && (!opts.gateScope || opts.gateScope->contains(ref.itemPk)))
             out.gateFailures.append(it->id.isEmpty() ? ref.idFold : it->id);
         itemOf.insert(ref.itemPk, *it);
     }

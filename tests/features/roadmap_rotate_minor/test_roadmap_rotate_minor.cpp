@@ -835,9 +835,20 @@ TEST(RoadmapRotateMinor, Inv9RetitleArgumentValidation) {
 
 // --------------------------------------------------------------- INV-10 -----
 
-// The publish gate is inherited, not bypassed — and it is per PROJECT, so an
-// offender under the OPEN minor refuses a rotation of the closed one.
-TEST(RoadmapRotateMinor, Inv10PublishGateInherited) {
+// The publish gate is inherited, not bypassed — but since ANTS-4628 what is
+// inherited is a SCOPED gate, and a rotation touches no item row (it moves
+// `section` and `element` rows), so its scope is engaged-empty and no item
+// refuses it. An offender under the OPEN minor no longer blocks a rotation of
+// the closed one, which is what this case asserted until 2026-08-24.
+//
+// This is not the gate being skipped. The rotation runs the same
+// `commitAndRender` sequence as every other write; the gate runs and judges the
+// empty set the rotation touched. Worth noting how narrow the old behaviour
+// always was: `minor_not_closed` already refuses a rotation whose move set
+// holds an open item, and closed items are never gated — so the only thing this
+// could ever fire on was debt somewhere else in the project, which is exactly
+// what the amendment stopped holding against unrelated writes.
+TEST(RoadmapRotateMinor, Inv10PublishGateScopedNotBypassed) {
     ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -850,12 +861,24 @@ TEST(RoadmapRotateMinor, Inv10PublishGateInherited) {
 
     const QByteArray before = readAll(livePath(root));
     const QJsonObject resp = rotate(rotateReq(root, QStringLiteral("0.7")));
-    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
-    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
-              QStringLiteral("render_gate_unmet"));
-    EXPECT_EQ(readAll(livePath(root)), before);
-    EXPECT_FALSE(QFile::exists(archivePath(root)))
-        << "the store must not say rotated while both files say otherwise";
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "an offender under a different minor must no longer refuse a "
+           "rotation; got code "
+        << resp.value(QStringLiteral("code")).toString().toStdString();
+
+    // The rotation actually happened — the archive exists and the live file
+    // changed. Without these the case would pass on a no-op that never ran.
+    EXPECT_TRUE(QFile::exists(archivePath(root)))
+        << "the rotation must have published its archive";
+    EXPECT_NE(readAll(livePath(root)), before)
+        << "the rotation must have rewritten the live roadmap";
+
+    // That an untouched offender is not cured behind the caller's back is
+    // asserted in tests/features/roadmap_write_half
+    // (Ants4628UntouchedDebtDoesNotBlockAWrite), which has the item-reading
+    // helpers for it. Not duplicated here: this bundle has none, and adding one
+    // to re-check a property another bundle already pins is how a fixture grows
+    // a second reason to break.
 }
 
 // --------------------------------------------------------------- INV-11 -----

@@ -232,6 +232,13 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         RoadmapRender::Options pre;
         pre.liveRoadmapPath = liveRoadmapPath;
         pre.dryRun = true;
+        // ANTS-4628 — an ENGAGED EMPTY scope, so this diagnostic render judges
+        // nothing. It has to: the pre-image exists only to measure drift, and
+        // an unset scope would gate it on the whole project — so on exactly the
+        // projects carrying legacy debt the pre-image came back empty, the
+        // drift check silently did not run, and `externalEditsChecked` reported
+        // false. The measurement was unavailable precisely where it mattered.
+        pre.gateScope = QSet<qint64>{};
         QHash<QString, QString> preImage;
         if (RoadmapRender::render(store, projectId, projectRoot, pre, nullptr, &preImage)
             && !preImage.isEmpty()) {
@@ -265,6 +272,18 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     RoadmapRender::Options opts;
     opts.liveRoadmapPath = liveRoadmapPath;
     opts.dryRun = true;
+    // ANTS-4628 / ANTS-3758 § 2.5 — the Layman gate judges what THIS write
+    // touched, taken from the store rather than declared by the caller. Read
+    // after mutate() and before the commit, which is the only window in which
+    // the set is both complete and still present.
+    //
+    // Whole-project scoping was withdrawn because it is self-blocking: the gate
+    // runs after the mutation, so on a project carrying legacy debt every write
+    // was refused by items it never touched — the repairs included, which is
+    // ANTS-4434's deadlock. An `op:render` mutates nothing, so this set is
+    // empty and it publishes, which is how a project that has never been
+    // rendered gets its ids into the file at all (ANTS-4628).
+    opts.gateScope = store.itemsWrittenSinceBegin();
     const auto dry = RoadmapRender::render(store, projectId, projectRoot, opts, error);
     if (!dry)
         return abort(Result::RenderFailed);
@@ -274,25 +293,23 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     publish(*dry);
     if (!dry->gateFailures.isEmpty()) {
         if (error && error->isEmpty()) {
-            // ANTS-4434 — the message carries the remedy because the obvious one
-            // does not work, and nothing else says so. The gate is per PROJECT
-            // and is evaluated AFTER the mutation, so repairing one item at a
-            // time is refused by whichever offenders remain and rolled back:
-            // measured on a two-offender project, each single repair came back
-            // naming only the OTHER id. A single-item repair therefore commits
-            // only when it is the last one outstanding. One flip_batch carrying
-            // every gate_failures id repairs them together, the gate then sees
-            // zero, and it commits — verified 2026-08-23.
-            *error = QStringLiteral("the roadmap render refuses this project: %1 open "
-                                    "item(s) carry no Layman: line. Repair them in ONE "
-                                    "flip_batch — every id in gate_failures as a locator, "
-                                    "each carrying a note whose FIRST line declares the "
-                                    "Layman: trailer, and to_status set to the status those "
-                                    "items already hold. Repairing them one at a time cannot "
-                                    "work: this gate is per project and runs after the "
-                                    "mutation, so with two or more offenders each single "
-                                    "repair is refused by the rest and rolled back.")
-                         .arg(dry->gateFailures.size());
+            // ANTS-4628 — the gate now names only what THIS write touched, so
+            // every id in gate_failures is one the caller is already editing
+            // and the remedy is always in reach. That was not true under
+            // whole-project scoping, where the message had to explain why the
+            // obvious per-item repair could not work (ANTS-4434): each single
+            // repair was refused by the offenders that remained and rolled
+            // back. The batch escape that message prescribed is no longer
+            // needed, and the message no longer prescribes it.
+            *error = QStringLiteral("the roadmap render refuses this write: %1 open "
+                                    "item(s) it touches carry no Layman: line (%2). Give "
+                                    "each one a one-sentence summary — a note whose FIRST "
+                                    "line declares the Layman: trailer sets the column, so "
+                                    "it can ride along in this same call. Only items this "
+                                    "write touches are judged; the project's other items "
+                                    "are not, and cannot block it.")
+                         .arg(dry->gateFailures.size())
+                         .arg(dry->gateFailures.join(QStringLiteral(", ")));
         }
         return abort(Result::GateUnmet);
     }

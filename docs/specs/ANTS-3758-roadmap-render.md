@@ -264,11 +264,60 @@ does not.
 
 `roadmap-data-model.md` § 3.2 gates publish on `layman`, for open items only.
 The standard flagged, and this spec settles, what happens at cutover when
-§ 3.3 has left `layman` empty on every migrated item.
+§ 3.3 has left `layman` empty on a large share of migrated items — 49% of
+the corpus carries no `Layman:` line, by that section's own measurement.
+(This read "every migrated item" until 2026-08-24. § 3.3 preserves a
+declared `Layman:` exactly as it preserves a declared `Priority:`, so the
+absolute claim was false and it oversized the gate's backlog by half.)
 
 **Decided by the user (2026-08-03): the gate is strict and has no
-migrated-item exemption.** A project with any *public, open* item lacking
-`layman` renders **nothing** — not a partial file, not a file with gaps.
+migrated-item exemption.** Nothing is excused for having been migrated: a
+*public, open* item lacking `layman` fails the gate wherever the gate looks,
+and one failure renders **nothing** — not a partial file, not a file with gaps.
+
+**Amended by the user (2026-08-24): the gate judges a SCOPE of items, and
+`commitAndRender` scopes it to the items that call wrote.** What the 2026-08-03
+decision forbids is unchanged — no exemption, and an item a write touches must
+carry `layman` before that write lands. What changes is which items are asked.
+
+Left whole-project, a gate evaluated *after* the mutation refuses every future
+write on a project carrying legacy debt, including the writes that would repair
+it. Two measured cases: Music_Production, whose 357 migrated items left
+`op:render` unable to publish the very ids a repair would have to name, so no
+call in the verb surface could break the cycle (ANTS-4628); and Vestige, whose
+585 legacy items would have blocked every edit after conversion (ANTS-4491).
+
+`Options::gateScope` carries it, as item_pks, and it is an **optional** set —
+the two empty-looking states are different and both are needed. **Unset means
+every item**, so a direct `render()` is unchanged and no caller loses the check
+by failing to opt in. An **engaged but empty** set means *judge nothing*, and a
+caller that legitimately touched no item must be able to say so and be obeyed.
+Collapsing the two — a bare `QSet` where empty means "all" — reinstates the
+whole-project gate on exactly the callers this amendment exists for.
+
+**`commitAndRender` is the only production caller, and it states the scope for
+all three of its renders.** It drives three: the ANTS-4462 pre-image, the
+validating dry render, and the publishing render after the commit. The
+pre-image gets an engaged EMPTY scope — it is a diagnostic whose output is
+thrown away except for the drift measurement, and gating it meant that on a
+project carrying debt the pre-image rendered nothing, the drift check silently
+did not run, and `externalEditsChecked` reported false exactly where it
+mattered. The validating and publishing renders share one `Options`, so the
+scope cannot differ between them; a validating render that passed and a
+publishing render that then failed would leave the store committed ahead of the
+file, which § 2.7 already calls the one window staging cannot close.
+
+**So an `op:render` publishes.** Its mutation writes no item, so its scope is
+engaged and empty, so the gate judges nothing. That is not a hole in the gate
+but the point of it: it is how a project in Music_Production's state — 357
+store-only ids, none of them in the file — gets a rendered file at all, and
+until it has one no locator can reach its items to repair them.
+
+**A write that mutates the store without touching an ITEM behaves the same
+way** — a section rename, a `rotate_minor`. Its scope is engaged and empty, so
+it publishes without the gate judging anything. That is deliberate and follows
+from the rule rather than being an exception to it: the gate asks about the
+items a write touched, and this write touched none.
 
 **Open** means `roadmap-data-model.md` § 3.4's open: `planned`, `in-progress`,
 `considered`. `shipped` and `dropped` are closed and are never gated, which is
@@ -285,10 +334,16 @@ away. If a refusal returned `nullopt`, the ids this gate exists
 to name would be unreachable through the declared API. Turning either into a
 process exit code is ANTS-3794's job, not this library's.
 
-**The curation backlog is an output, not a figure in this document.** A
-`RenderOptions::dryRun` pass (§ 2.7) reports `gateFailures` without writing
-anything, so the cost of cutting a project over is one call away and cannot go
-stale here.
+**The curation backlog is an output, not a figure in this document** — but
+since the 2026-08-24 amendment, nothing on the verb surface reports it. A
+`dryRun` pass (§ 2.7) still reports `gateFailures` without writing, and that is
+still how the backlog is measured; what changed is that every dry run reachable
+from `roadmap_log` is now SCOPED, so each reports only the items its own write
+touched. A whole-project figure needs an unscoped `render()`, which only a
+direct library caller can make today. Recorded as a gap rather than papered
+over: the number is no longer one call away, and this document still declines
+to carry it, because a figure written here goes stale and a missing surface does
+not.
 
 **The gate itself parses nothing.** It reads `item.layman` from the store, so
 it is `layman.isEmpty()` over the open public items — whether a bullet's
@@ -386,6 +441,13 @@ struct RenderOptions {
     // a real run would have written nothing either. gateFailures is populated
     // identically either way.
     bool dryRun = false;
+    // ANTS-4628 / § 2.5 — which items the INV-5 gate judges, as item_pks.
+    // OPTIONAL, and the optionality is normative: unset = judge every item
+    // (every caller that has not opted in), engaged-empty = judge nothing
+    // (op:render, and any write that touches no item). A bare QSet collapses
+    // those two and silently reinstates whole-project gating on the callers
+    // this field exists to release.
+    std::optional<QSet<qint64>> gateScope;
 };
 struct RenderOutcome {
     QStringList filesWritten;   // what landed (or, under dryRun, what would have)
@@ -526,13 +588,28 @@ project's vocabulary, and substituting a default would quietly undo that.
   § 2.4 refuses to permit. *Breaks when:* the filter is written as "open items
   only", `visibility` is ignored, or an unfiled item is skipped without comment.
   *Test:* `Inv4Membership`.
-- **INV-5** — **A public open item with an empty `layman` makes the whole
-  project render nothing.** No file is written, and the call returns an
+- **INV-5** — **A public open item with an empty `layman` IN THE GATE'S SCOPE
+  makes the whole project render nothing.** One in-scope offender withholds
+  every file: no partial file, no file with gaps. The call returns an
   **engaged** `RenderOutcome` whose non-empty `gateFailures` names every
-  offending id — never `std::nullopt`, which § 2.5 reserves for failures before
-  the commit phase. *Breaks when:* the gate is applied per item (skipping the offender)
-  rather than per project, or a refusal is signalled by returning `nullopt`,
-  which makes the ids unreachable. *Test:* `Inv5PublishGate`.
+  in-scope offender — never `std::nullopt`, which § 2.5 reserves for failures
+  before the commit phase. Scope is `RenderOptions::gateScope`, and **unset
+  means every item**, so the narrowing is opt-in per caller and never a
+  default. *Breaks when:* an in-scope offender is skipped rather than
+  withholding the whole render, an UNSET scope gates anything less than every
+  item (which silently drops the check for every caller that has not opted
+  in), an ENGAGED EMPTY scope is treated as "judge everything" rather than
+  "judge nothing" (which re-creates the deadlock on the one op that can break
+  it), a scope is inferred rather than stated by the caller, or a refusal is
+  signalled by returning `nullopt`, which makes the ids unreachable. *Test:*
+  `Inv5PublishGate` (unset scope — the whole-project rule, unchanged),
+  `Inv5GateScopeLimitsOffenders`, which runs all three scopes over one store: a
+  stated scope excludes an out-of-scope offender and still fails on an in-scope
+  one, an **engaged EMPTY** scope judges nothing and publishes, and an unset one
+  judges every item. The empty leg is named explicitly because it is the only
+  case that fails when the two empty-looking states are collapsed — the
+  implementation error INV-5's *Breaks when* lists — and a test list naming only
+  the non-empty case leaves that mutation with nothing to trip.
 - **INV-6** — **No failure in rendering, gating or serialising leaves a partial
   write.** Every file is staged before any is committed. The commit phase
   itself is the documented exception (§ 2.7): it cannot be made atomic without
@@ -695,6 +772,7 @@ existing bundle per `tests/features/README.md` (no `add_executable`).
 | `Inv3ArchiveRouting` | INV-3 |
 | `Inv4Membership` | INV-4 |
 | `Inv5PublishGate` | INV-5 |
+| `Inv5GateScopeLimitsOffenders` | INV-5 |
 | `Inv6AllOrNothing` | INV-6 |
 | `Inv7Idempotent` | INV-7 |
 | `Inv8FormatMarker` | INV-8 |

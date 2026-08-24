@@ -20,6 +20,7 @@
 #include "roadmapstore.h"
 
 #include <QHash>
+#include <QSet>          // ANTS-4628 — Options::gateScope
 #include <QString>
 #include <QStringList>
 #include <optional>
@@ -35,6 +36,18 @@ struct Options {
     // real pass WOULD have written, and is empty when the gate fails, because
     // a real pass would have written nothing either.
     bool dryRun = false;
+    // ANTS-4628 / § 2.5 — which items the INV-5 Layman gate judges, as
+    // item_pks. UNSET means every item, which is the whole-project rule as
+    // originally written and the behaviour of every caller that does not set
+    // it; an ENGAGED set judges only its members, and an engaged EMPTY set
+    // therefore judges nothing and always passes.
+    //
+    // Unset-means-all is the load-bearing half. The alternative default —
+    // empty means all — makes a caller that builds a scope and legitimately
+    // finds nothing indistinguishable from one that never opted in, and the
+    // `op:render` case is exactly that caller: it touches no item, so it MUST
+    // be able to say "judge nothing" and be obeyed.
+    std::optional<QSet<qint64>> gateScope;
 };
 
 struct Outcome {

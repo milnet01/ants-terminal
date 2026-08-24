@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QJsonObject>
 #include <QMap>           // ANTS-4501 — ReportCounts' by-status / by-kind tallies
+#include <QSet>           // ANTS-4628 — the transaction's written-item set
 #include <QJsonValue>
 #include <QSqlDatabase>
 #include <QString>
@@ -103,6 +104,24 @@ public:
     bool begin(QString *error = nullptr);     // BEGIN IMMEDIATE; refuses to nest
     bool commit(QString *error = nullptr);    // refuses when none is open
     bool rollback(QString *error = nullptr);  // refuses when none is open
+
+    // ANTS-4628 — the item_pks written since the last begin().
+    // RoadmapWrite::commitAndRender passes this to the render as the Layman
+    // gate's scope (ANTS-3758 § 2.5), so a write is judged by the items it
+    // touched rather than by everything the project happens to owe.
+    //
+    // Recorded HERE rather than declared by each write op, and that is the
+    // whole reason the mechanism is shaped this way: there are ten of those
+    // ops, and one that forgot to declare what it touched would present an
+    // EMPTY scope — a write that silently skips the gate altogether, which is
+    // strictly worse than the whole-project gating this replaced. A writer
+    // cannot forget to record when the recording is inside the writer.
+    //
+    // Cleared by begin() and NOT by commit()/rollback(): the one reader runs
+    // between the mutation and the commit, so clearing at the end would empty
+    // the set before it is read. Outside a transaction it holds whatever the
+    // last writes put there, and nothing asks.
+    const QSet<qint64> &itemsWrittenSinceBegin() const { return m_writtenItems; }
     bool inTransaction() const { return m_inTransaction; }
 
     // ANTS-3765 § 2.2 — which deadline and cache profile this connection
@@ -901,6 +920,8 @@ private:
     // ANTS-3765 § 2.3 — whose transaction is open. putItem() reads this to
     // decide whether it owns the transaction it is writing in.
     bool m_inTransaction = false;
+    // ANTS-4628 — see itemsWrittenSinceBegin().
+    QSet<qint64> m_writtenItems;
 };
 
 // ANTS-3796 § 2.2 — the section sort key, (position, slug). A free function

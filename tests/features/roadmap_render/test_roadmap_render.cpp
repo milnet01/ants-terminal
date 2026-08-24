@@ -217,6 +217,72 @@ TEST(RoadmapRender, Inv5PublishGate) {
     EXPECT_FALSE(QFileInfo::exists(f->liveAbs()));
 }
 
+// INV-5 — the gate judges the SCOPE it is given. `Inv5PublishGate` above is the
+// unset case (judge everything, the original whole-project rule); this is the
+// stated case, which is what RoadmapWrite passes so a write is refused by what
+// it touched rather than by the project's legacy debt (ANTS-4628).
+//
+// The three blocks are three different scopes over ONE store, deliberately: the
+// scope is the only thing that varies, so a failure here cannot be blamed on
+// the fixture differing between cases.
+TEST(RoadmapRender, Inv5GateScopeLimitsOffenders) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+    const auto sec = f->store->addSection(f->projectId, QStringLiteral("s"), QStringLiteral("S"), 2, 1, std::nullopt, &err);
+    ASSERT_TRUE(sec);
+
+    auto legacy = mkItem(f->projectId, QStringLiteral("G-9"), QStringLiteral("Legacy, no layman."), *sec, 0);
+    legacy.layman.clear();
+    const auto legacyPk = f->store->putItem(legacy, &err);
+    ASSERT_TRUE(legacyPk) << err.toStdString();
+
+    auto touched = mkItem(f->projectId, QStringLiteral("G-8"), QStringLiteral("Touched, no layman."), *sec, 1);
+    touched.layman.clear();
+    const auto touchedPk = f->store->putItem(touched, &err);
+    ASSERT_TRUE(touchedPk) << err.toStdString();
+
+    // A scope naming only the touched item. The legacy offender is not judged,
+    // the touched one is — so the render still refuses, and names exactly one.
+    // Both halves matter: dropping the out-of-scope id is the feature, and
+    // still failing on the in-scope one is what stops it becoming an exemption.
+    {
+        auto opts = liveOpts(*f);
+        opts.gateScope = QSet<qint64>{*touchedPk};
+        const auto out = RoadmapRender::render(*f->store, f->projectId, f->root(), opts, &err);
+        ASSERT_TRUE(out);
+        ASSERT_EQ(out->gateFailures.size(), 1)
+            << "an out-of-scope offender must not be judged";
+        EXPECT_EQ(out->gateFailures.first(), QStringLiteral("G-8"));
+        EXPECT_TRUE(out->filesWritten.isEmpty());
+        EXPECT_FALSE(QFileInfo::exists(f->liveAbs()));
+    }
+
+    // An EMPTY scope judges nothing, so the project publishes with both
+    // offenders still uncured. That is the `op:render` case, and it is the one
+    // that breaks ANTS-4628's deadlock: a project whose file carries none of
+    // its ids can be published, and only then can its items be located at all.
+    {
+        auto opts = liveOpts(*f);
+        opts.gateScope = QSet<qint64>{};
+        const auto out = RoadmapRender::render(*f->store, f->projectId, f->root(), opts, &err);
+        ASSERT_TRUE(out) << err.toStdString();
+        EXPECT_TRUE(out->gateFailures.isEmpty());
+        EXPECT_FALSE(out->filesWritten.isEmpty());
+        EXPECT_TRUE(QFileInfo::exists(f->liveAbs()));
+    }
+
+    // UNSET still judges everything. This is the guard, not a repeat of
+    // Inv5PublishGate: it proves the narrowing is opt-in, so a caller that
+    // never heard of `gateScope` cannot silently lose the check.
+    {
+        const auto out = RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err);
+        ASSERT_TRUE(out);
+        EXPECT_EQ(out->gateFailures.size(), 2)
+            << "an unset scope must judge every item";
+    }
+}
+
 // INV-7 — two renders of an unchanged store are byte-identical, so a scheduled
 // render produces no spurious diff.
 TEST(RoadmapRender, Inv7Idempotent) {

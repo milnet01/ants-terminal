@@ -219,8 +219,18 @@ QString laymanOf(const QString &id, qint64 projectId) {
 // ---------------------------------------------------------------- INV-1 -----
 
 // A failed render leaves the store as it was. The reachable failure is the
-// render's own gate — it is per PROJECT, so a blameless item's flip is refused
-// by an unrelated offender, and must not have persisted behind that refusal.
+// render's own gate, and since ANTS-4628 that means the write's OWN offender:
+// the flip below targets DEMO-0005, which is open and carries no Layman line,
+// so touching it puts it in the gate's scope and the write is refused. The
+// store must not keep the status change made behind that refusal.
+//
+// It targeted the BLAMELESS DEMO-0007 until 2026-08-24, when the gate was
+// per project and an unrelated offender was enough to refuse any write. That
+// is no longer a failure at all — Ants4628UntouchedDebtDoesNotBlockAWrite
+// below now asserts it SUCCEEDS — so INV-1 needed a failure it can still
+// reach. Flipping to in-progress and not to shipped is load-bearing: shipped
+// is closed, closed items are never gated, and the write would pass for the
+// wrong reason.
 TEST(RoadmapWriteHalf, Inv1RenderFailureRollsBack) {
     ants_test::XdgGuard guard;
     QTemporaryDir tmp;
@@ -236,49 +246,42 @@ TEST(RoadmapWriteHalf, Inv1RenderFailureRollsBack) {
         QJsonObject req;
         req[QStringLiteral("caller_cwd")] = root;
         req[QStringLiteral("op")]         = QStringLiteral("flip");
-        req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
-        req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+        req[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
+        req[QStringLiteral("id")]         = QStringLiteral("DEMO-0005");
         resp = rc.cmdRoadmapLogFlipForTest(req).object();
     }
 
     EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
               QStringLiteral("render_gate_unmet"));
-    // The refusal names the offenders — the gate is per PROJECT, so the
-    // caller's own item may be blameless, and naming them is the only way the
-    // refusal is actionable.
+    // The refusal names the offender, which since ANTS-4628 is an item this
+    // write touched — so it is always one the caller can act on.
     const QJsonArray gateFailures =
         resp.value(QStringLiteral("gate_failures")).toArray();
     ASSERT_EQ(gateFailures.size(), 1);
     EXPECT_EQ(gateFailures.at(0).toString(), QStringLiteral("DEMO-0005"));
 
-    EXPECT_EQ(statusOf(QStringLiteral("DEMO-0007"), projectId),
+    EXPECT_EQ(statusOf(QStringLiteral("DEMO-0005"), projectId),
               QStringLiteral("planned"))
         << "a store write must not survive the render that refused it";
 }
 
-// ------------------------------------------------------------- ANTS-4434 -----
+// ------------------------------------------------------------- ANTS-4628 -----
 
-// The gate is per PROJECT and is evaluated AFTER the mutation, and those two
-// facts together decide whether a blocked project can be repaired at all.
+// The inversion of ANTS-4434's deadlock, and the case that proves the gate's
+// scope really is the items a write touched.
 //
-// A single-item repair is applied inside the transaction, so the item it fixed
-// is correctly no longer an offender — but the gate then refuses on whichever
-// offenders REMAIN, and the whole transaction rolls back, taking the good
-// repair with it. So a single repair commits only when it is the last one
-// outstanding. With two offenders, each single repair is refused by the other
-// and neither can ever land: the project is unrepairable one item at a time.
+// Under whole-project scoping a single repair could not land while any other
+// offender remained: the fix applied inside the transaction, the gate then
+// refused on the rest, and the rollback took the good repair with it. Measured
+// on the live store 2026-08-23 — MAME_Curator had exactly two offenders and
+// annotating either came back render_gate_unmet naming only the OTHER.
 //
-// One flip_batch carrying every offender repairs them together, the gate then
-// sees zero, and it commits. That route needs no gate change, which is why
-// ANTS-4434 does not have to settle the whole-project-vs-touched-items question
-// to unblock a stuck project.
-//
-// Measured on the live store 2026-08-23 before this test existed: MAME_Curator
-// has exactly two offenders, and annotating either one came back
-// render_gate_unmet naming only the OTHER — the two-refusal half below,
-// reproduced here against a fixture so it stays reproduced.
-TEST(RoadmapWriteHalf, Ants4434BatchRepairEscapesTheGateDeadlock) {
+// With the scope narrowed, repairing one offender touches only that item, so
+// the gate sees no in-scope offender and it commits. Both halves are asserted:
+// the repair lands, AND the other offender is still uncured afterwards — which
+// is what proves it was ignored rather than silently fixed.
+TEST(RoadmapWriteHalf, Ants4628SingleItemRepairNowCommits) {
     ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -291,9 +294,6 @@ TEST(RoadmapWriteHalf, Ants4434BatchRepairEscapesTheGateDeadlock) {
     // column; mid-line it would be prose, and the column would stay empty.
     const QString repair = QStringLiteral("Layman: A plain-language summary.");
 
-    // One at a time: each repair is refused by the OTHER offender, and the
-    // refusal naming only the other id is the evidence that the mutation landed
-    // inside the transaction before the gate ran.
     const auto repairOne = [&](const QString &id) {
         RemoteControl rc(nullptr);
         QJsonObject req;
@@ -304,28 +304,34 @@ TEST(RoadmapWriteHalf, Ants4434BatchRepairEscapesTheGateDeadlock) {
         return rc.cmdRoadmapLogFlipForTest(req).object();
     };
 
-    for (const auto &pair : {std::make_pair(QStringLiteral("DEMO-0005"),
-                                            QStringLiteral("DEMO-0006")),
-                             std::make_pair(QStringLiteral("DEMO-0006"),
-                                            QStringLiteral("DEMO-0005"))}) {
-        const QJsonObject resp = repairOne(pair.first);
-        EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
-            << "repairing " << pair.first.toStdString()
-            << " alone must be refused while " << pair.second.toStdString()
-            << " is still outstanding";
-        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
-                  QStringLiteral("render_gate_unmet"));
-        const QJsonArray failures =
-            resp.value(QStringLiteral("gate_failures")).toArray();
-        ASSERT_EQ(failures.size(), 1)
-            << "the repaired item must have left the offender set inside the "
-               "transaction, leaving exactly the other one";
-        EXPECT_EQ(failures.at(0).toString(), pair.second);
-        EXPECT_TRUE(laymanOf(pair.first, projectId).isEmpty())
-            << "the refused repair must not have survived the rollback";
+    // Repair ONE of the two. It touches only DEMO-0005, so only DEMO-0005 is
+    // judged, and the repair inside the transaction leaves nothing in scope to
+    // refuse. Before ANTS-4628 this was refused by DEMO-0006 and rolled back.
+    {
+        const QJsonObject resp = repairOne(QStringLiteral("DEMO-0005"));
+        EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << "a single repair must commit now that the gate judges only what "
+               "the write touched; got code "
+            << resp.value(QStringLiteral("code")).toString().toStdString();
+        EXPECT_FALSE(laymanOf(QStringLiteral("DEMO-0005"), projectId).isEmpty())
+            << "the repair must have survived the commit";
     }
 
-    // Both together: the gate sees zero offenders and the transaction commits.
+    // The OTHER offender is untouched and still uncured. This is the half that
+    // makes the case meaningful: it proves DEMO-0006 was left out of the gate's
+    // scope, rather than the render having quietly cured or dropped it.
+    EXPECT_TRUE(laymanOf(QStringLiteral("DEMO-0006"), projectId).isEmpty())
+        << "an untouched offender must be neither judged nor modified";
+
+    // And the batch route still works — it is no longer the only escape, but it
+    // is still how N items are repaired in one call.
+    {
+        const QJsonObject resp = repairOne(QStringLiteral("DEMO-0006"));
+        EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+        EXPECT_FALSE(laymanOf(QStringLiteral("DEMO-0006"), projectId).isEmpty());
+    }
+
+    // Both together via flip_batch: still passes, still commits.
     QJsonObject batch;
     {
         RemoteControl rc(nullptr);
@@ -362,6 +368,115 @@ TEST(RoadmapWriteHalf, Ants4434BatchRepairEscapesTheGateDeadlock) {
             << "the same-status flip must leave the item open, so the gate was "
                "satisfied by the repair rather than by the item closing";
     }
+}
+
+// ANTS-4628 — the case the whole change exists for: an untouched offender does
+// not block an unrelated write. This is the exact scenario
+// `Inv1RenderFailureRollsBack` asserted the OPPOSITE of until 2026-08-24, so
+// the pair of them is the before/after of the decision.
+TEST(RoadmapWriteHalf, Ants4628UntouchedDebtDoesNotBlockAWrite) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root =
+        seedMigrated(guard, tmp, fixture(/*gateOffenders=*/1), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    // DEMO-0007 is blameless — open, and carrying its Layman line. DEMO-0005 is
+    // an offender and is NOT touched by this flip.
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("flip");
+        req[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+        req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+        resp = rc.cmdRoadmapLogFlipForTest(req).object();
+    }
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "an untouched offender must not refuse this write; got code "
+        << resp.value(QStringLiteral("code")).toString().toStdString();
+    EXPECT_EQ(statusOf(QStringLiteral("DEMO-0007"), projectId),
+              QStringLiteral("shipped"));
+
+    // The offender is still an offender. The write was not allowed through by
+    // the debt having been cleared behind the caller's back.
+    EXPECT_TRUE(laymanOf(QStringLiteral("DEMO-0005"), projectId).isEmpty());
+}
+
+// ANTS-4628 — and the other side of it, which is what stops the narrowing from
+// being an exemption: a write that touches an offender is still refused, and
+// the refusal names that item and no other.
+TEST(RoadmapWriteHalf, Ants4628WriteIsStillRefusedByItsOwnOffender) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root =
+        seedMigrated(guard, tmp, fixture(/*gateOffenders=*/2), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    // A note that does NOT declare the trailer: it edits the body and leaves
+    // the layman column empty, so the item stays an offender and, being
+    // touched, is in scope.
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("annotate");
+        req[QStringLiteral("id")]         = QStringLiteral("DEMO-0005");
+        req[QStringLiteral("note")]       = QStringLiteral("Just some prose.");
+        resp = rc.cmdRoadmapLogFlipForTest(req).object();
+    }
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("render_gate_unmet"));
+
+    const QJsonArray failures =
+        resp.value(QStringLiteral("gate_failures")).toArray();
+    ASSERT_EQ(failures.size(), 1)
+        << "only the touched offender is judged — DEMO-0006 is untouched and "
+           "must not appear";
+    EXPECT_EQ(failures.at(0).toString(), QStringLiteral("DEMO-0005"));
+}
+
+// ANTS-4628 — op:render on a project carrying legacy debt. Its mutation writes
+// no item, so its scope is empty and it publishes. This is the deadlock
+// dissolving: before the change this refused render_gate_unmet, and since the
+// ids live only in the store, no locator could reach them to repair them.
+TEST(RoadmapWriteHalf, Ants4628RenderPublishesPastLegacyDebt) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root =
+        seedMigrated(guard, tmp, fixture(/*gateOffenders=*/2), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    const QByteArray before = readAll(roadmap);
+    ASSERT_FALSE(before.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = root;
+    r[QStringLiteral("op")]         = QStringLiteral("render");
+    const QJsonObject env = rc.cmdRoadmapLogRenderForTest(r).object();
+
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << "op:render must publish past untouched gate debt; code="
+        << env.value(QStringLiteral("code")).toString().toStdString();
+    EXPECT_FALSE(env.value(QStringLiteral("files_written")).toArray().isEmpty());
+    EXPECT_NE(readAll(roadmap), before);
+
+    // Both offenders are still uncured. The publish did not invent summaries to
+    // get past its own gate, which would be the wrong way to make this pass.
+    EXPECT_TRUE(laymanOf(QStringLiteral("DEMO-0005"), projectId).isEmpty());
+    EXPECT_TRUE(laymanOf(QStringLiteral("DEMO-0006"), projectId).isEmpty());
 }
 
 // ---------------------------------------------------------------- INV-2 -----
