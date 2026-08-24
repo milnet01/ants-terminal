@@ -43170,6 +43170,101 @@ open, and two of these were exactly that.
   Kind: fix.
   Source: in-session-2026-08-23.
 
+### Ants MCP feedback from CC sessions — 2026-08-24 triage
+
+Two findings, from LocalWebServerManager and the ~/.claude config project. Both
+were reproduced against the running server (0.7.106, build ecdaed8a) before
+filing rather than taken from the reports, and one turned out to be worse than
+its reporter measured.
+
+- 📋 [ANTS-4629] **changelog_log op:"add" double-wraps a summary that already carries its own emphasis or id.**
+  REPRODUCED 2026-08-24 against 0.7.106 (build ecdaed8a), byte-identical to
+  the report:
+
+    changelog_log {op:"add", category:"Fixed", id:"ANTS-9999",
+                   summary:"**Already bold and already referenced** (ANTS-9999)",
+                   dry_run:true}
+    -> bullet: "- ****Already bold and already referenced** (ANTS-9999)** (ANTS-9999)"
+
+  op:"add" wraps `summary` in `**...**` and appends ` (<id>)` unconditionally,
+  without noticing the summary already carries either. Markdown renders that as
+  an empty-strong followed by literal asterisks, so the entry does not read as a
+  heading -- and these are the entries a release's notes are cut from.
+
+  The reporter found seven live instances in one project (LWSM-1132, 1136,
+  1137, 1138, 1139, 1140, 1141), five doubling the id as well as the emphasis;
+  they sat for five days and were repaired by hand in their commit 99dd410.
+
+  What makes it durable rather than merely wrong: the write succeeds, the
+  envelope reports ok:true with a plausible byte count, and the one field that
+  would show the defect -- `bullet` -- is emitted on the dry_run path ONLY. So
+  a caller sees the malformed output only if it already suspects a problem.
+  That is the shape ANTS-4374 names.
+
+  Three candidate fixes, from the report and worth keeping in this order.
+  Refuse `bad_summary` when the summary starts with `**` or ends with
+  `(<PREFIX-NNNN>)`, since both are unambiguously the caller doing the verb's
+  job; a refusal costs one retry against a defect that otherwise ships. Or
+  normalise -- strip one layer of surrounding `**` and one trailing id matching
+  the `id` argument -- and say so with `summary_normalised:true`. Or, weakest
+  but still better than today, echo `bullet` on the real write path too.
+
+  Whichever is taken, op:"add_batch" needs it as well: these went in as a
+  batch, and its per-entry `skipped[]` is already the right shape.
+  **Layman:** Writing a changelog entry can silently produce a mangled line, and nothing in the reply says so.
+  Kind: fix.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-24.
+  Lanes: mcp, changelog.
+
+- 📋 [ANTS-4630] **roadmap_query elides a long body BEFORE spilling it, so the middle is unreachable by any argument.**
+  REPRODUCED 2026-08-24 against 0.7.106 (build ecdaed8a), and the gap is
+  LARGER than the report measured.
+
+  ANTS-3736's elision keeps the head and the final ~1 KiB and joins them with
+  `... [body elided - tail follows; refetch by id with max_body_bytes for more]
+  ...`. ANTS-4091 clamps `max_body_bytes` to [2000, 16384]. So for any body
+  over 16 KiB the remedy the marker names is unreachable by construction: the
+  most a caller may ask for is smaller than the body, and the elision fires
+  again.
+
+  The spill does not rescue it, and this is the load-bearing half: the body is
+  elided BEFORE it is spilled, so `read_spill` byte-pages already-elided text.
+  Measured directly -- reading the spill at offset 15200 returns the elision
+  marker itself, sitting inside the spilled payload. Paging to any offset
+  therefore cannot reach the middle; it is not in the spill at all.
+
+    CFG-0196 body, measured in ~/.claude's roadmap file : 47,322 bytes
+    spill total_bytes for that same fetch              : 17,072 bytes
+    max_body_bytes ceiling                             : 16,384 bytes
+
+  The reporter measured 47,322 as 32,475; the bullet is append-only and has
+  grown since. So roughly 30 KB of a 47 KB body is unreadable through the verb
+  that owns it, not the ~16 KB reported.
+
+  Why it matters beyond the one bullet: a long-lived programme bullet is
+  exactly the shape ANTS-3736 was written for. On a store-backed roadmap the
+  file is a render, so the standing advice is to trust the store -- but the
+  only unelided route left is read_region over the rendered file, which is the
+  route the migration tells callers not to rely on. In the reporting session
+  the elided middle held six of the thirteen per-skill annotations a resuming
+  session needed.
+
+  Preferred fix, from the report and it looks right: spill BEFORE eliding, so
+  read_spill can page the whole body. That reuses the existing offload
+  machinery, leaves the inline envelope exactly as bounded as it is today, and
+  makes the marker's promise true -- the caller pages rather than re-fetching.
+  Cheaper alternatives if that is too invasive: lift the `max_body_bytes`
+  ceiling on a targeted single-id fetch (the payload is already offloaded, so
+  the inline budget is not what the clamp protects), or add a `body_offset` to
+  window the body directly.
+
+  Either way the marker text must name a remedy that works at the size that
+  triggered it. Today it names one that cannot.
+  **Layman:** A very long roadmap note can be read at its start and end but not its middle, and the error message suggests a fix that cannot work.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-24.
+  Lanes: mcp, roadmap-store.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
