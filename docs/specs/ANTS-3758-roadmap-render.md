@@ -264,11 +264,9 @@ does not.
 
 `roadmap-data-model.md` § 3.2 gates publish on `layman`, for open items only.
 The standard flagged, and this spec settles, what happens at cutover when
-§ 3.3 has left `layman` empty on a large share of migrated items — 49% of
-the corpus carries no `Layman:` line, by that section's own measurement.
-(This read "every migrated item" until 2026-08-24. § 3.3 preserves a
-declared `Layman:` exactly as it preserves a declared `Priority:`, so the
-absolute claim was false and it oversized the gate's backlog by half.)
+§ 3.3 has left `layman` empty on a large share of migrated items; that
+section measures the share. (This read "every migrated item" until
+2026-08-24, which was false — § 3.3 preserves a declared `Layman:` line.)
 
 **Decided by the user (2026-08-03): the gate is strict and has no
 migrated-item exemption.** Nothing is excused for having been migrated: a
@@ -282,10 +280,10 @@ carry `layman` before that write lands. What changes is which items are asked.
 
 Left whole-project, a gate evaluated *after* the mutation refuses every future
 write on a project carrying legacy debt, including the writes that would repair
-it. Two measured cases: Music_Production, whose 357 migrated items left
-`op:render` unable to publish the very ids a repair would have to name, so no
-call in the verb surface could break the cycle (ANTS-4628); and Vestige, whose
-585 legacy items would have blocked every edit after conversion (ANTS-4491).
+it. Two measured cases: Music_Production, where `op:render` could not publish
+the very ids a repair would have to name, so no call in the verb surface could
+break the cycle (ANTS-4628); and Vestige, whose legacy items would have blocked
+every edit after conversion (ANTS-4491).
 
 `Options::gateScope` carries it, as item_pks, and it is an **optional** set —
 the two empty-looking states are different and both are needed. **Unset means
@@ -308,10 +306,9 @@ publishing render that then failed would leave the store committed ahead of the
 file, which § 2.7 already calls the one window staging cannot close.
 
 **So an `op:render` publishes.** Its mutation writes no item, so its scope is
-engaged and empty, so the gate judges nothing. That is not a hole in the gate
-but the point of it: it is how a project in Music_Production's state — 357
-store-only ids, none of them in the file — gets a rendered file at all, and
-until it has one no locator can reach its items to repair them.
+engaged and empty and the gate judges nothing. That is the point of it, not a
+hole in it: a project whose ids live only in the store gets a rendered file,
+and until it has one no locator can reach its items to repair them.
 
 **A write that mutates the store without touching an ITEM behaves the same
 way** — a section rename, a `rotate_minor`. Its scope is engaged and empty, so

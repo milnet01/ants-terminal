@@ -280,9 +280,9 @@ gate neither publishing nor migration.
 **Settled 2026-08-24, by scope rather than by exemption.** The question this
 paragraph carried was whether `layman` should get the "written after cutover"
 exemption § 7.5 gives `priority` — because § 3.3 leaves the field empty on
-every migrated item that did not declare one (49% of the corpus, by § 3.3's own
-count; a declared `Layman:` line is preserved, not dropped), and read literally
-no project could publish until all of those were hand-curated. Neither answer was
+every migrated item that did not declare one (a declared `Layman:` line is
+preserved, not dropped; § 3.3 measures the share), and read literally no
+project could publish until all of those were hand-curated. Neither answer was
 taken. `layman` gets **no exemption**: an item that is public, open and in a
 write's scope owes its sentence, migrated or not. What changed is the scope, so
 the corpus is no longer asked all at once. Every write — `op:render` included —
