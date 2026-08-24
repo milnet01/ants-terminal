@@ -22,10 +22,12 @@ INV-1 … INV-13 are the design spec's, numbered identically.
 - **The live roadmap sits directly in the project root.** `findRoadmaps()`
   accepts no other placement, so a fixture at `sub/ROADMAP.md` cannot be
   migrated at all.
-- **Every open bullet carries a `Layman:` line, except INV-10's.** The render's
-  publish gate is per project, so one `Layman:`-less open bullet anywhere
-  refuses the whole render — and a fixture that trips it accidentally makes
-  INV-1 and INV-3 pass or fail for a reason unrelated to rotation.
+- **Every open bullet carries a `Layman:` line, except INV-10's.** Since
+  ANTS-4628 the publish gate is scoped to the items a write touches and a
+  rotation touches none, so a stray `Layman:`-less bullet no longer refuses a
+  rotation. The convention is kept anyway: these fixtures double as examples of
+  a well-formed roadmap, and one that relies on the gate ignoring it is a worse
+  fixture than one that says what it means.
 
 ## What each case asserts
 

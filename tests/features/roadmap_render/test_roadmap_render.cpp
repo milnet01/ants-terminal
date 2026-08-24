@@ -194,9 +194,15 @@ TEST(RoadmapRender, Inv4Membership) {
     EXPECT_EQ(out->itemsRendered, 2);
 }
 
-// INV-5 — the gate is per PROJECT. One offender stops the whole render, the
-// call still returns an ENGAGED outcome, and every offending id is named. A
-// refusal that returned nullopt would make those ids unreachable.
+// INV-5, UNSET scope — the case that must stay whole-project. One offender
+// stops the whole render, the call still returns an ENGAGED outcome, and every
+// offending id is named. A refusal that returned nullopt would make those ids
+// unreachable.
+//
+// This is deliberately left un-narrowed after ANTS-4628: unset means judge
+// every item, so this case is what proves a caller cannot lose the check by
+// never having heard of `gateScope`. Inv5GateScopeLimitsOffenders below covers
+// the stated and engaged-empty scopes.
 TEST(RoadmapRender, Inv5PublishGate) {
     auto f = makeFixture();
     ASSERT_TRUE(f);

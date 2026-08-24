@@ -351,12 +351,17 @@ UNIQUE constraint is satisfied without coordination between items.
 - **INV-4** — A rolled-back transaction leaves no history rows. *Test:* same
   suite, driven at the **store** level: `begin()`, `setItemField()` plus its
   history row, `rollback()`, then assert zero rows for that `item_pk`.
-  **Deliberately not driven through the render
-  gate:** `commitAndRender()`'s gate is *project*-scoped — its own message is
-  "the roadmap render refuses this project: %1 open item(s) carry no `Layman:`
-  line" — so while the offending item is still open every later write in that
-  project also refuses, and a two-phase recipe through the verb cannot reach its
-  second phase. **The "burns no `seq`" half is dropped rather than asserted:**
+  **Deliberately not driven through the render gate.** The original reason was
+  that `commitAndRender()`'s gate was *project*-scoped, so while any offending
+  item stayed open every later write in that project also refused and a
+  two-phase recipe through the verb could not reach its second phase. **That
+  constraint lifted on 2026-08-24 (ANTS-4628): the gate is scoped to the items a
+  write touches, so a second phase touching a blameless item now gets through,
+  and the quoted message no longer exists.** The store-level driving is kept on
+  its own merits — it asserts a store-level invariant, and reaching it through
+  two verb calls would make the case depend on the gate's scope rule, which is a
+  contract this suite does not own. Recorded rather than silently re-justified,
+  because a reader checking the old reason would find it false. **The "burns no `seq`" half is dropped rather than asserted:**
   `seq` is scoped per `(item_pk, changed_at)` and each op stamps its own second,
   so a retry normally gets a fresh stamp and starts at 0 whether or not the
   aborted attempt burned anything — the assertion would pass against both a

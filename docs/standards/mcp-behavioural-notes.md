@@ -737,8 +737,9 @@ which heading you expect it under.
     `kind='table'` element's canonical-JSON payload (ANTS-3756 INV-24),
     creating exactly one when the section has none.
   - **New refusal codes** — `render_gate_unmet` (a public open item with no
-    `Layman:` line blocks the render — the gate is per *project*, so the
-    caller's own bullet may be blameless), `render_failed` and
+    `Layman:` line blocks the render — scoped since ANTS-4628 to the items
+    the write TOUCHES, so the caller's own bullet is always among them and
+    the project's other uncured items do not refuse it), `render_failed` and
     `store_failed`, plus `locator_unsupported` and `body_shadowed` above,
     and `write_failed` reused for a committed store whose publishing
     render did not land. `render_gate_unmet`, `render_failed` and
@@ -748,8 +749,9 @@ which heading you expect it under.
     recoverable by re-running the render — any later successful op on that
     project does it, since every op re-renders the whole project.
     `render_gate_unmet`'s envelope carries `gate_failures[]` naming the
-    offending ids, so a blameless caller is not left guessing which items
-    block it. **ANTS-4141 adds `render_would_drop`** at the same seam and
+    offending ids, so the caller is not left guessing which items block it —
+    and since ANTS-4628 each is one the same call can repair, because a note
+    whose FIRST line declares the `Layman:` trailer sets the column. **ANTS-4141 adds `render_would_drop`** at the same seam and
     with the same write-nothing, roll-back semantics: the write path renders
     the store's whole document, which assumes the store is a superset of the
     file, and where that is false a bullet the store never imported is

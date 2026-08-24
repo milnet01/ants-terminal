@@ -702,11 +702,15 @@ carried by two sections. Found at implementation on 2026-08-10; the clause had
 read "the same number of sections" and failed for a reason that was not a bug.
 
 **Every open bullet in every fixture carries a `Layman:` line, except INV-10's,
-which exists to omit one.** The publish gate is per project (§ 2.4), so a single
-`Layman:`-less open bullet anywhere refuses the whole render — and a fixture
-that trips it accidentally makes INV-1 and INV-3 pass or fail for a reason that
-has nothing to do with rotation. INV-10 is the deliberate case, and it is why
-the accident is worth guarding against.
+which exists to omit one.** The convention stands, but its reason weakened on
+2026-08-24: the publish gate is now scoped to the items a write touches
+(ANTS-4628), and a rotation touches no item row, so a stray `Layman:`-less
+bullet no longer refuses a rotation and can no longer make INV-1 or INV-3 fail
+for a reason unrelated to rotation. It is kept because a fixture that says what
+it means is worth more than one that relies on the gate ignoring it, and
+because these fixtures are also read as examples of a well-formed roadmap.
+INV-10 is still the deliberate omission, and it now asserts that the rotation
+SUCCEEDS past it.
 
 Per the project test convention, **each case is verified to fail against
 pre-change source first**; for this item that is the whole set, since neither

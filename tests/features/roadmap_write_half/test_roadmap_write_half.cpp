@@ -1059,8 +1059,10 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
         rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("A bullet after the hand-edit."))).object();
     ASSERT_TRUE(dirty.value(QStringLiteral("ok")).toBool())
         << "the report must not become a refusal: one hand-edit anywhere would "
-           "then brick every op on the project, which is the render_gate_unmet "
-           "shape these items were filed against";
+           "then brick every op on the project — the shape render_gate_unmet "
+           "HAD when these items were filed (ANTS-4628 has since scoped that "
+           "gate; drift is per FILE and has no equivalent scope, so the "
+           "argument stands)";
     EXPECT_TRUE(dirty.value(QStringLiteral("discarded_external_edits")).toBool())
         << "ANTS-4465: the hand-written preamble line was overwritten by the "
            "re-render and the envelope said nothing";

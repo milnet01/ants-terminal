@@ -239,13 +239,17 @@ bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
     case RoadmapWrite::Result::Ok:
         return false;
     case RoadmapWrite::Result::GateUnmet:
-        // The gate is per PROJECT, so the caller's own item may be blameless;
-        // naming the offenders is the only way the refusal is actionable.
+        // ANTS-4628 — the gate judges the items this write touched, so every
+        // named id is one the caller is already editing. Naming them is still
+        // what makes the refusal actionable; what changed is that the list can
+        // no longer contain an item the caller has never heard of.
         out[QStringLiteral("gate_failures")] =
             QJsonArray::fromStringList(outcome.gateFailures);
+        // Reached only when RoadmapWrite left `err` empty — it normally sets a
+        // fuller message naming the ids and the remedy. Kept in step with it.
         return fail("render_gate_unmet",
-                    "the roadmap render refuses this project: an open item "
-                    "carries no Layman: line");
+                    "the roadmap render refuses this write: an open item it "
+                    "touches carries no Layman: line");
     case RoadmapWrite::Result::WouldDrop:
         // ANTS-4141. No array beside it: unlike the gate, the offenders are
         // named in `error` itself, because the remedy is a migration the caller

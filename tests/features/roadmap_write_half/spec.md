@@ -68,7 +68,10 @@ was performed and not inferred.
 - Comparing raw mtimes instead → the sequence writes the store and *then* the
   file, so the file is always the newer of the two and every project reads stale.
 - Turning the report into a refusal → one hand-edit anywhere bricks every op on
-  the project, which is the `render_gate_unmet` shape both items were filed against.
+  the project, which is the shape `render_gate_unmet` HAD when both items were
+  filed. That gate was scoped to the touched items on 2026-08-24 (ANTS-4628);
+  the argument here is unaffected, because drift is measured per FILE and a
+  drift refusal would have no equivalent scope to narrow to.
 
 ### ANTS-4614 — `op:"render"` publishes the store on demand
 
