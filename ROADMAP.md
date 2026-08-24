@@ -54612,6 +54612,7 @@ here.)
   but is github-task-list and answers `source:"markdown"`, so it is the
   ANTS-4491 case, not this one. Every other project's file carries its own
   ids.
+  Verified live (2026-08-24), post-relaunch. `op:render` on Music_Production published all its stored ids into the file with zero content loss — every bullet and every body survived, confirmed by set-comparing headlines both directions. The locator then resolved: `op:annotate` for the previously-unfindable id no longer returns bullet_not_found. It refuses `render_gate_unmet` instead, naming that one item as its own offender, which is ANTS-4628 behaving as designed; a note declaring the Layman trailer on its first line is accepted in the same call. So the workaround is proven end to end. What remains open here is the ordering defect itself: the ants-v1 flip path locates in the markdown before dispatching to the store, so any migrated project whose file was never rendered is unreachable by id until someone renders it. The render is the remedy, not the fix.
   **Layman:** A project's stored roadmap items and its roadmap file have drifted apart, and asking for one of the stored items says it does not exist.
   Kind: investigate.
   Source: in-session-2026-08-23.
