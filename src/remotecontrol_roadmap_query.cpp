@@ -12,6 +12,7 @@
 #include "roadmapwrite.h"   // ANTS-4462 — measureDrift, the read-side staleness check
 #include <QDateTime>
 #include <QFile>
+#include <QSaveFile>   // ANTS-4635 — the shared .roadmap-counter cache refresh
 #include <QFileInfo>
 
 using namespace rcdetail;  // ANTS-3833
@@ -224,6 +225,33 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                 }
             }
         }
+    }
+}
+
+// ANTS-4635 — see remotecontrol_internal.h for why this is shared and why it
+// is best-effort. Every early return leaves the envelope untouched: the two
+// counter fields are reported when the cache MOVES, so their absence says it
+// did not, and nothing here can fail an append that already landed.
+void rcdetail::rcRoadmapReconcileCounterCache(QJsonObject &env,
+                                              const QString &counterPath,
+                                              qint64 allocated) {
+    if (allocated <= 0 || !QFile::exists(counterPath))
+        return;
+    qint64 cached = 0;
+    QFile cr(counterPath);
+    if (cr.open(QIODevice::ReadOnly)) {
+        cached = QString::fromUtf8(cr.readAll().trimmed()).toLongLong();
+        cr.close();
+    }
+    if (allocated <= cached)
+        return;
+    QSaveFile cw(counterPath);
+    if (!cw.open(QIODevice::WriteOnly | QIODevice::Text))
+        return;
+    const QByteArray cv = (QString::number(allocated) + QChar('\n')).toUtf8();
+    if (cw.write(cv) == cv.size() && cw.commit()) {
+        env[QStringLiteral("counter_advanced_to")]   = allocated;  // ANTS-2179
+        env[QStringLiteral("counter_advanced_past")] = cached;     // ANTS-4493
     }
 }
 

@@ -500,7 +500,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 return QJsonDocument(env);
 
             env[QStringLiteral("ok")]   = true;
-            env[QStringLiteral("id")]   = idStr;
+            // ANTS-4634 — a preview reports `would_be_id`, never `id`, for the
+            // reason ANTS-4508 gives: a caller reading one field takes the real
+            // write's key for a reservation, and nothing is reserved. That
+            // rename landed on the MARKDOWN branch only, and every migrated
+            // project takes THIS one — so the guard covered the path almost
+            // nobody runs while the path everybody runs still emitted `id`.
+            // Reported by finbreak and reproduced here against this project.
+            env[dryRun ? QStringLiteral("would_be_id")
+                       : QStringLiteral("id")] = idStr;
             env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
             // No `line` / `bytes_written`: a store has no lines (ANTS-3793
             // INV-2's declared field difference) and the render decides
@@ -536,26 +544,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // nothing drifting, and creating one here would hand a
             // stable-id or counter-less project a file it never had. Advance
             // only upward, for the reason raiseIdHighWater() does the same.
-            if (!dryRun && !useStablePrefix && allocated > 0
-                && QFile::exists(counterPath)) {
-                qint64 cached = 0;
-                QFile cr(counterPath);
-                if (cr.open(QIODevice::ReadOnly)) {
-                    cached = QString::fromUtf8(cr.readAll().trimmed()).toLongLong();
-                    cr.close();
-                }
-                if (allocated > cached) {
-                    QSaveFile cw(counterPath);
-                    if (cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                        const QByteArray cv =
-                            (QString::number(allocated) + QChar('\n')).toUtf8();
-                        if (cw.write(cv) == cv.size() && cw.commit()) {
-                            env[QStringLiteral("counter_advanced_to")]   = allocated;
-                            env[QStringLiteral("counter_advanced_past")] = cached;
-                        }
-                    }
-                }
-            }
+            // ANTS-4635 — lifted into rcRoadmapReconcileCounterCache() so
+            // op:append_batch's store branch can run the same reconciliation,
+            // which it never did. The reasoning that used to sit here is on the
+            // declaration in remotecontrol_internal.h.
+            if (!dryRun && !useStablePrefix)
+                rcRoadmapReconcileCounterCache(env, counterPath, allocated);
             rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
             // ANTS-2043 — the near-duplicate advisory, kept: the records are
             // the store's own items, read BEFORE the write so the new bullet

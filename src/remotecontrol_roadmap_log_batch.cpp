@@ -2496,10 +2496,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         env[QStringLiteral("ok")]   = true;
         env[QStringLiteral("op")]   = QStringLiteral("append_batch");
         env[QStringLiteral("file")] = QStringLiteral("ROADMAP.md");
-        env[QStringLiteral("ids")]  = ids;
+        // ANTS-4634 — `would_be_ids` on a preview, for the reason ANTS-4508
+        // gives; see the singular path's note. The rename reached the markdown
+        // branch below and not this one, which is the branch every migrated
+        // project takes.
+        env[dryRun ? QStringLiteral("would_be_ids")
+                   : QStringLiteral("ids")] = ids;
         // `would_apply_count` under dry_run, mirroring the markdown preview so a
         // caller's branch on it does not change with the backend. No `lines` /
-        // `bytes` / `counter_advanced_to`.
+        // `bytes`.
         env[QStringLiteral("applied_count")] = dryRun ? 0 : accepted.size();
         if (dryRun) {
             env[QStringLiteral("dry_run")]           = true;
@@ -2507,6 +2512,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         }
         env[QStringLiteral("skipped")]        = skipped;
         env[QStringLiteral("skipped_count")]  = skipped.size();
+        // ANTS-4635 — the reconciliation op:append has run since ANTS-4141
+        // part 2 and this path never did, which is what let the cache drift by
+        // a whole batch. `nextId - 1` is the last id allocated here; the ids
+        // are contiguous, so the highest is the only one the cache records.
+        if (!dryRun && !useStablePrefix)
+            rcRoadmapReconcileCounterCache(env, counterPath, nextId - 1);
         rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
 
         // ANTS-2043 — the per-bullet near-duplicate advisory, kept: the file is

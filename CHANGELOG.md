@@ -230,6 +230,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Confirmed that file_ahead_of_store's baseline firing is a real defect, not a fixture artefact** (ANTS-4633)
+  Album_Builder reported the same flag on a real 357-item project whose ids were minted under a previous directory name, which is this item's own hypothesis confirmed in the wild: a high-water lookup keyed on a prefix re-derived from the path finds no rows and reports 0. The fix is tracked as ANTS-4636.
+
+- **roadmap_log: op:"append_batch" now reconciles .roadmap-counter on the store path, as op:"append" already did** (ANTS-4635)
+  The cache stayed stale for a whole batch until some later single append's scan repaired it, so anything reading it to predict the next id got a wrong answer that looked right. Reported by Games_Hub, who measured three batches allocating GHUB-0113 through GHUB-0118 with the counter still reading 110. The reconciliation is now a shared helper both paths call, and the batch envelope reports counter_advanced_to / counter_advanced_past when the cache moves.
+
+- **roadmap_log: a store-backed dry run reports `would_be_id` / `would_be_ids`, never `id` / `ids`** (ANTS-4634)
+  ANTS-4508 established that a preview must not report the id under the real write's key — a caller reading one field takes it for a reservation, and nothing is reserved. That rename landed on the markdown branch only, so every migrated project, which takes the store branch, still got `id` back from a dry run. Reported by finbreak and reproduced directly. A test in roadmap_write_half had pinned the store branch to the old behaviour; it now asserts the new key and the absence of the old one.
+
 - **roadmap_log reports the status it just committed, not the one it read** (ANTS-4466)
   On a store-backed project, `op:"annotate"` described the stale file it
   read rather than the result the render had committed — so after a

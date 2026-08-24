@@ -725,9 +725,17 @@ TEST(RoadmapWriteHalf, Inv7DryRunCommitsNothing) {
     ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
         << resp.value(QStringLiteral("error")).toString().toStdString();
     EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
-    EXPECT_EQ(resp.value(QStringLiteral("id")).toString(),
+    // ANTS-4634 — the key moved, the invariant did not: a preview still tells
+    // you the id a real call would allocate, now under `would_be_id`. This
+    // assertion read `id` and was the reason the store path kept emitting it
+    // after ANTS-4508 forbade exactly that — the rule reached the markdown
+    // branch, and a test here held the store branch at the old behaviour.
+    EXPECT_EQ(resp.value(QStringLiteral("would_be_id")).toString(),
               QStringLiteral("DEMO-0008"))
         << "a preview still reports the id a real call would allocate";
+    EXPECT_FALSE(resp.contains(QStringLiteral("id")))
+        << "and not under `id`, which a caller reading one field takes for a "
+           "reservation (ANTS-4508)";
 
     {
         auto store = openStore(RoadmapStore::Access::Interactive);

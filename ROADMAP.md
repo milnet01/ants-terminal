@@ -43331,6 +43331,493 @@ its reporter measured.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-24.
   Lanes: mcp, roadmap-store.
 
+### Ants-MCP feedback from CC sessions — 2026-08-24 second triage
+
+Seven feedback files carried pending input after the morning drain:
+claude_config (7 findings), Album_Builder (3), finbreak (3, two of them
+recovered from suspected_untagged), Games_Hub (1), Charls_Site (1), OneUp (1),
+LocalWebServerManager (1). Sixteen items after dedup — invariant_check's
+path-form miss was reported independently by two projects, and the doc_citations
+attribution findings from claude_config and finbreak are adjacent rules on one
+resolver.
+
+Three were reproduced directly in this session rather than taken on report.
+
+- ✅ [ANTS-4634] **Store-path dry run reports the id under `id`, not `would_be_id` — ANTS-4508 landed on the markdown path only.**
+  REPRODUCED, not taken on report. A live `op:"append" dry_run:true` against
+  this project returned `{"dry_run":true,"id":"ANTS-4634",...}` — the very key
+  the schema forbids.
+
+  CAUSE. ANTS-4508 renamed the preview key on the MARKDOWN branch only:
+  `remotecontrol_roadmap_log.cpp:969` emits `would_be_id` inside `if (dryRun)`,
+  and the tests in `roadmap_log_prefix_and_dry_run` cover exactly that branch
+  via `cmdRoadmapLogAppendForTest` on a markdown fixture. The STORE branch at
+  `remotecontrol_roadmap_log.cpp:503` sets `env["id"] = idStr` unconditionally.
+  Same split in the batch path: `remotecontrol_roadmap_log_batch.cpp:2499`
+  sets `ids` where the markdown branch at :2603 sets `would_be_ids`.
+
+  WHY IT SURVIVED A SHIPPED ITEM. Every migrated project — all 14 — takes the
+  store branch, so the fix covers the path almost nobody runs and misses the
+  path everybody runs. The test suite is green because it exercises the
+  markdown fixture.
+
+  FIX. Emit `would_be_id` / `would_be_ids` on the store branch under dryRun and
+  withhold `id` / `ids` there, matching the markdown branch. Add a store-backed
+  case to the existing suite so the two branches are asserted together — the
+  absent coverage is the actual defect.
+  Resolved (2026-08-24): `would_be_id` / `would_be_ids` now ride the STORE branch's dry run too, and `id` / `ids` are withheld there — matching the markdown branch and the schema text ANTS-4508 wrote. Both the singular (remotecontrol_roadmap_log.cpp) and batch (remotecontrol_roadmap_log_batch.cpp) store envelopes.
+  The reason it survived a shipped item was a TEST holding the old behaviour: roadmap_write_half's Inv7DryRunCommitsNothing asserted `resp["id"] == DEMO-0008` on the store path, so the branch was pinned to exactly what ANTS-4508 forbade. That assertion now reads would_be_id and additionally asserts `id` is absent.
+  New suite roadmap_log_store_preview_and_counter (5 cases, INV-1..INV-5) covers the store branch, which had none — the absent coverage was the actual defect. Verified red before the fix: INV-1, INV-3 and INV-5 fail, INV-2 and INV-4 pass, which is the correct signature of "pre-fix always emitted id/ids".
+  **Layman:** A preview that says "this would be number 4634" uses the same wording as a real allocation, so a session can mistake a guess for a reservation.
+  Kind: fix.
+  Source: finbreak-2026-08-24, reproduced in-session.
+  Lanes: mcp, roadmap.
+
+- ✅ [ANTS-4635] **Store-path append_batch never reconciles .roadmap-counter, so the cache drifts until the next single append repairs it.**
+  Games_Hub measured it from the caller side: three `append_batch` calls
+  allocated GHUB-0113..0118, after which `.roadmap-counter` still held 110.
+  The next `op:"append"` reported `counter_advanced_past:110,
+  counter_advanced_to:119` — the scan self-healed.
+
+  CONFIRMED IN SOURCE. The singular store branch carries ANTS-4141 part 2's
+  reconciliation block (`remotecontrol_roadmap_log.cpp`, guarded
+  `!dryRun && !useStablePrefix && allocated > 0 && QFile::exists(counterPath)`).
+  The batch store branch has no such block, and its own comment says so:
+  "No `lines` / `bytes` / `counter_advanced_to`". So the singular path keeps
+  the cache in step and the batch path does not.
+
+  WHY IT MATTERS DESPITE THE SELF-HEAL. The reporter is right that nothing was
+  lost. The exposure is that anything reading `.roadmap-counter` to predict the
+  next id — a script, a hook, a fresh clone, an un-migrated sibling — gets a
+  wrong answer that looks right, and two concurrent sessions both start from
+  the stale value. The envelope also carries no counter fields at all on the
+  batch path, so a caller cannot observe the difference without a follow-up
+  call.
+
+  FIX. Lift the singular path's reconciliation into a shared helper and call it
+  from both, best-effort and upward-only exactly as it is today. Interacts with
+  ANTS-4632 (retire the counter): if that lands first this becomes moot, so
+  sequence them rather than doing both.
+  Resolved (2026-08-24): the `.roadmap-counter` reconciliation ANTS-4141 part 2 gave op:append is now shared with op:append_batch's store branch, which never had it. Lifted into rcdetail::rcRoadmapReconcileCounterCache() rather than copied, so the best-effort / upward-only / only-if-the-file-exists reasoning lives in one place (declared in remotecontrol_internal.h).
+  The batch envelope now reports `counter_advanced_to` / `counter_advanced_past` when the cache moves, which Games_Hub noted it could not observe at all without a follow-up call.
+  Covered by roadmap_log_store_preview_and_counter INV-5, verified red before the fix.
+  Note for ANTS-4632: if the counter is retired, INV-5 goes with it. Until then the two paths agree.
+  **Layman:** Filing several roadmap items at once leaves a small bookkeeping file stale; the next single filing quietly fixes it.
+  Kind: fix.
+  Source: Games_Hub-2026-08-24, confirmed against source.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-4636] **store_high_water reads 0 and file_ahead_of_store fires when a project's id prefix does not match its directory leaf.**
+  Album_Builder migrated cleanly — 357 items, store_backed:true, source:"store",
+  and a dry-run append correctly allocated MUSI-0358. Yet every roadmap_query
+  reply carries `store_high_water:0` beside `file_ahead_of_store:true` and
+  `file_highest_id:357`. Read together those three say the store is empty and
+  the markdown is ahead of it, i.e. the migration did not land.
+
+  MECHANISM, named by the reporter and matching ANTS-4633's hypothesis exactly.
+  The project's ids use the `MUSI-` prefix, minted when the directory was
+  Music_Production; the leaf is now Album_Builder. A high-water lookup keyed on
+  a prefix re-derived from the directory name looks for `ALBU-` rows, finds
+  none, and returns 0 — while the file scan finds 357, and 357 > 0 fires the
+  flag.
+
+  THIS CLOSES ANTS-4633's OPEN QUESTION. That item observed the same flag
+  firing at baseline on a single-item fixture whose display name was "Demo"
+  and slug "demo" against `DEMO-NNNN` ids, guessed the same cause, and could
+  not tell whether it was a fixture artefact because it did not reproduce on
+  Ants_Terminal. It does not reproduce here because this project's leaf and
+  prefix happen to agree. Album_Builder is the same defect on a real project
+  with 357 items — so it is general, and ANTS-4633 should be folded into this
+  item rather than chased separately.
+
+  FIX. Key the high-water mark on the ids actually stored for `project_id`
+  rather than on a prefix re-derived from the path — the store knows its own
+  id_prefix rows. Check `rlStoreCounterPrefix` and `idHighWater` together.
+  A renamed project is the case that breaks it, and renames are not rare.
+  **Layman:** A project renamed since its roadmap ids were minted is told its migration did not work, when it did.
+  Kind: fix.
+  Source: Album_Builder-2026-08-24; supersedes the fixture-artefact reading of ANTS-4633.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-4637] **doc_citations quotes: skip a quotation sitting in a loop-log table row — 271 of 520 in one corpus (52%) are historical by design.**
+  A converged review document records each loop in a table row, and those rows
+  quote the wording a fix REPLACED. `not_found` is the correct and permanent
+  answer for every one of them. Fenced quotations are already skipped as
+  specimens for exactly this reason; a loop-log row is the same class.
+
+  MEASURED over standards/**, skills/**, CLAUDE.md and draft/skills/README.md:
+  520 unfenced quotations >=30 chars, 271 of them in a loop-log row — a table
+  row whose first two cells are a loop number and an ISO date. Repro:
+  `doc_citations {path:"standards/commits.md", quotes:true}` — six of ten
+  checked quotes come from lines 652-657, all loop-log rows.
+
+  WHY IT BLOCKS. This is the reason check-doc-facts still hand-rolls its
+  `quotes` check. A checker whose output is majority false-stale stops being
+  read — the ANTS-4085 argument for `foreign_path`. It also actively harms:
+  CLAUDE.md forbids back-filling a loop log, so a session acting on a
+  `not_found` there destroys the audit trail the row is kept for.
+
+  FIX. Skip a quotation whose line is a table row matching the loop-log shape,
+  and REPORT the skip — a `skipped` bucket in `quote_counts`, so a zero is
+  distinguishable from nothing-to-check. Reporting the skip matters as much as
+  performing it.
+  **Layman:** The quote checker flags wording that a review deliberately replaced, so most of what it reports is not a problem.
+  Kind: fix.
+  Source: claude_config-2026-08-24.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4638] **doc_citations quotes: widen attribution from the line to the paragraph — coverage goes from 26 to 111 of 249 checkable quotations.**
+  Attribution requires a backticked `*.md` path on the SAME LINE as the
+  quotation. This corpus hard-wraps at ~70 columns, so the path and the
+  quotation it attributes routinely land on adjacent lines of one sentence.
+  The mode's own strength — folding whitespace INCLUDING NEWLINES so a
+  hard-wrapped quotation still matches — is defeated by the same wrapping on
+  the attribution side.
+
+  MEASURED, excluding the 271 loop-log rows of the sibling item: of 249
+  remaining quotations, 26 carry a backticked .md path on their own line, 85
+  carry one elsewhere in the same paragraph and nowhere on their own line, and
+  138 carry none in the paragraph. So same-line reaches ~10% of what is
+  checkable; same-paragraph would reach ~45%.
+
+  Those 85 ARE attributed, in prose a human reads as attributed, and the verb
+  reports `no_target` on all of them — which is silent, and looks like a clean
+  pass rather than like the check not running.
+
+  FIX. Search the blank-line-delimited paragraph, nearest-preceding path
+  winning; keep same-line as the tie-break so today's behaviour stays a strict
+  subset. Belongs in the verb: a caller would have to re-implement resolution
+  and whitespace folding, which is the duplication ANTS-4386 removed.
+  **Layman:** The checker only links a quote to its source when both sit on one line, which hard-wrapped prose almost never does.
+  Kind: enhancement.
+  Source: claude_config-2026-08-24.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4639] **doc_citations quotes: resolve a bare basename against the scanned document's own directory, and stop making non-document tokens targets.**
+  `standards/commits.md` attributes quotations to `releases.md` and
+  `coding.md`; both exist as `standards/releases.md` and `standards/coding.md`.
+  The reply carries `target:"releases.md"` — so the attribution parsed —
+  alongside `status:"no_target"`. Resolution appears not to try the scanned
+  document's OWN directory.
+
+  Repro: `doc_citations {caller_cwd:"/home/ants/.claude",
+  path:"standards/commits.md", quotes:true}` → entries at lines 653 and 655,
+  targets `coding.md` / `releases.md`, status `no_target`, while both files
+  resolve under `standards/`.
+
+  THREE PARTS, and they are separable.
+  1. Resolve a bare basename against the scanned document's directory before
+     the project root and the basename index — a sibling cite is the commonest
+     form in a standards directory.
+  2. Require an attributed token to end in a document extension before it
+     becomes a `target`. The same call turns `core.hooksPath` — a git config
+     key in backticks — into a target with status `no_target`.
+  3. Where a target parses but does not resolve, report `target_unresolved`
+     rather than `no_target`. Those two mean opposite things to a caller: the
+     check did not run, versus the check ran and the quotation is stale.
+     Conflating them hides this bug and inflates the apparent no-target rate.
+  **Layman:** A quote pointing at a sibling document in the same folder is reported as having no source at all.
+  Kind: fix.
+  Source: claude_config-2026-08-24.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4640] **doc_citations quotes: a table row's LAST backticked path wins attribution, which is the wrong one in an impact table.**
+  In a markdown table the whole row is one line, and a row routinely carries
+  several backticked paths. Twice in one review loop a cross-document quotation
+  was attributed to the wrong file and came back `not_found` against text that
+  is present and exact — a row whose first cell was `docs/specs/FIBR-0014.md`
+  resolved against `backup.py`, named later in the same row.
+
+  The reporter's workaround was to reorder each cell so the SOURCE path came
+  last. That distorts the prose: the natural sentence names the source first
+  and the affected module second, which is precisely the convention a
+  cross-document impact table follows.
+
+  WHY IT IS THE EXPENSIVE DIRECTION. A false `not_found` on a correct
+  quotation invites a session to "correct" a passage that was already right —
+  and an impact table is where a spec records what else must change, so every
+  row is multi-path by construction.
+
+  FIX. Prefer the FIRST backticked path in a table cell, or the row's first
+  cell, which is the row's subject by convention. Better still: where a line
+  carries more than one resolvable path, report `ambiguous` with the candidate
+  list rather than guessing — the envelope already has that status for an
+  ambiguous basename. Sibling of the attribution items above; same resolver.
+  **Layman:** In a table listing which documents a change affects, the quote gets checked against the affected file instead of the source.
+  Kind: fix.
+  Source: finbreak-2026-08-24 (recovered from suspected_untagged).
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4641] **doc_integrity heading_sequence: suppress a numbering gap the document itself accounts for, and say that it did.**
+  `skills/review-tests/references/dimensions.md` numbers its dimensions 1, 4,
+  5-9, 11, 12, 14. The gaps are not drift: the file carries a
+  `## Retired dimensions` section naming 2, 3, 10 and 13, giving the reason for
+  each, and stating outright that the numbers are NOT reused — because a reader
+  meeting dimension 11 in an old report must still be able to look it up.
+
+  Repro: `doc_integrity {caller_cwd:"/home/ants/.claude",
+  path:"skills/review-tests/references/dimensions.md"}` → three
+  heading_sequence findings. The explanation sits ~100 lines below the last
+  flagged heading, in the same file.
+
+  IMPACT. Three of that tree's 14 findings, permanently, on a correct file. And
+  the obvious remedy — renumber to close the gaps — is the one action the
+  document forbids, so a session acting on the finding damages the file.
+
+  FIX. Suppress a gap whose missing number is accounted for in the same
+  document. Cheapest reliable signal: a heading beginning Retired / Removed /
+  Withdrawn followed by a list naming the numbers. A narrower alternative the
+  reporter prefers is an explicit opt-in marker the document carries, which
+  avoids sniffing prose. Either way report it — `heading_sequence_suppressed:
+  [2,3,10,13]` — so a justified gap is distinguishable from an unchecked one.
+  **Layman:** A file that explains why it skips numbers 2, 3, 10 and 13 still gets flagged for skipping them.
+  Kind: fix.
+  Source: claude_config-2026-08-24.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4642] **doc_integrity broken_link: skip a link whose enclosing span is a verbatim quotation of another document.**
+  A dated review record quotes two standards word for word, and those standards
+  contain markdown links to their siblings. The links were correct in
+  `standards/` and cannot resolve from the record's `docs/` — but rewriting
+  them would falsify the quotation, which is the whole point of the record.
+
+  Repro: `doc_integrity {caller_cwd:"/home/ants/.claude",
+  path:"docs/review-contract-set-first-run-2026-08-14.md"}` → two broken_link
+  findings at lines 121 and 123, targets `releases.md` and `commits.md`, both
+  inside `*"..."*` quotation spans, both resolving under `standards/`.
+
+  UNFIXABLE AS REPORTED — every remedy either breaks the quotation or leaves
+  the finding standing. It will recur on every review record that quotes a
+  cross-referencing document, which on that tree is most of them. Fenced
+  content is already skipped on exactly this ground: a specimen is not a claim,
+  and neither is a quotation.
+
+  FIX. Skip a link whose whole enclosing span is a quotation. Detecting the
+  span is the work: `*"..."*`, `**"..."**`, plain `"..."` above some minimum
+  length, and a `>` blockquote are the forms in use. If a general rule is too
+  loose, a per-finding `in_quotation:true` marker still lets a caller decide,
+  which beats no signal. Shares its premise with the loop-log item above — both
+  are the verb needing to know a span is quoted text rather than the
+  document's own voice.
+  **Layman:** Quoting another document word for word drags its links along, and the checker reports them as broken.
+  Kind: fix.
+  Source: claude_config-2026-08-24.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4643] **doc_integrity broken_link: a `~/`-prefixed target is resolved as a relative path and reported as a missing file.**
+  Eight findings on one tree are links of the form
+  `[SKILL.md](~/.claude/skills/app-workflow/SKILL.md)` inside scaffolding
+  templates. The target exists at that absolute path; the checker resolves
+  `~/...` relative to the document and reports it missing. Repro:
+  `doc_integrity {caller_cwd:"/home/ants/.claude",
+  path:"skills/app-workflow/templates"}` — eight of that tree's 14 findings.
+
+  LOWER CONFIDENCE THAN ITS SIBLINGS, and the reporter says so: `~/` is
+  arguably not a valid markdown link target at all — a browser would treat it
+  as relative too — so these documents may simply be wrong and the report may
+  be correct behaviour.
+
+  WHAT IS WRONG UNDER EITHER READING is the message. It says the file does not
+  exist, which sends a session looking for a file that is present. So: if a
+  `~/` target is a defect, say that ("`~/` is not a resolvable link target");
+  if it is not, expand `~` before resolving. Decide which, then make the
+  message match — that part is not a judgement call.
+  **Layman:** Links written with the home-directory shortcut are reported as pointing at nothing, with a message that sends you looking for a file that is there.
+  Kind: fix.
+  Source: claude_config-2026-08-24.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4644] **invariant_check: a path-form miss returns a confident zero, and the form the description prescribes is the one that matches nothing.**
+  TWO PROJECTS REPORTED THIS INDEPENDENTLY on the same day, which is the
+  strongest signal in this batch.
+
+  The verb substring-matches each path in `files[]` against spec bodies. Its
+  description says to pass a project-relative path — but a spec cites the
+  module the way a HUMAN writes it. finbreak: `src/finbreak/services/auth.py`
+  (the prescribed form) → `matched_count:0, specs_scanned:64`; `services/auth.py`
+  (the form that works) → 16 matched specs including FIBR-0014 with 14
+  invariants. claude_config: `skills/app-workflow/SKILL.md` → 0;
+  `app-workflow/SKILL.md` → the governing spec.
+
+  WHY IT IS EXPENSIVE. write-code Phase 0 is the one place the answer is
+  load-bearing, and `matched_count:0` beside `specs_scanned:64` reads as a
+  definitive "nothing governs this file" — the guidance for an empty result
+  then sends the reader to ADRs, further from the spec that was there. finbreak
+  would have edited a vault migration without INV-7 ("migration is atomic") or
+  INV-13 in hand, the two invariants the edit turned on. It was caught only
+  because that session already had the spec from its task brief.
+
+  `scanned_nothing` does not fire, because specs WERE scanned. That the verb
+  already distinguishes "scanned nothing" from "found nothing" is the argument
+  that it can distinguish this third case too.
+
+  FIX. On `matched_count:0` with `specs_scanned>0`, retry internally with the
+  path's suffixes, stripping leading components one at a time, and echo which
+  form matched as `matched_as`. A bare-basename hit risks the collisions the
+  description warns about — gate it behind the fuller forms failing, or report
+  it at lower confidence rather than silently. Failing all that, a `hint` on
+  every zero-match reply naming the path-form hazard is the floor.
+
+  NOT COVERED BY THIS ITEM: a spec that names the module only as a symbol
+  (`vault_migration.resume`), where no path form finds it. Same reply, but no
+  suffix retry reaches it.
+  **Layman:** Asking "what rules govern this file?" answers "none" when the answer is sixteen, because the file was named slightly differently in the rules.
+  Kind: fix.
+  Source: finbreak-2026-08-24 + claude_config-2026-08-24 (two projects, independently).
+  Lanes: mcp, specs.
+
+- 📋 [ANTS-4645] **invariant_check answers from docs/specs only, and nothing in the envelope says the ROADMAP was not consulted.**
+  DISTINCT FROM THE PATH-FORM ITEM ABOVE, and the two fire in different
+  conditions: that one is a zero-match that should have matched, this one is a
+  correct non-zero answer to a NARROWER question than the caller asked.
+
+  The envelope — matched_specs, invariants_count, specs_scanned, total_scanned
+  — is confident and complete-looking. Nothing in it says the ROADMAP was
+  outside the scan. LWSM built a per-project browser picker as a new item and
+  found afterwards that LWSM-1055 had specified the same feature on 2026-08-06:
+  the same two design constraints independently re-derived, plus a third
+  acceptance criterion missed entirely (an uninstalled browser must fall back
+  with a VISIBLE message). `invariant_check` on registry.py had returned 4
+  matched specs and looked like a complete answer to "is this under contract?".
+
+  The reporter notes honestly that `roadmap_query query="browser"` would have
+  found it in one call and they did not make that call — so half of this is a
+  process miss. The half that is the verb's is that it does not signal its own
+  scope.
+
+  FIX. Cheapest is a hint rather than a behaviour change: carry a one-line
+  pointer that the scan covered specs only, and that roadmap coverage is
+  task_priors / roadmap_query. That mirrors the `scanned_nothing` + `specs_dir`
+  + hint shape the verb already has. An optional `include_roadmap:true` that
+  also substring-matches active bullets would be stronger and is a bigger
+  change — do the hint first.
+  **Layman:** The contract check does not look at the roadmap, so a feature already planned there can be built again from scratch.
+  Kind: enhancement.
+  Source: LocalWebServerManager-2026-08-24.
+  Lanes: mcp, specs.
+
+- 📋 [ANTS-4646] **feedback_log has no op to retire a v1 tracking heading on a migrated file, and none to set the file's title.**
+  Two small gaps hit in one session.
+
+  (a) A legacy v1 heading `## Tracked in ROADMAP (detail + status there):
+  ANTS-2052, ANTS-3400, ...` survives migrate_v2, which leaves v1 tracking
+  content in place rather than converting it. All six ids are now shipped, but
+  `op:append_tracking` refuses `not_v1`, and `op:assign_id` needs a `### `
+  finding heading with a `**Proposed ID:**` line, which those ids do not have.
+  So a contributor asked to mark shipped items complete has no verb for them,
+  and the stale heading stays on the file forever.
+
+  Mostly cosmetic now that `feedback_query` resolves `mapped_id_status` live —
+  which is the better design — but a contributor reading only the file sees six
+  ids with no status.
+
+  (b) Renaming a project means renaming both the file and its H1.
+  `feedback_log` derives the FILENAME from caller_cwd's leaf correctly, but no
+  op in the enum writes the title, so it had to be hand-edited — against the
+  file's own "do not hand-edit" instruction. A rename is exactly the moment a
+  session is most likely to get that wrong.
+
+  FIX. (a) Either have migrate_v2 convert a v1 tracking id list into per-id
+  stubs `assign_id` can target, or add a maintainer op that retires such a
+  heading once every id in it resolves ✅ — the gate `compact_resolved` already
+  applies. (b) A small `op:"set_title"`, or a `title` argument honoured on any
+  write.
+  **Layman:** After renaming a project there is no supported way to fix its feedback file's title, so it has to be hand-edited against its own instructions.
+  Kind: enhancement.
+  Source: Album_Builder-2026-08-24.
+  Lanes: mcp, feedback.
+
+- 📋 [ANTS-4647] **Omitted-path feedback derivation strands a NESTED project's file where no maintainer sweep globs it.**
+  The derivation is "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the shared root
+  (parent of caller_cwd)" — correct for a project sitting directly under the
+  shared root, which is every project the convention was designed around. It is
+  wrong one level deeper. Pressless is its own git repo inside the Charls_Site
+  workspace, so the parent of caller_cwd is Charls_Site, not the shared root.
+
+  Repro (dry run, verified against 0.7.106): `feedback_log
+  {op:"append_finding", caller_cwd:".../Charls_Site/Pressless"}` → ok:true,
+  path_derived:true, created:true, path
+  `.../Charls_Site/Pressless_Ants_MCP_Feedback.md`. All 20 real feedback files
+  sit directly at the shared root.
+
+  THIS IS THE FAILURE ANTS-4613 ALREADY REFUSES FOR A DOT-LEAF, for the
+  identical stated reason: the derived name can never match the
+  `*_Ants_MCP_Feedback.md` glob at the shared root, so the file it creates is
+  one nobody would ever read. The dot-leaf case was closed by refusing with
+  candidates; the nested case still silently succeeds. It also splits the
+  record — Charls_Site already has a feedback file with four triaged findings,
+  and the derived file would start an empty parallel one for the same work.
+
+  Severity is bounded: passing `path` explicitly works, which is what that
+  session did.
+
+  FIX. Extend ANTS-4613's refusal — when the derived parent holds no file
+  matching the glob, refuse bad_args with `candidates` from walking up, plus a
+  hint naming the likeliest. Reuses that branch's code path, and a refusal
+  naming candidates cannot pick the wrong file. The reporter's alternative —
+  walk up to the nearest ancestor holding a feedback file and derive from the
+  project beneath it — guesses, and would have to report which ancestor it
+  chose. Prefer the refusal. Interacts with ANTS-4471's mcp_feedback_root,
+  which should be consulted before either.
+  **Layman:** A project inside another project files its feedback into a folder nobody reads, and is told it succeeded.
+  Kind: fix.
+  Source: Charls_Site-2026-08-24.
+  Lanes: mcp, feedback.
+
+- 📋 [ANTS-4648] **project_settings op:detect reports total_source_count:0 when the walk was skipped, where 0 reads as a measurement.**
+  On a project that already has `.ants/project.json`, detect returns
+  `suggestion.default_source_count: 0` and `suggestion.total_source_count: 0`
+  alongside `reason: "settings file present; 1 source_root(s) already declared
+  (.)"`. The counts are plain integers with no signal that the walk was
+  skipped. OneUp is a ~3000-line shell engine plus a 21-module Python package,
+  so a walk of source_roots `["."]` cannot legitimately return 0.
+
+  This is the same absent-vs-zero ambiguity the verb's own docs flag elsewhere
+  — a declared path that no longer resolves is DROPPED, indistinguishable from
+  never declared. Here the zero is indistinguishable from a real measurement of
+  nothing.
+
+  IMPACT IS LOW and the reporter says so, but it is the class of thing that
+  gets read as a measurement and repeated. The session doing the layout check
+  is told to read `declared`, `declared_missing[]` and `undeclared[]` — all
+  correct and useful here — while the counts beside them look taken and were
+  not. A session trusting `total_source_count` would "fix" a declaration that
+  is already right.
+
+  FIX. Omit the two count fields when the walk is skipped — absent reads as
+  not-computed, which is what `compact:true` already does for empties. Cheaper
+  than the alternative and matches how the envelope treats fields it has
+  nothing to say about. If they are kept, mark them: `counts_computed:false`,
+  or null rather than 0.
+  **Layman:** A project with thousands of lines of code is reported as containing none, because the count was never taken.
+  Kind: fix.
+  Source: OneUp-2026-08-24.
+  Lanes: mcp.
+
+- 📋 [ANTS-4649] **roadmap_migrate emits one inline note per defaulted field — 357 of them — duplicating its own defaulted_fields summary.**
+  On a 357-item roadmap, `roadmap_migrate` returned a `notes` array of 357
+  `{code:"field_defaulted", detail:"source", line:N, source_index:0}` objects —
+  roughly 6 KB — IN ADDITION to `defaulted_fields:{source:357}` and
+  `notes_count:357`, which already state the same fact in two fields. The array
+  is also `notes_truncated:true`, so it is neither complete nor summarisable.
+
+  Both the dry run and the real call emit it, so a careful caller who previews
+  first pays the cost twice — ~12 KB of context on a single mechanical fact.
+  The per-line detail is not actionable: the column is defaulted because the
+  legacy bullets never carried a `Source:` trailer, which is uniform across the
+  file rather than a per-line problem. Scales linearly, and is the single
+  biggest line item in an otherwise cheap verb.
+
+  FIX. Collapse repeated note codes — at most N examples per (code, detail)
+  pair plus a count: `{code:"field_defaulted", detail:"source", count:357,
+  sample_lines:[80,84,88]}`. `defaulted_fields` + `notes_count` already carry
+  the total, so the array only needs to be a sample. Gating the full array
+  behind an opt-in flag, the way include_body works, is the alternative.
+  **Layman:** Migrating a project prints the same message hundreds of times when one line and a count would do.
+  Kind: perf.
+  Source: Album_Builder-2026-08-24.
+  Lanes: mcp, roadmap.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
@@ -54862,7 +55349,7 @@ here.)
   Kind: chore.
   Source: user-request-2026-08-24.
 
-- 📋 [ANTS-4633] **file_ahead_of_store fires at baseline on a freshly migrated single-item fixture.**
+- ✅ [ANTS-4633] **file_ahead_of_store fires at baseline on a freshly migrated single-item fixture.**
   Observed while writing ANTS-4462's read-half tests, NOT chased down —
   filed so it is not lost.
 
@@ -54898,6 +55385,9 @@ here.)
 
   The ANTS-4462 test works around it rather than depending on it: it
   asserts the flag is UNCHANGED across a hand flip instead of absent.
+  Resolved (2026-08-24): the investigation is answered, and the answer is that it is NOT a fixture artefact. Album_Builder reported the same flag independently the same day on a real 357-item project: ids minted as `MUSI-` under the pre-rename folder Music_Production, directory leaf now Album_Builder, so a high-water lookup keyed on a prefix re-derived from the path finds no rows and returns 0 while the file scan finds 357. That is this item's own hypothesis, confirmed in the wild.
+  It does not reproduce on Ants_Terminal for the reason this item could not see from inside: here the leaf and the prefix happen to agree. A renamed project is the case that breaks it.
+  The fix is tracked as ANTS-4636, which carries both reports. Closing this rather than duplicating the work.
   **Layman:** A staleness warning appears on a small test project that has nothing wrong with it, which would teach people to ignore the warning.
   Kind: investigate.
   Source: in-session-2026-08-24.

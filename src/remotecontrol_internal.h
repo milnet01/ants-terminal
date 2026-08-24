@@ -179,6 +179,30 @@ bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QStri
 // what changelog_log's dry_run already documents for `bytes`. Callers get both
 // properties: the misleading name is gone, and the useful value is kept.
 void rcRoadmapWriteFields(QJsonObject &out, const RoadmapRender::Outcome &outcome, bool dryRun);
+// ANTS-4141 part 2 / ANTS-4635 — refresh the derived `.roadmap-counter` cache
+// after a STORE allocation, and report the move.
+//
+// Shared because it was inline in op:append and absent from op:append_batch, so
+// a batch left the cache stale until some later single append's scan repaired
+// it. Games_Hub measured three batches allocating GHUB-0113..0118 with the
+// counter still reading 110. Nothing was lost — the scan is a real safety net —
+// but anything that READS the counter to predict the next id (a script, a hook,
+// a fresh clone, an un-migrated sibling) got a wrong answer that looked right,
+// and two concurrent sessions would both start from the stale value.
+//
+// BEST EFFORT, deliberately: the item is committed and the files rendered by
+// the time this runs, so there is nothing to roll back, and failing a completed
+// write because a CACHE could not be refreshed would turn a success into an
+// error. The markdown path treats the same failure as fatal because there the
+// counter IS the allocation source and the write can still be undone.
+//
+// Only when the file already exists — a project with no counter has nothing
+// drifting, and creating one here would hand a stable-id or counter-less
+// project a file it never had. Upward only, as raiseIdHighWater() is.
+//
+// The caller owns the !dryRun / !useStablePrefix guards: those are about the
+// caller's mode, not about the cache.
+void rcRoadmapReconcileCounterCache(QJsonObject &env, const QString &counterPath, qint64 allocated);
 // ANTS-3822 § 2.3.1 — one operation's history state, created at the top of
 // mutate() and threaded through everything that writes an item column.
 //

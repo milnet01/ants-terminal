@@ -1722,6 +1722,7 @@ if(ANTS_TESTS)
                 # scrapes. Shares workspace_search's extracted rg runner.
                 tests/features/cited_by/test_cited_by.cpp
                 tests/features/roadmap_source_witness/test_roadmap_source_witness.cpp
+                tests/features/roadmap_log_store_preview_and_counter/test_roadmap_log_store_preview_and_counter.cpp
                 # ANTS-1882 roadmap_query per-section ETag invariance.
                 tests/features/roadmap_query_per_section_etag/test_roadmap_query_per_section_etag.cpp
                 # ANTS-1880 spec_query + project_layout phases-dir recognition.
