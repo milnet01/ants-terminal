@@ -246,6 +246,21 @@ SIGTERM a push mid-ninja.
   a row in another project pointing into this one would otherwise dangle.
   **Back it up with sqlite3 `.backup`, never `cp`** — the store runs in WAL
   and a live Ants holds a connection.
+  **A `kSchemaVersion` bump is a ONE-WAY DOOR across every project on the
+  machine** (ANTS-4462, 2026-08-24). `RoadmapStore::open()` refuses outright
+  when the store's `user_version` exceeds the build's — "store schema N is
+  newer than this build's M", returning false, which makes every roadmap verb
+  refuse. Because the store is machine-global, the FIRST binary to upgrade it
+  locks every older build out of every project in it: an older AppImage, a
+  Patron RC, another checkout still on the previous version. So a new column
+  is never merely additive here, whatever `ALTER TABLE ... DEFAULT` suggests.
+  Before reaching for a rung, ask whether the value can be DERIVED instead —
+  ANTS-4462 wanted a `store_synced_at` column and got the same answer by
+  rendering and comparing, which needed no migration, cost nothing to
+  withdraw, and was strictly more correct (a stored stamp records what the
+  store *believes* it published, so an edit after that stamp is invisible to
+  it). Measure first: one render of a 2,267-item project is ~204 ms, which is
+  too slow per-query and perfectly fine for an opt-in check.
 - Per-project layout is optionally declared in a repo-committed
   `<root>/.ants/project.json` (ANTS-2160, `src/projectsettings.cpp`):
   `source_roots`/`test_roots` (codebase_index), `docs_dir`,
