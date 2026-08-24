@@ -32602,6 +32602,17 @@ against current source before filing.
   where the count is 585 and a batch of 585 hand-written summaries is not a
   remedy. The whole-project-vs-touched-items question still has to be
   settled for that, and it is now cleanly separable from this deadlock.
+  Escape precondition found 2026-08-24, filed as ANTS-4628 rather than fixed
+  here. The flip_batch escape this item established -- and which
+  src/roadmapwrite.cpp's refusal message now names -- has an unstated
+  precondition: the offending ids must already be present in ROADMAP.md.
+  flip_batch locates in the markdown like every other write op, so on a
+  project whose file carries none of its ids the escape refuses
+  bullet_not_found and the deadlock holds. Measured on Music_Production, where
+  both locators failed. It works on MAME_Curator because that file does carry
+  its ids. The message is right for every project measured except that one;
+  correcting it belongs with whichever remedy ANTS-4628 takes, since two of
+  the three would make the precondition moot.
 
 - 📋 [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
   The `render_gate_unmet` row says: "Remedy is to fill in the named layman lines, which `annotate` / `amend_body` can do one at a time."
@@ -54402,10 +54413,99 @@ here.)
   Not urgent -- Music_Production has 4 gate offenders and is on ANTS-4434's
   blocked list already -- but the second branch, if true, is a silent
   misroute rather than a data-entry gap, and it is cheap to settle.
+  Settled 2026-08-24 by measurement. NEITHER candidate in the body above is
+  the cause, and the second is dead outright.
+
+  The prefix-bound hypothesis is false. `detectionPrefix()` caps at 300
+  non-blank lines and 1 MiB (`src/roadmapsource.h:73-74`); the file's first
+  emoji bullet is line 78 at byte offset 10073. It is nowhere near either
+  bound. The benign branch is false too: `roadmap_query id=MUSI-0354` against
+  that root answers `found:true` with `source:"store"`, so the project IS
+  store-served and `migratedProject()` does not decline it.
+
+  The real cause is a third thing neither branch considered: the WRITE path
+  locates its bullet in the MARKDOWN before it dispatches to the store.
+  `applyAntsV1FlipResult` (src/remotecontrol_roadmap_log.cpp:1367) does put
+  the store dispatch at the top of the lambda, but the lambda is only
+  CALLED with a matchIdx already found by walking the file. Its own comment
+  states the premise it rests on -- "on a migrated project the file is the
+  render's own output, so the same walk finds the same bullet". That premise
+  holds only once the file has been rendered since migration. Music_Production
+  never has been: all 357 of its ids are `id_origin='synthesised'` and its
+  file carries zero of them.
+
+  So the finding is the benign branch's CONSEQUENCE without its cause -- a
+  store id is unaddressable through the verb, and nothing tells the caller
+  why.
+
+  Worse, it is circular, and that half is filed separately. Every write op
+  locates in markdown, so all refuse; `op:render` is the one op that would
+  publish the ids into the file, and it is refused by the Layman gate on the
+  same four items; the gate can only be satisfied by a write op. Measured:
+  annotate refuses bullet_not_found, flip_batch refuses both locators,
+  op:render dry run refuses render_gate_unmet naming MUSI-0354..0357.
+
+  ANTS-4434's escape does NOT cover this. It works on MAME_Curator because
+  that project's file already carries its ids (`mame-curator-NNNN`); its
+  unstated precondition is exactly that.
+
+  Scope, measured across all 16 registered projects: Music_Production is the
+  only one in this class. Vestige has 1026 store items against 74 file ids
+  but is github-task-list and answers `source:"markdown"`, so it is the
+  ANTS-4491 case, not this one. Every other project's file carries its own
+  ids.
   **Layman:** A project's stored roadmap items and its roadmap file have drifted apart, and asking for one of the stored items says it does not exist.
   Kind: investigate.
   Source: in-session-2026-08-23.
   Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4628] **A migrated project whose file was never rendered is write-locked, and the render that would free it is gate-refused.**
+  Split out of ANTS-4627, whose annotation carries the diagnosis. This is the
+  half that is a live breakage rather than an investigation.
+
+  Every roadmap_log write op locates its bullet by walking the MARKDOWN, then
+  dispatches to the store. On a project migrated with synthesised ids whose
+  file has never been rendered, the file carries none of those ids, so every
+  locator refuses bullet_not_found. `op:render` (ANTS-4614) is the one op that
+  would publish the ids into the file and break the cycle -- and it runs the
+  Layman gate, which refuses on open items carrying no summary. Satisfying the
+  gate needs a write op. Circular.
+
+  Measured on Music_Production (project_id 14, ants-v1, 357 items, all
+  `id_origin='synthesised'`, zero own-prefix ids in the file):
+
+    op:annotate    MUSI-0354          -> bullet_not_found
+    op:flip_batch  MUSI-0354 + 0355   -> both locators bullet_not_found
+    op:render      dry run            -> render_gate_unmet, MUSI-0354..0357
+
+  ANTS-4434's flip_batch escape does not reach it, for the reason above: that
+  escape needs the ids to be in the file already, which is precisely what is
+  missing. No MCP call breaks the cycle. The only routes out today are a code
+  change or a direct UPDATE against the store, outside the verb surface.
+
+  Only Music_Production is affected today (all 16 projects checked). The class
+  is general though: any ants-v1 project migrated with synthesised ids and
+  never rendered lands here, and a bulk convert path such as ANTS-4491 would
+  create more of them.
+
+  Three candidate remedies, not chosen -- the second overlaps the standing
+  open question about whether the Layman gate should be whole-project or
+  touched-items-only, so this should not be settled unilaterally.
+
+    1. Dispatch to the store BEFORE locating in markdown, so a store-served
+       project is located against the store and the file's staleness stops
+       mattering. Addresses the cause; widest blast radius.
+    2. Narrow the gate to the items a write touches. `op:render` touches
+       nothing semantically, so a render would publish and the ids would
+       appear. Cheapest, and it is the recommendation already on record for
+       the separate question.
+    3. Exempt `op:render` from the gate specifically, on the grounds that it
+       makes no semantic change. Narrowest, but it weakens ANTS-4614's stated
+       design -- that op deliberately runs every gate so it cannot become a
+       way around them.
+  **Layman:** One project's roadmap can no longer be edited at all: the tidy-up that would fix it is blocked by a rule that only an edit can satisfy.
+  Kind: fix.
+  Source: in-session-2026-08-24.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
