@@ -184,6 +184,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log op:"add" double-wraps a summary that already carries its own emphasis or id.** (ANTS-4629)
+  Writing a changelog entry whose text already carried bold or its own
+  reference number produced a mangled line, and the reply gave no sign of
+  it. That is now refused with an explanation, and every write reports the
+  line it actually wrote.
+
 - **`render_gate_unmet` now names a remedy that works — repair every offender in one `flip_batch`** (ANTS-4434)
   The render's Layman gate is per project and is evaluated after the
   mutation, so repairing one item at a time is refused by whichever

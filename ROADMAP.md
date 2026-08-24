@@ -43177,7 +43177,7 @@ were reproduced against the running server (0.7.106, build ecdaed8a) before
 filing rather than taken from the reports, and one turned out to be worse than
 its reporter measured.
 
-- 📋 [ANTS-4629] **changelog_log op:"add" double-wraps a summary that already carries its own emphasis or id.**
+- ✅ [ANTS-4629] **changelog_log op:"add" double-wraps a summary that already carries its own emphasis or id.**
   REPRODUCED 2026-08-24 against 0.7.106 (build ecdaed8a), byte-identical to
   the report:
 
@@ -43211,6 +43211,22 @@ its reporter measured.
 
   Whichever is taken, op:"add_batch" needs it as well: these went in as a
   batch, and its per-entry `skipped[]` is already the right shape.
+  Resolved 2026-08-24. Both halves of the report taken, and the second is the
+  one that generalises.
+
+  `bad_summary` refuses a summary starting with `**` or ending with an id in
+  parentheses. Refusal rather than normalisation, which was the reporter's own
+  first preference: both forms are unambiguously the caller doing the verb's
+  job, and a retry costs less than a defect that ships. Under `add_batch` it is
+  a per-entry skip, because the live case went in as a batch. A summary the verb
+  derives itself from a roadmap headline is never checked.
+
+  `bullet` is now echoed on the real write path, not only under `dry_run` — the
+  ANTS-4374 shape, and what makes any future instance of this class visible at
+  the call site rather than days later.
+
+  Shared helper so the two paths cannot drift. Taxonomy row and the verb's own
+  refusal list updated. Suite green.
   **Layman:** Writing a changelog entry can silently produce a mangled line, and nothing in the reply says so.
   Kind: fix.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-24.
