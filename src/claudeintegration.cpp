@@ -2494,8 +2494,21 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject maxBodyProp;
                     maxBodyProp["type"] = "integer";
                     maxBodyProp["description"] = QStringLiteral(
-                        "Max body bytes for a TARGETED id=/ids= fetch "
-                        "(clamped [2000, 16384]). ANTS-4091 — the targeted "
+                        "Max body bytes for a TARGETED id=/ids= fetch. "
+                        "ANTS-4630 — the ceiling depends on how many ids you "
+                        "named: a fetch naming ONE id clamps to [2000, "
+                        "1048576] and so can read a body of any realistic "
+                        "size WHOLE, middle included; a wider ids= fetch "
+                        "still clamps to [2000, 16384] so one call cannot "
+                        "pull N oversized bodies inline. Before that fix the "
+                        "ceiling was 16384 everywhere, which is also where "
+                        "the elision fired — so for a body over 16 KiB the "
+                        "remedy the elision marker names could not reach "
+                        "past the wall that produced it, and the middle was "
+                        "unreadable by any argument (read_spill did not help: "
+                        "the body was elided before the response was "
+                        "serialised, so the spill held elided text). "
+                        "ANTS-4091 — the targeted "
                         "DEFAULT is no longer 2000: it is 16384/N for an "
                         "N-id fetch, floored at 2000, so a single-id fetch "
                         "returns any body under 16 KiB whole (elision drops "

@@ -121,6 +121,8 @@ struct VerifyGitSnapshot {
 // ---- constants (definitions stay in the .cpp; see rule 2 above) ----
 extern const int kRoadmapQueryBodyCap;
 extern const int kRoadmapQueryBodyStoreCap;
+extern const int kRoadmapQueryBodyCacheCap;    // ANTS-4630 — cache keeps bodies whole
+extern const int kRoadmapQueryBodySingleIdCap; // ANTS-4630 — single-id emission ceiling
 extern const QRegularExpression kIdPrefixShape;
 extern const int kRcMaxNoteChars;
 extern const int kWorkspaceSearchHardKillMs;

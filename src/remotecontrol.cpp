@@ -6,6 +6,7 @@
 // nothing this TU uses, leaving the 13 that do. Add an
 // include only when THIS TU names the symbol; a verb body that lives in a
 // sibling takes its header with it.
+#include <limits>
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"  // ANTS-3833 — shared rcdetail helpers
 #include "mcpspill.h"        // ANTS-2094 — read_spill
@@ -285,6 +286,29 @@ constexpr int kRoadmapQueryBodyCap = 2000;
 // still re-truncates to kRoadmapQueryBodyCap (rcCapBodyFields), so only
 // the opt-in id/ids path sees the larger body.
 constexpr int kRoadmapQueryBodyStoreCap = 16384;
+
+// ANTS-4630 — the cache no longer elides at the store cap; it keeps each body
+// WHOLE. The cap above survives as the emission ceiling only.
+//
+// Eliding at cache-build put the middle of a long body out of reach of every
+// argument: `max_body_bytes` clamped to the same 16 KiB that produced the
+// elision, and the dispatch-site offload spills the SERIALISED response, so
+// read_spill paged text the cache had already thrown away (the marker itself
+// was measured sitting inside the spilled payload). The remedy the marker
+// named could not work at the size that triggered it.
+//
+// The memory bound is unchanged, which is what makes this safe: bodies come
+// from the roadmap file, so Σ bodies ≤ the file either way. The old per-body
+// cap never bound first — at 16 KiB × N items its ceiling sat far above the
+// file it was drawn from.
+constexpr int kRoadmapQueryBodyCacheCap = std::numeric_limits<int>::max();
+
+// ANTS-4630 — emission ceiling for a fetch naming exactly ONE id. The inline
+// budget is not what the store cap was protecting on that path: a payload this
+// large offloads to a spill file, and the caller pages it. Kept finite so a
+// pathological body still has a bound. A wide ids[] fetch keeps the 16 KiB
+// ceiling, so one call cannot pull N oversized bodies inline.
+constexpr int kRoadmapQueryBodySingleIdCap = 1024 * 1024;   // 1 MiB
 
 // ANTS-3736 — a truncated body keeps its HEAD *and* its TAIL. On a long-lived
 // epic the body is an append-only progress log: the head says what the item

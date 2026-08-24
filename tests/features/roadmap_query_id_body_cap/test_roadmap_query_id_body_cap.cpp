@@ -442,3 +442,132 @@ TEST(roadmap_query_id_body_cap, Ants4400IdsCarryInputIndex) {
         << "without this a caller zipping bullets[] against its own ids[] "
            "pairs each bullet with the wrong request";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4630 — the MIDDLE of a body past the store cap must be reachable.
+//
+// ANTS-3736 keeps the head and the tail and drops the middle; ANTS-4091 gave
+// the marker a remedy to name. But the elision fires at CACHE BUILD, at the
+// 16 KiB store cap, and `max_body_bytes` clamped to that same 16 KiB — so for
+// any body over the cap the named remedy could not reach past the wall that
+// produced it. The spill did not rescue it either: the body is elided before
+// the response is serialised, so read_spill pages already-elided text (the
+// marker itself was measured sitting INSIDE the spilled payload).
+//
+// A body whose middle is a sentinel proves the whole span is reachable, where
+// the head/tail sentinels only ever proved the two ends were.
+
+namespace {
+
+// ~51 KiB body carrying three positional sentinels. MID sits past the head
+// the elision retains and before its 1 KiB tail — inside the elided span.
+QByteArray roadmapWithMiddleSentinelBody(int lines) {
+    QByteArray md =
+        "# Roadmap\n\n"
+        "## Work\n\n"
+        "- \xF0\x9F\x93\x8B [ANTS-7777] **Long-body epic.**\n"
+        "  HEADSENTINEL this epic converts the level mesh.\n";
+    for (int i = 0; i < lines; ++i) {
+        if (i == lines / 2)
+            md += "  MIDSENTINEL the resume plan for phase L1c lives here.\n";
+        md += "  Lorem ipsum dolor sit amet consectetur adipiscing.\n";
+    }
+    md += "  TAILSENTINEL current status phase L1d has shipped.\n";
+    md += "  Kind: feature.\n";
+    md += "  Source: test.\n";
+    return md;
+}
+
+}  // namespace
+
+// INV-9 (ANTS-4630) — a single-id fetch may raise max_body_bytes past the
+// 16 KiB store cap, and the middle of an oversized body comes back with it.
+TEST(roadmap_query_id_body_cap, Inv9SingleIdReachesTheMiddleOfALongBody) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()),
+                          roadmapWithMiddleSentinelBody(1000)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]     = tmp.path();
+    req[QStringLiteral("id")]             = QStringLiteral("ANTS-7777");
+    req[QStringLiteral("include_body")]   = true;
+    req[QStringLiteral("max_body_bytes")] = 200000;   // past the old ceiling
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const QString body =
+        bodyForId(resp.value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+
+    EXPECT_GT(body.size(), 16384)
+        << "a single-id fetch must be able to exceed the 16 KiB store cap";
+    EXPECT_TRUE(body.contains(QStringLiteral("HEADSENTINEL")));
+    EXPECT_TRUE(body.contains(QStringLiteral("MIDSENTINEL")))
+        << "the elided MIDDLE is the whole defect — it must be reachable";
+    EXPECT_TRUE(body.contains(QStringLiteral("TAILSENTINEL")));
+    EXPECT_FALSE(body.contains(QStringLiteral("[body elided")))
+        << "a cap above the body length must not elide at all";
+}
+
+// INV-10 (ANTS-4630) — the lift is scoped to a SINGLE id. A wide ids[] fetch
+// keeps its ceiling, so one call cannot pull N oversized bodies inline.
+TEST(roadmap_query_id_body_cap, Inv10WideIdsFetchKeepsItsCeiling) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithNLongBullets(3)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    QJsonArray ids;
+    for (int i = 0; i < 3; ++i) ids.append(QStringLiteral("ANTS-%1").arg(7800 + i));
+    req[QStringLiteral("ids")]            = ids;
+    req[QStringLiteral("include_body")]   = true;
+    req[QStringLiteral("max_body_bytes")] = 200000;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    for (const auto &v : resp.value(QStringLiteral("bullets")).toArray()) {
+        EXPECT_LE(v.toObject().value(QStringLiteral("body")).toString().size(),
+                  16384)
+            << "the raised ceiling is single-id only";
+    }
+}
+
+// INV-11 (ANTS-4630) — the marker must name a remedy that works AT THE SIZE
+// THAT TRIGGERED IT. Naming max_body_bytes was true only below the store cap;
+// above it the argument was clamped to less than the body.
+TEST(roadmap_query_id_body_cap, Inv11MarkerRemedyWorksAtTheTriggeringSize) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()),
+                          roadmapWithMiddleSentinelBody(1000)));
+    RemoteControl rc(nullptr);
+
+    // The list path elides and names a remedy.
+    QJsonObject list;
+    list[QStringLiteral("caller_cwd")]   = tmp.path();
+    list[QStringLiteral("include_body")] = true;
+    const QJsonObject listResp = rc.cmdRoadmapQuery(list).object();
+    const QString elided =
+        bodyForId(listResp.value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+    ASSERT_TRUE(elided.contains(QStringLiteral("[body elided")))
+        << "a body this size must still elide on the list path";
+
+    // Following that remedy on this very bullet must return the whole body.
+    QJsonObject targeted;
+    targeted[QStringLiteral("caller_cwd")]     = tmp.path();
+    targeted[QStringLiteral("id")]             = QStringLiteral("ANTS-7777");
+    targeted[QStringLiteral("include_body")]   = true;
+    targeted[QStringLiteral("max_body_bytes")] = 200000;
+    const QString full =
+        bodyForId(rc.cmdRoadmapQuery(targeted).object()
+                      .value(QStringLiteral("bullets")).toArray(),
+                  QStringLiteral("ANTS-7777"));
+    EXPECT_TRUE(full.contains(QStringLiteral("MIDSENTINEL")))
+        << "the marker's own advice must reach the span the marker replaced";
+}

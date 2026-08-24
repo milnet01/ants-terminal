@@ -985,7 +985,7 @@ static QJsonArray rcBuildBulletCacheArray(
         o["headline"] = b.headline;
         o["headline_oneline"] = rcHeadlineOneline(b.headline);
         rcMaybeEmitHeadlineFull(o, b);
-        rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyStoreCap);  // ANTS-4557  // ANTS-3402
+        rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557  // ANTS-3402
         o["kind"] = b.kind;
         QJsonArray lanes;
         for (const QString &l : b.lanes) lanes.append(l);
@@ -1673,7 +1673,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         int req_cap = req.value(QStringLiteral("max_body_bytes")).toInt(
             kRoadmapQueryBodyCap);
         if (req_cap < kRoadmapQueryBodyCap)      req_cap = kRoadmapQueryBodyCap;
-        if (req_cap > kRoadmapQueryBodyStoreCap) req_cap = kRoadmapQueryBodyStoreCap;
+        // ANTS-4630 — the CEILING is applied below, once the id count is
+        // known: a fetch naming one id may exceed the store cap, a wide
+        // ids[] fetch may not.
         reqBodyCap = req_cap;
     }
 
@@ -1772,9 +1774,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // total body payload on this path stays around the 16 KiB store cap
     // however many ids are named (from 9 ids up it is back at the 2000
     // floor). List / section / section_index paths are unchanged.
+    // ANTS-4630 — an explicit max_body_bytes is ceiling-clamped by how many
+    // ids were named. One id may exceed the store cap (a reply that large
+    // offloads, and the caller pages the spill); a wide ids[] fetch may not.
+    // The DEFAULT below is untouched — an absent max_body_bytes still
+    // resolves exactly as ANTS-4091 set it.
+    const bool singleIdFetch =
+        idsArg.size() == 1 || (idsArg.isEmpty() && !idArg.isEmpty());
     const int idBodyCap =
         reqBodyCap > 0
-            ? reqBodyCap
+            ? qMin(reqBodyCap, singleIdFetch ? kRoadmapQueryBodySingleIdCap
+                                             : kRoadmapQueryBodyStoreCap)
             : qBound(kRoadmapQueryBodyCap,
                      kRoadmapQueryBodyStoreCap / qMax(1, idsArg.size()),
                      kRoadmapQueryBodyStoreCap);
@@ -2354,7 +2364,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // is false. ANTS-3425 — store at the larger cap so an
                 // id/ids max_body_bytes fetch can emit past 2000
                 // (list/section emission still re-caps to 2000).
-                rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyStoreCap);  // ANTS-4557
+                rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
@@ -2433,7 +2443,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     // ANTS-1517 — body (truncated). ANTS-3425 — store at
                     // the larger cap so an id/ids max_body_bytes fetch sees
                     // it (list/section emission still re-caps to 2000).
-                    rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyStoreCap);  // ANTS-4557
+                    rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
                     o["kind"] = b.kind;
                     o["section_slug"] = b.sectionSlug;
                     QJsonArray lanes;
@@ -3103,6 +3113,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // in-place projection leaves unchanged.
         if (mode == QLatin1String("headline_only"))
             rcProjectHeadlineOnly(filtered);
+        // ANTS-4630 — cap bodies BEFORE pagination. The cache used to guarantee
+        // this ceiling on the way in; now that it keeps bodies whole, the
+        // soft-cap measure would weigh a body far larger than anything this path
+        // emits, and drop rows it used to fit — a single oversized bullet came
+        // back as count:0 / total:1. Same principle as the ANTS-3577 projection
+        // above: shrink to what will be emitted, then measure. The value is
+        // exactly what the cache enforced, so paging is unchanged.
+        if (includeBody)
+            rcCapBodyFields(filtered, kRoadmapQueryBodyStoreCap);
         auto page = PaginationEngine::pageBullets(
             filtered, offsetArg, limitArg,
             wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
@@ -3112,6 +3131,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 callerPassedOffset, callerPassedLimit, page.truncated);
         // ANTS-1517 — strip body fields when include_body is false (a no-op
         // when the headline_only projection above already dropped bodies).
+        // ANTS-4630 — and cap them when it is true. This path never capped:
+        // it inherited its ceiling from the cache, which elided at the store
+        // cap on the way in. The cache now keeps bodies whole, so the ceiling
+        // has to be stated here. kRoadmapQueryBodyStoreCap is exactly what
+        // the cache used to enforce, so the emitted bytes are unchanged.
         if (!includeBody) rcStripBodyFields(page.slice);
         out["ok"] = true;
         out["bullets"] = page.slice;
@@ -3267,7 +3291,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // ANTS-1517 — body (truncated). ANTS-3425 — store at the
                 // larger cap so an id/ids max_body_bytes fetch sees it
                 // (list/section emission still re-caps to 2000).
-                rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyStoreCap);  // ANTS-4557
+                rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
@@ -3646,6 +3670,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // in-place projection.
     if (mode == QLatin1String("headline_only"))
         rcProjectHeadlineOnly(filtered);
+    // ANTS-4630 — cap bodies BEFORE pagination. The cache used to guarantee
+    // this ceiling on the way in; now that it keeps bodies whole, the
+    // soft-cap measure would weigh a body far larger than anything this path
+    // emits, and drop rows it used to fit — a single oversized bullet came
+    // back as count:0 / total:1. Same principle as the ANTS-3577 projection
+    // above: shrink to what will be emitted, then measure. The value is
+    // exactly what the cache enforced, so paging is unchanged.
+    if (includeBody)
+        rcCapBodyFields(filtered, kRoadmapQueryBodyStoreCap);
     auto page = PaginationEngine::pageBullets(
         filtered, offsetArg, limitArg,
         wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
