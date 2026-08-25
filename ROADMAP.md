@@ -33244,6 +33244,19 @@ in each bullet, not just the reporter's symptom.
   THE MEASUREMENT IS THE `Cleanups:` LINE in each job's ccache stats step, not the wall clock. Non-zero means the cache is still evicting mid-build and the cap is still too small. Wall clock is confounded by runner speed and queue depth; Cleanups is not.
 
   TWO PROPOSALS DROPPED ON INSPECTION, recorded so they are not re-proposed. A workflow-level `concurrency: cancel-in-progress` would stop superseded runs, but this repo pushes straight to main, so it would cancel the verdict on intermediate commits — and ci_asan_budget's own spec records this project being bitten by runs that concluded `cancelled` unnoticed. Raising build-test's serial ctest to -j4 would cut ~100 s, but CLAUDE.md names a loaded 4-vCPU runner as the thing that exposes timing races, and ANTS-4651 was exactly that class; trading wall clock for contention-induced flakes is the wrong direction on the job that is not the critical path anyway.
+  Measured, first run after the change (36b3db8d, all three jobs green):
+
+  THE PRIMARY MEASUREMENT PASSED. `Cleanups:` is ABSENT from every job's stats — that line is emitted only when ccache evicts, and build-test reported 14 of them before. build-test's hit rate went 85.26% to 99.83% in ONE run (misses 89 to 1), which is what stopping mid-build eviction looks like. Cache occupancy is now build-test 0.5/2.0 GB and build-asan 0.6/2.0.
+
+  build-asan's hit rate moved only 85.26% to 86.28% (83 misses). Expected: it restored the old 500M-capped entry, which had already evicted what it needed, so it inherits that hole. It should close on the next run as the 2 GB cache fills.
+
+  qt62-baseline behaved exactly as predicted and is NOT yet evidence either way: "Cache not found for input keys: Linux-ccache-qt62-" then "Cache saved with key: ...". It compiled cold, 0/605 hits, and only saved. The next run is its first real test.
+
+  WALL CLOCK, first run only, and it is the confounded number: build-asan 1722 to 1577 s; qt62-baseline 1324 to 1348 s (up by about the cost of saving a cache it could not restore); build-test 546 to 600 s, against 829/603/611 on earlier runs, so 546 was a low outlier rather than a regression here.
+
+  ONE READING CORRECTED so it is not repeated: qt62's stats show "Primary storage: Misses 1210" against "Misses: 605" in the summary. That is 605 compilations with two lookups each (direct + preprocessed), NOT 1210 compilations. The 40 MB it saved is therefore about 66 KB per compressed object, which is ordinary — it is not evidence of a broken save.
+
+  STILL TO OBSERVE, and the item stays open until then: qt62-baseline restoring its key and posting a non-zero hit rate, and build-asan's misses falling as its 2 GB cache fills.
   **Layman:** The build machine throws away most of what it compiled last time, so it recompiles the same code every run.
   Kind: perf.
   Source: user-request-2026-08-25.
