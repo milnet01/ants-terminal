@@ -49,9 +49,12 @@ checklist below walks the full procedure; this is the at-a-glance map
   `mcp::isCompactDroppable` drops `null`, `false`, `""`, `[]` and `{}`
   alike, so an EMPTY array is folded exactly like the boolean wherever
   compaction resolves true: `declined_candidates: []` on a clean run is no
-  evidence at all. Numbers survive, including `0` — so a count is the safe
-  shape, and a key ending `_checked` is protected by suffix
-  (`mcp::isProtectedCompactKey`). **And do not fold it into an
+  evidence at all. **Prefer a count** — numbers survive, including `0`, and a
+  number is read where a boolean is skipped. A `*_checked` boolean is
+  permitted and survives (protected by suffix since ANTS-4677,
+  `mcp::isProtectedCompactKey`), but it is still a `false` the caller must
+  know to look for, so it is the weaker of the two shapes rather than an
+  exception to this rule. **And do not fold it into an
   existing failure signal**: a narrowed scope that legitimately matched
   nothing is not a partial run, and marking it one trades a silent wrong
   answer for a noisy one. Reached independently from three directions in
@@ -125,9 +128,12 @@ checklist below walks the full procedure; this is the at-a-glance map
   `makeDryRunProp()` and each handler branches on it). Read-only verbs
   (`get_*`, `*_query`, `find_*`, `read_*`) are out
   of scope, as are the **session-state** writers `session_memory` and
-  `workflow_state`: they mutate, and deliberately carry no `dry_run` — the
-  rule is about verbs that write a **project file**, where a wrong write is
-  expensive to undo. The lists above are the live inventory; treat a verb on
+  `workflow_state`: they mutate, and deliberately carry no `dry_run` — what
+  the rule is about is durable **project or roadmap data**, where a wrong
+  write is expensive to undo. Read it that way rather than as file-vs-store:
+  `roadmap_migrate` and `session_message` write the machine-global roadmap
+  store and are both in scope, while the session-state pair write a
+  regenerable cache and are not. The lists above are the live inventory; treat a verb on
   neither as unclassified rather than compliant.
 
 ---
@@ -348,7 +354,17 @@ place when it saves a Claude session real tokens or round-trips
    branches on.
 
    **No row at all is a fine answer**, and the common one: the verb then
-   takes `fields=` like every other and is never compacted.
+   takes `fields=` like every other and is never compacted — by anyone,
+   including a caller who passes `compact:true`, since the whole compaction
+   step is gated on membership.
+
+   **A row does not protect a meaning-bearing `false`; `defaultCompact:false`
+   only spares the caller who did not ask.** An explicit `compact:true` on a
+   verb in the table still folds it. The one thing that survives regardless
+   is `mcp::isProtectedCompactKey`: `ok`, `code`, `error`, `etag`, `found`,
+   `unchanged`, and any key ending `_checked`. So a field a caller branches
+   on is named for that suffix, or emitted as a count — not defended by a
+   table row.
 
 9. **Follow the cache contract for any project-scoped cache.** If the
    tool reads/writes a per-project cache, key + relocate it per
@@ -425,21 +441,19 @@ scrape window.
 The dispatch order is load-bearing: `mcp::withIgnoredArgs` →
 idempotent-read cache → `applyEtagPattern` → `mcp::projectFields` →
 `mcp::compactEnvelope` → `mcp::appendReadHints` → `mcp::tabularize` →
-`mcp::offloadBody` → `<ants_mcp_data>` wrap. A new opt-in (a future
-projection-like transform) slots into that chain; read the symbols named
-above and `ClaudeIntegration::wrapMcpData` for the exact hook points before
-adding one.
+`mcp::offloadBody` → `mcp::withIgnoredArgs` **again** → `<ants_mcp_data>`
+wrap. A new opt-in (a future projection-like transform) slots into that
+chain; read the symbols named above and `ClaudeIntegration::wrapMcpData` for
+the exact hook points before adding one.
 
-**Two places in it decide whether your output survives.** Downstream of
-`mcp::offloadBody` there may be no body left — an over-threshold response is
-replaced by a head+pointer envelope. And upstream of `mcp::compactEnvelope`,
-a `false`, `""`, `[]` or `{}` is folded away **when compaction resolves
-true** for that call: an explicit `compact:true`, or `mcp::isDefaultCompactTool`
-plus `mcp::terseDefault()`. Table membership alone folds nothing —
-`spec_lint` and `feedback_query` sit in the table precisely so a caller who
-never asked is not compacted, which is ANTS-4673's *fix*. What survives
-either way is what `mcp::isProtectedCompactKey` holds: `ok`, `code`, `error`,
-`etag`, `found`, `unchanged`, and any key ending `_checked`.
+**Two hops constrain where yours goes.** `mcp::offloadBody` may replace the
+whole body with a head+pointer envelope, which is why the advisory is applied
+on both sides of it (ANTS-4626) — an annotation that must survive an
+over-threshold response is re-applied after it, and on a cache hit only
+there. And `mcp::compactEnvelope` may fold your `null` / `false` / `""` /
+`[]` / `{}` away; **step 8 owns when that happens and this section does not
+restate it** — three consecutive review loops corrected a restatement here
+and each correction was wrong in a new way.
 
 ## Cold-eyes loop log
 
@@ -450,16 +464,33 @@ either way is what `mcp::isProtectedCompactKey` holds: `ok`, `code`, `error`,
 | 3 (cap) | 2026-08-12 | 3 (same doc, independent, cold, packet rebuilt) | 5 / 2 / 1 / n-a | 8 verified, 0 dismissed, all 8 fixed. **Stopped at the `--max-loops` cap, NOT converged** — see the note below the table. Sharpest find: `isControlPlaneTool()` was named as the "canonical bypass list" and **exists nowhere in the tree** — the real one is an inline `isControlPlane` predicate at the `tools/call` dispatch site, and `mcp_output_sanitisation` scrapes for that literal, so an author extracting the accessor the doc named would have reddened the suite. That defect was **inside the packet's own "settled, do not re-confirm" list**, which claimed every unresolved identifier had been spot-checked; the lane overrode the instruction and said so, which is exactly the behaviour the brief asks for when a finding contradicts a stated fact. Also: "`Q_ASSERT_X`, i.e. debug builds" understated the enforcement — ANTS-1834 makes `registerToolProvider` **refuse the registration in every build config**, so drift makes the tool go missing rather than run mis-classified. § 6a's *trigger example* still said the bullet writer "can't splice" pass-headings, contradicting the per-op rule three lines below it. `dry_run`'s "every mutating verb" was false against its own lists — `audit_dismiss` ships one and was unlisted, while `session_memory` / `workflow_state` mutate and deliberately carry none; the rule is now scoped to verbs that write a **project file**. The quick-reference ETag bullet stated the opt-in unqualified against step 7's exception — a judgement call left open at loop 1 on the grounds that a cold loop should decide it, and it did. **Two findings were loop 2's own collateral**: deferring § 6a's boundary wholly to `mcp-error-codes.md` pointed at a gloss the shipped code contradicts, and deleting the discriminator left the MUST with no selection test at all — unfalsifiable at authoring. § 6a now states the per-op rule the code implements and names the contested part explicitly (ANTS-4134) instead of asserting or deferring. **One error was caught inside this loop's fix pass by executing the claim**: the drift log is `ANTS_LOG`, not the `qWarning` two lanes named — they reasoned from a *paraphrase in my packet*, and reading the source gave a stronger and different answer (refusal, not a warning). |
 | 4 | 2026-08-25 | 3 (same doc, independent, cold) | 5 / 1 / 0 / n-a | 6 verified, 0 dismissed, all fixed. **New run**, triggered by ANTS-4524 making `fields=` universal and rewriting step 8, step 7's exception and the quick-reference bullet — `CLAUDE.md` rule 14, since a conformer now does something different. The 2026-08-12 run's cap was calm and its tail has since shipped. **Three lanes independently led on the same two defects, and the second is the run's most consequential.** § 6a still called the `format_mismatch` / `unsupported_format` boundary contested and pending ANTS-4134 — which shipped 2026-08-15; both rows in `mcp-error-codes.md` now state the artifact-not-verb discriminator, and the gloss § 6a quoted in the present tense sits only inside the `unsupported_format` row as the text that row records itself CORRECTING. So the document withheld a conformance test it forbade deriving, from the taxonomy that had settled it. Found at packet-build time as well as by every lane. And **§ Project overrides' dispatch chain omitted `mcp::compactEnvelope`**, which runs between `projectFields` and the wrap: that section exists to give hook points for a future projection-like transform, so an author placing one after `projectFields` ships a transform whose `false` / `[]` output compaction folds away — ANTS-4673's exact shape, three sections below the step that exists to prevent it. `mcp::withIgnoredArgs` was missing from the head of the chain too. **One finding was this session's own collateral, caught in the loop that created it**: the new `fields=` bullet said "a refusal and a 304 are floored and returned whole", and only the 304 is. A refusal is narrowed like anything else and then has `ok`/`code`/`error`/`retry_after_ms` re-inserted — so § 6a's own `format` / `path` / `hint` vanish unless the caller names them. Two lanes. **One lane alone found the sharpest reading of ANTS-4374's own rule**: it says to emit evidence as "an array or a count" rather than a `false`, and `isCompactDroppable` drops an empty array exactly like a `false`. The clean-run case — `declined_candidates: []` — is therefore no evidence at all on any verb that declares `compact`, which is the byte-identical envelope that bullet forbids. Numbers survive (including `0`), and a `_checked` suffix is protected by name; the rule now says so. **All three lanes raised the same open question and none filed it**: step 7 said an undeclared arg is "dropped by the dispatcher … so the handler never sees it". Resolved against the dispatch site rather than by reasoning — `it->second.handler(argsObj)` passes the arguments through unfiltered and `ignoredArgs` runs afterwards on the RESPONSE, so nothing strips it. Fixed rather than dismissed because the true mechanism is a different failure to debug: a strict client REFUSES the call before the dispatcher is reached (ANTS-4663), or sends it against no declared type (ANTS-4624 watched an array arrive as a string). This sentence's stated mechanism has now been wrong twice, loop 2 of the previous run having 'corrected' it to the claim just deleted. **Collateral outside the document, fixed there**: `ANTS-4108` § 2.3 still listed `fields=`-declined as a live deviation while step 7 says it cannot be declined — two lanes, and the spec is the half the standard cites. Resolved clean and NOT in the tally: whether `ignored_args` falsely reports `etag_match` on a handler-local-304 verb — it cannot, because that verb declares the property, so the key is in `known`. |
 | 5 | 2026-08-25 | 3 (same doc, independent, cold, packet rebuilt) | 3 / 3 / 1 / n-a | 7 verified, 1 dismissed, all 7 fixed. **Three of the seven were loop 4's own fixes**, which is this document's fourth consecutive loop where that is the largest class — and all three landed in text loop 4 ADDED. The § Project overrides paragraph loop 4 wrote to warn about compaction was wrong twice over, found by all three lanes between them: table membership folds NOTHING on its own (an explicit `compact:true`, or `isDefaultCompactTool` plus `terseDefault()`, is what resolves it — `spec_lint` and `feedback_query` are in the table precisely so an unasked caller is NOT compacted, which is ANTS-4673's fix rather than its damage), and it ignored `isProtectedCompactKey`, which the same document had just been corrected to describe fifteen lines above. Loop 4's own chain fix was also short: `appendReadHints`, `tabularize` and `offloadBody` sit between compaction and the wrap, and a transform placed after the offload has no body left to act on. And loop 4 retired step 7's second obligation without touching the header that counts them, so 'a verb missing either is broken in a way no test can see' pointed at one obligation — two lanes, and a conformer hunting the second can only invent the per-verb `fields=` workaround ANTS-4524 deleted. **Two pre-existing, both Q2 against the sibling taxonomy.** § 6a stated ONE MUST-carry payload for a rule covering two codes, while `mcp-error-codes.md` says `unsupported_format` promises the `hint` alone and not `format` / `path` — so the same refusal had two documented envelopes; loop 4's settling of the boundary is what made the divergence reachable. And the quick-reference said a handler-local-304 verb 'uses neither', naming the predicate AND the factory, where step 7 requires the property declared inline — a conformer reading only the map ships a verb whose 304 is silently unreachable. **The one Q3 is the run's best finding and is older than either run**: the standard tells an author to pick one of four `CallerCwdContract` words and calls it the security contract, while only `Required` is enforced at dispatch. Someone writing a tab-scoped verb picks `TabSpecific`, believes the dispatch gates it, and ships a handler with no tab check — nothing refuses the registration and no handler test sees it. **One finding no lane could reach, and the packet was why**: the `dry_run` bullet's 'Not yet (ANTS-2227 tail)' named `test_audit_fold_in` and `debt_sweep_apply_fix`, and BOTH implement it — each declares the property via `makeDryRunProp()` and each handler branches on it, verified by opening all three call sites. `session_message` supports it too and appeared on neither list, under a sentence saying to treat such a verb as unclassified. Two lanes flagged the inventory as unverified rather than guessing, which is the correct behaviour and cost a round-trip that 1b should have spent instead. **Corrected in its own document, not carried into this one**: `mcp-error-codes.md`'s `format_mismatch` cell said ANTS-2126 left `create_section` 'the only refusing op' while its own next row has `amend_body` refusing on the same file. **Dismissed, recorded**: step 4 renders one of `validatePath`'s two reject reasons in its example envelope — true, and it changes nothing an author builds, since step 4 requires routing through the helper rather than hand-building the string. |
+| 6 (cap) | 2026-08-25 | 3 (same doc, independent, cold, packet rebuilt + its three gaps closed) | 2 / 2 / 1 / n-a | 5 verified, 5 fixed. **Stopped at the cap (3 for a standard), NOT converged — and this one is a VIOLENT cap: 4 of the 5 landed on text THIS RUN wrote.** See the note below the table. **§ Project overrides was wrong in all three loops of this run, each time in a new way, and that is a fact about the paragraph rather than about any wording.** Loop 4 added it and omitted the protected keys; loop 5 corrected that and made table membership sound sufficient on its own; loop 6 found membership is the OUTER gate (a verb with no row is never compacted by anyone, including a caller passing `compact:true`) AND that the corrected list had dropped `null`. Two lanes, two angles, same paragraph. It was DELETED rather than corrected a fourth time: § Project overrides now states the dispatch ORDER, which is its job, and points at step 8 for when compaction fires. **The deletion moved an obligation, so step 8 absorbed what it was missing** (`documentation.md` § 2.1's consolidate-don't-reconcile): a row does NOT protect a meaning-bearing `false` — `defaultCompact:false` spares only the caller who did not ask, an explicit `compact:true` still folds it, and the sole unconditional protection is `isProtectedCompactKey`'s six names plus the `_checked` suffix. A conformer reading the old § Project overrides would have added a table row as armour and shipped exactly the ANTS-4673 class. **Two lanes found the chain still short after loop 5 lengthened it**: `mcp::withIgnoredArgs` is applied on BOTH sides of `offloadBody` (ANTS-4626), because an offload discards the pre-applied advisory and a cache hit skips the pre-apply entirely. The one paragraph raising the offload was the one that omitted it. **One pre-existing Q2 with real teeth**: `dry_run`'s scope test read "verbs that write a **project file**", while two verbs in its own Supported list — `roadmap_migrate` and `session_message` — write the machine-global roadmap store instead. An author of a store-writing verb applied the stated test, concluded the rule did not bind them, and was contradicted by the inventory three lines up. Re-scoped to durable project or roadmap DATA, which is the distinction the exclusions actually rest on. **The Q3 is the ANTS-4374 bullet arguing with the sentence loop 5 added to it**: it forbids evidence shaped as "a `false` it must know to look for" and then blessed a `*_checked` boolean. Both are permitted now, with the count named as preferred and the boolean as the weaker shape rather than an exception. Resolved clean, not in the tally: three lanes' packet-staleness questions (`mcp-error-codes.md`'s `create_section` clause, fixed in loop 5; the `makeFieldsProp()` call sites, which remain live and idempotent under the universal injection; ANTS-4663's attribution for the strict-client refusal, which its own source comment carries). |
 
-**Not converged at the cap.** The remaining tail is one item: § 6a's
-`format_mismatch` / `unsupported_format` boundary cannot be stated correctly
-here until **ANTS-4134** fixes the definition in `mcp-error-codes.md`, which
-owns the taxonomy and currently contradicts the shipped code. § 6a records
-that openly rather than guessing, so an implementer knows the boundary is
-contested. Loop counts here are **not** a size signal — at 372 lines this
-document is mid-pack among its siblings. The cap bound because this is a
-**hub**: it restates contracts owned by `mcp-error-codes.md`, `mcp-caches.md`,
+**Not converged at either cap, and the two caps are different animals.**
+
+The 2026-08-12 run capped **calmly** — its findings were spread across the
+document, and its one open item (§ 6a's `format_mismatch` boundary, pending
+**ANTS-4134**) shipped on 2026-08-15 and was folded in at loop 4.
+
+The 2026-08-25 run capped **violently**: 4 of loop 6's 5 findings landed on
+text that run had itself written, and § Project overrides was corrected in
+all three of its loops, each correction wrong in a new way. Under
+`review-contract` § At the cap that ends this document's review as it
+stands — **do not open a fresh run against this text.** A fourth loop would
+start at loop 1 against a document whose last three loops were each repairing
+the one before, and nothing in the evidence suggests it would stop. The bar
+lapses with the text it was measured against: an authoring edit that changes
+direction re-arms the gate normally.
+
+**Size is not the signal** — the document is mid-pack among its siblings. Both
+runs diagnosed the same cause and the second one proved it: this is a **hub**
+that restates contracts owned by `mcp-error-codes.md`, `mcp-caches.md`,
 `mcp-behavioural-notes.md` and the specs, and every restatement is an
-independent chance to drift from its owner. Three loops each found drift of
-exactly that kind. The durable fix is fewer restatements and more pointers,
-which is a restructuring job, not a review finding.
+independent chance to drift from its owner. Loop 6 acted on that for the first
+time rather than only naming it — the § Project overrides restatement was
+deleted and step 8 made complete, which is one instance of the durable fix.
+**The remaining tail is the rest of them**: the quick-reference map is
+restatement by construction, and every bullet in it is a copy that can drift
+from the step below or the sibling standard beside it. That is a restructuring
+job, not a review finding, and it is what the next edit to this file should
+take on.
