@@ -44531,6 +44531,36 @@ Three were reproduced directly in this session rather than taken on report.
   Source: in-session-2026-08-25 (found while measuring ANTS-4644).
   Lanes: mcp, specs.
 
+- 📋 [ANTS-4663] **spec_lint takes neither fields= nor compact, so a corpus run spills and must be parsed by hand.**
+  A corpus-wide `spec_lint` over docs/specs/ overflowed the inline budget and
+  spilled to a handle. The answer wanted was the `counts` object -- a handful of
+  totals the verb already computes and already returns.
+
+  `fields:["counts"]` was passed and did nothing: spec_lint is not on
+  mcp::isFieldProjectionTool, so the argument is dropped. The session ended up
+  reading the spill file and parsing the findings array in Python to recover a
+  summary the envelope already contained.
+
+  Two fixes, and the first is one line.
+
+  Add spec_lint to the projection allowlist and declare `fields` + `compact`,
+  exactly as ANTS-4429 did for roadmap_migrate today. The shared test derives its
+  count from kFieldProjectionTools, so the schema half cannot be forgotten.
+
+  Then consider whether the corpus run should offer a summary MODE at all. The
+  findings array is the bulk and is rarely what a corpus-wide caller wants; per
+  document it is exactly what they want. `fields=` solves the token cost without
+  deciding that, so do it first and let use decide the rest.
+
+  Related: ANTS-4578, fixed today, is why the silence was total -- an unknown or
+  unhonoured `fields` was exempt from the ignored_args advisory on every verb, so
+  nothing said the argument had been dropped. That is now reported, which would
+  have made this self-diagnosing.
+  **Layman:** Asking the spec checker about the whole project returns far more than fits, with no way to ask for just the totals.
+  Kind: perf.
+  Source: in-session-2026-08-25 (hit while deciding ANTS-4348).
+  Lanes: mcp, speclint.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
@@ -46857,6 +46887,29 @@ defect from different angles.
 
   Do NOT touch the pre-standard corpus. That population is closed, cannot grow,
   and § 5.6 makes each document a historical record.
+  The nine, named (2026-08-25), so this does not have to be re-derived. Working
+  them out took a full spec_lint run plus a per-file `git log --diff-filter=A`
+  to separate pre- from post-standard; the ids are stable, and one that gets
+  fixed simply drops out of the next lint run.
+
+    Surface only          ANTS-1630, ANTS-3492, ANTS-3579, ANTS-3654
+    Cold-eyes log only    ANTS-1279, ANTS-1292, ANTS-1293
+    Log + Tests           ANTS-3572
+    Log + Surface         ANTS-3653
+
+  ANTS-3572 is the one that proves the gate is unsatisfiable today: its Status
+  records a converged cold-eyes run of several loops and it carries no log
+  section, so the evidence is gone and the only conforming route would be to
+  invent it. Do that one LAST, under the amended § 5.7, and let it set the
+  wording -- it is the hardest case and any rule that handles it handles the
+  others.
+
+  ANTS-1279 / 1292 / 1293 were added the day after the standard and their Status
+  lines mention no gate, so "no loop ran" is the likely honest record rather than
+  a lost one. Confirm per document; do not assume from the date.
+
+  ANTS-3669 is the superseded redirect stub and is NOT in the nine -- it is the
+  genre-exemption half above.
   **Layman:** Record the agreed rule about older design documents, then fix the handful written since the rule that still miss a chapter.
   Kind: doc.
   Source: in-session-2026-08-25, the actionable half of ANTS-4348's decision.
