@@ -289,22 +289,70 @@ TEST(SpecLintVerb, Ants4390And4373StandardResolutionAndSkipReporting) {
 TEST(SpecLintVerb, Ants4393BothSkippedChecksAreNamed) {
     const std::string rc = ants_test::slurpRemoteControl();
 
-    EXPECT_NE(rc.find("\"invariant_no_test\""), std::string::npos)
-        << "the skip list must name the test-surface check too — ANTS-4373 "
-           "named only missing_section, which is the one WITH a documented "
-           "switch, so the check that can never be turned on stayed silent";
+    // ANTS-4666 re-fixture. This asserted that skipped[] names
+    // `invariant_no_test`, and that was wrong: that finding fires for any
+    // INV-N with an empty *Test:* clause and is gated on NOTHING, so the
+    // envelope could carry its findings and name it as skipped in one breath.
+    // The gated checks are the three surface-resolution kinds. The invariant
+    // ANTS-4373 was reaching for — name every gated check that did not run —
+    // is unchanged; only the names were wrong.
+    EXPECT_NE(rc.find("\"test_surface_absent\""), std::string::npos)
+        << "the skip list must name the checks that are actually gated";
+    EXPECT_NE(rc.find("\"test_surface_unresolved\""), std::string::npos);
+    EXPECT_NE(rc.find("\"test_surface_unwired\""), std::string::npos);
     EXPECT_NE(rc.find("surfaces_skipped_hint"), std::string::npos)
-        << "…and say that no input turns it on, because the flag otherwise "
-           "reads as a capability a caller might satisfy";
+        << "…and say what would turn them on, because the flag otherwise "
+           "reads as a capability a caller cannot act on";
 
-    // The hint must be honest about WHOSE limitation it is. A caller told
-    // only "this did not run" goes looking for the switch; there isn't one.
+    // ANTS-4679 re-fixture. This required the hint to say "NO documented
+    // input" turns the check on. That was false: surfacesChecked is
+    // !existingTestDirs.isEmpty(), filled by scanning <root>/tests/features/,
+    // and this very project comes back surfaces_checked:true because it has
+    // one. A false cause stated for a true skip is the class ANTS-4373 exists
+    // to close, so the hint must name the real input instead.
     const auto pos = rc.find("surfaces_skipped_hint");
     ASSERT_NE(pos, std::string::npos);
-    const std::string body = rc.substr(pos, 700);
-    EXPECT_NE(body.find("NO documented input"), std::string::npos)
-        << "the hint must say no input turns it on, not merely that it "
-           "did not run";
+    const std::string body = rc.substr(pos, 900);
+    EXPECT_NE(body.find("tests/features/<name>/"), std::string::npos)
+        << "the hint must name the input that turns the check on";
+    EXPECT_EQ(body.find("NO documented input"), std::string::npos)
+        << "the old wording claimed no input exists, and one does";
+}
+
+// ANTS-4666 — the general invariant behind the rename, asserted rather than
+// argued: a check cannot be BOTH reported as skipped and be the source of a
+// finding in the same envelope. One run returned findings[] of kind
+// invariant_no_test, counts{invariant_no_test:1}, and skipped:["invariant_no
+// _test"] together, which leaves a caller to either publish a false disclosure
+// or redo by hand the work the verb had just done.
+//
+// write-spec Step 4 is the consumer that makes it bite: it requires disclosing
+// any check that did not run AND performing that check itself.
+TEST(SpecLintVerb, Ants4666SkippedAndCountsAreDisjoint) {
+    DocFinding::Finding f;
+    f.verb    = QStringLiteral("spec_lint");
+    f.kind    = QStringLiteral("invariant_no_test");
+    f.file    = QStringLiteral("docs/specs/X.md");
+    f.line    = 12;
+    f.message = QStringLiteral("INV-1 carries no test-surface clause");
+
+    // Surfaces gated OFF, yet the invariant_no_test check has still produced a
+    // finding — which is the exact envelope that was reported.
+    const QJsonObject o = RemoteControl::specLintBuildResponse(
+        {f}, true, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, false,
+        QStringLiteral("docs/standards/specs.md"));
+
+    const QJsonObject counts = o.value(QStringLiteral("counts")).toObject();
+    ASSERT_EQ(counts.value(QStringLiteral("invariant_no_test")).toInt(), 1)
+        << "the check ran and produced a finding";
+
+    for (const QJsonValue &v : o.value(QStringLiteral("skipped")).toArray()) {
+        const QString k = v.toString();
+        EXPECT_FALSE(counts.contains(k))
+            << "a check reported as skipped must not also appear in counts: "
+            << k.toStdString();
+    }
 }
 
 // ANTS-4676 — a skipped[] entry and the field explaining it shared no token:
@@ -320,15 +368,25 @@ TEST(SpecLintVerb, Ants4676EachHintNamesItsSkippedEntry) {
         {}, true, QJsonObject{}, false,
         QStringList{QStringLiteral("docs/specs/X.md")}, 0, false,
         QStringLiteral("~global/standards/spec-format.md"));
-    const QJsonArray skipped = o.value(QStringLiteral("skipped")).toArray();
-    ASSERT_EQ(skipped.size(), 1)
-        << "sections_checked:true means only the surfaces check skipped";
-    EXPECT_EQ(skipped.first().toString(), QStringLiteral("invariant_no_test"));
+    QStringList skipped;
+    for (const QJsonValue &v :
+         o.value(QStringLiteral("skipped")).toArray())
+        skipped << v.toString();
+    // ANTS-4666 re-fixture: the gated checks are the surface-resolution kinds.
+    EXPECT_EQ(skipped, (QStringList{QStringLiteral("test_surface_absent"),
+                                    QStringLiteral("test_surface_unresolved"),
+                                    QStringLiteral("test_surface_unwired")}))
+        << "sections_checked:true means only the surface checks skipped";
+    EXPECT_FALSE(skipped.contains(QStringLiteral("invariant_no_test")))
+        << "ANTS-4666: that check is gated on nothing and always runs, so "
+           "naming it here contradicts its own findings in the same envelope";
     const QString sh =
         o.value(QStringLiteral("surfaces_skipped_hint")).toString();
-    EXPECT_TRUE(sh.contains(QStringLiteral("invariant_no_test")))
-        << "the hint must name the skipped[] entry it explains, or a caller "
-           "cannot tell which entry it belongs to: " << sh.toStdString();
+    for (const QString &k : skipped)
+        EXPECT_TRUE(sh.contains(k))
+            << "the hint must name every skipped[] entry it explains, or a "
+               "caller cannot tell which entry it belongs to: "
+            << sh.toStdString();
     EXPECT_FALSE(o.contains(QStringLiteral("skipped_hint")))
         << "skipped_hint explains missing_section, which did NOT skip here — "
            "its absence is correct and is what the reporter read as a gap";

@@ -749,17 +749,40 @@ QJsonObject RemoteControl::specLintBuildResponse(
     // structure and NONE for test surfaces, which means `ok:true,
     // findings:[]` still says nothing about surfaces on every project.
     QJsonArray skipped;
-    if (!surfacesChecked) skipped.append(QStringLiteral("invariant_no_test"));
+    // ANTS-4666 — name the checks that are actually GATED. This said
+    // `invariant_no_test`, which is not one of them: that finding fires for
+    // any INV-N whose *Test:* clause is empty and is not gated on anything, so
+    // one envelope could carry findings[] of that kind, counts{} of that kind,
+    // and skipped[] naming it — leaving a caller to either disclose a check
+    // that demonstrably ran or redo by hand the work the verb had just done.
+    // What `surfacesChecked` gates is RESOLVING a named surface against the
+    // test directories that exist, and these are its three finding kinds.
+    if (!surfacesChecked) {
+        skipped.append(QStringLiteral("test_surface_absent"));
+        skipped.append(QStringLiteral("test_surface_unresolved"));
+        skipped.append(QStringLiteral("test_surface_unwired"));
+    }
     if (!sectionsChecked) skipped.append(QStringLiteral("missing_section"));
     if (!skipped.isEmpty()) o[QStringLiteral("skipped")] = skipped;
     if (!surfacesChecked) {
+        // ANTS-4679 — this stated a FALSE cause for a true skip, which is the
+        // class ANTS-4373 exists to close. It read "there is NO documented
+        // input that turns it on — a limitation of the verb, not something
+        // the project can configure". There IS an input: surfacesChecked is
+        // `!existingTestDirs.isEmpty()`, and the verb layer fills that by
+        // scanning <root>/tests/features/. A reporting project hand-checked
+        // every invariant after being told the skip was unfixable.
         o[QStringLiteral("surfaces_skipped_hint")] = QStringLiteral(
-            "explains `invariant_no_test` in skipped[]: the test-surface "
-            "check did NOT run, and unlike the "
-            "required-section check there is NO documented input that turns "
-            "it on — this is a limitation of the verb, not something the "
-            "project can configure. Treat `findings:[]` as silent about test "
-            "surfaces, not as a pass. Tracked as ANTS-4393.");
+            "explains test_surface_absent / test_surface_unresolved / "
+            "test_surface_unwired in skipped[]: no test surface was resolved, "
+            "so those three checks did NOT run. The input is a "
+            "`tests/features/<name>/` directory — this verb resolves a "
+            "surface in that shape and no other, so a project laid out "
+            "differently cannot turn the check on however many tests it has. "
+            "Treat `findings:[]` as SILENT about test surfaces, not as a "
+            "pass. Note `invariant_no_test` is NOT gated by this and always "
+            "runs: an INV-N with no *Test:* clause is still reported. "
+            "Tracked as ANTS-4393 / ANTS-4679.");
     }
     if (!sectionsChecked) {
         // Two causes, and the hint must name the right one. An empty walk

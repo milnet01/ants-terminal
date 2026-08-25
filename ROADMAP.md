@@ -44756,7 +44756,7 @@ it.
   Source: Charls_Site-feedback-2026-08-25.
   Lanes: mcp, feedback.
 
-- 📋 [ANTS-4666] **spec_lint names a check in skipped[] while returning that same check's findings, so the field cannot be read either way.**
+- ✅ [ANTS-4666] **spec_lint names a check in skipped[] while returning that same check's findings, so the field cannot be read either way.**
   One run returned findings:[{kind:"invariant_no_test", ...}] plus
   counts{invariant_no_test:1} and, in the same envelope,
   skipped:["invariant_no_test"]. The check plainly ran: it produced a
@@ -44780,6 +44780,7 @@ it.
   check, say, one that ran on some documents and was gated on others -- then
   the field's description has to say so, and the two cases need different
   names, because a caller cannot act on the current one.
+  Resolved (2026-08-25), and the reporter's diagnosis was exactly right. skipped[] now names the three checks `surfacesChecked` actually gates -- test_surface_absent, test_surface_unresolved, test_surface_unwired -- instead of `invariant_no_test`, which is gated on nothing: it fires for any INV-N whose *Test:* clause is empty, which is why one envelope could carry its findings, its counts entry, and its name in skipped[] at once. Fixed at the name rather than by filtering the array, because a filter would have hidden the next mis-naming instead of preventing it. The reporter's proposed rule is kept as the TEST: SpecLintVerb.Ants4666SkippedAndCountsAreDisjoint builds the exact reported envelope (a live invariant_no_test finding with surfaces gated off) and asserts no skipped[] entry appears in counts[]. Mutation-verified -- re-adding the old name reddens it naming the offending check. The partial-gating case the item asks about does not arise: surfacesChecked is a property of the injected set, so it is all-or-nothing across the run.
   **Layman:** The spec checker reports a check as "did not run" in the same breath as reporting what that check found.
   Kind: fix.
   Source: Charls_Site-feedback-2026-08-25.
@@ -45202,6 +45203,7 @@ it.
   could not act on it, so that rule needs to bind the label as well as the
   presence.
   Resolved (2026-08-25). Each hint now names the skipped[] entry it explains -- surfaces_skipped_hint opens "explains `invariant_no_test` in skipped[]", both arms of skipped_hint open with `missing_section`. tools/list corrected: it promised ONE "skipped_hint naming the paths consulted" for the whole array, described by what only the sections hint does, and the reporter quoted that almost verbatim. It now states that every skipped entry has its own hint and names both pairings. No new field: a keyed hints object would duplicate both strings in every envelope to fix a labelling problem. Test SpecLintVerb.Ants4676EachHintNamesItsSkippedEntry builds the reporter's exact envelope (surfaces skipped, sections checked), asserts the pairing is legible, and asserts skipped_hint is CORRECTLY absent there. Mutation-verified: stripping the token from the hint reddens it, printing the pre-fix text the reporter saw.
+  Superseded in part, same day, and worth recording because this item's own fix carried the error forward. The hint written here opened "explains `invariant_no_test` in skipped[]" -- which made the pairing legible, as intended, and pointed it at the WRONG check. ANTS-4666 then established that invariant_no_test is gated on nothing and always runs, so it never belonged in skipped[] at all; the gated checks are the three surface-resolution kinds. So this fix made a mislabelling easier to read rather than removing it. The hint now names those three, and ANTS-4679 replaced its stated cause as well. The shape of this item's finding stands unchanged and so does its test: a skipped entry and the field explaining it must share a token.
   **Layman:** A tool says it skipped a check and does explain why, but the explanation is labelled so differently that readers cannot tell the two go together.
   Kind: fix.
   Source: Charls-Site-feedback-2026-08-25.
@@ -45271,6 +45273,46 @@ it.
   **Layman:** A feature built over six changes has no written contract, so the only description of how it should behave is the code.
   Kind: doc.
   Source: in-session-2026-08-25 (noticed while shipping ANTS-4664).
+
+- ✅ [ANTS-4679] **spec_lint's surfaces hint states a FALSE cause: the check does have an input, and it is a hard-coded layout.**
+  surfaces_skipped_hint tells the caller the test-surface check "did NOT
+  run, and unlike the required-section check there is NO documented input
+  that turns it on -- this is a limitation of the verb, not something the
+  project can configure." Both halves are wrong.
+
+  The chain, verified in source and then live:
+    SpecLint::check sets surfacesChecked = !opts.existingTestDirs.isEmpty()
+    the verb layer fills that from specLintExistingTestDirs(root), which
+    scans <root>/tests/features/ and nothing else.
+  So the input is a tests/features/<name>/ directory. Confirmed live: a
+  spec_lint run on THIS project returns surfaces_checked:true, while the
+  reporting project got false -- the difference is that directory.
+
+  What is actually true is narrower and more useful: the check resolves a
+  test surface only in the hard-coded tests/features/<name> shape, so on a
+  project laid out any other way it can never run, however many tests that
+  project has. That is a real limitation, and it is a DIFFERENT one from
+  "nothing turns it on" -- a project using the Ants layout can turn it on
+  today, and a project that is not gets told to stop looking when the
+  honest answer is that the verb only knows one layout.
+
+  Cost measured on the reporting session: they were told the skip was
+  unfixable, so they hand-checked every invariant's test clause instead --
+  work the envelope had told them could never be automated. ANTS-4373's own
+  argument applies to the hint as much as to the flag: a false cause stated
+  for a true skip is the class it exists to close, and ANTS-4080's own code
+  comment says exactly that about a different hint.
+
+  Fix: state the real cause and the real input. The honest wording names
+  tests/features/<name> as the shape it looks for and says a project laid
+  out otherwise cannot turn it on -- which also makes the obvious
+  enhancement visible, namely honouring .ants/project.json's test_roots
+  (ANTS-2160) the way docs_index and spec_query already honour their keys.
+  Filed separately from that enhancement: this item is the false statement.
+  Resolved (2026-08-25) in the same pass as ANTS-4666, since both are the surfaces hint. It now names the real input -- a `tests/features/<name>/` directory, the only shape this verb resolves -- and says plainly that a project laid out otherwise cannot turn the check on however many tests it has. That is the true limitation, and it is narrower and more useful than the false one it replaces. It also states that invariant_no_test is NOT gated by this and always runs, which is the confusion ANTS-4666 was filed for. Verified live before writing: a spec_lint run on this project returns surfaces_checked:true because it has that directory, while the reporting project got false. The test that pinned the old wording is re-fixtured, not relaxed: it now requires the hint to name the input and forbids the old claim.
+  **Layman:** A tool tells you a check can never be switched on. It can -- the tool just only looks in one place for the thing that switches it on.
+  Kind: fix.
+  Source: in-session-2026-08-25 (found fixing ANTS-4666).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
