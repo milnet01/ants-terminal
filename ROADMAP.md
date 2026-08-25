@@ -13134,6 +13134,53 @@ indie-review finding.
   Kind: perf.
   Lanes: mcp, threading, ux.
   Source: in-session-2026-06-15 (threading survey).
+  FIELD EVIDENCE (2026-08-25) — this is no longer theoretical, and the
+  scope in the headline is too narrow. User reported the terminal locking
+  up intermittently; investigation lands here.
+
+  WHAT THE USER SEES. Whole window frozen, nothing responds, recovers on
+  its own, sometimes a second and sometimes many seconds, no pattern they
+  can identify. Asked explicitly whether the rest of the desktop freezes
+  too: NO — other windows stay responsive throughout. That single
+  observation rules out the machine-level explanations and puts it on this
+  process's own main thread.
+
+  MEASURED, from token_usage over one ~20-minute window with several
+  sessions live:
+
+    workspace_search   max 616 ms   mean 71 ms    (min 0.3 ms — huge variance)
+    roadmap_log        max 256 ms   mean 137 ms   (7 of 7 calls slow)
+    roadmap_query      max 37 ms    mean 29 ms
+
+  THE HEADLINE UNDERSTATES IT. This item names audit_run and
+  indie_review_dispatch, but the blocking is not specific to them. BOTH
+  dispatch paths block the GUI thread for a verb's full duration:
+  rcDelegate runs cmd*() directly on it, and rcDelegateWorker runs on a
+  worker and then joins with QThread::wait(). roadmap_log, roadmap_query,
+  read_region, apply_edits, codebase_index and session_orient are all on
+  the direct path. So the true statement is that EVERY verb blocks the GUI
+  for as long as it runs.
+
+  THE MULTIPLIER IS CONCURRENT SESSIONS, and that is what made today the
+  worst day. Eight Claude sessions were live against one Ants instance
+  (the user's usual load is three or four). Every session's verbs
+  serialise through the one GUI thread, so a queue of six 200 ms calls is
+  a 1.2 s freeze, and one slow workspace_search behind it pushes that
+  past two seconds. That is the mechanism behind "no pattern": the user
+  cannot see which other session's call they are waiting on.
+
+  rcDelegateWorker's own comment claims it buys GUI-responsiveness. It
+  does not: the join blocks the same thread for the same duration. What it
+  buys is the absence of an event pump, which is the ANTS-2131 UAF fix.
+  Worth correcting when this is done.
+
+  DO NOT fix it by pumping the event loop during the wait. That is exactly
+  the nested-loop socket use-after-free class ANTS-2131 closed. The fix is
+  the one this item already names: fire-and-forget worker plus a
+  completion callback that queues the response.
+  Progress (2026-08-25): diagnosis only, no code change. Raising visibility
+  rather than starting the refactor mid-session — the response-path
+  plumbing wants its own pass.
 
 - 📋 [ANTS-2133] **Verb in-flight stale-slot reaper: 270s recovery after a worker SIGKILL is too slow — add proactive liveness check.**
   claudeintegration.cpp verbInFlightTryAcquire reaps entries older than kVerbInFlightReapMs (270s). If a worker is SIGKILLed mid-verb the slot stays held until that window elapses, blocking the same (verb, projectRoot) pair. Add a cheap worker-liveness probe (/proc/<pid> existence, or a stored QThread* isRunning check) on tryAcquire so a dead worker's slot frees in seconds. Low-priority hardening; current reaper already bounds the worst case.
@@ -45479,6 +45526,44 @@ it.
   **Layman:** One documentation file repeats rules that other files own, so the copies keep going out of date; the fix is to stop repeating them.
   Kind: refactor.
   Source: in-session-2026-08-25, the deferred tail of review-contract's 2026-08-25 run.
+
+- 📋 [ANTS-4681] **Every roadmap_log write re-renders the whole project and rewrites a 4.5 MB file, on the GUI thread.**
+  Measured today: roadmap_log ran 7 of 7 calls between 137 ms and 256 ms,
+  the slowest repeatable verb on the surface. Every op — annotate, flip, a
+  one-line append — renders all 2,315 items and writes three files, of
+  which ROADMAP.md is 4.5 MB. The project root is on a spinning disk, so
+  the write is seek-bound as well.
+
+  WHY IT MATTERS BEYOND ITS OWN COST. ANTS-2132 establishes that a verb
+  blocks the GUI thread for its whole duration, so this is a guaranteed
+  ~200 ms window freeze per roadmap write, on every session that files
+  anything. It is the largest repeatable contributor rather than the
+  largest single one.
+
+  TWO INDEPENDENT LEVERS, and they are worth separating.
+
+  Render cost: the store is the source of truth and the markdown is a
+  projection, so the work is proportional to the PROJECT, not to the edit.
+  An annotate touching one bullet re-renders 2,314 it did not change.
+
+  Write cost: three files rewritten in full per call. Whether the two
+  docs/roadmap/*.md carriers need rewriting when the edit did not touch
+  their release is worth checking first — that may be most of the saving
+  for none of the risk.
+
+  DO NOT reach for a schema change. CLAUDE.md is explicit that a
+  kSchemaVersion bump is a one-way door across every project on the
+  machine, and nothing here needs one: both levers are about what the
+  renderer chooses to write.
+
+  MEASURE BEFORE CHOOSING. 204 ms for one render of 2,267 items is already
+  recorded in CLAUDE.md, so the render is the known half; what is not
+  measured is the split between rendering and writing. Time them
+  separately before optimising either.
+  **Layman:** Filing one roadmap note rewrites the entire roadmap file, which freezes the window for a fifth of a second every time.
+  Kind: perf.
+  Source: in-session-2026-08-25, found while diagnosing a user report of the terminal locking up.
+  Lanes: mcp, roadmap, perf.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
