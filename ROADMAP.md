@@ -33209,7 +33209,7 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-08-25.
   Lanes: ci, tests.
 
-- 🚧 [ANTS-4652] **CI's compile cache is capped at 500 MB and thrashes; qt62-baseline has none at all.**
+- ✅ [ANTS-4652] **CI's compile cache is capped at 500 MB and thrashes; qt62-baseline has none at all.**
   MEASURED, run 32820161654 (2026-08-25). The three jobs run in PARALLEL, so
   wall clock is the slowest of them:
 
@@ -33257,6 +33257,7 @@ in each bullet, not just the reporter's symptom.
   ONE READING CORRECTED so it is not repeated: qt62's stats show "Primary storage: Misses 1210" against "Misses: 605" in the summary. That is 605 compilations with two lookups each (direct + preprocessed), NOT 1210 compilations. The 40 MB it saved is therefore about 66 KB per compressed object, which is ordinary — it is not evidence of a broken save.
 
   STILL TO OBSERVE, and the item stays open until then: qt62-baseline restoring its key and posting a non-zero hit rate, and build-asan's misses falling as its 2 GB cache fills.
+  Closed (2026-08-25) on the evidence it was held open for: a non-docs push showing qt62-baseline restoring its key with a non-zero hit rate. Run 32829614318 (d84537f3, the ANTS-4644/4645/4648 push) — "Cache restored from key: Linux-ccache-qt62-36b3db8d…" (the previous non-docs commit's key), "Cache saved with key: Linux-ccache-qt62-d84537f3…", and 600/605 hits = 99.17%, 5 misses, cache 0.04 GB of the 2 GB ceiling. build-test's release cache reports the same 600/605 at 0.5 GB of 2 GB, so neither job is near the new limit and neither is self-evicting. The restore→save chain across two separate pushes is what proves the key rotation works rather than a single run happening to be warm. Also confirms the reading recorded against this item: qt62's "Primary storage" line shows 1202/1210 beside the 600/605 summary — two lookups per compilation, not a broken save; the ratio held exactly on this run too.
   **Layman:** The build machine throws away most of what it compiled last time, so it recompiles the same code every run.
   Kind: perf.
   Source: user-request-2026-08-25.
