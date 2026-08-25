@@ -45163,6 +45163,17 @@ it.
 
   RECHECK BEFORE USING. This lists ids, and an id that ships drops out. The
   membership is stable; the open/shipped status is not.
+  Progress (2026-08-25, later session): worked BY FAMILY as this item proposes, and the partition held. Fourteen items closed. Recording what moved so the membership above is not re-derived from stale ids.
+
+  WRAP / DETECTION -- closed. ANTS-4607 (comment leaders folded in WrapMatch, both sides), ANTS-4664 (doc_citations detects the span over the newline-folded BLOCK), ANTS-4566 (invariant_check reports basename_matches beside a confident hit). ANTS-4670 remains and is CONSIDERED on purpose -- it needs a corpus measurement and a decision, not code.
+
+  ENVELOPE SILENCE -- closed but for one. ANTS-4567 (fields_unmatched), ANTS-4572 (the scrub reports unnamed removals), ANTS-4561 (released_body capped and announced), plus ANTS-4551 and ANTS-4579 closed as ALREADY DELIVERED by ANTS-4635/4493 -- verified by reading the path, not assumed. ANTS-4552 remains and is the deepest of them: it needs the renderer to separate REMOVALS from reformatted lines, which is not a reporting change.
+
+  fields= CLASS -- ANTS-4524 route 1's first half shipped (the predicate is split into a two-column table), ANTS-4665 shipped as its first user. The remaining half is making fields= genuinely universal, and the blocker that item named is now gone.
+
+  NEW, all found while doing the above rather than reported: ANTS-4677 (roadmap_query's sync_checked was being dropped by compaction in every session -- ANTS-4673 in a second verb, already live), ANTS-4676 and ANTS-4666 and ANTS-4679 (three separate defects in spec_lint's skip disclosure), ANTS-4678 (doc_citations' whole quotation pass is uncontracted).
+
+  THE PARTITION'S OWN THESIS HELD, with one correction worth carrying. Fixing a family did close reports nobody had filed -- ANTS-4677 was found by asking which OTHER verbs emit a false boolean meaning "nobody looked", and it was already shipping. But three of the four new items are the same shape as each other: a disclosure that EXISTS and is still unusable, because it names the wrong thing or is labelled so it cannot be matched to what it explains. That is evidence for ANTS-4675 and against a naive reading of it: the dangerous state is a PARTIAL disclosure, not an absent one, so any standing rule has to bind the label and the accuracy, not merely the presence.
   **Layman:** The long list of outstanding reports is really a handful of underlying problems; this records which is which.
   Kind: chore.
   Source: in-session-2026-08-25, derived while answering how to clear the backlog.
