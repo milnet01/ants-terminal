@@ -262,6 +262,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A narrowing argument sent to a verb that ignores it now says so** (ANTS-4578)
+  `fields`, `compact`, `offload` and `etag_match` were exempt from the
+  unknown-argument advisory on every verb, while the dispatcher honours
+  them only for the verbs that support them — so asking an unsupporting
+  verb to narrow its reply did nothing and reported nothing. The exemption
+  is now decided per call.
+
 - **A roadmap note naming a C++ symbol is no longer read as a trailer declaration** (ANTS-4608)
   A double colon is a scope operator, not a heading. Writing about a symbol
   whose scope name ends in `Source`, `Kind`, `Lanes`, `Layman` or

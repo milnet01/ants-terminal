@@ -13854,8 +13854,22 @@ void ClaudeIntegration::onMcpConnection() {
                 // still owed, since the offload discards it either way.
                 QStringList ignoredArgKeys;
                 if (toolHandled && m_toolParamKeys.contains(toolName)) {
+                    // ANTS-4578 — which dispatch-layer args THIS verb actually
+                    // honours. The predicates live here, so the pure helper
+                    // cannot ask them; previously it exempted all four
+                    // unconditionally and a `fields` sent to a verb with no
+                    // projection support did nothing and said nothing.
+                    QSet<QString> honoured;
+                    if (isEtagSupportedTool(toolName))
+                        honoured.insert(QStringLiteral("etag_match"));
+                    if (mcp::isFieldProjectionTool(toolName)) {
+                        honoured.insert(QStringLiteral("fields"));
+                        honoured.insert(QStringLiteral("compact"));
+                    }
+                    if (mcp::isOffloadEligible(toolName))
+                        honoured.insert(QStringLiteral("offload"));
                     ignoredArgKeys = mcp::ignoredArgs(
-                        argsObj, m_toolParamKeys.value(toolName));
+                        argsObj, m_toolParamKeys.value(toolName), honoured);
                 }
                 if (toolHandled && !cachedHit && !ignoredArgKeys.isEmpty()) {
                     responseText =

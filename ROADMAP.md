@@ -40748,7 +40748,7 @@ filed below.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20 (request plus the same contributor's correction to it).
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4570] **op:flip with return:"headline_only" returned no post_bullets on to_status=in-progress.**
+- ✅ [ANTS-4570] **op:flip with return:"headline_only" returned no post_bullets on to_status=in-progress.**
   The schema says return:"headline_only" adds post_bullets to the success
   envelope so a confirm-after read folds into the write. On finbreak
   FIBR-0293 with to_status=in-progress, the success envelope carried no
@@ -40796,6 +40796,40 @@ filed below.
   documented return/dry_run surface against a MIGRATED fixture would catch
   both classes. The existing fixtures allocate on a fresh counter-strategy
   project, which is the code path that already works, so they cannot see it.
+  Investigated (2026-08-25). NOT reproducible on this build, and the two
+  hypotheses on record are both contradicted.
+
+  Ran the documented surface against this project, which is store-backed --
+  the backend the second report suspected -- with `return:"headline_only"`,
+  `to_status:"in-progress"`, a note, and `compact:true`, which is the exact
+  argument set that report used. `post_bullets` came back populated, on the dry
+  run AND on the real write. So it is neither in-progress specifically nor the
+  store-backed path.
+
+  One thing the investigation DID find, and it may be the whole story: that
+  second report passed `compact:true`, and roadmap_log declares no such
+  property. Until today the dispatcher exempted `compact` from the unknown-arg
+  advisory on every verb, so the caller was told nothing -- ANTS-4578, fixed in
+  the same session. `compact` never reached anything, so it cannot have
+  suppressed `post_bullets`; what it explains is why a caller could pass an
+  inert argument and reasonably believe the envelope had been narrowed by it.
+  That is a plausible reading of "the field was not there": it was, and
+  something else about the envelope was not what was expected.
+
+  Not closing as no-defect. The first reporter said plainly they could not
+  isolate the variable and did not re-test because a flip is a write with no
+  undo, which is sound. Their impact note stands either way: a caller who
+  trusts the write and skips the read-back loses the guarantee the parameter
+  exists to give.
+
+  What this item should become is the guard it already proposes, which is worth
+  building whether or not the original sighting is ever reproduced: make the
+  ABSENCE of `post_bullets` distinguishable from it being empty, the way
+  ANTS-4463 did for dry_run. And the reporter's own generalisation is the more
+  valuable half -- one test driving the documented return/dry_run surface
+  against a MIGRATED fixture would cover this and ANTS-4508's `would_be_id`
+  together, because the existing fixtures allocate on a fresh counter-strategy
+  project, which is the path that already works. Re-filed as ANTS-4661.
   **Layman:** A flag meant to save a follow-up read didn't do anything on one kind of status change.
   Kind: investigate.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
@@ -41285,7 +41319,7 @@ filed below.
   Source: in-session-2026-08-20, while closing ANTS-4576.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4578] **An unknown top-level parameter is accepted and ignored, so a narrowing that never happened looks like it worked.**
+- ✅ [ANTS-4578] **An unknown top-level parameter is accepted and ignored, so a narrowing that never happened looks like it worked.**
   Snatch passed `fields` to feedback_query, which does not declare it
   (its schema is caller_cwd, etag_match, include_tracking, max_bytes,
   path). The call returned ok:true and the FULL 7.4 KB delta -- three
@@ -41321,6 +41355,37 @@ filed below.
   `fields` support. The commonest call after a feedback write is exactly
   the confirmation Snatch wanted, and session_orient's feedback_pending
   block is a few bytes inside a payload measured in tens of KB.
+  Resolved (2026-08-25). The cause was one line, and it was an exemption
+  rather than a missing feature.
+
+  `mcp::ignoredArgs` skipped six "universal dispatch-layer args" on EVERY verb
+  -- caller_cwd, encoding, etag_match, fields, compact, offload -- while the
+  dispatcher acts on the last four only for the verbs on its allowlists. So
+  `fields` sent to feedback_query, or to session_orient before it joined the
+  projection allowlist, did nothing AND reported nothing. Both symptoms this
+  item measured are that one exemption.
+
+  The tell was in the report without either of us seeing it: `raw` was never on
+  the exemption list, so an unsupported `raw` has always been reported
+  correctly. Four args wore an exemption they had not earned.
+
+  Exemption is now per call. `caller_cwd` and `encoding` stay unconditional,
+  each for a stated reason -- every verb reads the first, and tabularize is
+  self-guarding with no tool-name predicate. The other four are passed in by
+  the dispatcher, which owns the allowlists the pure helper cannot ask.
+
+  The reporter's preferred fix -- refuse with bad_args rather than advise -- is
+  still not done and is still the stronger contract. It is ANTS-4659, split out
+  of ANTS-4626 earlier today, together with the survey it needs. What changed
+  here is that the advisory now fires at all on these args, which is the
+  precondition for judging whether an advisory is enough.
+
+  Also from this item, and already true: session_orient gained real `fields`
+  support in ANTS-4523. feedback_query has not, and that half is untouched.
+
+  Measured against the live socket while investigating a different item:
+  `compact:true` on roadmap_log, which declares no such property, returned no
+  ignored_args at all. That was this defect, reproduced by accident.
   **Layman:** Ask a tool for a small answer using a word it doesn't know, and it quietly sends the huge one instead.
   Kind: fix.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20; reproduced on this repo during the triage that filed it.
@@ -43112,10 +43177,45 @@ filed below.
   Related but distinct: ANTS-4595 is a different garbage-in-source class (a
   lifecycle word), so a repair pass may as well cover both. Do not merge them
   -- the predicates differ.
+  Probe (2026-08-25) for ANTS-4570, on a real write rather than a dry run,
+  with the exact argument set the second report used -- return:"headline_only"
+  plus compact:true, on a store-backed project. Flipped straight back to
+  planned; this item has not been started.
+  Probe complete: post_bullets WAS returned on both the dry run and the real
+  write. Status restored; nothing about this item changed.
   **Layman:** A few roadmap entries have a nonsense value saved where their origin should be, left over from a parsing bug.
   Kind: fix.
   Source: in-session-2026-08-25 (measured while fixing ANTS-4608).
   Lanes: roadmap-store.
+
+- 📋 [ANTS-4661] **The documented return/dry_run surface is only tested against fresh counter-strategy fixtures, which is the path that already works.**
+  ANTS-4570's second reporter made the observation worth keeping, and it
+  outlived the sighting that prompted it. Two documented fields landed on one
+  backend and not the other in the same week -- ANTS-4508's `would_be_id` on the
+  store-backed dry_run, and `post_bullets` as they reported it. Their diagnosis:
+  the fixtures allocate on a fresh counter-strategy project, which is the code
+  path that already works, so they cannot see a store-backed regression.
+
+  ANTS-4570 itself did not reproduce -- `post_bullets` came back on both the dry
+  run and the real write against a store-backed project. That does not retire
+  the gap, because the gap is about what the suite can SEE, not about whether
+  one field was missing on one day.
+
+  Two things to build.
+
+  A fixture that drives the documented return/dry_run surface against a MIGRATED
+  project, covering op:append, op:flip and both _batch forms. It would have
+  caught ANTS-4508 and would catch the next one.
+
+  And the guard ANTS-4570 proposed, which is worth having regardless: make the
+  ABSENCE of `post_bullets` distinguishable from it being present and empty, the
+  way ANTS-4463 did for dry_run's past-tense fields. A caller cannot currently
+  tell "not supported on this path" from "nothing to report", and that ambiguity
+  is why the original report could not isolate its variable.
+  **Layman:** Two reported gaps both landed on the database-backed path, and no test exercises that path.
+  Kind: test.
+  Source: in-session-2026-08-25, split out of ANTS-4570 (reporter's own generalisation).
+  Lanes: roadmap-store, test.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-21 triage
 

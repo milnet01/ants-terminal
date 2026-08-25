@@ -39,22 +39,55 @@ TEST(McpIgnoredArgs, Inv1ReportsUnknownSorted) {
     args[QStringLiteral("query")]   = QStringLiteral("token");  // the typo
     args[QStringLiteral("aaa")]     = 1;
     args[QStringLiteral("status")]  = QStringLiteral("active"); // known
-    const QStringList got = mcp::ignoredArgs(args, roadmapQueryKnown());
+    const QStringList got =
+        mcp::ignoredArgs(args, roadmapQueryKnown(), QSet<QString>{});
     // "aaa" sorts before "query"; "status" (known) is excluded.
     EXPECT_EQ(got, (QStringList{QStringLiteral("aaa"),
                                 QStringLiteral("query")}));
 }
 
-// INV-2 — universal dispatch-layer args are never flagged, even though
-// roadmap_query's `known` set here does not include them all.
-TEST(McpIgnoredArgs, Inv2UniversalArgsNeverFlagged) {
+// INV-2 — a dispatch-layer arg the verb HONOURS is never flagged.
+//
+// ANTS-4578 — this used to exempt `fields`, `compact`, `offload` and
+// `etag_match` on every verb, while the dispatcher acts on them only for the
+// verbs on its allowlists. So passing `fields` to a verb that does not
+// support it did nothing AND said nothing, which is the worst of the three
+// possible outcomes: the caller believes the narrowing worked and makes the
+// same call again. `raw` was never on the list and was correctly reported all
+// along — that asymmetry is what identified the defect.
+TEST(McpIgnoredArgs, Inv2HonouredArgsNeverFlagged) {
     QJsonObject args;
-    for (const char *k : {"caller_cwd", "etag_match", "fields",
+    for (const char *k : {"caller_cwd", "encoding", "etag_match", "fields",
                           "compact", "offload"})
         args[QString::fromUtf8(k)] = true;
-    EXPECT_TRUE(mcp::ignoredArgs(args, roadmapQueryKnown()).isEmpty());
+    const QSet<QString> honoured{
+        QStringLiteral("etag_match"), QStringLiteral("fields"),
+        QStringLiteral("compact"),    QStringLiteral("offload")};
+    EXPECT_TRUE(
+        mcp::ignoredArgs(args, roadmapQueryKnown(), honoured).isEmpty());
     // Even against an empty known set (INV-4 corollary).
-    EXPECT_TRUE(mcp::ignoredArgs(args, QSet<QString>{}).isEmpty());
+    EXPECT_TRUE(mcp::ignoredArgs(args, QSet<QString>{}, honoured).isEmpty());
+}
+
+// INV-2b — the same args ARE flagged on a verb that honours none of them.
+// This is the case ANTS-4578 reported, from two different projects: `fields`
+// to feedback_query, and `fields` to session_orient before it joined the
+// projection allowlist. Both returned the full payload in silence.
+//
+// `caller_cwd` and `encoding` stay exempt unconditionally, and for a stated
+// reason rather than by omission: every verb reads caller_cwd, and
+// tabularize is self-guarding with no tool-name predicate, so both are
+// honoured everywhere.
+TEST(McpIgnoredArgs, Inv2bUnhonouredDispatchArgsAreFlagged) {
+    QJsonObject args;
+    for (const char *k : {"caller_cwd", "encoding", "etag_match", "fields",
+                          "compact", "offload"})
+        args[QString::fromUtf8(k)] = true;
+    EXPECT_EQ(mcp::ignoredArgs(args, QSet<QString>{}, QSet<QString>{}),
+              (QStringList{QStringLiteral("compact"),
+                           QStringLiteral("etag_match"),
+                           QStringLiteral("fields"),
+                           QStringLiteral("offload")}));
 }
 
 // INV-3 — all-known args (declared + universal) → empty.
@@ -63,7 +96,8 @@ TEST(McpIgnoredArgs, Inv3AllKnownEmpty) {
     args[QStringLiteral("status")]     = QStringLiteral("active");
     args[QStringLiteral("section")]    = QStringLiteral("x");
     args[QStringLiteral("caller_cwd")] = QStringLiteral("/p");
-    EXPECT_TRUE(mcp::ignoredArgs(args, roadmapQueryKnown()).isEmpty());
+    EXPECT_TRUE(
+        mcp::ignoredArgs(args, roadmapQueryKnown(), QSet<QString>{}).isEmpty());
 }
 
 // INV-4 — an empty known set reports every non-universal arg.
@@ -72,7 +106,7 @@ TEST(McpIgnoredArgs, Inv4EmptyKnownReportsNonUniversal) {
     args[QStringLiteral("foo")]        = 1;
     args[QStringLiteral("bar")]        = 2;
     args[QStringLiteral("caller_cwd")] = QStringLiteral("/p");  // universal
-    EXPECT_EQ(mcp::ignoredArgs(args, QSet<QString>{}),
+    EXPECT_EQ(mcp::ignoredArgs(args, QSet<QString>{}, QSet<QString>{}),
               (QStringList{QStringLiteral("bar"), QStringLiteral("foo")}));
 }
 

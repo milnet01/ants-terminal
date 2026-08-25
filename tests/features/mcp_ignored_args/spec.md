@@ -22,11 +22,22 @@ was a no-op.
 ## Invariants
 
 - **INV-1** — `ignoredArgs` returns, sorted ascending, exactly the keys in
-  `args` that are neither in `known` nor a universal dispatch-layer arg.
-- **INV-2** — the universal dispatch-layer args (`caller_cwd`, `etag_match`,
-  `fields`, `compact`, `offload`) are NEVER reported, even when a verb's
-  `known` set does not redeclare them — the dispatcher accepts them for
-  every verb.
+  `args` that are neither in `known`, nor unconditionally universal, nor in
+  the caller-supplied `honoured` set.
+- **INV-2** — a dispatch-layer arg the verb HONOURS is never reported, even
+  when its `known` set does not redeclare it. Two are unconditional:
+  `caller_cwd`, which every verb reads, and `encoding`, which the dispatcher
+  applies with no tool-name predicate. The rest arrive per call in
+  `honoured`.
+- **INV-2b** (ANTS-4578) — **`etag_match`, `fields`, `compact` and `offload`
+  ARE reported on a verb that does not honour them.** They were exempt
+  everywhere until 2026-08-25, while the dispatcher acts on them only for
+  the verbs on its allowlists — so `fields` sent to a verb with no
+  projection support did nothing and reported nothing, and the caller
+  believed the narrowing had worked. Reported from two projects, on
+  `feedback_query` and on `session_orient` before it joined the projection
+  allowlist. `raw` was never on the exemption list and was correctly
+  reported throughout; that asymmetry is what identified the defect.
 - **INV-3** — when every arg is recognised (in `known` or universal), the
   result is empty.
 - **INV-4** — an empty `known` set reports every non-universal arg (a verb

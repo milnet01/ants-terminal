@@ -146,7 +146,18 @@ bool terseDefault();
 // working search. Pure (mirrors projectFields) so the dispatch layer and the
 // feature test share one implementation. `known` is empty -> every non-
 // universal key is reported (matches a verb that declares no properties).
-QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known);
+// ANTS-4578 — `honoured` names the DISPATCH-layer args this particular call
+// will actually act on (fields / compact / offload / etag_match), which the
+// dispatcher knows and this pure helper cannot. Only `caller_cwd` and
+// `encoding` are exempt unconditionally: every verb reads the first, and
+// tabularize is self-guarding with no tool-name predicate.
+//
+// Before this the four conditional args were exempt EVERYWHERE, so passing
+// `fields` to a verb with no projection support did nothing and reported
+// nothing — the caller believed the narrowing worked. `raw` was never on the
+// list and was correctly reported all along; that asymmetry is the tell.
+QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known,
+                        const QSet<QString> &honoured);
 
 // ANTS-4525 — attach the `ignored_args` advisory to a response body, REFUSALS
 // INCLUDED. Returns `responseJson` unchanged when `ignored` is empty or the

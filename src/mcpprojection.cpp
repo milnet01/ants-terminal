@@ -452,22 +452,28 @@ namespace {
 // doesn't redeclare these in its own schema still accepts them, so they must
 // never be reported as ignored. Keep in sync with the dispatch
 // post-processing chain.
+// ANTS-4578 — only these two are exempt on EVERY verb, and each for a stated
+// reason. Every verb reads `caller_cwd`. `encoding` is applied by the
+// dispatcher with no tool-name predicate (tabularize self-guards per array),
+// so it is honoured wherever it is sent.
+//
+// The other four — fields, compact, offload, etag_match — are honoured only
+// for the verbs on the dispatcher's allowlists, so whether they were ignored
+// is a per-call question and arrives as `honoured`.
 bool isUniversalDispatchArg(const QString &key) {
     return key == QStringLiteral("caller_cwd")
-        || key == QStringLiteral("etag_match")
-        || key == QStringLiteral("fields")
-        || key == QStringLiteral("compact")
-        || key == QStringLiteral("offload")
         || key == QStringLiteral("encoding");
 }
 
 }  // namespace
 
-QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known) {
+QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known,
+                        const QSet<QString> &honoured) {
     QStringList out;
     for (auto it = args.constBegin(); it != args.constEnd(); ++it) {
         const QString &key = it.key();
-        if (known.contains(key) || isUniversalDispatchArg(key))
+        if (known.contains(key) || isUniversalDispatchArg(key) ||
+            honoured.contains(key))
             continue;
         out.append(key);
     }
