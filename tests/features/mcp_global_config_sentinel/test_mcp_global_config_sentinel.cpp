@@ -119,6 +119,49 @@ TEST(McpGlobalConfigSentinel, WiringContract) {
         }
     }
 
+    // INV-13 (ANTS-4565) — cmdDocCitations calls the helper before normal
+    // resolveRootCanonical. It was the one verb of the doc-checking set that
+    // did not, so check-doc-facts over a skill tree could run two of its
+    // three checks through the sentinel and had to hand-roll the third.
+    {
+        const size_t dcStart =
+            rcCpp.find("RemoteControl::cmdDocCitations(");
+        expect(dcStart != std::string::npos,
+               "INV-13 location",
+               "cmdDocCitations implementation not found in "
+               "the remotecontrol TUs");
+        if (dcStart != std::string::npos) {
+            const size_t windowEnd =
+                std::min(rcCpp.size(), dcStart + 2000);
+            const std::string window =
+                rcCpp.substr(dcStart, windowEnd - dcStart);
+            expect(contains(window, "expandGlobalConfigSentinel"),
+                   "INV-13 wired",
+                   "cmdDocCitations body does not call "
+                   "ants::expandGlobalConfigSentinel");
+        }
+    }
+
+    // INV-14 (ANTS-4565) — doc_citations' description documents the sentinel,
+    // as its siblings' do. A capability nothing announces is one a caller
+    // reaches for only by accident.
+    {
+        const size_t dcToolPos = ciCpp.find("\"doc_citations\"");
+        expect(dcToolPos != std::string::npos,
+               "INV-14 location",
+               "doc_citations tool descriptor not found");
+        if (dcToolPos != std::string::npos) {
+            const size_t windowEnd =
+                std::min(ciCpp.size(), dcToolPos + 6000);
+            const std::string window =
+                ciCpp.substr(dcToolPos, windowEnd - dcToolPos);
+            expect(contains(window, "~global"),
+                   "INV-14 doc-~global",
+                   "doc_citations description does not mention the "
+                   "\"~global\" sentinel");
+        }
+    }
+
     // INV-6 — workspace_search description documents the sentinel.
     {
         const size_t wsToolPos = ciCpp.find("\"workspace_search\"");

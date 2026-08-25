@@ -262,6 +262,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_citations` accepts the `~global` sentinel its sibling verbs already took** (ANTS-4565)
+  It was the one verb of the doc-checking set that refused it, so checking
+  a document under `~/.claude/` meant hand-rolling the citation pass. The
+  basename fallback is unavailable under that root and the description now
+  says so.
+
 - **A narrowing argument sent to a verb that ignores it now says so** (ANTS-4578)
   `fields`, `compact`, `offload` and `etag_match` were exempt from the
   unknown-argument advisory on every verb, while the dispatcher honours

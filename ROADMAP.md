@@ -40551,7 +40551,7 @@ filed below.
   Source: AI_Prompts_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: roadmapmigrate.
 
-- 📋 [ANTS-4565] **doc_citations refuses the ~global sentinel that its four sibling read verbs accept.**
+- ✅ [ANTS-4565] **doc_citations refuses the ~global sentinel that its four sibling read verbs accept.**
   doc_integrity accepts caller_cwd:"~global" and walked skills/write-spec/
   correctly. The same sentinel on doc_citations refuses with
   code:bad_path, error "doc_citations: no focused project". "~claude-config"
@@ -40579,6 +40579,34 @@ filed below.
   so in the refusal: sentinel_unsupported with a one-line reason beats
   bad_path, because the caller can then stop retrying and reach for the
   fallback deliberately.
+  Resolved (2026-08-25). doc_citations now re-roots on `~global` /
+  `~claude-config`, using doc_integrity's own lines rather than a second
+  mechanism.
+
+  The item's worry about the resolver did not materialise, and checking it was
+  the only real work. The codebase-index basename map is loaded by opening a
+  cache file and populating from it if the version and root match; with no index
+  for that root the open simply fails and the map stays empty. So a citation
+  resolves project-relative or not at all -- a degraded answer, not a wrong one.
+  That is why no `sentinel_unsupported` refusal was added: the item proposed it
+  as the honest fallback IF the resolver could not work there, and it can.
+
+  The description now says both things: that the sentinel is accepted, and that
+  the basename fallback is unavailable under it. The second half matters more
+  than it looks, because a citation that would have resolved by basename in a
+  project comes back unresolved here, and a caller who does not know that reads
+  it as a stale citation.
+
+  Covered by two new invariants on the existing ANTS-1390 sentinel test rather
+  than a new feature dir -- that test is where the other four verbs' wiring is
+  pinned, and splitting this one off would have left the set incomplete in the
+  place a reader checks. INV-13 asserts the call, INV-14 the description. Red
+  first.
+
+  The misleading refusal text this item also flagged -- "no focused project" for
+  what is really "this verb does not know that sentinel" -- is now unreachable
+  for the sentinel case, and unchanged for the others. Not filed separately: the
+  remaining cases genuinely are a missing project.
   **Layman:** One documentation-checking tool can't read the global config folder, though its siblings can.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-20.

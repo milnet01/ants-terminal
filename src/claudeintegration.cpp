@@ -5544,6 +5544,16 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject docCit;
                 docCit["name"] = "doc_citations";
                 docCit["description"] = QStringLiteral(
+                    "ANTS-4565 — pass `caller_cwd: \"~global\"` (alias "
+                    "\"~claude-config\") to check citations in a doc under "
+                    "~/.claude/, the same sentinel doc_integrity, "
+                    "workspace_search, file_outline and read_region accept. "
+                    "This verb was the one member of that set that refused "
+                    "it, so a run over a skill tree took two of its three "
+                    "checks through the sentinel and hand-rolled the third. "
+                    "Note the basename fallback is unavailable under the "
+                    "sentinel (that root has no codebase index), so a "
+                    "citation resolves project-relative or not at all. "
                     "Resolve a doc's `path:line` citations against the files and return the "
                     "cited line TEXT. Scans one markdown/text file, finds every src/a.cpp:12 "
                     "/ a.cpp:10-12 / `:45` continuation, resolves it (project-relative, then "

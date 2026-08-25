@@ -998,7 +998,22 @@ QJsonObject RemoteControl::docDedupBuildResponse(const DocDedup::Result &result,
 // the sweep shape is ANTS-3643. Engine: DocCitations::check. See
 // docs/specs/ANTS-3636.md.
 QJsonDocument RemoteControl::cmdDocCitations(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    // ANTS-4565 — `~global` / `~claude-config` re-roots to ~/.claude, exactly
+    // as doc_integrity does above (ANTS-3719) and as workspace_search,
+    // file_outline and read_region already did. This verb was the one member
+    // of that set without it, so check-doc-facts over a skill tree ran two of
+    // its three checks through the sentinel and had to hand-roll the third in
+    // Bash — the duplication the verb exists to remove.
+    //
+    // The basename map below is unaffected by having no index for that root:
+    // the cache open simply fails and `opts.basenameIndex` stays empty, so
+    // path citations still resolve and only basename resolution is
+    // unavailable. That is a degraded answer, not a wrong one, which is why
+    // this needs no `sentinel_unsupported` refusal.
+    const QString sentinelRoot = ants::expandGlobalConfigSentinel(
+        req.value(QStringLiteral("caller_cwd")).toString());
+    const QString rootCanonical =
+        sentinelRoot.isEmpty() ? resolveRootCanonical(m_main, req) : sentinelRoot;
     const QJsonObject refusal = docCitationsValidate(rootCanonical, req);
     if (!refusal.isEmpty()) return QJsonDocument(refusal);
 
