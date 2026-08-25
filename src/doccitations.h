@@ -100,10 +100,16 @@ struct Quote {
     int     docLine = 0;      // 1-based line the quoted span starts on
     QString text;             // the quoted text, delimiters stripped
     QString target;           // the attributed document, when one was inferred
-    // "ok"        — found in the attributed document
-    // "not_found" — the target was read and does not contain it
-    // "ambiguous" — the attribution named a basename with several matches
-    // "no_target" — no document was attributed in the same sentence
+    // "ok"                — found in the attributed document
+    // "not_found"         — the target was read and does not contain it
+    // "ambiguous"         — the attribution named several documents: a
+    //                       basename with several matches, or (ANTS-4640) one
+    //                       table cell naming more than one
+    // "target_unresolved" — ANTS-4639: an attribution PARSED and did not
+    //                       resolve, or resolved and could not be read. NOT
+    //                       the same answer as `no_target`: the check did not
+    //                       run, versus the check ran and the quote is stale
+    // "no_target"         — no document was attributed in scope at all
     QString status;
     QStringList candidates;   // ambiguous only
 };

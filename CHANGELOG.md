@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **doc_citations quotes: widen attribution from the line to the paragraph — coverage goes from 26 to 111 of 249 checkable quotations.** (ANTS-4638)
+  The checker only links a quote to its source when both sit on one line, which hard-wrapped prose almost never does.
+
 - **Feedback lookups can be pointed at a shared corpus directory** (ANTS-4471)
   When `feedback_query` could not find a project's feedback file it said
   only "not found", even though it already knew how to list nearby files —
@@ -229,6 +232,15 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **doc_citations quotes: a table row's LAST backticked path wins attribution, which is the wrong one in an impact table.** (ANTS-4640)
+  In a table listing which documents a change affects, the quote gets checked against the affected file instead of the source.
+
+- **doc_citations quotes: resolve a bare basename against the scanned document's own directory, and stop making non-document tokens targets.** (ANTS-4639)
+  A quote pointing at a sibling document in the same folder is reported as having no source at all.
+
+- **doc_citations quotes: skip a quotation sitting in a loop-log table row — 271 of 520 in one corpus (52%) are historical by design.** (ANTS-4637)
+  The quote checker flags wording that a review deliberately replaced, so most of what it reports is not a problem.
 
 - **roadmap_query: a freshly migrated project no longer warns that its file is ahead of its own store** (ANTS-4636)
   `idHighWater()` reads the `id_prefix` row, and migration does not write one — only an id-allocating append does. A migrated-but-never-appended project therefore reported a store high-water of 0 while holding every id in its file, so `file_ahead_of_store` was pinned on permanently and read as "the migration silently wrote nothing". The mark is now the higher of that counter and the ids the items actually hold. Reported by Album_Builder on a 357-item project.

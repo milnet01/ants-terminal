@@ -43453,7 +43453,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: Album_Builder-2026-08-24; supersedes the fixture-artefact reading of ANTS-4633.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4637] **doc_citations quotes: skip a quotation sitting in a loop-log table row — 271 of 520 in one corpus (52%) are historical by design.**
+- ✅ [ANTS-4637] **doc_citations quotes: skip a quotation sitting in a loop-log table row — 271 of 520 in one corpus (52%) are historical by design.**
   A converged review document records each loop in a table row, and those rows
   quote the wording a fix REPLACED. `not_found` is the correct and permanent
   answer for every one of them. Fenced quotations are already skipped as
@@ -43475,12 +43475,13 @@ Three were reproduced directly in this session rather than taken on report.
   and REPORT the skip — a `skipped` bucket in `quote_counts`, so a zero is
   distinguishable from nothing-to-check. Reporting the skip matters as much as
   performing it.
+  Resolved (2026-08-25): a quotation whose line is a loop-log row (first cell a loop number, second an ISO date) is skipped, and the skip is REPORTED as quote_counts.skipped. The status buckets still partition quotes_checked; quote_counts_overlay_keys names the one that does not, mirroring counts_overlay_keys (ANTS-4087). Measured by linking the real engine over the reporting corpus (102 files, 416 harvested quotations): 183 skipped, 44%. The false-stale class the item names is what went: not_found fell from 30 to 10, and standards/commits.md from 9 no_target + 1 not_found to 8 skipped + 2 no_target.
   **Layman:** The quote checker flags wording that a review deliberately replaced, so most of what it reports is not a problem.
   Kind: fix.
   Source: claude_config-2026-08-24.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4638] **doc_citations quotes: widen attribution from the line to the paragraph — coverage goes from 26 to 111 of 249 checkable quotations.**
+- ✅ [ANTS-4638] **doc_citations quotes: widen attribution from the line to the paragraph — coverage goes from 26 to 111 of 249 checkable quotations.**
   Attribution requires a backticked `*.md` path on the SAME LINE as the
   quotation. This corpus hard-wraps at ~70 columns, so the path and the
   quotation it attributes routinely land on adjacent lines of one sentence.
@@ -43502,12 +43503,13 @@ Three were reproduced directly in this session rather than taken on report.
   winning; keep same-line as the tie-break so today's behaviour stays a strict
   subset. Belongs in the verb: a caller would have to re-implement resolution
   and whitespace folding, which is the duplication ANTS-4386 removed.
+  Resolved (2026-08-25): attribution searches the blank-line-delimited paragraph, nearest preceding line winning, with same-line kept as the tie-break so the old rule is a strict subset. A blank line ends the scope and a fenced line stops it, so the rule cannot reach across the document and invent an attribution. Old-vs-new over the real corpus: the paragraph rung is what turned two CLAUDE.md quotations into ok. Coverage of checked quotations carrying a target went from 36 of 416 to 51 of 233. The item projected ~45%; it was not reached because ANTS-4639's document-extension gate correctly rejects the directories, commands and regexes the old rule had been counting as attributions.
   **Layman:** The checker only links a quote to its source when both sit on one line, which hard-wrapped prose almost never does.
   Kind: enhancement.
   Source: claude_config-2026-08-24.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4639] **doc_citations quotes: resolve a bare basename against the scanned document's own directory, and stop making non-document tokens targets.**
+- ✅ [ANTS-4639] **doc_citations quotes: resolve a bare basename against the scanned document's own directory, and stop making non-document tokens targets.**
   `standards/commits.md` attributes quotations to `releases.md` and
   `coding.md`; both exist as `standards/releases.md` and `standards/coding.md`.
   The reply carries `target:"releases.md"` — so the attribution parsed —
@@ -43530,12 +43532,13 @@ Three were reproduced directly in this session rather than taken on report.
      rather than `no_target`. Those two mean opposite things to a caller: the
      check did not run, versus the check ran and the quotation is stale.
      Conflating them hides this bug and inflates the apparent no-target rate.
+  Resolved (2026-08-25): all three parts. (1) A bare basename resolves against the scanned document's own directory ahead of the repo root and the basename index; that rung is what turned skills/review-tests/SKILL.md's reference to its own references/dimensions.md into ok. (2) A token becomes a target only where it names a document (md, markdown, txt, rst, adoc, org), so a backticked core.hooksPath no longer does. (3) An attribution that parsed and did not resolve is target_unresolved, never no_target — 32 rows over the corpus that were previously indistinguishable from having no attribution at all.
   **Layman:** A quote pointing at a sibling document in the same folder is reported as having no source at all.
   Kind: fix.
   Source: claude_config-2026-08-24.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4640] **doc_citations quotes: a table row's LAST backticked path wins attribution, which is the wrong one in an impact table.**
+- ✅ [ANTS-4640] **doc_citations quotes: a table row's LAST backticked path wins attribution, which is the wrong one in an impact table.**
   In a markdown table the whole row is one line, and a row routinely carries
   several backticked paths. Twice in one review loop a cross-document quotation
   was attributed to the wrong file and came back `not_found` against text that
@@ -43557,6 +43560,7 @@ Three were reproduced directly in this session rather than taken on report.
   carries more than one resolvable path, report `ambiguous` with the candidate
   list rather than guessing — the envelope already has that status for an
   ambiguous basename. Sibling of the attribution items above; same resolver.
+  Resolved (2026-08-25): table attribution is row-scoped — the quotation's own cell first, then the row's first cell, its subject by convention. The item's first-cell rule ALONE regressed a shape it was not aimed at, and the verdict diff over the real corpus caught it: a definitions table runs `| genre | ...the quotation... | the file defining it |`, where the subject is the LAST cell, and first-cell-only lost an attribution the old line-scoped rule had found. A third rung was added — the rest of the row, reported ambiguous with candidates where it names several documents. Both table shapes are now correct, and ok over the corpus is back to its pre-change count with four loop-log rows replaced by four real gains.
   **Layman:** In a table listing which documents a change affects, the quote gets checked against the affected file instead of the source.
   Kind: fix.
   Source: finbreak-2026-08-24 (recovered from suspected_untagged).

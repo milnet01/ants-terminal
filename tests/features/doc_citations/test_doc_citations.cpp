@@ -1107,17 +1107,26 @@ TEST(DocCitations, Ants4386QuotationsAreCheckedAcrossLineWraps) {
                               {QStringLiteral("docs/a/dup.md"),
                                QStringLiteral("docs/b/dup.md")});
 
+    // ANTS-4638 re-fixture: the five cases are independent, and attribution
+    // is now PARAGRAPH-scoped — so they are separate paragraphs. Crammed
+    // together they were one, and the no-attribution case inherited the
+    // ambiguous basename from the case above it. Every assertion below is the
+    // one this test shipped with; only the fixture says what it always meant.
     const QString doc = fx.doc(
         // Present in the target, but SPANNING its line break.
         "As `docs/standards/commits.md` puts it, \"name the reason the "
         "change exists, not merely what it changed\".\n"
+        "\n"
         // Not present anywhere in the target.
         "It also says \"every commit shall be signed by two witnesses\" "
         "in `docs/standards/commits.md`.\n"
+        "\n"
         // Attribution resolves to two files.
         "See `dup.md`: \"a quotation attributed to an ambiguous basename\".\n"
-        // No document named on the line at all.
+        "\n"
+        // No document named anywhere in this paragraph.
         "Someone once said \"a quotation with nobody to attribute it to\".\n"
+        "\n"
         // Below the floor — ordinary prose, must not be harvested.
         "The flag is called \"quotes\" and defaults to false.\n");
 
@@ -1228,4 +1237,310 @@ TEST(DocCitations, Ants4085ForeignPathIsNotStale) {
     // Counted like any other status, so `counts` still partitions the rows.
     EXPECT_EQ(r.value(QStringLiteral("counts")).toObject()
                .value(QStringLiteral("foreign_path")).toInt(), 1);
+}
+
+// ANTS-4637 — a quotation sitting in a loop-log row is historical BY DESIGN.
+//
+// A converged review document records each loop in a table row, and those rows
+// quote the wording a fix REPLACED. `not_found` is the correct and permanent
+// answer for every one of them, so the check cannot act on it. Measured over
+// this machine's config corpus: 520 unfenced quotations of >= 30 characters,
+// **271 of them in a loop-log row** — 52%, which is what makes the mode's
+// output majority-false-stale and unreadable (the ANTS-4085 argument).
+//
+// It also actively harms: `CLAUDE.md` forbids back-filling a loop log, so a
+// session acting on a `not_found` there destroys the audit trail the row is
+// kept for.
+//
+// Reporting the skip matters as much as performing it — a suppressed
+// quotation that is merely absent is indistinguishable from one nobody found.
+TEST(DocCitations, Ants4637LoopLogRowsAreSkippedAndCounted) {
+    Fixture fx;
+    fx.write(QStringLiteral("standards/gate.md"),
+             "# Gate\n\nthe wording this rule carries today\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.write(QStringLiteral("standards/commits.md"),
+        "# Commits\n"
+        "\n"
+        "The rule in `standards/gate.md` reads \"the wording this rule "
+        "carries today\".\n"
+        "\n"
+        "| Loop | Date | Outcome |\n"
+        "|------|------|---------|\n"
+        "| 1 | 2026-08-14 | Fixed: `standards/gate.md` said \"the wording a "
+        "fix has since replaced\". |\n"
+        "| 2 | 2026-08-18 | Fixed: `standards/gate.md` said \"a second "
+        "superseded phrasing nobody may restore\". |\n"
+        "\n"
+        "| Source | Note |\n"
+        "|--------|------|\n"
+        "| `standards/gate.md` | \"the wording this rule carries today\" |\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    const QJsonObject qc = r.value(QStringLiteral("quote_counts")).toObject();
+
+    for (const QJsonValue &v : qs) {
+        EXPECT_FALSE(v.toObject().value(QStringLiteral("text")).toString()
+                         .contains(QStringLiteral("has since replaced")))
+            << "ANTS-4637: a loop-log row quotes the wording a fix REPLACED — "
+               "not_found is the permanent correct answer there, and acting "
+               "on it destroys the audit trail: " << qPrintable(render(r));
+    }
+    EXPECT_EQ(qc.value(QStringLiteral("skipped")).toInt(), 2)
+        << "ANTS-4637: the skip must be REPORTED — a zero has to be "
+           "distinguishable from nothing-to-check: " << qPrintable(render(r));
+    EXPECT_EQ(r.value(QStringLiteral("quotes_checked")).toInt(), 2)
+        << "ANTS-4637: skipped quotations were not checked, so they are not "
+           "in quotes_checked: " << qPrintable(render(r));
+
+    // The trap: an ORDINARY table row is not a loop-log row. Suppressing every
+    // table row would take the impact tables ANTS-4640 exists to serve with it.
+    int okCount = 0;
+    for (const QJsonValue &v : qs)
+        if (v.toObject().value(QStringLiteral("status")).toString()
+            == QLatin1String("ok")) ++okCount;
+    EXPECT_EQ(okCount, 2)
+        << "ANTS-4637: the prose quotation and the ordinary table row are "
+           "still checked — the rule keys on the loop-number + ISO-date "
+           "shape, not on being a table: " << qPrintable(render(r));
+
+    // The partition is over what was CHECKED; `skipped` sits outside it, and
+    // the envelope has to say so or the map reads as a broken tally.
+    const QJsonArray overlay =
+        r.value(QStringLiteral("quote_counts_overlay_keys")).toArray();
+    EXPECT_TRUE(overlay.contains(QJsonValue(QStringLiteral("skipped"))))
+        << "ANTS-4637: `skipped` is an overlay, not a status bucket: "
+        << qPrintable(render(r));
+    int partition = 0;
+    for (const QString &k : {QStringLiteral("ok"), QStringLiteral("not_found"),
+                             QStringLiteral("ambiguous"),
+                             QStringLiteral("no_target"),
+                             QStringLiteral("target_unresolved")})
+        partition += qc.value(k).toInt();
+    EXPECT_EQ(partition, r.value(QStringLiteral("quotes_checked")).toInt())
+        << "ANTS-4637: the status buckets partition quotes_checked: "
+        << qPrintable(render(r));
+}
+
+// ANTS-4638 — attribution is a PARAGRAPH-scoped question, not a line-scoped one.
+//
+// This corpus hard-wraps at ~70 columns, so the backticked path and the
+// quotation it introduces routinely land on adjacent lines of one sentence.
+// The mode's own strength — folding whitespace INCLUDING NEWLINES so a
+// hard-wrapped quotation still matches — was defeated by the same wrapping on
+// the attribution side. Measured, excluding ANTS-4637's loop-log rows: of 249
+// quotations, 26 carry a path on their own line and 85 more carry one earlier
+// in the same paragraph. Those 85 ARE attributed, in prose a human reads as
+// attributed, and every one came back `no_target` — silent, and identical to
+// a clean pass.
+//
+// Same-line stays the tie-break, so today's behaviour is a strict subset.
+TEST(DocCitations, Ants4638AttributionWidensToTheParagraph) {
+    Fixture fx;
+    fx.write(QStringLiteral("standards/gate.md"),
+             "# Gate\n\nthe attribution and its quotation wrapped apart\n");
+    fx.write(QStringLiteral("standards/other.md"),
+             "# Other\n\nnothing in here matches anything\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.write(QStringLiteral("standards/commits.md"),
+        "# Commits\n"
+        "\n"
+        "The rule lives in `standards/gate.md`, and is worth reading whole\n"
+        "before changing it, because it reads \"the attribution and its "
+        "quotation wrapped apart\".\n"
+        "\n"
+        "A paragraph that names `standards/other.md`.\n"
+        "\n"
+        "A separate paragraph entirely, quoting \"a phrase belonging to no "
+        "named document at all\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+
+    auto find = [&](const char *needle) -> QJsonObject {
+        for (const QJsonValue &v : qs) {
+            const QJsonObject q = v.toObject();
+            if (q.value(QStringLiteral("text")).toString()
+                    .contains(QString::fromUtf8(needle))) return q;
+        }
+        return QJsonObject{};
+    };
+
+    const QJsonObject wrapped = find("wrapped apart");
+    EXPECT_EQ(wrapped.value(QStringLiteral("status")).toString(),
+              QStringLiteral("ok"))
+        << "ANTS-4638: the path sits one line up in the SAME sentence — "
+           "reporting no_target here is the check silently not running: "
+        << qPrintable(render(r));
+
+    // The trap: a blank line ends the scope. Without it the rule reaches back
+    // across the whole document and attributes a quotation to a path that
+    // introduces something else entirely — a confident wrong answer, which is
+    // worse than the silence it replaced.
+    const QJsonObject far = find("no named document");
+    EXPECT_EQ(far.value(QStringLiteral("status")).toString(),
+              QStringLiteral("no_target"))
+        << "ANTS-4638: a blank line ends the paragraph, so the previous "
+           "paragraph's path must not be inherited: " << qPrintable(render(r));
+}
+
+// ANTS-4639 — three defects in one resolver, and they compound.
+//
+// (1) `standards/commits.md` attributes quotations to `releases.md` and
+//     `coding.md`; both exist as siblings under `standards/`. Resolution never
+//     tried the scanned document's OWN directory, which is the commonest form
+//     a cross-reference takes inside a standards directory.
+// (2) `core.hooksPath` — a git config key in backticks — became a `target`,
+//     because the shape test asked only for a dot.
+// (3) A target that PARSED but did not resolve reported `no_target`, which is
+//     what a quotation with no attribution at all reports. Those mean opposite
+//     things to a caller — the check did not run, versus the check ran and the
+//     quotation is stale — and conflating them is what hid (1) and (2).
+TEST(DocCitations, Ants4639SiblingResolutionAndHonestTargetStatuses) {
+    Fixture fx;
+    fx.write(QStringLiteral("standards/releases.md"),
+             "# Releases\n\na sentence the sibling document really contains\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.write(QStringLiteral("standards/commits.md"),
+        "# Commits\n"
+        "\n"
+        "`releases.md` says \"a sentence the sibling document really "
+        "contains\".\n"
+        "\n"
+        "The hook is installed by setting `core.hooksPath`, and the rule is "
+        "\"a phrase attributed to a git config key, which is not a "
+        "document\".\n"
+        "\n"
+        "`ghost.md` says \"a phrase attributed to a document that is not "
+        "there\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+
+    auto find = [&](const char *needle) -> QJsonObject {
+        for (const QJsonValue &v : qs) {
+            const QJsonObject q = v.toObject();
+            if (q.value(QStringLiteral("text")).toString()
+                    .contains(QString::fromUtf8(needle))) return q;
+        }
+        return QJsonObject{};
+    };
+
+    EXPECT_EQ(find("sibling document really").value(QStringLiteral("status"))
+                  .toString(), QStringLiteral("ok"))
+        << "ANTS-4639 (1): a bare basename resolves against the scanned "
+           "document's own directory: " << qPrintable(render(r));
+
+    const QJsonObject key = find("git config key");
+    EXPECT_EQ(key.value(QStringLiteral("status")).toString(),
+              QStringLiteral("no_target"))
+        << "ANTS-4639 (2): a token needs a document extension before it "
+           "becomes a target — a dot alone is every config key: "
+        << qPrintable(render(r));
+    EXPECT_FALSE(key.contains(QStringLiteral("target")))
+        << "ANTS-4639 (2): …and it must not be reported AS a target: "
+        << qPrintable(render(r));
+
+    const QJsonObject ghost = find("document that is not there");
+    EXPECT_EQ(ghost.value(QStringLiteral("status")).toString(),
+              QStringLiteral("target_unresolved"))
+        << "ANTS-4639 (3): the attribution parsed and did not resolve — that "
+           "is not the same answer as no attribution at all: "
+        << qPrintable(render(r));
+    EXPECT_EQ(ghost.value(QStringLiteral("target")).toString(),
+              QStringLiteral("ghost.md"))
+        << "ANTS-4639 (3): …and the target it could not resolve is named: "
+        << qPrintable(render(r));
+}
+
+// ANTS-4640 — in a table row the whole row is one line, and last-path-wins
+// picks the wrong one by construction.
+//
+// A cross-document impact table names the SOURCE first and the affected module
+// second, which is the natural sentence. Twice in one review loop a quotation
+// was attributed to the affected module and came back `not_found` against text
+// that is present and exact — which invites a session to "correct" a passage
+// that was already right, the expensive direction.
+//
+// The row's first cell is its subject by convention; a path in the
+// quotation's OWN cell is more local still and wins over it. Where one cell
+// carries several, the envelope already has `ambiguous` — reporting the
+// candidates beats guessing.
+TEST(DocCitations, Ants4640TableRowAttributionIsCellScoped) {
+    Fixture fx;
+    fx.write(QStringLiteral("docs/specs/FIBR-0014.md"),
+             "# FIBR-0014\n\na phrase the SOURCE spec really carries\n");
+    // The affected column is a DOCUMENT too, so the extension gate ANTS-4639
+    // adds cannot be what makes these rows pass — only the cell scope can.
+    fx.write(QStringLiteral("docs/affected.md"), "# Affected\n\nnothing quotable\n");
+    fx.write(QStringLiteral("docs/a/dup.md"), "shared basename\n");
+    fx.write(QStringLiteral("docs/b/dup.md"), "shared basename\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+    opts.basenameIndex.insert(QStringLiteral("dup.md"),
+                              {QStringLiteral("docs/a/dup.md"),
+                               QStringLiteral("docs/b/dup.md")});
+
+    const QString doc = fx.doc(
+        "| Source | Affected | Clause |\n"
+        "|--------|----------|--------|\n"
+        "| `docs/specs/FIBR-0014.md` | `docs/affected.md` | \"a phrase the "
+        "SOURCE spec really carries\" |\n"
+        "| `docs/affected.md` | `docs/specs/FIBR-0014.md` | \"a phrase whose "
+        "own cell names nothing at all\" |\n"
+        "| `docs/affected.md` | x | `docs/specs/FIBR-0014.md` says \"a phrase "
+        "the SOURCE spec really carries\" |\n"
+        "| `docs/a/dup.md` `docs/b/dup.md` | y | \"a phrase whose own cell "
+        "names two documents\" |\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    ASSERT_EQ(qs.size(), 4) << qPrintable(render(r));
+
+    EXPECT_EQ(qs.at(0).toObject().value(QStringLiteral("target")).toString(),
+              QStringLiteral("docs/specs/FIBR-0014.md"))
+        << "ANTS-4640: the quotation's own cell names no document, so the "
+           "row's first cell — its subject — attributes it, NOT the affected "
+           "module named later in the row: " << qPrintable(render(r));
+    EXPECT_EQ(qs.at(0).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("ok"))
+        << "ANTS-4640: …and the quotation is present and exact there, so a "
+           "not_found here would invite correcting a correct passage: "
+        << qPrintable(render(r));
+
+    EXPECT_EQ(qs.at(1).toObject().value(QStringLiteral("target")).toString(),
+              QStringLiteral("docs/affected.md"))
+        << "ANTS-4640: the row's subject attributes it even when the phrase "
+           "is NOT there — the rule picks the source, not the document that "
+           "happens to make the check pass: " << qPrintable(render(r));
+    EXPECT_EQ(qs.at(1).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("not_found"))
+        << "ANTS-4640: …so this stays a real finding. A rule that reached for "
+           "whichever cell matched would turn the check off entirely: "
+        << qPrintable(render(r));
+
+    EXPECT_EQ(qs.at(2).toObject().value(QStringLiteral("target")).toString(),
+              QStringLiteral("docs/specs/FIBR-0014.md"))
+        << "ANTS-4640: a path in the quotation's OWN cell is more local than "
+           "the row's subject and wins over it: " << qPrintable(render(r));
+
+    EXPECT_EQ(qs.at(3).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("ambiguous"))
+        << "ANTS-4640: one cell naming two documents is reported with its "
+           "candidates rather than guessed at: " << qPrintable(render(r));
+    EXPECT_EQ(qs.at(3).toObject().value(QStringLiteral("candidates")).toArray()
+                  .size(), 2)
+        << "ANTS-4640: …and the candidate list is what makes it actionable: "
+        << qPrintable(render(r));
 }

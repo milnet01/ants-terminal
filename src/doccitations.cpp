@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPair>
 #include <QRegularExpression>
 #include <QStringDecoder>
 #include <QLatin1Char>
@@ -770,21 +771,109 @@ static QString dcFoldWhitespace(const QString &in) {
     return in.simplified().replace(ws, QStringLiteral(" "));
 }
 
-// The document a quotation is attributed to: the LAST backticked token on the
-// line that looks like a document path or filename. Last, not first, because
-// the attribution sits closest to the quote it introduces.
-static QString dcAttributionOnLine(const QString &line) {
+// The document a quotation is attributed to. Four rules, and each was a defect
+// the same day (ANTS-4637..4640, from two projects' review sessions):
+//
+//  * A token becomes a target only if it names a DOCUMENT (ANTS-4639 (2)).
+//    The old test asked for a dot or a slash, which is also every git config
+//    key: a backticked `core.hooksPath` became a target and then reported
+//    `no_target`, which reads as "nothing was attributed".
+//  * In PROSE the attribution may sit one line up (ANTS-4638). This corpus
+//    hard-wraps at ~70 columns, so the path and the quotation it introduces
+//    routinely land on adjacent lines of one sentence — and the mode's own
+//    strength, folding whitespace including newlines so a hard-wrapped
+//    quotation still matches, was defeated by the same wrapping on the
+//    attribution side. Measured over this machine's config corpus: 26 of 249
+//    checkable quotations are attributed on their own line, 85 more earlier in
+//    their paragraph. Same-line stays the tie-break, so the old rule is a
+//    strict subset of this one.
+//  * In a TABLE the row is one line and several scopes (ANTS-4640). A
+//    cross-document impact table names the SOURCE first and the affected
+//    module second — the natural sentence — so last-path-wins picks the wrong
+//    one by construction, and a false `not_found` invites a session to
+//    "correct" a passage that was already right.
+//  * Resolution tries the scanned document's OWN directory first
+//    (ANTS-4639 (1)). A sibling cite is the commonest form a cross-reference
+//    takes inside a standards directory.
+static bool dcIsDocumentToken(const QString &tok) {
+    static const QStringList kDocExt{
+        QStringLiteral("md"), QStringLiteral("markdown"), QStringLiteral("txt"),
+        QStringLiteral("rst"), QStringLiteral("adoc"), QStringLiteral("org")};
+    const QString base = tok.section(QLatin1Char('/'), -1);
+    const int dot = base.lastIndexOf(QLatin1Char('.'));
+    if (dot <= 0) return false;
+    return kDocExt.contains(base.mid(dot + 1).toLower());
+}
+
+// Every distinct document token in one span of a line, in reading order.
+// De-duplicated, so a span naming one document twice is one candidate rather
+// than an ambiguity.
+static QStringList dcDocTokensIn(const QString &span) {
     static const QRegularExpression tick(QStringLiteral("`([^`]+)`"));
-    QString best;
-    auto it = tick.globalMatch(line);
+    QStringList out;
+    auto it = tick.globalMatch(span);
     while (it.hasNext()) {
         const QString tok = it.next().captured(1).trimmed();
         if (tok.contains(QLatin1Char(' '))) continue;
-        if (!tok.contains(QLatin1Char('.')) &&
-            !tok.contains(QLatin1Char('/'))) continue;
-        best = tok;
+        if (dcIsDocumentToken(tok) && !out.contains(tok)) out.append(tok);
     }
-    return best;
+    return out;
+}
+
+static bool dcIsTableRow(const QString &line) {
+    const QString t = line.trimmed();
+    return t.size() >= 2 && t.startsWith(QLatin1Char('|'));
+}
+
+// A row's cells as [start, end) offsets into the LINE — offsets rather than
+// strings, because the quotation is located by where its match started. An
+// escaped `\|` is cell content, not a boundary.
+static QVector<QPair<int, int>> dcTableCells(const QString &line) {
+    QVector<QPair<int, int>> cells;
+    int start = -1;                       // set by the first unescaped pipe
+    for (int i = 0; i < line.size(); ++i) {
+        if (line.at(i) == QLatin1Char('\\')) { ++i; continue; }
+        if (line.at(i) != QLatin1Char('|')) continue;
+        if (start >= 0) cells.append({start, i});
+        start = i + 1;
+    }
+    // GFM lets a row omit its trailing pipe; that tail is still a cell.
+    if (start >= 0 && start < line.size() &&
+        !line.mid(start).trimmed().isEmpty())
+        cells.append({start, line.size()});
+    return cells;
+}
+
+// ANTS-4637 — a loop-log row: first cell a loop NUMBER, second an ISO date.
+// Such a row quotes the wording a fix REPLACED, so `not_found` is correct and
+// permanent for every one of them; 271 of 520 unfenced quotations in this
+// machine's config corpus are of that class, which is what made the mode's
+// output majority-false-stale. `CLAUDE.md` forbids back-filling a loop log, so
+// acting on one of those findings destroys the audit trail the row is kept for.
+static bool dcIsLoopLogRow(const QString &line,
+                           const QVector<QPair<int, int>> &cells) {
+    if (cells.size() < 2) return false;
+    static const QRegularExpression num(QStringLiteral("^\\d{1,4}$"));
+    static const QRegularExpression iso(QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
+    auto cell = [&](int n) {
+        return line.mid(cells.at(n).first,
+                        cells.at(n).second - cells.at(n).first).trimmed();
+    };
+    return num.match(cell(0)).hasMatch() && iso.match(cell(1)).hasMatch();
+}
+
+// ANTS-4639 (1) — the scanned document's own directory, ahead of the repo root
+// and the basename index. Never a widening of what resolves wrongly: a sibling
+// that is not there falls straight through to the ladder.
+static Target dcResolveAttribution(const QString &root, const QString &docDirRel,
+                                   const QString &attr, const Options &opts) {
+    if (!docDirRel.isEmpty() && !attr.startsWith(QLatin1Char('/')) &&
+        !lexicallyEscapes(attr)) {
+        const Target sib =
+            statAndGate(root, docDirRel + QLatin1Char('/') + attr, opts);
+        if (sib.kind == Target::Resolved) return sib;
+    }
+    return resolvePath(root, attr, opts);
 }
 
 QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
@@ -1079,12 +1168,40 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     if (opts.quotes) {
         static const QRegularExpression quoteRe(
             QStringLiteral("\u201C([^\u201D]{2,})\u201D|\"([^\"]{2,})\""));
+        // ANTS-4639 (1) — the scanned document's own directory, project-relative.
+        // `relativeTo` hands the absolute path back untouched when it is not
+        // under the root, which is the one case the sibling rung must not fire on.
+        QString docDirRel = relativeTo(rootCanonical, docInfo.path());
+        if (docDirRel == docInfo.path()) docDirRel.clear();
+
         QJsonArray quotesOut;
         QHash<QString, int> qTally;
         int harvested = 0;
+        int skipped   = 0;
+
+        // ANTS-4638 — the blank-line-delimited paragraph above this line,
+        // nearest first. A blank line ends the scope: without that bound the
+        // rule reaches back across the document and produces a confident wrong
+        // attribution, which is worse than the silence it replaces. A fenced
+        // line stops it for the same reason the citation antecedent resets.
+        auto paragraphAttribution = [&](int i) -> QStringList {
+            for (int j = i - 1; j >= 0; --j) {
+                if (prefix.at(j).trimmed().isEmpty()) break;
+                if (j < fence.size() && fence.at(j)) break;
+                const QStringList c = dcDocTokensIn(prefix.at(j));
+                if (!c.isEmpty()) return c;
+            }
+            return {};
+        };
+
         for (int i = 0; i < prefix.size() && harvested < opts.maxQuotes; ++i) {
             if (i < fence.size() && fence.at(i)) continue;   // specimen
             const QString &line = prefix.at(i);
+            const bool tableRow = dcIsTableRow(line);
+            const QVector<QPair<int, int>> cells =
+                tableRow ? dcTableCells(line) : QVector<QPair<int, int>>{};
+            const bool loopLog = tableRow && dcIsLoopLogRow(line, cells);
+
             auto it = quoteRe.globalMatch(line);
             while (it.hasNext() && harvested < opts.maxQuotes) {
                 const auto m = it.next();
@@ -1092,39 +1209,97 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                                                              : m.captured(1);
                 if (text.size() < opts.quoteMinChars) continue;  // ordinary prose
 
+                // ANTS-4637 — historical by design. Counted rather than
+                // silently dropped: a suppressed quotation that is merely
+                // absent cannot be told from one nobody found.
+                if (loopLog) { ++skipped; continue; }
+
                 QJsonObject q;
                 q[QStringLiteral("line")] = i + 1;
                 q[QStringLiteral("text")] = text;
 
-                const QString attr = dcAttributionOnLine(line);
-                if (attr.isEmpty()) {
-                    // No document named in the same sentence. NOT a finding:
-                    // the verb cannot know what a bare quotation is from, and
-                    // guessing is how a check like this starts producing
-                    // confident wrong answers.
+                // Attribution candidates, most local scope first.
+                QStringList cand;
+                if (tableRow) {
+                    // ANTS-4640 — the quotation's OWN cell, then the row's
+                    // first cell, which is the row's subject by convention.
+                    // The scope stops at the row: a preceding row is a
+                    // different subject, not a preceding paragraph.
+                    const int at = m.capturedStart(0);
+                    for (const QPair<int, int> &c : cells) {
+                        if (at < c.first || at >= c.second) continue;
+                        cand = dcDocTokensIn(line.mid(c.first, c.second - c.first));
+                        break;
+                    }
+                    if (cand.isEmpty() && !cells.isEmpty()) {
+                        const QPair<int, int> &c0 = cells.first();
+                        cand = dcDocTokensIn(line.mid(c0.first, c0.second - c0.first));
+                    }
+                    if (cand.isEmpty()) {
+                        // …and only then the rest of the row. Measured over
+                        // this machine's config corpus: the subject is not
+                        // always cell 0. A definitions table runs
+                        // `| genre | …the quotation… | the file defining it |`,
+                        // so stopping at the first cell drops an attribution
+                        // the old line-scoped rule found. Several distinct
+                        // documents here is an ambiguity, not a guess.
+                        cand = dcDocTokensIn(line);
+                    }
+                } else {
+                    // Same line first — today's rule, kept as the tie-break —
+                    // then the paragraph. Last on a line wins either way: the
+                    // attribution sits closest to the quote it introduces.
+                    cand = dcDocTokensIn(line);
+                    if (cand.isEmpty()) cand = paragraphAttribution(i);
+                    if (cand.size() > 1) cand = QStringList{cand.last()};
+                }
+
+                if (cand.isEmpty()) {
+                    // No document named. NOT a finding: the verb cannot know
+                    // what a bare quotation is from, and guessing is how a
+                    // check like this starts producing confident wrong answers.
                     q[QStringLiteral("status")] = QStringLiteral("no_target");
                     ++qTally[QStringLiteral("no_target")];
                     quotesOut.append(q);
                     ++harvested;
                     continue;
                 }
+                if (cand.size() >= 2) {
+                    // ANTS-4640 — one cell naming several documents. The
+                    // envelope already carries this status for an ambiguous
+                    // basename; reporting the candidates beats guessing.
+                    q[QStringLiteral("status")]     = QStringLiteral("ambiguous");
+                    q[QStringLiteral("candidates")] = QJsonArray::fromStringList(cand);
+                    ++qTally[QStringLiteral("ambiguous")];
+                    quotesOut.append(q);
+                    ++harvested;
+                    continue;
+                }
+
+                const QString attr = cand.first();
                 q[QStringLiteral("target")] = attr;
 
-                const Target t = resolvePath(rootCanonical, attr, opts);
+                const Target t =
+                    dcResolveAttribution(rootCanonical, docDirRel, attr, opts);
                 if (t.kind == Target::Ambiguous) {
                     q[QStringLiteral("status")] = QStringLiteral("ambiguous");
                     q[QStringLiteral("candidates")] =
                         QJsonArray::fromStringList(t.candidates);
                     ++qTally[QStringLiteral("ambiguous")];
                 } else if (t.kind != Target::Resolved) {
-                    q[QStringLiteral("status")] = QStringLiteral("no_target");
-                    ++qTally[QStringLiteral("no_target")];
+                    // ANTS-4639 (3) — the attribution PARSED and did not
+                    // resolve. `no_target` is the other answer entirely — the
+                    // check did not run, versus the check ran and the
+                    // quotation is stale — and conflating the two is what hid
+                    // the sibling-directory and config-key defects above.
+                    q[QStringLiteral("status")] = QStringLiteral("target_unresolved");
+                    ++qTally[QStringLiteral("target_unresolved")];
                 } else {
                     QFile tf(t.absPath);
                     QString body;
                     if (tf.open(QIODevice::ReadOnly) &&
                         decodeChecked(tf.readAll(), &body)) {
-                        // (1) — fold whitespace on BOTH sides. Without this a
+                        // Fold whitespace on BOTH sides. Without this a
                         // hard-wrapped target reports not_found for a phrase
                         // that is present, which is the false negative that
                         // makes the hand-rolled version unsafe.
@@ -1136,8 +1311,10 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                         ++qTally[found ? QStringLiteral("ok")
                                        : QStringLiteral("not_found")];
                     } else {
-                        q[QStringLiteral("status")] = QStringLiteral("no_target");
-                        ++qTally[QStringLiteral("no_target")];
+                        // Resolved but unreadable — the check did not run.
+                        q[QStringLiteral("status")] =
+                            QStringLiteral("target_unresolved");
+                        ++qTally[QStringLiteral("target_unresolved")];
                     }
                 }
                 quotesOut.append(q);
@@ -1146,9 +1323,17 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         }
         out.insert(QStringLiteral("quotes"), quotesOut);
         QJsonObject qCounts;
-        for (const char *k : {"ok", "not_found", "ambiguous", "no_target"})
+        for (const char *k : {"ok", "not_found", "ambiguous", "no_target",
+                              "target_unresolved"})
             qCounts[QLatin1String(k)] = qTally.value(QLatin1String(k), 0);
+        // ANTS-4637 — `skipped` counts quotations the loop-log rule suppressed.
+        // They were never checked, so they are outside the status partition and
+        // outside `quotes_checked`; the overlay list says so, exactly as
+        // `counts_overlay_keys` does for the citation tally (ANTS-4087).
+        qCounts[QStringLiteral("skipped")] = skipped;
         out.insert(QStringLiteral("quote_counts"), qCounts);
+        out.insert(QStringLiteral("quote_counts_overlay_keys"),
+                   QJsonArray{QStringLiteral("skipped")});
         // ANTS-4374 — say what was looked at, so `quotes:[]` cannot read as
         // "every quotation checks out".
         out.insert(QStringLiteral("quotes_checked"), harvested);
