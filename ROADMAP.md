@@ -43839,6 +43839,35 @@ Three were reproduced directly in this session rather than taken on report.
   Source: Album_Builder-2026-08-24.
   Lanes: mcp, roadmap.
 
+- 📋 [ANTS-4650] **workspace_search refused rg_failed while ripgrep was installed and working.**
+  First call of the session refused:
+
+    {"code":"rg_failed",
+     "error":"workspace-search: rg failed to start (is ripgrep installed?)"}
+
+  `which rg` in the same session returned `/usr/bin/rg`, and a direct
+  `rg` invocation worked. Later calls in the same session were not
+  retried, so it is not known whether this was a one-off.
+
+  WHY IT MATTERS. The refusal names the one cause the session can check
+  and rule out, and offers no other. So the honest next step looks like
+  "ripgrep is missing" when it is not, and the fallback is raw grep —
+  which is exactly the token cost the verb exists to remove, and this
+  project's own preamble tells every session to reach for the verb first.
+
+  WHAT TO LOOK AT. The spawn environment rather than the binary: PATH as
+  seen by the MCP process versus the shell, a cwd that no longer exists
+  at spawn time, or an rlimit / fork failure under load (the call landed
+  while a full ninja build was running, which is worth reproducing
+  against). Whatever the cause, the refusal should distinguish
+  "executable not found on PATH" from "found but failed to start", and
+  report the PATH it searched — a message that can only ever name one
+  cause sends the reader to the wrong place.
+  **Layman:** A code-search tool said the search program was missing when it was present, so the session fell back to plain grep.
+  Kind: investigate.
+  Source: in-session-2026-08-25.
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
