@@ -368,6 +368,61 @@ TEST(McpInvariantCheck, Ants4644PathSuffixFallbackRescuesAConfidentZero) {
     EXPECT_FALSE(env.value("hint").toString().isEmpty());
 }
 
+// ANTS-4566 — ANTS-4644's rescue fires only on a ZERO, so the worse case went
+// unfixed: a query that matches ONE spec, on an incidental mention, never
+// learns that the spec actually GOVERNING the file cites it by basename. An
+// empty result prompts a second look; a confident single result does not — and
+// write-code Phase 0 designs the edit against whatever came back.
+TEST(McpInvariantCheck, Ants4566NearMissIsReportedBesideAConfidentHit) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    // The reporter's shape: a packaging spec mentions the full path once in a
+    // list, and the spec that sets the file's contract names it by basename.
+    seedSpec(dir.path(), QStringLiteral("PROJ-0025"),
+             QStringLiteral("src/ui/card.cpp"));
+    seedSpec(dir.path(), QStringLiteral("PROJ-0017"),
+             QStringLiteral("card.cpp"));
+
+    const QJsonObject env =
+        runCheck(dir.path(), QStringLiteral("src/ui/card.cpp"), QString());
+    ASSERT_TRUE(env.value("ok").toBool());
+
+    // matched_specs keeps its exact meaning: the direct hit, and only it.
+    ASSERT_EQ(env.value("matched_count").toInt(), 1);
+    EXPECT_EQ(env.value("matched_specs").toArray().at(0).toObject()
+                  .value("id").toString(), "PROJ-0025");
+    EXPECT_FALSE(env.value("fallback_match").toBool())
+        << "the rescue must NOT fire — this is a non-empty result, which is "
+           "precisely why the near miss was invisible";
+
+    // …and the governing spec is surfaced beside it rather than merged in.
+    const QJsonArray near = env.value("basename_matches").toArray();
+    ASSERT_EQ(near.size(), 1)
+        << "the spec citing the file by basename must be reported";
+    EXPECT_EQ(near.at(0).toObject().value("id").toString(), "PROJ-0017");
+    EXPECT_EQ(near.at(0).toObject().value("matched_terms").toArray()
+                  .at(0).toString(), "card.cpp")
+        << "say WHICH shorter form matched, so a near miss never passes for "
+           "a direct hit";
+    EXPECT_EQ(env.value("basename_matches_count").toInt(), 1);
+    EXPECT_FALSE(env.value("basename_matches_hint").toString().isEmpty());
+}
+
+// ANTS-4566 — the field is emitted only when it says something. A direct hit
+// with nothing citing the file by a shorter form must not carry an empty array
+// on every call.
+TEST(McpInvariantCheck, Ants4566NoNearMissMeansNoField) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0026"),
+             QStringLiteral("src/ui/card.cpp"));
+
+    const QJsonObject env =
+        runCheck(dir.path(), QStringLiteral("src/ui/card.cpp"), QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1);
+    EXPECT_FALSE(env.contains("basename_matches"))
+        << "absent means no spec cites it by a shorter form, which is the "
+           "same answer an empty array gives at a cost";
+}
+
 // ANTS-4644 — the bare basename is its own tier because it is the one that can
 // collide, and it is also the tier the ANTS-2161 case needs.
 TEST(McpInvariantCheck, Ants4644BasenameIsItsOwnTier) {

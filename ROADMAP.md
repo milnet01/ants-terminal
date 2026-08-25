@@ -40712,7 +40712,7 @@ filed below.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, docs.
 
-- 📋 [ANTS-4566] **invariant_check cannot see a spec that cites the file by basename, so the wrong spec comes back looking like the answer.**
+- ✅ [ANTS-4566] **invariant_check cannot see a spec that cites the file by basename, so the wrong spec comes back looking like the answer.**
   The verb substring-matches the paths passed against spec bodies, and its
   description tells the caller to pass a full path rather than a bare
   basename. But the miss is on the DOCUMENT side, not the caller's: a spec
@@ -40748,6 +40748,17 @@ filed below.
   Optional second use of the same scan: a spec citing a bare basename is a
   citation check-doc-facts could flag, since the roadmap and spec
   standards already prefer resolvable paths.
+  Resolved (2026-08-25), built to the reporter's own design rather than the obvious one. invariant_check now reports `basename_matches[]` beside `matched_specs` -- specs citing one of the files by a SHORTER form (bare basename or path suffix) that the path as passed did not match -- with `basename_matches_count` and a hint, emitted only when non-empty.
+
+  The gap was precisely stated and worth recording: ANTS-4644 already retries with shorter forms, but ONLY when the direct scan returns zero. This item's case returns ONE spec, so the rescue never fired and the governing spec stayed invisible behind a confident wrong answer. An empty result prompts a second look; a single result does not.
+
+  matched_specs keeps its exact meaning and the near miss is never merged into it. The reporter asked for that explicitly and the reasoning holds: a shorter form can collide between two like-named modules, so promoting it would trade a silent miss for a silent wrong answer. `matched_terms` on each near-miss row names the form that actually hit, so it can never pass for a direct match. Costs one extra scan of text the call already reads.
+
+  Emitted only when non-empty, unlike `fallback_match` which is on every reply -- there an absent flag was indistinguishable from a build without the feature, here absence and an empty array say the same thing.
+
+  INV-17 and INV-18 in the feature spec; tests Ants4566NearMissIsReportedBesideAConfidentHit and Ants4566NoNearMissMeansNoField. Mutation-verified: disabling the pass drops the near-miss count from 1 to 0, which is the defect exactly. 3938/3938.
+
+  Not taken: the item's optional second use of the same scan (having check-doc-facts flag a spec that cites a bare basename). That is a different verb and a different question.
   **Layman:** Asking which design document governs a file returns a confidently wrong one when the right one names the file informally.
   Kind: enhancement.
   Source: Games_Hub_Ants_MCP_Feedback.md 2026-08-20.

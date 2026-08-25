@@ -25,6 +25,8 @@ substring mentions of the input `files[]`.
 | 14 | (ANTS-4644) The basename tier runs only when every fuller form failed: with one spec citing `services/auth.py` and another citing an unrelated `auth.py`, a query for `src/finbreak/services/auth.py` returns the first alone. |
 | 15 | (ANTS-4644) `fallback_match` is on EVERY reply (an absent flag is indistinguishable from a build with no fallback); on a direct hit it is `false` and neither `matched_as` nor `fallback_kind` is emitted. `matched_as` maps each path passed in to the form that actually matched, most specific first. |
 | 16 | (ANTS-4645) Every reply carries `roadmap_scanned:false` and a `scope_note` naming `roadmap_query` — the harm case is a CONFIDENT NON-ZERO answer that reads as "is this under contract?" fully answered while the ROADMAP was never in scope. |
+| 17 | (ANTS-4566) A NEAR MISS is reported beside a non-empty result. INV-12's rescue fires only on a zero, so a call matching one spec on an incidental mention never learned that the spec GOVERNING the file cites it by basename. With one spec citing `src/ui/card.cpp` and another citing `card.cpp`, a query for the full path returns the first in `matched_specs` with `fallback_match:false`, AND the second in `basename_matches[]`, whose `matched_terms` names the shorter form that hit. Reported, never merged: a shorter form can collide, so promoting it would trade a silent miss for a silent wrong answer. |
+| 18 | (ANTS-4566) `basename_matches` (with `basename_matches_count` and `basename_matches_hint`) is emitted ONLY when non-empty — unlike INV-15's `fallback_match`, because here absence and an empty array carry the same meaning, and a constant empty array on every reply is cost with no signal. |
 
 INV-7's schema scrape reads the descriptor block via
 `ants_test::mcpToolDescriptor` (ANTS-3720), not a fixed-byte window:
@@ -34,7 +36,7 @@ had nothing to do with the wiring it locks.
 
 ## Acceptance
 
-Exit 0 = all 16 invariants hold.
+Exit 0 = all 18 invariants hold.
 
 Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. Uses the existing

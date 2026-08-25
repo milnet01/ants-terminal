@@ -7456,7 +7456,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "shorter form is tried automatically when the full "
                         "path matches nothing, so the collision risk is taken "
                         "only where the alternative is a confident zero, and "
-                        "`matched_as` says when it was.");
+                        "`matched_as` says when it was. ANTS-4566 — that "
+                        "rescue fires ONLY on a zero, so a call that matched "
+                        "one spec on an incidental line never learned that "
+                        "the spec actually GOVERNING the file cites it by "
+                        "basename. `basename_matches` (with its own count and "
+                        "hint, emitted only when non-empty) names those "
+                        "specs alongside `matched_specs`, which keeps its "
+                        "exact meaning — read them before treating a "
+                        "non-empty `matched_specs` as the contract.");
                     props["files"]      = filesProp;
                     // ANTS-3699 — response-shape selector; summary by default.
                     QJsonObject modeProp;

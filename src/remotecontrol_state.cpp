@@ -2587,6 +2587,61 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
         tryTier(baseForms, QStringLiteral("basename"));
     }
 
+    // ANTS-4566 — the NEAR MISS, which is a different failure from the one
+    // above. ANTS-4644's rescue fires only on a ZERO, so a query that matched
+    // ONE spec never learns that the spec actually GOVERNING the file cites it
+    // by basename. Measured by the reporter on Games_Hub: a packaging spec
+    // matched on an incidental full-path mention and came back alone, while
+    // the spec setting that file's contract names it by basename twice and by
+    // full path never. An empty result prompts a second look; a confident
+    // single result does not — and write-code Phase 0 designs the edit against
+    // whatever comes back.
+    //
+    // REPORTED, never merged into matched_specs. The reporter asked for the
+    // near miss rather than a widened match rule and they are right: a shorter
+    // form collides (two `auth.py` in one repo), so promoting it would trade a
+    // silent miss for a silent wrong answer. Costs one more scan of text the
+    // call is already reading.
+    QJsonArray nearMiss;
+    if (!matched.isEmpty()) {
+        QStringList alreadyIds;
+        for (const QJsonValue &v : std::as_const(matched))
+            alreadyIds.append(
+                v.toObject().value(QStringLiteral("id")).toString());
+        QStringList shortForms;
+        for (const QString &n : std::as_const(needles)) {
+            const QStringList parts =
+                n.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+            for (int i = 1; i < parts.size(); ++i) {
+                const QString form =
+                    QStringList(parts.mid(i)).join(QLatin1Char('/'));
+                if (!shortForms.contains(form)) shortForms.append(form);
+            }
+        }
+        if (!shortForms.isEmpty()) {
+            const QJsonArray direct = matched;
+            activeNeedles = shortForms;
+            runScan();
+            const QJsonArray shorterHits = matched;
+            matched = direct;          // matched_specs keeps its exact meaning
+            for (const QJsonValue &v : std::as_const(shorterHits)) {
+                const QJsonObject o = v.toObject();
+                if (alreadyIds.contains(
+                        o.value(QStringLiteral("id")).toString()))
+                    continue;
+                QJsonObject e;
+                e[QStringLiteral("id")]    = o.value(QStringLiteral("id"));
+                e[QStringLiteral("path")]  = o.value(QStringLiteral("path"));
+                e[QStringLiteral("title")] = o.value(QStringLiteral("title"));
+                e[QStringLiteral("matched_terms")] =
+                    o.value(QStringLiteral("matched_terms"));
+                e[QStringLiteral("invariants_count")] =
+                    o.value(QStringLiteral("invariants_count"));
+                nearMiss.append(e);
+            }
+        }
+    }
+
     QJsonObject result;
     result["ok"]             = true;
     result["matched_specs"]  = matched;
@@ -2620,6 +2675,22 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // ANTS-4644 — emitted on EVERY reply. An absent flag is indistinguishable
     // from a build that has no fallback, which is the class of ambiguity this
     // item exists to remove.
+    // ANTS-4566 — emitted only when non-empty: a constant empty array on every
+    // call is noise, and its absence means "no spec cites these files by a
+    // shorter form", which is the same answer.
+    if (!nearMiss.isEmpty()) {
+        result["basename_matches"]       = nearMiss;
+        result["basename_matches_count"] = nearMiss.size();
+        result["basename_matches_hint"]  = QStringLiteral(
+            "these specs cite one of the files you passed by a SHORTER form — "
+            "a bare basename or a path suffix — and so are absent from "
+            "matched_specs, which matched the path as you wrote it. A spec "
+            "names a module the way its author writes it, so the spec that "
+            "GOVERNS the file is often in this list rather than that one: "
+            "read these before treating matched_specs as the contract. "
+            "Reported and never merged, because a shorter form can collide "
+            "between two like-named modules.");
+    }
     result["fallback_match"] = !fallbackKind.isEmpty();
     if (!fallbackKind.isEmpty()) {
         result["fallback_kind"] = fallbackKind;
