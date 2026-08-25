@@ -329,6 +329,56 @@ TEST(RoadmapWriteHalf, Ants4593PreviewOwnIdIsNotAGateFailure) {
         << "the candidate row must not survive the preview that named it";
 }
 
+// ------------------------------------------------------------- ANTS-4591 -----
+
+// ANTS-4556 gave the FILE-backed bad_section refusal ranked `candidates[]` +
+// `sections_total`. This arm — the one every migrated project takes — kept a
+// bare message, so the discoverability feature reached the path almost nobody
+// runs. Same shape ANTS-4634 had to repair for `would_be_id`.
+TEST(RoadmapWriteHalf, Ants4591StoreSectionRefusalRanksCandidates) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root =
+        seedMigrated(guard, tmp, fixture(/*gateOffenders=*/0), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append");
+        // A near-miss of the fixture's real "work" heading, so the ranker has
+        // something to find. A slug sharing no characters would prove nothing.
+        req[QStringLiteral("section")]    = QStringLiteral("wrok");
+        req[QStringLiteral("status")]     = QStringLiteral("planned");
+        req[QStringLiteral("kind")]       = QStringLiteral("chore");
+        req[QStringLiteral("source")]     = QStringLiteral("test");
+        req[QStringLiteral("layman")]     = QStringLiteral("A summary.");
+        req[QStringLiteral("headline")]   = QStringLiteral("A bullet.");
+        resp = rc.cmdRoadmapLogAppendForTest(req).object();
+    }
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("section_not_found"));
+    // sections_total is what tells a caller whether an empty candidates list
+    // means "no near miss" or "no sections at all".
+    EXPECT_GT(resp.value(QStringLiteral("sections_total")).toInt(), 0);
+    const QJsonArray cands =
+        resp.value(QStringLiteral("candidates")).toArray();
+    ASSERT_FALSE(cands.isEmpty())
+        << "a near-miss slug must be offered, or the caller's only route is a "
+           "full section_index round-trip";
+    QStringList got;
+    for (const QJsonValue &v : cands) got << v.toString();
+    EXPECT_TRUE(got.contains(QStringLiteral("work")))
+        << "ranker did not surface the obvious near miss: "
+        << got.join(QStringLiteral(",")).toStdString();
+}
+
 // ------------------------------------------------------------- ANTS-4628 -----
 
 // The inversion of ANTS-4434's deadlock, and the case that proves the gate's

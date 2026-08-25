@@ -262,6 +262,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An unknown roadmap section now suggests near misses on database-backed projects too** (ANTS-4591)
+  The "did you mean?" hint had reached only the file-backed path, so every
+  migrated project got a bare refusal and a full section listing as its
+  only route. The schema now also says the hint exists — documenting it
+  first was the original request, and probing the field before writing
+  about it is what found it missing.
+
 - **A refused preview no longer blames an item id that exists nowhere** (ANTS-4593)
   A dry run creates its candidate row inside the transaction and rolls it
   back, so a render-gate refusal listed an id nobody could look up. The

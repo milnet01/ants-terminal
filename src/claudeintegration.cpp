@@ -10791,7 +10791,17 @@ void ClaudeIntegration::onMcpConnection() {
                         // exactly what happened, costing one false finding and
                         // its retraction. Name the mode.
                         "Slug of a ## or ### heading "
-                        "(e.g. \"performance-2\"). Get valid slugs from "
+                        "(e.g. \"performance-2\"). ANTS-4556 / ANTS-4591 — an "
+                        "unknown slug does not just refuse: the envelope "
+                        "carries `candidates[]`, the closest slugs ranked by "
+                        "the shared ranker (capped at 10), plus "
+                        "`sections_total` so an EMPTY list is readable as "
+                        "\"no near miss\" rather than \"no sections\". Read "
+                        "it before reaching for a section_index round-trip. "
+                        "It is a HINT and the write still refuses — guessing "
+                        "which section was meant is how a composed body lands "
+                        "in the wrong one. A pure case mismatch still wins as "
+                        "bad_case with `canonical_slug`. Get valid slugs from "
                         "`roadmap_query` mode:\"section_index\" (or its alias "
                         "mode:\"sections\"). New "
                         "bullet appends at the end of this section.");

@@ -339,10 +339,41 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // its new item into one.
             const auto sectionId =
                 store.findSection(projectId, section, &seamErr);
-            if (!sectionId)
-                return rlErr(QStringLiteral("section_not_found"),
-                    QStringLiteral("roadmap_log: section \"%1\" is not in the "
-                                   "roadmap store").arg(section));
+            if (!sectionId) {
+                // ANTS-4591 — rank near-misses here too. ANTS-4556 gave the
+                // FILE-backed refusal `candidates[]` + `sections_total`, and
+                // this arm — which every migrated project takes — kept a bare
+                // message under a different code. So the feature reached the
+                // path almost nobody runs, which is the same shape ANTS-4634
+                // had to repair for `would_be_id`.
+                //
+                // Same shared ranker, never a second copy. A hint, never a
+                // resolution: the write still refuses, because guessing which
+                // section was meant is how a composed body lands in the wrong
+                // one.
+                QJsonObject env;
+                env["ok"]    = false;
+                env["code"]  = QStringLiteral("section_not_found");
+                env["error"] = QStringLiteral(
+                    "roadmap_log: section \"%1\" is not in the "
+                    "roadmap store").arg(section);
+                // listSectionsOrdered, not listSections: the ranker does not
+                // read document order, but ANTS-4620 deliberately un-exempted
+                // this half of the TU split so a new caller here is caught,
+                // and weakening that guard to skip a sort on a refusal path
+                // would be a bad trade.
+                if (const auto sections =
+                        store.listSectionsOrdered(projectId)) {
+                    QStringList slugs;
+                    slugs.reserve(sections->size());
+                    for (const RoadmapStore::SectionRow &sr : *sections)
+                        slugs << sr.slug;
+                    env["candidates"] = QJsonArray::fromStringList(
+                        ReadRegion::rankSectionCandidates(section, slugs));
+                    env["sections_total"] = int(slugs.size());
+                }
+                return QJsonDocument(env);
+            }
 
             // End-of-section position, pinned exactly as bundle_row's create
             // case pins it: element carries UNIQUE (section_id, position) and

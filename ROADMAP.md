@@ -42304,7 +42304,7 @@ filed below.
   Source: user-report-2026-08-20.
   Lanes: ci.
 
-- 📋 [ANTS-4591] **roadmap_log's schema does not mention bad_section's new candidates[], so nothing tells a caller to read it.**
+- ✅ [ANTS-4591] **roadmap_log's schema does not mention bad_section's new candidates[], so nothing tells a caller to read it.**
   ANTS-4556 shipped `candidates[]` + `sections_total` on the bad_section
   refusal. The verb's schema was NOT updated, and started but was left
   undone in the same session — recorded rather than left implicit.
@@ -42332,6 +42332,37 @@ filed below.
   a literal to a verb's schema block has pushed a later literal past a
   fixed-byte scrape window before (mcp_*_verb / build_status). Run the
   full suite, not just the roadmap lanes.
+  Resolved (2026-08-25), and the doc gap turned out to be the smaller half.
+
+  Probing the field before documenting it found that it was not there. On a
+  store-backed project an unknown slug refused `section_not_found` with a bare
+  message -- no `candidates[]`, no `sections_total`, and a different code from
+  the `bad_section` this item names. ANTS-4556 landed on the FILE-backed arm
+  only, so the discoverability feature reached the path almost nobody runs.
+  That is ANTS-4634's shape exactly, one field over, and it is the third
+  instance this session after ANTS-4592 and ANTS-4570 -- which is what
+  ANTS-4661 exists to stop.
+
+  So the store arm now ranks near-misses through the SAME shared ranker
+  (ReadRegion::rankSectionCandidates), never a second copy, and reports
+  `sections_total` beside it so an empty list reads as "no near miss" rather
+  than "no sections". Covered by a new test on a migrated fixture, verified by
+  mutation.
+
+  Then the documentation this item actually asked for. The per-op `detail` on
+  `section` now says the refusal carries ranked candidates and a total, that it
+  is a HINT and the write still refuses, and that bad_case still wins for a pure
+  case mismatch. The 800 B tools/list `description` was left alone: this item
+  said to measure before adding there, and with the explanation in `detail` the
+  code name alone would buy nothing.
+
+  The byte-window warning in this item was worth heeding but was not what fired.
+  What fired was ANTS-3818's guard against unsorted `listSections()` consumers.
+  The exempt list would have taken the file, and that is the wrong branch --
+  ANTS-4620 deliberately un-exempted this half of the TU split so a new caller
+  is caught. Used `listSectionsOrdered()` instead: the ranker does not read
+  document order, but paying for a sort on a refusal path is cheaper than
+  weakening a live guard.
   **Layman:** The new "did you mean?" hint works, but nothing advertises it, so callers may never look.
   Kind: doc.
   Source: in-session-2026-08-20, residue of ANTS-4556.
