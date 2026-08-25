@@ -44715,7 +44715,7 @@ it.
   Source: OneUp-feedback-2026-08-25.
   Lanes: mcp, doccitations.
 
-- 📋 [ANTS-4665] **feedback_query ignores fields=, so a duplicate check pays for the whole delta it was passed to avoid.**
+- ✅ [ANTS-4665] **feedback_query ignores fields=, so a duplicate check pays for the whole delta it was passed to avoid.**
   The twin of ANTS-4663, confirmed the same way: by reading the allowlist
   rather than the response. feedback_query is not in
   mcp::isFieldProjectionTool, and its schema declares path, max_bytes,
@@ -44751,6 +44751,13 @@ it.
   That also settles the reporter's open question about whether the silence
   was deliberate. It was not: nothing in the verb declines the argument, it
   simply is not on the list.
+  Resolved (2026-08-25). feedback_query joins the projection table and declares the schema property, so `fields=["mapped_ids"]` now narrows the reply instead of being accepted and dropped.
+
+  The item asked for it to be fixed "as ANTS-4663", and this is deliberately NOT that -- ANTS-4663 is what shipped ANTS-4673. Because ANTS-4524 route 1 split the predicate earlier today, the row answers the two questions separately: `fields=` yes, compaction by default NO. The reason is this verb's own envelope. `delta_present:false` is the answer "nothing is pending", and compaction drops a false boolean, so a default-compacted reply would leave "nothing pending" indistinguishable from a field the caller forgot to read -- the ANTS-4673 defect, in the verb whose whole purpose is telling you whether there is anything to look at. So this is the first row to use the split for the reason the split exists.
+
+  The item also asked, if the verb were deliberately exempt, that it say so and refuse. It was not exempt: nothing declined the argument, it simply was not on the list. Confirmed by the reporter's own live evidence -- ANTS-4578 reported ignored_args:["fields"], which is that mechanism working.
+
+  Verified the schema half is guarded rather than assumed: removing the makeFieldsProp() line reddens INV-10, which derives its count from the allowlist (expected 18, got 17). That is the ANTS-4624 trap -- allowlist without schema property -- and it fires for this addition. 3939/3939.
   **Layman:** Asking the feedback reader for just a couple of small numbers returns the entire backlog anyway.
   Kind: perf.
   Source: Charls_Site-feedback-2026-08-25.

@@ -161,7 +161,18 @@ constexpr const char *kFieldProjectionTools[] = {
     // budget and spills to a handle, while the answer a caller wants is the
     // `counts` object the envelope already carries. `fields=["counts"]` was
     // passed and silently dropped, because the verb was not on this list.
-    "spec_lint"};
+    "spec_lint",
+    // ANTS-4665 — `delta` is the largest field here and grows with every
+    // un-triaged finding, while the narrowing call exists to check for
+    // duplicates WITHOUT re-reading it: the cost was worst exactly when a
+    // file was busiest. Confirmed live by ANTS-4578, which reported the
+    // dropped `fields` in ignored_args.
+    "feedback_query"};
+
+// ANTS-4524 — the verbs on the list above that are NOT compacted by default.
+// The table's whole purpose is that this set can differ from that one, so a
+// test asserting it must name the difference rather than derive it.
+constexpr const char *kNoDefaultCompactTools[] = {"spec_lint", "feedback_query"};
 
 // INV-8 — every in-scope tool is field-projectable, and the out-of-scope
 // ones are not. ANTS-4624 widened the positive list from 13 to the full 15:
@@ -189,20 +200,34 @@ TEST(McpProjection, Inv8AllowlistExact) {
 // wherever the schema declares it — withdrawing that would silently drop a
 // declared argument, which is the same class of defect pointing the other way.
 TEST(McpProjection, Ants4524FieldsAndDefaultCompactAreSeparate) {
+    const auto exempt = [](const QString &tool) {
+        for (const char *e : kNoDefaultCompactTools)
+            if (tool == QString::fromUtf8(e)) return true;
+        return false;
+    };
+
     for (const char *t : kFieldProjectionTools) {
         const QString tool = QString::fromUtf8(t);
-        if (tool == QStringLiteral("spec_lint")) continue;
-        EXPECT_TRUE(mcp::isDefaultCompactTool(tool))
-            << t << " should still be compacted by default";
+        EXPECT_TRUE(mcp::isFieldProjectionTool(tool))
+            << t << " must take `fields=`";
+        EXPECT_EQ(mcp::isDefaultCompactTool(tool), !exempt(tool))
+            << t << " answers the compaction column wrongly";
     }
-    // The split is real rather than a rename: one verb answers the two
-    // differently, and if that stops being true the table has collapsed back.
-    EXPECT_TRUE(mcp::isFieldProjectionTool(QStringLiteral("spec_lint")))
-        << "spec_lint keeps `fields=` — ANTS-4663's reason is unchanged";
-    EXPECT_FALSE(mcp::isDefaultCompactTool(QStringLiteral("spec_lint")))
-        << "...and must NOT be compacted for a caller who never asked: its bulk "
-           "is live findings[] rows compaction cannot touch, so the default "
-           "only ever risked its did-not-run flags";
+
+    // The split must stay REAL rather than becoming a rename: at least one
+    // verb answers the two differently. If none does, the table has collapsed
+    // back into the single predicate this item exists to undo.
+    static_assert(std::size(kNoDefaultCompactTools) > 0,
+                  "the split is only meaningful while some verb differs");
+    for (const char *t : kNoDefaultCompactTools) {
+        const QString tool = QString::fromUtf8(t);
+        EXPECT_TRUE(mcp::isFieldProjectionTool(tool))
+            << t << " keeps `fields=` — that half is why it is on the list";
+        EXPECT_FALSE(mcp::isDefaultCompactTool(tool))
+            << t << " must NOT be compacted for a caller who never asked: "
+                    "its false/empty fields carry meaning a caller branches on";
+    }
+
     for (const char *t : {"get_scrollback", "session_brief", ""}) {
         EXPECT_FALSE(mcp::isDefaultCompactTool(QString::fromUtf8(t)))
             << t << " is on neither list";

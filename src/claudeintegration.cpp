@@ -6011,6 +6011,15 @@ void ClaudeIntegration::onMcpConnection() {
                     props["include_tracking"] = itProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    // ANTS-4665 — `delta` is the largest field here and grows
+                    // with every un-triaged finding, while the commonest
+                    // narrowing call is a duplicate check that wants
+                    // mapped_ids and nothing else. So the cost was worst
+                    // exactly when a file was busiest. NOT compacted by
+                    // default (the row's second column is false): a dropped
+                    // `delta_present:false` would be unreadable in the way
+                    // ANTS-4673 documents.
+                    props["fields"] = makeFieldsProp();          // ANTS-1720
                     schema["properties"] = props;
                     // ANTS-3376 — `path` is now optional (derived from
                     // caller_cwd when omitted); only caller_cwd is required.

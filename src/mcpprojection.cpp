@@ -124,6 +124,13 @@ const DispatchProjection kDispatchProjection[] = {
     // fields that say the check never ran. A caller who passes compact:true
     // still gets it; what is withdrawn is doing it to callers who did not ask.
     { "spec_lint",              true,  false },
+    // ANTS-4665 — the same shape and the second row to use the split. `delta`
+    // is the biggest field in the envelope and grows with the backlog, while
+    // the narrowing call exists to check for duplicates WITHOUT re-reading it.
+    // Compaction by default NO: `delta_present:false` is the answer "nothing
+    // is pending", and folding it away leaves that indistinguishable from a
+    // field the caller forgot to read.
+    { "feedback_query",         true,  false },
 };
 
 const DispatchProjection *lookupDispatchProjection(const QString &toolName) {
